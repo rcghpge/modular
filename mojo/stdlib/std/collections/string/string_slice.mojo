@@ -61,7 +61,7 @@ comptime StaticString = StringSlice[StaticConstantOrigin]
 """An immutable static string slice.
 
 This is a type of
-[`StringSlice`](/mojo/std/collections/string/string_slice/StringSlice)
+[`StringSlice`](/docs/std/collections/string/string_slice/StringSlice/)
 that's immutable and statically allocated. You might use this for situations
 that could also be done with a `String` type, but when you want to
 optimize memory usage with zero heap allocations.
@@ -103,7 +103,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
 
     A `StringSlice` is a lightweight view into string data that lets you look
     at part (or all) of an string without copying the data. Unlike a
-    [`String`](/mojo/std/collections/string/string/String), a `StringSlice`
+    [`String`](/docs/std/collections/string/string/String/), a `StringSlice`
     doesn't own the string data, but it knows where to find it and how long it
     is. It's designed for efficient zero-copy string operations without memory
     allocation, while maintaining memory safety and UTF-8 awareness.
@@ -140,11 +140,11 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
 
     Related types:
 
-    - [`String`](/mojo/std/collections/string/String): An owning,
+    - [`String`](/docs/std/collections/string/string/String/): An owning,
       mutable string that allocates and manages its own memory.
-    - [`StaticString`](/mojo/std/collections/string/string_slice/#StaticString): An
+    - [`StaticString`](/docs/std/collections/string/string_slice/#StaticString): An
       alias for an immutable constant `StringSlice`.
-    - [`StringLiteral`](/mojo/std/builtin/string_literal/StringLiteral/): A
+    - [`StringLiteral`](/docs/std/builtin/string_literal/StringLiteral/): A
       string literal. String literals are compile-time values.
 
     Parameters:
@@ -347,12 +347,22 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         Args:
             value: The string value.
         """
-        self._slice = Span[Byte, Self.origin](
-            ptr=value.unsafe_ptr()
-            .unsafe_mut_cast[Self.origin.mut]()
-            .unsafe_origin_cast[Self.origin](),
-            length=value.byte_length(),
-        )
+        comptime if Self.origin.mut:
+            # FIXME(MOCO-3906): Needs `unsafe_mut_cast()` because type refinment
+            #   based on the `if origin.mut` knowledge is not supported.
+            ref value_mut = UnsafePointer(to=value).unsafe_mut_cast[True]()[]
+
+            # Note: unsafe_as_bytes_mut() reallocates the `String` data if it
+            #   was originally constructed from a read-only static string.
+            # SAFETY:
+            #   This is safe because the resulting UTF-8 byte slice is
+            #   accessible only through the APIs of StringSlice, which
+            #   either guarantee UTF-8 validity, or are unsafe themselves.
+            self._slice = rebind[type_of(self._slice)](
+                value_mut.unsafe_as_bytes_mut()
+            )
+        else:
+            self._slice = rebind[type_of(self._slice)](value.as_bytes())
 
     # ===------------------------------------------------------------------===#
     # Trait implementations
@@ -779,23 +789,24 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             start_idx >= 0, "grapheme start index must be non-negative"
         )
 
+        var total_bytes = len(self._slice)
         var iter = self.graphemes()
-        var start_bytes = 0
         var i = 0
 
-        # Skip `start_idx` graphemes to find the starting byte offset.
+        # Skip `start_idx` graphemes. Compute the byte offset once at the end
+        # by subtracting the iterator's remaining byte length, instead of
+        # summing each grapheme's `byte_length()` per iteration.
         while i < start_idx:
-            var g = iter.next()
-            if not g:
+            if not iter.next():
                 break
-            start_bytes += g.unsafe_value().byte_length()
             i += 1
+        var start_bytes = total_bytes - iter.remaining_byte_length()
 
         if not grapheme.end:
             return Self(
                 unsafe_from_utf8=Span[Byte, Self.origin](
                     ptr=self._slice.unsafe_ptr() + start_bytes,
-                    length=self._slice.__len__() - start_bytes,
+                    length=total_bytes - start_bytes,
                 )
             )
 
@@ -805,13 +816,11 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             "grapheme end index must be >= start index",
         )
 
-        var end_bytes = start_bytes
         while i < end_idx:
-            var g = iter.next()
-            if not g:
+            if not iter.next():
                 break
-            end_bytes += g.unsafe_value().byte_length()
             i += 1
+        var end_bytes = total_bytes - iter.remaining_byte_length()
 
         return Self(
             unsafe_from_utf8=Span[Byte, Self.origin](
@@ -1248,7 +1257,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         Example:
 
         ```mojo
-        %# from testing import assert_equal
+        from testing import assert_equal
         # "café" with combining accent: c, a, f, e + combining acute
         var s = StringSlice("cafe\\u{0301}")
         var count = 0
@@ -1416,7 +1425,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         Example:
 
         ```mojo
-        %# from testing import assert_equal
+        from testing import assert_equal
         var s = StringSlice("Hello")
         assert_equal(s.count_graphemes(), 5)
         ```
@@ -1466,7 +1475,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             Query the length of a string, in bytes and Unicode codepoints:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("ನಮಸ್ಕಾರ")
             assert_equal(s.count_codepoints(), 7)
@@ -1477,7 +1486,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             Unicode codepoint length:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("abc")
             assert_equal(s.count_codepoints(), 3)
@@ -1488,7 +1497,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             the length in Unicode codepoints, not grapheme clusters:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("á")
             assert_equal(s.count_codepoints(), 2)
@@ -1708,7 +1717,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         representations of the `args` arguments.
 
         For more information, see the discussion in the
-        [`format` module](/mojo/std/collections/string/format/).
+        [`format` module](/docs/std/collections/string/format/).
 
         Args:
             args: The substitution values.
@@ -1817,7 +1826,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         Check if a string contains only whitespace:
 
         ```mojo
-        %# from testing import assert_true, assert_false
+        from std.testing import assert_true, assert_false
 
         # An empty string is not considered to contain only whitespace chars:
         assert_false(StringSlice("").isspace())

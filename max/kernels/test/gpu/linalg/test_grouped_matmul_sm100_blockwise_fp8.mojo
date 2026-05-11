@@ -120,14 +120,22 @@ def test_grouped_matmul_sm100_blockwise_scaled_fp8[
     )
 
     # Host allocations
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
-    var c_host_ref_ptr = alloc[Scalar[c_type]](c_size)
-    var a_offsets_host_ptr = alloc[Scalar[DType.uint32]](num_active_experts + 1)
-    var expert_ids_host_ptr = alloc[Scalar[DType.int32]](num_active_experts)
-    var a_scales_host_ptr = alloc[Scalar[scales_type]](a_scales_size)
-    var b_scales_host_ptr = alloc[Scalar[scales_type]](b_scales_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    var c_host_ref_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    var a_offsets_host_ptr = ctx.enqueue_create_host_buffer[DType.uint32](
+        num_active_experts + 1
+    )
+    var expert_ids_host_ptr = ctx.enqueue_create_host_buffer[DType.int32](
+        num_active_experts
+    )
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        a_scales_size
+    )
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        b_scales_size
+    )
 
     var a_host = TileTensor(a_host_ptr, a_tt_shape)
     var b_host = TileTensor(b_host_ptr, b_tt_shape)
@@ -289,14 +297,6 @@ def test_grouped_matmul_sm100_blockwise_scaled_fp8[
             )
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    a_offsets_host_ptr.free()
-    expert_ids_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
 
 
 def main() raises:

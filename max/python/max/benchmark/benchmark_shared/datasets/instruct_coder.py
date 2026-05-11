@@ -25,11 +25,11 @@ from .distribution import DistributionParameter
 from .huggingface import HuggingFaceBenchmarkDataset
 from .multiturn_distribution_fit import build_chat_samples_from_user_text_pool
 from .types import (
-    ChatMessage,
     ChatSamples,
     ChatSession,
     RequestSamples,
     SampledRequest,
+    SessionMessage,
     estimate_num_tokens,
 )
 
@@ -244,7 +244,7 @@ class InstructCoderBenchmarkDataset(HuggingFaceBenchmarkDataset):
             if idx >= len(tokenized):
                 break
 
-            messages: list[ChatMessage] = []
+            messages: list[SessionMessage] = []
             for _ in range(turns_per_session):
                 if idx >= len(tokenized):
                     break
@@ -253,14 +253,14 @@ class InstructCoderBenchmarkDataset(HuggingFaceBenchmarkDataset):
                 idx += 1
 
                 messages.append(
-                    ChatMessage(
+                    SessionMessage(
                         source="user",
                         content=prompt,
                         num_tokens=prompt_len,
                     )
                 )
                 messages.append(
-                    ChatMessage(
+                    SessionMessage(
                         source="assistant",
                         content="",
                         num_tokens=output_len,
@@ -296,16 +296,9 @@ class InstructCoderBenchmarkDataset(HuggingFaceBenchmarkDataset):
         min_output_len: int,
     ) -> ChatSamples:
         """Build multiturn sessions with sampled lengths (see ``gen_multiturn_sessions``)."""
-        user_texts: list[str] = []
-        for prompt, completion in pairs:
-            p_len = estimate_num_tokens(tokenizer, prompt)
-            o_len = estimate_num_tokens(tokenizer, completion)
-            if p_len < 4 or o_len < 4:
-                continue
-            user_texts.append(prompt)
         return build_chat_samples_from_user_text_pool(
             tokenizer=tokenizer,
-            user_text_pool=user_texts,
+            user_text_pool=[p for p, _ in pairs],
             num_sessions=num_sessions,
             num_turns=num_turns,
             input_len=input_len,

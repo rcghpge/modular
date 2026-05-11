@@ -38,28 +38,33 @@ from internvl import torch_utils as internvl_torch_utils
 from max import driver, pipelines
 from max.interfaces import PipelineTask, PipelineTokenizer
 from max.pipelines import TextGenerationPipelineInterface
-from max.pipelines.architectures.flux1_modulev3.pipeline_flux import (
-    FluxPipeline,
-)
 from max.pipelines.architectures.flux2_modulev3.pipeline_flux2 import (
     Flux2Pipeline,
 )
 from max.pipelines.architectures.flux2_modulev3.pipeline_flux2_klein import (
     Flux2KleinPipeline,
 )
+from max.pipelines.architectures.flux2_modulev3.tokenizer import (
+    Flux2Tokenizer,
+)
 from max.pipelines.architectures.internvl.tokenizer import InternVLProcessor
+from max.pipelines.architectures.wan.context import WanContext
+from max.pipelines.architectures.wan.tokenizer import WanTokenizer
+from max.pipelines.architectures.wan.wan_executor import WanExecutor
 from max.pipelines.core import PixelContext
 from max.pipelines.lib import (
     PipelineRuntimeConfig,
     PixelGenerationPipeline,
-    PixelGenerationTokenizer,
 )
 from max.pipelines.lib.model_manifest import ModelManifest
 from peft.peft_model import PeftModel
 from qwen2_5vl import generate_utils as qwen2_5vl_utils
 from qwen3vl import generate_utils as qwen3vl_utils
 from test_common import test_data, torch_utils
-from test_common.test_data import MockTextGenerationRequest
+from test_common.test_data import (
+    WAN_PIXEL_GENERATION_T2I,
+    MockTextGenerationRequest,
+)
 from typing_extensions import NotRequired
 
 
@@ -1184,7 +1189,7 @@ class ImageGenerationOracle(PipelineOracle):
 
     def __init__(
         self,
-        model_path: str = "black-forest-labs/FLUX.1-dev",
+        model_path: str = "black-forest-labs/FLUX.2-dev-t2i-bfloat16-v2",
         num_steps: int = 50,
         requests: list[Any] = test_data.DEFAULT_PIXEL_GENERATION,
         config_params: dict[str, Any] = {},  # noqa: B006
@@ -1229,35 +1234,21 @@ class ImageGenerationOracle(PipelineOracle):
             ),
         )
 
-        if self.model_path.startswith("black-forest-labs/FLUX.2"):
-            pipeline_model_cls = (
-                Flux2KleinPipeline
-                if self.model_path.startswith("black-forest-labs/FLUX.2-klein")
-                else Flux2Pipeline
-            )
-            tokenizer = PixelGenerationTokenizer(
-                model_path=self.model_path,
-                pipeline_config=config,
-                subfolder="tokenizer",
-                max_length=512,
-            )
-            pipeline = PixelGenerationPipeline[PixelContext](
-                pipeline_config=config,
-                pipeline_model=pipeline_model_cls,
-            )
-        else:
-            tokenizer = PixelGenerationTokenizer(
-                model_path=self.model_path,
-                pipeline_config=config,
-                subfolder="tokenizer",
-                max_length=77,
-                subfolder_2="tokenizer_2",
-                secondary_max_length=512,
-            )
-            pipeline = PixelGenerationPipeline[PixelContext](
-                pipeline_config=config,
-                pipeline_model=FluxPipeline,
-            )
+        pipeline_model_cls = (
+            Flux2KleinPipeline
+            if self.model_path.startswith("black-forest-labs/FLUX.2-klein")
+            else Flux2Pipeline
+        )
+        tokenizer = Flux2Tokenizer(
+            model_path=self.model_path,
+            pipeline_config=config,
+            subfolder="tokenizer",
+            max_length=512,
+        )
+        pipeline = PixelGenerationPipeline[PixelContext](
+            pipeline_config=config,
+            pipeline_model=pipeline_model_cls,
+        )
 
         return MaxPipelineAndTokenizer(
             pipeline=pipeline,  # type: ignore
@@ -1302,6 +1293,100 @@ class ImageGenerationOracle(PipelineOracle):
         return torch_utils.run_image_generation(
             pipeline=torch_pipeline_and_tokenizer.model,
             device=device,
+            requests=inputs,
+            num_steps=num_steps,
+            print_outputs=True,
+        )
+
+
+class WanGenerationOracle(ImageGenerationOracle):
+    """Pipeline oracle for Wan T2V single-frame (image) generation."""
+
+    def __init__(
+        self,
+        model_path: str = "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+        num_steps: int = 20,
+        requests: list[Any] = WAN_PIXEL_GENERATION_T2I,
+    ) -> None:
+        super().__init__(
+            model_path=model_path,
+            num_steps=num_steps,
+            requests=requests,
+        )
+
+    def create_max_pipeline(
+        self,
+        *,
+        encoding: pipelines.SupportedEncoding,
+        device_specs: list[driver.DeviceSpec],
+    ) -> MaxPipelineAndTokenizer:
+        """Create MAX Wan pixel generation pipeline."""
+        models = ModelManifest.from_model_path(
+            self.model_path,
+            device_specs=device_specs,
+        )
+        config = pipelines.PipelineConfig(models=models)
+        tokenizer = WanTokenizer(
+            model_path=self.model_path,
+            pipeline_config=config,
+            subfolder="tokenizer",
+            max_length=512,
+        )
+        pipeline = PixelGenerationPipeline[WanContext](
+            pipeline_config=config,
+            pipeline_model=WanExecutor,
+        )
+        return MaxPipelineAndTokenizer(
+            pipeline=pipeline,  # type: ignore
+            tokenizer=tokenizer,
+        )
+
+    def create_torch_pipeline(
+        self,
+        *,
+        encoding: pipelines.SupportedEncoding | None,
+        device: torch.device,
+    ) -> TorchModelAndDataProcessor:
+        """Load Wan diffusers pipeline with embed_tokens weight tie applied."""
+        import diffusers
+        from diffusers import AutoencoderKLWan
+
+        revision = hf_repo_lock.revision_for_hf_repo(self.model_path)
+        vae = AutoencoderKLWan.from_pretrained(
+            self.model_path,
+            subfolder="vae",
+            revision=revision,
+            torch_dtype=torch.bfloat16,
+        )
+        pipeline = diffusers.WanPipeline.from_pretrained(
+            self.model_path,
+            vae=vae,
+            revision=revision,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+        ).to(device)
+
+        # The HF checkpoint only ships shared.weight for the UMT5 text encoder,
+        # but config.json sets tie_word_embeddings=false so transformers randomly
+        # initializes encoder.embed_tokens.weight on load.  Force the tie to
+        # recover correct text conditioning.
+        pipeline.text_encoder.encoder.embed_tokens.weight = (
+            pipeline.text_encoder.shared.weight
+        )
+
+        return TorchModelAndDataProcessor(model=pipeline, data_processor=None)
+
+    def run_torch_image_generation(
+        self,
+        *,
+        torch_pipeline_and_tokenizer: TorchModelAndDataProcessor,
+        device: torch.device,
+        num_steps: int,
+        inputs: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Run single-frame generation using diffusers WanPipeline."""
+        return torch_utils.run_wan_image_generation(
+            pipeline=torch_pipeline_and_tokenizer.model,
             requests=inputs,
             num_steps=num_steps,
             print_outputs=True,
@@ -1359,6 +1444,13 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
             "trust_remote_code": True,
         },
         device_encoding_map={"cpu": ["float32"], "gpu": ["float32"]},
+    ),
+    "LiquidAI/LFM2.5-1.2B-Instruct": GenericOracle(
+        model_path="LiquidAI/LFM2.5-1.2B-Instruct",
+        config_params={"trust_remote_code": True},
+        device_encoding_map={
+            "gpu": ["float32", "bfloat16"],
+        },
     ),
     "meta-llama/Meta-Llama-3-8B-Instruct": GenericOracle(
         model_path="meta-llama/Meta-Llama-3-8B-Instruct",
@@ -1815,6 +1907,19 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         },
         device_encoding_map={"gpu": ["float8_e4m3fn"]},
     ),
+    "deepseek-ai/DeepSeek-V3.2-Exp": GenericOracle(
+        model_path="deepseek-ai/DeepSeek-V3.2-Exp",
+        config_params={
+            "max_length": 516,
+            "trust_remote_code": False,
+            "max_batch_input_tokens": 512,
+            "ep_size": 8,
+            "data_parallel_degree": 1,
+            # Match `--kv-cache-format float8_e4m3fn` (FP8 KV avoids dtype mismatches / hangs).
+            "kv_cache_format": "float8_e4m3fn",
+        },
+        device_encoding_map={"gpu": ["float8_e4m3fn"]},
+    ),
     "nvidia/DeepSeek-R1-0528-NVFP4-v2": GenericOracle(
         model_path="nvidia/DeepSeek-R1-0528-NVFP4-v2",
         config_params={
@@ -1852,6 +1957,17 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         },
         device_encoding_map={"gpu": ["float4_e2m1fnx2"]},
     ),
+    "amd/MiniMax-M2.7-MXFP4": GenericOracle(
+        model_path="amd/MiniMax-M2.7-MXFP4",
+        config_params={
+            "max_length": 516,
+            "trust_remote_code": True,
+            "max_batch_input_tokens": 512,
+            "ep_size": 8,
+            "data_parallel_degree": 8,
+        },
+        device_encoding_map={"gpu": ["float4_e2m1fnx2"]},
+    ),
     "HKUSTAudio/Llasa-8B": GenericOracle(
         model_path="HKUSTAudio/Llasa-8B",
         config_params={
@@ -1870,9 +1986,6 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         ],
         use_cache=True,
     ),
-    "black-forest-labs/FLUX.1-dev": ImageGenerationOracle(
-        "black-forest-labs/FLUX.1-dev"
-    ),
     "black-forest-labs/FLUX.2-dev-t2i": ImageGenerationOracle(
         "black-forest-labs/FLUX.2-dev",
     ),
@@ -1883,5 +1996,8 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
     "black-forest-labs/FLUX.2-klein-4B": ImageGenerationOracle(
         "black-forest-labs/FLUX.2-klein-4B",
         num_steps=4,
+    ),
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers": WanGenerationOracle(
+        "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     ),
 }

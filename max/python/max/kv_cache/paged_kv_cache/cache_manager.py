@@ -161,6 +161,10 @@ class _ReplicaMetadata:
     claimed_requests: set[RequestID] = field(default_factory=set)
     """Set of request IDs claimed on this replica."""
 
+    # Store last host buffers to ensure lifetimes outlive async copies.
+    last_lut_table_host: Buffer | None = None
+    last_cache_lengths_host: Buffer | None = None
+
 
 class PagedKVCacheManager:
     """Paged KVCache manager with data and tensor parallelism support.
@@ -202,6 +206,8 @@ class PagedKVCacheManager:
         enable_runtime_checks: bool = False,
         *,
         max_batch_size: int,
+        other_kv_managers_device_buffers_per_replica: list[list[Buffer]]
+        | None = None,
     ) -> None:
         """Initialize the multi-device paged KV cache manager.
 
@@ -214,6 +220,10 @@ class PagedKVCacheManager:
             max_batch_size: Maximum runtime batch size used to preallocate
                 per-replica runtime lookup-table/cache-length row capacity.
             enable_runtime_checks: Whether to enable runtime checks.
+            other_kv_managers_device_buffers_per_replica:
+                A list of lists of device buffers for other KV managers that should
+                be offloaded by this KV manager's KVConnectors. This is a massive
+                hack due to the lack of unified KVCache that handles multiple KVs.
         """
         if max_batch_size < 1:
             raise ValueError("max_batch_size must be positive")
@@ -270,13 +280,17 @@ class PagedKVCacheManager:
             replica_params = primary_params.copy_as_dp_1(
                 replica_idx=replica_idx
             )
+            device_buffers_to_offload = replica_device_buffers[0].all_buffers
+            if other_kv_managers_device_buffers_per_replica is not None:
+                device_buffers_to_offload.extend(
+                    other_kv_managers_device_buffers_per_replica[replica_idx]
+                )
             connector = create_connector(
                 params=replica_params,
                 devices=replica_devices,
-                device_buffer=replica_device_buffers[0],
+                device_buffers=device_buffers_to_offload,
                 total_num_host_blocks=total_num_host_pages,
                 total_num_blocks=total_num_pages,
-                session=session,
             )
 
             persistent_kv_device_input_buffers = (
@@ -336,9 +350,11 @@ class PagedKVCacheManager:
             The percentage of total blocks used after allocating for the request.
         """
         block_manager = self._replica[replica_idx].block_manager
-        num_needed_blocks = self.get_num_used_pages(
-            replica_idx
-        ) + block_manager.num_blocks_to_allocate(ctx, num_steps)
+        num_needed_blocks = (
+            self.get_num_used_pages(replica_idx)
+            + block_manager.num_blocks_to_allocate(ctx, num_steps)
+            - block_manager.count_full_blocks_from_prefix_caches(ctx)
+        )
         return min(
             1.0,
             num_needed_blocks / self._total_num_pages,
@@ -574,6 +590,9 @@ class PagedKVCacheManager:
                 cache_lengths_host
             )
             lut_table_by_device[tp_shard].inplace_copy_from(lut_table_host)
+
+        replica.last_lut_table_host = lut_table_host
+        replica.last_cache_lengths_host = cache_lengths_host
 
         # Keep metadata aligned with kernel-side dispatch inputs.
         # `k.max_context_length()` in flash attention corresponds to the

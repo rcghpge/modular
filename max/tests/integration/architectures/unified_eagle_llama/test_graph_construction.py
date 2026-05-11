@@ -57,11 +57,14 @@ def create_dummy_llama3_config(layers: int) -> Llama3Config:
     )
 
 
-def create_dummy_eagle_llama3_config() -> UnifiedEagleLlama3Config:
+def create_dummy_eagle_llama3_config(
+    enable_structured_output: bool = False,
+) -> UnifiedEagleLlama3Config:
     return UnifiedEagleLlama3Config(
         target=create_dummy_llama3_config(layers=8),
         draft=create_dummy_llama3_config(layers=1),
         speculative_config=SpeculativeConfig(num_speculative_tokens=1),
+        enable_structured_output=enable_structured_output,
     )
 
 
@@ -91,7 +94,7 @@ def test_graph_construction() -> None:
     #           + target KV (6 fields), + draft_tokens, + draft_kv_blocks,
     #           + rng seed, + sampling params (temperature, top_k, max_k, top_p, min_top_p)
     assert len(input_types) == 17, (
-        f"Expected 17 input types, got {len(input_types)}"
+        f"Expected 18 input types, got {len(input_types)}"
     )
 
     # Smoke test that graph construction (not compilation) works
@@ -102,3 +105,22 @@ def test_graph_construction() -> None:
         outputs = model(inputs)
         assert len(outputs) == 3, f"Expected 3 outputs, got {len(outputs)}"
         graph.output(*outputs)
+
+
+def test_input_types_with_structured_output() -> None:
+    """Test that input types include bitmask when structured output is enabled."""
+    config = create_dummy_eagle_llama3_config(enable_structured_output=True)
+    model = UnifiedEagleLlama3(config)
+
+    # Verify input types include bitmask when structured output is enabled.
+    input_types = model.input_types()
+    # Expected: 17 mandatory inputs + 1 bitmask = 18 total
+    assert len(input_types) == 18, (
+        f"Expected 18 input types (with bitmask), got {len(input_types)}"
+    )
+
+    # Verify the last input is the bitmask type.
+    bitmask_type = input_types[-1]
+    assert bitmask_type.dtype.to_numpy() == "bool", (
+        f"Expected bitmask dtype bool, got {bitmask_type.dtype}"
+    )

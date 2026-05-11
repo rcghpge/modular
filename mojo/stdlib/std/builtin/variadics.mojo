@@ -66,7 +66,7 @@ struct TypeList[
 
     Examples:
 
-    ```text
+    ```mojo
     from std.builtin.variadics import TypeList
     from std.sys.intrinsics import _type_is_eq
     from std.testing import assert_equal
@@ -690,7 +690,7 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         var total = 0
 
         # Can use regular for loop because args is a ParameterList
-        for i in range(len(args)):
+        comptime for i in range(ParameterList[args].size):
             total += args[i]  # All elements are Int, so uniform access
 
         return total
@@ -977,9 +977,10 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
             Self._AllSatisfiesReducer[predicate, ...],
         ]
 
+    # FIXME(MOCO-3855): Add decl-where `where conforms_to(Self.type, Equatable)`
     comptime _ContainsValuePredicate[
         search_value: Self.type,
-        element_value: Self.type where conforms_to(Self.type, Equatable),
+        element_value: Self.type,
     ] = trait_downcast[Equatable](search_value) == trait_downcast[Equatable](
         element_value
     )

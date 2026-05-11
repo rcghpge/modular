@@ -30,7 +30,6 @@ from layout import (
 )
 from layout._fillers import random
 from linalg.matmul.gpu import _matmul_gpu
-from std.memory import alloc
 
 from std.testing import assert_true
 from std.utils.index import IndexList
@@ -54,21 +53,16 @@ def test_dispatch_dynamic_m[
     var b_size = N * K
     var c_size = m * N
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
-    var c_ref_host_ptr = alloc[Scalar[c_type]](c_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    var c_ref_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
 
     var a_host = TileTensor(a_host_ptr, row_major(Coord(Idx(m), Idx[K]())))
     random(a_host)
 
     var b_host = TileTensor(b_host_ptr, row_major[N, K]())
     random(b_host)
-
-    for i in range(c_size):
-        c_host_ptr[i] = Scalar[c_type](0)
-    for i in range(c_size):
-        c_ref_host_ptr[i] = Scalar[c_type](0)
 
     var a_dev = ctx.enqueue_create_buffer[a_type](a_size)
     var b_dev = ctx.enqueue_create_buffer[b_type](b_size)
@@ -139,10 +133,6 @@ def test_dispatch_dynamic_m[
 
     assert_true(errors == 0, msg=String("FAILED:", errors, "errors"))
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_ref_host_ptr.free()
     ctx.synchronize()
     _ = a_dev^
     _ = b_dev^
@@ -180,10 +170,10 @@ def test_oob_diagnostic[
     var c_valid_size = M * N
 
     # Host allocations (oversized for A and C)
-    var a_host_ptr = alloc[Scalar[a_type]](a_alloc_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_alloc_size)
-    var c_ref_host_ptr = alloc[Scalar[c_type]](c_valid_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_alloc_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_alloc_size)
+    var c_ref_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_valid_size)
 
     # Initialize A: random for rows [0, M), poison for rows [M, alloc_M)
     var a_host = TileTensor(a_host_ptr, row_major[alloc_M, K]())
@@ -195,15 +185,10 @@ def test_oob_diagnostic[
     var b_host = TileTensor(b_host_ptr, row_major[N, K]())
     random(b_host)
 
-    # Initialize C: zero for rows [0, M), sentinel for rows [M, alloc_M)
-    for i in range(c_valid_size):
-        c_host_ptr[i] = Scalar[c_type](0)
+    # Initialize C: kernel writes the full valid region [0, M); sentinel out
+    # the trailing rows [M, alloc_M) to detect OOB writes.
     for i in range(c_valid_size, c_alloc_size):
         c_host_ptr[i] = Scalar[c_type](sentinel)
-
-    # Reference: zero
-    for i in range(c_valid_size):
-        c_ref_host_ptr[i] = Scalar[c_type](0)
 
     # Device allocations
     var a_dev = ctx.enqueue_create_buffer[a_type](a_alloc_size)
@@ -336,10 +321,6 @@ def test_oob_diagnostic[
         ),
     )
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_ref_host_ptr.free()
     ctx.synchronize()
     _ = a_dev^
     _ = b_dev^
@@ -380,11 +361,14 @@ def test_oob_epilogue[
     var out_alloc_size = alloc_M * alloc_N
 
     # Host allocations
-    var a_host_ptr = alloc[Scalar[a_type]](a_alloc_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_alloc_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
-    var out_host_ptr = alloc[Scalar[c_type]](out_alloc_size)
-    var c_ref_host_ptr = alloc[Scalar[c_type]](c_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_alloc_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_alloc_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    # Output: sentinel everywhere — epilogue should only write [0..M, 0..N].
+    var out_host_ptr = ctx.enqueue_create_host_buffer[c_type](out_alloc_size)
+    for i in range(out_alloc_size):
+        out_host_ptr[i] = Scalar[c_type](sentinel)
+    var c_ref_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
 
     # A: random for [0, M), poison for [M, alloc_M)
     var a_host = TileTensor(a_host_ptr, row_major[alloc_M, K]())
@@ -400,18 +384,6 @@ def test_oob_epilogue[
 
     for i in range(N * K, alloc_N * K):
         b_host_ptr[i] = Scalar[b_type](poison)
-
-    # C: zeros (kernel's C tensor, not used for output in epilogue path)
-    for i in range(c_size):
-        c_host_ptr[i] = Scalar[c_type](0)
-
-    # Output: sentinel everywhere — epilogue should only write [0..M, 0..N]
-    for i in range(out_alloc_size):
-        out_host_ptr[i] = Scalar[c_type](sentinel)
-
-    # Reference: zero
-    for i in range(c_size):
-        c_ref_host_ptr[i] = Scalar[c_type](0)
 
     # Device allocations
     var a_dev = ctx.enqueue_create_buffer[a_type](a_alloc_size)
@@ -565,11 +537,6 @@ def test_oob_epilogue[
         msg=String("EPILOGUE ACCURACY FAILED:", accuracy_errors, "errors"),
     )
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    out_host_ptr.free()
-    c_ref_host_ptr.free()
     ctx.synchronize()
     _ = a_dev^
     _ = b_dev^
@@ -602,11 +569,14 @@ def test_oob_epilogue_dynamic_m[
     var c_size = m * N
     var out_alloc_size = alloc_m * N
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_alloc_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
-    var out_host_ptr = alloc[Scalar[c_type]](out_alloc_size)
-    var c_ref_host_ptr = alloc[Scalar[c_type]](c_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_alloc_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    # Output: sentinel everywhere — epilogue should only write [0..M, 0..N].
+    var out_host_ptr = ctx.enqueue_create_host_buffer[c_type](out_alloc_size)
+    for i in range(out_alloc_size):
+        out_host_ptr[i] = Scalar[c_type](sentinel)
+    var c_ref_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
 
     # A: random for [0, M), poison for [M, alloc_m)
     var a_host = TileTensor(
@@ -620,13 +590,6 @@ def test_oob_epilogue_dynamic_m[
     # B: random
     var b_host = TileTensor(b_host_ptr, row_major[N, K]())
     random(b_host)
-
-    for i in range(c_size):
-        c_host_ptr[i] = Scalar[c_type](0)
-    for i in range(out_alloc_size):
-        out_host_ptr[i] = Scalar[c_type](sentinel)
-    for i in range(c_size):
-        c_ref_host_ptr[i] = Scalar[c_type](0)
 
     var a_dev = ctx.enqueue_create_buffer[a_type](a_alloc_size)
     var b_dev = ctx.enqueue_create_buffer[b_type](b_size)
@@ -744,11 +707,6 @@ def test_oob_epilogue_dynamic_m[
     assert_true(oob_writes == 0, msg=String("OOB:", oob_writes))
     assert_true(accuracy_errors == 0, msg=String("ACC:", accuracy_errors))
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    out_host_ptr.free()
-    c_ref_host_ptr.free()
     ctx.synchronize()
     _ = a_dev^
     _ = b_dev^

@@ -107,13 +107,13 @@ def test_matmul_sm100_blockwise_scaled_fp8[
     var a_scales_size = ceildiv(K, BLOCK_SCALE_K) * M
     var b_scales_size = ceildiv(N, BLOCK_SCALE_K) * ceildiv(K, BLOCK_SCALE_K)
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
     var a_host = TileTensor(a_host_ptr, a_shape)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
     var b_host = TileTensor(b_host_ptr, b_shape)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
     var c_host = TileTensor(c_host_ptr, c_shape)
-    var c_host_ref_ptr = alloc[Scalar[c_type]](c_size)
+    var c_host_ref_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
     var c_host_ref = TileTensor(c_host_ref_ptr, c_shape)
 
     var a_device = ctx.enqueue_create_buffer[a_type](a_size)
@@ -125,9 +125,13 @@ def test_matmul_sm100_blockwise_scaled_fp8[
     var c_device_ref = ctx.enqueue_create_buffer[c_type](c_size)
     var c_device_ref_nd = TileTensor(c_device_ref, c_shape)
 
-    var a_scales_host_ptr = alloc[Scalar[DType.float32]](a_scales_size)
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[DType.float32](
+        a_scales_size
+    )
     var a_scales_host = TileTensor(a_scales_host_ptr, a_scales_shape)
-    var b_scales_host_ptr = alloc[Scalar[DType.float32]](b_scales_size)
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[DType.float32](
+        b_scales_size
+    )
     var b_scales_host = TileTensor(b_scales_host_ptr, b_scales_shape)
 
     var a_scales_device = ctx.enqueue_create_buffer[DType.float32](
@@ -231,12 +235,6 @@ def test_matmul_sm100_blockwise_scaled_fp8[
     )
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
 
 
 def main() raises:

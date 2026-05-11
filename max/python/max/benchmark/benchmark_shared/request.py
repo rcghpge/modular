@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import math
 import os
@@ -25,19 +24,23 @@ import threading
 import time
 import traceback
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 import aiohttp
+from openai.types.chat.completion_create_params import ResponseFormat
+from pydantic import BaseModel
 from tqdm.asyncio import tqdm
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
-from .config import PIXEL_GENERATION_TASKS, BenchmarkTask
+from .config import PIXEL_GENERATION_TASKS, BenchmarkTask, SamplingConfig
 from .datasets.types import (
+    ChatMessage,
     OpenAIImage,
     PixelGenerationImageOptions,
 )
+from .sse import iter_events
 from .tts_workloads_utils import SampleTTSRequest
 
 # 30 minute timeout per request session
@@ -87,22 +90,32 @@ class BaseRequestFuncInput(ABC):
         """Get the output type for the request function input."""
 
 
+def _apply_sampling_to_request_payload(
+    payload: dict[str, Any], sampling: SamplingConfig
+) -> None:
+    """Merge non-None OpenAI-style sampling fields from *sampling* into *payload*."""
+    if sampling.temperature is not None:
+        payload["temperature"] = sampling.temperature
+    if sampling.top_k is not None:
+        payload["top_k"] = sampling.top_k
+    if sampling.top_p is not None:
+        payload["top_p"] = sampling.top_p
+
+
 # TODO: We shouldn't have to maintain two separate RequestFuncInput classes for
 # text generation and TTS benchmarks respectively.
 @dataclass
 class RequestFuncInput(BaseRequestFuncInput):
     """Request function input for text generation benchmarks."""
 
-    temperature: float | None
-    top_p: float | None
-    top_k: int | None
-    prompt: str | list[dict[str, Any]]
+    sampling: SamplingConfig
+    prompt: str | list[ChatMessage]
     images: list[OpenAIImage]
     api_url: str
     prompt_len: int
     max_tokens: int | None
     ignore_eos: bool
-    response_format: dict[str, Any] | None = None
+    response_format: ResponseFormat | None = None
 
     def get_output_type(self) -> type[BaseRequestFuncOutput]:
         return RequestFuncOutput
@@ -125,9 +138,7 @@ class PixelGenerationRequestFuncInput(BaseRequestFuncInput):
 class TTSRequestFuncInput(BaseRequestFuncInput):
     """Request function input for TTS (text-to-speech) benchmarks."""
 
-    temperature: float | None
-    top_p: float | None
-    top_k: int | None
+    sampling: SamplingConfig
     request_index: int
     tts_request: SampleTTSRequest
     is_streaming_mode: bool
@@ -397,9 +408,7 @@ class TRTLLMRequestDriver(RequestDriver):
         assert api_url.endswith("generate_stream")
 
         async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
-            payload: dict[
-                str, bool | str | int | float | list[dict[str, Any]]
-            ] = {
+            payload: dict[str, bool | str | int | float | list[ChatMessage]] = {
                 "text_input": request_func_input.prompt,
                 "ignore_eos": request_func_input.ignore_eos,
                 "stream": True,
@@ -407,12 +416,9 @@ class TRTLLMRequestDriver(RequestDriver):
 
             if request_func_input.max_tokens is not None:
                 payload["max_tokens"] = request_func_input.max_tokens
-            if request_func_input.temperature is not None:
-                payload["temperature"] = request_func_input.temperature
-            if request_func_input.top_k is not None:
-                payload["top_k"] = request_func_input.top_k
-            if request_func_input.top_p is not None:
-                payload["top_p"] = request_func_input.top_p
+            _apply_sampling_to_request_payload(
+                payload, request_func_input.sampling
+            )
 
             output = RequestFuncOutput()
             output.prompt_len = request_func_input.prompt_len
@@ -424,17 +430,9 @@ class TRTLLMRequestDriver(RequestDriver):
             try:
                 async with session.post(url=api_url, json=payload) as response:
                     if response.status == 200:
-                        async for chunk_bytes in response.content:
-                            chunk_bytes = chunk_bytes.strip()
-                            if not chunk_bytes:
-                                continue
-
-                            chunk = chunk_bytes.decode("utf-8").removeprefix(
-                                "data:"
-                            )
-
-                            data = json.loads(chunk)
-                            chunk_text = data["text_output"]
+                        async for event in iter_events(response.content):
+                            data = _TRTLLMChunk.model_validate_json(event.data)
+                            chunk_text = data.text_output
                             output.generated_text += chunk_text
                             timestamp = time.perf_counter()
                             # First token
@@ -488,68 +486,46 @@ def _compute_chunk_tpot(
     return None
 
 
-def _extract_sse_payload(line: str) -> str | None:
-    """Extract a payload from an SSE line or a bare JSON line."""
-    stripped = line.strip()
-    if not stripped or stripped.startswith(":"):
-        return None
-
-    if stripped.startswith("data:"):
-        payload = stripped.removeprefix("data:").lstrip()
-        return payload or None
-
-    field, separator, _ = stripped.partition(":")
-    if separator and field.isalpha():
-        return None
-
-    return stripped
+class _PromptTokensDetails(BaseModel):
+    cached_tokens: int = 0
 
 
-def _is_complete_sse_payload(payload: str) -> bool:
-    """Return whether the payload is complete enough to parse independently."""
-    if payload == "[DONE]":
-        return True
-    try:
-        json.loads(payload)
-    except json.JSONDecodeError:
-        return False
-    return True
+class _UsageChunk(BaseModel):
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    prompt_tokens_details: _PromptTokensDetails | None = None
 
 
-async def _iter_sse_payloads(
-    content: AsyncIterable[bytes],
-) -> AsyncIterator[str]:
-    """Yield payload lines for the OpenAI-style SSE subset used by benchmarks.
+class _ChatDelta(BaseModel):
+    reasoning: str | None = None
+    reasoning_content: str | None = None
+    content: str | None = None
 
-    This intentionally handles the stream shapes we consume in practice:
-    `data:` payload lines, SSE comment lines, and transport chunk splitting.
-    It does not attempt full SSE event assembly across multiple `data:` lines.
-    """
-    pending = ""
-    async for chunk_bytes in content:
-        if not chunk_bytes:
-            continue
 
-        pending += chunk_bytes.decode("utf-8")
-        while True:
-            newline_index = pending.find("\n")
-            if newline_index == -1:
-                break
+class _ChatChoice(BaseModel):
+    delta: _ChatDelta
 
-            line = pending[:newline_index].rstrip("\r")
-            pending = pending[newline_index + 1 :]
-            payload = _extract_sse_payload(line)
-            if payload is not None:
-                yield payload
 
-        payload = _extract_sse_payload(pending.rstrip("\r"))
-        if payload is not None and _is_complete_sse_payload(payload):
-            yield payload
-            pending = ""
+class _CompletionChoice(BaseModel):
+    text: str
 
-    payload = _extract_sse_payload(pending.rstrip("\r"))
-    if payload is not None:
-        yield payload
+
+class _ChatCompletionChunk(BaseModel):
+    usage: _UsageChunk | None = None
+    choices: list[_ChatChoice] = []
+
+
+class _CompletionChunk(BaseModel):
+    usage: _UsageChunk | None = None
+    choices: list[_CompletionChoice] = []
+
+
+class _TRTLLMChunk(BaseModel):
+    text_output: str
+
+
+_ChunkT = TypeVar("_ChunkT", _ChatCompletionChunk, _CompletionChunk)
 
 
 async def _run_openai_stream_request(
@@ -558,7 +534,8 @@ async def _run_openai_stream_request(
     payload: dict[str, Any],
     headers: dict[str, str],
     prompt_len: int,
-    content_extractor: Callable[[dict[str, Any]], str],
+    chunk_type: type[_ChunkT],
+    content_extractor: Callable[[_ChunkT], str],
     tokenizer: PreTrainedTokenizerBase | None = None,
 ) -> RequestFuncOutput:
     output = RequestFuncOutput()
@@ -578,32 +555,28 @@ async def _run_openai_stream_request(
                 url=api_url, json=payload, headers=headers
             ) as response:
                 if response.status == 200:
-                    async for chunk in _iter_sse_payloads(response.content):
+                    async for event in iter_events(response.content):
                         latency = time.perf_counter() - st
-                        if chunk == "[DONE]":
+                        if event.data == "[DONE]":
                             continue
 
-                        data = json.loads(chunk)
+                        data = chunk_type.model_validate_json(event.data)
 
                         # Parse usage from any chunk that reports it.
-                        usage = data.get("usage")
-                        if usage:
-                            details = usage.get("prompt_tokens_details")
+                        if data.usage:
                             output.server_token_stats = ServerTokenStats(
-                                prompt_tokens=usage.get("prompt_tokens"),
-                                completion_tokens=usage.get(
-                                    "completion_tokens"
-                                ),
-                                total_tokens=usage.get("total_tokens"),
+                                prompt_tokens=data.usage.prompt_tokens,
+                                completion_tokens=data.usage.completion_tokens,
+                                total_tokens=data.usage.total_tokens,
                                 cached_tokens=(
-                                    details.get("cached_tokens", 0)
-                                    if details
+                                    data.usage.prompt_tokens_details.cached_tokens
+                                    if data.usage.prompt_tokens_details
                                     else 0
                                 ),
                             )
 
                         # Skip content processing for chunks with no choices.
-                        if not data.get("choices"):
+                        if not data.choices:
                             continue
 
                         # Any valid response chunk counts as having received content
@@ -667,7 +640,7 @@ class OpenAICompletionsRequestDriver(RequestDriver):
             "OpenAI Completions API URL must end with 'completions' or 'profile'."
         )
 
-        payload: dict[str, bool | str | int | float | list[dict[str, Any]]] = {
+        payload: dict[str, bool | str | int | float | list[ChatMessage]] = {
             "model": request_func_input.model,
             "prompt": request_func_input.prompt,
             "best_of": 1,
@@ -677,12 +650,7 @@ class OpenAICompletionsRequestDriver(RequestDriver):
 
         if request_func_input.max_tokens is not None:
             payload["max_tokens"] = request_func_input.max_tokens
-        if request_func_input.temperature is not None:
-            payload["temperature"] = request_func_input.temperature
-        if request_func_input.top_k is not None:
-            payload["top_k"] = request_func_input.top_k
-        if request_func_input.top_p is not None:
-            payload["top_p"] = request_func_input.top_p
+        _apply_sampling_to_request_payload(payload, request_func_input.sampling)
 
         headers = {
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
@@ -693,7 +661,8 @@ class OpenAICompletionsRequestDriver(RequestDriver):
             payload=payload,
             headers=headers,
             prompt_len=request_func_input.prompt_len,
-            content_extractor=lambda data: data["choices"][0]["text"],
+            chunk_type=_CompletionChunk,
+            content_extractor=lambda data: data.choices[0].text,
             tokenizer=self.tokenizer,
         )
 
@@ -720,7 +689,9 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
                 {"role": "user", "content": content},
             ]
         else:  # conversation
-            messages_data = request_func_input.prompt
+            messages_data = [
+                msg.model_dump() for msg in request_func_input.prompt
+            ]
 
         payload: dict[
             str,
@@ -735,14 +706,13 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
 
         if request_func_input.max_tokens is not None:
             payload["max_tokens"] = request_func_input.max_tokens
-        if request_func_input.temperature is not None:
-            payload["temperature"] = request_func_input.temperature
-        if request_func_input.top_k is not None:
-            payload["top_k"] = request_func_input.top_k
-        if request_func_input.top_p is not None:
-            payload["top_p"] = request_func_input.top_p
+        _apply_sampling_to_request_payload(payload, request_func_input.sampling)
         if request_func_input.response_format is not None:
-            payload["response_format"] = request_func_input.response_format
+            # Convert TypedDict to plain dict so mypy accepts the assignment into
+            # payload (since a TypedDict is stricter than a dict[str, Any]).
+            payload["response_format"] = dict(
+                request_func_input.response_format
+            )
         for img in request_func_input.images:
             # TODO: Remove this type ignore
             # (error: Value of type "object" is not indexable)
@@ -767,10 +737,11 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
             # fields may also be None in some chunks.
             #
             # We merge them here to preserve all streamed text.
+            chunk_type=_ChatCompletionChunk,
             content_extractor=lambda data: (
-                (data["choices"][0]["delta"].get("reasoning") or "")
-                + (data["choices"][0]["delta"].get("reasoning_content") or "")
-                + (data["choices"][0]["delta"].get("content") or "")
+                (data.choices[0].delta.reasoning or "")
+                + (data.choices[0].delta.reasoning_content or "")
+                + (data.choices[0].delta.content or "")
             ),
             tokenizer=self.tokenizer,
         )
@@ -836,21 +807,27 @@ def _build_pixel_generation_payload(
     if request_func_input.image_options is None:
         return payload
 
-    image_options_payload: dict[str, Any] = {}
+    options_payload: dict[str, Any] = {}
     image_options = request_func_input.image_options
     if image_options.width is not None:
-        image_options_payload["width"] = image_options.width
+        options_payload["width"] = image_options.width
     if image_options.height is not None:
-        image_options_payload["height"] = image_options.height
+        options_payload["height"] = image_options.height
     if image_options.steps is not None:
-        image_options_payload["steps"] = image_options.steps
+        options_payload["steps"] = image_options.steps
     if image_options.guidance_scale is not None:
-        image_options_payload["guidance_scale"] = image_options.guidance_scale
+        options_payload["guidance_scale"] = image_options.guidance_scale
     if image_options.negative_prompt is not None:
-        image_options_payload["negative_prompt"] = image_options.negative_prompt
+        options_payload["negative_prompt"] = image_options.negative_prompt
+    # num_frames is video-only; presence routes the payload to
+    # provider_options.video instead of provider_options.image.
+    is_video = image_options.num_frames is not None
+    if is_video:
+        options_payload["num_frames"] = image_options.num_frames
 
-    if image_options_payload:
-        payload["provider_options"] = {"image": image_options_payload}
+    if options_payload:
+        modality_key = "video" if is_video else "image"
+        payload["provider_options"] = {modality_key: options_payload}
 
     if image_options.seed is not None:
         payload["seed"] = image_options.seed

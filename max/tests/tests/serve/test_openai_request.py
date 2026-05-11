@@ -200,6 +200,25 @@ async def test_openai_user_message_with_null_content() -> None:
     assert messages[0].content == ""
 
 
+def test_openai_chat_completion_accepts_prompt_tokens() -> None:
+    """Schema must accept ``prompt_tokens`` (orchestrator pre-tokenized input).
+
+    The Mammoth orchestrator tokenizes incoming requests once and forwards
+    the integer token IDs to MAX Serve under the ``prompt_tokens`` field,
+    bypassing re-tokenization. Regression coverage for SERVSYS-1239: the
+    schema rewrite in #84789 dropped this MAX-only field, causing
+    ``CreateChatCompletionRequest.model_validate_json`` to fail with
+    ``ValidationError: prompt_tokens - Extra inputs are not permitted``.
+    """
+    body = (
+        '{"model":"test","ignore_eos":true,"max_tokens":4,'
+        '"messages":[{"role":"user","content":"hi"}],'
+        '"prompt_tokens":[101,202,303]}'
+    )
+    request = CreateChatCompletionRequest.model_validate_json(body)
+    assert request.prompt_tokens == [101, 202, 303]
+
+
 def test_openai_user_message_content_nullable_schema() -> None:
     """Test that the CreateChatCompletionRequest schema accepts null user content."""
     # Test with explicit null content in user message
@@ -209,8 +228,8 @@ def test_openai_user_message_content_nullable_schema() -> None:
     }
     request = CreateChatCompletionRequest.model_validate(request_data)
     assert len(request.messages) == 1
-    assert request.messages[0].root.role == "user"
-    assert request.messages[0].root.content is None
+    assert request.messages[0]["role"] == "user"
+    assert request.messages[0].get("content") is None
 
     # Test with omitted content field
     request_data_no_content = {
@@ -221,8 +240,8 @@ def test_openai_user_message_content_nullable_schema() -> None:
         request_data_no_content
     )
     assert len(request.messages) == 1
-    assert request.messages[0].root.role == "user"
-    assert request.messages[0].root.content is None
+    assert request.messages[0]["role"] == "user"
+    assert request.messages[0].get("content") is None
 
     # Test mixed messages with null user content
     request_data_mixed = {
@@ -236,7 +255,7 @@ def test_openai_user_message_content_nullable_schema() -> None:
     }
     request = CreateChatCompletionRequest.model_validate(request_data_mixed)
     assert len(request.messages) == 4
-    assert request.messages[0].root.content == "You are a helpful assistant."
-    assert request.messages[1].root.content is None
-    assert request.messages[2].root.content == "How can I help you?"
-    assert request.messages[3].root.content == "Hello!"
+    assert request.messages[0]["content"] == "You are a helpful assistant."
+    assert request.messages[1].get("content") is None
+    assert request.messages[2]["content"] == "How can I help you?"
+    assert request.messages[3]["content"] == "Hello!"

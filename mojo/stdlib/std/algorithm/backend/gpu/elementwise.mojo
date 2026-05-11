@@ -41,7 +41,7 @@ from std.math.uutils import ufloordiv, uceildiv, udivmod
 from std.memory import stack_allocation
 from std.sys._assembly import inlined_assembly
 from std.sys.defines import get_defined_bool, get_defined_int
-from std.sys.info import _is_sm_100x_or_newer, has_nvidia_gpu_accelerator
+from std.sys.info import _has_sm_100x_or_newer, has_nvidia_gpu_accelerator
 from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
 
@@ -285,14 +285,14 @@ def _elementwise_impl_gpu_clc[
 
     if shape[rank - 1] % simd_width == 0:
         comptime kernel = _kernel[handle_uneven_simd=False]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             grid_dim=num_tiles,
             block_dim=block_size,
             attributes=pdl_launch_attributes(pdl_level),
         )
     else:
         comptime kernel = _kernel[handle_uneven_simd=True]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             grid_dim=num_tiles,
             block_dim=block_size,
             attributes=pdl_launch_attributes(pdl_level),
@@ -425,14 +425,14 @@ def _elementwise_impl_gpu_grid_stride[
 
     if shape[rank - 1] % simd_width == 0:
         comptime kernel = _kernel[handle_uneven_simd=False]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             grid_dim=num_blocks,
             block_dim=block_size,
             attributes=pdl_launch_attributes(pdl_level),
         )
     else:
         comptime kernel = _kernel[handle_uneven_simd=True]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             grid_dim=num_blocks,
             block_dim=block_size,
             attributes=pdl_launch_attributes(pdl_level),
@@ -518,7 +518,7 @@ def _elementwise_impl_gpu[
     if length == 0:
         return
 
-    comptime if _is_sm_100x_or_newer() and _USE_CLC_WORK_STEALING:
+    comptime if _has_sm_100x_or_newer() and _USE_CLC_WORK_STEALING:
         var num_packed = ufloordiv(Int(length), simd_width)
         var num_tiles = uceildiv(num_packed, block_size * elems_per_thread)
 

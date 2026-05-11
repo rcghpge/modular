@@ -138,7 +138,13 @@ from .sync import (
     circular_add,
     is_p2p_enabled,
 )
-from .device_query import dispatch_max_num_blocks, CommTuningConfig
+from .device_query import (
+    dispatch_select_comm_config,
+    CommTuningConfig,
+    KB,
+    MB,
+    GB,
+)
 from internal_utils import Table
 
 comptime elementwise_epilogue_type = def[
@@ -146,75 +152,242 @@ comptime elementwise_epilogue_type = def[
 ](Coord, SIMD[dtype, size=width]) capturing -> None
 
 # Tuning table to get num_blocks for allreduce.
+
+
+@fieldwise_init
+struct AllReduceTuningConfig(CommTuningConfig, TrivialRegisterPassable):
+    """
+    Parameters:
+        ngpus: Number of GPUs for running allreduce.
+        num_bytes: Total number of input bytes supported by the config.
+        sm_version: SM version (as string).
+        num_blocks: Number of thread blocks for running allreduce.
+    """
+
+    var ngpus: Int
+    var num_bytes: Int
+    var sm_version: StaticString
+    var num_blocks: Int
+    var use_2stage: Bool
+
+    def get_num_blocks(self) -> Int:
+        return self.num_blocks
+
+    def get_num_bytes(self) -> Int:
+        return self.num_bytes
+
+    def get_sm_version(self) -> StaticString:
+        return self.sm_version
+
+    def get_ngpus(self) -> Int:
+        return self.ngpus
+
+    def get_use_2stage(self) -> Bool:
+        return self.use_2stage
+
+    def write_to(self, mut writer: Some[Writer]):
+        """Writes the tuning config as a string.
+
+        Args:
+            writer: The writer to write to.
+        """
+        writer.write(
+            self.ngpus,
+            self.num_bytes,
+            self.sm_version,
+            self.num_blocks,
+            self.use_2stage,
+        )
+
+
 # Arch-specific defaults use ngpus=-1, num_bytes=-1 with the arch's sm_version.
 # The global default (sm_version="default") is the ultimate fallback for
-# unknown architectures -- dispatch_max_num_blocks prefers arch-specific
+# unknown architectures -- dispatch_select_comm_config prefers arch-specific
 # defaults when available.
 comptime allreduce_tuning_table = Table(
     [
         # default for sm90 (encoded with ngpus=-1, num_bytes=-1)
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="sm_90a", num_blocks=216
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 27), sm_version="sm_90a", num_blocks=232
+        # 2xH100: 1-stage wins across all measured sizes (16KB to 128MB);
+        # ratio 2/1 = 1.02 at 128MB, narrowing but no crossover.
+        AllReduceTuningConfig(
+            ngpus=2,
+            num_bytes=(2 * GB),
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=False,
         ),
-        # default for sm100 (encoded with ngpus=-1, num_bytes=-1)
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="sm_100a", num_blocks=512
+        # 4xH100 / 8xH100 thresholds: 1-stage wins below 1MB, 2-stage wins
+        # cleanly from 1MB upward (ratio 0.83 at 1MB / ngpus=4, 0.74 at
+        # 1MB / ngpus=8).
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(512 * KB),  # 512KB: largest size where 1-stage wins.
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=False,
         ),
-        # Tuning results for sm100 (2xB200, 4xB200)
-        CommTuningConfig(
-            ngpus=2, num_bytes=(1 << 23), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(128 * MB),
+            sm_version="sm_90a",
+            num_blocks=232,
+            use_2stage=True,
         ),
-        CommTuningConfig(
-            ngpus=2, num_bytes=(1 << 24), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(2 * GB),
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=True,
         ),
-        CommTuningConfig(
-            ngpus=2, num_bytes=(1 << 25), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(512 * KB),
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=2, num_bytes=(1 << 26), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(2 * GB),
+            sm_version="sm_90a",
+            num_blocks=216,
+            use_2stage=True,
         ),
-        CommTuningConfig(
-            ngpus=2, num_bytes=(1 << 27), sm_version="sm_100a", num_blocks=512
+        # default for sm100 (encoded with ngpus=-1, num_bytes=-1).
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 23), sm_version="sm_100a", num_blocks=512
+        # 2xB200: 1-stage wins across all measured sizes (16KB to 256MB).
+        # The 2-stage curve approaches but does not cross 1-stage in the
+        # measured range (ratio 2/1 = 1.01 at 256MB).
+        AllReduceTuningConfig(
+            ngpus=2,
+            num_bytes=(2 * GB),
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 24), sm_version="sm_100a", num_blocks=512
+        # 8xB200 / 4xB200 thresholds: 1-stage wins for latency-bound sizes,
+        # 2-stage wins where bandwidth dominates. The crossover is at a
+        # different size for each ngpus, so the boundary entries differ.
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(4 * MB),  # 4MB: 1-stage wins by 9% at 4MB; 2-stage
+            # wins by 25% at 8MB.
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 25), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(2 * GB),
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=True,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 26), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(2 * MB),  # 2MB: 1-stage and 2-stage are within 3%
+            # at 2MB; 2-stage wins by 37% at 4MB. 2MB stays in the 1-stage
+            # bucket as a noise margin for sub-2MB workloads.
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=4, num_bytes=(1 << 27), sm_version="sm_100a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(2 * GB),
+            sm_version="sm_100a",
+            num_blocks=512,
+            use_2stage=True,
         ),
         # default for sm103 (B300, encoded with ngpus=-1, num_bytes=-1)
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="sm_103a", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="sm_103a",
+            num_blocks=512,
+            use_2stage=False,
         ),
         # default for CDNA3 (MI300X, encoded with ngpus=-1, num_bytes=-1)
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="CDNA3", num_blocks=32
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="CDNA3",
+            num_blocks=32,
+            use_2stage=False,
         ),
         # default for CDNA4 (MI355X, encoded with ngpus=-1, num_bytes=-1)
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="CDNA4", num_blocks=64
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="CDNA4",
+            num_blocks=64,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=8, num_bytes=(1 << 20), sm_version="CDNA4", num_blocks=64
+        # 2xMI355: 1-stage and 2-stage are within noise across all measured
+        # sizes (busbw ~64 GB/s for both at 128MB -- XGMI bandwidth bound,
+        # not algorithm bound). Keep 1-stage to match arch convention.
+        AllReduceTuningConfig(
+            ngpus=2,
+            num_bytes=(2 * GB),
+            sm_version="CDNA4",
+            num_blocks=64,
+            use_2stage=False,
         ),
-        CommTuningConfig(
-            ngpus=8, num_bytes=(1 << 31), sm_version="CDNA4", num_blocks=44
+        # 4xMI355 / 8xMI355 thresholds: 256KB boundary. At 256KB, 1-stage
+        # ties or wins narrowly; at 512KB 2-stage starts winning (~8% on
+        # ngpus=4, tie on ngpus=8); from 1MB upward 2-stage wins decisively.
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(256 * KB),
+            sm_version="CDNA4",
+            num_blocks=64,
+            use_2stage=False,
+        ),
+        AllReduceTuningConfig(
+            ngpus=4,
+            num_bytes=(2 * GB),
+            sm_version="CDNA4",
+            num_blocks=64,
+            use_2stage=True,
+        ),
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(256 * KB),
+            sm_version="CDNA4",
+            num_blocks=64,
+            use_2stage=False,
+        ),
+        # Recovered from pre-refactor tuning table: 44 blocks was tuned for
+        # ngpus=8 / large sizes. Under the old hard-coded threshold ngpus=8 /
+        # >256KB used 2-stage, so this tuning belongs to the 2-stage entry.
+        AllReduceTuningConfig(
+            ngpus=8,
+            num_bytes=(2 * GB),
+            sm_version="CDNA4",
+            num_blocks=44,
+            use_2stage=True,
         ),
         # global default for unknown architectures
-        CommTuningConfig(
-            ngpus=-1, num_bytes=-1, sm_version="default", num_blocks=512
+        AllReduceTuningConfig(
+            ngpus=-1,
+            num_bytes=-1,
+            sm_version="default",
+            num_blocks=512,
+            use_2stage=False,
         ),
     ],
     "allreduce_table",
@@ -401,9 +574,7 @@ def _allreduce_naive_single[
     )
 
     # Reduce local buffer first.
-    ctx.enqueue_function[
-        _naive_reduce_kernel[dtype], _naive_reduce_kernel[dtype]
-    ](
+    ctx.enqueue_function[_naive_reduce_kernel[dtype]](
         accum,
         dev_inputs[my_rank],
         num_elements,
@@ -418,9 +589,7 @@ def _allreduce_naive_single[
 
         # Copy remote input into device-local scratch, then accumulate.
         ctx.enqueue_copy(scratch, dev_inputs[i])
-        ctx.enqueue_function[
-            _naive_reduce_kernel[dtype], _naive_reduce_kernel[dtype]
-        ](
+        ctx.enqueue_function[_naive_reduce_kernel[dtype]](
             accum,
             scratch,
             num_elements,
@@ -434,9 +603,7 @@ def _allreduce_naive_single[
         out_layout,
         output_lambda=output_lambda,
     ]
-    ctx.enqueue_function[
-        naive_reduce_with_lambda_kernel, naive_reduce_with_lambda_kernel
-    ](
+    ctx.enqueue_function[naive_reduce_with_lambda_kernel](
         rebind[TileTensor[dtype, out_layout, MutAnyOrigin]](out_tensor),
         accum,
         num_elements,
@@ -810,7 +977,7 @@ def _allreduce_p2p[
     ],
     out_tensor: TileTensor[mut=True, dtype, out_layout, ...],
     rank_sigs: InlineArray[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS],
-    max_num_blocks: Int,
+    dispatch_config: AllReduceTuningConfig,
     ctx: DeviceContext,
 ) raises:
     """
@@ -830,7 +997,7 @@ def _allreduce_p2p[
         list_of_in_tensors: Input buffers from ALL GPUs (peer access required)
         out_tensor: Output buffer for THIS GPU
         rank_sigs: Signal pointers for synchronization
-        max_num_blocks: Maximum number of thread blocks to launch.
+        dispatch_config: Dispatch configuration defining block count, algorithm selection
         ctx: Device context for THIS GPU
 
     Launches P2P reduction kernel on the current GPU to perform direct reduction.
@@ -861,19 +1028,15 @@ def _allreduce_p2p[
             row_major(Idx(num_elements)),
         )
 
+    var max_num_blocks = dispatch_config.num_blocks
+    var use_1stage = not dispatch_config.use_2stage
     # TODO(KERN-2632): Incorporate this into dispatch table
     comptime sm_version = ctx.default_device_info.version
     comptime BLOCK_SIZE = 512 if sm_version == "CDNA4" else 256
 
-    comptime rank_4_byte_threshold = 512 * 1024
-    comptime rank_8_byte_threshold = 256 * 1024
-    var payload_bytecount = num_elements * size_of[dtype]()
     # The 2-stage path partitions by full SIMD vectors only; use 1-stage when a
     # scalar tail is present (unless multimem, which is rejected above).
-    var latency_bound_small = (
-        ngpus <= 4 and (payload_bytecount < rank_4_byte_threshold)
-    ) or (ngpus <= 8 and (payload_bytecount < rank_8_byte_threshold))
-    var use_1stage = latency_bound_small or (num_elements % simd_width != 0)
+    use_1stage = use_1stage or (num_elements % simd_width != 0)
 
     if use_1stage:
         var grid_size: Int
@@ -904,7 +1067,7 @@ def _allreduce_p2p[
             output_lambda=output_lambda,
             use_multimem=use_multimem,
         ]
-        ctx.enqueue_function[allreduce_1stage_kernel, allreduce_1stage_kernel](
+        ctx.enqueue_function[allreduce_1stage_kernel](
             rebind[TileTensor[dtype, out_layout, MutAnyOrigin]](out_tensor),
             flat_inputs,
             rank_sigs,
@@ -932,7 +1095,7 @@ def _allreduce_p2p[
             output_lambda=output_lambda,
             use_multimem=use_multimem,
         ]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             rebind[TileTensor[dtype, out_layout, MutAnyOrigin]](out_tensor),
             flat_inputs,
             rank_sigs,
@@ -1042,17 +1205,19 @@ def allreduce[
     # TODO: check all devices have the same GPU sm_version
     comptime sm_version = ctx.default_device_info.version
     var num_bytes = num_elements * size_of[dtype]()
-    var max_num_blocks = _max_num_blocks.or_else(
-        dispatch_max_num_blocks[ngpus, sm_version, allreduce_tuning_table](
-            num_bytes
-        )
-    )
-    if max_num_blocks > MAX_NUM_BLOCKS_UPPER_BOUND:
+    var dispatch_config = dispatch_select_comm_config[
+        ngpus, sm_version, allreduce_tuning_table
+    ](num_bytes)
+
+    if _max_num_blocks:
+        dispatch_config.num_blocks = _max_num_blocks.value()
+
+    if dispatch_config.num_blocks > MAX_NUM_BLOCKS_UPPER_BOUND:
         raise Error(
-            "expected allreduce max_num_blocks less than upper bound: "
+            "expected allreduce num_blocks less than upper bound: "
             + String(MAX_NUM_BLOCKS_UPPER_BOUND)
             + " but got: "
-            + String(max_num_blocks)
+            + String(dispatch_config.num_blocks)
         )
 
     # Check P2P availability.
@@ -1065,7 +1230,7 @@ def allreduce[
             ngpus=ngpus,
             output_lambda=actual_output_lambda,
             num_tensors=1 if use_multimem else ngpus,
-        ](input_tensors, output_tensor, max_num_blocks, ctx)
+        ](input_tensors, output_tensor, dispatch_config.num_blocks, ctx)
 
     # P2P path.
     return _allreduce_p2p[
@@ -1073,4 +1238,4 @@ def allreduce[
         output_lambda=actual_output_lambda,
         pdl_level=pdl_level,
         use_multimem=use_multimem,
-    ](input_tensors, output_tensor, rank_sigs, max_num_blocks, ctx)
+    ](input_tensors, output_tensor, rank_sigs, dispatch_config, ctx)

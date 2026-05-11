@@ -18,9 +18,11 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Any, Literal
+from typing import Literal
 
+from openai.types.chat.completion_create_params import ResponseFormat
 from PIL import Image
+from pydantic import BaseModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from typing_extensions import TypedDict
 
@@ -49,14 +51,44 @@ class OpenAIImage(TypedDict):
     image_url: OpenAIImageURL
 
 
+class TextContentBlock(BaseModel):
+    type: Literal["text"] = "text"
+    text: str
+
+
+class ImageURLDetail(BaseModel):
+    url: str
+
+
+class ImageContentBlock(BaseModel):
+    # Images are carried in the separate RequestFuncInput.images field and
+    # appended to the payload after serialisation; they appear in content lists
+    # only at the wire layer, not in prompts constructed by this codebase.
+    # The model is defined here so ChatMessage.content can represent the full
+    # OpenAI content-block union and round-trip correctly.
+    type: Literal["image_url"] = "image_url"
+    image_url: ImageURLDetail
+
+
+class ChatMessage(BaseModel):
+    # role is "user" or "assistant" in practice; "system" is plausible once
+    # sys_prompt_ratio support is wired through the multi-turn path.
+    role: str
+    # content is always list[TextContentBlock] in prompts produced by this
+    # codebase.  The str variant exists to match the OpenAI spec and to support
+    # _prepend_run_prefix_to_formatted_prompt, which handles both shapes
+    # defensively.
+    content: str | list[TextContentBlock | ImageContentBlock]
+
+
 @dataclass
 class SampledRequest:
-    prompt_formatted: str | list[dict[str, Any]]
+    prompt_formatted: str | list[ChatMessage]
     prompt_len: int
     output_len: int | None
     encoded_images: list[OpenAIImage]
     ignore_eos: bool
-    response_format: dict[str, Any] | None = None
+    response_format: ResponseFormat | None = None
 
 
 @dataclass
@@ -67,6 +99,7 @@ class PixelGenerationImageOptions:
     guidance_scale: float | None = None
     negative_prompt: str | None = None
     seed: int | None = None
+    num_frames: int | None = None
 
 
 @dataclass
@@ -89,7 +122,7 @@ MessageSource = Literal["user", "assistant"]
 
 
 @dataclass
-class ChatMessage:
+class SessionMessage:
     source: MessageSource
     content: str
     num_tokens: int
@@ -99,7 +132,7 @@ class ChatMessage:
 @dataclass
 class ChatSession:
     id: int | None
-    messages: Sequence[ChatMessage]
+    messages: Sequence[SessionMessage]
     prefix_turns: int = 0
 
     @property
@@ -133,8 +166,8 @@ def build_chat_message(
     tokenizer: PreTrainedTokenizerBase,
     num_tokens: int | None = None,
     delay_until_next_message: float | None = None,
-) -> ChatMessage:
-    return ChatMessage(
+) -> SessionMessage:
+    return SessionMessage(
         source,
         prompt,
         num_tokens or estimate_num_tokens(tokenizer, prompt),

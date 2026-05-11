@@ -1,369 +1,93 @@
-# Nightly: v26.3
+---
+title: Nightly (v26.4)
+---
 
 This version is still a work in progress.
 
-## Highlights {#26-3-highlights}
+## Highlights
 
-## Documentation {#26-3-docs}
+## Documentation
 
-## MAX models {#26-3-models}
+## MAX models
 
-- The `residual_threshold` parameter for FLUX first-block cache (FBCache) is
-  now a per-request runtime parameter on `ImageProviderOptions`, allowing it
-  to be tuned without recompiling the model graph.
-- Added TaylorSeer denoising cache support to the FLUX.2 Klein pipeline,
-  enabling significant speedups for image-to-image generation by skipping
-  redundant transformer passes during the denoising loop.
-- Added the Mamba state space model architecture.
-- Fixed Wan 2.1 / 2.2 video diffusion pipelines silently running without
-  classifier-free guidance. The tokenizer gated negative-prompt tokenization
-  on `true_cfg_scale > 1.0` (default `1.0`), so negative tokens were never
-  produced and the executor fell back to unguided generation even when
-  `guidance_scale > 1.0` and a negative prompt were supplied. Wan now enables
-  classical CFG whenever `guidance_scale > 1.0` and defaults an absent
-  negative prompt to the empty string, matching the diffusers baseline.
-- Added `ModuleV3` version of Gemma3 and Gemma3multimodal, with multi-gpu
-  support.
+- Added MXFP4 quantization support for MiniMax-M2.
 
-## MAX framework {#26-3-max}
+## MAX framework
 
-### Inference server {#26-3-max-serve}
+### Inference server
 
-- Added periodic "still building/compiling" log messages during model
-  compilation so that long operations produce visible signs of progress.
-- Consolidated KV connector CLI flags (`--host-kvcache-swap-space-gb`,
-  `--disk-offload-dir`, `--disk-offload-max-gb`, `--disk-offload-direct-io`,
-  `--lmcache-config-file`) into the `--kv-connector-config` JSON dict.
-- Removed the `--allow-safetensors-weights-fp32-bf16-bidirectional-cast` CLI
-  flag. Float32 <-> bfloat16 safetensors weight casting is now unconditionally
-  enabled.
-- Added `--model-override` CLI flag for per-component `ModelManifest` overrides
-  (e.g. `--model-override transformer.quantization_encoding=float4_e2m1fnx2`),
-  enabling mixed quantization in diffusion pipelines.
-- Removed jump forward decoding (`compute_ff_tokens`) from structured output.
-  The bitmask constraint alone ensures valid structured output, matching the
-  approach used by vLLM and SGLang.
+- MAX Serve now emits the `maxserve.num_requests_queued` OTel/Prometheus
+  metric (changed from an `UpDownCounter` to a synchronous `Gauge`). The
+  gauge is sampled once per scheduler iteration from
+  `BatchMetrics.publish_metrics` and reports the depth of the scheduler's
+  CE / prefill queue (the same value as the `Pending: N reqs` line in
+  scheduler logs). It is published by every text-path scheduler that
+  drives `BatchMetrics`: `TokenGenerationScheduler` and `PrefillScheduler`
+  (via `TextBatchConstructor`), and `DecodeScheduler` (via
+  `len(pending_reqs) + len(prefill_reqs)`). Operators can use this metric
+  to observe queue buildup during overload conditions.
 
-### `max` CLI {#26-3-max-cli}
+### `max` CLI
 
-- Added sweep benchmarking capabilities to `max benchmark`: iterate over
-  multiple concurrency and request-rate combinations, flush the prefix cache
-  between runs, and collect per-run structured JSON results.
+- Added `--devices=gpu:all` to use every visible GPU (including MAX Serve).
 
-### Python API {#26-3-max-python}
+### Python API
 
-- Added `Model.release_captured_graph()`, which drops a previously captured
-  device graph identified by graph key (or per-device keys) and frees its
-  device-side working memory once any in-flight replay completes. Releasing a
-  key that was never captured is a no-op. Callers remain responsible for
-  dropping any output `Buffer` handles returned by the corresponding
-  `Model.capture()` call.
-- Added `ops.roi_align` graph op and `F.roi_align` functional wrapper for
-  ROI Align pooling over NHWC inputs with configurable spatial scale, sampling
-  ratio, alignment mode, and AVG/MAX pooling.
-- Added `roi_align` op handler to the MO eager interpreter, enabling
-  eager-mode execution of ROI Align pooling without graph compilation.
-- Added `ConstantExternalOp` and `ConstantScalarOp` handlers to the MO eager
-  interpreter, allowing graphs with external weights and scalar constants to
-  run without falling back to full compilation.
-- Added `ReduceRmsNormOp` handler to the MO eager interpreter, enabling
-  eager-mode execution of RMS normalization without graph compilation.
-- Added `ReduceGroupNormOp` handler to the MO eager interpreter, enabling
-  eager-mode execution of group normalization without graph compilation.
-- Fixed tensor slicing with negative integer indices (e.g. `hidden[:, -1]`)
-  which previously raised a `RuntimeError` at compile time.
-- Fixed `ops.reshape` / `TensorValue.reshape` rejecting valid `-1` reshapes
-  on tensors whose leading dim is a symbolic sum-of-products (e.g.
-  `[(batch_size * num_steps) + total_seq_len, 1536]` reshaped to
-  `[-1, n_heads, head_dim]` with `n_heads * head_dim == 1536`). The inferred
-  dim now simplifies without requiring a `rebind`.
-- Setting `MODULAR_MAX_DEBUG_UNINITIALIZED_READ_CHECK=true` (or the
-  `max-debug.uninitialized-read-check` config key, or
-  `InferenceSession.debug.uninitialized_read_check = True`) enables detection
-  of uninitialized memory reads in Mojo kernels. `InferenceSession`
-  automatically enables the debug allocator poison and compiles kernels with
-  load-time poison checks for all float types. When a load matches a poison
-  pattern, the process aborts with a descriptive message.
-- Added support for the `bfloat16` data type on ARM CPU devices in MAX graphs.
-  Previously, `session.load()` raised a `ValueError` when a graph contained
-  bf16 tensors targeting an ARM CPU.
-- Added `DevicePlacementPolicy` (`Ignore`, `Warn`, `Error`) to `Graph` to
-  control behavior when CPU-only ops (`ops.scatter`, `ops.cumsum`,
-  `ops.nonzero`, `ops.tile`) receive GPU tensors. The default (`Warn`) emits a
-  `UserWarning` and falls back to CPU; `Error` raises `ValueError` instead.
-  `ops.cond` and `ops.while_loop` always raise `ValueError` for GPU predicates.
-- Fixed slow `axis=None` reductions (`mean`, `sum`, `prod`, `max`, `min`) in
-  `max.experimental.functional`. The previous implementation flattened the
-  tensor before reducing, serializing the work onto a single GPU block.
-  Reductions now iterate axis-by-axis to preserve parallelism.
-- Renamed `Float8Config` to `QuantConfig` (and related types/functions)
-  to reflect that the config now covers FP8, NVFP4, and MXFP4 quantization.
-- Renamed related public Python quantization APIs from `Float8*` names to
-  `Quant*` names, including `parse_float8_config()` to
-  `parse_quant_config()`, and the public `quant` modules in `max.nn` and
-  `max.pipelines.lib`.
-- `max.diagnostics.gpu.BackgroundRecorder`'s sampling interval can now be
-  configured.
-- Introduced `CPUMetrics` alongside the existing GPU diagnostics and open source
-  it under from `max.diagnostics`.
-- `max.experimental.Tensor` is now distribution-aware: it carries a
-  tuple of per-shard storages, `driver.Buffer`s (realized) or graph
-  values (`TensorValue` / `BufferValue`, unrealized), paired with a
-  `DeviceMapping` that maps those local shards onto the
-  `DeviceMesh`.
-- Reworked `max.experimental.functional` from a single `functional.py`
-  into a `functional/` package, a new distribution-and mesh-aware
-  dispatch layer on top of the graph-compiler Python API, split cleanly
-  into three op categories: `creation_ops` (tensor factories), `spmd_ops`
-  (rule-based per-op SPMD dispatch), and `collective_ops`
-  (`allreduce_sum`, `allgather`, `reduce_scatter` etc., now applied per
-  device-group along a chosen mesh axis so they dispatch correctly on
-  multi-dimensional meshes, plus a `transfer_to` convenience op
-  between `DeviceMapping`s).
-- Added `max.experimental.sharding` with the core types for distributed
-  tensors (`DeviceMesh`; `DeviceMapping` with `PlacementMapping` and
-  `NamedMapping`; placement primitives `Replicated` / `Sharded` /
-  `Partial`; `DistributedTensorType` / `DistributedBufferType`;
-  `TensorLayout`), plus a `sharding.rules` submodule of pure
-  mapping-propagation rules (elementwise, matmul, reduction, shape,
-  conv, pooling) that, for each op, either error out or reshard inputs
-  to the proposed `DeviceMapping`s and derive the resulting output
-  `DeviceMapping`.
-- `max.experimental.nn.Module.compile()` now accepts
-  `DistributedTensorType` symbolic inputs (not just `TensorType`), so
-  distributed models can be built via the graph-compilation path in
-  addition to running eagerly; `gemma3_modulev3` is the first multi-GPU
-  model wired up. DTensor support in MAX is still ongoing work and
-  these APIs may evolve.
-- Improved experimental eager interpreter performance by enabling multi-threaded
-  CPU execution and removing unnecessary GPU device synchronization after each
-  op dispatch.
-- Added `gather` and `gather_nd` op handlers to the experimental eager
-  interpreter with full CPU and GPU support.
-- Added `argmax` and `argmin` op handlers to the experimental eager interpreter
-  with full CPU and GPU support, returning int64 indices along a specified axis.
-- Added `split` op handler to the experimental eager interpreter with full CPU
-  and GPU support, splitting a tensor into multiple outputs along a specified
-  axis.
-- Added `scatter` op handler to the experimental eager interpreter (CPU),
-  scattering updates into a copy of the input tensor along a specified axis.
-- Added `scatter_nd` op handler to the experimental eager interpreter (CPU
-  and GPU), scattering slices from updates into input at N-dimensional index
-  positions via `max.experimental.functional.scatter_nd`.
-- Added `scatter_nd_add` op handler to the experimental eager interpreter
-  (CPU), accumulating slices from updates into input at N-dimensional index
-  positions and summing duplicate indices via
-  `max.experimental.functional.scatter_nd_add`.
-- Added `conv2d` and `conv2d_transpose` op handlers to the experimental eager
-  interpreter with CPU and GPU support.
-- Added `max_pool2d` op handlers (floor and ceil mode) to the experimental
-  eager interpreter with CPU and GPU support.
-- Added `tile` op handler to the experimental eager interpreter (CPU),
-  repeating the input tensor along each dimension.
-- Added `band_part` op handler to the experimental eager interpreter with
-  CPU and GPU support, masking tensor matrices based on a diagonal band.
-- Added `avg_pool2d` op handlers (floor and ceil mode) to the experimental
-  eager interpreter with CPU and GPU support.
-- Added `top_k` op handler to the experimental eager interpreter with CPU
-  and GPU support, returning the top-k values and their original indices
-  along a specified axis.
-- Added `bottom_k` op handler to the experimental eager interpreter with CPU
-  and GPU support, returning the k smallest values and their original indices
-  along a specified axis via `max.experimental.functional.bottom_k`.
-- Added `nonzero` op handler to the experimental eager interpreter (CPU),
-  returning the row-major coordinates of all nonzero elements as a
-  `[nnz, rank]` int64 tensor via `max.experimental.functional.nonzero`.
-- Added `scatter_add` op handler to the experimental eager interpreter (CPU),
-  accumulating `updates` into a copy of `input` at `indices` along `axis`
-  and summing duplicate indices via `max.experimental.functional.scatter_add`.
-- Added `max.graph.ops.scatter_max`, `max.graph.ops.scatter_min`, and
-  `max.graph.ops.scatter_mul` graph operations (and corresponding
-  `max.experimental.functional` wrappers) for element-wise scatter with
-  max, min, and multiply reductions at duplicate indices along an axis.
-- Added `scatter_max`, `scatter_min`, and `scatter_mul` op handlers to
-  the experimental eager interpreter (CPU), applying max, min, and
-  multiply reductions at duplicate scatter indices via
-  `max.experimental.functional.scatter_max`, `.scatter_min`, and
-  `.scatter_mul`.
-- Added `max.graph.ops.scatter_nd_max`, `max.graph.ops.scatter_nd_min`, and
-  `max.graph.ops.scatter_nd_mul` graph operations (and corresponding
-  `max.experimental.functional` wrappers) for N-dimensional scatter with
-  max, min, and multiply reductions at duplicate index vectors.
-- Added `scatter_nd_max`, `scatter_nd_min`, and `scatter_nd_mul` op handlers
-  to the experimental eager interpreter (CPU), applying max, min, and multiply
-  reductions at duplicate N-dimensional scatter indices via
-  `max.experimental.functional.scatter_nd_max`, `.scatter_nd_min`, and
-  `.scatter_nd_mul`.
-- `max.graph.ops.pad` (and `max.graph.experimental.functional.pad`) now
-  accepts `mode='reflect'` and `mode='edge'` in addition to
-  `mode='constant'`.
-- Added `pad` op handlers (`pad.constant`, `pad.reflect`, `pad.repeat`) to
-  the experimental eager interpreter. `pad.constant` supports CPU and GPU;
-  `pad.reflect` and `pad.repeat` (edge padding) run on CPU.
-- Added `max.graph.ops.resize_linear` for linear (bilinear) interpolation
-  resizing with configurable `coordinate_transform_mode` (half_pixel,
-  align_corners, asymmetric, half_pixel_1D) and optional `antialias`
-  downscaling support; `max.graph.ops.resize` now supports
-  `InterpolationMode.BILINEAR` by delegating to `resize_linear`.
-- Added `resize_linear` op handler to the experimental eager interpreter
-  (CPU) via `max.experimental.functional.resize_linear`.
-- Added `max.graph.ops.resize_nearest` for nearest-neighbor interpolation
-  resizing with configurable `coordinate_transform_mode` and `round_mode`;
-  `max.graph.ops.resize` now supports `InterpolationMode.NEAREST`.
-- Added `resize_nearest` op handler to the experimental eager interpreter
-  (CPU) via `max.experimental.functional.resize_nearest`.
-- Added `max.graph.ops.resize_bicubic` for bicubic interpolation resizing
-  (rank-4 NCHW, half_pixel coord mapping, a=-0.75 Catmull-Rom kernel);
-  `max.graph.ops.resize` now delegates its `InterpolationMode.BICUBIC` path
-  to `resize_bicubic`.
-- Added `resize_bicubic` op handler to the experimental eager interpreter
-  (CPU) via `max.experimental.functional.resize_bicubic`.
-- Added defensive `mo.shape.from_tensor` and `mo.index.to_tensor` handlers
-  to the experimental eager interpreter. These internal ops are typically
-  folded away by canonicalization; the handlers prevent crashes if they
-  survive into the interpreter.
-- Added defensive `mo.buffer.create` and `mo.buffer.transfer` handlers to
-  the experimental eager interpreter. These internal ops are typically
-  lowered by the graph compiler; the handlers prevent crashes if they
-  survive into the interpreter.
-- Added `mo.mutable.store` and `mo.mutable.store.slice` handlers to the
-  experimental eager interpreter. These complement the existing
-  `mo.mutable.load` handler and enable eager execution of in-place buffer
-  writes (full-tensor stores and slice-indexed stores).
-- Rewrote the eager-interpreter `mo.mutable.store.slice` handler to write
-  slices via a device-side Mojo kernel instead of a host numpy round-trip.
-  GPU buffers no longer full-buffer D→H→D on every call, and `bfloat16`
-  and `float8_*` dtypes are now supported. `float4_e2m1fn` remains
-  unsupported.
-- Added defensive `mo.gather_sum` handler to the experimental eager
-  interpreter. This fused composite op (gather axis 0 + sum axis 1) is
-  used by DLRM-style multi-hot embeddings; the handler prevents crashes
-  if the op survives into the interpreter.
-- Added `distributed.allreduce.sum` op handler to the experimental eager
-  interpreter, enabling multi-GPU eager execution of allreduce collectives
-- Added `distributed.allgather` op handler to the experimental eager
-  interpreter, enabling multi-GPU eager execution of allgather collectives
-  without falling back to compilation.
-- Added `distributed.scatter` op handler to the experimental eager
-  interpreter, enabling multi-GPU eager execution of scatter collectives
-  without falling back to compilation.
-- Added `distributed.broadcast` op handler to the eager interpreter,
-  enabling multi-GPU eager execution of broadcast collectives
-  without falling back to compilation.
-- Added `non_maximum_suppression` op handler to the experimental eager
-  interpreter (CPU), enabling NMS to run through the interpreter without
-  falling back to compilation.
-- Added `max.graph.ops.non_maximum_suppression` graph operation (and
-  `max.experimental.functional.non_maximum_suppression` wrapper) for
-  constructing ONNX-style non-maximum suppression in MAX graphs.
-- Added `distributed.reducescatter.sum` op handler to the eager interpreter,
-  enabling multi-GPU eager execution of reduce-scatter collectives without
-  falling back to compilation.
-- Added `max.nn.StackedLinear` for QKV-style stacked projections, with a
-  fused (`stacked=True`) and an unfused (`stacked=False`) layout. Unfused
-  mode opts into a new `Module._omit_module_attr_name` flag, which drops
-  the wrapper's own attribute name from descendant weight FQNs, so a
-  `self.qkv_proj = StackedLinear(names=["q_proj", "k_proj", "v_proj"],
-  stacked=False)` exposes weights at `self_attn.q_proj.weight` rather
-  than `self_attn.qkv_proj.q_proj.weight`. This lets HuggingFace
-  checkpoint names flow into models without per-architecture remapping
-  in their `weight_adapters.py`.
-- `max.experimental.nn.Module.compile()` now accepts a `custom_extensions`
-  parameter for loading custom Mojo kernel libraries at graph construction
-  time, fixing validation failures for kernels with struct-level parameters.
-- `max.experimental.nn.Module.compile()` now returns a `CompiledModel` instead
-  of a bare closure, which exposes `__call__()` (Tensor-in/Tensor-out,
-  backward compatible), `execute_raw(*buffers)` (Buffer-in/Buffer-out, skips
-  Tensor wrapping overhead), and the `engine_model` property (the underlying
-  `engine.Model` for CUDA graph capture/replay).
-- `max.experimental.nn.Module.load_state_dict()` and `Module.compile()` now
-  auto-shard single-device tensors or buffers into distributed weights based
-  on each parameter's `DeviceMapping`, allowing unsharded checkpoints to be
-  loaded directly into multi-GPU models without manual pre-sharding.
-- `max.experimental.nn.Module.to()` and `max.experimental.Tensor.to()`
-  now accept `DeviceMapping` and `DeviceMesh` inputs, enabling concise placement
-  of an entire module onto a multi-GPU mesh.
-- Added distributed `ModuleV3` common layers
-  (`max.experimental.nn.common_layers`): `VocabParallelEmbedding`, tensor-
-  parallelism support in `Linear`, `MLP` and `RMSNorm`. Used to
-  enable multi-GPU Gemma3 in MAX.
-- Added documentation and a usage example for
-  `max.experimental.nn.RotaryEmbedding`, including a detailed explanation
-  of the RoPE mechanism.
-- Fixed `torch.compile(fullgraph=True)` failing with an "Unsupported context
-  manager" error when accessing `CustomOpLibrary` ops inside the compiled
-  function. Ops are now eagerly compiled during library initialization.
+- `CPUMetricsCollector` in `max.diagnostics.cpu` is now used as a context
+  manager instead of `start`/`stop` and now exposes `get_stats()` instead of
+  `dump_stats()`, matching the interface of `GPUDiagContext`.
 
-## Breaking changes {#26-3-breaking}
+- `max.graph.Module` is now a public class for grouping multiple `Graph`
+  instances into a single compilation unit, replacing the previous alias
+  for the underlying MLIR module. Construct one with `Module()` and pass
+  it as the `module=` argument to each `Graph`; the resulting `Module` is
+  what you hand to `InferenceSession.load_all` to compile every graph
+  together. `Graph.empty_module()` has been removed in favor of `Module()`,
+  and `Graph` now exposes a `module` property returning the `Module` it
+  belongs to.
 
-- Removed individual KV connector CLI flags (`--host-kvcache-swap-space-gb`,
-  `--disk-offload-dir`, `--disk-offload-max-gb`, `--disk-offload-direct-io`,
-  `--lmcache-config-file`). Use `--kv-connector-config` with a JSON dict
-  instead.
+- `InferenceSession.load_all` now returns a `dict[str, Model]` keyed by each
+  model's `sym_name` (the name of its `mo.graph` op), instead of a
+  `list[Model]` ordered by MEF position. The accepted input type also gained
+  `max.graph.Module`, so callers can compile a pre-built module containing
+  multiple `mo.graph` ops directly. `Model` now exposes a `name` property.
 
-- `max/python/max/benchmark/benchmark_throughput.py` has been deprecated and
-  will be removed in a future MAX release.
+  Migrate positional unpacking call sites by indexing the returned dict:
 
-- Removed `Dim` and `DimList` types from `buffer.dimlist`. Custom kernel code
-  using these types should migrate to `IntTuple` and `TileLayout` from the
-  `layout` package.
+  ```python
+  # Before
+  module = Graph.empty_module()
+  with Graph("vision", input_types=..., module=module): ...
+  with Graph("language", input_types=..., module=module): ...
+  vision_model, language_model = session.load_all(graph, ...)
 
-### Mojo API {#26-3-max-mojo}
+  # After
+  module = Module()
+  with Graph("vision", input_types=..., module=module) as vision_graph: ...
+  with Graph("language", input_types=..., module=module) as language_graph: ...
+  models = session.load_all(module, ...)
+  vision_model = models[vision_graph.name]
+  language_model = models[language_graph.name]
+  ```
 
-### Custom ops {#26-3-custom-ops}
+## MAX kernels
 
-## MAX kernels {#26-3-max-kernels}
+## Breaking changes
 
-<!-- Please place Layout/LayoutTensor changes under "Library changes" in the
-     **Mojo changelog**, since the layout package is packaged with and
-     documented alongside Mojo. -->
+- `max/python/max/benchmark/benchmark_throughput.py`, deprecated in v0.26.3,
+  has been removed.
 
-- Added GPU kernel examples from the *Programming Massively Parallel Processors*
-  (PMPP) textbook covering reductions, scans, histograms, sorting, sparse
-  matrix operations, graph algorithms, convolutions, FlashAttention, and more.
-- Improved NVFP4 grouped matmul kernel performance, now outperforming FlashInfer
-  across all tested decoding and prefill shapes for Kimi K2.5 on B200.
-- Optimized GPU `layer_norm` kernels with SIMD reductions, gamma/beta
-  prefetch, and a `simd_width*2` warp tiling dispatch path.
-- Optimized GPU `pad_constant` kernel with SIMD vectorization (`simd_width=4`)
-  and added a kbench benchmark suite (`bench_pad`).
-- Improved GPU `topk` and `argsort` kernel performance by nearly 2x.
-- Optimized GPU `concat` with a flat-indexing kernel that avoids
-  multi-dimensional index decomposition, using 128-bit vectorized loads with
-  automatic fallback for unaligned shapes.
-- Optimized GPU `topk` stage-1 kernel with a per-thread register heap that
-  caches the top-8 elements during a single scan pass, eliminating redundant
-  global memory re-reads for the first 8 extraction iterations.
+## Fixes
 
-- Moved `partial_simd_load` and `partial_simd_store` from
-  `buffer.buffer` to `linalg.utils` and removed the `buffer` package. Update
-  imports from `from buffer.buffer import ...` to
-  `from linalg.utils import ...`.
+- `MODULAR_DEBUG=ir-output-dir=<dir>` (and the equivalent
+  `[max-debug] ir-output-dir = <dir>` config-file entry and
+  `InferenceSession.debug.ir_output_dir = <dir>` Python setter) now
+  actually dumps per-stage MLIR files to the configured directory. The
+  option was previously parsed but no compiler stage consulted it, so
+  users had to fall back to the legacy `MODULAR_MAX_TEMPS_DIR` env var.
+  Both spellings are now honored.
 
-## 🛠️ Fixed {#26-3-fixed}
-
-- Fixed MAX tools aborting at startup with
-  `std::filesystem::filesystem_error` when `$HOME` is not traversable by the
-  running UID (common in containerized CI where the image's build-time UID
-  differs from the runtime UID). The config search now treats permission
-  errors as "not found" and falls through to the next candidate.
-  ([Issue #6412](https://github.com/modular/modular/issues/6412))
-
-- Fixed `enqueue_fill()` taking O(N) HIP API calls for `float64` buffers on
-  AMD GPUs when the high and low 32-bit halves of the fill value differ (e.g.,
-  `2.0`), reducing the call count to O(log N).
-  ([Issue #6417](https://github.com/modular/modular/issues/6417))
-
-- Fixed integer indexing into a graph tensor (e.g. `x[0]` on a `(2, 3)`
-  tensor) failing graph compilation with
-  `'mo.static.reshape' op input and output elements do not match`. A
-  reshape-through-slice optimization pattern was incorrectly rewriting
-  the slice + squeeze pattern produced by integer indexing, generating a
-  reshape whose element count did not match the input.
-  ([Issue #6440](https://github.com/modular/modular/issues/6440))
-
-## Mojo language {#26-3-mojo}
+## Mojo language
 
 For all the updates to the Mojo language, standard library, and tools,
-including all GPU programming and `Layout`/`LayoutTensor` changes, see the [Mojo
-changelog](/mojo/changelog)
+see the [Mojo release notes](https://mojolang.org/releases).

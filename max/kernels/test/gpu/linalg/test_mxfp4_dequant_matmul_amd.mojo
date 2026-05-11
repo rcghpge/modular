@@ -329,8 +329,10 @@ def test_dequant_only[N: Int, K: Int](ctx: DeviceContext) raises:
 
     print("  Dequant-only: N=", N, " K=", K)
 
-    var b_packed_host = alloc[UInt8](N * packed_K)
-    var b_scales_host = alloc[UInt8](N * scale_K)
+    var b_packed_host = ctx.enqueue_create_host_buffer[DType.uint8](
+        N * packed_K
+    )
+    var b_scales_host = ctx.enqueue_create_host_buffer[DType.uint8](N * scale_K)
 
     for i in range(N * packed_K):
         b_packed_host[i] = UInt8(random_ui64(0, 255))
@@ -393,9 +395,6 @@ def test_dequant_only[N: Int, K: Int](ctx: DeviceContext) raises:
                         expected,
                     )
                 mismatches += 1
-
-    b_packed_host.free()
-    b_scales_host.free()
 
     if mismatches > 0:
         print("    DEQUANT FAIL:", mismatches, "mismatches")

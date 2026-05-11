@@ -18,7 +18,7 @@ from comm.allgather import allgather
 from comm import MAX_GPUS, Signal
 from comm.sync import enable_p2p
 import comm.vendor.ccl as vendor_ccl
-from std.gpu.host import DeviceBuffer, DeviceContext
+from std.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
 from layout import (
     Idx,
     TileTensor,
@@ -39,9 +39,7 @@ def all_gather_test[
     # Create device buffers for all GPUs.
     var in_bufs_list = List[DeviceBuffer[dtype]](capacity=ngpus)
     var out_bufs_list = List[List[DeviceBuffer[dtype]]](capacity=ngpus)
-    var host_buffers = List[UnsafePointer[Scalar[dtype], MutExternalOrigin]](
-        capacity=ngpus
-    )
+    var host_buffers = List[HostBuffer[dtype]](capacity=ngpus)
 
     # Create signal buffers for synchronization
     var signal_buffers = List[DeviceBuffer[DType.uint8]](capacity=ngpus)
@@ -63,8 +61,9 @@ def all_gather_test[
         in_bufs_list.append(list_of_ctx[i].create_buffer_sync[dtype](length))
 
         # Create host buffer with test data.
-        var host_buffer = alloc[Scalar[dtype]](length)
-        host_buffers.append(host_buffer)
+        var host_buffer = list_of_ctx[i].enqueue_create_host_buffer[dtype](
+            length
+        )
 
         # Initialize with unique values per device.
         for j in range(length):
@@ -82,7 +81,9 @@ def all_gather_test[
         rank_sigs[i] = signal_buffers[i].unsafe_ptr().bitcast[Signal]()
 
         # Copy to device.
-        list_of_ctx[i].enqueue_copy(in_bufs_list[i], host_buffers[i])
+        list_of_ctx[i].enqueue_copy(in_bufs_list[i], host_buffer)
+
+        host_buffers.append(host_buffer^)
 
     # Create output buffers - each device needs ngpus output buffers.
     for device_idx in range(ngpus):
@@ -163,10 +164,6 @@ def all_gather_test[
     # Verify results for new implementation.
     _verify_results[dtype](out_bufs_list, list_of_ctx, lengths, ngpus)
 
-    # Clean up.
-    for i in range(ngpus):
-        host_buffers[i].free()
-
 
 def _verify_results[
     dtype: DType
@@ -182,7 +179,9 @@ def _verify_results[
     for device_idx in range(ngpus):
         for input_idx in range(ngpus):
             var length = lengths[input_idx]
-            var host_output = alloc[Scalar[dtype]](length)
+            var host_output = list_of_ctx[
+                device_idx
+            ].enqueue_create_host_buffer[dtype](length)
 
             # Copy output back to host.
             list_of_ctx[device_idx].enqueue_copy(
@@ -211,8 +210,6 @@ def _verify_results[
                         expected,
                     )
                     raise e^
-
-            host_output.free()
 
 
 def main() raises -> None:

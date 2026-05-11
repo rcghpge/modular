@@ -100,10 +100,33 @@ class BundleType(max._core.Type):
     value.  All elements must be `!mo.tensor` types.  Elements may have
     different devices, shapes, or dtypes.
 
-    Example:
+    The type has two interchangeable surface syntaxes. The verbose form lists
+    each element tensor explicitly and is used when the elements are not
+    uniform:
+
     ```mlir
-    !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+    !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[4], f32, gpu:1>]>
     ```
+
+    The compact form is used when every element shares the same shape, dtype,
+    device label, and metadata, and the device IDs are strictly ordered and
+    contiguous (`ids[i] == ids[0] + i`). It names the shared attributes once
+    and the device range as `label:firstId-lastId`:
+
+    ```mlir
+    !mo.bundle<[3], f32, gpu:0-1>
+    ```
+
+    A single-element compact bundle omits the range suffix. A single-element
+    bundle on the default host device also omits the device section entirely:
+
+    ```mlir
+    !mo.bundle<[3], f32, gpu:0>   // single element, explicit device
+    !mo.bundle<[3], f32>          // single element, default host device
+    ```
+
+    The compact form is purely syntactic sugar; the stored `elementTypes` are
+    identical regardless of which form is parsed.
     """
 
     def __init__(self, element_types: Sequence[max._core.Type]) -> None: ...
@@ -5054,6 +5077,7 @@ class ParallelOp(max._core.Operation):
     ```
     """
 
+    @overload
     def __init__(
         self,
         builder: max._core.OpBuilder,
@@ -5062,6 +5086,24 @@ class ParallelOp(max._core.Operation):
         inputs: Sequence[max._core.Value[max._core.Type]],
         buffers: Sequence[max._core.Value[max._core.Type]],
         in_chain: max._core.Value[ChainType],
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        inputs: Sequence[max._core.Value[max._core.Type]],
+        result_types: Sequence[max._core.Type],
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        inputs: Sequence[max._core.Value[max._core.Type]],
+        buffers: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value,
+        result_types: Sequence[max._core.Type],
     ) -> None: ...
     @property
     def inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
@@ -5109,9 +5151,9 @@ class PowOp(max._core.Operation):
 
 class RandomNormalOp(max._core.Operation):
     """
-    Returns a tensor with shape `shape` populated with random
-      values from a normal distribution, with the mean of the distribution equal
-      to `mean` and the standard deviation equal to `variance`.
+    Returns a tensor with shape `shape` populated with random values from a
+      normal distribution, with the mean of the distribution equal to `mean`
+      and the standard deviation equal to `variance`.
 
     Example:
       ```mlir
@@ -5122,10 +5164,10 @@ class RandomNormalOp(max._core.Operation):
         %variance = mo.constant {
           value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
         %seed = mo.constant {
-          value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+          value = #M.dense_array<1> : tensor<1xui64> } : !mo.tensor<[1], ui64>
         %res = mo.random.normal(%size, %mean, %variance, %seed) :
               (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-              !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+              !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
       ```
     """
 
@@ -5171,10 +5213,10 @@ class RandomUniformOp(max._core.Operation):
     %upperBound = mo.constant {
       value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
     %seed = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+      value = #M.dense_array<1> : tensor<1xui64> } : !mo.tensor<[1], ui64>
     %res = mo.random.uniform(%size, %lowerBound, %upperBound, %seed) :
           (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+          !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     ```
     """
 
@@ -7161,6 +7203,7 @@ class TanhOp(max._core.Operation):
     def input(self) -> max._core.Value[TensorType]: ...
 
 class TensorBundleOp(max._core.Operation):
+    @overload
     def __init__(
         self,
         builder: max._core.OpBuilder,
@@ -7168,16 +7211,31 @@ class TensorBundleOp(max._core.Operation):
         result: BundleType,
         inputs: Sequence[max._core.Value[max._core.Type]],
     ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        inputs: Sequence[max._core.Value[max._core.Type]],
+    ) -> None: ...
     @property
     def inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
 
 class TensorUnbundleOp(max._core.Operation):
+    @overload
     def __init__(
         self,
         builder: max._core.OpBuilder,
         location: Location,
         outputs: Sequence[max._core.Type],
         input: max._core.Value[BundleType],
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        input: max._core.Value,
     ) -> None: ...
     @property
     def input(self) -> max._core.Value[BundleType]: ...

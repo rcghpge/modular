@@ -30,6 +30,7 @@ minimax_m2_arch = SupportedArchitecture(
         "MiniMaxAI/MiniMax-M2.7",
         "MiniMaxAI/MiniMax-M2.5",
         "lukealonso/MiniMax-M2.7-NVFP4",
+        "amd/MiniMax-M2.7-MXFP4",
     ],
     default_weights_format=WeightsFormat.safetensors,
     default_encoding="float8_e4m3fn",
@@ -46,4 +47,6 @@ minimax_m2_arch = SupportedArchitecture(
     },
     config=MiniMaxM2Config,
     multi_gpu_supported=True,
+    tool_parser="minimax_m2",
+    reasoning_parser="minimax_m2",
 )

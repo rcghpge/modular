@@ -82,7 +82,7 @@ struct String(
     ```
 
     You can convert many Mojo types to a `String` because it's common to
-    implement the [`Writable`](/mojo/std/format/Writable) trait:
+    implement the [`Writable`](/docs/std/format/Writable/) trait:
 
     ```mojo
     var int : Int = 42
@@ -90,7 +90,7 @@ struct String(
     ```
 
     If you have a custom type you want to convert to a string, you can implement
-    the [`Writable`](/mojo/std/format/Writable) trait like this:
+    the [`Writable`](/docs/std/format/Writable/) trait like this:
 
     ```mojo
     @fieldwise_init
@@ -107,7 +107,7 @@ struct String(
 
     However, `print()` doesn't actually specify `String` as its argument type.
     Instead, it accepts any type that conforms to the
-    [`Writable`](/mojo/std/format/Writable) trait (`String` conforms to
+    [`Writable`](/docs/std/format/Writable/) trait (`String` conforms to
     this trait, which is why you can pass it to `print()`). That means it's
     actually more efficient to pass any type that implements `Writable`
     directly to `print()` (instead of first converting it to `String`).
@@ -193,21 +193,21 @@ struct String(
     Related functions:
 
     - String-to-number conversions:
-      [`atof()`](/mojo/std/collections/string/string/atof),
-      [`atol()`](/mojo/std/collections/string/string/atol)).
+      [`atof()`](/docs/std/collections/string/string/atof/),
+      [`atol()`](/docs/std/collections/string/string/atol/)).
     - Character code conversions:
-      [`chr()`](/mojo/std/collections/string/string/chr),
-      [`ord()`](/mojo/std/collections/string/string/ord)).
+      [`chr()`](/docs/std/collections/string/string/chr/),
+      [`ord()`](/docs/std/collections/string/string/ord/)).
     - String formatting:
-      [`format()`](/mojo/std/collections/string/string/String/#format).
+      [`format()`](/docs/std/collections/string/string/String/#format).
 
     Related types:
 
-    - [`StringSlice`](/mojo/std/collections/string/string_slice/StringSlice): A non-owning
+    - [`StringSlice`](/docs/std/collections/string/string_slice/StringSlice/): A non-owning
       view of string data, which can be either mutable or immutable.
-    - [`StaticString`](/mojo/std/collections/string/string_slice/#StaticString): An
+    - [`StaticString`](/docs/std/collections/string/string_slice/#StaticString): An
       alias for an immutable constant `StringSlice`.
-    - [`StringLiteral`](/mojo/std/builtin/string_literal/StringLiteral/): A
+    - [`StringLiteral`](/docs/std/builtin/string_literal/StringLiteral/): A
       string literal. String literals are compile-time values.
     """
 
@@ -403,7 +403,7 @@ struct String(
         Examples:
 
         ```mojo
-        from testing import assert_equal
+        from std.testing import assert_equal
 
         # Valid UTF-8 sequence
         var fire_emoji_bytes = [Byte(0xF0), 0x9F, 0x94, 0xA5]
@@ -1317,13 +1317,17 @@ struct String(
             ptr=self.unsafe_ptr(), length=self.byte_length()
         )
 
-    def as_bytes_mut(mut self) -> Span[Byte, origin_of(self)]:
+    def unsafe_as_bytes_mut(mut self) -> Span[Byte, origin_of(self)]:
         """Returns a mutable contiguous slice of the bytes owned by this string.
         This name has a _mut suffix so the as_bytes() method doesn't have to
         guarantee mutability.
 
         Returns:
             A contiguous slice pointing to the bytes owned by this string.
+
+        Safety:
+            - Any mutation of the byte slice must uphold UTF-8 validity of the
+              overall string.
         """
         return Span[Byte, origin_of(self)](
             ptr=self.unsafe_ptr_mut(), length=self.byte_length()
@@ -1367,7 +1371,7 @@ struct String(
             Query the length of a string, in bytes and Unicode codepoints:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("ನಮಸ್ಕಾರ")
             assert_equal(s.count_codepoints(), 7)
@@ -1378,7 +1382,7 @@ struct String(
             Unicode codepoint length:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("abc")
             assert_equal(s.count_codepoints(), 3)
@@ -1389,7 +1393,7 @@ struct String(
             the length in Unicode codepoints, not grapheme clusters:
 
             ```mojo
-            %# from testing import assert_equal
+            from std.testing import assert_equal
 
             var s = StringSlice("á")
             assert_equal(s.count_codepoints(), 2)
@@ -1836,7 +1840,7 @@ struct String(
         representations of the `args` arguments.
 
         For more information, see the discussion in the
-        [`format` module](/mojo/std/collections/string/format/).
+        [`format` module](/docs/std/collections/string/format/).
 
         Args:
             args: The substitution values.

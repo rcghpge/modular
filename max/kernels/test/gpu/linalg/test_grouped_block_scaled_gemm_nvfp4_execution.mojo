@@ -224,8 +224,8 @@ def test_grouped_kernel_nvfp4_single_group[
     var c_size = Int(m.value()) * Int(n.value())
 
     # Host allocations
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
     var c_host_managed = ManagedLayoutTensor[c_type, Layout(UNKNOWN_VALUE)](
         RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(IndexList[1](c_size)),
         ctx,
@@ -268,8 +268,12 @@ def test_grouped_kernel_nvfp4_single_group[
     var a_scales_total = a_scales_shape.product()
     var b_scales_total = b_scales_shape.product()
 
-    var a_scales_host_ptr = alloc[Scalar[scales_dtype]](a_scales_total)
-    var b_scales_host_ptr = alloc[Scalar[scales_dtype]](b_scales_total)
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_dtype](
+        a_scales_total
+    )
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_dtype](
+        b_scales_total
+    )
 
     var a_scales_device = ctx.enqueue_create_buffer[scales_dtype](
         a_scales_total
@@ -281,8 +285,8 @@ def test_grouped_kernel_nvfp4_single_group[
     var b_scales_tensor = TileTensor(b_scales_device, b_scales_shape)
 
     # Initialize with random data
-    rand(a_host_ptr, a_size, min=0, max=255)
-    rand(b_host_ptr, b_size, min=0, max=255)
+    rand(a_host_ptr.unsafe_ptr(), a_size, min=0, max=255)
+    rand(b_host_ptr.unsafe_ptr(), b_size, min=0, max=255)
     for i in range(c_size):
         c_host_ptr[i] = 0
         c_host_ref_ptr[i] = 0
@@ -338,7 +342,11 @@ def test_grouped_kernel_nvfp4_single_group[
     print("  Setting up grouped kernel inputs...")
 
     # Problem sizes tensor: (max_groups, 4) with [M, N, K, L=1]
-    var problem_sizes_host = alloc[Int32](max_groups * 4)
+    var problem_sizes_host = ctx.enqueue_create_host_buffer[DType.int32](
+        max_groups * 4
+    )
+    for i in range(max_groups * 4):
+        problem_sizes_host[i] = Int32(0)
     problem_sizes_host[0] = Int32(Int(m.value()))  # M
     problem_sizes_host[1] = Int32(Int(n.value()))  # N
     problem_sizes_host[2] = Int32(
@@ -375,11 +383,17 @@ def test_grouped_kernel_nvfp4_single_group[
     print("  Computed total_tiles on host:", total_tiles)
 
     # Pointer arrays: (max_groups, 1)
-    var a_ptrs_host = alloc[UInt64](max_groups)
-    var b_ptrs_host = alloc[UInt64](max_groups)
-    var c_ptrs_host = alloc[UInt64](max_groups)
-    var sfa_ptrs_host = alloc[UInt64](max_groups)
-    var sfb_ptrs_host = alloc[UInt64](max_groups)
+    var a_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var b_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var c_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var sfa_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var sfb_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    for i in range(max_groups):
+        a_ptrs_host[i] = UInt64(0)
+        b_ptrs_host[i] = UInt64(0)
+        c_ptrs_host[i] = UInt64(0)
+        sfa_ptrs_host[i] = UInt64(0)
+        sfb_ptrs_host[i] = UInt64(0)
 
     a_ptrs_host[0] = UInt64(Int(a_device.unsafe_ptr()))
     b_ptrs_host[0] = UInt64(Int(b_device.unsafe_ptr()))
@@ -496,18 +510,6 @@ def test_grouped_kernel_nvfp4_single_group[
         )
         raise Error("Grouped kernel NVFP4 output does not match cuBLAS")
 
-    # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
-    problem_sizes_host.free()
-    a_ptrs_host.free()
-    b_ptrs_host.free()
-    c_ptrs_host.free()
-    sfa_ptrs_host.free()
-    sfb_ptrs_host.free()
-
 
 def test_grouped_kernel_nvfp4_multi_group[
     MType: CoordLike,
@@ -589,8 +591,8 @@ def test_grouped_kernel_nvfp4_multi_group[
     )
 
     # ========== Group 0 allocations ==========
-    var a0_host = alloc[Scalar[a_type]](a_size)
-    var b0_host = alloc[Scalar[b_type]](b_size)
+    var a0_host = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b0_host = ctx.enqueue_create_host_buffer[b_type](b_size)
     var c0_host_managed = ManagedLayoutTensor[c_type, Layout(UNKNOWN_VALUE)](
         RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(IndexList[1](c_size)),
         ctx,
@@ -603,8 +605,8 @@ def test_grouped_kernel_nvfp4_multi_group[
         ctx,
     )
     var c0_ref_host = c0_ref_host_managed.tensor[update=False]().ptr
-    var sfa0_host = alloc[Scalar[scales_dtype]](a_scales_total)
-    var sfb0_host = alloc[Scalar[scales_dtype]](b_scales_total)
+    var sfa0_host = ctx.enqueue_create_host_buffer[scales_dtype](a_scales_total)
+    var sfb0_host = ctx.enqueue_create_host_buffer[scales_dtype](b_scales_total)
 
     var a0_device = ctx.enqueue_create_buffer[a_type](a_size)
     var b0_device = ctx.enqueue_create_buffer[b_type](b_size)
@@ -614,8 +616,8 @@ def test_grouped_kernel_nvfp4_multi_group[
     var sfb0_device = ctx.enqueue_create_buffer[scales_dtype](b_scales_total)
 
     # ========== Group 1 allocations ==========
-    var a1_host = alloc[Scalar[a_type]](a_size)
-    var b1_host = alloc[Scalar[b_type]](b_size)
+    var a1_host = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b1_host = ctx.enqueue_create_host_buffer[b_type](b_size)
     var c1_host_managed = ManagedLayoutTensor[c_type, Layout(UNKNOWN_VALUE)](
         RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(IndexList[1](c_size)),
         ctx,
@@ -628,8 +630,8 @@ def test_grouped_kernel_nvfp4_multi_group[
         ctx,
     )
     var c1_ref_host = c1_ref_host_managed.tensor[update=False]().ptr
-    var sfa1_host = alloc[Scalar[scales_dtype]](a_scales_total)
-    var sfb1_host = alloc[Scalar[scales_dtype]](b_scales_total)
+    var sfa1_host = ctx.enqueue_create_host_buffer[scales_dtype](a_scales_total)
+    var sfb1_host = ctx.enqueue_create_host_buffer[scales_dtype](b_scales_total)
 
     var a1_device = ctx.enqueue_create_buffer[a_type](a_size)
     var b1_device = ctx.enqueue_create_buffer[b_type](b_size)
@@ -640,11 +642,11 @@ def test_grouped_kernel_nvfp4_multi_group[
 
     # Initialize with DIFFERENT random data for each group
     seed(42)
-    rand(a0_host, a_size, min=0, max=255)
-    rand(b0_host, b_size, min=0, max=255)
+    rand(a0_host.unsafe_ptr(), a_size, min=0, max=255)
+    rand(b0_host.unsafe_ptr(), b_size, min=0, max=255)
     seed(123)
-    rand(a1_host, a_size, min=0, max=255)
-    rand(b1_host, b_size, min=0, max=255)
+    rand(a1_host.unsafe_ptr(), a_size, min=0, max=255)
+    rand(b1_host.unsafe_ptr(), b_size, min=0, max=255)
 
     # Zero C outputs
     for i in range(c_size):
@@ -748,7 +750,11 @@ def test_grouped_kernel_nvfp4_multi_group[
     print("  Setting up grouped kernel inputs...")
 
     # Problem sizes: both groups have same size
-    var problem_sizes_host = alloc[Int32](max_groups * 4)
+    var problem_sizes_host = ctx.enqueue_create_host_buffer[DType.int32](
+        max_groups * 4
+    )
+    for i in range(max_groups * 4):
+        problem_sizes_host[i] = Int32(0)
     for g in range(max_groups):
         problem_sizes_host[g * 4 + 0] = Int32(Int(m.value()))
         problem_sizes_host[g * 4 + 1] = Int32(Int(n.value()))
@@ -761,11 +767,17 @@ def test_grouped_kernel_nvfp4_multi_group[
     ctx.enqueue_copy(problem_sizes_device, problem_sizes_host)
 
     # Pointer arrays - DIFFERENT pointers per group
-    var a_ptrs_host = alloc[UInt64](max_groups)
-    var b_ptrs_host = alloc[UInt64](max_groups)
-    var c_ptrs_host = alloc[UInt64](max_groups)
-    var sfa_ptrs_host = alloc[UInt64](max_groups)
-    var sfb_ptrs_host = alloc[UInt64](max_groups)
+    var a_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var b_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var c_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var sfa_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var sfb_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    for i in range(max_groups):
+        a_ptrs_host[i] = UInt64(0)
+        b_ptrs_host[i] = UInt64(0)
+        c_ptrs_host[i] = UInt64(0)
+        sfa_ptrs_host[i] = UInt64(0)
+        sfb_ptrs_host[i] = UInt64(0)
 
     # Group 0 pointers
     a_ptrs_host[0] = UInt64(Int(a0_device.unsafe_ptr()))
@@ -907,22 +919,6 @@ def test_grouped_kernel_nvfp4_multi_group[
     else:
         print("  FAILED (group outputs do not match cuBLAS)")
         raise Error("Multi-group NVFP4 different pointers test failed")
-
-    # Cleanup
-    a0_host.free()
-    b0_host.free()
-    sfa0_host.free()
-    sfb0_host.free()
-    a1_host.free()
-    b1_host.free()
-    sfa1_host.free()
-    sfb1_host.free()
-    problem_sizes_host.free()
-    a_ptrs_host.free()
-    b_ptrs_host.free()
-    c_ptrs_host.free()
-    sfa_ptrs_host.free()
-    sfb_ptrs_host.free()
 
 
 def main() raises:

@@ -98,8 +98,12 @@ def test_scaled_mxfp8_cublaslt[
         * SF_ATOM_K
     )
 
-    var a_scales_host_ptr = alloc[Scalar[scales_type]](a_scales_size)
-    var b_scales_host_ptr = alloc[Scalar[scales_type]](b_scales_size)
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        a_scales_size
+    )
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        b_scales_size
+    )
 
     var a_scales_device = ctx.enqueue_create_buffer[scales_type](a_scales_size)
     var b_scales_device = ctx.enqueue_create_buffer[scales_type](b_scales_size)
@@ -108,8 +112,8 @@ def test_scaled_mxfp8_cublaslt[
     var b_size = N * K
     var c_size = M * N
 
-    var a_host_ptr = alloc[Scalar[input_type]](a_size)
-    var b_host_ptr = alloc[Scalar[input_type]](b_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[input_type](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[input_type](b_size)
     var c_host_ptr = alloc[Scalar[output_type]](c_size)
     var c_host_ref_ptr = alloc[Scalar[output_type]](c_size)
 
@@ -164,8 +168,8 @@ def test_scaled_mxfp8_cublaslt[
                     b_scales_host_tt, idx0, idx1, Scalar[scales_type](0.0)
                 )
 
-    rand(a_host_ptr, a_size)
-    rand(b_host_ptr, b_size)
+    rand(a_host_ptr.unsafe_ptr(), a_size)
+    rand(b_host_ptr.unsafe_ptr(), b_size)
 
     # Move operands to the Device
     ctx.enqueue_copy(a_device, a_host_ptr)
@@ -217,12 +221,6 @@ def test_scaled_mxfp8_cublaslt[
         atol=0.01,
         rtol=0.01,
     )
-
-    # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
 
 
 def main() raises:

@@ -350,7 +350,7 @@ struct _DefaultVariantStorage[*Ts: AnyType](
 # an `Optional` is used as a comptime parameter's field.
 comptime _IsEmptyType[T: AnyType]: Bool = reflect[
     T
-]().field_count() == 0 and conforms_to(T, TrivialRegisterPassable)
+].field_count() == 0 and conforms_to(T, TrivialRegisterPassable)
 """True if `T` is a zero-sized, trivially passable type (i.e. carries no state,
 like `NoneType`). Used to identify the "empty" arm of a niche-optimized variant."""
 
@@ -470,7 +470,7 @@ struct Variant[*Ts: Movable](
     comptime Result = Variant[String, Error]
 
     def process_data(data: String) -> Result:
-        if len(data) == 0:
+        if data.byte_length() == 0:
             return Result(Error("Empty data"))
         return Result(String("Processed: ", data))
 
@@ -900,13 +900,13 @@ struct Variant[*Ts: Movable](
         """
         return Self.Ts.contains[T]()
 
-    # TODO(MOCO-2367): Use a `unified` closure parameter here instead.
-    def destroy_with[T: Movable](deinit self, destroy_func: def(var T) thin):
+    def destroy_with[T: Movable, F: def(var T)](deinit self, destroy_func: F):
         """Destroy a value contained in this Variant in-place using a caller
         provided destructor function.
 
-        This method can be used to destroy linear types in a `Variant` in-place,
-        without requiring that they be `Movable`.
+        This method can be used to destroy types marked `@explicit_destroy`
+        in a `Variant` in-place, without requiring that they be
+        `ImplicitlyDestructible`.
 
         This method will abort if this variant does not current contain an
         element of the specified type `T`.
@@ -914,6 +914,7 @@ struct Variant[*Ts: Movable](
         Parameters:
             T: The element type the variant is expected to currently contain,
                 and which will be destroyed by `destroy_func`.
+            F: The type of the caller-provided destructor function.
 
         Args:
             destroy_func: Caller-provided destructor function for destroying

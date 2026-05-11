@@ -879,7 +879,7 @@ def blackwell_kernel_7[
         output_tile_shape=output_tile_shape,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         a_tma_op,
         b_tma_op,
         c_tma_op,
@@ -942,10 +942,10 @@ def test_blackwell_kernel_7[
     var c_shape = Coord(m, n)
 
     # Host memory allocation
-    var a_host_ptr = alloc[Scalar[a_type]](M * K)
-    var b_host_ptr = alloc[Scalar[b_type]](N * K)
-    var c_host_ptr = alloc[Scalar[c_type]](M * N)
-    var c_host_ref_ptr = alloc[Scalar[c_type]](M * N)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](M * K)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](N * K)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](M * N)
+    var c_host_ref_ptr = ctx.enqueue_create_host_buffer[c_type](M * N)
 
     # Device memory allocation
     var a_device = ctx.enqueue_create_buffer[a_type](M * K)
@@ -1045,18 +1045,13 @@ def test_blackwell_kernel_7[
 
         comptime rtol = 1e-2
         assert_almost_equal(
-            c_host_ptr,
-            c_host_ref_ptr,
+            c_host_ptr.unsafe_ptr(),
+            c_host_ref_ptr.unsafe_ptr(),
             M * N,
             atol=0.0001,
             rtol=rtol,
         )
         print("\n=== TEST PASSED ===\n")
-
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
 
 
 def get_shapes_dict(

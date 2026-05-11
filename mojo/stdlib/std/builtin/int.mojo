@@ -88,7 +88,7 @@ trait Intable(ImplicitlyDestructible):
     """The `Intable` trait describes a type that can be converted to an Int.
 
     Any type that conforms to `Intable` or
-    [`IntableRaising`](/mojo/std/builtin/int/IntableRaising) can construct an
+    [`IntableRaising`](/docs/std/builtin/int/IntableRaising/) can construct an
     `Int`.
 
     This trait requires the type to implement the `__int__()` method. For
@@ -106,20 +106,14 @@ trait Intable(ImplicitlyDestructible):
     Now you can construct an `Int`:
 
     ```mojo
-    %# from testing import assert_equal
-    @fieldwise_init
-    struct Foo(Intable):
-        var i: Int
-
-        def __int__(self) -> Int:
-            return self.i
+    from std.testing import assert_equal
 
     foo = Foo(42)
     assert_equal(Int(foo), 42)
     ```
 
     **Note:** If the `__int__()` method can raise an error, use the
-    [`IntableRaising`](/mojo/std/builtin/int/intableraising) trait
+    [`IntableRaising`](/docs/std/builtin/int/IntableRaising/) trait
     instead.
     """
 
@@ -137,7 +131,7 @@ trait IntableRaising:
     The `IntableRaising` trait describes a type can be converted to an Int, but
     the conversion might raise an error.
 
-    Any type that conforms to [`Intable`](/mojo/std/builtin/int/Intable)
+    Any type that conforms to [`Intable`](/docs/std/builtin/int/Intable/)
     or `IntableRaising` can construct an `Int`.
 
     This trait requires the type to implement the `__int__()` method, which can
@@ -155,13 +149,7 @@ trait IntableRaising:
     Now you can construct an `Int`:
 
     ```mojo
-    %# from testing import assert_equal
-    @fieldwise_init
-    struct Foo(IntableRaising):
-        var i: Int
-
-        def __int__(self) raises -> Int:
-            return self.i
+    from std.testing import assert_equal
 
     foo = Foo(42)
     assert_equal(Int(foo), 42)
@@ -281,7 +269,7 @@ struct Int(
 
     @doc_hidden
     @always_inline("nodebug")
-    def __init__(out self, value: __mlir_type.`!pop.scalar<index>`):
+    def __init__(out self, value: __mlir_type.`!kgen.scalar<index>`):
         """Construct Int from the given Index value.
 
         Args:
@@ -1148,7 +1136,7 @@ struct Int(
         Examples:
 
         ```mojo
-        %# from testing import assert_equal
+        from std.testing import assert_equal
         assert_equal(Int(10)._decimal_digit_count(), 2)
         assert_equal(Int(-10)._decimal_digit_count(), 2)
         ```

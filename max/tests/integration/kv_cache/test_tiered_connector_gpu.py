@@ -69,9 +69,9 @@ def create_tiered_connector(
     return TieredConnector(
         params=kv_params,
         devices=[device],
-        device_buffer=KVCacheBuffer(
+        device_buffers=KVCacheBuffer(
             total_num_pages=num_device_blocks, values=device_buffers
-        ),
+        ).all_buffers,
         total_num_host_blocks=num_host_blocks,
         disk_cache_dir=disk_cache_dir,
         max_disk_size_gb=max_disk_size_gb,
@@ -90,8 +90,7 @@ def test_connector_name() -> None:
 def test_host_tensors_are_pinned() -> None:
     connector = create_tiered_connector()
     assert connector._host_buffer
-    for tensor in connector._host_buffer.all_buffers:
-        assert tensor.pinned, "Host tensors should be pinned memory"
+    assert connector._host_buffer.pinned, "Host buffer should be pinned memory"
     connector.shutdown()
 
 

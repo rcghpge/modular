@@ -200,7 +200,7 @@ def quantize_dynamic_scaled_fp4fp8[
         num_max_threads=num_max_threads,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         output,
         scales,
         input,
@@ -421,7 +421,7 @@ def block_scales_interleave_fp4[
         num_max_threads=num_max_threads,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         input_scales,
         output_scales,
         block_dim=block_dim,
@@ -610,7 +610,7 @@ def naive_block_scaled_matmul[
         elementwise_lambda_fn=elementwise_lambda_fn,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         c,
         a,
         b,
@@ -1130,7 +1130,7 @@ def quantize_dynamic_scaled_fp4_async[
         NUM_PIPELINES_STAGES=NUM_PIPELINES_STAGES,
     ]
 
-    ctx.enqueue_function[kernel, kernel, dump_asm=False](
+    ctx.enqueue_function[kernel, dump_asm=False](
         input_tma_op,
         output_tma_op,
         scales_tma_op,
@@ -1428,7 +1428,7 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         sf_tensor.LayoutType,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         output_tensor,
         scales_tma_op,
         input_tensor,
@@ -1790,31 +1790,6 @@ def block_scaled_matmul[
         else:
             raise Error("Heuristic and outliers dispatch failed")
 
-    comptime DeepSeek_NK = [
-        Index(7168, 16384),
-        # Index(4096, 7168),
-        # Index(7168, 2048),
-    ]
-
-    comptime Llama_NK_256 = [
-        Index(16384, 2048),
-    ]
-
-    comptime Llama_405B_NK = [
-        Index(2304, 16384),
-        Index(16384, 2048),
-        Index(6656, 16384),
-        Index(13312, 16384),
-        Index(16384, 6656),
-    ]
-
-    comptime Kimi_NK = [
-        Index(7168, 8192),
-        Index(7168, 2048),
-        Index(7168, 18432),
-        Index(4096, 7168),
-    ]
-
     @always_inline
     @parameter
     def description_fn() -> String:
@@ -1846,88 +1821,29 @@ def block_scaled_matmul[
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
         task_id=get_safe_task_id(ctx),
     ):
-        comptime if static_NK in DeepSeek_NK:
-            if m == 1:
-                var status = heuristic_and_outliers_dispatch[
-                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                    transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-                    pdl_level=pdl_level,
-                ](
-                    c_device,
-                    a_device,
-                    b_device,
-                    a_scales,
-                    b_scales,
-                    tensor_sf,
-                    ctx,
-                )
-
-                if status == DISPATCH_HIT:
-                    return
-
-        comptime if static_NK in Llama_NK_256:
-            if m > 1 and m <= 256:
-                var status = heuristic_and_outliers_dispatch[
-                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                    transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-                    pdl_level=pdl_level,
-                ](
-                    c_device,
-                    a_device,
-                    b_device,
-                    a_scales,
-                    b_scales,
-                    tensor_sf,
-                    ctx,
-                )
-
-                if status == DISPATCH_HIT:
-                    return
-
-        comptime if static_NK in Llama_405B_NK:
-            if m == 1:
-                var status = heuristic_and_outliers_dispatch[
-                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                    transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-                    pdl_level=pdl_level,
-                ](
-                    c_device,
-                    a_device,
-                    b_device,
-                    a_scales,
-                    b_scales,
-                    tensor_sf,
-                    ctx,
-                )
-
-                if status == DISPATCH_HIT:
-                    return
-
-        comptime if static_NK in Kimi_NK:
-            if m <= 128:
-                var status = heuristic_and_outliers_dispatch[
-                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                    transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-                    pdl_level=pdl_level,
-                ](
-                    c_device,
-                    a_device,
-                    b_device,
-                    a_scales,
-                    b_scales,
-                    tensor_sf,
-                    ctx,
-                )
-                if status == DISPATCH_HIT:
-                    return
+        # For these large-N shapes on B200, Mojo also wins at M=256.
+        comptime is_widened_shape = (
+            static_K == 7168 and static_N in (18432, 36864)
+        )
+        comptime mojo_m_cap = 256 if is_widened_shape else 128
+        if m <= mojo_m_cap:
+            var status = heuristic_and_outliers_dispatch[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                transpose_b=transpose_b,
+                elementwise_lambda_fn=elementwise_lambda_fn,
+                elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+                pdl_level=pdl_level,
+            ](
+                c_device,
+                a_device,
+                b_device,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                ctx,
+            )
+            if status == DISPATCH_HIT:
+                return
 
         # vendor matmul only supports epilogue lambda, so we wrap it around an epilogue lambda instead.
         block_scaled_matmul_with_epilogue[
@@ -2265,7 +2181,7 @@ def quantize_mxfp4_amd[
         num_max_threads=num_max_threads,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         output_tile,
         scales_tile,
         input_tt,
@@ -2339,7 +2255,7 @@ def quantize_dynamic_block_scaled_mxfp4[
             elements_per_thread=elements_per_thread,
         ]
 
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             output.ptr,
             output_scales.ptr,
             input.ptr,
@@ -2487,7 +2403,7 @@ def matmul_dynamic_block_scaled_mxfp4[
             out_dtype, BLOCK_N
         ]
 
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             c.ptr,
             a.ptr,
             b.ptr,
@@ -2577,7 +2493,7 @@ def grouped_matmul_block_scaled_mxfp4[
             out_dtype, BLOCK_N
         ]
 
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             c.ptr,
             a.ptr,
             b.ptr,

@@ -27,6 +27,7 @@ from std.ffi import (
     _CPointer,
 )
 from std.memory.unsafe_pointer import unsafe_cast
+from std.reflection.traits import AllWritable
 from std.sys import (
     is_amd_gpu,
     is_apple_gpu,
@@ -195,7 +196,7 @@ def _printf_cpu[
                 `(`,
                 `!kgen.pointer<none>,`,
                 `!kgen.pointer<scalar<si8>>`,
-                `) -> !pop.scalar<si32>`,
+                `) -> !kgen.scalar<si32>`,
             ],
             _type=Int32,
         ](
@@ -295,7 +296,7 @@ def _printf[
             # print buffer. Metal doesn't support printf-style variadic args.
             var buf = _WriteBufferHeap()
             buf.write_string(fmt)
-            buf.nul_terminate()
+            _ = buf.nul_terminate()
             var s = buf.as_string_slice()
             _metal_print_write(
                 s.unsafe_ptr().bitcast[UInt8](),
@@ -347,9 +348,9 @@ def _snprintf[
             fnType=__mlir_attr[
                 `(`,
                 `!kgen.pointer<scalar<si8>>,`,
-                `!pop.scalar<index>, `,
+                `!kgen.scalar<index>, `,
                 `!kgen.pointer<scalar<si8>>`,
-                `) -> !pop.scalar<si32>`,
+                `) -> !kgen.scalar<si32>`,
             ],
             _type=Int32,
         ](
@@ -381,12 +382,12 @@ def print[
     and followed by `end`.
 
     This function accepts any number of values, but their types must implement
-    the [`Writable`](/mojo/std/format/Writable) trait. Most built-in types
+    the [`Writable`](/docs/std/format/Writable/) trait. Most built-in types
     (like `Int`, `Float64`, `Bool`, `String`) implement the
-    [`Writable`](/mojo/std/format/Writable) trait.
+    [`Writable`](/docs/std/format/Writable/) trait.
 
     For string formatting, use the
-    [`format()`](/mojo/std/collections/string/string/String#format) function.
+    [`format()`](/docs/std/collections/string/string/String/#format) function.
 
     Examples:
 
@@ -409,52 +410,33 @@ def print[
         file: The output stream.
     """
 
+    comptime assert AllWritable[*Ts]  # satisfy _write_to where clause.
+
     if __is_run_in_comptime_interpreter:
         var buffer = _WriteBufferStack(file)
-        comptime length = values.__len__()
+        values._write_to(buffer, sep=sep, end=end)
 
-        comptime for i in range(length):
-            values[i].write_to(buffer)
-            if i < length - 1:
-                sep.write_to(buffer)
-
-        end.write_to(buffer)
         buffer.flush()
         if flush:
             _flush(file=file)
     else:
         comptime if CurrentPlugin.print_emit_fn:
             var buffer = _WriteBufferHeap()
-            comptime length = values.__len__()
+            values._write_to(buffer, sep=sep, end=end)
 
-            comptime for i in range(length):
-                values[i].write_to(buffer)
-                if i < length - 1:
-                    sep.write_to(buffer)
-
-            end.write_to(buffer)
-            buffer.nul_terminate()
+            var cstr = buffer.nul_terminate()
 
             comptime _emit = CurrentPlugin.print_emit_fn.unsafe_value()
-            var slice = buffer.as_string_slice()
-            _emit(
-                slice.unsafe_ptr().bitcast[UInt8](),
-                slice.byte_length(),
-                file.value,
-            )
+
+            # FIXME: The origin param of `_emit` should be inferred from `cstr`.
+            _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)
         elif is_gpu() and is_apple_gpu():
             # Apple GPU: same formatting path as other GPUs but output
             # goes through Metal os_log via _metal_print_write.
             var buffer = _WriteBufferHeap()
-            comptime length = values.__len__()
+            values._write_to(buffer, sep=sep, end=end)
 
-            comptime for i in range(length):
-                values[i].write_to(buffer)
-                if i < length - 1:
-                    sep.write_to(buffer)
-
-            end.write_to(buffer)
-            buffer.nul_terminate()
+            _ = buffer.nul_terminate()
 
             var slice = buffer.as_string_slice()
             _metal_print_write(
@@ -463,15 +445,9 @@ def print[
             )
         elif is_gpu():
             var buffer = _WriteBufferHeap()
-            comptime length = values.__len__()
+            values._write_to(buffer, sep=sep, end=end)
 
-            comptime for i in range(length):
-                values[i].write_to(buffer)
-                if i < length - 1:
-                    sep.write_to(buffer)
-
-            end.write_to(buffer)
-            buffer.nul_terminate()
+            _ = buffer.nul_terminate()
 
             var slice = buffer.as_string_slice()
 
@@ -486,16 +462,10 @@ def print[
                 ]()
         else:
             var buffer = _WriteBufferStack(file)
-            comptime length = values.__len__()
+            values._write_to(buffer, sep=sep, end=end)
 
-            comptime for i in range(length):
-                values[i].write_to(buffer)
-
-                comptime if i < length - 1:
-                    sep.write_to(buffer)
-
-            end.write_to(buffer)
             buffer.flush()
+
             if flush:
                 _flush(file=file)
 

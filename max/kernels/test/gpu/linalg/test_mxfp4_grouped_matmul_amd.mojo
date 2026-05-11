@@ -87,16 +87,24 @@ def test_mxfp4_grouped_matmul[
     )
 
     # --- Host allocations ---
-    var a_host = alloc[Scalar[DType.uint8]](total_tokens * packed_K)
-    var b_host = alloc[Scalar[DType.uint8]](num_experts * N * packed_K)
-    var a_scales_host = alloc[Scalar[DType.float8_e8m0fnu]](
+    var a_host = ctx.enqueue_create_host_buffer[DType.uint8](
+        total_tokens * packed_K
+    )
+    var b_host = ctx.enqueue_create_host_buffer[DType.uint8](
+        num_experts * N * packed_K
+    )
+    var a_scales_host = ctx.enqueue_create_host_buffer[DType.float8_e8m0fnu](
         total_tokens * scale_K
     )
-    var b_scales_host = alloc[Scalar[DType.float8_e8m0fnu]](
+    var b_scales_host = ctx.enqueue_create_host_buffer[DType.float8_e8m0fnu](
         num_experts * N * scale_K
     )
-    var a_offsets_host = alloc[Scalar[DType.uint32]](num_active_experts + 1)
-    var expert_ids_host = alloc[Scalar[DType.int32]](num_active_experts)
+    var a_offsets_host = ctx.enqueue_create_host_buffer[DType.uint32](
+        num_active_experts + 1
+    )
+    var expert_ids_host = ctx.enqueue_create_host_buffer[DType.int32](
+        num_active_experts
+    )
 
     # Random packed FP4 data.
     for i in range(total_tokens * packed_K):
@@ -222,21 +230,24 @@ def test_mxfp4_grouped_matmul[
         b_scales_tt,
         a_offsets_tt,
         expert_ids_tt,
+        max_tokens,
         num_active_experts,
         ctx,
     )
     ctx.synchronize()
 
     # --- Compare ---
-    var c_host = alloc[Scalar[DType.float32]](total_tokens * N)
-    var c_ref_host = alloc[Scalar[DType.float32]](total_tokens * N)
+    var c_host = ctx.enqueue_create_host_buffer[DType.float32](total_tokens * N)
+    var c_ref_host = ctx.enqueue_create_host_buffer[DType.float32](
+        total_tokens * N
+    )
     ctx.enqueue_copy(c_host, c_dev)
     ctx.enqueue_copy(c_ref_host, c_ref_dev)
     ctx.synchronize()
 
     assert_almost_equal(
-        c_host,
-        c_ref_host,
+        c_host.unsafe_ptr(),
+        c_ref_host.unsafe_ptr(),
         total_tokens * N,
         atol=0.05,
         rtol=0.05,
@@ -245,14 +256,6 @@ def test_mxfp4_grouped_matmul[
     print("    PASS")
 
     # Cleanup
-    a_host.free()
-    b_host.free()
-    a_scales_host.free()
-    b_scales_host.free()
-    a_offsets_host.free()
-    expert_ids_host.free()
-    c_host.free()
-    c_ref_host.free()
     _ = a_dev^
     _ = b_dev^
     _ = a_scales_dev^
@@ -286,5 +289,10 @@ def main() raises:
         # Larger dimensions
         print("-- Larger dimensions --")
         test_mxfp4_grouped_matmul[4, 256, 512](2, [128, 256], [1, 3], ctx)
+
+        # Decode tile path: max_tokens_per_expert <= 64 with K_BYTES >= 256.
+        print("-- Decode tile (small max tokens, large K) --")
+        test_mxfp4_grouped_matmul[1, 128, 512](1, [32], [0], ctx)
+        test_mxfp4_grouped_matmul[4, 128, 512](2, [16, 64], [0, 2], ctx)
 
         print("==== All MXFP4 grouped matmul tests passed ====")

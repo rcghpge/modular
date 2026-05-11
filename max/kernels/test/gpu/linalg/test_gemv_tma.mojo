@@ -284,7 +284,7 @@ def gemv_tma[
         NUM_PIPELINE_STAGES,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         tma_desc_a,
         tma_desc_b,
         c,
@@ -327,16 +327,13 @@ def test_gemv_tma[
     var b_size = K
     var c_size = M * N
 
-    var a_host_ptr = alloc[Scalar[dtype]](a_size)
-    var b_host_ptr = alloc[Scalar[dtype]](b_size)
-    var c_host_ptr = alloc[Scalar[dtype]](c_size)
-    var c_host_ref_ptr = alloc[Scalar[dtype]](c_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[dtype](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[dtype](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[dtype](c_size)
+    var c_host_ref_ptr = ctx.enqueue_create_host_buffer[dtype](c_size)
 
-    rand[dtype](a_host_ptr, M * K)
-    rand[dtype](b_host_ptr, K * N)
-    for i in range(c_size):
-        c_host_ptr[i] = 0
-        c_host_ref_ptr[i] = 0
+    rand[dtype](a_host_ptr.unsafe_ptr(), M * K)
+    rand[dtype](b_host_ptr.unsafe_ptr(), K * N)
 
     var a_device = ctx.enqueue_create_buffer[dtype](a_size)
     var b_device = ctx.enqueue_create_buffer[dtype](b_size)
@@ -427,18 +424,12 @@ def test_gemv_tma[
 
         comptime rtol = 1e-2
         assert_almost_equal(
-            c_host_ptr,
-            c_host_ref_ptr,
+            c_host_ptr.unsafe_ptr(),
+            c_host_ref_ptr.unsafe_ptr(),
             c_size,
             atol=0.0001,
             rtol=rtol,
         )
-
-    # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
 
 
 def main() raises:

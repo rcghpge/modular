@@ -28,6 +28,7 @@ Modules
 .. toctree::
    :maxdepth: 1
 
+   diagnostics.cpu
    diagnostics.gpu
    driver
    dtype
@@ -54,7 +55,6 @@ Modules
    pipelines.architectures.eagle_llama3
    pipelines.architectures.exaone
    pipelines.architectures.exaone_modulev3
-   pipelines.architectures.flux1_modulev3
    pipelines.architectures.flux2
    pipelines.architectures.flux2_modulev3
    pipelines.architectures.gemma3
@@ -70,6 +70,7 @@ Modules
    pipelines.architectures.idefics3_modulev3
    pipelines.architectures.internvl
    pipelines.architectures.kimik2_5
+   pipelines.architectures.lfm2
    pipelines.architectures.llama3
    pipelines.architectures.llama3_modulev3
    pipelines.architectures.mamba
@@ -113,4 +114,5 @@ Modules
    experimental.tensor
    experimental.random
    experimental.functional
+   experimental.sharding
    experimental.torch

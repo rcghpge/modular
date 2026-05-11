@@ -74,7 +74,7 @@ class Eagle3DeepseekV3Inputs(DeepseekV3Inputs):
     draft_tokens: Buffer | None = None
     draft_kv_blocks: list[Buffer] | None = None
     seed: Buffer | None = None
-    """Per-execute int64 scalar seed consumed by the stochastic acceptance
+    """Per-execute uint64 [1] seed consumed by the stochastic acceptance
     sampler (and, when enabled, the synthetic benchmarking sampler)."""
 
     temperature: Buffer | None = None
@@ -85,6 +85,20 @@ class Eagle3DeepseekV3Inputs(DeepseekV3Inputs):
     """Per-batch sampling parameters consumed by the stochastic acceptance
     sampler. ``max_k`` and ``min_top_p`` are 0-d CPU scalars; the rest are
     ``[batch_size]`` tensors on the primary device."""
+
+    in_thinking_phase: Buffer | None = None
+    """Per-batch ``bool`` flag set by the pipeline for relaxed acceptance
+    during thinking. Not consumed by the eagle3_deepseekV3 graph today, but
+    the field is required to satisfy the ``_UnifiedEagleInputs`` protocol
+    used by ``OverlapTextGenerationPipeline``."""
+
+    token_bitmasks: Buffer | None = None
+    """Grammar constraint bitmask for structured output.
+
+    Shape: [batch_size, num_speculative_tokens + 1, vocab_size].
+    Applied to target logits at the acceptance sampling step.
+    None when structured output is disabled.
+    """
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -110,6 +124,8 @@ class Eagle3DeepseekV3Inputs(DeepseekV3Inputs):
                 self.top_p,
                 self.min_top_p,
             )
+            if self.token_bitmasks is not None:
+                buffers += (self.token_bitmasks,)
         return buffers
 
 
@@ -145,9 +161,11 @@ class Eagle3DeepseekV3Model(DeepseekV3Model):
         self._seed_counter = 0
 
     def _next_seed(self) -> Buffer:
-        """Monotonically advancing int64 scalar seed, fresh per execute."""
+        """Monotonically advancing uint64 [1] seed, fresh per execute."""
         self._seed_counter += 1
-        return Buffer.from_numpy(np.array(self._seed_counter, dtype=np.int64))
+        return Buffer.from_numpy(
+            np.array([self._seed_counter], dtype=np.uint64)
+        ).to(self.devices[0])
 
     @override
     def load_model(self, session: InferenceSession) -> Model:
@@ -232,6 +250,7 @@ class Eagle3DeepseekV3Model(DeepseekV3Model):
             config,
             draft_config,
             speculative_config=self.pipeline_config.speculative,
+            enable_structured_output=self.pipeline_config.sampling.enable_structured_output,
         )
 
         # Share embed_tokens before loading so the graph sees a single
@@ -356,6 +375,12 @@ class Eagle3DeepseekV3Model(DeepseekV3Model):
                 top_p = next(variadic_args_iter).tensor
                 min_top_p = next(variadic_args_iter).tensor
 
+                # Optional bitmask — present only when structured output is
+                # enabled (matches the conditional in input_types()).
+                token_bitmasks_graph = None
+                if nn_model.enable_structured_output:
+                    token_bitmasks_graph = next(variadic_args_iter).tensor
+
                 outputs = nn_model(
                     tokens=tokens.tensor,
                     input_row_offsets=devices_input_row_offsets.tensor,
@@ -374,6 +399,7 @@ class Eagle3DeepseekV3Model(DeepseekV3Model):
                     min_top_p=min_top_p,
                     ep_inputs=target_ep_inputs,
                     draft_kv_collections=draft_kv_collections,
+                    token_bitmasks=token_bitmasks_graph,
                 )
                 graph.output(*outputs)
 

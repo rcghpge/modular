@@ -21,7 +21,6 @@ from .context import KimiK2_5TextAndVisionContext
 from .model import KimiK2_5Model
 from .model_config import KimiK2_5Config, KimiK2_5TextConfig
 from .tokenizer import KimiK2_5VLTokenizer
-from .tool_parser import KimiToolParser
 from .unified_eagle_pipeline_model import Eagle3KimiK25Model
 
 
@@ -64,7 +63,8 @@ kimik2_5_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5Config,
-    tool_parser=KimiToolParser,
+    tool_parser="kimik2_5",
+    reasoning_parser="kimik2_5",
 )
 
 kimivl_arch = SupportedArchitecture(
@@ -91,7 +91,8 @@ kimivl_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5Config,
-    tool_parser=KimiToolParser,
+    tool_parser="kimik2_5",
+    reasoning_parser="kimik2_5",
 )
 
 eagle3_kimik25_arch = SupportedArchitecture(
@@ -115,5 +116,6 @@ eagle3_kimik25_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5TextConfig,
-    tool_parser=KimiToolParser,
+    tool_parser="kimik2_5",
+    reasoning_parser="kimik2_5",
 )

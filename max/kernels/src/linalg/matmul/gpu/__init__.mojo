@@ -39,6 +39,8 @@ from layout import (
     Coord,
     Idx,
     LayoutTensor,
+    RowMajorLayout,
+    RuntimeInt,
     RuntimeLayout,
     TensorLayout,
     TileTensor,
@@ -51,8 +53,7 @@ from std.logger import Logger
 from std.memory import stack_allocation
 from std.utils import Index, IndexList
 from std.utils.numerics import get_accum_type
-
-from ...gemv import gemv_gpu
+from ...gemv import gemv_gpu, gemm_mma_cpasync
 from ...utils import (
     GemmShape,
     elementwise_compute_lambda_type,
@@ -70,7 +71,14 @@ from ._multistage_gemm_gpu import (
     multistage_gemm_kernel,
     multistage_gemm_split_k_kernel,
 )
-from .amd import AMDMatmul, AMDPingPongMatmul, KernelConfig
+from .amd import (
+    AMDMatmul,
+    AMDPingPongMatmul,
+    KernelConfig,
+    amd_4wave_matmul,
+    amd_4wave_split_k_matmul,
+    SplitKWorkspace,
+)
 from .amd_rdna import gemm_kernel_rdna
 from .sm80.dispatch import create_matmul_configs_ampere
 from .sm90.dispatch import matmul_dispatch_sm90
@@ -241,16 +249,11 @@ def matmul_kernel_naive[
 
     comptime if transpose_b:
         for i in range(k):
-            var a_val = a[x, i]
-            accum += rebind[Scalar[s_type]](a[x, i].cast[s_type]()) * rebind[
-                Scalar[s_type]
-            ](b[y, i].cast[s_type]())
+            accum += a[x, i].cast[s_type]() * b[y, i].cast[s_type]()
 
     else:
         for i in range(k):
-            accum += rebind[Scalar[s_type]](a[x, i].cast[s_type]()) * rebind[
-                Scalar[s_type]
-            ](b[i, y].cast[s_type]())
+            accum += a[x, i].cast[s_type]() * b[i, y].cast[s_type]()
 
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
@@ -414,11 +417,20 @@ def _matmul_gpu[
         elementwise_compute_lambda_type
     ] = None,
     pdl_level: PDLLevel = PDLLevel(),
+    has_epilogue_tensor: Bool = False,
+    epilogue_is_1d: Bool = False,
 ](
     c: TileTensor[mut=True, ...],
     a: TileTensor[mut=False, ...],
     b: TileTensor[mut=False, ...],
     ctx: DeviceContext,
+    epilogue_tensor: OptionalReg[
+        TileTensor[
+            c.dtype,
+            RowMajorLayout[RuntimeInt[DType.int64], RuntimeInt[DType.int64]],
+            ImmutAnyOrigin,
+        ]
+    ] = None,
 ) raises:
     """GPU matmul dispatch entry point. Routes to the appropriate kernel
     based on hardware capabilities and tensor properties.
@@ -468,7 +480,7 @@ def _matmul_gpu[
     comptime matmul_supported_format_amd = (
         (a_type == DType.bfloat16 or a_type in amd_float8_dtypes)
         and b_type == a_type
-        and c_type in (DType.float32, DType.bfloat16)
+        and c_type in amd_float8_dtypes.concat((DType.float32, DType.bfloat16))
         and not has_amd_rdna_gpu_accelerator()
     )
 
@@ -549,13 +561,6 @@ def _matmul_gpu[
             elementwise_lambda_fn=elementwise_lambda_wrapper,
         ](c, a, b, ctx)
 
-    comptime use_experimental_kernels = Bool(
-        get_defined_int["USE_EXPERIMENTAL_KERNELS", 0]()
-    )
-
-    comptime bf16_or_fp16 = (DType.bfloat16, DType.float16)
-    comptime bf16_or_fp16_fp32 = (DType.bfloat16, DType.float16, DType.float32)
-
     comptime if (has_nvidia_gpu_accelerator() and _has_blackwell_tcgen05()):
         return matmul_dispatch_sm100[
             transpose_b=transpose_b,
@@ -563,7 +568,9 @@ def _matmul_gpu[
             elementwise_lambda_wrapper=elementwise_lambda_wrapper,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             pdl_level=PDLLevel(1),
-        ](c, a, b, ctx)
+            has_epilogue_tensor=has_epilogue_tensor,
+            epilogue_is_1d=epilogue_is_1d,
+        ](c, a, b, ctx, epilogue_tensor=epilogue_tensor)
 
     comptime if ctx.default_device_info == H100:
         var status = matmul_dispatch_sm90[
@@ -649,53 +656,233 @@ def _matmul_gpu[
                 if m == 1:
                     return _gemv_dispatch()
 
-                # AMD matmul shapes that perform better with vendor BLAS.
-                # TODO(KERN-2592): Remove this once we have a better matmul kernel for AMD.
-                comptime vendor_blas_NK = [
-                    Index(55296, 6144),
-                    Index(36864, 6144),
-                    Index(6144, 24576),
-                    Index(6144, 18432),
-                    Index(6144, 6144),
-                ]
-                comptime if Index(static_N, static_K) in vendor_blas_NK:
-                    logger.info("Executing: vendor BLAS (hipBLASLt) for AMD")
-                    return matmul_vendor[
-                        transpose_b=transpose_b,
-                        elementwise_lambda_fn=elementwise_lambda_wrapper,
-                    ](c, a, b, ctx)
-
-                # M thresholds where vendor BLAS (hipBLASLt) outperforms
-                # all custom kernels. Derived from Llama3-405B TP=4 on MI355X.
-                # Also includes M ranges where vendor wins for small M
-                # (standard kernel can't match hipBLASLt's tiny-tile configs).
-                # Format: Index(N, K, M_low, M_high) — vendor BLAS for M_low <= m < M_high.
-                comptime vendor_blas_NK_m = [
-                    # N=2304: vendor wins at M=4-16 and M>=4096
-                    Index(2304, 16384, 4096),
-                    # N=16384 K=2048: vendor wins at M>=150 (except M=450 skinny)
-                    Index(16384, 2048, 150),
-                    # N=16384 K=6656: vendor wins at M=4-16 and M>=600
-                    Index(16384, 6656, 600),
-                    # N=13312: vendor wins at M>=600 (borderline)
-                    Index(13312, 16384, 600),
-                ]
-                comptime for i in range(len(vendor_blas_NK_m)):
-                    comptime nk_m = vendor_blas_NK_m[i]
-                    comptime if static_N == nk_m[0] and static_K == nk_m[1]:
-                        if m >= nk_m[2] or (
-                            n == 16384 and k == 6656 and m > 1 and m < 64
-                        ):
-                            logger.info(
-                                "Executing: vendor BLAS (hipBLASLt) for AMD"
-                            )
-                            return matmul_vendor[
-                                transpose_b=transpose_b,
-                                elementwise_lambda_fn=elementwise_lambda_wrapper,
-                            ](c, a, b, ctx)
+                # NOTE: this branch previously routed nine (N, K) shapes
+                # to hipBLASLt via `matmul_vendor` for both BF16 and FP8
+                # (the `vendor_blas_NK` / `vendor_blas_NK_m` tables
+                # carrying TODO(KERN-2592)). A direct-kernel comparison
+                # sweep on MI355X now shows:
+                #   - BF16: dispatcher matches vendor within +/-1.8% on
+                #     every shape and every M point. The vendor route
+                #     was a no-op for BF16.
+                #   - FP8 : 4 of the 9 shapes are dispatcher wins at
+                #     every M (+7% to +90%); the other 4 had vendor
+                #     winning small-M decode by 10..25%, but those
+                #     shapes are not in any production model we ship
+                #     today (Hippo/Kimi). The single overlap with a
+                #     production model (N=2304 K=16384) is a dispatcher
+                #     win at every routed M.
+                # The vendor table is removed entirely. If a future
+                # model needs a small-M wide-N FP8 cell (e.g. M=16
+                # N=55296) we can reintroduce a narrow vendor route or
+                # land a tile-tuned kernel for that regime.
 
                 comptime if not transpose_b:
                     return kernel_helper[128, 128, num_pipeline_stages=2]()
+
+                # FP8 transpose_b on MI355X: route to the 4-wave kernel
+                # family in its bench-validated regime. The 4-wave
+                # kernels' fixed BM/BN auto-pick (64 or 128) outperforms
+                # the prior auto-tuned `multistage_gemm` dispatch on
+                # small-to-medium square shapes (N=K up to 8192) and on
+                # skinny-N shapes (N <= 4096 with large K). At very
+                # large N=K (>= 16384) and at large M, the existing
+                # auto-tuned generic block selection wins, so we fall
+                # through to it.
+                #
+                # Routing inside the gate (derived from the kbench
+                # autotune sweep in `tuning_table_mi355_fp8.yaml`,
+                # covering Hippo Attn QKV (N=2304) and Kimi Attn out
+                # (N=7168) over the production M sweep):
+                #
+                # Wide-N (4096 <= N <= 8192):
+                #   m <=   64          -> amd_4wave_split_k_matmul[4]   BM=BN=64
+                #     64 < m <=  128   -> amd_4wave_split_k_matmul[4]   BM=BN=128
+                #    128 < m <=  256   -> amd_4wave_split_k_matmul[2]   BM=BN=128
+                #    256 < m <= 1024   -> amd_4wave_matmul              BM=BN=128
+                #          m >  1024   -> fall through (multistage's
+                #                          ping_pong picks up at
+                #                          M >= 600, N >= 4096)
+                #
+                # Skinny-N (N < 4096, e.g. N=2304 K=16384):
+                #   m <=  128          -> amd_4wave_split_k_matmul[4]   BM=BN=64
+                #    128 < m <=  256   -> amd_4wave_split_k_matmul[4]   BM=BN=128
+                #    256 < m <= 2048   -> amd_4wave_split_k_matmul[2]   BM=BN=128
+                #          m >  2048   -> fall through
+                #
+                # Gates:
+                #   - 1024 <= static_N <= 8192: lower bound keeps
+                #     dispatch off pathologically-narrow N; upper
+                #     bound excludes N=K=16384+ where the auto-tuned
+                #     dispatch's deeper-tile configs win.
+                #   - static_K >= 4096: avoids a 4-wave kernel
+                #     pathology at skinny-K (K < 4096) where the
+                #     non-split 4-wave can collapse to <100 TFLOPS
+                #     on certain (N, K, M) combos.
+                #   - static_K % 1024 == 0: required by split-K(4)
+                #     since K_per_split = K/4 must be a multiple of
+                #     2*BK = 256; production K values are all
+                #     1024-aligned.
+                comptime if (
+                    a_type.is_float8()
+                    and transpose_b
+                    and ctx.default_device_info == MI355X
+                ):
+                    comptime if (
+                        static_N >= 1024
+                        and static_N <= 8192
+                        and static_K >= 4096
+                        and static_K % 1024 == 0
+                    ):
+                        # Autotune entry point. When `AUTOTUNING_MODE=True`
+                        # AND `TUNE_4WAVE_KERNEL` is set (1=split-K(4),
+                        # 2=split-K(2), 3=non-split 4-wave), bypass the
+                        # closed-form M cutoffs below and dispatch to the
+                        # exact kernel + (BM, BN) the autotune driver
+                        # picked. `TUNE_4WAVE_KERNEL=0` (default) keeps
+                        # the closed-form heuristic.
+                        comptime _tune_4wave = get_defined_int[
+                            "TUNE_4WAVE_KERNEL", 0
+                        ]()
+                        comptime if _tune_4wave != 0:
+                            comptime _tune_bm = get_defined_int[
+                                "TUNE_4WAVE_BM", 0
+                            ]()
+                            comptime _tune_bn = get_defined_int[
+                                "TUNE_4WAVE_BN", 0
+                            ]()
+                            comptime _tune_swizzle = get_defined_bool[
+                                "TUNE_4WAVE_SWIZZLE", True
+                            ]()
+                            comptime if _tune_4wave == 1:
+                                logger.info(
+                                    "Autotune: AMD 4-wave + split-K(4) FP8"
+                                    " matmul"
+                                )
+                                var sk_ws_4 = SplitKWorkspace[4](
+                                    ctx, m * static_N
+                                )
+                                amd_4wave_split_k_matmul[
+                                    num_splits=4,
+                                    enable_swizzle=_tune_swizzle,
+                                    block_m_override=_tune_bm,
+                                    block_n_override=_tune_bn,
+                                    elementwise_lambda_fn=elementwise_lambda_wrapper,
+                                ](a, b, c, ctx, workspace=sk_ws_4)
+                                _ = sk_ws_4^
+                                return
+                            elif _tune_4wave == 2:
+                                logger.info(
+                                    "Autotune: AMD 4-wave + split-K(2) FP8"
+                                    " matmul"
+                                )
+                                var sk_ws_2 = SplitKWorkspace[2](
+                                    ctx, m * static_N
+                                )
+                                amd_4wave_split_k_matmul[
+                                    num_splits=2,
+                                    enable_swizzle=_tune_swizzle,
+                                    block_m_override=_tune_bm,
+                                    block_n_override=_tune_bn,
+                                    elementwise_lambda_fn=elementwise_lambda_wrapper,
+                                ](a, b, c, ctx, workspace=sk_ws_2)
+                                _ = sk_ws_2^
+                                return
+                            else:
+                                logger.info(
+                                    "Autotune: AMD 4-wave (no split-K) FP8"
+                                    " matmul"
+                                )
+                                return amd_4wave_matmul[
+                                    enable_swizzle=_tune_swizzle,
+                                    block_m_override=_tune_bm,
+                                    block_n_override=_tune_bn,
+                                    elementwise_lambda_fn=elementwise_lambda_wrapper,
+                                ](a, b, c, ctx)
+
+                        # The cutoffs and tile shapes below come from the
+                        # `tuning_table_mi355_fp8.yaml` autotune sweep on
+                        # Hippo Attn QKV (N=2304) and Kimi Attn out
+                        # (N=7168). The previous closed-form clamped the
+                        # launcher's BM/BN auto-pick to 64x64 for M <=
+                        # 512, which left up to +57% on the table at
+                        # wide-N M=512 (autotune picks BM=BN=128 there).
+                        # The kernel boundaries also shifted: wide-N
+                        # split-K(2) only wins at M=129..256, 4-wave
+                        # widens to M=257..1024, and skinny-N collapses
+                        # 4-wave into split-K(2) all the way to M=2048.
+                        #
+                        # Wide-N (4096 <= N <= 8192):
+                        #   M <=   64           -> split-K(4) 64x64
+                        #     64 < M <= 128     -> split-K(4) 128x128
+                        #    128 < M <= 256     -> split-K(2) 128x128
+                        #    256 < M <= 1024    -> 4-wave     128x128
+                        #          M >  1024    -> fall through
+                        #
+                        # Skinny-N (N < 4096):
+                        #   M <=  128           -> split-K(4) 64x64
+                        #    128 < M <= 256     -> split-K(4) 128x128
+                        #    256 < M <= 2048    -> split-K(2) 128x128
+                        #          M >  2048    -> fall through
+                        comptime is_skinny_n = static_N < 4096
+                        comptime sk4_64_max = 128 if is_skinny_n else 64
+                        comptime sk4_128_max = 256 if is_skinny_n else 128
+                        comptime sk2_128_max = 2048 if is_skinny_n else 256
+                        comptime fwave_max = 0 if is_skinny_n else 1024
+                        if m <= sk4_64_max:
+                            logger.info(
+                                "Executing: AMD 4-wave + split-K(4) FP8 matmul"
+                            )
+                            var sk_ws_4_64 = SplitKWorkspace[4](
+                                ctx, m * static_N
+                            )
+                            amd_4wave_split_k_matmul[
+                                num_splits=4,
+                                elementwise_lambda_fn=elementwise_lambda_wrapper,
+                            ](a, b, c, ctx, workspace=sk_ws_4_64)
+                            _ = sk_ws_4_64^
+                            return
+                        elif m <= sk4_128_max:
+                            logger.info(
+                                "Executing: AMD 4-wave + split-K(4) FP8"
+                                " matmul (BM=BN=128)"
+                            )
+                            var sk_ws_4_128 = SplitKWorkspace[4](
+                                ctx, m * static_N
+                            )
+                            amd_4wave_split_k_matmul[
+                                num_splits=4,
+                                block_m_override=128,
+                                block_n_override=128,
+                                elementwise_lambda_fn=elementwise_lambda_wrapper,
+                            ](a, b, c, ctx, workspace=sk_ws_4_128)
+                            _ = sk_ws_4_128^
+                            return
+                        elif m <= sk2_128_max:
+                            logger.info(
+                                "Executing: AMD 4-wave + split-K(2) FP8"
+                                " matmul (BM=BN=128)"
+                            )
+                            var sk_ws_2_128 = SplitKWorkspace[2](
+                                ctx, m * static_N
+                            )
+                            amd_4wave_split_k_matmul[
+                                num_splits=2,
+                                block_m_override=128,
+                                block_n_override=128,
+                                elementwise_lambda_fn=elementwise_lambda_wrapper,
+                            ](a, b, c, ctx, workspace=sk_ws_2_128)
+                            _ = sk_ws_2_128^
+                            return
+                        elif m <= fwave_max:
+                            logger.info(
+                                "Executing: AMD 4-wave FP8 matmul (BM=BN=128)"
+                            )
+                            return amd_4wave_matmul[
+                                block_m_override=128,
+                                block_n_override=128,
+                                elementwise_lambda_fn=elementwise_lambda_wrapper,
+                            ](a, b, c, ctx)
+                        # else: fall through to existing dispatch.
 
                 comptime if get_defined_bool["AUTOTUNING_MODE", False]():
                     comptime block_m = get_defined_int["TUNE_BM", 128]()
@@ -930,7 +1117,7 @@ def _matmul_gpu[
                 WARP_TILE_N=WARP_TILE_N,
             ]
 
-            ctx.enqueue_function[rdna_kernel, rdna_kernel](
+            ctx.enqueue_function[rdna_kernel](
                 c,
                 a,
                 b,
@@ -998,7 +1185,7 @@ def _matmul_gpu[
         elementwise_lambda_fn=elementwise_lambda_wrapper,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         c,
         a,
         b,
@@ -1119,7 +1306,7 @@ def multistage_gemm[
                     enable_swizzle=True,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ].run[a.LayoutType, b.LayoutType, c.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     a,
                     b,
                     c,
@@ -1143,7 +1330,7 @@ def multistage_gemm[
                     enable_swizzle=True,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ].run[a.LayoutType, b.LayoutType, c.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     a,
                     b,
                     c,
@@ -1170,7 +1357,7 @@ def multistage_gemm[
                     std_config,
                     elementwise_lambda_fn,
                 ].run[c.LayoutType, a.LayoutType, b.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     c,
                     a,
                     b,
@@ -1208,7 +1395,7 @@ def multistage_gemm[
                 bf16_config,
                 elementwise_lambda_fn,
             ].run[c.LayoutType, a.LayoutType, b.LayoutType]
-            ctx.enqueue_function[k, k](
+            ctx.enqueue_function[k](
                 c,
                 a,
                 b,
@@ -1228,7 +1415,7 @@ def multistage_gemm[
             config=config,
             elementwise_lambda_fn=elementwise_lambda_fn,
         ]
-        ctx.enqueue_function[gemm_kernel_type, gemm_kernel_type](
+        ctx.enqueue_function[gemm_kernel_type](
             c,
             a,
             b,
@@ -1308,7 +1495,7 @@ def multistage_gemm[
         ]
 
         comptime if has_amd_gpu_accelerator() and not has_amd_rdna_gpu_accelerator():
-            ctx.enqueue_function[gemm_kernel_type, gemm_kernel_type](
+            ctx.enqueue_function[gemm_kernel_type](
                 tensor_c,
                 tensor_a,
                 tensor_b,
@@ -1318,7 +1505,7 @@ def multistage_gemm[
                 block_dim=runtime_config.block_dim(),
             )
         else:
-            ctx.enqueue_function[gemm_kernel_type, gemm_kernel_type](
+            ctx.enqueue_function[gemm_kernel_type](
                 tensor_c,
                 tensor_a,
                 tensor_b,
@@ -1384,7 +1571,7 @@ def multistage_gemm[
                     enable_swizzle=True,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ].run[a.LayoutType, b.LayoutType, c.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     a,
                     b,
                     c,
@@ -1408,7 +1595,7 @@ def multistage_gemm[
                     enable_swizzle=True,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ].run[a.LayoutType, b.LayoutType, c.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     a,
                     b,
                     c,
@@ -1435,7 +1622,7 @@ def multistage_gemm[
                     std_config,
                     elementwise_lambda_fn,
                 ].run[c.LayoutType, a.LayoutType, b.LayoutType]
-                ctx.enqueue_function[k, k](
+                ctx.enqueue_function[k](
                     c,
                     a,
                     b,
@@ -1473,7 +1660,7 @@ def multistage_gemm[
                 bf16_config,
                 elementwise_lambda_fn,
             ].run[c.LayoutType, a.LayoutType, b.LayoutType]
-            ctx.enqueue_function[k, k](
+            ctx.enqueue_function[k](
                 c,
                 a,
                 b,
@@ -1494,7 +1681,7 @@ def multistage_gemm[
             elementwise_lambda_fn=elementwise_lambda_fn,
         ]
 
-        ctx.enqueue_function[gemm_kernel_type, gemm_kernel_type](
+        ctx.enqueue_function[gemm_kernel_type](
             c,
             a,
             b,

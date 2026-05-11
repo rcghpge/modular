@@ -32,6 +32,7 @@ modular_py_test(
     deps = [
         "//max/python/max/dtype",
         "//max/python/max/interfaces",
+        "//max/python/max/pipelines/architectures",
         "//max/python/max/pipelines/core",
         "//max/python/max/pipelines/lib",
         "//max/python/max/serve",
@@ -47,6 +48,7 @@ modular_py_test(
         "//max/python/max/serve/worker_interface",
         requirement("async-asgi-testclient"),
         requirement("fastapi"),
+        requirement("openai"),
         requirement("opentelemetry-api"),
         requirement("numpy"),
         requirement("pydantic"),

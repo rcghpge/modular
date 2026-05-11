@@ -49,6 +49,20 @@ from typing_extensions import ParamSpec
 if TYPE_CHECKING:
     from max.pipelines.lib.config import PipelineConfig
 
+
+async def convert_token_to_id(
+    tokenizer: PipelineTokenizer[Any, Any, Any],
+    token: str,
+) -> int | None:
+    """Convert a token string to its token ID, or None if not a single token."""
+    # Workaround: PipelineTokenizer does not expose convert_tokens_to_ids(),
+    # so we encode the string and verify it maps to exactly one token ID.
+    encoded = await tokenizer.encode(token, add_special_tokens=False)
+    if len(encoded) != 1:
+        return None
+    return int(encoded[0])
+
+
 logger = logging.getLogger("max.pipelines")
 
 _UINT64_MASK = (1 << 64) - 1
@@ -612,8 +626,9 @@ class TextTokenizer(
         )
 
         json_schema = (
-            json.dumps(request.response_format.get("json_schema", None))
+            json.dumps(request.response_format.get("json_schema"))
             if request.response_format
+            and request.response_format.get("json_schema")
             else None
         )
 
@@ -933,8 +948,9 @@ class TextAndVisionTokenizer(
             ]
 
         json_schema = (
-            json.dumps(request.response_format.get("json_schema", None))
+            json.dumps(request.response_format.get("json_schema"))
             if request.response_format
+            and request.response_format.get("json_schema")
             else None
         )
 

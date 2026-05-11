@@ -80,6 +80,11 @@ struct Attention[
     cache_depth: Int = config.depth,
     output_depth: Int = config.depth,
     mla_mode: Bool = False,
+    # MLA decode: alias V onto K's SMEM (skip V DMA); K loaded unswizzled.
+    # Requires `shared_kv=True` in `AMDStructuredConfig` — that's where the
+    # `v_smem_ptr` is bitcast'd from `k_smem_ptr` (no separate V allocation).
+    # Enforced via `comptime assert` in `__init__`.
+    mla_kv_alias: Bool = False,
 ]:
     # Block/warp dimensions from MHAConfig.
     comptime BM = Self.config.block_m()
@@ -165,6 +170,13 @@ struct Attention[
         ) else Optional[Swizzle](None)
     )
 
+    # Raw FP8 cast (no clamp / NaN scrub) is safe whenever the values fed
+    # to the cast are provably bounded and finite. That holds for softmax
+    # output (in (0, 1]) across all attention paths we currently ship, so
+    # enable it automatically for FP8. If a future caller feeds unbounded
+    # values into the P→PV cast, set this False at the callsite.
+    comptime _raw_fp8_cast = Self.q_type.is_float8()
+
     comptime PRegisterBufferType = PRegisterBuffer[
         Self.accum_type,
         Self.q_type,
@@ -181,6 +193,7 @@ struct Attention[
         tr_load_enabled=True,
         num_stages=Self._p_buffer_stages,
         p_swizzle=Self._p_swizzle,
+        raw_fp8_cast=Self._raw_fp8_cast,
     ]
 
     # --- TileTensor layouts for Q, output, and KV tiles ---
@@ -264,6 +277,15 @@ struct Attention[
         MutExternalOrigin,
         address_space=AddressSpace.SHARED,
     ]
+    # Dedicated warp-reduction scratch SMEM. Decoupling from K SMEM
+    # avoids races between softmax's scratch ds_writes and other warps'
+    # in-flight K ds_reads (the prior overlay only happened to be safe
+    # for non-kv-alias decode because V's later DMA wiped the corruption).
+    var warp_scratch_ptr: UnsafePointer[
+        Scalar[Self.accum_type],
+        MutExternalOrigin,
+        address_space=AddressSpace.SHARED,
+    ]
 
     var q_buffer: Self.QRegisterBufferType
     var output_tile: TileTensor[
@@ -316,6 +338,7 @@ struct Attention[
         MutAnyOrigin,
         address_space=AddressSpace.SHARED,
     ]
+    comptime _warp_scratch_size = (2 * Int(Self.num_warps_n) * Int(Self.BM))
 
     # --- Config delegation (static methods) ---
 
@@ -381,6 +404,13 @@ struct Attention[
         start_pos: Int,
         cache_start_pos: Int = 0,
     ):
+        # `mla_kv_alias` relies on the `shared_kv` aliasing below to make
+        # `v_smem_ptr` a bitcast view of `k_smem_ptr`; without it we'd
+        # double-allocate SMEM and PV would read from an empty V buffer.
+        comptime assert (
+            not Self.mla_kv_alias or Self.amd_structured_config.shared_kv
+        ), "mla_kv_alias=True requires shared_kv=True"
+
         self.softmax = type_of(self.softmax)()
         self.out_reg_buffer = Self.OutputRegisterBufferType()
         self.out_reg_buffer.zero()
@@ -398,6 +428,12 @@ struct Attention[
             Self.v_t.dtype,
             address_space=AddressSpace.SHARED,
             alignment=Self._smem_alignment,
+        ]()
+
+        self.warp_scratch_ptr = stack_allocation[
+            Self._warp_scratch_size,
+            Self.accum_type,
+            address_space=AddressSpace.SHARED,
         ]()
 
         self.p_reg_buffer = Self.PRegisterBufferType(
@@ -632,26 +668,10 @@ struct Attention[
 
     @always_inline
     def warp_scratch_tile(self) -> Self._WarpScratchTileType:
-        """Warp-reduction scratch tile (overlays K SMEM for decode).
-
-        For decode (`token_gen=True`) the scratch reinterprets the K SMEM
-        as `accum_type`. For prefill the scratch is never dereferenced
-        (num_rowwise_warps == 1), so a null-backed view is safe.
-        """
-        comptime if Self.token_gen:
-            return Self._WarpScratchTileType(
-                self.k_smem_ptr.bitcast[Scalar[Self.accum_type]](),
-                Self._warp_scratch_layout,
-            )
-        else:
-            return Self._WarpScratchTileType(
-                UnsafePointer[
-                    Scalar[Self.accum_type],
-                    MutAnyOrigin,
-                    address_space=AddressSpace.SHARED,
-                ](_unsafe_null=()),
-                Self._warp_scratch_layout,
-            )
+        """Warp-reduction scratch tile (decode only)."""
+        return Self._WarpScratchTileType(
+            self.warp_scratch_ptr, Self._warp_scratch_layout
+        )
 
     @always_inline
     def online_softmax[stage: Int = 0](mut self):
@@ -784,10 +804,36 @@ struct Attention[
         #  - 32×32: the MFMA permutation iterates over 4-register groups;
         #    elem_size must be 4 so `store_mfma32` reads one group at a
         #    time, not the full 16-register fragment.
-        writer.store[mfma32=Self.mma_shape[0] == 32](
-            output_warp_tile.vectorize[1, 4](),
-            self.out_reg_buffer.reg_tile,
-        )
+        #
+        # `out_reg_buffer.reg_tile` is laid out m_mma-INNER (row =
+        # `n_mma * num_m_mmas + m_mma`) to match the MMA accumulator
+        # convention from `mma.mojo` (`c_idx = m_mma + n_mma * num_m_mmas`),
+        # whereas `RegTileWriter.store[mfma32]` reads its source tile
+        # row-by-row assuming m_mma-OUTER. Materialize the m_mma-th strided
+        # slice into a contiguous (num_n_mmas_output, output_frag_size)
+        # temp tile and store one 32-row sub-tile per m_mma. For
+        # num_m_mmas == 1 the inner copy is an identity that the compiler
+        # folds, so a single path covers BM=32 and BM=64.
+        comptime sub_layout = row_major[
+            Self.num_n_mmas_output, Self.output_frag_size
+        ]()
+        comptime for m_mma in range(Self.num_m_mmas):
+            var sub_warp_tile = output_warp_tile.tile[
+                Self.mma_shape[0],
+                Self.output_depth // Self.num_warps_n,
+            ](m_mma, 0)
+            var sub_reg = tt_stack_allocation[
+                Self.accum_type, address_space=AddressSpace.LOCAL
+            ](sub_layout)
+            comptime for n_mma in range(Self.num_n_mmas_output):
+                comptime for k in range(Self.output_frag_size):
+                    sub_reg[n_mma, k] = self.out_reg_buffer.reg_tile[
+                        n_mma * Self.num_m_mmas + m_mma, k
+                    ]
+            writer.store[mfma32=Self.mma_shape[0] == 32](
+                sub_warp_tile.vectorize[1, 4](),
+                sub_reg,
+            )
 
     # --- Decode-specific methods ---
 
@@ -805,14 +851,40 @@ struct Attention[
         exp_sum_ptr: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
         qk_max_ptr: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
     ):
-        """Write softmax stats for split-K reduction (decode only)."""
+        """Write softmax stats for split-K reduction (decode only).
+
+        With BM > MMA_M (e.g. MLA decode at BM=64, MMA_M=32), each warp
+        covers `num_m_mmas = BM/MMA_M` row tiles of the score matrix; row
+        stats live in `softmax.rowsum_tensor[m_mma, 0]` per tile. Filter
+        to lane_col=0 of warp 0 (the only lanes that hold reduced row
+        stats post-softmax) and write one entry per m_mma.
+        """
         comptime if not Self.token_gen:
             return
 
-        var q_head_idx = self.q_head_idx()
-        if num_partitions > 1:
-            if thread_idx.x < Self.group:
-                var row_sum = self.softmax.rowsum_tensor[0, 0][0]
-                var row_max = self.softmax.rowmax_tensor[0, 0][0]
-                exp_sum_ptr[q_head_idx] = row_sum
-                qk_max_ptr[q_head_idx] = row_max
+        if num_partitions <= 1:
+            return
+
+        # `q_head_idx()` is per-thread for both MHA and MLA: it folds
+        # `lane_id % MMA_M` into the tile base, so we just gate on the
+        # filter and write. m_mma=0 covers the lane's "natural" head row
+        # (rows 0..MMA_M-1 of the BM tile); m_mma=k>0 covers rows k*MMA_M
+        # onward, which the same lane also owns when num_m_mmas>1
+        # (only happens for MLA decode at BM>=64).
+        var head_idx = self.q_head_idx()
+        if (
+            thread_idx.x < Self.amd_structured_config.heads_per_tile()
+            and head_idx < Self.num_heads
+        ):
+            exp_sum_ptr[head_idx] = self.softmax.rowsum_tensor[0, 0][0]
+            qk_max_ptr[head_idx] = self.softmax.rowmax_tensor[0, 0][0]
+
+            comptime for m_mma in range(1, Self.num_m_mmas):
+                var head_idx_m = head_idx + m_mma * Self.mma_shape[0]
+                if head_idx_m < Self.num_heads:
+                    exp_sum_ptr[head_idx_m] = self.softmax.rowsum_tensor[
+                        m_mma, 0
+                    ][0]
+                    qk_max_ptr[head_idx_m] = self.softmax.rowmax_tensor[
+                        m_mma, 0
+                    ][0]

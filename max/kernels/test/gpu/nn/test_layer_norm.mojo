@@ -31,10 +31,10 @@ def run_layer_norm_block[
 ](ctx: DeviceContext, rows: Int, cols: Int, rtol: Float64 = 0.01) raises:
     print("== run_layer_norm_gpu block kernel")
 
-    var data_h = alloc[Scalar[dtype]](rows * cols)
-    var res = alloc[Scalar[dtype]](rows * cols)
-    var gamma_h = alloc[Scalar[dtype]](cols)
-    var beta_h = alloc[Scalar[dtype]](cols)
+    var data_h = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var res = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var gamma_h = ctx.enqueue_create_host_buffer[dtype](cols)
+    var beta_h = ctx.enqueue_create_host_buffer[dtype](cols)
 
     for i in range(rows * cols):
         var val = Scalar[dtype](i)
@@ -105,7 +105,7 @@ def run_layer_norm_block[
             gamma_fn,
             output_fn,
         ]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             IndexList[2](rows, cols),
             beta,
             epsilon,
@@ -122,7 +122,7 @@ def run_layer_norm_block[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h + r * cols,
+            data_h.unsafe_ptr() + r * cols,
             row_major(Idx(cols)),
         )
         var mean_ref = mean(vec)
@@ -139,11 +139,6 @@ def run_layer_norm_block[
     _ = gamma_d
     _ = beta_d
 
-    data_h.free()
-    res.free()
-    gamma_h.free()
-    beta_h.free()
-
 
 def run_layer_norm_gpu[
     dtype: DType, rank: Int
@@ -153,10 +148,10 @@ def run_layer_norm_gpu[
     var cols = shape[rank - 1]
     var rows = shape.flattened_length() // cols
 
-    var data_h = alloc[Scalar[dtype]](rows * cols)
-    var res = alloc[Scalar[dtype]](rows * cols)
-    var gamma_h = alloc[Scalar[dtype]](cols)
-    var beta_h = alloc[Scalar[dtype]](cols)
+    var data_h = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var res = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var gamma_h = ctx.enqueue_create_host_buffer[dtype](cols)
+    var beta_h = ctx.enqueue_create_host_buffer[dtype](cols)
 
     for i in range(rows * cols):
         var val = Scalar[dtype](i)
@@ -217,7 +212,7 @@ def run_layer_norm_gpu[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h + r * cols,
+            data_h.unsafe_ptr() + r * cols,
             row_major(Idx(cols)),
         )
         var mean_ref = mean(vec)
@@ -234,11 +229,6 @@ def run_layer_norm_gpu[
     _ = gamma_d
     _ = beta_d
 
-    data_h.free()
-    res.free()
-    gamma_h.free()
-    beta_h.free()
-
 
 def run_layer_norm_warp_tiling[
     dtype: DType,
@@ -247,10 +237,10 @@ def run_layer_norm_warp_tiling[
 ](ctx: DeviceContext, rows: Int, cols: Int, rtol: Float64 = 0.01) raises:
     print("== run_layer_norm_gpu warp tiling kernel")
 
-    var data_h = alloc[Scalar[dtype]](rows * cols)
-    var res = alloc[Scalar[dtype]](rows * cols)
-    var gamma_h = alloc[Scalar[dtype]](cols)
-    var beta_h = alloc[Scalar[dtype]](cols)
+    var data_h = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var res = ctx.enqueue_create_host_buffer[dtype](rows * cols)
+    var gamma_h = ctx.enqueue_create_host_buffer[dtype](cols)
+    var beta_h = ctx.enqueue_create_host_buffer[dtype](cols)
 
     for i in range(rows * cols):
         var val = Scalar[dtype](i)
@@ -321,7 +311,7 @@ def run_layer_norm_warp_tiling[
             gamma_fn,
             output_fn,
         ]
-        ctx.enqueue_function[kernel, kernel](
+        ctx.enqueue_function[kernel](
             IndexList[2](rows, cols),
             beta,
             epsilon,
@@ -338,7 +328,7 @@ def run_layer_norm_warp_tiling[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h + r * cols,
+            data_h.unsafe_ptr() + r * cols,
             row_major(Idx(cols)),
         )
         var mean_ref = mean(vec)
@@ -354,11 +344,6 @@ def run_layer_norm_warp_tiling[
     _ = data_d
     _ = gamma_d
     _ = beta_d
-
-    data_h.free()
-    res.free()
-    gamma_h.free()
-    beta_h.free()
 
 
 def main() raises:

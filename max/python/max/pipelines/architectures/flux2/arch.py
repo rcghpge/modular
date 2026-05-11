@@ -18,13 +18,14 @@ from dataclasses import dataclass
 from max.graph.weights import WeightsFormat
 from max.interfaces import InputModality, PipelineTask
 from max.pipelines.core import PixelContext
-from max.pipelines.lib import PixelGenerationTokenizer, SupportedArchitecture
+from max.pipelines.lib import SupportedArchitecture
 from max.pipelines.lib.config import MAXModelConfig, PipelineConfig
 from max.pipelines.lib.interfaces import ArchConfig
 from typing_extensions import Self
 
 from .flux2_executor import Flux2Executor
 from .flux2_klein_executor import Flux2KleinExecutor
+from .tokenizer import Flux2Tokenizer
 
 
 @dataclass(kw_only=True)
@@ -42,8 +43,6 @@ class Flux2ArchConfig(ArchConfig):
         pipeline_config: PipelineConfig,
         model_config: MAXModelConfig | None = None,
     ) -> Self:
-        if len(pipeline_config.models["transformer"].device_specs) != 1:
-            raise ValueError("Flux2 is only supported on a single device")
         return cls(pipeline_config=pipeline_config)
 
 
@@ -60,7 +59,7 @@ flux2_arch = SupportedArchitecture(
     pipeline_model=Flux2Executor,
     context_type=PixelContext,
     default_weights_format=WeightsFormat.safetensors,
-    tokenizer=PixelGenerationTokenizer,
+    tokenizer=Flux2Tokenizer,
     config=Flux2ArchConfig,
 )
 
@@ -80,6 +79,6 @@ flux2_klein_arch = SupportedArchitecture(
     pipeline_model=Flux2KleinExecutor,
     context_type=PixelContext,
     default_weights_format=WeightsFormat.safetensors,
-    tokenizer=PixelGenerationTokenizer,
+    tokenizer=Flux2Tokenizer,
     config=Flux2ArchConfig,
 )

@@ -1,0 +1,27 @@
+[
+  {
+    "source": "/docs/manual/install/",
+    "dest": "/install/",
+    "status": 301
+  },
+  {
+    "source": "/docs/changelog",
+    "dest": "/releases",
+    "status": 301
+  },
+  {
+    "source": "/docs/changelog/",
+    "dest": "/releases/",
+    "status": 301
+  },
+  {
+    "source": "/nightly/releases/(.*)",
+    "dest": "/releases/{0}",
+    "status": 301
+  },
+  {
+    "source": "/nightly/community/",
+    "dest": "/community/",
+    "status": 301
+  }
+]

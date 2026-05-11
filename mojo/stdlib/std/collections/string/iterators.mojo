@@ -465,7 +465,7 @@ struct GraphemeSliceIter[
     Example:
 
     ```mojo
-    %# from testing import assert_equal
+    from testing import assert_equal
     var text = String("cafe\\u{0301}")  # "café" with combining accent
     var count = 0
     for grapheme in text.graphemes():
@@ -601,6 +601,20 @@ struct GraphemeSliceIter[
     # ===-------------------------------------------------------------------===#
     # Methods
     # ===-------------------------------------------------------------------===#
+
+    @always_inline
+    def remaining_byte_length(self) -> Int:
+        """Returns the number of bytes not yet consumed by the iterator.
+
+        This is O(1): it reports the size of the remaining range without
+        scanning grapheme boundaries. Combined with the original byte length
+        of the source slice, callers can compute how many bytes the iterator
+        has produced so far without summing per-grapheme byte lengths.
+
+        Returns:
+            The byte length of the iterator's remaining range.
+        """
+        return self._slice.byte_length()
 
     def next(mut self) -> Optional[StringSlice[Self.origin]]:
         """Get the next grapheme cluster, or `None` if exhausted.
@@ -770,7 +784,7 @@ struct GraphemeIndicesIter[mut: Bool, //, origin: Origin[mut=mut]](
     Example:
 
     ```mojo
-    %# from testing import assert_equal
+    from testing import assert_equal
     var s = StringSlice("abc")
     var pairs = List[Tuple[Int, String]]()
     for off, g in s.grapheme_indices():

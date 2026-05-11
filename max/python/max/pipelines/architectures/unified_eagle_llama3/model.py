@@ -59,8 +59,6 @@ class UnifiedEagleLlama3Inputs(ModelInputs):
     draft_tokens: Buffer | None = None
     draft_kv_blocks: list[Buffer] | None = None
     seed: Buffer | None = None
-    """Per-execute int64 scalar seed consumed by the stochastic acceptance
-    sampler (and, when enabled, the synthetic benchmarking sampler)."""
 
     temperature: Buffer | None = None
     top_k: Buffer | None = None
@@ -70,6 +68,21 @@ class UnifiedEagleLlama3Inputs(ModelInputs):
     """Per-batch sampling parameters consumed by the stochastic acceptance
     sampler. ``max_k`` and ``min_top_p`` are 0-d CPU scalars; the rest are
     ``[batch_size]`` tensors on the primary device."""
+
+    in_thinking_phase: Buffer | None = None
+    """Per-batch ``bool`` flag set by the pipeline for relaxed acceptance
+    during thinking. Not consumed by the unified_eagle_llama3 graph today,
+    but the field is required to satisfy the ``_UnifiedEagleInputs`` protocol
+    used by ``OverlapTextGenerationPipeline``."""
+    token_bitmasks: Buffer | None = None
+    """Grammar constraint bitmask for structured output.
+
+    Shape: [batch_size, num_speculative_tokens + 1, vocab_size].
+    Position i contains valid token mask given FSM state after consuming
+    draft[0:i-1]. Position num_speculative_tokens is for the bonus token.
+    None when structured output is not enabled (in this case an all-True
+    bitmask is passed to the graph).
+    """
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -98,6 +111,11 @@ class UnifiedEagleLlama3Inputs(ModelInputs):
                 self.top_p,
                 self.min_top_p,
             )
+        # token_bitmasks is only included when structured output is enabled.
+        # The graph is compiled with or without this input based on the
+        # enable_structured_output config flag.
+        if self.token_bitmasks is not None:
+            buffers += (self.token_bitmasks,)
         return buffers
 
 
@@ -158,9 +176,10 @@ class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
         self._seed_counter = 0
 
     def _next_seed(self) -> Buffer:
-        """Monotonically advancing int64 scalar seed, fresh per execute."""
         self._seed_counter += 1
-        return Buffer.from_numpy(np.array(self._seed_counter, dtype=np.int64))
+        return Buffer.from_numpy(
+            np.array([self._seed_counter], dtype=np.uint64)
+        ).to(self.devices[0])
 
     @classmethod
     def get_kv_params(
@@ -232,6 +251,7 @@ class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
                 target=target_config,
                 draft=draft_config,
                 speculative_config=self.pipeline_config.speculative,
+                enable_structured_output=self.pipeline_config.sampling.enable_structured_output,
             )
 
             nn_model = UnifiedEagleLlama3Module(unified_config)

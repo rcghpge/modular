@@ -47,17 +47,15 @@ class UnifiedMTPDeepseekV3Inputs(DeepseekV3Inputs):
     draft_tokens: Buffer | None = None
     draft_kv_blocks: list[Buffer] | None = None
     seed: Buffer | None = None
-    """Per-execute int64 scalar seed consumed by the stochastic acceptance
-    sampler (and, when enabled, the synthetic benchmarking sampler)."""
-
     temperature: Buffer | None = None
     top_k: Buffer | None = None
     max_k: Buffer | None = None
     top_p: Buffer | None = None
     min_top_p: Buffer | None = None
-    """Per-batch sampling parameters consumed by the stochastic acceptance
-    sampler. ``max_k`` and ``min_top_p`` are 0-d CPU scalars; the rest are
-    ``[batch_size]`` tensors on the primary device."""
+
+    in_thinking_phase: Buffer | None = None
+    """Per-batch ``bool`` flag marking rows currently inside a
+    ``<think>...</think>`` block; consumed by relaxed acceptance."""
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -69,20 +67,19 @@ class UnifiedMTPDeepseekV3Inputs(DeepseekV3Inputs):
         assert self.seed is not None
         buffers += (self.seed,)
         if self.draft_tokens is not None:
-            # Sampling params are only required when the spec-decode path
-            # is active (i.e. draft_tokens was bound). They mirror the
-            # graph's input signature exactly in that case.
             assert self.temperature is not None
             assert self.top_k is not None
             assert self.max_k is not None
             assert self.top_p is not None
             assert self.min_top_p is not None
+            assert self.in_thinking_phase is not None
             buffers += (
                 self.temperature,
                 self.top_k,
                 self.max_k,
                 self.top_p,
                 self.min_top_p,
+                self.in_thinking_phase,
             )
         return buffers
 
@@ -94,12 +91,6 @@ class UnifiedMTPDeepseekV3Model(DeepseekV3Model):
         kwargs["return_logits"] = ReturnLogits.VARIABLE
         kwargs["return_hidden_states"] = ReturnHiddenStates.ALL_NORMALIZED
         super().__init__(*args, **kwargs)
-        self._seed_counter = 0
-
-    def _next_seed(self) -> Buffer:
-        """Monotonically advancing int64 scalar seed, fresh per execute."""
-        self._seed_counter += 1
-        return Buffer.from_numpy(np.array(self._seed_counter, dtype=np.int64))
 
     @override
     def load_model(self, session: InferenceSession) -> Model:
@@ -314,6 +305,7 @@ class UnifiedMTPDeepseekV3Model(DeepseekV3Model):
                 max_k = next(variadic_args_iter).tensor
                 top_p = next(variadic_args_iter).tensor
                 min_top_p = next(variadic_args_iter).tensor
+                in_thinking_phase = next(variadic_args_iter).tensor
 
                 outputs = nn_model(
                     tokens=tokens.tensor,
@@ -331,6 +323,7 @@ class UnifiedMTPDeepseekV3Model(DeepseekV3Model):
                     max_k=max_k,
                     top_p=top_p,
                     min_top_p=min_top_p,
+                    in_thinking_phase=in_thinking_phase,
                     ep_inputs=target_ep_inputs,
                     draft_kv_collections=draft_kv_collections,
                 )
@@ -372,6 +365,10 @@ class UnifiedMTPDeepseekV3Model(DeepseekV3Model):
             self, replica_batches, kv_cache_inputs, return_n_logits
         )
 
+        # The overlap pipeline assigns ``seed`` and the rest of the per-batch
+        # sampling buffers (temperature/top_k/top_p/max_k/min_top_p) on the
+        # returned inputs *after* this call returns — see
+        # ``OverlapTextGenerationPipeline._run_forward``.
         return UnifiedMTPDeepseekV3Inputs(
             tokens=base.tokens,
             input_row_offsets=base.input_row_offsets,
@@ -384,7 +381,6 @@ class UnifiedMTPDeepseekV3Model(DeepseekV3Model):
             ep_inputs=base.ep_inputs,
             draft_tokens=draft_tokens,
             draft_kv_blocks=draft_kv_cache_buffers,
-            seed=self._next_seed(),
         )
 
     def prepare_next_token_inputs(

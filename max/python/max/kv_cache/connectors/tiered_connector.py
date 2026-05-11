@@ -25,16 +25,18 @@ import logging
 from collections.abc import Sequence
 from concurrent.futures import Future, wait
 
-import numpy as np
-from max.driver import Device
+from max.driver import Buffer, Device
 from max.dtype import DType
 from max.interfaces import RequestID, TextGenerationContext
 from max.kv_cache.memory_tier import MemoryTier
-from max.nn.kv_cache import KVCacheBuffer, KVCacheParams
+from max.nn.kv_cache import KVCacheParams
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.profiler import traced
 
 from ..paged_kv_cache.block_copy_engine import BlockOffloadEngine
+from ..paged_kv_cache.block_manager import (
+    _resolve_only_use_kv_connector_last_level_cache,
+)
 from ..paged_kv_cache.block_pool import BlockPool
 from ..paged_kv_cache.block_utils import KVCacheBlock
 from .disk_tier import DiskTier
@@ -56,7 +58,7 @@ class TieredConnector:
         self,
         params: KVCacheParams,
         devices: Sequence[Device],
-        device_buffer: KVCacheBuffer,
+        device_buffers: list[Buffer],
         total_num_host_blocks: int,
         disk_cache_dir: str,
         max_disk_size_gb: float,
@@ -73,13 +75,16 @@ class TieredConnector:
         self._block_size = params.page_size
         self._total_num_host_blocks = total_num_host_blocks
 
-        shape_per_block = params.shape_per_block
-        dtype = params.dtype
-
         self._block_copy_engine = BlockOffloadEngine(
-            total_num_host_blocks, device_buffer
+            total_num_host_blocks, device_buffers
         )
         self._host_buffer = self._block_copy_engine.host_buffer
+
+        if self._host_buffer.dtype != DType.uint8:
+            raise ValueError("TieredConnector requires uint8 host buffer")
+        if len(self._host_buffer.shape) != 2:
+            raise ValueError("TieredConnector requires 2D host buffer")
+        self._block_disk_bytes = self._host_buffer.shape[1]
 
         self._host_block_pool = BlockPool(
             MemoryTier.MEMORY_TIER_CPU,
@@ -89,30 +94,12 @@ class TieredConnector:
         )
 
         # -- Disk tier --
-
-        block_nbytes = int(np.prod(shape_per_block) * dtype.size_in_bytes)
-        has_scales = device_buffer.scales is not None
-        scale_block_nbytes = 0
-        if has_scales and params.kvcache_quant_config is not None:
-            scale_block_nbytes = int(
-                np.prod(params.shape_per_scale_block)
-                * params.kvcache_quant_config.scale_dtype.size_in_bytes
-            )
-
         self._disk_tier = DiskTier(
             cache_dir=disk_cache_dir,
-            block_nbytes=block_nbytes,
-            num_devices=len(devices),
+            block_nbytes=self._block_disk_bytes,
             max_disk_size_bytes=int(max_disk_size_gb * GiB),
-            has_scales=has_scales,
-            scale_block_nbytes=scale_block_nbytes,
             use_direct_io=use_direct_io,
         )
-
-        # Per-block size on disk (all TP shards)
-        self._block_disk_bytes = block_nbytes * len(devices)
-        if has_scales:
-            self._block_disk_bytes += scale_block_nbytes * len(devices)
 
         logger.info(
             "TieredConnector initialized: "
@@ -139,6 +126,12 @@ class TieredConnector:
         self._d2h_blocks_copied: int = 0
         self._disk_blocks_written: int = 0
         self._disk_blocks_read: int = 0
+
+        # Whether to only use the KVConnector last level cache.
+        # When this is set, cache hits will only be served from the disk tier.
+        self._only_use_kv_connector_last_level_cache = (
+            _resolve_only_use_kv_connector_last_level_cache()
+        )
 
     @property
     def name(self) -> str:
@@ -177,7 +170,11 @@ class TieredConnector:
         read_futures: list[tuple[Future[None], int]] = []
 
         for block_hash in block_hashes:
-            if block_hash in host_cache:
+            # Skip the host tier if env var is set
+            if (
+                not self._only_use_kv_connector_last_level_cache
+                and block_hash in host_cache
+            ):
                 # CPU hit
                 host_block = host_cache[block_hash]
                 self._host_block_pool.touch(host_block)
@@ -192,27 +189,16 @@ class TieredConnector:
                 host_block, _ = self._host_block_pool.alloc_block()
 
                 # Use uint8 view to avoid bfloat16 numpy incompatibility
-                dest = [
-                    ht.view(DType.uint8).to_numpy()[host_block.bid]
-                    for ht in self._host_buffer.values
-                ]
-                scale_dest = (
-                    [
-                        st.view(DType.uint8).to_numpy()[host_block.bid]
-                        for st in self._host_buffer.scales
-                    ]
-                    if self._host_buffer.scales is not None
-                    else None
-                )
-                future = self._disk_tier.read_block_async(
-                    block_hash, dest, scale_dest
-                )
+                assert self._host_buffer.dtype == DType.uint8
+                dest = self._host_buffer.to_numpy()[host_block.bid]
+                future = self._disk_tier.read_block_async(block_hash, dest)
                 read_futures.append((future, block_hash))
 
                 # Commit to prefix cache (data will be valid before load())
-                self._host_block_pool.commit_into_prefix_cache(
-                    block_hash, host_block
-                )
+                if block_hash not in host_cache:
+                    self._host_block_pool.commit_into_prefix_cache(
+                        block_hash, host_block
+                    )
                 hits.append((host_block, block_hash))
                 self._disk_blocks_read += 1
 
@@ -312,21 +298,8 @@ class TieredConnector:
         for bid, block_hash, host_block in self._pending_disk_writes:
             # Zero-copy: pass numpy view directly. Safe because
             # ref_cnt=1 prevents the block from being evicted.
-            src = [
-                ht.view(DType.uint8).to_numpy()[bid]
-                for ht in self._host_buffer.values
-            ]
-            scale_src = (
-                [
-                    st.view(DType.uint8).to_numpy()[bid]
-                    for st in self._host_buffer.scales
-                ]
-                if self._host_buffer.scales is not None
-                else None
-            )
-            future = self._disk_tier.write_block_async(
-                block_hash, src, scale_src
-            )
+            src = self._host_buffer.to_numpy()[bid]
+            future = self._disk_tier.write_block_async(block_hash, src)
             if future is not None:
                 self._write_locked_blocks.append((future, host_block))
             else:

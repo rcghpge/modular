@@ -14,6 +14,7 @@
 
 # Run: bazel test max/kernels/benchmarks/autotune:autotune_tests
 
+import ctypes
 import json
 import os
 import string
@@ -82,7 +83,7 @@ def _invoke_cli(
             )
 
 
-@pytest.mark.xdist_group("kbench_e2e")
+@pytest.mark.shard_group("kbench_e2e")
 def test_kbench() -> None:
     _invoke_cli(
         kbench_cli,
@@ -162,7 +163,7 @@ def test_kbench_cache() -> None:
     )
 
 
-@pytest.mark.xdist_group("kbench_e2e")
+@pytest.mark.shard_group("kbench_e2e")
 def test_kplot() -> None:
     _invoke_cli(
         kplot_cli,
@@ -232,7 +233,7 @@ def test_resolve_ytext_unit(
     assert base_unit == expected_base
 
 
-@pytest.mark.xdist_group("kbench_e2e")
+@pytest.mark.shard_group("kbench_e2e")
 def test_kprofile() -> None:
     _invoke_cli(
         kprofile_cli,
@@ -632,6 +633,42 @@ def test_build_shared_lib(tmp_path: Path) -> None:
     assert "benchmark_entry" in content
 
 
+def test_shared_lib_dlopen_resolves_sanitizer_runtime(tmp_path: Path) -> None:
+    """Unit-level regression guard for `kbench_model._maybe_preload_libubsan`
+    (MOTO-1576).
+
+    The end-to-end behavior — kbench compiling a .so, dlopen-ing it via
+    `_SharedLibExecutor`, and running it under UBSan — is already covered
+    by `test_shared_lib_*_recovery` and `test_kbench@kbench_e2e`. This test
+    is narrower: it exercises the loader-side preload helper directly so a
+    refactor that breaks the helper or the BUILD.bazel env-var wiring fails
+    a small, targeted test rather than a large end-to-end one.
+
+    Historically this scenario failed with `undefined symbol:
+    __ubsan_handle_*_abort` because libKGENCompilerRTShared.so leaves those
+    references unresolved (`-Wl,-z,undefs`) and Python isn't UBSan-
+    instrumented, so the process had no handlers. The preload pulls
+    libubsan into the global symbol namespace before dlopen, so the
+    handlers resolve against it.
+    """
+    from kbench_model import _maybe_preload_libubsan
+
+    spec = _make_spec_instance({"dtype": "DType.float16"}, {"x": 0})
+    result = spec.build_shared_lib(output_dir=tmp_path, build_opts=[])
+    assert result.return_code == os.EX_OK, result.stderr
+    assert result.path is not None and result.path.exists()
+
+    # The preload is a no-op outside `--config=ubsan` (no
+    # KBENCH_LIBUBSAN_PATH env var is set), so this test passes equally
+    # under any build config.
+    _maybe_preload_libubsan()
+    lib = ctypes.CDLL(str(result.path))
+    lib.benchmark_entry.restype = ctypes.c_int32
+    # Actually invoke the entry point so the test exercises preload →
+    # dlopen → call. sample.mojo's main returns 0 on success.
+    assert lib.benchmark_entry() == 0
+
+
 def test_scheduler_output_dir_list_per_item(tmp_path: Path) -> None:
     """output_dir_list assigns sequential out_N/ within each base dir."""
     dir_a = tmp_path / "dirA"
@@ -774,6 +811,7 @@ def test_group_by_binary_hash() -> None:
 # --- Shared-lib failure / recovery tests ---
 
 
+@pytest.mark.unique_shard
 def test_shared_lib_timeout_recovery(tmp_path: Path) -> None:
     """Timed-out shared lib executions are killed; remaining items still run.
 
@@ -819,6 +857,7 @@ def test_shared_lib_timeout_recovery(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.unique_shard
 def test_shared_lib_crash_recovery(tmp_path: Path) -> None:
     """Crashed benchmarks don't prevent subsequent items from running.
 

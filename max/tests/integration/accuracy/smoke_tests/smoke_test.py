@@ -41,9 +41,7 @@ from pathlib import Path
 from pprint import pformat
 
 import click
-from inference_server_harness import start_server
-from requests.structures import CaseInsensitiveDict
-from smoke_tests.eval_runner import (
+from eval_runner import (
     TEXT_TASK,
     VISION_TASK,
     build_eval_summary,
@@ -57,6 +55,8 @@ from smoke_tests.eval_runner import (
     write_github_output,
     write_results,
 )
+from inference_server_harness import start_server
+from requests.structures import CaseInsensitiveDict
 
 URL = "http://127.0.0.1:8000/v1/chat/completions"
 
@@ -75,9 +75,6 @@ MODEL_ALIASES = CaseInsensitiveDict({
     "meta-llama/Llama-3.1-8B-Instruct__modulev3": {
         "max_serve_args": "--prefer-module-v3",
     },
-    "meta-llama/Llama-3.2-1B-Instruct__modulev3": {
-        "max_serve_args": "--prefer-module-v3",
-    },
     "unsloth/gpt-oss-20b-BF16__modulev3": {
         "max_serve_args": "--prefer-module-v3",
     },
@@ -87,8 +84,9 @@ MODEL_ALIASES = CaseInsensitiveDict({
     "microsoft/phi-4__modulev3": {
         "max_serve_args": "--prefer-module-v3",
     },
-    "google/gemma-3-4b-it__modulev3": {
-        "max_serve_args": "--prefer-module-v3",
+    "google/gemma-3-27b-it__modulev3": {
+        # TODO(MXF-332): Investigate extra memory usage in multi-GPU ModuleV3.
+        "max_serve_args": "--prefer-module-v3 --device-memory-utilization 0.7",
     },
     "nvidia/DeepSeek-V3.1-NVFP4__fp8kv": {
         "max_serve_args": "--kv-cache-format float8_e4m3fn",
@@ -131,9 +129,51 @@ MODEL_ALIASES = CaseInsensitiveDict({
             "--num-speculative-tokens 3 "
             "--kv-cache-format float8_e4m3fn "
             "--device-memory-utilization 0.75 "
+            "--max-batch-input-tokens 4096"
+        ),
+    },
+    "meta-llama/Llama-3.1-8B-Instruct__local_kvconnector": {
+        "max_serve_args": "--kv-connector local",
+    },
+    "meta-llama/Llama-3.1-8B-Instruct__eagle_local_kvconnector": {
+        "max_serve_args": (
+            "--draft-model-path atomicapple0/EAGLE-LLaMA3.1-Instruct-8B "
+            "--devices gpu:0 "
+            "--speculative-method eagle "
+            "--kv-connector local"
+        )
+    },
+    "meta-llama/Llama-3.1-8B-Instruct__tiered_kvconnector": {
+        "max_serve_args": "--kv-connector tiered",
+    },
+    "austinpowers/Kimi-K2.5-NVFP4-DeepseekV3__local_kvconnector_tpep": {
+        "max_serve_args": (
+            "--data-parallel-degree 1 "
+            "--kv-cache-format float8_e4m3fn "
+            "--device-memory-utilization 0.75 "
             "--max-batch-input-tokens 4096 "
-            "--max-length 163840 "
-            "--max-num-steps 1"
+            "--kv-connector local"
+        ),
+    },
+    "austinpowers/Kimi-K2.5-NVFP4-DeepseekV3__tiered_kvconnector_tpep": {
+        "max_serve_args": (
+            "--data-parallel-degree 1 "
+            "--kv-cache-format float8_e4m3fn "
+            "--device-memory-utilization 0.75 "
+            "--max-batch-input-tokens 4096 "
+            "--kv-connector tiered"
+        ),
+    },
+    "austinpowers/Kimi-K2.5-NVFP4-DeepseekV3__eagle_tiered_kvconnector_tpep": {
+        "max_serve_args": (
+            "--data-parallel-degree 1 "
+            "--draft-model-path nvidia/Kimi-K2.5-Thinking-Eagle3 "
+            "--speculative-method eagle "
+            "--num-speculative-tokens 3 "
+            "--kv-cache-format float8_e4m3fn "
+            "--device-memory-utilization 0.75 "
+            "--max-batch-input-tokens 4096 "
+            "--kv-connector tiered"
         ),
     },
 })
@@ -145,7 +185,14 @@ def is_vision_model(model: str) -> bool:
     """Check if the model supports vision tasks."""
     model = model.casefold()
     if any(
-        kw in model for kw in ("no_vision", "__eagle", "__mtp", "gemma-3-1b")
+        kw in model
+        for kw in (
+            "no_vision",
+            "__eagle",
+            "__mtp",
+            "_kvconnector",
+            "gemma-3-1b",
+        )
     ):
         return False
     return any(
@@ -227,6 +274,11 @@ def get_server_cmd(
         MAX += f" --devices gpu:{','.join(str(i) for i in range(gpu_count))}"
         VLLM += f" --tensor-parallel-size={gpu_count}"
         SGLANG += f" --tp-size={gpu_count}"
+
+    # Force MAX to rely solely on the KVConnector for prefix cache hits to test
+    # cpu/disk KV offload code paths.
+    if framework in ("max", "max-ci") and "--kv-connector" in serve_extra_args:
+        os.environ["MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE"] = "1"
 
     if _inside_bazel():
         assert framework == "max-ci", "bazel invocation only supports max-ci"

@@ -41,16 +41,18 @@ def test_split_k_reduce_rank3[
         N,
     )
 
-    var c_host = alloc[Scalar[c_type]](M * N)
-    var c_host_ref = alloc[Scalar[c_type]](M * N)
+    var c_host = ctx.enqueue_create_host_buffer[c_type](M * N)
+    var c_host_ref = ctx.enqueue_create_host_buffer[c_type](M * N)
 
     # Random buffer for host computation.
-    var epilogue_data_host = alloc[Scalar[c_type]](M * N)
-    rand[c_type](epilogue_data_host, M * N)
+    var epilogue_data_host = ctx.enqueue_create_host_buffer[c_type](M * N)
+    rand[c_type](epilogue_data_host.unsafe_ptr(), M * N)
 
     var work_space_size = num_partitions * M * N
-    var work_space_host = alloc[Scalar[work_space_type]](work_space_size)
-    rand[work_space_type](work_space_host, work_space_size)
+    var work_space_host = ctx.enqueue_create_host_buffer[work_space_type](
+        work_space_size
+    )
+    rand[work_space_type](work_space_host.unsafe_ptr(), work_space_size)
 
     # Naive host reduction. The accumulation is in FP32 since CPU may not have
     # native BF16 instructions.
@@ -101,6 +103,7 @@ def test_split_k_reduce_rank3[
     split_k_reduce[elementwise_lambda_fn=epilogue_fn](c, work_space, ctx)
 
     ctx.enqueue_copy(c_host, c_device)
+    ctx.synchronize()
 
     comptime rtol = 1e-4 if c_type == DType.float32 else 1e-2
     for i in range(M * N):
@@ -112,11 +115,6 @@ def test_split_k_reduce_rank3[
                 abs((c_host[i] - c_host_ref[i]) / c_host_ref[i]),
             )
         assert_almost_equal(c_host[i], c_host_ref[i], rtol=rtol)
-
-    c_host.free()
-    c_host_ref.free()
-    epilogue_data_host.free()
-    work_space_host.free()
 
 
 def main() raises:

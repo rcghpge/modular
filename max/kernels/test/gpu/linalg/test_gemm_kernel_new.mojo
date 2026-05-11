@@ -52,19 +52,26 @@ def gemm_kernel[
     b_dtype: DType,
     BLayoutType: TensorLayout,
     NUM_THREADS: Int,
-    BM: Int where BM > -1,
-    BN: Int where BN > -1,
-    BK: Int where BK > -1,
-    WM: Int where WM > -1,
-    WN: Int where WN > -1,
-    TM: Int where TM > -1,
-    TN: Int where TN > -1,
+    BM: Int,
+    BN: Int,
+    BK: Int,
+    WM: Int,
+    WN: Int,
+    TM: Int,
+    TN: Int,
 ](
     mat_c: TileTensor[c_dtype, CLayoutType, MutExternalOrigin],
     mat_a: TileTensor[a_dtype, ALayoutType, ImmutExternalOrigin],
     mat_b: TileTensor[b_dtype, BLayoutType, ImmutExternalOrigin],
 ) where (
-    mat_a.rank == 2
+    BM > -1
+    and BN > -1
+    and BK > -1
+    and WM > -1
+    and WN > -1
+    and TM > -1
+    and TN > -1
+    and mat_a.rank == 2
     and mat_b.rank == 2
     and mat_c.rank == 2
     and mat_a.all_dims_known
@@ -163,10 +170,10 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
     comptime N = 1024
     comptime K = 128
 
-    var a_host = alloc[Float32](M * K)
-    var b_host = alloc[Float32](K * N)
-    var c_host = alloc[Float32](M * N)
-    var c_host_ref = alloc[Float32](M * N)
+    var a_host = ctx.enqueue_create_host_buffer[DType.float32](M * K)
+    var b_host = ctx.enqueue_create_host_buffer[DType.float32](K * N)
+    var c_host = ctx.enqueue_create_host_buffer[DType.float32](M * N)
+    var c_host_ref = ctx.enqueue_create_host_buffer[DType.float32](M * N)
 
     for i in range(M * K):
         a_host[i] = Float32(i)
@@ -203,7 +210,7 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
         TN,
     ]
 
-    ctx.enqueue_function_experimental[kernel](
+    ctx.enqueue_function[kernel](
         mat_c,
         mat_a.as_immut(),
         mat_b.as_immut(),
@@ -227,7 +234,7 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
         BLOCK_DIM,
     ]
 
-    ctx.enqueue_function_experimental[gemm_naive](
+    ctx.enqueue_function[gemm_naive](
         c_tensor_ref,
         mat_a.as_immut(),
         mat_b.as_immut(),
@@ -256,7 +263,7 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
         @always_inline
         @parameter
         def run_func(ctx: DeviceContext) raises:
-            ctx.enqueue_function_experimental[kernel](
+            ctx.enqueue_function[kernel](
                 mat_c,
                 mat_a.as_immut(),
                 mat_b.as_immut(),
@@ -266,7 +273,7 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
 
         # Warmup
         for _i in range(nwarmup):
-            ctx.enqueue_function_experimental[kernel](
+            ctx.enqueue_function[kernel](
                 mat_c,
                 mat_a.as_immut(),
                 mat_b.as_immut(),
@@ -283,11 +290,6 @@ def test_gemm_kernel_dynamic(ctx: DeviceContext) raises:
     _ = c_device_ref
     _ = a_device
     _ = b_device
-
-    c_host.free()
-    c_host_ref.free()
-    a_host.free()
-    b_host.free()
 
 
 def test_gemm_kernel_minimal(ctx: DeviceContext) raises:
@@ -309,10 +311,10 @@ def test_gemm_kernel_minimal(ctx: DeviceContext) raises:
     comptime N = 64
     comptime K = 16
 
-    var a_host = alloc[Float32](M * K)
-    var b_host = alloc[Float32](K * N)
-    var c_host = alloc[Float32](M * N)
-    var c_host_ref = alloc[Float32](M * N)
+    var a_host = ctx.enqueue_create_host_buffer[DType.float32](M * K)
+    var b_host = ctx.enqueue_create_host_buffer[DType.float32](K * N)
+    var c_host = ctx.enqueue_create_host_buffer[DType.float32](M * N)
+    var c_host_ref = ctx.enqueue_create_host_buffer[DType.float32](M * N)
 
     # Initialize with sequential integers like the main test
     for i in range(M * K):
@@ -350,7 +352,7 @@ def test_gemm_kernel_minimal(ctx: DeviceContext) raises:
         TN,
     ]
 
-    ctx.enqueue_function_experimental[kernel](
+    ctx.enqueue_function[kernel](
         mat_c,
         mat_a.as_immut(),
         mat_b.as_immut(),
@@ -374,7 +376,7 @@ def test_gemm_kernel_minimal(ctx: DeviceContext) raises:
         BLOCK_DIM,
     ]
 
-    ctx.enqueue_function_experimental[gemm_naive](
+    ctx.enqueue_function[gemm_naive](
         c_tensor_ref,
         mat_a.as_immut(),
         mat_b.as_immut(),
@@ -462,11 +464,6 @@ def test_gemm_kernel_minimal(ctx: DeviceContext) raises:
     _ = c_device_ref
     _ = a_device
     _ = b_device
-
-    c_host.free()
-    c_host_ref.free()
-    a_host.free()
-    b_host.free()
 
 
 def main() raises:

@@ -735,7 +735,7 @@ def sm100_blockscaled_mxfp8_cta_pair[
         cta_group=cta_group,
     ]
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function[kernel](
         a_tma_op,
         b_tma_op,
         a_scales_tma_op,
@@ -802,13 +802,13 @@ def test_blockscaled_pair_cta_mxfp8[
         k, REF_BLOCK_SCALE
     )
 
-    var a_scales_host_ref_ptr = alloc[Scalar[ref_scales_type]](
+    var a_scales_host_ref_ptr = ctx.enqueue_create_host_buffer[ref_scales_type](
         ref_a_scales_size
     )
     var a_scales_host_ref = TileTensor(
         a_scales_host_ref_ptr, row_major(ref_a_scales_shape)
     )
-    var b_scales_host_ref_ptr = alloc[Scalar[ref_scales_type]](
+    var b_scales_host_ref_ptr = ctx.enqueue_create_host_buffer[ref_scales_type](
         ref_b_scales_size
     )
     var b_scales_host_ref = TileTensor(
@@ -905,9 +905,13 @@ def test_blockscaled_pair_cta_mxfp8[
         * SF_ATOM_K
     )
 
-    var a_scales_host_ptr = alloc[Scalar[scales_type]](a_scales_total)
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        a_scales_total
+    )
     var a_scales_host = TileTensor(a_scales_host_ptr, row_major(a_scales_shape))
-    var b_scales_host_ptr = alloc[Scalar[scales_type]](b_scales_total)
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[scales_type](
+        b_scales_total
+    )
     var b_scales_host = TileTensor(b_scales_host_ptr, row_major(b_scales_shape))
 
     var a_scales_device = ctx.enqueue_create_buffer[scales_type](a_scales_total)
@@ -917,10 +921,10 @@ def test_blockscaled_pair_cta_mxfp8[
     var b_size = N * k
     var c_size = M * N
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var c_host_ptr = alloc[Scalar[c_type]](c_size)
-    var c_host_ref_ptr = alloc[Scalar[c_type]](c_size)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[b_type](b_size)
+    var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
+    var c_host_ref_ptr = ctx.enqueue_create_host_buffer[c_type](c_size)
 
     var a_device = ctx.enqueue_create_buffer[a_type](a_size)
     var b_device = ctx.enqueue_create_buffer[b_type](b_size)
@@ -952,8 +956,8 @@ def test_blockscaled_pair_cta_mxfp8[
             for k in range(K):
                 b_host_tt[n, k] = Float32(1 if n == k else 0).cast[b_type]()
     else:
-        rand(a_host_ptr, a_size)
-        rand(b_host_ptr, b_size)
+        rand(a_host_ptr.unsafe_ptr(), a_size)
+        rand(b_host_ptr.unsafe_ptr(), b_size)
 
     # Move operands to the Device
     ctx.enqueue_copy(a_device, a_host_ptr)
@@ -1001,22 +1005,12 @@ def test_blockscaled_pair_cta_mxfp8[
     ctx.synchronize()
 
     assert_almost_equal(
-        c_host_ptr,
-        c_host_ref_ptr,
+        c_host_ptr.unsafe_ptr(),
+        c_host_ref_ptr.unsafe_ptr(),
         c_size,
         atol=1e-3,
         rtol=1e-4,
     )
-
-    # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
-    a_scales_host_ref_ptr.free()
-    b_scales_host_ref_ptr.free()
 
 
 def main() raises:

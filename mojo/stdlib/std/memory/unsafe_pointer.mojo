@@ -113,18 +113,6 @@ struct _UnsafePointerNicheStorage[
         )
 
 
-@always_inline("nodebug")
-@doc_hidden
-def pointer_offset[
-    T: AnyType, origin: Origin, address_space: AddressSpace, //
-](
-    pointer: OptionalReg[UnsafePointer[T, origin, address_space=address_space]],
-    idx: Some[Indexer],
-) -> type_of(pointer):
-    var offset = UnsafePointer(to=pointer).bitcast[type_of(pointer).T]()[] + idx
-    return UnsafePointer(to=offset).bitcast[type_of(pointer)]()[]
-
-
 # ===----------------------------------------------------------------------=== #
 # unsafe_cast
 # ===----------------------------------------------------------------------=== #
@@ -230,7 +218,7 @@ def alloc[
     ```
     """
     comptime size_of_t = size_of[type]()
-    comptime type_name = reflect[type]().name()
+    comptime type_name = reflect[type].name()
     comptime assert size_of_t > 0, "size must be greater than zero"
     debug_assert(
         count >= 0,
@@ -394,9 +382,9 @@ struct UnsafePointer[
       Use these to manage lifecycles when working with uninitialized memory.
 
     For more information see [Unsafe
-    pointers](/mojo/manual/pointers/unsafe-pointers) in the Mojo Manual. For a
+    pointers](/docs/manual/pointers/unsafe-pointers) in the Mojo Manual. For a
     comparison with other pointer types, see [Intro to
-    pointers](/mojo/manual/pointers/).
+    pointers](/docs/manual/pointers/).
 
     Examples:
 
@@ -514,25 +502,6 @@ struct UnsafePointer[
     # ===-------------------------------------------------------------------===#
     # Life cycle methods
     # ===-------------------------------------------------------------------===#
-
-    @always_inline("nodebug")
-    @deprecated(
-        "UnsafePointer() no longer constructs a null pointer. To model a"
-        " null pointer use `Optional[UnsafePointer[...]]`, which stores"
-        " the null address as its niche value and lets you check for absence"
-        " with `== None` / `!= None`. If you need a non-null sentinel for"
-        " delayed initialization (e.g. a buffer that will be allocated later),"
-        " use `UnsafePointer.unsafe_dangling()` instead."
-    )
-    def __init__(out self):
-        """Create a null pointer.
-
-        Deprecated: `UnsafePointer` is non-null by design. To model a
-        nullable pointer use `Optional[UnsafePointer[...]]`. If you need a
-        non-null sentinel for delayed initialization, use
-        `UnsafePointer.unsafe_dangling()` instead.
-        """
-        self = Self(_unsafe_null=())
 
     @always_inline("nodebug")
     @doc_hidden
@@ -1108,7 +1077,7 @@ struct UnsafePointer[
         """
         return String(
             "UnsafePointer[",
-            reflect[Self.type]().name(),
+            reflect[Self.type].name(),
             ", mut=",
             Self.mut,
             ", address_space=",

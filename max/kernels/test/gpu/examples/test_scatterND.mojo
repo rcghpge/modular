@@ -188,7 +188,10 @@ def scatter_nd[
 
     # Buffer below will store both input_strides and data dimensions.
     # (combine both in one to reduce number of memcpy from H->D).
-    var ptr = alloc[Int64](last_shape_of_indices * 2)
+    var ptr = ctx.enqueue_create_host_buffer[DType.int64](
+        last_shape_of_indices * 2
+    )
+    ctx.synchronize()
 
     # input_strides
     # e.g., for a shape of 2, 3, 4, 5
@@ -229,7 +232,7 @@ def scatter_nd[
     var num_updates_elements = count_copy
     comptime kernel = scatter_nd_gpu[dtype=dtype, indices_type=indices_type]
 
-    ctx.enqueue_function_experimental[kernel](
+    ctx.enqueue_function[kernel](
         output_device,
         indices_device,
         element_counts_and_input_dims_device,
@@ -249,8 +252,6 @@ def scatter_nd[
     _ = element_counts_and_input_dims_device
     _ = updates_device
     _ = indices_device
-
-    ptr.free()
 
 
 def linear_fill[

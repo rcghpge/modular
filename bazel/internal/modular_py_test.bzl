@@ -25,10 +25,16 @@ def _get_resource_tags(use_resource_tags, name):
     return tags
 
 def _get_manual_srcs(tags, per_test_tags, srcs):
-    if "manual" in tags:
+    if "manual" in tags or "postsubmit" in tags:
         return srcs
 
-    return [src for src in srcs if "manual" in per_test_tags.get(src, [])]
+    result = []
+    for src in srcs:
+        src_tags = per_test_tags.get(src, [])
+        if "manual" in src_tags or "postsubmit" in src_tags:
+            result.append(src)
+
+    return result
 
 def modular_py_test(
         name,
@@ -49,6 +55,8 @@ def modular_py_test(
         use_resource_tags = False,
         per_test_tags = {},
         test_name_prefix = "",
+        shard_count = None,
+        per_test_shard_count = {},
         **kwargs):
     """Creates a pytest based python test target.
 
@@ -71,6 +79,8 @@ def modular_py_test(
         use_resource_tags: If true, use pregenerated resource tags for the test.
         per_test_tags: A mapping of source files to extra tags to apply to that test file.
         test_name_prefix: Prefix added to per-src py_test target names (multi-source only).
+        shard_count: Forwarded to the underlying test target.
+        per_test_shard_count: Forwarded to the underlying test target for the specified source(s).
         **kwargs: Extra arguments passed through to py_test
     """
 
@@ -79,6 +89,9 @@ def modular_py_test(
 
     if len(set(per_test_tags.keys()) - set(srcs)) != 0:
         fail("keys specified in per_test_tags that are not source files: {}".format(set(per_test_tags.keys()) - set(srcs)))
+
+    if len(set(per_test_shard_count.keys()) - set(srcs)) != 0:
+        fail("keys specified in per_test_shard_count that are not source files: {}".format(set(per_test_shard_count.keys()) - set(srcs)))
 
     validate_gpu_tags(tags, target_compatible_with + gpu_constraints)
     toolchains = [
@@ -164,15 +177,11 @@ def modular_py_test(
     )
 
     if main:
-        kwargs |= {
-            "args": args,
-            "main": main,
-        }
+        final_args = args
+        final_main = main
     else:
-        kwargs |= {
-            "args": [native.package_name(), "-svv", "--color=yes", "--durations=3"] + args,
-            "main": "pytest_runner.py",
-        }
+        final_args = [native.package_name(), "-svv", "--color=yes", "--durations=3"] + args
+        final_main = "pytest_runner.py"
 
     manual_srcs = _get_manual_srcs(tags, per_test_tags, srcs)
     if manual_srcs:
@@ -195,19 +204,31 @@ def modular_py_test(
         )
 
     if len(test_srcs) > 1:
+        if shard_count:
+            fail("do not use shard_count when there are multiple tests, use per_test_shard_count")
+
         test_names = []
         for src in test_srcs:
+            n_shards = per_test_shard_count.get(src)
+
+            # If a custom main is used, it is responsible for sharding via
+            # TEST_SHARD_INDEX and TEST_TOTAL_SHARDS env vars.
+            use_shard_plugin = n_shards and not main
+            shard_args = ["-p", "pytest-shard"] if use_shard_plugin else []
             test_name = test_name_prefix + src.replace(".py", "")
             test_names.append(test_name)
             py_test(
                 name = test_name,
                 data = data + extra_data,
+                main = final_main,
+                args = final_args + shard_args,
                 toolchains = toolchains,
                 env = env_for_available_tools() | extra_env | env,
                 deps = deps + [
                     requirement("pytest"),
                     "@rules_python//python/runfiles",
-                ],
+                ] + (["//bazel/internal:pytest-shard"] if use_shard_plugin else []),
+                shard_count = n_shards,
                 srcs = [src] + non_test_srcs + ["//bazel/internal:pytest_runner"],
                 exec_properties = default_exec_properties | exec_properties,
                 target_compatible_with = gpu_constraints + target_compatible_with,
@@ -224,6 +245,13 @@ def modular_py_test(
     else:
         if per_test_tags:
             fail("Don't use `per_test_tags` if only one source file is specified, use `tags` directly.")
+        if per_test_shard_count:
+            fail("do not use per_test_shard_count with only one test, use shard_count")
+
+        # If a custom main is used, it is responsible for sharding via
+        # TEST_SHARD_INDEX and TEST_TOTAL_SHARDS env vars.
+        use_shard_plugin = shard_count and not main
+        shard_args = ["-p", "pytest-shard"] if use_shard_plugin else []
 
         # test_name_prefix intentionally doesn't apply here: single-source
         # collisions happen at the `name` arg, which callers pick themselves.
@@ -232,10 +260,13 @@ def modular_py_test(
             data = data + extra_data,
             toolchains = toolchains,
             env = env_for_available_tools() | extra_env | env,
+            main = final_main,
+            args = final_args + shard_args,
             deps = deps + [
                 requirement("pytest"),
                 "@rules_python//python/runfiles",
-            ],
+            ] + (["//bazel/internal:pytest-shard"] if use_shard_plugin else []),
+            shard_count = shard_count,
             srcs = srcs + ["//bazel/internal:pytest_runner"],
             exec_properties = default_exec_properties | exec_properties,
             target_compatible_with = gpu_constraints + target_compatible_with,

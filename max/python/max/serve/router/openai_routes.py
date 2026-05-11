@@ -18,6 +18,7 @@ import base64
 import json
 import logging
 import queue
+import re
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Sequence
@@ -33,6 +34,7 @@ import aiofiles
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from httpx import AsyncClient, HTTPStatusError
+from llguidance import LLMatcher
 from max.interfaces import (
     AudioGenerationRequest,
     GenerationStatus,
@@ -55,7 +57,8 @@ from max.interfaces import (
     VideoContentPart,
 )
 from max.pipelines.core.exceptions import InputError
-from max.pipelines.lib import PIPELINE_REGISTRY, PipelineConfig
+from max.pipelines.lib import PipelineConfig
+from max.pipelines.lib.tool_parsing import create as create_tool_parser
 from max.profiler import traced
 from max.serve.config import Settings
 from max.serve.parser import LlamaToolParser, ToolParser, parse_json_from_text
@@ -65,16 +68,16 @@ from max.serve.pipelines.llm import (
     TokenGeneratorPipeline,
 )
 from max.serve.schemas.openai import (
+    ChatCompletionLogprobs,
     ChatCompletionMessageToolCall,
-    ChatCompletionMessageToolCalls,
+    ChatCompletionMessageToolCallFunction,
+    ChatCompletionResponseChoice,
     ChatCompletionResponseMessage,
-    ChatCompletionStreamOptions,
+    ChatCompletionStreamResponseChoice,
     ChatCompletionStreamResponseDelta,
     ChatCompletionTokenLogprob,
-    ChatCompletionTool,
-    Choice,
-    Choice1,
-    Choice3,
+    CompletionLogprobs,
+    CompletionResponseChoice,
     CompletionUsage,
     CreateAudioGenerationRequest,
     CreateAudioGenerationResponse,
@@ -88,24 +91,39 @@ from max.serve.schemas.openai import (
     Embedding,
     Error,
     ErrorResponse,
-    Function1,
-    InputItem,
     ListModelsResponse,
     LoadLoraRequest,
-    Logprobs,
-    Logprobs2,
     Model,
-    PromptItem,
     PromptTokensDetails,
-    ResponseFormatJsonObject,
-    ResponseFormatJsonSchema,
-    ResponseFormatText,
     TopLogprob,
     UnloadLoraRequest,
-    Usage,
 )
 from max.serve.telemetry.metrics import METRICS
 from max.serve.telemetry.stopwatch import StopWatch
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceDeltaToolCall,
+    ChoiceDeltaToolCallFunction,
+)
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceLogprobs as ChunkChoiceLogprobs,
+)
+from openai.types.chat.chat_completion_function_tool_param import (
+    ChatCompletionFunctionToolParam,
+)
+from openai.types.chat.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCallUnion,
+)
+from openai.types.chat.chat_completion_stream_options_param import (
+    ChatCompletionStreamOptionsParam,
+)
+from openai.types.create_embedding_response import Usage as EmbeddingUsage
+from openai.types.shared_params import (
+    ResponseFormatJSONObject as ResponseFormatJsonObject,
+)
+from openai.types.shared_params import (
+    ResponseFormatJSONSchema as ResponseFormatJsonSchema,
+)
+from openai.types.shared_params import ResponseFormatText as ResponseFormatText
 from pydantic import AnyUrl, BaseModel, Field, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from starlette.datastructures import State
@@ -116,6 +134,9 @@ router = APIRouter(prefix="/v1")
 logger = logging.getLogger("max.serve")
 
 _CLIENT_DISCONNECTED_STATUS_CODE = 499
+
+# OpenAI spec: function names must be a-z, A-Z, 0-9, underscores, or hyphens.
+_VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class _ClientDisconnectedError(RuntimeError):
@@ -228,14 +249,16 @@ class OpenAIChatResponseGenerator(
     def __init__(
         self,
         pipeline: TokenGeneratorPipeline,
-        stream_options: ChatCompletionStreamOptions | None = None,
+        stream_options: ChatCompletionStreamOptionsParam | None = None,
         parser: ToolParser | None = None,
+        tool_use: bool = False,
     ) -> None:
         super().__init__(pipeline)
         self.stream_options = stream_options
         self.parser: ToolParser = (
             parser if parser is not None else LlamaToolParser()
         )
+        self.tool_use = tool_use
 
     async def stream(
         self, request: TextGenerationRequest
@@ -248,6 +271,12 @@ class OpenAIChatResponseGenerator(
         n_prompt_tokens = 0
         n_cached_prompt_tokens = 0
         status_code = 200
+        has_emitted_tool_calls = False
+
+        # Reset parser state for new streaming session
+        if self.tool_use:
+            self.parser.reset()
+
         try:
             async for chunk in self.pipeline.next_token_chunk(request):
                 self.logger.debug(
@@ -270,26 +299,75 @@ class OpenAIChatResponseGenerator(
                 # The choice index is set to 0.
                 # https://platform.openai.com/docs/api-reference/chat/object
 
-                # Process log probabilities for this chunk
+                # Process log probabilities for this chunk. The streaming
+                # ``Choice`` lives in the chunk module and uses its own
+                # ``ChoiceLogprobs`` class, so we re-validate against the
+                # streaming type here.
                 chunk_logprobs = _process_chat_log_probabilities([chunk])
-                # Only include logprobs if there's content
-                logprobs_response = (
-                    chunk_logprobs if chunk_logprobs.content else None
-                )
+                logprobs_response: ChunkChoiceLogprobs | None = None
+                if chunk_logprobs.content:
+                    logprobs_response = ChunkChoiceLogprobs.model_validate(
+                        chunk_logprobs.model_dump()
+                    )
+
+                # Handle streaming tool calls if enabled
+                merged_stream_content: str | None = None
+                tool_call_chunks: list[ChoiceDeltaToolCall] = []
+                if self.tool_use and chunk.decoded_tokens:
+                    tool_deltas = self.parser.parse_delta(chunk.decoded_tokens)
+                    if tool_deltas:
+                        stream_content_parts: list[str] = []
+                        for delta in tool_deltas:
+                            if delta.content is not None:
+                                stream_content_parts.append(delta.content)
+                            if delta.id or delta.name or delta.arguments:
+                                has_emitted_tool_calls = True
+                                tool_call_chunks.append(
+                                    ChoiceDeltaToolCall(
+                                        index=delta.index,
+                                        id=delta.id,
+                                        type="function" if delta.id else None,
+                                        function=ChoiceDeltaToolCallFunction(
+                                            name=delta.name,
+                                            arguments=delta.arguments,
+                                        )
+                                        if delta.name or delta.arguments
+                                        else None,
+                                    )
+                                )
+
+                        merged_stream_content = (
+                            "".join(stream_content_parts)
+                            if stream_content_parts
+                            else None
+                        )
 
                 if (
                     chunk.decoded_tokens is not None
                     or chunk.decoded_reasoning_tokens is not None
+                    or tool_call_chunks
+                    or merged_stream_content is not None
                 ):
+                    # Parsed streaming deltas may carry assistant text in
+                    # ``content`` separate from tool-call argument deltas.
+                    content = chunk.decoded_tokens
+                    if merged_stream_content is not None:
+                        content = merged_stream_content
+                    elif tool_call_chunks:
+                        content = None
+
                     choices = [
-                        Choice3(
+                        ChatCompletionStreamResponseChoice(
                             index=0,
                             delta=ChatCompletionStreamResponseDelta(
-                                content=chunk.decoded_tokens,
+                                content=content,
                                 function_call=None,
                                 role="assistant",
                                 refusal=None,
                                 reasoning=chunk.decoded_reasoning_tokens,
+                                tool_calls=tool_call_chunks
+                                if tool_call_chunks
+                                else None,
                             ),
                             logprobs=logprobs_response,
                             finish_reason=get_finish_reason_from_status(
@@ -299,15 +377,22 @@ class OpenAIChatResponseGenerator(
                     ]
                 else:
                     # If we do not have output tokens, we should guarantee we have a finish_reason.
+                    # If tool calls were emitted, use "tool_calls" as finish_reason
+                    finish_reason: Literal["stop", "length", "tool_calls"] = (
+                        get_finish_reason_from_status(
+                            chunk.status, allow_none=False
+                        )
+                    )
+                    if has_emitted_tool_calls and finish_reason == "stop":
+                        finish_reason = "tool_calls"
+
                     choices = [
-                        Choice3(
+                        ChatCompletionStreamResponseChoice(
                             index=0,
                             delta=ChatCompletionStreamResponseDelta(
                                 content="",
                             ),
-                            finish_reason=get_finish_reason_from_status(
-                                chunk.status, allow_none=False
-                            ),
+                            finish_reason=finish_reason,
                         )
                     ]
 
@@ -338,8 +423,8 @@ class OpenAIChatResponseGenerator(
             )
 
             # If `include_usage=True`, send a final chunk with usage statistics
-            if self.stream_options and self.stream_options.include_usage:
-                final_usage = Usage(
+            if self.stream_options and self.stream_options.get("include_usage"):
+                final_usage = CompletionUsage(
                     # TODO: (MODELS-1116) add reasoning token usage under completion_tokens_details
                     prompt_tokens=n_prompt_tokens,
                     completion_tokens=n_reasoning_tokens + n_tokens,
@@ -467,7 +552,7 @@ class OpenAIChatResponseGenerator(
                     completed_outputs[-1].status, allow_none=False
                 )
 
-            response_choices: list[Choice1] = []
+            response_choices: list[ChatCompletionResponseChoice] = []
             if tool_use and request.response_format is None:
                 try:
                     parsed = self.parser.parse_complete(response_message)
@@ -556,13 +641,13 @@ class OpenAIChatResponseGenerator(
     def _handle_text_response(
         self,
         response_message: str,
-        response_choices: list[Choice1],
+        response_choices: list[ChatCompletionResponseChoice],
         finish_reason: Literal["stop", "length"],
-        logprobs: Logprobs2 | None = None,
+        logprobs: ChatCompletionLogprobs | None = None,
     ) -> None:
         """Handle regular text response by appending to response_choices."""
         response_choices.append(
-            Choice1(
+            ChatCompletionResponseChoice(
                 index=0,
                 message=ChatCompletionResponseMessage(
                     content=response_message,
@@ -572,7 +657,8 @@ class OpenAIChatResponseGenerator(
                     refusal="",
                 ),
                 finish_reason=finish_reason,
-                logprobs=logprobs or Logprobs2(content=[], refusal=[]),
+                logprobs=logprobs
+                or ChatCompletionLogprobs(content=[], refusal=[]),
             )
         )
 
@@ -588,7 +674,7 @@ class OpenAIChatResponseGenerator(
             tool_call = ChatCompletionMessageToolCall(
                 id=f"call_{short_uuid}",
                 type="function",
-                function=Function1(
+                function=ChatCompletionMessageToolCallFunction(
                     name=function_name,
                     arguments=json.dumps(tool_data["parameters"]),
                 ),
@@ -598,34 +684,32 @@ class OpenAIChatResponseGenerator(
     def _tool_response_to_choices(
         self,
         parsed: ParsedToolResponse,
-        logprobs: Logprobs2 | None = None,
-    ) -> list[Choice1]:
-        """Translates a ParsedToolResponse to OpenAI Choice1 list."""
-        tool_calls_list = [
+        logprobs: ChatCompletionLogprobs | None = None,
+    ) -> list[ChatCompletionResponseChoice]:
+        """Translates a ParsedToolResponse to a list of chat completion choices."""
+        tool_calls_list: list[ChatCompletionMessageToolCallUnion] = [
             ChatCompletionMessageToolCall(
                 id=tc.id,
                 type="function",
-                function=Function1(name=tc.name, arguments=tc.arguments),
+                function=ChatCompletionMessageToolCallFunction(
+                    name=tc.name, arguments=tc.arguments
+                ),
             )
             for tc in parsed.tool_calls
         ]
-        tool_calls = (
-            ChatCompletionMessageToolCalls(root=tool_calls_list)
-            if tool_calls_list
-            else None
-        )
         return [
-            Choice1(
+            ChatCompletionResponseChoice(
                 index=0,
                 message=ChatCompletionResponseMessage(
                     content=parsed.content or "",
                     role="assistant",
-                    tool_calls=tool_calls,
+                    tool_calls=tool_calls_list or None,
                     function_call=None,
                     refusal="",
                 ),
                 finish_reason="tool_calls",
-                logprobs=logprobs or Logprobs2(content=[], refusal=[]),
+                logprobs=logprobs
+                or ChatCompletionLogprobs(content=[], refusal=[]),
             )
         ]
 
@@ -664,7 +748,9 @@ class OpenAIEmbeddingsResponseGenerator:
                 data=embeddings_data,
                 model=self.pipeline.model_name,
                 object="list",
-                usage=None,
+                # OpenAI requires usage; MAX doesn't yet track embedding token
+                # counts so report zeros until we wire that through.
+                usage=EmbeddingUsage(prompt_tokens=0, total_tokens=0),
             )
             return response
         finally:
@@ -711,40 +797,47 @@ async def openai_parse_chat_completion_request(
     image_refs: list[AnyUrl] = []
     video_refs: list[AnyUrl] = []
     for m in completion_request.messages:
-        if isinstance(m.root.content, list):
-            message_content: list[MessageContent] = []
-            for content_part in m.root.content:
-                if content_part.root.type == "image_url":
-                    image_refs.append(content_part.root.image_url.url)
+        # ``CreateChatCompletionRequest.messages`` carries OpenAI's
+        # ``ChatCompletionMessageParam`` TypedDicts (plus a MAX-specific
+        # ``video_url`` content part); access via dict keys.
+        content = m.get("content")
+        if isinstance(content, list):
+            # ``TextGenerationRequestMessage`` accepts plain dicts here and
+            # coerces them into ``MessageContent`` parts via a field
+            # validator, so we hand it a list of dicts when not wrapping.
+            message_content: list[MessageContent | dict[str, Any]] = []
+            for content_part in content:
+                part_type = content_part.get("type")
+                if part_type == "image_url":
+                    image_refs.append(AnyUrl(content_part["image_url"]["url"]))
                     if wrap_content:
                         message_content.append(ImageContentPart())
                     else:
-                        message_content.append(content_part.model_dump())
-                elif content_part.root.type == "video_url":
-                    video_url = getattr(content_part.root, "video_url", None)
-                    if video_url is not None:
-                        video_refs.append(video_url.url)
+                        message_content.append(dict(content_part))
+                elif part_type == "video_url":
+                    video_refs.append(AnyUrl(content_part["video_url"]["url"]))
                     if wrap_content:
                         message_content.append(VideoContentPart())
                     else:
-                        message_content.append(content_part.model_dump())
-                elif content_part.root.type == "text":
+                        message_content.append(dict(content_part))
+                elif part_type == "text":
                     if wrap_content:
                         message_content.append(
-                            TextContentPart(text=content_part.root.text)
+                            TextContentPart(text=content_part["text"])
                         )
                     else:
-                        message_content.append(content_part.model_dump())
+                        message_content.append(dict(content_part))
             messages.append(
                 TextGenerationRequestMessage(
-                    role=m.root.role, content=message_content
+                    role=m["role"],
+                    content=cast(list[MessageContent], message_content),
                 )
             )
         else:
             messages.append(
                 TextGenerationRequestMessage(
-                    role=m.root.role,
-                    content=m.root.content if m.root.content else "",
+                    role=m["role"],
+                    content=content if content else "",
                 )
             )
 
@@ -775,7 +868,7 @@ async def resolve_image_from_url(
             except HTTPStatusError as e:
                 raise ValueError(
                     f"Failed to fetch image: HTTP {e.response.status_code}"
-                ) from e
+                ) from None
             images_bytes = await response.aread()
             logger.debug(
                 "ResolvedImageUrl: %s -> %d bytes", image_ref, len(images_bytes)
@@ -921,7 +1014,7 @@ async def openai_create_chat_completion(
         tools = None
         if (
             completion_request.tool_choice is None
-            or completion_request.tool_choice.root != "none"
+            or completion_request.tool_choice != "none"
         ):
             tools = _convert_chat_completion_tools_to_token_generator_tools(
                 completion_request.tools
@@ -936,8 +1029,12 @@ async def openai_create_chat_completion(
             stream_options = completion_request.stream_options
 
         parser = get_tool_parser(request.app)
+        tool_use = tools is not None
         response_generator = OpenAIChatResponseGenerator(
-            pipeline, stream_options=stream_options, parser=parser
+            pipeline,
+            stream_options=stream_options,
+            parser=parser,
+            tool_use=tool_use,
         )
         sampling_params = SamplingParams.from_input_and_generation_config(
             SamplingParamsInput(
@@ -969,10 +1066,27 @@ async def openai_create_chat_completion(
                 else 1
             )
 
+        if (
+            logprobs_count != 0
+            and request.app.state.pipeline_config.runtime.enable_overlap_scheduler
+        ):
+            raise InputError(
+                "Log probabilities are not supported with the overlap"
+                " scheduler. Start the server with"
+                " --no-enable-overlap-scheduler to use logprobs."
+            )
+
+        # When the orchestrator has already tokenized the prompt for
+        # KV cache-aware routing, pass the token IDs directly so MAX Serve
+        # skips re-tokenization. ``messages`` and ``prompt`` are mutually
+        # exclusive on TextGenerationRequest, so omit ``messages`` in that
+        # case. If both are sent on the wire, ``prompt_tokens`` wins.
+        prompt_token_ids = completion_request.prompt_tokens
         token_request = TextGenerationRequest(
             request_id=RequestID(request_id),
             model_name=completion_request.model,
-            messages=request_messages,
+            prompt=prompt_token_ids if prompt_token_ids else None,
+            messages=[] if prompt_token_ids else request_messages,
             images=request_images,
             videos=request_videos,
             tools=tools,
@@ -989,13 +1103,6 @@ async def openai_create_chat_completion(
         )
 
         if completion_request.stream:
-            # Currently, tools are not supported in streaming mode.
-            if tools:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Tools are not supported in streaming mode.",
-                )
-
             # We set a large timeout for ping otherwise benchmarking scripts
             # such as sglang will fail in parsing the ping message.
             return EventSourceResponse(
@@ -1010,7 +1117,15 @@ async def openai_create_chat_completion(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error in request %s: %s", request_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except InputError as e:
@@ -1027,7 +1142,7 @@ async def openai_create_chat_completion(
 
 
 def _convert_chat_completion_tools_to_token_generator_tools(
-    chat_tools: list[ChatCompletionTool] | None,
+    chat_tools: list[ChatCompletionFunctionToolParam] | None,
 ) -> list[TextGenerationRequestTool] | None:
     """Convert ChatCompletionTool list to TextGenerationRequestTool list."""
     if not chat_tools:
@@ -1035,23 +1150,62 @@ def _convert_chat_completion_tools_to_token_generator_tools(
 
     token_generator_tools = []
     for tool in chat_tools:
-        parameters = (
-            tool.function.parameters.model_dump()
-            if tool.function.parameters
-            else {}
-        )
-
+        function = tool["function"]
+        name = function["name"]
+        _validate_tool_function_name(name)
         token_generator_tool = TextGenerationRequestTool(
-            type=tool.type,
+            type=tool["type"],
             function=TextGenerationRequestFunction(
-                name=tool.function.name,
-                description=tool.function.description,
-                parameters=parameters,
+                name=name,
+                description=function.get("description"),
+                parameters=dict(function.get("parameters") or {}),
             ),
         )
         token_generator_tools.append(token_generator_tool)
 
     return token_generator_tools
+
+
+def _validate_tool_function_name(name: str) -> None:
+    """Validate that a tool function name conforms to the OpenAI spec.
+
+    Raises:
+        InputError: If the name is empty or contains invalid characters.
+    """
+    if not name:
+        raise InputError(
+            "Invalid tool function name: name cannot be empty. "
+            "Function names must contain only a-z, A-Z, 0-9, underscores, or hyphens."
+        )
+    if not _VALID_TOOL_NAME_RE.match(name):
+        raise InputError(
+            f"Invalid tool function name: '{name}'. "
+            "Function names must contain only a-z, A-Z, 0-9, underscores, or hyphens."
+        )
+
+
+def _validate_json_schema(json_schema: dict[str, Any]) -> None:
+    """Validate that a JSON schema can be compiled to a grammar.
+
+    This catches invalid schemas (recursive $ref, unsupported constructs) early
+    in the HTTP request handler, returning a 400 error instead of crashing the
+    model worker process later during constrained decoding.
+
+    Raises:
+        InputError: If the schema cannot be compiled.
+    """
+    if not json_schema:
+        return
+
+    try:
+        # This validates the schema can be compiled to a grammar.
+        # It doesn't need a tokenizer - just checks schema structure.
+        LLMatcher.grammar_from_json_schema(json_schema)
+    except Exception as e:
+        raise InputError(
+            f"JSON schema cannot be compiled to valid grammar: {e}. "
+            "Recursive $ref schemas and other unsupported constructs are not allowed."
+        ) from e
 
 
 def _create_response_format(
@@ -1066,8 +1220,9 @@ def _create_response_format(
 
     json_schema: dict[Any, Any] = {}
 
-    response_type = response_format.type
-    if response_format.type == "json_object":
+    # ``response_format`` is an OpenAI TypedDict, accessed via keys.
+    response_type = response_format["type"]
+    if response_type == "json_object":
         # For json_object mode (any valid JSON), use a permissive schema that
         # accepts any JSON object. llguidance's grammar_from_json_schema supports
         # this - an empty or minimal schema means "any valid JSON".
@@ -1075,11 +1230,18 @@ def _create_response_format(
         # Normalize type to json_schema for the internal representation since both
         # json_object and json_schema use grammar-based constrained decoding.
         response_type = "json_schema"
-    elif (
-        response_format.type == "json_schema"
-        and response_format.json_schema.schema_ is not None
-    ):
-        json_schema = response_format.json_schema.schema_.model_dump()
+    elif response_type == "json_schema":
+        # ``response_format`` is one of OpenAI's ``ResponseFormat*Param``
+        # TypedDicts; cast to ``dict`` so mypy lets us key into it without
+        # narrowing the discriminated union by hand.
+        json_schema_param = cast(dict[str, Any], response_format).get(
+            "json_schema", {}
+        )
+        if (schema := json_schema_param.get("schema")) is not None:
+            json_schema = dict(schema)
+
+    # Validate the schema early to return 400 instead of crashing the model worker.
+    _validate_json_schema(json_schema)
 
     return TextGenerationResponseFormat(
         type=response_type, json_schema=json_schema
@@ -1120,6 +1282,8 @@ async def openai_create_embeddings(
         embedding_inputs: Sequence[StringPrompt | IntPrompt] = (
             get_prompts_from_openai_request(embeddings_request.input)
         )
+        # ``encode`` requires at least one entry; this matches the OpenAI
+        # behavior of rejecting empty ``input`` arrays.
 
         embedding_requests = [
             TextGenerationRequest(
@@ -1140,7 +1304,15 @@ async def openai_create_embeddings(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error in request %s: %s", request_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except InputError as e:
@@ -1159,7 +1331,7 @@ async def openai_create_embeddings(
 class CompletionResponseStreamChoice(BaseModel):
     index: int
     text: str
-    logprobs: Logprobs | None = None
+    logprobs: CompletionLogprobs | None = None
     finish_reason: Literal["stop", "length", "content_filter"] | None = None
 
 
@@ -1174,7 +1346,7 @@ class CompletionStreamResponse(BaseModel):
 
 def _process_log_probabilities(
     token_generator_outputs: list[TokenGeneratorOutput],
-) -> Logprobs:
+) -> CompletionLogprobs:
     token_log_probabilities = []
     top_log_probabilities = []
     for output in token_generator_outputs:
@@ -1183,7 +1355,7 @@ def _process_log_probabilities(
         if output.top_log_probabilities:
             top_log_probabilities.extend(output.top_log_probabilities)
 
-    return Logprobs(
+    return CompletionLogprobs(
         token_logprobs=token_log_probabilities,
         top_logprobs=top_log_probabilities,
     )
@@ -1191,7 +1363,7 @@ def _process_log_probabilities(
 
 def _process_chat_log_probabilities(
     token_generator_outputs: list[TokenGeneratorOutput],
-) -> Logprobs2:
+) -> ChatCompletionLogprobs:
     """Convert token generator outputs to chat completion log probabilities format.
 
     Args:
@@ -1199,7 +1371,8 @@ def _process_chat_log_probabilities(
             log probability information.
 
     Returns:
-        Logprobs2 object with content tokens and their log probabilities.
+        ChatCompletionLogprobs object with content tokens and their log
+        probabilities.
     """
     content: list[ChatCompletionTokenLogprob] = []
 
@@ -1252,7 +1425,7 @@ def _process_chat_log_probabilities(
                 )
             )
 
-    return Logprobs2(content=content, refusal=[])
+    return ChatCompletionLogprobs(content=content, refusal=[])
 
 
 def get_app_pipeline_config(app: FastAPI) -> PipelineConfig:
@@ -1262,34 +1435,15 @@ def get_app_pipeline_config(app: FastAPI) -> PipelineConfig:
 
 
 def get_tool_parser(app: FastAPI) -> ToolParser | None:
-    """Gets the appropriate tool parser for the current model architecture.
+    """Gets the configured tool parser for the current model.
 
-    Returns the architecture-specific tool parser if one is registered,
-    otherwise None.
+    Returns the runtime-configured parser if set, otherwise None.
     """
-
     pipeline_config = get_app_pipeline_config(app)
-
-    # Get architecture name from HuggingFace config
-    try:
-        hf_config = pipeline_config.model.huggingface_config
-    except ValueError:
-        # Model doesn't have a valid HuggingFace config (e.g., mock models, local models)
+    parser_name = pipeline_config.runtime.tool_parser
+    if parser_name is None:
         return None
-
-    if not hf_config.architectures:
-        return None
-
-    arch_name = hf_config.architectures[0]
-    arch = PIPELINE_REGISTRY.retrieve_architecture(
-        architecture_name=arch_name,
-        prefer_module_v3=pipeline_config.runtime.prefer_module_v3,
-    )
-
-    if arch is not None and arch.tool_parser is not None:
-        return arch.tool_parser()
-
-    return None
+    return create_tool_parser(parser_name)
 
 
 class OpenAICompletionResponseGenerator(
@@ -1301,20 +1455,27 @@ class OpenAICompletionResponseGenerator(
         logger.debug("Streaming: Start: %s", request)
         record_request_start()
         request_timer = StopWatch(start_ns=request.timestamp_ns)
+        n_reasoning_tokens = 0
         n_tokens = 0
         n_prompt_tokens = 0
         status_code = 200
         try:
             async for chunk in self.pipeline.next_token_chunk(request):
+                chunk_total_tokens = (
+                    chunk.reasoning_token_count or 0
+                ) + chunk.token_count
                 self.logger.debug(
-                    "Streaming: %s, TOKENS: %d, %s",
+                    "Streaming: %s, TOKENS: %d, REASONING: %s, TEXT: %s",
                     request.request_id,
-                    chunk.token_count,
+                    chunk_total_tokens,
+                    chunk.decoded_reasoning_tokens,
                     chunk.decoded_tokens,
                 )
 
                 if chunk.prompt_token_count:
                     n_prompt_tokens = chunk.prompt_token_count
+                n_reasoning_tokens += chunk.reasoning_token_count or 0
+                n_tokens += chunk.token_count
 
                 log_probs = _process_log_probabilities([chunk])
 
@@ -1332,7 +1493,7 @@ class OpenAICompletionResponseGenerator(
                             ),
                         )
                     ]
-                else:
+                elif chunk.status.is_done:
                     choices = [
                         CompletionResponseStreamChoice(
                             index=0,
@@ -1342,6 +1503,13 @@ class OpenAICompletionResponseGenerator(
                             ),
                         )
                     ]
+                else:
+                    # Reasoning-capable models (e.g. Kimi K2.5) can emit
+                    # intermediate chunks with no user-visible completion text
+                    # while still ACTIVE. For legacy /completions streaming we
+                    # skip those chunks instead of forcing a terminal
+                    # finish_reason.
+                    continue
 
                 # Each chunk is expected to have the same id
                 # https://platform.openai.com/docs/api-reference/chat/streaming
@@ -1352,13 +1520,16 @@ class OpenAICompletionResponseGenerator(
                     model=request.model_name,
                     object="text_completion",
                 )
-                n_tokens += chunk.token_count
 
                 payload = response.model_dump_json()
 
                 yield payload
 
-            logger.debug("Streaming: Done: %s, %d tokens", request, n_tokens)
+            logger.debug(
+                "Streaming: Done: %s, %d tokens",
+                request,
+                n_reasoning_tokens + n_tokens,
+            )
             yield "[DONE]"
         except queue.Full:
             logger.exception("Request queue full %s", request.request_id)
@@ -1389,7 +1560,7 @@ class OpenAICompletionResponseGenerator(
                 status_code,
                 request.request_path,
                 request_timer.elapsed_ms,
-                n_tokens,
+                n_reasoning_tokens + n_tokens,
                 n_prompt_tokens,
             )
 
@@ -1399,6 +1570,7 @@ class OpenAICompletionResponseGenerator(
         # we assume that all entries in `requests` came from the same http
         # request and timestamp, request id, path should all be the same.
         record_request_start()
+        n_reasoning_tokens = 0
         n_tokens = 0
         n_prompt_tokens = 0
         request_timer = StopWatch(start_ns=requests[0].timestamp_ns)
@@ -1410,6 +1582,9 @@ class OpenAICompletionResponseGenerator(
             )
             response_choices = []
             for i, req_outputs in enumerate(req_output_list):
+                n_reasoning_tokens += sum(
+                    chunk.reasoning_token_count or 0 for chunk in req_outputs
+                )
                 n_tokens += sum(chunk.token_count for chunk in req_outputs)
                 if req_outputs and req_outputs[0].prompt_token_count:
                     n_prompt_tokens += req_outputs[0].prompt_token_count
@@ -1422,7 +1597,7 @@ class OpenAICompletionResponseGenerator(
                     for chunk in req_outputs
                 )
                 response_choices.append(
-                    Choice(
+                    CompletionResponseChoice(
                         index=i,
                         text=response_message,
                         finish_reason=get_finish_reason_from_status(
@@ -1451,7 +1626,7 @@ class OpenAICompletionResponseGenerator(
                 status_code,
                 requests[0].request_path,
                 request_timer.elapsed_ms,
-                n_tokens,
+                n_reasoning_tokens + n_tokens,
                 n_prompt_tokens,
             )
 
@@ -1476,12 +1651,7 @@ def _is_seq_of_seq_of_int(
 
 
 def get_prompts_from_openai_request(
-    prompt: str
-    | list[str]
-    | list[PromptItem]
-    | list[InputItem]
-    | list[int]
-    | list[list[int]],
+    prompt: str | list[str] | list[int] | list[list[int]],
 ) -> Sequence[StringPrompt] | Sequence[IntPrompt]:
     """Extract the prompts from a CreateCompletionRequest
 
@@ -1494,10 +1664,6 @@ def get_prompts_from_openai_request(
         return []
     if _is_sequence_of(prompt, str):
         return prompt
-    if _is_sequence_of(prompt, PromptItem):
-        return [p.root for p in prompt]
-    if _is_sequence_of(prompt, InputItem):
-        return [p.root for p in prompt]
     if _is_sequence_of(prompt, int):
         return [prompt]
     if _is_seq_of_seq_of_int(prompt):
@@ -1533,6 +1699,19 @@ async def openai_create_completion(
             completion_request.model,
         )
 
+        pipeline_config = get_app_pipeline_config(request.app)
+
+        if (
+            completion_request.logprobs is not None
+            and completion_request.logprobs != 0
+            and pipeline_config.runtime.enable_overlap_scheduler
+        ):
+            raise InputError(
+                "Log probabilities are not supported with the overlap"
+                " scheduler. Start the server with"
+                " --no-enable-overlap-scheduler to use logprobs."
+            )
+
         response_generator = OpenAICompletionResponseGenerator(pipeline)
         prompts = get_prompts_from_openai_request(completion_request.prompt)
         token_requests = []
@@ -1555,9 +1734,7 @@ async def openai_create_completion(
                     stop_token_ids=completion_request.stop_token_ids,
                     stop=_convert_stop(completion_request.stop),
                 ),
-                sampling_params_defaults=get_app_pipeline_config(
-                    request.app
-                ).model.sampling_params_defaults,
+                sampling_params_defaults=pipeline_config.model.sampling_params_defaults,
             )
             tgr = TextGenerationRequest(
                 # Generate a unique request_id for each prompt in the request
@@ -1604,7 +1781,15 @@ async def openai_create_completion(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError for request %s", http_req_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", http_req_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error for request %s: %s", http_req_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("Validation error for request %s", http_req_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except ValueError as e:
@@ -1624,13 +1809,16 @@ async def health() -> Response:
 @router.get("/models", response_model=None)
 async def openai_get_models(request: Request) -> ListModelsResponse:
     pipeline: TokenGeneratorPipeline = request.app.state.pipeline
+    created = int(datetime.now().timestamp())
     model_list = [
-        Model(id=pipeline.model_name, object="model", created=None, owned_by="")
+        Model(
+            id=pipeline.model_name, object="model", created=created, owned_by=""
+        )
     ]
 
     if lora_queue := request.app.state.pipeline.lora_queue:
         model_list += [
-            Model(id=lora, object="model", created=None, owned_by="")
+            Model(id=lora, object="model", created=created, owned_by="")
             for lora in lora_queue.list_loras()
         ]
 
@@ -1641,7 +1829,10 @@ async def openai_get_models(request: Request) -> ListModelsResponse:
 async def openai_get_model(model_id: str, request: Request) -> Model:
     pipeline: TokenGeneratorPipeline = request.app.state.pipeline
     pipeline_model = Model(
-        id=pipeline.model_name, object="model", created=None, owned_by=""
+        id=pipeline.model_name,
+        object="model",
+        created=int(datetime.now().timestamp()),
+        owned_by="",
     )
 
     if model_id == pipeline.model_name:
@@ -1701,7 +1892,15 @@ async def create_streaming_audio_speech(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error in request %s: %s", request_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except InputError as e:
@@ -1773,7 +1972,15 @@ async def load_lora_adapter(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error in request %s: %s", request_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("Validation error in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except ValueError as e:
@@ -1833,7 +2040,15 @@ async def unload_lora_adapter(
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
-    except (TypeError, ValidationError) as e:
+    except KeyError as e:
+        logger.exception("KeyError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValidationError as e:
+        logger.warning(
+            "Request validation error in request %s: %s", request_id, e
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TypeError as e:
         logger.exception("Validation error in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
     except ValueError as e:

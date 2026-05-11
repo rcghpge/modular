@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from max import _core, driver, engine
 from max._core.dialects import builtin, rmo
+from max._mlir_context import in_default_mlir_context
 from max.dtype import DType
 from max.experimental import _passes
 from max.experimental import functional as F
@@ -109,10 +110,13 @@ _USE_INTERPRETER_ENV_VAR = "MAX_USE_EAGER_INTERPRETER"
 # Graphs with more ops than this threshold are compiled so the graph
 # compiler can apply fusion.
 # Benchmarks (CPU & A10G GPU, [64,64] f32 tensors) show the interpreter
-# is 7-10x faster than the compiler for up to 10 user-visible ops.
-# 30 dispatchable IR ops covers ~5 user-visible ops.
+# is 7-10x faster than the compiler for up to 10 user-visible ops
+# (~30 dispatchable IR ops). Distributed dispatch and shape-heavy ops
+# routinely produce well beyond 30 IR nodes per single user-visible op,
+# so the threshold is set high enough to keep eager paths on the
+# interpreter rather than falling back to a full compile.
 _INTERPRETER_MAX_OPS_ENV_VAR = "MAX_INTERPRETER_MAX_OPS"
-_DEFAULT_INTERPRETER_MAX_OPS = 30
+_DEFAULT_INTERPRETER_MAX_OPS = 1024
 
 
 def _default_use_interpreter() -> bool:
@@ -145,21 +149,13 @@ def _interpreter_max_ops() -> int:
 
 
 def seed() -> Tensor:
-    """Gets the global random seed tensor.
-
-    Returns the global seed tensor used for random number generation in eager
-    execution mode. Creates the seed tensor on first access, initialized with
-    the dtype, shape, and device specified by :obj:`max.graph.ops.random.SeedType`.
-
-    Returns:
-        Tensor: The global seed tensor for random number generation.
-    """
+    """Gets the global random seed tensor used in eager execution mode."""
     global _SEED
     if _SEED is None:
-        SeedType = ops.random.SeedType
-        shape = [int(d) for d in SeedType.shape]
+        seed_type = ops.random.SeedType(DeviceRef.CPU())
+        shape = [int(d) for d in seed_type.shape]
         seed_data = driver.Buffer(
-            SeedType.dtype, shape, SeedType.device.to_device()
+            seed_type.dtype, shape, seed_type.device.to_device()
         )
         _SEED = Tensor(storage=seed_data)
     return _SEED
@@ -419,6 +415,8 @@ class EagerRealizationContext(RealizationContext):
         _passes.remove_unused_arguments(self.graph)
         return outputs, self.graph
 
+    # Lazy realize fires after the surrounding `with` exits — re-enter on bg threads.
+    @in_default_mlir_context
     async def realize_all(self) -> list[Tensor]:
         """Compiles and executes the computation graph, realizing all tensors.
 

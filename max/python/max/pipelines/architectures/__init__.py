@@ -42,7 +42,6 @@ def register_all_models() -> None:
     from .eagle_llama3 import eagle_llama_arch
     from .exaone import exaone_arch
     from .exaone_modulev3 import exaone_modulev3_arch
-    from .flux1_modulev3 import flux1_arch, flux1_modulev3_arch
     from .flux2 import flux2_arch, flux2_klein_arch
     from .flux2_modulev3 import (
         flux2_klein_modulev3_arch,
@@ -61,6 +60,7 @@ def register_all_models() -> None:
     from .idefics3_modulev3 import idefics3_modulev3_arch
     from .internvl import internvl_arch
     from .kimik2_5 import eagle3_kimik25_arch, kimik2_5_arch, kimivl_arch
+    from .lfm2 import lfm2_arch
     from .llama3 import llama_arch
     from .llama3_modulev3 import llama_modulev3_arch
     from .mamba import mamba_arch
@@ -102,8 +102,6 @@ def register_all_models() -> None:
         deepseekV3_nextn_arch,
         eagle3_deepseekV3_arch,
         eagle_llama_arch,
-        flux1_arch,
-        flux1_modulev3_arch,
         flux2_arch,
         flux2_klein_arch,
         flux2_modulev3_arch,
@@ -125,6 +123,7 @@ def register_all_models() -> None:
         kimivl_arch,
         llama_arch,
         llama_modulev3_arch,
+        lfm2_arch,
         mamba_arch,
         minimax_m2_arch,
         bert_arch,

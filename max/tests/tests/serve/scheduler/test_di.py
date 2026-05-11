@@ -17,7 +17,7 @@ import queue
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -37,6 +37,9 @@ from max.pipelines.core import TextContext
 from max.pipelines.core.context import FUTURE_TOKEN
 from max.pipelines.lib import OverlapTextGenerationPipeline
 from max.pipelines.lib.config.speculative_config import SpeculativeConfig
+from max.pipelines.lib.pipeline_variants.utils import (
+    update_spec_decode_context_and_prepare_responses,
+)
 from max.serve.scheduler.base import (
     CancelRequest,
     PrefillRequest,
@@ -477,14 +480,12 @@ def test_heterogeneous_mla_prefill_src_replica_maps_to_first_shard() -> None:
     # After prefill.run_iteration(), the transfer request is recorded in
     # active_transfers. Grab it and assert src_replica_idx was translated.
     assert len(prefill.active_transfers) == 1
-    _context, model_src_replica_idx, transfer_req = next(
-        iter(prefill.active_transfers.values())
-    )
+    active = next(iter(prefill.active_transfers.values()))
     # Scheduler-level (model) replica is always 0 for DP=1 prefill.
-    assert model_src_replica_idx == 0
+    assert active.replica_idx == 0
     # Engine-level src_replica_idx is the RR-selected flattened index.
     # For the first request (counter=0 → offset 0), it's the first TP shard.
-    assert transfer_req.src_replica_idx == 0
+    assert active.transfer.src_replica_idx == 0
 
 
 def test_di_with_dp2_requests_distributed_to_different_replicas() -> None:
@@ -819,8 +820,8 @@ def test_prefix_caching_prefill_skips_cached_blocks_in_transfer() -> None:
 
     # Transfer should only cover the non-cached pages
     assert len(prefill.active_transfers) == 1
-    _, _, transfer_data = next(iter(prefill.active_transfers.values()))
-    transferred_pages = len(transfer_data.src_idxs)
+    active = next(iter(prefill.active_transfers.values()))
+    transferred_pages = len(active.transfer.src_idxs)
     assert transferred_pages < num_total_pages, (
         f"Expected fewer than {num_total_pages} pages transferred, "
         f"got {transferred_pages}"
@@ -1718,9 +1719,9 @@ def test_spec_decode_prefill_decode_receives_draft_tokens() -> None:
 
     # The context in prefill_reqs should now have draft tokens set
     assert req_id in decode.prefill_reqs
-    context, _ = decode.prefill_reqs[req_id]
+    pending = decode.prefill_reqs[req_id]
     assert (
-        len(context.spec_decoding_state.draft_tokens_to_verify)
+        len(pending.context.spec_decoding_state.draft_tokens_to_verify)
         == num_spec_tokens
     )
 
@@ -1912,6 +1913,51 @@ def test_overlap_spec_decode_cancel_between_defer_and_resolve() -> None:
             break
 
 
+def test_update_spec_decode_skips_draft_tokens_when_is_done() -> None:
+    """update_spec_decode_context_and_prepare_responses skips draft tokens
+    when ctx.is_done=True (MAXIMUM_LENGTH).
+
+    Regression test for the 1p1d overlap + Eagle3 CE→TG handoff bug. On the
+    prefill pod, max_gen_tokens=1 arises naturally when an accumulated prompt
+    reaches max_seq_len-1 tokens (e.g. long multi-turn sessions). The overlap
+    pipeline calls update_with_future_token() during Phase 1, which advances
+    current_position to max_length and sets status=MAXIMUM_LENGTH (is_done=True).
+    The done context produces no further TG steps on the decode pod, so draft
+    tokens are neither generated nor sent. The prefill and decode schedulers
+    gate their draft-token checks on not context.is_done to handle this case.
+    """
+    prompt_len = 10
+    ctx = create_text_context(
+        target_endpoint="ipc:///tmp/test",
+        prompt_len=prompt_len,
+        output_len=1,
+    )
+    assert ctx.max_length == prompt_len + 1
+
+    # Phase 1: overlap pipeline appends FUTURE_TOKEN and advances position
+    # to max_length, setting is_done=True via MAXIMUM_LENGTH.
+    ctx.update_with_future_token()
+    assert ctx.is_done, (
+        "Expected is_done=True after update_with_future_token on max_gen_tokens=1 context"
+    )
+
+    real_draft_tokens = [10, 11, 12]
+
+    update_spec_decode_context_and_prepare_responses(
+        draft_tokens=np.array([[42, 42, 42]], dtype=np.int32),
+        next_draft_tokens=np.array([real_draft_tokens], dtype=np.int32),
+        num_accepted_draft_tokens=np.array([0], dtype=np.int32),
+        next_tokens=np.array([99], dtype=np.int32),
+        context_batch=[ctx],
+        max_seq_len=2048,
+    )
+
+    assert ctx.spec_decoding_state.draft_tokens_to_verify == [], (
+        "draft_tokens_to_verify must be empty when ctx.is_done=True; "
+        "done contexts produce no TG steps so draft tokens are not sent"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stall watchdog tests
 # ---------------------------------------------------------------------------
@@ -2005,3 +2051,144 @@ def test_stall_watchdog_default_is_disabled() -> None:
     """The stall timeout defaults to None (disabled) when the env var is unset."""
     decode, _, _, _ = create_di_scheduler()
     assert decode.scheduler_config.decode_stall_timeout_s is None
+
+
+# ---------------------------------------------------------------------------
+# Per-request TTL eviction (decode_request_ttl_s)
+# ---------------------------------------------------------------------------
+
+
+def test_decode_request_ttl_default_is_disabled() -> None:
+    """The per-request TTL defaults to None when the env var is unset."""
+    decode, _, _, _ = create_di_scheduler()
+    assert decode.scheduler_config.decode_request_ttl_s is None
+
+
+def test_decode_request_ttl_propagates_from_pipeline_config() -> None:
+    """``decode_request_ttl_s`` flows through ``from_pipeline_config``."""
+    pipeline_config = MagicMock()
+    pipeline_config.runtime.max_batch_size = 1
+    pipeline_config.runtime.max_num_steps = 1
+    pipeline_config.runtime.max_batch_input_tokens = 8192
+    pipeline_config.runtime.max_batch_total_tokens = 8192
+    pipeline_config.runtime.enable_chunked_prefill = True
+    pipeline_config.runtime.enable_in_flight_batching = False
+    pipeline_config.runtime.kvcache_ce_watermark = 0.95
+    pipeline_config.runtime.decode_stall_timeout_s = None
+    pipeline_config.runtime.decode_request_ttl_s = 42.0
+    pipeline_config.model.max_length = 2048
+    pipeline_config.model.data_parallel_degree = 1
+    pipeline_config.speculative = None
+
+    config = TokenGenerationSchedulerConfig.from_pipeline_config(
+        pipeline_config
+    )
+
+    assert config.decode_request_ttl_s == 42.0
+
+
+def test_decode_run_iteration_evicts_stuck_prefill_request_end_to_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``run_iteration`` evicts a request stuck in ``prefill_reqs`` past TTL."""
+    decode, prefill, server_addr, q = create_di_scheduler()
+    decode.scheduler_config.decode_request_ttl_s = 30.0
+
+    ctx = create_text_context(
+        target_endpoint=server_addr, prompt_len=100, output_len=5
+    )
+    q.request_queue.put(ctx)
+    req_id = ctx.request_id
+
+    pages_before = decode.kv_cache.get_num_used_pages(replica_idx=0)
+
+    # Send to prefill but never run prefill, so PrefillResponse never arrives.
+    decode.run_iteration()
+    assert req_id in decode.prefill_reqs
+    assert decode.prefill_reqs_per_replica[0] == 1
+
+    # Patch only affects time.monotonic() in _evict_expired_requests; the
+    # already-set PendingPrefill.sent_at uses the originally-captured ref.
+    real_now = time.monotonic()
+    monkeypatch.setattr(time, "monotonic", lambda: real_now + 1000.0)
+
+    decode.run_iteration()
+
+    assert req_id not in decode.prefill_reqs
+    assert decode.prefill_reqs_per_replica[0] == 0
+    assert decode.kv_cache.get_num_used_pages(replica_idx=0) == pages_before
+
+    saw_cancel_response = False
+    while not q.response_queue.empty():
+        batch = q.response_queue.get_nowait()
+        if req_id in batch and batch[req_id].result is None:
+            saw_cancel_response = True
+    assert saw_cancel_response
+
+    # Drain the prefill dispatcher: handshake + PrefillRequest + CancelRequest.
+    saw_cancel_to_prefill = False
+    for _ in range(3):
+        try:
+            msg, _identity = prefill.dispatcher.recv_request_nowait()
+        except queue.Empty:
+            break
+        if isinstance(msg, CancelRequest) and msg.id == req_id:
+            saw_cancel_to_prefill = True
+    assert saw_cancel_to_prefill
+
+
+# ---------------------------------------------------------------------------
+# maxserve.num_requests_queued gauge (MXSERV-29).
+#
+# The gauge is a synchronous OTel Gauge: ``BatchMetrics.publish_metrics``
+# samples ``num_pending_reqs`` once per scheduler iteration and replaces
+# the previous reading. The ``num_pending_reqs`` value the DecodeScheduler
+# passes into ``log_metrics`` is ``len(pending_reqs) + len(prefill_reqs)``,
+# so the gauge mirrors the local pending set on the decode side.
+# ---------------------------------------------------------------------------
+
+
+class _GaugeRecorder:
+    """Captures METRICS.reqs_queued snapshots from BatchMetrics."""
+
+    def __init__(self) -> None:
+        self.values: list[int] = []
+
+    @property
+    def last(self) -> int | None:
+        return self.values[-1] if self.values else None
+
+    def reqs_queued(self, value: int) -> None:
+        self.values.append(value)
+
+    def __getattr__(self, _name: str) -> object:
+        return MagicMock()
+
+
+def _patch_decode_metrics(recorder: _GaugeRecorder) -> Any:
+    """Patches the METRICS binding used by ``BatchMetrics.publish_metrics``."""
+    return patch("max.serve.scheduler.utils.METRICS", recorder)
+
+
+def test_decode_publish_metrics_emits_pending_snapshot() -> None:
+    """Each decode iteration that runs a batch publishes the current
+    pending depth (len(pending_reqs) + len(prefill_reqs)) as a gauge.
+    """
+    recorder = _GaugeRecorder()
+    with _patch_decode_metrics(recorder):
+        decode, prefill, _q, _ctx = (
+            create_default_di_scheduler_and_submit_one_request()
+        )
+
+        # Drive the request all the way through: decode drains and
+        # forwards to prefill, prefill runs, decode picks up the
+        # response and runs TG. Each non-empty batch on either side
+        # publishes a snapshot; the final value must read 0.
+        decode.run_iteration()
+        prefill.run_iteration()
+        decode.run_iteration()
+
+        assert recorder.last == 0
+        assert (
+            len(decode.pending_reqs) + len(decode.prefill_reqs) == recorder.last
+        )

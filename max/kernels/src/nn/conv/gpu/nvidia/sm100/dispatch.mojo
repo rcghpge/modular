@@ -86,11 +86,21 @@ def _transpose_fcrs_to_krsc[
 # =========================================================================
 
 
+@always_inline
+def test_alignment_sm100_conv2d[
+    input_type: DType, output_type: DType
+](in_channels: Int, out_channels: Int) -> Bool:
+    return (in_channels * size_of[input_type]()) % 64 == 0 and (
+        out_channels * size_of[output_type]()
+    ) % 4 == 0
+
+
 def dispatch_sm100_conv2d[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
-    filter_is_fcrs: Bool,
+    //,
+    filter_is_fcrs: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_residual: Bool = False,
 ](
@@ -99,7 +109,9 @@ def dispatch_sm100_conv2d[
     output: TileTensor[mut=True, output_type, ...],
     symmetric_padding: IndexList[2],
     ctx: DeviceContext,
-    source_ptr: OptionalReg[UnsafePointer[Scalar[output_type], MutAnyOrigin]],
+    source_ptr: OptionalReg[
+        UnsafePointer[Scalar[output_type], MutAnyOrigin]
+    ] = None,
     beta: Float32 = 0.0,
 ) raises:
     """Dispatch to SM100 structured conv2d with filter transpose.
@@ -169,10 +181,7 @@ def dispatch_sm100_conv2d[
             var C = Int(filter.dim[1]())
             var R = Int(filter.dim[2]())
             var S = Int(filter.dim[3]())
-            ctx.enqueue_function[
-                _transpose_fcrs_to_krsc[filter_type],
-                _transpose_fcrs_to_krsc[filter_type],
-            ](
+            ctx.enqueue_function[_transpose_fcrs_to_krsc[filter_type]](
                 filter.ptr,
                 filter_krsc_ptr,
                 F,
@@ -187,10 +196,7 @@ def dispatch_sm100_conv2d[
             var S = Int(filter.dim[1]())
             var C = Int(filter.dim[2]())
             var F = Int(filter.dim[3]())
-            ctx.enqueue_function[
-                _transpose_rscf_to_krsc[filter_type],
-                _transpose_rscf_to_krsc[filter_type],
-            ](
+            ctx.enqueue_function[_transpose_rscf_to_krsc[filter_type]](
                 filter.ptr,
                 filter_krsc_ptr,
                 R,
@@ -274,8 +280,3 @@ def dispatch_sm100_conv2d[
                 TensorMapSwizzle.SWIZZLE_64B,
                 num_pipeline_stages_override=6,
             ]()
-
-        # Synchronize before freeing the transposed filter buffer to
-        # ensure the async conv2d kernel has finished reading from it.
-        ctx.synchronize()
-        _ = filter_buf^
