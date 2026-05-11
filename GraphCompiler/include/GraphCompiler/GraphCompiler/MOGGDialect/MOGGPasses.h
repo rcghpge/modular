@@ -108,6 +108,10 @@ createEmitMojo(const EmitMojoOptions &opts,
 
 void mergeIdenticalKernelStubs(mlir::ModuleOp module);
 
+/// Lift inline `index.constant` ops feeding `mgp.buffer.get_cached`'s slot
+/// operand from kernel-stub bodies into new kernel arguments. See GEX-3685.
+void liftBufferCacheSlots(mlir::ModuleOp module);
+
 /// Perform one iteration of reshape-into-epilogue fusion on the graph, fusing
 /// SplitDim/MergeDim/AddSingletonDim ops into kernel output lambdas.
 /// Returns the number of views fused. Shared by FuseReshapesIntoEpilogues and

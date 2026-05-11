@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
@@ -13,6 +14,7 @@
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/ToolOutputFile.h"
 
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -23,6 +25,7 @@ using namespace M;
 namespace M::MOGG {
 
 #define GEN_PASS_DEF_EMITMOJO
+#define GEN_PASS_DEF_LIFTBUFFERCACHESLOTS
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -30,6 +33,125 @@ namespace M::MOGG {
 namespace M::MOGG {
 
 namespace {
+
+// Returns true if every use of `constOp` is as the slot operand of an
+// `mgp.buffer.get_cached`. Used to decide whether the constant can be safely
+// lifted to a kernel argument without breaking other ops that depend on its
+// compile-time value.
+static bool allUsesAreCachedBufferSlot(mlir::index::ConstantOp constOp) {
+  for (mlir::Operation *user : constOp->getUsers()) {
+    auto cached = mlir::dyn_cast<MGP::BufferGetCachedOp>(user);
+    if (!cached || cached.getBBufferSlot() != constOp.getResult())
+      return false;
+  }
+  return true;
+}
+
+} // namespace
+
+// GEX-3685: Lift inline `index.constant` ops feeding into
+// `mgp.buffer.get_cached` slot operands to kernel-stub function arguments,
+// so that two kernels that differ only in the cached-buffer slot index get
+// structurally identical bodies and `MergeIdenticalKernelStubs` can collapse
+// them. Without this, kernels like `region_1078` and `region_1065` (a
+// 537-line near-duplicate pair in gemma-4 vision) survive into Mojo emission
+// as separate functions that the Mojo compiler then has to elaborate
+// independently.
+//
+// Approach: for each MGP-ABI KernelStubOp body, find every `index.constant`
+// whose sole uses are as the slot operand of `mgp.buffer.get_cached`.
+// Promote each such constant to a new `index`-typed kernel argument; erase
+// the constant; rewrite the kernel's `ExecuteCompiledOp` callers to
+// materialize the constant at the call site and pass it as a new operand.
+//
+// Only MGP-ABI kernels are touched: `mgp.buffer.get_cached` lives in the
+// MGP dialect and is only emitted into MGP-ABI kernel bodies (cf.
+// `RaiseBackIndexConstant`, which gates on the same invariant), so a
+// MOGG-ABI kernel can never have `index.constant` ops feeding `get_cached`.
+// And the only caller op of an MGP-ABI kernel is `ExecuteCompiledOp` --
+// `CallStubOp` / `CallStubAsyncOp` only target MOGG-ABI kernels (enforced
+// by `CallStubOp::verifySymbolUses`).
+void liftBufferCacheSlots(mlir::ModuleOp moduleOp) {
+  mlir::MLIRContext *ctx = moduleOp.getContext();
+  mlir::Type indexType = mlir::IndexType::get(ctx);
+
+  // Build symbol-name → callers map by walking ExecuteCompiledOp ops once.
+  // CallStubOp / CallStubAsyncOp only target MOGG-ABI kernels and so cannot
+  // be callers of the MGP-ABI kernels we transform here.
+  llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<mlir::Operation *, 4>>
+      callersByName;
+  moduleOp.walk([&](MOGG::ExecuteCompiledOp exec) {
+    callersByName[exec.getCalleeSymbolAttr().getAttr()].push_back(exec);
+  });
+
+  for (auto kernel : moduleOp.getOps<MOGG::KernelStubOp>()) {
+    // See doc comment: only MGP-ABI kernel bodies can contain
+    // `mgp.buffer.get_cached` and therefore the inline `index.constant`
+    // ops we want to lift.
+    if (kernel.getAbi() != MOGG::ABIKind::MGP)
+      continue;
+    mlir::Block &body = kernel.getBodyBlock();
+
+    // Collect candidate index.constant ops (sole uses are
+    // `mgp.buffer.get_cached`'s slot operand).
+    llvm::SmallVector<mlir::index::ConstantOp, 8> toPromote;
+    for (mlir::Operation &op : body) {
+      auto constOp = mlir::dyn_cast<mlir::index::ConstantOp>(&op);
+      if (!constOp || constOp->use_empty())
+        continue;
+      if (allUsesAreCachedBufferSlot(constOp))
+        toPromote.push_back(constOp);
+    }
+
+    if (toPromote.empty())
+      continue;
+
+    // Capture values BEFORE mutating IR.
+    auto values = llvm::map_to_vector(
+        toPromote, [](auto cop) { return cop.getValue().getSExtValue(); });
+
+    // Extend the kernel function type with one `index` argument per
+    // promoted constant.
+    auto fnType = kernel.getFunctionType();
+    auto newInputs = llvm::to_vector(fnType.getInputs());
+    newInputs.append(toPromote.size(), indexType);
+    auto newFnType =
+        mlir::FunctionType::get(ctx, newInputs, fnType.getResults());
+    kernel.setFunctionTypeAttr(mlir::TypeAttr::get(newFnType));
+
+    // Add Block arguments matching the new function inputs, redirect uses,
+    // and erase the original constants.
+    for (auto cop : toPromote) {
+      mlir::BlockArgument newArg = body.addArgument(indexType, cop->getLoc());
+      cop.getResult().replaceAllUsesWith(newArg);
+      cop->erase();
+    }
+
+    // Update every caller to pass the original constant values as new
+    // trailing operands.
+    auto it = callersByName.find(kernel.getSymNameAttr());
+    if (it == callersByName.end())
+      continue;
+    for (mlir::Operation *callOp : it->second) {
+      mlir::OpBuilder builder(callOp);
+      llvm::SmallVector<mlir::Value, 8> newCallOperands;
+      for (int64_t value : values) {
+        auto cst =
+            mlir::index::ConstantOp::create(builder, callOp->getLoc(), value);
+        newCallOperands.push_back(cst.getResult());
+      }
+      callOp->insertOperands(callOp->getNumOperands(), newCallOperands);
+    }
+  }
+}
+
+namespace {
+
+struct LiftBufferCacheSlots
+    : public impl::LiftBufferCacheSlotsBase<LiftBufferCacheSlots> {
+  using LiftBufferCacheSlotsBase::LiftBufferCacheSlotsBase;
+  void runOnOperation() override { liftBufferCacheSlots(getOperation()); }
+};
 
 struct EmitMojo
     : public MOGG::MojoLibraryAnalysisPass<impl::EmitMojoBase<EmitMojo>> {
@@ -205,6 +327,14 @@ struct EmitMojo
     // dynamic shape parameters because those mean nothing when emitting Mojo
     // and thus they should not be an obstacle to deduplication.
     stripDeviceIdsAndDynamicShapes();
+
+    // [optional] Lift inline `index.constant` ops feeding
+    // `mgp.buffer.get_cached`'s slot operand out of kernel bodies and into
+    // kernel-stub function arguments, so that kernels that previously
+    // differed only in those constant slot indices become structurally
+    // identical and `MergeIdenticalKernelStubs` (below) can collapse them.
+    // See `liftBufferCacheSlots` for the full rationale.
+    liftBufferCacheSlots(moduleOp);
 
     // The following are a series of passes that run nested within the current
     // pass because we have to disable the verifier after stripping device

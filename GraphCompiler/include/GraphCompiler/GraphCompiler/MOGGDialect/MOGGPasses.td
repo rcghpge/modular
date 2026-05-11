@@ -333,6 +333,22 @@ def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "Module
   ];
 }
 
+def LiftBufferCacheSlots: Pass<"mogg-lift-buffer-cache-slots", "ModuleOp"> {
+  let summary = "Lift inline `index.constant` slot operands of mgp.buffer.get_cached to kernel args";
+  let description = [{
+    For each MGP-ABI `mogg.kernel.stub`, finds inline `index.constant` ops
+    whose only uses are as the slot operand of `mgp.buffer.get_cached`, and
+    promotes each such constant to a new `index`-typed kernel argument. The
+    original constant is materialized at every `mogg.execute_kernel` call
+    site as a new trailing operand. After this pass, two kernels that
+    previously differed only in their cached-buffer slot indices have
+    structurally identical bodies and become merge candidates for
+    `MergeIdenticalKernelStubs`. See GEX-3685.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect", "mlir::index::IndexDialect"];
+}
+
 def LookupConstantResources: Pass<"mogg-lookup-constant-resources", "MOGG::KernelStubOp"> {
   let summary = "Replace mgp.buffer.constant with mgp.resource.constant";
   let description = [{
