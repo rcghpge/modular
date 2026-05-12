@@ -882,6 +882,11 @@ public:
   static StringRef configAsString(StringRef key, StringRef defaultValue,
                                   bool *isDefault = nullptr);
 
+  // Returns true if device sync mode is enabled via either the new
+  // `max-debug.device-sync-mode` debug configuration or the legacy
+  // `device-context.sync-mode` configuration key.
+  static bool syncModeFromConfig();
+
   // Error helpers.
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);

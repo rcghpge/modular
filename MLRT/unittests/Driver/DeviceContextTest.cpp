@@ -450,6 +450,12 @@ TEST(DeviceContextTest, SyncMode) {
     ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
     EXPECT_TRUE(ctx->syncMode());
   }
+
+  {
+    ScopedEnvVar env("MODULAR_MAX_DEBUG_DEVICE_SYNC_MODE", "1");
+    ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+    EXPECT_TRUE(ctx->syncMode());
+  }
 }
 
 TEST(DeviceContextTest, MemoryManager) {

@@ -166,13 +166,13 @@ const std::string &DeviceFunctionCacheEntry::name() const { return name_; }
 
 Error DeviceContext::formatError(const char *file, int line, const char *func,
                                  const llvm::Twine &msg) {
-  static bool syncModeEnabled = DeviceContext::configAsBool("sync-mode", false);
+  static bool syncModeEnabled = DeviceContext::syncModeFromConfig();
 
   llvm::StringLiteral kErrorMessage = "";
 
   if (!syncModeEnabled)
     kErrorMessage = "\nTo get more accurate error information, set "
-                    "MODULAR_DEVICE_CONTEXT_SYNC_MODE=true.";
+                    "MODULAR_DEBUG=device-sync-mode.";
 
   static bool logVerbose = DeviceContext::configAsBool("log_verbose", false);
   if (logVerbose) {
@@ -1043,7 +1043,7 @@ DeviceContext::DeviceContext(Device &device)
           this, device.memoryManager(), device.memoryManager().freeList(),
           /*disableFlush=*/true, /*label=*/"graphFreeList")),
       syncMode_(0) {
-  if (configAsBool("sync-mode", false)) {
+  if (syncModeFromConfig()) {
     incSyncMode();
   }
 }
@@ -1550,6 +1550,19 @@ bool DeviceContext::configAsBool(StringRef key, bool defaultValue,
   }
   return config->getValueAsBool((llvm::Twine("device-context.") + key).str(),
                                 defaultValue);
+}
+
+bool DeviceContext::syncModeFromConfig() {
+  // Sync mode can be enabled via the new `max-debug.device-sync-mode` debug
+  // configuration (e.g. `MODULAR_DEBUG=device-sync-mode`) or via the legacy
+  // `device-context.sync-mode` key (e.g. `MODULAR_DEVICE_CONTEXT_SYNC_MODE=1`).
+  if (configAsBool("sync-mode", false))
+    return true;
+  std::lock_guard<std::mutex> lock(getGlobalMutex());
+  ErrorOr<Config> &config = getConfig();
+  if (config.isError())
+    return false;
+  return config->getValueAsBool("max-debug.device-sync-mode", false);
 }
 
 int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue,
