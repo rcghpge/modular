@@ -299,7 +299,7 @@ static std::string apiVersionToString(int apiVersion) {
 
 ErrorOrSuccess CUDADevice::isCompatible() const {
 #if !MODULAR_LINUX
-  return Error("MAX with GPUs is only supported on Linux based systems.");
+  return Error("NVIDIA GPUs are only supported on Linux based systems.");
 #endif
 
   // When MODULAR_NVPTX_COMPILER_PATH is set, the user is explicitly opting
@@ -311,7 +311,7 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
 
   if (computeCapability_ < MIN_COMPUTE_CAPABILITY) {
     RETURN_ERROR(
-        "MAX only supports NVIDIA Turing (sm_75) architectures or higher. "
+        "Only NVIDIA Turing (sm_75) architectures or higher are supported. "
         "Your GPU has compute capability " +
         llvm::Twine(computeCapability_) +
         ". For older hardware, set MODULAR_NVPTX_COMPILER_PATH to use an "
@@ -328,11 +328,11 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
       detectedVersion =
           errOrDriverVersion->toString() + " (" + detectedVersion + ")";
     RETURN_ERROR(
-        "MAX doesn't support your current NVIDIA GPU driver. MAX "
-        "requires a minimum driver version of " +
-        llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
+        "Your current NVIDIA GPU driver version is not supported. "
+        "A minimum driver version of " +
+        llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version of" +
         apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
-        ". Your driver version is " + detectedVersion +
+        " are required. Your driver version is " + detectedVersion +
         ". For older drivers, set MODULAR_NVPTX_COMPILER_PATH to use an "
         "external ptxas binary.\nFor more information, see "
         "https://modul.ar/gpu-requirements.");

@@ -264,13 +264,13 @@ ErrorOr<DriverVersion &> HIPDevice::getDriverVersion() const {
 
 ErrorOrSuccess HIPDevice::isCompatible() const {
 #if !MODULAR_LINUX
-  return Error("MAX with GPUs is only supported on Linux based systems.");
+  return Error("AMD GPUs are only supported on Linux based systems.");
 #endif
 
   DEFINE_OR_RETURN_ERROR(int, computeCapability, computeCapability());
   if (computeCapability < MIN_COMPUTE_CAPABILITY) {
-    RETURN_ERROR("MAX only supports HIP architectures " +
-                 TWINE(MIN_COMPUTE_CAPABILITY) + " or higher");
+    RETURN_ERROR("Only HIP architectures " + TWINE(MIN_COMPUTE_CAPABILITY) +
+                 " or higher are supported");
   }
 
   int driverVersionCoded = 0;
@@ -298,16 +298,16 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
     }
   }
 
-  RETURN_ERROR(
-      "MAX doesn't support your current AMD GPU driver. MAX requires a "
-      "minimum driver version of " +
-      TWINE(MIN_HIP_DRIVER_VERSION_MAJOR) + "." +
-      TWINE(MIN_HIP_DRIVER_VERSION_MINOR) + "." +
-      TWINE(MIN_HIP_DRIVER_VERSION_PATCH) +
-      ". The driver version MAX detected is: " + TWINE(driverVersionMajor) +
-      "." + TWINE(driverVersionMinor) + "." + TWINE(driverVersionPatch) +
-      ".\nFor information about how to update your driver, see "
-      "https://modul.ar/gpu-requirements.");
+  RETURN_ERROR("Your current AMD GPU driver version is not suppoted."
+               "A minimum driver version of " +
+               TWINE(MIN_HIP_DRIVER_VERSION_MAJOR) + "." +
+               TWINE(MIN_HIP_DRIVER_VERSION_MINOR) + "." +
+               TWINE(MIN_HIP_DRIVER_VERSION_PATCH) +
+               " is required. The driver version detected is: " +
+               TWINE(driverVersionMajor) + "." + TWINE(driverVersionMinor) +
+               "." + TWINE(driverVersionPatch) +
+               ".\nFor information about how to update your driver, see "
+               "https://modul.ar/gpu-requirements.");
 }
 
 ErrorOr<int> HIPDevice::computeCapability() const {
