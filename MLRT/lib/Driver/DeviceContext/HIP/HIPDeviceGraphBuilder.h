@@ -37,23 +37,29 @@ public:
 
   DeviceContext &context() const override;
 
+  std::optional<DeviceGraphNode> lastNode() const override;
+
   ErrorOr<DeviceGraphNode>
   addFunctionDirect(const DeviceFunction &func,
-                    const DeviceFunctionLaunchParams &params) override;
+                    const DeviceFunctionLaunchParams &params,
+                    llvm::ArrayRef<DeviceGraphNode> dependencies) override;
 
   using DeviceGraphBuilder::addCopyHostToDevice;
-  ErrorOr<DeviceGraphNode> addCopyHostToDevice(void *dst, const void *src,
-                                               size_t byteSize) override;
+  ErrorOr<DeviceGraphNode>
+  addCopyHostToDevice(void *dst, const void *src, size_t byteSize,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) override;
   using DeviceGraphBuilder::addCopyDeviceToHost;
-  ErrorOr<DeviceGraphNode> addCopyDeviceToHost(void *dst, const void *src,
-                                               size_t byteSize) override;
+  ErrorOr<DeviceGraphNode>
+  addCopyDeviceToHost(void *dst, const void *src, size_t byteSize,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) override;
   using DeviceGraphBuilder::addCopyDeviceToDevice;
-  ErrorOr<DeviceGraphNode> addCopyDeviceToDevice(DeviceBuffer &dst,
-                                                 DeviceBuffer &src,
-                                                 size_t srcByteOffset,
-                                                 size_t srcByteSize) override;
-  ErrorOr<DeviceGraphNode> addSetMemory(void *dst, size_t byteSize,
-                                        uint64_t val, size_t valSize) override;
+  ErrorOr<DeviceGraphNode>
+  addCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
+                        size_t srcByteOffset, size_t srcByteSize,
+                        llvm::ArrayRef<DeviceGraphNode> dependencies) override;
+  ErrorOr<DeviceGraphNode>
+  addSetMemory(void *dst, size_t byteSize, uint64_t val, size_t valSize,
+               llvm::ArrayRef<DeviceGraphNode> dependencies) override;
 
   ErrorOr<DeviceGraphRef> instantiate() override;
 
@@ -63,15 +69,10 @@ public:
   hipGraphNode_t hipNode(DeviceGraphNodeId id) const { return nodes_[id]; }
 
 private:
-  /// Dependency list to chain a new node after the previously added one,
-  /// matching the sequential ordering produced by stream capture. Returns an
-  /// empty range when no nodes have been added yet (the new node becomes a
-  /// graph root).
-  llvm::ArrayRef<hipGraphNode_t> sequentialDeps() const {
-    if (nodes_.empty())
-      return {};
-    return llvm::ArrayRef<hipGraphNode_t>(&nodes_.back(), 1);
-  }
+  /// Resolves a user-provided dependency list into raw hipGraphNode_t
+  /// handles. An empty `ArrayRef` produces no dependencies (graph root).
+  ErrorOr<llvm::SmallVector<hipGraphNode_t>>
+  resolveDeps(llvm::ArrayRef<DeviceGraphNode> deps) const;
 
   HIPDeviceContextRef ctx_;
   hipGraph_t graph_;

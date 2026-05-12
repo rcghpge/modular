@@ -55,8 +55,28 @@ CUDADeviceGraphBuilder::create(CUDADeviceContext &ctx) {
 
 DeviceContext &CUDADeviceGraphBuilder::context() const { return *ctx_; }
 
+std::optional<DeviceGraphNode> CUDADeviceGraphBuilder::lastNode() const {
+  if (nodes_.empty())
+    return std::nullopt;
+  return DeviceGraphNode{static_cast<DeviceGraphNodeId>(nodes_.size() - 1)};
+}
+
+ErrorOr<llvm::SmallVector<CUgraphNode>> CUDADeviceGraphBuilder::resolveDeps(
+    llvm::ArrayRef<DeviceGraphNode> deps) const {
+  llvm::SmallVector<CUgraphNode> result;
+  result.reserve(deps.size());
+  for (const DeviceGraphNode &dep : deps) {
+    if (dep.id < 0 || static_cast<size_t>(dep.id) >= nodes_.size())
+      RETURN_ERROR(llvm::Twine("invalid DeviceGraphNode id ") +
+                   llvm::Twine(dep.id));
+    result.push_back(nodes_[dep.id]);
+  }
+  return result;
+}
+
 ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
-    const DeviceFunction &func, const DeviceFunctionLaunchParams &params) {
+    const DeviceFunction &func, const DeviceFunctionLaunchParams &params,
+    llvm::ArrayRef<DeviceGraphNode> dependencies) {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
@@ -75,7 +95,8 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
       .extra = nullptr,
   };
 
-  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
       &node, graph_, deps.data(), deps.size(), &nodeParams));
@@ -97,9 +118,9 @@ CUDA_MEMCPY3D_v2 make1DMemcpyParams(size_t byteSize) {
 }
 } // namespace
 
-ErrorOr<DeviceGraphNode>
-CUDADeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
-                                            size_t byteSize) {
+ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyHostToDevice(
+    void *dst, const void *src, size_t byteSize,
+    llvm::ArrayRef<DeviceGraphNode> dependencies) {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
@@ -109,7 +130,8 @@ CUDADeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
   params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
   params.dstDevice = dst;
 
-  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
       &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
@@ -119,9 +141,9 @@ CUDADeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
   return DeviceGraphNode{id};
 }
 
-ErrorOr<DeviceGraphNode>
-CUDADeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
-                                            size_t byteSize) {
+ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToHost(
+    void *dst, const void *src, size_t byteSize,
+    llvm::ArrayRef<DeviceGraphNode> dependencies) {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
@@ -131,7 +153,8 @@ CUDADeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
   params.dstMemoryType = CU_MEMORYTYPE_HOST;
   params.dstHost = dst;
 
-  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
       &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
@@ -143,7 +166,7 @@ CUDADeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
 
 ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
     DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
-    size_t srcByteSize) {
+    size_t srcByteSize, llvm::ArrayRef<DeviceGraphNode> dependencies) {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
@@ -168,7 +191,8 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
   params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
   params.dstDevice = dst.ptr();
 
-  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
       &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
@@ -178,10 +202,9 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
   return DeviceGraphNode{id};
 }
 
-ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(void *dst,
-                                                              size_t byteSize,
-                                                              uint64_t val,
-                                                              size_t valSize) {
+ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(
+    void *dst, size_t byteSize, uint64_t val, size_t valSize,
+    llvm::ArrayRef<DeviceGraphNode> dependencies) {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
@@ -228,7 +251,8 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(void *dst,
     RETURN_ERROR("unsupported valSize");
   }
 
-  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemsetNode(
       &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));

@@ -856,7 +856,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
   // Node handle is intentionally discarded; dependency edges are not yet
   // exposed in the Mojo API.
   ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addFunctionDirect(*func, params);
+      builder->addFunctionDirect(*func, params, {});
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
@@ -870,7 +870,8 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyHostToDevice(
     DeviceGraphBuilder *builder, DeviceBuffer *dst, const void *src) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyHostToDevice",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addCopyHostToDevice(*dst, src);
+  ErrorOr<DeviceGraphNode> nodeOrErr =
+      builder->addCopyHostToDevice(*dst, src, {});
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
@@ -881,7 +882,8 @@ AsyncRT_DeviceGraphBuilder_addCopyDeviceToHost(DeviceGraphBuilder *builder,
                                                void *dst, DeviceBuffer *src) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyDeviceToHost",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addCopyDeviceToHost(dst, *src);
+  ErrorOr<DeviceGraphNode> nodeOrErr =
+      builder->addCopyDeviceToHost(dst, *src, {});
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
@@ -892,7 +894,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyDeviceToDevice(
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyDeviceToDevice",
                        TRACY_COLOR_GRAY);
   ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addCopyDeviceToDevice(*dst, *src);
+      builder->addCopyDeviceToDevice(*dst, *src, {});
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
@@ -905,7 +907,7 @@ AsyncRT_DeviceGraphBuilder_addSetMemory(DeviceGraphBuilder *builder,
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addSetMemory",
                        TRACY_COLOR_GRAY);
   ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addSetMemory(*dst, val, valSize);
+      builder->addSetMemory(*dst, val, valSize, {});
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;

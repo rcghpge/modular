@@ -14,6 +14,10 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
+#include "llvm/ADT/ArrayRef.h"
+
+#include <optional>
+
 namespace M::Driver {
 
 class DeviceGraphBuilder;
@@ -75,52 +79,71 @@ public:
   /// Returns the DeviceContext that owns this graph builder.
   virtual DeviceContext &context() const = 0;
 
+  /// Returns the handle of the most recently added node, or `std::nullopt`
+  /// if no nodes have been added yet.
+  virtual std::optional<DeviceGraphNode> lastNode() const = 0;
+
+  // Each node-creation method below takes an explicit \p dependencies list
+  // of DeviceGraphNode handles previously returned by this builder. An empty
+  // ArrayRef makes the new node a graph root with no predecessors; a
+  // non-empty ArrayRef uses those exact handles as predecessor edges. There
+  // is no implicit "chain after the last node" behavior — callers must wire
+  // dependencies explicitly.
+
   /// Add a kernel-dispatch node to the graph.
   ///
   /// \param func   The device function (kernel) to launch.
   /// \param params Grid/block dimensions, shared memory, and kernel arguments.
+  /// \param dependencies Explicit dependency list; see above.
   ///
   /// \returns A node handle on success, or an error if the underlying driver
   ///          call fails.
   virtual ErrorOr<DeviceGraphNode>
   addFunctionDirect(const DeviceFunction &func,
-                    const DeviceFunctionLaunchParams &params) = 0;
+                    const DeviceFunctionLaunchParams &params,
+                    llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
 
   // Memcpy nodes — argument shapes mirror DeviceContext::enqueueCopy*.
 
   /// Add a host-to-device memcpy node.
   virtual ErrorOr<DeviceGraphNode>
-  addCopyHostToDevice(void *dst, const void *src, size_t byteSize) = 0;
+  addCopyHostToDevice(void *dst, const void *src, size_t byteSize,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
 
-  ErrorOr<DeviceGraphNode> addCopyHostToDevice(const DeviceBuffer &dst,
-                                               const void *src) {
+  ErrorOr<DeviceGraphNode>
+  addCopyHostToDevice(const DeviceBuffer &dst, const void *src,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) {
     if (dst.context().device().api() != context().device().api())
       RETURN_ERROR("API mismatch between buffer and context");
-    return addCopyHostToDevice(dst.ptr(), src, dst.byteSize());
+    return addCopyHostToDevice(dst.ptr(), src, dst.byteSize(), dependencies);
   }
 
   /// Add a device-to-host memcpy node.
   virtual ErrorOr<DeviceGraphNode>
-  addCopyDeviceToHost(void *dst, const void *src, size_t byteSize) = 0;
+  addCopyDeviceToHost(void *dst, const void *src, size_t byteSize,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
 
-  ErrorOr<DeviceGraphNode> addCopyDeviceToHost(void *dst,
-                                               const DeviceBuffer &src) {
+  ErrorOr<DeviceGraphNode>
+  addCopyDeviceToHost(void *dst, const DeviceBuffer &src,
+                      llvm::ArrayRef<DeviceGraphNode> dependencies) {
     if (src.context().device().api() != context().device().api())
       RETURN_ERROR("API mismatch between buffer and context");
-    return addCopyDeviceToHost(dst, src.ptr(), src.byteSize());
+    return addCopyDeviceToHost(dst, src.ptr(), src.byteSize(), dependencies);
   }
 
   /// Add a device-to-device memcpy node. Both buffers must belong to a context
   /// using the same API as this builder; cross-context copies are not
   /// supported in graphs.
-  ErrorOr<DeviceGraphNode> addCopyDeviceToDevice(DeviceBuffer &dst,
-                                                 DeviceBuffer &src) {
-    return addCopyDeviceToDevice(dst, src, 0, src.byteSize());
+  ErrorOr<DeviceGraphNode>
+  addCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
+                        llvm::ArrayRef<DeviceGraphNode> dependencies) {
+    return addCopyDeviceToDevice(dst, src, 0, src.byteSize(), dependencies);
   }
 
   virtual ErrorOr<DeviceGraphNode>
   addCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
-                        size_t srcByteOffset, size_t srcByteSize) = 0;
+                        size_t srcByteOffset, size_t srcByteSize,
+                        llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
 
   // Memset nodes — argument shapes mirror DeviceContext::enqueueSetMemory.
 
@@ -129,13 +152,15 @@ public:
   /// `enqueueSetMemory` issues two ops in that case, which cannot be
   /// represented as a single graph node).
   virtual ErrorOr<DeviceGraphNode>
-  addSetMemory(void *dst, size_t byteSize, uint64_t val, size_t valSize) = 0;
+  addSetMemory(void *dst, size_t byteSize, uint64_t val, size_t valSize,
+               llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
 
-  ErrorOr<DeviceGraphNode> addSetMemory(const DeviceBuffer &dst, uint64_t val,
-                                        size_t valSize) {
+  ErrorOr<DeviceGraphNode>
+  addSetMemory(const DeviceBuffer &dst, uint64_t val, size_t valSize,
+               llvm::ArrayRef<DeviceGraphNode> dependencies) {
     if (dst.context().device().api() != context().device().api())
       RETURN_ERROR("API mismatch between buffer and context");
-    return addSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
+    return addSetMemory(dst.ptr(), dst.byteSize(), val, valSize, dependencies);
   }
 
   /// Instantiate the currently constructed device graph into its executable
