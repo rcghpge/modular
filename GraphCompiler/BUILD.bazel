@@ -265,6 +265,13 @@ mlir_nanobind(
         "include/GraphCompiler/GraphCompiler/MODialect/Transforms/**/*.td",
         "include/GraphCompiler/GraphCompiler/Conversion/**/*.td",
     ]),
+    exclude = [
+        # DualFusedConcatSliceOp uses I64Attr and ArrayAttr accessors that
+        # MLIR exposes via the adaptor base class, causing pointer-to-member
+        # type mismatch in optional_pimpl. Python access is not needed since
+        # pattern fusion runs entirely in C++.
+        "MO_DualFusedConcatSliceOp",
+    ],
     output_dir = "include/GraphCompiler/MODialect/Nanobind",
     deps = [
         ":MODialectTdFiles",
