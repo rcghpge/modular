@@ -30,20 +30,23 @@
 #define NIXL_LIBFABRIC_HAVE_CUDA 0
 #define NIXL_LIBFABRIC_DEFAULT_CONTROL_RAILS 1
 // Per-control-request scratch buffer size. Sized to fit a
-// ``BinaryNotification`` (currently 17668 bytes with
-// ``NIXL_LIBFABRIC_MAX_XFER_IDS = 4096``); rounded to 32 KiB for
+// ``BinaryNotification`` (currently 66820 bytes with
+// ``NIXL_LIBFABRIC_MAX_XFER_IDS = 16384``); rounded to 128 KiB for
 // alignment / future headroom. Cost per rail is
-// ``NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE * CONTROL_REQUESTS_PER_RAIL``.
-#define NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE 32768
+// ``NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE * CONTROL_REQUESTS_PER_RAIL``
+// (256 * 128 KiB = 32 MiB per rail).
+#define NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE 131072
 #define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_SEC 1
 #define NIXL_LIBFABRIC_DEFAULT_STRIPING_THRESHOLD (128 * 1024) // 128KB
 // Maximum XFER_IDs per notification. With 8 EFA rails on AWS B200 each
-// 4 MiB block stripes to 8 RDMAs, so a cap of 4096 supports batches up
-// to 4096/8 = 512 blocks (= 2 GiB) before the receiver-visible
+// 4 MiB block stripes to 8 RDMAs, so a cap of 16384 supports batches up
+// to 16384/8 = 2048 blocks (= 8 GiB) before the receiver-visible
 // notification starts losing xfer_ids. Submitted requests beyond the
 // cap still complete on the sender; only the receiver's notification
 // list is bounded.
-#define NIXL_LIBFABRIC_MAX_XFER_IDS 4096
+// Raised from 4096 (2 GiB) after probe runs confirmed batches up to
+// ~13815 xfer_ids on Kimi-K2.5 NVfp4 multiturn at mc=16 (B200 AWS).
+#define NIXL_LIBFABRIC_MAX_XFER_IDS 16384
 // Log every N EAGAIN retry attempts in postSend/postWrite/postRead. Upstream
 // NIXL chose 100 to prevent log spam on transiently-saturated EFA send
 // queues while still surfacing a warning when the retry loop is not making

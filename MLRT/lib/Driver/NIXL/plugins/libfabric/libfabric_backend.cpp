@@ -1483,9 +1483,39 @@ void nixlLibfabricEngine::processNotification(
     }
     xfer_ids_log << "] (total: " << expected_xfer_ids.size() << ")";
     NIXL_TRACE << xfer_ids_log.str();
+
+    // [GEX-3707 probe] Count xfer_ids already in received_remote_writes_
+    // BEFORE consuming them. Any pre-existing entry is a straggler from a
+    // previous request that was reused (LIFO pool) for this new request.
+    size_t pre_existing = 0;
+    size_t tracked_total = 0;
+    std::unordered_set<uint32_t> pre_existing_ids;
+    {
+      std::lock_guard<std::mutex> lock(receiver_tracking_mutex_);
+      tracked_total = received_remote_writes_.size();
+      for (uint32_t xfer_id : expected_xfer_ids) {
+        if (received_remote_writes_.count(xfer_id)) {
+          ++pre_existing;
+          pre_existing_ids.insert(xfer_id);
+        }
+      }
+    }
+    NIXL_WARN << "[GEX-3707] Notification arrived: msg=" << msg
+              << " expected=" << expected_xfer_ids.size()
+              << " pre_existing=" << pre_existing
+              << " set_size=" << tracked_total;
+
     // Check if all expected XFER_IDs have already arrived. consume* erases
     // them on match so received_remote_writes_ does not grow unboundedly.
     if (consumeReceivedXferIds(expected_xfer_ids)) {
+      if (pre_existing > 0) {
+        NIXL_WARN << "[GEX-3707] IMMEDIATE-STRAGGLER: notification fired "
+                     "immediately for msg="
+                  << msg << " with " << pre_existing << " of "
+                  << expected_xfer_ids.size()
+                  << " xfer_ids being straggler collisions (not fresh RDMA "
+                     "WRITEs for this request)";
+      }
       NIXL_TRACE << "All XFER_IDs already received, processing binary "
                     "notification immediately";
       std::lock_guard<std::mutex> lock(notif_mutex_);
@@ -1495,7 +1525,8 @@ void nixlLibfabricEngine::processNotification(
       NIXL_TRACE
           << "Not all XFER_IDs received yet, queuing binary notification";
       std::lock_guard<std::mutex> lock(receiver_tracking_mutex_);
-      pending_notifications_.emplace_back(remote_name, msg, expected_xfer_ids);
+      pending_notifications_.emplace_back(remote_name, msg, expected_xfer_ids,
+                                          pre_existing_ids);
       NIXL_TRACE << "Binary notification queued for later processing: " << msg;
     }
   } else {
@@ -1602,12 +1633,19 @@ nixl_status_t nixlLibfabricEngine::processConnectionRequest(
  *****************************************/
 
 void nixlLibfabricEngine::addReceivedXferId(uint32_t xfer_id) {
+  size_t set_size;
   {
     std::lock_guard<std::mutex> lock(receiver_tracking_mutex_);
     received_remote_writes_.insert(xfer_id);
+    set_size = received_remote_writes_.size();
     NIXL_DEBUG << "Added received XFER_ID " << xfer_id
-               << " to global tracking set (total: "
-               << received_remote_writes_.size() << ")";
+               << " to global tracking set (total: " << set_size << ")";
+  }
+
+  // [GEX-3707 probe] Periodically log set size to track straggler accumulation.
+  if (set_size % 500 == 0 && set_size > 0) {
+    NIXL_WARN << "[GEX-3707] received_remote_writes_ size=" << set_size
+              << " (stragglers accumulating if rising without bound)";
   }
 
   // Check if any pending notifications can now be processed
@@ -1656,6 +1694,23 @@ void nixlLibfabricEngine::checkPendingNotifications() {
     if (all_received) {
       NIXL_TRACE
           << "All XFER_IDs received for queued notification, processing now";
+
+      // [GEX-3707 probe] Count how many consumed xfer_ids were pre-existing
+      // stragglers at queue time (partial false-positive path).
+      size_t straggler_count = 0;
+      for (uint32_t xfer_id : it->expected_xfer_ids) {
+        if (it->pre_existing_xfer_ids.count(xfer_id)) {
+          ++straggler_count;
+        }
+      }
+      if (straggler_count > 0) {
+        NIXL_WARN << "[GEX-3707] DEFERRED-STRAGGLER: queued notification fired "
+                     "for msg="
+                  << it->message << " with " << straggler_count << " of "
+                  << it->expected_xfer_ids.size()
+                  << " xfer_ids pre-existing at queue time (partial straggler "
+                     "collision)";
+      }
 
       // Move notification to main list (need to acquire notif_mutex_)
       {

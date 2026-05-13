@@ -213,11 +213,16 @@ private:
     std::string remote_agent;
     std::string message;
     std::unordered_set<uint32_t> expected_xfer_ids; // From ref_xfer_id_list
+    std::unordered_set<uint32_t>
+        pre_existing_xfer_ids; // [GEX-3707] in received_remote_writes_ at queue
+                               // time
     std::chrono::steady_clock::time_point received_time;
 
     PendingNotification(const std::string &agent, const std::string &msg,
-                        const std::unordered_set<uint32_t> &xfer_ids)
+                        const std::unordered_set<uint32_t> &xfer_ids,
+                        const std::unordered_set<uint32_t> &pre_existing)
         : remote_agent(agent), message(msg), expected_xfer_ids(xfer_ids),
+          pre_existing_xfer_ids(pre_existing),
           received_time(std::chrono::steady_clock::now()) {}
   };
 
