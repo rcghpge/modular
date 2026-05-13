@@ -14,8 +14,7 @@
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create([[buf]]
 // CHECK: %{{.*}}, [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]]
 // CHECK: [[ch2:%.*]] = mo.mutable.store({{.*}}, [[ch1]]
-// CHECK: [[slice_re:%.*]] = rmo.rebind_tensor_shape<{{.*}}>([[slice]])
-// CHECK: mo.mutable.store.slice([[buf]], [[slice_re]], [[start]], [[stop]], [[step]], [[ch2]])
+// CHECK: mo.mutable.store.slice([[buf]], [[slice]], [[start]], [[stop]], [[step]], [[ch2]])
 mo.graph @slice_non_staticizable<d0, d1>(%buf: !mo.buffer<[5, 5], f32>, %slice: !mo.tensor<[d0, d1], f32>, %step: !mo.tensor<[2], si64>) -> !bt
 {
   %ch0 = mo.chain.create(%buf) : !bt
@@ -40,8 +39,7 @@ mo.graph @slice_non_staticizable<d0, d1>(%buf: !mo.buffer<[5, 5], f32>, %slice: 
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create([[buf]]
 // CHECK: %{{.*}}, [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]]
 // CHECK: [[ch2:%.*]] = mo.mutable.store({{.*}}, [[ch1]]
-// CHECK: [[slice_re:%.*]] = rmo.rebind_tensor_shape<{{.*}}>([[slice]])
-// CHECK: mo.mutable.store.slice([[buf]], [[slice_re]], [[start]], [[stop]], [[step]], [[ch2]])
+// CHECK: mo.mutable.store.slice([[buf]], [[slice]], [[start]], [[stop]], [[step]], [[ch2]])
 mo.graph @slice_staticizable<d0, d1>(%buf: !mo.buffer<[5, 5], f32>, %slice: !mo.tensor<[d0, d1], f32>) -> !bt
 {
   %ch0 = mo.chain.create(%buf) : !bt

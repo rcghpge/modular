@@ -56,6 +56,46 @@ bool isCompatibleShape(TensorType a, TensorType b) {
   return true;
 }
 
+/// Helpers for synthesizing the shape_of / broadcast_shape / broadcast_to
+/// chain that elementwise composite patterns lower into. Each helper passes an
+/// explicit result type to the underlying op so that no fresh `RMO_D*` symbols
+/// are minted — the broadcast destination is `targetType`, whose dim names are
+/// user-declared on the parent op.
+
+/// Build a rank-1 si64 shape tensor describing `tensor.getType()`'s shape.
+static TensorValue buildShapeOf(OpBuilder &b, Location loc,
+                                TensorValue tensor) {
+  TensorType inputTy = tensor.getType();
+  auto shapeTy = TensorType::get({static_cast<int64_t>(inputTy.getRank())},
+                                 b.getIntegerType(64, /*isSigned=*/true),
+                                 inputTy.getDeviceRef());
+  return RMO::MOShapeOfOp::create(b, loc, shapeTy, tensor);
+}
+
+/// Build an `rmo.mo.broadcast_shape` whose result is rank-1 of length
+/// `outputRank` (the broadcasted destination's rank — statically known from
+/// the composite op being lowered).
+static TensorValue buildBroadcastShape(OpBuilder &b, Location loc,
+                                       TensorValue lhsShape,
+                                       TensorValue rhsShape,
+                                       int64_t outputRank) {
+  auto resultTy =
+      TensorType::get({outputRank}, b.getIntegerType(64, /*isSigned=*/true),
+                      lhsShape.getType().getDeviceRef());
+  return RMO::MOBroadcastShapeOp::create(b, loc, resultTy, lhsShape, rhsShape);
+}
+
+/// Broadcast `tensor` to `targetType`'s shape via an `rmo.mo.broadcast_to`
+/// keyed by the runtime shape `shape`. The result type is `targetType` with
+/// `tensor`'s dtype — every dim name in `targetType` is user-declared on the
+/// composite op being lowered, so no fresh dims are needed.
+static TensorValue buildBroadcastTo(OpBuilder &b, Location loc,
+                                    TensorValue tensor, TensorValue shape,
+                                    TensorType targetType) {
+  return RMO::MOBroadcastToOp::create(
+      b, loc, targetType.cloneWith(tensor.getType().getDtype()), tensor, shape);
+}
+
 template <typename T>
 using ToTensorValueType = TensorValue;
 
@@ -201,13 +241,31 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   }
 
   // Build the MO op.
-  SmallVector<KGEN::ParamDeclAttr> moOutputParamDeclsFlattened;
-  for (const auto &resultDecls : moOutputParamDecls) {
-    moOutputParamDeclsFlattened.append(resultDecls);
-  }
+  //
+  // When `inferMOTypes` returns the RMO op's declared result types verbatim
+  // (the "passthrough" case — see `requireRmoResults`), the new MO op
+  // inherits the RMO op's `output_param_decls`: the dims referenced in the
+  // result are exactly the ones the RMO op declared, and the RMO op is about
+  // to be deleted. Otherwise, fall back to `inferMOTypes`'s decls (the new
+  // result type uses minted or input-derived dims that the op itself owns).
   MO::ParamDeclarationInterface newOp =
       generator(rewriter, op->getLoc(), moResultTypes, newOperands);
-  newOp.setOutputParamDecls(moOutputParamDeclsFlattened);
+
+  bool resultTypesPassthrough = true;
+  for (size_t i = 0; i < numResults; ++i) {
+    if (moResultTypes[i] != op->getResult(i).getType()) {
+      resultTypesPassthrough = false;
+      break;
+    }
+  }
+  if (resultTypesPassthrough) {
+    newOp.setOutputParamDecls(op.getMOAnalogueOutputParamDecls());
+  } else {
+    SmallVector<KGEN::ParamDeclAttr> moOutputParamDeclsFlattened;
+    for (const auto &resultDecls : moOutputParamDecls)
+      moOutputParamDeclsFlattened.append(resultDecls);
+    newOp.setOutputParamDecls(moOutputParamDeclsFlattened);
+  }
 
   // Rebind the output of the MO op to what the original op had and replace
   for (size_t i = 0; i < numResults; ++i) {
@@ -494,20 +552,15 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
     TensorValue xFinal = x;
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
-      TensorValue xShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
-      TensorValue yShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
-
-      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
-          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
-
-      TensorValue xBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{y, commonShape}, graphOp);
-      xFinal = xBcast;
-      yFinal = yBcast;
+      // `op.getType()` is the user-declared broadcasted shape; reuse its dims
+      // for the broadcast destination so we don't mint fresh symbols.
+      TensorType bcastType = op.getType();
+      TensorValue xShape = buildShapeOf(rewriter, loc, x);
+      TensorValue yShape = buildShapeOf(rewriter, loc, y);
+      TensorValue commonShape = buildBroadcastShape(
+          rewriter, loc, xShape, yShape, bcastType.getRank());
+      xFinal = buildBroadcastTo(rewriter, loc, x, commonShape, bcastType);
+      yFinal = buildBroadcastTo(rewriter, loc, y, commonShape, bcastType);
     }
 
     auto answer = MOAnalogueOpT::create(rewriter, loc,
@@ -556,20 +609,16 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
     TensorValue xFinal = x;
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
-      TensorValue xShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
-      TensorValue yShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
-
-      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
-          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
-
-      TensorValue xBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{y, commonShape}, graphOp);
-      xFinal = xBcast;
-      yFinal = yBcast;
+      // The comparison op's result shape carries the broadcast destination's
+      // user-declared dim names; reuse them for the broadcasts (with each
+      // operand's pre-comparison dtype).
+      TensorType bcastType = op.getType();
+      TensorValue xShape = buildShapeOf(rewriter, loc, x);
+      TensorValue yShape = buildShapeOf(rewriter, loc, y);
+      TensorValue commonShape = buildBroadcastShape(
+          rewriter, loc, xShape, yShape, bcastType.getRank());
+      xFinal = buildBroadcastTo(rewriter, loc, x, commonShape, bcastType);
+      yFinal = buildBroadcastTo(rewriter, loc, y, commonShape, bcastType);
     }
 
     auto answer = MOAnalogueOpT::create(rewriter, loc,
@@ -591,12 +640,13 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
 
-    TensorValue shapeLike = RMO::MOShapeOfOp::create(
-        rewriter, loc, ValueRange{op.getShapeLike()}, graphOp);
-    auto answer = RMO::MOBroadcastToOp::create(
-        rewriter, loc, ValueRange{op.getInput(), shapeLike}, graphOp);
+    TensorValue shapeLike =
+        buildShapeOf(rewriter, loc, cast<TensorValue>(op.getShapeLike()));
+    TensorValue answer =
+        buildBroadcastTo(rewriter, loc, cast<TensorValue>(op.getInput()),
+                         shapeLike, op.getType());
     TensorValue reboundAnswer =
-        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+        rebindToShape(graphOp, cast<OpResult>(answer), op.getType(), rewriter,
                       op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
@@ -979,27 +1029,25 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr() ||
         x.getType().getTypedShapeAttr() != cond.getType().getTypedShapeAttr()) {
-      TensorValue condShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{cond}, graphOp);
-      TensorValue xShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
-      TensorValue yShape =
-          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
+      // The select op's result shape is the broadcasted destination's
+      // user-declared shape; reuse its dims for each broadcast.
+      TensorType bcastType = op.getType();
+      int64_t outputRank = bcastType.getRank();
+      TensorValue condShape = buildShapeOf(rewriter, loc, cond);
+      TensorValue xShape = buildShapeOf(rewriter, loc, x);
+      TensorValue yShape = buildShapeOf(rewriter, loc, y);
 
-      TensorValue xyShape = RMO::MOBroadcastShapeOp::create(
-          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
-      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
-          rewriter, loc, ValueRange{condShape, xyShape}, graphOp);
+      // The intermediate broadcast of x and y has its own (possibly smaller)
+      // rank; the final broadcast against `cond` has the destination rank.
+      int64_t xyRank = std::max(x.getType().getRank(), y.getType().getRank());
+      TensorValue xyShape =
+          buildBroadcastShape(rewriter, loc, xShape, yShape, xyRank);
+      TensorValue commonShape =
+          buildBroadcastShape(rewriter, loc, condShape, xyShape, outputRank);
 
-      TensorValue condBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{cond, commonShape}, graphOp);
-      TensorValue xBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = RMO::MOBroadcastToOp::create(
-          rewriter, loc, ValueRange{y, commonShape}, graphOp);
-      condFinal = condBcast;
-      xFinal = xBcast;
-      yFinal = yBcast;
+      condFinal = buildBroadcastTo(rewriter, loc, cond, commonShape, bcastType);
+      xFinal = buildBroadcastTo(rewriter, loc, x, commonShape, bcastType);
+      yFinal = buildBroadcastTo(rewriter, loc, y, commonShape, bcastType);
     }
 
     auto answer = RMO::MOSelectOp::create(

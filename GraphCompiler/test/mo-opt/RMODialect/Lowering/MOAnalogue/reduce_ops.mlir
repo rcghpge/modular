@@ -6,9 +6,8 @@ mo.graph @mean_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0,
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @mean_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.mean<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.mean<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -20,9 +19,8 @@ mo.graph @mean_dyn_const_axis<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @mean_dyn_const_axis<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
 //   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mean([[ARG0]], [[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D0]], 1, [[D2]], [[D3]]], f32>
-//  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[[D0]], 1, [[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V2]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mean<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[V0]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -35,9 +33,8 @@ mo.graph @reduce_mul_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @reduce_mul_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.mul<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.mul<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -47,9 +44,8 @@ mo.graph @reduce_add_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @reduce_add_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.add<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.add<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -59,9 +55,8 @@ mo.graph @reduce_min_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @reduce_min_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.min<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.min<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -71,9 +66,8 @@ mo.graph @reduce_max_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @reduce_max_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.max<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.max<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 
 // -----
 
@@ -83,9 +77,8 @@ mo.graph @argmin_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @argmin_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], si32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.arg_min<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], si32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.arg_min<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
 
 // -----
 
@@ -95,6 +88,5 @@ mo.graph @argmax_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @argmax_dyn_dims<[[D0:[A-Z0-9]*]], [[D1:[A-Z0-9]*]], [[D2:[A-Z0-9]*]], [[D3:[A-Z0-9]*]] -> [[D4:[A-Z0-9]*]], [[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], si32> {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.arg_max<() -> [[RMO_D1:[A-Za-z0-9_]*]], [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], si32>
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]], [[RMO_D2]], [[RMO_D3]], [[RMO_D4]]], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
-//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V1]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
+//  CHECK-NEXT:   [[V0:%.*]] = mo.reduce.arg_max<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>
+//  CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> [[V0]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si32>

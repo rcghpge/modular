@@ -8,9 +8,10 @@ mo.graph @forward() -> !mo.tensor<[2, 3], si32> {
   // NOTE: we do not use --verify-diagnostics as other diagnostics are emitted
   // and we seem to need to check all of them.
   //
-  // CHECK: error: [LegalizeRMOOps] RMO rebinding failed for op in operand index #1 original and expected types are not compatible.
-  // CHECK-NEXT:     original type is     : '!mo.tensor<[6], si32>'
-  // CHECK-NEXT:     RMO expected type is : '!mo.tensor<[RMO_D1, RMO_D2], si32>'
+  // The rank mismatch surfaces directly from the MO scatter_nd verifier on
+  // the lowered op (which receives the user-typed `[6]` updates operand
+  // verbatim).
+  // CHECK: error: updates rank must be: data_rank + indices_rank - indices_shape[-1] - 1
   %0 = rmo.mo.scatter_nd(%data, %updates, %indices) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[2, 1], si32>) -> !mo.tensor<[2, 3], si32>
   mo.output %0 : !mo.tensor<[2, 3], si32>
 }

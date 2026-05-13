@@ -12,8 +12,7 @@ mo.graph @max_pool_dyn_dims<D0, D1, D2, D3, D4, D5 -> D6, D7, D8, D9>(%arg0: !mo
 //  CHECK-SAME: [[ARG3:%[A-Za-z0-9_]*]]: !mo.tensor<[{{[A-Za-z0-9_]+}}], si64>
 //  CHECK-SAME: [[ARG4:%[A-Za-z0-9_]*]]: !mo.tensor<[{{[A-Za-z0-9_]+}}], si64>)
 //  CHECK-NEXT:   [[V0:%.*]] = mo.max_pool{{.*}}([[ARG0]]) [filter_shape = [[ARG1]], strides = [[ARG2]], dilations = [[ARG3]], paddings = [[ARG4]]]
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape{{.*}}([[V0]])
-//  CHECK-NEXT:   mo.output{{.*}} [[V1]]
+//  CHECK-NEXT:   mo.output{{.*}} [[V0]]
 
 // -----
 
@@ -29,8 +28,7 @@ mo.graph @max_pool_static<() -> D0, D1, D2, D3>(%arg0: !mo.tensor<[3, 8, 43, 49]
 //  CHECK-SAME: [[ARG3:%[A-Za-z0-9_]*]]: !mo.tensor<[2], si64>
 //  CHECK-SAME: [[ARG4:%[A-Za-z0-9_]*]]: !mo.tensor<[4], si64>)
 //  CHECK-NEXT:   [[V0:%.*]] = mo.max_pool{{.*}}([[ARG0]]) [filter_shape = [[ARG1]], strides = [[ARG2]], dilations = [[ARG3]], paddings = [[ARG4]]]
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape{{.*}}([[V0]])
-//  CHECK-NEXT:   mo.output{{.*}} [[V1]]
+//  CHECK-NEXT:   mo.output{{.*}} [[V0]]
 
 // -----
 
@@ -46,5 +44,4 @@ mo.graph @max_pool_static_dyn<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 //  CHECK-SAME: [[ARG3:%[A-Za-z0-9_]*]]: !mo.tensor<[{{[A-Za-z0-9_]+}}], si64>
 //  CHECK-SAME: [[ARG4:%[A-Za-z0-9_]*]]: !mo.tensor<[{{[A-Za-z0-9_]+}}], si64>)
 //  CHECK-NEXT:   [[V0:%.*]] = mo.max_pool{{.*}}([[ARG0]]) [filter_shape = [[ARG1]], strides = [[ARG2]], dilations = [[ARG3]], paddings = [[ARG4]]]
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape{{.*}}([[V0]])
-//  CHECK-NEXT:   mo.output{{.*}} [[V1]]
+//  CHECK-NEXT:   mo.output{{.*}} [[V0]]
