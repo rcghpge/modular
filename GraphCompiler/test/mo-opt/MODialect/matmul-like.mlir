@@ -80,34 +80,3 @@ mo.graph @matmul_si8_ui8_si32_mixed_precision<D0, D1>(%arg0: !mo.tensor<[10, D0]
   mo.output %0 : !mo.tensor<[10, 5], si32>
 }
 
-// CHECK-LABEL: mo.graph @batch_matmul_unranked_input_ranked_output
-// CHECK-SAME:  <[[SH0:[^,>]*]]: !mosh.ape, [[SH1:[^,>]*]]: !mosh.ape, D0, D1, D2>(
-// CHECK-SAME:    %[[LHS:.*]]: !mo.tensor<[[SH0]], f32>,
-// CHECK-SAME:    %[[RHS:.*]]: !mo.tensor<[[SH1]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[D0, D1, D2], f32> {
-mo.graph @batch_matmul_unranked_input_ranked_output<Sh0: !mosh.ape, Sh1: !mosh.ape, D0, D1, D2>(
-  %lhs: !mo.tensor<Sh0, f32>,
-  %rhs: !mo.tensor<Sh1, f32>
-) -> !mo.tensor<[D0, D1, D2], f32> {
-
-  // CHECK-NEXT: %[[RES:.*]] = mo.batch_matmul(%[[LHS]], %[[RHS]]) : (!mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[D0, D1, D2], f32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[D0, D1, D2], f32>
-  %res = mo.batch_matmul(%lhs, %rhs) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<[D0, D1, D2], f32>
-  mo.output %res : !mo.tensor<[D0, D1, D2], f32>
-}
-
-// CHECK-LABEL: mo.graph @batch_matmul_ranked_input_unranked_output
-// CHECK-SAME:  <D0, D1, D2, D3, D4, D5, [[SH0:[^,>]*]]: !mosh.ape>(
-// CHECK-SAME:    %[[LHS:.*]]: !mo.tensor<[D0, D1, D2], f32>,
-// CHECK-SAME:    %[[RHS:.*]]: !mo.tensor<[D3, D4, D5], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[SH0]], f32> {
-mo.graph @batch_matmul_ranked_input_unranked_output<D0, D1, D2, D3, D4, D5, Sh0: !mosh.ape>(
-  %lhs: !mo.tensor<[D0, D1, D2], f32>,
-  %rhs: !mo.tensor<[D3, D4, D5], f32>
-) -> !mo.tensor<Sh0, f32> {
-
-  // CHECK-NEXT: %[[RES:.*]] = mo.batch_matmul(%[[LHS]], %[[RHS]]) : (!mo.tensor<[D0, D1, D2], f32>, !mo.tensor<[D3, D4, D5], f32>) -> !mo.tensor<[[SH0]], f32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[SH0]], f32>
-  %res = mo.batch_matmul(%lhs, %rhs) : (!mo.tensor<[D0, D1, D2], f32>, !mo.tensor<[D3, D4, D5], f32>) -> !mo.tensor<Sh0, f32>
-  mo.output %res : !mo.tensor<Sh0, f32>
-}

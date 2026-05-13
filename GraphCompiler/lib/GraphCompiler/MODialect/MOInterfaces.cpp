@@ -41,16 +41,10 @@ LogicalResult Impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
     // added to any of the tensor types.
     if (t.getLayoutAttr())
       return success();
-    else if (t.hasRank())
-      staticRanks.emplace_back(t.getRank());
+    staticRanks.emplace_back(t.getRank());
   }
 
-  bool allStaticRanks = staticRanks.size() == values.size();
-  if (allStaticRanks)
-    return success(llvm::all_equal(staticRanks));
-
-  bool allDynamicRanks = staticRanks.empty();
-  return success(allDynamicRanks);
+  return success(llvm::all_equal(staticRanks));
 }
 
 LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
@@ -61,11 +55,6 @@ LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
 
   TensorType aType = A.getType();
   TensorType bType = B.getType();
-
-  // If either input is dynamically ranked, we don't try to verify.
-  // When partially known ranks are supported we might refine this.
-  if (!aType.hasRank() || !bType.hasRank())
-    return success();
 
   if (aType.getRank() < 2) {
     return op->emitOpError(
@@ -233,8 +222,6 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
   TensorType resTy = op.getResult().getType();
 
   // Basic static rank checks
-  if (!inputTy.hasRank() || !resTy.hasRank())
-    return success();
   size_t inputRank = inputTy.getRank();
   size_t resRank = resTy.getRank();
   if (inputRank != resRank) {
@@ -256,9 +243,7 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
   }
 
   // Do non-obvious verification of ranks:
-  if (op.getInput().getType().hasRank() &&
-      op.getIndices().getType().hasRank() &&
-      op.getUpdates().getType().hasRank()) {
+  {
     int64_t dataRank = op.getInput().getType().getRank();
     int64_t indicesRank = op.getIndices().getType().getRank();
     int64_t indicesLastDim =
@@ -465,18 +450,8 @@ Impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
 LogicalResult Impl::verifyPadLike(PadLike op) {
   TensorType inputTy = op.getInput().getType();
   TensorType paddingsTy = op.getPaddings().getType();
-  TensorType resTy = op.getType();
-  if (inputTy.hasRank()) {
-    if (!resTy.hasRank())
-      return op.emitOpError("result must be ranked if input is ranked");
-    if ((int64_t)inputTy.getRank() * 2 != paddingsTy.getIntDim(0))
-      return op.emitOpError("paddings shape does not match static input rank");
-  } else {
-    if (resTy.hasRank())
-      return op.emitOpError("result must be unranked if input is unranked");
-    if (isa<IntegerAttr>(paddingsTy.getDim(0)))
-      return op.emitOpError("paddings shape does not match dynamic input rank");
-  }
+  if ((int64_t)inputTy.getRank() * 2 != paddingsTy.getIntDim(0))
+    return op.emitOpError("paddings shape does not match static input rank");
 
   return success();
 }

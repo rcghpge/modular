@@ -2,9 +2,9 @@
 
 // TODO make first input dimension dynamic dynamic, which would require folding
 // `eq(mul(D0, 10), mul(D0, 8))` in order to emit compile time error.
-mo.graph @reshape_number_of_elems<() -> Sh0: !mosh.ape>(
+mo.graph @reshape_number_of_elems<() -> D2, D3, D4>(
   %input: !mo.tensor<[10, 10], f32>
-) -> !mo.tensor<Sh0, f32> {
+) -> !mo.tensor<[D2, D3, D4], f32> {
 
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[1], si32>
@@ -21,11 +21,11 @@ mo.graph @reshape_number_of_elems<() -> Sh0: !mosh.ape>(
   ) -> !mo.tensor<[D1], si32>
 
   // expected-error@below {{[reshape] input and output number of elements must match}}
-  %result = mo.reshape<() -> Sh1: !mosh.ape>(%input, %target_shape) : (
+  %result = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
     !mo.tensor<[10, 10], f32>, !mo.tensor<[D1], si32>
-  ) -> !mo.tensor<Sh1, f32>
+  ) -> !mo.tensor<[D5, D6, D7], f32>
 
-  mo.output<:!mosh.ape Sh1> %result : !mo.tensor<Sh1, f32>
+  mo.output<D5, D6, D7> %result : !mo.tensor<[D5, D6, D7], f32>
 }
 
 // -----

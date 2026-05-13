@@ -625,10 +625,6 @@ KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
   return getNewParamOfType(prefix, dimType);
 }
 
-KGEN::ParamDeclAttr GraphOp::getNewShapeParam(const Twine &prefix) {
-  return getNewParamOfType(prefix, ShapeType::get(getContext()));
-}
-
 KGEN::ParamDeclAttr GraphOp::getNewParamOfType(const Twine &prefix, Type type) {
   return KGEN::ParamDeclAttr::get(getNewParamName(prefix), type);
 }

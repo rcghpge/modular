@@ -75,35 +75,6 @@ mo.graph @gather_to_split_with_device<D0>(
   mo.output %add012 : !mo.tensor<[1, D0, 10], f32, dev:0>
 }
 
-// CHECK: mo.graph @gather_to_split_unranked_input<[[SH0:.*]]: !mosh.ape>(
-mo.graph @gather_to_split_unranked_input<Sh0: !mosh.ape>(
-  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[SH0]], f32>
-  %input: !mo.tensor<Sh0, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH0]], f32> {
-) -> !mo.tensor<Sh0, f32> {
-  // CHECK-NEXT: %[[AXIS0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %axis0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // CHECK-NEXT: %[[IDX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  // CHECK-NEXT: %[[IDX1:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-
-  // CHECK-NEXT: %[[GATHER0:.*]] = mo.gather(%[[INPUT]], %[[IDX0]], %[[AXIS0]])
-  // CHECK-SAME: : (!mo.tensor<[[SH0]], f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[SH0]], f32>
-  %gather0 = mo.gather(%input, %idx0, %axis0)
-  : (!mo.tensor<Sh0, f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<Sh0, f32>
-  // CHECK-NEXT: %[[GATHER1:.*]] = mo.gather(%[[INPUT]], %[[IDX1]], %[[AXIS0]])
-  // CHECK-SAME: : (!mo.tensor<[[SH0]], f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[SH0]], f32>
-  %gather1 = mo.gather(%input, %idx1, %axis0)
-  : (!mo.tensor<Sh0, f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<Sh0, f32>
-
-  // CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[GATHER0]], %[[GATHER1]]) : !mo.tensor<[[SH0]], f32>
-  %add = mo.add(%gather0, %gather1) : !mo.tensor<Sh0, f32>
-
-  // CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[[SH0]], f32>
-  mo.output %add : !mo.tensor<Sh0, f32>
-}
-
 // CHECK: mo.graph @gather_to_split_dyn_axis_0<[[D0:.*]]>(
 mo.graph @gather_to_split_dyn_axis_0<D0>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 3], f32>

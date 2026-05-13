@@ -40,9 +40,7 @@ TEST(testRMOOpHelpers, testRefineShape) {
 
   auto dimType = ShapeAttr::getDimType(&ctx);
 
-  // Declare dimensions / shape attr
-  auto dynRankShapeAttr = KGEN::ParamDeclRefAttr::get(
-      KGEN::ParamDeclAttr::get("Sh", MOSH::ShapeType::get(&ctx)));
+  // Declare dimensions
   auto paramDimAttr =
       KGEN::ParamDeclRefAttr::get(KGEN::ParamDeclAttr::get("D", dimType));
   auto paramExprDimAttr = KGEN::ParamOperatorAttr::get(
@@ -61,7 +59,6 @@ TEST(testRMOOpHelpers, testRefineShape) {
     }
   }
 
-  TensorType dynRankTy = TensorType::get(dynRankShapeAttr, DType::f32);
   TensorType shape1Ty = TensorType::get(&ctx, shape1Dims, DType::f32);
   TensorType shape2Ty = TensorType::get(&ctx, shape2Dims, DType::f32);
 
@@ -80,7 +77,6 @@ TEST(testRMOOpHelpers, testRefineShape) {
       TensorType::get(&ctx, shape2Shape1Refined, DType::f32);
 
   // What the built tensor types look like:
-  const char *dynRankStr = "!mo.tensor<Sh, f32>";
   const char *shape1Str =
       "!mo.tensor<[D, D, D, mul(D, D), mul(D, D), mul(D, D), 42, 42, 42], f32>";
   const char *shape2Str =
@@ -89,24 +85,17 @@ TEST(testRMOOpHelpers, testRefineShape) {
       "!mo.tensor<[D, D, 42, mul(D, D), mul(D, D), 42, 42, 42, 42], f32>";
   const char *refined2Str =
       "!mo.tensor<[D, mul(D, D), 42, D, mul(D, D), 42, 42, 42, 42], f32>";
-  EXPECT_EQ(toString(dynRankTy), dynRankStr);
   EXPECT_EQ(toString(shape1Ty), shape1Str);
   EXPECT_EQ(toString(shape2Ty), shape2Str);
   EXPECT_EQ(toString(refined1Ty), refined1Str);
   EXPECT_EQ(toString(refined2Ty), refined2Str);
 
-  // Test refinement protocol on crossproduct of results
-  // In general dynamic rank always "loses". Meanwhile dimension by dimension,
-  // the first operand's dimension tend to win unless we have an integral value.
-  EXPECT_EQ(toString(M::RMO::refineShape(dynRankTy, dynRankTy)), dynRankStr);
-  EXPECT_EQ(toString(M::RMO::refineShape(dynRankTy, shape1Ty)), shape1Str);
-  EXPECT_EQ(toString(M::RMO::refineShape(dynRankTy, shape2Ty)), shape2Str);
-
-  EXPECT_EQ(toString(M::RMO::refineShape(shape1Ty, dynRankTy)), shape1Str);
+  // Test refinement protocol on crossproduct of results. Dimension by
+  // dimension, the first operand's dimension tends to win unless we have an
+  // integral value.
   EXPECT_EQ(toString(M::RMO::refineShape(shape1Ty, shape1Ty)), shape1Str);
   EXPECT_EQ(toString(M::RMO::refineShape(shape1Ty, shape2Ty)), refined1Str);
 
-  EXPECT_EQ(toString(M::RMO::refineShape(shape2Ty, dynRankTy)), shape2Str);
   EXPECT_EQ(toString(M::RMO::refineShape(shape2Ty, shape1Ty)), refined2Str);
   EXPECT_EQ(toString(M::RMO::refineShape(shape2Ty, shape2Ty)), shape2Str);
 }

@@ -92,35 +92,35 @@ mo.graph @static_broadcast_nofold_constant_inputs() -> !mo.tensor<[2, 2], f32> {
 }
 
 // CHECK: mo.graph @gather_empty_input_folder
-mo.graph @gather_empty_input_folder<Sh0: !mosh.ape>(%indices: !mo.tensor<Sh0, si32>) -> !mo.tensor<[0], si64> {
+mo.graph @gather_empty_input_folder<D0>(%indices: !mo.tensor<[D0], si32>) -> !mo.tensor<[0], si64> {
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<> : tensor<0xsi64>} : !mo.tensor<[0], si64>
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %0 = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-  %1 = mo.gather(%0, %indices, %axis) : (!mo.tensor<[0], si64>, !mo.tensor<Sh0, si32>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si64>
+  %1 = mo.gather(%0, %indices, %axis) : (!mo.tensor<[0], si64>, !mo.tensor<[D0], si32>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[0], si64>
   mo.output %1 : !mo.tensor<[0], si64>
 }
 
-// CHECK: mo.graph @gather_param_no_fold<[[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(
-mo.graph @gather_param_no_fold<Sh0: !mosh.ape -> Sh1: !mosh.ape>(
-    // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[SH0]], si32>) -> !mo.tensor<[[SH1]], si32> {
-    %input: !mo.tensor<Sh0, si32>) -> !mo.tensor<Sh1, si32> {
+// CHECK: mo.graph @gather_param_no_fold<[[D0:.*]] -> [[D1:.*]]>(
+mo.graph @gather_param_no_fold<D0 -> D1>(
+    // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]]], si32>) -> !mo.tensor<[[[D1]]], si32> {
+    %input: !mo.tensor<[D0], si32>) -> !mo.tensor<[D1], si32> {
   // CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // CHECK-DAG: %[[INDICES:.*]] = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %indices = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-  // CHECK-NEXT: %[[RES:.*]] = mo.gather<() -> [[SH2:.*]]: !mosh.ape>(%[[INPUT]], %[[INDICES]], %[[AXIS]]) : (!mo.tensor<Sh0, si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<Sh2, si32>
-  %1 = mo.gather<() -> Sh2: !mosh.ape>(%input, %indices, %axis) : (!mo.tensor<Sh0, si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<Sh2, si32>
-  // CHECK-NEXT: mo.output<:!mosh.ape [[SH2]]> %[[RES]] : !mo.tensor<[[SH2]], si32>
-  mo.output<:!mosh.ape Sh2> %1 : !mo.tensor<Sh2, si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.gather<() -> [[D2:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]]) : (!mo.tensor<[D0], si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D2]]], si32>
+  %1 = mo.gather<() -> D2>(%input, %indices, %axis) : (!mo.tensor<[D0], si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D2], si32>
+  // CHECK-NEXT: mo.output<[[D2]]> %[[RES]] : !mo.tensor<[[[D2]]], si32>
+  mo.output<D2> %1 : !mo.tensor<[D2], si32>
 }
 
 // CHECK: mo.graph @gather_empty_input_index
-mo.graph @gather_empty_input_index<Sh0: !mosh.ape>(%input: !mo.tensor<Sh0, si32>) -> !mo.tensor<[0], si32> {
+mo.graph @gather_empty_input_index<D0>(%input: !mo.tensor<[D0], si32>) -> !mo.tensor<[0], si32> {
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<> : tensor<0xsi32>} : !mo.tensor<[0], si32>
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %indices = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-  %1 = mo.gather(%input, %indices, %axis) : (!mo.tensor<Sh0, si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si32>
+  %1 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[D0], si32>, !mo.tensor<[0], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[0], si32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[0], si32>
   mo.output %1 : !mo.tensor<[0], si32>
 }

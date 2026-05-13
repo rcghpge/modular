@@ -201,11 +201,6 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     /// graph op.
     KGEN::ParamDeclAttr getNewDimParam(const Twine &prefix);
 
-    /// Return a new dimension parameter of `MOSH::ShapeType`, with a name that
-    /// starts with `prefix` and differs from existing parameter names inside
-    /// this graph op.
-    KGEN::ParamDeclAttr getNewShapeParam(const Twine &prefix);
-
     /// Return a new dimension parameter of given type, with a name that starts
     /// with `prefix` and differs from existing parameter names inside this
     /// graph op.

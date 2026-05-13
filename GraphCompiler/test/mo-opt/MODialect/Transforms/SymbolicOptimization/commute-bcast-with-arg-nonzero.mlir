@@ -89,28 +89,3 @@ mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1
   mo.output<K> %1 : !mo.tensor<[K, 1], si64>
 }
 
-// CHECK-LABEL: mo.graph @reshape_dynamic_input
-// CHECK-SAME: <[[A:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
-mo.graph @reshape_dynamic_input<A, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
-  // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[[SH0]], f32>
-  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32> -> !mo.tensor<Sh0, f32>
-  // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[BCASTARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[A]]], f32>
-  %1 = mo.static.reshape(%0) : !mo.tensor<Sh0, f32> -> !mo.tensor<[A], f32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero<() -> [[K:.*]]>(%[[RESHAPE]]) : (!mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[K]], 1], si64>
-  %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[A], f32>) -> !mo.tensor<[K, 1], si64>
-  // CHECK-NEXT: mo.output<[[K]]> %[[RES]] : !mo.tensor<[[[K]], 1], si64>
-  mo.output<K> %2 : !mo.tensor<[K, 1], si64>
-}
-
-// CHECK-LABEL: mo.graph @bcast_dynamic_input
-// CHECK-SAME: <[[A:.*]], [[B:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
-mo.graph @bcast_dynamic_input<A, B, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[M, 1], si64> {
-  // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[B]], [[B]]], f32>
-  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<[B, B], f32>
-  // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[BCASTARG0]]) : !mo.tensor<[[[B]], [[B]]], f32> -> !mo.tensor<[[[A]]], f32>
-  %1 = mo.static.reshape(%0) : !mo.tensor<[B, B], f32> -> !mo.tensor<[A], f32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero<() -> [[K:.*]]>(%[[RESHAPE]]) : (!mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[K]], 1], si64>
-  %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[A], f32>) -> !mo.tensor<[K, 1], si64>
-  // CHECK-NEXT: mo.output<[[K]]> %[[RES]] : !mo.tensor<[[[K]], 1], si64>
-  mo.output<K> %2 : !mo.tensor<[K, 1], si64>
-}

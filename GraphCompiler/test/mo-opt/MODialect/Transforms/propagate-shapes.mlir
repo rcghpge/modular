@@ -1,95 +1,5 @@
 // RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
-// CHECK-LABEL: mo.graph @output_param_decl_removed
-// CHECK-SAME: <[[SH0:.*]]: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> {
-mo.graph @output_param_decl_removed<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
-  kgen.param.declare Sh2: !mosh.ape = <Sh0>
-  %0 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh2, f32>
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.exp(%[[ARG0]]) : !mo.tensor<[[SH0]], f32>
-  %1 = mo.exp(%0) : !mo.tensor<Sh2, f32>
-  // CHECK-NEXT: mo.output %[[VAL0]] : !mo.tensor<[[SH0]], f32>
-  mo.output<:!mosh.ape Sh2> %1 : !mo.tensor<Sh2, f32>
-}
-
-// CHECK-LABEL: mo.graph @output_param_decl_kept
-// CHECK-SAME: <[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
-mo.graph @output_param_decl_kept<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
-    // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
-    %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
-) -> !mo.tensor<Sh2, f32> {
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.batch_matmul<() -> [[SH3:.*]]: !mosh.ape>(%[[ARG0]], %[[ARG1]]) : (
-  // CHECK-SAME:   !mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32>
-  %0 = mo.batch_matmul<() -> Sh3: !mosh.ape>(%arg0, %arg1) : (
-    !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh3, f32>
-  // CHECK-NEXT: mo.output<:!mosh.ape [[SH3]]> %[[VAL0]] : !mo.tensor<[[SH3]], f32>
-  mo.output<:!mosh.ape Sh3> %0 : !mo.tensor<Sh3, f32>
-}
-
-// CHECK-LABEL: mo.graph @batch_matmul_without_certain_checks
-// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
-mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
-  %arg0: !mo.tensor<[D0, D1, D2], f32>,
-  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
-  %arg1: !mo.tensor<[D0, D2, D3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32> {
-) -> !mo.tensor<[D4, D5, D6], f32> {
-  kgen.param.declare Sh0: !mosh.ape = <[D0, D1, D2]>
-  %0 = mo.rebind(%arg0) : !mo.tensor<[D0, D1, D2], f32> -> !mo.tensor<Sh0, f32>
-  kgen.param.declare Sh1: !mosh.ape = <[D0, D2, D3]>
-  %1 = mo.rebind(%arg1) : !mo.tensor<[D0, D2, D3], f32> -> !mo.tensor<Sh1, f32>
-  kgen.param.declare P0: si64 = <2>
-  kgen.param.declare P1: si64 = <apply(:(!mosh.ape) -> si64 "mosh.get_rank", Sh0)>
-  kgen.param.declare P2: si64 = <apply(:(!mosh.ape) -> si64 "mosh.get_rank", Sh1)>
-  kgen.param.declare P3: i1 = <eq(:si64 P1, P2)>
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "ranks of left and right inputs are not equal" : !kgen.string}, P3)>
-  kgen.param.declare P4: i1 = <gt(:si64 P2, P0)>
-  kgen.param.declare CH1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2" : !kgen.string}, P4)>
-  kgen.param.declare P8: !mosh.ape = <apply(:(!mosh.ape, si64, si64) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
-  kgen.param.declare P11: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh0, -2)>
-  kgen.param.declare P12: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh1, -1)>
-  kgen.param.declare P13: !mosh.ape = <[P11, P12]>
-  kgen.param.declare P14: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", P8, P13)>
-  kgen.param.declare Sh2: !mosh.ape = <P14>
-  // CHECK-NEXT: %[[OUT:.*]] = mo.batch_matmul(%arg0, %arg1) : (
-  // CHECK-SAME:   !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
-  // CHECK-SAME:   !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
-  // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
-  %2 = mo.batch_matmul(%0, %1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
-  kgen.param.declare D7: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh2, 0)>
-  kgen.param.declare D8: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh2, 1)>
-  kgen.param.declare D9: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh2, 2)>
-  %3 = mo.rebind(%2) : !mo.tensor<Sh2, f32> -> !mo.tensor<[D7, D8, D9], f32>
-  // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32>
-  mo.output<D7, D8, D9> %3 : !mo.tensor<[D7, D8, D9], f32>
-}
-
-// CHECK-LABEL: mo.graph @unfolded_apply_shouldnt_be_inlined
-// CHECK-SAME: <[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>,
-// CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
-mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
-  %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
-) -> !mo.tensor<Sh2, f32> {
-  // CHECK-NEXT: kgen.param.declare [[P1:.*]]: si64 = <apply(:(!mosh.ape) -> si64 "mosh.get_rank", [[SH0]])>
-  kgen.param.declare P1: si64 = <apply(:(!mosh.ape) -> si64 "mosh.get_rank", Sh0)>
-  // CHECK-NEXT: kgen.param.declare [[P2:.*]]: si64 = <apply(:(!mosh.ape) -> si64 "mosh.get_rank", [[SH1]])>
-  kgen.param.declare P2: si64= <apply(:(!mosh.ape) -> si64 "mosh.get_rank", Sh1)>
-  kgen.param.declare P3: i1 = <eq(:si64 P1, P2)>
-  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "" : !kgen.string}, eq(:si64 [[P1]], [[P2]]))>
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "" : !kgen.string}, P3)>
-
-  // CHECK-NEXT: kgen.param.declare [[P4:.*]]: !mosh.ape = <apply(:(!mosh.ape, si64, si64) -> !mosh.ape "mosh.slice", [[SH0]], 0, -2)>
-  kgen.param.declare P4: !mosh.ape = <apply(:(!mosh.ape, si64, si64) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
-  // CHECK-NEXT: %[[OUT:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[P4]], f32>
-  %1 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<P4, f32>
-
-  // CHECK-NEXT: mo.output<:!mosh.ape [[P4]]> %[[OUT]] : !mo.tensor<[[P4]], f32>
-  mo.output<:!mosh.ape P4> %1 : !mo.tensor<P4, f32>
-}
-
 // CHECK-LABEL: mo.graph @graph_with_param_decls_in_ops
 // CHECK-SAME: <[[D0:.*]] -> [[D2:.*]]>(
 mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
@@ -136,24 +46,6 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   mo.output<DIV> %res : !mo.tensor<[D0, DIV, 4, 5], f32>
 }
 
-
-// CHECK-LABEL: mo.graph @param_expr_apply_no_cse
-// CHECK-SAME: <[[SH0:.*]]: !mosh.ape -> [[D2:.*]], [[D3:.*]]>(
-mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
-  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[SH0]], f32>
-  %arg: !mo.tensor<Sh0, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
-) -> !mo.tensor<[D2, D3], f32> {
-  // CHECK-NEXT: kgen.param.declare [[D5:.*]]: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", [[SH0]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[D6:.*]]: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", [[SH0]], 1)>
-  kgen.param.declare D5: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh0, 1)>
-  kgen.param.declare D6: si64 = <apply(:(!mosh.ape, si64) -> si64 "mosh.get_dim", Sh0, 1)>
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
-  // CHECK-SAME: : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[D5]], [[D6]]], f32>
-  %res = mo.static.reshape(%arg) : !mo.tensor<Sh0, f32> -> !mo.tensor<[D5, D6], f32>
-  // CHECK-NEXT: mo.output<[[D5]], [[D6]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]]], f32>
-  mo.output<D5, D6> %res : !mo.tensor<[D5, D6], f32>
-}
 
 // CHECK-LABEL: mo.graph @param_expr_dce
 // CHECK-SAME:   <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
@@ -203,21 +95,6 @@ mo.graph @non_mo_tensor_input<D0 -> D1>(
 
   // CHECK-NEXT: mo.output %[[INPUT]], %[[SHAPE]] : !mo.tensor<[[[D0]]], f32>, !mosh.ape
   mo.output<D0> %input, %shape : !mo.tensor<[D0], f32>, !mosh.ape
-}
-
-// CHECK-LABEL: mo.graph @internal_dim_param_as_output_binding
-// CHECK-SAME:  <[[D0:.*]] -> [[RES:.*]]: !mosh.ape>
-// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[RES]], si64> {
-mo.graph @internal_dim_param_as_output_binding<D0 -> res: !mosh.ape>(
-  %input: !mo.tensor<[D0], f32>
-) -> !mo.tensor<res, si64> {
-
-  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero<() -> [[D2:.*]]>(%[[INPUT]]) : (!mo.tensor<[[[D0]]], f32>) -> !mo.tensor<[[[D2]], 1], si64>
-  %res = mo.arg_nonzero<() -> D2>(%input) : (!mo.tensor<[D0], f32>) -> !mo.tensor<[D2, 1], si64>
-
-  // CHECK-NEXT: mo.output<:!mosh.ape [[[D2]], 1]> %[[RES]] : !mo.tensor<[[[D2]], 1], si64>
-  mo.output<:!mosh.ape [D2, 1]> %res : !mo.tensor<[D2, 1], si64>
 }
 
 // CHECK-LABEL: mo.graph @out_of_order_instructions
@@ -520,42 +397,6 @@ mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
   mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
 }
 
-// CHECK-LABEL: mo.graph @slice_and_shape_of
-//  CHECK-SAME:   <[[D0:.*]]>(
-//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[[[D0]], 10], si32>
-mo.graph @slice_and_shape_of<D0 -> O1>(
-  %input: !mo.tensor<[D0, 10], si32>
-) -> !mo.tensor<[O1], si32> {
-
-  // Construct a tensor value that represents `[D0, 10, 1]`
-  %zero_scalar = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %input_shape = mo.shape_of(%input) : (!mo.tensor<[D0, 10], si32>) -> !mo.tensor<[2], si32>
-  mo.invoke_shape_func["concat_shape"]<() -> D1>(%zero_scalar, %input_shape, %one)
-    {dataDeptTensors = [0]} : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>, !mo.tensor<[1], si32>)
-  %target_shape = mo.concat[%zero_scalar: !mo.tensor<[], si32>](%input_shape, %one) : (
-    !mo.tensor<[2], si32>, !mo.tensor<[1], si32>
-  ) -> !mo.tensor<[D1], si32>
-
-  // This reshapes `%input` from `[D0, 10]` to `[D0, 10, 1]`. In practice we
-  // might get such pseudo-dynamic-rank from either PT models or RMO lowering.
-  %reshaped = mo.reshape<() -> Sh0: !mosh.ape>(%input, %target_shape) : (
-    !mo.tensor<[D0, 10], si32>, !mo.tensor<[D1], si32>
-  ) -> !mo.tensor<Sh0, si32>
-
-  // In practice this might be any series of computations
-  %abs = mo.abs(%reshaped) : !mo.tensor<Sh0, si32>
-
-  // In practice we might need to get the shape of this for things like modeling
-  // unsqueeze via reshape or doing slice.
-  %shape = mo.shape_of<() -> D2>(%abs) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D2], si32>
-
-  // CHECK: [[MOSH_SH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 10, 1]>
-  // CHECK-NEXT: [[TENSOR_SH:%.*]] = mo.shape.to_tensor([[MOSH_SH]]) -> !mo.tensor<[3], si32>
-  // CHECK-NEXT: mo.output [[TENSOR_SH]]
-  mo.output<D2> %shape : !mo.tensor<[D2], si32>
-}
-
 // This test ensures that staticized input actually gets materialized via
 // `mo.shape.to_tensor`, so that we don't have to run all the shape computation
 // via kernels. This is important for ops which can be shape inferred and have
@@ -621,23 +462,3 @@ mo.graph @slice<() -> O0, O1>(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[O0, O
   mo.output<D0, D1> %out : !mo.tensor<[D0, D1], si32>
 }
 
-// CHECK-LABEL: mo.graph @test_param_from_value
-// CHECK: <d0, d1>
-// CHECK: (%[[ARG0:.*]]: !mo.tensor<[d0], si64>, %[[ARG1:.*]]: !mo.tensor<[d1], si64>) -> !mo.tensor<[d0, d1, d0, d1], si64> {
-mo.graph @test_param_from_value<d0, d1 -> Sh2: !mosh.ape>(
-    %arg0: !mo.tensor<[d0], si64>,
-    %arg1: !mo.tensor<[d1], si64>
-) -> !mo.tensor<Sh2, si64> {
-  // CHECK: %[[C0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  // CHECK: kgen.param.declare SH: !mosh.ape = <[d0, d1, d0, d1]>
-  // CHECK: %[[OUT:.*]] = mo.static.broadcast_to(%[[C0]]) : !mo.tensor<[], si64> -> !mo.tensor<[d0, d1, d0, d1], si64>
-  // CHECK: mo.output %[[OUT]] : !mo.tensor<[d0, d1, d0, d1], si64>
-
-  %sh = mosh.param.to_value : !mosh.ape = <[d0, d1]>
-  %sh1 = mosh.concat(%sh, %sh)
-  mosh.param.from_value SH : !mosh.ape = %sh1
-
-  %c0 = mo.constant {value = #M.dense_array<0> : tensor<si64> } : !mo.tensor<[], si64>
-  %result = mo.static.broadcast_to(%c0) : !mo.tensor<[], si64> -> !mo.tensor<SH, si64>
-  mo.output<:!mosh.ape SH> %result : !mo.tensor<SH, si64>
-}

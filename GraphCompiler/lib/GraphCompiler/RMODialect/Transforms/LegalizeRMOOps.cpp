@@ -43,16 +43,14 @@ TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
 
 // Return whether the shapes in `a` and `b` can be rebound to each other.
 bool isCompatibleShape(TensorType a, TensorType b) {
-  if (a.hasRank() && b.hasRank()) {
-    if (a.getRank() != b.getRank())
-      return false;
+  if (a.getRank() != b.getRank())
+    return false;
 
-    // Cannot rebind two different integer dims
-    for (size_t i = 0; i < a.getRank(); ++i) {
-      if (a.isIntegerDim(i) && b.isIntegerDim(i) &&
-          a.getIntDim(i) != b.getIntDim(i))
-        return false;
-    }
+  // Cannot rebind two different integer dims
+  for (size_t i = 0; i < a.getRank(); ++i) {
+    if (a.isIntegerDim(i) && b.isIntegerDim(i) &&
+        a.getIntDim(i) != b.getIntDim(i))
+      return false;
   }
 
   return true;
@@ -159,9 +157,8 @@ void getParamDeclsFor(TensorType targetTy,
   };
 
   addAttrIfDecl(targetTy.getShapeAttr());
-  if (targetTy.hasRank())
-    for (TypedAttr dimAttr : targetTy.getTypedShapeAttr().getValues())
-      addAttrIfDecl(dimAttr);
+  for (TypedAttr dimAttr : targetTy.getTypedShapeAttr().getValues())
+    addAttrIfDecl(dimAttr);
 }
 
 /// Lower the given RMO::MOAnalogue op to its MO analogue given by `generator`.

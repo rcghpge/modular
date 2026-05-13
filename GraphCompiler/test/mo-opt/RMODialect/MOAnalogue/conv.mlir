@@ -1,18 +1,18 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
-mo.graph @conv_ok<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape, Sh4: !mosh.ape, Sh5: !mosh.ape -> Sh6: !mosh.ape>(%input : !mo.tensor<Sh0, f32>, %filter : !mo.tensor<Sh1, f32>, %st: !mo.tensor<Sh2, si64>, %di: !mo.tensor<Sh3, si64>, %pa: !mo.tensor<Sh4, si64>, %ng: !mo.tensor<Sh5, si64>) -> (!mo.tensor<Sh6, f32>) {
-  %0 = rmo.mo.conv<() -> Sh7: !mosh.ape>(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
-    !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>, !mo.tensor<Sh2, si64>, !mo.tensor<Sh3, si64>, !mo.tensor<Sh4, si64>, !mo.tensor<Sh5, si64>
-  ) -> !mo.tensor<Sh7, f32>
-  mo.output<:!mosh.ape Sh7> %0 : !mo.tensor<Sh7, f32>
+mo.graph @conv_ok<N, C, H, W, KC, KH, KW -> O0, O1, O2, O3>(%input : !mo.tensor<[N, C, H, W], f32>, %filter : !mo.tensor<[KC, C, KH, KW], f32>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>, %ng: !mo.tensor<[], si64>) -> (!mo.tensor<[O0, O1, O2, O3], f32>) {
+  %0 = rmo.mo.conv<() -> P0, P1, P2, P3>(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+    !mo.tensor<[N, C, H, W], f32>, !mo.tensor<[KC, C, KH, KW], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[P0, P1, P2, P3], f32>
+  mo.output<P0, P1, P2, P3> %0 : !mo.tensor<[P0, P1, P2, P3], f32>
 }
 
 // -----
 
-mo.graph @conv_bad_operands<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape, Sh4: !mosh.ape, Sh5: !mosh.ape, Sh6: !mosh.ape>(%input : !mo.tensor<Sh0, f32>, %filter : !mo.tensor<Sh1, f32>, %st: !mo.tensor<Sh2, si64>, %di: !mo.tensor<Sh3, f32>, %pa: !mo.tensor<Sh4, si64>, %ng: !mo.tensor<Sh5, si64>) -> (!mo.tensor<Sh6, f32>) {
-  // expected-error @+1{{'rmo.mo.conv' op operand #3 must be tensor with integer or index elements, but got '!mo.tensor<Sh3, f32>'}}
+mo.graph @conv_bad_operands<N, C, H, W, KC, KH, KW, D0, D1>(%input : !mo.tensor<[N, C, H, W], f32>, %filter : !mo.tensor<[KC, C, KH, KW], f32>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[D0, D1], f32>, %pa: !mo.tensor<[4], si64>, %ng: !mo.tensor<[], si64>) -> (!mo.tensor<[N, C, H, W], f32>) {
+  // expected-error @+1{{'rmo.mo.conv' op operand #3 must be tensor with integer or index elements, but got '!mo.tensor<[D0, D1], f32>'}}
   %0 = rmo.mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
-    !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>, !mo.tensor<Sh2, si64>, !mo.tensor<Sh3, f32>, !mo.tensor<Sh4, si64>, !mo.tensor<Sh5, si64>
-  ) -> !mo.tensor<Sh6, f32>
-  mo.output %0 : !mo.tensor<Sh6, f32>
+    !mo.tensor<[N, C, H, W], f32>, !mo.tensor<[KC, C, KH, KW], f32>, !mo.tensor<[2], si64>, !mo.tensor<[D0, D1], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[N, C, H, W], f32>
+  mo.output %0 : !mo.tensor<[N, C, H, W], f32>
 }

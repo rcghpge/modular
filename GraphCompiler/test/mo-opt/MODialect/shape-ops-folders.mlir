@@ -32,22 +32,6 @@ mo.graph @shape_of_no_fold_1<D0>(%arg0: !mo.tensor<[D0, 1], si32>) -> !mo.tensor
   mo.output %0 : !mo.tensor<[2], si64>
 }
 
-// CHECK-LABEL: mo.graph @shape_of_no_fold_2
-// CHECK-SAME: <[[SH0:[^,>]*]]: !mosh.ape, [[D0:[^,>]*]]>(%{{.*}}: !mo.tensor<[[SH0]], si32>) -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si64>
-mo.graph @shape_of_no_fold_2<Sh0: !mosh.ape, D0>(%arg0: !mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64> {
-  // CHECK-NEXT: mo.shape_of
-  %0 = mo.shape_of(%arg0) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64>
-  mo.output %0 : !mo.tensor<[D0], si64>
-}
-
-// CHECK-LABEL: mo.graph @shape_of_no_fold_3
-mo.graph @shape_of_no_fold_3<Sh0: !mosh.ape -> D0>(%arg0: !mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64> {
-  // CHECK-NEXT: mo.shape_of
-  %0 = mo.shape_of<() -> D1>(%arg0) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D1], si64>
-  mo.output<D1> %0 : !mo.tensor<[D1], si64>
-}
-
-
 //===----------------------------------------------------------------------===//
 // ToTensorOp
 //===----------------------------------------------------------------------===//

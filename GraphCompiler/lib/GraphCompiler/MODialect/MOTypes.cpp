@@ -245,24 +245,11 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!deviceRef)
     return emitError() << "no device attribute was defined";
 
-  if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
-    if (Type ty = declRef.getType(); !llvm::isa<ShapeType>(ty)) {
-      return emitError()
-             << "shape parameter reference must have ShapeType, got " << ty;
-    }
-    return success();
-  }
-  if (auto indexRef = ::dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
-    if (Type ty = indexRef.getType(); !::isa<ShapeType>(ty)) {
-      return emitError()
-             << "shape parameter reference must have ShapeType, got " << ty;
-    }
-    return success();
-  }
-
   auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
   if (!shape)
-    return emitError() << "invalid shape attribute " << shapeAttr;
+    return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
+                          "allowed for tensor types, got: "
+                       << shapeAttr;
 
   if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
     return emitError() << "tensor dimensions must be a getDimType()";
@@ -586,14 +573,13 @@ TensorType TensorType::cloneWith(DeviceRefAttr deviceRef) const {
 }
 
 bool TensorType::hasRank() const {
-  // Rank is only known if we have a concrete attribute
-  return !isa<KGEN::ParamDeclRefAttr>(getShapeAttr());
+  // TensorType::verify guarantees the shape attr is a ShapeAttr, which is
+  // always ranked. Kept for source-compatibility with callers and for parity
+  // with ShapedTypeInterface.
+  return true;
 }
 
-size_t TensorType::getRank() const {
-  ASSERT_STREAM(hasRank(), << "cannot get rank if shape is not known");
-  return getTypedShapeAttr().getRank();
-}
+size_t TensorType::getRank() const { return getTypedShapeAttr().getRank(); }
 
 size_t TensorType::getRankNonZero() const {
   return std::max<size_t>(1, getRank());

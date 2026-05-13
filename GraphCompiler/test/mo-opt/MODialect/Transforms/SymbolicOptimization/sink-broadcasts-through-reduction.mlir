@@ -46,24 +46,6 @@ mo.graph @reduce_sinking_failure_cannot_prove_bcasting<A, B, P1, P2, P3>(
 // CHECK-NEXT: [[VREDUCE_AXIS1:%.*]] = mo.reduce.add([[VBROADCASTED_ARG0]], [[VAXIS3]]) : (!mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], [[P3]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[P3]]], f32>
 // CHECK-NEXT: mo.output [[VREDUCE_AXIS1]] : !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[P3]]], f32>
 
-// Need to know fixed rank
-mo.graph @reduce_sinking_fail_on_unknown_rank<Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape>(
-  %arg0: !mo.tensor<Sh1, f32>
-) -> !mo.tensor<Sh3, f32> {
-  %axis_neg_one = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
-  %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh1, f32> -> !mo.tensor<Sh2, f32>
-  %reduce_axis1 = mo.reduce.min(%broadcasted_arg0, %axis_neg_one) : (!mo.tensor<Sh2, f32>, !mo.tensor<[], si64>) -> !mo.tensor<Sh3, f32>
-
-  mo.output %reduce_axis1: !mo.tensor<Sh3, f32>
-}
-// CHECK-LABEL: mo.graph @reduce_sinking_fail_on_unknown_rank
-// CHECK-SAME: [[SH1:[A-Za-z0-9]*]]: !mosh.ape, [[SH2:[A-Za-z0-9]*]]: !mosh.ape, [[SH3:[A-Za-z0-9]*]]: !mosh.ape
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32> {
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
-// CHECK-NEXT: [[V1:%.*]] = mo.static.broadcast_to([[INPUT]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH2]], f32>
-// CHECK-NEXT: [[V2:%.*]] = mo.reduce.min([[V1]], [[V0]]) : (!mo.tensor<[[SH2]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[[SH3]], f32>
-
 // Reduce-max / mean on an axis that was broadcasted has no effect.
 mo.graph @reduce_sinking_success_max_mean_on_new_bcasted_dim<A, B, P1, P2, P3>(
   %arg0: !mo.tensor<[A, B], f32>
