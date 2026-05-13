@@ -214,7 +214,7 @@ struct CanonicalizeChainSequencesPass
 
     // Configure the greedy rewrite driver for potentially long chains.
     mlir::GreedyRewriteConfig config;
-    config.setMaxIterations(600).setUseTopDownTraversal();
+    config.setMaxIterations(750).setUseTopDownTraversal();
 
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
                                      config))) {
