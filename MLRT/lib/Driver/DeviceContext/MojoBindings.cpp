@@ -828,17 +828,47 @@ AsyncRT_DeviceGraphBuilder_release(DeviceGraphBuilder *builder) {
   DeviceGraphBuilderRef::lowLevelDropRef(builder);
 }
 
+namespace {
+// Converts a (depIds, numDeps) pair from the C ABI into an
+// `llvm::ArrayRef<DeviceGraphNode>` suitable for the builder's add-node
+// methods. `numDeps` is the (non-negative) number of node ids; when
+// `numDeps == 0`, `depIds` may be null (the result is an empty ArrayRef,
+// which the builder treats as "graph root, no predecessors").
+// `DeviceGraphNode` is a single-`int32_t`-field standard-layout struct, so
+// the depIds pointer is `reinterpret_cast` here.
+llvm::ArrayRef<DeviceGraphNode> makeDepsArrayRef(const int32_t *depIds,
+                                                 int64_t numDeps) {
+  static_assert(sizeof(DeviceGraphNode) == sizeof(int32_t),
+                "wire-format assumes DeviceGraphNode is layout-compatible "
+                "with int32_t");
+  static_assert(std::is_standard_layout_v<DeviceGraphNode>,
+                "wire-format assumes DeviceGraphNode has standard layout");
+  return llvm::ArrayRef<DeviceGraphNode>(
+      reinterpret_cast<const DeviceGraphNode *>(depIds),
+      static_cast<size_t>(numDeps));
+}
+} // namespace
+
 // Adds a kernel dispatch node to the graph under construction.
-// The parameter layout mirrors AsyncRT_DeviceContext_enqueueFunctionDirect so
-// that DeviceGraphBuilder can implement the _FunctionEnqueuer Mojo trait and
-// reuse DeviceFunction._call_with_pack_checked without modification.
-// argSizes is accepted for ABI compatibility but is not used by the graph
-// builder (the CUDA/HIP graph APIs do not require it).
+//
+// The first 14 parameters mirror AsyncRT_DeviceContext_enqueueFunctionDirect
+// and AsyncRT_DeviceStream_enqueueFunctionDirect because the Mojo
+// `_FunctionEnqueuer` trait routes all three through the same arg-packing
+// path (`DeviceFunction._call_with_pack[_checked]`). argSizes is accepted
+// to keep that shared parameter layout but is unused by the graph builder
+// (the CUDA/HIP graph APIs do not require it).
+//
+// The trailing (depIds, numDeps) pair carries the explicit dependency list
+// from Mojo into the C++ graph builder; see `makeDepsArrayRef` for the
+// wire convention. On the Mojo side these are filled in by a transient
+// `_DeviceGraphBuilderEnqueuer` that wraps a borrowed `DeviceGraphBuilder`
+// plus a `dependencies` argument passed to `DeviceGraphBuilder.add_function`.
 MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
     DeviceGraphBuilder *builder, DeviceFunction *func, uint32_t gridX,
     uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
     uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs,
-    void **args, uint32_t argCount, const size_t * /*argSizes*/) {
+    void **args, uint32_t argCount, const size_t * /*argSizes*/,
+    const int32_t *depIds, int64_t numDeps) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addFunctionDirect",
                        TRACY_COLOR_GRAY);
   DeviceFunctionLaunchParams params;
@@ -853,63 +883,80 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
   params.numAttrs = numAttrs;
   params.args = args;
   params.argCount = argCount;
-  // Node handle is intentionally discarded; dependency edges are not yet
-  // exposed in the Mojo API.
-  ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addFunctionDirect(*func, params, {});
+
+  // Node handle is intentionally discarded; callers retrieve it via
+  // AsyncRT_DeviceGraphBuilder_lastNodeId.
+  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addFunctionDirect(
+      *func, params, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
 }
 
 // Memcpy and memset graph-builder nodes. Node IDs are intentionally discarded
-// to match AsyncRT_DeviceGraphBuilder_addFunctionDirect; dependency edges are
-// not yet exposed in the Mojo API.
+// to match AsyncRT_DeviceGraphBuilder_addFunctionDirect; callers retrieve the
+// id via AsyncRT_DeviceGraphBuilder_lastNodeId. The trailing (depIds, numDeps)
+// pair carries the explicit dependency list — see `makeDepsArrayRef`.
 
 MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyHostToDevice(
-    DeviceGraphBuilder *builder, DeviceBuffer *dst, const void *src) {
+    DeviceGraphBuilder *builder, DeviceBuffer *dst, const void *src,
+    const int32_t *depIds, int64_t numDeps) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyHostToDevice",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addCopyHostToDevice(*dst, src, {});
+  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addCopyHostToDevice(
+      *dst, src, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceGraphBuilder_addCopyDeviceToHost(DeviceGraphBuilder *builder,
-                                               void *dst, DeviceBuffer *src) {
+MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyDeviceToHost(
+    DeviceGraphBuilder *builder, void *dst, DeviceBuffer *src,
+    const int32_t *depIds, int64_t numDeps) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyDeviceToHost",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addCopyDeviceToHost(dst, *src, {});
+  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addCopyDeviceToHost(
+      dst, *src, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyDeviceToDevice(
-    DeviceGraphBuilder *builder, DeviceBuffer *dst, DeviceBuffer *src) {
+    DeviceGraphBuilder *builder, DeviceBuffer *dst, DeviceBuffer *src,
+    const int32_t *depIds, int64_t numDeps) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addCopyDeviceToDevice",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addCopyDeviceToDevice(*dst, *src, {});
+  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addCopyDeviceToDevice(
+      *dst, *src, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
   return nullptr;
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceGraphBuilder_addSetMemory(DeviceGraphBuilder *builder,
-                                        DeviceBuffer *dst, uint64_t val,
-                                        size_t valSize) {
+MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addSetMemory(
+    DeviceGraphBuilder *builder, DeviceBuffer *dst, uint64_t val,
+    size_t valSize, const int32_t *depIds, int64_t numDeps) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addSetMemory",
                        TRACY_COLOR_GRAY);
-  ErrorOr<DeviceGraphNode> nodeOrErr =
-      builder->addSetMemory(*dst, val, valSize, {});
+  ErrorOr<DeviceGraphNode> nodeOrErr = builder->addSetMemory(
+      *dst, val, valSize, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
     return raiseError(nodeOrErr.getError());
+  return nullptr;
+}
+
+// Writes the id of the most recently added node into *result. Returns an
+// error string if no nodes have been added to the builder.
+MODULAR_EXPORT const char *
+AsyncRT_DeviceGraphBuilder_lastNodeId(DeviceGraphBuilder *builder,
+                                      int32_t *result) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_lastNodeId",
+                       TRACY_COLOR_GRAY);
+  std::optional<DeviceGraphNode> node = builder->lastNode();
+  if (!node)
+    return raiseError("graph builder has no nodes");
+  *result = node->id;
   return nullptr;
 }
 
