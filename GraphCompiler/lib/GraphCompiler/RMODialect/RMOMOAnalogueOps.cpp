@@ -460,46 +460,18 @@ static void inferConvMOTypesImpl(
   moOperandTypes.push_back(filter.getType());
   moInputParamDecls.push_back({});
 
-  // strides / dilations / outputPaddings must be 1-D with identical shape.
-  // First get or build the common dim value.
-  TypedAttr windowParamsDim = nullptr;
-  SmallVector<KGEN::ParamDeclAttr> windowParamDecls;
-  SmallVector<TensorType, 3> windowParamsTypes = {strides.getType(),
-                                                  dilations.getType()};
-  if (isTranspose)
-    windowParamsTypes.push_back(outputPaddings.getType());
-  for (TensorType inputTy : windowParamsTypes)
-    if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
-      windowParamsDim = inputTy.getTypedShapeAttr()[0];
-  if (!windowParamsDim)
-    windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
-
-  // Rebind strides to 1-D.
-  moOperandTypes.push_back(
-      strides.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
-  moInputParamDecls.push_back(std::move(windowParamDecls));
-
-  // Rebind dilations to 1-D.
-  moOperandTypes.push_back(
-      dilations.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  // strides / dilations / paddings / output_paddings are rank-1 per the op's
+  // typed constraints (MO_Rank1IndexTensor); their MO types match their RMO
+  // types verbatim.
+  moOperandTypes.push_back(strides.getType());
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(dilations.getType());
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(paddings.getType());
   moInputParamDecls.push_back({});
 
-  // Paddings must be 1-D.
-  TensorType paddingsTy = paddings.getType();
-  if (!paddingsTy.hasRank() || paddingsTy.getRank() != 1) {
-    SmallVector<KGEN::ParamDeclAttr> paramDecls;
-    moOperandTypes.push_back(getRankedParamTensorType(
-        1, paddingsTy.getDtype(), graphOp, paramDecls, dev));
-    moInputParamDecls.push_back(std::move(paramDecls));
-  } else {
-    moOperandTypes.push_back(paddingsTy);
-    moInputParamDecls.push_back({});
-  }
-
   if (isTranspose) {
-    // Rebind output_paddings to 1D.
-    moOperandTypes.push_back(outputPaddings.getType().cloneWith(
-        SmallVector<TypedAttr>{windowParamsDim}));
+    moOperandTypes.push_back(outputPaddings.getType());
     moInputParamDecls.push_back({});
   } else {
     // num_groups must be a scalar.
@@ -562,44 +534,17 @@ static void inferMOTypesPoolImpl(
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
-  // filter_shape / strides / dilations must be 1-D with identical shape.
-  // First get or build the common dim value.
-  TypedAttr windowParamsDim = nullptr;
-  SmallVector<KGEN::ParamDeclAttr> windowParamDecls;
-  for (TensorType inputTy :
-       {filterShape.getType(), strides.getType(), dilations.getType()})
-    if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
-      windowParamsDim = inputTy.getTypedShapeAttr()[0];
-  if (!windowParamsDim)
-    windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
-
-  // Rebind filter_shape to 1D.
-  moOperandTypes.push_back(
-      filterShape.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
-  // Assign windowParamDecls to the first window operand.
-  moInputParamDecls.push_back(std::move(windowParamDecls));
-
-  // Rebind strides to 1D.
-  moOperandTypes.push_back(
-      strides.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  // filter_shape / strides / dilations / paddings are rank-1 per the op's
+  // typed constraints (MO_Rank1IndexTensor); their MO types match their RMO
+  // types verbatim.
+  moOperandTypes.push_back(filterShape.getType());
   moInputParamDecls.push_back({});
-
-  // Rebind dilations to 1D.
-  moOperandTypes.push_back(
-      dilations.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  moOperandTypes.push_back(strides.getType());
   moInputParamDecls.push_back({});
-
-  // Paddings must be 1-D.
-  TensorType paddingsTy = paddings.getType();
-  if (!paddingsTy.hasRank() || paddingsTy.getRank() != 1) {
-    SmallVector<KGEN::ParamDeclAttr> paramDecls;
-    moOperandTypes.push_back(getRankedParamTensorType(
-        1, paddingsTy.getDtype(), graphOp, paramDecls, dev));
-    moInputParamDecls.push_back(std::move(paramDecls));
-  } else {
-    moOperandTypes.push_back(paddingsTy);
-    moInputParamDecls.push_back({});
-  }
+  moOperandTypes.push_back(dilations.getType());
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(paddings.getType());
+  moInputParamDecls.push_back({});
 
   // Infer output type: output rank = input rank.
   // Output is always 4D (for now), but MO verifier requires input-rank ==
@@ -1394,35 +1339,27 @@ void MOArgNonzeroOp::inferMOTypesImpl(
   TensorValue input = cast<TensorValue>(operands.getInput());
   DeviceRefAttr dev = getDevice(operands.getInput());
 
-  // Try to infer the input rank.
-  // input[rank] => output [non-zero-count, rank].
-  std::optional<int64_t> rank;
-  if (input.getType().hasRank())
-    rank = input.getType().getRank();
-  else if (rmoResults.has_value()) {
-    TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
-    if (outputTy.hasRank() && outputTy.getRank() >= 2 &&
-        outputTy.isIntegerDim(1))
-      rank = outputTy.getIntDim(1);
-  }
-  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
-  moOperandTypes.push_back(
-      rank.has_value()
-          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
-                                     inputParamDecls, dev)
-          : input.getType());
-  moInputParamDecls.push_back(std::move(inputParamDecls));
+  // input[rank] => output [count, rank]. The input rank is known statically;
+  // the count of non-zero elements is data-dependent and must be supplied by
+  // the caller (Graph API contract: ops.nonzero requires an explicit
+  // `out_dim`). Pull the count dim from the existing result type rather than
+  // minting a fresh parametric dim here. The result is rank-2 si64 per the
+  // op's typed constraint (MO_Rank2I64Tensor).
+  int64_t rank = input.getType().getRank();
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
 
-  // output shape is `[non-zero-count, rank]`.
-  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
-  TypedAttr countAttr = createDynamicDimensionType(graphOp, outputParamDecls);
-  TypedAttr rankAttr =
-      rank.has_value() ? createStaticDimensionType(graphOp, *rank)
-                       : createDynamicDimensionType(graphOp, outputParamDecls);
+  ASSERT_STREAM(rmoResults.has_value(),
+                << "rmo.mo.arg_nonzero must be constructed with an explicit "
+                   "result type providing the count dimension");
+  TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
+  TypedAttr countAttr = outputTy.getDim(0);
+  TypedAttr rankAttr = createStaticDimensionType(graphOp, rank);
+
   moResultTypes.push_back(TensorType::get(
       graphOp->getContext(), SmallVector<TypedAttr>{countAttr, rankAttr},
       DType::si64, dev));
-  moOutputParamDecls.push_back(std::move(outputParamDecls));
+  moOutputParamDecls.push_back({});
 }
 
 void MOCumSumOp::inferMOTypesImpl(

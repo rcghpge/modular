@@ -1020,9 +1020,9 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$filter,
-    MO_IndicesTensor:$strides,
-    MO_IndicesTensor:$dilations,
-    MO_IndicesTensor:$paddings,
+    MO_Rank1IndexTensor:$strides,
+    MO_Rank1IndexTensor:$dilations,
+    MO_Rank1IndexTensor:$paddings,
     MO_IndicesTensor:$num_groups,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
@@ -1110,10 +1110,10 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$filter,
-    MO_IndicesTensor:$strides,
-    MO_IndicesTensor:$dilations,
-    MO_IndicesTensor:$paddings,
-    MO_IndicesTensor:$output_paddings,
+    MO_Rank1IndexTensor:$strides,
+    MO_Rank1IndexTensor:$dilations,
+    MO_Rank1IndexTensor:$paddings,
+    MO_Rank1IndexTensor:$output_paddings,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
@@ -1132,10 +1132,10 @@ class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
     traits # [AllDTypesMatch<["input", "result"]>]> {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_IndicesTensor:$filter_shape,
-    MO_IndicesTensor:$strides,
-    MO_IndicesTensor:$dilations,
-    MO_IndicesTensor:$paddings,
+    MO_Rank1IndexTensor:$filter_shape,
+    MO_Rank1IndexTensor:$strides,
+    MO_Rank1IndexTensor:$dilations,
+    MO_Rank1IndexTensor:$paddings,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -1189,10 +1189,10 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_IndicesTensor:$filter_shape,
-    MO_IndicesTensor:$strides,
-    MO_IndicesTensor:$dilations,
-    MO_IndicesTensor:$paddings,
+    MO_Rank1IndexTensor:$filter_shape,
+    MO_Rank1IndexTensor:$strides,
+    MO_Rank1IndexTensor:$dilations,
+    MO_Rank1IndexTensor:$paddings,
     BoolAttr:$count_boundary,
     MO_ParamDecls:$outputParamDecls);
 }
@@ -1239,10 +1239,10 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_IndicesTensor:$filter_shape,
-    MO_IndicesTensor:$strides,
-    MO_IndicesTensor:$dilations,
-    MO_IndicesTensor:$paddings,
+    MO_Rank1IndexTensor:$filter_shape,
+    MO_Rank1IndexTensor:$strides,
+    MO_Rank1IndexTensor:$dilations,
+    MO_Rank1IndexTensor:$paddings,
     BoolAttr:$count_boundary,
     MO_ParamDecls:$outputParamDecls);
 }
@@ -2470,7 +2470,7 @@ def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
     }];
 
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_I64Tensor:$result);
+  let results = (outs MO_Rank2I64Tensor:$result);
 }
 
 def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",

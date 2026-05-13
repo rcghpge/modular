@@ -654,6 +654,14 @@ def MO_I64Tensor : ConfinedType<MO_Tensor,
   let cppType = "::M::MO::TensorType";
 }
 
+/// Confines the MO_TensorType so that it has signed 64-bit integer elements
+/// and rank 2.
+def MO_Rank2I64Tensor : ConfinedType<MO_Tensor,
+    [HasSI64ElementTypePred, MO_HasAnyRankOfPred<[2]>],
+    "rank 2 signed 64 integer tensor"> {
+  let cppType = "::M::MO::TensorType";
+}
+
 class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name # ".getType())">;
 
 class ShapeAttrStrFunc<string name> : StrFunc<"::M::MO::getShape($" # name # ".getType())">;

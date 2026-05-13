@@ -8,7 +8,7 @@ mo.graph @max_pool_ok<N, C, H, W -> O0, O1, O2, O3>(%arg0: !mo.tensor<[N, C, H, 
 // -----
 
 mo.graph @max_pool_bad_operand<N, C, H, W, D0, D1>(%arg0: !mo.tensor<[N, C, H, W], f32>, %fs: !mo.tensor<[D0, D1], f32>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[N, C, H, W], f32> {
-  // expected-error @+1{{'rmo.mo.max_pool' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[D0, D1], f32>'}}
+  // expected-error @+1{{'rmo.mo.max_pool' op operand #1 must be rank-1 tensor with indices, but got '!mo.tensor<[D0, D1], f32>'}}
   %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[N, C, H, W], f32>, !mo.tensor<[D0, D1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[N, C, H, W], f32>
   mo.output %0 : !mo.tensor<[N, C, H, W], f32>
 }

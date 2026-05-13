@@ -10,7 +10,7 @@ mo.graph @conv_transpose_ok<N, C, H, W, KC, KH, KW -> O0, O1, O2, O3>(%input : !
 // -----
 
 mo.graph @conv_transpose_bad_operand<N, C, H, W, KC, KH, KW, D0, D1>(%input : !mo.tensor<[N, C, H, W], f32>, %filter : !mo.tensor<[KC, C, KH, KW], f32>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[D0, D1], f32>, %pa: !mo.tensor<[4], si64>, %op: !mo.tensor<[2], si64>) -> (!mo.tensor<[N, C, H, W], f32>) {
-  // expected-error@+1 {{'rmo.mo.conv_transpose' op operand #3 must be tensor with integer or index elements, but got '!mo.tensor<[D0, D1], f32>'}}
+  // expected-error@+1 {{'rmo.mo.conv_transpose' op operand #3 must be rank-1 tensor with indices, but got '!mo.tensor<[D0, D1], f32>'}}
   %0 = rmo.mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[N, C, H, W], f32>, !mo.tensor<[KC, C, KH, KW], f32>, !mo.tensor<[2], si64>, !mo.tensor<[D0, D1], f32>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[N, C, H, W], f32>
