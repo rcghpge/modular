@@ -2746,8 +2746,8 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
       mo.add_singleton_dim[1](%res): (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
-  let results = (outs MO_RankedTensor:$result);
+  let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
+  let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
@@ -2776,8 +2776,8 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [
       %out = mo.split_dim[0](%res): (!mo.tensor<[4, 9], f32>) -> !mo.tensor<[2, 2, 9], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
-  let results = (outs MO_RankedTensor:$result);
+  let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
+  let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
@@ -2807,8 +2807,8 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
       %out = mo.merge_dim[1](%res): (!mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[1, 6, 4], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
-  let results = (outs MO_RankedTensor:$result);
+  let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
+  let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)

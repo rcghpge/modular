@@ -442,26 +442,15 @@ def MO_Opaque : MO_Type<"Opaque", "opaque"> {
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 
-/// Checks if a MO_TensorType has static rank.
-def MO_HasRankPred : CPred<"cast<MO::TensorType>($_self).hasRank()">;
-
-def MO_BufferHasRankPred : CPred<"cast<MO::BufferType>($_self).toTensorType().hasRank()">;
-
 // Checks if a MO_TensorType has one of the specified ranks.
-class MO_HasAnyRankOfPred<list<int> ranks> : And<[
-  MO_HasRankPred,
+class MO_HasAnyRankOfPred<list<int> ranks> :
   Or<!foreach(rank, ranks,
-    CPred<[{cast<MO::TensorType>($_self).getRank() == }] # rank>)>]>;
+    CPred<[{cast<MO::TensorType>($_self).getRank() == }] # rank>)>;
 
 // Checks if a MO_BufferType has one of the specified ranks.
-class MO_BufferHasAnyRankOfPred<list<int> ranks> : And<[
-  MO_BufferHasRankPred,
+class MO_BufferHasAnyRankOfPred<list<int> ranks> :
   Or<!foreach(rank, ranks,
-    CPred<[{cast<MO::BufferType>($_self).toTensorType().getRank() == }] # rank>)>]>;
-
-/// Checks if a type has rank N if statically ranked.
-class HasRankIfRankedPred<int N> :
-  Or<[Neg<MO_HasRankPred>, MO_HasAnyRankOfPred<[N]>]>;
+    CPred<[{cast<MO::BufferType>($_self).toTensorType().getRank() == }] # rank>)>;
 
 /// Checks if a MO_TensorType has float elements.
 def FloatElementTypePred : CPred<
@@ -508,9 +497,6 @@ def BoolScalarPred : CPred<
 
 def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
 
-def MO_RankedTensor : MO_ConfinedTensor<
-  [MO_HasRankPred], "A tensor with a statically known rank.">;
-
 /// There's currently no alias analysis around !mo.buffer values which is
 /// problematic in the face of operations that can directly forward their inputs
 /// (such as mo.guard or one of the control flow ops in conjunction with
@@ -526,7 +512,7 @@ def MO_RankedScalarTensor : MO_ConfinedTensor<
 
 /// Confines the MO_TensorType so that it's a scalar or unranked.
 def MO_ScalarTensorIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<0>], "scalar or unranked tensor">;
+  [MO_HasAnyRankOfPred<[0]>], "scalar or unranked tensor">;
 
 /// Confines the MO_TensorType so that it's ranked and a scalar int or index.
 def MO_RankedScalarIndexTensor : MO_ConfinedTensor<
@@ -541,7 +527,7 @@ def MO_RankedScalarFloatTensor : MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it has float elements, and rank 0 if
 /// rank is static.
 def MO_FloatScalarIfRanked : MO_ConfinedTensor<
-  [FloatElementTypePred, HasRankIfRankedPred<0>],
+  [FloatElementTypePred, MO_HasAnyRankOfPred<[0]>],
   "rank 0 or unranked with float elements">;
 
 /// Confines the MO_TensorType so that it has floats.
@@ -602,35 +588,35 @@ def MO_PaddingLike : MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
 /// [N] or unranked.
 def MO_PaddingLikeIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<1>, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
   "unranked or shape [N] and signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
 /// rank is static.
 def MO_ShapeLikeIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<1>, Or<[HasSI64ElementTypePred,
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
                                HasSI32ElementTypePred]>],
   "rank 1 or unranked with signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has rank 1 if rank is static.
 def MO_VectorIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<1>], "rank 1 or unranked">;
+  [MO_HasAnyRankOfPred<[1]>], "rank 1 or unranked">;
 
 /// Confines the MO_TensorType so that it has int/index elements, and rank 1 if
 /// rank is static.
 def MO_IndicesVectorIfRanked : MO_ConfinedTensor<
-  [IntOrIndexElementTypePred, HasRankIfRankedPred<1>],
+  [IntOrIndexElementTypePred, MO_HasAnyRankOfPred<[1]>],
   "rank 1 or unranked with integer or index elements">;
 
 /// Confines the MO_TensorType so that it has int/index elements, and rank 0 if
 /// rank is static.
 def MO_IndexScalarIfRanked : MO_ConfinedTensor<
-  [IntOrIndexElementTypePred, HasRankIfRankedPred<0>],
+  [IntOrIndexElementTypePred, MO_HasAnyRankOfPred<[0]>],
   "rank 0 or unranked with integer or index elements">;
 
 /// Confines the MO_TensorType so that it has rank 2 if rank is static.
 def MO_MatrixIfRanked : MO_ConfinedTensor<
-  [HasRankIfRankedPred<2>], "rank 2 or unranked">;
+  [MO_HasAnyRankOfPred<[2]>], "rank 2 or unranked">;
 
 def MO_ScalarOfAnyRank : MO_ConfinedTensor<
   [CPred<"cast<MO::TensorType>($_self).getNumElements().value_or(0) == 1">],
@@ -656,7 +642,7 @@ def MO_CondLike :
 /// Confines the MO_TensorType so that it has Boolean elements and rank 0 if
 /// rank is static.
 def MO_CondLikeIfRanked : ConfinedType<MO_Tensor,
-    [HasRankIfRankedPred<0>, HasBoolElementTypePred],
+    [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
     "rank 0 or unranked with boolean element type"> {
   let cppType = "::M::MO::TensorType";
 }
