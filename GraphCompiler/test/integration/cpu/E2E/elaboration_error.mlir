@@ -1,5 +1,5 @@
 // RUN: mkdir -p %t_mojo
-// RUN: mojo package %S/inputs/TestPck -o %t_mojo/testpck.mojoc
+// RUN: mojo precompile %S/inputs/TestPck -o %t_mojo/testpck.mojoc
 // RUN: not mo-opt --gc-pipeline=kernel-library-paths="%t_mojo/testpck.mojoc" %s -verify-diagnostics 2>&1 | FileCheck %s
 
 // CHECK: error: function instantiation failed
