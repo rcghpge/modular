@@ -197,3 +197,55 @@ mo.graph @parallel_bundle_param_expr<D0>(
   mo.output %res_0, %res_1
       : !mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>
 }
+
+// Regression test: mo.parallel whose operand bundle element types contain a
+// parameter expression but whose result bundle does not (the body rebinds
+// the algebraic-shaped block arg to a non-aliased dim before yielding).
+//
+// The op-level operand/result type checks on their own do not flag this
+// parallel as containing a complex expression -- the bundle operand is a
+// `MO::BundleType` (which doesn't set `containsComplexExprs`) and the
+// result bundle's element type is `add(M, N)` only via the rebind, which
+// the pass declares an alias for and rewrites in the bundle producer
+// independently. Without also walking block-arg types, the parallel is
+// skipped, the upstream `mo.tensor.bundle` producer is rewritten to use
+// the alias for its result element types, and the parallel's block args
+// remain in the original algebraic form -- producing a verifier mismatch
+// against the rewritten bundle operand type on the next pattern
+// application cycle.
+//
+// Fix: the matcher also walks the matched op's region block-arg types and
+// nested op result types so the parallel is matched whenever any reachable
+// type carries a hoistable expression.
+//
+// CHECK-LABEL: mo.graph @parallel_block_arg_param_expr
+mo.graph @parallel_block_arg_param_expr<N, M>(
+    %arg0: !mo.tensor<[N], f32>,
+    %arg1: !mo.tensor<[M], f32>)
+    -> (!mo.tensor<[N], f32>, !mo.tensor<[N], f32>) {
+  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %sum = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1)
+      : (!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
+  // CHECK-DAG: kgen.param.declare [[ALIAS_BA:[a-zA-Z0-9_]+]]: si64 = <add
+  // CHECK-DAG: mo.tensor.bundle{{.*}} -> !mo.bundle<[!mo.tensor<[[[ALIAS_BA]]], f32>, !mo.tensor<[[[ALIAS_BA]]], f32>]>
+  %bundle = mo.tensor.bundle(%sum, %sum)
+      : (!mo.tensor<[add(N, M)], f32>, !mo.tensor<[add(N, M)], f32>)
+      -> (!mo.bundle<[!mo.tensor<[add(N, M)], f32>, !mo.tensor<[add(N, M)], f32>]>)
+  // The parallel must be matched even though its result bundle element
+  // type (`N`) contains no complex expression: the alias still has to
+  // propagate into the body block args so they agree with the rewritten
+  // bundle producer's output element types.
+  // CHECK-DAG: mo.parallel ([[BA:%[a-zA-Z0-9_]+]]) in {{.*}} : !mo.bundle<[!mo.tensor<[[[ALIAS_BA]]], f32>, !mo.tensor<[[[ALIAS_BA]]], f32>]>
+  // CHECK-DAG: mo.relu([[BA]]) : !mo.tensor<[[[ALIAS_BA]]], f32>
+  %res_bundle = mo.parallel (%x) in
+      (%bundle : !mo.bundle<[!mo.tensor<[add(N, M)], f32>, !mo.tensor<[add(N, M)], f32>]>)
+      -> (!mo.bundle<[!mo.tensor<[N], f32>, !mo.tensor<[N], f32>]>) {
+    %1 = mo.relu(%x) : !mo.tensor<[add(N, M)], f32>
+    %2 = mo.rebind(%1) : !mo.tensor<[add(N, M)], f32> -> !mo.tensor<[N], f32>
+    mo.yield %2 : !mo.tensor<[N], f32>
+  }
+  %r0, %r1 = mo.tensor.unbundle(%res_bundle)
+      : (!mo.bundle<[!mo.tensor<[N], f32>, !mo.tensor<[N], f32>]>)
+      -> (!mo.tensor<[N], f32>, !mo.tensor<[N], f32>)
+  mo.output %r0, %r1 : !mo.tensor<[N], f32>, !mo.tensor<[N], f32>
+}

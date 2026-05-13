@@ -138,6 +138,28 @@ struct RewriteParamExprTypes : public RewritePattern {
       if (collectComplexParams(rewriter, op, resType))
         containsComplexExprs = true;
 
+    // Also detect complex expressions reachable through the op's
+    // regions -- block-arg types and nested op result types -- so the
+    // existing `recursivelyReplaceElementsIn` rewrite (which already
+    // walks into regions) is triggered.  Required for `mo.parallel`
+    // when its outer types are alias-clean but the body still
+    // references the un-aliased form (e.g. block arg rebound to an
+    // aliased dim before yield); the `MOControlOpInterface` early-out
+    // above keeps `mo.if` / `mo.while` / `mo.yield` etc. out of this
+    // path.
+    op->walk([&](Block *block) {
+      for (BlockArgument arg : block->getArguments())
+        if (collectComplexParams(rewriter, op, arg.getType()))
+          containsComplexExprs = true;
+    });
+    op->walk([&](Operation *nested) {
+      if (nested == op)
+        return;
+      for (Type ty : nested->getResultTypes())
+        if (collectComplexParams(rewriter, op, ty))
+          containsComplexExprs = true;
+    });
+
     if (!containsComplexExprs)
       return rewriter.notifyMatchFailure(op, "no complex expressions");
 
