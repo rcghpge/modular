@@ -576,7 +576,8 @@ static void collectFusionCaptures(
     SmallVectorImpl<MO::TensorType> &captureTensorTypes,
     SmallVectorImpl<std::pair<Value, unsigned>> &extraTensorCaptures,
     SmallVectorImpl<std::tuple<Value, std::string, std::string>>
-        &scalarCaptures) {
+        &scalarCaptures,
+    SmallVectorImpl<std::pair<Value, MojoValue>> &inlineConstants) {
   // Primary tensor captures from fusibleTensors.
   for (auto [i, input] : llvm::enumerate(fusibleTensors)) {
     auto tensorTy = MO::castFromTensorLike(input.getType());
@@ -615,6 +616,19 @@ static void collectFusionCaptures(
         addTensorCaptureField(fields, captureIdx, dtype, rank);
         extraTensorCaptures.push_back({operand, captureIdx});
       } else {
+        // If the scalar comes from a constant.scalar op defined outside the
+        // lambda, inline its literal value directly instead of capturing it as
+        // a runtime field. This lets LLVM emit magic-multiply sequences for
+        // non-power-of-2 divisors (e.g. split_dim with new_shape_dim=208)
+        // rather than hardware integer division (~40 cycles).
+        if (auto constOp = dyn_cast_or_null<MOGG::ConstantScalarOp>(
+                operand.getDefiningOp())) {
+          if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
+            inlineConstants.push_back(
+                {operand, MojoValue(intAttr.getAPSInt())});
+            continue;
+          }
+        }
         auto mojoType = EmitMojoState::mlirTypeToMojoType(operand.getType());
         auto fieldName = "scalar_" + std::to_string(scalarCaptures.size());
         scalarCaptures.push_back({operand, fieldName, mojoType.text});
@@ -839,12 +853,20 @@ static void emitFusionStructMethodBody(
     ArrayRef<MO::TensorType> captureTensorTypes,
     ArrayRef<std::pair<Value, unsigned>> extraTensorCaptures,
     ArrayRef<std::tuple<Value, std::string, std::string>> scalarCaptures,
-    bool isOutputLambda, bool generateStoreForOutput) {
+    ArrayRef<std::pair<Value, MojoValue>> inlineConstants, bool isOutputLambda,
+    bool generateStoreForOutput) {
 
   DenseMap<Value, MojoValue> valueMap;
   DenseSet<Value> scalarCaptureValues;
 
   // Phase 1: Initialize value maps and emit loads from tensor captures.
+  // Inline constants are scalar values known at compile time; map them to
+  // their literal text so downstream ops (e.g. split_dim_indices) receive a
+  // compile-time constant, letting LLVM use magic-multiply instead of idiv.
+  for (auto &[val, mojoVal] : inlineConstants) {
+    valueMap[val] = mojoVal;
+    scalarCaptureValues.insert(val);
+  }
   for (auto &[val, fieldName, mojoType] : scalarCaptures) {
     valueMap[val] = MojoValue("self." + fieldName);
     scalarCaptureValues.insert(val);
@@ -924,9 +946,10 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   SmallVector<MO::TensorType> captureTensorTypes;
   SmallVector<std::pair<Value, unsigned>> extraTensorCaptures;
   SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
+  SmallVector<std::pair<Value, MojoValue>> inlineConstants;
   collectFusionCaptures(state, lambdaBody, fusibleTensors, isOutputLambda,
                         parameters, fields, captureTensorTypes,
-                        extraTensorCaptures, scalarCaptures);
+                        extraTensorCaptures, scalarCaptures, inlineConstants);
 
   // Emit struct definition with trait-conforming method.
   auto structName = state.structDefsBuilder.getIdentifier("FusionStruct");
@@ -954,8 +977,8 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
 
         emitFusionStructMethodBody(state, sdb, lambdaBody, fusedInputs,
                                    captureTensorTypes, extraTensorCaptures,
-                                   scalarCaptures, isOutputLambda,
-                                   generateStoreForOutput);
+                                   scalarCaptures, inlineConstants,
+                                   isOutputLambda, generateStoreForOutput);
 
         sdb.decreaseIndentation();
       });
