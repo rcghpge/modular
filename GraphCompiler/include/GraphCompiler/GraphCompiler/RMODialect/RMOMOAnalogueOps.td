@@ -173,21 +173,6 @@ def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"abs"> {
   }];
 }
 
-def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"ceil"> {
-  let summary = "Ceiling operation";
-  let description = [{
-    Returns the smallest largest integer greater than `x`, where `x` is input
-    tensor.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
 def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"cos"> {
   let summary = "Cosine operation";
   let description = [{
@@ -1795,62 +1780,6 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOMatmulOp : RMO_MOAnaloguePureTensorOp<"matmul"> {
-  let summary = "Matrix-matrix multiplication operation";
-  let description = [{
-    Performs matrix multiplication on two 2D tensors.
-    Example:
-
-    ```mlir
-      %lhs: ... !mo.tensor<[10, 20], f32>
-      %rhs: ... !mo.tensor<[20, 5], f32>
-      %res = mo.matmul(%lhs, %rhs) : (
-        !mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>
-      ) -> !mo.tensor<[10, 5], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input_a,
-    MO_Tensor:$input_b,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
-}
-
-def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
-  let summary = "Batched matrix-matrix multiplication operation";
-  let description = [{
-    Performs matrix multiplication on two batches of matrices, represented by
-    two N-dimensional tensors.
-
-    The last two dimensions of each input are the matrix dimensions.
-
-    Example:
-
-    ```mlir
-      %lhs: ... !mo.tensor<[3, 4, 5], f32>
-      %rhs: ... !mo.tensor<[3, 5, 6], f32>
-      %res = mo.batch_matmul(%lhs, %rhs) :
-        mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
-      ) -> !mo.tensor<[3, 4, 6], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input_a,
-    MO_Tensor:$input_b,
-    OptionalAttr<BoolAttr>:$transpose_b,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
-
-
-  let builders = [
-    /// Create matmul with default attribute flags off.
-    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
-    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b, "ArrayRef<KGEN::ParamDeclAttr>":$decls)>,
-  ];
-}
-
 def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.softmax"> {
   let summary = "Softmax operation";
   let description = [{
@@ -1928,36 +1857,6 @@ def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
   let results = (outs MO_ShapeLikeIfRanked:$result);
 }
 
-def RMO_MOUnsqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"unsqueeze_shape",
-  [AllDTypesMatch<["input_shape", "result"]>]> {
-  let summary = "Unsqueeze-shape operation";
-  let description = [{
-    Calculates the shape from unsqueeze like operators. Given an input shape
-    vector representing a tensor of rank `N`, and a list of indices of length
-    `M`, returns a new shape vector representing a tensor of rank `N + M`.
-
-    The indices in the given list map to the new vector of length `N + M` where
-    the indicated dimensions are replaced with `1`. The remaining dimension in
-    the original input shape vector are copied over in the non-1 dimensions.
-
-    This operator supports negative indexing.
-
-    Example:
-
-    ```mlir
-      %input_shape : !mo.tensor<[3], si32>
-      %indices : !mo.tensor<[4], si32>
-      %res = rmo.mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[7], si32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_ShapeLikeIfRanked:$input_shape,
-    MO_ShapeLikeIfRanked:$padding_indices,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_ShapeLikeIfRanked:$result);
-}
-
 def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose",
   [AllDTypesMatch<["input", "result"]>]> {
   let summary = "Transposition operation";
@@ -2015,30 +1914,6 @@ class RMO_MOAnaloguePureTopKOp<string name> : RMO_MOAnaloguePureTensorOp<
           cast<TensorValue>(operands.getSorted()), rmoResults, moOperandTypes,
           moResultTypes, moInputParamDecls, moOutputParamDecls);
       }
-  }];
-}
-
-def RMO_MOTopKOp : RMO_MOAnaloguePureTopKOp<"top_k"> {
-  let summary = "Top-K operation";
-  let description = [{
-    Computes the largest values and their corresponding indices in a tensor
-    along a specified axis. Returned values along the axis are always sorted
-    (stable).
-
-    Example:
-    ```mlir
-      %in = mo.constant {
-        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
-      } : !mo.tensor<[2, 6], si64>
-      %k = mo.constant() { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
-      %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
-      %sorted = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
-      %values, %indices = rmo.mo.top_k(%in, %k, %axis, %sorted) : (
-        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
-      ) -> (
-        !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
-      )
-    ```
   }];
 }
 
@@ -2121,93 +1996,6 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
     MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
-}
-
-def RMO_MOConcatOp : RMO_MOAnaloguePureTensorOp<"concat"> {
-  let summary = "Concatenation operation";
-  let description = [{
-    Concatenates the input tensors along a given dimension.
-
-    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
-    must be at least 1 input tensor. The input tensors and output tensors all
-    has the same shape except along the concatenation dimension `axis`. The size
-    of the concatenation dimension in output tensor would have be the sum of
-    sizes of the concatenation dimension in input tensors.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
-
-    Example:
-
-    ```mlir
-      %arg0: !mo.tensor<[2, 3], f32>
-      %arg1: !mo.tensor<[2, 5], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
-      ) -> !mo.tensor<[2, 8], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_IndicesTensor:$axis,
-    Variadic<MO_Tensor>:$inputs,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
-    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
-  }];
-}
-
-def RMO_MOSplitOp : RMO_MOAnaloguePureTensorOp<"split"> {
-  let summary = "Splitting operation";
-  let description = [{
-    Splits the input tensor into multiple tensors along a given dimension.
-
-    `mo.split` splits the tensor `input` into multiple output tensors.
-    The number of output tensors is equal to the number of elements in
-    `splitSizes`, which is a rank-1 tensor of integers.
-    Each of the output tensors has the same shape as `input` except along the
-    split dimension `axis`, where the size is given by the corresponding
-    element in `splitSizes`.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
-
-    Example:
-
-    ```mlir
-      %input: !mo.tensor<[2, 8], f32>
-      %splitSizes = mo.constant {
-        value = #M.dense_array<3, 5> : tensor<2xsi64>
-      } : !mo.tensor<[2], si64>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>
-      } : !mo.tensor<[], si64>
-      %res = rmo.mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
-        !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
-      ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_IndicesTensor:$splitSizes,
-    MO_IndicesTensor:$axis,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs Variadic<MO_Tensor>:$results);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
-    `(` $input `,` $splitSizes `)` attr-dict `:` `(`
-      qualified(type($input)) `,` qualified(type($splitSizes))
-    `)` `->` `(` type($results) `)`
-  }];
 }
 
 def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant",

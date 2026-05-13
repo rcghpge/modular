@@ -11,17 +11,6 @@ mo.graph @abs_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1
 
 // -----
 
-mo.graph @ceil_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-  %1 = rmo.mo.ceil(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
-  mo.output %1 : !mo.tensor<[D0, D1], f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @ceil_ok<D0, D1>([[VARG0:[^ ]*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.ceil([[VARG0]]) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
-// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[D0, D1], f32>
-
-// -----
-
 mo.graph @cos_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
   %1 = rmo.mo.cos(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
   mo.output %1 : !mo.tensor<[D0, D1], f32>

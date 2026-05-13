@@ -12,7 +12,7 @@ mo.graph @ndbuffer_matmul(%x: !mo.tensor<[?, ?], f32>, %y: !mo.tensor<[?, ?], f3
     %ch0 = mo.chain.create()
     %x_gpu, %ch1 = mo.transfer[%ch0] %x : !mo.tensor<[?, ?], f32> to <"gpu", 0>
     %y_gpu, %ch2 = mo.transfer[%ch1] %y : !mo.tensor<[?, ?], f32> to <"gpu", 0>
-    %z_gpu = rmo.mo.matmul(%x_gpu, %y_gpu) { device = #M.device_ref<"gpu", 0> } : (!mo.tensor<[?, ?], f32, gpu:0>, !mo.tensor<[?, ?], f32, gpu:0>) -> !mo.tensor<[?, ?], f32, gpu:0>
+    %z_gpu = mo.matmul(%x_gpu, %y_gpu) { device = #M.device_ref<"gpu", 0> } : (!mo.tensor<[?, ?], f32, gpu:0>, !mo.tensor<[?, ?], f32, gpu:0>) -> !mo.tensor<[?, ?], f32, gpu:0>
     %z, %ch3 = mo.transfer[%ch2] %z_gpu : !mo.tensor<[?, ?], f32, gpu:0> to <"cpu", 0>
     mo.output %z : !mo.tensor<[?, ?], f32>
 }

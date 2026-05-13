@@ -9,7 +9,7 @@
 // CHECK-SAME: [[RESULT:[0-9\.e ,\-]+]]
 // CHECK-SAME: ]
 mo.graph @ndbuffer_matmul<D0, D1, D2>(%x: !mo.tensor<[D0, D1], f32>, %y: !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32> {
-    %z = rmo.mo.matmul(%x, %y) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32>
+    %z = mo.matmul(%x, %y) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32>
     mo.output %z : !mo.tensor<[D0, D2], f32>
 }
 

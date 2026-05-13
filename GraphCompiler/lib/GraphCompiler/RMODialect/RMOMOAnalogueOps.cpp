@@ -872,82 +872,6 @@ void MOGatherNdOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
-void MOMatmulOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue inputA = cast<TensorValue>(operands.getInputA());
-  TensorValue inputB = cast<TensorValue>(operands.getInputB());
-  DeviceRefAttr dev = getDevice(operands.getInputA());
-
-  // mo::MatmulOp cannot have any outputParamDecls (asserts).
-  // Define the operand params only and construct the output shape.
-  // (M, N) * (N, P) => (M, P).
-  SmallVector<KGEN::ParamDeclAttr> inputADecls, inputBDecls;
-  TypedAttr dimM = createDynamicDimensionType(graphOp, inputADecls);
-  TypedAttr dimN = createDynamicDimensionType(graphOp, inputADecls);
-  TypedAttr dimP = createDynamicDimensionType(graphOp, inputBDecls);
-
-  moOperandTypes.push_back(
-      inputA.getType().cloneWith(SmallVector<TypedAttr>{dimM, dimN}));
-  moInputParamDecls.push_back(std::move(inputADecls));
-
-  moOperandTypes.push_back(
-      inputB.getType().cloneWith(SmallVector<TypedAttr>{dimN, dimP}));
-  moInputParamDecls.push_back(std::move(inputBDecls));
-
-  DType outputDType = getDType(rmoResults, 0, inputA.getType().getDtype());
-  moResultTypes.push_back(TensorType::get(
-      context, SmallVector<TypedAttr>{dimM, dimP}, outputDType, dev));
-  moOutputParamDecls.push_back({});
-}
-
-void MOBatchMatmulOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue inputA = cast<TensorValue>(operands.getInputA());
-  TensorValue inputB = cast<TensorValue>(operands.getInputB());
-  DeviceRefAttr dev = getDevice(operands.getInputA());
-
-  // Input types are unchanged.
-  moOperandTypes.push_back(inputA.getType());
-  moInputParamDecls.push_back({});
-  moOperandTypes.push_back(inputB.getType());
-  moInputParamDecls.push_back({});
-
-  // Output type has same rank than input
-  DType outputDType = getDType(rmoResults, 0, inputA.getType().getDtype());
-  SmallVector<KGEN::ParamDeclAttr> outputDecls;
-  moResultTypes.push_back(getRankedParamTensorType(
-      inputA.getType().getRank(), outputDType, graphOp, outputDecls, dev));
-  moOutputParamDecls.push_back(std::move(outputDecls));
-}
-
-void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                            Type type, Value input_a, Value input_b) {
-  odsState.addOperands(input_a);
-  odsState.addOperands(input_b);
-  odsState.addTypes({type});
-}
-
-void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                            Type type, Value input_a, Value input_b,
-                            ArrayRef<KGEN::ParamDeclAttr> decls) {
-  odsState.addOperands(input_a);
-  odsState.addOperands(input_b);
-  odsState.addTypes({type});
-  if (!decls.empty()) {
-    odsState.addAttribute(
-        getOutputParamDeclsAttrName(odsState.name),
-        KGEN::ParamDeclArrayAttr::get(odsBuilder.getContext(), decls));
-  }
-}
-
 void MOTileOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
@@ -1010,18 +934,6 @@ void MOSqueezeShapeOp::inferMOTypesImpl(
   inferMOTypesSqueezeShapeImpl(
       context, graphOp, cast<TensorValue>(operands.getInputShape()),
       cast<TensorValue>(operands.getRemoveIndices()), rmoResults,
-      moOperandTypes, moResultTypes, moInputParamDecls, moOutputParamDecls);
-}
-
-void MOUnsqueezeShapeOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  inferMOTypesSqueezeShapeImpl(
-      context, graphOp, cast<TensorValue>(operands.getInputShape()),
-      cast<TensorValue>(operands.getPaddingIndices()), rmoResults,
       moOperandTypes, moResultTypes, moInputParamDecls, moOutputParamDecls);
 }
 
@@ -1116,86 +1028,6 @@ void LinAlg::MOBandPartOp::inferMOTypesImpl(
   // Output type is identical to input type
   moResultTypes.push_back(inputTy);
   moOutputParamDecls.push_back({});
-}
-
-void MOConcatOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue axis = cast<TensorValue>(operands.getAxis());
-  DeviceRefAttr dev = getDevice(operands.getInputs()[0]);
-
-  int64_t rank = cast<TensorValue>(operands.getInputs()[0]).getType().getRank();
-
-  // Axis must be a scalar.
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
-
-  // All inputs must have the same rank.
-  for (Value input : operands.getInputs()) {
-    TensorType inputTy = cast<TensorValue>(input).getType();
-    SmallVector<KGEN::ParamDeclAttr> inputParamsDecls;
-    moOperandTypes.push_back(getRankedParamTensorType(
-        rank, inputTy.getDtype(), graphOp, inputParamsDecls, dev));
-    moInputParamDecls.push_back(std::move(inputParamsDecls));
-  }
-
-  // The output must also have the same rank.
-  DType outputDType =
-      getDType(rmoResults, 0,
-               cast<TensorValue>(operands.getInputs()[0]).getType().getDtype());
-  SmallVector<KGEN::ParamDeclAttr> resultParamsDecls;
-  moResultTypes.push_back(getRankedParamTensorType(rank, outputDType, graphOp,
-                                                   resultParamsDecls, dev));
-  moOutputParamDecls.push_back(std::move(resultParamsDecls));
-}
-
-void MOSplitOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue input = cast<TensorValue>(operands.getInput());
-  TensorValue splitSizes = cast<TensorValue>(operands.getSplitSizes());
-  TensorValue axis = cast<TensorValue>(operands.getAxis());
-  TensorType inputTy = input.getType();
-  TensorType splitSizesTy = splitSizes.getType();
-  DeviceRefAttr dev = getDevice(operands.getInput());
-
-  // Try to infer the number of outputs for split.
-  int64_t outputsCount;
-  if (!rmoResults->empty())
-    outputsCount = rmoResults->size();
-  else if (splitSizesTy.hasStaticShape() && splitSizesTy.getRank() == 1)
-    outputsCount = splitSizesTy.getIntDim(0);
-  else {
-    llvm_unreachable("split outputs count cannot be inferred");
-  }
-
-  // `input` type stays the same.
-  moOperandTypes.push_back(inputTy);
-  moInputParamDecls.push_back({});
-
-  // `split_sizes` has shape [outputsCount].
-  moOperandTypes.push_back(splitSizesTy.cloneWith(SmallVector<TypedAttr>{
-      createStaticDimensionType(graphOp, outputsCount)}));
-  moInputParamDecls.push_back({});
-
-  // `axis` must be a scalar.
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
-
-  // All outputs must have the same rank as `input`.
-  DType outputDType = getDType(rmoResults, 0, inputTy.getDtype());
-  for (int64_t i = 0; i < outputsCount; ++i) {
-    SmallVector<KGEN::ParamDeclAttr> resultParamsDecls;
-    moResultTypes.push_back(getRankedParamTensorType(
-        inputTy.getRank(), outputDType, graphOp, resultParamsDecls, dev));
-    moOutputParamDecls.push_back(std::move(resultParamsDecls));
-  }
 }
 
 static void inferMOTypesPadImpl(
