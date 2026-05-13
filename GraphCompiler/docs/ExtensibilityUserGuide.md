@@ -41,7 +41,7 @@ struct BottomK:
         axis: Scalar,
         sorted: Bool,
     ) raises -> IndexList[input.rank]:
-        return top_k_shape_impl[single_thread_blocking_override=True](
+        return top_k_shape_impl(
             managed_tensor_slice_to_ndbuffer(input),
             k,
             axis,
