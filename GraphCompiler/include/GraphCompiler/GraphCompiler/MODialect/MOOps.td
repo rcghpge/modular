@@ -3304,45 +3304,6 @@ def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
   }];
 }
 
-def MO_DualFusedConcatSliceOp : MO_TensorOp<"dual_fused_concat_slice", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_SingleDeviceWithHostOperands<["axis"]>,
-]> {
-  let summary = "Dual fused concatenation + slice operation for two parallel pairs";
-  let description = [{
-    Performs two fused (concat+slice) operations in parallel:
-      %concat0 = mo.concat[axis](inputs[0..num_inputs_0))
-      %slice0  = mo.slice(%concat0)
-      %concat1 = mo.concat[axis](inputs[num_inputs_0..end))
-      %slice1  = mo.slice(%concat1)
-    Returns all four results.
-
-    All inputs must share the same element type and rank. Both concats share
-    the same axis value.
-  }];
-
-  let arguments = (ins
-    MO_RankedScalarIndexTensor:$axis,
-    Variadic<MO_Tensor>:$inputs,
-    I64Attr:$num_inputs_0,
-    ArrayAttr:$static_starts_0,
-    ArrayAttr:$static_steps_0,
-    ArrayAttr:$static_starts_1,
-    ArrayAttr:$static_steps_1,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs
-    MO_Tensor:$concatResult0,
-    MO_Tensor:$sliceResult0,
-    MO_Tensor:$concatResult1,
-    MO_Tensor:$sliceResult1);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
-    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
-  }];
-}
-
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,

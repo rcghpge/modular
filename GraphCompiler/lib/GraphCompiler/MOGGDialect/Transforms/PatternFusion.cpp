@@ -3487,33 +3487,6 @@ struct MatmulFusedPartialRMSNormPattern
   }
 };
 
-// Returns true if the slice can be implemented with a buffer view (update
-// offset) without materializing a kernel.
-static bool isTrivialSlice(MO::SliceOp sliceOp, ArrayRef<int64_t> step) {
-  for (int64_t s : step) {
-    if (s != 1)
-      return false;
-  }
-
-  TensorType inputTy = sliceOp.getInput().getType();
-  TensorType resultTy = sliceOp.getResult().getType();
-  unsigned rank = inputTy.getRank();
-  bool nonOneDim = false;
-
-  for (unsigned i = 0; i < rank; ++i) {
-    bool dimMightBeSliced = inputTy.getTypedShapeAttr().getValues()[i] !=
-                            resultTy.getTypedShapeAttr().getValues()[i];
-
-    if (dimMightBeSliced && nonOneDim)
-      return false;
-
-    if (inputTy.getIntDim(i) != 1)
-      nonOneDim = true;
-  }
-
-  return true;
-}
-
 struct ConcatSlicePattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::SliceOp> {
   ConcatSlicePattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
@@ -3580,102 +3553,33 @@ struct ConcatSlicePattern
     rewriter.replaceOp(sliceOp, fusedOp.getSliceResult());
     return mlir::success();
   }
-};
 
-/// Matches two parallel fused_concat_slice ops (produced by ConcatSlicePattern)
-/// and fuses them into a single DualFusedConcatSliceOp that processes both
-/// pairs in one kernel launch. Both ops must share the same concat axis and
-/// have compatible input element types and ranks.
-struct DualConcatSlicePattern
-    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
-                                           MO::FusedConcatSliceOp> {
-  DualConcatSlicePattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::FusedConcatSliceOp fcs0,
-                             MO::DeviceAwareRewriter &rewriter) const override {
-    auto axisVal0 =
-        MO::tryGetConstantInt(cast<MO::TensorValue>(fcs0.getAxis()));
-    if (!axisVal0)
-      return rewriter.notifyMatchFailure(fcs0, "axis must be constant");
-
-    MO::FusedConcatSliceOp fcs1;
-
-    // Search the block for a second fused_concat_slice with the same axis.
-    // Require fcs0 to precede fcs1 for canonical pairing (prevents
-    // double-match).
-    for (Operation &op : *fcs0->getBlock()) {
-      auto candidate = dyn_cast<MO::FusedConcatSliceOp>(&op);
-      if (!candidate || candidate == fcs0)
-        continue;
-
-      if (!fcs0->isBeforeInBlock(candidate))
-        continue;
-
-      auto axisVal1 =
-          MO::tryGetConstantInt(cast<MO::TensorValue>(candidate.getAxis()));
-      if (!axisVal1 || *axisVal1 != *axisVal0)
-        continue;
-
-      // All inputs of both ops must share the same element type and rank.
-      TensorType refType = cast<TensorType>(fcs0.getInputs()[0].getType());
-      bool compatible = true;
-      for (Value inp : candidate.getInputs()) {
-        TensorType t = cast<TensorType>(inp.getType());
-        if (t.getElementType() != refType.getElementType() ||
-            t.getRank() != refType.getRank()) {
-          compatible = false;
-          break;
-        }
-      }
-      if (!compatible)
-        continue;
-
-      fcs1 = candidate;
-      break;
+private:
+  // returns true if the slice can be implemented with a buffer view operation
+  // (update offset).
+  static bool isTrivialSlice(MO::SliceOp sliceOp, ArrayRef<int64_t> step) {
+    for (int64_t s : step) {
+      if (s != 1)
+        return false;
     }
 
-    if (!fcs1)
-      return rewriter.notifyMatchFailure(
-          fcs0, "no compatible second fused_concat_slice found");
+    TensorType inputTy = sliceOp.getInput().getType();
+    TensorType resultTy = sliceOp.getResult().getType();
+    unsigned rank = inputTy.getRank();
+    bool nonOneDim = false;
 
-    if (!rewriter.addOps({fcs1}))
-      return rewriter.notifyMatchFailure(
-          fcs0, "matched ops have inconsistent devices");
+    for (unsigned i = 0; i < rank; ++i) {
+      bool dimMightBeSliced = inputTy.getTypedShapeAttr().getValues()[i] !=
+                              resultTy.getTypedShapeAttr().getValues()[i];
 
-    // Combine inputs: fcs0 inputs first, then fcs1 inputs.
-    SmallVector<Value> allInputs;
-    allInputs.append(fcs0.getInputs().begin(), fcs0.getInputs().end());
-    allInputs.append(fcs1.getInputs().begin(), fcs1.getInputs().end());
+      if (dimMightBeSliced && nonOneDim)
+        return false;
 
-    int64_t numInputs0 = static_cast<int64_t>(fcs0.getInputs().size());
+      if (inputTy.getIntDim(i) != 1)
+        nonOneDim = true;
+    }
 
-    // Combine outputParamDecls from both ops.
-    SmallVector<KGEN::ParamDeclAttr> combinedDecls;
-    for (KGEN::ParamDeclAttr decl : fcs0.getOutputParamDecls())
-      combinedDecls.push_back(decl);
-    for (KGEN::ParamDeclAttr decl : fcs1.getOutputParamDecls())
-      combinedDecls.push_back(decl);
-    auto combinedParamDecls = KGEN::ParamDeclArrayAttr::get(
-        rewriter.rewriter.getContext(), combinedDecls);
-
-    auto dualOp = rewriter.create<MO::DualFusedConcatSliceOp>(
-        fcs0->getLoc(), fcs0.getConcatResult().getType(),
-        fcs0.getSliceResult().getType(), fcs1.getConcatResult().getType(),
-        fcs1.getSliceResult().getType(), fcs0.getAxis(), allInputs,
-        rewriter.rewriter.getI64IntegerAttr(numInputs0), fcs0.getStaticStarts(),
-        fcs0.getStaticSteps(), fcs1.getStaticStarts(), fcs1.getStaticSteps(),
-        combinedParamDecls);
-
-    rewriter.replaceAllUsesWith(fcs1.getConcatResult(),
-                                dualOp.getConcatResult1());
-    rewriter.replaceAllUsesWith(fcs1.getSliceResult(),
-                                dualOp.getSliceResult1());
-    rewriter.eraseOp(fcs1);
-    rewriter.replaceOp(fcs0,
-                       {dualOp.getConcatResult0(), dualOp.getSliceResult0()});
-    return mlir::success();
+    return true;
   }
 };
 
@@ -3727,7 +3631,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                  ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                  LayerNormPattern, RMSNormFusedResidualAddPattern,
                  ReduceRMSNormRoPEPattern, ConcatSlicePattern,
-                 DualConcatSlicePattern, MatmulFusedPartialRMSNormPattern>(ctx);
+                 MatmulFusedPartialRMSNormPattern>(ctx);
 
     patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                  RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
