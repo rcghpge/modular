@@ -28,8 +28,8 @@ using namespace M;
     return VAR##OrErr.takeError();                                             \
   auto VAR = VAR##OrErr.takeValue()
 
-MODULAR_DRIVER_EXPORT ErrorOrSuccess
-DeviceMemory::copyTo(DeviceMemory &dst) const {
+MODULAR_DRIVER_EXPORT
+ErrorOrSuccess DeviceMemory::copyTo(DeviceMemory &dst) const {
   return this->buf->copyTo(*dst.buf);
 }
 

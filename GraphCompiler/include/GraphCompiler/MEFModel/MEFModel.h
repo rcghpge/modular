@@ -309,8 +309,7 @@ using ModelList = SmallVector<std::unique_ptr<const Model>>;
 /// holds them compiled to MEF format. Assumes the MemoryBuffer will outlive the
 /// returned models.
 DRIVER_VISIBILITY_EXPORT // for MT
-    ErrorOr<ModelList>
-    loadMGPMEFFile(RCRef<MEFFile> mefFile);
+    ErrorOr<ModelList> loadMGPMEFFile(RCRef<MEFFile> mefFile);
 
 } // namespace M
 

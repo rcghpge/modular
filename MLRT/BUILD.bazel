@@ -812,6 +812,9 @@ modular_cc_library(
             "include/MLRT/Driver/NIXL/utils/ucx/**",
         ],
     ),
+    # nixl_log.cpp registers a constructor to initialize logging from
+    # MODULAR_NIXL_LOG_LEVEL before main() runs.
+    copts = ["-Wno-global-constructors"],
     include_prefix = "",
     strip_include_prefix = "include",
     tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
