@@ -1,6 +1,6 @@
 // RUN: mkdir -p %t_mojo
-// RUN: mojo package %S/inputs/TestPck -o %t_mojo/testpck.mojopkg
-// RUN: not mo-opt --gc-pipeline=kernel-library-paths="%t_mojo/testpck.mojopkg" %s -verify-diagnostics 2>&1 | FileCheck %s
+// RUN: mojo package %S/inputs/TestPck -o %t_mojo/testpck.mojoc
+// RUN: not mo-opt --gc-pipeline=kernel-library-paths="%t_mojo/testpck.mojoc" %s -verify-diagnostics 2>&1 | FileCheck %s
 
 // CHECK: error: function instantiation failed
 // CHECK: error: The graph compiler could not elaborate the generated KGEN

@@ -969,7 +969,7 @@ static ErrorOr<std::string> resolveLITModulePath(MLIRContext *ctx,
   if (!Filesystem::isMojoBinaryPackagePath(*modulePath))
     return Error(
         llvm::formatv("Managed to resolve module path for `{}` to source "
-                      "directory `{}` but a .mojopkg file was expected instead",
+                      "directory `{}` but a .mojoc file was expected instead",
                       moduleName, *modulePath));
   return *modulePath;
 }

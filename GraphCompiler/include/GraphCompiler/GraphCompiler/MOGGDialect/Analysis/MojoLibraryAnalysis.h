@@ -149,7 +149,7 @@ private:
 
   ErrorOrSuccess loadAllLITKernels(ArrayRef<std::string> paths);
 
-  /// Hold all .mojopkg (LIT) packages
+  /// Hold all Mojo precompiled (LIT) packages
   OwningOpRef<ModuleOp> moggKernelAPILITPackage;
   SmallVector<OwningOpRef<ModuleOp>> litPackages;
 
