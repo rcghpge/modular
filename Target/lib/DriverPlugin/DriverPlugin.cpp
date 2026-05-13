@@ -159,7 +159,12 @@ ErrorOr<int64_t> DriverImpl::deviceCount() const {
 // Helper: find driver impl for a given API name.
 DriverImpl *findDriverForApi(StringRef api) {
   auto &map = apiToDriverId();
-  auto it = map.find(api.str());
+  // TODO(DRIV-155): if the API is "gpu" just return the first plugin.
+  // Currently we only use one plugin at a time, and the upper layer of the
+  // stack use "gpu" as a stand-in for "device" in many places so pretending
+  // plugins are "gpu" is helpful. This should be removed once the device type
+  // handling is properly refactored.
+  auto it = api == "gpu" ? map.begin() : map.find(api.str());
   if (it == map.end())
     return nullptr;
   auto &drivers = driverList();
