@@ -1054,6 +1054,58 @@ void TensorUnbundleOp::build(OpBuilder &builder, OperationState &state,
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Helper for `ParallelOp::verify`: examines a single body op and either
+// returns `success()` (op is allowed inside `mo.parallel`) or emits a
+// rejection diagnostic and returns `failure()`. Allowed ops are:
+//
+//  - Computational ops that lower to a MOGG kernel via `MOToMOGG` (caught
+//    here by exclusion from the rejection arms below).
+//  - Per-launch entry points for bundled collectives (`mo.bundled.expand`,
+//    `mo.bundled.allreduce.sum`), tagged with `MO_BundledCollectiveInterface`.
+LogicalResult verifyParallelBodyOp(Operation &op, ParallelOp parallelOp) {
+  // Bundled collective ops are only supported within parallel regions.
+  // They may contain mutable signal buffers.
+  if (isa<MOBundledCollectiveInterface>(&op))
+    return success();
+
+  // HACK (see GEX-3701):
+  // Prior to HoistParameterExpressionsPass, rebinds may exist in the parallel
+  // body. We currently assume they will be moved out before lowering.
+  if (isa<MO::RebindOp>(&op))
+    return success();
+
+  // mo.buffer is not supported in parallel regions.
+  // Exceptions:
+  // - Signal buffers are allowed in bundled collective ops.
+  // - Conditionally-in-place ops (`mo.custom`) are allowed only
+  //   when they're not in-place -- pure-tensor `mo.custom` ops lower
+  //   to kernels just like any other computational op.
+  if (isa<MOMutableOpInterface>(&op)) {
+    auto cond = dyn_cast<MOConditionallyInPlaceInterface>(&op);
+    if (!cond || cond.isInPlace())
+      return op.emitOpError()
+             << "is not allowed inside mo.parallel: mutable buffer ops and "
+                "multi-device collectives are not supported; see GEX-3704";
+  }
+
+  // Catch-all for everything else we reject. `MO_PreservedDuringKernelLowering`
+  // tags ops the kernel-lowering pass intentionally leaves in place
+  // (constants, control flow, transfers, host-only, bundle / unbundle, nested
+  // mo.parallel, ...). None of these are in the parallel-body whitelist; some
+  // will be enabled in follow-ups.
+  if (isa<MO::PreservedDuringKernelLowering>(&op))
+    return op.emitOpError()
+           << "is not allowed inside mo.parallel: only kernels and bundled "
+              "collectives are currently supported in the body; see "
+              "GEX-3701, GEX-3704, GEX-3705";
+
+  return success();
+}
+
+} // namespace
+
 ArrayRef<ParamDeclAttr> ParallelOp::getInputParams() { return {}; }
 SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
 
@@ -1406,6 +1458,14 @@ LogicalResult ParallelOp::verify() {
     return emitOpError("body must have ")
            << inputs.size() << " block argument(s) (one per bundle input), got "
            << body.getNumArguments();
+
+  // Phase 1 (GEX-3701) restricts the body to kernels (or ops that will become
+  // kernels), `mo.bundled.expand`, and a small whitelist of view/chain ops we
+  // lower per-launch. Reject everything else with a category-specific message.
+  for (Operation &op : body.without_terminator()) {
+    if (failed(verifyParallelBodyOp(op, *this)))
+      return failure();
+  }
 
   // Ensure that the types within each input bundle match the type of the
   // corresponding block argument.

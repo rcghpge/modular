@@ -639,6 +639,30 @@ def MO_PreservedDuringKernelLowering : OpInterface<"PreservedDuringKernelLowerin
   let cppNamespace = "::M::MO";
 }
 
+// Marks a per-launch entry point for a bundled collective inside an
+// `mo.parallel` region (e.g. `mo.bundled.expand`, `mo.bundled.allreduce.sum`).
+// The body of the parallel region runs on a representative single-device
+// value; bundled collective ops use signal buffers from the parallel's
+// `buffers(...)` clause to coordinate across launches.
+//
+// `ParallelOp::verify` allows ops carrying this interface unconditionally.
+// Use the `MO_BundledCollective` trait list below to apply both the marker
+// interface and the structural `ParentOneOf<["ParallelOp"]>` constraint in
+// one shot.
+def MO_BundledCollectiveInterface
+    : OpInterface<"MOBundledCollectiveInterface"> {
+  let description = [{
+    Marks an op that is a per-launch entry point for a bundled collective and
+    is only valid inside an `mo.parallel` body.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
+def MO_BundledCollective : TraitList<[
+  MO_BundledCollectiveInterface,
+  ParentOneOf<["ParallelOp"]>,
+]>;
+
 def MO_ViewLike : OpInterface<"ViewLike"> {
   let description = [{
     Represents a view op.

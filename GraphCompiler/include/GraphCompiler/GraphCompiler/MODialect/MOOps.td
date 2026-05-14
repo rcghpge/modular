@@ -5371,7 +5371,7 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  ParentOneOf<["ParallelOp"]>
+  MO_BundledCollective
 ]> {
   let summary = "Expand a per-device tensor to all launches' tensors.";
   let description = [{
@@ -5409,7 +5409,8 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
   MO_SingleDeviceWithPeerInputs<>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_SameVariadicOperandSize
+  MO_SameVariadicOperandSize,
+  MO_BundledCollective
 ]> {
   let summary = "Per-device allreduce sum, for use inside mo.parallel.";
   let description = [{
@@ -5456,7 +5457,7 @@ def MO_BundledAllReduceAddRMSNormQuantFP8Op : MO_TensorOp<
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_SameVariadicOperandSize,
-  ParentOneOf<["ParallelOp"]>
+  MO_BundledCollective
 ]> {
   let summary = "Per-device fused allreduce.sum + add + rms_norm + fp8 "
                 "quantize, for use inside mo.parallel.";

@@ -656,21 +656,9 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   Value chain = loweringState.getCurrentExecuteChain();
   if (maybeInChain) {
     Value lowered = loweringState.lookupExecuteLoweredValue(*maybeInChain);
-    if (lowered) {
-      chain = lowered;
-    } else {
-      // Fallback to getCurrentExecuteChain() for chains that are defined
-      // inside an mo.parallel body (e.g. mo.chain.create() local to the
-      // body) and therefore have no entry in the enclosing lowering state.
-      // Chains defined in the same region as the kernel MUST have a lowered
-      // value; a null lookup there indicates a real bug.
-      Region *chainRegion = maybeInChain->getParentRegion();
-      Region *kernelRegion = moggKernelOp->getParentRegion();
-      ASSERT_STREAM(
-          chainRegion != kernelRegion,
-          << "chain defined in the kernel's own region has no lowered value: "
-          << *maybeInChain);
-    }
+    ASSERT_STREAM(lowered, << "no lowered value for kernel input chain: "
+                           << *maybeInChain);
+    chain = lowered;
     loweredInputOperands.pop_back();
   }
   chain = opLoweringState.getGuardChain(chain);
@@ -964,10 +952,23 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
       bundleElements[group].push_back(moElements[launch]);
   }
 
+  // Single body walk: collect kernels and bundled.expand ops together, and
+  // reject any other op the lowering can't handle. The verifier accepts a
+  // few preserved ops as transient intermediate IR (see ParallelOp::verify),
+  // but by lowering time only kernels and bundled.expand should remain --
+  // anything else indicates a missing cleanup pass or an unsupported pattern.
   SmallVector<MOGG::KernelOp> kernelOps;
-  for (Operation &op : bodyBlock.without_terminator())
+  SmallVector<MO::BundledExpandOp> expandOps;
+  for (Operation &op : bodyBlock.without_terminator()) {
     if (auto kernel = dyn_cast<MOGG::KernelOp>(&op))
       kernelOps.push_back(kernel);
+    else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op))
+      expandOps.push_back(expand);
+    else
+      return op.emitOpError()
+             << "lowering of this op inside mo.parallel is not yet "
+                "supported; see GEX-3701";
+  }
   if (kernelOps.empty())
     return parallelOp.emitOpError("body must contain at least one kernel");
 
@@ -993,10 +994,7 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   // Resolve mo.bundled.expand ops: each result maps to the per-launch element
   // of the input's source bundle.  The expand op is a no-op placeholder that
   // makes N-expansion explicit in the IR.
-  for (Operation &op : bodyBlock.without_terminator()) {
-    auto expandOp = dyn_cast<MO::BundledExpandOp>(&op);
-    if (!expandOp)
-      continue;
+  for (MO::BundledExpandOp expandOp : expandOps) {
     Value input = expandOp.getInput();
     // Find which bundle group this input comes from.
     for (size_t group = 0; group < numBundleGroups; ++group) {
