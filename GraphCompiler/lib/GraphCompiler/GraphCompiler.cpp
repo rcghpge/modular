@@ -550,7 +550,8 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
           [&](auto &p) {
             buildMoggPipeline(p, moggOpts);
             if (opts.nanCheck)
-              p.addPass(MO::createNanCheckPass(libraryAnalysis));
+              p.addPass(
+                  MO::createNanCheckPass(libraryAnalysis, opts.nanCheckStride));
           },
           "mogg-pre-mgp")))
     return failure();

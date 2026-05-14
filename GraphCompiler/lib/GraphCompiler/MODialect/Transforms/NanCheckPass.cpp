@@ -111,6 +111,27 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
     // issues with insertion point ordering.
     Value currentChain;
 
+    // Sampling stride (GEX-3703). Direct measurement on B200 showed the
+    // Mojo/KGEN single-threaded compile path can't absorb hundreds of
+    // extra MOGG-kernel call sites within a reasonable time budget, no
+    // matter how the raise side is organised (per-pair, coalesced, or
+    // batched all hung past 30 minutes; the count kernels on their own
+    // — 1040 of them, no transfers, no raise — also hung past 34 min).
+    //
+    // To recover usability we sample: only one in every `stride` floating
+    // -point kernel outputs gets a NaN/Inf check. Diagnostic precision
+    // drops, but compile time becomes proportional to the sampled count
+    // rather than the total kernel count. stride=10 against gemma-4-31b
+    // (~920 float outputs) gives ~92 checks instead of ~920.
+    //
+    // The option stride=1 preserves the original "check every tensor" behavior
+    // for lit tests and small graphs; large models can override via the
+    // pass option or the `max-debug.nan-check-stride` config key.
+    const uint64_t effectiveStride = stride == 0 ? 1 : stride;
+    size_t floatResultIdx = 0;
+    size_t totalFloatResults = 0;
+    size_t checkedFloatResults = 0;
+
     // Insert NaN/Inf checks after each compiled region's float outputs.
     // Architecture:
     //   1. nan_check_count: read-only reduction → scalar counts (on device)
@@ -122,6 +143,14 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
       for (Value res : kernelOp.getResults()) {
         if (!isFloatTensor(res))
           continue;
+
+        // Based on the stride, skip some kernel outputs to improve compilation
+        // time.
+        ++totalFloatResults;
+        size_t samplingIndex = floatResultIdx++;
+        if (effectiveStride > 1 && (samplingIndex % effectiveStride) != 0)
+          continue;
+        ++checkedFloatResults;
 
         auto tensorType = cast<MO::TensorType>(res.getType());
         auto device = getDeviceOrDefaultAny(kernelOp);
@@ -218,12 +247,21 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
     }
     // Note: currentChain (the final raise's chain output) is unused, but the
     // raise kernel survives DCE because we set hasWriteEffect=true above.
+
+    llvm::errs() << "[GEX-3703] NanCheckPass: checked " << checkedFloatResults
+                 << " of " << totalFloatResults << " float kernel outputs "
+                 << "(stride=" << effectiveStride << ", graph @"
+                 << graphOp.getSymName() << ")\n";
   }
 };
 
 } // namespace
 
 std::unique_ptr<Pass> M::MO::createNanCheckPass(
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  return std::make_unique<NanCheckPass>(std::move(libraryAnalysis));
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
+    uint64_t stride) {
+  NanCheckPassOptions opts;
+  opts.stride = stride;
+  return std::make_unique<NanCheckPass>(std::move(opts),
+                                        std::move(libraryAnalysis));
 }

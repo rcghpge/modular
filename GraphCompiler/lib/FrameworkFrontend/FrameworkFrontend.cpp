@@ -197,10 +197,17 @@ void MOFContext::overrideLoweringOptions(
     impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
                                              gcPipelineOptions);
 
-  // Enable NaN/Inf checking from the max-debug.nan-check config key.
+  // Enable NaN/Inf checking from the max-debug.nan-check config key, and
+  // read the sampling stride from max-debug.nan-check-stride if set.
   if (auto configOr = M::Config::open(); !configOr.isError()) {
     if (configOr->getValueAsBool("max-debug.nan-check", false))
       gcPipelineOptions.nanCheck = true;
+    StringRef strideStr = configOr->getValue("max-debug.nan-check-stride");
+    if (!strideStr.empty()) {
+      uint64_t stride = 0;
+      if (!strideStr.getAsInteger(/*radix=*/10, stride) && stride > 0)
+        gcPipelineOptions.nanCheckStride = static_cast<size_t>(stride);
+    }
   }
 }
 
@@ -486,8 +493,15 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   };
   if (configHasFlag("max-debug.source-tracebacks"))
     *keyBuf << "max-debug.source-tracebacks=1";
-  if (configHasFlag("max-debug.nan-check"))
+  if (configHasFlag("max-debug.nan-check")) {
     *keyBuf << "max-debug.nan-check=1";
+    if (!cacheKeyConfigOr.isError()) {
+      StringRef strideStr =
+          cacheKeyConfigOr->getValue("max-debug.nan-check-stride");
+      if (!strideStr.empty())
+        *keyBuf << "max-debug.nan-check-stride=" << strideStr;
+    }
+  }
 
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would

@@ -295,10 +295,24 @@ def NanCheckPass : Pass<"mo-nan-check-pass", "GraphOp"> {
     For debugging only — activated via the `max-debug.nan-check` config
     key (for example, `InferenceSession.debug.nan_check = True` or
     `MODULAR_DEBUG=nan-check`) or the `--nan-check` compiler flag.
+
+    The `stride` option samples one of every N floating-point kernel
+    outputs rather than checking all of them. Models with many compiled
+    regions (e.g. gemma-4-31b-it produces ~920 float kernel results) make
+    checking every tensor prohibitively expensive — the single-threaded
+    Mojo/KGEN compile path can't absorb hundreds of extra MOGG kernel
+    call sites in a usable amount of time (GEX-3703). The default of 20
+    keeps NaN/Inf checking usable on large models; set stride=1 to
+    restore the original "check every tensor" behaviour (only practical
+    on small graphs, e.g. lit tests).
   }];
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions.">
+      "Paths to mojo packages containing mojo kernel definitions.">,
+    Option<"stride", "stride", "uint64_t", /*default=*/"20",
+      "Check one of every N float kernel outputs (1 = check all). "
+      "Default 20 keeps NaN/Inf checking usable on large models; lit "
+      "tests and callers that want full coverage should set stride=1.">
   ];
 }
 

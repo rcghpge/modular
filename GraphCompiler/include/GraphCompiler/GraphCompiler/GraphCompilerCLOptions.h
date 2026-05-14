@@ -32,6 +32,8 @@ public:
 
   bool nanCheck{false};
 
+  size_t nanCheckStride{20};
+
   size_t softFusionNonHostKernelLimit{3};
 
   bool cacheBuffersAcrossExecutes{false};
@@ -48,6 +50,7 @@ public:
     gcPipelineOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     gcPipelineOptions.debugPrintAllTensors = debugPrintAllTensors;
     gcPipelineOptions.nanCheck = nanCheck;
+    gcPipelineOptions.nanCheckStride = nanCheckStride;
     gcPipelineOptions.softFusionNonHostKernelLimit =
         softFusionNonHostKernelLimit;
     gcPipelineOptions.kernelLibraryPaths = kernelLibraryPaths;
@@ -109,6 +112,15 @@ private:
       cl::desc("Insert NaN/Inf checks after each compiled region's "
                "floating-point outputs."),
       llvm::cl::location(options.nanCheck),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<size_t, true> nanCheckStride{
+      "nan-check-stride",
+      cl::desc("Sample one of every N float kernel outputs when `nan-check` "
+               "is enabled. Default 1 (check every tensor). Larger values "
+               "trade diagnostic precision for compile time on models with "
+               "hundreds of float kernel outputs."),
+      llvm::cl::location(options.nanCheckStride),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<size_t, true> softFusionNonHostKernelLimit{

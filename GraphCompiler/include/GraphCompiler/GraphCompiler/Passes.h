@@ -133,6 +133,14 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc("Insert NaN/Inf checks after each compiled region's "
                      "floating-point outputs."),
       llvm::cl::init(false)};
+  Option<size_t> nanCheckStride{
+      *this, "nan-check-stride",
+      llvm::cl::desc("Sample one of every N float kernel outputs when "
+                     "`nan-check` is enabled. Default 20 keeps NaN/Inf "
+                     "checking usable on large models. Set to 1 to check "
+                     "every tensor (slow on models with hundreds of "
+                     "floating-point kernel outputs)."),
+      llvm::cl::init(20)};
   ListOption<std::string> dimNames{
       *this, "dim-names",
       llvm::cl::desc("Named dimensions for each input of the MO graph")};
