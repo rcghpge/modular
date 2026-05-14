@@ -374,7 +374,10 @@ struct MatmulTranspBPattern
     // this layout annotation.
     auto rebWeight = rewriter.create<MO::RebindOp>(
         op.getLoc(), weightType.cloneWith(preTranspWeightLayout), weight);
-    rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, rebWeight); });
+    rewriter.modifyOpInPlace(op, [&] {
+      op.setOperand(1, rebWeight);
+      op.setTransposeB(true);
+    });
 
     return mlir::success();
   }

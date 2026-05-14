@@ -5,7 +5,7 @@
 
 // CHECK-EXEC-LABEL: --- Running 'matmul_transpb':
 mo.graph @matmul_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N, K], f32>) -> !mo.tensor<[M, N], f32> {
-  // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
+  // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
 
   %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %0 = mo.transpose(%w, %axes) : (!mo.tensor<[N, K], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[K, N], f32>
@@ -18,8 +18,8 @@ mo.graph @matmul_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N
 
 // CHECK-EXEC-LABEL: --- Running 'matmul_reused_transpb':
 mo.graph @matmul_reused_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N, K], f32>) -> (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) {
-  // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
-  // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
+  // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
+  // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
 
   %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
 
@@ -57,7 +57,7 @@ mo.graph @matmul_transpb_multi_layout_weight(
   %x: !mo.tensor<[4, 2], f32>,
   %w: !mo.tensor<[4, 2], f32>
 ) -> (!mo.tensor<[4, 4], f32>, !mo.tensor<[2, 2], f32>) {
-  // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32, {layout = #mo.layout<KN>}>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
+  // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32, {layout = #mo.layout<KN>}>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
   // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<KN>}>)
 
   // Getting input to a specific shape so we can pass w and w_t to matmuls
