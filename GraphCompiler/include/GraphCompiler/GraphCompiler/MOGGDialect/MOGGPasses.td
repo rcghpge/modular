@@ -80,6 +80,9 @@ def PatternFusion: Pass<"mogg-pattern-fusion", "MO::GraphOp"> {
            "use this device for pattern fusion passes that depend on the target device.">,
     Option<"targetDeviceId", "target-device-id",  "size_t", "0",
            "If target-device is provided, this is the default-id to target">,
+    Option<"mockArchName", "mock-arch-name", "std::string", "\"\"",
+           "If set, use this arch name instead of querying the device. "
+           "Useful for testing arch-specific patterns without physical hardware.">,
   ];
 }
 

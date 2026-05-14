@@ -4554,6 +4554,52 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   let hasVerifier = 1;
 }
 
+def MO_FusedMatmulAddOp : MO_DotBase<"fused_matmul_add"> {
+  let summary = "Fused matrix-matrix multiplication with element-wise add";
+  let description = [{
+    Computes C = A @ B (optionally transposed) + residual, fusing the matmul
+    and the residual addition into a single kernel call.
+
+    `residual` may be rank-2 (same shape as the output, element-wise add) or
+    rank-1 (broadcast along the row dimension, i.e. a bias vector).
+
+    This operation is currently only lowered for SM100 (B200) targets, where
+    the residual is passed directly to the matmul kernel as an epilogue tensor.
+
+    Example (2-D residual):
+
+    ```mlir
+      %res = mo.matmul_add(%a, %b, %residual) {transpose_b = true} : (
+        !mo.tensor<[4, 512], bf16>,
+        !mo.tensor<[1536, 512], bf16>,
+        !mo.tensor<[4, 1536], bf16>
+      ) -> !mo.tensor<[4, 1536], bf16>
+    ```
+
+    Example (1-D bias broadcast):
+
+    ```mlir
+      %res = mo.matmul_add(%a, %b, %bias) {transpose_b = true} : (
+        !mo.tensor<[4, 512], bf16>,
+        !mo.tensor<[1536, 512], bf16>,
+        !mo.tensor<[1536], bf16>
+      ) -> !mo.tensor<[4, 1536], bf16>
+    ```
+  }];
+
+  let arguments = (
+    ins MO_Rank2Tensor:$input_a,
+    MO_Rank2Tensor:$input_b,
+    MO_Tensor:$residual,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
+  );
+  let results = (outs MO_Rank2Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Linear Algebra ops
 //===----------------------------------------------------------------------===//

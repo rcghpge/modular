@@ -17,6 +17,7 @@
 #include "GraphCompiler/Support/DataflowUtils.h"
 #include "GraphCompiler/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ML/Permutation.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -3332,6 +3333,202 @@ struct ReduceRMSNormRoPEPattern
 };
 
 //===----------------------------------------------------------------------===//
+// Matmul + Add Fusion Pattern (mo.matmul_add)
+//===----------------------------------------------------------------------===//
+//
+// Fuses:
+//   %mm  = mo.matmul(%a, %b) {transpose_b = ...}
+//   %out = mo.add(%mm, %residual)   (or mo.add(%residual, %mm))
+//
+// Into:
+//   %out = mo.matmul_add(%a, %b, %residual) {transpose_b = ...}
+//
+// The residual must have rank 2 (same shape as the matmul output — no
+// broadcast).  The fused op is GPU-only and requires a single consumer for
+// the matmul result.
+//
+//===----------------------------------------------------------------------===//
+
+struct MatmulAddPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
+  MatmulAddPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
+
+  static MO::MatmulOp matchMatmulOp(Value val,
+                                    MO::Static::ReshapeOp &reshapeOp) {
+    auto reshape = val.getDefiningOp<MO::Static::ReshapeOp>();
+    if (!reshape)
+      return val.getDefiningOp<MO::MatmulOp>();
+
+    if (!reshape.getResult().hasOneUse())
+      return nullptr;
+    auto matmulOp = reshape.getInput().getDefiningOp<MO::MatmulOp>();
+    if (!matmulOp)
+      return nullptr;
+
+    reshapeOp = reshape;
+    return matmulOp;
+  }
+
+  static bool wouldBlockPrologueFusion(Value value) {
+    Operation *op = value.getDefiningOp();
+    // Only block if the op has a single use: multi-use values cannot be
+    // prologue-fused without recomputation, so there is no opportunity to
+    // preserve by deferring matmul+add fusion.
+    return op && value.hasOneUse() &&
+           isa<MO::ElementWiseLike, MO::ViewLike>(op);
+  }
+
+  // Returns true if there are downstream elementwise ops that won't get
+  // epilogue fused because fused_matmul_add does not support epilogue fusion.
+  static bool wouldBlockEpilogueFusion(Value val) {
+    while (true) {
+      // We can't fuse if the value has multiple uses.
+      if (!val.hasOneUse())
+        return false;
+      Operation *user = *val.getUsers().begin();
+      // Swim through reshapes.
+      if (isa<MO::Static::ReshapeOp>(user)) {
+        val = user->getResult(0);
+        continue;
+      }
+
+      return isa<MO::ElementWiseLike>(user);
+    }
+  }
+
+  static bool is1DTo2DBroadcast(MO::Static::BroadcastToOp broadcastOp) {
+    TensorType inputTy = broadcastOp.getInput().getType();
+    TensorType resultTy = broadcastOp.getResult().getType();
+    if (inputTy.getRank() != 1 || resultTy.getRank() != 2)
+      return false;
+
+    auto inputInnerDim = inputTy.getDim(0);
+    auto outputInnerDim = resultTy.getDim(1);
+    return inputInnerDim == outputInnerDim;
+  }
+
+  // Returns failure if the matmul's type/alignment preconditions for
+  // fused_matmul_add are not met: output must be bfloat16, N and K must be
+  // static, and (N * sizeof(c_type)) and (K * sizeof(a_type)) must each be
+  // multiples of 16 bytes.
+  // TODO: Move these checks into the kernel code.
+  static LogicalResult
+  checkKernelConstraints(MO::MatmulOp matmulOp, MO::AddOp addOp,
+                         MO::DeviceAwareRewriter &rewriter) {
+    Type cType = matmulOp.getResult().getType().getElementType();
+    if (!cType.isBF16())
+      return rewriter.notifyMatchFailure(
+          addOp, "fused_matmul_add requires bfloat16 output type");
+
+    int64_t dimN = matmulOp.getResult().getType().getIntDim(1);
+    int64_t dimK = matmulOp.getInputA().getType().getIntDim(1);
+    if (dimN == mlir::ShapedType::kDynamic ||
+        dimK == mlir::ShapedType::kDynamic)
+      return rewriter.notifyMatchFailure(
+          addOp, "fused_matmul_add does not support dynamic N or K dimensions");
+
+    Type aType = matmulOp.getInputA().getType().getElementType();
+    int64_t cBytes = cType.getIntOrFloatBitWidth() / 8;
+    int64_t aBytes = aType.getIntOrFloatBitWidth() / 8;
+    if ((dimN * cBytes) % 16 != 0 || (dimK * aBytes) % 16 != 0)
+      return rewriter.notifyMatchFailure(
+          addOp, "fused_matmul_add requires (N * sizeof(c_type)) and "
+                 "(K * sizeof(a_type)) to each be multiples of 16 bytes");
+
+    return success();
+  }
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::AddOp addOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Only fuse on GPU.
+    auto resultTy = cast<MO::TensorType>(addOp.getResult().getType());
+    DeviceRefAttr device = resultTy.getDeviceRef();
+    if (!device || device.getLabel() != M::kGPULabel) {
+      return rewriter.notifyMatchFailure(addOp,
+                                         "matmul+add fusion only on GPU");
+    }
+
+    if (wouldBlockEpilogueFusion(addOp.getResult())) {
+      return rewriter.notifyMatchFailure(
+          addOp, "fused_matmul_add does not support epilogue fusion of "
+                 "downstream elementwise ops");
+    }
+
+    // One input must be a matmul result; the other is the residual.
+    Value lhs = addOp.getInputX();
+    Value rhs = addOp.getInputY();
+    MO::Static::ReshapeOp reshapeOp;
+    MO::MatmulOp matmulOp;
+    Value residual;
+
+    if ((matmulOp = matchMatmulOp(lhs, reshapeOp))) {
+      residual = rhs;
+    } else if ((matmulOp = matchMatmulOp(rhs, reshapeOp))) {
+      residual = lhs;
+    } else {
+      return rewriter.notifyMatchFailure(addOp,
+                                         "neither input is a matmul result");
+    }
+
+    // Only fuse if matmul has a single use (add).
+    if (!matmulOp.getResult().hasOneUse()) {
+      return rewriter.notifyMatchFailure(addOp,
+                                         "matmul result has multiple uses");
+    }
+
+    int64_t matmulDimM = matmulOp.getInputA().getType().getIntDim(0);
+    if (matmulDimM == 1 || matmulDimM == mlir::ShapedType::kDynamic) {
+      return rewriter.notifyMatchFailure(
+          addOp, "gemv / dynamic M dimension not supported");
+    }
+
+    if (failed(checkKernelConstraints(matmulOp, addOp, rewriter)))
+      return failure();
+
+    // Detect a 1D -> 2D broadcast
+    if (auto broadcastOp = residual.getDefiningOp<MO::Static::BroadcastToOp>();
+        broadcastOp && !reshapeOp && is1DTo2DBroadcast(broadcastOp))
+      residual = broadcastOp.getInput();
+
+    if (wouldBlockPrologueFusion(residual)) {
+      return rewriter.notifyMatchFailure(
+          addOp, "residual cannot be an elementwise op");
+    }
+
+    // Collect device annotations from both matched ops.
+    if (!rewriter.addOps({matmulOp})) {
+      return rewriter.notifyMatchFailure(
+          addOp, "matched ops have inconsistent devices");
+    }
+
+    // Replace add(matmul(a, b), residual) -> matmul_add(a, b, residual).
+
+    if (reshapeOp) {
+      // If there was a reshape, the residual must be reshaped back to the
+      // matmul output.
+      residual = rewriter.create<MO::Static::ReshapeOp>(
+          residual.getLoc(), matmulOp.getResult().getType(), residual);
+    }
+
+    Value newOutput = rewriter.create<MO::FusedMatmulAddOp>(
+        addOp.getLoc(), matmulOp.getResult().getType(), matmulOp.getInputA(),
+        matmulOp.getInputB(), residual,
+        rewriter.getBoolAttr(matmulOp.getTransposeB()));
+
+    // If there was a reshape, we need to insert a a new one for the fused
+    // matmul output.
+    if (reshapeOp) {
+      newOutput = rewriter.create<MO::Static::ReshapeOp>(
+          reshapeOp.getLoc(), reshapeOp.getResult().getType(), newOutput);
+    }
+
+    rewriter.replaceOp(addOp, newOutput);
+    return mlir::success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // GEMV + Partial RMS Norm Fusion Pattern
 //===----------------------------------------------------------------------===//
 //
@@ -3652,8 +3849,28 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     // Phase 3: Lower any splits that survived fusion back to slices.
     {
+      // TODO(GEX-3695): Properly query the target info in the Graph Compiler.
+      // Determine the effective arch name for the physical device.
+      // Or use mockArchName if set (for testing only).
+      StringRef effectiveArch = mockArchName.getValue();
+      std::string queriedArch;
+      if (effectiveArch.empty()) {
+        auto gpuDevice = M::Driver::Device::create("gpu", 0);
+        if (!gpuDevice.isError()) {
+          auto archName = gpuDevice.get()->getArchName();
+          if (!archName.isError()) {
+            queriedArch = archName.get();
+            effectiveArch = queriedArch;
+          }
+        }
+      }
+
       RewritePatternSet splitToSlicePatterns{ctx};
       splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
+      // MatmulAddPattern produces mo.fused_matmul_add which is only lowered on
+      // SM100 (B200). Match any SM100 variant (e.g. sm_100a).
+      if (effectiveArch.starts_with("sm_100"))
+        splitToSlicePatterns.add<MatmulAddPattern>(ctx);
       if (failed(
               applyPatternsGreedily(graphOp, std::move(splitToSlicePatterns))))
         return signalPassFailure();
