@@ -24,7 +24,7 @@ mo.graph @unary_elementwise(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2],
 // CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
 // CHECK-NEXT:   %[[SIZES:.*]] = mo.constant
 // CHECK-NEXT:   %[[EXP:.*]] = mo.exp({{.*}}) : !mo.tensor<[2, 4], f32, dev:0>
-// CHECK-NEXT:   %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[EXP]], %[[SIZES]]) 
+// CHECK-NEXT:   %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[EXP]], %[[SIZES]])
 // CHECK-NEXT:   mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>
 
 mo.graph @unary_elementwise_with_device(%in: !mo.tensor<[2, 4], f32, dev:0>) -> (!mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>) {
@@ -37,11 +37,10 @@ mo.graph @unary_elementwise_with_device(%in: !mo.tensor<[2, 4], f32, dev:0>) -> 
 }
 
 // CHECK-LABEL:  mo.graph @binary_elementwise
-// CHECK-DAG:    %[[AXIS_CONCAT:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-DAG:    %[[AXIS_SPLIT:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-DAG:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-DAG:    %[[CST:.*]] = mo.constant {value = #M.dense_array<0.000000e+00
-// CHECK:    %[[CONCAT:.*]] = mo.concat[%[[AXIS_CONCAT]] : !mo.tensor<[], si64>] (%[[CST]], %[[CST]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 4], f32>
+// CHECK:    %[[CONCAT:.*]] = mo.concat[1] (%[[CST]], %[[CST]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 4], f32>
 // CHECK-NEXT:    %[[ADD:.*]] = mo.add(%{{.*}}, %[[CONCAT]]) : !mo.tensor<[2, 4], f32>
 // CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS_SPLIT]] : !mo.tensor<[], si32>] (%[[ADD]], %[[SIZES]]) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -59,11 +58,10 @@ mo.graph @binary_elementwise(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2]
 // -----
 
 // CHECK-LABEL:  mo.graph @binary_elementwise_with_broadcast
-// CHECK-DAG:    %[[AXIS_CONCAT:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-DAG:    %[[AXIS_SPLIT:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-DAG:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-DAG:    %[[CST:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 1.000000e+00> : tensor<2xf32>} : !mo.tensor<[2], f32>
-// CHECK:    %[[CONCAT:.*]] = mo.concat[%[[AXIS_CONCAT]] : !mo.tensor<[], si64>] (%[[CST]], %[[CST]])
+// CHECK:    %[[CONCAT:.*]] = mo.concat[0] (%[[CST]], %[[CST]])
 // CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CONCAT]])
 // CHECK-NEXT:    %[[ADD:.*]] = mo.add(%{{.*}}, %[[BCAST]]) : !mo.tensor<[2, 4], f32>
 // CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS_SPLIT]] : !mo.tensor<[], si32>] (%[[ADD]], %[[SIZES]]) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)

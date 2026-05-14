@@ -28,7 +28,7 @@ mo.graph @concat_1() -> (!mo.tensor<[6], f32>) {
   %arg1 = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
   %arg2 = mo.constant {value = #M.dense_array<3.0, 5.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   %arg3 = mo.constant {value = #M.dense_array<7.0, 11.0, 13.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
-  %out = mo.concat[%ax: !mo.tensor<[], si32>](%arg1, %arg2, %arg3) : (
+  %out = mo.concat[0](%arg1, %arg2, %arg3) : (
     !mo.tensor<[1], f32>, !mo.tensor<[2], f32>, !mo.tensor<[3], f32>
   ) -> !mo.tensor<[6], f32>
   mo.output %out : !mo.tensor<[6], f32>
@@ -57,7 +57,7 @@ mo.graph @concat_2() -> (!mo.tensor<[10], f32>) {
   %arg2 = mo.constant {value = #M.dense_array<2.0, 3.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   %arg3 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
   %arg4 = mo.constant {value = #M.dense_array<7.0, 8.0, 9.0, 10.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
-  %out = mo.concat[%ax: !mo.tensor<[], si32>](%arg1, %arg2, %arg3, %arg4) : (
+  %out = mo.concat[0](%arg1, %arg2, %arg3, %arg4) : (
     !mo.tensor<[1], f32>, !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[4], f32>
   ) -> !mo.tensor<[10], f32>
   mo.output %out : !mo.tensor<[10], f32>

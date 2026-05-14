@@ -16,7 +16,7 @@ mo.graph @reshape_number_of_elems<() -> D2, D3, D4>(
   ) -> !mo.tensor<[D0], si32>
 
   %dims = mo.constant {value = #M.dense_array<2, 4> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %target_shape = mo.concat<() -> D1>[%axis : !mo.tensor<[], si32>](%d0, %dims) : (
+  %target_shape = mo.concat<() -> D1>[0](%d0, %dims) : (
     !mo.tensor<[D0], si32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[D1], si32>
 
@@ -49,7 +49,7 @@ mo.graph @reshape_bad_annotated_rank<D0 -> D1, D2>(%arg0: !mo.tensor<[D0, 320], 
   %13 = mo.range<() -> D6>(%2, %12, %1) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D6], si32>
   %14 = mo.gather<() -> D7>(%9, %11, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[D5], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D7], si64>
   %15 = mo.gather<() -> D8>(%9, %13, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[D6], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D8], si64>
-  %16 = mo.concat<() -> D9>[%3 : !mo.tensor<[], si32>] (%14, %4, %15) : (!mo.tensor<[D7], si64>, !mo.tensor<[1], si64>, !mo.tensor<[D8], si64>) -> !mo.tensor<[D9], si64>
+  %16 = mo.concat<() -> D9>[0] (%14, %4, %15) : (!mo.tensor<[D7], si64>, !mo.tensor<[1], si64>, !mo.tensor<[D8], si64>) -> !mo.tensor<[D9], si64>
   // expected-error@below {{shape function result #0 returned shape of rank 3, but the type annotation has shape of rank 2}}
   %17 = mo.reshape<() -> D10, D11>(%8, %16) : (!mo.tensor<[D3, D4], f32>, !mo.tensor<[D9], si64>) -> !mo.tensor<[D10, D11], f32>
   mo.output<D10, D11> %17 : !mo.tensor<[D10, D11], f32>
@@ -63,7 +63,7 @@ mo.graph @concat_axis_out_of_bound<D0, D1 -> D2, D3>(
 ) -> !mo.tensor<[D2, D3], f32> {
   %axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@below {{[concat] normalized axis must be within range [0, input_rank)}}
-  %res = mo.concat<() -> D4, D5>[%axis : !mo.tensor<[], si64>](%input1, %input2) : (
+  %res = mo.concat<() -> D4, D5>[2](%input1, %input2) : (
     !mo.tensor<[D0, 1], f32>, !mo.tensor<[D1, 2], f32>
   ) -> !mo.tensor<[D4, D5], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>

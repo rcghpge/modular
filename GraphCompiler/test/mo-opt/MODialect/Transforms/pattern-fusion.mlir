@@ -26,7 +26,7 @@ mo.graph @concat(%in: !mo.tensor<[2, 8], f32>) -> (!mo.tensor<[4, 2, 4], f32>) {
   %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = mo.static.reshape(%in) : !mo.tensor<[2, 8], f32> -> !mo.tensor<[2, 2, 4], f32>
   %2 = mo.static.reshape(%in) : !mo.tensor<[2, 8], f32> -> !mo.tensor<[2, 2, 4], f32>
-  %3 = mo.concat[%0 : !mo.tensor<[], si32>] (%1, %2) : (!mo.tensor<[2, 2, 4], f32>, !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[4, 2, 4], f32>)
+  %3 = mo.concat[0] (%1, %2) : (!mo.tensor<[2, 2, 4], f32>, !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[4, 2, 4], f32>)
   mo.output %3 : !mo.tensor<[4, 2, 4], f32>
 }
 
@@ -40,7 +40,7 @@ mo.graph @concat_gpu(%arg0: !mo.tensor<[2, 8], f32, gpu:0>) -> !mo.tensor<[4, 2,
   %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = mo.static.reshape(%arg0) : !mo.tensor<[2, 8], f32, gpu:0> -> !mo.tensor<[2, 2, 4], f32, gpu:0>
   %2 = mo.static.reshape(%arg0) : !mo.tensor<[2, 8], f32, gpu:0> -> !mo.tensor<[2, 2, 4], f32, gpu:0>
-  %3 = mo.concat[%0 : !mo.tensor<[], si32>] (%1, %2) : (!mo.tensor<[2, 2, 4], f32, gpu:0>, !mo.tensor<[2, 2, 4], f32, gpu:0>) -> !mo.tensor<[4, 2, 4], f32, gpu:0>
+  %3 = mo.concat[0] (%1, %2) : (!mo.tensor<[2, 2, 4], f32, gpu:0>, !mo.tensor<[2, 2, 4], f32, gpu:0>) -> !mo.tensor<[4, 2, 4], f32, gpu:0>
   mo.output %3 : !mo.tensor<[4, 2, 4], f32, gpu:0>
 }
 

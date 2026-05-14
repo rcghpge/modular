@@ -17,7 +17,7 @@ mo.graph @concat_fuse_ins_out() -> !mo.tensor<[2, 6], f32> {
 
     %x = mo.add(%x0, %x1) : !mo.tensor<[2, 2], f32>
     %z = mo.add(%z0, %z1) : !mo.tensor<[2, 2], f32>
-    %tmp = mo.concat[%axis: !mo.tensor<[], si64>](%x, %y, %z) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 6], f32>
+    %tmp = mo.concat[1](%x, %y, %z) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 6], f32>
     %out = mo.mul(%tmp, %s) : !mo.tensor<[2, 6], f32>
     // Expected: [1.000000e+00, 4.000000e+00, 1.500000e+00, 1.500000e+00, -3.000000e+00, -6.000000e+00, 3.000000e+00, 8.000000e+00, 7.500000e+00, 3.500000e+00, -5.000000e+00, -9.000000e+00]
     mo.output %out : !mo.tensor<[2, 6], f32>

@@ -660,15 +660,13 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
   LogicalResult matchAndRewrite(RMO::ConcatOp op,
                                 PatternRewriter &rewriter) const override {
 
-    // Create a tensor value for axis.
     Location loc = op->getLoc();
     int64_t axisInt = op.getAxis().getInt();
-    TensorValue axis = MO::ConstantOp::create(rewriter, loc, axisInt);
 
     // Replace the `rmo.concat` op with a new `mo.concat` op.
-    TensorValue concat =
-        MO::ConcatOp::create(rewriter, loc, op.getResult().getType(), axis,
-                             op.getInputs(), op.getOutputParamDecls());
+    TensorValue concat = MO::ConcatOp::create(
+        rewriter, loc, op.getResult().getType(), op.getAxis().getValue(),
+        op.getInputs(), op.getOutputParamDecls());
 
     // If there is a user specified rebind for the axis dim, generate the
     // required assert.

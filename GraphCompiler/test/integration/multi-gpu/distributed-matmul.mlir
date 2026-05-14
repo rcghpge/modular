@@ -20,7 +20,7 @@ mo.graph @col_parallel_matmul(%a: !mo.tensor<[4,4], f32>) -> (!mo.tensor<[4, 4],
   %outputLeft = mo.matmul(%da0, %weights0) : (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[4, 2], f32, gpu:0>) -> !mo.tensor<[4, 2], f32, gpu:0>
   %outputRight = mo.matmul(%da1, %weights1) : (!mo.tensor<[4, 4], f32, gpu:1>, !mo.tensor<[4, 2], f32, gpu:1>) -> !mo.tensor<[4, 2], f32, gpu:1>
   %outputRight0, %ch5 = mo.transfer[%ch4] %outputRight: !mo.tensor<[4, 2], f32, gpu:1> to <"gpu", 0>
-  %doutput = mo.concat[%axis: !mo.tensor<[], si64>](%outputLeft, %outputRight0) : (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[4, 2], f32, gpu:0>) -> !mo.tensor<[4, 4], f32, gpu:0>
+  %doutput = mo.concat[1](%outputLeft, %outputRight0) : (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[4, 2], f32, gpu:0>) -> !mo.tensor<[4, 4], f32, gpu:0>
   %output, %ch6 = mo.transfer[%ch5] %doutput : !mo.tensor<[4, 4], f32, gpu:0> to <"cpu", 0>
   mo.output %output : !mo.tensor<[4, 4], f32>
 }

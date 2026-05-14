@@ -17,8 +17,8 @@ module {
     %9 = mo.slice(%2, %4, %5, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
     %10 = mo.broadcast_shape(%6, %8) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
     %11 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-    %12 = mo.concat[%11 : !mo.tensor<[], si64>] (%10, %7) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
-    %13 = mo.concat[%11 : !mo.tensor<[], si64>] (%10, %9) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+    %12 = mo.concat[0] (%10, %7) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+    %13 = mo.concat[0] (%10, %9) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
     %14 = mo.broadcast_to<() -> D9, D10, D11>(%arg0, %12) : (!mo.tensor<[D0, D1, D2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D9, D10, D11], f32>
     %15 = mo.broadcast_to<() -> D12, D13, D14>(%arg1, %13) : (!mo.tensor<[D3, D4, D5], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D12, D13, D14], f32>
     %16 = mo.batch_matmul<() -> D15, D16, D17>(%14, %15) : (!mo.tensor<[D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14], f32>) -> !mo.tensor<[D15, D16, D17], f32>

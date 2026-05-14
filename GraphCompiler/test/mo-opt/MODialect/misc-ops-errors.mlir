@@ -127,26 +127,8 @@ mo.graph @broadcast_input_res_not_broadcastable(
 mo.graph @concat_no_args() -> !mo.tensor<[7], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{concat must have at least 1 input tensor}}
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>]() : () -> !mo.tensor<[7], f32>
+  %0 = mo.concat[0]() : () -> !mo.tensor<[7], f32>
   mo.output %0 : !mo.tensor<[7], f32>
-}
-
-// -----
-
-mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], f32>'}}
-  %0 = mo.concat[%ax: !mo.tensor<[2], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
-  mo.output %0 : !mo.tensor<[9], f32>
-}
-
-// -----
-
-mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
-  %0 = mo.concat[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
-  mo.output %0 : !mo.tensor<[9], f32>
 }
 
 // -----
@@ -154,7 +136,7 @@ mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<
 mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
+  %0 = mo.concat[0](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
 }
 
@@ -163,7 +145,7 @@ mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<[7], f32>, %arg1: !m
 mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<[2, 2], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
+  %0 = mo.concat[0](%arg0, %arg1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
 }
 
@@ -173,7 +155,7 @@ mo.graph @concat_incorrect_element_type(%arg0: !mo.tensor<[1], si64>, %arg1: !mo
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
 
   // expected-error @below {{input and output element types must match}}
-  %res = mo.concat[%axis: !mo.tensor<[], si32>](%arg0, %arg1) : (
+  %res = mo.concat[0](%arg0, %arg1) : (
     !mo.tensor<[1], si64>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[2], si64>
 
@@ -928,4 +910,3 @@ mo.graph @bottom_k_different_output_shapes<() -> D0, D1, D2, D3, D4, D5, D6, D7>
     -> (!mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>)
  mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
 }
-

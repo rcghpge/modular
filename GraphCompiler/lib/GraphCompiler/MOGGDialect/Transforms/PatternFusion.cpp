@@ -541,9 +541,7 @@ struct ConcatZeroAxisPattern
                              MO::DeviceAwareRewriter &rewriter) const override {
     // Doing this manually, I don't think the patterns can support variadic
     // inputs yet
-    std::optional<int64_t> axis =
-        MO::tryGetConstantInt(cast<MO::TensorValue>(concat.getAxis()));
-    if (!axis.has_value() || axis.value() != 0)
+    if (concat.getAxisAttr().getInt() != 0)
       return rewriter.notifyMatchFailure(concat, "axis not constant 0");
 
     Block *concatBlock = concat.getResult().getParentBlock();
@@ -3136,12 +3134,8 @@ struct ReduceRMSNormRoPEPattern
                                          "neg(x2) not consumed by concat");
     }
 
-    auto concatAxisMaybe = tryGetConstantInt(concatOp.getAxis());
-    if (!concatAxisMaybe) {
-      return rewriter.notifyMatchFailure(rmsNormOp,
-                                         "concat axis is not a constant");
-    }
-    if (normalizeAxis(*concatAxisMaybe, rank) != rmsAxis) {
+    int64_t concatAxis = concatOp.getAxisAttr().getInt();
+    if (normalizeAxis(concatAxis, rank) != rmsAxis) {
       return rewriter.notifyMatchFailure(rmsNormOp,
                                          "concat axis differs from rms axis");
     }
@@ -3745,8 +3739,9 @@ struct ConcatSlicePattern
 
     auto fusedOp = rewriter.create<MO::FusedConcatSliceOp>(
         sliceOp->getLoc(), concatOp.getResult().getType(),
-        sliceOp.getResult().getType(), concatOp.getAxis(), concatOp.getInputs(),
-        startsAttr, stepsAttr, concatOp.getOutputParamDecls());
+        sliceOp.getResult().getType(), concatOp.getAxisAttr().getValue(),
+        concatOp.getInputs(), startsAttr, stepsAttr,
+        concatOp.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(concatOp.getResult(),
                                 fusedOp.getConcatResult());

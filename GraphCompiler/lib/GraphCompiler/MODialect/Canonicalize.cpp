@@ -551,7 +551,9 @@ void ChainCreateOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   TensorType outType = getResult().getType();
 
-  Value axis = getAxis();
+  int64_t axis = getAxisAttr().getInt();
+  if (outType.hasRank())
+    axis = normalizeAxis(axis, outType.getRank());
 
   SplitOp split = nullptr;
 
@@ -574,7 +576,10 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
     }
 
     // Split must have same axis.
-    if (definingOp.getAxis() != axis) {
+    std::optional<int64_t> splitAxis = tryGetConstantInt(definingOp.getAxis());
+    if (splitAxis && outType.hasRank())
+      splitAxis = normalizeAxis(*splitAxis, outType.getRank());
+    if (!splitAxis || *splitAxis != axis) {
       split = nullptr;
       break;
     }

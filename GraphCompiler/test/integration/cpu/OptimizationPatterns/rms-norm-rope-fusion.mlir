@@ -27,7 +27,7 @@ mo.graph @rope_basic<seq_len>(
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%neg_x2, %x1) :
+  %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -58,7 +58,7 @@ mo.graph @rope_commuted_add<seq_len>(
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%neg_x2, %x1) :
+  %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -90,7 +90,7 @@ mo.graph @rope_multiply_before_cast<seq_len>(
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%neg_x2, %x1) :
+  %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -127,7 +127,7 @@ mo.graph @rope_wrong_concat_order<seq_len>(
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
   // Wrong order: (x1, neg_x2) instead of (neg_x2, x1)
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%x1, %neg_x2) :
+  %rotated = mo.concat[1](%x1, %neg_x2) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -158,7 +158,7 @@ mo.graph @rope_missing_cos_mul<seq_len>(
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%neg_x2, %x1) :
+  %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   // No mul(normed, cos) — use normed directly in the add
@@ -191,7 +191,7 @@ mo.graph @rope_wrong_split_axis(
     -> (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[2, 4], f32, gpu:0>
   %cat_axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  %rotated = mo.concat[%cat_axis : !mo.tensor<[], si64>](%neg_x2, %x1) :
+  %rotated = mo.concat[0](%neg_x2, %x1) :
     (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
     -> !mo.tensor<[4, 4], f32, gpu:0>
   %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[4, 4], f32, gpu:0>

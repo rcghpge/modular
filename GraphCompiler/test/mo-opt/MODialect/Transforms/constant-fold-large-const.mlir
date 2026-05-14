@@ -18,8 +18,8 @@ mo.graph @large_const_aliased_output(%r0 : !mo.tensor<[4096], f32>, %r1 : !mo.te
   %cond_if = mo.static.reshape(%cond) : !mo.tensor<[1], bool> -> !mo.tensor<[], bool>
   %c0 = mo.constant {value = dense_resource<large_const0> : tensor<2048xf32>} : !mo.tensor<[2048], f32>
   %c1 = mo.constant {value = dense_resource<large_const1> : tensor<2048xf32>} : !mo.tensor<[2048], f32>
-  %c2 = mo.concat[%axis : !mo.tensor<[], si32>] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
-  %c3 = mo.concat[%axis : !mo.tensor<[], si32>] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
+  %c2 = mo.concat[0] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
+  %c3 = mo.concat[0] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
   %7:2 = mo.if(%cond_if : !mo.tensor<[], bool>) -> !mo.tensor<[4096], f32>, !mo.tensor<[4096], f32> {
     %0 = mo.add(%r0, %c2) : !mo.tensor<[4096], f32>
     %1 = mo.add(%r0, %c2) : !mo.tensor<[4096], f32>

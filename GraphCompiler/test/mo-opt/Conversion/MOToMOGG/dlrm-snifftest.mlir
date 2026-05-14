@@ -71,7 +71,7 @@ module {
     kgen.param.declare assert565: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D473, D474))>
     kgen.param.declare assert567: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D473, D474))>
     kgen.param.declare assert569: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D473, D474))>
-    %100 = mo.concat[%28 : !mo.tensor<[], si32>] (%99, %81, %83, %85, %87, %89, %91, %93, %95) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>) -> !mo.tensor<[D474, 288], f32>
+    %100 = mo.concat[1] (%99, %81, %83, %85, %87, %89, %91, %93, %95) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>) -> !mo.tensor<[D474, 288], f32>
     %101 = mo.static.reshape(%100) : !mo.tensor<[D474, 288], f32> -> !mo.tensor<[D474, 9, 32], f32>
     %102 = mo.batch_matmul(%101, %101) {transpose_b = true} : (!mo.tensor<[D474, 9, 32], f32>, !mo.tensor<[D474, 9, 32], f32>) -> !mo.tensor<[D474, 9, 9], f32>
     %103 = mo.merge_dim[1] (%102) : (!mo.tensor<[D474, 9, 9], f32>) -> !mo.tensor<[D474, 81], f32>
@@ -99,7 +99,7 @@ module {
     kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 div(mul_no_wrap(D474, W619), 45), D474))>
     kgen.param.declare param_expr_624: si64 = <div(mul_no_wrap(D474, W619), 45)>
     %120 = mo.rebind(%119) : !mo.tensor<[param_expr_624, param_expr_626], f32> -> !mo.tensor<[param_expr_624, 45], f32>
-    %121 = mo.concat[%28 : !mo.tensor<[], si32>] (%99, %120) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[param_expr_624, 45], f32>) -> !mo.tensor<[D474, 77], f32>
+    %121 = mo.concat[1] (%99, %120) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[param_expr_624, 45], f32>) -> !mo.tensor<[D474, 77], f32>
     %122 = mo.matmul(%121, %arg11) : (!mo.tensor<[D474, 77], f32>, !mo.tensor<[77, 256], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 256], f32>
     %123 = mo.relu(%122) : !mo.tensor<[D474, 256], f32>
     %124 = mo.matmul(%123, %arg10) : (!mo.tensor<[D474, 256], f32>, !mo.tensor<[256, 64], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 64], f32>

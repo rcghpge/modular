@@ -24,7 +24,6 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
 mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> {
@@ -34,7 +33,7 @@ mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32>
   %3 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   %4 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %5 = mo.shape_of(%2) : (!mo.tensor<[3], f32>) -> !mo.tensor<[1], si64>
-  %6 = mo.concat[%3 : !mo.tensor<[], si32>] (%5, %4) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %6 = mo.concat[0] (%5, %4) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %7 = mo.reshape<() -> D15>(%2, %6) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D15, 1], f32>
   %8 = mo.shape_of(%arg0) : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[3], si64>
   %9 = mo.rebind<() -> D14>(%7) : !mo.tensor<[D15, 1], f32> -> !mo.tensor<[D14, 1], f32>
@@ -43,8 +42,8 @@ mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32>
   %12 = mo.slice(%8, %4, %0, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %13 = mo.slice(%10, %1, %1, %4) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[0], si64>
   %14 = mo.broadcast_shape(%11, %13) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[1], si64>
-  %15 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %12) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
-  %16 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %10) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+  %15 = mo.concat[0] (%14, %12) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+  %16 = mo.concat[0] (%14, %10) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
   %17 = mo.broadcast_to<() -> D11, D12, D13>(%arg0, %15) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D11, D12, D13], f32>
   %18 = mo.rebind<() -> D7>(%7) : !mo.tensor<[D15, 1], f32> -> !mo.tensor<[D7, 1], f32>
   %19 = mo.broadcast_to<() -> D8, D9, D10>(%18, %16) : (!mo.tensor<[D7, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D8, D9, D10], f32>

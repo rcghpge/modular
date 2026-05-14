@@ -580,11 +580,7 @@ struct FlattenNestedConcatPattern
   deviceAwareMatchAndRewrite(ConcatOp op,
                              DeviceAwareRewriter &rewriter) const override {
 
-    // Requires constant axis
-    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
-    if (!maybeAxis.has_value())
-      return rewriter.notifyMatchFailure(op, "axis is not constant");
-    int64_t axis = maybeAxis.value();
+    int64_t axis = op.getAxisAttr().getInt();
 
     // Flatten the single-user nested concats by collecting their inputs, along
     // with other non-concat inputs.
@@ -593,7 +589,7 @@ struct FlattenNestedConcatPattern
     for (Value input : op.getInputs()) {
       auto nestedConcatOp = input.getDefiningOp<ConcatOp>();
       if (nestedConcatOp && nestedConcatOp->hasOneUse() &&
-          tryGetConstantInt(nestedConcatOp.getAxis()) == axis) {
+          nestedConcatOp.getAxisAttr().getInt() == axis) {
         rewriter.pushOp(nestedConcatOp);
         llvm::append_range(flattenedInputs, nestedConcatOp.getInputs());
         foundSingleUserNestedConcat = true;
@@ -616,7 +612,7 @@ struct FlattenNestedConcatPattern
     // Replace the old concat with a new concat that operate on the flattened
     // input values. Note that the types are guaranteed to match (shape
     // inference either verified it statically, or dropped runtime asserts).
-    rewriter.replaceOpWithNewOp<ConcatOp>(op, op.getType(), op.getAxis(),
+    rewriter.replaceOpWithNewOp<ConcatOp>(op, op.getType(), op.getAxisAttr(),
                                           flattenedInputs);
     return mlir::success();
   }
@@ -1132,11 +1128,7 @@ static bool isStaticConcat(ConcatOp op) {
   if (!inputType.hasRank())
     return false;
 
-  auto axisOr = tryGetConstantInt(op.getAxis());
-  if (!axisOr)
-    return false;
-
-  uint64_t axis = normalizeAxis(*axisOr, inputType.getRank());
+  uint64_t axis = normalizeAxis(op.getAxisAttr().getInt(), inputType.getRank());
   if (axis >= inputType.getRank())
     return false;
 
@@ -1284,8 +1276,8 @@ struct SwimConcatThroughReshapeLikeOpsPattern
     }
 
     auto concatInputType = firstAfterType;
-    const int64_t concatAxis = normalizeAxis(
-        *tryGetConstantInt(concatOp.getAxis()), concatInputType.getRank());
+    const int64_t concatAxis = normalizeAxis(concatOp.getAxisAttr().getInt(),
+                                             concatInputType.getRank());
 
     uint64_t mappedConcatAxis = concatAxis;
     // Will stop at the first non-1 dimension, dynamic dimension included. This
@@ -1346,12 +1338,10 @@ struct SwimConcatThroughReshapeLikeOpsPattern
         cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getSInt() *
         reshapeOps.size());
     auto newConcatOutputType = concatInputType.cloneWith(newConcatOutputShape);
-    SmallVector<Value> newConcatOperands = {
-        rewriter.createHostConstant(loc, newConcatAxis)};
-    newConcatOperands.append(reshapeOperands.begin(), reshapeOperands.end());
-    OperationState concatOpState(loc, concatOp->getName(), newConcatOperands,
-                                 newConcatOutputType, concatOp->getAttrs());
-    auto newConcatOp = rewriter.create(concatOpState);
+    auto newConcatOp = rewriter.create<ConcatOp>(
+        loc, newConcatOutputType,
+        rewriter.getIndexAttr(newConcatAxis).getValue(), reshapeOperands,
+        concatOp.getOutputParamDecls());
 
     auto newReshapeOp = rewriter.create<ReshapeOpType>(
         loc, concatOp.getType(), newConcatOp->getResult(0));
@@ -2607,10 +2597,11 @@ struct MergeParallelMatmulPattern
             .cloneWithNewDim(oldMatmulType.getRank() - 1, totalColumns);
 
     int64_t innerDimIndex = oldMatmulType.getRank() - 1;
-    Value concatAxis = rewriter.createHostConstant(loc, innerDimIndex);
     Value concatenatedWeights =
         rewriter
-            .create<ConcatOp>(loc, concatType, concatAxis, weightsToConcatenate)
+            .create<ConcatOp>(loc, concatType,
+                              rewriter.getIndexAttr(innerDimIndex),
+                              weightsToConcatenate)
             .getResult();
 
     // Create a single larger matmul.
@@ -2623,6 +2614,7 @@ struct MergeParallelMatmulPattern
 
     // Split the output.
     Value splitSizes = rewriter.createHostConstant(loc, columnsInEachMatmul);
+    Value concatAxis = rewriter.createHostConstant(loc, innerDimIndex);
     auto splitOp = rewriter.create<SplitOp>(loc, matmulTypes, newMatmul,
                                             splitSizes, concatAxis);
 
@@ -2839,12 +2831,12 @@ struct SinkSplitThroughElementwisePattern
           llvm::cast<TensorType>(constantsToConcatenate.front().getType());
       auto concatType =
           constantType.cloneWithNewDim(constantType.getRank() - 1, lastDimSize);
-      Value concatAxis =
-          rewriter.createHostConstant(loc, int64_t(constantType.getRank() - 1));
       Value concatenatedConstants =
           rewriter
-              .create<ConcatOp>(loc, concatType, concatAxis,
-                                constantsToConcatenate)
+              .create<ConcatOp>(
+                  loc, concatType,
+                  rewriter.getIndexAttr(int64_t(constantType.getRank() - 1)),
+                  constantsToConcatenate)
               .getResult();
 
       Value broadcast = concatenatedConstants;

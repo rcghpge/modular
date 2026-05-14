@@ -5,7 +5,7 @@
 // CHECK-NEXT: 'concat_empty_dynamic' returned tensor<0xsi32> []
 mo.graph @concat_empty_dynamic<D0 -> D1>(%arg: !mo.tensor<[D0], si32>) -> !mo.tensor<[D1], si32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %out = mo.concat<() -> D2>[%ax: !mo.tensor<[], si32>](%arg, %arg) : (
+  %out = mo.concat<() -> D2>[0](%arg, %arg) : (
     !mo.tensor<[D0], si32>, !mo.tensor<[D0], si32>
   ) -> !mo.tensor<[D2], si32>
   mo.output<D2> %out : !mo.tensor<[D2], si32>
@@ -19,7 +19,7 @@ mo.graph @concat_empty_from_upstream<D0 -> D1>(%arg: !mo.tensor<[D0], si32>) -> 
   %empty = mo.gather<() -> D2>(%arr, %arg, %ax) : (
     !mo.tensor<[1], si64>, !mo.tensor<[D0], si32>, !mo.tensor<[], si32>
   ) -> !mo.tensor<[D2], si64>
-  %out = mo.concat<() -> D3>[%ax: !mo.tensor<[], si32>](%empty, %empty) : (
+  %out = mo.concat<() -> D3>[0](%empty, %empty) : (
     !mo.tensor<[D2], si64>, !mo.tensor<[D2], si64>
   ) -> !mo.tensor<[D3], si64>
   mo.output<D3> %out : !mo.tensor<[D3], si64>

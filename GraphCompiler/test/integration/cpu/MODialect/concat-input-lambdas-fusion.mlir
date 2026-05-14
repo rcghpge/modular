@@ -27,7 +27,7 @@ mo.graph @concat_0axis_fusion_test(%arg0 : !mo.tensor<[10], si32>) -> (!mo.tenso
   // CHECK-IR-NEXT:     "simd_load"
   // CHECK-IR-NEXT:     "mo.add"
   // CHECK-IR-NEXT:     mogg.output
-	%concat = mo.concat[%axis : !mo.tensor<[], si64>] (%in_0,%in_1) : (!mo.tensor<[10], si32>, !mo.tensor<[10], si32>) -> !mo.tensor<[20], si32>
+	%concat = mo.concat[0] (%in_0,%in_1) : (!mo.tensor<[10], si32>, !mo.tensor<[10], si32>) -> !mo.tensor<[20], si32>
 
 	%factor = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
 	%bcast_factor = mo.static.broadcast_to(%factor) : !mo.tensor<[1], si32> -> !mo.tensor<[20], si32>

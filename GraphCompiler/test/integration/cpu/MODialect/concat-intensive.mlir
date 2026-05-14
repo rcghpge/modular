@@ -22,7 +22,7 @@ mo.graph @concat_2_2_4_axis0_num10_test() -> (!mo.tensor<[20, 2, 4], si32>) {
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[20, 2, 4], si32>
+	%res = mo.concat[0] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[20, 2, 4], si32>
 	mo.output %res : !mo.tensor<[20, 2, 4], si32>
 }
 
@@ -45,7 +45,7 @@ mo.graph @concat_2_2_4_axis1_num10_test() -> (!mo.tensor<[2, 20, 4], si32>) {
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 20, 4], si32>
+	%res = mo.concat[1] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 20, 4], si32>
 	mo.output %res : !mo.tensor<[2, 20, 4], si32>
 }
 
@@ -68,7 +68,7 @@ mo.graph @concat_2_2_4_axis2_num10_test() -> (!mo.tensor<[2, 2, 40], si32>) {
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 2, 40], si32>
+	%res = mo.concat[2] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 2, 40], si32>
 	mo.output %res : !mo.tensor<[2, 2, 40], si32>
 }
 
@@ -91,7 +91,7 @@ mo.graph @concat_2_2_4_axis_neg1_num10_test() -> (!mo.tensor<[2, 2, 40], si32>) 
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<2x2x4xsi32>} : !mo.tensor<[2, 2, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 2, 40], si32>
+	%res = mo.concat[-1] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[2, 2, 40], si32>
 	mo.output %res : !mo.tensor<[2, 2, 40], si32>
 }
 
@@ -114,7 +114,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis0_num10_test() -> (!mo.tensor<[10, 2, 1, 1, 2
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
+	%res = mo.concat[0] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
 	mo.output %res : !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
 }
 
@@ -137,7 +137,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis1_num10_test() -> (!mo.tensor<[1, 20, 1, 1, 2
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 20, 1, 1, 2, 1, 4], si32>
+	%res = mo.concat[1] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 20, 1, 1, 2, 1, 4], si32>
 	mo.output %res : !mo.tensor<[1, 20, 1, 1, 2, 1, 4], si32>
 }
 
@@ -160,7 +160,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis2_num10_test() -> (!mo.tensor<[1, 2, 10, 1, 2
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 10, 1, 2, 1, 4], si32>
+	%res = mo.concat[2] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 10, 1, 2, 1, 4], si32>
 	mo.output %res : !mo.tensor<[1, 2, 10, 1, 2, 1, 4], si32>
 }
 
@@ -183,7 +183,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis3_num10_test() -> (!mo.tensor<[1, 2, 1, 10, 2
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 10, 2, 1, 4], si32>
+	%res = mo.concat[3] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 10, 2, 1, 4], si32>
 	mo.output %res : !mo.tensor<[1, 2, 1, 10, 2, 1, 4], si32>
 }
 
@@ -206,7 +206,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis4_num10_test() -> (!mo.tensor<[1, 2, 1, 1, 20
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<4> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 20, 1, 4], si32>
+	%res = mo.concat[4] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 20, 1, 4], si32>
 	mo.output %res : !mo.tensor<[1, 2, 1, 1, 20, 1, 4], si32>
 }
 
@@ -229,7 +229,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis5_num10_test() -> (!mo.tensor<[1, 2, 1, 1, 2,
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<5> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 2, 10, 4], si32>
+	%res = mo.concat[5] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 2, 10, 4], si32>
 	mo.output %res : !mo.tensor<[1, 2, 1, 1, 2, 10, 4], si32>
 }
 
@@ -252,7 +252,7 @@ mo.graph @concat_1_2_1_1_2_1_4_axis6_num10_test() -> (!mo.tensor<[1, 2, 1, 1, 2,
 	%in8 = mo.constant {value = #M.dense_array<128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in9 = mo.constant {value = #M.dense_array<144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159> : tensor<1x2x1x1x2x1x4xsi32>} : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%axis = mo.constant {value = #M.dense_array<6> : tensor<si64>} : !mo.tensor<[], si64>
-	%res = mo.concat[%axis : !mo.tensor<[], si64>] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 2, 1, 40], si32>
+	%res = mo.concat[6] (%in0,%in1,%in2,%in3,%in4,%in5,%in6,%in7,%in8,%in9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[1, 2, 1, 1, 2, 1, 40], si32>
 	mo.output %res : !mo.tensor<[1, 2, 1, 1, 2, 1, 40], si32>
 }
 

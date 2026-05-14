@@ -111,10 +111,8 @@ mo.graph @chain_flattening(
 
 // CHECK: mo.graph @concat(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32> {
 mo.graph @concat(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32> {
-  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // CHECK: mo.concat[%[[VAL0]] : !mo.tensor<[], si64>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32>
+  // CHECK: mo.concat[1] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32>
+  %0 = mo.concat[1](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>) -> !mo.tensor<[2, 8], f32>
   mo.output %0 : !mo.tensor<[2, 8], f32>
 }
 
@@ -124,9 +122,9 @@ mo.graph @concat_canonicalize<D0>(
   %arg0: !mo.tensor<[2, D0], f32>, %arg1: !mo.tensor<[2, 0], f32>, %ax: !mo.tensor<[], si64>
 // CHECK-SAME: ) -> !mo.tensor<[2, {{.*}}], f32> {
 ) -> !mo.tensor<[2, D0], f32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.concat[%[[AX]] : !mo.tensor<[], si64>] (%[[ARG0]], %[[ARG0]]) : (
+  // CHECK-NEXT: %[[RES:.*]] = mo.concat[1] (%[[ARG0]], %[[ARG0]]) : (
   // CHECK-SAME:   !mo.tensor<[2, {{.*}}], f32>, !mo.tensor<[2, {{.*}}], f32>) -> !mo.tensor<[2, {{.*}}], f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1, %arg0) : (
+  %0 = mo.concat[1](%arg0, %arg1, %arg0) : (
     !mo.tensor<[2, D0], f32>, !mo.tensor<[2, 0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, {{.*}}], f32>
   mo.output %0 : !mo.tensor<[2, D0], f32>
@@ -139,7 +137,7 @@ mo.graph @concat_canonicalize_to_rebind<N, K -> M>(
 // CHECK-SAME: ) -> !mo.tensor<[2, [[M]]], f32> {
 ) -> !mo.tensor<[2, M], f32> {
   // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[2, N], f32> -> !mo.tensor<[2, K], f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg1, %arg0, %arg1) : (
+  %0 = mo.concat[1](%arg1, %arg0, %arg1) : (
     !mo.tensor<[2, 0], f32>, !mo.tensor<[2, N], f32>, !mo.tensor<[2, 0], f32>) -> !mo.tensor<[2, K], f32>
   // CHECK-NEXT: mo.output<[[K]]> %[[RES]] : !mo.tensor<[2, [[K]]], f32>
   mo.output<K> %0 : !mo.tensor<[2, K], f32>
@@ -151,7 +149,7 @@ mo.graph @concat_canonicalize_single_input<D0>(
 ) -> !mo.tensor<[2, D0], f32> {
 
   // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[2, {{.*}}], f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+  %0 = mo.concat[1](%arg0) : (!mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
   mo.output %0 : !mo.tensor<[2, D0], f32>
 }
 
@@ -161,7 +159,7 @@ mo.graph @concat_do_not_canonicalize_param_decls<A -> B>(
 ) -> !mo.tensor<[2, B], f32> {
 
   // CHECK: mo.concat<() -> O1>
-  %0 = mo.concat<() -> O1>[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, A], f32>) -> !mo.tensor<[2, O1], f32>
+  %0 = mo.concat<() -> O1>[1](%arg0) : (!mo.tensor<[2, A], f32>) -> !mo.tensor<[2, O1], f32>
   mo.output<O1> %0 : !mo.tensor<[2, O1], f32>
 }
 

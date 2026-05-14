@@ -466,12 +466,13 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
   auto inputDTypeAttr = mlir::TypeAttr::get(inputTensorTy.getElementType());
   auto inputRankAttr = builder.getIndexAttr(inputTensorTy.getRank());
 
-  buildForOpResult(
-      graph, builder, op, MO::ConcatOp::getOperationName(), op.getOperands(),
-      op.getOutputParamDecls(),
-      /*kgenParams=*/
-      {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
-      op.getDataDependentInputIndices());
+  buildForOpResult(graph, builder, op, MO::ConcatOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/
+                   {{"input_type", inputDTypeAttr},
+                    {"input_rank", inputRankAttr},
+                    {"axis", op.getAxisAttr()}},
+                   op.getDataDependentInputIndices());
   return success();
 }
 

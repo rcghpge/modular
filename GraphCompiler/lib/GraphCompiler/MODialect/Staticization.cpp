@@ -253,13 +253,12 @@ ErrorOr<TypedAttr> CastOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> ConcatOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
   // We only staticize over 1D tensors for now, so axis must be 0.
-  if (tryGetConstantInt(inputs[0]) != 0)
+  if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
-  // Build up staticized version of values from individual inputs (ignoring the
-  // first axis input).
+  // Build up staticized version of values from individual inputs.
   SmallVector<TypedAttr> outVals;
-  for (TypedAttr input : inputs.drop_front()) {
+  for (TypedAttr input : inputs) {
     if (auto inputShapeAttr = dyn_cast<ShapeAttr>(input)) {
       // Accumulate staticized values from this input.
       llvm::append_range(outVals, inputShapeAttr.getValues());

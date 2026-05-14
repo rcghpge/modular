@@ -72,8 +72,7 @@ mo.graph @parallel_matmuls_static_external_constants_aliased(%A: !mo.tensor<[2, 
   mo.output %7 : !mo.tensor<[2, 2], f32>
 }
 // CHECK:         @parallel_batch_matmuls_static(%[[ACT:.*]]: {{.*}})
-// CHECK:         %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:    %[[CONCAT:.*]] = mo.concat[%[[AXIS]] {{.*}} : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 8], f32>
+// CHECK:    %[[CONCAT:.*]] = mo.concat[2]{{.*}} : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 8], f32>
 // CHECK-NEXT:    %[[MATMUL:.*]] = mo.batch_matmul(%[[ACT]], %[[CONCAT]]) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 8], f32>) -> !mo.tensor<[2, 2, 8], f32>
 // CHECK-NEXT:    %[[SLICE0:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
 // CHECK-NEXT:    %[[SLICE1:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>

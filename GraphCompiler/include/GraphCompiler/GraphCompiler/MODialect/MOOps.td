@@ -3172,8 +3172,8 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_SingleDeviceWithHostOperands<["axis"]>,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_SingleDevice
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -3198,23 +3198,21 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
     ```mlir
       %arg0: !mo.tensor<[2, 3], f32>
       %arg1: !mo.tensor<[2, 5], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
+      %res = mo.concat[1](%arg0, %arg1) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
       ) -> !mo.tensor<[2, 8], f32>
     ```
   }];
 
   let arguments = (ins
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     Variadic<MO_Tensor>:$inputs,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
+    `[` $axis `]`
     `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
   }];
 
@@ -3279,7 +3277,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
 def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_SingleDeviceWithHostOperands<["axis"]>,
+  MO_SingleDevice
 ]> {
   let summary = "Fused Concatenation + slice operation";
   let description = [{
@@ -3290,7 +3288,7 @@ def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
   }];
 
   let arguments = (ins
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     Variadic<MO_Tensor>:$inputs,
     ArrayAttr:$static_starts,
     ArrayAttr:$static_steps,
@@ -3299,7 +3297,7 @@ def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
+    `[` $axis `]`
     `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
   }];
 }

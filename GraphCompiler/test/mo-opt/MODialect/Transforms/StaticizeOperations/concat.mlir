@@ -13,7 +13,7 @@ mo.graph @concat<N1, N2 -> out0, out1, out2>(
   %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %n1 = mo.shape_of(%dummy1) : (!mo.tensor<[N1], f32>) -> !mo.tensor<[1], si32>
   %n2 = mo.shape_of(%dummy2) : (!mo.tensor<[N2], f32>) -> !mo.tensor<[1], si32>
-  %shape = mo.concat[%axis: !mo.tensor<[], si32>](%n1, %one, %n2) : (
+  %shape = mo.concat[0](%n1, %one, %n2) : (
     !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[3], si32>
 

@@ -256,11 +256,10 @@ mo.graph @broadcast_shape_fallback_shape_func<() -> D0>(
 
 mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
   %input1: !mo.tensor<[D0, D1], f32>,
-  %input2: !mo.tensor<[D2, D3], f32>,
-  %axis: !mo.tensor<[], si32>
+  %input2: !mo.tensor<[D2, D3], f32>
 ) -> !mo.tensor<[D4, D5], f32> {
 
-  %res = mo.concat<() -> D6, D7>[%axis : !mo.tensor<[], si32>] (%input1, %input2) :
+  %res = mo.concat<() -> D6, D7>[1] (%input1, %input2) :
     (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>) -> !mo.tensor<[D6, D7], f32>
 
   mo.output<D6, D7> %res : !mo.tensor<[D6, D7], f32>
@@ -268,15 +267,14 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-LABEL: mo.graph @concat_variadic_input
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]] -> [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
-// CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>,
-// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
+// CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D4]], [[D5]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["mo.concat"]<() -> [[D6:.*]], [[D7:.*]]>(%[[AXIS]], %[[INPUT1]], %[[INPUT2]])
-// CHECK-SAME:     {dataDeptTensors = [0 : i32], kgenParams = {input_rank = 2 : index, input_type = f32}} :
-// CHECK-SAME:     (!mo.tensor<[], si32>, !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>)
+// CHECK-NEXT:   mo.invoke_shape_func["mo.concat"]<() -> [[D6:.*]], [[D7:.*]]>(%[[INPUT1]], %[[INPUT2]])
+// CHECK-SAME:     {dataDeptTensors = [], kgenParams = {{.*}}axis = 1 : index{{.*}}input_rank = 2 : index{{.*}}input_type = f32{{.*}}} :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>)
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.concat[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT1]], %[[INPUT2]]) :
+// CHECK-NEXT:   %[[RES:.*]] = mo.concat[1] (%[[INPUT1]], %[[INPUT2]]) :
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D6]], [[D7]]], f32>
 //
 // CHECK-NEXT:   mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], f32>

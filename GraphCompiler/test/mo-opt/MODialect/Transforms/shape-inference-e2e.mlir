@@ -484,12 +484,11 @@ mo.graph @concat_non_equal_dims<D10, D11, D12, D13, D14, D15>(%arg0: !mo.tensor<
     kgen.param.declare assert22: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D11, D13))>
     kgen.param.declare assert24: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D10, D14))>
     kgen.param.declare assert26: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 D11, D15))>
-    %1 = mo.concat[%0 : !mo.tensor<[], si64>] (%arg0, %arg1, %arg2) : (!mo.tensor<[D10, 1, D11], f32>, !mo.tensor<[D12, 2, D13], f32>, !mo.tensor<[D14, 3, D15], f32>) -> !mo.tensor<[D10, 6, D11], f32>
+    %1 = mo.concat[1] (%arg0, %arg1, %arg2) : (!mo.tensor<[D10, 1, D11], f32>, !mo.tensor<[D12, 2, D13], f32>, !mo.tensor<[D14, 3, D15], f32>) -> !mo.tensor<[D10, 6, D11], f32>
     mo.output %1 : !mo.tensor<[D10, 6, D11], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @concat_non_equal_dims<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>([[INPUT1:%.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>, [[INPUT2:%.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>, [[INPUT3:%.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>) -> !mo.tensor<[[[D0]], 6, [[D1]]], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 // CHECK-NEXT:   {{.*}}"mo.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq(:si64 [[D0]], [[D2]])
 // CHECK-NEXT:   {{.*}}"mo.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq(:si64 [[D1]], [[D3]])
 // CHECK-NEXT:   {{.*}}"mo.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq(:si64 [[D0]], [[D4]])

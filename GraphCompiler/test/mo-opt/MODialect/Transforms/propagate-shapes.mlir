@@ -361,7 +361,7 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   //   `[-1, batch_size]`
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[seq_len, batch_size], si32>) -> !mo.tensor<[2], si64>
   %batch_size = mo.gather(%input_shape, %one, %zero) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
-  %neg_one_and_batch_size = mo.concat[%zero : !mo.tensor<[], si64>] (%neg_one, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %neg_one_and_batch_size = mo.concat[0] (%neg_one, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %cond = mo.equal(%neg_one_and_batch_size, %zeros) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
   %target_shape = mo.select(%cond, %input_shape, %neg_one_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
 
@@ -431,8 +431,8 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
 
   // Prepare the start/stop bounds.
   %d0 = mo.gather(%in_shape, %zero, %zero_scalar) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
-  %start = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%zero, %div) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
-  %stop = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%d0, %mul) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %start = mo.concat[0] (%zero, %div) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %stop = mo.concat[0] (%d0, %mul) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
 
   %res = mo.slice<() -> D3, D4>(%input, %start, %stop, %step) : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>

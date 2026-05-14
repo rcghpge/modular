@@ -77,16 +77,14 @@ BroadcastToOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<int32_t> ConcatOp::getDataDependentInputIndices() { return {0}; }
+SmallVector<int32_t> ConcatOp::getDataDependentInputIndices() { return {}; }
 
 ShapeMaterializeResult
 ConcatOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   auto graphOp = getOperation()->getParentOfType<GraphOp>();
   Location loc = getLoc();
-  TypedAttr axis = inputAttrs[0];
-  ArrayRef<TypedAttr> inputShapes = inputAttrs.drop_front();
 
-  return materializeConcatShape(graphOp, loc, axis, inputShapes);
+  return materializeConcatShape(graphOp, loc, getAxisAttr(), inputAttrs);
 }
 
 //===----------------------------------------------------------------------===//
