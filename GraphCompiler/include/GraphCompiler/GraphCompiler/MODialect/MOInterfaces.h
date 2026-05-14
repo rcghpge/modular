@@ -182,7 +182,8 @@ LogicalResult verifyExecutesOnHost(Operation *op);
 LogicalResult verifySingleDevice(Operation *op,
                                  ArrayRef<size_t> hostOperandIndices,
                                  ArrayRef<size_t> deviceOperandIndices);
-LogicalResult verifyPeerInputDevices(Operation *op);
+LogicalResult verifyPeerInputDevices(Operation *op,
+                                     ArrayRef<size_t> hostOperandIndices);
 DeviceRefAttr getFirstResultDevice(Operation *op);
 
 LogicalResult verifyExplicitDevice(Operation *op);
@@ -293,7 +294,8 @@ class MOSingleDeviceWithPeerInputs
                                       MOSingleDeviceWithPeerInputs> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return Impl::verifyPeerInputDevices(op);
+    return Impl::verifyPeerInputDevices(
+        op, cast<ConcreteType>(op).getHostOperandIndices());
   }
 
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {

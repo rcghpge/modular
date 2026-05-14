@@ -666,10 +666,13 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
   return success();
 }
 
-LogicalResult Impl::verifyPeerInputDevices(Operation *op) {
+LogicalResult
+Impl::verifyPeerInputDevices(Operation *op,
+                             ArrayRef<size_t> hostOperandIndices) {
   DeviceRefAttr executionDevice = getFirstResultDevice(op);
   if (!executionDevice)
     return failure();
+  DeviceRefAttr hostDevice = getHostDevice(op);
 
   for (size_t i = 0; i < op->getNumOperands(); ++i) {
     Value operand = op->getOperand(i);
@@ -677,6 +680,18 @@ LogicalResult Impl::verifyPeerInputDevices(Operation *op) {
     if (!deviceType)
       continue;
     DeviceRefAttr operandDevice = deviceType.getDeviceRef();
+    // Operands explicitly named as host-resident must match the host
+    // device's label exactly.  This keeps host-scalar inputs (e.g.
+    // epsilon, weight_offset) compatible with single-device kernels that
+    // otherwise want their device-resident operands on peer GPUs.
+    if (llvm::is_contained(hostOperandIndices, i)) {
+      if (operandDevice.getLabel() != hostDevice.getLabel())
+        return op->emitError("Host operand ")
+               << i << " device label '" << operandDevice.getLabel()
+               << "' does not match host device label '"
+               << hostDevice.getLabel() << "'.";
+      continue;
+    }
     if (operandDevice.getLabel() != executionDevice.getLabel())
       return op->emitError("Operand ")
              << i << " device label '" << operandDevice.getLabel()

@@ -5360,7 +5360,7 @@ def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
 }
 
 def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
-  MO_SingleDeviceWithPeerInputs,
+  MO_SingleDeviceWithPeerInputs<>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_SameVariadicOperandSize
@@ -5397,6 +5397,49 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
   );
   let results = (outs
     MO_Tensor:$output,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_BundledAllReduceAddRMSNormQuantFP8Op : MO_TensorOp<
+    "bundled.allreduce_add_rms_norm_quant_fp8", [
+  MO_SingleDeviceWithPeerInputs<["epsilon", "weightOffset", "scaleUb"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_SameVariadicOperandSize,
+  ParentOneOf<["ParallelOp"]>
+]> {
+  let summary = "Per-device fused allreduce.sum + add + rms_norm + fp8 "
+                "quantize, for use inside mo.parallel.";
+  let description = [{
+    Per-device entry point for the fused `allreduce.sum` +
+    residual add + RMS norm + dynamic-scaled FP8 quantize chain, used inside
+    an `mo.parallel` region.  Takes N peer tensor inputs (from
+    `mo.bundled.expand`), N signal buffers (captured from graph scope),
+    per-device residual and gamma tensors, the epsilon / weight offset /
+    scale-upper-bound scalars, and a chain.
+
+    Returns the FP8 quantized output for this device, its scale tensor, the
+    intermediate residual (post-add) tensor, and an output chain.  This is
+    the bundled analog of `mo.distributed.allreduce_add_rms_norm_quant_fp8`.
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Tensor:$residual,
+    MO_Tensor:$gamma,
+    MO_RankedScalarFloatTensor:$epsilon,
+    MO_RankedScalarFloatTensor:$weightOffset,
+    MO_RankedScalarFloatTensor:$scaleUb,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    MO_Tensor:$output,
+    MO_Tensor:$outScale,
+    MO_Tensor:$outResidual,
     MO_Chain:$outChain
   );
   let assemblyFormat = [{

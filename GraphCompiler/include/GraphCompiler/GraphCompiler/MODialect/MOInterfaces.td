@@ -532,9 +532,19 @@ def MO_ExplicitDevice : MO_OpTrait<"MOExplicitDevice">;
 
 // Marks an op that executes on a single device, with inputs allowed to be on
 // peer devices sharing the same device label (but potentially different device
-// IDs). The execution device is inferred from the first result.
-def MO_SingleDeviceWithPeerInputs
-    : MO_OpTrait<"MOSingleDeviceWithPeerInputs">;
+// IDs).  Operands listed in hostOperandNames must be on the host instead;
+// they are exempt from the peer-device label check.  The execution device is
+// inferred from the first result.
+class MO_SingleDeviceWithPeerInputs<list<string> hostOperandNames = []>
+  : MO_OpTrait<"MOSingleDeviceWithPeerInputs">
+{
+  // Make operand names from ODS available as operand indices in C++.
+  let extraConcreteClassDeclaration = [{
+    llvm::SmallVector<size_t> getHostOperandIndices() {
+      return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
+    }
+  }];
+}
 
 // Note: we could add a MO_ExplicitDevices trait if we ever add a multi-device
 // op where we can't just infer the devices from the operands and results.

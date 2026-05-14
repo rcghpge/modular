@@ -3265,6 +3265,16 @@ void BundledAllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// BundledAllReduceAddRMSNormQuantFP8Op
+//===----------------------------------------------------------------------===//
+
+void BundledAllReduceAddRMSNormQuantFP8Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  for (auto &sig : getSignalBuffersMutable())
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // DistributedScatterOp
 //===----------------------------------------------------------------------===//
 
