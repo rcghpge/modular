@@ -9,7 +9,7 @@ from std.sys._hal.device import Device, DeviceSpec, get_device_spec
 from std.sys._hal.status import HALError
 from std.sys._hal.plugin import MemoryHandle
 from std.gpu import global_idx
-from std.memory import alloc, OpaquePointer, UnsafePointer
+from std.memory import alloc, ArcPointer, OpaquePointer, UnsafePointer
 from std.sys import size_of
 from std.testing import assert_equal
 
@@ -27,9 +27,8 @@ def vec_add(
 
 
 def do_execute[
-    device_origin: ImmutOrigin,
     device_spec: DeviceSpec,
-](mut ctx: Context[device_origin, device_spec]) raises:
+](mut ctx: Context[device_spec]) raises:
     # Compile the kernel and load it into the plugin.
     ref (bundle, name) = ctx.compile[type_of(vec_add), vec_add]()
     print("Compiled and loaded bundle")
@@ -60,17 +59,17 @@ def do_execute[
         in1_host[i] = Float32((i % 2) * -i * 2)
         out_host[i] = Float32(0.0)
 
-    queue.copy_to_device(
+    queue[].copy_to_device(
         in0_dev,
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](in0_host),
         UInt64(buf_size),
     )
-    queue.copy_to_device(
+    queue[].copy_to_device(
         in1_dev,
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](in1_host),
         UInt64(buf_size),
     )
-    queue.synchronize()
+    queue[].synchronize()
 
     # Get GPU addresses for each buffer.
     var in0_ptr = ctx.memory_get_address(in0_dev)
@@ -103,7 +102,7 @@ def do_execute[
     comptime block_dim = UInt32(256)
     comptime grid_dim = UInt32(length // Int(block_dim))
 
-    queue.execute(
+    queue[].execute(
         func,
         grid=(grid_dim, UInt32(1), UInt32(1)),
         block=(block_dim, UInt32(1), UInt32(1)),
@@ -115,12 +114,12 @@ def do_execute[
     )
 
     # Copy results back.
-    queue.copy_from_device(
+    queue[].copy_from_device(
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host),
         out_dev,
         UInt64(buf_size),
     )
-    queue.synchronize()
+    queue[].synchronize()
 
     # Verify.
     for i in range(length):
@@ -134,14 +133,14 @@ def do_execute[
     for i in range(length):
         out_host_copy[i] = Float32(0.0)
 
-    queue.copy_intra_device(out_dev_copy, out_dev, UInt64(buf_size))
-    queue.synchronize()
-    queue.copy_from_device(
+    queue[].copy_intra_device(out_dev_copy, out_dev, UInt64(buf_size))
+    queue[].synchronize()
+    queue[].copy_from_device(
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host_copy),
         out_dev_copy,
         UInt64(buf_size),
     )
-    queue.synchronize()
+    queue[].synchronize()
 
     for i in range(length):
         assert_equal(out_host_copy[i], out_host[i])
@@ -165,26 +164,26 @@ def main() raises:
     if not plugin_spec:
         raise Error("MODULAR_DRIVER_PLUGINS not set")
 
-    var driver: Driver
+    var driver: ArcPointer[Driver]
     try:
         driver = Driver.create(plugin_spec)
     except e:
         raise Error(String.write(e))
-    print("Driver:", driver.get_name())
-    print("Devices:", driver.get_device_count())
+    print("Driver:", driver[].get_name())
+    print("Devices:", driver[].get_device_count())
 
-    var device: Device[origin_of(driver), get_device_spec[0]()]
+    var device: ArcPointer[Device[get_device_spec[0]()]]
     try:
-        device = driver.get_device[0]()
+        device = driver[].get_device[0]()
     except e:
         raise Error(String.write(e))
-    print("Device", device.id, "OK")
+    print("Device", device[].id, "OK")
 
-    var ctx: Context[origin_of(device, driver), get_device_spec[0]()]
+    var ctx: ArcPointer[Context[get_device_spec[0]()]]
     try:
-        ctx = device.get_context()
+        ctx = device[].get_context()
     except e:
         raise Error(String.write(e))
     print("Context created")
 
-    do_execute(ctx)
+    do_execute(ctx[])

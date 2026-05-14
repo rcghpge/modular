@@ -21,9 +21,9 @@ def test_driver_create() raises HALError:
         return
 
     var driver = Driver.create(plugin_spec)
-    print("Driver name:", driver.get_name())
+    print("Driver name:", driver[].get_name())
 
-    var device_count = driver.get_device_count()
+    var device_count = driver[].get_device_count()
     print("Device count:", device_count)
 
 

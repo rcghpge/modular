@@ -79,7 +79,7 @@ def test_driver_create() raises:
     var device_count: Int
     try:
         var driver = Driver.create(_get_plugin_spec())
-        device_count = Int(driver.get_device_count())
+        device_count = Int(driver[].get_device_count())
     except e:
         raise Error(String.write(e))
     assert_equal(device_count, 2)
@@ -88,14 +88,14 @@ def test_driver_create() raises:
 def test_invalid_device_id() raises:
     var driver = Driver.create(_get_plugin_spec())
     with assert_raises():
-        _ = driver.get_device[Int64(99)]()
+        _ = driver[].get_device[Int64(99)]()
 
 
 def test_context_create() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
         # Let ctx go out of scope to exercise Context destructor.
     except e:
         raise Error(String.write(e))
@@ -104,7 +104,7 @@ def test_context_create() raises:
 def test_invalid_device_error_message() raises:
     var driver = Driver.create(_get_plugin_spec())
     with assert_raises(contains="Invalid device ID"):
-        _ = driver.get_device[Int64(99)]()
+        _ = driver[].get_device[Int64(99)]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -115,10 +115,10 @@ def test_invalid_device_error_message() raises:
 def test_queue_create_and_sync() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var queue = ctx.create_queue()
-        queue.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var queue = ctx[].create_queue()
+        queue[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -126,12 +126,12 @@ def test_queue_create_and_sync() raises:
 def test_queue_record_event() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var queue = ctx.create_queue()
-        var event = queue.record_event()
-        queue.wait_for_events(event)
-        queue.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var queue = ctx[].create_queue()
+        var event = queue[].record_event()
+        queue[].wait_for_events(event)
+        queue[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -139,14 +139,14 @@ def test_queue_record_event() raises:
 def test_queue_wait_for_events() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var queue1 = ctx.create_queue()
-        var queue2 = ctx.create_queue()
-        var e1 = queue1.record_event()
-        var e2 = queue1.record_event()
-        queue2.wait_for_events(e1, e2)
-        queue2.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var queue1 = ctx[].create_queue()
+        var queue2 = ctx[].create_queue()
+        var e1 = queue1[].record_event()
+        var e2 = queue1[].record_event()
+        queue2[].wait_for_events(e1, e2)
+        queue2[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -155,14 +155,14 @@ def test_queue_wait_for_events_mixed_flags() raises:
     """Variadic accepts events with different flag combos in one call."""
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var queue1 = ctx.create_queue()
-        var queue2 = ctx.create_queue()
-        var e_intra = queue1.record_event()
-        var e_host = queue1.record_event[EVENT_FLAG_CPU_VISIBLE]()
-        queue2.wait_for_events(e_intra, e_host)
-        queue2.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var queue1 = ctx[].create_queue()
+        var queue2 = ctx[].create_queue()
+        var e_intra = queue1[].record_event()
+        var e_host = queue1[].record_event[EVENT_FLAG_CPU_VISIBLE]()
+        queue2[].wait_for_events(e_intra, e_host)
+        queue2[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -175,10 +175,10 @@ def test_queue_wait_for_events_mixed_flags() raises:
 def test_stream_create_and_sync() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var stream = ctx.create_stream()
-        stream.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var stream = ctx[].create_stream()
+        stream[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -186,12 +186,12 @@ def test_stream_create_and_sync() raises:
 def test_stream_record_event() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var stream = ctx.create_stream()
-        var event = stream.record_event()
-        stream.wait_for_events(event)
-        stream.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var stream = ctx[].create_stream()
+        var event = stream[].record_event()
+        stream[].wait_for_events(event)
+        stream[].synchronize()
     except e:
         raise Error(String.write(e))
 
@@ -199,13 +199,13 @@ def test_stream_record_event() raises:
 def test_stream_wait_for_events() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device[Int64(0)]()
-        var ctx = Context(device)
-        var producer = ctx.create_stream()
-        var consumer = ctx.create_stream()
-        var ev = producer.record_event()
-        consumer.wait_for_events(ev)
-        consumer.synchronize()
+        var device = driver[].get_device[Int64(0)]()
+        var ctx = device[].get_context()
+        var producer = ctx[].create_stream()
+        var consumer = ctx[].create_stream()
+        var ev = producer[].record_event()
+        consumer[].wait_for_events(ev)
+        consumer[].synchronize()
     except e:
         raise Error(String.write(e))
 
