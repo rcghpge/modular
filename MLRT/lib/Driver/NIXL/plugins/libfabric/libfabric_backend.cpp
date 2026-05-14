@@ -1667,9 +1667,9 @@ bool nixlLibfabricEngine::consumeReceivedXferIds(
   for (uint32_t xfer_id : expected) {
     received_remote_writes_.erase(xfer_id);
   }
-  NIXL_DEBUG << "Consumed all " << expected.size()
-             << " expected XFER_IDs (remaining tracked: "
-             << received_remote_writes_.size() << ")";
+  NIXL_WARN << "[GEX-3707] consumed " << expected.size()
+            << " xfer_ids, received_remote_writes_ now "
+            << received_remote_writes_.size();
   return true;
 }
 
@@ -1723,6 +1723,10 @@ void nixlLibfabricEngine::checkPendingNotifications() {
       for (uint32_t xfer_id : it->expected_xfer_ids) {
         received_remote_writes_.erase(xfer_id);
       }
+      NIXL_WARN << "[GEX-3707] deferred consumed "
+                << it->expected_xfer_ids.size()
+                << " xfer_ids, received_remote_writes_ now "
+                << received_remote_writes_.size();
 
       NIXL_TRACE << "Processed queued notification: " << it->message;
 
