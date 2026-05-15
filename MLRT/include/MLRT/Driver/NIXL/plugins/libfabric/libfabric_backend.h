@@ -205,8 +205,17 @@ private:
 
   // Receiver Side XFER_ID Tracking
   std::mutex receiver_tracking_mutex_;
-  std::unordered_set<uint32_t>
-      received_remote_writes_; // All received XFER_IDs (global)
+  // [GEX-3718] Maps xfer_id -> outstanding-write count. We use a count rather
+  // than a set because xfer_id values are recycled (LIFO pool) across
+  // concurrent transfers, so multiple in-flight transfers can hold the same
+  // xfer_id at the same time. Each RDMA WRITE arrival increments the count;
+  // each matched notification decrements. We only erase the entry when the
+  // count reaches 0. With a plain set, transfer A's notification-consume step
+  // would erase entries that transfer B's still-outstanding writes also
+  // referenced, leaving B's notification stuck in pending_notifications_
+  // forever and stalling decode.
+  std::unordered_map<uint32_t, uint32_t>
+      received_remote_writes_; // xfer_id -> outstanding-write count (global)
 
   // Notification Queuing
   struct PendingNotification {
@@ -542,14 +551,15 @@ public:
   /**
    * @brief Atomically check for and consume the expected XFER_IDs
    *
-   * If every expected XFER_ID is present in the global tracking set, erases
-   * them and returns true. If any are missing, the set is left unchanged and
-   * the call returns false. Erasing on match bounds the memory growth of
-   * `received_remote_writes_`, which would otherwise accumulate one entry per
-   * RDMA WRITE for the lifetime of the process.
+   * If every expected XFER_ID is present in the global tracking map, decrements
+   * each matched entry's count (erasing entries whose count reaches 0) and
+   * returns true. If any are missing, the map is left unchanged and the call
+   * returns false. The count-based decrement preserves references held by
+   * other concurrent transfers that happen to share xfer_id values (xfer_id is
+   * recycled across transfers in a LIFO pool); see [GEX-3718].
    *
    * @param[in] expected Set of expected XFER_IDs
-   * @return true if all expected IDs were present (and were erased), false
+   * @return true if all expected IDs were present (and were decremented), false
    *         otherwise
    */
   bool consumeReceivedXferIds(const std::unordered_set<uint32_t> &expected);
