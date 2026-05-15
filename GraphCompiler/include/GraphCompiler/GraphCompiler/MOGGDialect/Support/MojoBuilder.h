@@ -218,14 +218,6 @@ public:
                    bool isParameter, bool isAsync,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
 
-  /// Creates a lambda with explicit copy captures for GPU. The copyCaptures
-  /// parameter specifies variables to be copy-captured using @__copy_capture.
-  MojoValue lambdaWithCopyCapture(
-      StringLiteral lambdaName, ArrayRef<MojoValue> copyCaptures,
-      ArrayRef<NamedMojoDef> parameters, ArrayRef<NamedMojoDef> arguments,
-      std::optional<MojoValue> returnType, bool isInline, bool isParameter,
-      std::function<void(const FunctionBody &)> &&lambdaBody);
-
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);
   void except(std::function<void(const MojoValue &)> &&exceptBlock);
 
