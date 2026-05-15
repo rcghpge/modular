@@ -13,8 +13,8 @@
 #include "GraphCompiler/Support/FormatYAML.h"
 #include "GraphCompiler/Support/List.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "llvm/Support/YAMLTraits.h"
 

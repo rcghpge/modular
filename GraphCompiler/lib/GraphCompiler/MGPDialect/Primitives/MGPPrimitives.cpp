@@ -14,7 +14,7 @@
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/StateSlot.h"

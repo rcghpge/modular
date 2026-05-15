@@ -7,7 +7,7 @@
 #ifndef MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
 #define MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
 
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "Support/ErrorOr.h"

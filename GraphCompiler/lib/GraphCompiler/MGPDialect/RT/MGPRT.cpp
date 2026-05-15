@@ -14,7 +14,7 @@
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/StateContext.h"

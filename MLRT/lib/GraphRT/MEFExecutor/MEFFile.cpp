@@ -11,7 +11,7 @@
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 
 #include "MEFFileImpl.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFReader.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/ML/SizeUtils.h"

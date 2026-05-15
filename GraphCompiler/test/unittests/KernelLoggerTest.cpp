@@ -6,8 +6,8 @@
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Error.h"

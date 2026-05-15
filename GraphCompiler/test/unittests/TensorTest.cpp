@@ -8,8 +8,8 @@
 
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/AsyncRT/Runtime/Allocator.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 
 #include "gtest/gtest.h"

@@ -25,7 +25,7 @@
 #include "GraphCompiler/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/Configuration.h"

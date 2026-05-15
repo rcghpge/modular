@@ -16,7 +16,7 @@
 #include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"

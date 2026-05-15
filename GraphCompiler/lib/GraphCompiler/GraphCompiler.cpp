@@ -22,7 +22,7 @@
 #include "GraphCompiler/GraphCompiler/RMODialect/Transforms/RMOTransforms.h"
 #include "GraphCompiler/Support/BlobLifetimeManager.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"

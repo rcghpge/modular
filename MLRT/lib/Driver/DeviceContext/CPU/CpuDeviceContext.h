@@ -12,7 +12,7 @@
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"

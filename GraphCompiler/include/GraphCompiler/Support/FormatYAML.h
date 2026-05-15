@@ -16,7 +16,7 @@
 #include "GraphCompiler/Support/List.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "GraphCompiler/Support/Value.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"

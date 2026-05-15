@@ -13,7 +13,7 @@
 
 #include "MEFFileImpl.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFReader.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "Support/AssertStream.h"

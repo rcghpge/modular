@@ -10,8 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/GraphRT/GRTTestcase.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
