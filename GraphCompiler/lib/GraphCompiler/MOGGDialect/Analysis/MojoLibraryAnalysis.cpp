@@ -110,6 +110,7 @@ enum class FusedVariadicTensorsParams {
 
 enum class SIMDParams { kDType, kSize, kNumParams };
 enum class ListParams { kElementType, kNumParams };
+enum class DeviceContextPtrListParams { kSize, kNumParams };
 
 template <typename T>
 constexpr int toIndex(T value) {

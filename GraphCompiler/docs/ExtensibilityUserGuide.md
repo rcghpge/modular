@@ -122,17 +122,10 @@ limited at this time.
 Some special operand structs exist which should go at the end of the operand
 list:
 
-- `DeviceContext`
+- `DeviceContextPtr`
   - If specified, the graph compiler will give you access to the device
     context, which is needed for GPU support at the moment
   - If you don’t need this, you don’t have to include this
-- `DeviceContextList[N]`
-  - For multi-device ops, declare the context argument as
-    `DeviceContextList[N]`. The graph compiler synthesizes the list from
-    the per-device contexts attached to the operation, with one
-    `DeviceContext` per device in launch order. Index with
-    `dev_ctxs[i]` at runtime or `dev_ctxs.__getitem_param__[i]()` at
-    compile time.
 - `Scalar`
   - This is just syntax sugar over **ManagedTensorSlice’s** of one value
   - At the moment, this just dereferences the associated pointer, other
@@ -170,7 +163,7 @@ struct MyOp:
 
         # Transparently added by runtime to the call as needed
         # (Optional if you don't need it)
-        ctx: DeviceContext,
+        ctx: DeviceContextPtr,
     ) raises:
      ...
 ```
@@ -209,7 +202,7 @@ def execute[
 ](
     output: OutputTensor,
     input: InputTensor[dtype=output.dtype, rank=output.rank],
-    ctx: DeviceContext,
+    ctx: DeviceContextPtr,
 ) raises:
     alias static_shape = input._static_shape
     alias static_strides = input._static_strides

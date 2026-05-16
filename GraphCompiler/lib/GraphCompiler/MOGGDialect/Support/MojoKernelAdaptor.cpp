@@ -71,15 +71,15 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
                     ScalarOperandAdaptor{});
               }
             })
-      .Case(DeviceContextOperandAdaptor::typeName,
+      .Case(DevicesContextPtrOperandAdaptor::typeName,
             [&]() {
-              underlyingType.emplace<DeviceContextOperandAdaptor>(
-                  DeviceContextOperandAdaptor{});
+              underlyingType.emplace<DevicesContextPtrOperandAdaptor>(
+                  DevicesContextPtrOperandAdaptor{});
             })
-      .Case(DeviceContextListOperandAdaptor::typeName,
+      .Case(DevicesContextPtrListOperandAdaptor::typeName,
             [&]() {
-              underlyingType.emplace<DeviceContextListOperandAdaptor>(
-                  DeviceContextListOperandAdaptor{});
+              underlyingType.emplace<DevicesContextPtrListOperandAdaptor>(
+                  DevicesContextPtrListOperandAdaptor{});
             })
       .Default([&]() {
         underlyingType.emplace<OpaqueOperandAdaptor>(

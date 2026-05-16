@@ -3031,12 +3031,13 @@ LogicalResult TensorFusedOp::verify() {
 LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getInputs());
   if (isa<MOGG::ContextType>(getInputs().front().getType())) {
-    // Build a `DeviceContextList[N]` directly from the per-device
-    // contexts via its variadic constructor.
-    MojoValue deviceContextListConstructor =
-        MojoValue(HardcodedMojoSymbols::struct_DeviceContextList)[{
+    MojoValue tupleConstructor =
+        MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
             MojoValue("size").equal(std::to_string(inputValues.size()))}];
-    MojoValue inputTupleValue = deviceContextListConstructor({}, inputValues);
+    MojoValue deviceContextPtrListConstructor =
+        MojoValue(HardcodedMojoSymbols::struct_DeviceContextPtrList);
+    MojoValue inputTupleValue =
+        deviceContextPtrListConstructor({}, tupleConstructor({}, inputValues));
     state.setMojoValueFor(getResult(), state.builder.var(inputTupleValue));
     return success();
   }
