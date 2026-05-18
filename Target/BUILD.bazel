@@ -40,6 +40,7 @@ modular_cc_binary(
     ]),
     linkshared = True,
     linkstatic = False,
+    visibility = ["//visibility:public"],
     deps = [
         ":Support",
         "//SDK:HAL",
@@ -98,6 +99,7 @@ modular_cc_binary(
     linkopts = ["-ldl"],
     linkshared = True,
     linkstatic = False,
+    visibility = ["//visibility:public"],
     deps = [
         ":Support",
         "//SDK:HAL",
@@ -140,6 +142,7 @@ modular_cc_binary(
     ]),
     linkshared = True,
     linkstatic = False,
+    visibility = ["//visibility:public"],
     deps = [
         ":Support",
         "//SDK:HAL",
