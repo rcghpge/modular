@@ -13,10 +13,56 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "KGEN/LITDialect/LITTypes.td"
 
 class MOGGAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MOGGDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
+}
+
+//===----------------------------------------------------------------------===//
+// KernelFunctionAttr
+//===----------------------------------------------------------------------===//
+
+def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
+  let summary = "Bundles a Mojo function signature with its fn-level "
+                "parameter declarations and a cached result-parameter mapping";
+  let description = [{
+    Holds, for one function variant of a Mojo kernel
+    (`execute` / `shape` / `elementwise` / `update_view`):
+
+      - `signature`     : the LIT `FnTypeGeneratorType` for the function.
+      - `params`        : the fn-level `ParamDeclAttr` list for this
+                          function (each entry has `getName()` and
+                          `getType()`).
+      - `result_params` : per-result `{struct-slot-name -> bound-value}`
+                          `DictionaryAttr`s. Each entry corresponds to one
+                          result type of the function; a `UnitAttr`
+                          placeholder is used for result types that are not
+                          parameterised structs.
+
+    `result_params` is a cached projection of `signature` plus the relevant
+    struct declarations; it is consumed by lookups like "for the result
+    type's `dtype` slot, which function parameter is bound there?" Argument
+    types have no analogous cached attribute because argument-side
+    consumers only need the set of `ParamDeclRefAttr`s referenced anywhere
+    in the function's arguments (which `collectParameterReferences` on the
+    signature recovers without any slot-name knowledge).
+
+    `params` is kept because `FnTypeGeneratorType.getMetadata()` carries
+    names and defaults but not declared types, so reconstructing
+    `ParamDeclAttr`s from the signature alone is not possible.
+  }];
+
+  let parameters = (ins
+    "::M::KGEN::LIT::FnTypeGeneratorType":$signature,
+    "::mlir::ArrayAttr":$params,
+    "::mlir::ArrayAttr":$result_params
+  );
+
+  let assemblyFormat = [{
+    `<` $signature `,` $params `,` $result_params `>`
+  }];
 }
 
 /// Base class for fusion group attributes that have children and a fusionName.

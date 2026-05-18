@@ -261,7 +261,7 @@ ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
     return failure();
 
   if (succeeded(p.parseOptionalRParen()))
-    return success();
+    return mlir::success();
 
   do {
     if (succeeded(p.parseOptionalKeyword("operandIndices"))) {

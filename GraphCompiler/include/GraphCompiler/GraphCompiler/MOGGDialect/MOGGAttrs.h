@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGATTRS_H
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGATTRS_H
 
+#include "KGEN/LITDialect/LITTypes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/SmallSet.h"

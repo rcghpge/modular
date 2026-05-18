@@ -28,6 +28,7 @@ include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "KGEN/KGENDialect/KGENAttrs.td"
+include "KGEN/LITDialect/LITTypes.td"
 include "KGEN/POPDialect/POPTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
@@ -1496,6 +1497,82 @@ def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
   }];
 
   let hasCanonicalizeMethod = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
+// KernelDeclOp
+//===----------------------------------------------------------------------===//
+
+def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
+  let summary = "Declares a Mojo kernel's signatures inline in the module";
+  let description = [{
+    Holds the full function-type signatures (without bodies) for a Mojo kernel
+    struct registered under a given MO op name. Multiple `mogg.kernel.decl` ops
+    may share the same `registration` value when several structs are registered
+    for the same op.
+
+    All function attributes are optional. A kernel carrying an `update_view`
+    signature is implicitly a view kernel.
+
+    `is_user_defined` marks a kernel loaded from a user-supplied package
+    rather than a built-in one. MojoRegistry uses this flag to implement
+    override semantics: a user-defined decl takes precedence over any
+    built-in decl with the same registration name.
+
+    Each function variant (`execute` / `shape` / `elementwise` /
+    `update_view`) is a `MOGG_KernelFunctionAttr` that bundles its
+    signature, its fn-level `ParamDeclAttr` list, and cached per-argument
+    and per-result parameter mappings.
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
+      OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
+      OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
+      OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
+      OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
+      ArrayAttr:$struct_params,
+      BoolAttr:$is_user_defined);
+
+  let assemblyFormat = [{
+    $sym_name `registration` `=` $registration
+    (`execute` `=` $execute^)?
+    (`shape` `=` $shape^)?
+    (`elementwise` `=` $elementwise^)?
+    (`update_view` `=` $update_view^)?
+    `struct_params` `=` $struct_params
+    `is_user_defined` `=` $is_user_defined
+    attr-dict
+  }];
+}
+
+def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
+  let summary = "Declares a primitive Mojo function inline in the module";
+  let description = [{
+    Records the `FnTypeGeneratorType` signature of a standalone (non-struct)
+    Mojo function decorated with `@register_internal`, such as the singleton
+    `foreach` driver or the view-materialisation kernel.
+
+    `sym_name` is the fully-qualified Mojo source name of the function
+    (e.g. `MOGGPrimitives.MOGGPrimitives.foreach`). `registration` is the
+    intrinsic string the function is registered under (e.g.
+    `"mogg.elemwise_for_each"` or `"mogg.view_materialize"`). Each
+    `@register_internal` site produces exactly one `mogg.primitive.decl`;
+    primitives must not be registered under multiple registration strings
+    (the MLIR symbol table would reject the duplicate `sym_name`).
+
+    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature,
+    the fn-level `ParamDeclAttr` list, and the cached per-argument and
+    per-result parameter mappings.
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
+      MOGG_KernelFunctionAttr:$function);
+
+  let assemblyFormat = [{
+    $sym_name `registration` `=` $registration `function` `=` $function
+    attr-dict
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD
