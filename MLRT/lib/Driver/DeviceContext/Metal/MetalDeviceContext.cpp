@@ -92,6 +92,33 @@ static bool isLoggingEnabled(void *attrs, uint32_t numAttrs) {
   return true;
 }
 
+static ErrorOr<MTL::Buffer *> allocateNewBuffer(MTL::Device *metalDev,
+                                                size_t byteSize,
+                                                MTL::ResourceOptions options) {
+  size_t maxBufferLength = metalDev->maxBufferLength();
+  if (byteSize >= maxBufferLength) {
+    RETURN_ERROR("Failed to allocate MTL Buffer of a size " +
+                 std::to_string(byteSize) +
+                 " bytes which is larger than allowed " +
+                 std::to_string(maxBufferLength) + " bytes");
+  }
+
+  return metalDev->newBuffer(byteSize, options);
+}
+
+static ErrorOr<MTL::Buffer *> allocateNewBuffer(MTL::Device *metalDev,
+                                                void *ptr, size_t byteSize,
+                                                MTL::ResourceOptions options) {
+  size_t maxBufferLength = metalDev->maxBufferLength();
+  if (byteSize >= maxBufferLength) {
+    RETURN_ERROR("Failed to allocate MTL Buffer of a size " +
+                 std::to_string(byteSize) +
+                 " bytes which is larger than allowed " +
+                 std::to_string(maxBufferLength) + " bytes");
+  }
+  return metalDev->newBuffer(ptr, byteSize, options);
+}
+
 //
 //
 // ===== MetalDevice ===== //
@@ -113,43 +140,10 @@ ErrorOr<DriverVersion &> MetalDevice::getDriverVersion() const {
   return driverVersion_;
 }
 
-static ErrorOr<size_t> getSystemValue(int name) {
-  errno = 0;
-  long value = sysconf(name);
-  if (errno != 0)
-    RETURN_ERROR(strerror(errno));
-  return static_cast<size_t>(value);
-}
-
 ErrorOr<Device::MemInfo> MetalDevice::getMemInfo(MTL::Device *metalDev) {
   Device::MemInfo info;
-  DEFINE_OR_RETURN_ERROR(size_t, pages, getSystemValue(_SC_PHYS_PAGES));
-  DEFINE_OR_RETURN_ERROR(size_t, size, getSystemValue(_SC_PAGE_SIZE));
-
-  rusage usage;
-  if (-1 == getrusage(RUSAGE_SELF, &usage))
-    RETURN_ERROR("Failed to get current memory usage via rusage");
-
-#if MODULAR_LINUX
-  const size_t maxrssMultiple = 1024;
-#else
-  const size_t maxrssMultiple = 1;
-#endif
-
-  size_t used = usage.ru_maxrss * maxrssMultiple;
-
-  size_t systemTotal = pages * size;
-
-  // On Apple Silicon, Metal has a maxBufferLength limit that restricts the
-  // maximum size of a single buffer allocation. This is typically much smaller
-  // than total system memory (e.g., ~4GB vs 36GB). We need to report this limit
-  // as our effective memory ceiling to prevent buffer allocation failures.
-  size_t maxBufferLength = systemTotal;
-  if (metalDev != nullptr) {
-    maxBufferLength = metalDev->maxBufferLength();
-  }
-
-  info.total = std::min(systemTotal, maxBufferLength);
+  info.total = metalDev->recommendedMaxWorkingSetSize();
+  size_t used = metalDev->currentAllocatedSize();
   info.free = info.total > used ? info.total - used : 0;
   return info;
 }
@@ -342,7 +336,8 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
 
   // Donate newBuffer's +1 to the tracker; chunkFree releases.
   // NS::SharedPtr + detach() is UB here: ~SharedPtr does nullptr->release().
-  MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
+  DEFINE_OR_RETURN_ERROR(MTL::Buffer *, buf,
+                         allocateNewBuffer(metalDev, byteSize, options));
   if (buf == nullptr)
     RETURN_ERROR("Failed to create Metal buffer in chunkAlloc");
 
@@ -944,8 +939,10 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     // We have more complex argument, such as pointer to a struct. Allocate
     // new MTLBuffer and set it.
     MTL::ResourceOptions options = getResourceOptions(Device::AllocMode::ASYNC);
-    NS::SharedPtr<MTL::Buffer> buf =
-        NS::TransferPtr(mtlDevice->newBuffer(args[i], argSize, options));
+    DEFINE_OR_RETURN_ERROR(
+        MTL::Buffer *, tmpBuf,
+        allocateNewBuffer(mtlDevice, args[i], argSize, options));
+    NS::SharedPtr<MTL::Buffer> buf = NS::TransferPtr(tmpBuf);
     encoder->setBuffer(buf.get(), 0, i);
   }
 
@@ -1101,7 +1098,8 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
   MTL::ResourceOptions options = getResourceOptions(mode);
   // Donate newBuffer's +1 to the tracker; memFree releases.
   // NS::SharedPtr + detach() is UB here: ~SharedPtr does nullptr->release().
-  MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
+  DEFINE_OR_RETURN_ERROR(MTL::Buffer *, buf,
+                         allocateNewBuffer(metalDev, byteSize, options));
   if (buf == nullptr)
     RETURN_ERROR("Failed to create Metal buffer");
 

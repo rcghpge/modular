@@ -758,4 +758,43 @@ TEST_F(MetalDeviceContextTestBase, MemAllocDonatesRefcountToTracker) {
   EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
 }
 
+// Test: chunkAlloc rejects a request exactly equal to maxBufferLength.
+// allocateNewBuffer uses `byteSize >= maxBufferLength`, so the boundary value
+// must fail even though it is only one byte over the usable limit.
+TEST_F(MetalDeviceContextTestBase, ChunkAlloc_AtMaxBufferLength_ReturnsError) {
+  MetalDevice &metalDev = MetalDevice::cast(*device_);
+  size_t maxLen = metalDev.metalDevice()->maxBufferLength();
+
+  void *ptr = nullptr;
+  EXPECT_ERR_MSG(metalDev.chunkAlloc(&ptr, maxLen, /*isHost=*/false),
+                 "larger than allowed");
+  EXPECT_EQ(ptr, nullptr);
+}
+
+// Test: chunkAlloc rejects SIZE_MAX — the largest possible size_t value.
+TEST_F(MetalDeviceContextTestBase, ChunkAlloc_SizeMax_ReturnsError) {
+  MetalDevice &metalDev = MetalDevice::cast(*device_);
+
+  void *ptr = nullptr;
+  EXPECT_ERR_MSG(metalDev.chunkAlloc(&ptr, SIZE_MAX, /*isHost=*/false),
+                 "larger than allowed");
+  EXPECT_EQ(ptr, nullptr);
+}
+
+// Test: chunkAlloc with a normal size succeeds, buffer is tracked, chunkFree
+// removes it.
+TEST_F(MetalDeviceContextTestBase, ChunkAlloc_ValidSize_SucceedsAndFrees) {
+  MetalDevice &metalDev = MetalDevice::cast(*device_);
+  const size_t baseline = metalDev.getTrackedBuffers().size();
+
+  void *ptr = nullptr;
+  EXPECT_NO_ERR(metalDev.chunkAlloc(&ptr, /*byteSize=*/4096, /*isHost=*/false));
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline + 1);
+  EXPECT_NE(metalDev.getTrackedBuffer(ptr), nullptr);
+
+  EXPECT_NO_ERR(metalDev.chunkFree(ptr, /*isHost=*/false));
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
+}
+
 } // namespace M::Driver
