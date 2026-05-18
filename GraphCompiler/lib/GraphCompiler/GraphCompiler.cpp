@@ -279,6 +279,16 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
+  // Wrap per-device consumers of an mo.tensor.unbundle in a fresh
+  // mo.parallel, then canonicalize (so bundle(unbundle(X)...) collapses
+  // to X), then merge the resulting adjacent mo.parallels into their
+  // upstream producers where SSA equality holds.  Together this absorbs
+  // per-device consumer chains back into the producing parallel so that
+  // MOGG's epilogue fusion sees them as a single kernel body.
+  pm.addPass(MO::createCreateParallelFromUnbundle());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addPass(MO::createMergeAdjacentParallels());
+
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, cacheDir,
                                           kernelLibraryPaths));

@@ -469,6 +469,25 @@ def RemoveUnusedOps : Pass<"remove-unused-ops", "GraphOp"> {
   }];
 }
 
+def CreateParallelFromUnbundle :
+    Pass<"mo-create-parallel-from-unbundle", "GraphOp"> {
+  let summary =
+      "Wrap per-device consumers of an mo.tensor.unbundle in a fresh mo.parallel.";
+  let description = [{
+    For each `mo.tensor.unbundle` whose N results each have exactly one user
+    and whose user set is structurally identical, creates a new
+    `mo.parallel` region downstream of the unbundle containing a single
+    clone of the consumer.  The new parallel's primary input bundle is
+    built from the unbundle's N results; additional consumer operands
+    whose per-launch values vary are bundled into new inputs.
+
+    The transient `bundle(unbundle(X)...)` introduced as the primary input
+    folds back to `X` via canonicalization, leaving the new region
+    adjacent to the producer for `mo-merge-adjacent-parallels` to match by
+    SSA equality.
+  }];
+}
+
 def MergeAdjacentParallels :
     Pass<"mo-merge-adjacent-parallels", "GraphOp"> {
   let summary =

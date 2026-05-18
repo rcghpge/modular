@@ -1,0 +1,48 @@
+// Variant of bundled-allreduce-fusion.mlir where the relu occurs outside the
+// parallel region, applied to each unbundled result individually.  Verifies
+// that after the create+merge pipeline pulls the relu into the parallel, the
+// full MOGG pipeline still produces an epilogue-fused kernel.  The create
+// and merge passes in isolation are covered by their respective unit tests
+// under mo-opt/.../Transforms/.
+
+// RUN: mo-opt %s --mo-create-parallel-from-unbundle --canonicalize \
+// RUN:     --mo-merge-adjacent-parallels --mo-pipeline --mo-to-mogg \
+// RUN:     --mogg-pipeline | FileCheck %s --check-prefix=CHECK-FUSED
+
+// After create+merge + the full MOGG pipeline, relu is fused into the
+// allreduce as an output_lambda, so a single mogg.kernel remains inside
+// mo.parallel.
+// CHECK-FUSED-LABEL: mo.graph @bundled_allreduce_relu_outside
+// CHECK-FUSED:      mo.parallel
+// CHECK-FUSED:        mogg.kernel
+// CHECK-FUSED:          mogg.bind {{.*}} output_lambda
+// CHECK-FUSED:            mogg.call.elementwise["mo.relu"]
+// CHECK-FUSED:          mogg.call.execute["mo.bundled.allreduce.sum"]
+// CHECK-FUSED:        mo.yield
+
+mo.graph @bundled_allreduce_relu_outside(
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>
+) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
+  %in0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
+  %in1 = mo.constant {value = #M.dense_array<4.0, -5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
+
+  %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[3], f32, gpu:0-1>)
+  %ch = mo.chain.create()
+  %res_bundle, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[3], f32, gpu:0-1>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
+      chain(%ch) -> (!mo.bundle<[3], f32, gpu:0-1>) {
+    %peer0, %peer1 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %ch)
+        : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+       -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
+    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+  }
+
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], f32, gpu:0-1>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+  %relu_0 = mo.relu(%res_0) : !mo.tensor<[3], f32, gpu:0>
+  %relu_1 = mo.relu(%res_1) : !mo.tensor<[3], f32, gpu:1>
+  %res0_host, %ch3 = mo.transfer[%out_ch] %relu_0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
+  %res1_host, %ch4 = mo.transfer[%ch3] %relu_1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
+  mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
+}
