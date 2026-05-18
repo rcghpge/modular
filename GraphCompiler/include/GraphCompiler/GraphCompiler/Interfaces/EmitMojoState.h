@@ -117,7 +117,7 @@ constexpr StringLiteral func_ms_simd_load_from_tensor_pointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
-constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach";
+constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach_fusion";
 constexpr StringLiteral func_to_index_list = "layout.to_index_list";
 constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
 // Affinity-aware variant: _create_task(handle, *, desired_worker_id=<id>).

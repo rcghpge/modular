@@ -22,6 +22,7 @@ from tensor import (
     OutputVariadicTensors,
     _FusedComputeOutputTensor,
     foreach,
+    foreach_out_func,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
     view_copy_impl,
@@ -1140,7 +1141,7 @@ struct MutableStore:
             idx[1] += 1
             tw.buffer.store_linear[width=width](idx, val)
 
-        foreach[
+        foreach_out_func[
             func,
             out_func,
             target=target,
