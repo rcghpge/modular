@@ -21,6 +21,7 @@
 #include "Support/DeviceSpecs.h"
 #include "Support/ML/Permutation.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -2819,6 +2820,91 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
   }
 };
 
+//===----------------------------------------------------------------------===//
+// Shared helpers used by both the distributed and bundled allreduce-add-
+// rms_norm-quant-fp8 pattern matchers below.
+//===----------------------------------------------------------------------===//
+
+/// Finds an `mo.add` consumer of `val` that uses `val` on the RHS.  On success,
+/// populates `residualOp` with the add op and `residualValue` with its LHS
+/// operand (the "residual" side).  The RHS-only match avoids picking the wrong
+/// operand when both inputs come from the same allreduce.
+static bool matchResidualOp(Value val, MO::AddOp &residualOp,
+                            Value &residualValue) {
+  for (Operation *user : val.getUsers()) {
+    auto addOp = dyn_cast<MO::AddOp>(user);
+    // The pattern must match exactly the rhs operand for the AllReduce.
+    // Otherwise we match suboptimal ops when subgraphs are disabled.
+    // (The Add has two AllReduce operands, and we match with the wrong one).
+    // TODO: This is very brittle, though this should be fixed once we switch
+    // to mo.parallel.
+    if (!addOp || addOp.getRhsInput() != val)
+      continue;
+    residualValue = addOp.getLhsInput();
+    residualOp = addOp;
+    return true;
+  }
+  return false;
+}
+
+/// Finds an `mo.reduce.rms_norm` consumer of `val` and returns it via
+/// `rmsNormOp`.
+static bool matchRMSNormOp(Value val, MO::ReduceRMSNormOp &rmsNormOp) {
+  for (Operation *user : val.getUsers()) {
+    auto op = dyn_cast<MO::ReduceRMSNormOp>(user);
+    if (!op)
+      continue;
+    rmsNormOp = op;
+    return true;
+  }
+  return false;
+}
+
+/// Finds an `mo.custom` consumer of `val` whose symbol equals `customOpName`.
+static bool matchCustomOp(Value val, MO::CustomOp &customOp,
+                          StringRef customOpName) {
+  for (Operation *user : val.getUsers()) {
+    auto op = dyn_cast<MO::CustomOp>(user);
+    if (!op || op.getSymbol() != customOpName)
+      continue;
+    customOp = op;
+    return true;
+  }
+  return false;
+}
+
+/// Validates the fused `allreduce + add + rms_norm + quantize_fp8` chain
+/// ending at `quantizeOp`.  `inputTy` is the tensor type entering the add op
+/// (i.e. the allreduce output on the relevant device).  Returns false unless:
+///   - the quantize op reads `rmsNormOp.getResult()` as operand 0,
+///   - `group_size_or_per_token` is either -1 or matches the inner dim,
+///   - the rms_norm op reads `residualOp.getResult()` and has
+///     `multiply_before_cast`.
+static bool verifyFusedAllReducePath(TensorType inputTy, MO::AddOp residualOp,
+                                     MO::ReduceRMSNormOp rmsNormOp,
+                                     MO::CustomOp quantizeOp) {
+  if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
+    return false;
+  if (!inputTy.hasRank())
+    return false;
+  size_t rank = inputTy.getRank();
+  DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
+  Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
+  if (!groupSizeAttr)
+    return false;
+  auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr);
+  if (!groupSizeIntAttr)
+    return false;
+  int64_t groupSize = groupSizeIntAttr.getInt();
+  if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
+    return false;
+  if (rmsNormOp.getInput() != residualOp.getResult())
+    return false;
+  if (!rmsNormOp.getMultiplyBeforeCast())
+    return false;
+  return true;
+}
+
 struct FuseAllReduceAddRMSNormQuantFP8PatternMatcher {
 public:
   FuseAllReduceAddRMSNormQuantFP8PatternMatcher(MO::AllReduceSumOp allReduceOp,
@@ -2934,31 +3020,8 @@ private:
                        "mo.quantize_dynamic_scaled_float8"))
       return false;
 
-    // Verify the quantize op.
-    if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
-      return false;
-    TensorType inputTy = allReduceOut.getType();
-    if (!inputTy.hasRank())
-      return false;
-    size_t rank = inputTy.getRank();
-    DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
-    Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
-    if (!groupSizeAttr)
-      return false;
-    if (auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr)) {
-      // Verify that the token size matches the inner dimension of the input
-      // operand.
-      int64_t groupSize = groupSizeIntAttr.getInt();
-      if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
-        return false;
-    } else {
-      return false;
-    }
-
-    // Verify the RMSNorm op.
-    if (rmsNormOp.getInput() != residualOp.getResult())
-      return false;
-    if (!rmsNormOp.getMultiplyBeforeCast())
+    if (!verifyFusedAllReducePath(allReduceOut.getType(), residualOp, rmsNormOp,
+                                  quantizeOp))
       return false;
 
     residualOps[device] = residualOp;
@@ -2967,48 +3030,384 @@ private:
     residualValues[device] = residualValue;
     return true;
   }
+};
 
-  bool matchResidualOp(Value val, MO::AddOp &residualOp, Value &residualValue) {
-    for (Operation *user : val.getUsers()) {
-      auto addOp = dyn_cast<MO::AddOp>(user);
-      // The pattern must match exactly the rhs operand for the AllReduce.
-      // Otherwise we match suboptimal ops when subgraphs are disabled.
-      // (The Add has two AllReduce operands, and we match with the wrong one).
-      // TODO: This is very brittle, though this should be fixed once we switch
-      // to mo.parallel.
-      if (!addOp || addOp.getRhsInput() != val)
-        continue;
-      residualValue = addOp.getLhsInput();
-      residualOp = addOp;
-      return true;
-    }
+//===----------------------------------------------------------------------===//
+// FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher
+//
+// Cross-boundary parallel-region matcher.  Given
+//
+//   mo.parallel(%arg) in (%inBundle : ...) buffers(...) chain(%c) -> ... {
+//     ... = mo.bundled.expand(%arg) ...
+//     %out, %ch_out = mo.bundled.allreduce.sum(...)
+//     mo.yield %out
+//   }
+//   %r0..N = mo.tensor.unbundle(%bundle_result)
+//   // Per-device chain, OUTSIDE the parallel:
+//   %add_i  = mo.add(%residual_i, %r_i)
+//   %norm_i = mo.reduce.rms_norm(%add_i, %gamma_i, %eps, %wo)
+//   %q_i:2  = mo.custom { "mo.quantize_dynamic_scaled_float8" }
+//               (%norm_i, %scale_ub)
+//
+// rebuilds the parallel with two extra bundle inputs (residuals, gammas)
+// and three bundle results (FP8 outputs, scales, post-add residuals),
+// replacing the in-body `bundled.allreduce.sum` with the fused
+// `bundled.allreduce_add_rms_norm_quant_fp8` op.
+//
+// Per-launch shared scalars (epsilon, weight_offset, scale_ub) are
+// captured directly from the outer scope via the parallel's graph region.
+//===----------------------------------------------------------------------===//
 
+namespace {
+
+/// Returns true if \p a and \p b have the same operation name, the same
+/// number of operands and results, and identical attribute dictionaries
+/// modulo the `device` attribute (which legitimately differs across
+/// per-launch ops).
+static bool opsMatchModuloDevice(Operation *a, Operation *b) {
+  if (a->getName() != b->getName() ||
+      a->getNumOperands() != b->getNumOperands() ||
+      a->getNumResults() != b->getNumResults())
     return false;
+
+  auto stripDevice = [](DictionaryAttr attrs) {
+    SmallVector<NamedAttribute> filtered;
+    filtered.reserve(attrs.size());
+    for (NamedAttribute attr : attrs)
+      if (attr.getName() != MO::kOperationDeviceRefAttrName)
+        filtered.push_back(attr);
+    return DictionaryAttr::get(attrs.getContext(), filtered);
+  };
+  return stripDevice(a->getAttrDictionary()) ==
+         stripDevice(b->getAttrDictionary());
+}
+
+} // namespace
+
+struct FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher {
+public:
+  explicit FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher(
+      MO::BundledAllReduceSumOp allReduceOp)
+      : allReduceOp(allReduceOp), builder(allReduceOp->getContext()) {}
+
+  void apply() {
+    if (!matchAll())
+      return;
+    rewrite();
   }
 
-  bool matchRMSNormOp(Value val, MO::ReduceRMSNormOp &rmsNormOp) {
-    for (Operation *user : val.getUsers()) {
-      auto op = dyn_cast<MO::ReduceRMSNormOp>(user);
-      if (!op)
-        continue;
-      rmsNormOp = op;
-      return true;
+private:
+  // Inputs.
+  MO::BundledAllReduceSumOp allReduceOp;
+  OpBuilder builder;
+
+  // Captured during matching.
+  MO::ParallelOp parallelOp;
+  MO::YieldOp yieldOp;
+  MO::TensorUnbundleOp unbundleOp;
+  // Position of the seed's tensor result in the body's mo.yield, which
+  // also indexes the parallel's corresponding bundle result.
+  size_t yieldOperandIdx = 0;
+  // Per-launch operand chains.
+  SmallVector<MO::AddOp> addOps;
+  SmallVector<MO::ReduceRMSNormOp> rmsNormOps;
+  SmallVector<MO::CustomOp> quantizeOps;
+  SmallVector<Value> residualValues;
+  SmallVector<Value> gammaValues;
+  // Captured (same SSA value across launches).
+  Value epsilonValue;
+  Value weightOffsetValue;
+  Value scaleUbValue;
+
+  bool matchAll() {
+    // 1. The seed must sit inside an mo.parallel body.
+    parallelOp = allReduceOp->getParentOfType<MO::ParallelOp>();
+    if (!parallelOp)
+      return false;
+    Block &body = parallelOp.getBodyRegion().front();
+    yieldOp = cast<MO::YieldOp>(body.getTerminator());
+
+    // 2. The seed's tensor result has exactly one use, and that use is
+    //    the body's mo.yield.  Record which yield operand it occupies.
+    Value seedOut = allReduceOp.getOutput();
+    if (!seedOut.hasOneUse())
+      return false;
+    OpOperand &use = *seedOut.getUses().begin();
+    if (use.getOwner() != yieldOp.getOperation())
+      return false;
+    yieldOperandIdx = use.getOperandNumber();
+
+    // 3. The corresponding parallel result (yield operand index ==
+    //    parallel bundle result index) is consumed by exactly one
+    //    mo.tensor.unbundle.
+    size_t numBundles =
+        parallelOp.getNumResults() - (parallelOp.hasChain() ? 1 : 0);
+    if (yieldOperandIdx >= numBundles)
+      return false;
+    Value parallelResult = parallelOp.getResult(yieldOperandIdx);
+    if (!parallelResult.hasOneUse())
+      return false;
+    unbundleOp = dyn_cast<MO::TensorUnbundleOp>(
+        parallelResult.getUses().begin()->getOwner());
+    if (!unbundleOp)
+      return false;
+    auto bundleTy = dyn_cast<MO::BundleType>(parallelResult.getType());
+    if (!bundleTy)
+      return false;
+    size_t numLaunches = unbundleOp.getNumResults();
+    if (numLaunches == 0 || bundleTy.getNumElements() != numLaunches)
+      return false;
+
+    // 4. Walk the per-launch add -> rms_norm -> quantize chain on each
+    //    unbundled result using the existing helpers.  Track claimed ops
+    //    so a single op cannot be nominated as the peer for more than
+    //    one launch.
+    addOps.assign(numLaunches, nullptr);
+    rmsNormOps.assign(numLaunches, nullptr);
+    quantizeOps.assign(numLaunches, nullptr);
+    residualValues.assign(numLaunches, Value{});
+    gammaValues.assign(numLaunches, Value{});
+    llvm::SmallDenseSet<Operation *> claimedAdds, claimedNorms, claimedQuants;
+    for (size_t i = 0; i < numLaunches; ++i) {
+      Value launchAllredOut = unbundleOp.getResult(i);
+      MO::AddOp addOp;
+      Value residualValue;
+      MO::ReduceRMSNormOp rmsNormOp;
+      MO::CustomOp quantizeOp;
+      if (!matchResidualOp(launchAllredOut, addOp, residualValue))
+        return false;
+      if (!matchRMSNormOp(addOp.getResult(), rmsNormOp))
+        return false;
+      if (!matchCustomOp(rmsNormOp.getResult(), quantizeOp,
+                         "mo.quantize_dynamic_scaled_float8"))
+        return false;
+      auto launchTy = dyn_cast<TensorType>(launchAllredOut.getType());
+      if (!launchTy)
+        return false;
+      if (!verifyFusedAllReducePath(launchTy, addOp, rmsNormOp, quantizeOp))
+        return false;
+      if (!claimedAdds.insert(addOp.getOperation()).second ||
+          !claimedNorms.insert(rmsNormOp.getOperation()).second ||
+          !claimedQuants.insert(quantizeOp.getOperation()).second)
+        return false;
+      addOps[i] = addOp;
+      rmsNormOps[i] = rmsNormOp;
+      quantizeOps[i] = quantizeOp;
+      residualValues[i] = residualValue;
+      gammaValues[i] = rmsNormOp.getWeight();
     }
 
-    return false;
+    // 5. Cross-launch structural match (modulo per-op `device` attr).
+    for (size_t i = 1; i < numLaunches; ++i) {
+      if (!opsMatchModuloDevice(addOps[0].getOperation(),
+                                addOps[i].getOperation()))
+        return false;
+      if (!opsMatchModuloDevice(rmsNormOps[0].getOperation(),
+                                rmsNormOps[i].getOperation()))
+        return false;
+      if (!opsMatchModuloDevice(quantizeOps[0].getOperation(),
+                                quantizeOps[i].getOperation()))
+        return false;
+    }
+
+    // 6. Captured operands: epsilon, weight_offset, scale_ub must be the
+    //    same SSA value on every launch.
+    epsilonValue = rmsNormOps[0].getEpsilon();
+    weightOffsetValue = rmsNormOps[0].getWeightOffset();
+    scaleUbValue = quantizeOps[0].getOperand(1);
+    for (size_t i = 1; i < numLaunches; ++i) {
+      if (rmsNormOps[i].getEpsilon() != epsilonValue ||
+          rmsNormOps[i].getWeightOffset() != weightOffsetValue ||
+          quantizeOps[i].getOperand(1) != scaleUbValue)
+        return false;
+    }
+
+    // 7. Per-launch bundle operands must be device-coherent with the
+    //    corresponding launch device (taken from the bundle result's
+    //    element type).
+    for (size_t i = 0; i < numLaunches; ++i) {
+      auto launchTy = cast<MO::TensorType>(bundleTy.getElementTypes()[i]);
+      auto resTy = dyn_cast<MO::TensorType>(residualValues[i].getType());
+      auto gammaTy = dyn_cast<MO::TensorType>(gammaValues[i].getType());
+      if (!resTy || resTy.getDeviceRef() != launchTy.getDeviceRef())
+        return false;
+      if (!gammaTy || gammaTy.getDeviceRef() != launchTy.getDeviceRef())
+        return false;
+    }
+    return true;
   }
 
-  bool matchCustomOp(Value val, MO::CustomOp &customOp,
-                     StringRef customOpName) {
-    for (Operation *user : val.getUsers()) {
-      auto op = dyn_cast<MO::CustomOp>(user);
-      if (!op || op.getSymbol() != customOpName)
-        continue;
-      customOp = op;
-      return true;
+  void rewrite() {
+    auto *ctx = builder.getContext();
+    Location loc = parallelOp.getLoc();
+    size_t numLaunches = unbundleOp.getNumResults();
+
+    // 1. Build residual and gamma bundles immediately before the parallel.
+    builder.setInsertionPoint(parallelOp);
+    SmallVector<Type> residualElemTypes, gammaElemTypes;
+    residualElemTypes.reserve(numLaunches);
+    gammaElemTypes.reserve(numLaunches);
+    for (size_t i = 0; i < numLaunches; ++i) {
+      residualElemTypes.push_back(residualValues[i].getType());
+      gammaElemTypes.push_back(gammaValues[i].getType());
+    }
+    auto residualBundleTy = MO::BundleType::get(ctx, residualElemTypes);
+    auto gammaBundleTy = MO::BundleType::get(ctx, gammaElemTypes);
+    auto residualBundle = MO::TensorBundleOp::create(
+        builder, loc, residualBundleTy, residualValues);
+    auto gammaBundle =
+        MO::TensorBundleOp::create(builder, loc, gammaBundleTy, gammaValues);
+
+    // 2. Plan the new parallel's inputs and result types.
+    SmallVector<Value> newInputs(parallelOp.getInputs().begin(),
+                                 parallelOp.getInputs().end());
+    newInputs.push_back(residualBundle.getResult());
+    newInputs.push_back(gammaBundle.getResult());
+
+    size_t numOldBundles =
+        parallelOp.getNumResults() - (parallelOp.hasChain() ? 1 : 0);
+    SmallVector<Type> newResultTypes;
+    SmallVector<std::optional<size_t>> oldResultToNewIdx(
+        parallelOp.getNumResults(), std::nullopt);
+    for (size_t i = 0; i < numOldBundles; ++i) {
+      if (i == yieldOperandIdx) {
+        // Replace the seed's bundle with three new bundles
+        // (output, scale, residual).
+        oldResultToNewIdx[i] = newResultTypes.size();
+        SmallVector<Type> outElemTypes, scaleElemTypes, residualOutElemTypes;
+        for (size_t j = 0; j < numLaunches; ++j) {
+          outElemTypes.push_back(quantizeOps[j].getResult(0).getType());
+          scaleElemTypes.push_back(quantizeOps[j].getResult(1).getType());
+          residualOutElemTypes.push_back(addOps[j].getResult().getType());
+        }
+        newResultTypes.push_back(MO::BundleType::get(ctx, outElemTypes));
+        newResultTypes.push_back(MO::BundleType::get(ctx, scaleElemTypes));
+        newResultTypes.push_back(
+            MO::BundleType::get(ctx, residualOutElemTypes));
+      } else {
+        oldResultToNewIdx[i] = newResultTypes.size();
+        newResultTypes.push_back(parallelOp.getResult(i).getType());
+      }
+    }
+    if (parallelOp.hasChain()) {
+      oldResultToNewIdx[parallelOp.getNumResults() - 1] = newResultTypes.size();
+      newResultTypes.push_back(MO::ChainType::get(ctx));
     }
 
-    return false;
+    auto newParallel =
+        MO::ParallelOp::create(builder, loc, newInputs, parallelOp.getBuffers(),
+                               parallelOp.getInChain(), newResultTypes);
+
+    // 3. Splice the body via IRMapping.  Clone every op in the old body
+    //    except the seed (which we replace with the fused op).
+    Block &oldBody = parallelOp.getBodyRegion().front();
+    Block &newBody = newParallel.getBodyRegion().front();
+    IRMapping mapping;
+    for (auto [oldArg, newArg] : llvm::zip(
+             oldBody.getArguments(),
+             newBody.getArguments().take_front(oldBody.getNumArguments())))
+      mapping.map(oldArg, newArg);
+    Value residualArg = newBody.getArgument(oldBody.getNumArguments());
+    Value gammaArg = newBody.getArgument(oldBody.getNumArguments() + 1);
+
+    OpBuilder bodyBuilder(ctx);
+    bodyBuilder.setInsertionPointToEnd(&newBody);
+    for (Operation &op : oldBody.without_terminator()) {
+      if (&op == allReduceOp.getOperation())
+        continue;
+      bodyBuilder.clone(op, mapping);
+    }
+
+    // Build the fused op in place of the seed.  Peer inputs and the
+    // chain operand come through the IRMapping; signal buffers, eps, wo
+    // and scale_ub are captured from outer scope (the graph region
+    // permits direct outer-SSA references).
+    SmallVector<Value> fusedInputs;
+    fusedInputs.reserve(allReduceOp.getInputs().size());
+    for (Value peer : allReduceOp.getInputs())
+      fusedInputs.push_back(mapping.lookupOrDefault(peer));
+    SmallVector<Value> fusedSignals;
+    fusedSignals.reserve(allReduceOp.getSignalBuffers().size());
+    for (Value sig : allReduceOp.getSignalBuffers())
+      fusedSignals.push_back(mapping.lookupOrDefault(sig));
+    Value fusedChain = mapping.lookupOrDefault(allReduceOp.getInChain());
+
+    auto fusedOp = MO::BundledAllReduceAddRMSNormQuantFP8Op::create(
+        bodyBuilder, allReduceOp.getLoc(),
+        /*output=*/quantizeOps[0].getResult(0).getType(),
+        /*outScale=*/quantizeOps[0].getResult(1).getType(),
+        /*outResidual=*/addOps[0].getResult().getType(),
+        /*outChain=*/MO::ChainType::get(ctx),
+        /*inputs=*/fusedInputs,
+        /*signalBuffers=*/fusedSignals,
+        /*residual=*/residualArg,
+        /*gamma=*/gammaArg,
+        /*epsilon=*/epsilonValue,
+        /*weightOffset=*/weightOffsetValue,
+        /*scaleUb=*/scaleUbValue,
+        /*inChain=*/fusedChain);
+
+    // Build the new yield: keep all old yield operands, but in the slot
+    // for the seed substitute the fused op's three tensor outputs.
+    SmallVector<Value> newYieldOperands;
+    for (auto [i, v] : llvm::enumerate(yieldOp.getOperands())) {
+      if (i == yieldOperandIdx) {
+        newYieldOperands.push_back(fusedOp.getOutput());
+        newYieldOperands.push_back(fusedOp.getOutScale());
+        newYieldOperands.push_back(fusedOp.getOutResidual());
+      } else {
+        newYieldOperands.push_back(mapping.lookupOrDefault(v));
+      }
+    }
+    MO::YieldOp::create(bodyBuilder, yieldOp.getLoc(), newYieldOperands);
+
+    // 4. External rewire: unbundle each new bundle result and rewrite the
+    //    per-device users.  The post-add residual may have non-rms_norm
+    //    consumers (e.g. an external `mo.add(%other, %add)` reading the
+    //    residual); replaceAllUsesExcept skips the rms_norm we're about
+    //    to erase.
+    builder.setInsertionPointAfter(newParallel);
+    size_t newOutIdx = *oldResultToNewIdx[yieldOperandIdx];
+    Value outBundle = newParallel.getResult(newOutIdx);
+    Value scaleBundle = newParallel.getResult(newOutIdx + 1);
+    Value residualBundleOut = newParallel.getResult(newOutIdx + 2);
+    auto outUnbundle = MO::TensorUnbundleOp::create(
+        builder, loc,
+        cast<MO::BundleType>(outBundle.getType()).getElementTypes(), outBundle);
+    auto scaleUnbundle = MO::TensorUnbundleOp::create(
+        builder, loc,
+        cast<MO::BundleType>(scaleBundle.getType()).getElementTypes(),
+        scaleBundle);
+    auto residualUnbundle = MO::TensorUnbundleOp::create(
+        builder, loc,
+        cast<MO::BundleType>(residualBundleOut.getType()).getElementTypes(),
+        residualBundleOut);
+
+    for (size_t i = 0; i < numLaunches; ++i) {
+      quantizeOps[i].getResult(0).replaceAllUsesWith(outUnbundle.getResult(i));
+      quantizeOps[i].getResult(1).replaceAllUsesWith(
+          scaleUnbundle.getResult(i));
+      addOps[i].getResult().replaceAllUsesExcept(residualUnbundle.getResult(i),
+                                                 rmsNormOps[i]);
+    }
+
+    // Route any non-seed bundle results and the chain to the new parallel.
+    for (size_t i = 0; i < parallelOp.getNumResults(); ++i) {
+      if (i == yieldOperandIdx)
+        continue; // seed bundle is already routed via the new unbundles
+      parallelOp.getResult(i).replaceAllUsesWith(
+          newParallel.getResult(*oldResultToNewIdx[i]));
+    }
+
+    // 5. Erase the now-dead per-device chain ops, the old unbundle, and
+    //    the old parallel.
+    for (size_t i = 0; i < numLaunches; ++i) {
+      quantizeOps[i].erase();
+      rmsNormOps[i].erase();
+      addOps[i].erase();
+    }
+    unbundleOp.erase();
+    parallelOp.erase();
   }
 };
 
@@ -3802,6 +4201,23 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
       FuseAllReduceAddRMSNormQuantFP8PatternMatcher allReduceFuser(
           allReduceOp, targetDeviceRef);
       allReduceFuser.apply();
+    }
+
+    // Parallel-region analog: fuse `mo.parallel { mo.bundled.allreduce.sum }`
+    // followed by per-device add + rms_norm + quantize_fp8 chains *outside*
+    // the parallel into a single `mo.parallel { fused }` op in one step.
+    llvm::SmallVector<MO::BundledAllReduceSumOp> bundledAllReduceOps;
+    getOperation()->walk([&](MO::BundledAllReduceSumOp op) {
+      bundledAllReduceOps.push_back(op);
+    });
+    for (auto bundledAllReduceOp : bundledAllReduceOps) {
+      // Earlier rewrites in this same loop may have erased the parent
+      // parallel of this op; skip stale entries.
+      if (!bundledAllReduceOp.getOperation()->getBlock())
+        continue;
+      FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher(
+          bundledAllReduceOp)
+          .apply();
     }
 
     MO::GraphOp graphOp = getOperation();
