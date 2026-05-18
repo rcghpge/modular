@@ -395,10 +395,10 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
 }
 
 /// Routes all uses of \p producer's and \p consumer's results to the
-/// corresponding merged results, then erases both originals.
-static void replaceAndErase(ParallelOp producer, ParallelOp consumer,
-                            ParallelOp merged, const MergePlan &plan,
-                            const BufferChainPlan &bufferChain) {
+/// corresponding merged results.
+static void replaceUses(ParallelOp producer, ParallelOp consumer,
+                        ParallelOp merged, const MergePlan &plan,
+                        const BufferChainPlan &bufferChain) {
   size_t producerNumBundles = numBundleResults(producer);
   size_t consumerNumBundles = numBundleResults(consumer);
 
@@ -416,9 +416,6 @@ static void replaceAndErase(ParallelOp producer, ParallelOp consumer,
     if (consumer.hasChain())
       consumer.getOutChain().replaceAllUsesWith(mergedOutChain);
   }
-
-  consumer.erase();
-  producer.erase();
 }
 
 /// Merges \p candidate.consumer into \p candidate.producer.
@@ -432,8 +429,8 @@ static void mergeCandidate(MergeCandidate &candidate,
       builder, candidate.producer.getLoc(), plan.mergedInputs,
       bufferChain.buffers, bufferChain.inChain, plan.mergedResultTypes);
   spliceBodies(candidate.producer, candidate.consumer, merged, candidate, plan);
-  replaceAndErase(candidate.producer, candidate.consumer, merged, plan,
-                  bufferChain);
+  replaceUses(candidate.producer, candidate.consumer, merged, plan,
+              bufferChain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -443,27 +440,28 @@ static void mergeCandidate(MergeCandidate &candidate,
 /// Walks every ParallelOp and tries to merge it into its producer, if any.
 /// Returns true if at least one merge fired.
 static bool runOneIteration(Operation *root, OpBuilder &builder) {
-  SmallVector<ParallelOp> parallels;
-  root->walk([&](ParallelOp op) { parallels.push_back(op); });
-
-  bool changed = false;
-  for (ParallelOp parallelOp : parallels) {
-    // May have been erased by an earlier merge this iteration.
-    if (!parallelOp.getOperation()->getBlock())
-      continue;
+  SmallVector<ParallelOp> toErase;
+  root->walk([&](ParallelOp parallelOp) {
+    // We may see ops with no uses if they were merged by an earlier iteration.
+    if (parallelOp.getOperation()->use_empty())
+      return;
 
     auto candidate = findMergeCandidate(parallelOp);
     if (!candidate)
-      continue;
+      return;
 
     auto bufferChain = resolveBufferChain(*candidate);
     if (!bufferChain)
-      continue;
+      return;
 
     mergeCandidate(*candidate, *bufferChain, builder);
-    changed = true;
-  }
-  return changed;
+    // Defer erasing to avoid invalidating the walk.
+    toErase.push_back(candidate->consumer);
+    toErase.push_back(candidate->producer);
+  });
+  for (ParallelOp parallelOp : toErase)
+    parallelOp.erase();
+  return !toErase.empty();
 }
 
 struct MergeAdjacentParallelsPass
