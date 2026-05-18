@@ -13,7 +13,8 @@ from layout import IntTuple
 from layout import TileTensor, CoordLike, RuntimeInt, Coord
 from layout.tile_layout import Layout as TileLayout
 from compiler_internal import StaticTensorSpec
-from std.runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
+from std.collections import InlineArray
+from std.gpu.host import DeviceContext, DeviceContextList
 from tensor import (
     InputTensor,
     InputVariadicTensors,
@@ -200,7 +201,12 @@ struct Foo:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: OutputTensor, x: InputTensor, y: InputTensor) raises:
+    ](
+        z: OutputTensor,
+        x: InputTensor,
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
         @parameter
         @always_inline
         def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
@@ -208,7 +214,7 @@ struct Foo:
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
 
-        foreach[func](z)
+        foreach[func](z, ctx)
 
     @staticmethod
     def shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
@@ -255,7 +261,7 @@ struct ImposterMatmul:
         c: OutputTensor,
         a: InputTensor,
         b: InputTensor,
-        ctx: DeviceContextPtr,
+        ctx: DeviceContext,
     ) raises:
         _matmul(c, a, b)
 
@@ -274,7 +280,7 @@ struct PrintTensorSpecOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, x: InputTensor) raises:
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         print("x.shape =", x._static_shape_tuple)
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
@@ -288,7 +294,7 @@ struct PrintTensorSpecOp:
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
-        foreach[func](outp)
+        foreach[func](outp, ctx)
 
     @staticmethod
     def shape(x: InputTensor) -> IndexList[x.rank]:
@@ -300,7 +306,7 @@ struct PrintTensor:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, input: InputTensor) raises:
+    ](outp: OutputTensor, input: InputTensor, ctx: DeviceContext,) raises:
         print(input)
 
         @parameter
@@ -310,7 +316,7 @@ struct PrintTensor:
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
 
-        foreach[func](outp)
+        foreach[func](outp, ctx)
 
 
 @compiler.register("print_tensor_spec_view")
@@ -332,7 +338,7 @@ struct PrintTensorSpecViewOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, x: InputTensor) raises:
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         Self.print_spec(x)
 
         @parameter
@@ -342,7 +348,7 @@ struct PrintTensorSpecViewOp:
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
-        foreach[func](outp)
+        foreach[func](outp, ctx)
 
     @staticmethod
     def shape(x: InputTensor) -> IndexList[x.rank]:
@@ -354,7 +360,11 @@ struct PrintTensorSpecFusedOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+    ](
+        outp: FusedOutputTensor,
+        x: FusedInputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
         print("x.shape =", x._static_shape_tuple)
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
@@ -368,7 +378,7 @@ struct PrintTensorSpecFusedOp:
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](outp)
+        foreach[func](outp, ctx)
 
     @staticmethod
     def shape(x: InputTensor) -> IndexList[x.rank]:
@@ -380,7 +390,11 @@ struct PrintOutputShapeStridesFusedOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](output: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+    ](
+        output: FusedOutputTensor,
+        x: FusedInputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
         print("output._static_shape_tuple = ", output._static_shape_tuple)
         print("output._static_strides_tuple = ", output._static_strides_tuple)
         print("output._runtime_shape = ", output._spec.shape)
@@ -396,7 +410,7 @@ struct PrintOutputShapeStridesFusedOp:
                 * 2.0
             )
 
-        foreach[func](output)
+        foreach[func](output, ctx)
 
     @staticmethod
     def shape(x: InputTensor) -> IndexList[x.rank]:
@@ -418,7 +432,12 @@ struct AddFuseLHS:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: OutputTensor, x: FusedInputTensor, y: InputTensor) capturing raises:
+    ](
+        z: OutputTensor,
+        x: FusedInputTensor,
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
         @parameter
         @always_inline
         def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
@@ -426,7 +445,7 @@ struct AddFuseLHS:
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
 
-        foreach[func](z)
+        foreach[func](z, ctx)
 
 
 @compiler.register("imposter_add_fuse_inputs")
@@ -435,7 +454,10 @@ struct AddFuseInputs:
     def execute[
         target: StaticString,
     ](
-        z: OutputTensor, x: FusedInputTensor, y: FusedInputTensor
+        z: OutputTensor,
+        x: FusedInputTensor,
+        y: FusedInputTensor,
+        ctx: DeviceContext,
     ) capturing raises:
         @parameter
         @always_inline
@@ -444,7 +466,7 @@ struct AddFuseInputs:
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
 
-        foreach[func](z)
+        foreach[func](z, ctx)
 
 
 # c = a @ b, should support CPU and GPU
@@ -458,7 +480,7 @@ struct MatmulFuseOut:
         c: FusedOutputTensor,
         a: InputTensor,
         b: InputTensor,
-        ctx: DeviceContextPtr,
+        ctx: DeviceContext,
     ) capturing raises:
         comptime rank = a.rank
         comptime a_dtype = a.dtype
@@ -558,6 +580,7 @@ struct VariadicAdd:
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
     ) capturing raises:
         @parameter
         @always_inline
@@ -569,7 +592,7 @@ struct VariadicAdd:
 
             return acc
 
-        foreach[func](output)
+        foreach[func](output, ctx)
 
 
 @compiler.register("transpose_2d")
@@ -621,7 +644,7 @@ struct Transpose2DOp:
     ](
         z: OutputTensor[dtype=dtype, rank=2, ...],
         x: InputTensor[dtype=dtype, rank=2, ...],
-        ctx: DeviceContextPtr,
+        ctx: DeviceContext,
     ) raises:
         var x_view = Self.update_input_view[z._static_shape_tuple](x)
 
@@ -633,7 +656,11 @@ struct ElementwisePrintShape:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+    ](
+        z: FusedOutputTensor,
+        x: FusedInputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
         @parameter
         @always_inline
         def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
@@ -642,7 +669,7 @@ struct ElementwisePrintShape:
         print("input.shape =", x._spec.shape)
         print("output.shape =", z._spec.shape)
 
-        foreach[func](z)
+        foreach[func](z, ctx)
 
     @staticmethod
     def shape(x: InputTensor) -> IndexList[x.rank]:
@@ -655,7 +682,7 @@ struct CustomOpThatRaises:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: OutputTensor, x: InputTensor) raises:
+    ](z: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         if x.shape()[0] == 10:
             raise ("input_shape[0] == 10")
 
@@ -664,7 +691,7 @@ struct CustomOpThatRaises:
         def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](z)
+        foreach[func](z, ctx)
 
     @staticmethod
     def shape(x: InputTensor) raises -> IndexList[x.rank]:
@@ -710,6 +737,7 @@ struct MONNXAbsOverload:
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
     ) raises:
         @parameter
         @always_inline
@@ -717,7 +745,7 @@ struct MONNXAbsOverload:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
-        foreach[func](out_tensor)
+        foreach[func](out_tensor, ctx)
 
 
 @compiler.register("torch.aten.abs")
@@ -728,6 +756,7 @@ struct MTorchAbsOverload:
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
     ) raises:
         @parameter
         @always_inline
@@ -735,7 +764,7 @@ struct MTorchAbsOverload:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
-        foreach[func](out_tensor)
+        foreach[func](out_tensor, ctx)
 
 
 @compiler.register("op_with_custom_params")
@@ -872,7 +901,7 @@ struct SingleDeviceContext:
     ](
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
-        dev_ctx: DeviceContextPtrList[1],
+        dev_ctx: DeviceContextList[1],
     ) raises:
         dev_ctx[0].synchronize()
 
@@ -885,7 +914,7 @@ struct MultiDeviceContext:
     ](
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
-        dev_ctxs: DeviceContextPtrList[2],
+        dev_ctxs: DeviceContextList[2],
     ) raises:
         print("dev_ctx0.id() =", dev_ctxs[0].id())
         print("dev_ctx1.id() =", dev_ctxs[1].id())
@@ -902,7 +931,7 @@ struct MultiDeviceContextDedup:
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
         y: InputTensor[dtype=dtype, ...],
-        dev_ctxs: DeviceContextPtrList[2],
+        dev_ctxs: DeviceContextList[2],
     ) raises:
         dev_ctxs[0].synchronize()
         dev_ctxs[1].synchronize()
@@ -918,7 +947,7 @@ struct VariadicDeviceContext:
     ](
         outputs: OutputVariadicTensors[dtype=dtype, rank=rank, ...],
         inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
-        dev_ctxs: DeviceContextPtrList,
+        dev_ctxs: DeviceContextList,
     ) raises:
         for i in range(len(dev_ctxs)):
             print("dev_ctxs[", i, "].id() =", dev_ctxs[i].id())
@@ -1121,7 +1150,7 @@ struct MutableStore:
     ](
         tw: TensorWrapper,
         tensor: FusedInputTensor[dtype=DType.float32, rank=2, ...],
-        ctx: DeviceContextPtr,
+        ctx: DeviceContext,
     ) capturing raises:
         @parameter
         @always_inline
@@ -1181,6 +1210,7 @@ struct InplaceNoOutFunc:
     def execute(
         output: MutableInputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
+        ctx: DeviceContext,
     ) capturing raises:
         @parameter
         @always_inline
@@ -1190,7 +1220,7 @@ struct InplaceNoOutFunc:
             var val = input._fused_load[width](idx)
             return val * SIMD[output.dtype, width](2.0)
 
-        foreach[func](output)
+        foreach[func](output, ctx)
 
 
 @fieldwise_init

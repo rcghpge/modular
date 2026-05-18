@@ -29,10 +29,10 @@ constexpr StringLiteral struct_IndexList = "std.utils.IndexList";
 constexpr StringLiteral struct_UnsafePointer = "UnsafePointer";
 constexpr StringLiteral struct_Optional = "Optional";
 constexpr StringLiteral struct_String = "String";
-constexpr StringLiteral struct_DeviceContextPtr =
-    "std.runtime.asyncrt.DeviceContextPtr";
-constexpr StringLiteral struct_DeviceContextPtrList =
-    "std.runtime.asyncrt.DeviceContextPtrList";
+constexpr StringLiteral struct_DeviceContext =
+    "std.gpu.host.device_context.DeviceContext";
+constexpr StringLiteral struct_DeviceContextList =
+    "std.gpu.host.device_context.DeviceContextList";
 constexpr StringLiteral struct_ManagedTensorSlice = "tensor.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
 constexpr StringLiteral struct_UInt = "UInt";
@@ -292,7 +292,7 @@ public:
     if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
       return HardcodedMojoSymbols::comptime_OpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
-      return HardcodedMojoSymbols::struct_DeviceContextPtr;
+      return HardcodedMojoSymbols::struct_DeviceContext;
     } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
       if (integerTy.getWidth() == 1)
         return HardcodedMojoSymbols::struct_Bool;

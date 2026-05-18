@@ -460,6 +460,9 @@ captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
     if (!context)
       continue;
 
+    assert(context->getPointer() != nullptr &&
+           "captureStreams: DeviceContextRef holds a null pointer — "
+           "was mapDeviceRefsToDevices called correctly?");
     Driver::Device::API api = context->getPointer()->device().api();
     if (api != Driver::Device::cudaAPI && api != Driver::Device::hipAPI)
       continue;

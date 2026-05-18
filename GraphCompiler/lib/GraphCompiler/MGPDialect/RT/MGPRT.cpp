@@ -533,8 +533,17 @@ MGP_RT_GetValueFromAsync(AsyncRTWrapper<AnyAsyncValueRef> async) {
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 MGP_RT_UnpackDeviceContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
   AnyAsyncValueRef &value = unwrap(async);
+  assert(value.isReady() &&
+         "MGP_RT_UnpackDeviceContext: async value not yet ready");
+  assert(value.isType<Driver::DeviceContextRef>() &&
+         "MGP_RT_UnpackDeviceContext: async value does not hold a "
+         "DeviceContextRef — argument index mismatch or wrong async value");
   auto deviceContextRef = value.get<Driver::DeviceContextRef>();
-  return const_cast<Driver::DeviceContext *>(deviceContextRef.getPointer());
+  auto *ptr =
+      const_cast<Driver::DeviceContext *>(deviceContextRef.getPointer());
+  assert(ptr != nullptr &&
+         "MGP_RT_UnpackDeviceContext: DeviceContextRef holds a null pointer");
+  return ptr;
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
