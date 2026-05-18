@@ -4,7 +4,7 @@
 //
 // These operations form the foundation for parallel kernel execution.
 
-// RUN: mo-opt %s --mgp-lower-primitives --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t.mlir
+// RUN: mo-opt %s --mogg-import-packages --mgp-lower-primitives --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 //===----------------------------------------------------------------------===//

@@ -451,6 +451,54 @@ def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
   ];
 }
 
+def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
+  let summary = "Import Mojo kernel packages and emit mogg.kernel.decl ops";
+  let description = [{
+    Loads Mojo kernel packages and emits one mogg.kernel.decl op per registered
+    kernel into the module, recording the execute/shape/elementwise
+    FnTypeGeneratorType signatures.
+
+    Two input modes are supported:
+    - mojo-pkg-paths: paths to compiled .mojopkg files (production use).
+    - lit-mlir-paths: paths to MLIR text files produced by kgen-translate
+      -import-mojo; no built-in packages are loaded, making this mode suitable
+      for self-contained lit tests.
+
+    This pass is intended to run early in the graph compiler pipeline so that
+    subsequent passes can look up kernel signatures from the IR rather than
+    loading Mojo packages themselves.
+  }];
+  let options = [
+    ListOption<"mojoPkgPaths", "mojo-pkg-paths", "std::string",
+      "Paths to compiled .mojopkg files containing kernel definitions.">,
+    ListOption<"litMlirPaths", "lit-mlir-paths", "std::string",
+      "Paths to MLIR files (kgen-translate -import-mojo output) for testing. "
+      "Built-in packages are not loaded when this option is used alone.">,
+  ];
+  let dependentDialects = [
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
+    "mlir::index::IndexDialect",
+  ];
+}
+
+def StripKernelDecls : Pass<"mogg-strip-kernel-decls", "ModuleOp"> {
+  let summary = "Remove mogg.kernel.decl and mogg.primitive.decl ops from a module";
+  let description = [{
+    Erases all mogg.kernel.decl and mogg.primitive.decl ops from the module.
+    These ops are emitted by mogg-import-packages and consumed by passes such
+    as mo-to-mogg. They are not part of the final output format. This pass can
+    be placed after the last pass that reads the kernel registry to clean up
+    the module for inspection or further lowering.
+  }];
+}
+
 def AnnotateKernels: Pass<"mogg-annotate-kernels", "ModuleOp"> {
   let summary = "Annotate mojo kernel IR with MOGG attributes";
   let description = [{

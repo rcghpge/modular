@@ -1101,9 +1101,14 @@ ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
       return success();
     }
 
-    // Returns an error if two kernels have the same priority.
     int64_t oldPriority = it->getValue().priority;
     if (oldPriority == priority) {
+      // Same source location means the same function re-exported from a
+      // different package (e.g. a user package that imports a primitive from
+      // MOGGPrimitives). Keep the first registration; there is no real
+      // conflict.
+      if (it->getValue().fun.getLoc() == func.getLoc())
+        return success();
       auto diag = func->emitError() << "override of operation named " << name
                                     << " has multiple candidates";
       diag.attachNote(it->getValue().fun.getLoc())

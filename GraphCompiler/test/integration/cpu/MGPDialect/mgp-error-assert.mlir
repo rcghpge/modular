@@ -1,4 +1,4 @@
-// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
+// RUN: mo-opt --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
 // RUN: not mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'assert_false'
