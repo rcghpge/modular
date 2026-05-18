@@ -294,7 +294,7 @@ mo.graph @pow_chain(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3]
 // Should not optimize because exponent of different types.
 mo.graph @pow_chain_different_types(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
   %cst_4 = mo.constant {value = #M.dense_array<4,4,4,4,4,4> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
-  %cst_3 = mo.constant {value = #M.dense_array<3,3,3,3,3,3> : tensor<6xsi32>} : !mo.tensor<[1, 2, 3], si32>
+  %cst_3 = mo.constant {value = #M.dense_array<5,5,5,5,5,5> : tensor<6xsi32>} : !mo.tensor<[1, 2, 3], si32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %cst_4 : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   %1 = mo.pow(%0 : !mo.tensor<[1, 2, 3], si64>, %cst_3 : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
@@ -456,3 +456,24 @@ mo.graph @pow_float16_to_pow_float16(%input: !mo.tensor<[1, 2, 3], f16>) -> !mo.
 // CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
 // CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f16>
+
+// x ** 2 -> x * x
+mo.graph @pow_square_to_mul(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
+  %cst = mo.constant {value = #M.dense_array<2.,2.,2.,2.,2.,2.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
+  mo.output %0 : !mo.tensor<[1, 2, 3], f32>
+}
+// CHECK-LABEL: @pow_square_to_mul
+// CHECK-NEXT:   %[[SQUARE:.*]] = mo.mul({{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:   mo.output %[[SQUARE]] : !mo.tensor<[1, 2, 3], f32>
+
+// x ** 3 -> x * x * x
+mo.graph @pow_cube_to_mul(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
+  %cst = mo.constant {value = #M.dense_array<3.,3.,3.,3.,3.,3.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
+  mo.output %0 : !mo.tensor<[1, 2, 3], f32>
+}
+// CHECK-LABEL: @pow_cube_to_mul
+// CHECK-NEXT:   %[[SQUARE:.*]] = mo.mul({{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:   %[[CUBE:.*]] = mo.mul(%[[SQUARE]], {{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:   mo.output %[[CUBE]] : !mo.tensor<[1, 2, 3], f32>

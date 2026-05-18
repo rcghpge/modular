@@ -618,43 +618,6 @@ struct FlattenNestedConcatPattern
   }
 };
 
-/// A pattern that detects a power op whose exponent is a constant floating
-/// point 3, and rewrites it into two multiplications.
-///
-/// Example:
-///
-/// input : tensor<[...]>
-///
-///   res = pow(input, 3)
-/// ===>
-///   res = input * input * input
-struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
-  Pow3Pattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::PowOp op,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value input;
-    if (!m_Op<MO::PowOp>(
-             m_Any(&input),
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 2))
-             .match(op)) {
-      return failure();
-    }
-
-    if (!rewriter.addOps()) {
-      return rewriter.notifyMatchFailure(
-          op, "matched ops have inconsistent devices");
-    }
-
-    Value sq = rewriter.create<MulOp>(op->getLoc(), input, input).getResult();
-    rewriter.replaceOpWithNewOp<MulOp>(op, sq, input);
-
-    return mlir::success();
-  }
-};
-
 /// A pattern that detects explicit zero padding before convolution
 /// The pattern will only fire if the pad op has constant padding dimensions
 /// and a constant zero padding value
@@ -4252,9 +4215,35 @@ struct ForwardMathematicalCanonicalizationPowByTwoToMul
              .match(powOp)) {
       return failure();
     }
-    auto mul =
+    auto square =
         rewriter.create<MO::MulOp>(powOp->getLoc(), powOp.getType(), x, x);
-    rewriter.replaceAllUsesWith(powOp, mul);
+    rewriter.replaceAllUsesWith(powOp, square);
+
+    return success();
+  }
+};
+
+// pow(x, 3) = mul(mul(x, x), x)
+struct ForwardMathematicalCanonicalizationPowByThreeToMul
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
+  ForwardMathematicalCanonicalizationPowByThreeToMul(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp powOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_Op<MO::PowOp>(
+             m_Any(&x),
+             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+                 3))
+             .match(powOp)) {
+      return failure();
+    }
+    auto square =
+        rewriter.create<MO::MulOp>(powOp->getLoc(), powOp.getType(), x, x);
+    auto cube =
+        rewriter.create<MO::MulOp>(powOp->getLoc(), powOp.getType(), square, x);
+    rewriter.replaceAllUsesWith(powOp, cube);
 
     return success();
   }
@@ -4750,6 +4739,7 @@ struct SymbolicOptimizationPass
         ForwardMathematicalCanonicalizationReluToMax,
         ForwardMathematicalCanonicalizationMulByTwoToAdd,
         ForwardMathematicalCanonicalizationPowByTwoToMul,
+        ForwardMathematicalCanonicalizationPowByThreeToMul,
         ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow>(
         context);
 
