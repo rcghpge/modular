@@ -1551,13 +1551,19 @@ MemoryManager *MemoryManager::onHost(Device &device, size_t alignment) {
     maxCacheSize = 0;
   }
 
+  // Bump up the default chunk percent so that when the host memory manager is
+  // primed by the Python layer (see `_prime_pinned_memory_cache`), then the
+  // first allocation does not cause the entire cache to be allocated at once.
+  // See GEX-3739 for more information.
+  size_t defaultChunkPercent = (device.api() == Device::hipAPI) ? 8 : 2;
+
   size_t chunkSize = std::min(
-      maxCacheSize,
-      static_cast<size_t>(llvm::alignToPowerOf2(
-          (maxCacheSize *
-           DeviceContext::configAsInt("host_memory_manager_chunk_percent", 2)) /
-              100,
-          256 * KB)));
+      maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
+                        (maxCacheSize * DeviceContext::configAsInt(
+                                            "host_memory_manager_chunk_percent",
+                                            defaultChunkPercent)) /
+                            100,
+                        256 * KB)));
 
   return new MemoryManager(
       /*device=*/device,
