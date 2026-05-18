@@ -15,6 +15,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
@@ -28,6 +29,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/IR/IRMapping.h"
 
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringMap.h"
@@ -2030,11 +2032,286 @@ LogicalResult MOGraphLowering::run() {
   return success();
 }
 
+/// Fuse a set of synchronous compiled regions into one, then convert the
+/// synchronous call stubs to async dispatch with a join barrier.
+///
+/// After this function:
+///   - The fused region contains CallStubAsyncOps, an AsyncJoinOp, and a
+///     single AsyncReadyOp producing the output chain.
+///   - The original regions in `groupRegions` have been erased.
+///   - The fused region is inserted after `groupRegions.back()`.
+static MOGG::GenericCompiledRegionOp
+fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
+                      ArrayRef<Operation *> groupRegions) {
+  MOGG::GenericCompiledRegionOp fusedRegion =
+      MOGG::fuseAndReplaceCompiledRegions(/*allowDuplication=*/false,
+                                          groupRegions);
+
+  // fuseAndReplaceCompiledRegions leaves InOutSignatureAttr empty because it
+  // normally runs after ABI lowering. We call it earlier, so downstream passes
+  // still need a valid signature.
+  SmallVector<InOutSignatureAttr::InOutSemantics> sig(
+      fusedRegion->getNumOperands(), InOutSignatureAttr::kNone);
+  fusedRegion.setInOutSignatureAttr(InOutSignatureAttr::get(ctx, sig));
+
+  // Replace each synchronous mogg.call.stub with mogg.call.stub.async.
+  // Propagate the optional $device attribute so the emitter can choose an
+  // affinity-aware create_task form for GPU launches.
+  Block &body = fusedRegion.getBody().front();
+  SmallVector<Value> taskHandles;
+  body.walk([&](MOGG::CallStubOp callStub) {
+    // Forward the affinity device ordinal (set on GPU launches only by the
+    // parallel orchestrator) straight from CallStubOp to CallStubAsyncOp.
+    OpBuilder b(ctx);
+    b.setInsertionPoint(callStub);
+    MOGG::CallStubAsyncOp asyncCall = MOGG::CallStubAsyncOp::create(
+        b, callStub.getLoc(), callStub.getName(), callStub.getInputs(),
+        callStub.getAffinityDeviceIdAttr());
+    taskHandles.push_back(asyncCall.getTaskHandle());
+    callStub.erase();
+  });
+
+  // Insert the join barrier before the output terminator.
+  Operation *outputOp = body.getTerminator();
+  OpBuilder b(ctx);
+  b.setInsertionPoint(outputOp);
+  MOGG::AsyncJoinOp::create(b, loc, taskHandles);
+
+  // Fusion cloned one AsyncReadyOp per original region. The first one (which
+  // fuseAndReplaceCompiledRegions wired into the OutputOp) is the canonical
+  // chain; erase the rest and move the survivor after the join.
+  MOGG::AsyncReadyOp canonical;
+  body.walk([&](MOGG::AsyncReadyOp readyOp) {
+    if (!canonical) {
+      canonical = readyOp;
+      return;
+    }
+    readyOp.getResult().replaceAllUsesWith(canonical.getResult());
+    readyOp.erase();
+  });
+  ASSERT_STREAM(canonical, << "expected at least one AsyncReadyOp in fused "
+                              "parallel region body");
+  canonical->moveBefore(outputOp);
+
+  for (Operation *region : groupRegions)
+    region->erase();
+
+  return fusedRegion;
+}
+
 LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
-  // Delegate to MOGGKernelOpLoweringState which handles kernel outlining,
-  // stub creation, and async dispatch in a unified manner.
-  MGP::MOGGKernelOpLoweringState state(parallelOp, loweringState);
-  return state.lowerParallelOp(parallelOp);
+  mlir::MLIRContext *ctx = parallelOp->getContext();
+  Location loc = parallelOp.getLoc();
+
+  Block &bodyBlock = parallelOp.getBodyRegion().front();
+  size_t numLaunches = parallelOp.getNumLaunches();
+  size_t numBundleGroups = parallelOp.getInputs().size();
+
+  // The parallel op has explicit chain threading (inChain/outChain).
+  // Do NOT call setCurrentExecuteChain here -- doing so would pollute
+  // unrelated ops lowered after the parallel (like RoPE frequency kernels)
+  // with the embedding/allreduce chain dependency, preventing
+  // ExecInvariantCodeMotionPass from hoisting them to init.
+
+  // Resolve per-launch MO-level values from each bundle input via the
+  // lowering state (populated by lowerTensorBundle).  The optional buffer
+  // group comes directly from the parallel op's buffers() operand list.
+  size_t numGroups = numBundleGroups;
+  SmallVector<SmallVector<Value>> bundleElements(numGroups);
+
+  for (size_t group = 0; group < numBundleGroups; ++group) {
+    Value bundleVal = parallelOp.getInputs()[group];
+    auto moElements = loweringState.lookupBundleElements(bundleVal);
+    for (size_t launch = 0; launch < numLaunches; ++launch)
+      bundleElements[group].push_back(moElements[launch]);
+  }
+
+  // Single body walk: collect kernels and bundled.expand ops together, and
+  // reject any other op the lowering can't handle. The verifier accepts a
+  // few preserved ops as transient intermediate IR (see ParallelOp::verify),
+  // but by lowering time only kernels and bundled.expand should remain --
+  // anything else indicates a missing cleanup pass or an unsupported pattern.
+  SmallVector<MOGG::KernelOp> kernelOps;
+  SmallVector<MO::BundledExpandOp> expandOps;
+  for (Operation &op : bodyBlock.without_terminator()) {
+    if (auto kernel = dyn_cast<MOGG::KernelOp>(&op))
+      kernelOps.push_back(kernel);
+    else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op))
+      expandOps.push_back(expand);
+    else
+      return op.emitOpError()
+             << "lowering of this op inside mo.parallel is not yet "
+                "supported; see GEX-3701";
+  }
+  if (kernelOps.empty())
+    return parallelOp.emitOpError("body must contain at least one kernel");
+
+  // For each kernel in the body, clone it once per launch, lower each clone
+  // via the standard lowerKernelOp path, then fuse and convert to async.
+  //
+  // Fusion is per kernel group (not across groups) to avoid creating dataflow
+  // cycles: a later group's buffer allocs may depend on the earlier group's
+  // chain output.
+  //
+  // Bundled kernels (collectives like allreduce) are cloned per launch like
+  // regular kernels, but each clone is N-expanded to receive inputs from ALL
+  // launches so the collective can see every device's data.
+  //
+  // perLaunchCloneResults tracks inter-kernel dependencies: for each original
+  // kernel result in the parallel body, we record the per-launch clone result
+  // so that subsequent kernel clones can resolve their operands via IRMapping.
+  // Clone ops are kept alive until after all kernels are processed because
+  // lookupExecuteLoweredValue needs the clone result SSA values.
+  DenseMap<Value, SmallVector<Value>> perLaunchCloneResults;
+  SmallVector<Operation *> allClones;
+
+  // Resolve mo.bundled.expand ops: each result maps to the per-launch element
+  // of the input's source bundle.  The expand op is a no-op placeholder that
+  // makes N-expansion explicit in the IR.
+  for (MO::BundledExpandOp expandOp : expandOps) {
+    Value input = expandOp.getInput();
+    // Find which bundle group this input comes from.
+    for (size_t group = 0; group < numBundleGroups; ++group) {
+      if (input != bodyBlock.getArgument(group))
+        continue;
+      for (size_t i = 0; i < expandOp.getNumResults(); ++i) {
+        SmallVector<Value> &cloneResults =
+            perLaunchCloneResults[expandOp.getResult(i)];
+        cloneResults.resize(numLaunches);
+        // Expand result i always resolves to launch i's value, regardless
+        // of which per-launch clone is being built.
+        for (size_t launch = 0; launch < numLaunches; ++launch)
+          cloneResults[launch] = bundleElements[group][i];
+      }
+      break;
+    }
+  }
+
+  for (MOGG::KernelOp kernelOp : kernelOps) {
+    SmallVector<Operation *> kernelClones;
+    SmallVector<Operation *> groupRegions;
+
+    for (size_t launch = 0; launch < numLaunches; ++launch) {
+      IRMapping mapper;
+      for (size_t group = 0; group < numGroups; ++group)
+        mapper.map(bodyBlock.getArgument(group), bundleElements[group][launch]);
+      for (auto &[origResult, cloneResults] : perLaunchCloneResults)
+        mapper.map(origResult, cloneResults[launch]);
+
+      OpBuilder cloneBuilder(ctx);
+      cloneBuilder.setInsertionPointAfter(parallelOp);
+      Operation *clonedOp = cloneBuilder.clone(*kernelOp, mapper);
+      auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
+
+      // The parallel body uses the first input's device as a representative.
+      // For launches on other devices, update the clone's device attribute
+      // and result types so that lowerKernelOp uses the correct device
+      // context and allocates output buffers on the right device.
+      // Device is read from the BundleType element types (MO-level metadata),
+      // not from the lowered SSA value types.
+      auto firstBundleTy =
+          cast<MO::BundleType>(parallelOp.getInputs()[0].getType());
+      DeviceRefAttr launchDevice;
+      if (auto inputTy = dyn_cast<MO::TensorType>(
+              firstBundleTy.getElementTypes()[launch])) {
+        launchDevice = inputTy.getDeviceRef();
+        if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
+          clonedKernel.setDeviceRef(launchDevice);
+          clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
+            placeholder.setDeviceAttr(launchDevice);
+          });
+        }
+        for (OpResult result : clonedKernel->getResults()) {
+          if (auto resTy = dyn_cast<MO::TensorType>(result.getType()))
+            if (resTy.getDeviceRef() != launchDevice)
+              result.setType(resTy.cloneWith(launchDevice));
+        }
+      }
+
+      MGP::MOGGKernelOpLoweringState perLaunchState(clonedKernel,
+                                                    loweringState);
+      if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
+        return failure();
+
+      // For GPU launches, stamp the integer device ordinal onto every
+      // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
+      // to the async variant.  The ordinal is stored as a plain I64Attr
+      // rather than a DeviceRefAttr because mogg-emit-mojo internally runs
+      // stripDeviceIdsAndDynamicShapes (which zeroes DeviceRefAttr IDs)
+      // before emitting Mojo text.
+      MOGG::GenericCompiledRegionOp launchRegion =
+          perLaunchState.getMGPRegion();
+      if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
+        auto affinityId =
+            mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
+                                   static_cast<int64_t>(launchDevice.getId()));
+        launchRegion->walk([&](MOGG::CallStubOp callStub) {
+          callStub.setAffinityDeviceIdAttr(affinityId);
+        });
+      }
+
+      groupRegions.push_back(launchRegion);
+      kernelClones.push_back(clonedOp);
+    }
+
+    for (auto [idx, origResult] : llvm::enumerate(kernelOp->getResults())) {
+      SmallVector<Value> &cloneResults = perLaunchCloneResults[origResult];
+      for (size_t launch = 0; launch < numLaunches; ++launch)
+        cloneResults.push_back(kernelClones[launch]->getResult(idx));
+    }
+    allClones.append(kernelClones);
+
+    MOGG::GenericCompiledRegionOp fusedRegion =
+        fuseAndConvertToAsync(ctx, loc, groupRegions);
+    Value fusedChain = fusedRegion.getResult(0);
+
+    // lowerKernelOp registered chain guards against individual compiled region
+    // chains, which fuseAndConvertToAsync just erased. Repoint them to the
+    // fused region's chain so that subsequent kernel groups see valid guards.
+    for (Operation *clone : kernelClones) {
+      for (Value cloneRes : clone->getResults()) {
+        loweringState.replaceChainGuard(cloneRes, fusedChain);
+        Value lowered = loweringState.lookupExecuteLoweredValue(cloneRes);
+        if (lowered)
+          loweringState.replaceChainGuard(lowered, fusedChain);
+      }
+    }
+  }
+
+  // Register per-element clone results as the bundle elements for each
+  // parallel result so that lowerTensorUnbundle can resolve them.
+  auto yieldOp = cast<MO::YieldOp>(bodyBlock.getTerminator());
+  size_t resultIdx = 0;
+  for (Value yieldOperand : yieldOp.getOperands()) {
+    if (!isa<MO::TensorType>(yieldOperand.getType()))
+      continue;
+    Value bundleResult = parallelOp.getResult(resultIdx++);
+    SmallVector<Value> &cloneResults = perLaunchCloneResults[yieldOperand];
+
+    // Register clone results as the bundle elements for this result so that
+    // lowerTensorUnbundle can resolve them via lookupBundleElements.
+    loweringState.emplaceBundleElements(bundleResult,
+                                        SmallVector<Value>(cloneResults));
+  }
+
+  // Register the outChain result (when present) mapped to the final fused
+  // region chain.
+  if (parallelOp.hasChain()) {
+    Value finalChain = loweringState.getCurrentExecuteChain();
+    loweringState.emplaceExecuteLoweredValue(parallelOp.getOutChain(),
+                                             finalChain);
+  }
+
+  // Clone shells must stay alive: their result Values are referenced by
+  // loweredValues (and potentially bundleElements in downstream passes).
+  // Move them into the parallel op's body region so lowerBlock's
+  // graph-level iterator doesn't re-encounter them.  They become dead
+  // code destroyed when the MO graph region is replaced by MGP.
+  Block &bodyFront = parallelOp.getBodyRegion().front();
+  for (Operation *clone : allClones)
+    clone->moveBefore(&bodyFront, bodyFront.begin());
+
+  return success();
 }
 
 LogicalResult MOGraphLowering::lowerTensorBundle(MO::TensorBundleOp bundleOp) {
