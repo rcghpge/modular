@@ -12,6 +12,14 @@
 // upstream `bundle(unbundle(X)...) -> X` canonicalization is what makes this
 // shape appear in the first place.
 //
+// When the consumer fans in from more than one parallel producer (e.g. a
+// per-device residual `mo.add` whose two operands come from two different
+// upstream allreduce parallels), the pass picks the first producer (in
+// consumer-input order) whose merge satisfies the dependence check.
+// Outputs of the other parallel producers stay as ordinary non-shared
+// inputs of the merged op and may be folded in by a later iteration of
+// the pass driver.
+//
 // Mechanics:
 //
 //   * Inputs shared between consumer and producer short-circuit: the
@@ -124,49 +132,67 @@ struct MergeCandidate {
   SmallVector<std::optional<size_t>> sharedInputs;
 };
 
-/// If \p consumer can be merged into a unique upstream producer ParallelOp,
-/// returns the candidate.  Requires:
-///
-///   * At least one consumer input is a result of the same producer op.
-///     Mixed producers are rejected; a later iteration may merge them
-///     one at a time.
-///   * Producer and consumer share the same block.
-///   * Every non-shared consumer input (and buffer, and in-chain when only
-///     the consumer has a chain) is independent of the producer's results
-///     (no dependence cycle through the producer).
-static std::optional<MergeCandidate> findMergeCandidate(ParallelOp consumer) {
-  ParallelOp producer = nullptr;
-  SmallVector<std::optional<size_t>> sharedInputs(consumer.getInputs().size());
-  bool anyShared = false;
+/// Returns true if any consumer input that is NOT a result of \p producer
+/// transitively depends on \p producer's results, which would create a
+/// dependence cycle if the consumer were merged into the producer.  This
+/// is what disqualifies the wrong choice in the multi-producer case
+/// (e.g. picking an upstream producer when a downstream producer's
+/// output is also fed in through another consumer input).
+static bool
+nonSharedInputDependsOnProducer(ParallelOp consumer, ParallelOp producer,
+                                ArrayRef<std::optional<size_t>> sharedInputs) {
+  for (auto [i, input] : llvm::enumerate(consumer.getInputs())) {
+    if (sharedInputs[i].has_value())
+      continue;
+    if (dependsOn(input, producer.getOperation()))
+      return true;
+  }
+  return false;
+}
 
-  // For each input of the consumer...
-  for (auto [bi, input] : llvm::enumerate(consumer.getInputs())) {
-    // Look for a ParallelOp producer.
+/// If \p consumer can be merged into an upstream producer ParallelOp,
+/// returns the candidate.  When the consumer fans in from multiple parallel
+/// producers, iterates them in consumer-input order and returns the first
+/// one that satisfies all checks; the pass driver's fixed-point loop then
+/// picks up any further cascades.  Requires:
+///
+///   * At least one consumer input is a result of the chosen producer op.
+///   * Producer and consumer share the same block.
+///   * Every non-shared consumer input is independent of the chosen
+///     producer's results (no dependence cycle through the producer).
+///
+/// Other parallel producers that the consumer fans in from are kept as
+/// regular non-shared inputs of the merged op; they may merge in a later
+/// iteration if their own dependence checks pass.
+static std::optional<MergeCandidate> findMergeCandidate(ParallelOp consumer) {
+  // Collect unique parallel producers in first-seen input order so the
+  // selection is deterministic.
+  SmallVector<ParallelOp> candidatesInOrder;
+  llvm::SmallDenseSet<Operation *> seen;
+  for (Value input : consumer.getInputs()) {
     auto prod = dyn_cast_or_null<ParallelOp>(input.getDefiningOp());
     if (!prod || prod.getOperation() == consumer.getOperation())
       continue;
-    // Save the first ParallelOp we see.
-    if (!producer)
-      producer = prod;
-    // Give up if there is more than one producer.
-    else if (producer.getOperation() != prod.getOperation())
-      return std::nullopt;
-    // Save the index of the shared input.
-    sharedInputs[bi] = cast<OpResult>(input).getResultNumber();
-    anyShared = true;
+    if (seen.insert(prod.getOperation()).second)
+      candidatesInOrder.push_back(prod);
   }
-  if (!anyShared)
-    return std::nullopt;
-  if (producer->getBlock() != consumer->getBlock())
-    return std::nullopt;
 
-  // Non-shared consumer inputs must not depend on the producer's results.
-  for (auto [bi, input] : llvm::enumerate(consumer.getInputs()))
-    if (!sharedInputs[bi].has_value() &&
-        dependsOn(input, producer.getOperation()))
-      return std::nullopt;
+  for (ParallelOp producer : candidatesInOrder) {
+    if (producer->getBlock() != consumer->getBlock())
+      continue;
 
-  return MergeCandidate{producer, consumer, std::move(sharedInputs)};
+    SmallVector<std::optional<size_t>> sharedInputs(
+        consumer.getInputs().size());
+    for (auto [i, input] : llvm::enumerate(consumer.getInputs()))
+      if (input.getDefiningOp() == producer.getOperation())
+        sharedInputs[i] = cast<OpResult>(input).getResultNumber();
+
+    if (nonSharedInputDependsOnProducer(consumer, producer, sharedInputs))
+      continue;
+
+    return MergeCandidate{producer, consumer, std::move(sharedInputs)};
+  }
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
