@@ -1512,7 +1512,7 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
 
   // Get chunk size as percentage of max cache size. Limit to between 1 and 100.
   // GEX-3330
-  size_t defaultChunkSizePercent = (device.api() == Device::hipAPI) ? 100 : 2;
+  size_t defaultChunkSizePercent = 100;
   size_t chunkSizePercent = std::max(
       static_cast<size_t>(1),
       std::min(static_cast<size_t>(100),
