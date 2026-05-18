@@ -39,7 +39,7 @@ void copyStatusMessage(char *dstMsgBuf, int64_t dstMsgBufSize,
 /// manage custom (plugin specific) and ephemeral (one-shot dynamically
 /// generated) status messages.
 struct CustomStatus {
-  /// Constuct the CustomStatus struct.
+  /// Construct the CustomStatus struct.
   ///
   /// @param numCustomStatusCodes Number of custom status messages.
   CustomStatus(uint64_t numCustomStatusCodes)
@@ -64,12 +64,12 @@ struct CustomStatus {
   ///
   /// If the status code is ephemeral (greater than or equal to
   /// M_DRIVER_STATUS_CUSTOM_CODES_BASE + numCustomStatusCodes), it will be
-  /// removed from the messages store after being compied into the buffer.
+  /// removed from the messages store after being copied into the buffer.
   ///
   /// @param status Status code to get the message for.
   /// @param buffer User provided storage to write the message into.
   /// @param size Size in bytes of buffer.
-  /// @return Either M_DRIVER_STAUTS_SUCCESS on success or
+  /// @return Either M_DRIVER_STATUS_SUCCESS on success or
   /// M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE when buffer or size are invalid or
   /// when the status code is not known.
   M_driver_status_t getMessage(M_driver_status_t status, char *buffer,

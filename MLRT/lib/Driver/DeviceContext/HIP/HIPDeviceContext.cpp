@@ -298,7 +298,7 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
     }
   }
 
-  RETURN_ERROR("Your current AMD GPU driver version is not suppoted."
+  RETURN_ERROR("Your current AMD GPU driver version is not supported."
                "A minimum driver version of " +
                TWINE(MIN_HIP_DRIVER_VERSION_MAJOR) + "." +
                TWINE(MIN_HIP_DRIVER_VERSION_MINOR) + "." +

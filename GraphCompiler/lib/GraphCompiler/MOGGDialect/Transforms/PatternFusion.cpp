@@ -4096,7 +4096,7 @@ struct ConcatSlicePattern
     }
 
     // The fused op computes both the concat and the slice output.
-    // It's only usefull if the concat is used somewhere else.
+    // It's only useful if the concat is used somewhere else.
     if (input.hasOneUse()) {
       return rewriter.notifyMatchFailure(
           sliceOp,

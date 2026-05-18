@@ -154,7 +154,7 @@ public:
       uint32_t argCount = 0, const size_t *argSizes = nullptr) override;
 
   ErrorOrSuccess enqueueHostFunction(void (*resumeFunc)(int8_t *),
-                                     void (*destoryFunc)(int8_t *),
+                                     void (*destroyFunc)(int8_t *),
                                      int8_t *coroHandle) override;
 
   ErrorOrSuccess enqueueHostFunctionRange(void (*resumeFunc)(int8_t *),

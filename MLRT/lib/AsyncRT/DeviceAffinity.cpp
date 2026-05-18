@@ -190,7 +190,7 @@ int taskIdForNonDevice(int taskId, size_t numWorkers) {
   if (nextId >= (int)numWorkers)
     nextId = getNextId(0);
 
-  // Give up if no valide ID was found.
+  // Give up if no valid ID was found.
   if (nextId >= (int)numWorkers)
     nextId = kDefaultTaskId;
 
