@@ -256,6 +256,18 @@ public:
                                           chrono_point_t &out) const {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
+
+  // Report the count of RDMAs submitted by the most recent postXfer on
+  // `handle` and how many of those did not fit into the backend's
+  // notification format and were therefore not relayed to the receiver.
+  // Backends without a fixed-capacity notification format (notably UCX)
+  // leave the default return; callers should treat NIXL_ERR_NOT_SUPPORTED
+  // as "this backend cannot overflow."
+  virtual nixl_status_t getXferNotifOverflow(const nixlBackendReqH *handle,
+                                             size_t &dropped,
+                                             size_t &submitted) const {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 };
 
 } // namespace M::MLRT

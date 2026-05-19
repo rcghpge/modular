@@ -129,6 +129,20 @@ int64_t nixlLibfabricBackendH::completion_time_ns() const {
   return completion_time_ns_.load(std::memory_order_acquire);
 }
 
+void nixlLibfabricBackendH::set_notif_xfer_id_overflow(size_t dropped,
+                                                       size_t submitted) {
+  notif_xfer_ids_submitted_.store(submitted, std::memory_order_release);
+  notif_xfer_ids_dropped_.store(dropped, std::memory_order_release);
+}
+
+size_t nixlLibfabricBackendH::get_notif_xfer_ids_submitted() const {
+  return notif_xfer_ids_submitted_.load(std::memory_order_acquire);
+}
+
+size_t nixlLibfabricBackendH::get_notif_xfer_ids_dropped() const {
+  return notif_xfer_ids_dropped_.load(std::memory_order_acquire);
+}
+
 size_t nixlLibfabricBackendH::get_completed_requests_count() const {
   return completed_requests_.load();
 }
@@ -1119,21 +1133,19 @@ nixl_status_t nixlLibfabricEngine::postXfer(
              << " requests from " << desc_count << " descriptors"
              << " with " << binary_notif->xfer_id_count << " total XFER_IDs";
 
-  // A single aggregate warning per postXfer when the notification's
-  // fixed xfer_ids array couldn't hold every submitted RDMA. The
-  // receiver still completes (data lands via RDMA WRITE imm_data; the
-  // receiver only waits for the xfer_ids it was told about), but its
-  // tracking set keeps the unaccounted arrivals as stragglers. Logged
-  // once per postXfer rather than per-xfer_id to avoid log floods on
-  // large batches.
-  if (submitted_count > binary_notif->xfer_id_count) {
-    NIXL_WARN << "BinaryNotification xfer_id capacity ("
-              << NIXL_LIBFABRIC_MAX_XFER_IDS << ") exceeded: "
-              << (submitted_count - binary_notif->xfer_id_count) << " of "
-              << submitted_count
-              << " xfer_ids were not relayed to the receiver. Sender-side"
-                 " completion tracking is unaffected.";
-  }
+  // Record BinaryNotification overflow on the backend handle so the
+  // agent / Python transfer-engine layer can surface a structured
+  // warning. The receiver still completes (data lands via RDMA WRITE
+  // imm_data; the receiver only waits for the xfer_ids it was told
+  // about), but its tracking set keeps the unaccounted arrivals as
+  // stragglers. Recorded once per postXfer rather than per-xfer_id to
+  // keep the cost trivial on large batches. `dropped == 0` is the
+  // common no-overflow case.
+  const size_t notif_dropped =
+      (submitted_count > binary_notif->xfer_id_count)
+          ? submitted_count - binary_notif->xfer_id_count
+          : 0;
+  backend_handle->set_notif_xfer_id_overflow(notif_dropped, submitted_count);
 
   // Adjust to actual request count after all submissions complete. Use
   // ``submitted_count`` (the true RDMA count) rather than the
@@ -1219,6 +1231,18 @@ nixlLibfabricEngine::getCompletionTime(const nixlBackendReqH *handle,
   }
   out = chrono_point_t(std::chrono::duration_cast<chrono_point_t::duration>(
       std::chrono::nanoseconds(ns)));
+  return NIXL_SUCCESS;
+}
+
+nixl_status_t nixlLibfabricEngine::getXferNotifOverflow(
+    const nixlBackendReqH *handle, size_t &dropped, size_t &submitted) const {
+  if (!handle) {
+    return NIXL_ERR_INVALID_PARAM;
+  }
+  const auto *backend_handle =
+      static_cast<const nixlLibfabricBackendH *>(handle);
+  submitted = backend_handle->get_notif_xfer_ids_submitted();
+  dropped = backend_handle->get_notif_xfer_ids_dropped();
   return NIXL_SUCCESS;
 }
 

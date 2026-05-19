@@ -117,6 +117,19 @@ private:
   /// completed; 0 until then.
   std::atomic<int64_t> completion_time_ns_{0};
 
+  /// BinaryNotification overflow accounting for this transfer.
+  /// `notif_xfer_ids_submitted_` is the true count of RDMAs submitted by
+  /// `postXfer`; `notif_xfer_ids_dropped_` is how many of those did not
+  /// fit into the notification's fixed `NIXL_LIBFABRIC_MAX_XFER_IDS`
+  /// xfer_ids array and were therefore not relayed to the receiver. Both
+  /// are set once by `postXfer` after the submission loop completes
+  /// (before any progress-thread callback can read them); the agent layer
+  /// exposes them so the Python transfer-engine layer can detect breaches
+  /// and emit a structured warning. `dropped == 0` whenever the cap was
+  /// not exceeded.
+  std::atomic<size_t> notif_xfer_ids_submitted_{0};
+  std::atomic<size_t> notif_xfer_ids_dropped_{0};
+
 public:
   nixlLibfabricBackendH();
   ~nixlLibfabricBackendH();
@@ -151,6 +164,21 @@ public:
   /** Returns ns-since-epoch of progress-thread completion, or 0 if the
    *  transfer has not completed. */
   int64_t completion_time_ns() const;
+
+  /** Record BinaryNotification overflow accounting for the most recent
+   *  `postXfer` on this handle. Called once after the submission loop
+   *  completes. `dropped == 0` is the no-overflow case. Arg order
+   *  mirrors the getter chain (engine / agent / Python) so a setter
+   *  call and a getter call read symmetrically. */
+  void set_notif_xfer_id_overflow(size_t dropped, size_t submitted);
+
+  /** Number of RDMAs submitted by `postXfer`. */
+  size_t get_notif_xfer_ids_submitted() const;
+
+  /** Number of submitted RDMAs whose xfer_ids did not fit into the
+   *  BinaryNotification cap and were therefore not relayed to the
+   *  receiver. `0` when the cap was not exceeded. */
+  size_t get_notif_xfer_ids_dropped() const;
 };
 
 class nixlLibfabricEngine : public nixlBackendEngine {
@@ -510,6 +538,24 @@ public:
    */
   nixl_status_t getCompletionTime(const nixlBackendReqH *handle,
                                   chrono_point_t &out) const override;
+
+  /**
+   * @brief Report BinaryNotification xfer_id overflow for a transfer
+   *
+   * Returns the count of RDMAs submitted by the most recent `postXfer`
+   * on `handle` and the count of those whose xfer_ids did not fit into
+   * the notification's fixed `NIXL_LIBFABRIC_MAX_XFER_IDS` array (and
+   * were therefore not relayed to the receiver). `dropped == 0` is the
+   * no-overflow case.
+   *
+   * @param[in]  handle    Request handle from a prior postXfer
+   * @param[out] dropped   Number of xfer_ids dropped from the notification
+   * @param[out] submitted Number of RDMAs submitted by postXfer
+   * @return NIXL_SUCCESS on success, error code on failure
+   */
+  nixl_status_t getXferNotifOverflow(const nixlBackendReqH *handle,
+                                     size_t &dropped,
+                                     size_t &submitted) const override;
 
   // Notification system
   /**

@@ -344,6 +344,26 @@ public:
                                  nixl_xfer_telem_t &telemetry) const;
 
   /**
+   * @brief  Report BinaryNotification xfer_id overflow for a transfer
+   *         request. `submitted` is the count of RDMAs submitted by
+   *         `postXferReq`; `dropped` is how many of those did not fit
+   *         into the backend's notification format and were therefore
+   *         not relayed to the receiver. `dropped == 0` is the
+   *         no-overflow case, including for backends that have no
+   *         fixed-capacity notification (UCX) -- callers may rely on a
+   *         uniform "0 if not applicable" contract and need not
+   *         special-case backend type.
+   *
+   * @param  req_hndl      Transfer request handle after postXferReq
+   * @param  dropped       [out] Count of xfer_ids dropped from the notification
+   * @param  submitted     [out] Count of RDMAs submitted by postXferReq
+   * @return nixl_status_t NIXL_SUCCESS, or error code if call was not
+   * successful
+   */
+  nixl_status_t getXferNotifOverflow(const nixlXferReqH *req_hndl,
+                                     size_t &dropped, size_t &submitted) const;
+
+  /**
    * @brief  Query the backend associated with `req_hndl`. E.g., if for genNotif
    *         the same backend as a transfer is desired.
    *

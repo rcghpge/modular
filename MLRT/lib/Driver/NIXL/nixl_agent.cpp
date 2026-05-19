@@ -1236,6 +1236,29 @@ nixl_status_t nixlAgent::getXferTelemetry(const nixlXferReqH *req_hndl,
   return nixl_status_t::NIXL_SUCCESS;
 }
 
+nixl_status_t nixlAgent::getXferNotifOverflow(const nixlXferReqH *req_hndl,
+                                              size_t &dropped,
+                                              size_t &submitted) const {
+  if (!req_hndl) {
+    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
+  }
+
+  // Default to no-overflow before dispatching, so the
+  // NIXL_ERR_NOT_SUPPORTED path (backends without a fixed-capacity
+  // notification format, e.g. UCX) reports a uniform `0 / 0` to the
+  // caller and we still return NIXL_SUCCESS. Python callers can then
+  // treat `dropped > 0` as the breach signal without first asking the
+  // backend whether it can overflow.
+  dropped = 0;
+  submitted = 0;
+  nixl_status_t ret = req_hndl->engine->getXferNotifOverflow(
+      req_hndl->backendHandle, dropped, submitted);
+  if (ret == nixl_status_t::NIXL_ERR_NOT_SUPPORTED) {
+    return nixl_status_t::NIXL_SUCCESS;
+  }
+  return ret;
+}
+
 nixl_status_t nixlAgent::queryXferBackend(const nixlXferReqH *req_hndl,
                                           nixlBackendH *&backend) const {
   NIXL_LOCK_GUARD(data->lock);
