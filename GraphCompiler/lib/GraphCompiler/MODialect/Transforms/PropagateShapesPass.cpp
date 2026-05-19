@@ -793,7 +793,9 @@ struct PropagateShapes {
   ///
   /// Return null if we can't apply any special folding.
   TypedAttr tryFoldCond(ArrayRef<TypedAttr> operands) {
-    if (auto constant = getRange(operands[0]).getConstantValue())
+    // Cond is a scalar<bool>, `getRange` need a builtin type.
+    if (auto constant = getRange(KGEN::CastToBuiltinAttr::get(operands[0]))
+                            .getConstantValue())
       return constant->isZero() ? operands[2] : operands[1];
     return {};
   }
@@ -871,7 +873,12 @@ struct PropagateShapes {
       //
       // This works due to the symbolic optimizations which simplify add
       // opcodes.
-      auto zero = IntegerAttr::get(lhs.getType(), 0);
+      auto getZero = [&](Type t) -> TypedAttr {
+        if (isa<IntegerType>(t))
+          return IntegerAttr::get(t, 0);
+        return splatIntLiteralToSIMD(0, cast<KGEN::SIMDType>(t));
+      };
+      auto zero = getZero(lhs.getType());
       auto diff = KGEN::ParamOperatorAttr::getSub(lhs, rhs);
       auto i1Type = IntegerType::get(lhs.getContext(), 1);
 

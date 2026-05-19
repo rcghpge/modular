@@ -10,6 +10,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
+#include "KGEN/POPDialect/POPAttrs.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
@@ -55,8 +56,18 @@ TypedAttr ParamExprBuilder::wrapNonTrivialAttrWithDecl(TypedAttr attr,
 
 Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
                                  const Var &elseV) {
+  TypedAttr staticCond = condV.getAttr();
+  // POC::Cond expect a scalar<bool> cond, cast to it if necessary.
+  if (!KGEN::isScalarOf<KGEN::KGENDType::kBool>(staticCond.getType())) {
+    if (!isa<KGEN::SIMDType>(staticCond.getType()))
+      staticCond = KGEN::CastFromBuiltinAttr::get(staticCond);
+    // cast to scalar<bool>.
+    MLIRContext *ctx = staticCond.getContext();
+    staticCond = KGEN::POP::CastAttr::get(
+        ctx, staticCond, KGEN::SIMDType::get(ctx, 1, KGEN::KGENDType::kBool));
+  }
   auto exprAttr = KGEN::ParamOperatorAttr::get(
-      KGEN::POC::Cond, {condV.getAttr(), thenV.getAttr(), elseV.getAttr()});
+      KGEN::POC::Cond, {staticCond, thenV.getAttr(), elseV.getAttr()});
   return createVar(wrapNonTrivialAttrWithDecl(exprAttr, "cond"));
 }
 

@@ -117,15 +117,15 @@ mo.graph @broadcasted_binary_elwise<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor
 // CHECK-SAME: @broadcasted_binary_elwise<[[D21:.*]], [[D22:.*]], [[D23:.*]], [[D24:.*]] -> [[D27:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D21]], 12, [[D22]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D23]], [[D24]]], f32>) -> !mo.tensor<[[[D21]], 12, [[D27]]], f32> {
 // CHECK-DAG:   kgen.param.declare {{.*}}"mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:si64 [[D23]], 1), eq(:si64 [[D23]], 12)))>
 // CHECK-DAG:   kgen.param.declare {{.*}}"mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:si64 [[D22]], [[D24]]), eq(:si64 [[D22]], 1), eq(:si64 [[D24]], 1)))>
-// CHECK-DAG:   kgen.param.declare {{.*}}"mo.assert"{message = "[broadcast_to] input dimension at index 2 ([[D22]]) must be either 1 or equal to corresponding output dimension at index 2 ({{.*}})" : !kgen.string}, or(eq(:si64 cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]]), [[D22]]), eq(:si64 [[D22]], 1)))>
-// CHECK-DAG:    kgen.param.declare [[EXPR:.*]]: si64 = <cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]])>
+// CHECK-DAG:   kgen.param.declare {{.*}}"mo.assert"{message = "[broadcast_to] input dimension at index 2 ([[D22]]) must be either 1 or equal to corresponding output dimension at index 2 ({{.*}})" : !kgen.string}, or(eq(:si64 cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]]), [[D22]]), eq(:si64 [[D22]], 1)))>
+// CHECK-DAG:    kgen.param.declare [[EXPR:.*]]: si64 = <cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]])>
 // CHECK-DAG:    [[V0:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D21]], 12, [[D22]]], f32> -> !mo.tensor<[[[D21]], 12, [[EXPR]]], f32>
-// CHECK-DAG:    kgen.param.declare {{.*}} "mo.assert"{message = "[broadcast_to] input dimension at index 1 ([[D24]]) must be either 1 or equal to corresponding output dimension at index 2 ({{.*}})" : !kgen.string}, or(eq(:si64 cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]]), [[D24]]), eq(:si64 [[D24]], 1)))>
+// CHECK-DAG:    kgen.param.declare {{.*}} "mo.assert"{message = "[broadcast_to] input dimension at index 1 ([[D24]]) must be either 1 or equal to corresponding output dimension at index 2 ({{.*}})" : !kgen.string}, or(eq(:si64 cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]]), [[D24]]), eq(:si64 [[D24]], 1)))>
 // CHECK-DAG:    kgen.param.declare {{.*}} "mo.assert"{message = "[broadcast_to] input dimension at index 0 ([[D23]]) must be either 1 or equal to corresponding output dimension at index 1 (12)" : !kgen.string}, or(eq(:si64 [[D23]], 1), eq(:si64 [[D23]], 12)))>
 // CHECK-DAG:    [[V1:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D23]], [[D24]]], f32> -> !mo.tensor<[[[D21]], 12, [[EXPR]]], f32>
 // CHECK-NEXT:   [[V2:%.*]] = mo.add([[V0]], [[V1]]) : !mo.tensor<[[[D21]], 12, [[EXPR:.*]]], f32>
-// CHECK-NEXT:   [[V3:%.*]] = mo.rebind([[V2]]) : !mo.tensor<[[[D21]], 12, [[EXPR]]], f32> -> !mo.tensor<[[[D21]], 12, cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]])], f32>
-// CHECK-NEXT:   mo.output<cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]])> [[V3]] : !mo.tensor<[[[D21]], 12, cond(eq(:si64 [[D22]], 1), [[D24]], [[D22]])], f32>
+// CHECK-NEXT:   [[V3:%.*]] = mo.rebind([[V2]]) : !mo.tensor<[[[D21]], 12, [[EXPR]]], f32> -> !mo.tensor<[[[D21]], 12, cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]])], f32>
+// CHECK-NEXT:   mo.output<cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]])> [[V3]] : !mo.tensor<[[[D21]], 12, cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D22]]"> : si64>, 1), [[D24]], [[D22]])], f32>
 // CHECK-NEXT: }
 
 mo.graph @transpose_static_rank<D9, D10, D11, D12>(%arg0: !mo.tensor<[D9, D10], f32>, %arg1: !mo.tensor<[D11, D12], f32>) -> (!mo.tensor<[D9, D10], f32>, !mo.tensor<[D12, D11], f32>) {
@@ -740,10 +740,10 @@ mo.graph @nested_broadcast_shapes<D29, D30, D31, D32 -> D33, D34>(%arg0: !mo.ten
 // CHECK-DAG:    kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dimension at index 1 ([[D32]]) must be either 1 or equal to corresponding output dimension at index 1 ({{.*}})" : !kgen.string}
 // CHECK-DAG:    kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dimension at index 0 ([[D31]]) must be either 1 or equal to corresponding output dimension at index 0 ({{.*}})" : !kgen.string}
 // CHECK-NEXT:   [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[[[EXPR0]], [[EXPR1]]], si32>
-// CHECK-DAG:    kgen.param.declare [[EXPR0]]: si64 = <cond(eq(:si64 [[D29]], 1), [[D31]], [[D29]])>
-// CHECK-DAG:    kgen.param.declare [[EXPR1]]: si64 = <cond(eq(:si64 [[D30]], 1), [[D32]], [[D30]])>
+// CHECK-DAG:    kgen.param.declare [[EXPR0]]: si64 = <cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D29]]"> : si64>, 1), [[D31]], [[D29]])>
+// CHECK-DAG:    kgen.param.declare [[EXPR1]]: si64 = <cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D30]]"> : si64>, 1), [[D32]], [[D30]])>
 // CHECK-NEXT:   [[V4:%.*]] = mo.select([[V1]], [[V2]], [[V3]])
-// CHECK-NEXT:   [[V5:%.*]] = mo.rebind([[V4]]) : {{.*}} -> !mo.tensor<[cond(eq(:si64 [[D29]], 1), [[D31]], [[D29]]), cond(eq(:si64 [[D30]], 1), [[D32]], [[D30]])], si32>
+// CHECK-NEXT:   [[V5:%.*]] = mo.rebind([[V4]]) : {{.*}} -> !mo.tensor<[cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D29]]"> : si64>, 1), [[D31]], [[D29]]), cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"[[D30]]"> : si64>, 1), [[D32]], [[D30]])], si32>
 // CHECK-NEXT:   mo.output{{.*}} [[V5]]
 // CHECK-NEXT: }
 

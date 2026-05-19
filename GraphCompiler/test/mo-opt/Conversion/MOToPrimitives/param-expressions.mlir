@@ -171,7 +171,7 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[CMP:.*]] = pop.cmp le(%[[D0]], %[[D1]])
-  kgen.param.declare B: i1 = <le(:si64 X, Y)>
+  kgen.param.declare B: scalar<bool> = <le(:si64 X, Y)>
 
   // CHECK-DAG: %[[COND0:.*]] = pop.simd.select %[[CMP]], %[[D0]], %[[D1]] : <1, si64>
   kgen.param.declare M0: si64 = <cond(B, X, Y)>

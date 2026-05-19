@@ -479,8 +479,8 @@ private:
                                            ValueRange operands);
 
   /// Lowers an integer attribute to a index constant op.
-  static Operation *lowerIntAttr(OpBuilder &builder, Location loc,
-                                 IntegerAttr intAttr);
+  static Operation *lowerKGENConstantAttr(OpBuilder &builder, Location loc,
+                                          TypedAttr intAttr);
 
   /// Lower a parameter expression.
   ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,

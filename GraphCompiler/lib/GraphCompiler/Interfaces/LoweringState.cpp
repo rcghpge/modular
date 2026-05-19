@@ -446,34 +446,38 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
                                          ValueRange operands) {
   auto resultType = opAttr.getType();
 
-  // Get !kgen.scalar dtype that corresponds to the expected output type.
-  auto popResultType = builtinTypeToDType(builder.getContext(), resultType);
-  if (failed(popResultType))
-    return Error("unable to convert result type");
+  Type simdType = resultType;
+  if (!isa<KGEN::SIMDType>(resultType)) {
+    // Get !kgen.scalar dtype that corresponds to the expected output type.
+    auto popResultType = builtinTypeToDType(builder.getContext(), resultType);
+    if (failed(popResultType))
+      return Error("unable to convert result type");
+    simdType = *popResultType;
+  }
 
   SmallVector<Value> popOperands;
   popOperands.reserve(operands.size());
 
   // Convert operands to equivalent !kgen.scalar type
   for (auto operand : operands) {
+    if (isa<KGEN::SIMDType>(operand.getType())) {
+      popOperands.push_back(operand);
+      continue;
+    }
+
     auto scalarType =
         builtinTypeToDType(builder.getContext(), operand.getType());
 
     if (failed(scalarType))
       return Error("unable to convert operand to !kgen.scalar");
 
-    if (scalarType == operand.getType()) {
-      popOperands.push_back(operand);
-      continue;
-    }
-
     popOperands.push_back(builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(
         loc, *scalarType, operand));
   }
 
   // Create the implementing pop dialect operation.
-  auto maybeResult = pocToMopInteger(opAttr.getOpcode(), builder, loc,
-                                     popOperands, *popResultType);
+  auto maybeResult =
+      pocToMopInteger(opAttr.getOpcode(), builder, loc, popOperands, simdType);
 
   if (maybeResult.isError())
     return maybeResult;
@@ -482,9 +486,10 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   return popScalarToBuiltinType(builder, loc, maybeResult.takeValue());
 }
 
-Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
-                                              IntegerAttr intAttr) {
-  return KGEN::ParamConstantOp::create(builder, loc, intAttr);
+Operation *MOGraphLoweringState::lowerKGENConstantAttr(OpBuilder &builder,
+                                                       Location loc,
+                                                       TypedAttr value) {
+  return KGEN::ParamConstantOp::create(builder, loc, value);
 }
 
 /// sequenced assert lowering helper functions
@@ -614,8 +619,14 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     ParameterLoweringState &state, OpBuilder &builder, Location loc,
     Region *parentRegion, TypedAttr attr, ValueRange operands) {
   Operation *newOp;
-  if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
-    newOp = lowerIntAttr(builder, loc, intAttr);
+  if (isa<IntegerAttr, KGEN::SIMDAttr>(attr)) {
+    newOp = lowerKGENConstantAttr(builder, loc, attr);
+  } else if (auto cast = dyn_cast<KGEN::CastFromBuiltinAttr>(attr)) {
+    ErrorOr<Value> castFrom = lowerExpression(parentRegion, loc, cast.getArg());
+    if (failed(castFrom))
+      return castFrom;
+    newOp = KGEN::POP::CastFromBuiltinOp::create(builder, loc, cast.getType(),
+                                                 castFrom.takeValue());
   } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
     return lowerParamOperator(builder, loc, opAttr, operands);
   } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
