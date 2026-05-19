@@ -121,15 +121,6 @@ public:
   /// `index.constant`
   LogicalResult cloneTrivialOp(Operation *trivialOp);
 
-  /// Lowers the mo.output op to the mef.output for the final results.
-  LogicalResult lowerOutput(MO::OutputOp output);
-
-  /// Lowers the mo.yield to the mef.output for the if block results.
-  LogicalResult lowerYield(MO::YieldOp output);
-
-  /// Lowers the mo.while.conddition to the mef.output for the if block results.
-  LogicalResult lowerWhileCondition(MO::WhileConditionOp yield);
-
   /// Returns an attribute to represent elementAttr for the remainder of
   /// compilation:
   ///  - We commit to a specific byte layout, ie from here on the attribute
@@ -150,85 +141,47 @@ public:
     return loweringState.lowerElementsAttr(elementsAttr);
   }
 
-  /// Lower a parameter declaration op.
-  LogicalResult lowerParamDeclare(Region *parentRegion,
-                                  KGEN::ParamDeclareOp declOp);
+  /// Per-op lowering overloads. Each concrete MO/MOGG/KGEN op type has a
+  /// corresponding `lower()` overload; `lowerOp()` dispatches to these via
+  /// TypeSwitch.
+  LogicalResult lower(MO::OutputOp op);
+  LogicalResult lower(MO::YieldOp op);
+  LogicalResult lower(MO::WhileConditionOp op);
+  LogicalResult lower(MO::IndexToTensorOp op);
+  LogicalResult lower(MO::Shape::ToTensorOp op);
+  LogicalResult lower(MO::Shape::FromTensorOp op);
+  LogicalResult lower(MO::RebindOp op);
+  LogicalResult lower(MO::ConstantOp op);
+  LogicalResult lower(MO::ConstantExternalOp op);
+  LogicalResult lower(MO::ConstantScalarOp op);
+  LogicalResult lower(MO::DebugPrintOp op);
+  LogicalResult lower(MO::DebugTensorPrintOp op);
+  LogicalResult lower(MO::TransferOp op);
+  LogicalResult lower(MO::IfOp op);
+  LogicalResult lower(MO::WhileOp op);
+  LogicalResult lower(MO::GuardOp op);
+  LogicalResult lower(MO::ChainCreateOp op);
+  LogicalResult lower(MO::MutableStoreOp op);
+  LogicalResult lower(MO::MutableLoadOp op);
+  LogicalResult lower(MO::BufferCreateOp op);
+  LogicalResult lower(MO::BufferTransferOp op);
+  LogicalResult lower(MO::CallOp op);
+  LogicalResult lower(MO::ParallelOp op);
+  LogicalResult lower(MO::TensorBundleOp op);
+  LogicalResult lower(MO::TensorUnbundleOp op);
 
-  /// Lower a MOSH::ParamToValueOp op.
-  LogicalResult lowerParamToValue(Region *parentRegion,
-                                  MOSH::ParamToValueOp paramToValueOp);
+  /// Param ops need the enclosing region to resolve parameter expressions.
+  LogicalResult lowerParam(Region *parentRegion, KGEN::ParamDeclareOp op);
+  LogicalResult lowerParam(Region *parentRegion, MOSH::ParamToValueOp op);
+  LogicalResult lowerParam(Region *parentRegion, MOSH::ParamFromValueOp op);
 
-  /// Lower a MOSH::ParamFromValueOp op.
-  LogicalResult lowerParamFromValue(Region *parentRegion,
-                                    MOSH::ParamFromValueOp paramFromValueOp);
-
-  /// Lower an index -> scalar-like tensor cast op.
-  LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
-
-  /// Lower a shape -> shape-like tensor cast op.
-  LogicalResult lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp);
-
-  /// Lower a shape-like -> shape tensor cast op.
-  LogicalResult lowerShapeFromTensorOp(MO::Shape::FromTensorOp fromTensorOp);
-
-  /// Lower a tensor rebind.
-  LogicalResult lowerRebind(MO::RebindOp rebindOp);
-
-  /// Lowers mo.constant op.
-  LogicalResult lowerConstant(MO::ConstantOp constOp);
-
-  /// Lowers mo.constant.external op.
-  LogicalResult lowerConstantExternal(MO::ConstantExternalOp constExternalOp);
-
-  /// Lowers mo.constant.scalar op.
-  LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
-
-  /// Lowers mo.debug.print op.
-  LogicalResult lowerDebugPrint(MO::DebugPrintOp printOp);
-
-  /// Lowers mo.debug.tensor.print op.
-  LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
-
-  /// Lowers mo.transfer op.
-  LogicalResult lowerTransfer(MO::TransferOp transferOp);
-
-  /// Lowers mo.if op.
-  LogicalResult lowerIf(MO::IfOp ifOp);
-
-  /// Lowers mo.while op.
-  LogicalResult lowerWhile(MO::WhileOp whileOp);
-
-  /// Lowers mo.guard op
-  LogicalResult lowerGuard(MO::GuardOp guardOp);
-
-  /// Lowers mo.chain.create op
-  LogicalResult lowerChainCreate(MO::ChainCreateOp);
-
-  /// Lowers mo.mutable.store op
-  LogicalResult lowerMutableStore(MO::MutableStoreOp);
-
-  /// Lowers mo.mutable.load op
-  LogicalResult lowerMutableLoad(MO::MutableLoadOp);
-
-  /// Lowers mo.buffer.create op
-  LogicalResult lowerBufferCreate(MO::BufferCreateOp);
-
-  /// Lowers mo.buffer.transfer op
-  LogicalResult lowerBufferTransfer(MO::BufferTransferOp bufferTransferOp);
-
-  /// Lowers mo.call op
-  LogicalResult lowerCallGraph(MO::CallOp callOp);
-
-  /// Lowers mo.parallel op
-  LogicalResult lowerParallel(MO::ParallelOp parallelOp);
-
-  /// Lowers mo.tensor.bundle — packs per-element lowered values into a tuple.
-  LogicalResult lowerTensorBundle(MO::TensorBundleOp bundleOp);
-
-  /// Lowers mo.tensor.unbundle — extracts elements from a lowered tuple.
-  LogicalResult lowerTensorUnbundle(MO::TensorUnbundleOp unbundleOp);
+  /// Interface-based lowering for externally-defined ops.
+  LogicalResult lowerInterface(MGP::LowerableToMGPInterface op);
 
 private:
+  /// Lowers a single Operation via type-based dispatch.
+  LogicalResult lowerOp(Operation &op, mlir::Region *parentRegion);
+
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
 
@@ -497,7 +450,7 @@ LogicalResult MOGraphLowering::cloneTrivialOp(Operation *trivialOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
+LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
   // Init phase lowering.
 
   // Return the final chain.
@@ -544,7 +497,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
+LogicalResult MOGraphLowering::lower(MO::YieldOp yield) {
   // Execute phase lowering.
 
   // Figure out what values to return. We always implicitly return the current
@@ -569,8 +522,7 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerWhileCondition(MO::WhileConditionOp condition) {
+LogicalResult MOGraphLowering::lower(MO::WhileConditionOp condition) {
   // Execute phase lowering.
 
   // Figure out what values to return. We always implicitly return the current
@@ -587,8 +539,8 @@ MOGraphLowering::lowerWhileCondition(MO::WhileConditionOp condition) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerParamDeclare(Region *parentRegion,
-                                                 KGEN::ParamDeclareOp declOp) {
+LogicalResult MOGraphLowering::lowerParam(Region *parentRegion,
+                                          KGEN::ParamDeclareOp declOp) {
   // We first lower the expression.
   auto valueOr = loweringState.lowerExpression(parentRegion, declOp->getLoc(),
                                                declOp.getValue());
@@ -604,9 +556,8 @@ LogicalResult MOGraphLowering::lowerParamDeclare(Region *parentRegion,
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerParamToValue(Region *parentRegion,
-                                   MOSH::ParamToValueOp paramToValueOp) {
+LogicalResult MOGraphLowering::lowerParam(Region *parentRegion,
+                                          MOSH::ParamToValueOp paramToValueOp) {
   auto valueOr = loweringState.lowerExpression(
       parentRegion, paramToValueOp.getLoc(), paramToValueOp.getValue());
   if (valueOr.isError())
@@ -618,8 +569,8 @@ MOGraphLowering::lowerParamToValue(Region *parentRegion,
 }
 
 LogicalResult
-MOGraphLowering::lowerParamFromValue(Region *parentRegion,
-                                     MOSH::ParamFromValueOp paramFromValueOp) {
+MOGraphLowering::lowerParam(Region *parentRegion,
+                            MOSH::ParamFromValueOp paramFromValueOp) {
   auto input =
       loweringState.lookupExecuteLoweredValue(paramFromValueOp.getValue());
 
@@ -630,8 +581,11 @@ MOGraphLowering::lowerParamFromValue(Region *parentRegion,
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
+LogicalResult MOGraphLowering::lowerInterface(MGP::LowerableToMGPInterface op) {
+  return op.lower(loweringState);
+}
+
+LogicalResult MOGraphLowering::lower(MO::IndexToTensorOp toTensorOp) {
   ASSERT_STREAM(MO::isOnHost(toTensorOp),
                 << "mo.index.to_tensor is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
@@ -667,8 +621,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
+LogicalResult MOGraphLowering::lower(MO::Shape::ToTensorOp toTensorOp) {
   ASSERT_STREAM(MO::isOnHost(toTensorOp),
                 << "mo.shape.to_tensor is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
@@ -701,8 +654,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerShapeFromTensorOp(MO::Shape::FromTensorOp fromTensorOp) {
+LogicalResult MOGraphLowering::lower(MO::Shape::FromTensorOp fromTensorOp) {
   ASSERT_STREAM(MO::isOnHost(fromTensorOp),
                 << "mo.shape.to_tensor is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, fromTensorOp);
@@ -804,7 +756,7 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
                                       tensorSpec, inputTy);
 }
 
-LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
+LogicalResult MOGraphLowering::lower(MO::RebindOp rebindOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp);
 
   MO::TensorValue inputTensor = rebindOp.getInput();
@@ -903,7 +855,7 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
+LogicalResult MOGraphLowering::lower(MO::ConstantOp constOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
 
   ErrorOr<ElementsAttr> elementsOr = lowerElementsAttr(constOp.getValue());
@@ -920,8 +872,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
                                  chain, opResult);
 }
 
-LogicalResult
-MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
+LogicalResult MOGraphLowering::lower(MO::ConstantExternalOp constExternalOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constExternalOp);
   OpBuilder &builder = opLoweringState.builder;
   Location loc = constExternalOp.getLoc();
@@ -980,8 +931,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
+LogicalResult MOGraphLowering::lower(MO::ConstantScalarOp constOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
 
   // currently only si32, si64, and i1 constants are supported
@@ -1061,7 +1011,7 @@ static LogicalResult lowerMoggSliceImpl(MGP::MOOpLoweringState &opLoweringState,
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
+LogicalResult MOGraphLowering::lower(MO::DebugPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
 
   OpBuilder b(printOp);
@@ -1088,8 +1038,7 @@ LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
+LogicalResult MOGraphLowering::lower(MO::DebugTensorPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
 
   OpBuilder b(printOp);
@@ -1171,7 +1120,7 @@ static Value lowerTransferImpl(MGP::MOOpLoweringState &opLoweringState,
   return nullptr; // Indicates unsupported device transfer
 }
 
-LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
+LogicalResult MOGraphLowering::lower(MO::TransferOp transferOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
 
   auto srcType = transferOp.getInput().getType();
@@ -1212,8 +1161,7 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerBufferTransfer(MO::BufferTransferOp transferOp) {
+LogicalResult MOGraphLowering::lower(MO::BufferTransferOp transferOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
 
   auto srcType = MO::castFromTensorLike(transferOp.getSrc().getType());
@@ -1244,7 +1192,7 @@ MOGraphLowering::lowerBufferTransfer(MO::BufferTransferOp transferOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
+LogicalResult MOGraphLowering::lower(MO::GuardOp guardOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, guardOp);
 
   Value loweredChain =
@@ -1268,8 +1216,7 @@ LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerChainCreate(MO::ChainCreateOp chainCreateOp) {
+LogicalResult MOGraphLowering::lower(MO::ChainCreateOp chainCreateOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, chainCreateOp);
 
   SmallVector<Value> loweredOperands;
@@ -1288,8 +1235,7 @@ MOGraphLowering::lowerChainCreate(MO::ChainCreateOp chainCreateOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
+LogicalResult MOGraphLowering::lower(MO::MutableStoreOp mutableStoreOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, mutableStoreOp);
 
   MO::TensorType srcType = mutableStoreOp.getInTensor().getType();
@@ -1314,8 +1260,7 @@ MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerBufferCreate(MO::BufferCreateOp bufferCreateOp) {
+LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, bufferCreateOp);
 
   Type resultType = bufferCreateOp.getResult().getType();
@@ -1339,8 +1284,7 @@ MOGraphLowering::lowerBufferCreate(MO::BufferCreateOp bufferCreateOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
+LogicalResult MOGraphLowering::lower(MO::MutableLoadOp mutableLoadOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, mutableLoadOp);
 
   auto inChain =
@@ -1373,7 +1317,7 @@ MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
+LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
   ASSERT_STREAM(MO::isOnHost(ifOp), << "mo.if is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
 
@@ -1472,7 +1416,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
+LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
   ASSERT_STREAM(MO::isOnHost(whileOp), << "mo.while is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
@@ -1736,6 +1680,47 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
+  if (llvm::isa_and_nonnull<mlir::index::IndexDialect>(op.getDialect()))
+    return cloneTrivialOp(&op);
+
+  // clang-format off
+  return llvm::TypeSwitch<Operation *, LogicalResult>(&op)
+      // Param ops need the enclosing region.
+      .Case<KGEN::ParamDeclareOp, MOSH::ParamToValueOp,
+            MOSH::ParamFromValueOp>(
+          [this, parentRegion](auto op) { return lowerParam(parentRegion, op); })
+      // Reshape/slice ops need a local MOOpLoweringState.
+      .Case<MO::Static::ReshapeOp, MO::AddSingletonDimOp, MO::SplitDimOp,
+            MO::MergeDimOp>([this](auto op) {
+        MGP::MOOpLoweringState opLoweringState(loweringState, op);
+        return lowerReshapeImpl(opLoweringState, op.getInput(), op.getResult(),
+                                loweringState.getExecuteChain(), op.getType());
+      })
+      .Case<MOGG::SliceOp>([this](auto op) {
+        MGP::MOOpLoweringState opLoweringState(loweringState, op);
+        return lowerMoggSliceImpl(opLoweringState, op,
+                                  loweringState.getExecuteChain());
+      })
+      // All other concrete op types dispatch to lower() overloads.
+      .Case<MO::IndexToTensorOp, MO::Shape::ToTensorOp,
+            MO::Shape::FromTensorOp, MO::RebindOp, MO::ConstantOp,
+            MO::ConstantExternalOp, MO::ConstantScalarOp, MO::DebugPrintOp,
+            MO::DebugTensorPrintOp, MO::TransferOp, MO::OutputOp, MO::IfOp,
+            MO::WhileOp, MO::TensorBundleOp, MO::TensorUnbundleOp,
+            MO::ParallelOp, MO::YieldOp, MO::WhileConditionOp, MO::GuardOp,
+            MO::ChainCreateOp, MO::MutableStoreOp, MO::MutableLoadOp,
+            MO::BufferCreateOp, MO::BufferTransferOp, MO::CallOp>(
+          [this](auto op) { return lower(op); })
+      // Interface-based lowering for externally-defined ops.
+      .Case<MGP::LowerableToMGPInterface>(
+          [this](auto op) { return lowerInterface(op); })
+      .Default([](Operation *op) -> LogicalResult {
+        return op->emitOpError("currently not supported");
+      });
+  // clang-format on
+}
+
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   // Ensure the block is sorted with operands to operations appearing before
   // their use.
@@ -1743,249 +1728,8 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     return failure();
 
   for (Operation &op : *block) {
-    if (llvm::isa_and_nonnull<mlir::index::IndexDialect>(op.getDialect())) {
-      if (failed(cloneTrivialOp(&op)))
-        return failure();
-      continue;
-    }
-
-    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
-      if (failed(lowerParamDeclare(block->getParent(), declOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto paramToValueOp = dyn_cast<MOSH::ParamToValueOp>(op)) {
-      if (failed(lowerParamToValue(block->getParent(), paramToValueOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto paramFromValueOp = dyn_cast<MOSH::ParamFromValueOp>(op)) {
-      if (failed(lowerParamFromValue(block->getParent(), paramFromValueOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto toTensorOp = dyn_cast<MO::IndexToTensorOp>(op)) {
-      if (failed(lowerIndexToTensorOp(toTensorOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto toTensorOp = dyn_cast<MO::Shape::ToTensorOp>(op)) {
-      if (failed(lowerShapeToTensorOp(toTensorOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto fromTensorOp = dyn_cast<MO::Shape::FromTensorOp>(op)) {
-      if (failed(lowerShapeFromTensorOp(fromTensorOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto rebindOp = dyn_cast<MO::RebindOp>(op)) {
-      if (failed(lowerRebind(rebindOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
-      if (failed(lowerConstant(constOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto constExternalOp = dyn_cast<MO::ConstantExternalOp>(op)) {
-      if (failed(lowerConstantExternal(constExternalOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto constOp = dyn_cast<MO::ConstantScalarOp>(op)) {
-      if (failed(lowerConstantScalar(constOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op)) {
-      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
-
-      if (failed(lowerReshapeImpl(
-              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
-              loweringState.getExecuteChain(), reshapeOp.getType())))
-        return failure();
-      continue;
-    }
-
-    if (auto reshapeOp = dyn_cast<MO::AddSingletonDimOp>(op)) {
-      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
-
-      if (failed(lowerReshapeImpl(
-              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
-              loweringState.getExecuteChain(), reshapeOp.getType())))
-        return failure();
-      continue;
-    }
-
-    if (auto reshapeOp = dyn_cast<MO::SplitDimOp>(op)) {
-      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
-
-      if (failed(lowerReshapeImpl(
-              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
-              loweringState.getExecuteChain(), reshapeOp.getType())))
-        return failure();
-      continue;
-    }
-
-    if (auto reshapeOp = dyn_cast<MO::MergeDimOp>(op)) {
-      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
-
-      if (failed(lowerReshapeImpl(
-              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
-              loweringState.getExecuteChain(), reshapeOp.getType())))
-        return failure();
-      continue;
-    }
-
-    if (auto sliceOp = dyn_cast<MOGG::SliceOp>(op)) {
-      MGP::MOOpLoweringState opLoweringState(loweringState, sliceOp);
-      if (failed(lowerMoggSliceImpl(opLoweringState, sliceOp,
-                                    loweringState.getExecuteChain())))
-        return failure();
-      continue;
-    }
-
-    if (auto debugPrintOp = dyn_cast<MO::DebugPrintOp>(op)) {
-      if (failed(lowerDebugPrint(debugPrintOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto debugTensorPrintOp = dyn_cast<MO::DebugTensorPrintOp>(op)) {
-      if (failed(lowerDebugTensorPrint(debugTensorPrintOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
-      if (failed(lowerTransfer(transferOp)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.output to mef.output, accounting for implicit init/exec args.
-    if (auto output = dyn_cast<MO::OutputOp>(op)) {
-      if (failed(lowerOutput(output)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.if to grf.if, recursively lowering the body of
-    // the 'then' and 'else' blocks.
-    if (auto ifOp = dyn_cast<MO::IfOp>(op)) {
-      if (failed(lowerIf(ifOp)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.while to grf.while, recursively lowering the body of
-    // the 'cond' and 'body' blocks.
-    if (auto whileOp = dyn_cast<MO::WhileOp>(op)) {
-      if (failed(lowerWhile(whileOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto bundleOp = dyn_cast<MO::TensorBundleOp>(op)) {
-      if (failed(lowerTensorBundle(bundleOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto unbundleOp = dyn_cast<MO::TensorUnbundleOp>(op)) {
-      if (failed(lowerTensorUnbundle(unbundleOp)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.parallel by expanding the body for each input.
-    if (auto parallelOp = dyn_cast<MO::ParallelOp>(op)) {
-      if (failed(lowerParallel(parallelOp)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.yield to mef.output trivially.
-    if (auto output = dyn_cast<MO::YieldOp>(op)) {
-      if (failed(lowerYield(output)))
-        return failure();
-      continue;
-    }
-
-    // Lower mo.while.condition to mef.output trivially.
-    if (auto output = dyn_cast<MO::WhileConditionOp>(op)) {
-      if (failed(lowerWhileCondition(output)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.guard to
-    if (auto guardOp = dyn_cast<MO::GuardOp>(op)) {
-      if (failed(lowerGuard(guardOp)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.guard to
-    if (auto chainCreateOp = dyn_cast<MO::ChainCreateOp>(op)) {
-      if (failed(lowerChainCreate(chainCreateOp)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.mutable.store to a mgp.buffer.device_to_device
-    if (auto mop = dyn_cast<MO::MutableStoreOp>(op)) {
-      if (failed(lowerMutableStore(mop)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.mutable.load to a mgp.buffer.device_to_device
-    if (auto mop = dyn_cast<MO::MutableLoadOp>(op)) {
-      if (failed(lowerMutableLoad(mop)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.buffer.create
-    if (auto bufferCreateOp = dyn_cast<MO::BufferCreateOp>(op)) {
-      if (failed(lowerBufferCreate(bufferCreateOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto bufferTransferOp = dyn_cast<MO::BufferTransferOp>(op)) {
-      if (failed(lowerBufferTransfer(bufferTransferOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto callOp = dyn_cast<MO::CallOp>(op)) {
-      if (failed(lowerCallGraph(callOp)))
-        return failure();
-      continue;
-    }
-
-    // Implementers of the lowering interface define their own logic.
-    if (auto lowerable = dyn_cast<MGP::LowerableToMGPInterface>(op)) {
-      if (failed(lowerable.lower(loweringState)))
-        return failure();
-      continue;
-    }
-
-    return op.emitOpError("currently not supported");
+    if (failed(lowerOp(op, block->getParent())))
+      return failure();
   }
   return success();
 }
@@ -2099,7 +1843,7 @@ fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
   return fusedRegion;
 }
 
-LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
+LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   mlir::MLIRContext *ctx = parallelOp->getContext();
   Location loc = parallelOp.getLoc();
 
@@ -2114,7 +1858,7 @@ LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
   // ExecInvariantCodeMotionPass from hoisting them to init.
 
   // Resolve per-launch MO-level values from each bundle input via the
-  // lowering state (populated by lowerTensorBundle).  The optional buffer
+  // lowering state (populated by lower(TensorBundleOp)).  The optional buffer
   // group comes directly from the parallel op's buffers() operand list.
   size_t numGroups = numBundleGroups;
   SmallVector<SmallVector<Value>> bundleElements(numGroups);
@@ -2279,7 +2023,7 @@ LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
   }
 
   // Register per-element clone results as the bundle elements for each
-  // parallel result so that lowerTensorUnbundle can resolve them.
+  // parallel result so that lower(TensorUnbundleOp) can resolve them.
   auto yieldOp = cast<MO::YieldOp>(bodyBlock.getTerminator());
   size_t resultIdx = 0;
   for (Value yieldOperand : yieldOp.getOperands()) {
@@ -2289,7 +2033,7 @@ LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
     SmallVector<Value> &cloneResults = perLaunchCloneResults[yieldOperand];
 
     // Register clone results as the bundle elements for this result so that
-    // lowerTensorUnbundle can resolve them via lookupBundleElements.
+    // lower(TensorUnbundleOp) can resolve them via lookupBundleElements.
     loweringState.emplaceBundleElements(bundleResult,
                                         SmallVector<Value>(cloneResults));
   }
@@ -2314,15 +2058,14 @@ LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerTensorBundle(MO::TensorBundleOp bundleOp) {
+LogicalResult MOGraphLowering::lower(MO::TensorBundleOp bundleOp) {
   SmallVector<Value> moElements = llvm::to_vector(bundleOp.getInputs());
   loweringState.emplaceBundleElements(bundleOp.getResult(),
                                       std::move(moElements));
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerTensorUnbundle(MO::TensorUnbundleOp unbundleOp) {
+LogicalResult MOGraphLowering::lower(MO::TensorUnbundleOp unbundleOp) {
   auto moElements = loweringState.lookupBundleElements(unbundleOp.getInput());
   for (auto [result, moElem] :
        llvm::zip_equal(unbundleOp.getOutputs(), moElements)) {
@@ -2338,7 +2081,7 @@ MOGraphLowering::lowerTensorUnbundle(MO::TensorUnbundleOp unbundleOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
+LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, callOp);
   OpBuilder b(callOp);
 
