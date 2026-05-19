@@ -516,7 +516,9 @@ MetalDevice::getTrackedBuffers() const {
 
 MetalDeviceContext::MetalDeviceContext(
     MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {}
+    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {
+  syncEvent_ = NS::TransferPtr(device.metalDevice()->newSharedEvent());
+}
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                                                        const void *src,
@@ -973,12 +975,14 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   // 7) End encoding
   encoder->endEncoding();
 
-  // 8) Commit and release
-  cmdBuffer->commit();
-
-  // 9) Wait until completion. This is a blocking call therefore we have no pure
-  // asynchronous execution. Remove it with GEX-2503 fixed.
-  cmdBuffer->waitUntilCompleted();
+  // 8) Stamp + commit under commitMutex_ so synchronize() can't slip its
+  //    barrier between our counter bump and our commit.
+  {
+    std::lock_guard<std::mutex> lock(commitMutex_);
+    uint64_t signalValue = ++lastSubmittedSignalValue_;
+    cmdBuffer->encodeSignalEvent(syncEvent_.get(), signalValue);
+    cmdBuffer->commit(); // async (DRIV-164)
+  }
 
   return success();
 }
@@ -995,15 +999,25 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
   // Check for any pending errors first, similar to CUDA's behavior
   RETURN_IF_ERROR(checkPendingError());
 
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer for sync");
-
-  // Submit an empty command buffer and wait for it to complete
-  // This acts as a fence, ensuring all previously submitted work completes
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
-
+  // Drain via an empty barrier buffer: waitUntilSignaledValue alone returns
+  // at the GPU signal point, ahead of prior buffers' completion handlers
+  // (LogState print delivery, error propagation). The barrier waits for the
+  // signal AND flushes those handlers in one shot.
+  MTL::CommandBuffer *barrier = nullptr;
+  {
+    // commitMutex_ held only across counter read + barrier commit, not the
+    // wait, so concurrent enqueues aren't blocked while the GPU drains.
+    std::lock_guard<std::mutex> lock(commitMutex_);
+    uint64_t target = lastSubmittedSignalValue_;
+    if (target == 0)
+      return success();
+    barrier = commandQueue_->commandBuffer();
+    if (barrier == nullptr)
+      RETURN_ERROR("Failed to create barrier command buffer");
+    barrier->encodeWait(syncEvent_.get(), target);
+    barrier->commit();
+  }
+  barrier->waitUntilCompleted();
   return success();
 }
 
