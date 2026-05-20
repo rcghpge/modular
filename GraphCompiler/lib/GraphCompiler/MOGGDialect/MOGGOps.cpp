@@ -14,13 +14,13 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
-#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
@@ -328,22 +328,27 @@ static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
 // MOGG CallOp
 //===----------------------------------------------------------------------===//
 
-MojoValue callFunctionNestedInStruct(KGEN::LIT::FnOp function,
+// Returns the fully-qualified Mojo source name for a PrimitiveDeclOp.
+// sym_name is set to the fully-qualified Mojo source name by ImportPackages,
+// so it doubles as the identifier to emit in Mojo source.
+static llvm::StringRef primitiveMojoName(PrimitiveDeclOp decl) {
+  return decl.getSymNameAttr().strref();
+}
+
+MojoValue callFunctionNestedInStruct(const KernelDeclFunctionAdaptor &fnAdaptor,
                                      EmitMojoState::InferredParameters params,
                                      ArrayRef<MojoValue> operands,
-                                     EmitMojoState &state) {
-  auto prefixSymbolName = state.getOriginalMojoNamePrefixFor(function);
-  MojoValue executeFunc(state.getOriginalMojoNameSuffixFor(function));
+                                     EmitMojoState &) {
+  auto [prefixSymbolName, fnName] =
+      EmitMojoState::splitFunctionName(fnAdaptor.fullyResolvedName.strref());
   MojoValue structType = prefixSymbolName[params.structParameters];
-  MojoValue fullExecuteFunc = structType.get(executeFunc);
-
-  return fullExecuteFunc(params.functionParameters, operands);
+  MojoValue fullFn = structType.get(fnName);
+  return fullFn(params.functionParameters, operands);
 }
 
 LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
-  KGEN::LIT::FnOp function =
-      state.analysis.getRegisteredLITMojoKernelFor(getMojoKernelTarget());
-  auto symbolName = state.getOriginalMojoNameFor(function);
+  auto primDecl = state.registry.lookupPrimitive(getMojoKernelTarget());
+  MojoValue symbolName(primitiveMojoName(primDecl));
 
   SmallVector<MojoValue> mojoOperands = state.getMojoValuesFor(getOperands());
 
@@ -352,7 +357,7 @@ LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
     return state.inferDefaultKernelParamValue(*this, paramName,
                                               getParamsAttr());
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  auto maybeParams = EmitMojoState::inferKernelParameters(primDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -695,14 +700,19 @@ static void emitFusionStructBodyOps(
         inputs.push_back(
             resolveStructOperand(input, valueMap, scalarCaptureValues, state));
 
-      auto function = state.analysis.getRegisteredLITMojoElementwiseFunctionFor(
-          elemOp.getKernelName());
-      auto mojoSymbolName = state.getOriginalMojoNameFor(function);
+      KernelDeclOp elemKernelDecl =
+          state.registry.getResolvedKernel(elemOp.getKernelName());
+      KernelDeclAdaptor elemAdaptor(elemKernelDecl);
+      const KernelDeclFunctionAdaptor &elemFnAdaptor =
+          elemAdaptor.isElementwise() ? *elemAdaptor.elementwiseFunction
+                                      : *elemAdaptor.executeFunction;
+      MojoValue mojoSymbolName(elemFnAdaptor.fullyResolvedName.strref());
 
       constexpr StringLiteral simdDtypeParameterName = "dtype";
       Value outputVal = elemOp.getOutputs().front();
       std::optional<StringRef> maybeDtypeParamName =
-          state.getOriginalResultParamNameFor(function, simdDtypeParameterName);
+          EmitMojoState::getResultParamNameFor(elemFnAdaptor,
+                                               simdDtypeParameterName);
       auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
         if (maybeDtypeParamName.has_value() &&
             paramName == *maybeDtypeParamName) {
@@ -714,8 +724,11 @@ static void emitFusionStructBodyOps(
         }
         return state.inferDefaultKernelParamValue(elemOp, paramName);
       };
-      auto maybeParams =
-          EmitMojoState::inferKernelParameters(function, inferParam);
+      llvm::StringRef elemFuncLabel = elemAdaptor.isElementwise()
+                                          ? MOGG::kMOGGElementwiseFunctionLabel
+                                          : MOGG::kMOGGExecuteFunctionLabel;
+      auto maybeParams = EmitMojoState::inferKernelParameters(
+          elemAdaptor, elemFuncLabel, inferParam);
       if (maybeParams.isError()) {
         lambdaBody->getParentOp()->emitError()
             << "Failed to infer kernel parameters in fusion struct body: "
@@ -729,9 +742,9 @@ static void emitFusionStructBodyOps(
     }
 
     if (auto callOp = dyn_cast<MOGG::CallAffineOp>(&op)) {
-      auto function = state.analysis.getRegisteredLITMojoKernelFor(
-          callOp.getMojoKernelTarget());
-      auto symbolName = state.getOriginalMojoNameFor(function);
+      auto affinePrimDecl =
+          state.registry.lookupPrimitive(callOp.getMojoKernelTarget());
+      MojoValue symbolName(primitiveMojoName(affinePrimDecl));
 
       SmallVector<MojoValue> inputs;
       for (auto operand : callOp.getOperands()) {
@@ -771,7 +784,7 @@ static void emitFusionStructBodyOps(
                                                   callOp.getParamsAttr());
       };
       auto maybeParams =
-          EmitMojoState::inferKernelParameters(function, inferParam);
+          EmitMojoState::inferKernelParameters(affinePrimDecl, inferParam);
 
       SmallVector<MojoValue> params;
       if (!maybeParams.isError())
@@ -1039,7 +1052,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     auto fusedOp =
         dyn_cast<MOGG::TensorFusedOp>(*bindOp.getResult().getUsers().begin());
     auto outputLambdaType = getKernelOutputFusionLambdaType(
-        state.analysis, fusedOp, state.enableComputeLambdas);
+        state.registry, fusedOp, state.enableComputeLambdas);
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::Output) {
       return HardcodedMojoSymbols::func_ManagedTensorSlice_bind_to_fused_output;
@@ -1072,7 +1085,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
     if (!fusedOp)
       return emitError("BindLamdbdaOp user should be a FusedTensorOp");
     auto outputLambdaTypeOr = getKernelOutputFusionLambdaType(
-        state.analysis, fusedOp, state.enableComputeLambdas);
+        state.registry, fusedOp, state.enableComputeLambdas);
     if (outputLambdaTypeOr.isError())
       return emitError(outputLambdaTypeOr.getError());
 
@@ -1176,8 +1189,13 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
       traceNameOr.isError() ? MojoValue("\"mogg.for_each\"") : *traceNameOr;
 
   // Directly emit the struct-based foreach call. E, dtype, and rank are
-  // inferred by Mojo from the argument types.
-  MojoValue foreachFunc(HardcodedMojoSymbols::func_ms_foreach);
+  // inferred by Mojo from the argument types. Look up the primitive by
+  // registration name (rather than a hardcoded Mojo symbol) so the emitted
+  // call follows the Mojo source name even if the primitive's function name
+  // changes (e.g. `mogg.for_each` resolves to `foreach_fusion`, not the
+  // 2-argument `foreach` overload).
+  auto foreachPrim = state.registry.lookupPrimitive("mogg.for_each");
+  MojoValue foreachFunc(primitiveMojoName(foreachPrim));
   state.builder.verbatim(
       foreachFunc({MojoValue("target").equal(targetDeviceLabel),
                    MojoValue("simd_width").equal(simdWidthExpr),
@@ -1215,8 +1233,8 @@ Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 bool CallMaterializeOp::isThrows() { return true; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
-  auto function = state.analysis.getLITViewMaterializeKernel();
-
+  auto viewMatPrimDecl =
+      state.registry.lookupPrimitive("mogg.view_materialize");
   // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
   std::swap(mojoOperands[0], mojoOperands[1]);
@@ -1225,13 +1243,13 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  auto maybeParams =
+      EmitMojoState::inferKernelParameters(viewMatPrimDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
-  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
-
+  MojoValue mojoSymbolName(primitiveMojoName(viewMatPrimDecl));
   state.builder.call(mojoSymbolName, maybeParams->functionParameters,
                      mojoOperands);
 
@@ -1333,20 +1351,18 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
       inputValue.get("shape")()};
 
   // Generate the mogg_tensor_init call
-  MojoValue moggTensorInit =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          TensorInitOp::getOperationName()));
+  auto tensorInitPrimDecl =
+      state.registry.lookupPrimitive(TensorInitOp::getOperationName());
+  MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl));
   return state.builder.var(moggTensorInit(templateParams, runtimeArgs));
 }
 } // namespace
 
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
-  auto function =
-      state.analysis.getRegisteredLITMojoExecuteFunctionFor(getKernelName());
-
-  // Build kernel adaptor to check what types the kernel expects
-  using namespace KGEN::MOGGPreElab;
-  MojoKernelFunctionAdaptor kernelAdaptor(function);
+  KernelDeclOp execKernelDecl =
+      state.registry.getResolvedKernel(getKernelName());
+  KernelDeclAdaptor execAdaptor(execKernelDecl);
+  const KernelDeclFunctionAdaptor &execFnAdaptor = *execAdaptor.executeFunction;
 
   // Collect all kernel I/Os
   SmallVector<MojoValue> kernelOperands;
@@ -1361,12 +1377,12 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     // Transform mutable inputs if kernel expects InputTensor.
     // Skip for variadic kernel args (e.g., bundled collectives with
     // N-expanded inputs) where the adaptor entry is a
-    // VariadicTensorOperandAdaptor, not a TensorOperandAdaptor.
+    // KernelDeclVariadicTensorAdaptor, not a KernelDeclTensorAdaptor.
     if (isMutableInputTensor(input) &&
-        i < kernelAdaptor.inputArguments.size()) {
-      auto *tensorInfo = std::get_if<TensorOperandAdaptor>(
-          &kernelAdaptor.inputArguments[i].underlyingType);
-      if (tensorInfo && tensorInfo->ioSpec == IOSpec::InputTensor)
+        i < execFnAdaptor.inputArguments.size()) {
+      const auto *tensorInfo = std::get_if<KernelDeclTensorAdaptor>(
+          &execFnAdaptor.inputArguments[i].underlyingType);
+      if (tensorInfo && tensorInfo->ioSpec == MOGG::IOSpec::InputTensor)
         inputValue = generateMutableTensorInit(input, state);
     }
 
@@ -1381,13 +1397,14 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  auto maybeParams = EmitMojoState::inferKernelParameters(
+      execAdaptor, MOGG::kMOGGExecuteFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
-  auto prefixSymbolName = state.getOriginalMojoNamePrefixFor(function);
-  MojoValue executeFunc("execute");
+  auto [prefixSymbolName, executeFunc] = EmitMojoState::splitFunctionName(
+      execFnAdaptor.fullyResolvedName.strref());
   MojoValue structType = prefixSymbolName[maybeParams->structParameters];
   MojoValue fullExecuteFunc = structType.get(executeFunc);
 
@@ -2164,8 +2181,11 @@ LogicalResult AsScalarOp::verify() {
 LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
   const MojoValue &input = state.getMojoValueFor(getInput());
 
-  auto moggAsScalar = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto asScalarPrimDecl =
+      state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(asScalarPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggAsScalar(primitiveMojoName(asScalarPrimDecl));
   MOGG::MojoValue scalarValue = moggAsScalar(ArrayRef<MojoValue>{}, {input});
   state.setMojoValueFor(getResult(), state.builder.var(scalarValue));
   return success();
@@ -2394,8 +2414,11 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
   } else {
 
-    auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
-        state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+    auto unpackPrimDecl =
+        state.registry.lookupPrimitive(this->getOperationName());
+    ASSERT_STREAM(unpackPrimDecl,
+                  "Primitive not found for " << getOperationName().str());
+    MojoValue moggAsyncUnpackFunc(primitiveMojoName(unpackPrimDecl));
     unpackedValue = moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
                                         state.getMojoValueFor(input));
   }
@@ -2432,8 +2455,10 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
     return failure();
   MojoValue asyncPackHelperStruct =
       HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
-  MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto packPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(packPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggAsyncPackFunc(primitiveMojoName(packPrimDecl));
   SmallVector<MojoValue> operands;
   for (auto [idx, operand] : llvm::enumerate(getOperands())) {
     MojoValue mojoVal = state.getMojoValueFor(operand);
@@ -2461,8 +2486,10 @@ LogicalResult AsyncPackOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
-  auto moggAsyncDelFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto delPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(delPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggAsyncDelFunc(primitiveMojoName(delPrimDecl));
   /// TODO: Add assertion that this operations resides in a stub with ABI ==
   /// MGP.
   state.builder.call(
@@ -2491,8 +2518,11 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
           MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   auto shapeVar = state.builder.var(state.getShapeAsIndexListMojoValue(
       tensorTy.getTypedShapeAttr(), getDims()));
-  auto moggTensorInit = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto tensorInitPrimDecl2 =
+      state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(tensorInitPrimDecl2,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl2));
   state.setMojoValueFor(getResult(),
                         state.builder.var(moggTensorInit(
                             {dTypeParam, rankParam, mutParam, ioParam,
@@ -2694,8 +2724,10 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  auto moggAsyncReadyFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto readyPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(readyPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggAsyncReadyFunc(primitiveMojoName(readyPrimDecl));
   state.builder.call(moggAsyncReadyFunc, {},
                      state.mojoReturnValues[*resultIndexOr]);
 
@@ -2717,9 +2749,9 @@ LogicalResult AsyncJoinOp::emitMojo(EmitMojoState &state) {
     state.builder.keepAlive(it->second.task.get("wait")({}, {}));
   }
 
-  auto checkErrorFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          "mogg.async.check_task_error"));
+  auto checkTaskErrPrimDecl =
+      state.registry.lookupPrimitive("mogg.async.check_task_error");
+  MojoValue checkErrorFunc(primitiveMojoName(checkTaskErrPrimDecl));
 
   for (Value taskHandle : getTaskHandles()) {
     auto &info = state.taskHandleInfos[taskHandle];
@@ -2847,8 +2879,9 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
     inputMojoValues.push_back(inputValue);
   }
 
-  KGEN::LIT::FnOp function =
-      state.analysis.getRegisteredLITMojoUpdateViewFunctionFor(getKernelName());
+  KernelDeclOp uvKernelDecl = state.registry.getResolvedKernel(getKernelName());
+  KernelDeclAdaptor uvAdaptor(uvKernelDecl);
+  const KernelDeclFunctionAdaptor &uvFnAdaptor = *uvAdaptor.updateViewFunction;
 
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
@@ -2859,14 +2892,15 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
     }
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  auto maybeParams = EmitMojoState::inferKernelParameters(
+      uvAdaptor, MOGG::kMOGGUpdateViewFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
-  state.setMojoValueFor(getResult(),
-                        state.builder.var(callFunctionNestedInStruct(
-                            function, *maybeParams, inputMojoValues, state)));
+  state.setMojoValueFor(
+      getResult(), state.builder.var(callFunctionNestedInStruct(
+                       uvFnAdaptor, *maybeParams, inputMojoValues, state)));
   return success();
 }
 
@@ -2878,8 +2912,11 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // Get the lambda inputs
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
-  auto function = state.analysis.getRegisteredLITMojoElementwiseFunctionFor(
-      getKernelName());
+  KernelDeclOp ewKernelDecl = state.registry.getResolvedKernel(getKernelName());
+  KernelDeclAdaptor ewAdaptor(ewKernelDecl);
+  const KernelDeclFunctionAdaptor &ewFnAdaptor =
+      ewAdaptor.isElementwise() ? *ewAdaptor.elementwiseFunction
+                                : *ewAdaptor.executeFunction;
 
   auto outputs = getOutputs();
   if (outputs.size() != 1)
@@ -2893,7 +2930,7 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // TODO(GEX-2535): Avoid hardcoding the parameter name.
   constexpr StringLiteral simdDtypeParameterName = "dtype";
   std::optional<StringRef> maybeDtypeParamName =
-      state.getOriginalResultParamNameFor(function, simdDtypeParameterName);
+      EmitMojoState::getResultParamNameFor(ewFnAdaptor, simdDtypeParameterName);
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (maybeDtypeParamName.has_value() && paramName == *maybeDtypeParamName) {
       ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
@@ -2903,13 +2940,16 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
     }
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  llvm::StringRef ewFuncLabel = ewAdaptor.isElementwise()
+                                    ? MOGG::kMOGGElementwiseFunctionLabel
+                                    : MOGG::kMOGGExecuteFunctionLabel;
+  auto maybeParams =
+      EmitMojoState::inferKernelParameters(ewAdaptor, ewFuncLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
-  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
-
+  MojoValue mojoSymbolName(ewFnAdaptor.fullyResolvedName.strref());
   state.setMojoValueFor(
       outputVal, state.builder.var(
                      mojoSymbolName(maybeParams->functionParameters, inputs)));
@@ -3177,12 +3217,16 @@ Type CallShapeOp::getKernelReturnOutput() {
 bool CallShapeOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
-  // Get the shape function from the analysis
-  KGEN::LIT::FnOp function = state.analysis.getRegisteredLITMojoFunctionFor(
-      getShapeFuncName(), KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-
-  if (!function) {
+  if (!state.registry.containsKernel(getShapeFuncName())) {
     return emitError("Shape function ") << getShapeFuncName() << " not found";
+  }
+  KernelDeclOp shapeKernelDecl =
+      state.registry.getResolvedKernel(getShapeFuncName());
+  KernelDeclAdaptor shapeAdaptor(shapeKernelDecl);
+  const KernelDeclFunctionAdaptor *shapeFnAdaptor =
+      shapeAdaptor.shapeFunction ? &*shapeAdaptor.shapeFunction : nullptr;
+  if (!shapeFnAdaptor) {
+    return emitError("Shape function not present for ") << getShapeFuncName();
   }
 
   // Rebind all inputs to ensure specs are deduced (tensors -> InputTensor,
@@ -3195,14 +3239,15 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  auto maybeParams = EmitMojoState::inferKernelParameters(
+      shapeAdaptor, MOGG::kMOGGShapeFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
   // Call the shape function and return its value via the kernel terminator.
   MojoValue result = state.builder.var(callFunctionNestedInStruct(
-      function, *maybeParams, kernelOperands, state));
+      *shapeFnAdaptor, *maybeParams, kernelOperands, state));
   state.genAllKeepAliveStatements();
   state.builder.returnsValue(result);
 
@@ -3371,8 +3416,11 @@ LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
     }
   }
 
-  auto formatKernelErrorFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto fmtErrPrimDecl =
+      state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(fmtErrPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue formatKernelErrorFunc(primitiveMojoName(fmtErrPrimDecl));
   MojoValue errorExpr = state.getMojoValueFor(getError());
   SmallVector<MojoValue> args = {
       MojoValue(stubName).quote(),
@@ -3429,8 +3477,11 @@ bool TryOp::isThrows() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
-  auto moggAsyncErrorFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  auto asyncErrPrimDecl =
+      state.registry.lookupPrimitive(this->getOperationName());
+  ASSERT_STREAM(asyncErrPrimDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue moggAsyncErrorFunc(primitiveMojoName(asyncErrPrimDecl));
 
   // Each AsyncErrorOp corresponds to a specific output position in the try op.
   // Find which output index this AsyncErrorOp is for by checking which yield
@@ -3464,8 +3515,11 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
     regionName = parentKernel.getSymNameAttr().str();
 
   // Format the error with the region name prefix and call mogg_async_error.
-  auto formatRegionErrorFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor("mogg.format_region_error"));
+  auto fmtRegionErrPrimDecl =
+      state.registry.lookupPrimitive("mogg.format_region_error");
+  ASSERT_STREAM(fmtRegionErrPrimDecl,
+                "format_region_error primitive not found");
+  MojoValue formatRegionErrorFunc(primitiveMojoName(fmtRegionErrPrimDecl));
   MojoValue formattedErr = state.builder.var(
       formatRegionErrorFunc({}, {MojoValue(regionName).quote(), errorExpr}));
   state.builder.call(
@@ -3488,8 +3542,10 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
       toType.getTypedShapeAttr(), getDynamicDims());
   MojoValue layoutParam =
       state.getStaticTileLayoutFromIndexListsMojoValue(toType);
-  MojoValue reshapeFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  ASSERT_STREAM(primDecl,
+                "Primitive not found for " << getOperationName().str());
+  MojoValue reshapeFunc(primitiveMojoName(primDecl));
   state.setMojoValueFor(getResult(),
                         state.builder.var(reshapeFunc(
                             {MojoValue("static_layout").equal(layoutParam)},

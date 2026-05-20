@@ -1,6 +1,6 @@
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
-// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg | FileCheck %s
 
 // Check mo-to-mogg correctly lowers a view KernelAPI
 

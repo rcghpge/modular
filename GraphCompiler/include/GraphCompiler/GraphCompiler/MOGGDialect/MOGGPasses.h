@@ -96,16 +96,6 @@ struct GraphCompilerCacheKey {
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-class MojoLibraryAnalysis;
-
-std::unique_ptr<mlir::Pass>
-createJitCompileKernels(const JitCompileKernelsOptions &opts,
-                        std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
-
-std::unique_ptr<mlir::Pass>
-createEmitMojo(const EmitMojoOptions &opts,
-               std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
-
 void mergeIdenticalKernelStubs(mlir::ModuleOp module);
 
 /// Lift inline `index.constant` ops feeding `mgp.buffer.get_cached`'s slot

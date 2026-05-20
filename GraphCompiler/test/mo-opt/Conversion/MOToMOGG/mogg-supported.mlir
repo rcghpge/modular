@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg | FileCheck %s
 
 // A collection of the support floating point dtypes support by mogg for lowering
 // Everything should be jitted to a mo.kernel

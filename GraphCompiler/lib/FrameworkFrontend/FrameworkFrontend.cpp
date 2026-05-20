@@ -15,7 +15,8 @@
 #include "GraphCompiler/CompileDriver/CompileToBinary.h"
 #include "GraphCompiler/ExecutionDriver/DriverCLOptions.h"
 #include "GraphCompiler/GraphCompiler/GraphCompilerCLOptions.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
@@ -342,22 +343,13 @@ private:
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          const MO::GCPipelineOptions &options,
                                          bool enableMEFMetadata) {
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(options.kernelLibraryPaths);
-
-  auto libraryAnalysis = MOGG::MojoLibraryAnalysis::fromPaths(
-      moduleOp.getContext(), kernelLibraryPaths);
-  if (failed(libraryAnalysis))
-    return libraryAnalysis.takeError();
-
   // Gate IR dumping on the unified Config-driven directory: this picks up
   // `MODULAR_DEBUG=ir-output-dir=...`, `[max-debug] ir-output-dir = ...`,
   // `InferenceSession.debug.ir_output_dir = ...`, and the legacy
   // `MODULAR_MAX_TEMPS_DIR` env var alike.  See `getMaxIRDumpDir`.
   bool const dumpStages = !getMaxIRDumpDir().empty();
   GraphApiDiagnosticHandler diagnostics(moduleOp.getContext());
-  if (failed(MO::runGCPipeline(moduleOp, options, libraryAnalysis.takeValue(),
-                               dumpStages)))
+  if (failed(MO::runGCPipeline(moduleOp, options, dumpStages)))
     return Error(Twine("Graph compilation failed:\n") +
                  diagnostics.formatMessage());
 
@@ -404,6 +396,13 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   MOFLoweringOptions mofLoweringOptions;
   MO::GCPipelineOptions gcPipelineOptions;
   overrideLoweringOptions(mofLoweringOptions, gcPipelineOptions);
+
+  // If the caller (Python `KernelLibrary` via `Analysis::seed_kernel_decls`)
+  // already seeded the model module with kernel decls + the opaque-type
+  // mapping, signal the GC pipeline to skip `mogg-import-packages`. The
+  // attribute serves as the canonical marker: present iff decls are too.
+  if ((*moduleOp)->hasAttr(MOGG::kOpaqueTypeMappingAttrName))
+    gcPipelineOptions.kernelDeclsPrePopulated = true;
 
   mofLoweringOptions.setupContext(maxContext.copy());
   bool enableMEFMetadata = impl->getEnableMEFMetadata();
@@ -469,8 +468,7 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
 
   // Include the binary contents of built-in kernel packages (MOGGKernelAPI,
   // MOGGPrimitives) so that changes to them invalidate the MEF cache.
-  auto builtInPathsOr =
-      MOGG::MojoLibraryAnalysis::getBuiltInKernelPackagePaths(mlirCtx);
+  auto builtInPathsOr = MOGG::getBuiltInKernelPackagePaths(mlirCtx);
   if (builtInPathsOr.isError())
     return builtInPathsOr.takeError();
   for (const std::string &libraryPath : *builtInPathsOr) {
@@ -595,14 +593,6 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
     switch (format) {
     case FileFormat::kMODialect: {
       mofLoweringOptions.setupContext(compileCtx.context.copy());
-
-      auto kernelLibraryPaths =
-          llvm::to_vector_of<std::string>(gcPipelineOptions.kernelLibraryPaths);
-
-      auto libraryAnalysis = MOGG::MojoLibraryAnalysis::fromPaths(
-          &compileCtx.mlirCtx, kernelLibraryPaths);
-      if (failed(libraryAnalysis))
-        return libraryAnalysis.takeError();
 
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
       if (failed(runGcPipeline(compileCtx.module.get(), gcPipelineOptions)))

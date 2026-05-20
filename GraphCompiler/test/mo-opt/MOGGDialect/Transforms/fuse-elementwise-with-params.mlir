@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_pkg" --mogg-fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 // If we need to materialize a kernel then that should prevent it from being
 // folded into subsequent fusions to prevent duplicate compute.

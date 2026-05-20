@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --canonicalize | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 mo.graph @concat(%in_0 : !mo.tensor<[10], si32>, %in_1: !mo.tensor<[10], si32>) -> (!mo.tensor<[20], si32>) {

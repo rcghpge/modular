@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-fuse-elementwise --mogg-fuse-prologues | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-fuse-elementwise --mogg-fuse-prologues | FileCheck %s
 
 // CHECK-LABEL: mo.graph @softmax
 // CHECK:       mogg.kernel({{.*}}: !mo.tensor<[], si64>, {{.*}}: !mo.tensor<[2, 3], f32>, {{.*}}: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {

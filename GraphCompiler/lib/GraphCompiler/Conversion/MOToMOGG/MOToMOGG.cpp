@@ -12,13 +12,13 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
 #include "Support/ML/TensorShape.h"
@@ -130,8 +130,7 @@ bool shouldLower(Operation *op) {
 // nullopt --> expected no lowering. Error --> unexpected error. Else lowering
 std::optional<ErrorOr<Operation *>>
 lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
-              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, bool forceTrivial,
-              bool forceSync) {
+              MOGG::MojoRegistry &registry, bool forceTrivial, bool forceSync) {
   if (!shouldLower(op))
     return std::nullopt;
 
@@ -148,29 +147,18 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
 
-  MOGG::MOGGKernelBuilder builder(op, insertPoint, forceSync,
-                                  mojoLibraryAnalysis);
+  MOGG::MOGGKernelBuilder builder(op, insertPoint, forceSync, registry);
 
   auto kernelOrErr = builder.lowerToKernel();
   return kernelOrErr;
 }
 
-struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
-                          M::MO::impl::MOToMOGGBase<MOToMOGGPass>> {
+struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
   using Base::Base;
 
   // Replaces almost all rebinds which do not operate with unknown shapes.
   // Returns whether we were successful.
   bool replaceMORebinds() {
-    // Load mojo library analysis
-    auto analysisOr = getLibraryAnalysis();
-    if (analysisOr.isError()) {
-      emitError(getOperation().getLoc(),
-                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                              getPassName(), analysisOr.getError()));
-      return false;
-    }
-
     auto res = getOperation().walk([&](MO::RebindOp op) {
       // Don't mess any rebind that deals with `?`. When this pass is run
       // this exists due to PT, we need the rebind to give dimensions a proper
@@ -221,20 +209,12 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
   }
 
   bool lowerMOOpsToMOGG() {
-    // Load mojo library analysis
-    auto analysisOr = getLibraryAnalysis();
-    if (analysisOr.isError()) {
-      emitError(getOperation().getLoc(),
-                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                              getPassName(), analysisOr.getError()));
-      return false;
-    }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
+    MOGG::MojoRegistry registry(getOperation());
 
     // Run MOGG lowering on any valid operation
     auto result = getOperation().walk([&](Operation *op) {
       OpBuilder insertPoint{op};
-      auto maybeOp = lowerOpToMOGG(op, insertPoint, mojoLibraryAnalysis,
+      auto maybeOp = lowerOpToMOGG(op, insertPoint, registry,
                                    /*forceTrivial=*/false, forceSync);
 
       // Expected no lowering.
@@ -283,9 +263,3 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
 };
 
 } // namespace
-
-std::unique_ptr<Pass> M::MO::createMOToMOGG(
-    const MOToMOGGOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  return std::make_unique<MOToMOGGPass>(opts, libraryAnalysis);
-}

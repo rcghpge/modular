@@ -1522,8 +1522,8 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
 
     Each function variant (`execute` / `shape` / `elementwise` /
     `update_view`) is a `MOGG_KernelFunctionAttr` that bundles its
-    signature, its fn-level `ParamDeclAttr` list, and cached per-argument
-    and per-result parameter mappings.
+    signature, its fn-level `ParamDeclAttr` list, and the cached
+    per-result parameter mapping.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
@@ -1561,9 +1561,9 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
     primitives must not be registered under multiple registration strings
     (the MLIR symbol table would reject the duplicate `sym_name`).
 
-    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature,
-    the fn-level `ParamDeclAttr` list, and the cached per-argument and
-    per-result parameter mappings.
+    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature
+    and the fn-level `ParamDeclAttr` list. Result-side slot-name mappings
+    are not populated for primitives.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,

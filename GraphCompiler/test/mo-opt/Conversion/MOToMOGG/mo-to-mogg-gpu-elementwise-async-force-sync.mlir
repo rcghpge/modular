@@ -1,5 +1,5 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s --check-prefix=ASYNC
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib force-sync=true" | FileCheck %s --check-prefix=SYNC
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg | FileCheck %s --check-prefix=ASYNC
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg="force-sync=true" | FileCheck %s --check-prefix=SYNC
 
 // Verify that GPU kernels lower to async by default (to avoid blocking), but
 // can be forced synchronous via --force-sync for debugging.

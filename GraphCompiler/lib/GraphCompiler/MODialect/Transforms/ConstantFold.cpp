@@ -11,6 +11,8 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
@@ -808,6 +810,20 @@ private:
 };
 
 ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
+  // Seed the sub-module with kernel decl ops cloned from the parent module
+  // (which already ran `mogg-import-packages` earlier in the GC pipeline).
+  // This lets the sub-pipeline skip re-loading the built-in MOGGKernelAPI /
+  // MOGGPrimitives packages — see `kernelDeclsPrePopulated` below.
+  //
+  // Skip the optimization when the parent module has no decls / mapping
+  // (e.g. when `mo-constant-fold` is invoked standalone via `mo-opt`
+  // without a preceding `mogg-import-packages`). In that case the
+  // sub-pipeline must run `mogg-import-packages` itself to load packages.
+  bool parentHasDecls =
+      (*getOperation()).hasAttr(MOGG::kOpaqueTypeMappingAttrName);
+  if (parentHasDecls)
+    MOGG::copyKernelDecls(getOperation(), module);
+
   // Lower module to MGP.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -816,6 +832,10 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
     moOpts.cacheDir = cacheDir.value();
   if (kernelLibraryPaths)
     moOpts.kernelLibraryPaths = kernelLibraryPaths.value();
+  // Tell the GC pipeline to skip `mogg-import-packages`; everything it
+  // would build (decl ops + opaque-type mapping) is already in `module`
+  // courtesy of `copyKernelDecls` above.
+  moOpts.kernelDeclsPrePopulated = parentHasDecls;
   // Avoid infinite recursion.
   moOpts.constantFold = false;
   // Reduce Memory overhead by not fusing compiled-regions primitives.

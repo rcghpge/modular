@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: @test_simple_add
 // CHECK: mogg.bind {{.*}} elemwise_lambda

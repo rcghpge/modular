@@ -7,15 +7,25 @@
 #define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/KGENDialect/KGENParameters.h"
+#include "KGEN/KGENDialect/KGENTypes.h"
 #include "Support/AssertStream.h"
 
 namespace M::MOGG {
+// Forward declarations to avoid circular includes:
+// MOGGOps.h -> EmitsMojoInterface.h -> EmitMojoState.h ->
+// {KernelDeclAdaptor,MOGGOps}.h -> MOGGOps.h
+class MojoRegistry;
+struct KernelDeclFunctionAdaptor;
+struct KernelDeclAdaptor;
+class PrimitiveDeclOp;
+
 /// TODO(GEX-2488): The following are Mojo symbols that are hardcoded for
 /// convenience. The end goal is to remove them all and either register them in
 /// a Mojo file via `@compiler_register` or determine them programmatically
@@ -117,7 +127,6 @@ constexpr StringLiteral func_ms_simd_load_from_tensor_pointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
-constexpr StringLiteral func_ms_foreach = "MOGGPrimitives.foreach_fusion";
 constexpr StringLiteral func_to_index_list = "layout.to_index_list";
 constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
 // Affinity-aware variant: _create_task(handle, *, desired_worker_id=<id>).
@@ -177,11 +186,10 @@ inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
 /// This struct holds all the necessary state to lower a MOGG operation into
 /// Mojo text.
 struct EmitMojoState {
-  EmitMojoState(MojoLibraryAnalysis &analysis,
-                bool enableOpTraceComments = false,
+  EmitMojoState(MojoRegistry &registry, bool enableOpTraceComments = false,
                 bool enableComputeLambdas = false,
                 bool enableDebugDumpFusedTensorSpecs = false)
-      : analysis(analysis), enableComputeLambdas(enableComputeLambdas),
+      : registry(registry), enableComputeLambdas(enableComputeLambdas),
         enableOpTraceComments(enableOpTraceComments),
         enableDebugDumpFusedTensorSpecs(enableDebugDumpFusedTensorSpecs) {}
 
@@ -200,7 +208,7 @@ struct EmitMojoState {
   /// inputs and outputs.
   SmallVector<std::tuple<MojoValue, MojoValue>> mojoConstantResources;
 
-  MojoLibraryAnalysis &analysis;
+  MojoRegistry &registry;
 
   /// In some cases values must be kept alive using `_ = someVar` at the end of
   /// the function. This is because mojo Compiler isn't smart enough in some
@@ -340,10 +348,10 @@ public:
 
   /// Convert an MO::OpaqueType to its fully qualified Mojo type name.
   /// Returns just the qualified name without parameters.
-  /// Example: !mo.opaque<"SIMDPair", ...> becomes "PackageName.SIMDPair"
+  /// Example: !mo.opaque<"root::SIMDPair", ...> becomes "root.SIMDPair"
   /// Use getOpaqueTypeParameters() to get the parameters as MojoValues,
   /// then apply them using MojoValue::operator[].
-  MojoValue mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) const;
+  static MojoValue mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType);
 
   /// Extract parameters from an MO::OpaqueType as MojoValues.
   /// Returns empty vector if no parameters.
@@ -444,44 +452,21 @@ public:
         operands, [&](Value operand) { return getMojoValueFor(operand); });
   }
 
-  /// Returns the original Mojo name of the registered function. The
-  /// MOGGPreElab annotation will always tell you which .mojo file contains the
-  /// generator. This is convenient for imports. Only packages need to be
-  /// imported, not the .mojo file.
-  static MojoValue getOriginalMojoNameFor(KGEN::LIT::FnOp op) {
-    // TODO: update the signature to only take a LIT::FuncOp when the move to
-    // LIT is complete.
-    auto nameAttr =
-        op->getAttrOfType<StringAttr>(KGEN::MOGGPreElab::mojoSymbolName);
-    ASSERT_STREAM(nameAttr,
-                  "Could not find original mojo symbol name attribute");
-    return nameAttr.str();
-  }
-
-  static MojoValue getOriginalMojoNamePrefixFor(KGEN::LIT::FnOp op) {
-    // A hack that will always work because we know there is a dot before the
-    // call to execute or shape. Will be fixed once we remove
-    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
-    // now, we do the easy thing.
-    std::string fullName = getOriginalMojoNameFor(op).text;
-    uint64_t indexOfLastDot = fullName.find_last_of(".");
-    fullName.resize(indexOfLastDot);
-
-    stripInitModulePrefix(fullName);
-
-    return fullName;
-  }
-
-  static MojoValue getOriginalMojoNameSuffixFor(KGEN::LIT::FnOp op) {
-    // A hack that will always work because we know there is a dot before the
-    // call to execute or shape. Will be fixed once we remove
-    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
-    // now, we do the easy thing.
-    std::string fullName = getOriginalMojoNameFor(op).text;
-    uint64_t indexOfLastDot = fullName.find_last_of(".");
-    fullName.erase(0, indexOfLastDot + 1);
-
-    return fullName;
+  /// Split a fully-resolved function name (e.g. "max.kernels.AddOp.execute")
+  /// into its struct prefix ("max.kernels.AddOp") and function suffix
+  /// ("execute"), stripping any leading "__init__." prefix from the struct
+  /// name.
+  static std::pair<MojoValue, MojoValue>
+  splitFunctionName(llvm::StringRef fullyResolvedName) {
+    std::string fullName = fullyResolvedName.str();
+    size_t lastDot = fullName.rfind('.');
+    std::string structName = fullName.substr(0, lastDot);
+    std::string fnName = fullName.substr(lastDot + 1);
+    // Strip leading "__init__." package prefix from the struct name.
+    constexpr llvm::StringLiteral kInitPrefix = "__init__.";
+    if (llvm::StringRef(structName).starts_with(kInitPrefix))
+      structName.erase(0, kInitPrefix.size());
+    return {MojoValue(std::move(structName)), MojoValue(std::move(fnName))};
   }
 
   // Returns the corresponding SIMD type given its dtpype and its width
@@ -490,33 +475,30 @@ public:
         HardcodedMojoSymbols::struct_SIMD)[{mlirDTypeToMojoType(dtype), width}];
   }
 
-  /// Looks at the named parameters of the output value of the function.
-  /// Returns the corresponding parameter name of the function if found.
+  /// Looks at the named result-parameter mappings of a function adaptor.
+  /// Returns the corresponding parameter name if found.
   static std::optional<StringRef>
-  getOriginalResultParamNameFor(KGEN::LIT::FnOp op, StringRef paramName) {
-    auto resultParams = op->getAttrOfType<ArrayAttr>(
-        KGEN::MOGGPreElab::kKernelResultParameterAttrName);
-    if (!resultParams)
-      return std::nullopt;
-
-    for (auto resultParam : resultParams) {
-      auto resultParamDict = cast<DictionaryAttr>(resultParam);
-      if (auto funcParamName =
-              resultParamDict.getAs<KGEN::ParamDeclRefAttr>(paramName))
-        return funcParamName.getName();
-    }
-
-    return std::nullopt;
-  }
+  getResultParamNameFor(const KernelDeclFunctionAdaptor &fnAdaptor,
+                        StringRef paramName);
 
   struct InferredParameters {
     llvm::SmallVector<MojoValue> structParameters;
     llvm::SmallVector<MojoValue> functionParameters;
   };
-  /// Fill and return the list of inferred parameters to call `function`.
-  /// Call `inferCallback` for each parameter that needs to be inferred.
+
+  /// Fill and return the list of inferred parameters for a struct kernel
+  /// function (execute, shape, elementwise, or update_view). Uses the stored
+  /// struct-level and fn-level ParamDeclAttrs from the KernelDeclAdaptor.
+  /// Non-const because reading the function signature's pog list metadata
+  /// is non-const-callable on `FnTypeGeneratorType`.
   static ErrorOr<InferredParameters> inferKernelParameters(
-      KGEN::LIT::FnOp function,
+      KernelDeclAdaptor &adaptor, llvm::StringRef funcLabel,
+      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
+
+  /// Fill and return the list of inferred parameters for a standalone
+  /// primitive function (mogg.primitive.decl). No struct-level params.
+  static ErrorOr<InferredParameters> inferKernelParameters(
+      PrimitiveDeclOp primDecl,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 
   /// Base function to infer all parameter values of a kernel.

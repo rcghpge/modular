@@ -26,7 +26,7 @@ class MOGGAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
 
 def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
   let summary = "Bundles a Mojo function signature with its fn-level "
-                "parameter declarations and a cached result-parameter mapping";
+                "parameter declarations and cached slot-name mappings";
   let description = [{
     Holds, for one function variant of a Mojo kernel
     (`execute` / `shape` / `elementwise` / `update_view`):
@@ -35,19 +35,30 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
       - `params`        : the fn-level `ParamDeclAttr` list for this
                           function (each entry has `getName()` and
                           `getType()`).
-      - `result_params` : per-result `{struct-slot-name -> bound-value}`
+      - `arg_params`    : per-argument `{struct-slot-name -> bound-value}`
                           `DictionaryAttr`s. Each entry corresponds to one
-                          result type of the function; a `UnitAttr`
-                          placeholder is used for result types that are not
-                          parameterised structs.
+                          argument of the function; a `UnitAttr` placeholder
+                          is used for arguments whose struct decl is not
+                          present in the loaded package (e.g. tensors and
+                          device-context types live in dependency packages
+                          we do not load). User-defined parameterised
+                          opaque structs are reliably resolved.
+      - `result_params` : same shape, applied to result types. Stricter
+                          than `arg_params`: result types must be either
+                          non-parameterised, in the loaded package, or in
+                          the hardcoded stdlib table — otherwise the import
+                          pass errors out.
 
-    `result_params` is a cached projection of `signature` plus the relevant
-    struct declarations; it is consumed by lookups like "for the result
-    type's `dtype` slot, which function parameter is bound there?" Argument
-    types have no analogous cached attribute because argument-side
-    consumers only need the set of `ParamDeclRefAttr`s referenced anywhere
-    in the function's arguments (which `collectParameterReferences` on the
-    signature recovers without any slot-name knowledge).
+    `arg_params` powers opaque-parameter inference in `MOToMOGGLowering`:
+    given an `MO::OpaqueType` operand carrying `{S0 = 4, S1 = 8}` and a
+    kernel argument typed `SIMDPair[S0 = P0, S1 = P1]`, the slot dict
+    `{S0 -> ParamDeclRef<P0>, S1 -> ParamDeclRef<P1>}` lets the lowering
+    thread `P0 = 4, P1 = 8` into the kernel call.
+
+    `result_params` is consumed by lookups like "for the result type's
+    `dtype` slot, which function parameter is bound there?" — needed for
+    `shape` and `elementwise` only; left empty for `execute`, `update_view`,
+    and primitives.
 
     `params` is kept because `FnTypeGeneratorType.getMetadata()` carries
     names and defaults but not declared types, so reconstructing
@@ -57,11 +68,12 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
   let parameters = (ins
     "::M::KGEN::LIT::FnTypeGeneratorType":$signature,
     "::mlir::ArrayAttr":$params,
+    "::mlir::ArrayAttr":$arg_params,
     "::mlir::ArrayAttr":$result_params
   );
 
   let assemblyFormat = [{
-    `<` $signature `,` $params `,` $result_params `>`
+    `<` $signature `,` $params `,` $arg_params `,` $result_params `>`
   }];
 }
 

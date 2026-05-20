@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --mogg-fuse-elementwise --mogg-simplify-kernel-operands --cse --mo-nan-check-pass="kernel-library-paths=%kernel_api_test_lib stride=1" | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg --mogg-fuse-elementwise --mogg-simplify-kernel-operands --cse --mo-nan-check-pass="stride=1" | FileCheck %s --enable-var-scope
 
 //===----------------------------------------------------------------------===//
 // Test 1: nan_check inserted after each compiled region (mogg.kernel), not

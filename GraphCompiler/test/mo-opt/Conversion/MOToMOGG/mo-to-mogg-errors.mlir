@@ -1,10 +1,10 @@
-// RUN: mo-opt --mo-to-mogg %s --verify-diagnostics --split-input-file
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg %s --verify-diagnostics --split-input-file
 
-// RUN: mo-opt --mo-to-mogg %s --verify-diagnostics --split-input-file
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg %s --verify-diagnostics --split-input-file
 
 mo.graph @unimplemented_custom_op() -> !mo.tensor<[1], f32> {
   %0 = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  // expected-error @+1 {{'mo.custom' op [MO_TO_MOGG] Could not find a mojo kernel registered for mo.unimplemented_op with function mogg.execute}}
+  // expected-error @+1 {{'mo.custom' op [MO_TO_MOGG] no kernel registered for 'mo.unimplemented_op'}}
   %1 = mo.custom {symbol="mo.unimplemented_op", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
   mo.output %1 : !mo.tensor<[1], f32>
 }

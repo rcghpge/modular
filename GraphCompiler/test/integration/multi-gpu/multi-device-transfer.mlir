@@ -1,6 +1,6 @@
 // RUN: mt --execute --default-device-label=gpu --model-inputs=ones --num-runs=1 --result-output-style=compact %s | FileCheck %s
 
-// RUN: mo-opt %s -o %t.mlir --mo-legalize-rmo-operators --mo-infer-layouts --mo-to-mogg --mogg-to-mgp --allow-unregistered-dialect
+// RUN: mo-opt %s -o %t.mlir --mo-legalize-rmo-operators --mo-infer-layouts --mogg-import-packages --mo-to-mogg --mogg-to-mgp --allow-unregistered-dialect
 // RUN: cat %t.mlir | FileCheck --check-prefix=CHECK-IR %s
 
 // CHECK-LABEL: --- Running 'add_dev0':

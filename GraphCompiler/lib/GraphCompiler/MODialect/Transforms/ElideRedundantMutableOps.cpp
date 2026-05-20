@@ -8,7 +8,6 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"

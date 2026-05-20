@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg | FileCheck %s
 
 // Check that MO_MultiDevice ops are launched synchronously. These ops manage
 // their own cross-device parallelism internally (via TaskGroup) and must

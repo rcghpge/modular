@@ -12,10 +12,6 @@
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/PassOptions.h"
 
-namespace M::MOGG {
-class MojoLibraryAnalysis;
-};
-
 namespace M::MO {
 
 /// Collects mlir options which influence `buildGCPipeline` and
@@ -71,6 +67,18 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc(
           "Paths to mojo packages containing mojo kernel definitions used to "
           "replace MO ops.")};
+  Option<bool> kernelDeclsPrePopulated{
+      *this, "kernel-decls-pre-populated",
+      llvm::cl::desc(
+          "If true, the input module has already been seeded with "
+          "`mogg.kernel.decl` / `mogg.primitive.decl` ops and a "
+          "`mogg.opaque_type_mapping` attribute (typically copied from "
+          "another module via `MOGG::copyKernelDecls`). Skips the "
+          "`mogg-import-packages` pass entirely. `mogg-rewrite-opaque-types` "
+          "still runs and consumes the prebuilt mapping to rewrite any "
+          "`!mo.opaque<\"simple\">` references on the input ops to their "
+          "fully-qualified form."),
+      llvm::cl::init(false)};
   Option<bool> useShapeInference{
       *this, "mo-shape-inference",
       llvm::cl::desc("Run shape inference on the input before other "
@@ -241,15 +249,12 @@ void registerMgpPipeline();
 void registerJitPipeline();
 
 /// Builds the complete graph-compiler pipeline (MO → MGP → JIT).
-void buildGCPipeline(
-    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
+void buildGCPipeline(mlir::OpPassManager &pm, const GCPipelineOptions &opts);
 
 /// Same lowering as `gc-pipeline` but stops after emit-mojo (excludes JIT and
 /// post-JIT passes).
-void buildGCPipelineThroughEmitMojo(
-    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
+void buildGCPipelineThroughEmitMojo(mlir::OpPassManager &pm,
+                                    const GCPipelineOptions &opts);
 
 /// Registers the end-to-end shape inference pipeline for use by testing tools.
 void registerShapeInferencePipeline();
@@ -419,9 +424,7 @@ struct MgpPipelineOptions
 void buildMoPipeline(mlir::OpPassManager &pm, const MoPipelineOptions &opts);
 void buildMoggPipeline(mlir::OpPassManager &pm,
                        const MoggPipelineOptions &opts);
-void buildMgpPipeline(
-    mlir::OpPassManager &pm, const MgpPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
+void buildMgpPipeline(mlir::OpPassManager &pm, const MgpPipelineOptions &opts);
 /// Builds all passes that run after `jit` (i.e., after JitCompileKernels).
 void buildJitPipeline(mlir::OpPassManager &pm);
 
@@ -434,10 +437,8 @@ void buildJitPipeline(mlir::OpPassManager &pm);
 ///   mgp-pre-pipeline — after mogg-to-mgp, before mgp-pipeline
 /// When `dumpIntermediates` is false, all stages run in a single pass manager.
 /// The final mgp dump and MEF conversion are left to the caller.
-LogicalResult runGCPipeline(
-    ModuleOp moduleOp, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr,
-    bool dumpIntermediates = false);
+LogicalResult runGCPipeline(ModuleOp moduleOp, const GCPipelineOptions &opts,
+                            bool dumpIntermediates = false);
 
 } // namespace M::MO
 

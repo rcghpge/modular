@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 // CHECK-LABEL: mo.graph @supports_scalars

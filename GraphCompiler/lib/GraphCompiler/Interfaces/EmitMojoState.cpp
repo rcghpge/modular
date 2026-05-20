@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/Interfaces/EmitMojoState.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -12,7 +14,8 @@
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/LITDialect/LITOps.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/LITDialect/LITTypes.h"
+#include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/POPDialect/POPOps.h"
 
 using namespace M;
@@ -30,18 +33,13 @@ void EmitMojoState::setFusionStructFor(Value val, MojoValue instance,
 
 /// Remove parameters from inferByInputs that appear in the function's result
 /// type but not in the actual input argument types.
-///
-/// This walks both the user result type and all input argument types (excluding
-/// byref result/error slots), collects all ParamDeclRefAttr references from
-/// each, and removes from inferByInputs any parameter names that appear in the
-/// result type but not in any input argument type.
-static void removeResultOnlyParams(KGEN::LIT::FnOp function,
+static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
                                    llvm::DenseSet<StringRef> &inferByInputs) {
   // Collect params from result type.
   SmallVector<KGEN::ParamDeclRefAttr> resultParamRefs;
   bool hasConstExpr = false;
   size_t requiredSignatureDepth = 0;
-  Type userResultType = function.getUserResultType();
+  Type userResultType = sig.getUserResultType();
   KGEN::collectParameterReferences(userResultType, resultParamRefs,
                                    hasConstExpr, requiredSignatureDepth);
   llvm::DenseSet<StringRef> resultParams;
@@ -49,8 +47,7 @@ static void removeResultOnlyParams(KGEN::LIT::FnOp function,
     resultParams.insert(paramRef.getName().getValue());
 
   // Collect params from actual input arguments (excluding byref result slot).
-  auto sig = function.getFuncTypeGenerator().getBody();
-  ArrayRef<Type> argTypes = function.getArgumentTypes();
+  ArrayRef<Type> argTypes = sig.getArguments();
   if (sig.hasMemoryOnlyResult())
     argTypes = argTypes.drop_back();
   if (sig.isThrows())
@@ -399,8 +396,9 @@ LogicalResult emitMojo(KGEN::POP::RemOp op, EmitMojoState &state) {
 
 LogicalResult emitMojo(KGEN::POP::SelectOp op, EmitMojoState &state) {
   auto operands = state.getMojoValuesFor(op->getOperands());
-  auto selectFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(op.getOperationName()));
+  auto primDecl = state.registry.lookupPrimitive(op.getOperationName());
+  // sym_name on PrimitiveDeclOp is the fully-qualified Mojo source name.
+  MojoValue selectFunc(primDecl.getSymNameAttr().strref());
   state.setMojoValueFor(op.getResult(),
                         state.builder.var(selectFunc({}, operands)));
   return success();
@@ -462,8 +460,9 @@ LogicalResult emitMojo(KGEN::POP::SIMDAndOp op, EmitMojoState &state) {
 
 LogicalResult emitMojo(KGEN::POP::SIMDSelectOp op, EmitMojoState &state) {
   auto operands = state.getMojoValuesFor(op->getOperands());
-  auto selectFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(op.getOperationName()));
+  auto primDecl = state.registry.lookupPrimitive(op.getOperationName());
+  // sym_name on PrimitiveDeclOp is the fully-qualified Mojo source name.
+  MojoValue selectFunc(primDecl.getSymNameAttr().strref());
   state.setMojoValueFor(op.getResult(),
                         state.builder.var(selectFunc({}, operands)));
   return success();
@@ -518,45 +517,73 @@ LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
   return success();
 }
 
-ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
-    KGEN::LIT::FnOp function,
-    std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
-  // First get the set of all parameters that can be inferred from the inputs.
+/// Core parameter-inference logic shared by all inferKernelParameters
+/// overloads.
+static ErrorOr<EmitMojoState::InferredParameters>
+inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
+                ArrayRef<mlir::Attribute> structLevelParams,
+                mlir::ArrayAttr inputParamMappings,
+                mlir::DictionaryAttr defaultAttrs,
+                KGEN::LIT::FnTypeGeneratorType sig,
+                std::function<ErrorOr<MojoValue>(StringRef)> &inferCallback) {
+
+  // Collect the set of params inferable from inputs by walking the function's
+  // argument types directly. A param is inferable when an argument type
+  // references it -- either as a named `ParamDeclRefAttr` or as a depth-0
+  // `ParamIndexRefAttr` (the form elaborated bytecode uses for bound
+  // parameter values).
+  //
+  // For IndexRefs, `*(0, K)` indexes into the generator's *full* parameter
+  // list, which Mojo lays out as `structLevelParams + fnLevelParams` (struct
+  // params first). `fnLevelParams` alone (from
+  // `KernelFunctionAttr::params` / `FnOp::getInputParams()`) is just the
+  // fn-level subset, so we build a merged lookup table to recover the right
+  // name. A wrong lookup would silently misreport e.g. "freq_dtype" as
+  // inferable when the kernel really references "dtype" -- breaking parameter
+  // inference for kernels with both struct-level and fn-level params.
+  llvm::SmallVector<mlir::Attribute> mergedParams;
+  mergedParams.reserve(structLevelParams.size() + fnLevelParams.size());
+  mergedParams.append(structLevelParams.begin(), structLevelParams.end());
+  mergedParams.append(fnLevelParams.begin(), fnLevelParams.end());
+
   llvm::DenseSet<StringRef> inferByInputs;
-
-  DictionaryAttr defaultAttrs = function->getAttrOfType<DictionaryAttr>(
-      KGEN::MOGGPreElab::kKernelDefaultParameterAttrName);
-
-  KGEN::ParameterCollector::Analysis analysisCache;
-  KGEN::ParameterCollector collector(analysisCache);
-  SmallVector<KGEN::ParamDeclRefAttr> paramDeclUses;
-  // Any parameters that are used by input types will be inferred from the
-  // values being bound to them.
-  if (auto inputParams = function->getAttrOfType<ArrayAttr>(
-          KGEN::MOGGPreElab::kKernelValueParameterAttrName)) {
-    for (auto inputParam : inputParams) {
-      if (auto inputParamDict = dyn_cast<DictionaryAttr>(inputParam))
-        for (auto param : inputParamDict) {
-          bool hasConstExpr = false;
-          size_t requiredSignatureDepth = 0;
-          collector.collectUsesFromAttr(param.getValue(), paramDeclUses,
-                                        hasConstExpr, requiredSignatureDepth);
-          while (!paramDeclUses.empty())
-            inferByInputs.insert(
-                paramDeclUses.pop_back_val().getName().getValue());
-        }
+  std::function<void(mlir::Attribute)> walkAttr;
+  std::function<void(mlir::Type)> walkType;
+  walkAttr = [&](mlir::Attribute attr) {
+    if (!attr)
+      return;
+    if (auto sugar = dyn_cast<KGEN::SugarAttr>(attr)) {
+      walkAttr(sugar.getCanonical());
+      return;
     }
-  }
+    if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr)) {
+      inferByInputs.insert(declRef.getName().getValue());
+      return;
+    }
+    if (auto indexRef = dyn_cast<KGEN::ParamIndexRefAttr>(attr)) {
+      // Depth-0 references the fn's enclosing generator scope, which is the
+      // merged `structLevelParams + fnLevelParams` list.
+      if (indexRef.getDepth() == 0 &&
+          indexRef.getIndex() < mergedParams.size()) {
+        auto pd = cast<KGEN::ParamDeclAttr>(mergedParams[indexRef.getIndex()]);
+        inferByInputs.insert(pd.getName().getValue());
+      }
+      return;
+    }
+    attr.walkImmediateSubElements([&](mlir::Attribute a) { walkAttr(a); },
+                                  [&](mlir::Type t) { walkType(t); });
+  };
+  walkType = [&](mlir::Type type) {
+    if (!type)
+      return;
+    type.walkImmediateSubElements([&](mlir::Attribute a) { walkAttr(a); },
+                                  [&](mlir::Type t) { walkType(t); });
+  };
+  for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i)
+    walkType(sig.getArgument(i));
 
-  // TODO(GEX-2731): The annotate-kernels pass incorrectly marks result-only
-  // parameters as input parameters. For example, shape functions return
-  // !mogg.shape_func_result<rank>, where 'output_rank' is a parameter of the
-  // result type. This gets incorrectly added to the input parameter inference
-  // list by annotate-kernels, but should only be inferred from the result type.
-  // Remove any such parameters that appear only in the result type but not in
-  // actual input arguments. The proper fix would be to correct
-  // annotate-kernels.
-  removeResultOnlyParams(function, inferByInputs);
+  // Remove result-only parameters from the inferByInputs set.
+  removeResultOnlyParams(sig, inferByInputs);
 
   auto isIOSpecType = [](Type ty) {
     auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
@@ -564,77 +591,149 @@ ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
                              structType.getSymbol().getNestedReferences());
   };
 
-  // Now go through all params and infer those that need to be inferred.
   auto inferParametersInner =
-      [&](ArrayRef<ParamDeclAttr> params,
+      [&](ArrayRef<mlir::Attribute> params,
           SmallVector<MojoValue> &inferredParams) -> ErrorOrSuccess {
-    for (auto param : params) {
+    for (auto paramAttr : params) {
+      auto param = cast<KGEN::ParamDeclAttr>(paramAttr);
       StringRef paramName = param.getName().getValue();
 
-      // TODO(GEX-2623): IOSpec / origin parameters are currently removed from
-      // the parameters list because in KGEN-land empty-struct params are
-      // removed during LITToKGEN. But they are still present in EmitMojo path
-      // (and would cause an error: failed to infer parameter). Instead just
-      // skip them for now, they'll be inferred automatically anyway. This is
-      // quite brittle as it assumes all IOSpec / origin are always inferred
-      // (which is true fortunately today). This test could be removed once
-      // EmitMojo is complete.
       if (isa<KGEN::LIT::OriginType>(param.getType()) ||
           isIOSpecType(param.getType()))
         continue;
-
-      // Ignore any autoparams, because they will be inferred from whatever they
-      // are parameterized from.
       if (paramName.contains("."))
         continue;
 
-      // For parameters that can be inferred from inputs (e.g., from tensor
-      // types), we still try to get explicit values first. This is important
-      // for opaque types where Mojo can't infer the parameter from type
-      // arguments like SIMDPair[P0, _]. If we have an explicit value in
-      // kernel_param, use it.
       ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
-
-      // If this parameter can be inferred from inputs AND we don't have an
-      // explicit value, skip it and let Mojo infer.
       if (inferByInputs.contains(paramName) && maybeVal.isError())
         continue;
 
       if (maybeVal.isError()) {
-        if (defaultAttrs && defaultAttrs.contains(paramName)) {
-          // If there is already a default value we can skip it.
-          // TODO: It might be worth making the distinction between "we didn't
-          // found a parameter" vs we found it but the logic to infer its value
-          // failed. In the latter case we should still emit an error.
+        if (defaultAttrs && defaultAttrs.contains(paramName))
           continue;
-        }
-
         return maybeVal.takeError();
       }
-
-      // Otherwise we need to explicitly bind it to the provided value.
       inferredParams.push_back(MojoValue(paramName).equal(*maybeVal));
     }
-
     return success();
   };
 
   EmitMojoState::InferredParameters ret;
-  auto errOr =
-      inferParametersInner(function.getInputParams(), ret.functionParameters);
+  auto errOr = inferParametersInner(fnLevelParams, ret.functionParameters);
   if (errOr.isError())
     return errOr.takeError();
-
-  auto structDeclOp = function->getParentOfType<KGEN::LIT::StructDeclOp>();
-  if (!structDeclOp)
-    return ret;
-
-  errOr =
-      inferParametersInner(structDeclOp.getInputParams(), ret.structParameters);
+  errOr = inferParametersInner(structLevelParams, ret.structParameters);
   if (errOr.isError())
     return errOr.takeError();
-
   return ret;
+}
+
+std::optional<StringRef>
+EmitMojoState::getResultParamNameFor(const KernelDeclFunctionAdaptor &fnAdaptor,
+                                     StringRef paramName) {
+  if (!fnAdaptor.attr.getResultParams())
+    return std::nullopt;
+  // Each entry in resultParamMappings corresponds to one result type. It is a
+  // DictionaryAttr {struct-param-name: value} if the result is a struct whose
+  // declaration was visible to ImportPackages; otherwise it is a UnitAttr
+  // placeholder. The value at `paramName` is a ParamDeclRefAttr only when the
+  // struct parameter is bound to a free function/struct parameter (i.e. the
+  // dtype is unresolved). If the value is concrete (e.g. DTypeConstantAttr),
+  // there is no name to return.
+  for (auto resultParam : fnAdaptor.attr.getResultParams()) {
+    auto resultParamDict = dyn_cast<DictionaryAttr>(resultParam);
+    if (!resultParamDict)
+      continue;
+    auto attr = resultParamDict.get(paramName);
+    if (auto funcParamName = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(attr))
+      return funcParamName.getName();
+  }
+  return std::nullopt;
+}
+
+// Build a {param-name -> UnitAttr} dictionary listing fn-level params with
+// a declared default value. Sourced from the function's `PogListAttr`
+// metadata; needed by `inferParameters` to know which missing inferences
+// are tolerable.
+static mlir::DictionaryAttr
+computeDefaultParamsDict(KernelDeclFunctionAdaptor *fnAdaptor) {
+  if (!fnAdaptor || !fnAdaptor->attr.getParams() ||
+      fnAdaptor->attr.getParams().empty())
+    return nullptr;
+  auto fnParams = fnAdaptor->attr.getParams().getValue();
+  KGEN::PogListAttr pogs = fnAdaptor->attr.getSignature().getParamListAttrs();
+  size_t numImplicit =
+      fnAdaptor->attr.getSignature().getNumImplicitOriginDecls();
+  size_t totalPogs = pogs.getPogs().size();
+  // Fn-level params are at the end of the merged pog list (struct-level
+  // params come first).
+  size_t fnStart =
+      totalPogs >= fnParams.size() ? totalPogs - fnParams.size() : 0;
+  size_t fnEnd =
+      fnParams.size() > numImplicit ? fnParams.size() - numImplicit : 0;
+
+  mlir::Builder builder(fnAdaptor->attr.getSignature().getContext());
+  mlir::NamedAttrList defaultNames;
+  for (size_t fnIdx = 0; fnIdx < fnEnd; ++fnIdx) {
+    size_t pogIdx = fnStart + fnIdx;
+    if (pogIdx >= totalPogs || !pogs.getDefault(pogIdx))
+      continue;
+    auto paramDecl = mlir::cast<KGEN::ParamDeclAttr>(fnParams[fnIdx]);
+    defaultNames.append(
+        mlir::StringAttr::get(
+            fnAdaptor->attr.getSignature().getContext(),
+            KGEN::LIT::demangleParameterName(paramDecl.getName().strref())),
+        builder.getUnitAttr());
+  }
+  if (defaultNames.empty())
+    return nullptr;
+  return mlir::DictionaryAttr::get(fnAdaptor->attr.getSignature().getContext(),
+                                   defaultNames.getAttrs());
+}
+
+ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
+    KernelDeclAdaptor &adaptor, llvm::StringRef funcLabel,
+    std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
+  KernelDeclFunctionAdaptor *fnAdaptor =
+      const_cast<KernelDeclFunctionAdaptor *>(
+          adaptor.getFunctionByLabel(funcLabel));
+  ASSERT_STREAM(fnAdaptor,
+                "Function label '" << funcLabel << "' not found in adaptor");
+
+  // Pull fn-level params from the function adaptor itself. Each variant
+  // (execute / elementwise / shape / update_view) keeps its own param list
+  // because their signatures can differ (e.g. elementwise typically omits
+  // `target`/`_trace_name`). For an elementwise label that falls back to the
+  // synthesised-from-elementwise path, the adaptor's `params` already reflects
+  // the elementwise variant.
+  ArrayRef<mlir::Attribute> fnParams;
+  if (fnAdaptor->attr.getParams())
+    fnParams = fnAdaptor->attr.getParams().getValue();
+
+  ArrayRef<mlir::Attribute> structParams;
+  if (adaptor.structParams)
+    structParams = adaptor.structParams.getValue();
+
+  // Default-params dict is computed from the *execute* fn for parity with
+  // the WIP behavior; defaults are declared on the execute signature.
+  mlir::DictionaryAttr defaultParams = computeDefaultParamsDict(
+      adaptor.executeFunction ? &*adaptor.executeFunction : nullptr);
+  return inferParameters(fnParams, structParams, fnAdaptor->attr.getArgParams(),
+                         defaultParams, fnAdaptor->attr.getSignature(),
+                         inferCallback);
+}
+
+ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
+    PrimitiveDeclOp primDecl,
+    std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
+  // Primitives have no struct-level params. arg-param mappings let
+  // inferParameters tolerate failures for parameters that are inferable from
+  // input argument types at the Mojo call site.
+  MOGG::KernelFunctionAttr fn = primDecl.getFunction();
+  return inferParameters(fn.getParams().getValue(),
+                         /*structLevelParams=*/{}, fn.getArgParams(),
+                         /*defaultAttrs=*/nullptr, fn.getSignature(),
+                         inferCallback);
 }
 
 // Returns the trace name from fusionInfo, or empty string if not set.
@@ -725,16 +824,16 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   /// happen because we outline the stubs before sequence fusion and the ones
   /// that do get sequence fused will always be on the host and have matching
   /// devices.
-  if (paramName == KGEN::MOGGPreElab::kMOGGTargetParameterName) {
+  if (paramName == MOGG::kMOGGTargetParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return MojoValue(MO::getDeviceOrDefaultAny(kernelStubOp).getLabel())
         .quote();
   }
-  if (paramName == KGEN::MOGGPreElab::kMOGGTraceNameParameterName) {
+  if (paramName == MOGG::kMOGGTraceNameParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
-  if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
+  if (paramName == MOGG::kMOGGLambdasHaveFusionParameterName)
     return getLambdasHaveFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
@@ -806,26 +905,11 @@ void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
       });
 }
 
-MojoValue
-EmitMojoState::mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) const {
-  StringRef symbol = opaqueType.getSymbol().getValue();
-
-  // Look up the fully qualified type name from the library analysis.
-  // This mapping was built by walking all struct declarations in the loaded
-  // kernel library modules (MOGGKernelAPI and custom kernel libraries).
-  if (auto fullyQualifiedName =
-          analysis.getFullyQualifiedOpaqueTypeName(symbol)) {
-    return MojoValue(fullyQualifiedName->str());
-  }
-
-  // If not found, the type is not defined in any loaded kernel library.
-  // This is likely a configuration error - the kernel library defining
-  // this type should be included via kernel-library-paths.
-  ASSERT_STREAM(false, "Opaque type '" << symbol
-                                       << "' not found in any loaded kernel "
-                                          "library. Ensure the library "
-                                          "defining this type is included.");
-  return MojoValue(symbol.str());
+MojoValue EmitMojoState::mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) {
+  // ImportPackagesPass rewrites !mo.opaque<"Leaf"> to !mo.opaque<"a.b.Leaf">
+  // (dotted Mojo qualified name), so the symbol can be used directly as a
+  // Mojo identifier with no further rewriting.
+  return MojoValue(opaqueType.getSymbol().getValue());
 }
 
 SmallVector<MojoValue>

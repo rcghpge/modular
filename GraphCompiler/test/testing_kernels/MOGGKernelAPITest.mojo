@@ -224,6 +224,46 @@ struct Foo:
         return x.shape()
 
 
+# Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time
+# parameter, where an argument type references the fn-level param. Exercises
+# two MOToMOGG paths that broke in different ways during the
+# MojoLibraryAnalysis migration:
+#   1. `validateCustomOpParameters` rejected legitimate calls passing a
+#      struct-level param because the validation only walked fn-level params.
+#   2. EmitMojo's `inferByInputs` collection mapped depth-0 `ParamIndexRefAttr`s
+#      into `fnLevelParams` alone, but Mojo lays out the generator's param
+#      list as `structLevelParams + fnLevelParams`, so the lookup was off by
+#      `structLevelParams.size()` -- e.g. for a kernel with struct param
+#      `flip` and fn params `[dtype, target]`, an arg referencing `dtype` is
+#      `*(0, 1)`, which mapped to `target` (`fnLevelParams[1]`) instead of
+#      `dtype` (`(struct + fn)[1]`).
+@compiler.register("imposter_add_struct_param")
+struct FooWithStructParam[flip: Bool]:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        //,
+        target: StaticString,
+    ](
+        z: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+            var v = rebind[SIMD[z.dtype, width]](x.load[width](idx))
+            comptime if Self.flip:
+                return -v
+            return v
+
+        foreach[func](z, ctx)
+
+    @staticmethod
+    def shape(x: InputTensor) -> IndexList[x.rank]:
+        return x.shape()
+
+
 def _matmul[
     elementwise_lambda_fn: Optional[
         def[

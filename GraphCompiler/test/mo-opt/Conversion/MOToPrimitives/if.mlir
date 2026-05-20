@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-mgp | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp | FileCheck %s
 
 // CHECK: mgp.model @if_op
 // CHECK:  } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context

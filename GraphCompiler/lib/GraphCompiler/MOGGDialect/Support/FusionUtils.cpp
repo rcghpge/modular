@@ -8,13 +8,14 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GraphCompiler/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
@@ -186,7 +187,7 @@ bool valueDependsTransitivelyOn(Value start, mlir::Operation *target) {
 }
 
 ErrorOr<KernelOutputFusionLambdaType>
-getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
+getKernelOutputFusionLambdaType(MojoRegistry &registry,
                                 MOGG::TensorFusedOp fusedOp,
                                 bool enableComputeLambdas) {
   MOGG::BindLambdaOp lambdaOp = fusedOp.getBindLambdaOp();
@@ -218,11 +219,19 @@ getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
     return Error("TensorFusedOp result must be a kernel call output");
 
   // Check if the output operand corresponds to an output lambda.
-  auto function = mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
-      executeOp.getKernelName());
-  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor functionAdaptor(function);
-  if (!functionAdaptor.outputArguments[*outputIdx].isTensorWithIOSpec(
-          KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)) {
+  if (!registry.containsKernel(executeOp.getKernelName()))
+    return KernelOutputFusionLambdaType::Output;
+  KernelDeclAdaptor adaptor(
+      registry.getResolvedKernel(executeOp.getKernelName()));
+  if (!adaptor.executeFunction.has_value())
+    return KernelOutputFusionLambdaType::Output;
+  const auto &outputArgs = adaptor.executeFunction->outputArguments;
+  if (*outputIdx >= outputArgs.size())
+    return KernelOutputFusionLambdaType::Output;
+  const auto *tensorArg = std::get_if<KernelDeclTensorAdaptor>(
+      &outputArgs[*outputIdx].underlyingType);
+  if (!tensorArg ||
+      tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor) {
     return KernelOutputFusionLambdaType::Output;
   }
 

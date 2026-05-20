@@ -7,18 +7,22 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace M::MOGG {
 
@@ -32,30 +36,25 @@ namespace M::MOGG {
 ///
 /// This function matches the opaque type's concrete values to the kernel's
 /// parameter declarations.
-static void
-inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
-                      Operation *moOp, KGEN::LIT::FnOp function) {
-  if (!function)
-    return;
-
-  // Get the kernel annotations for input and result parameters.
-  auto inputParamsAttr = function->getAttrOfType<ArrayAttr>(
-      KGEN::MOGGPreElab::kKernelValueParameterAttrName);
-  auto resultParamsAttr = function->getAttrOfType<ArrayAttr>(
-      KGEN::MOGGPreElab::kKernelResultParameterAttrName);
+static void inferOpaqueParameters(
+    SmallVectorImpl<NamedAttribute> &forwardedParameters, Operation *moOp,
+    const KernelDeclFunctionAdaptor &function, mlir::ArrayAttr inputParams) {
+  auto inputParamsAttr = function.attr.getArgParams();
+  auto resultParamsAttr = function.attr.getResultParams();
 
   // Build a set of explicitly declared parameter names.
   // Parameters with a backtick in their name are internal/inferred parameters
   // (e.g., "S1`2x1" from a placeholder "_" in the signature). We only want
   // the explicitly declared parameters (e.g., "P0" from "[P0: Int]").
   llvm::DenseSet<StringRef> declaredParams;
-  for (auto param : function.getInputParams()) {
-    StringRef paramName = param.getName();
-    // Skip mangled parameter names (contain backtick) - these are inferred
-    // parameters from type parameters, not explicitly declared.
-    if (paramName.contains('`'))
-      continue;
-    declaredParams.insert(paramName);
+  if (inputParams) {
+    for (auto paramAttr : inputParams) {
+      if (auto param = dyn_cast<KGEN::ParamDeclAttr>(paramAttr)) {
+        StringRef paramName = param.getName();
+        if (!paramName.contains('`'))
+          declaredParams.insert(paramName);
+      }
+    }
   }
 
   // Helper to match parameters from an opaque type against kernel annotations.
@@ -104,11 +103,8 @@ inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
   // inputs. But the MO operation's operands only include the inputs, not
   // the DPS outputs. So we need to offset by the number of DPS outputs.
   if (inputParamsAttr) {
-    // Get the number of DPS outputs to offset our index.
-    unsigned numDpsOutputs = 0;
-    if (auto dpsAttr = function->getAttrOfType<IntegerAttr>(
-            KGEN::MOGGPreElab::kMOGGNumDPSOutputs))
-      numDpsOutputs = dpsAttr.getInt();
+    unsigned numDpsOutputs =
+        static_cast<unsigned>(function.outputArguments.size());
 
     for (auto [idx, operand] : llvm::enumerate(moOp->getOperands())) {
       // The kernel argument index is offset by the number of DPS outputs.
@@ -143,12 +139,11 @@ inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
   }
 }
 
-MOGGKernelBuilder::MOGGKernelBuilder(
-    Operation *op, OpBuilder &insertPoint, bool forceSync,
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis)
+MOGGKernelBuilder::MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint,
+                                     bool forceSync, MOGG::MojoRegistry &reg)
     : moOp(op), graphOp(op->getParentOfType<MO::GraphOp>()),
       builder(insertPoint), ctx(op->getContext()), loc(op->getLoc()),
-      mojoLibraryAnalysis(mojoLibraryAnalysis) {
+      registry(reg) {
 
   // Most ops are async, with specific exceptions:
   // - forceSync overrides everything (unsafe, for debugging only)
@@ -182,7 +177,7 @@ MOGGKernelBuilder::MOGGKernelBuilder(
 // argument.
 SmallVector<Value>
 convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
-                       const IndexToOperandAdaptorMapping &mapping,
+                       const KernelDeclIndexToOperandAdaptorMapping &mapping,
                        OpBuilder &builder) {
   SmallVector<Value> ret;
   for (auto [idx, v] : llvm::enumerate(originalInputs)) {
@@ -205,7 +200,7 @@ convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
 
 SmallVector<Value>
 convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
-                      const IndexToOperandAdaptorMapping &mapping,
+                      const KernelDeclIndexToOperandAdaptorMapping &mapping,
                       OpBuilder &builder) {
   SmallVector<Value> ret;
   uint64_t idx = 0;
@@ -218,7 +213,7 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
 
     SmallVector<Value> valuesThatMatchVariadics;
     SmallVector<Type> tupleTypes;
-    KGEN::MOGGPreElab::MojoKernelOperandAdaptor variadicType;
+    KernelDeclOperandAdaptor variadicType;
     do {
       tupleTypes.push_back(originalInputs[idx].getType());
       valuesThatMatchVariadics.push_back(originalInputs[idx]);
@@ -236,14 +231,16 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
 }
 
 void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
-                         const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
-                         OpBuilder &builder, bool forceAddContext = false) {
+                         const KernelDeclAdaptor &adaptor, OpBuilder &builder,
+                         bool forceAddContext = false) {
   bool hasContextType = forceAddContext;
   bool isVariadic = false;
-  for (auto &&arg : adaptor.executeFunction->inputArguments) {
-    if (arg.isContextType()) {
-      hasContextType = true;
-      isVariadic = arg.isVariadicContextType();
+  if (adaptor.executeFunction) {
+    for (auto &&arg : adaptor.executeFunction->inputArguments) {
+      if (arg.isContextType()) {
+        hasContextType = true;
+        isVariadic = arg.isVariadicContextType();
+      }
     }
   }
   if (!hasContextType)
@@ -272,9 +269,8 @@ void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
 }
 
 KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
-    KernelOp kernelOp, const OperandMapping &mapping,
-    DictionaryAttr forwardedParameters,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
+    KernelOp kernelOp, const KernelDeclOperandMapping &mapping,
+    DictionaryAttr forwardedParameters, const KernelDeclAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -335,12 +331,13 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
   // The elementwise function might have an indices argument at the end.
   if (!adaptor.elementwiseFunction->inputArguments.empty() &&
       adaptor.elementwiseFunction->inputArguments.back().isOpaqueWithTypeName(
-          KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_NAME))
+          MOGG::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_QUALIFIED_NAME))
     outlinedArgs.push_back(bindOp.getIndicesArg());
 
   builder.setInsertionPointToStart(elemwiseBody);
   auto callElementwise = CallElementwiseOp::create(
-      builder, loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
+      builder, loc, resultValTp, adaptor.registeredOpName.strref(),
+      outlinedArgs);
   cast<KernelCallInterface>(callElementwise.getOperation())
       .setKernelParams(forwardedParameters);
   OutputOp::create(builder, loc, callElementwise->getResults());
@@ -354,9 +351,10 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
   return ret;
 }
 
-ErrorOr<KernelCallInterface> MOGGKernelBuilder::lowerToViewKernel(
-    KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
+ErrorOr<KernelCallInterface>
+MOGGKernelBuilder::lowerToViewKernel(KernelOp kernelOp,
+                                     const KernelDeclOperandMapping &mapping,
+                                     const KernelDeclAdaptor &adaptor) {
   if (kernelOp->getNumResults() != 1)
     return Error("Expected view op to have exactly one result");
 
@@ -373,8 +371,9 @@ ErrorOr<KernelCallInterface> MOGGKernelBuilder::lowerToViewKernel(
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
-  auto view = MOGG::CallViewOp::create(builder, loc, outputVal.getType(),
-                                       adaptor.registeredOpName, inputs);
+  auto view =
+      MOGG::CallViewOp::create(builder, loc, outputVal.getType(),
+                               adaptor.registeredOpName.strref(), inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
   // mogg.call.view above).
   SmallVector<Value> contextValue;
@@ -385,9 +384,10 @@ ErrorOr<KernelCallInterface> MOGGKernelBuilder::lowerToViewKernel(
   return view;
 }
 
-KernelCallInterface MOGGKernelBuilder::lowerToNormalKernel(
-    KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
+KernelCallInterface
+MOGGKernelBuilder::lowerToNormalKernel(KernelOp kernelOp,
+                                       const KernelDeclOperandMapping &mapping,
+                                       const KernelDeclAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
   SmallVector<Value> outputs;
@@ -433,15 +433,17 @@ KernelCallInterface MOGGKernelBuilder::lowerToNormalKernel(
       mapping.operandMapping, builder);
   addContextIfPresent(moOp, inputs, adaptor, builder);
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
-  bool isThrows = adaptor.executeFunction->mojoCode.isThrows();
+  auto execSig = adaptor.executeFunction->attr.getSignature();
+  bool isThrows = execSig.isThrows();
 
-  return CallExecuteOp::create(builder, loc, adaptor.registeredOpName,
+  return CallExecuteOp::create(builder, loc, adaptor.registeredOpName.strref(),
                                regRetTypeAttr, isThrows, inputs, outputs);
 }
 
-KernelCallInterface MOGGKernelBuilder::lowerToShapeKernel(
-    KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
+KernelCallInterface
+MOGGKernelBuilder::lowerToShapeKernel(KernelOp kernelOp,
+                                      const KernelDeclOperandMapping &mapping,
+                                      const KernelDeclAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -460,12 +462,12 @@ KernelCallInterface MOGGKernelBuilder::lowerToShapeKernel(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
 
-  bool isThrows = adaptor.shapeFunction->mojoCode.isThrows();
+  auto shapeSig = adaptor.shapeFunction->attr.getSignature();
+  bool isThrows = shapeSig.isThrows();
 
   return MOGG::CallShapeOp::create(
-      builder, loc, builder.getStringAttr(adaptor.registeredOpName),
-      TypeAttr::get(retType), isThrows ? builder.getUnitAttr() : UnitAttr(),
-      inputs);
+      builder, loc, adaptor.registeredOpName, TypeAttr::get(retType),
+      isThrows ? builder.getUnitAttr() : UnitAttr(), inputs);
 }
 
 static ErrorOr<NamedAttribute>
@@ -501,6 +503,273 @@ getValidatedParameter(const NamedAttribute &attr) {
   return NamedAttribute(attr.getName(), value);
 }
 
+// ---------------------------------------------------------------------------
+// Custom op parameter validation using KernelDeclOp
+// ---------------------------------------------------------------------------
+
+static bool isStaticStringLoweredPattern(Type ty) {
+  auto structTy = dyn_cast<KGEN::StructType>(ty);
+  if (!structTy || structTy.getIsParamPack())
+    return false;
+
+  std::optional<SmallVector<Type>> elementTypes = structTy.getElementTypes();
+  if (!elementTypes || elementTypes->size() != 2)
+    return false;
+
+  auto ptrTy = dyn_cast<KGEN::PointerType>((*elementTypes)[0]);
+  if (!ptrTy || !isa<KGEN::NoneType>(ptrTy.getElementType()))
+    return false;
+
+  return isa<IndexType>((*elementTypes)[1]);
+}
+
+static bool isLITStaticStringType(Type ty) {
+  auto structTy = KGEN::sugarDynCast<KGEN::LIT::StructType>(ty);
+  if (!structTy) {
+    if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty)) {
+      structTy =
+          KGEN::sugarDynCast<KGEN::LIT::StructType>(ref.getElementType());
+    }
+  }
+  if (!structTy)
+    return false;
+
+  auto symbol = structTy.getSymbol();
+  std::string symbolName =
+      llvm::formatv("{}::{}", symbol.getRootReference().strref(),
+                    symbol.getLeafReference().strref())
+          .str();
+  if (symbolName != "std::StringSlice")
+    return false;
+
+  auto paramValues = structTy.getParamValues();
+  if (paramValues.empty())
+    return false;
+
+  TypedAttr originAttr = paramValues[0];
+  if (KGEN::sugarIsa<KGEN::ParamDeclRefAttr>(originAttr))
+    return false;
+
+  return true;
+}
+
+static StringAttr maybeDemangleName(StringAttr name) {
+  StringRef demangled = KGEN::LIT::demangleParameterName(name);
+  if (demangled != name)
+    return StringAttr::get(name.getContext(), demangled);
+  return name;
+}
+
+/// Return the "root::leaf" name of a parameter's declared struct type, or
+/// null if the type is not a recognisable struct (e.g. primitive scalars).
+/// Used by `validateCustomOpParameters` to dispatch on Mojo class names
+/// like `std::StaticString` vs `std::StringSlice` — information not carried
+/// by the bare KGEN type alone.
+static StringAttr getParamTypeName(MLIRContext *ctx, Type paramType) {
+  if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(paramType))
+    paramType = ref.getElementType();
+  auto structTy = KGEN::sugarDynCast<KGEN::LIT::StructType>(paramType);
+  if (!structTy)
+    return nullptr;
+  auto sym = structTy.getSymbol();
+  return StringAttr::get(ctx, llvm::formatv("{}::{}",
+                                            sym.getRootReference().strref(),
+                                            sym.getLeafReference().strref())
+                                  .str());
+}
+
+ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
+                                          MO::CustomOp customOp) {
+  if (!registry.containsKernel(customOp.getSymbol())) {
+    return Error(
+        llvm::formatv("no kernel registered for '{}'", customOp.getSymbol())
+            .str());
+  }
+  KernelDeclOp declOp = registry.getResolvedKernel(customOp.getSymbol());
+  // The user-supplied `parameters` dict on `mo.custom` can target struct-level
+  // compile-time params (e.g. `[interleaved: Bool]`) or any fn-level params
+  // declared on the registered functions. Collect struct params first to
+  // mirror Mojo's merged `@register` parameter layout, then union the param
+  // lists from each function variant (some kernels declare params only on
+  // `elementwise` instead of `execute`).
+  SmallVector<KGEN::ParamDeclAttr> inputParamsVec;
+  llvm::SmallDenseSet<StringRef> seen;
+  auto append = [&](KGEN::ParamDeclAttr p) {
+    if (seen.insert(p.getName().strref()).second)
+      inputParamsVec.push_back(p);
+  };
+  for (auto a : declOp.getStructParams())
+    append(cast<KGEN::ParamDeclAttr>(a));
+  auto appendFn = [&](std::optional<MOGG::KernelFunctionAttr> fn) {
+    if (!fn)
+      return;
+    for (auto a : fn->getParams())
+      append(cast<KGEN::ParamDeclAttr>(a));
+  };
+  appendFn(declOp.getExecute());
+  appendFn(declOp.getElementwise());
+  appendFn(declOp.getShape());
+  appendFn(declOp.getUpdateView());
+  ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
+
+  struct MojoParameterAdaptor {
+    KGEN::ParamDeclAttr attr;
+    StringAttr typeName;
+  };
+  llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
+
+  // Compute the param type-name on demand from each ParamDeclAttr instead of
+  // caching strings on KernelDeclOp.
+  MLIRContext *ctx = customOp.getContext();
+  for (auto param : inputParams)
+    paramDecls[maybeDemangleName(param.getName())] = {
+        param, getParamTypeName(ctx, param.getType())};
+
+  for (const NamedAttribute &namedAttr : customOp.getParameters()) {
+    auto it = paramDecls.find(namedAttr.getName());
+    if (it == paramDecls.end()) {
+      return Error(llvm::formatv(
+          "parameter '{}' supplied to custom op '{}' does not exist in the "
+          "corresponding Mojo code",
+          namedAttr.getName().strref(), customOp.getSymbol()));
+    }
+
+    auto [customParamDecl, typeName] = it->second;
+    Attribute mlirParamAttr = namedAttr.getValue();
+
+    Type kgenParamTy = customParamDecl.getType();
+    auto asIntegerType = dyn_cast<IntegerType>(kgenParamTy);
+
+    if (isa<IndexType>(kgenParamTy)) {
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (asIntegerType && asIntegerType.getWidth() == 1) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an boolean type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (isa<KGEN::StringType>(kgenParamTy)) {
+      if (typeName && typeName == MOGG::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      } else if (typeName) {
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses a string-like type that is "
+            "not supported. Use type StaticString instead to define a string "
+            "parameter for a custom op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      } else {
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      }
+    } else if (isa<KGEN::DTypeType>(kgenParamTy)) {
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::MOJO_DTYPE_TYPE_NAME) {
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::MOJO_STATIC_STRING_TYPE_NAME) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName == MOGG::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+      bool isStaticString = isLITStaticStringType(kgenParamTy) ||
+                            isStaticStringLoweredPattern(kgenParamTy);
+      if (isStaticString) {
+        auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        if (asString == nullptr) {
+          return Error(llvm::formatv(
+              "failed to convert custom op '{}' attribute '{}' with value "
+              "'{}' to the proper Mojo parameter type: expected string type",
+              customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+        }
+      } else {
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses type StringSlice. Use type "
+            "StaticString instead to define a string parameter for a custom "
+            "op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      }
+    } else if (typeName &&
+               (typeName == MOGG::MOJO_INTERNAL_DPS_INT_TYPE_NAME ||
+                typeName == MOGG::MOJO_INTERNAL_DPS_UINT_TYPE_NAME)) {
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::MOJO_INTERNAL_DPS_BOOL_TYPE_NAME) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a boolean type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               (typeName == MOGG::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ||
+                typeName == MOGG::MOJO_STRING_TYPE_NAME)) {
+      std::string userTypeName =
+          typeName == MOGG::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ? "StringSlice"
+                                                                 : "String";
+      return Error(llvm::formatv(
+          "in custom op '{}' attribute '{}' uses type {}. Use type "
+          "StaticString instead to define a string parameter for a custom op.",
+          customOp.getSymbol(), customParamDecl.getName(), userTypeName));
+    } else if (!typeName && isStaticStringLoweredPattern(kgenParamTy)) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else {
+      return Error(llvm::formatv(
+          "failed to convert custom op '{}' attribute '{}' with value '{}' to "
+          "the proper Mojo parameter type: no type conversion found to type "
+          "'{}'",
+          customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr,
+          kgenParamTy));
+    }
+  }
+
+  return success();
+}
+
 ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
   auto customOpOperationName =
       mlir::OperationName(MO::CustomOp::getOperationName(), moOp->getContext());
@@ -508,8 +777,7 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
 
   // Custom op is handled specially by parsing the parameters dictionary.
   if (auto custom = dyn_cast<MO::CustomOp>(moOp)) {
-    if (auto validParameters =
-            mojoLibraryAnalysis.validateCustomOpParameters(custom))
+    if (auto validParameters = validateCustomOpParameters(registry, custom))
       return validParameters.takeError();
 
     for (NamedAttribute param : custom.getParameters()) {
@@ -520,13 +788,20 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
     }
 
     // Infer kernel parameters from opaque types in operands and results.
-    // This resolves parameters like P0, P1 from the opaque type's parameter
-    // dictionary (S0=4, S1=8 -> P0=4, P1=8).
-    // Get the LIT kernel function to access its parameter annotations.
-    KGEN::LIT::FnOp litFunction =
-        mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
-            custom.getSymbol());
-    inferOpaqueParameters(forwardedParameters, moOp, litFunction);
+    // Resolve parameters like P0, P1 from the opaque type's parameter
+    // dictionary (S0=4, S1=8 -> P0=4, P1=8) using the stored value-param
+    // mappings and input parameter declarations from the kernel decl op.
+    if (registry.containsKernel(custom.getSymbol())) {
+      KernelDeclOp declOp = registry.getResolvedKernel(custom.getSymbol());
+      KernelDeclAdaptor adaptor(declOp);
+      if (adaptor.executeFunction) {
+        mlir::ArrayAttr executeParams = declOp.getExecute()
+                                            ? declOp.getExecute()->getParams()
+                                            : mlir::ArrayAttr{};
+        inferOpaqueParameters(forwardedParameters, moOp,
+                              *adaptor.executeFunction, executeParams);
+      }
+    }
 
     return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
   }
@@ -547,7 +822,7 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
 
     const uint64_t rank = invokeShapeFunc.getOutputParamDecls().size();
     forwardedParameters.push_back(NamedAttribute(
-        builder.getStringAttr(KGEN::MOGGPreElab::kMOGGOutputRankParameterName),
+        builder.getStringAttr(MOGG::kMOGGOutputRankParameterName),
         builder.getIndexAttr(rank)));
 
     if (auto params = invokeShapeFunc.getKgenParamsAttr()) {
@@ -658,31 +933,32 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
 }
 
 ErrorOr<KernelOp> MOGGKernelBuilder::lowerToKernelBase() {
-  auto maybeAdaptor = getMojoKernelAdaptor(mojoLibraryAnalysis, moOp);
+  auto maybeAdaptor = getMojoKernelAdaptor(registry, moOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
-  KGEN::MOGGPreElab::MojoKernelAdaptor adaptor = maybeAdaptor.takeValue();
+  KernelDeclAdaptor adaptor = maybeAdaptor.takeValue();
 
-  // For shape functions, use the shape function instead of execute function
-  // Shape functions return IndexList for dimension binding, not as SSA values,
-  // so we need to clear the outputResult to skip result validation.
-  auto *functionToMap = adaptor.shapeFunction.has_value()
-                            ? &*adaptor.shapeFunction
-                            : &*adaptor.executeFunction;
+  // For shape function invocations, use the shape function instead of the
+  // execute function. Shape functions bind dimensions via parameter
+  // declarations, not SSA results, so we explicitly clear the outputResult to
+  // avoid validation errors. The KernelDeclAdaptor may have a shapeFunction
+  // even for regular custom ops, so we gate on the op type, not the adaptor.
+  bool isShapeFuncInvocation = isa<MO::InvokeShapeFuncOp>(moOp);
+  const KernelDeclFunctionAdaptor *functionToMap =
+      (isShapeFuncInvocation && adaptor.shapeFunction.has_value())
+          ? &*adaptor.shapeFunction
+          : &*adaptor.executeFunction;
 
-  // Shape functions bind dimensions via parameter declarations, not SSA
-  // results, so we explicitly clear the outputResult to avoid validation
-  // errors.
-  if (adaptor.shapeFunction.has_value()) {
-    auto modifiedFunction = *functionToMap;
+  if (isShapeFuncInvocation) {
+    KernelDeclFunctionAdaptor modifiedFunction = *functionToMap;
     modifiedFunction.outputResult = std::nullopt;
     auto operandMappingOr =
         mapMOOpToKernelImplementation(moOp, modifiedFunction);
     if (operandMappingOr.isError())
       return operandMappingOr.takeError();
 
-    const OperandMapping &operandMapping = operandMappingOr.get();
+    const KernelDeclOperandMapping &operandMapping = operandMappingOr.get();
     return buildKernelOpImpl(adaptor, operandMapping);
   }
 
@@ -690,14 +966,14 @@ ErrorOr<KernelOp> MOGGKernelBuilder::lowerToKernelBase() {
   if (operandMappingOr.isError())
     return operandMappingOr.takeError();
 
-  const OperandMapping &operandMapping = operandMappingOr.get();
+  const KernelDeclOperandMapping &operandMapping = operandMappingOr.get();
   return buildKernelOpImpl(adaptor, operandMapping);
 }
 
 // Helper to build the kernel op (common code for both paths)
 ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
-    KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
-    const OperandMapping &operandMapping) {
+    KernelDeclAdaptor &adaptor,
+    const KernelDeclOperandMapping &operandMapping) {
 
   // For shape functions, forward the outputParamDecls
   ArrayRef<KGEN::ParamDeclAttr> outputParamDecls = {};
@@ -736,14 +1012,14 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
     return forwardedParametersOr.takeError();
 
   ErrorOr<KernelCallInterface> kernelCallingOperation = nullptr;
-  if (adaptor.shapeFunction.has_value()) {
-    // This is a shape function
+  if (isa<MO::InvokeShapeFuncOp>(moOp)) {
+    // This is a shape function invocation.
     kernelCallingOperation =
         lowerToShapeKernel(kernelOp, operandMapping, adaptor);
   } else if (adaptor.isElementwise()) {
     kernelCallingOperation = lowerToElementwiseKernel(
         kernelOp, operandMapping, *forwardedParametersOr, adaptor);
-  } else if (adaptor.executeFunction->isView()) {
+  } else if (adaptor.isViewKernel()) {
     kernelCallingOperation =
         lowerToViewKernel(kernelOp, operandMapping, adaptor);
   } else {

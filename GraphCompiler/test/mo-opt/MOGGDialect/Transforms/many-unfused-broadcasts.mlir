@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-fuse-elementwise --cse --canonicalize --mogg-fuse-views --cse --canonicalize --mogg-to-mgp --mgp-lower-alignments --mgp-lower-primitives --canonicalize -cse --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-fuse-elementwise --cse --canonicalize --mogg-fuse-views --cse --canonicalize --mogg-to-mgp --mgp-lower-alignments --mgp-lower-primitives --canonicalize -cse --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s | FileCheck %s
 
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 

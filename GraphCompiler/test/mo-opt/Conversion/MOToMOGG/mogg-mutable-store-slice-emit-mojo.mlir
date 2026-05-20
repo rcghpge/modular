@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg %s | FileCheck --check-prefix="CHECK-KERNEL-API" %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg %s | FileCheck --check-prefix="CHECK-KERNEL-API" %s
 
 // COM: Check the lowering under the kernel API is correct
 // CHECK-KERNEL-API-LABEL: @mutable_load

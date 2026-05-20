@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
 // RUN: mo-opt %s --canonicalize | FileCheck %s --check-prefix=CHECK-CANON
 
 // Verify MO-to-MOGG preserves bundle/unbundle ops (not rejected as

@@ -140,7 +140,7 @@ enum class KernelOutputFusionLambdaType {
 // `fusedOp`. Or returns an error if the kernel is not found / the op is
 // invalid.
 ErrorOr<KernelOutputFusionLambdaType>
-getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
+getKernelOutputFusionLambdaType(MojoRegistry &registry,
                                 MOGG::TensorFusedOp fusedOp,
                                 bool enableComputeLambdas);
 

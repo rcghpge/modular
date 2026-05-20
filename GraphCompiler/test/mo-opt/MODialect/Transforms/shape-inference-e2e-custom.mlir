@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-shape-inference --mo-add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-shape-inference --mo-add-fallback-shape-funcs %s | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @custom_op

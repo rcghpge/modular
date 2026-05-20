@@ -3,8 +3,9 @@
 // Verify that mogg-import-packages populates the module with mogg.kernel.decl
 // ops for each @register-decorated struct in the loaded packages, and
 // mogg.primitive.decl ops for singleton primitive functions.
-// The sym_name is the fully-qualified Mojo source name (struct name, not
-// the registration name).
+// For kernels, sym_name is the fully-qualified Mojo source name (struct name).
+// For primitives, sym_name equals the registration string (for MLIR symbol
+// table uniqueness), and the Mojo source name is stored in mojo_name.
 
 // Kernel with execute and shape (struct Foo).
 // CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.Foo registration = "imposter_add"

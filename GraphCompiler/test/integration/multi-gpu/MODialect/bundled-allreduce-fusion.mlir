@@ -2,12 +2,12 @@
 // RUN: mo-opt %s --gc-pipeline=constant-fold=false -o /dev/null
 
 // Verify per-kernel stub structure at the MGP stage.
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-mgp | FileCheck %s --check-prefix=CHECK-MGP
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp | FileCheck %s --check-prefix=CHECK-MGP
 
 // Verify that MergeIdenticalKernelStubs deduplicates the per-launch stubs
 // into a single shared stub (canonical arg ordering makes them identical).
 // SymbolDCE removes the dead stubs whose callers were rewritten.
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-mgp \
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp \
 // RUN:   --mogg-merge-identical-kernel-stubs --symbol-dce \
 // RUN:   | FileCheck %s --check-prefix=CHECK-DEDUP
 

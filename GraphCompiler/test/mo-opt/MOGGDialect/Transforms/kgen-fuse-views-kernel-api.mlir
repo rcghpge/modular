@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-fuse-views -cse %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-fuse-views -cse %s | FileCheck %s
 
 // CHECK-LABEL:   mo.graph @back2backBroadcastReshape
 // CHECK: fusionInfo = View("mo.static.reshape":{{.*}}, "mo.add":{{.*}})

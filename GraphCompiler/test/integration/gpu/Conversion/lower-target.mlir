@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-validate-devices="default-device-target-triple=nvptx64-nvidia-cuda default-device-target-arch=sm_89" --mo-to-mogg %s | FileCheck --check-prefix=CHECK-IR %s
+// RUN: mo-opt --mo-validate-devices="default-device-target-triple=nvptx64-nvidia-cuda default-device-target-arch=sm_89" --mogg-import-packages --mo-to-mogg %s | FileCheck --check-prefix=CHECK-IR %s
 
 // CHECK-IR-LABEL: mo.graph @graph
 // CHECK-IR: #M.device_ref<"gpu", 0>

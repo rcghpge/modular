@@ -9,7 +9,6 @@
 #include "GraphCompiler/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"

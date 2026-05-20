@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that mogg_async_del is emitted BEFORE mogg_async_ready/mogg_async_error.
 // This ensures that when await() returns for downstream consumers, all cleanup

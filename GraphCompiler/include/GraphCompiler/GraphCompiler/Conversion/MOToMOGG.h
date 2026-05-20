@@ -27,20 +27,12 @@
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 
-namespace M::MOGG {
-class MojoLibraryAnalysis;
-} // namespace M::MOGG
-
 namespace M::MO {
 
 /// Generate the code for declaring and registering the pass.
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL
 #include "GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h.inc"
-
-std::unique_ptr<mlir::Pass>
-createMOToMOGG(const MOToMOGGOptions &opts,
-               std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
 
 } // namespace M::MO
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse -mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse -mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that when fused ops have NO source note metadata (no FusedLoc with
 // Python tracebacks), the emitted mogg_format_kernel_error call contains the

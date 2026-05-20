@@ -7,7 +7,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "Support/MDialect/MAttrs.h"
@@ -30,8 +30,7 @@ using namespace M::MO;
 
 namespace {
 
-struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
-                          impl::NanCheckPassBase<NanCheckPass>> {
+struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
   using Base::Base;
 
   /// Returns a human readable label corresponding to value.
@@ -57,13 +56,11 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
 
   /// Lower an mo.custom op to an MOGG kernel in-place. Returns the kernel
   /// or signals pass failure.
-  MOGG::KernelOp
-  lowerCustomOpToMOGG(MO::CustomOp customOp, OpBuilder &builder,
-                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+  MOGG::KernelOp lowerCustomOpToMOGG(MO::CustomOp customOp, OpBuilder &builder,
+                                     MOGG::MojoRegistry &registry) {
     OpBuilder insertPoint{customOp};
     MOGG::MOGGKernelBuilder kernelBuilder(customOp, insertPoint,
-                                          /*forceSync=*/false,
-                                          mojoLibraryAnalysis);
+                                          /*forceSync=*/false, registry);
     auto kernelOrErr = kernelBuilder.lowerToKernel();
     if (kernelOrErr.isError()) {
       customOp->emitOpError("[NanCheckPass] ")
@@ -97,15 +94,8 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
     if (kernelOps.empty())
       return;
 
-    auto analysisOr = getLibraryAnalysis();
-    if (analysisOr.isError()) {
-      emitError(
-          graphOp.getLoc(),
-          llvm::formatv("[NanCheckPass] Failed to load Mojo analysis: {0}",
-                        analysisOr.getError()));
-      return signalPassFailure();
-    }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
+    MOGG::MojoRegistry registry(
+        getOperation()->getParentOfType<mlir::ModuleOp>());
 
     // We'll create the initial chain lazily inside the loop to avoid
     // issues with insertion point ordering.
@@ -224,13 +214,12 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
         currentChain = raiseOp.getResult(0);
 
         // Lower nan_check_count to MOGG kernel.
-        if (!lowerCustomOpToMOGG(countOp, builder, mojoLibraryAnalysis))
+        if (!lowerCustomOpToMOGG(countOp, builder, registry))
           return signalPassFailure();
 
         // Lower nan_check_raise to MOGG kernel, then mark it as having
         // write side effects so DCE preserves it even with unused results.
-        auto raiseKernel =
-            lowerCustomOpToMOGG(raiseOp, builder, mojoLibraryAnalysis);
+        auto raiseKernel = lowerCustomOpToMOGG(raiseOp, builder, registry);
         if (!raiseKernel)
           return signalPassFailure();
         raiseKernel.setHasWriteEffect(true);
@@ -257,11 +246,8 @@ struct NanCheckPass : public MOGG::MojoLibraryAnalysisPass<
 
 } // namespace
 
-std::unique_ptr<Pass> M::MO::createNanCheckPass(
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
-    uint64_t stride) {
+std::unique_ptr<Pass> M::MO::createNanCheckPass(uint64_t stride) {
   NanCheckPassOptions opts;
   opts.stride = stride;
-  return std::make_unique<NanCheckPass>(std::move(opts),
-                                        std::move(libraryAnalysis));
+  return std::make_unique<NanCheckPass>(std::move(opts));
 }

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks 2>&1 | FileCheck %s
 
 // Verify that the three ops introduced by the MOGG ABI lowering are present
 // after mogg-outline-kernels and mogg-add-try-except-blocks:

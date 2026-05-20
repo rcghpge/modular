@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" %s --verify-diagnostics --split-input-file
+// RUN: mo-opt --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg %s --verify-diagnostics --split-input-file
 
 mo.graph @valid_same_rank_dtype(%x: !mo.tensor<[4, 4], f32>) -> !mo.tensor<[5, 5], f32> {
     %0 = mo.custom {symbol = "test_same_rank_dtype", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[4, 4], f32>) -> !mo.tensor<[5, 5], f32>

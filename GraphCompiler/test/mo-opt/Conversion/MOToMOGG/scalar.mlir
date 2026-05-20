@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 // CHECK-LABEL: mo.graph @mean

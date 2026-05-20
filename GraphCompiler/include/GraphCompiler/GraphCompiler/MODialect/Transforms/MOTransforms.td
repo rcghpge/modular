@@ -18,11 +18,6 @@ def AddFallbackShapeFunctions :
     shape function which will give them those parameters.
   }];
 
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">
-  ];
-
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::index::IndexDialect",

@@ -9,10 +9,11 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 
@@ -38,15 +39,22 @@ for those of the new ExtensibilityAPI.
 
 namespace M::MOGG {
 
-// Forward declarations
-class MojoLibraryAnalysis;
+class MojoRegistry;
+
+/// Validate that the user-supplied parameters on a `mo.custom` op match the
+/// compile-time parameters declared by its registered Mojo kernel. Checks
+/// both struct-level and execute-fn-level params (Mojo merges them in
+/// `@register` parameter lists). Used by both `--mo-to-mogg` lowering and
+/// the standalone `verifyCustomOp` entry point.
+ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
+                                          MO::CustomOp customOp);
 
 /// A helper class which translates MO operations to MOGG Kernels with KGEN
 /// inlined.
 class MOGGKernelBuilder {
 public:
   MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint, bool forceSync,
-                    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
+                    MOGG::MojoRegistry &registry);
 
   /// Main entry point for building most other kernels.
   /// TODO: unroll and factor common components to helpers.
@@ -74,26 +82,26 @@ private:
 
   ErrorOr<KernelOp> lowerToKernelBase();
 
-  KernelCallInterface
-  lowerToElementwiseKernel(KernelOp kernelOp, const OperandMapping &mapping,
-                           DictionaryAttr forwardedParameters,
-                           const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
+  KernelCallInterface lowerToElementwiseKernel(
+      KernelOp kernelOp, const KernelDeclOperandMapping &mapping,
+      DictionaryAttr forwardedParameters, const KernelDeclAdaptor &adaptor);
 
   ErrorOr<KernelCallInterface>
-  lowerToViewKernel(KernelOp kernelOp, const OperandMapping &mapping,
-                    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
+  lowerToViewKernel(KernelOp kernelOp, const KernelDeclOperandMapping &mapping,
+                    const KernelDeclAdaptor &adaptor);
 
   KernelCallInterface
-  lowerToNormalKernel(KernelOp kernelOp, const OperandMapping &mapping,
-                      const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
+  lowerToNormalKernel(KernelOp kernelOp,
+                      const KernelDeclOperandMapping &mapping,
+                      const KernelDeclAdaptor &adaptor);
 
   KernelCallInterface
-  lowerToShapeKernel(KernelOp kernelOp, const OperandMapping &mapping,
-                     const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
+  lowerToShapeKernel(KernelOp kernelOp, const KernelDeclOperandMapping &mapping,
+                     const KernelDeclAdaptor &adaptor);
 
   ErrorOr<KernelOp>
-  buildKernelOpImpl(KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
-                    const OperandMapping &operandMapping);
+  buildKernelOpImpl(KernelDeclAdaptor &adaptor,
+                    const KernelDeclOperandMapping &operandMapping);
 
   ErrorOr<DictionaryAttr> forwardParameters();
 
@@ -110,7 +118,7 @@ private:
   MLIRContext *ctx;
   Location loc;
 
-  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis;
+  MOGG::MojoRegistry &registry;
 };
 
 } // namespace M::MOGG

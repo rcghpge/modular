@@ -10,11 +10,11 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 #include <numeric>
@@ -117,7 +117,6 @@ HAS_FALLBACK(MO::TileOp)
 template <>
 struct Fallback<MO::CustomOp> {
   ErrorOrSuccess build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
-                       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                        StringSet<> &inputParamsNeeded);
 };
 
@@ -145,14 +144,14 @@ NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 //===----------------------------------------------------------------------===//
 
 struct AddFallbackShapeFunctions
-    : public MOGG::MojoLibraryAnalysisPass<
-          impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions>> {
+    : public impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions> {
   using Base::Base;
 
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
     MLIRContext *ctx = graph.getContext();
     OpBuilder builder{ctx};
+    MOGG::MojoRegistry registry(graph->getParentOfType<mlir::ModuleOp>());
 
     WalkResult result = graph.walk([&](ParamDeclarationInterface op) {
       // Shape function was already materialized or never needed.
@@ -218,40 +217,27 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::TileOp)
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
-        auto analysisOr = getLibraryAnalysis();
-        if (analysisOr.isError()) {
-          emitError(asOp->getLoc(),
-                    llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                                  getPassName(), analysisOr.getError()));
-          return WalkResult::interrupt();
-        }
-
-        auto analysis = analysisOr.takeValue();
-
-        // Find the kernel input parameters.
-        auto mojoKernel =
-            analysis->getRegisteredLITMojoKernelFor(asOp.getSymbol());
-
-        if (!mojoKernel) {
-          mojoKernel =
-              analysis->getRegisteredLITMojoShapeFunctionFor(asOp.getSymbol());
-        }
-
-        if (!mojoKernel) {
-          asOp.emitError() << "Could not find registered mojo kernel named "
-                           << asOp.getSymbol();
+        if (!registry.containsKernel(asOp.getSymbol())) {
+          asOp.emitError() << "Could not find registered mojo kernel named '"
+                           << asOp.getSymbol() << "'";
           return mlir::WalkResult::interrupt();
         }
+        MOGG::KernelDeclOp declOp =
+            registry.getResolvedKernel(asOp.getSymbol());
 
-        ArrayRef<ParamDeclAttr> mojoKernelInputParams =
-            mojoKernel.getInputParams();
-
+        // Collect compile-time parameter names so the fallback can forward
+        // matching custom-op attributes to the shape function call. Sourced
+        // from the shape fn's own params (it may differ from execute, e.g.
+        // shape typically omits `target`/`_trace_name`).
         StringSet<> inputParams;
-        for (KGEN::ParamDeclAttr inputParam : mojoKernelInputParams)
-          inputParams.insert(inputParam.getName());
+        if (auto shapeAttr = declOp.getShape()) {
+          for (mlir::Attribute attr : shapeAttr->getParams()) {
+            inputParams.insert(mlir::cast<KGEN::ParamDeclAttr>(attr).getName());
+          }
+        }
 
-        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
-                                                     *analysis, inputParams);
+        auto result =
+            Fallback<MO::CustomOp>{}.build(graph, builder, asOp, inputParams);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();
@@ -494,11 +480,9 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
   return success();
 }
 
-ErrorOrSuccess
-Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
-                              MO::CustomOp op,
-                              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                              StringSet<> &inputParamsNeeded) {
+ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
+                                             MO::CustomOp op,
+                                             StringSet<> &inputParamsNeeded) {
   // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
@@ -908,9 +892,3 @@ ErrorOrSuccess Fallback<MO::ReduceRMSNormFusedResidualAddOp>::build(
 } // namespace
 
 } // namespace M::MO
-
-std::unique_ptr<mlir::Pass> M::MO::createAddFallbackShapeFunctions(
-    const M::MO::AddFallbackShapeFunctionsOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> analysis) {
-  return std::make_unique<AddFallbackShapeFunctions>(opts, std::move(analysis));
-}

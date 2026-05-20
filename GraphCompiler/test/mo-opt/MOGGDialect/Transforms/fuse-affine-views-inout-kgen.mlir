@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-fuse-epilogues --canonicalize %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-fuse-epilogues --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @many_affine_views
 // CHECK: fusionInfo = Epilogue(Affine("mo.matmul":{{.*}}, "mo.add_singleton_dim":{{.*}}, "mo.add_singleton_dim":{{.*}}, "mo.add_singleton_dim":{{.*}}), "mo.relu":{{.*}})

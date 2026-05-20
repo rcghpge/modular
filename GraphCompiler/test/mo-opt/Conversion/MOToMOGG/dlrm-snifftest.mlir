@@ -1,5 +1,5 @@
 // TODO(GEX-1573): Convert the following sniff test to a complete sniff test.
-// RUN: mo-opt %s --mo-to-mogg
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg
 
 // Just check we can compile it.
 

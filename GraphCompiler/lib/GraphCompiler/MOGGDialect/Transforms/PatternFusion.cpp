@@ -26,6 +26,9 @@
 #include "llvm/Support/MathExtras.h"
 
 #include <numeric>
+#if defined(__APPLE__)
+#include <pthread.h>
+#endif
 
 using namespace M;
 using namespace M::MO;
@@ -4266,12 +4269,22 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
       StringRef effectiveArch = mockArchName.getValue();
       std::string queriedArch;
       if (effectiveArch.empty()) {
-        auto gpuDevice = M::Driver::Device::create("gpu", 0);
-        if (!gpuDevice.isError()) {
-          auto archName = gpuDevice.get()->getArchName();
-          if (!archName.isError()) {
-            queriedArch = archName.get();
-            effectiveArch = queriedArch;
+        // On macOS, Metal API requires main-thread access. MLIR runs passes
+        // over multiple GraphOps in parallel (worker threads), so guard the
+        // Metal device query with a main-thread check to prevent crashes. On
+        // other platforms (e.g. Linux+CUDA), thread-safety is not an issue.
+        bool canQueryDevice = true;
+#if defined(__APPLE__)
+        canQueryDevice = pthread_main_np() != 0;
+#endif
+        if (canQueryDevice) {
+          auto gpuDevice = M::Driver::Device::create("gpu", 0);
+          if (!gpuDevice.isError()) {
+            auto archName = gpuDevice.get()->getArchName();
+            if (!archName.isError()) {
+              queriedArch = archName.get();
+              effectiveArch = queriedArch;
+            }
           }
         }
       }

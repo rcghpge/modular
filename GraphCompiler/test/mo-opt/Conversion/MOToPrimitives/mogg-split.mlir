@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-mgp --canonicalize --cse | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp --canonicalize --cse | FileCheck %s
 
 // CHECK-LABEL: mgp.model @mogg_split : mof
 // CHECK: } execute (

@@ -8,7 +8,6 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H
 
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 
@@ -38,17 +37,11 @@ namespace M::MO {
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
-std::unique_ptr<Pass> createAddFallbackShapeFunctions(
-    const M::MO::AddFallbackShapeFunctionsOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
-
 /// Creates the NanCheckPass. `stride > 1` samples one of every N float
 /// kernel outputs; `stride == 1` checks every float kernel output (the
 /// original pre-GEX-3703 behaviour, prohibitively slow on large models).
 /// The default of 20 matches the `max-debug.nan-check-stride` knob.
-std::unique_ptr<Pass>
-createNanCheckPass(std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
-                   uint64_t stride = 20);
+std::unique_ptr<Pass> createNanCheckPass(uint64_t stride = 20);
 
 } // namespace M::MO
 //

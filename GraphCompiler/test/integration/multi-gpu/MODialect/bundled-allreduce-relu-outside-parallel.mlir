@@ -5,7 +5,8 @@
 // and merge passes in isolation are covered by their respective unit tests
 // under mo-opt/.../Transforms/.
 
-// RUN: mo-opt %s --mo-create-parallel-from-unbundle --canonicalize \
+// RUN: mo-opt %s --mogg-import-packages \
+// RUN:     --mo-create-parallel-from-unbundle --canonicalize \
 // RUN:     --mo-merge-adjacent-parallels --mo-pipeline --mo-to-mogg \
 // RUN:     --mogg-pipeline | FileCheck %s --check-prefix=CHECK-FUSED
 

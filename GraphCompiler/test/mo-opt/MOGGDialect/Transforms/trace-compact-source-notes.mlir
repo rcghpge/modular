@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that WithTraceOp emits compact Python source notes as the Trace detail
 // argument. Long paths are trimmed to the last 3 components, and only the

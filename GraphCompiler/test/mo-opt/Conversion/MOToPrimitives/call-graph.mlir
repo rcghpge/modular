@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-to-mgp %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-to-mgp %s | FileCheck %s
 
 // CHECK-LABEL: mgp.model @call_subgraph subgraph : mof
 // CHECK-SAME: devices [#M.device_ref<"cpu", 0>]

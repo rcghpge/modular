@@ -13,7 +13,6 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHDialect.h"
@@ -159,9 +158,8 @@ void M::MO::registerPasses() {
   KGEN::registerVerifyParametersPass();
 }
 
-LogicalResult
-MO::runGcPipeline(ModuleOp module, const GCPipelineOptions &gcPipelineOptions,
-                  std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+LogicalResult MO::runGcPipeline(ModuleOp module,
+                                const GCPipelineOptions &gcPipelineOptions) {
 
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -176,7 +174,7 @@ MO::runGcPipeline(ModuleOp module, const GCPipelineOptions &gcPipelineOptions,
     }
   }
 
-  MO::buildGCPipeline(pm, gcPipelineOptions, std::move(libraryAnalysis));
+  MO::buildGCPipeline(pm, gcPipelineOptions);
   return pm.run(module);
 }
 
@@ -238,8 +236,7 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   pm.addPass(MO::createMergeDuplicateShapeMaterializations());
-  pm.addPass(
-      MO::createAddFallbackShapeFunctions({kernelLibraryPaths}, nullptr));
+  pm.addPass(MO::createAddFallbackShapeFunctions());
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
@@ -347,9 +344,8 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
 // mgp-pipeline
 // ---------------------------------------------------------------------------
 
-void M::MO::buildMgpPipeline(
-    mlir::OpPassManager &pm, const MgpPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
+                             const MgpPipelineOptions &opts) {
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
@@ -404,7 +400,7 @@ void M::MO::buildMgpPipeline(
   emitMojoOptions.enableComputeLambdas = opts.enableComputeLambdas;
   emitMojoOptions.moggDebugDumpFusedTensorSpecs =
       opts.moggDebugDumpFusedTensorSpecs;
-  pm.addPass(MOGG::createEmitMojo(emitMojoOptions, libraryAnalysis));
+  pm.addPass(MOGG::createEmitMojo(emitMojoOptions));
 
   if (opts.dumpMojoText)
     pm.addPass(MOGG::createDumpMojo());
@@ -426,11 +422,10 @@ namespace {
 ///   - runGCPipeline: passes a non-null `moduleOp`; `pm` is populated and
 ///     then run by the caller (or left empty when `dumpIntermediates` is true
 ///     and each stage already ran internally).
-static LogicalResult
-gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-               std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
-               bool skipJit, ModuleOp moduleOp = {},
-               bool dumpIntermediates = false) {
+static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
+                                    const GCPipelineOptions &opts, bool skipJit,
+                                    ModuleOp moduleOp = {},
+                                    bool dumpIntermediates = false) {
 
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
@@ -538,6 +533,31 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     return success();
   };
 
+  // --- import-packages (first pass: populate mogg.kernel.decl ops) ---
+  // Skipped when `kernelDeclsPrePopulated` is set: the caller (Python compile
+  // path, constant folding) has already seeded the module with decl ops and
+  // the `mogg.opaque_type_mapping` attribute via `MOGG::copyKernelDecls`.
+  // `mogg-rewrite-opaque-types` immediately below still runs, so user
+  // `!mo.opaque<"simple">` references on freshly-cloned ops get rewritten.
+  if (!opts.kernelDeclsPrePopulated) {
+    if (failed(buildOrRunStage(
+            [&](auto &p) {
+              p.addPass(MOGG::createImportPackages(
+                  {.mojoPkgPaths = kernelLibraryPaths, .litMlirPaths = {}}));
+            },
+            "")))
+      return failure();
+  }
+
+  // --- rewrite-opaque-types ---
+  // Applies the `mogg.opaque_type_mapping` attribute to all `!mo.opaque`
+  // references in the module. Always runs; a no-op when ops are already
+  // fully-qualified (e.g. constant fold sub-modules whose ops were extracted
+  // from an already-rewritten parent module).
+  if (failed(buildOrRunStage(
+          [&](auto &p) { p.addPass(MOGG::createRewriteOpaqueTypes()); }, "")))
+    return failure();
+
   // --- mo-pipeline ---
   if (failed(buildOrRunStage([&](auto &p) { buildMoPipeline(p, moOpts); },
                              "mo-pre-mogg")))
@@ -546,8 +566,7 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   // --- mo-to-mogg ---
   if (failed(buildOrRunStage(
           [&](auto &p) {
-            p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
-                                         libraryAnalysis));
+            p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
           },
           "mogg")))
     return failure();
@@ -560,8 +579,7 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
           [&](auto &p) {
             buildMoggPipeline(p, moggOpts);
             if (opts.nanCheck)
-              p.addPass(
-                  MO::createNanCheckPass(libraryAnalysis, opts.nanCheckStride));
+              p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
           },
           "mogg-pre-mgp")))
     return failure();
@@ -575,9 +593,10 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   // --- mgp-pipeline + jit + jit-pipeline ---
   if (failed(buildOrRunStage(
           [&](auto &p) {
-            buildMgpPipeline(p, mgpOpts, libraryAnalysis);
+            buildMgpPipeline(p, mgpOpts);
             if (!skipJit) {
               p.addPass(MOGG::createJitCompileKernels(jitOpts));
+              p.addPass(MOGG::createStripKernelDecls());
               buildJitPipeline(p);
             }
           },
@@ -595,29 +614,26 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
 // gc-pipeline-pre-jit: same through mgp-pipeline (emit-mojo); no jit
 // ---------------------------------------------------------------------------
 
-void M::MO::buildGCPipeline(
-    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  (void)gcPipelineImpl(pm, opts, std::move(libraryAnalysis), /*skipJit=*/false);
+void M::MO::buildGCPipeline(mlir::OpPassManager &pm,
+                            const GCPipelineOptions &opts) {
+  (void)gcPipelineImpl(pm, opts, /*skipJit=*/false);
 }
 
-void M::MO::buildGCPipelineThroughEmitMojo(
-    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  (void)gcPipelineImpl(pm, opts, std::move(libraryAnalysis), /*skipJit=*/true);
+void M::MO::buildGCPipelineThroughEmitMojo(mlir::OpPassManager &pm,
+                                           const GCPipelineOptions &opts) {
+  (void)gcPipelineImpl(pm, opts, /*skipJit=*/true);
 }
 
-LogicalResult
-M::MO::runGCPipeline(ModuleOp moduleOp, const GCPipelineOptions &opts,
-                     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
-                     bool dumpIntermediates) {
+LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
+                                   const GCPipelineOptions &opts,
+                                   bool dumpIntermediates) {
   auto pm = mlir::PassManager::on<ModuleOp>(
       moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
   // gcPipelineImpl either runs staged PMs directly (leaving `pm` empty) or
   // populates `pm` for a single-shot run. Either way, running `pm` after is
   // correct: it is a no-op when the staged path already executed everything.
-  if (failed(gcPipelineImpl(pm, opts, std::move(libraryAnalysis),
-                            /*skipJit=*/false, moduleOp, dumpIntermediates)))
+  if (failed(gcPipelineImpl(pm, opts, /*skipJit=*/false, moduleOp,
+                            dumpIntermediates)))
     return failure();
   return pm.run(moduleOp);
 }

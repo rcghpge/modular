@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-fuse-elementwise --mogg-simplify-kernel-operands --mogg-fuse-views --mogg-simplify-kernel-operands --mogg-fuse-prologues --mogg-simplify-kernel-operands --mogg-fuse-epilogues --mogg-simplify-kernel-operands %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-fuse-elementwise --mogg-simplify-kernel-operands --mogg-fuse-views --mogg-simplify-kernel-operands --mogg-fuse-prologues --mogg-simplify-kernel-operands --mogg-fuse-epilogues --mogg-simplify-kernel-operands --mogg-strip-kernel-decls %s | FileCheck %s
 
 // Tests that FuseEpilogues fuses epilogues 4 hops away through alternating
 // affine views. FuseEpilogues runs epilogue fusion and affine view fusion in a

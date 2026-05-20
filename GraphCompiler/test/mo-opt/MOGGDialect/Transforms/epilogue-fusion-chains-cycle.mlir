@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-fuse-epilogues | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-fuse-epilogues | FileCheck %s
 
 // No kernels get fused
 // CHECK: mogg.kernel

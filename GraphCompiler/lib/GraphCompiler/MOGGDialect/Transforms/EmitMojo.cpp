@@ -7,7 +7,7 @@
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
@@ -153,9 +153,8 @@ struct LiftBufferCacheSlots
   void runOnOperation() override { liftBufferCacheSlots(getOperation()); }
 };
 
-struct EmitMojo
-    : public MOGG::MojoLibraryAnalysisPass<impl::EmitMojoBase<EmitMojo>> {
-  using Base::Base;
+struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
+  using EmitMojoBase::EmitMojoBase;
 
   /// TODO: If this is slow, parallelize over KernelStubOp (will need to take
   /// the first dummyDimAttr from any kernel and then run in //).
@@ -204,15 +203,9 @@ struct EmitMojo
     auto moduleOp = getOperation();
     auto ctx = moduleOp->getContext();
     auto loc = moduleOp->getLoc();
-    auto analysisOr = getLibraryAnalysis();
-    if (analysisOr.isError()) {
-      emitError(loc, llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                                   getPassName(), analysisOr.getError()));
-      return signalPassFailure();
-    }
-
     OpBuilder builder(ctx);
-    MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
+    MojoRegistry registry(moduleOp);
+    MOGG::EmitMojoState state(registry, enableOpTraceComments,
                               enableComputeLambdas,
                               moggDebugDumpFusedTensorSpecs);
 
@@ -385,9 +378,3 @@ struct EmitMojo
 } // namespace
 
 } // namespace M::MOGG
-
-std::unique_ptr<mlir::Pass> M::MOGG::createEmitMojo(
-    const EmitMojoOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  return std::make_unique<EmitMojo>(opts, std::move(libraryAnalysis));
-}

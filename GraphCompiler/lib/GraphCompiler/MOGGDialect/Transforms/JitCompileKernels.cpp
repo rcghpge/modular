@@ -56,16 +56,6 @@ struct JitCompileKernels
 
     if (compileMojoToBinary(module, kernelLibraryPaths).isError())
       signalPassFailure();
-
-    // Kernel/primitive decl ops are populated by mogg-import-packages and used
-    // by passes up through lowering. They are not part of the MEF output
-    // format, so erase them here once JIT compilation is complete.
-    for (auto decl :
-         llvm::make_early_inc_range(module.getOps<MOGG::KernelDeclOp>()))
-      decl.erase();
-    for (auto decl :
-         llvm::make_early_inc_range(module.getOps<MOGG::PrimitiveDeclOp>()))
-      decl.erase();
   }
 
   struct SemanticHashKey {

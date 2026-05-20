@@ -12,6 +12,7 @@
 #include "GraphCompiler/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/BufferBuilder.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -44,6 +45,12 @@ using namespace MGP;
 //===----------------------------------------------------------------------===//
 // Utils
 //===----------------------------------------------------------------------===//
+
+static llvm::StringRef primitiveMojoName(MOGG::PrimitiveDeclOp decl) {
+  // sym_name is set to the fully-qualified Mojo source name by
+  // ImportPackages, so it doubles as the identifier to emit in Mojo source.
+  return decl.getSymNameAttr().strref();
+}
 
 ErrorOr<std::optional<uint64_t>>
 M::MGP::getImpliedAlignment(ElementsAttr value) {
@@ -259,9 +266,9 @@ static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ResourceConstantOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp func = state.analysis.getRegisteredLITMojoKernelFor(
-      BufferConstantOp::getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+  auto primDecl =
+      state.registry.lookupPrimitive(BufferConstantOp::getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
   auto &[ptr, bytecount] =
       state.mojoConstantResources[getResourceSlot().getZExtValue()];
   MOGG::MojoValue result = state.builder.var(function({}, {ptr, bytecount}));
@@ -307,9 +314,8 @@ llvm::BitVector BufferConstantOp::resultsToPack() {
 }
 
 LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp func =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   auto elementsAttr = getAValue();
   auto kernelOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
@@ -334,9 +340,8 @@ LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
 LogicalResult TensorSpecCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp func =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   TensorSpecType tensorSpec = getResult().getType();
   size_t rank = tensorSpec.getRank();
@@ -445,8 +450,8 @@ llvm::BitVector BufferRemoveCachedOp::operandsToUnpack() {
 
 LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   /// TODO: Add error checking. The Mojo/C++ can return an error that we
-  auto mgpBufferRemoveCachedFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue mgpBufferRemoveCachedFunc(primitiveMojoName(primDecl));
   state.builder.call(mgpBufferRemoveCachedFunc, {},
                      {state.getMojoValueFor(getTheContext()),
                       state.getMojoValueFor(getBBufferSlot())});
@@ -474,9 +479,8 @@ OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
 LogicalResult BufferGetSizeOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp generator =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MojoValue getSizeFunc = state.getOriginalMojoNameFor(generator);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue getSizeFunc(primitiveMojoName(primDecl));
 
   MojoValue bufferVar = state.getMojoValueFor(getBuffer());
   state.setMojoValueFor(getResult(), getSizeFunc({}, {bufferVar}));
@@ -489,9 +493,8 @@ LogicalResult BufferGetSizeOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorSpecGetDimOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp generator =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue getDimFunc = state.getOriginalMojoNameFor(generator);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue getDimFunc(primitiveMojoName(primDecl));
 
   MOGG::MojoValue axisParam = MOGG::MojoValue(getAxis());
   MOGG::MojoValue rankParam = getSpec().getType().getRank();
@@ -550,8 +553,8 @@ llvm::BitVector BufferGetCachedOp::resultsToPack() {
 
 LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
-  auto mgpBufferGetCacheFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue mgpBufferGetCacheFunc(primitiveMojoName(primDecl));
   auto res = state.builder.var(
       mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
                                  state.getMojoValueFor(getBBufferSlot())}));
@@ -595,9 +598,8 @@ llvm::BitVector IntCacheOp::operandsToUnpack() {
 }
 
 LogicalResult IntCacheOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
   MOGG::MojoValue bIntSlotParam = MOGG::MojoValue(getBIntSlot());
   state.builder.call(function, {bIntSlotParam},
                      {state.getMojoValueFor(getTheContext()),
@@ -617,9 +619,8 @@ llvm::BitVector IntGetCachedOp::operandsToUnpack() {
 }
 
 LogicalResult IntGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
   auto res =
       state.builder.var(function({}, {state.getMojoValueFor(getTheContext()),
                                       state.getMojoValueFor(getBIntSlot())}));
@@ -634,9 +635,8 @@ LogicalResult IntGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
 bool AssertOp::isThrows() { return true; }
 
 LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp func =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   MOGG::MojoValue conditionVar = state.getMojoValueFor(getCond());
   MOGG::MojoValue messageLiteral = MOGG::MojoValue(getMessage()).quote();
@@ -687,9 +687,8 @@ mlir::BitVector TensorExtractBufferOp::resultsToPack() {
 LogicalResult TensorExtractBufferOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
 
   MojoValue res =
       state.builder.var(function({}, state.getMojoValueFor(getTensor())));
@@ -739,9 +738,8 @@ OpFoldResult TensorExtractBufferOp::fold(FoldAdaptor adaptor) {
 LogicalResult TensorExtractTensorSpecOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
 
   DeviceTensorType tensorType = getTensor().getType();
   MojoValue tensorRankParam = tensorType.getRank();
@@ -825,9 +823,8 @@ mlir::BitVector TensorCreateOp::resultsToPack() {
 LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
 
   DeviceTensorType tensorType = getOutTensor().getType();
   MojoValue tensorRankParam = tensorType.getRank();
@@ -859,9 +856,8 @@ mlir::BitVector TensorSliceOp::resultsToPack() {
 LogicalResult TensorSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
 
   DeviceTensorType inputType = getInput().getType();
   MojoValue rankParam = inputType.getRank();
@@ -982,9 +978,8 @@ CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
 bool DebugPrintOp::isThrows() { return true; }
 
 LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   MOGG::MojoValue debugStringParam = MOGG::MojoValue(getADebugString()).quote();
   MOGG::MojoValue labelParam = MOGG::MojoValue(getBLabel()).quote();
@@ -1000,9 +995,8 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DebugPrintIntOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::LIT::FnOp litFunction =
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   MOGG::MojoValue labelParam = MOGG::MojoValue(getALabel()).quote();
   MOGG::MojoValue ctxVar = state.getMojoValueFor(getTheContext());

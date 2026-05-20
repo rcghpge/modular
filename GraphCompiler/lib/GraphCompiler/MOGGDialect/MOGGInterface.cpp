@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
@@ -21,7 +21,7 @@ buildMojoObjectInfosOutputMethodsDict(Operation *mojoKernelOp,
                                       llvm::ArrayRef<StringRef> methods) {
   auto mojoKernel = cast<KGEN::GeneratorOp>(mojoKernelOp);
   DictionaryAttr valueWitnessesAttr = dyn_cast_or_null<DictionaryAttr>(
-      mojoKernel->getAttr(KGEN::MOGGPreElab::MOGG_RESULT_VALUE_WITNESSES));
+      mojoKernel->getAttr(MOGG::MOGG_RESULT_VALUE_WITNESSES));
   if (!valueWitnessesAttr) {
     return mojoKernel.emitError()
            << "no MOGG type value witnesses found (maybe kernel is missing a "

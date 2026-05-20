@@ -5,13 +5,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/LITDialect/LITInterfaces.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/Support/MojoPrecompiledFile.h"
@@ -45,50 +46,6 @@ namespace M::MOGG {
 
 namespace {
 
-static constexpr llvm::StringLiteral kMOGGKernelAPIModuleName = "MOGGKernelAPI";
-static constexpr llvm::StringLiteral kMOGGPrimitivesModuleName =
-    "MOGGPrimitives";
-
-static ErrorOr<std::string> resolveLITModulePath(mlir::MLIRContext *ctx,
-                                                 llvm::SourceMgr &sourceMgr,
-                                                 llvm::StringRef moduleName) {
-  KGEN::CompilationOptions options;
-  KGEN::LIT::ParserConfig config(ctx, options);
-  KGEN::LIT::SharedState sharedState(sourceMgr, config);
-  std::optional<std::string> modulePath =
-      sharedState.resolveModulePath(moduleName, llvm::SMLoc());
-  if (!modulePath) {
-    return Error(
-        llvm::formatv("Failed to resolve module path for `{}`", moduleName)
-            .str());
-  }
-  if (!M::Filesystem::isMojoBinaryPackagePath(*modulePath)) {
-    return Error(
-        llvm::formatv("Resolved module path for `{}` to source directory `{}` "
-                      "but a .mojoc precompiled file was expected instead",
-                      moduleName, *modulePath)
-            .str());
-  }
-  return *modulePath;
-}
-
-static ErrorOr<llvm::SmallVector<std::string>>
-getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx) {
-  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-  llvm::SmallVector<std::string> paths;
-  auto kernelAPIPathOr =
-      resolveLITModulePath(ctx, *sourceMgr, kMOGGKernelAPIModuleName);
-  if (kernelAPIPathOr.isError())
-    return kernelAPIPathOr.takeError();
-  paths.push_back(*kernelAPIPathOr);
-  auto primitivesPathOr =
-      resolveLITModulePath(ctx, *sourceMgr, kMOGGPrimitivesModuleName);
-  if (primitivesPathOr.isError())
-    return primitivesPathOr.takeError();
-  paths.push_back(*primitivesPathOr);
-  return paths;
-}
-
 static constexpr llvm::StringLiteral kExecuteFuncName = "execute";
 static constexpr llvm::StringLiteral kShapeFuncName = "shape";
 static constexpr llvm::StringLiteral kElementwiseFuncName = "elementwise";
@@ -109,6 +66,11 @@ static constexpr llvm::StringLiteral kUpdateViewFuncName = "update_input_view";
 /// a slot-name lookup, so the slot mapping isn't computed for them.
 static llvm::ArrayRef<llvm::StringLiteral>
 getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
+  // Mojo stdlib types referenced by kernel signatures whose StructDeclOps are
+  // not present in the loaded kernel package. Slot names and order must match
+  // the corresponding `LIT::StructType::getParamValues()` exactly, including
+  // any inferred (`//`-introduced) and keyword-only (`*`-introduced)
+  // parameters that get hoisted onto the LIT type.
   static constexpr llvm::StringLiteral kSimdParams[] = {"dtype", "size"};
   static constexpr llvm::StringLiteral kIndexListParams[] = {"size",
                                                              "element_type"};
@@ -120,7 +82,7 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
   return {};
 }
 
-/// Build per-result {struct-slot-name -> bound-value} mappings from `types`.
+/// Build per-type {struct-slot-name -> bound-value} mappings from `types`.
 /// For each parameterised StructType, produces a DictionaryAttr keyed by the
 /// struct's slot names. Two paths are tried in order:
 ///
@@ -130,14 +92,26 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
 ///      of stdlib structs whose layouts we recognise without loading their
 ///      decls).
 ///
-/// Non-struct types and parameterless structs get a UnitAttr placeholder.
-/// A parameterised struct that fits neither path is an error: we cannot
-/// emit a slot-name mapping without knowing the struct's parameter names.
-/// Returns null on failure (after emitting an error at `loc`).
+/// Non-struct types and parameterless structs always get a UnitAttr
+/// placeholder.
+///
+/// `strict` controls behaviour for parameterised structs that fit neither
+/// path:
+///   - `true`: emit an error at `loc` and return null. Used for result types
+///     of `shape` / `elementwise` functions, where the slot mapping is
+///     consumed unconditionally and the universe of relevant structs is
+///     small (SIMD, IndexList, plus user/kernel-API decls in the loaded
+///     pkg).
+///   - `false`: fall back to a UnitAttr placeholder. Used for argument
+///     types, where the consumer (`MOToMOGGLowering::inferOpaqueParameters`)
+///     only reads entries that correspond to MO::OpaqueType operands; tensor
+///     and device-context argument types (whose struct decls live in
+///     dependency packages we deliberately do not load) fall through
+///     harmlessly.
 static mlir::ArrayAttr computeValueParams(mlir::MLIRContext *ctx,
                                           mlir::ModuleOp pkg,
                                           mlir::Location loc,
-                                          mlir::TypeRange types) {
+                                          mlir::TypeRange types, bool strict) {
   mlir::Builder builder(ctx);
   llvm::SmallVector<mlir::Attribute> perArgAttrs;
   for (mlir::Type ty : types) {
@@ -183,6 +157,10 @@ static mlir::ArrayAttr computeValueParams(mlir::MLIRContext *ctx,
       continue;
     }
 
+    if (!strict) {
+      perArgAttrs.push_back(builder.getUnitAttr());
+      continue;
+    }
     mlir::emitError(loc)
         << "unable to compute parameter-name mapping for parameterised "
            "struct '"
@@ -297,6 +275,7 @@ isExtensibilityAPIStruct(KGEN::LIT::StructDeclOp structDeclOp,
 /// One registered kernel struct found while scanning an unannotated Mojo
 /// package module.
 struct ScannedKernel {
+  KGEN::LIT::StructDeclOp structDeclOp;
   mlir::StringAttr registration;
   mlir::StringAttr mojoName;
   KGEN::LIT::FnOp executeFn;
@@ -321,42 +300,59 @@ static mlir::LogicalResult scanForKernelDecls(
     llvm::SmallVectorImpl<ScannedPrimitiveFunction> &primitives) {
   // Collect struct-based kernels.
   mlir::LogicalResult result = mlir::success();
-  mod.walk([&](KGEN::LIT::StructDeclOp structDeclOp) -> mlir::WalkResult {
-    if (structDeclOp.getDecorators().empty())
-      return mlir::WalkResult::advance();
+  mod.walk(
+      [&](KGEN::LIT::StructDeclOp structDeclOp) -> mlir::WalkResult {
+        if (structDeclOp.getDecorators().empty())
+          return mlir::WalkResult::advance();
 
-    ExtensibilityAPIStructInfo info;
-    ErrorOr<bool> isExtensibility =
-        isExtensibilityAPIStruct(structDeclOp, info);
-    if (isExtensibility.isError()) {
-      structDeclOp.emitError(isExtensibility.getError());
-      result = mlir::failure();
-      return mlir::WalkResult::interrupt();
-    }
-    if (!isExtensibility.takeValue())
-      return mlir::WalkResult::advance();
+        ExtensibilityAPIStructInfo info;
+        ErrorOr<bool> isExtensibility =
+            isExtensibilityAPIStruct(structDeclOp, info);
+        if (isExtensibility.isError()) {
+          structDeclOp.emitError(isExtensibility.getError());
+          result = mlir::failure();
+          return mlir::WalkResult::interrupt();
+        }
+        if (!isExtensibility.takeValue())
+          return mlir::WalkResult::advance();
 
-    ScannedKernel kernel;
-    kernel.registration = info.registrationName;
-    kernel.mojoName = getFullyResolvedMojoName(structDeclOp);
+        ScannedKernel kernel;
+        kernel.structDeclOp = structDeclOp;
+        kernel.registration = info.registrationName;
+        kernel.mojoName = getFullyResolvedMojoName(structDeclOp);
 
-    for (auto &op : structDeclOp.getFields().front()) {
-      auto func = mlir::dyn_cast<KGEN::LIT::FnOp>(op);
-      if (!func)
-        continue;
-      if (func.getSourceName() == kExecuteFuncName)
-        kernel.executeFn = func;
-      else if (func.getSourceName() == kShapeFuncName)
-        kernel.shapeFn = func;
-      else if (func.getSourceName() == kElementwiseFuncName)
-        kernel.elementwiseFn = func;
-      else if (func.getSourceName() == kUpdateViewFuncName)
-        kernel.updateViewFn = func;
-    }
+        for (auto &op : structDeclOp.getFields().front()) {
+          auto func = mlir::dyn_cast<KGEN::LIT::FnOp>(op);
+          if (!func)
+            continue;
+          auto srcNameOpt = func.getSourceName();
+          if (!srcNameOpt.has_value())
+            continue;
+          llvm::StringRef srcName = *srcNameOpt;
+          bool recognized = true;
+          if (srcName == kExecuteFuncName)
+            kernel.executeFn = func;
+          else if (srcName == kShapeFuncName)
+            kernel.shapeFn = func;
+          else if (srcName == kElementwiseFuncName)
+            kernel.elementwiseFn = func;
+          else if (srcName == kUpdateViewFuncName)
+            kernel.updateViewFn = func;
+          else
+            recognized = false;
+          if (recognized && !func.getIsStatic()) {
+            func.emitError()
+                << "Kernel entry point '" << srcName
+                << "' must be a @staticmethod (non-static methods are not "
+                   "supported)";
+            result = mlir::failure();
+            return mlir::WalkResult::interrupt();
+          }
+        }
 
-    kernels.push_back(kernel);
-    return mlir::WalkResult::advance();
-  });
+        kernels.push_back(kernel);
+        return mlir::WalkResult::advance();
+      });
 
   if (failed(result))
     return result;
@@ -369,7 +365,6 @@ static mlir::LogicalResult scanForKernelDecls(
   // is a legitimate primitive, so we do not need to whitelist registration
   // prefixes.
   mod.walk([&](KGEN::LIT::FnOp func) -> mlir::WalkResult {
-    using namespace KGEN::MOGGPreElab::Decorators;
     // Skip struct member functions; only collect standalone functions.
     if (mlir::isa<KGEN::LIT::StructDeclOp>(func->getParentOp()))
       return mlir::WalkResult::advance();
@@ -380,7 +375,7 @@ static mlir::LogicalResult scanForKernelDecls(
       if (!isMAXCompilerSymbol(*decoratorSymbolOr))
         continue;
       if (!decoratorSymbolOr->getLeafReference().strref().starts_with(
-              REGISTER_INTERNAL_FUNCTION))
+              KGEN::MOGG_REGISTER_INTERNAL_FUNCTION))
         continue;
       auto apply = KGEN::sugarDynCast<KGEN::ParamOperatorAttr>(decorator);
       if (!apply)
@@ -465,7 +460,12 @@ static OwningOpRef<ModuleOp> loadPackageModule(MLIRContext *ctx,
 /// package wins).
 static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
                                    llvm::StringMap<std::string> &mapping) {
-  pkg->walk([&](KGEN::LIT::StructDeclOp structOp) -> mlir::WalkResult {
+  // Pre-order + skip: struct decls in the loaded packages don't nest other
+  // struct decls (their bodies hold member functions / attributes / etc.),
+  // so we can avoid recursing into each struct's body and walking IR we
+  // don't care about.
+  pkg->walk<mlir::WalkOrder::PreOrder>([&](KGEN::LIT::StructDeclOp structOp)
+                                           -> mlir::WalkResult {
     // Walk all ancestor FileModuleOp / StructDeclOp ops to collect the full
     // path. parentNames is filled innermost-first and then reversed below.
     llvm::SmallVector<llvm::StringRef> parentNames;
@@ -487,7 +487,7 @@ static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
     }
 
     if (parentNames.empty())
-      return mlir::WalkResult::advance();
+      return mlir::WalkResult::skip();
 
     // Build "outermost.intermediate...StructName" (parentNames is reversed).
     std::string qualifiedName = parentNames.back().str();
@@ -499,30 +499,40 @@ static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
     qualifiedName += structOp.getSymName().str();
 
     mapping.try_emplace(structOp.getSymName(), std::move(qualifiedName));
-    return mlir::WalkResult::advance();
+    return mlir::WalkResult::skip();
   });
 }
 
-/// Replace every !mo.opaque<"simple_name"> type in `module` with
-/// !mo.opaque<"fully.qualified.name"> using `mapping`. Types whose symbol is
-/// not present in the mapping are left unchanged.
-static void rewriteOpaqueTypes(mlir::ModuleOp module,
-                               const llvm::StringMap<std::string> &mapping) {
+/// Persist `mapping` on `module` as a `mogg.opaque_type_mapping`
+/// DictionaryAttr (simple → fully-qualified). Merges with any existing
+/// attribute already present (e.g. seeded from a previous import); new
+/// entries override colliding old ones since the most recent ImportPackages
+/// run is authoritative for the packages it just loaded.
+static void persistOpaqueTypeMapping(mlir::ModuleOp module,
+                                     llvm::StringMap<std::string> &mapping) {
+  mlir::MLIRContext *ctx = module.getContext();
+
+  if (auto existing = module->getAttrOfType<mlir::DictionaryAttr>(
+          kOpaqueTypeMappingAttrName)) {
+    for (mlir::NamedAttribute entry : existing) {
+      auto valueStr = mlir::dyn_cast<mlir::StringAttr>(entry.getValue());
+      if (!valueStr)
+        continue;
+      mapping.try_emplace(entry.getName(), valueStr.str());
+    }
+  }
+
   if (mapping.empty())
     return;
-  mlir::MLIRContext *ctx = module.getContext();
-  mlir::AttrTypeReplacer replacer;
-  replacer.addReplacement(
-      [&](MO::OpaqueType opaqueTy) -> std::optional<mlir::Type> {
-        auto it = mapping.find(opaqueTy.getSymbol().getValue());
-        if (it == mapping.end())
-          return std::nullopt;
-        return MO::OpaqueType::get(mlir::StringAttr::get(ctx, it->second),
-                                   opaqueTy.getParameters());
-      });
-  replacer.recursivelyReplaceElementsIn(module, /*replaceAttrs=*/true,
-                                        /*replaceLocs=*/false,
-                                        /*replaceTypes=*/true);
+
+  llvm::SmallVector<mlir::NamedAttribute> entries;
+  entries.reserve(mapping.size());
+  for (auto &kv : mapping) {
+    entries.emplace_back(mlir::StringAttr::get(ctx, kv.getKey()),
+                         mlir::StringAttr::get(ctx, kv.getValue()));
+  }
+  module->setAttr(kOpaqueTypeMappingAttrName,
+                  mlir::DictionaryAttr::get(ctx, entries));
 }
 
 struct ImportPackagesPass
@@ -554,49 +564,60 @@ struct ImportPackagesPass
 
     auto emptyArray = mlir::ArrayAttr::get(ctx, {});
 
-    // Build a MOGG_KernelFunctionAttr (signature + fn-level params + cached
-    // per-result mapping) for one function variant. Result-side slot names
-    // are cached because consumers look them up by name (e.g. "dtype" for
-    // SIMD-shaped result types). Argument-side has no analogous cache:
-    // consumers walk `signature.getArguments()` directly via
-    // `collectParameterReferences`, which doesn't need slot names.
-    // Build a MOGG::KernelFunctionAttr for `fn`. When `computeResultParams`
-    // is true, also build a per-result {slot-name -> bound-value} mapping;
-    // this is only needed for function variants whose return type is queried
-    // by slot name (shape and elementwise). For other variants (execute,
-    // update_view) and for primitives, the result is passed through opaquely
-    // and the slot mapping is left empty. Returns failure if a requested
-    // result mapping cannot be computed (the helper has already emitted an
-    // error). A null `fn` is not an error: it yields a null attr that the
-    // caller stores in the corresponding optional slot.
-    auto buildFunctionAttr = [&](KGEN::LIT::FnOp fn, bool computeResultParams)
+    // Build a MOGG::KernelFunctionAttr for `fn`:
+    //
+    // - `arg_params` is always computed in soft mode: parameterised structs
+    //   whose decls aren't reachable (tensors, device-context types) fall
+    //   through to UnitAttr placeholders. Consumers (opaque-parameter
+    //   inference) skip non-opaque entries anyway.
+    // - `result_params` is computed only when `computeResultParams` is set.
+    //   `strictResultParams` controls policy: strict mode errors when a
+    //   parameterised result struct is not resolvable; soft mode falls back
+    //   to UnitAttr. Use strict for `shape`/`elementwise` (results are
+    //   always stdlib `IndexList`/`SIMD`); use soft for `execute` /
+    //   `update_view` where results may be tensor wrappers like
+    //   `ManagedTensorSlice` whose decls live in dependency packages, while
+    //   still supporting user-defined parameterised opaque returns like
+    //   `SIMDPair` via path 1.
+    //
+    // Returns failure if a strict result-mapping cannot be computed (the
+    // helper has already emitted an error). A null `fn` is not an error: it
+    // yields a null attr that the caller stores in the corresponding
+    // optional slot.
+    auto buildFunctionAttr = [&](KGEN::LIT::FnOp fn, bool computeResultParams,
+                                 bool strictResultParams)
         -> mlir::FailureOr<MOGG::KernelFunctionAttr> {
       if (!fn)
         return MOGG::KernelFunctionAttr{};
       llvm::SmallVector<mlir::Attribute> paramAttrs;
       for (auto p : fn.getInputParams())
         paramAttrs.push_back(p);
+      auto argParams =
+          computeValueParams(ctx, pkg, fn.getLoc(), fn.getArgumentTypes(),
+                             /*strict=*/false);
       mlir::ArrayAttr resultParams = emptyArray;
       if (computeResultParams) {
         resultParams =
-            computeValueParams(ctx, pkg, fn.getLoc(), fn.getResultTypes());
+            computeValueParams(ctx, pkg, fn.getLoc(), fn.getResultTypes(),
+                               /*strict=*/strictResultParams);
         if (!resultParams)
           return mlir::failure();
       }
       return MOGG::KernelFunctionAttr::get(
           ctx, fn.getFullSignature(), mlir::ArrayAttr::get(ctx, paramAttrs),
-          resultParams);
+          argParams, resultParams);
     };
 
     for (auto kernel : kernels) {
-      if (!kernel.executeFn && !kernel.elementwiseFn)
-        continue;
       auto [_, inserted] =
           seenRegistrations.insert(kernel.registration.strref());
       if (!inserted)
         continue;
 
+      // Always attach the struct decl loc; verification of missing entry
+      // points (no execute / elementwise) blames the struct itself.
       llvm::SmallVector<mlir::Location> fnLocs;
+      fnLocs.push_back(kernel.structDeclOp.getLoc());
       if (kernel.executeFn)
         fnLocs.push_back(kernel.executeFn.getLoc());
       if (kernel.shapeFn)
@@ -606,14 +627,24 @@ struct ImportPackagesPass
       if (kernel.updateViewFn)
         fnLocs.push_back(kernel.updateViewFn.getLoc());
 
-      auto executeAttr = buildFunctionAttr(kernel.executeFn,
-                                           /*computeResultParams=*/false);
-      auto shapeAttr = buildFunctionAttr(kernel.shapeFn,
-                                         /*computeResultParams=*/true);
-      auto elementwiseAttr = buildFunctionAttr(kernel.elementwiseFn,
-                                               /*computeResultParams=*/true);
-      auto updateViewAttr = buildFunctionAttr(kernel.updateViewFn,
-                                              /*computeResultParams=*/false);
+      // execute / update_view may return user-defined parameterised opaque
+      // structs (e.g. `SIMDPair[P0, P1]`) whose slot mappings are needed by
+      // `inferOpaqueParameters` -- compute them in soft mode so that other
+      // result types (tensors, none, ...) fall back to UnitAttr.
+      // shape / elementwise return stdlib `IndexList`/`SIMD`; strict mode
+      // catches misuse.
+      auto executeAttr =
+          buildFunctionAttr(kernel.executeFn, /*computeResultParams=*/true,
+                            /*strictResultParams=*/false);
+      auto shapeAttr =
+          buildFunctionAttr(kernel.shapeFn, /*computeResultParams=*/true,
+                            /*strictResultParams=*/true);
+      auto elementwiseAttr =
+          buildFunctionAttr(kernel.elementwiseFn, /*computeResultParams=*/true,
+                            /*strictResultParams=*/true);
+      auto updateViewAttr =
+          buildFunctionAttr(kernel.updateViewFn, /*computeResultParams=*/true,
+                            /*strictResultParams=*/false);
       if (failed(executeAttr) || failed(shapeAttr) || failed(elementwiseAttr) ||
           failed(updateViewAttr)) {
         signalPassFailure();
@@ -661,8 +692,9 @@ struct ImportPackagesPass
       // names by name. Skip the slot-name mapping (which would fail for
       // wrapper tensor structs like ManagedTensorSlice that primitives
       // commonly return).
-      auto primFunctionAttr = buildFunctionAttr(prim.func,
-                                                /*computeResultParams=*/false);
+      auto primFunctionAttr =
+          buildFunctionAttr(prim.func, /*computeResultParams=*/false,
+                            /*strictResultParams=*/false);
       if (failed(primFunctionAttr)) {
         signalPassFailure();
         return;
@@ -690,9 +722,25 @@ struct ImportPackagesPass
     // across all packages and applied to !mo.opaque types in the module.
     llvm::StringMap<std::string> opaqueTypeMapping;
 
-    // mojo-pkg-paths mode: load built-in packages first, then user packages.
-    // Built-in packages are skipped when only lit-mlir-paths is provided.
-    bool loadBuiltIns = !mojoPkgPaths.empty() || litMlirPaths.empty();
+    // Append mode: seed the dedup sets from existing decl ops in the module so
+    // re-loading paths whose decls are already present is a no-op. We treat
+    // all pre-existing kernels as `user` for dedup purposes -- the
+    // `is_user_defined` flag on each existing decl already records its actual
+    // origin and `MojoRegistry::getResolvedKernel` selects accordingly.
+    if (append) {
+      for (auto decl : module.getOps<KernelDeclOp>()) {
+        auto &set = decl.getIsUserDefined() ? seenUserRegistrations
+                                            : seenBuiltinRegistrations;
+        set.insert(decl.getRegistration());
+      }
+      for (auto decl : module.getOps<PrimitiveDeclOp>())
+        seenPrimitives.insert(decl.getRegistration());
+    }
+
+    // Load built-in packages unless we're in append mode (already in the
+    // module) or only lit-mlir-paths is provided.
+    bool loadBuiltIns =
+        !append && (!mojoPkgPaths.empty() || litMlirPaths.empty());
     if (loadBuiltIns) {
       auto builtInPathsOr = getBuiltInKernelPackagePaths(ctx);
       if (builtInPathsOr.isError()) {
@@ -710,16 +758,19 @@ struct ImportPackagesPass
         emitDecls(builder, module, *pkg, seenBuiltinRegistrations,
                   seenPrimitives, opaqueTypeMapping, /*isUserDefined=*/false);
       }
+    }
 
-      for (const auto &path : mojoPkgPaths) {
-        OwningOpRef<ModuleOp> pkg = loadPackageModule(ctx, path, module);
-        if (!pkg) {
-          signalPassFailure();
-          return;
-        }
-        emitDecls(builder, module, *pkg, seenUserRegistrations, seenPrimitives,
-                  opaqueTypeMapping, /*isUserDefined=*/true);
+    // Load user-supplied packages (mojo-pkg-paths). In append mode this is
+    // the delta the caller wants to add on top of what's already in the
+    // module.
+    for (const auto &path : mojoPkgPaths) {
+      OwningOpRef<ModuleOp> pkg = loadPackageModule(ctx, path, module);
+      if (!pkg) {
+        signalPassFailure();
+        return;
       }
+      emitDecls(builder, module, *pkg, seenUserRegistrations, seenPrimitives,
+                opaqueTypeMapping, /*isUserDefined=*/true);
     }
 
     // lit-mlir-paths mode: parse pre-compiled MLIR files (kgen-translate
@@ -736,7 +787,7 @@ struct ImportPackagesPass
                 seenPrimitives, opaqueTypeMapping, /*isUserDefined=*/false);
     }
 
-    rewriteOpaqueTypes(module, opaqueTypeMapping);
+    persistOpaqueTypeMapping(module, opaqueTypeMapping);
   }
 };
 

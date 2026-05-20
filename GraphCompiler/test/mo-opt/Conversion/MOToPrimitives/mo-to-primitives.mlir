@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-mgp | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp | FileCheck %s
 
 // CHECK-LABEL:  mgp.model @constants_with_multiple_returns : mof
 // CHECK:  } execute (

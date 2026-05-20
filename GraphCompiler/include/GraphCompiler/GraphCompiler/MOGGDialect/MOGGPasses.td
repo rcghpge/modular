@@ -137,7 +137,7 @@ def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
     non-view kernel, and fuses the body lambda of the former into that of the
     consumer kernel.
   }];
-  // Balloons due to dependency on MojoLibraryAnalysis
+  
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -168,7 +168,7 @@ def FusePrologues: Pass<"mogg-fuse-prologues", "MO::GraphOp"> {
     another kernel. I.E fused directly into a matmul input loop.
   }];
 
-  // Balloons due to dependency on MojoLibraryAnalysis
+  
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -197,7 +197,7 @@ def FuseEpilogues: Pass<"mogg-fuse-epilogues", "MO::GraphOp"> {
     fusion across affine views.
   }];
 
-  // Balloons due to dependency on MojoLibraryAnalysis
+  
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -474,6 +474,11 @@ def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
     ListOption<"litMlirPaths", "lit-mlir-paths", "std::string",
       "Paths to MLIR files (kgen-translate -import-mojo output) for testing. "
       "Built-in packages are not loaded when this option is used alone.">,
+    Option<"append", "append", "bool", /*default=*/"false",
+      "Append mode: seed the registration/primitive deduplication sets from "
+      "decl ops already present in the module, and skip loading built-in "
+      "packages. Callers pass only the delta paths not yet loaded; existing "
+      "decls in the module are preserved.">,
   ];
   let dependentDialects = [
     "M::MOGG::MOGGDialect",
@@ -488,6 +493,28 @@ def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
   ];
 }
 
+def RewriteOpaqueTypes : Pass<"mogg-rewrite-opaque-types", "ModuleOp"> {
+  let summary = "Rewrite !mo.opaque<\"simple\"> to !mo.opaque<\"fully.qualified\">";
+  let description = [{
+    Reads the `mogg.opaque_type_mapping` DictionaryAttr from the module
+    (populated by `mogg-import-packages` when it walks the loaded packages'
+    `StructDeclOp`s) and rewrites every `!mo.opaque<"simple_name">` in the
+    module to its fully-qualified Mojo name. Types whose symbol is not in
+    the mapping are left unchanged.
+
+    The mapping is the canonical persistence form of simple → qualified
+    name resolution. `mogg-import-packages` writes it after loading; this
+    pass is what actually applies it. Splitting them lets callers that
+    have already loaded packages elsewhere (e.g. via `MAXG_addKernelPackage`
+    on a separate `Analysis` module) copy the mapping over and run only
+    the rewrite step at compile time -- see the `kernel-decls-pre-populated`
+    GC pipeline option.
+
+    Running this pass on a module that has no mapping attr (or whose
+    `!mo.opaque` types are already fully-qualified) is a safe no-op.
+  }];
+}
+
 def StripKernelDecls : Pass<"mogg-strip-kernel-decls", "ModuleOp"> {
   let summary = "Remove mogg.kernel.decl and mogg.primitive.decl ops from a module";
   let description = [{
@@ -496,15 +523,6 @@ def StripKernelDecls : Pass<"mogg-strip-kernel-decls", "ModuleOp"> {
     as mo-to-mogg. They are not part of the final output format. This pass can
     be placed after the last pass that reads the kernel registry to clean up
     the module for inspection or further lowering.
-  }];
-}
-
-def AnnotateKernels: Pass<"mogg-annotate-kernels", "ModuleOp"> {
-  let summary = "Annotate mojo kernel IR with MOGG attributes";
-  let description = [{
-    Annotates the MLIR IR produced by the Mojo compiler with MOGG-specific
-    attributes needed for kernel verification and graph compilation. This pass
-    is primarily useful for testing the kernel verification and dump passes.
   }];
 }
 

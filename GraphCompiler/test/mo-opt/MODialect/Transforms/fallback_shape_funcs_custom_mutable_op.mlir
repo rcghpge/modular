@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-add-fallback-shape-funcs | FileCheck %s
 
 mo.graph @dyn_shape_func<D0, D1 -> D4, D5>(%arg0: !mo.buffer<[D0, D1], f32>) -> (!mo.buffer<[D0, D1], f32>, !mo.tensor<[D4, D5], f32>, !mo.chain) {
   %0 = mo.chain.create()

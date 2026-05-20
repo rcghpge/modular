@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-fuse-elementwise | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-fuse-elementwise | FileCheck %s
 
 // CHECK:  mogg.bind
 // CHECK:    mogg.call.elementwise["mo.add"]

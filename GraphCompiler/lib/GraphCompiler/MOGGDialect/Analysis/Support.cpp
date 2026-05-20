@@ -5,18 +5,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/Support.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
 namespace M::MOGG {
 
 int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode) {
-  auto count = mojoCode->getAttr(KGEN::MOGGPreElab::kMOGGNumDPSOutputs);
+  auto count = mojoCode->getAttr(MOGG::kMOGGNumDPSOutputs);
   [[maybe_unused]] bool isExecuteFunc =
-      mojoCode->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+      mojoCode->hasAttr(MOGG::kMOGGExecuteFunctionLabel);
 
   if (!count) {
     ASSERT_STREAM(!isExecuteFunc,
@@ -33,20 +32,11 @@ int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode) {
   return cast<IntegerAttr>(count).getInt();
 }
 
-namespace {
-// Records the operation (e.g. mo.add) and extensibility function e.g. @shape,
-// @execute, etc.
-struct MojoOperationInfo {
-  StringRef operationName, functionLabel;
-};
-
-} // namespace
-
 /// Returns the name of the given `op` is registered under in mojo.
-static MojoOperationInfo getMojoOperationInfo(Operation *op) {
+MojoOperationInfo getMojoOperationInfo(Operation *op) {
   // Custom operations call the symbol and function directly.
   if (auto customOp = dyn_cast<MO::CustomOp>(op))
-    return {customOp.getSymbol(), KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
+    return {customOp.getSymbol(), MOGG::kMOGGExecuteFunctionLabel};
 
   // Layout transforms map to a hardcoded op name based on the inferred layouts
   if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
@@ -57,77 +47,46 @@ static MojoOperationInfo getMojoOperationInfo(Operation *op) {
         op->getContext(), llvm::Twine("layout_transform_") +
                               startLayout.getFormat().strref() + "_to_" +
                               endLayout.getFormat().strref());
-    return {opName, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
+    return {opName, MOGG::kMOGGExecuteFunctionLabel};
   }
 
   // Shape invocations call the shape functions
   if (auto shapeInvoke = dyn_cast<MO::InvokeShapeFuncOp>(op))
-    return {shapeInvoke.getShapeFuncName(),
-            KGEN::MOGGPreElab::kMOGGShapeFunctionLabel};
+    return {shapeInvoke.getShapeFuncName(), MOGG::kMOGGShapeFunctionLabel};
 
   // Else we register 1-1 with the official name of the operation.
-  return {op->getName().getStringRef(),
-          KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
+  return {op->getName().getStringRef(), MOGG::kMOGGExecuteFunctionLabel};
 }
 
-ErrorOr<KGEN::LIT::FnOp>
-getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                    StringRef mojoOperationName, StringRef functionLabel) {
-  auto generatorOp = mojoLibraryAnalysis.getRegisteredLITMojoFunctionFor(
-      mojoOperationName, functionLabel);
-
-  if (!generatorOp)
-    return Error(Twine("Could not find a mojo kernel registered for ") +
-                 mojoOperationName + " with function " + functionLabel);
-  return generatorOp;
-}
-
-ErrorOr<KGEN::LIT::FnOp>
-getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                    Operation *op) {
+ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
+                                                Operation *op) {
   MojoOperationInfo info = getMojoOperationInfo(op);
-  return getMojoKernelTarget(mojoLibraryAnalysis, info.operationName,
-                             info.functionLabel);
-}
 
-static KGEN::LIT::FnOp
-getElementwiseFunc(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                   StringRef name) {
-  return mojoLibraryAnalysis.getRegisteredLITMojoElementwiseFunctionFor(name);
-}
+  if (!registry.containsKernel(info.operationName)) {
+    return Error(
+        llvm::formatv("no kernel registered for '{}'", info.operationName)
+            .str());
+  }
+  KernelDeclAdaptor adaptor(registry.getResolvedKernel(info.operationName));
 
-ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor>
-getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                     Operation *op) {
-  // Find the kernel from the library.
-  MojoOperationInfo info = getMojoOperationInfo(op);
-  ErrorOr<KGEN::LIT::FnOp> maybeFuncOp = getMojoKernelTarget(
-      mojoLibraryAnalysis, info.operationName, info.functionLabel);
-  KGEN::LIT::FnOp funcOp = maybeFuncOp.isError() ? nullptr : *maybeFuncOp;
-
-  KGEN::LIT::FnOp executeFunc = nullptr;
-  KGEN::LIT::FnOp shapeFunc = nullptr;
-  KGEN::LIT::FnOp elemtwiseFunc =
-      getElementwiseFunc(mojoLibraryAnalysis, info.operationName);
-
-  // Determine which function type we retrieved based on the label
-  if (info.functionLabel == KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) {
-    shapeFunc = funcOp;
-    // For shape functions, we don't require execute or elementwise
-    if (!shapeFunc) {
-      return maybeFuncOp.takeError();
+  if (info.functionLabel == MOGG::kMOGGShapeFunctionLabel) {
+    if (!adaptor.shapeFunction.has_value()) {
+      return Error(llvm::formatv("Could not find a shape function for '{}'",
+                                 info.operationName)
+                       .str());
     }
   } else {
-    executeFunc = funcOp;
-    // We either need an execute or an elementwise function.
-    if (!executeFunc && !elemtwiseFunc) {
-      return maybeFuncOp.takeError();
+    if (!adaptor.executeFunction.has_value() &&
+        !adaptor.elementwiseFunction.has_value()) {
+      return Error(
+          llvm::formatv(
+              "Could not find an execute or elementwise function for '{}'",
+              info.operationName)
+              .str());
     }
   }
 
-  return KGEN::MOGGPreElab::MojoKernelAdaptor("", /*execute=*/executeFunc,
-                                              /*shape=*/shapeFunc,
-                                              /*elementwise=*/elemtwiseFunc);
+  return adaptor;
 }
 
 } // namespace M::MOGG

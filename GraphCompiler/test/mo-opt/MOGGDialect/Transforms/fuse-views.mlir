@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse --mogg-fuse-views --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mogg-import-packages --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse --mogg-fuse-views --canonicalize --cse --mogg-strip-kernel-decls %s | FileCheck %s
 
 // Expect a kernel with 3 bcasts, 2 for index, 1 for updates
 // CHECK-LABEL: mo.graph @advanced_indexing_setitem

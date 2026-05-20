@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --allow-unregistered-dialect --mogg-fuse-elementwise --mogg-fuse-views= --mogg-fuse-prologues --mogg-fuse-epilogues --cse --canonicalize --mogg-simplify-kernel-operands --mlir-disable-threading | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg --allow-unregistered-dialect --mogg-fuse-elementwise --mogg-fuse-views= --mogg-fuse-prologues --mogg-fuse-epilogues --cse --canonicalize --mogg-simplify-kernel-operands --mlir-disable-threading | FileCheck %s --check-prefix=CHECK-IR
 
 
 

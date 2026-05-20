@@ -19,6 +19,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/LITDialect/LITTypes.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -29,10 +30,6 @@
 namespace M::KGEN {
 class ParamDeclareRegionOp;
 } // namespace M::KGEN
-
-namespace M::MOGG {
-class MojoLibraryAnalysis;
-}
 
 // Needed because ODS-generated build methods for mogg.kernel.decl use the
 // unqualified name.
