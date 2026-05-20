@@ -84,6 +84,8 @@ static ErrorOr<int> getComputeCapability(StringRef name) {
 
 // Return true if logging for Metal kernel is enabled.
 static bool isLoggingEnabled(void *attrs, uint32_t numAttrs) {
+  assert((attrs != nullptr || numAttrs == 0) &&
+         "attrs must be non-null when numAttrs > 0");
   Device::Attribute *deviceAttrs = (Device::Attribute *)attrs;
   for (uint32_t i = 0; i < numAttrs; ++i) {
     if (deviceAttrs[i] == Device::Attribute::METAL_DISABLE_LOGGING)
