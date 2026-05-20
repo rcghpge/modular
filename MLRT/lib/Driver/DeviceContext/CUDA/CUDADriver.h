@@ -172,6 +172,21 @@ enum class CUevent_flags {
   CU_EVENT_INTERPROCESS = 0x4,
 };
 
+/// Flags for `cuStreamWaitValue32` / `cuStreamWaitValue64`. Low bits
+/// select the predicate (mutually exclusive); high bits are OR-able
+/// modifiers. Matches the values in CUDA's `cuda.h`.
+enum class CUstreamWaitValue_flags : unsigned int {
+  CU_STREAM_WAIT_VALUE_GEQ = 0x0,
+  CU_STREAM_WAIT_VALUE_EQ = 0x1,
+  CU_STREAM_WAIT_VALUE_AND = 0x2,
+  CU_STREAM_WAIT_VALUE_NOR = 0x3,
+  // Force the system memory flush before checking. Gated by the
+  // device's CAN_FLUSH_REMOTE_WRITES attribute (0 on most current
+  // devices); usually unnecessary because writes from a normal host
+  // thread are visible via the device-mapped pinned alias without it.
+  CU_STREAM_WAIT_VALUE_FLUSH = 1u << 30,
+};
+
 enum class CUjit_option {
   JIT_MAX_REGISTERS = 0,
   JIT_THREADS_PER_BLOCK = 1,

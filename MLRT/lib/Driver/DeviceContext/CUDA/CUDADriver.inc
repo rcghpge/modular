@@ -59,6 +59,8 @@ CUDA_FUNC(cuStreamCreateWithPriority, Result, CUstream *, unsigned int, int)
 CUDA_FUNC(cuStreamDestroy, Result, CUstream)
 CUDA_FUNC(cuStreamSynchronize, Result, CUstream)
 CUDA_FUNC(cuStreamWaitEvent, Result, CUstream, CUevent, unsigned int)
+CUDA_FUNC(cuStreamWaitValue64_v2, Result, CUstream, CUdeviceptr,
+          unsigned long long, unsigned int)
 CUDA_FUNC(cuStreamBeginCapture, Result, CUstream, CUstreamCaptureMode)
 CUDA_FUNC(cuStreamEndCapture, Result, CUstream, CUgraph *)
 CUDA_FUNC(cuStreamIsCapturing, Result, CUstream, CUstreamCaptureStatus *)
@@ -86,6 +88,9 @@ CUDA_FUNC(cuDeviceGetGraphMemAttribute, Result, CUdevice, CUgraphMem_attribute,
           void *)
 
 CUDA_FUNC(cuMemAllocHost_v2, Result, void **, size_t)
+CUDA_FUNC(cuMemHostAlloc, Result, void **, size_t, unsigned int)
+CUDA_FUNC(cuMemHostGetDevicePointer_v2, Result, CUdeviceptr *, void *,
+          unsigned int)
 CUDA_FUNC(cuMemFreeHost, Result, void *)
 CUDA_FUNC(cuMemAllocAsync, Result, CUdeviceptr *, size_t, CUstream)
 CUDA_FUNC(cuMemFreeAsync, Result, CUdeviceptr, CUstream)

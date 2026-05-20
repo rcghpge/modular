@@ -20,6 +20,7 @@
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPCompilationDevice.h"
 #include "HIP/HIPDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "MemoryManager.h"
 #include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
@@ -1024,6 +1025,50 @@ DeviceTimer::DeviceTimer(DeviceContext &context)
     : context_(DeviceContextRef::copy(&context)) {}
 
 const DeviceContext &DeviceTimer::context() const { return *context_; }
+
+//
+// ===== CompletionFlag ===== //
+//
+MODULAR_CXX_EXPORT CompletionFlag::CompletionFlag(DeviceContext &context,
+                                                  void *hostPtr,
+                                                  uint64_t devicePtr)
+    : context_(DeviceContextRef::copy(&context)), hostPtr_(hostPtr),
+      devicePtr_(devicePtr) {}
+
+MODULAR_CXX_EXPORT CompletionFlag::~CompletionFlag() {
+  if (hostPtr_ == nullptr)
+    return;
+  // Best-effort free. Destructor must not throw; record errors on the
+  // context as pending errors so they're surfaced on the next driver call.
+  if (auto err = context_->freeCompletionFlag(hostPtr_); err.isError()) {
+    RECORD_PENDING_ERROR(*context_, std::move(err));
+  }
+  hostPtr_ = nullptr;
+}
+
+MODULAR_CXX_EXPORT void CompletionFlag::reset() {
+  // Relaxed: the GPU's cuStreamWaitValue64 uses CUDA-level memory fencing.
+  // Stream-ordered enqueue of the wait happens-after this store, so no
+  // observer can race here. The release-ordering for the *signal* side
+  // lives in `signal()` below.
+  reinterpret_cast<std::atomic<uint64_t> *>(hostPtr_)->store(
+      0, std::memory_order_relaxed);
+}
+
+MODULAR_CXX_EXPORT void CompletionFlag::signal(uint64_t value) {
+  // Release pairs with the GPU-side `cuStreamWaitValue64` (which under
+  // CUDA semantics performs the equivalent of an acquire when the
+  // observed value satisfies the predicate) and with `load()`'s acquire
+  // for host-side observers. Anything the caller did before `signal()`
+  // is visible to whichever side first sees `value`.
+  reinterpret_cast<std::atomic<uint64_t> *>(hostPtr_)->store(
+      value, std::memory_order_release);
+}
+
+MODULAR_CXX_EXPORT uint64_t CompletionFlag::load() const {
+  return reinterpret_cast<std::atomic<uint64_t> *>(hostPtr_)->load(
+      std::memory_order_acquire);
+}
 
 //
 // ===== DeviceContext ===== //

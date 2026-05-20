@@ -155,6 +155,7 @@ struct LaunchTraceDiff {
 
 class MemoryManager;
 class MemoryManagerFreeList;
+class CompletionFlag;
 class Device;
 class DeviceBuffer;
 class DeviceContext;
@@ -167,6 +168,7 @@ class DeviceMulticastBuffer;
 class DeviceStream;
 class DeviceTimer;
 
+using CompletionFlagRef = RCRef<CompletionFlag>;
 using DeviceRef = RCRef<Device>;
 using DeviceFunctionCacheEntryRef = RCRef<const DeviceFunctionCacheEntry>;
 using DeviceBufferRef = RCRef<DeviceBuffer>;
@@ -665,6 +667,20 @@ public:
     return Error("enqueueHostFunc is not supported on this device");
   }
 
+  /// Enqueues a wait-value node on this stream: subsequent stream
+  /// operations stall until the 64-bit value held by `flag` equals
+  /// `value`. The call itself returns immediately after enqueuing
+  /// (it does NOT block the caller waiting on the host value). The
+  /// flag must have been allocated via the same device's
+  /// `DeviceContext::allocateCompletionFlag`. Lets a host producer
+  /// (typically calling `flag.signal(value)`) gate stream-side
+  /// consumers on a CPU-produced result, without a second stream or
+  /// a blocking host callback on the consumer's critical path.
+  virtual ErrorOrSuccess enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                                uint64_t value) const {
+    return Error("enqueueWaitOnHostValue is not supported on this device");
+  }
+
   // Raw device driver pointer to enable passing to PyTorch and similar APIs.
   virtual void *ptr() const = 0;
 
@@ -730,6 +746,46 @@ private:
   DeviceContextRef context_;
 };
 
+/// 8-byte completion flag in pinned host memory mapped into the device
+/// address space. The CPU side reads / writes the value via
+/// `reset()` / `signal()` / `load()`; the GPU side waits for a value
+/// via `DeviceStream::enqueueWaitOnHostValue`. Allocated by
+/// `DeviceContext::allocateCompletionFlag()`; freed by the destructor
+/// (which routes through `DeviceContext::freeCompletionFlag`).
+///
+/// Refcounted so a single flag can be held simultaneously by, e.g., a
+/// Python-side wrapper and a host-function trampoline that needs to keep
+/// it alive until its AsyncRT worker signals.
+class CompletionFlag final : public ReferenceCounted<CompletionFlag> {
+public:
+  // Constructed only by `DeviceContext::allocateCompletionFlag`.
+  CompletionFlag(DeviceContext &context, void *hostPtr, uint64_t devicePtr);
+  ~CompletionFlag();
+
+  CompletionFlag(const CompletionFlag &) = delete;
+  CompletionFlag &operator=(const CompletionFlag &) = delete;
+
+  /// Device-visible address (suitable for
+  /// `DeviceStream::enqueueWaitOnHostValue`).
+  uint64_t devicePtr() const { return devicePtr_; }
+
+  /// Relaxed store of 0 to clear the flag.
+  void reset();
+
+  /// Release-ordered store of `value` to the flag.
+  void signal(uint64_t value);
+
+  /// Acquire load of the current flag value.
+  uint64_t load() const;
+
+  const DeviceContext &context() const { return *context_; }
+
+private:
+  DeviceContextRef context_;
+  void *hostPtr_;
+  uint64_t devicePtr_;
+};
+
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
   virtual ~DeviceContext();
@@ -741,6 +797,25 @@ public:
 
   // Host memory allocation.
   ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize);
+
+  /// Allocates an 8-byte `CompletionFlag` in pinned host memory mapped
+  /// into this device's address space (CUDA:
+  /// `cuMemHostAlloc(... CU_MEMHOSTALLOC_DEVICEMAP)` +
+  /// `cuMemHostGetDevicePointer_v2`). Returns a refcounted handle; the
+  /// allocation is freed when the last ref is dropped via
+  /// `freeCompletionFlag`.
+  ///
+  /// Only implemented for CUDA. Other backends return an error.
+  virtual ErrorOr<CompletionFlagRef> allocateCompletionFlag() {
+    return Error("allocateCompletionFlag is not supported on this device");
+  }
+
+  /// Frees the host pointer returned by an earlier
+  /// `allocateCompletionFlag`. Called by `CompletionFlag`'s destructor;
+  /// not intended for direct use.
+  virtual ErrorOrSuccess freeCompletionFlag(void *hostPtr) {
+    return Error("freeCompletionFlag is not supported on this device");
+  }
 
   // TODO: Remove the V1 compatibility.
   DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize, bool owning);
@@ -936,6 +1011,7 @@ protected:
   void setPendingError(Error err);
 
 private:
+  friend class CompletionFlag;
   friend class MemoryManagerFreeList;
   friend class DeviceBuffer;
   friend class DeviceContextScope;

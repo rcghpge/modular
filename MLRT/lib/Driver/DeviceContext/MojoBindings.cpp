@@ -302,6 +302,17 @@ AsyncRT_DeviceStream_enqueueHostFunc(DeviceStream *stream, void (*fn)(void *),
   return checkSuccess(stream->enqueueHostFunc(fn, userData));
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceStream_enqueueWaitOnHostValue(
+    DeviceStream *stream, CompletionFlag *flag, uint64_t value) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceStream_enqueueWaitOnHostValue",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(stream->enqueueWaitOnHostValue(*flag, value));
+}
+
+MODULAR_EXPORT uint64_t AsyncRT_CompletionFlag_devicePtr(CompletionFlag *flag) {
+  return flag->devicePtr();
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceEvent_synchronize(DeviceEvent *event) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceEvent_synchronize", TRACY_COLOR_GRAY);
   return checkSuccess(event->synchronize());

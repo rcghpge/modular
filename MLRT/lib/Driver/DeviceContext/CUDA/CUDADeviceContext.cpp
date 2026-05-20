@@ -1072,6 +1072,22 @@ ErrorOrSuccess CUDADeviceStream::enqueueHostFunc(void (*fn)(void *),
   return success();
 }
 
+ErrorOrSuccess
+CUDADeviceStream::enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                         uint64_t value) const {
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  // Wait until *flag.devicePtr() == value. CU_STREAM_WAIT_VALUE_FLUSH is
+  // intentionally omitted: it's gated by CAN_FLUSH_REMOTE_WRITES, which
+  // is 0 on most current devices, and writes from a normal host thread
+  // are visible via the device-mapped pinned alias without it.
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuStreamWaitValue64_v2(
+      stream_, reinterpret_cast<CUdeviceptr>(flag.devicePtr()), value,
+      static_cast<unsigned int>(
+          CUstreamWaitValue_flags::CU_STREAM_WAIT_VALUE_EQ)));
+  return success();
+}
+
 ErrorOrSuccess CUDADeviceStream::eventRecord(const DeviceEvent &event) const {
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   const auto &cudaDevice = CUDADevice::cast(this->device());
@@ -1402,6 +1418,45 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
     break;
   }
   }
+  return success();
+}
+
+ErrorOr<CompletionFlagRef> CUDADeviceContext::allocateCompletionFlag() {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::allocateCompletionFlag",
+                       TRACY_COLOR_PURPLE);
+  CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
+  void *hostPtr = nullptr;
+  // CU_MEMHOSTALLOC_PORTABLE (0x1) | CU_MEMHOSTALLOC_DEVICEMAP (0x2).
+  // DEVICEMAP is required so cuMemHostGetDevicePointer_v2 succeeds on
+  // non-UVA systems. PORTABLE matches the existing cuMemAllocHost_v2
+  // path and allows the same host allocation to be used from any
+  // context on this process.
+  constexpr unsigned int kFlags = 0x1 | 0x2;
+  CUDA_CHECK_ERR(driver_.cuMemHostAlloc(&hostPtr, sizeof(uint64_t), kFlags));
+  CUdeviceptr devPtr = nullptr;
+  CUDADriver::Result r =
+      driver_.cuMemHostGetDevicePointer_v2(&devPtr, hostPtr, 0);
+  if (r != CUDADriver::SUCCESS) {
+    (void)driver_.cuMemFreeHost(hostPtr);
+    const char *errName = nullptr;
+    (void)driver_.cuGetErrorName(r, &errName);
+    return Error(
+        std::string("cuMemHostGetDevicePointer_v2 failed for CompletionFlag: ")
+            .append(errName ? errName : "(unknown)"));
+  }
+  // Initialize the flag to zero so the first wait observes a clean state.
+  *static_cast<uint64_t *>(hostPtr) = 0;
+  return CompletionFlagRef::take(
+      new CompletionFlag(*this, hostPtr, reinterpret_cast<uint64_t>(devPtr)));
+}
+
+ErrorOrSuccess CUDADeviceContext::freeCompletionFlag(void *hostPtr) {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::freeCompletionFlag",
+                       TRACY_COLOR_PURPLE);
+  CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
+  CUDA_CHECK_ERR(driver_.cuMemFreeHost(hostPtr));
   return success();
 }
 

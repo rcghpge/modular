@@ -242,6 +242,9 @@ public:
   ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
                                  void *userData) const override;
 
+  ErrorOrSuccess enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                        uint64_t value) const override;
+
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
@@ -393,6 +396,9 @@ public:
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   bool isGraphCapturing() const override;
+
+  ErrorOr<CompletionFlagRef> allocateCompletionFlag() override;
+  ErrorOrSuccess freeCompletionFlag(void *hostPtr) override;
 
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;
