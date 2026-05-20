@@ -152,6 +152,10 @@ ErrorOr<Device::MemInfo> MetalDevice::getMemoryInfo() const {
   return getMemInfo(device_.get());
 }
 
+ErrorOr<size_t> MetalDevice::maxSingleAllocationSize() const {
+  return static_cast<size_t>(device_->maxBufferLength());
+}
+
 ErrorOrSuccess MetalDevice::isCompatible() const { return success(); }
 
 ErrorOr<int> MetalDevice::computeCapability() const {

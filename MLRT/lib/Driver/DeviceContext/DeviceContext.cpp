@@ -269,6 +269,11 @@ ErrorOr<Device::GraphMemInfo> Device::getGraphMemoryInfo() const {
   return GraphMemInfo{};
 }
 
+ErrorOr<size_t> Device::maxSingleAllocationSize() const {
+  DEFINE_OR_RETURN_ERROR(Device::MemInfo, info, getMemoryInfo());
+  return info.total;
+}
+
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
   return memoryManager_->allocationAlignment();
 }

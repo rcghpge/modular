@@ -137,6 +137,9 @@ struct Device : M::ReferenceCounted<Device> {
   /// Gets utilization stats for the device.
   ErrorOr<std::string> getStats();
 
+  /// Largest single contiguous allocation the device supports.
+  ErrorOr<size_t> getMaxSingleAllocationSize();
+
   // Gets the programming API of the device.
   ErrorOr<std::string> getApi();
 

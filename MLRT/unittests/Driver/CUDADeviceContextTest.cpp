@@ -901,4 +901,13 @@ TEST_F(CUDADeviceContextTest, NVMLComputeProcessesQueryable) {
   (void)processCount;
 }
 
+// CUDA does not override maxSingleAllocationSize, so the default Device
+// implementation returns getMemoryInfo().total.
+TEST_F(CUDADeviceContextTest, MaxSingleAllocationSize_DefaultReturnsTotal) {
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(Device::MemInfo, info, device->getMemoryInfo());
+  ASSIGN_NO_ERR(size_t, maxAlloc, device->maxSingleAllocationSize());
+  EXPECT_EQ(maxAlloc, info.total);
+}
+
 } // namespace

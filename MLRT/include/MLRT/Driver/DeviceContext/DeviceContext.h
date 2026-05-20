@@ -315,6 +315,10 @@ public:
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
+  /// Largest single contiguous device allocation. Defaults to
+  /// `getMemoryInfo().total`; Metal overrides to `maxBufferLength`.
+  virtual ErrorOr<size_t> maxSingleAllocationSize() const;
+
   virtual ErrorOr<Device::GraphMemInfo> getGraphMemoryInfo() const;
 
   virtual ErrorOr<DeviceContextRef> createContext() = 0;

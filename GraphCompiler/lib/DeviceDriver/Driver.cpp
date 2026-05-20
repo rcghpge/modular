@@ -108,6 +108,10 @@ MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getApi() {
   return ctx->device().api().str();
 }
 
+MODULAR_DRIVER_EXPORT ErrorOr<size_t> Device::getMaxSingleAllocationSize() {
+  return ctx->device().maxSingleAllocationSize();
+}
+
 MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getArchName() {
   return ctx->device().getArchName();
 }

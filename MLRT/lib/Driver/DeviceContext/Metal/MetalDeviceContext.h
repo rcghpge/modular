@@ -78,6 +78,8 @@ public:
   ErrorOr<DeviceContextRef> createContext() override;
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
+  ErrorOr<size_t> maxSingleAllocationSize() const override;
+
   static ErrorOr<Device::MemInfo> getMemInfo(MTL::Device *metalDev = nullptr);
 
   static const MetalDevice &cast(const Device &device);

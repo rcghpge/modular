@@ -797,4 +797,27 @@ TEST_F(MetalDeviceContextTestBase, ChunkAlloc_ValidSize_SucceedsAndFrees) {
   EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
 }
 
+// getMemoryInfo reports recommendedMaxWorkingSetSize as total and
+// (total - currentAllocatedSize) as free.
+TEST_F(MetalDeviceContextTestBase, GetMemInfo_TotalAndFree) {
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  MTL::Device *mtlDev = metalDev.metalDevice();
+  size_t expectedTotal = mtlDev->recommendedMaxWorkingSetSize();
+  size_t used = mtlDev->currentAllocatedSize();
+  size_t expectedFree = expectedTotal > used ? expectedTotal - used : 0;
+
+  ASSIGN_NO_ERR(Device::MemInfo, info, metalDev.getMemoryInfo());
+  EXPECT_EQ(info.total, expectedTotal);
+  EXPECT_EQ(info.free, expectedFree);
+}
+
+// maxSingleAllocationSize on Metal is maxBufferLength.
+TEST_F(MetalDeviceContextTestBase,
+       MaxSingleAllocationSize_MatchesBufferLength) {
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  ASSIGN_NO_ERR(size_t, actual, metalDev.maxSingleAllocationSize());
+  EXPECT_EQ(actual, metalDev.metalDevice()->maxBufferLength());
+  EXPECT_GT(actual, 0u);
+}
+
 } // namespace M::Driver
