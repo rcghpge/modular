@@ -439,29 +439,40 @@ static void mergeCandidate(MergeCandidate &candidate,
 
 /// Walks every ParallelOp and tries to merge it into its producer, if any.
 /// Returns true if at least one merge fired.
+///
+/// We interrupt the walk after the first successful merge.  Continuing the
+/// walk in-place is unsafe: a producer-side ParallelOp whose only bundle
+/// yield was consumed by this merge still has the absorbed (not-yet-erased)
+/// consumer as a live user, so the walk's `use_empty()` skip lets the
+/// walk visit it again -- and if it has its own upstream producer, it
+/// gets merged a second time.  The second merge clones the producer's
+/// body redundantly and pushes the same op onto the erase worklist
+/// twice, causing a double-erase / use-after-free at end of iteration
+/// (in assert builds, ~Operation()'s "operation destroyed but still has
+/// uses" check fires and crashes inside the diagnostic printer).
+///
+/// Doing one merge per walk also keeps the merged-body output minimal:
+/// every merge happens against fully-replaced producers, so no op gets
+/// cloned twice.  The outer fixed-point loop in `runOnOperation` keeps
+/// re-walking until no merge fires.  See GEX-3756.
 static bool runOneIteration(Operation *root, OpBuilder &builder) {
-  SmallVector<ParallelOp> toErase;
+  bool changed = false;
   root->walk([&](ParallelOp parallelOp) {
-    // We may see ops with no uses if they were merged by an earlier iteration.
-    if (parallelOp.getOperation()->use_empty())
-      return;
-
     auto candidate = findMergeCandidate(parallelOp);
     if (!candidate)
-      return;
+      return WalkResult::advance();
 
     auto bufferChain = resolveBufferChain(*candidate);
     if (!bufferChain)
-      return;
+      return WalkResult::advance();
 
     mergeCandidate(*candidate, *bufferChain, builder);
-    // Defer erasing to avoid invalidating the walk.
-    toErase.push_back(candidate->consumer);
-    toErase.push_back(candidate->producer);
+    candidate->consumer.erase();
+    candidate->producer.erase();
+    changed = true;
+    return WalkResult::interrupt();
   });
-  for (ParallelOp parallelOp : toErase)
-    parallelOp.erase();
-  return !toErase.empty();
+  return changed;
 }
 
 struct MergeAdjacentParallelsPass
