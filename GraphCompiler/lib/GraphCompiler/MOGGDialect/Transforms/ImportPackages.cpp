@@ -136,7 +136,7 @@ static mlir::ArrayAttr computeValueParams(mlir::MLIRContext *ctx,
         if (!val)
           val = builder.getUnitAttr();
         namedParams.emplace_back(
-            KGEN::LIT::demangleParameterName(paramDecl.getName()), val);
+            KGEN::demangleParameterName(paramDecl.getName()), val);
       }
       perArgAttrs.push_back(builder.getDictionaryAttr(namedParams));
       continue;

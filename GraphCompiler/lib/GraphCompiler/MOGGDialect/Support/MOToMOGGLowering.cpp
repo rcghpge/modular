@@ -17,6 +17,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/KGENPogUtils.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
@@ -554,7 +555,7 @@ static bool isLITStaticStringType(Type ty) {
 }
 
 static StringAttr maybeDemangleName(StringAttr name) {
-  StringRef demangled = KGEN::LIT::demangleParameterName(name);
+  StringRef demangled = KGEN::demangleParameterName(name);
   if (demangled != name)
     return StringAttr::get(name.getContext(), demangled);
   return name;

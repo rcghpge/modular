@@ -12,6 +12,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "KGEN/KGENDialect/KGENPogUtils.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITTypes.h"
@@ -682,7 +683,7 @@ computeDefaultParamsDict(KernelDeclFunctionAdaptor *fnAdaptor) {
     defaultNames.append(
         mlir::StringAttr::get(
             fnAdaptor->attr.getSignature().getContext(),
-            KGEN::LIT::demangleParameterName(paramDecl.getName().strref())),
+            KGEN::demangleParameterName(paramDecl.getName().strref())),
         builder.getUnitAttr());
   }
   if (defaultNames.empty())
