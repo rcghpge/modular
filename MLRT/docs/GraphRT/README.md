@@ -57,11 +57,11 @@ single program.
 Here are some good entry point documents to understand the GraphRT library:
 
 - GraphRT builds directly on the [AsyncRT library](../AsyncRT/README.md),
-   its [Runtime abstraction](../AsyncRT/AsyncRTRuntime.md), and uses its
-   [`AsyncValue` related types](../AsyncRT/AsyncValue.md) pervasively.
+  its [Runtime abstraction](../AsyncRT/AsyncRTRuntime.md), and uses its
+  [`AsyncValue` related types](../AsyncRT/AsyncValue.md) pervasively.
 - An overview of [Key Concepts in GraphRT](KeyConceptsInGraphRT.md).
 - A guide to [defining and implementing GraphRT
-   primitives](DefiningPrimitives.md).
+  primitives](DefiningPrimitives.md).
 - Documentation for the [MEF binary file format](ModularExecutorFormat.md).
 
 ## GraphRT code base

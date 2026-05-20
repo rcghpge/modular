@@ -20,8 +20,8 @@ equivalent of the combination of CUDA Driver and Runtime API/libraries.
 - `DeviceContext` provides synchronization primitives across different streams
   of executions, aka `DeviceContext`s: `enqueueEvent()` and `enqueueWaitFor()`.
 - `DeviceStream` is a minimal API purely exposing these synchronization
-   primitives. It is in spirit the base class of `DeviceContext`, but the C++
-   implementation does not treat it that way. Maybe it should.
+  primitives. It is in spirit the base class of `DeviceContext`, but the C++
+  implementation does not treat it that way. Maybe it should.
 - In order to interact and synchronize with external systems (e.g. PyTorch) we
   have an API to create an externally managed `DeviceStream` object based on the
   raw GPU based driver value: `DeviceContext::createExternalStream(void*)`. This
