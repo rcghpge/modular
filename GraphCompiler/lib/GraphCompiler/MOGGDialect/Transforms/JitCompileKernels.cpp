@@ -24,6 +24,7 @@
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
+#include "KGEN/Support/Constants.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "MLRT/AsyncRT/Runtime/CPUDevice.h"
@@ -586,9 +587,10 @@ struct JitCompileKernels
 
     MODULAR_CACHE_LOG("mogg")
         << "compileMojoToBinary: creating ObjectCompiler with "
-           "basePath=.mojo_cache\n";
+           "basePath=" +
+               KGEN::kMojoCacheBaseDirName + "\n";
     auto objectCompiler = KGEN::ObjectCompiler::create(
-        ".mojo_cache", opts, /*isJit=*/true, *ctx, {});
+        KGEN::kMojoCacheBaseDirName, opts, /*isJit=*/true, *ctx, {});
     if (objectCompiler.isError()) {
       return module->emitError("The graph compiler could not create an "
                                "object compiler for KGEN to LLVM lowering");
