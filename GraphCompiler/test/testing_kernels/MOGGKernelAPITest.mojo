@@ -10,7 +10,7 @@ from std.ffi import external_call
 from std.sys.info import simd_width_of
 import compiler_internal as compiler
 from layout import IntTuple
-from layout import TileTensor, CoordLike, RuntimeInt, Coord
+from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
 from compiler_internal import StaticTensorSpec
 from std.collections import InlineArray
@@ -1129,12 +1129,8 @@ struct CustomOpWithStaticStringParams:
 
 
 comptime _WrapperLayout = TileLayout[
-    shape_types=Coord[
-        RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-    ].element_types,
-    stride_types=Coord[
-        RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-    ].element_types,
+    shape_types=Coord[Int64, Int64].element_types,
+    stride_types=Coord[Int64, Int64].element_types,
 ]
 
 
@@ -1156,16 +1152,12 @@ struct ToTensorWrapper:
     ](tensor: InputTensor[static_spec=spec],) -> TensorWrapper:
         var shape = tensor.shape()
         var strides = tensor.strides()
-        var shape_coord = Coord[
-            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-        ]()
-        var stride_coord = Coord[
-            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-        ]()
-        shape_coord[0] = rebind[RuntimeInt[DType.int64]](Int64(shape[0]))
-        shape_coord[1] = rebind[RuntimeInt[DType.int64]](Int64(shape[1]))
-        stride_coord[0] = rebind[RuntimeInt[DType.int64]](Int64(strides[0]))
-        stride_coord[1] = rebind[RuntimeInt[DType.int64]](Int64(strides[1]))
+        var shape_coord = Coord[Int64, Int64]()
+        var stride_coord = Coord[Int64, Int64]()
+        shape_coord[0] = Int64(shape[0])
+        shape_coord[1] = Int64(shape[1])
+        stride_coord[0] = Int64(strides[0])
+        stride_coord[1] = Int64(strides[1])
         return TensorWrapper(
             TileTensor(
                 tensor.unsafe_ptr().unsafe_origin_cast[MutExternalOrigin](),
