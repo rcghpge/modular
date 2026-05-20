@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
-#include "MLRT/lib/Driver/DeviceContext/CPU/CpuDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
 

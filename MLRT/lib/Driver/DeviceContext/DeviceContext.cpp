@@ -12,10 +12,10 @@
 #include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
+#include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
-#include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDACompilationDevice.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPCompilationDevice.h"

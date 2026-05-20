@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CpuDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
@@ -584,7 +584,8 @@ ErrorOr<Device::MemInfo> CpuDeviceContext::getDeviceMemoryInfo() const {
   return device().getMemoryInfo();
 }
 
-const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {
+MODULAR_CXX_EXPORT const CpuDeviceContext &
+CpuDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CpuDeviceContext &>(ctx);
 }
 

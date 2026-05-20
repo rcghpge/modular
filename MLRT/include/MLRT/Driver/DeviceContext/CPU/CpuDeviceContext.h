@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
-#define MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#ifndef MLRT_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#define MLRT_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/CPUDevice.h"
@@ -191,6 +191,12 @@ public:
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
+  /// Returns the AsyncRT CPUDevice that backs this context's worker
+  /// pool. Allows callers (e.g. nanobind code that needs to dispatch
+  /// onto an explicit, caller-supplied AsyncRT runtime) to reach the
+  /// CPUDevice without going through a global/TLS lookup.
+  const MLRT::CPUDeviceRef &getCPUDevice() const { return cpuDevice; }
+
 private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;
@@ -213,4 +219,4 @@ private:
 
 } // namespace M::Driver
 
-#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#endif // MLRT_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
