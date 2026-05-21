@@ -223,6 +223,8 @@ modular_nanobind_library(
     hdrs = glob(["include/MLRT/AsyncRT/Nanobind/*.h"]),
     deps = [
         ":AsyncRT/Runtime",
+        ":AsyncRT/Support",
+        "//Support:Base",
     ],
 )
 
