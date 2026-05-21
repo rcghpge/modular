@@ -46,8 +46,8 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
-                                               uint64_t size) {
+M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
+                                               const void *src, uint64_t size) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();

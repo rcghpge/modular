@@ -57,10 +57,11 @@ typedef M_driver_status_t (*M_driver_queue_destroy_func_ptr_t)(
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 M_driver_memory_t dst,
-                                                void *src, uint64_t size);
+                                                const void *src, uint64_t size);
 
 typedef M_driver_status_t (*M_driver_queue_copy_to_device_func_ptr_t)(
-    M_driver_queue_t queue, M_driver_memory_t dst, void *src, uint64_t size);
+    M_driver_queue_t queue, M_driver_memory_t dst, const void *src,
+    uint64_t size);
 
 /**
  * Copy data from device memory to host memory.

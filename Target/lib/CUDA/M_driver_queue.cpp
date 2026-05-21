@@ -30,7 +30,8 @@ M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
 
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 M_driver_memory_t dst,
-                                                void *src, uint64_t size) {
+                                                const void *src,
+                                                uint64_t size) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->copyToDevice(dst, src, size);

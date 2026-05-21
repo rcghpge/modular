@@ -24,7 +24,7 @@ struct M_driver_queue {
 
   static M_driver_status_t destroy(M_driver_queue_t queue);
 
-  M_driver_status_t copyToDevice(M_driver_memory_t dst, void *src,
+  M_driver_status_t copyToDevice(M_driver_memory_t dst, const void *src,
                                  uint64_t size);
   M_driver_status_t copyFromDevice(void *dst, M_driver_memory_t src,
                                    uint64_t size);

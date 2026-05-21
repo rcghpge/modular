@@ -25,7 +25,7 @@ struct M_driver_queue {
 
   DriverResult<M_driver_memory_t> allocAsync(uint64_t size);
   M_driver_status_t freeAsync(M_driver_memory_t memory);
-  M_driver_status_t copyToDevice(M_driver_memory_t dst, void *src,
+  M_driver_status_t copyToDevice(M_driver_memory_t dst, const void *src,
                                  uint64_t size);
   M_driver_status_t copyFromDevice(void *dst, M_driver_memory_t src,
                                    uint64_t size);

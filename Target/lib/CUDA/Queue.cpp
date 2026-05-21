@@ -67,8 +67,8 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
-                                               uint64_t size) {
+M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
+                                               const void *src, uint64_t size) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
