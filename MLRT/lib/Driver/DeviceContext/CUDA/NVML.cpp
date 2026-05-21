@@ -68,16 +68,21 @@ ErrorOr<std::string> NVML::GetDriverVersion() const {
 
   // The maximum version buffer size for the NVML system driver version.
   constexpr int nvmlSystemDriverVersionBufferSize = 80;
-  std::string driverVersion(nvmlSystemDriverVersionBufferSize, '\0');
+  char buffer[nvmlSystemDriverVersionBufferSize] = {};
 
-  auto result = nvmlSystemGetDriverVersion(&driverVersion[0],
-                                           nvmlSystemDriverVersionBufferSize);
+  auto result =
+      nvmlSystemGetDriverVersion(buffer, nvmlSystemDriverVersionBufferSize);
   if (result != SUCCESS) {
     return Error(llvm::Twine("Failed to get driver version: ") +
                  nvmlErrorString(result));
   }
 
-  return driverVersion;
+  // Construct from C string so the std::string's size matches the version
+  // length rather than the buffer capacity. Otherwise the trailing NULs in
+  // the buffer become embedded NULs in the std::string and silently truncate
+  // any downstream C-string conversion (e.g. when the version appears inside
+  // an error message that is later passed through a const char* boundary).
+  return std::string(buffer);
 }
 
 ErrorOr<const NVML &> NVML::get() {

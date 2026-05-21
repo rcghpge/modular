@@ -328,14 +328,16 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
       detectedVersion =
           errOrDriverVersion->toString() + " (" + detectedVersion + ")";
     RETURN_ERROR(
-        "Your current NVIDIA GPU driver version is not supported. "
-        "A minimum driver version of " +
-        llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version of" +
-        apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
-        " are required. Your driver version is " + detectedVersion +
-        ". For older drivers, set MODULAR_NVPTX_COMPILER_PATH to use an "
-        "external ptxas binary.\nFor more information, see "
-        "https://modul.ar/gpu-requirements.");
+        "Your current NVIDIA GPU driver version is not supported.\n"
+        "  Required: driver version >= " +
+        llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) +
+        " (CUDA >= " + apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
+        ")\n"
+        "  Detected: " +
+        detectedVersion +
+        "\n\nTo run on an older driver, set the MODULAR_NVPTX_COMPILER_PATH "
+        "environment variable to the path of a system `ptxas` binary. "
+        "For more information, see https://modul.ar/gpu-requirements.");
   }
 
   return success();
