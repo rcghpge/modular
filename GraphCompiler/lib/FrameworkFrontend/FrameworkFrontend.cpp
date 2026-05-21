@@ -466,8 +466,8 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     *keyBuf << (*bufferOr)->getBuffer();
   }
 
-  // Include the binary contents of built-in kernel packages (MOGGKernelAPI,
-  // MOGGPrimitives) so that changes to them invalidate the MEF cache.
+  // Include the binary contents of built-in kernel packages (`kernels`,
+  // `primitives`) so that changes to them invalidate the MEF cache.
   auto builtInPathsOr = MOGG::getBuiltInKernelPackagePaths(mlirCtx);
   if (builtInPathsOr.isError())
     return builtInPathsOr.takeError();

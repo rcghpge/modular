@@ -812,8 +812,8 @@ private:
 ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   // Seed the sub-module with kernel decl ops cloned from the parent module
   // (which already ran `mogg-import-packages` earlier in the GC pipeline).
-  // This lets the sub-pipeline skip re-loading the built-in MOGGKernelAPI /
-  // MOGGPrimitives packages — see `kernelDeclsPrePopulated` below.
+  // This lets the sub-pipeline skip re-loading the built-in `kernels` /
+  // `primitives` packages — see `kernelDeclsPrePopulated` below.
   //
   // Skip the optimization when the parent module has no decls / mapping
   // (e.g. when `mo-constant-fold` is invoked standalone via `mo-opt`

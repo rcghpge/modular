@@ -22,8 +22,8 @@ lit_tests(
         "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
     ],
     mojo_deps = [
-        "//max:MOGGKernelAPI",
-        "//max:MOGGPrimitives",
+        "//max:builtin_kernels",
+        "//max:builtin_primitives",
     ],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
@@ -47,8 +47,8 @@ lit_tests(
     ],
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
-        "//max:MOGGKernelAPI",
-        "//max:MOGGPrimitives",
+        "//max:builtin_kernels",
+        "//max:builtin_primitives",
     ],
     tags = ["gpu"],
     target_compatible_with = select({

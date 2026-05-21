@@ -102,13 +102,11 @@ constexpr llvm::StringLiteral kMoggTraceNameParameterName = "_trace_name";
 /// Roots of Mojo packages that hold the MAX compiler's internal-only
 /// decorators (used to recognise `@register_internal` and friends without a
 /// symbol-table lookup into dependency packages). `kPackageStd` and
-/// `kPackageTensor` are owned by KGEN's `LITUtils.h` (the Mojo parser tests
-/// against them too) and re-exported here.
+/// `kPackageExtensibility` are owned by KGEN's `LITUtils.h` (the Mojo parser
+/// tests against them too) and re-exported here.
 constexpr llvm::StringLiteral kPackageMax = "max";
-constexpr llvm::StringLiteral kPackageRegister = "register";
-constexpr llvm::StringLiteral kPackageCompiler = "compiler";
+using KGEN::kPackageExtensibility;
 using KGEN::kPackageStd;
-using KGEN::kPackageTensor;
 constexpr llvm::StringLiteral kPackageManagedTensorSlice =
     "managed_tensor_slice";
 
@@ -130,8 +128,8 @@ constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
 constexpr llvm::StringLiteral kLeafDeviceContextList = "DeviceContextList";
 
 /// Mojo module names that the MojoRegistry imports unconditionally.
-constexpr llvm::StringLiteral kMoggKernelApiModuleName = "MOGGKernelAPI";
-constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "MOGGPrimitives";
+constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
+constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
 
 /// `@register_internal` name of the helper that prefixes an async error with
 /// its region name. Called from `AsyncErrorOp::emitMojo` alongside the op's
@@ -146,7 +144,7 @@ constexpr llvm::StringLiteral kMoggPrimitiveFormatRegionError =
 
 /// The stored Mojo type symbol name of Tensor type in extensibility kernels.
 constexpr llvm::StringLiteral kMojoDpsTensorTypeName =
-    "tensor::ManagedTensorSlice";
+    "extensibility::managed_tensor_slice::ManagedTensorSlice";
 
 constexpr llvm::StringLiteral kMojoInternalDpsSimdTypeName = "std::SIMD";
 constexpr llvm::StringLiteral kMojoInternalDpsIntTypeName = "std::Int";
@@ -166,11 +164,11 @@ constexpr llvm::StringLiteral kMojoInternalDpsIndexListTypeQualifiedName =
 /// VariadicTensors is the unfused variant; the fused variants carry per-
 /// element fusion structs via a heterogeneous Tuple.
 constexpr llvm::StringLiteral kMojoVariadicTensorsName =
-    "tensor::VariadicTensors";
+    "extensibility::managed_tensor_slice::VariadicTensors";
 constexpr llvm::StringLiteral kMojoFusedInputVariadicTensorsName =
-    "tensor::_FusedInputVariadicTensors";
+    "extensibility::managed_tensor_slice::_FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kMojoFusedOutputVariadicTensorsName =
-    "tensor::_FusedOutputVariadicTensors";
+    "extensibility::managed_tensor_slice::_FusedOutputVariadicTensors";
 
 /// The stored Mojo type symbol name of device contexts in extensibility
 /// kernels.
@@ -202,7 +200,7 @@ constexpr llvm::StringLiteral kMojoInternalStringSliceTypeName = "std::Origin";
 // Mojo struct names (dotted, as emitted into Mojo source)
 //===----------------------------------------------------------------------===//
 
-constexpr llvm::StringLiteral kStructIO = "io_spec.IO";
+constexpr llvm::StringLiteral kStructIO = "extensibility.IO";
 constexpr llvm::StringLiteral kStructIndexList = "std.utils.IndexList";
 constexpr llvm::StringLiteral kStructUnsafePointer = "UnsafePointer";
 constexpr llvm::StringLiteral kStructOptional = "Optional";
@@ -212,7 +210,7 @@ constexpr llvm::StringLiteral kStructDeviceContext =
 constexpr llvm::StringLiteral kStructDeviceContextList =
     "std.gpu.host.device_context.DeviceContextList";
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
-    "tensor.ManagedTensorSlice";
+    "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
 constexpr llvm::StringLiteral kStructUInt = "UInt";
 constexpr llvm::StringLiteral kStructBool = "Bool";
@@ -220,39 +218,40 @@ constexpr llvm::StringLiteral kStructAddressSpace = "std.memory.AddressSpace";
 constexpr llvm::StringLiteral kStructDType = "DType";
 constexpr llvm::StringLiteral kStructSIMD = "SIMD";
 constexpr llvm::StringLiteral kStructStateContext =
-    "MOGGPrimitives.StateContext";
+    "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructInlineArray =
     "std.collections.InlineArray";
 constexpr llvm::StringLiteral kStructMoggAsyncPackHelper =
-    "MOGGPrimitives.MoggAsyncPackHelper";
+    "builtin_primitives.primitives.MoggAsyncPackHelper";
 constexpr llvm::StringLiteral kStructScalar = "Scalar";
 constexpr llvm::StringLiteral kStructVariadic = "Variadic";
 constexpr llvm::StringLiteral kStructParameterList = "ParameterList";
 constexpr llvm::StringLiteral kStructStaticTensorSpec =
-    "directives.StaticTensorSpec";
+    "extensibility.managed_tensor_slice.StaticTensorSpec";
 constexpr llvm::StringLiteral kStructStaticTensorSpecList =
-    "tensor.StaticTensorSpecList";
-constexpr llvm::StringLiteral kStructVariadicTensors = "tensor.VariadicTensors";
+    "extensibility.StaticTensorSpecList";
+constexpr llvm::StringLiteral kStructVariadicTensors =
+    "extensibility.VariadicTensors";
 constexpr llvm::StringLiteral kStructStaticString = "StaticString";
 constexpr llvm::StringLiteral kStructMsFusionPack =
-    "managed_tensor_slice._FusionPack";
+    "extensibility.managed_tensor_slice._FusionPack";
 constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
-    "managed_tensor_slice._FusedInputVariadicTensors";
+    "extensibility.managed_tensor_slice._FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
-    "managed_tensor_slice._FusedOutputVariadicTensors";
+    "extensibility.managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "std.runtime.tracing.Trace";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 
 constexpr llvm::StringLiteral kAliasIndexListToTileLayout =
-    "directives._IndexListToTileLayout";
+    "extensibility.managed_tensor_slice._IndexListToTileLayout";
 
 //===----------------------------------------------------------------------===//
 // Mojo enum values
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kEnumAddressSpaceGeneric = "GENERIC";
-constexpr llvm::StringLiteral kEnumIoInput = "io_spec.IO.Input";
+constexpr llvm::StringLiteral kEnumIoInput = "extensibility.IO.Input";
 constexpr llvm::StringLiteral kEnumTraceLevelOp =
     "std.runtime.tracing.TraceLevel.OP";
 /// `DType.int8` member used to spell out a one-byte dtype.
@@ -264,35 +263,37 @@ constexpr llvm::StringLiteral kEnumDTypeInt8 = "int8";
 
 constexpr llvm::StringLiteral kFnStackAllocation = "stack_allocation";
 constexpr llvm::StringLiteral kFnToManagedTensorSlice =
-    "MOGGPrimitives.to_managed_tensor_slice";
+    "builtin_primitives.primitives.to_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromManagedTensorSlice =
-    "tensor.simd_load_from_managed_tensor_slice";
+    "extensibility.managed_tensor_slice.simd_load_from_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromTensorPointer =
-    "tensor.simd_load_from_tensor_pointer";
+    "extensibility.managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnSimdStoreIntoManagedTensorSlice =
-    "tensor.simd_store_into_managed_tensor_slice";
+    "extensibility.managed_tensor_slice.simd_store_into_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdStoreIntoTensorPointer =
-    "tensor.simd_store_into_tensor_pointer";
+    "extensibility.managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr llvm::StringLiteral kFnUnpackTensorSpec =
-    "MOGGPrimitives.unpack_tensor_spec";
+    "builtin_primitives.primitives.unpack_tensor_spec";
 constexpr llvm::StringLiteral kFnGetSimdWidthForDtypes =
-    "MOGGPrimitives.get_simd_width_for_dtypes";
+    "builtin_primitives.primitives.get_simd_width_for_dtypes";
 constexpr llvm::StringLiteral kFnUnpackBufferRef =
-    "MOGGPrimitives.unpack_buffer_ref";
+    "builtin_primitives.primitives.unpack_buffer_ref";
 constexpr llvm::StringLiteral kFnBufferConstant =
-    "MOGGPrimitives.mgp_buffer_constant";
+    "builtin_primitives.primitives.mgp_buffer_constant";
 constexpr llvm::StringLiteral kFnUnpackDeviceCtx =
-    "MOGGPrimitives.unpack_device_ctx";
-constexpr llvm::StringLiteral kFnUnpackTensor = "MOGGPrimitives.unpack_tensor";
-constexpr llvm::StringLiteral kFnAllZeros = "MOGGPrimitives.all_zeros";
+    "builtin_primitives.primitives.unpack_device_ctx";
+constexpr llvm::StringLiteral kFnUnpackTensor =
+    "builtin_primitives.primitives.unpack_tensor";
+constexpr llvm::StringLiteral kFnAllZeros =
+    "builtin_primitives.primitives.all_zeros";
 constexpr llvm::StringLiteral kFnMoggAsyncPackBorrow =
-    "MOGGPrimitives.mogg_async_pack_borrow";
+    "builtin_primitives.primitives.mogg_async_pack_borrow";
 constexpr llvm::StringLiteral kFnGetBufferMemStorageHandle =
-    "MOGGPrimitives.get_buffer_mem_storage_handle";
+    "builtin_primitives.primitives.get_buffer_mem_storage_handle";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
-    "managed_tensor_slice.simd_load_from_tensor_pointer";
+    "extensibility.managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
-    "managed_tensor_slice.simd_store_into_tensor_pointer";
+    "extensibility.managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
 constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
 
@@ -357,13 +358,13 @@ constexpr llvm::StringLiteral kFnOf = "of";
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kTraitInputFusion =
-    "managed_tensor_slice.InputFusion";
+    "extensibility.managed_tensor_slice.InputFusion";
 constexpr llvm::StringLiteral kTraitOutputFusion =
-    "managed_tensor_slice.OutputFusion";
+    "extensibility.managed_tensor_slice.OutputFusion";
 constexpr llvm::StringLiteral kTraitComputeOutputFusion =
-    "managed_tensor_slice.ComputeOutputFusion";
+    "extensibility.managed_tensor_slice.ComputeOutputFusion";
 constexpr llvm::StringLiteral kTraitElementwiseFusion =
-    "managed_tensor_slice.ElementwiseFusion";
+    "extensibility.managed_tensor_slice.ElementwiseFusion";
 
 //===----------------------------------------------------------------------===//
 // Decorator strings
@@ -377,16 +378,18 @@ constexpr llvm::StringLiteral kDecoratorAlwaysInline = "@always_inline";
 
 constexpr llvm::StringLiteral kComptimeOpaquePointer =
     "OpaquePointer[MutAnyOrigin]";
-constexpr llvm::StringLiteral kComptimeInputTensor = "tensor.InputTensor";
-constexpr llvm::StringLiteral kComptimeOutputTensor = "tensor.OutputTensor";
+constexpr llvm::StringLiteral kComptimeInputTensor =
+    "extensibility.InputTensor";
+constexpr llvm::StringLiteral kComptimeOutputTensor =
+    "extensibility.OutputTensor";
 constexpr llvm::StringLiteral kComptimeMutableInputTensor =
-    "managed_tensor_slice._MutableInputTensor";
+    "extensibility.managed_tensor_slice._MutableInputTensor";
 constexpr llvm::StringLiteral kComptimeUInt8 = "UInt8";
 constexpr llvm::StringLiteral kComptimeMutAnyOrigin = "MutAnyOrigin";
 constexpr llvm::StringLiteral kComptimeNone = "None";
 constexpr llvm::StringLiteral kComptimeOptionalErrorEmpty = "Optional[Error]()";
 constexpr llvm::StringLiteral kComptimeMutByteBuffer =
-    "MOGGPrimitives.MutByteBuffer";
+    "builtin_primitives.primitives.MutByteBuffer";
 constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 
 //===----------------------------------------------------------------------===//
@@ -413,22 +416,15 @@ constexpr llvm::StringLiteral kParameterTo = "to";
 // Stdlib package names
 //===----------------------------------------------------------------------===//
 
-constexpr llvm::StringLiteral kPackageCompilerInternal = "compiler_internal";
-
 /// Packages that the emit-Mojo path imports unconditionally into every
 /// generated Mojo module. TODO(GEX-2488): Do this programmatically by
 /// checking the Modular config rather than hardcoding.
 constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
     kPackagesToImport[] = {
-        {"MOGGPrimitives.MOGGPrimitives", "MOGGPrimitives"},
-        {"MOGGKernelAPI.MOGGKernelAPI", "MOGGKernelAPI"},
-        {"MOGGKernelAPI.logprobs", "logprobs"},
-        {"MOGGKernelAPI.ep_api", "ep_api"},
-        {"tensor", ""},
-        {"tensor.io_spec", "io_spec"},
-        {"tensor.managed_tensor_slice", "managed_tensor_slice"},
-        {"compiler_internal", ""},
-        {"compiler_internal.directives", "directives"},
+        {"builtin_primitives.primitives", "builtin_primitives"},
+        {"builtin_kernels", "builtin_kernels"},
+        {"extensibility", ""},
+        {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
         {"std.utils", ""},
         {"std.runtime", ""},
         {"std.runtime.tracing", ""},
@@ -440,10 +436,14 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
 /// TODO(GEX-2488): Find another way to detect that a type is an `IOSpec`
 /// without relying on package / type name.
 inline bool isMojoIOSpecTypeName(llvm::ArrayRef<mlir::FlatSymbolRefAttr> refs) {
-  constexpr llvm::StringLiteral mojoPackageName = "io_spec";
+  // After the extensibility fuse, `IOSpec` lives in
+  // `extensibility/managed_tensor_slice.mojo` and the Mojo compiler emits
+  // it under the dotted path `extensibility.managed_tensor_slice.IOSpec`.
   constexpr llvm::StringLiteral mojoTypeName = "IOSpec";
-  return refs.size() == 2 && refs[0].getValue() == mojoPackageName &&
-         refs[1].getValue() == mojoTypeName;
+  if (refs.empty())
+    return false;
+  return refs.back().getValue() == mojoTypeName &&
+         refs.front().getValue() == kPackageExtensibility;
 }
 
 //===----------------------------------------------------------------------===//

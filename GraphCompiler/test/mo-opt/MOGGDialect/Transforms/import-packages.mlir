@@ -21,6 +21,6 @@
 
 // Primitive singleton function; sym_name is the fully-qualified Mojo source
 // function name, registration is the @register_internal string.
-// CHECK-DAG: mogg.primitive.decl @MOGGPrimitives.MOGGPrimitives.foreach registration = "mogg.elemwise_for_each"
+// CHECK-DAG: mogg.primitive.decl @builtin_primitives.primitives.foreach registration = "mogg.elemwise_for_each"
 
 module {}

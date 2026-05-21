@@ -23,15 +23,13 @@ _COMMON_CUSTOM_SUBSTITUTIONS = {
 
 _COMMON_DATA = [
     "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
-    "//max/kernels/src/Mogg/MOGGKernelAPI",
+    "//max/kernels/src/graph_compiler/builtin_kernels",
 ]
 
 _COMMON_MOJO_DEPS = [
-    "//max:MOGGKernelAPI",
-    "//max:MOGGPrimitives",
-    "//max:compiler_internal",
-    "//max:register",
-    "//max:tensor",
+    "//max:builtin_kernels",
+    "//max:builtin_primitives",
+    "//max:extensibility",
 ]
 
 _COMMON_TOOLS = [

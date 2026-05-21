@@ -33,11 +33,9 @@ _COMMON_CUSTOM_SUBSTITUTIONS = {
 }
 
 _COMMON_MOJO_DEPS = [
-    "//max:MOGGKernelAPI",
-    "//max:MOGGPrimitives",
-    "//max:compiler_internal",
-    "//max:register",
-    "//max:tensor",
+    "//max:builtin_kernels",
+    "//max:builtin_primitives",
+    "//max:extensibility",
 ]
 
 _COMMON_TOOLS = [

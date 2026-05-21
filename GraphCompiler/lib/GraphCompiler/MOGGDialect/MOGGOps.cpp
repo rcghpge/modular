@@ -2381,7 +2381,7 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
   } else if (isa<MGP::DeviceBufferType>(inputType)) {
 
-    // TODO: (GEX-2732) Move away from NDBuffer in MOGGPrimitives.mojo
+    // TODO: (GEX-2732) Move away from NDBuffer in primitives.mojo
     MojoValue asyncUnpackFunc{kFnUnpackBufferRef};
     unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(input)});
 

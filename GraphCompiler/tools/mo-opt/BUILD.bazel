@@ -11,10 +11,10 @@ package(default_visibility = [
 modular_cc_binary(
     name = "mo-opt",
     srcs = glob(["*.cpp"]),
-    data = ["//max:MOGGKernelAPI"],
+    data = ["//max:builtin_kernels"],
     mojo_deps = [
-        "//max:MOGGKernelAPI",
-        "//max:MOGGPrimitives",
+        "//max:builtin_kernels",
+        "//max:builtin_primitives",
     ],
     deps = [
         "//GraphCompiler",

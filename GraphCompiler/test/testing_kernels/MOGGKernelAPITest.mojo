@@ -8,14 +8,14 @@ from std.collections.string import StaticString
 from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
-import compiler_internal as compiler
+import extensibility as compiler
 from layout import IntTuple
 from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
-from compiler_internal import StaticTensorSpec
+from extensibility import StaticTensorSpec
 from std.collections import InlineArray
 from std.gpu.host import DeviceContext, DeviceContextList
-from tensor import (
+from extensibility import (
     InputTensor,
     InputVariadicTensors,
     ManagedTensorSlice,
@@ -26,21 +26,21 @@ from tensor import (
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
 )
-from MOGGPrimitives.MOGGPrimitives import (
+from builtin_primitives.primitives import (
     foreach,
     foreach_out_func,
     view_copy_impl,
 )
-from tensor.managed_tensor_slice import (
+from extensibility import (
     _FusedInputTensor as FusedInputTensor,
 )
-from tensor.managed_tensor_slice import (
+from extensibility import (
     _FusedInputVariadicTensors as FusedInputVariadicTensors,
 )
-from tensor.managed_tensor_slice import (
+from extensibility import (
     _FusedOutputTensor as FusedOutputTensor,
 )
-from tensor.managed_tensor_slice import (
+from extensibility import (
     _MutableInputTensor as MutableInputTensor,
 )
 

@@ -24,14 +24,15 @@ namespace {
 // Symbol path arrays for recognising known struct types. Components live in
 // MojoIdentifiers.h (`kPackage*`, `kLeaf*`).
 static constexpr std::array<llvm::StringLiteral, 3> kMaxManagedTensorSlice = {
-    kPackageTensor, kPackageManagedTensorSlice, kLeafManagedTensorSlice};
+    kPackageExtensibility, kPackageManagedTensorSlice, kLeafManagedTensorSlice};
 static constexpr std::array<llvm::StringLiteral, 3> kMaxVariadicTensors = {
-    kPackageTensor, kPackageManagedTensorSlice, kLeafVariadicTensors};
+    kPackageExtensibility, kPackageManagedTensorSlice, kLeafVariadicTensors};
 static constexpr std::array<llvm::StringLiteral, 3>
-    kMaxFusedInputVariadicTensors = {kPackageTensor, kPackageManagedTensorSlice,
+    kMaxFusedInputVariadicTensors = {kPackageExtensibility,
+                                     kPackageManagedTensorSlice,
                                      kLeafFusedInputVariadicTensors};
 static constexpr std::array<llvm::StringLiteral, 3>
-    kMaxFusedOutputVariadicTensors = {kPackageTensor,
+    kMaxFusedOutputVariadicTensors = {kPackageExtensibility,
                                       kPackageManagedTensorSlice,
                                       kLeafFusedOutputVariadicTensors};
 

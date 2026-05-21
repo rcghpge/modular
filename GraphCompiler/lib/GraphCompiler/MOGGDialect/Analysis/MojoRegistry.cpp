@@ -137,7 +137,7 @@ M::MOGG::getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx) {
   llvm::SourceMgr sourceMgr;
   llvm::SmallVector<std::string> paths;
   auto kernelAPIPathOr =
-      resolveLITModulePath(ctx, sourceMgr, kMoggKernelApiModuleName);
+      resolveLITModulePath(ctx, sourceMgr, kMoggKernelsModuleName);
   if (kernelAPIPathOr.isError())
     return kernelAPIPathOr.takeError();
   paths.push_back(*kernelAPIPathOr);

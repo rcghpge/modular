@@ -186,8 +186,7 @@ getDecoratorSymbol(mlir::TypedAttr attr) {
 
 static bool isMAXCompilerSymbol(mlir::SymbolRefAttr symbol) {
   auto root = symbol.getRootReference().strref();
-  return root == kPackageMax || root == kPackageRegister ||
-         root == kPackageCompiler || root == kPackageCompilerInternal;
+  return root == kPackageMax || root == kPackageExtensibility;
 }
 
 static mlir::StringAttr

@@ -84,7 +84,7 @@ ErrorOrSuccess verifyCustomOp(const MojoRegistry &registry,
 ErrorOrSuccess verifyCustomOp(mlir::ModuleOp kernelDecls, mlir::Operation *op);
 
 /// Resolve the filesystem paths of the built-in Mojo kernel packages
-/// (`MOGGKernelAPI` and `MOGGPrimitives`). Used for cache-key construction
+/// (`kernels` and `primitives`). Used for cache-key construction
 /// (the cache invalidates when these binaries change). Returns an error if
 /// the runtime mojo path resolver can't find them.
 ErrorOr<llvm::SmallVector<std::string>>

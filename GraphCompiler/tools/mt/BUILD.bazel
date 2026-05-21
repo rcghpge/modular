@@ -11,8 +11,8 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     mojo_deps = [
-        "//max:MOGGKernelAPI",
-        "//max:MOGGPrimitives",
+        "//max:builtin_kernels",
+        "//max:builtin_primitives",
     ],
     deps = [
         "//GraphCompiler:CommonDriver",

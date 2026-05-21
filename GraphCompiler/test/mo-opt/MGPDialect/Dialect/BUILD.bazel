@@ -6,8 +6,8 @@ lit_tests(
     name = "test",
     srcs = glob(["**/*.mlir"]),
     mojo_deps = [
-        "//max:MOGGKernelAPI",
-        "//max:MOGGPrimitives",
+        "//max:builtin_kernels",
+        "//max:builtin_primitives",
     ],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
