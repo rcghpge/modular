@@ -21,17 +21,19 @@ using namespace M::KGEN;
 
 namespace {
 
-// Symbol path arrays for recognising known struct types.
+// Symbol path arrays for recognising known struct types. Components live in
+// MojoIdentifiers.h (`kPackage*`, `kLeaf*`).
 static constexpr std::array<llvm::StringLiteral, 3> kMaxManagedTensorSlice = {
-    "tensor", "managed_tensor_slice", "ManagedTensorSlice"};
+    kPackageTensor, kPackageManagedTensorSlice, kLeafManagedTensorSlice};
 static constexpr std::array<llvm::StringLiteral, 3> kMaxVariadicTensors = {
-    "tensor", "managed_tensor_slice", "VariadicTensors"};
+    kPackageTensor, kPackageManagedTensorSlice, kLeafVariadicTensors};
 static constexpr std::array<llvm::StringLiteral, 3>
-    kMaxFusedInputVariadicTensors = {"tensor", "managed_tensor_slice",
-                                     "_FusedInputVariadicTensors"};
+    kMaxFusedInputVariadicTensors = {kPackageTensor, kPackageManagedTensorSlice,
+                                     kLeafFusedInputVariadicTensors};
 static constexpr std::array<llvm::StringLiteral, 3>
-    kMaxFusedOutputVariadicTensors = {"tensor", "managed_tensor_slice",
-                                      "_FusedOutputVariadicTensors"};
+    kMaxFusedOutputVariadicTensors = {kPackageTensor,
+                                      kPackageManagedTensorSlice,
+                                      kLeafFusedOutputVariadicTensors};
 
 /// Check whether a symbol has the given root and leaf references, ignoring
 /// any intermediate nested references. This mirrors MOGG::isXType
@@ -125,15 +127,15 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
   if (auto ioSugar = mlir::dyn_cast<KGEN::SugarAttr>(rawInputAttr)) {
     if (ioSugar.getKind() == KGEN::SugarKind::MemberAlias) {
       llvm::StringRef name = ioSugar.getMemberName().strref();
-      if (name == "Output")
+      if (name == kIoOutput)
         input = kIOSpecIOOutput;
-      else if (name == "Input")
+      else if (name == kIoInput)
         input = kIOSpecIOInput;
-      else if (name == "FusedInput")
+      else if (name == kIoFusedInput)
         input = kIOSpecIOFusedInput;
-      else if (name == "FusedOutput")
+      else if (name == kIoFusedOutput)
         input = kIOSpecIOFusedOutput;
-      else if (name == "FusedComputeOutput")
+      else if (name == kIoFusedComputeOutput)
         input = kIOSpecIOFusedComputeOutput;
     }
   }
@@ -211,7 +213,7 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   // Use root+leaf matching because SIMD may be re-exported at different depths
   // (e.g. @std::@builtin::@SIMD vs @std::@SIMD); mirrors the old path's
   // "std::SIMD" string comparison.
-  if (symbolMatchesRootAndLeaf(sym, "std", "SIMD")) {
+  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafSIMD)) {
     if (promoteSIMDToFusedTensor)
       return KernelDeclTensorAdaptor{IOSpec::FusedInputTensor};
     return KernelDeclScalarAdaptor{};
@@ -220,10 +222,10 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   // --- Device context ---
   // Use root+leaf matching because DeviceContext lives under std::gpu::host
   // (depth varies across package exports).
-  if (symbolMatchesRootAndLeaf(sym, "std", "DeviceContext"))
+  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContext))
     return KernelDeclContextPtrAdaptor{};
 
-  if (symbolMatchesRootAndLeaf(sym, "std", "DeviceContextList"))
+  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContextList))
     return KernelDeclContextPtrListAdaptor{};
 
   // --- Opaque: unrecognised struct ---
@@ -343,8 +345,8 @@ KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
     // Skip a trailing IndexList argument (it is an elementwise-only concept).
     if (i + 1 == endOfInputArgs) {
       KGEN::LIT::StructType structType = getAsStructType(argType);
-      if (structType &&
-          symbolMatchesRootAndLeaf(structType.getSymbol(), "std", "IndexList"))
+      if (structType && symbolMatchesRootAndLeaf(structType.getSymbol(),
+                                                 kPackageStd, kLeafIndexList))
         continue;
     }
 
@@ -422,13 +424,13 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
 
 const KernelDeclFunctionAdaptor *
 KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
-  if (label == kMOGGExecuteFunctionLabel)
+  if (label == kMoggExecuteFunctionLabel)
     return executeFunction ? &*executeFunction : nullptr;
-  if (label == kMOGGShapeFunctionLabel)
+  if (label == kMoggShapeFunctionLabel)
     return shapeFunction ? &*shapeFunction : nullptr;
-  if (label == kMOGGUpdateViewFunctionLabel)
+  if (label == kMoggUpdateViewFunctionLabel)
     return updateViewFunction ? &*updateViewFunction : nullptr;
-  if (label == kMOGGElementwiseFunctionLabel)
+  if (label == kMoggElementwiseFunctionLabel)
     return elementwiseFunction ? &*elementwiseFunction : nullptr;
   return nullptr;
 }

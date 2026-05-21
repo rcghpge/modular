@@ -332,7 +332,7 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
   // The elementwise function might have an indices argument at the end.
   if (!adaptor.elementwiseFunction->inputArguments.empty() &&
       adaptor.elementwiseFunction->inputArguments.back().isOpaqueWithTypeName(
-          MOGG::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_QUALIFIED_NAME))
+          MOGG::kMojoInternalDpsIndexListTypeQualifiedName))
     outlinedArgs.push_back(bindOp.getIndicesArg());
 
   builder.setInsertionPointToStart(elemwiseBody);
@@ -540,7 +540,7 @@ static bool isLITStaticStringType(Type ty) {
       llvm::formatv("{}::{}", symbol.getRootReference().strref(),
                     symbol.getLeafReference().strref())
           .str();
-  if (symbolName != "std::StringSlice")
+  if (symbolName != kMojoInternalStaticStringTypeName)
     return false;
 
   auto paramValues = structTy.getParamValues();
@@ -658,7 +658,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (isa<KGEN::StringType>(kgenParamTy)) {
-      if (typeName && typeName == MOGG::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+      if (typeName && typeName == MOGG::kMojoInternalStaticStringTypeName) {
         [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
         ASSERT_STREAM(asString != nullptr,
                       "failed to convert custom op attribute "
@@ -687,7 +687,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             "to the proper Mojo parameter type: expected a DType",
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
-    } else if (typeName && typeName == MOGG::MOJO_DTYPE_TYPE_NAME) {
+    } else if (typeName && typeName == MOGG::kMojoDtypeTypeName) {
       auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
       if (asType == nullptr) {
         return Error(llvm::formatv(
@@ -695,7 +695,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             "to the proper Mojo parameter type: expected a DType",
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
-    } else if (typeName && typeName == MOGG::MOJO_STATIC_STRING_TYPE_NAME) {
+    } else if (typeName && typeName == MOGG::kMojoStaticStringTypeName) {
       auto asString = dyn_cast<StringAttr>(mlirParamAttr);
       if (asString == nullptr) {
         return Error(llvm::formatv(
@@ -704,7 +704,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (typeName &&
-               typeName == MOGG::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+               typeName == MOGG::kMojoInternalStaticStringTypeName) {
       bool isStaticString = isLITStaticStringType(kgenParamTy) ||
                             isStaticStringLoweredPattern(kgenParamTy);
       if (isStaticString) {
@@ -722,9 +722,8 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             "op.",
             customOp.getSymbol(), customParamDecl.getName()));
       }
-    } else if (typeName &&
-               (typeName == MOGG::MOJO_INTERNAL_DPS_INT_TYPE_NAME ||
-                typeName == MOGG::MOJO_INTERNAL_DPS_UINT_TYPE_NAME)) {
+    } else if (typeName && (typeName == MOGG::kMojoInternalDpsIntTypeName ||
+                            typeName == MOGG::kMojoInternalDpsUintTypeName)) {
       auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
       if (asInt == nullptr) {
         return Error(llvm::formatv(
@@ -732,7 +731,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             "to the proper Mojo parameter type: expected an integer type",
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
-    } else if (typeName && typeName == MOGG::MOJO_INTERNAL_DPS_BOOL_TYPE_NAME) {
+    } else if (typeName && typeName == MOGG::kMojoInternalDpsBoolTypeName) {
       auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
       if (asBool == nullptr) {
         return Error(llvm::formatv(
@@ -741,11 +740,11 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (typeName &&
-               (typeName == MOGG::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ||
-                typeName == MOGG::MOJO_STRING_TYPE_NAME)) {
+               (typeName == MOGG::kMojoInternalStringSliceTypeName ||
+                typeName == MOGG::kMojoStringTypeName)) {
       std::string userTypeName =
-          typeName == MOGG::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ? "StringSlice"
-                                                                 : "String";
+          typeName == MOGG::kMojoInternalStringSliceTypeName ? "StringSlice"
+                                                             : "String";
       return Error(llvm::formatv(
           "in custom op '{}' attribute '{}' uses type {}. Use type "
           "StaticString instead to define a string parameter for a custom op.",
@@ -823,7 +822,7 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
 
     const uint64_t rank = invokeShapeFunc.getOutputParamDecls().size();
     forwardedParameters.push_back(NamedAttribute(
-        builder.getStringAttr(MOGG::kMOGGOutputRankParameterName),
+        builder.getStringAttr(MOGG::kMoggOutputRankParameterName),
         builder.getIndexAttr(rank)));
 
     if (auto params = invokeShapeFunc.getKgenParamsAttr()) {

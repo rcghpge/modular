@@ -74,8 +74,8 @@ static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
   std::string type;
   llvm::raw_string_ostream os(type);
 
-  os << MOGG::HardcodedMojoSymbols::struct_InlineArray << "[" << "Int" << ", "
-     << values.size() << "]";
+  os << MOGG::kStructInlineArray << "[" << "Int" << ", " << values.size()
+     << "]";
 
   auto mojoType = MOGG::MojoValue(std::move(type));
 
@@ -406,8 +406,7 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue ctx = state.getMojoValueFor(getCtx());
 
   MojoValue inputBuffers = state.builder.var(MojoValue(
-      HardcodedMojoSymbols::struct_StaticTuple)[{
-      HardcodedMojoSymbols::comptime_MutByteBuffer, getInBuffers().size()}]());
+      kStructStaticTuple)[{kComptimeMutByteBuffer, getInBuffers().size()}]());
   for (auto &&[i, buffer] : llvm::enumerate(getInBuffers()))
     state.builder.assign(inputBuffers[i], state.getMojoValueFor(buffer));
 
@@ -625,8 +624,8 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
     MojoValue name = state.builder.newVar("var");
     std::string str;
     llvm::raw_string_ostream stream(str);
-    stream << "var " << name << ": " << HardcodedMojoSymbols::struct_InlineArray
-           << "[Int, " << numRuntimeSizes << "] = [";
+    stream << "var " << name << ": " << kStructInlineArray << "[Int, "
+           << numRuntimeSizes << "] = [";
     llvm::interleaveComma(runtimeSizeArgs, stream,
                           [&](const MojoValue &v) { stream << v; });
     stream << "]";
@@ -868,10 +867,11 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue tensorSpecAsyncVar = state.getMojoValueFor(getSpec());
   MOGG::MojoValue bufferVar = state.getMojoValueFor(getBuffer());
   MOGG::MojoValue labelLiteral = MOGG::MojoValue(getBLabel()).quote();
-  MOGG::MojoValue labelString = state.builder.var(MOGG::MojoValue(
-      MOGG::HardcodedMojoSymbols::struct_String)({}, {labelLiteral}));
-  MOGG::MojoValue labelPtrVar = labelString.get("unsafe_ptr")();
-  MOGG::MojoValue labelSizeVar = labelString.get("byte_length")();
+  MOGG::MojoValue labelString = state.builder.var(
+      MOGG::MojoValue(MOGG::kStructString)({}, {labelLiteral}));
+  MOGG::MojoStringRef label(labelString);
+  MOGG::MojoValue labelPtrVar = label.unsafePtr();
+  MOGG::MojoValue labelSizeVar = label.byteLength();
 
   state.builder.call(
       function, {specRankParam, dtypeParam},

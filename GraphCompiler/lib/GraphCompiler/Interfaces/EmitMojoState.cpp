@@ -285,7 +285,7 @@ LogicalResult emitMojo(mlir::index::MinSOp op, EmitMojoState &state) {
 
 LogicalResult emitMojo(mlir::index::MaxSOp op, EmitMojoState &state) {
   auto operands = state.getMojoValuesFor(op->getOperands());
-  static const MojoValue maxFunc = "max";
+  static const MojoValue maxFunc = kFnMax;
   state.setMojoValueFor(op.getResult(), state.builder.var(maxFunc(
                                             {}, {operands[0], operands[1]})));
   return success();
@@ -429,7 +429,7 @@ LogicalResult emitMojo(KGEN::POP::MinOp op, EmitMojoState &state) {
 
 LogicalResult emitMojo(KGEN::POP::MaxOp op, EmitMojoState &state) {
   auto operands = state.getMojoValuesFor(op->getOperands());
-  static const MojoValue maxFunc = "max";
+  static const MojoValue maxFunc = kFnMax;
   state.setMojoValueFor(op.getResult(), state.builder.var(maxFunc(
                                             {}, {operands[0], operands[1]})));
   return success();
@@ -588,8 +588,8 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
 
   auto isIOSpecType = [](Type ty) {
     auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
-    return structType && HardcodedMojoSymbols::isMojoIOSpecTypeName(
-                             structType.getSymbol().getNestedReferences());
+    return structType &&
+           isMojoIOSpecTypeName(structType.getSymbol().getNestedReferences());
   };
 
   auto inferParametersInner =
@@ -825,16 +825,16 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   /// happen because we outline the stubs before sequence fusion and the ones
   /// that do get sequence fused will always be on the host and have matching
   /// devices.
-  if (paramName == MOGG::kMOGGTargetParameterName) {
+  if (paramName == MOGG::kMoggTargetParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return MojoValue(MO::getDeviceOrDefaultAny(kernelStubOp).getLabel())
         .quote();
   }
-  if (paramName == MOGG::kMOGGTraceNameParameterName) {
+  if (paramName == MOGG::kMoggTraceNameParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
-  if (paramName == MOGG::kMOGGLambdasHaveFusionParameterName)
+  if (paramName == MOGG::kMoggLambdasHaveFusionParameterName)
     return getLambdasHaveFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
@@ -859,8 +859,7 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
   MojoValue rankParam =
       MojoValue(shapeAttr.getRank() == 0 ? 1 : shapeAttr.getRank());
 
-  return MojoValue(HardcodedMojoSymbols::struct_IndexList)({rankParam},
-                                                           mojoDims);
+  return MojoValue(kStructIndexList)({rankParam}, mojoDims);
 }
 
 void EmitMojoState::addDebugPrintTensorSpecs(const MojoValue &tensorValue,
@@ -871,18 +870,16 @@ void EmitMojoState::addDebugPrintTensorSpecs(const MojoValue &tensorValue,
     return;
 
   // We check if all indices are 0 to only print once.
-  builder.if_(
-      MojoValue(HardcodedMojoSymbols::func_all_zeros)({}, indicesValue), [&]() {
-        builder.call(
-            "print", {},
-            {MojoValue(isInput ? "input" : "output").quote(),
-             MojoValue("#" + std::to_string(operandIndex) + ":").quote(),
-             MojoValue("shape =").quote(),
-             tensorValue.get("_static_shape_tuple"),
-             MojoValue("strides =").quote(),
-             tensorValue.get("_static_strides_tuple"),
-             MojoValue("alignment =").quote(), tensorValue.get("alignment")});
-      });
+  ManagedTensorSliceRef mts(tensorValue);
+  builder.if_(MojoValue(kFnAllZeros)({}, indicesValue), [&]() {
+    builder.call(
+        kFnPrint, {},
+        {MojoValue(isInput ? kParameterInput : kParameterOutput).quote(),
+         MojoValue("#" + std::to_string(operandIndex) + ":").quote(),
+         MojoValue("shape =").quote(), mts.staticShapeTuple(),
+         MojoValue("strides =").quote(), mts.staticStridesTuple(),
+         MojoValue("alignment =").quote(), mts.alignment()});
+  });
 }
 
 void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
@@ -893,17 +890,16 @@ void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
     return;
 
   // We check if all indices are 0 to only print once.
-  builder.if_(
-      MojoValue(HardcodedMojoSymbols::func_all_zeros)({}, indicesValue), [&]() {
-        builder.call("print", {},
-                     {
-                         MojoValue(stringifyBindLambdaKind(lambdaKind)).quote(),
-                         MojoValue("width =").quote(),
-                         widthParam,
-                         MojoValue("alignment =").quote(),
-                         alignmentParam,
-                     });
-      });
+  builder.if_(MojoValue(kFnAllZeros)({}, indicesValue), [&]() {
+    builder.call(kFnPrint, {},
+                 {
+                     MojoValue(stringifyBindLambdaKind(lambdaKind)).quote(),
+                     MojoValue("width =").quote(),
+                     widthParam,
+                     MojoValue("alignment =").quote(),
+                     alignmentParam,
+                 });
+  });
 }
 
 MojoValue EmitMojoState::mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) {

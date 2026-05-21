@@ -109,9 +109,6 @@ void M::MOGG::copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst) {
 
 namespace {
 
-constexpr llvm::StringLiteral kMOGGKernelAPIModuleName = "MOGGKernelAPI";
-constexpr llvm::StringLiteral kMOGGPrimitivesModuleName = "MOGGPrimitives";
-
 ErrorOr<std::string> resolveLITModulePath(mlir::MLIRContext *ctx,
                                           llvm::SourceMgr &sourceMgr,
                                           llvm::StringRef moduleName) {
@@ -140,12 +137,12 @@ M::MOGG::getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx) {
   llvm::SourceMgr sourceMgr;
   llvm::SmallVector<std::string> paths;
   auto kernelAPIPathOr =
-      resolveLITModulePath(ctx, sourceMgr, kMOGGKernelAPIModuleName);
+      resolveLITModulePath(ctx, sourceMgr, kMoggKernelApiModuleName);
   if (kernelAPIPathOr.isError())
     return kernelAPIPathOr.takeError();
   paths.push_back(*kernelAPIPathOr);
   auto primitivesPathOr =
-      resolveLITModulePath(ctx, sourceMgr, kMOGGPrimitivesModuleName);
+      resolveLITModulePath(ctx, sourceMgr, kMoggPrimitivesModuleName);
   if (primitivesPathOr.isError())
     return primitivesPathOr.takeError();
   paths.push_back(*primitivesPathOr);

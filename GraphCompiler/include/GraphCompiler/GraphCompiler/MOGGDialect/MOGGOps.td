@@ -1556,7 +1556,7 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
     `sym_name` is the fully-qualified Mojo source name of the function
     (e.g. `MOGGPrimitives.MOGGPrimitives.foreach`). `registration` is the
     intrinsic string the function is registered under (e.g.
-    `"mogg.elemwise_for_each"` or `"mogg.view_materialize"`). Each
+    `"mogg.elemwise_for_each"` or `"mogg.call.materialize"`). Each
     `@register_internal` site produces exactly one `mogg.primitive.decl`;
     primitives must not be registered under multiple registration strings
     (the MLIR symbol table would reject the duplicate `sym_name`).

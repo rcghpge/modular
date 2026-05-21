@@ -13,9 +13,9 @@
 namespace M::MOGG {
 
 int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode) {
-  auto count = mojoCode->getAttr(MOGG::kMOGGNumDPSOutputs);
+  auto count = mojoCode->getAttr(MOGG::kMoggNumDpsOutputs);
   [[maybe_unused]] bool isExecuteFunc =
-      mojoCode->hasAttr(MOGG::kMOGGExecuteFunctionLabel);
+      mojoCode->hasAttr(MOGG::kMoggExecuteFunctionLabel);
 
   if (!count) {
     ASSERT_STREAM(!isExecuteFunc,
@@ -36,7 +36,7 @@ int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode) {
 MojoOperationInfo getMojoOperationInfo(Operation *op) {
   // Custom operations call the symbol and function directly.
   if (auto customOp = dyn_cast<MO::CustomOp>(op))
-    return {customOp.getSymbol(), MOGG::kMOGGExecuteFunctionLabel};
+    return {customOp.getSymbol(), MOGG::kMoggExecuteFunctionLabel};
 
   // Layout transforms map to a hardcoded op name based on the inferred layouts
   if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
@@ -47,15 +47,15 @@ MojoOperationInfo getMojoOperationInfo(Operation *op) {
         op->getContext(), llvm::Twine("layout_transform_") +
                               startLayout.getFormat().strref() + "_to_" +
                               endLayout.getFormat().strref());
-    return {opName, MOGG::kMOGGExecuteFunctionLabel};
+    return {opName, MOGG::kMoggExecuteFunctionLabel};
   }
 
   // Shape invocations call the shape functions
   if (auto shapeInvoke = dyn_cast<MO::InvokeShapeFuncOp>(op))
-    return {shapeInvoke.getShapeFuncName(), MOGG::kMOGGShapeFunctionLabel};
+    return {shapeInvoke.getShapeFuncName(), MOGG::kMoggShapeFunctionLabel};
 
   // Else we register 1-1 with the official name of the operation.
-  return {op->getName().getStringRef(), MOGG::kMOGGExecuteFunctionLabel};
+  return {op->getName().getStringRef(), MOGG::kMoggExecuteFunctionLabel};
 }
 
 ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
@@ -69,7 +69,7 @@ ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
   }
   KernelDeclAdaptor adaptor(registry.getResolvedKernel(info.operationName));
 
-  if (info.functionLabel == MOGG::kMOGGShapeFunctionLabel) {
+  if (info.functionLabel == MOGG::kMoggShapeFunctionLabel) {
     if (!adaptor.shapeFunction.has_value()) {
       return Error(llvm::formatv("Could not find a shape function for '{}'",
                                  info.operationName)

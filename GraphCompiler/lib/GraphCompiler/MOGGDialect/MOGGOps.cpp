@@ -63,13 +63,11 @@ static ParseResult parseDim(OpAsmParser &p, StringAttr &name,
 /// fusion struct, using the struct's StaticTensorSpec parameter.
 static std::string buildStructLoadExpr(StringRef captureIdx,
                                        StringRef indicesExpr) {
-  return llvm::formatv(
-             "{2}[static_spec = Self.spec_{0}, "
-             "simd_width = simd_width, "
-             "element_alignment = element_alignment]"
-             "(self.ptr_{0}, self.shape_{0}, self.strides_{0}, {1})",
-             captureIdx, indicesExpr,
-             HardcodedMojoSymbols::func_ms_simd_load_from_tensor_pointer)
+  return llvm::formatv("{2}[static_spec = Self.spec_{0}, "
+                       "simd_width = simd_width, "
+                       "element_alignment = element_alignment]"
+                       "(self.ptr_{0}, self.shape_{0}, self.strides_{0}, {1})",
+                       captureIdx, indicesExpr, kFnMsSimdLoadFromTensorPointer)
       .str();
 }
 
@@ -80,8 +78,7 @@ static void addTensorCaptureParam(
   auto ci = std::to_string(captureIdx);
   parameters.push_back(
       {MojoValue("spec_" + ci),
-       MojoValue(llvm::formatv("{0}[{1}, {2}, ...]",
-                               HardcodedMojoSymbols::struct_StaticTensorSpec,
+       MojoValue(llvm::formatv("{0}[{1}, {2}, ...]", kStructStaticTensorSpec,
                                dtypeText, rank)
                      .str())});
 }
@@ -91,16 +88,14 @@ static void
 addTensorCaptureField(SmallVectorImpl<std::pair<MojoValue, MojoValue>> &fields,
                       unsigned captureIdx, StringRef dtypeText, int64_t rank) {
   auto ci = std::to_string(captureIdx);
+  fields.push_back({MojoValue("ptr_" + ci),
+                    MojoValue(kStructUnsafePointer)[{
+                        MojoValue(kStructScalar)[{MojoValue(dtypeText)}],
+                        MojoValue(kComptimeMutAnyOrigin)}]});
   fields.push_back(
-      {MojoValue("ptr_" + ci),
-       MojoValue(HardcodedMojoSymbols::struct_UnsafePointer)[{
-           MojoValue(
-               HardcodedMojoSymbols::struct_Scalar)[{MojoValue(dtypeText)}],
-           MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]});
-  fields.push_back({MojoValue("shape_" + ci),
-                    MojoValue(HardcodedMojoSymbols::struct_IndexList)[rank]});
-  fields.push_back({MojoValue("strides_" + ci),
-                    MojoValue(HardcodedMojoSymbols::struct_IndexList)[rank]});
+      {MojoValue("shape_" + ci), MojoValue(kStructIndexList)[rank]});
+  fields.push_back(
+      {MojoValue("strides_" + ci), MojoValue(kStructIndexList)[rank]});
 }
 
 /// Resolve a Value from the struct body's value map, applying
@@ -117,7 +112,7 @@ resolveStructOperand(Value operand, const DenseMap<Value, MojoValue> &valueMap,
   auto inputTy = M::MO::fromMLIRType(operand.getType());
   if (!inputTy.isError()) {
     return MojoValue(llvm::formatv(
-        "rebind[{0}[{1}, simd_width]]({2})", HardcodedMojoSymbols::struct_SIMD,
+        "rebind[{0}[{1}, simd_width]]({2})", kStructSIMD,
         state.mlirDTypeToMojoType(*inputTy).text, it->second.text));
   }
   return it->second;
@@ -678,14 +673,12 @@ static void emitFusionStructBodyOps(
       auto indicesIt = valueMap.find(loadOp.getIndices());
       std::string indicesExpr;
       if (indicesIt != valueMap.end()) {
-        indicesExpr = llvm::formatv("rebind[{0}[{1}]]({2})",
-                                    HardcodedMojoSymbols::struct_IndexList,
+        indicesExpr = llvm::formatv("rebind[{0}[{1}]]({2})", kStructIndexList,
                                     loadRank, indicesIt->second.text)
                           .str();
       } else {
         indicesExpr =
-            llvm::formatv("rebind[{0}[{1}]](idx)",
-                          HardcodedMojoSymbols::struct_IndexList, loadRank)
+            llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList, loadRank)
                 .str();
       }
 
@@ -708,11 +701,9 @@ static void emitFusionStructBodyOps(
                                       : *elemAdaptor.executeFunction;
       MojoValue mojoSymbolName(elemFnAdaptor.fullyResolvedName.strref());
 
-      constexpr StringLiteral simdDtypeParameterName = "dtype";
       Value outputVal = elemOp.getOutputs().front();
       std::optional<StringRef> maybeDtypeParamName =
-          EmitMojoState::getResultParamNameFor(elemFnAdaptor,
-                                               simdDtypeParameterName);
+          EmitMojoState::getResultParamNameFor(elemFnAdaptor, kParameterDType);
       auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
         if (maybeDtypeParamName.has_value() &&
             paramName == *maybeDtypeParamName) {
@@ -725,8 +716,8 @@ static void emitFusionStructBodyOps(
         return state.inferDefaultKernelParamValue(elemOp, paramName);
       };
       llvm::StringRef elemFuncLabel = elemAdaptor.isElementwise()
-                                          ? MOGG::kMOGGElementwiseFunctionLabel
-                                          : MOGG::kMOGGExecuteFunctionLabel;
+                                          ? MOGG::kMoggElementwiseFunctionLabel
+                                          : MOGG::kMoggExecuteFunctionLabel;
       auto maybeParams = EmitMojoState::inferKernelParameters(
           elemAdaptor, elemFuncLabel, inferParam);
       if (maybeParams.isError()) {
@@ -761,15 +752,13 @@ static void emitFusionStructBodyOps(
               auto cRank = cTy.getRank() == 0 ? 1 : cTy.getRank();
               auto cis = std::to_string(captIdx);
               auto loadExpr = buildStructLoadExpr(
-                  cis,
-                  llvm::formatv("rebind[{0}[{1}]](idx)",
-                                HardcodedMojoSymbols::struct_IndexList, cRank)
-                      .str());
+                  cis, llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList,
+                                     cRank)
+                           .str());
               MojoValue varName = sdb.var(MojoValue(loadExpr));
-              inputs.push_back(
-                  MojoValue(llvm::formatv("rebind[{0}[{1}, simd_width]]({2})",
-                                          HardcodedMojoSymbols::struct_SIMD,
-                                          cDtype.text, varName.text)));
+              inputs.push_back(MojoValue(
+                  llvm::formatv("rebind[{0}[{1}, simd_width]]({2})",
+                                kStructSIMD, cDtype.text, varName.text)));
               foundCapture = true;
               break;
             }
@@ -820,39 +809,35 @@ static void emitFusionStructReturnOrStore(
       auto indicesVal = outputOp.getOperand(1);
       auto indicesIt = valueMap.find(indicesVal);
       if (indicesIt != valueMap.end()) {
-        storeIndicesExpr = llvm::formatv("rebind[{0}[{1}]]({2})",
-                                         HardcodedMojoSymbols::struct_IndexList,
-                                         rank, indicesIt->second.text)
-                               .str();
+        storeIndicesExpr =
+            llvm::formatv("rebind[{0}[{1}]]({2})", kStructIndexList, rank,
+                          indicesIt->second.text)
+                .str();
       } else {
         storeIndicesExpr =
-            llvm::formatv("rebind[{0}[{1}]](idx)",
-                          HardcodedMojoSymbols::struct_IndexList, rank)
+            llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList, rank)
                 .str();
       }
     } else {
       storeIndicesExpr =
-          llvm::formatv("rebind[{0}[{1}]](idx)",
-                        HardcodedMojoSymbols::struct_IndexList, rank)
-              .str();
+          llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList, rank).str();
     }
 
-    auto storeExpr = llvm::formatv(
-        "{0}[static_spec = Self.spec_0, "
-        "simd_width = simd_width, "
-        "element_alignment = element_alignment]"
-        "(self.ptr_0, self.shape_0, self.strides_0, "
-        "{1}, "
-        "rebind[{2}[{3}, simd_width]]({4}))",
-        HardcodedMojoSymbols::func_ms_simd_store_into_tensor_pointer,
-        storeIndicesExpr, HardcodedMojoSymbols::struct_SIMD, dtype.text,
-        resultValue.text);
+    auto storeExpr =
+        llvm::formatv("{0}[static_spec = Self.spec_0, "
+                      "simd_width = simd_width, "
+                      "element_alignment = element_alignment]"
+                      "(self.ptr_0, self.shape_0, self.strides_0, "
+                      "{1}, "
+                      "rebind[{2}[{3}, simd_width]]({4}))",
+                      kFnMsSimdStoreIntoTensorPointer, storeIndicesExpr,
+                      kStructSIMD, dtype.text, resultValue.text);
     sdb.verbatim(MojoValue(storeExpr.str()));
   } else {
-    sdb.returnsValue(MojoValue(
-        llvm::formatv("rebind[{0}[dtype, simd_width]]({1})",
-                      HardcodedMojoSymbols::struct_SIMD, resultValue.text)
-            .str()));
+    sdb.returnsValue(
+        MojoValue(llvm::formatv("rebind[{0}[dtype, simd_width]]({1})",
+                                kStructSIMD, resultValue.text)
+                      .str()));
   }
 }
 
@@ -898,9 +883,8 @@ static void emitFusionStructMethodBody(
     auto cis = std::to_string(i);
 
     auto loadExpr = buildStructLoadExpr(
-        cis, llvm::formatv("rebind[{0}[{1}]](idx)",
-                           HardcodedMojoSymbols::struct_IndexList, rank)
-                 .str());
+        cis,
+        llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList, rank).str());
     valueMap[blockArg] = sdb.var(MojoValue(loadExpr));
   }
 
@@ -937,18 +921,18 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   StringRef methodName;
   bool methodReturnsValue = false;
   if (bindOp.getBindKind() == BindLambdaKind::ElemwiseLambda) {
-    traitName = HardcodedMojoSymbols::trait_ElementwiseFusion;
+    traitName = kTraitElementwiseFusion;
     methodName = "compute";
     methodReturnsValue = true;
   } else if (bindOp.getBindKind() == BindLambdaKind::InputLambda) {
-    traitName = HardcodedMojoSymbols::trait_InputFusion;
+    traitName = kTraitInputFusion;
     methodName = "load";
     methodReturnsValue = true;
   } else if (generateStoreForOutput) {
-    traitName = HardcodedMojoSymbols::trait_OutputFusion;
+    traitName = kTraitOutputFusion;
     methodName = "store";
   } else {
-    traitName = HardcodedMojoSymbols::trait_ComputeOutputFusion;
+    traitName = kTraitComputeOutputFusion;
     methodName = "compute";
     methodReturnsValue = true;
   }
@@ -972,7 +956,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   sdb.structDecl(
       structNameVal, parameters, {MojoValue(traitName)}, fields, [&]() {
         // Emit method signature.
-        sdb.verbatim(MojoValue("@always_inline"));
+        sdb.verbatim(MojoValue(kDecoratorAlwaysInline));
         std::string sig;
         llvm::raw_string_ostream os(sig);
         os << "def " << methodName
@@ -1004,15 +988,15 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     for (unsigned i = 0; i < fusedInputs.size(); ++i) {
       if (i == 0 && isOutputLambda)
         continue;
+      ManagedTensorSliceRef mts(fusedInputs[i]);
       state.builder.call(
-          "print", {},
-          {MojoValue(isOutputLambda ? "output" : "input").quote(),
+          kFnPrint, {},
+          {MojoValue(isOutputLambda ? kParameterOutput : kParameterInput)
+               .quote(),
            MojoValue("#" + std::to_string(inputIdx++) + ":").quote(),
-           MojoValue("shape =").quote(),
-           fusedInputs[i].get("_static_shape_tuple"),
-           MojoValue("strides =").quote(),
-           fusedInputs[i].get("_static_strides_tuple"),
-           MojoValue("alignment =").quote(), fusedInputs[i].get("alignment")});
+           MojoValue("shape =").quote(), mts.staticShapeTuple(),
+           MojoValue("strides =").quote(), mts.staticStridesTuple(),
+           MojoValue("alignment =").quote(), mts.alignment()});
     }
   }
 
@@ -1021,18 +1005,18 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   SmallVector<MojoValue> comptimeArgs;
   SmallVector<MojoValue> instanceArgs;
   for (unsigned i = 0; i < fusedInputs.size(); ++i) {
-    comptimeArgs.push_back(fusedInputs[i].get("static_spec"));
-    instanceArgs.push_back(
-        state.builder.var(fusedInputs[i].get("unsafe_ptr")()));
-    instanceArgs.push_back(state.builder.var(fusedInputs[i].get("shape")()));
-    instanceArgs.push_back(state.builder.var(fusedInputs[i].get("strides")()));
+    ManagedTensorSliceRef mts(fusedInputs[i]);
+    comptimeArgs.push_back(mts.staticSpec());
+    instanceArgs.push_back(state.builder.var(mts.unsafePtr()));
+    instanceArgs.push_back(state.builder.var(mts.shape()));
+    instanceArgs.push_back(state.builder.var(mts.strides()));
   }
   for (auto &[tensorVal, captureIdx] : extraTensorCaptures) {
-    auto tensorMojo = state.getMojoValueFor(tensorVal);
-    comptimeArgs.push_back(tensorMojo.get("static_spec"));
-    instanceArgs.push_back(state.builder.var(tensorMojo.get("unsafe_ptr")()));
-    instanceArgs.push_back(state.builder.var(tensorMojo.get("shape")()));
-    instanceArgs.push_back(state.builder.var(tensorMojo.get("strides")()));
+    ManagedTensorSliceRef mts(state.getMojoValueFor(tensorVal));
+    comptimeArgs.push_back(mts.staticSpec());
+    instanceArgs.push_back(state.builder.var(mts.unsafePtr()));
+    instanceArgs.push_back(state.builder.var(mts.shape()));
+    instanceArgs.push_back(state.builder.var(mts.strides()));
   }
   for (auto &[val, fieldName, mojoType] : scalarCaptures)
     instanceArgs.push_back(state.getMojoValueFor(val));
@@ -1047,7 +1031,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
       return "";
 
     if (bindOp.getBindKind() == BindLambdaKind::InputLambda)
-      return HardcodedMojoSymbols::func_ManagedTensorSlice_bind_to_fused_input;
+      return kFnManagedTensorSliceBindToFusedInput;
 
     auto fusedOp =
         dyn_cast<MOGG::TensorFusedOp>(*bindOp.getResult().getUsers().begin());
@@ -1055,12 +1039,11 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         state.registry, fusedOp, state.enableComputeLambdas);
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::Output) {
-      return HardcodedMojoSymbols::func_ManagedTensorSlice_bind_to_fused_output;
+      return kFnManagedTensorSliceBindToFusedOutput;
     }
     // Both compute-output cases use the same Mojo method name;
     // overload resolution distinguishes by trait type.
-    return HardcodedMojoSymbols::
-        func_ManagedTensorSlice_bind_to_fused_compute_output;
+    return kFnManagedTensorSliceBindToFusedComputeOutput;
   }();
   // Build the concrete parameterized type name for use by the variadic path
   // (e.g., FusionStruct_0[arg__0.static_spec, arg__1.static_spec]).
@@ -1166,10 +1149,9 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   llvm::SmallVector<MojoValue> allDtypeMojoParams;
   for (DType dtype : allTensorDtypes)
     allDtypeMojoParams.push_back(state.mlirDTypeToMojoType(dtype));
-  MojoValue paramsDtypesTuple = MojoValue(
-      HardcodedMojoSymbols::struct_StaticTuple)[{
-      HardcodedMojoSymbols::struct_DType,
-      MojoValue(int64_t(allDtypeMojoParams.size()))}]({}, allDtypeMojoParams);
+  MojoValue paramsDtypesTuple = MojoValue(kStructStaticTuple)[{
+      kStructDType, MojoValue(int64_t(allDtypeMojoParams.size()))}](
+      {}, allDtypeMojoParams);
 
   // Get the target device from the kernel stub that contains this operation.
   auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
@@ -1179,27 +1161,24 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
                     : MO::getDeviceOrDefaultAny(*this).getLabel())
           .quote();
 
-  MojoValue simdWidthExpr =
-      MojoValue(HardcodedMojoSymbols::func_get_simd_width_for_dtypes)(
-          {paramsDtypesTuple, targetDeviceLabel});
+  MojoValue simdWidthExpr = MojoValue(kFnGetSimdWidthForDtypes)(
+      {paramsDtypesTuple, targetDeviceLabel});
 
   // Get the trace name from the fusion info tree.
-  auto traceNameOr = state.inferDefaultKernelParamValue(*this, "_trace_name");
-  MojoValue traceNameExpr =
-      traceNameOr.isError() ? MojoValue("\"mogg.for_each\"") : *traceNameOr;
+  auto traceNameOr =
+      state.inferDefaultKernelParamValue(*this, kMoggTraceNameParameterName);
+  MojoValue traceNameExpr = traceNameOr.isError()
+                                ? MojoValue(getOperationName()).quote()
+                                : *traceNameOr;
 
-  // Directly emit the struct-based foreach call. E, dtype, and rank are
-  // inferred by Mojo from the argument types. Look up the primitive by
-  // registration name (rather than a hardcoded Mojo symbol) so the emitted
-  // call follows the Mojo source name even if the primitive's function name
-  // changes (e.g. `mogg.for_each` resolves to `foreach_fusion`, not the
-  // 2-argument `foreach` overload).
-  auto foreachPrim = state.registry.lookupPrimitive("mogg.for_each");
+  // Look up the foreach primitive by this op's registration name; the Mojo
+  // source name (e.g. `foreach_fusion`) is opaque to the GC.
+  auto foreachPrim = state.registry.lookupPrimitive(getOperationName());
   MojoValue foreachFunc(primitiveMojoName(foreachPrim));
   state.builder.verbatim(
-      foreachFunc({MojoValue("target").equal(targetDeviceLabel),
-                   MojoValue("simd_width").equal(simdWidthExpr),
-                   MojoValue("_trace_name").equal(traceNameExpr)},
+      foreachFunc({MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
+                   MojoValue(kParameterSimdWidth).equal(simdWidthExpr),
+                   MojoValue(kMoggTraceNameParameterName).equal(traceNameExpr)},
                   {mojoOutput, fusionInfo.instance, contextValue}));
   state.genAllKeepAliveStatements();
 
@@ -1233,8 +1212,7 @@ Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 bool CallMaterializeOp::isThrows() { return true; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
-  auto viewMatPrimDecl =
-      state.registry.lookupPrimitive("mogg.view_materialize");
+  auto viewMatPrimDecl = state.registry.lookupPrimitive(getOperationName());
   // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
   std::swap(mojoOperands[0], mojoOperands[1]);
@@ -1333,22 +1311,23 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   MojoValue rank(static_cast<int64_t>(tensorType.getRankNonZero()));
 
   // Get static_spec fields
-  MojoValue staticSpec = inputValue.get("static_spec");
+  ManagedTensorSliceRef mts(inputValue);
+  StaticTensorSpecRef staticSpec(mts.staticSpec());
 
   // Build template parameters
-  SmallVector<MojoValue> templateParams = {
-      dtype,
-      rank,
-      MojoValue(false), // False constant
-      MojoValue(HardcodedMojoSymbols::enum_IO_Input),
-      staticSpec.get("static_layout"),
-      staticSpec.get("alignment"),
-      staticSpec.get("exclusive")};
+  SmallVector<MojoValue> templateParams = {dtype,
+                                           rank,
+                                           MojoValue(false), // False constant
+                                           MojoValue(kEnumIoInput),
+                                           staticSpec.staticLayout(),
+                                           staticSpec.alignment(),
+                                           staticSpec.exclusive()};
 
   // Build runtime arguments
   SmallVector<MojoValue> runtimeArgs = {
-      inputValue.get("_ptr").get("bitcast")[MojoValue("NoneType")](),
-      inputValue.get("shape")()};
+      OpaquePointerRef(mts.rawPtr())
+          .bitcast(MojoValue(kComptimeDTypeNoneType))(),
+      mts.shape()};
 
   // Generate the mogg_tensor_init call
   auto tensorInitPrimDecl =
@@ -1398,7 +1377,7 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(
-      execAdaptor, MOGG::kMOGGExecuteFunctionLabel, inferParam);
+      execAdaptor, MOGG::kMoggExecuteFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -1621,7 +1600,7 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
     } else if (dyn_cast<MGP::DeviceBufferType>(type)) {
       // mgp.buffer is represented as MutByteBuffer (DynamicTensor[DType.int8,
       // 1]).
-      return HardcodedMojoSymbols::comptime_MutByteBuffer;
+      return kComptimeMutByteBuffer;
     }
     return state.mlirTypeToMojoType(type);
   };
@@ -1664,11 +1643,9 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
 
   bool errOccurred = false;
   static const MOGG::MojoValue vMutAnyOrigin =
-      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::comptime_MutAnyOrigin);
-  static const MOGG::MojoValue vUnsafePointer =
-      MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
-  static const MOGG::MojoValue vOpaquePointer =
-      MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
+      MOGG::MojoValue(MOGG::kComptimeMutAnyOrigin);
+  static const MOGG::MojoValue vUnsafePointer = MOGG::kStructUnsafePointer;
+  static const MOGG::MojoValue vOpaquePointer = MOGG::kComptimeOpaquePointer;
 
   state.builder.fn(
       getSymNameAttr().strref(), {},
@@ -1711,7 +1688,8 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
           // The ABI is that the bytecount is directly stored as an
           // OpaquePointer.
           MOGG::MojoValue byteCount =
-              runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
+              OpaquePointerRef(runtimeArgument)
+                  .bitcast(MojoValue(kStructInt))()[flatIndex + 1];
           state.mojoConstantResources.emplace_back(
               std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
         }
@@ -2380,13 +2358,13 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
   if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(inputType)) {
 
-    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_tensor_spec};
+    MojoValue asyncUnpackFunc{kFnUnpackTensorSpec};
     unpackedValue = asyncUnpackFunc({int(tensorSpec.getRank())},
                                     {state.getMojoValueFor(input)});
 
   } else if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(inputType)) {
 
-    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_tensor};
+    MojoValue asyncUnpackFunc{kFnUnpackTensor};
     MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
     if (!tensorSpec.hasRank())
       return emitError() << "Expected Tensor operand to have known rank";
@@ -2404,12 +2382,12 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   } else if (isa<MGP::DeviceBufferType>(inputType)) {
 
     // TODO: (GEX-2732) Move away from NDBuffer in MOGGPrimitives.mojo
-    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_buffer_ref};
+    MojoValue asyncUnpackFunc{kFnUnpackBufferRef};
     unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(input)});
 
   } else if (isa<MGP::DeviceContextType>(inputType)) {
 
-    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_device_ctx};
+    MojoValue asyncUnpackFunc{kFnUnpackDeviceCtx};
     unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((input))});
 
   } else {
@@ -2434,11 +2412,11 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
     MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
     auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
     MojoValue opaqueTypeStr = params.empty() ? baseTy : baseTy[params];
-    MojoValue bitcastCall = finalValue.get("bitcast")({opaqueTypeStr}, {});
+    OpaquePointerRef opaquePtr(finalValue);
     // Store the pointer in a variable
-    MojoValue ptrVar = state.builder.var(bitcastCall);
+    MojoValue ptrVar = state.builder.var(opaquePtr.bitcast(opaqueTypeStr)());
     // The value to use is the dereference expression: var_XX[]
-    finalValue = state.builder.var(ptrVar.get("take_pointee")());
+    finalValue = state.builder.var(OpaquePointerRef(ptrVar).takePointee());
   }
 
   state.setMojoValueFor(getResult(), finalValue);
@@ -2453,8 +2431,7 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  MojoValue asyncPackHelperStruct =
-      HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
+  MojoValue asyncPackHelperStruct = kStructMoggAsyncPackHelper;
   auto packPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
   ASSERT_STREAM(packPrimDecl,
                 "Primitive not found for " << getOperationName().str());
@@ -2507,8 +2484,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
   auto mutParam = getMut();
   auto exclusiveParam = getExclusive();
-  auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
-                     .get(MO::stringifyIOKind(getIo()));
+  auto ioParam = MojoValue(kStructIO).get(MO::stringifyIOKind(getIo()));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto layoutParam = state.builder.comptime(
@@ -2523,14 +2499,15 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   ASSERT_STREAM(tensorInitPrimDecl2,
                 "Primitive not found for " << getOperationName().str());
   MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl2));
-  state.setMojoValueFor(getResult(),
-                        state.builder.var(moggTensorInit(
-                            {dTypeParam, rankParam, mutParam, ioParam,
-                             layoutParam, alignmentParam, exclusiveParam},
-                            {state.getMojoValueFor(getBuffer())
-                                 .get("unsafe_ptr")()
-                                 .get("bitcast")({"NoneType"}),
-                             shapeVar})));
+  state.setMojoValueFor(
+      getResult(), state.builder.var(moggTensorInit(
+                       {dTypeParam, rankParam, mutParam, ioParam, layoutParam,
+                        alignmentParam, exclusiveParam},
+                       {OpaquePointerRef(ManagedTensorSliceRef(
+                                             state.getMojoValueFor(getBuffer()))
+                                             .unsafePtr())
+                            .bitcast(MojoValue(kComptimeDTypeNoneType))(),
+                        shapeVar})));
 
   return success();
 }
@@ -2637,8 +2614,8 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
 
   // 1. Create error slot: var error_N = Optional[Error]()
-  MojoValue errorVar =
-      state.builder.var(MojoValue("Optional[Error]()"), /*cache=*/false);
+  MojoValue errorVar = state.builder.var(MojoValue(kComptimeOptionalErrorEmpty),
+                                         /*cache=*/false);
 
   // 2. Create async wrapper closure that calls the stub
   SmallVector<MojoValue> stubArgs = state.getMojoValuesFor(getOperands());
@@ -2646,7 +2623,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
 
   MojoValue wrapper = state.builder.lambda(
       "wrapper", /*parameters=*/{}, /*arguments=*/{},
-      /*returnType=*/MojoValue("None"),
+      /*returnType=*/MojoValue(kComptimeNone),
       /*isInline=*/true, /*isParameter=*/true, /*isAsync=*/true,
       [&](const FunctionBody &) {
         state.builder
@@ -2675,27 +2652,24 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
   if (affinityId) {
     int64_t deviceId = affinityId.getInt();
     // var worker_id_N = std.runtime.asyncrt.task_id_for_device(<deviceId>)
-    MojoValue workerIdVar = state.builder.var(
-        MojoValue(HardcodedMojoSymbols::func_task_id_for_device)(
-            /*params=*/{}, /*args=*/{MojoValue(deviceId)}),
-        /*cache=*/false);
+    MojoValue workerIdVar =
+        state.builder.var(MojoValue(kFnTaskIdForDevice)(
+                              /*params=*/{}, /*args=*/{MojoValue(deviceId)}),
+                          /*cache=*/false);
     // var task_N = std.runtime.asyncrt._create_task(
     //     wrapper_N(), desired_worker_id=worker_id_N)
     // MojoBuilder has no built-in keyword-argument support, so we construct
     // the call text directly.
     taskVar = state.builder.var(
-        MojoValue(
-            llvm::formatv("{}({}, desired_worker_id={})",
-                          HardcodedMojoSymbols::func_create_task_with_affinity,
-                          wrapper({}, {}).text, workerIdVar.text)
-                .str()),
+        MojoValue(llvm::formatv("{}({}, desired_worker_id={})",
+                                kFnCreateTaskWithAffinity, wrapper({}, {}).text,
+                                workerIdVar.text)
+                      .str()),
         /*cache=*/false);
   } else {
     // var task_N = std.runtime.asyncrt.create_task(wrapper_N())
-    taskVar =
-        state.builder.var(MojoValue(HardcodedMojoSymbols::func_create_task)(
-                              {}, {wrapper({}, {})}),
-                          /*cache=*/false);
+    taskVar = state.builder.var(MojoValue(kFnCreateTask)({}, {wrapper({}, {})}),
+                                /*cache=*/false);
   }
 
   // 4. Record task handle info for AsyncJoinOp to consume
@@ -2746,11 +2720,11 @@ LogicalResult AsyncJoinOp::emitMojo(EmitMojoState &state) {
     auto it = state.taskHandleInfos.find(taskHandle);
     if (it == state.taskHandleInfos.end())
       return emitOpError("missing TaskHandleInfo for operand");
-    state.builder.keepAlive(it->second.task.get("wait")({}, {}));
+    state.builder.keepAlive(MojoTaskRef(it->second.task).wait());
   }
 
   auto checkTaskErrPrimDecl =
-      state.registry.lookupPrimitive("mogg.async.check_task_error");
+      state.registry.lookupPrimitive(getOperationName());
   MojoValue checkErrorFunc(primitiveMojoName(checkTaskErrPrimDecl));
 
   for (Value taskHandle : getTaskHandles()) {
@@ -2798,8 +2772,7 @@ LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  MojoValue moggAsyncPackBorrowFunc{
-      HardcodedMojoSymbols::func_mogg_async_pack_borrow};
+  MojoValue moggAsyncPackBorrowFunc{kFnMoggAsyncPackBorrow};
   MojoValue specRankParam;
   MojoValue isTensorParam;
   if (isa<MGP::DeviceBufferType>(getInput().getType())) {
@@ -2843,19 +2816,17 @@ enum class MGPRT_BorroweeType : size_t {
 };
 
 LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
-  MojoValue getBufferMemStorageHandleFn =
-      HardcodedMojoSymbols::func_get_buffer_mem_storage_handle;
+  MojoValue getBufferMemStorageHandleFn = kFnGetBufferMemStorageHandle;
   MojoValue inputVar = state.getMojoValueFor(getValue());
   MojoValue typeVar = isa<MGP::DeviceBufferType>(getValue().getType())
                           ? (size_t)MGPRT_BorroweeType::kBuffer
                           : (size_t)MGPRT_BorroweeType::kTensor;
   auto opaquePtr = state.builder.var(
-      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}.get(
-          HardcodedMojoSymbols::func_UnsafePointer_unsafe_dangling)());
+      MojoValue{kComptimeOpaquePointer}.get(kFnUnsafeDangling)());
   auto opaquePtrPtr = state.builder.var(
-      MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
-          {}, MojoValue("to").equal(opaquePtr))
-          .get(HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
+      MojoValue{kStructUnsafePointer}({},
+                                      MojoValue(kParameterTo).equal(opaquePtr))
+          .get(kFnBitcast)({MojoValue(kComptimeDTypeNoneType)}));
 
   state.builder.call(getBufferMemStorageHandleFn, {},
                      {inputVar, typeVar, opaquePtrPtr});
@@ -2893,7 +2864,7 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(
-      uvAdaptor, MOGG::kMOGGUpdateViewFunctionLabel, inferParam);
+      uvAdaptor, MOGG::kMoggUpdateViewFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -2928,9 +2899,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // For ops like mo.cast, where the output dtype differs, we need to explicitly
   // specify the output dtype.
   // TODO(GEX-2535): Avoid hardcoding the parameter name.
-  constexpr StringLiteral simdDtypeParameterName = "dtype";
   std::optional<StringRef> maybeDtypeParamName =
-      EmitMojoState::getResultParamNameFor(ewFnAdaptor, simdDtypeParameterName);
+      EmitMojoState::getResultParamNameFor(ewFnAdaptor, kParameterDType);
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (maybeDtypeParamName.has_value() && paramName == *maybeDtypeParamName) {
       ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
@@ -2941,8 +2911,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   llvm::StringRef ewFuncLabel = ewAdaptor.isElementwise()
-                                    ? MOGG::kMOGGElementwiseFunctionLabel
-                                    : MOGG::kMOGGExecuteFunctionLabel;
+                                    ? MOGG::kMoggElementwiseFunctionLabel
+                                    : MOGG::kMoggExecuteFunctionLabel;
   auto maybeParams =
       EmitMojoState::inferKernelParameters(ewAdaptor, ewFuncLabel, inferParam);
   if (maybeParams.isError())
@@ -2972,11 +2942,10 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 
   // TODO: Infer the correct operand index.
   state.addDebugPrintTensorSpecs(tensor, indices, /*isInput=*/true, 0);
-  MOGG::MojoValue loadedSimd =
-      MojoValue(HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
-          {MojoValue("simd_width").equal(widthParam),
-           MojoValue("element_alignment").equal(alignmentParam)},
-          {tensor, indices});
+  MOGG::MojoValue loadedSimd = MojoValue(kFnSimdLoadFromManagedTensorSlice)(
+      {MojoValue(kParameterSimdWidth).equal(widthParam),
+       MojoValue(kParameterElementAlignment).equal(alignmentParam)},
+      {tensor, indices});
   state.setMojoValueFor(getOutputs(), state.builder.var(loadedSimd));
   return success();
 }
@@ -2988,17 +2957,16 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
   // Represent the empty buffer with a dangling pointer.
   MojoValue danglingPointer =
-      MojoValue(HardcodedMojoSymbols::struct_UnsafePointer)
-          [{MojoValue(HardcodedMojoSymbols::struct_Scalar)[{
-                MojoValue(HardcodedMojoSymbols::struct_DType).get("int8")}],
-            MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]
-              .get(HardcodedMojoSymbols::func_UnsafePointer_unsafe_dangling)();
-  MojoValue zeroShape = MojoValue(HardcodedMojoSymbols::struct_IndexList)(
-      {MojoValue("1")}, {MojoValue("0")});
-  state.setMojoValueFor(
-      getResult(),
-      state.builder.var(MojoValue(HardcodedMojoSymbols::comptime_MutByteBuffer)(
-          {}, {danglingPointer, zeroShape})));
+      MojoValue(kStructUnsafePointer)
+          [{MojoValue(
+                kStructScalar)[{MojoValue(kStructDType).get(kEnumDTypeInt8)}],
+            MojoValue(kComptimeMutAnyOrigin)}]
+              .get(kFnUnsafeDangling)();
+  MojoValue zeroShape =
+      MojoValue(kStructIndexList)({MojoValue("1")}, {MojoValue("0")});
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(MojoValue(kComptimeMutByteBuffer)(
+                            {}, {danglingPointer, zeroShape})));
   return success();
 }
 
@@ -3073,23 +3041,26 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   if (isa<MOGG::ContextType>(getInputs().front().getType())) {
     // Build a `DeviceContextList[N]` directly from the per-device
     // contexts via its variadic constructor.
-    MojoValue deviceContextListConstructor =
-        MojoValue(HardcodedMojoSymbols::struct_DeviceContextList)[{
-            MojoValue("size").equal(std::to_string(inputValues.size()))}];
+    MojoValue deviceContextListConstructor = MojoValue(
+        kStructDeviceContextList)[{
+        MojoValue(kParameterSize).equal(std::to_string(inputValues.size()))}];
     MojoValue inputTupleValue = deviceContextListConstructor({}, inputValues);
     state.setMojoValueFor(getResult(), state.builder.var(inputTupleValue));
     return success();
   }
 
-  SmallVector<MojoValue> runtimePointers = llvm::map_to_vector(
-      inputValues, [&](const MojoValue &val) { return val.get("_ptr"); });
+  SmallVector<MojoValue> runtimePointers =
+      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
+        return ManagedTensorSliceRef(val).rawPtr();
+      });
 
-  SmallVector<MojoValue> runtimeShapes = llvm::map_to_vector(
-      inputValues, [&](const MojoValue &val) { return val.get("shape")(); });
+  SmallVector<MojoValue> runtimeShapes =
+      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
+        return ManagedTensorSliceRef(val).shape();
+      });
 
-  MojoValue inputTupleConstructor =
-      MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
-          MojoValue("size").equal(std::to_string(inputValues.size()))}];
+  MojoValue inputTupleConstructor = MojoValue(kStructStaticTuple)[{
+      MojoValue(kParameterSize).equal(std::to_string(inputValues.size()))}];
 
   MojoValue runtimePointersTuple =
       state.builder.var(inputTupleConstructor({}, runtimePointers));
@@ -3100,31 +3071,30 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   // and strides. Each spec is split into its homogeneous runtime part
   // (StaticTensorSpecInternal) and its compile-time shape/strides so that
   // heterogeneous specs can be stored in a single list.
-  MojoValue rank = inputValues.front().get("static_spec").get("rank");
+  MojoValue rank = StaticTensorSpecRef(
+                       ManagedTensorSliceRef(inputValues.front()).staticSpec())
+                       .rank();
   SmallVector<MojoValue> staticSpecInternals;
   SmallVector<MojoValue> staticSpecShapes;
   SmallVector<MojoValue> staticSpecStrides;
   for (const auto &reboundInput : inputValues) {
-    auto inputWithStaticSpec = reboundInput.get("static_spec");
-    staticSpecInternals.push_back(inputWithStaticSpec.get("get_internals")());
+    StaticTensorSpecRef spec(ManagedTensorSliceRef(reboundInput).staticSpec());
+    staticSpecInternals.push_back(spec.getInternals());
+    // The shape/strides tuples are field accesses on the same `static_spec`
+    // value (they live alongside `get_internals()`'s return value).
     staticSpecShapes.push_back(
-        MojoValue(HardcodedMojoSymbols::func_to_index_list)(
-            {rank}, {inputWithStaticSpec.get("shape_tuple")}));
-    staticSpecStrides.push_back(
-        MojoValue(HardcodedMojoSymbols::func_to_index_list)(
-            {rank}, {inputWithStaticSpec.get("strides_tuple")}));
+        MojoValue(kFnToIndexList)({rank}, {spec.value.get(kFieldShapeTuple)}));
+    staticSpecStrides.push_back(MojoValue(kFnToIndexList)(
+        {rank}, {spec.value.get(kFieldStridesTuple)}));
   }
   MojoValue inputSpecsInternalsComptime = state.builder.comptime(
-      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
-          .get("of")[staticSpecInternals]());
+      MojoValue(kStructParameterList).get(kFnOf)[staticSpecInternals]());
   MojoValue inputSpecsShapesComptime = state.builder.comptime(
-      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
-          .get("of")[staticSpecShapes]());
+      MojoValue(kStructParameterList).get(kFnOf)[staticSpecShapes]());
   MojoValue inputSpecsStridesComptime = state.builder.comptime(
-      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
-          .get("of")[staticSpecStrides]());
-  MojoValue inputSpecsComptime = state.builder.comptime(
-      MojoValue(HardcodedMojoSymbols::struct_StaticTensorSpecList)[{
+      MojoValue(kStructParameterList).get(kFnOf)[staticSpecStrides]());
+  MojoValue inputSpecsComptime =
+      state.builder.comptime(MojoValue(kStructStaticTensorSpecList)[{
           inputSpecsInternalsComptime, inputSpecsShapesComptime,
           inputSpecsStridesComptime}]());
 
@@ -3138,8 +3108,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     auto it = state.fusionStructInstances.find(input);
     if (it != state.fusionStructInstances.end()) {
       anyFused = true;
-      if (it->second.bindMethodName ==
-          HardcodedMojoSymbols::func_ManagedTensorSlice_bind_to_fused_input)
+      if (it->second.bindMethodName == kFnManagedTensorSliceBindToFusedInput)
         hasInputFusion = true;
     } else {
       allFused = false;
@@ -3158,19 +3127,18 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
       typeParams.push_back(fusIt->second.typeName);
     }
 
-    MojoValue fusionsTuple = state.builder.var(MojoValue(
-        HardcodedMojoSymbols::struct_ms_FusionPack)({}, fusionValues));
+    MojoValue fusionsTuple =
+        state.builder.var(MojoValue(kStructMsFusionPack)({}, fusionValues));
 
-    StringRef structName =
-        hasInputFusion
-            ? HardcodedMojoSymbols::struct_ms_FusedInputVariadicTensors
-            : HardcodedMojoSymbols::struct_ms_FusedOutputVariadicTensors;
+    StringRef structName = hasInputFusion ? kStructMsFusedInputVariadicTensors
+                                          : kStructMsFusedOutputVariadicTensors;
 
     // Pass static_specs as keyword-only (after *FusionTypes in the struct).
     // dtype, rank, and size are inferred from constructor args and
     // static_specs. Fusion types are passed positionally (consumed by
     // the *FusionTypes variadic param).
-    typeParams.push_back(MojoValue("static_specs").equal(inputSpecsComptime));
+    typeParams.push_back(
+        MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime));
 
     MojoValue variadicTensorsConstructor = MojoValue(structName)[typeParams];
 
@@ -3181,10 +3149,10 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     return success();
   }
 
-  MojoValue variadicTensorsConstructor =
-      MojoValue(HardcodedMojoSymbols::struct_VariadicTensors)[{
-          MojoValue("io_spec").equal(inputValues[0].get("io_spec")),
-          MojoValue("static_specs").equal(inputSpecsComptime)}];
+  MojoValue variadicTensorsConstructor = MojoValue(kStructVariadicTensors)[{
+      MojoValue(kParameterIOSpec)
+          .equal(ManagedTensorSliceRef(inputValues[0]).ioSpec()),
+      MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime)}];
 
   MojoValue variadicTensorsValue = variadicTensorsConstructor(
       {}, {runtimePointersTuple, runtimeShapesTuple});
@@ -3240,7 +3208,7 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(
-      shapeAdaptor, MOGG::kMOGGShapeFunctionLabel, inferParam);
+      shapeAdaptor, MOGG::kMoggShapeFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -3346,18 +3314,18 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   // Build: Trace[TraceLevel.OP, target=StaticString("device")]("name"[,
   // detail=..., task_id=...])
   SmallVector<MojoValue> traceParams = {
-      MojoValue(HardcodedMojoSymbols::enum_TraceLevel_OP),
-      MojoValue("target").equal(
-          MojoValue(HardcodedMojoSymbols::struct_StaticString)(
+      MojoValue(kEnumTraceLevelOp),
+      MojoValue(kMoggTargetParameterName)
+          .equal(MojoValue(kStructStaticString)(
               {}, {MojoValue(deviceLabel).quote()}))};
   SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
   if (!sourceDetail.empty())
     traceOperands.push_back(MojoValue("\n" + sourceDetail).quote());
   if (!contextMojoArg.text.empty())
-    traceOperands.push_back(MojoValue("task_id").equal(MojoValue(
-        HardcodedMojoSymbols::func_get_safe_task_id)({}, {contextMojoArg})));
-  MojoValue traceExpr =
-      MojoValue(HardcodedMojoSymbols::struct_Trace)(traceParams, traceOperands);
+    traceOperands.push_back(
+        MojoValue(kParameterTaskId)
+            .equal(MojoValue(kFnGetSafeTaskId)({}, {contextMojoArg})));
+  MojoValue traceExpr = MojoValue(kStructTrace)(traceParams, traceOperands);
 
   bool errOccurred = false;
   state.builder.with_(traceExpr, [&]() {
@@ -3515,8 +3483,10 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
     regionName = parentKernel.getSymNameAttr().str();
 
   // Format the error with the region name prefix and call mogg_async_error.
+  // This primitive is a helper, not a 1:1 mapping with `AsyncErrorOp`, so we
+  // can't derive its registration name from `getOperationName()`.
   auto fmtRegionErrPrimDecl =
-      state.registry.lookupPrimitive("mogg.format_region_error");
+      state.registry.lookupPrimitive(kMoggPrimitiveFormatRegionError);
   ASSERT_STREAM(fmtRegionErrPrimDecl,
                 "format_region_error primitive not found");
   MojoValue formatRegionErrorFunc(primitiveMojoName(fmtRegionErrPrimDecl));
@@ -3548,7 +3518,7 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
   MojoValue reshapeFunc(primitiveMojoName(primDecl));
   state.setMojoValueFor(getResult(),
                         state.builder.var(reshapeFunc(
-                            {MojoValue("static_layout").equal(layoutParam)},
+                            {MojoValue(kFieldStaticLayout).equal(layoutParam)},
                             {tensorValue, shapeValue})));
   return success();
 }
@@ -3558,9 +3528,8 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 LogicalResult
 AsyncPlaceholderAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
-  MojoValue result =
-      state.builder.var(MojoValue{HardcodedMojoSymbols::struct_Optional}[{
-          MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}}]());
+  MojoValue result = state.builder.var(
+      MojoValue{kStructOptional}[{MojoValue{kComptimeOpaquePointer}}]());
   state.setMojoValueFor(getResult(), result);
   return success();
 }

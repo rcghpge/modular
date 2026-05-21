@@ -46,10 +46,9 @@ namespace M::MOGG {
 
 namespace {
 
-static constexpr llvm::StringLiteral kExecuteFuncName = "execute";
-static constexpr llvm::StringLiteral kShapeFuncName = "shape";
-static constexpr llvm::StringLiteral kElementwiseFuncName = "elementwise";
-static constexpr llvm::StringLiteral kUpdateViewFuncName = "update_input_view";
+// Mojo-source method names of extensibility kernels live in MojoIdentifiers.h
+// (`kMoggExecuteFuncName`, `kMoggShapeFuncName`, `kMoggElementwiseFuncName`,
+// `kMoggUpdateViewFuncName`).
 
 /// Return the slot names of a well-known stdlib parameterised struct whose
 /// declaration is not present in the loaded kernel package (its decl lives
@@ -71,13 +70,14 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
   // the corresponding `LIT::StructType::getParamValues()` exactly, including
   // any inferred (`//`-introduced) and keyword-only (`*`-introduced)
   // parameters that get hoisted onto the LIT type.
-  static constexpr llvm::StringLiteral kSimdParams[] = {"dtype", "size"};
-  static constexpr llvm::StringLiteral kIndexListParams[] = {"size",
-                                                             "element_type"};
+  static constexpr llvm::StringLiteral kSimdParams[] = {kParameterDType,
+                                                        kParameterSize};
+  static constexpr llvm::StringLiteral kIndexListParams[] = {
+      kParameterSize, kParameterElementType};
   auto leaf = symbol.getLeafReference().strref();
-  if (leaf == "SIMD")
+  if (leaf == kLeafSIMD)
     return kSimdParams;
-  if (leaf == "IndexList")
+  if (leaf == kLeafIndexList)
     return kIndexListParams;
   return {};
 }
@@ -186,8 +186,8 @@ getDecoratorSymbol(mlir::TypedAttr attr) {
 
 static bool isMAXCompilerSymbol(mlir::SymbolRefAttr symbol) {
   auto root = symbol.getRootReference().strref();
-  return root == "max" || root == "register" || root == "compiler" ||
-         root == "compiler_internal";
+  return root == kPackageMax || root == kPackageRegister ||
+         root == kPackageCompiler || root == kPackageCompilerInternal;
 }
 
 static mlir::StringAttr
@@ -330,13 +330,13 @@ static mlir::LogicalResult scanForKernelDecls(
             continue;
           llvm::StringRef srcName = *srcNameOpt;
           bool recognized = true;
-          if (srcName == kExecuteFuncName)
+          if (srcName == kMoggExecuteFuncName)
             kernel.executeFn = func;
-          else if (srcName == kShapeFuncName)
+          else if (srcName == kMoggShapeFuncName)
             kernel.shapeFn = func;
-          else if (srcName == kElementwiseFuncName)
+          else if (srcName == kMoggElementwiseFuncName)
             kernel.elementwiseFn = func;
-          else if (srcName == kUpdateViewFuncName)
+          else if (srcName == kMoggUpdateViewFuncName)
             kernel.updateViewFn = func;
           else
             recognized = false;
@@ -375,7 +375,7 @@ static mlir::LogicalResult scanForKernelDecls(
       if (!isMAXCompilerSymbol(*decoratorSymbolOr))
         continue;
       if (!decoratorSymbolOr->getLeafReference().strref().starts_with(
-              KGEN::MOGG_REGISTER_INTERNAL_FUNCTION))
+              kFnRegisterInternal))
         continue;
       auto apply = KGEN::sugarDynCast<KGEN::ParamOperatorAttr>(decorator);
       if (!apply)

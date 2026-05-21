@@ -18,25 +18,12 @@
 
 namespace M::MOGG {
 
-/// Maps an index (operand or result) to a mojo kernel operand.
-using IndexToOperandAdaptorMapping =
-    llvm::MapVector<uint64_t, MOGG::MojoKernelOperandAdaptor>;
-
-struct OperandMapping {
-  IndexToOperandAdaptorMapping operandMapping;
-  IndexToOperandAdaptorMapping resultMapping;
-};
-
-/// Operand mapping will map an Operation*'s operands and results to the
-/// underlying kernel's operands. This is the mirror of parameter mapping which
-/// is for attributes and kernel parameters. The act of validating an op is
-/// identical to the act of mapping. Therefore, the two are merged. To validate
-/// an op with its kernel, call this function and check that it has not failed.
-ErrorOr<OperandMapping>
-mapMOOpToKernelImplementation(Operation *op,
-                              const MOGG::MojoKernelFunctionAdaptor &adaptor);
-
-/// KernelDecl-based operand mapping, populated from KernelDeclFunctionAdaptor.
+/// Operand mapping built from a `KernelDeclFunctionAdaptor`. Maps an
+/// `Operation`'s operands and results to the underlying kernel's operands.
+/// This is the mirror of parameter mapping which is for attributes and
+/// kernel parameters. The act of validating an op is identical to the act
+/// of mapping; to validate an op with its kernel, call
+/// `mapMOOpToKernelImplementation` and check that it has not failed.
 using KernelDeclIndexToOperandAdaptorMapping =
     llvm::MapVector<uint64_t, KernelDeclOperandAdaptor>;
 
@@ -48,17 +35,6 @@ struct KernelDeclOperandMapping {
 ErrorOr<KernelDeclOperandMapping>
 mapMOOpToKernelImplementation(Operation *op,
                               const KernelDeclFunctionAdaptor &adaptor);
-
-// The value is a vector because of variadics capturing multiple MO values.
-using KernelIndexToOpIndex = llvm::MapVector<uint64_t, SmallVector<uint64_t>>;
-
-struct InverseOperandMapping {
-  KernelIndexToOpIndex inputArgumentsMapping;
-  KernelIndexToOpIndex outputArgumentsMapping;
-  std::optional<uint64_t> resultMapping;
-};
-
-InverseOperandMapping invertMapping(const OperandMapping &mapping);
 
 } // namespace M::MOGG
 

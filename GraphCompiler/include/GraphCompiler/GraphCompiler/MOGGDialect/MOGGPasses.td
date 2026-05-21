@@ -529,10 +529,10 @@ def StripKernelDecls : Pass<"mogg-strip-kernel-decls", "ModuleOp"> {
 def VerifyKernels: Pass<"mogg-verify-kernels", "ModuleOp"> {
   let summary = "Verifies that kernels are well constructed";
   let description = [{
-    This pass ensures that the kernels present in the module are well
-    constructed. Among other things, it checks that shape functions match
-    execute functions and that inputs appear after outputs in the function's
-    signature.
+    Walks `mogg.kernel.decl` ops via `KernelDeclAdaptor` and emits the
+    user-facing diagnostics that a kernel author sees when their kernel
+    signature is malformed (missing `execute`, mismatched shape/execute
+    inputs, unsupported argument conventions, ...).
   }];
 }
 

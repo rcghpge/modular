@@ -210,7 +210,7 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
                               moggDebugDumpFusedTensorSpecs);
 
     // Import mojo stdlib packages and compiler directives.
-    for (auto [package, as] : MOGG::HardcodedMojoSymbols::packagesToImport) {
+    for (auto [package, as] : MOGG::kPackagesToImport) {
       if (as.empty())
         state.builder.import(package);
       else
