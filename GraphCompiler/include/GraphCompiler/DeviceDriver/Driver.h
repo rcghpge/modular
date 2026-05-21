@@ -193,6 +193,9 @@ M_createAcceleratorDevice(ssize_t gpuID,
                           M::GraphCompiler::Driver::Status *status);
 
 MODULAR_DRIVER_EXPORT M::GraphCompiler::Driver::Device *
+M_createNPUDevice(ssize_t npuID, M::GraphCompiler::Driver::Status *status);
+
+MODULAR_DRIVER_EXPORT M::GraphCompiler::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::GraphCompiler::Driver::Status *status);
 
 MODULAR_DRIVER_EXPORT void

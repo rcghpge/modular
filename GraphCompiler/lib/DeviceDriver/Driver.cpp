@@ -263,7 +263,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
             AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(
                 cpuDevice, dev->tmpGetDeviceContext()));
       } else {
-        ASSERT_STREAM(devRef.label == kGPULabel,
+        ASSERT_STREAM(devRef.label == kGPULabel || devRef.label == kNPULabel,
                       "Only accelerator device context supported");
         // In this case we use the device ref id as the device id. THIS IS NOT
         // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
@@ -321,13 +321,14 @@ M::GraphCompiler::Driver::makeCPUDevice() {
                                                              &M_destroyDevice};
 }
 
-static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
+static ErrorOr<Device *> createAccelerator(ssize_t gpuID,
+                                           const char *label = kGPULabel) {
   size_t id = gpuID >= 0 ? gpuID : 0;
 
   ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::getOrCreate(
                             M::Driver::Device::gpuAPI, id));
   DeviceSpec spec;
-  spec.ref.label = kGPULabel;
+  spec.ref.label = label;
   spec.ref.id = gpuID;
   auto device = RCRef<Device>::create(spec, ctx);
 
@@ -342,6 +343,16 @@ MODULAR_DRIVER_EXPORT Device *
 M_createAcceleratorDevice(ssize_t gpuID,
                           M::GraphCompiler::Driver::Status *status) {
   auto deviceOrError = createAccelerator(gpuID);
+  if (deviceOrError.isError()) {
+    status->errorOr = deviceOrError.takeError();
+    return nullptr;
+  }
+  return deviceOrError.takeValue();
+}
+
+MODULAR_DRIVER_EXPORT Device *
+M_createNPUDevice(ssize_t npuID, M::GraphCompiler::Driver::Status *status) {
+  auto deviceOrError = createAccelerator(npuID, kNPULabel);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();
     return nullptr;
