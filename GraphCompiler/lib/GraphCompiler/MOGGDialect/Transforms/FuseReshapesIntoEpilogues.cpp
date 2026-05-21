@@ -71,9 +71,9 @@ static bool isOutputFusibleNonElementwise(M::MOGG::KernelOp kernel) {
 }
 
 static Value lowerScalarDim(Location &loc, OpBuilder builder, TypedAttr dim) {
-  if (auto intAttr = dyn_cast<IntegerAttr>(dim)) {
+  if (auto intAttr = dyn_cast<KGEN::SIMDAttr>(dim)) {
     auto scalarTy = M::MO::ScalarType::get(
-        intAttr.getContext(), *M::MO::fromMLIRType(intAttr.getType()));
+        intAttr.getContext(), *intAttr.getType().getResolvedDType());
     return M::MOGG::ConstantScalarOp::create(builder, loc, scalarTy, intAttr);
   } else {
     // TODO: We should probably update GetDimOp to directly take the

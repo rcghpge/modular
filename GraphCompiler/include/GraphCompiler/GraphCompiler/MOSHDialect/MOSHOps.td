@@ -143,7 +143,7 @@ def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
   }];
 
   let arguments = (ins MOSH_ShapeType:$input1, MOSH_ShapeType:$input2);
-  let results = (outs I1:$result);
+  let results = (outs BoolScalar:$result);
 
   let assemblyFormat = "`(` $input1 `,` $input2 `)` attr-dict";
   let hasFolder = 1;
@@ -174,8 +174,8 @@ def MOSH_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeType:$input, SI64:$dim);
-  let results = (outs SI64:$result);
+  let arguments = (ins MOSH_ShapeType:$input, SI64Scalar:$dim);
+  let results = (outs SI64Scalar:$result);
 
   let assemblyFormat = "`(` $input `)` `` `[` $dim `]` attr-dict";
   let hasFolder = 1;
@@ -201,7 +201,7 @@ def MOSH_GetRankOp : MOSH_Op<"get_rank", [Pure]> {
   }];
 
   let arguments = (ins MOSH_ShapeType:$input);
-  let results = (outs SI64:$result);
+  let results = (outs SI64Scalar:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
@@ -216,16 +216,16 @@ def MOSH_NewOp : MOSH_Op<"new", [Pure]> {
     Example:
 
     ```mlir
-    %d0 : si64
-    %d1 : si64
+    %d0 : !kgen.scalar<si64>
+    %d1 : !kgen.scalar<si64>
     %sh0 = mosh.new(%d0, %d1)
 
-    %d2 : si64
+    %d2 : !kgen.scalar<si64>
     %sh1 = mosh.new(%d0, %d1, %d2)
     ```
   }];
 
-  let arguments = (ins Variadic<SI64>:$dims);
+  let arguments = (ins Variadic<SI64Scalar>:$dims);
   let results = (outs MOSH_ShapeType:$result);
 
   let assemblyFormat = "`(` $dims `)` attr-dict";
@@ -247,7 +247,7 @@ def MOSH_NumElementsOp : MOSH_Op<"num_elements", [Pure]> {
   }];
 
   let arguments = (ins MOSH_ShapeType:$input);
-  let results = (outs SI64:$result);
+  let results = (outs SI64Scalar:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
@@ -279,8 +279,8 @@ def MOSH_SliceOp : MOSH_Op<"slice", [Pure]> {
 
   let arguments = (ins
     MOSH_ShapeType:$input,
-    SI64:$start,
-    SI64:$end
+    SI64Scalar:$start,
+    SI64Scalar:$end
   );
   let results = (outs MOSH_ShapeType:$result);
 

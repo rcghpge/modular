@@ -45,9 +45,9 @@ mo.graph @unsafe_bcast_epilogue<B, S, KV_S, H, D, BCAST1>(
 // COM: With the flag, the pattern should be replaced
 // CHECK-ALLOW-BCAST-LABEL: mo.graph
 // CHECK-ALLOW-BCAST-SAME: @unsafe_bcast_epilogue<B, S, KV_S, H, D, BCAST1>([[VARG0:[^ ]*]]: !mo.tensor<[B, S, H, D], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[B, KV_S, H, D], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[B, KV_S, H, D], f32>, [[VARG3:[^ ]*]]: !mo.tensor<[], f32>, [[VARG4:[^ ]*]]: !mo.tensor<[B, H, S, KV_S], f32>, [[VARG5:[^ ]*]]: !mo.tensor<[BCAST1], f32>) -> !mo.tensor<[B, S, H, D], f32> {
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK1: i1 = <eq(:si64 B, BCAST1)>
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK2: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK1)>
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK3: i1 = <eq(:si64 B, BCAST1)>
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK4: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK3)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK1: scalar<bool> = <eq(:scalar<si64> B, BCAST1)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK1)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK3: scalar<bool>  = <eq(:scalar<si64> B, BCAST1)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK4: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK3)>
 // CHECK-ALLOW-BCAST-NEXT: [[V0:[^ ]*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[VARG0]], [[VARG1]], [[VARG2]], [[VARG4]], [[VARG3]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, KV_S, H, D], f32>, !mo.tensor<[B, KV_S, H, D], f32>, !mo.tensor<[B, H, S, KV_S], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[B, S, H, D], f32>
 // CHECK-ALLOW-BCAST-NEXT: mo.output [[V0]] : !mo.tensor<[B, S, H, D], f32>

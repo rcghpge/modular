@@ -13,8 +13,8 @@
 // CHECK-SAME : [[RES]]#1
 // CHECK-SAME : in [[BUF0]]{{.*}}in [[BUF1]]
 mo.graph @add_guard<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-  kgen.param.declare B: i1 = <eq(:si64 D0, D1)>
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "not square matrix" : !kgen.string}, B)>
+  kgen.param.declare B: scalar<bool> = <eq(:scalar<si64> D0, D1)>
+  kgen.param.declare CH0: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "not square matrix" : !kgen.string}, B)>
 
   %chain = mosh.param.to_value: !mo.chain = <CH0>
 

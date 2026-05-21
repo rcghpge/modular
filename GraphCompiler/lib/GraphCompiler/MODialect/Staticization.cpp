@@ -29,8 +29,8 @@ struct StaticizeAdaptor
 
 /// Return whether the given attribute is a constant integer 1.
 bool isConstantOne(TypedAttr attr) {
-  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-    return intAttr.getValue().isOne();
+  if (auto v = MOSH::ShapeAttr::getStaticDim(attr))
+    return *v == 1;
   return false;
 }
 
@@ -77,11 +77,11 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
   // Check target shape is rank 1
   if (!resultTy.hasRank() || resultTy.getRank() != 1)
     return TypedAttr{};
-  auto resultDimIntAttr =
-      dyn_cast<IntegerAttr>(resultTy.getTypedShapeAttr().getValues().front());
+  auto resultDimIntAttr = MOSH::ShapeAttr::getStaticDim(
+      resultTy.getTypedShapeAttr().getValues().front());
   if (!resultDimIntAttr)
     return TypedAttr{};
-  int64_t resultDimInt = resultDimIntAttr.getSInt();
+  int64_t resultDimInt = resultDimIntAttr.value();
 
   // Input must be ranked
   if (!inputTy.hasRank())

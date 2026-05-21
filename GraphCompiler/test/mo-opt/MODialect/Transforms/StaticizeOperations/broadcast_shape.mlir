@@ -1,9 +1,9 @@
 // RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @broadcast_shape
-// CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:si64 D0, 1), eq(:si64 D0, 50)))>
-// CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:si64 add(D0, D1), 1), eq(:si64 add(D0, D1), 80)))>
-// CHECK: [[V0:%.*]] = mo.static.broadcast_to(%arg0) : {{.*}} -> !mo.tensor<[D0, D1, 4, cond(eq(:scalar<si64> #kgen.cast_from_builtin<#kgen.param.decl.ref<"D0"> : si64>, 1), 50, D0), 70, cond(eq(:scalar<si64> add(#kgen.cast_from_builtin<#kgen.param.decl.ref<"D0"> : si64>, #kgen.cast_from_builtin<#kgen.param.decl.ref<"D1"> : si64>), 1), 80, add(D0, D1))], si64>
+// CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:scalar<si64> D0, 1), eq(:scalar<si64> D0, 50)))>
+// CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:scalar<si64> add(D0, D1), 1), eq(:scalar<si64> add(D0, D1), 80)))>
+// CHECK: [[V0:%.*]] = mo.static.broadcast_to(%arg0) : !mo.tensor<[], si64> -> !mo.tensor<[D0, D1, 4, cond(eq(:scalar<si64> D0, 1), 50, D0), 70, cond(eq(:scalar<si64> add(D0, D1), 1), 80, add(D0, D1))], si64>
 // CHECK: mo.output{{.*}} [[V0]]
 mo.graph @broadcast_shape<D0, D1 -> D2, D3, D4, D5, D6, D7>(%input: !mo.tensor<[], si64>) -> !mo.tensor<[D2, D3, D4, D5, D6, D7], si64> {
   %shape1 = mo.constant {value = #M.dense_array<50, 70, 80>: tensor<3xsi64>} : !mo.tensor<[3], si64>

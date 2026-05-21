@@ -655,7 +655,6 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
   auto input = cast<TensorValue>(adaptor.getInput());
   auto inputShape = cast<ShapeAttr>(input.getType().getShapeAttr());
 
-  auto kAttr = adaptor.getKAttr();
   int64_t k = adaptor.getK();
   int64_t axis = adaptor.getAxis();
 
@@ -667,9 +666,9 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
                              llvm::formatv("axis ({0}) out of bounds", axis));
 
   TypedAttr axisDim = inputShape[axis];
-  if (auto intDim = dyn_cast<IntegerAttr>(axisDim)) {
+  if (std::optional<int64_t> intDim = MO::tryGetConstantInt(axisDim)) {
     // Validate k when axis is statically known.
-    int64_t axisDimInt = intDim.getValue().getSExtValue();
+    int64_t axisDimInt = intDim.value();
     if (k > axisDimInt) {
       return emitOptionalError(
           location,
@@ -682,7 +681,7 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
   SmallVector<TypedAttr> outDims;
   for (int i = 0; i < rank; ++i) {
     if (i == axis)
-      outDims.push_back(kAttr);
+      outDims.push_back(ShapeAttr::getDim(context, k));
     else
       outDims.push_back(inputShape[i]);
   }
@@ -876,12 +875,11 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   auto shapeAttr = adaptor.getShapeAttr();
 
-  auto dimType = ShapeAttr::getDimType(context);
   M::DeviceRefAttr host = M::DeviceRefAttr::getDefault(context);
 
   // The output is simply an i64 tensor with rank 1.
   inferredReturnTypes.push_back(TensorType::get(
-      ShapeAttr::get({IntegerAttr::get(dimType, shapeAttr.getRank())},
+      ShapeAttr::get({ShapeAttr::getDim(context, shapeAttr.getRank())},
                      shapeAttr.getType()),
       DType::si64, host));
 

@@ -11,6 +11,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/GraphCompiler/Matchers.h"
@@ -1562,12 +1563,12 @@ static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
     ArrayRef<TypedAttr> toDims = resTy.getTypedShapeAttr().getValues();
     for (auto [fromDim, toDim] :
          llvm::zip(llvm::reverse(fromDims), llvm::reverse(toDims))) {
-      auto fromIntDim = dyn_cast<IntegerAttr>(fromDim);
-      auto toIntDim = dyn_cast<IntegerAttr>(toDim);
+      auto fromIntDim = tryGetConstantInt(fromDim);
+      auto toIntDim = tryGetConstantInt(toDim);
       if (fromIntDim && toIntDim) {
         // We can only assert anything if both dimensions are known constants.
-        int64_t inDim = fromIntDim.getSInt();
-        if (inDim > 1 && (inDim != toIntDim.getSInt()))
+        int64_t inDim = *fromIntDim;
+        if (inDim > 1 && (inDim != *toIntDim))
           return Error("input shape not broadcastable to result shape");
       }
     }
@@ -2157,9 +2158,9 @@ LogicalResult CumSumOp::verify() {
   if (inDimAttrs && outDimAttrs) {
     for (auto [inDimAttr, outDimAttr] :
          llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
-      auto inDimIntAttr = dyn_cast<IntegerAttr>(inDimAttr);
-      auto outDimIntAttr = dyn_cast<IntegerAttr>(outDimAttr);
-      if (inDimIntAttr && outDimIntAttr && inDimIntAttr != outDimIntAttr)
+      auto inDimInt = tryGetConstantInt(inDimAttr);
+      auto outDimInt = tryGetConstantInt(outDimAttr);
+      if (inDimInt && outDimInt && *inDimInt != *outDimInt)
         return emitError("statically known dimensions must match");
     }
   }
@@ -2312,16 +2313,14 @@ LogicalResult RebindOp::verify() {
   if (inTy.getRank() != outTy.getRank())
     return emitError("input and output static ranks must match");
 
-  SmallDenseMap<KGEN::ParamDeclRefAttr, IntegerAttr> dimParamToInt;
-  auto tryUnifyParamToIntDim = [&](TypedAttr srcDimAttr,
-                                   TypedAttr dstDimAttr) -> LogicalResult {
+  SmallDenseMap<KGEN::ParamDeclRefAttr, TypedAttr> dimParamToConst;
+  auto tryUnifyParamToConstDim = [&](TypedAttr srcDimAttr,
+                                     TypedAttr dstDimAttr) -> LogicalResult {
     auto srcDimParamRef = dyn_cast<KGEN::ParamDeclRefAttr>(srcDimAttr);
-    auto dstDimIntAttr = dyn_cast<IntegerAttr>(dstDimAttr);
-    if (srcDimParamRef && dstDimIntAttr) {
+    if (srcDimParamRef && tryGetConstantInt(dstDimAttr)) {
       auto [cachedEntry, _] =
-          dimParamToInt.try_emplace(srcDimParamRef, dstDimIntAttr);
-      IntegerAttr cachedDimIntAttr = cachedEntry->second;
-      if (cachedDimIntAttr != dstDimIntAttr)
+          dimParamToConst.try_emplace(srcDimParamRef, dstDimAttr);
+      if (cachedEntry->second != dstDimAttr)
         return failure();
     }
     return success();
@@ -2331,12 +2330,12 @@ LogicalResult RebindOp::verify() {
   if (inDimAttrs && outDimAttrs) {
     for (auto [inDimAttr, outDimAttr] :
          llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
-      auto inDimIntAttr = dyn_cast<IntegerAttr>(inDimAttr);
-      auto outDimIntAttr = dyn_cast<IntegerAttr>(outDimAttr);
-      if (inDimIntAttr && outDimIntAttr && inDimIntAttr != outDimIntAttr)
+      auto inDimInt = tryGetConstantInt(inDimAttr);
+      auto outDimInt = tryGetConstantInt(outDimAttr);
+      if (inDimInt && outDimInt && *inDimInt != *outDimInt)
         return emitError("statically known dimensions must match");
-      else if (failed(tryUnifyParamToIntDim(inDimAttr, outDimAttr)) ||
-               failed(tryUnifyParamToIntDim(outDimAttr, inDimAttr)))
+      else if (failed(tryUnifyParamToConstDim(inDimAttr, outDimAttr)) ||
+               failed(tryUnifyParamToConstDim(outDimAttr, inDimAttr)))
         return emitError("one dimension parameter cannot bind to different "
                          "static dimensions");
     }
@@ -2728,8 +2727,8 @@ LogicalResult Static::ReshapeOp::verify() {
   TensorType resultTy = getResult().getType();
   if (resultTy.hasRank()) {
     for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
-      auto intCurResDim = dyn_cast<IntegerAttr>(curResDim);
-      if (intCurResDim && intCurResDim.getSInt() == -1)
+      if (auto intCurResDim = tryGetConstantInt(curResDim);
+          intCurResDim && *intCurResDim == -1)
         return emitOpError("static reshape can not have inferred dimensions");
     }
   }

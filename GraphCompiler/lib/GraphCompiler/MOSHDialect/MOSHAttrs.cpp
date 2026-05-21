@@ -11,6 +11,7 @@
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "KGEN/KGENDialect/KGENTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
@@ -117,10 +118,9 @@ ParseResult M::MOSH::parseShapeValue(AsmParser &p,
   return parseShapeValue(p, values);
 }
 
-/// print `:<type> ` or elide it entirely if type is an `index` type.
+/// print `:<type> ` or elide it entirely if type is the dim type.
 static void printColonTypeOrDimensionPrefix(AsmPrinter &p, Type type) {
-  // Index type is the default so it doesn't print.
-  if (ShapeAttr::isDimType(type))
+  if (type == ShapeAttr::getDimType(type.getContext()))
     return;
   p << ':';
   KGEN::printKGENType(p, type);
@@ -142,17 +142,39 @@ void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
   printShapeValue(p, values);
 }
 
-IntegerType ShapeAttr::getDimType(MLIRContext *ctx) {
-  return IntegerType::get(ctx, 64, IntegerType::SignednessSemantics::Signed);
+KGEN::SIMDType ShapeAttr::getDimType(MLIRContext *ctx) {
+  return KGEN::SIMDType::get(ctx, 1, KGEN::KGENDType::si64);
 }
 
-IntegerAttr ShapeAttr::getDim(MLIRContext *ctx, int64_t value) {
-  return IntegerAttr::get(getDimType(ctx), value);
+KGEN::SIMDAttr ShapeAttr::getDim(MLIRContext *ctx, int64_t value) {
+  return KGEN::SIMDAttr::get(value, getDimType(ctx));
+}
+
+/// Is the given type a legal dimension (scalar `si64` SIMD lane)?
+bool ShapeAttr::isDimType(Type type) {
+  if (type == getDimType(type.getContext()))
+    return true;
+
+  if (auto simdType = dyn_cast<KGEN::SIMDType>(type))
+    return simdType.getResolvedSize() == 1 &&
+           simdType.getResolvedDType()
+               .value_or(KGEN::KGENDType::invalid)
+               .isIntLike(); // it seems that we do allow bool/index.
+
+  return false;
+}
+
+std::optional<int64_t> ShapeAttr::getStaticDim(Attribute attr) {
+  auto simdAttr = dyn_cast_or_null<KGEN::SIMDAttr>(attr);
+  if (!simdAttr || !isDim(simdAttr))
+    return {};
+
+  // must be a scalar SIMD if reach this point.
+  return simdAttr.getValues().front().getIntVal().getExtValue();
 }
 
 SmallVector<TypedAttr> dimAttrs(MLIRContext *context,
                                 ArrayRef<int64_t> values) {
-  auto idxTy = ShapeAttr::getDimType(context);
   SmallVector<TypedAttr> attrs;
   attrs.reserve(values.size());
 
@@ -160,7 +182,7 @@ SmallVector<TypedAttr> dimAttrs(MLIRContext *context,
     if (mlir::ShapedType::isDynamic(v)) {
       ASSERT_STREAM(false, "ShapeAttr does not support dynamic dimensions");
     } else {
-      attrs.push_back(IntegerAttr::get(idxTy, v));
+      attrs.push_back(ShapeAttr::getDim(context, v));
     }
   }
   return attrs;
@@ -192,19 +214,19 @@ ShapeAttr ShapeAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
 }
 
 bool ShapeAttr::isConstant() const {
-  // A shape is constant if the dimensions are concrete integers.
-  return llvm::all_of(
-      getValues(), [](TypedAttr attr) { return llvm::isa<IntegerAttr>(attr); });
+  return llvm::all_of(getValues(), [](TypedAttr attr) {
+    return getStaticDim(attr).has_value();
+  });
 }
 
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ArrayRef<TypedAttr> values, ShapeType type) {
   for (auto [idx, value] : llvm::enumerate(values)) {
-    Type valueTy = value.getType();
-    if (!valueTy.isIntOrIndex()) {
-      return emitError()
-             << "expected all list elements to have index/integer/bool type "
-             << " but got " << valueTy << " at position " << idx;
+    // Must be a scalar SIMD with int-like dtype.
+    if (!ShapeAttr::isDimType(value.getType())) {
+      return emitError() << "expected all list elements to have "
+                            "scalar<integer> type "
+                         << value.getType() << " at position " << idx;
     }
   }
 
@@ -220,9 +242,8 @@ LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 
 /// Convert a symbolic dimension attribute to an integer value.
 static int64_t symbolicDimToInt(TypedAttr dim) {
-  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(dim))
-    return intAttr.getSInt();
-  return mlir::ShapedType::kDynamic;
+  std::optional<int64_t> v = ShapeAttr::getStaticDim(dim);
+  return v.has_value() ? *v : mlir::ShapedType::kDynamic;
 }
 
 int64_t ShapeAttr::getIntDim(size_t n) const {
@@ -360,10 +381,10 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     //
     // Therefore, we can only return a correct answer if the only differing
     // dimensions are integral dimensions going from 1 --> not 1.
-    const auto &beforeDimInt = llvm::dyn_cast<IntegerAttr>(beforeDim);
-    const auto &bcastedDimInt = llvm::dyn_cast<IntegerAttr>(bcastedDim);
-    if (beforeDimInt && bcastedDimInt && beforeDimInt.getSInt() == 1 &&
-        bcastedDimInt.getSInt() != 1) {
+    std::optional<int64_t> beforeDimInt = ShapeAttr::getStaticDim(beforeDim);
+    std::optional<int64_t> bcastedDimInt = ShapeAttr::getStaticDim(bcastedDim);
+    if (beforeDimInt && bcastedDimInt && *beforeDimInt == 1 &&
+        *bcastedDimInt != 1) {
       answer.push_back(bcastedI);
     } else if (beforeDim != bcastedDim) {
       return Error("Cannot statically prove which dimension broadcast.");

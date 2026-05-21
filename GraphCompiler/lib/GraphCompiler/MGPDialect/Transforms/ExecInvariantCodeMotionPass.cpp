@@ -59,7 +59,8 @@ static llvm::SmallVector<Value> getLiftableIndexOutputs(Operation *op) {
   llvm::SmallVector<Value> res;
   if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
     for (Value result : op->getResults()) {
-      if (result.getType().isIntOrIndex())
+      if (result.getType().isIntOrIndex() ||
+          MOSH::ShapeAttr::isDimType(result.getType()))
         res.push_back(result);
     }
   }
@@ -70,13 +71,7 @@ static std::pair<TypedValue<MEF::ChainType>, uint64_t>
 cacheIntValue(OpBuilder &builder, Location loc,
               TypedValue<MEF::ChainType> inChain,
               ContextCreateOp contextCreateOp, Value intValue) {
-
-  if (!intValue.getType().isIndex()) {
-    // The caching op expects index values, we need to cast integers
-    intValue =
-        index::CastSOp::create(builder, loc, builder.getIndexType(), intValue);
-  }
-
+  intValue = dimensionToIndex(builder, loc, intValue);
   uint64_t intSlot = contextCreateOp.getNumSlots();
   contextCreateOp.setNumSlots(intSlot + 1);
 
@@ -106,11 +101,7 @@ static Value getCachedIntValue(OpBuilder &builder, Location loc,
       IntGetCachedOp::create(builder, loc, builder.getIndexType(),
                              /*inChain=*/inChain, /*theContext=*/context,
                              /*bIntSlot=*/intSlotIndex);
-  if (!resultType.isIndex()) {
-    // The caching op expects index values, we need to cast integers.
-    intValue = index::CastSOp::create(builder, loc, resultType, intValue);
-  }
-
+  intValue = indexToDimension(builder, loc, intValue);
   return intValue;
 }
 

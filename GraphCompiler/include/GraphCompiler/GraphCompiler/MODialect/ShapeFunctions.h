@@ -41,9 +41,9 @@ public:
   /// parameter expression with the returned Var.
   Var createVar(TypedAttr attr);
 
-  /// Create a Var that wraps around a newly created `IntegerAttr` that contains
-  /// `n`, and allows one to build more parameter expression with the returned
-  /// Var.
+  /// Create a Var that wraps around a newly created that contains  `n` of
+  /// DimType, and allows one to build more parameter expression with the
+  /// returned Var.
   Var createVar(int64_t n);
 
   /// Create a parameter expression `<poc(operands...)>`, and if it doesn't get
@@ -172,8 +172,7 @@ public:
 
   // Allows one to write `v1 + 42`.
   Var operator+(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this + otherVar;
+    return *this + builder->createVar(other);
   }
 
   // Allows one to write `v1 - v2`.
@@ -187,8 +186,7 @@ public:
 
   // Allows one to write `v1 - 42`.
   Var operator-(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this - otherVar;
+    return *this - builder->createVar(other);
   }
 
   // Unary minus: `-v`.
@@ -204,8 +202,7 @@ public:
 
   // Allows one to write `v1 * 42`.
   Var operator*(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this * otherVar;
+    return *this * builder->createVar(other);
   }
 
   // Allows one to write `v1 / v2`.
@@ -218,8 +215,7 @@ public:
 
   // Allows one to write `v1 / 42`.
   Var operator/(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this / otherVar;
+    return *this / builder->createVar(other);
   }
 
   // Allows one to write `v1 % v2`.
@@ -232,8 +228,7 @@ public:
 
   // Allows one to write `v1 % 42`.
   Var operator%(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this % otherVar;
+    return *this % builder->createVar(other);
   }
 
   //===--------------------------------------------------------------------===//
@@ -279,37 +274,31 @@ public:
 
   // Allows one to write `v1 != 42`.
   Var operator!=(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this != otherVar;
+    return *this != builder->createVar(other);
   }
 
   Var operator==(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this == otherVar;
+    return *this == builder->createVar(other);
   }
 
   // Allows one to write `v1 < 42`.
   Var operator<(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this < otherVar;
+    return *this < builder->createVar(other);
   }
 
   // Allows one to write `v1 <= 42`.
   Var operator<=(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this <= otherVar;
+    return *this <= builder->createVar(other);
   }
 
   // Allows one to write `v1 > 42`.
   Var operator>(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this > otherVar;
+    return *this > builder->createVar(other);
   }
 
   // Allows one to write `v1 >= 42`.
   Var operator>=(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this >= otherVar;
+    return *this >= builder->createVar(other);
   }
 
   //===--------------------------------------------------------------------===//
@@ -337,7 +326,16 @@ public:
 };
 
 /// Try converting `attr` to a constant integer.
-std::optional<int64_t> tryGetConstantInt(TypedAttr attr);
+inline std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+    return intAttr.getValue().getSExtValue();
+  return MOSH::ShapeAttr::getStaticDim(attr);
+}
+
+/// Return true if `attr` is a statically known integer dimension
+inline bool isStaticDimAttr(TypedAttr attr) {
+  return tryGetConstantInt(attr).has_value();
+}
 
 /// Try converting `attr` to a vector of constant integers.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr);

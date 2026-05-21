@@ -17,6 +17,10 @@
 
 namespace M::MGP {
 
+/// Lower a dimension to an mlir index.
+Value dimensionToIndex(OpBuilder &builder, Location loc, Value dim);
+Value indexToDimension(OpBuilder &builder, Location loc, Value index);
+
 /// Returns the !mgp.context in use in block, which can be found from:
 ///  - a block argument, such as the second argument to the 'execute' block,
 ///    or a control flow sub-block.

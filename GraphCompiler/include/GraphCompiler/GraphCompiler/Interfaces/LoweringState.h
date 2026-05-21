@@ -383,12 +383,6 @@ public:
   MGP::TensorSpecGetDimOp getDim(Location loc, Value loweredTensor,
                                  uint64_t axis, DeviceRefAttr device);
 
-  /// During lowering, si64 is used at the attribute level, while MGP uses
-  /// index values to represent dimensions and sizes. These functions provide
-  /// easy conversions between the two types.
-  static Value indexToDimension(OpBuilder &builder, Location loc, Value index);
-  static Value dimensionToIndex(OpBuilder &builder, Location loc, Value dim);
-
   struct ArgLoweringResult {
     bool hasParameters;
     Value loweredArg;

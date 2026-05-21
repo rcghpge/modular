@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @index_to_tensor(
-// CHECK-SAME: %[[ARG0:.*]]: si64) -> !mo.tensor<[], si64> {
-mo.graph @index_to_tensor(%arg0: si64) -> !mo.tensor<[], si64> {
+// CHECK-SAME: %[[ARG0:.*]]: !kgen.scalar<si64>) -> !mo.tensor<[], si64> {
+mo.graph @index_to_tensor(%arg0: !kgen.scalar<si64>) -> !mo.tensor<[], si64> {
   // CHECK: %[[RES:.*]] = mo.index.to_tensor(%[[ARG0]]) -> !mo.tensor<[], si64>
   %0 = mo.index.to_tensor(%arg0) -> !mo.tensor<[], si64>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[], si64>

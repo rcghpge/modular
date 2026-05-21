@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/Interfaces/LoweringState.h"
 #include "GraphCompiler/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -24,19 +25,6 @@
 
 using namespace M;
 using namespace M::MGP;
-
-static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
-  KGEN::KGENDType dtype;
-
-  if (type.isIndex())
-    dtype = KGEN::KGENDType{KGEN::KGENDType::ExtraCases::index};
-  else if (auto integer = dyn_cast<IntegerType>(type))
-    dtype = KGEN::KGENDType(M::getEquivalentDType(integer));
-  else
-    return failure();
-
-  return KGEN::SIMDType::get(ctx, 1, dtype);
-}
 
 static Value popScalarToBuiltinType(OpBuilder &builder, Location loc, Value v) {
   auto type = cast<KGEN::SIMDType>(v.getType());
@@ -157,36 +145,14 @@ SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
   return dynDims;
 }
 
-Value MOGraphLoweringState::indexToDimension(OpBuilder &builder, Location loc,
-                                             Value index) {
-  if (MOSH::ShapeAttr::isDimType(index.getType()))
-    return index;
-
-  return builder.createOrFold<mlir::index::CastSOp>(
-      loc, MOSH::ShapeAttr::getDimType(builder.getContext()), index);
-}
-
-Value MOGraphLoweringState::dimensionToIndex(OpBuilder &builder, Location loc,
-                                             Value dim) {
-  if (dim.getType().isIndex())
-    return dim;
-
-  return builder.createOrFold<mlir::index::CastSOp>(loc, builder.getIndexType(),
-                                                    dim);
-}
-
 static Value assertSymbolicDimensionMatchesPreviousValue(
     OpBuilder &builder, Location loc, Value previousValue, Value newValue,
     KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
-  FailureOr<Type> targetType =
-      builtinTypeToDType(builder.getContext(), previousValue.getType());
 
-  Value isEqual = KGEN::POP::CmpOp::create(
-      builder, loc, KGEN::CmpPredicate::EQ,
-      builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
-                                                         previousValue),
-      builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
-                                                         newValue));
+  FailureOr<Type> targetType = previousValue.getType();
+  // TODO: cast?
+  Value isEqual = KGEN::POP::CmpOp::create(builder, loc, KGEN::CmpPredicate::EQ,
+                                           previousValue, newValue);
 
   isEqual = popScalarToBuiltinType(builder, loc, isEqual);
 
@@ -336,7 +302,7 @@ ErrorOr<SmallVector<Value>> MOGraphLoweringState::lowerShapeAttrDynDims(
     Region *parentRegion, MOSH::ShapeAttr shapeAttr, Location loc) {
   SmallVector<Value> runtimeDims;
   for (TypedAttr dim : shapeAttr.getValues()) {
-    if (!isa<IntegerAttr>(dim)) {
+    if (!MOSH::ShapeAttr::getStaticDim(dim).has_value()) {
       auto vOr = lowerDimensionExpression(params, getExecuteOpBuilder(), loc,
                                           parentRegion, dim);
       if (vOr.isError())
@@ -446,44 +412,27 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
                                          ValueRange operands) {
   auto resultType = opAttr.getType();
 
-  Type simdType = resultType;
-  if (!isa<KGEN::SIMDType>(resultType)) {
-    // Get !kgen.scalar dtype that corresponds to the expected output type.
-    auto popResultType = builtinTypeToDType(builder.getContext(), resultType);
-    if (failed(popResultType))
-      return Error("unable to convert result type");
-    simdType = *popResultType;
-  }
+  ASSERT_STREAM(isa<KGEN::SIMDType>(resultType),
+                "must be a simd parameter expression");
 
   SmallVector<Value> popOperands;
   popOperands.reserve(operands.size());
 
   // Convert operands to equivalent !kgen.scalar type
   for (auto operand : operands) {
-    if (isa<KGEN::SIMDType>(operand.getType())) {
-      popOperands.push_back(operand);
-      continue;
-    }
-
-    auto scalarType =
-        builtinTypeToDType(builder.getContext(), operand.getType());
-
-    if (failed(scalarType))
-      return Error("unable to convert operand to !kgen.scalar");
-
-    popOperands.push_back(builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(
-        loc, *scalarType, operand));
+    ASSERT_STREAM(isa<KGEN::SIMDType>(operand.getType()),
+                  "must be a simd parameter expression");
+    popOperands.push_back(operand);
   }
 
   // Create the implementing pop dialect operation.
-  auto maybeResult =
-      pocToMopInteger(opAttr.getOpcode(), builder, loc, popOperands, simdType);
+  auto maybeResult = pocToMopInteger(opAttr.getOpcode(), builder, loc,
+                                     popOperands, resultType);
 
   if (maybeResult.isError())
     return maybeResult;
 
-  // Convert the !kgen.scalar value back to the corresponding builtin type.
-  return popScalarToBuiltinType(builder, loc, maybeResult.takeValue());
+  return maybeResult.takeValue();
 }
 
 Operation *MOGraphLoweringState::lowerKGENConstantAttr(OpBuilder &builder,
@@ -687,6 +636,11 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
       }
     }();
 
+    if (cond.getType() != builder.getIntegerType(1)) {
+      assert(KGEN::isScalarOf<KGEN::KGENDType::kBool>(cond.getType()));
+      cond = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(
+          loc, builder.getIntegerType(1), cond);
+    }
     // We must be dealing with an assert.
     MGP::AssertOp assertOp = MGP::AssertOp::create(
         builder, loc, ValueRange{cond}, opAttr.getAttrs().getValue());

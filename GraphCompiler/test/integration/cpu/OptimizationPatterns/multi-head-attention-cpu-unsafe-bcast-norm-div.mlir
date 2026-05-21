@@ -43,8 +43,8 @@ mo.graph @unsafe_bcast_norm_using_div<B, S, KV_S, H, D, BCAST1>(
 // CHECK-ALLOW-BCAST-LABEL: mo.graph
 // CHECK-ALLOW-BCAST-SAME: @unsafe_bcast_norm_using_div<B, S, KV_S, H, D, BCAST1>([[VARG0:[^ ]*]]: !mo.tensor<[B, S, H, D], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[B, KV_S, H, D], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[BCAST1, KV_S, H, D], f32>, [[VARG3:[^ ]*]]: !mo.tensor<[], f32>, [[VARG4:[^ ]*]]: !mo.tensor<[BCAST1], f32>) -> !mo.tensor<[BCAST1, S, H, D], f32> {
 // CHECK-ALLOW-BCAST-NEXT: [[V0:%.[a-zA-Z0-9_]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf64>} : !mo.tensor<[], f64>
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK1: i1 = <eq(:si64 B, BCAST1)>
-// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK2: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK1)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK1: scalar<bool> = <eq(:scalar<si64> B, BCAST1)>
+// CHECK-ALLOW-BCAST-NEXT: kgen.param.declare MHA_BCAST_CHECK2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "MHA Pattern Detected unsafe broadcast. This is of great interest so please report!" : !kgen.string}, MHA_BCAST_CHECK1)>
 // CHECK-ALLOW-BCAST-NEXT: [[V2:%.[a-zA-Z0-9_]*]] = mo.cast([[V0]]) : (!mo.tensor<[], f64>) -> !mo.tensor<[], f32>
 // CHECK-ALLOW-BCAST-NEXT: [[V3:%.[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[V2]]) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
 // CHECK-ALLOW-BCAST-NEXT: [[V4:%.[a-zA-Z0-9_]*]] = mo.div([[V3]], [[VARG3]]) : !mo.tensor<[], f32

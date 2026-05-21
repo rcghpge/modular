@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MODialect/Analysis/StaticReshapeDimensionsMappingAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
 
 namespace M::MO {
 
@@ -21,8 +22,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
   const auto calculateStaticVolume = [](llvm::ArrayRef<mlir::TypedAttr> dims) {
     int64_t total = 1;
     for (auto dimAttr : dims) {
-      if (auto dimInt = llvm::dyn_cast<mlir::IntegerAttr>(dimAttr)) {
-        total *= dimInt.getSInt();
+      if (auto dimInt = tryGetConstantInt(dimAttr)) {
+        total *= dimInt.value();
       }
     }
 
@@ -62,9 +63,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
   uint64_t afterIdx = startsWithStaticDimension ? 0 : after.size() - 1;
 
   while (beforeVolume != beforeTotalVolume || afterVolume != afterTotalVolume) {
-    auto beforeIntegerAttr =
-        llvm::dyn_cast<mlir::IntegerAttr>(before[beforeIdx]);
-    auto afterIntegerAttr = llvm::dyn_cast<mlir::IntegerAttr>(after[afterIdx]);
+    auto beforeIntegerAttr = tryGetConstantInt(before[beforeIdx]);
+    auto afterIntegerAttr = tryGetConstantInt(after[afterIdx]);
 
     // Mixing of static and dynamic dimensions.
     if (bool(beforeIntegerAttr) ^ bool(afterIntegerAttr)) {
@@ -73,8 +73,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
     }
 
     if (beforeIntegerAttr) {
-      int64_t beforeDim = beforeIntegerAttr.getSInt();
-      int64_t afterDim = afterIntegerAttr.getSInt();
+      int64_t beforeDim = beforeIntegerAttr.value();
+      int64_t afterDim = afterIntegerAttr.value();
 
       // 0 dims allow ambiguous mappings so it doesn't make sense to continue
       // E.g. consider [0, 1, 2] --> [5000, 0, 500, 42, 0]

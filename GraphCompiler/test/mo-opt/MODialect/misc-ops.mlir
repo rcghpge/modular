@@ -241,8 +241,8 @@ mo.graph @pad_zero_paddings<D0, D1>(%input: !mo.tensor<[2, 2], f32>) -> !mo.tens
 // CHECK: mo.graph @pad_zero_paddings_with_output_param<() -> [[D1:.*]], [[D2:.*]]>(%[[INPUT:.*]]: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[[[D1]], [[D2]]], f32>
 mo.graph @pad_zero_paddings_with_output_param<() -> D1, D2>(%input: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[D1, D2], f32> {
 
-  // CHECK-DAG: kgen.param.declare [[D3:.*]]: si64 = <2>
-  // CHECK-DAG: kgen.param.declare [[D4:.*]]: si64 = <2>
+  // CHECK-DAG: kgen.param.declare [[D3:.*]]: scalar<si64> = <2>
+  // CHECK-DAG: kgen.param.declare [[D4:.*]]: scalar<si64> = <2>
   // CHECK-NEXT:   %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
   %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
@@ -316,7 +316,7 @@ mo.graph @range_folder_unknown_output<D0>() -> !mo.tensor<[D0], ui32> {
 // CHECK: mo.graph @range_folder_parametric_output<() -> [[D0:.*]]>() -> !mo.tensor<[[[D0]]], ui32> {
 mo.graph @range_folder_parametric_output<() -> D0>() -> !mo.tensor<[D0], ui32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
-  // CHECK-DAG: kgen.param.declare [[D1:.*]]: si64 = <5>
+  // CHECK-DAG: kgen.param.declare [[D1:.*]]: scalar<si64> = <5>
   // CHECK-DAG: %[[RES:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[5], ui32> -> !mo.tensor<[[[D1]]], ui32>
   %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
   %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
@@ -377,7 +377,7 @@ mo.graph @reshape_fold_scalar_to_rank_1_dyn_target_shape<() -> D0>(
 ) -> !mo.tensor<[D0], si32> {
   // CHECK-DAG: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %input = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  // CHECK-DAG: kgen.param.declare D1: si64 = <1>
+  // CHECK-DAG: kgen.param.declare D1: scalar<si64> = <1>
   // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[1], si32> -> !mo.tensor<[[[D1]]], si32>
   %res = mo.reshape<() -> D1>(%input, %shape) : (!mo.tensor<[], si32>, !mo.tensor<[1], si64>) -> !mo.tensor<[D1], si32>
   // CHECK-NEXT: mo.output<[[D1]]> %[[RES]] : !mo.tensor<[[[D1]]], si32>
@@ -642,8 +642,8 @@ mo.graph @transpose_identity_fold_with_decl<D0 -> D1, D2>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
 ) -> !mo.tensor<[D1, D2], f32> {
   %perm = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: kgen.param.declare [[D3:.*]]: si64 = <[[D0]]>
-  // CHECK-DAG: kgen.param.declare [[D4:.*]]: si64 = <42>
+  // CHECK-DAG: kgen.param.declare [[D3:.*]]: scalar<si64> = <[[D0]]>
+  // CHECK-DAG: kgen.param.declare [[D4:.*]]: scalar<si64> = <42>
   // CHECK-DAG: %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[[[D0]], 42], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
   %res = mo.transpose<() -> D3, D4>(%input, %perm) : (!mo.tensor<[D0, 42], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   // CHECK-NEXT: mo.output<[[D3]], [[D4]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]]], f32>

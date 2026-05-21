@@ -131,7 +131,7 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 // CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[64], f32>
-// CHECK: %[[SIMD:.*]] = mogg.constant.scalar {value = 8 : si64} : !mo.scalar<si64>
+// CHECK: %[[SIMD:.*]] = mogg.constant.scalar {value = #kgen<simd 8> : !kgen.scalar<si64>} : !mo.scalar<si64>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "mo.merge_dim"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<1, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<1, index>

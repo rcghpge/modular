@@ -209,7 +209,7 @@ struct DeviceAwareRewriter {
     return rewriter.getIndexAttr(value);
   }
   MLIRContext *getContext() { return rewriter.getContext(); }
-  IntegerAttr getDimAttr(int64_t value) {
+  TypedAttr getDimAttr(int64_t value) {
     return MOSH::ShapeAttr::getDim(rewriter.getContext(), value);
   }
   IntegerType getIntegerType(unsigned width, bool isSigned) {

@@ -18,13 +18,15 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let summary = "Shape expression attribute";
   let description = [{
     The `#mosh.ape` attribute contains a variable number of `TypedAttr`s, each
-    of which have index type. The type of this attribute is always `!mosh.ape`.
+    of which has a kgen.scalar<si64> type. The type of this attribute is
+    always `!mosh.ape`.
 
     Each dimension `TypedAttr` inside `values` is one of:
     1. `KGEN::ParamDeclRefAttr` for a dimension parameter, e.g., `D0`.
     2. `KGEN::ParamOperatorAttr` for a dimension parameter expression, e.g.,
     `add(D1, 2)`.
-    3. `IntegerAttr` for a concrete integer dimension, e.g., `42`
+    3. `KGEN::SIMDAttr` for a concrete integer dimension, e.g., `42` (typed as
+    `kgen.scalar<si64>`).
 
     Note that -1 can be used as a special dimension value that denotes a
     dimension to be inferred from other dimensions and total number of elements
@@ -63,21 +65,23 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let extraClassDeclaration = [{
     /// Get the integer type representing the preferred type for dimensions
     /// of a shape.
-    static IntegerType getDimType(MLIRContext* ctx);
+    static KGEN::SIMDType getDimType(MLIRContext* ctx);
 
     /// Create an attribute to represent the given values as a dimension in
     /// shaped type.
-    static IntegerAttr getDim(MLIRContext* ctx, int64_t value);
+    static KGEN::SIMDAttr getDim(MLIRContext* ctx, int64_t value);
 
-    /// Is the given type a legal dimension?
-    static bool isDimType(Type type) {
-      return type.isSignedInteger(64);
-    }
+    /// Is the given type a legal dimension (scalar `si64` SIMD lane)?
+    static bool isDimType(::mlir::Type type);
 
     /// Is the given attribute able to represent a dimension.
     static bool isDim(TypedAttr attr) {
       return isDimType(attr.getType());
     }
+
+    /// If `attr` is a compile-time constant dimension literal for this shape
+    /// representation, return its signed value.
+    static std::optional<int64_t> getStaticDim(Attribute attr);
 
     /// Returns the rank (i.e. size) of the shape.
     size_t getRank() const { return getSize(); }

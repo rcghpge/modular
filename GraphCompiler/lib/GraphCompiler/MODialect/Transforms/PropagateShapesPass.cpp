@@ -13,8 +13,10 @@
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/MLIRDType.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/InferIntRangeInterface.h"
@@ -123,6 +125,16 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
   });
 }
 
+static unsigned getStorageBitWidth(Type type) {
+  type = getElementTypeOrSelf(type);
+  if (auto simdType = dyn_cast<KGEN::SIMDType>(type)) {
+    assert(simdType.getResolvedSize() == 1 && "expected scalar SIMD type");
+    type = M::getEquivalentIntegerType(type.getContext(),
+                                       simdType.getResolvedDType().value());
+  }
+  return mlir::ConstantIntRanges::getStorageBitwidth(type);
+}
+
 namespace {
 
 bool isParamOperatorPure(KGEN::ParamOperatorAttr paramOperator) {
@@ -209,7 +221,7 @@ void handleOutputBindings(GraphOp graphOp,
     if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(dimAttr))
       return argDeclNames.contains(declRef.getName());
 
-    if (isa<IntegerAttr>(dimAttr))
+    if (isStaticDimAttr(cast<TypedAttr>(dimAttr)))
       return true;
 
     return false;
@@ -372,7 +384,8 @@ static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
     return shapeOfOp.getInput().getType().getShapeAttr();
 
   if (auto paramToValue = val.getDefiningOp<MOSH::ParamToValueOp>())
-    if (isa<IntegerType, MOSH::ShapeType>(paramToValue.getType()))
+    if (isa<IntegerType, KGEN::SIMDType, MOSH::ShapeType>(
+            paramToValue.getType()))
       return paramToValue.getValue();
 
   // Only staticize tensor.
@@ -613,8 +626,7 @@ struct PropagateShapes {
 
   /// Track `attr` as definitely non-negative.
   void markDefinitelyNonNegative(TypedAttr attr) {
-    unsigned bitwidth =
-        mlir::ConstantIntRanges::getStorageBitwidth(attr.getType());
+    unsigned bitwidth = getStorageBitWidth(attr.getType());
 
     if (isSignedType(attr.getType()))
       ranges.try_emplace(attr, mlir::ConstantIntRanges::fromSigned(
@@ -630,11 +642,15 @@ struct PropagateShapes {
     if (auto integer = dyn_cast<IntegerType>(type))
       return integer.getSignedness() !=
              IntegerType::SignednessSemantics::Unsigned;
+    if (auto simdType = dyn_cast<KGEN::SIMDType>(type)) {
+      if (std::optional<KGEN::KGENDType> dtype = simdType.getResolvedDType())
+        return dtype->isSInt();
+    }
     return isa<IndexType>(type);
   }
 
   static mlir::ConstantIntRanges getMaxRange(Type type) {
-    unsigned width = mlir::ConstantIntRanges::getStorageBitwidth(type);
+    unsigned width = getStorageBitWidth(type);
     APInt umin = APInt::getMinValue(width);
     APInt umax = APInt::getMaxValue(width);
     APInt smin = width != 0 ? APInt::getSignedMinValue(width) : umin;
@@ -723,15 +739,19 @@ struct PropagateShapes {
   }
 
   mlir::ConstantIntRanges getRange(TypedAttr attr) {
-    if (!isa<IntegerType, IndexType>(attr.getType()))
-      return mlir::ConstantIntRanges::maxRange(1);
-
     if (auto it = ranges.find(attr); it != ranges.end())
       return it->second;
 
-    // Constants have trivially inferrable ranges.
-    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-      return mlir::ConstantIntRanges::constant(intAttr.getValue());
+    // Constants have trivially inferrable ranges (IntegerAttr or scalar
+    // SIMDAttr).
+    if (auto cst = tryGetConstantInt(attr)) {
+      unsigned bitwidth = getStorageBitWidth(attr.getType());
+      return mlir::ConstantIntRanges::constant(
+          APInt(bitwidth, *cst, /*isSigned=*/bitwidth != 1)); // i1 is signless
+    }
+
+    if (!isa<IntegerType, IndexType, KGEN::SIMDType>(attr.getType()))
+      return mlir::ConstantIntRanges::maxRange(1);
 
     // Bail out for attributes we don't recognize.
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
@@ -743,7 +763,7 @@ struct PropagateShapes {
   }
 
   static APInt getZero(Type type) {
-    unsigned bitwidth = mlir::ConstantIntRanges::getStorageBitwidth(type);
+    unsigned bitwidth = getStorageBitWidth(type);
     return APInt::getZero(bitwidth);
   }
 
@@ -794,8 +814,7 @@ struct PropagateShapes {
   /// Return null if we can't apply any special folding.
   TypedAttr tryFoldCond(ArrayRef<TypedAttr> operands) {
     // Cond is a scalar<bool>, `getRange` need a builtin type.
-    if (auto constant = getRange(KGEN::CastToBuiltinAttr::get(operands[0]))
-                            .getConstantValue())
+    if (auto constant = getRange(operands[0]).getConstantValue())
       return constant->isZero() ? operands[2] : operands[1];
     return {};
   }
@@ -873,19 +892,16 @@ struct PropagateShapes {
       //
       // This works due to the symbolic optimizations which simplify add
       // opcodes.
-      auto getZero = [&](Type t) -> TypedAttr {
-        if (isa<IntegerType>(t))
-          return IntegerAttr::get(t, 0);
-        return splatIntLiteralToSIMD(0, cast<KGEN::SIMDType>(t));
-      };
-      auto zero = getZero(lhs.getType());
+      auto zero = splatIntLiteralToSIMD(0, cast<KGEN::SIMDType>(lhs.getType()));
       auto diff = KGEN::ParamOperatorAttr::getSub(lhs, rhs);
       auto i1Type = IntegerType::get(lhs.getContext(), 1);
 
       auto cmp = getRange(opcode, {diff, zero}, i1Type);
 
       if (auto truthValue = cmp.getConstantValue())
-        return BoolAttr::get(lhs.getContext(), !truthValue->isZero());
+        return KGEN::splatIntLiteralToSIMD(
+            !truthValue->isZero(),
+            KGEN::SIMDType::get(lhs.getContext(), 1, KGEN::KGENDType::kBool));
     }
 
     return {};
@@ -1075,7 +1091,7 @@ struct PropagateShapes {
     // the worklist loop below.
     KGEN::ParameterEvaluator evaluator;
     auto markIntParamDeclAsNonNegative = [&](KGEN::ParamDeclAttr paramDecl) {
-      if (paramDecl.getType().isIntOrIndex())
+      if (MOSH::ShapeAttr::isDimType(paramDecl.getType()))
         markDefinitelyNonNegative(KGEN::ParamDeclRefAttr::get(paramDecl));
     };
     // The integer input parameters to graph are dynamic dimensions, so they

@@ -8,6 +8,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
@@ -127,7 +128,7 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
         KGEN::ParamOperatorAttr::get(KGEN::POC::Div, dimsToDivide);
     // If this results in a divide that is not simplified out, we need to handle
     // the case where `currDimOfOutput` is zero.
-    if (!isa<IntegerAttr>(currDimOfOutput)) {
+    if (!MOSH::ShapeAttr::getStaticDim(currDimOfOutput).has_value()) {
       if (auto algebraicDim = dyn_cast<KGEN::ParamOperatorAttr>(remaining)) {
         if (algebraicDim.getOpcode() == KGEN::POC::Div) {
           auto operands = algebraicDim.getOperands();
@@ -146,10 +147,8 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
             //   `cond(eq(D2, 0), 0, div(D1, D2))`
             // To remedy this, we generate a much uglier expression:
             //   `cond(eq(D2, 0), 0, div(D1, cond(eq(D2, 0), 1, D2)))`
-            Type i64 =
-                IntegerType::get(builder.getContext(), 64, IntegerType::Signed);
-            IntegerAttr zero = IntegerAttr::get(i64, 0);
-            IntegerAttr one = IntegerAttr::get(i64, 1);
+            TypedAttr zero = MOSH::ShapeAttr::getDim(builder.getContext(), 0);
+            TypedAttr one = MOSH::ShapeAttr::getDim(builder.getContext(), 1);
 
             auto isDivisorZero =
                 KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {divisor, zero});
@@ -206,8 +205,7 @@ static bool isStaticShapeWithZeroElts(MOSH::ShapeAttr shapeAttr) {
     return false;
 
   auto numElts = shapeAttr.getSymbolicNumElements();
-  auto asInt = cast<IntegerAttr>(numElts);
-  auto asIntVal = asInt.getValue().getSExtValue();
+  auto asIntVal = MOSH::ShapeAttr::getStaticDim(numElts);
   return asIntVal == 0;
 }
 
@@ -239,8 +237,8 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
   SmallVector<TypedAttr> newOutShape;
   for (size_t idx = 0; idx < outShapeAttr.getSize(); ++idx) {
     TypedAttr dimVal = outShapeAttr[idx];
-    auto asInt = dyn_cast<IntegerAttr>(dimVal);
-    if (!asInt || asInt.getValue() != 1)
+    auto asInt = MOSH::ShapeAttr::getStaticDim(dimVal);
+    if (!asInt || *asInt != 1)
       newOutShape.push_back(dimVal);
   }
 
@@ -255,8 +253,8 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
   // Create a new reshape built up from just these new ranks.
   for (size_t idx = 0; idx < outShapeAttr.getSize(); ++idx) {
     TypedAttr dimVal = outShapeAttr[idx];
-    auto asInt = dyn_cast<IntegerAttr>(dimVal);
-    if (!asInt || asInt.getValue() != 1)
+    auto asInt = MOSH::ShapeAttr::getStaticDim(dimVal);
+    if (!asInt || *asInt != 1)
       continue;
 
     MOSH::ShapeAttr shapeAttr = rollingShape.getTypedShapeAttr();

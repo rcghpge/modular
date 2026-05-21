@@ -10,6 +10,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENPogUtils.h"
@@ -845,8 +846,8 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
   SmallVector<MojoValue> mojoDims;
   unsigned nextDymDim = 0;
   for (TypedAttr dim : shapeAttr.getValues()) {
-    if (auto staticDim = dyn_cast<IntegerAttr>(dim)) {
-      mojoDims.push_back(MojoValue(staticDim.getSInt()));
+    if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dim)) {
+      mojoDims.push_back(*staticDim);
     } else {
       ASSERT_STREAM(nextDymDim < dynamicDims.size(),
                     "Missing dynamic dimension");

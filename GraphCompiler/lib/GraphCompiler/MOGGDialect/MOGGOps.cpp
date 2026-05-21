@@ -14,6 +14,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
+#include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -623,9 +624,8 @@ static void collectFusionCaptures(
         // rather than hardware integer division (~40 cycles).
         if (auto constOp = dyn_cast_or_null<MOGG::ConstantScalarOp>(
                 operand.getDefiningOp())) {
-          if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
-            inlineConstants.push_back(
-                {operand, MojoValue(intAttr.getAPSInt())});
+          if (auto intScalar = MO::tryGetConstantInt(constOp.getValue())) {
+            inlineConstants.push_back({operand, MojoValue(*intScalar)});
             continue;
           }
         }
@@ -3259,8 +3259,8 @@ LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
-  if (auto intAttr = dyn_cast<IntegerAttr>(getValue())) {
-    state.setMojoValueFor(getResult(), MojoValue(intAttr.getAPSInt()));
+  if (auto intScalar = MO::tryGetConstantInt(getValue())) {
+    state.setMojoValueFor(getResult(), MojoValue(*intScalar));
     return success();
   } else {
     return emitError("TODO: unsupported scalar type");

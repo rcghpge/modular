@@ -15,7 +15,9 @@
 // CHECK:   %[[RESIZED_DIM1:.:*]] = mgp.tensor_spec.get_dim[1] %[[SPEC1]]
 
 // CHECK:   %[[CASTED0:.*]] = index.casts %[[RESIZED_DIM0]] : index to si64
+// CHECK:   %[[SIMD0:.*]] = pop.cast_from_builtin %[[CASTED0]] : si64 to !kgen.scalar<si64>
 // CHECK:   %[[CASTED1:.*]] = index.casts %[[RESIZED_DIM1]] : index to si64
+// CHECK:   %[[SIMD1:.*]] = pop.cast_from_builtin %[[CASTED1]] : si64 to !kgen.scalar<si64>
 
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]]
 // CHECK:   %[[CASTED_BACK0:.*]] = index.casts %[[CASTED0]] : si64 to index

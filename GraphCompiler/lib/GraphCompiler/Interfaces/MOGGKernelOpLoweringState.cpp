@@ -6,7 +6,10 @@
 
 #include "GraphCompiler/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 
 using namespace M;
@@ -97,7 +100,7 @@ KernelOperandsMapping::getTensorDynamicDimensions(MO::TensorType asTensor,
                                                   bool isInsideStub) {
   SmallVector<Value> dynamicDimensions;
   for (auto dim : asTensor.getDims()) {
-    if (isa<IntegerAttr>(dim))
+    if (isa<KGEN::SIMDAttr>(dim))
       continue;
     auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
     ASSERT_STREAM(dimParamAttr,
@@ -402,6 +405,7 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
     Value symbol = symbolicDimOr.takeValue();
+
     operandsMapping.addOperand(
         param, symbol,
         /*=isKernelStubOperand*/ paramsInKernelStub.contains(param.getName()));
@@ -773,9 +777,10 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
       size_t numDims = shapeResultType.getRank();
 
       // Create individual getitem operations for each dimension
+      Type dimType = MOSH::ShapeAttr::getDimType(builder.getContext());
       for (size_t i = 0; i < numDims; ++i) {
         auto getItemOp = MOGG::ShapeResultGetItemOp::create(
-            builder, loc, builder.getIntegerType(64, true), result,
+            builder, loc, dimType, result,
             builder.getIntegerAttr(builder.getIntegerType(64, true), i));
         outputs.push_back(getItemOp.getResult());
       }
@@ -827,7 +832,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
       Value dimResult = mgpRegion.getResult(idx + 1);
 
       // Convert to dimension value
-      auto asDimension = loweringState.indexToDimension(
+      auto asDimension = MGP::indexToDimension(
           loweringState.getExecuteOpBuilder(), loc, dimResult);
 
       if (auto err = loweringState.lowerParamDecl(

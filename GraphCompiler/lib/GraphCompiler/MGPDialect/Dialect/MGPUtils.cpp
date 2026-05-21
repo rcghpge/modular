@@ -8,8 +8,12 @@
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/MLIRDType.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -20,6 +24,34 @@ namespace {
 /// Name of attribute holding the 'temporary' #M.inout_sig.
 constexpr StringRef kInOutSigAttribute = "tempInOutSig";
 } // namespace
+
+Value MGP::dimensionToIndex(OpBuilder &builder, Location loc, Value dim) {
+  if (dim.getType().isIndex())
+    return dim;
+
+  // Shape dimensions are `!kgen.scalar<si64>`; `index.cast` only accepts
+  // builtin integers or `index`, so lower through `si64` first.
+  if (MOSH::ShapeAttr::isDimType(dim.getType())) {
+    auto intTy = M::getEquivalentIntegerType(
+        dim.getContext(),
+        cast<KGEN::SIMDType>(dim.getType()).getResolvedDType().value());
+    dim = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(loc, intTy, dim);
+  }
+
+  return builder.createOrFold<mlir::index::CastSOp>(loc, builder.getIndexType(),
+                                                    dim);
+}
+
+Value MGP::indexToDimension(OpBuilder &builder, Location loc, Value index) {
+  if (MOSH::ShapeAttr::isDimType(index.getType()))
+    return index;
+
+  auto si64Ty = mlir::IntegerType::get(builder.getContext(), 64,
+                                       mlir::IntegerType::Signed);
+  Value asSi64 = builder.createOrFold<mlir::index::CastSOp>(loc, si64Ty, index);
+  auto dimTy = MOSH::ShapeAttr::getDimType(builder.getContext());
+  return builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, dimTy, asSi64);
+}
 
 TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
   while (true) {

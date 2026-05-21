@@ -11,6 +11,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -182,7 +183,7 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
 
         SmallVector<TypedAttr> newShape;
         for (auto &&dimAttr : shapeAttr.getValues()) {
-          if (isa<IntegerAttr>(dimAttr)) {
+          if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dimAttr)) {
             newShape.push_back(dimAttr);
           } else {
             if (!dummyDimAttr) {

@@ -489,7 +489,8 @@ struct LowerRebindTensorShapeOp
     Location loc = op->getLoc();
 
     // Create KGEN parameter containing result of shape equality statement
-    IntegerType boolTy = rewriter.getI1Type();
+    auto boolTy =
+        KGEN::SIMDType::get(op.getContext(), 1, KGEN::KGENDType::kBool);
     TypedAttr cmpAttr =
         KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
                                     {operandShape, resultShape}, boolTy);
@@ -1091,8 +1092,7 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
     // Get the dimension along the axis (could be symbolic).
     TypedAttr axisDimAttr = inputShape[axisVal];
     Var axisDim = b.createVar(axisDimAttr);
-    Var kVar = b.createVar(
-        IntegerAttr::get(rewriter.getIntegerType(64, /*isSigned=*/true), kVal));
+    Var kVar = b.createVar(ShapeAttr::getDim(ctx, kVal));
 
     // Create assertion that k <= dimension size
     b.createAssert(kVar <= axisDim,

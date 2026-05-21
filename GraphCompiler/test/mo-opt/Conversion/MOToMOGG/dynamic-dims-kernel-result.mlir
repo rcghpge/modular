@@ -13,7 +13,7 @@
 // CHECK: mogg.call.shape["mo.gather"]
 // The dynamic dimensions D4, D5 from gather's result type should be passed
 // to the kernel stub as output parameter declarations.
-// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D4 : si64{{.*}}D5 : si64{{.*}}]>
+// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D4 : !kgen.scalar<si64>{{.*}}D5 : !kgen.scalar<si64>{{.*}}]>
 mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, 64], f32>,
   %indices : !mo.tensor<[D1], si32>,
@@ -30,7 +30,7 @@ mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
 // CHECK: mogg.call.shape["mo.avg_pool"]
 // The dynamic dimensions D3, D4 from avg_pool's result type should be passed
 // to the kernel stub as output parameter declarations.
-// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D3 : si64{{.*}}D4 : si64{{.*}}]>
+// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D3 : !kgen.scalar<si64>{{.*}}D4 : !kgen.scalar<si64>{{.*}}]>
 mo.graph @avg_pool_dynamic_output_dims<() -> D1, D2>(
   %input: !mo.tensor<[32, 10, 20, 3], f32>,
   %filter_shape: !mo.tensor<[2], si64>,

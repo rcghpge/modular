@@ -9,8 +9,8 @@ mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
   %shape: !mo.tensor<[2], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D2]]], f32> {
 ) -> !mo.tensor<[D1, D2], f32> {
-  kgen.param.declare D3: si64 = <D0>
-  kgen.param.declare D4: si64 = <20>
+  kgen.param.declare D3: scalar<si64> = <D0>
+  kgen.param.declare D4: scalar<si64> = <20>
 
 
   %0 = mo.rebind(%arg0) : !mo.tensor<[D0, 20], f32> -> !mo.tensor<[D3, D4], f32>
@@ -20,8 +20,8 @@ mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
   %1 = mo.reshape<() -> D6, D7>(%0, %shape) : (
     !mo.tensor<[D3, D4], f32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[D6, D7], f32>
-  kgen.param.declare D8: si64 = <D3>
-  kgen.param.declare D9: si64 = <D7>
+  kgen.param.declare D8: scalar<si64> = <D3>
+  kgen.param.declare D9: scalar<si64> = <D7>
   // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) :
   // CHECK-SAME: !mo.tensor<[[[D6]], [[D7]]], f32> -> !mo.tensor<[[[D0]], [[D7]]], f32>
   %2 = mo.rebind(%1) : !mo.tensor<[D6, D7], f32> -> !mo.tensor<[D8, D9], f32>
@@ -36,9 +36,9 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   %arg: !mo.tensor<[D0, D1, 20], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> {
 ) -> !mo.tensor<[D0, D2, 4, 5], f32> {
-  kgen.param.declare NUM: si64 = <mul_no_wrap(D0, D1, 20)>
-  kgen.param.declare DENOM: si64 = <mul_no_wrap(D0, 4, 5)>
-  kgen.param.declare DIV: si64 = <div(NUM, DENOM)>
+  kgen.param.declare NUM: scalar<si64> = <mul_no_wrap(D0, D1, 20)>
+  kgen.param.declare DENOM: scalar<si64> = <mul_no_wrap(D0, 4, 5)>
+  kgen.param.declare DIV: scalar<si64> = <div(NUM, DENOM)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
   // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]], 20], f32> -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32>
   %res = mo.static.reshape(%arg) : !mo.tensor<[D0, D1, 20], f32> -> !mo.tensor<[D0, DIV, 4, 5], f32>
@@ -55,8 +55,8 @@ mo.graph @param_expr_dce<D0 -> D1>(
 ) -> !mo.tensor<[D1], f32> {
 
   // These are trivial and DCEed away
-  kgen.param.declare D2: si64 = <add(D0, 4)>
-  kgen.param.declare D3: si64 = <sub(D2, 4)>
+  kgen.param.declare D2: scalar<si64> = <add(D0, 4)>
+  kgen.param.declare D3: scalar<si64> = <sub(D2, 4)>
   %res = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D3], f32>
 
   // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[[[D0]]], f32>
@@ -73,8 +73,8 @@ mo.graph @fold_nested_max<D0, bs -> out>(
   %dummy: !mo.tensor<[bs], f32> // this is used solely to help define `bs`
 ) -> !mo.tensor<[out, 768], f32> {
 
-  kgen.param.declare D1: si64 = <max(bs, 1)>
-  kgen.param.declare D2: si64 = <max(D1, bs)>
+  kgen.param.declare D1: scalar<si64> = <max(bs, 1)>
+  kgen.param.declare D2: scalar<si64> = <max(D1, bs)>
 
   // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[max([[BS]], 1), 768], f32>
   %input_rs = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D1, 768], f32>
@@ -107,13 +107,13 @@ mo.graph @out_of_order_instructions<D0 -> out>(
   %dummy: !mo.tensor<[D0], f32> // this is used solely to help define `D0`
 ) -> !mo.tensor<[out], f32> {
 
-  kgen.param.declare D3: si64 = <div(D2, D0)>
-  kgen.param.declare D2: si64 = <mul(D1, D1)>
+  kgen.param.declare D3: scalar<si64> = <div(D2, D0)>
+  kgen.param.declare D2: scalar<si64> = <mul(D1, D1)>
 
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[SCALAR]]) : !mo.tensor<[], f32> -> !mo.tensor<[div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])], f32>
   %res = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
 
-  kgen.param.declare D1: si64 = <add(D0, 1)>
+  kgen.param.declare D1: scalar<si64> = <add(D0, 1)>
 
   // CHECK-NEXT: mo.output<div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])> %[[RES]] : !mo.tensor<[div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])], f32>
   mo.output<D3> %res : !mo.tensor<[D3], f32>
@@ -125,10 +125,10 @@ mo.graph @nested_mul<D0>() {
   // These KGEN expressions are all folded away
 
   // NOTE that this gets canonicalized into `mul(D0, 2)`
-  kgen.param.declare P0: si64 = <add(D0, D0)>
-  kgen.param.declare P1: si64 = <mod(P0, D0)>
-  kgen.param.declare P2: i1 = <eq(:si64 P1, 0)>
-  kgen.param.declare P3: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "error" : !kgen.string}, P2)>
+  kgen.param.declare P0: scalar<si64> = <add(D0, D0)>
+  kgen.param.declare P1: scalar<si64> = <mod(P0, D0)>
+  kgen.param.declare P2: scalar<bool> = <eq(:scalar<si64> P1, 0)>
+  kgen.param.declare P3: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "error" : !kgen.string}, P2)>
 
   // CHECK-NEXT: mo.output
   mo.output
@@ -142,10 +142,10 @@ mo.graph @range_based_folding<D0 -> O0, O1, O2, O3>(
   %in: !mo.tensor<[], f32>
 ) -> !mo.tensor<[O0, O1, O2, O3], f32> {
 
-  kgen.param.declare P0: si64 = <max(D0, 0)> // D0
-  kgen.param.declare P1: si64 = <max(mul_no_wrap(D0, -1), 0)> // 0
-  kgen.param.declare P2: si64 = <min(D0, 0)> // 0
-  kgen.param.declare P3: si64 = <min(mul_no_wrap(D0, -1), 0)> // mul_no_wrap(D0, -1)
+  kgen.param.declare P0: scalar<si64> = <max(D0, 0)> // D0
+  kgen.param.declare P1: scalar<si64> = <max(mul_no_wrap(D0, -1), 0)> // 0
+  kgen.param.declare P2: scalar<si64> = <min(D0, 0)> // 0
+  kgen.param.declare P3: scalar<si64> = <min(mul_no_wrap(D0, -1), 0)> // mul_no_wrap(D0, -1)
 
   // CHECK-NEXT: %[[OUT:.*]] = mo.static.broadcast_to(%[[IN]])
   // CHECK-SAME: : !mo.tensor<[], f32> -> !mo.tensor<[[[D0]], 0, 0, mul_no_wrap([[D0]], -1)], f32>
@@ -174,10 +174,10 @@ mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
   (%arg0: !mo.tensor<[A, B], f32>) ->
   (!mo.tensor<[D1, 1], f32>, !mo.tensor<[D2, 1], f32>, !mo.tensor<[D3, 1], f32>, !mo.tensor<[D4, 1], f32>)
 {
-  kgen.param.declare expr1: si64 = <max(add(A, B), B)>
-  kgen.param.declare expr2: si64 = <max(add(A, B), A)>
-  kgen.param.declare expr3: si64 = <max(A, add(A, B))>
-  kgen.param.declare expr4: si64 = <max(B, add(A, B))>
+  kgen.param.declare expr1: scalar<si64> = <max(add(A, B), B)>
+  kgen.param.declare expr2: scalar<si64> = <max(add(A, B), A)>
+  kgen.param.declare expr3: scalar<si64> = <max(A, add(A, B))>
+  kgen.param.declare expr4: scalar<si64> = <max(B, add(A, B))>
 
   // NOTE: no A and B exist which fulfill this rebind safely, but we just have it
   // to easily test the simplification of this MAX property.
@@ -202,9 +202,9 @@ mo.graph @update_param_declare_rhs<D1>() {
   // `kgen.param.declare`, we still want to update the RHS to the simplified
   // version in the IR (not just in the evaluator during the pass).
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:si64 [[D1]], 1))>
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:scalar<si64> [[D1]], 1))>
   // CHECK-NEXT: mo.output
-  kgen.param.declare CH: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:si64 cond(eq(:si64 D1, -1), 1, D1), 1))>
+  kgen.param.declare CH: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:scalar<si64> cond(eq(:scalar<si64> D1, -1), 1, D1), 1))>
   mo.output
 }
 
@@ -269,9 +269,9 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   %param_shape = mosh.param.to_value: !mosh.ape = <[D0, D1]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[2], si32>
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[broadcast_to] input dimension at index 0 ([[D0]]) must be either 1 or equal to corresponding output dimension at index 1 ([[D1]])" : !kgen.string},
-  // CHECK-SAME:  or(eq(:si64 D0, D1), eq(:si64 D0, 1)))>
+  // CHECK-SAME:  or(eq(:scalar<si64> D0, D1), eq(:scalar<si64> D0, 1)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
@@ -294,10 +294,10 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   %param_shape = mosh.param.to_value: !mosh.ape = <[D0, 4, 5]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match:
   // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape[[REST:.*]]" : !kgen.string},
-  // CHECK-SAME: eq(:si64 mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
+  // CHECK-SAME: eq(:scalar<si64> mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
@@ -335,7 +335,7 @@ mo.graph @fold_abs_on_non_negative_dim<D0 -> D1>(
 ) -> !mo.tensor<[D1], f32> {
 
   // CHECK-NEXT: %[[RESULT:.*]] = mo.static.broadcast_to{{.*}} -> !mo.tensor<[D0], f32>
-  kgen.param.declare D2: si64 = <cond(ge(:si64 D0, 0), D0, mul_no_wrap(D0, -1))>
+  kgen.param.declare D2: scalar<si64> = <cond(ge(:scalar<si64> D0, 0), D0, mul_no_wrap(D0, -1))>
   %result = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D2], f32>
 
   // CHECK-NEXT: mo.output %[[RESULT]]

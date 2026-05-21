@@ -63,8 +63,8 @@ mo.graph @my_graph<D1, D10>(%arg0: !mo.tensor<[1], ui64>, %arg1: !mo.tensor<[0, 
   // CHECK-SAME: !mo.tensor<[__P2], f32>
   %random = mo.random.normal<() -> RMO_OUTPUT_DIM>(%shape_tensor, %c0, %c1, %arg0) : (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[1], ui64>) -> !mo.tensor<[RMO_OUTPUT_DIM], f32>
 
-  // CHECK: kgen.param.declare __P3: i1 = <eq(:si64 __P1, __P2)>
-  kgen.param.declare RMO_SH_EQ: i1 = <eq(:si64 RMO_OUTPUT_DIM, D10)>
+  // CHECK: kgen.param.declare __P3: i1 = <eq(:scalar<si64> __P1, __P2)>
+  kgen.param.declare RMO_SH_EQ: i1 = <eq(:scalar<si64> RMO_OUTPUT_DIM, D10)>
   // CHECK: kgen.param.declare __P4: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "shape check failed" : !kgen.string}, __P3)>
   kgen.param.declare RMO_SH_CH: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "shape check failed" : !kgen.string}, RMO_SH_EQ)>
 

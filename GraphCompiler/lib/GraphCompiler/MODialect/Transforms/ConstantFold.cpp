@@ -14,6 +14,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
@@ -669,19 +670,19 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
     }
   }
 
-  // Add parameter declaration/definitions that are used in the subgraph. They
-  // are converted to indexes and then to tensors so that we can output them.
-  Type indexType = IndexType::get(ctx);
+  // Add parameter declaration/definitions that are used in the subgraph.
+  // Materialize each as `!kgen.scalar<si64>` then `mo.index.to_tensor` so the
+  // folded graph exposes rank-0 int tensors.
+  Type dimTy = MOSH::ShapeAttr::getDimType(ctx);
   for (const Subgraph &subgraph : subgraphs) {
     for (auto param : subgraph.paramDeclarations()) {
-      Value index = MOSH::ParamToValueOp::create(
-          builder, loc, indexType,
-          KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
+      Value dimVal = MOSH::ParamToValueOp::create(
+          builder, loc, KGEN::ParamDeclRefAttr::get(ctx, param, dimTy));
       newOutputs.push_back(IndexToTensorOp::create(
           builder, loc,
           TensorType::get(ArrayRef<int64_t>({}),
                           IntegerType::get(ctx, 64, IntegerType::Unsigned)),
-          index));
+          dimVal));
     }
   }
   // No output parameters because we bind them all locally.
@@ -768,12 +769,12 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
     op->erase();
 
   // Add parameters that were defined in the subgraph.
+  Type dimTy = MOSH::ShapeAttr::getDimType(ctx);
   builder.setInsertionPointToStart(graph.getBodyBlock());
   for (auto [name, val] : modelResult.parameters) {
-    KGEN::ParamDeclareOp::create(
-        builder, graph.getLoc(),
-        KGEN::ParamDeclAttr::get(ctx, name, IndexType::get(ctx)),
-        builder.getIndexAttr(val));
+    KGEN::ParamDeclareOp::create(builder, graph.getLoc(),
+                                 KGEN::ParamDeclAttr::get(ctx, name, dimTy),
+                                 MOSH::ShapeAttr::getDim(ctx, val));
   }
 }
 

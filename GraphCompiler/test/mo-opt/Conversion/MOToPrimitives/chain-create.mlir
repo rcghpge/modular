@@ -10,8 +10,8 @@
 mo.graph @collect_chains<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D2, D3], f32>)
  -> (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>)
 {
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:si64 D1, D2))>
-  kgen.param.declare CH1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "D2 != D3" : !kgen.string}, eq(:si64 D2, D3))>
+  kgen.param.declare CH0: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:scalar<si64> D1, D2))>
+  kgen.param.declare CH1: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D2 != D3" : !kgen.string}, eq(:scalar<si64> D2, D3))>
 
   %ch0 = mosh.param.to_value: !mo.chain = <CH0>
   %ch1 = mosh.param.to_value: !mo.chain = <CH1>

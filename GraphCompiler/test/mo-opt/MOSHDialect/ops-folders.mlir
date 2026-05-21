@@ -122,14 +122,14 @@ kgen.generator @broadcast_not_fold<N, K, Sh: !mosh.ape>()
 }
 
 // CHECK: kgen.generator @equal_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]], [[D2:.*]]>()
-kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (i1, i1, i1, i1, i1) {
+kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (!kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>) {
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D1]], 42]>
-  // CHECK-DAG: %[[TRUE:.*]] = mosh.param.to_value: i1 = <1>
+  // CHECK-DAG: %[[TRUE:.*]] = mosh.param.to_value: scalar<bool> = <true>
   // CHECK-DAG: %[[B12:.*]] = mosh.eq(%[[V1]], %[[V2]])
-  // CHECK-DAG: %[[B23:.*]] = mosh.param.to_value: i1 = <and(eq(:si64 [[D1]], 3), eq(:si64 [[D2]], 42))>
-  // CHECK-DAG: %[[FALSE:.*]] = mosh.param.to_value: i1 = <0>
-  // CHECK: kgen.return %[[TRUE]], %[[B12]], %[[B23]], %[[FALSE]], %[[FALSE]]
+  // CHECK-DAG: %[[B23:.*]] = mosh.param.to_value: scalar<bool> = <and(eq(:scalar<si64> [[D1]], 3), eq(:scalar<si64> [[D2]], 42))>
+  // CHECK-DAG: %[[FALSE:.*]] = mosh.param.to_value: scalar<bool> = <false>
+  // CHECK: kgen.return %[[TRUE]], %[[B12]], %[[B23]], %[[FALSE]], %[[FALSE]] : !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>
   %v2 = mosh.param.to_value: !mosh.ape = <[D1, 42]>
   %v3 = mosh.param.to_value: !mosh.ape = <[3, D2]>
@@ -140,18 +140,18 @@ kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   %b23 = mosh.eq(%v2, %v3)
   %b34 = mosh.eq(%v3, %v4)
   %b25 = mosh.eq(%v2, %v5)
-  kgen.return %b11, %b12, %b23, %b34, %b25 : i1, i1, i1, i1, i1
+  kgen.return %b11, %b12, %b23, %b34, %b25 : !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>
 }
 
 // CHECK: kgen.generator @get_dim_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]]>()
-kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (si64, si64, si64, si64) {
+kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (!kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>) {
   // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <0>
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[D10:.*]] = mosh.get_dim(%[[V1]])[%[[C0]]]
   // CHECK-DAG: %[[D20:.*]] = mosh.param.to_value = <[[D1]]>
   // CHECK-DAG: %[[D21:.*]] = mosh.param.to_value = <42>
   // CHECK-DAG: %[[D22:.*]] = mosh.param.to_value = <23>
-  // CHECK: kgen.return %[[D10]], %[[D20]], %[[D21]], %[[D22]]
+  // CHECK: kgen.return %[[D10]], %[[D20]], %[[D21]], %[[D22]] : !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>
   %idx0 = mosh.param.to_value = <0>
   %idx1 = mosh.param.to_value = <1>
   %idx-1 = mosh.param.to_value = <-1>
@@ -161,42 +161,42 @@ kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (si64, si64, si64, si64) {
   %d20 = mosh.get_dim(%v2)[%idx0]
   %d21 = mosh.get_dim(%v2)[%idx1]
   %d22 = mosh.get_dim(%v2)[%idx-1]
-  kgen.return %d10, %d20, %d21, %d22 : si64, si64, si64, si64
+  kgen.return %d10, %d20, %d21, %d22 : !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>
 }
 
 // CHECK-LABEL: kgen.generator @get_dim_nofold
-// CHECK: <[[SH1:.*]]: i64>
-kgen.generator @get_dim_nofold<D1: i64>() -> (si64, si64) {
+// CHECK: <[[SH1:.*]]: scalar<si32>>
+kgen.generator @get_dim_nofold<D1: !kgen.scalar<si32>>() -> (!kgen.scalar<si64>, !kgen.scalar<si64>) {
   // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <0>
   // CHECK-DAG: %[[C1:.*]] = mosh.param.to_value = <1>
-  // CHECK-DAG: %[[S0:.*]] = mosh.param.to_value: !mosh.ape = <[:i64 42, :i64 [[SH1]]]>
+  // CHECK-DAG: %[[S0:.*]] = mosh.param.to_value: !mosh.ape = <[:scalar<si32> 42, :scalar<si32> D1]>
   // CHECK-DAG: %[[D0:.*]] = mosh.get_dim(%[[S0]])[%[[C0]]]
   // CHECK-DAG: %[[D1:.*]] = mosh.get_dim(%[[S0]])[%[[C1]]]
   // CHECK: kgen.return %[[D0]], %[[D1]]
 
   %i0 = mosh.param.to_value = <0>
   %i1 = mosh.param.to_value = <1>
-  %shape = mosh.param.to_value: !mosh.ape = <[:i64 42, :i64 D1]>
+  %shape = mosh.param.to_value: !mosh.ape = <[:scalar<si32> 42, :scalar<si32> D1]>
 
   %d0 = mosh.get_dim(%shape)[%i0]
   %d1 = mosh.get_dim(%shape)[%i1]
-  kgen.return %d0, %d1 : si64, si64
+  kgen.return %d0, %d1 : !kgen.scalar<si64>, !kgen.scalar<si64>
 }
 
 // CHECK: kgen.generator @get_rank_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]]>()
-kgen.generator @get_rank_fold<Sh1: !mosh.ape, D1>() -> (si64, si64, si64) {
+kgen.generator @get_rank_fold<Sh1: !mosh.ape, D1>() -> (!kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>) {
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[R1:.*]] = mosh.get_rank(%[[V1]])
   // CHECK-DAG: %[[R2:.*]] = mosh.param.to_value = <2>
   // CHECK-DAG: %[[R3:.*]] = mosh.param.to_value = <0>
-  // CHECK: kgen.return %[[R1]], %[[R2]]
+  // CHECK: kgen.return %[[R1]], %[[R2]], %[[R3]] : !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>
   %v2 = mosh.param.to_value: !mosh.ape = <[D1, 42]>
   %v3 = mosh.param.to_value: !mosh.ape = <[]>
   %r1 = mosh.get_rank(%v1)
   %r2 = mosh.get_rank(%v2)
   %r3 = mosh.get_rank(%v3)
-  kgen.return %r1, %r2, %r3 : si64, si64, si64
+  kgen.return %r1, %r2, %r3 : !kgen.scalar<si64>, !kgen.scalar<si64>, !kgen.scalar<si64>
 }
 
 // CHECK: kgen.generator @new_fold<[[D1:.*]], [[D2:.*]]>()
@@ -210,23 +210,23 @@ kgen.generator @new_fold<D1, D2>() -> !mosh.ape {
   kgen.return %s1 : !mosh.ape
 }
 
-// CHECK: kgen.generator @num_elements_dyn_rank_no_fold<[[SH0:.*]]: !mosh.ape>() -> si64 {
-kgen.generator @num_elements_dyn_rank_no_fold<Sh0: !mosh.ape>() -> si64 {
+// CHECK: kgen.generator @num_elements_dyn_rank_no_fold<[[SH0:.*]]: !mosh.ape>() -> !kgen.scalar<si64> {
+kgen.generator @num_elements_dyn_rank_no_fold<Sh0: !mosh.ape>() -> !kgen.scalar<si64> {
   // CHECK-NEXT: %[[SH:.*]] = mosh.param.to_value: !mosh.ape = <[[SH0]]>
   %sh0 = mosh.param.to_value: !mosh.ape = <Sh0>
   // CHECK-NEXT: %[[RES:.*]] = mosh.num_elements(%[[SH]])
   %0 = mosh.num_elements(%sh0)
-  // CHECK-NEXT: kgen.return %[[RES]] : si64
-  kgen.return %0 : si64
+  // CHECK-NEXT: kgen.return %[[RES]] : !kgen.scalar<si64>
+  kgen.return %0 : !kgen.scalar<si64>
 }
 
-// CHECK: kgen.generator @num_elements_static_rank_fold<[[D0:.*]]>() -> si64 {
-kgen.generator @num_elements_static_rank_fold<D0>() -> si64 {
+// CHECK: kgen.generator @num_elements_static_rank_fold<[[D0:.*]]>() -> !kgen.scalar<si64> {
+kgen.generator @num_elements_static_rank_fold<D0>() -> !kgen.scalar<si64> {
   %sh0 = mosh.param.to_value: !mosh.ape = <[42, D0, 10]>
   // CHECK-NEXT: %[[RES:.*]] = mosh.param.to_value = <mul_no_wrap([[D0]], 420)>
   %0 = mosh.num_elements(%sh0)
-  // CHECK-NEXT: kgen.return %[[RES]] : si64
-  kgen.return %0 : si64
+  // CHECK-NEXT: kgen.return %[[RES]] : !kgen.scalar<si64>
+  kgen.return %0 : !kgen.scalar<si64>
 }
 
 // CHECK: kgen.generator @slice_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]], [[D2:.*]]>(

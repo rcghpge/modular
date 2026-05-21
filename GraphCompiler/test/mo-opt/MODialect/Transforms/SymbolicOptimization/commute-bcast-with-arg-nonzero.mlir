@@ -58,7 +58,7 @@ mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor
   // CHECK-DAG: %[[RES:.*]] = mo.add(%[[WHERETP]], %[[VAL6]]) : !mo.tensor<[mul_no_wrap([[A]], [[B]]), [[W]]], si64>
   // CHECK-DAG: %[[OLDRES:.*]] = mo.static.reshape(%[[RES]]) : !mo.tensor<[mul_no_wrap([[A]], [[B]]), [[W]]], si64> -> !mo.tensor<[mul_no_wrap([[A]], [[B]], [[W]]), 1], si64>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, A], f32> -> !mo.tensor<[B, A, 2, A], f32>
-  kgen.param.declare D: si64 = <mul_no_wrap(B, A, 2, A)>
+  kgen.param.declare D: scalar<si64> = <mul_no_wrap(B, A, 2, A)>
   %1 = mo.static.reshape(%0) : !mo.tensor<[B, A, 2, A], f32> -> !mo.tensor<[D], f32>
   %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[D], f32>) -> !mo.tensor<[K, 1], si64>
   // CHECK: mo.output<mul_no_wrap([[A]], [[B]], [[W]])> %[[OLDRES]] : !mo.tensor<[mul_no_wrap([[A]], [[B]], [[W]]), 1], si64>
@@ -88,4 +88,3 @@ mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1
   // CHECK-NEXT: mo.output<[[K]]> %[[RES]] : !mo.tensor<[[[K]], 1], si64>
   mo.output<K> %1 : !mo.tensor<[K, 1], si64>
 }
-

@@ -975,7 +975,7 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   }];
 
   let arguments = (ins MGP_DeviceBufferType:$buffer,
-                       Variadic<AnyInteger>:$dims,
+                       Variadic<SI64Scalar>:$dims,
                        BoolAttr:$mut,
                        MO_IOKind:$io,
                        BoolAttr:$exclusive
@@ -1220,7 +1220,7 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   }];
 
   let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
-                       Variadic<AnyInteger>:$dynamic_dims);
+                       Variadic<SI64Scalar>:$dynamic_dims);
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
 
   let assemblyFormat = [{
@@ -1378,8 +1378,8 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
 
     Example:
     ```
-    %dim0 = mogg.shape_result.__getitem__(%shape, 0) : (!mogg.shape_func_result<4>) -> si64
-    %dim1 = mogg.shape_result.__getitem__(%shape, 1) : (!mogg.shape_func_result<4>) -> si64
+    %dim0 = mogg.shape_result.__getitem__(%shape, 0) : (!mogg.shape_func_result<4>) -> !kgen.scalar<si64>
+    %dim1 = mogg.shape_result.__getitem__(%shape, 1) : (!mogg.shape_func_result<4>) -> !kgen.scalar<si64>
     ```
   }];
 
@@ -1387,7 +1387,7 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
     MOGG_ShapeFuncResult:$shape,
     Builtin_IntegerAttr:$index
   );
-  let results = (outs SI64:$result);
+  let results = (outs SI64Scalar:$result);
 
   let assemblyFormat = [{
     `(` $shape `,` $index `)` attr-dict `:` functional-type(operands, results)
@@ -1412,7 +1412,7 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
     ```
   }];
 
-  let arguments = (ins Variadic<AnyInteger>:$dynamic_dims,
+  let arguments = (ins Variadic<SI64Scalar>:$dynamic_dims,
                        MOSH_ShapeAttr:$shape);
   let results = (outs MOGG_Shape:$result);
 

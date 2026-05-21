@@ -12,6 +12,7 @@
 #include "GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GraphCompiler/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -606,11 +607,11 @@ LogicalResult MOGraphLowering::lower(MO::IndexToTensorOp toTensorOp) {
   Value loweredIndexVal =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
 
-  // The input to mo.index.to_tensor is now an si64.
-  // Cast to index to match the expectation of mgp.set_with_index.
+  // The input to mo.index.to_tensor is an scalar<si64>. Cast to index to match
+  // the expectation of mgp.set_with_index.
   auto &builder = loweringState.getExecuteOpBuilder();
-  loweredIndexVal = mlir::index::CastSOp::create(
-      builder, toTensorOp.getLoc(), builder.getIndexType(), loweredIndexVal);
+  loweredIndexVal =
+      MGP::dimensionToIndex(builder, toTensorOp.getLoc(), loweredIndexVal);
 
   auto outChain = opLoweringState.bufferSetWithIndex(
       outputStorage.buffer, {loweredIndexVal},
@@ -727,14 +728,13 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
        llvm::enumerate(inputTy.getDims(), resTy.getDims())) {
 
     // If the result dimension is static, nothing to do.
-    if (isa<IntegerAttr>(resDim))
+    if (MOSH::ShapeAttr::getStaticDim(resDim))
       continue;
 
     // If the input dimension is static, and the result is dynamic, we create
     // a constant runtime dimension.
-    if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
-      auto constOp =
-          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getSInt());
+    if (std::optional<int64_t> intDim = MOSH::ShapeAttr::getStaticDim(inDim)) {
+      auto constOp = opLoweringState.create<mlir::index::ConstantOp>(*intDim);
       runtimeDims.emplace_back(constOp.getResult());
       continue;
     }
@@ -794,7 +794,7 @@ LogicalResult MOGraphLowering::lower(MO::RebindOp rebindOp) {
       auto getDimOp = loweringState.getDim(rebindOp.getLoc(), loweredOutput,
                                            idx, getDeviceOrDefault(resTy));
 
-      auto asDimension = loweringState.indexToDimension(
+      auto asDimension = MGP::indexToDimension(
           loweringState.getExecuteOpBuilder(), rebindOp.getLoc(), getDimOp);
 
       if (auto err = loweringState.lowerParamDecl(rebindOp->getParentRegion(),

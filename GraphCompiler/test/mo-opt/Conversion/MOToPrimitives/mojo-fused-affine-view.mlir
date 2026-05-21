@@ -2,7 +2,7 @@
 
 // CHECK: mogg.kernel.stub @stub_0
 // CHECK:       [[LAMBDA:%.*]] = mogg.bind ({{.*}}) output_lambda
-// CHECK:       [[RESHAPE:%.*]] = mogg.tensor.reshape({{.*}}, {{.*}}) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32{{.*}}}>, si64) -> !mo.tensor<[A, 1], f32{{.*}}>
+// CHECK:       [[RESHAPE:%.*]] = mogg.tensor.reshape({{.*}}, {{.*}}) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32{{.*}}}>, !kgen.scalar<si64>) -> !mo.tensor<[A, 1], f32{{.*}}>
 // CHECK-NEXT:  [[FUSED:%.*]] = mogg.tensor.fused([[LAMBDA]], [[RESHAPE]]) : (!mo.tensor<[A, 1], f32{{.*}}>, !mo.tensor<[A, 1], f32{{.*}}>) -> !mo.tensor<[A, 1], f32{{.*}}>
 // CHECK:       mogg.call.execute["mo.reduce.add"] {{.*}} outputs([[FUSED]]
 

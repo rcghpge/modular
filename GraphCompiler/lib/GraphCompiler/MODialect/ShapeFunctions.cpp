@@ -9,6 +9,7 @@
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/POPDialect/POPAttrs.h"
 #include "Support/MDialect/ParserUtils.h"
@@ -31,7 +32,7 @@ Var ParamExprBuilder::createVar(TypedAttr attr) {
 }
 
 Var ParamExprBuilder::createVar(int64_t n) {
-  IntegerAttr indexValue = ShapeAttr::getDim(graphOp.getContext(), n);
+  TypedAttr indexValue = ShapeAttr::getDim(graphOp.getContext(), n);
   return createVar(indexValue);
 }
 
@@ -44,7 +45,7 @@ TypedAttr ParamExprBuilder::createKgenExpr(KGEN::POC poc,
 
 TypedAttr ParamExprBuilder::wrapNonTrivialAttrWithDecl(TypedAttr attr,
                                                        StringRef declPrefix) {
-  if (isa<IntegerAttr, KGEN::ParamDeclRefAttr>(attr))
+  if (isa<IntegerAttr, KGEN::SIMDAttr, KGEN::ParamDeclRefAttr>(attr))
     return attr;
 
   Type resTy = attr.getType();
@@ -91,8 +92,7 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   TypedAttr condAttr = condVar.getAttr();
 
   // Don't bother emitting trivially true assertions.
-  if (auto boolVal = dyn_cast<BoolAttr>(condAttr);
-      boolVal && boolVal.getValue())
+  if (KGEN::isTriviallyTrueProposition(condAttr))
     return;
 
   MLIRContext *ctx = condAttr.getContext();
@@ -110,14 +110,6 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
       KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
 
   (void)createKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
-}
-
-/// Try converting `attr` to a constant integer.
-std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
-  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-    return intAttr.getType().isSignedInteger() ? intAttr.getSInt()
-                                               : intAttr.getInt();
-  return std::nullopt;
 }
 
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr) {
@@ -786,6 +778,8 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   Var inputChannels = b.createVar(inputShape[inputChannelIdx]);
   Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
   Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
+  if (!ShapeAttr::isDim(numGroupsAttr))
+    numGroupsAttr = KGEN::CastFromBuiltinAttr::get(numGroupsAttr);
   Var numGroups = b.createVar(numGroupsAttr);
 
   // More checks on channels and numGroups.
@@ -1352,19 +1346,19 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
 
   ArrayRef<TypedAttr> inputDims = inputShape.getValues();
   for (auto inputDim : inputDims) {
-    auto inputIntDim = dyn_cast<IntegerAttr>(inputDim);
+    std::optional<int64_t> inputIntDim = tryGetConstantInt(inputDim);
 
     // Check if input is 0
-    if (!inputIntDim || inputIntDim.getSInt() != 0)
+    if (!inputIntDim || *inputIntDim != 0)
       inputNonZeroDims.push_back(inputDim);
   }
 
   ArrayRef<TypedAttr> targetDims = targetShape.getValues();
   for (auto [idx, targetDim] : llvm::enumerate(targetDims)) {
-    auto targetIntDim = dyn_cast<IntegerAttr>(targetDim);
+    std::optional<int64_t> targetIntDim = tryGetConstantInt(targetDim);
 
     // Check if target is -1
-    if (targetIntDim && targetIntDim.getSInt() == -1) {
+    if (targetIntDim && *targetIntDim == -1) {
       // Detected multiple negative one, gives up and let runtime handle the
       // error via a shape function call.
       if (maybeTargetNegOneDimIdx.has_value()) {
@@ -1380,7 +1374,7 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
       // analysis here.
 
       // Use only non-zero dimensions
-      if (!targetIntDim || targetIntDim.getSInt() != 0)
+      if (!targetIntDim || *targetIntDim != 0)
         targetNonNegOneDims.push_back(targetDim);
     }
   }
@@ -1399,7 +1393,8 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
 
     // Add a 1 to the shapes to multiply to ensure the denominator is valid.
     auto mulDims = targetNonNegOneDims;
-    mulDims.emplace_back(IntegerAttr::get(numerator.getAttr().getType(), 1));
+    mulDims.emplace_back(
+        ShapeAttr::getDim(numerator.getAttr().getContext(), 1));
     Var denominator = b.createVar(
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, mulDims));
 
@@ -1456,11 +1451,11 @@ ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
     return ShapeMaterializeResult::error(
         "[roi_align] rois shape must have rank 2");
   }
-  if (!outHeightAttr.getType().isIntOrIndex()) {
+  if (!MOSH::ShapeAttr::isDim(outHeightAttr)) {
     return ShapeMaterializeResult::error(
         "[roi_align] output height must be a single integer");
   }
-  if (!outWidthAttr.getType().isIntOrIndex()) {
+  if (!MOSH::ShapeAttr::isDim(outHeightAttr)) {
     return ShapeMaterializeResult::error(
         "[roi_align] output width must be a single integer");
   }
@@ -1797,11 +1792,8 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
     TypedAttr cond = condAndMsg.value().first;
     StringAttr errMsg = condAndMsg.value().second;
 
-    // Check assert condition is a static false.
-    if (auto boolAttr = dyn_cast<BoolAttr>(cond);
-        boolAttr && boolAttr.getValue() == false) {
+    if (KGEN::isTriviallyFalseProposition(cond))
       return errMsg;
-    }
   }
   return {};
 }
@@ -1832,16 +1824,10 @@ ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
       StringAttr errMsg = condAndMsg.value().second;
 
       if (validateAsserts) {
-        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
-            !boolAttr || !boolAttr.getValue()) {
+        if (!KGEN::isTriviallyTrueProposition(cond))
           return Error(errMsg.str());
-        }
-      } else {
-        // Error if condition didn't fold to true.
-        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
-            boolAttr && !boolAttr.getValue()) {
-          return Error(errMsg.str());
-        }
+      } else if (KGEN::isTriviallyFalseProposition(cond)) {
+        return Error(errMsg.str());
       }
     }
 

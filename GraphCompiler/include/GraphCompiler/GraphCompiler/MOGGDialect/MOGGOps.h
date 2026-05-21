@@ -97,9 +97,7 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
 
     if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
       auto ref = KGEN::ParamDeclRefAttr::get(
-          getDim.getDimension(),
-          IntegerType::get(kernel.getContext(), 64,
-                           IntegerType::SignednessSemantics::Signed));
+          getDim.getDimension(), MOSH::ShapeAttr::getDimType(op->getContext()));
       auto itr = seenParams.find(ref);
 
       if (itr == seenParams.end()) {

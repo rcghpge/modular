@@ -2074,7 +2074,8 @@ struct MultiHeadAttentionPattern
       return;
 
     // Inserts a cpuDevice guard checking (beforeShape == afterShape)
-    IntegerType boolTy = rewriter.rewriter.getI1Type();
+    Type boolTy =
+        KGEN::SIMDType::get(graphOp.getContext(), 1, KGEN::KGENDType::kBool);
     TypedAttr cmpAttr =
         KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
                                     {beforeShape, afterShape}, boolTy);

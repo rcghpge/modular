@@ -4,14 +4,15 @@
 
 // Cast and save the output dimension in init
 // CHECK-DAG: %[[DIMS:.*]]:2 = mogg.generic.compiled.region
-// CHECK-DAG: %[[DIM_I:.*]] = index.casts %[[DIMS]]#1 : si64 to index
+// CHECK-DAG: %[[DIM_S:.*]] = pop.cast_to_builtin %[[DIMS]]#1 : !kgen.scalar<si64> to si64
+// CHECK-DAG: %[[DIM_I:.*]] = index.casts %[[DIM_S]]
 // CHECK-DAG: mgp.int.cache {{.*}} %[[DIM_I]]
 
 // Load and cast the dimension in exec.
 // CHECK: } execute (
 // CHECK: %[[DIM2_I:.*]] = mgp.int.get_cached
 // CHECK: %[[DIM2:.*]] = index.casts %[[DIM2_I]] : index to si64
-
+// CHECK: %[[DIM3:.*]] = pop.cast_from_builtin %[[DIM2]] : si64 to !kgen.scalar<si64>
 
 
 mo.graph @shape_func_consts() -> !mo.tensor<[D0], f32> {

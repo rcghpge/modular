@@ -255,11 +255,11 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
     return emitError() << "tensor dimensions must be a getDimType()";
 
   for (TypedAttr dimAttr : shape.getValues()) {
-    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
-      if (dimIntAttr.getSInt() < 0)
+    if (auto dimInt = ShapeAttr::getStaticDim(dimAttr)) {
+      if (*dimInt < 0)
         return emitError()
                << "invalid dimension, expect all dimensions >= 0 got: "
-               << dimIntAttr.getSInt();
+               << *dimInt;
     }
   }
 
@@ -471,8 +471,7 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
                                          DeviceRefAttr deviceRef,
                                          DictionaryAttr metadata) {
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
-  auto idxTy = ShapeAttr::getDimType(ctx);
-  return get(ArrayRef<TypedAttr>{IntegerAttr::get(idxTy, size)}, si64Ty,
+  return get(ArrayRef<TypedAttr>{ShapeAttr::getDim(ctx, size)}, si64Ty,
              deviceRef, metadata);
 }
 
@@ -633,7 +632,7 @@ bool TensorType::isParameterizedDimParam(TypedAttr attr) {
 }
 
 bool TensorType::isIntegerDimParam(TypedAttr attr) {
-  return llvm::isa<IntegerAttr>(attr) && ShapeAttr::isDim(attr);
+  return ShapeAttr::getStaticDim(attr).has_value();
 }
 
 SmallVector<int64_t> TensorType::getIntDims() const {
@@ -653,21 +652,21 @@ std::optional<int64_t> TensorType::getNumElements() const {
     return {};
 
   TypedAttr attr = getSymbolicNumElements();
-  auto resultElements = mlir::dyn_cast_or_null<IntegerAttr>(attr);
-  if (!resultElements)
+  auto numElements = ShapeAttr::getStaticDim(attr);
+  if (!numElements.has_value())
     return {};
 
   // We allow one -1 dimension for now, which is a fancy parameter.
   // TODO(15523): maybe remove once -1 is handled more gracefully.
-  if (resultElements.getSInt() < 0)
+  if (*numElements < 0)
     return {};
 
-  return resultElements.getSInt();
+  return *numElements;
 }
 
 TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
   SmallVector<TypedAttr> shape(getDims());
-  shape[dim] = mlir::IntegerAttr::get(shape.front().getType(), size);
+  shape[dim] = ShapeAttr::getDim(shape.front().getContext(), size);
   auto shapeAttr = ShapeAttr::get(shape, ShapeType::get(getContext()));
 
   return cloneWith(shapeAttr);
@@ -1006,11 +1005,11 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
                        << shapeAttr;
 
   for (TypedAttr dimAttr : shape.getValues()) {
-    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
-      if (dimIntAttr.getSInt() < 0)
+    if (auto dimInt = ShapeAttr::getStaticDim(dimAttr)) {
+      if (*dimInt < 0)
         return emitError()
                << "invalid dimension, expect all dimensions >= 0 got: "
-               << dimIntAttr.getSInt();
+               << *dimInt;
     }
   }
 

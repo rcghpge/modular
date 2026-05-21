@@ -182,7 +182,8 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
              llvm::zip_equal(inShape.getValues(), outShape.getValues())) {
           // Check if the input dimension is symbolic and the output dimension
           // is static (integer literal)
-          if (isa<KGEN::ParamDeclRefAttr>(inDim) && isa<IntegerAttr>(outDim)) {
+          if (isa<KGEN::ParamDeclRefAttr>(inDim) &&
+              MO::TensorType::isIntegerDimParam(outDim)) {
             return WalkResult::advance();
           }
         }

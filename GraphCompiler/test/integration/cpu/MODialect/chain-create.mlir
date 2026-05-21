@@ -28,9 +28,9 @@
 
 mo.graph @bmm<D1, D2, D3, D4, D5, D6, D7, D8>(%arg0: !mo.tensor<[D1, D2, D3, D4], f32>, %arg1: !mo.tensor<[D5, D6, D7, D8], f32>) -> !mo.tensor<[D1, D2, D3, D8], f32> {
 
-  kgen.param.declare CH0: !mo.chain = <apply(:(i1)            -> !mo.chain "mo.assert"{message = "1st batch dimensions must match" : !kgen.string},      eq(:si64 D1, D5))>
-  kgen.param.declare CH1: !mo.chain = <apply(:(!mo.chain, i1) -> !mo.chain "mo.assert"{message = "2nd batch dimensions must match" : !kgen.string}, CH0, eq(:si64 D2, D6))>
-  kgen.param.declare CH2: !mo.chain = <apply(:(!mo.chain, i1) -> !mo.chain "mo.assert"{message = "inner dimension must match" : !kgen.string},      CH1, eq(:si64 D4, D7))>
+  kgen.param.declare CH0: !mo.chain = <apply(:(!kgen.scalar<bool>)            -> !mo.chain "mo.assert"{message = "1st batch dimensions must match" : !kgen.string},      eq(:scalar<si64> D1, D5))>
+  kgen.param.declare CH1: !mo.chain = <apply(:(!mo.chain, !kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "2nd batch dimensions must match" : !kgen.string}, CH0, eq(:scalar<si64> D2, D6))>
+  kgen.param.declare CH2: !mo.chain = <apply(:(!mo.chain, !kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "inner dimension must match" : !kgen.string},      CH1, eq(:scalar<si64> D4, D7))>
 
   %ch0 = mosh.param.to_value: !mo.chain = <CH0>
   %ch1 = mosh.param.to_value: !mo.chain = <CH2>

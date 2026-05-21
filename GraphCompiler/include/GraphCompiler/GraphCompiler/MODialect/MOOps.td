@@ -68,17 +68,17 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
   MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
-  let summary = "`index` to scalar `!mo.tensor` casting operation";
+  let summary = "`scalar<si64>` to scalar `!mo.tensor` casting operation";
   let description = [{
     Example:
 
     ```mlir
-      %c: index
+      %c: scalar<si64>
       %scalarT = mo.index.to_tensor(%c) -> !mo.tensor<[], si64>
     ```
   }];
 
-  let arguments = (ins SI64:$input);
+  let arguments = (ins SI64Scalar:$input);
   let results = (outs MO_RankedScalarIndexTensor:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
@@ -5039,7 +5039,7 @@ def MO_AssertOp : MO_Op<"assert"> {
   }];
 
   let arguments = (ins Optional<MO_Chain>:$inChain,
-                       I1:$cond,
+                       BoolScalar:$cond,
                        AttrOfType<KGEN_StringType>:$message);
   let results = (outs MO_Chain:$chain);
 

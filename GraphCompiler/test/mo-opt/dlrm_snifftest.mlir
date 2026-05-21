@@ -318,8 +318,8 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %310 = mo.rebind<() -> D135>(%308) : !mo.tensor<[D141, 128], f32> -> !mo.tensor<[D135, 128], f32>
     %311 = mo.rebind<() -> D136>(%309) : !mo.tensor<[D139, 128], f32> -> !mo.tensor<[D136, 128], f32>
     %312 = mo.rebind(%309) : !mo.tensor<[D139, 128], f32> -> !mo.tensor<[D135, 128], f32>
-    kgen.param.declare SORS_EQ137: i1 = <eq(:si64 D135, D136)>
-    kgen.param.declare SORS_CH138: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ137)>
+    kgen.param.declare SORS_EQ137: scalar<bool> = <eq(:scalar<si64> D135, D136)>
+    kgen.param.declare SORS_CH138: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ137)>
     %313 = mo.add(%310, %312) : !mo.tensor<[D135, 128], f32>
     %314 = mo.rebind<() -> D134>(%313) : !mo.tensor<[D135, 128], f32> -> !mo.tensor<[D134, 128], f32>
     %315 = mo.relu(%314) : !mo.tensor<[D134, 128], f32>
@@ -335,8 +335,8 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %325 = mo.rebind<() -> D125>(%323) : !mo.tensor<[D131, 32], f32> -> !mo.tensor<[D125, 32], f32>
     %326 = mo.rebind<() -> D126>(%324) : !mo.tensor<[D129, 32], f32> -> !mo.tensor<[D126, 32], f32>
     %327 = mo.rebind(%324) : !mo.tensor<[D129, 32], f32> -> !mo.tensor<[D125, 32], f32>
-    kgen.param.declare SORS_EQ127: i1 = <eq(:si64 D125, D126)>
-    kgen.param.declare SORS_CH128: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ127)>
+    kgen.param.declare SORS_EQ127: scalar<bool> = <eq(:scalar<si64> D125, D126)>
+    kgen.param.declare SORS_CH128: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ127)>
     %328 = mo.add(%325, %327) : !mo.tensor<[D125, 32], f32>
     %329 = mo.rebind<() -> D124>(%328) : !mo.tensor<[D125, 32], f32> -> !mo.tensor<[D124, 32], f32>
     %330 = mo.relu(%329) : !mo.tensor<[D124, 32], f32>
@@ -451,8 +451,8 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %439 = mo.rebind<() -> D22>(%437) : !mo.tensor<[D28, 256], f32> -> !mo.tensor<[D22, 256], f32>
     %440 = mo.rebind<() -> D23>(%438) : !mo.tensor<[D26, 256], f32> -> !mo.tensor<[D23, 256], f32>
     %441 = mo.rebind(%438) : !mo.tensor<[D26, 256], f32> -> !mo.tensor<[D22, 256], f32>
-    kgen.param.declare SORS_EQ24: i1 = <eq(:si64 D22, D23)>
-    kgen.param.declare SORS_CH25: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ24)>
+    kgen.param.declare SORS_EQ24: scalar<bool> = <eq(:scalar<si64> D22, D23)>
+    kgen.param.declare SORS_CH25: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ24)>
     %442 = mo.add(%439, %441) : !mo.tensor<[D22, 256], f32>
     %443 = mo.rebind<() -> D21>(%442) : !mo.tensor<[D22, 256], f32> -> !mo.tensor<[D21, 256], f32>
     %444 = mo.relu(%443) : !mo.tensor<[D21, 256], f32>
@@ -468,8 +468,8 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %454 = mo.rebind<() -> D12>(%452) : !mo.tensor<[D18, 64], f32> -> !mo.tensor<[D12, 64], f32>
     %455 = mo.rebind<() -> D13>(%453) : !mo.tensor<[D16, 64], f32> -> !mo.tensor<[D13, 64], f32>
     %456 = mo.rebind(%453) : !mo.tensor<[D16, 64], f32> -> !mo.tensor<[D12, 64], f32>
-    kgen.param.declare SORS_EQ14: i1 = <eq(:si64 D12, D13)>
-    kgen.param.declare SORS_CH15: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ14)>
+    kgen.param.declare SORS_EQ14: scalar<bool> = <eq(:scalar<si64> D12, D13)>
+    kgen.param.declare SORS_CH15: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ14)>
     %457 = mo.add(%454, %456) : !mo.tensor<[D12, 64], f32>
     %458 = mo.rebind<() -> D11>(%457) : !mo.tensor<[D12, 64], f32> -> !mo.tensor<[D11, 64], f32>
     %459 = mo.relu(%458) : !mo.tensor<[D11, 64], f32>
@@ -485,8 +485,8 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %469 = mo.rebind<() -> D2>(%467) : !mo.tensor<[D8, 1], f32> -> !mo.tensor<[D2, 1], f32>
     %470 = mo.rebind<() -> D3>(%468) : !mo.tensor<[D6, 1], f32> -> !mo.tensor<[D3, 1], f32>
     %471 = mo.rebind(%468) : !mo.tensor<[D6, 1], f32> -> !mo.tensor<[D2, 1], f32>
-    kgen.param.declare SORS_EQ4: i1 = <eq(:si64 D2, D3)>
-    kgen.param.declare SORS_CH5: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ4)>
+    kgen.param.declare SORS_EQ4: scalar<bool> = <eq(:scalar<si64> D2, D3)>
+    kgen.param.declare SORS_CH5: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ4)>
     %472 = mo.add(%469, %471) : !mo.tensor<[D2, 1], f32>
     %473 = mo.rebind<() -> D1>(%472) : !mo.tensor<[D2, 1], f32> -> !mo.tensor<[D1, 1], f32>
     %474 = mo.sin(%473) : !mo.tensor<[D1, 1], f32>

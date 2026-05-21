@@ -17,7 +17,7 @@ mo.graph @range_shape_func_add(%arg0: !mo.tensor<[8], f32>) -> !mo.tensor<[8], f
   %2 = mo.constant {value = #M.dense_array<8.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
   mo.invoke_shape_func["mo.range"]<() -> D0>(%1, %2, %0) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32]} : (!mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
   %3 = mo.range(%1, %2, %0) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D0], f32>
-  kgen.param.declare ERR: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 D0, 8))>
+  kgen.param.declare ERR: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> D0, 8))>
   %4 = mo.rebind(%3) : !mo.tensor<[D0], f32> -> !mo.tensor<[8], f32>
   %5 = mo.add(%4, %arg0) : !mo.tensor<[8], f32>
   mo.output %5 : !mo.tensor<[8], f32>

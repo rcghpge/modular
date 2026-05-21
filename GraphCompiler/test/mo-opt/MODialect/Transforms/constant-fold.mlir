@@ -68,7 +68,7 @@ mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @partial_fold_parameterized_outputs<() -> O>() -> !mo.tensor<[O], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
-// CHECK-NEXT: kgen.param.declare A: si64 = <600>
+// CHECK-NEXT: kgen.param.declare A: scalar<si64> = <600>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind([[V0]]) : !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
 // CHECK-NEXT: mo.output<A> [[V1]] : !mo.tensor<[A], f32>
 mo.graph @partial_fold_parameterized_outputs<() -> O>() -> (!mo.tensor<[O], f32>) {

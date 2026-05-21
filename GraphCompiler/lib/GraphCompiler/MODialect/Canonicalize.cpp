@@ -13,12 +13,14 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/GraphCompiler/Matchers.h"
 #include "GraphCompiler/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -378,9 +380,13 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
   // If the condition is true, we return a chain attribute, otherwise we leave
   // the op as is and a pass can either check for failing asserts or it becomes
   // a guaranteed runtime failure.
-  if (auto boolAttr = dyn_cast_if_present<BoolAttr>(adaptor.getCond()))
-    if (boolAttr.getValue())
-      return ChainAttr::get(ChainType::get(getContext()));
+  TypedAttr condAttr = dyn_cast_if_present<TypedAttr>(adaptor.getCond());
+  if (!condAttr)
+    return {};
+
+  if (KGEN::isTriviallyTrueProposition(condAttr))
+    return ChainAttr::get(ChainType::get(getContext()));
+
   return {};
 }
 
@@ -1005,11 +1011,11 @@ void IfOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
 OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
-  auto inputAttr = dyn_cast_if_present<IntegerAttr>(adaptor.getInput());
+  auto inputAttr = dyn_cast_if_present<KGEN::SIMDAttr>(adaptor.getInput());
   if (!inputAttr)
     return {};
 
-  SmallVector<APInt> res{inputAttr.getValue()};
+  SmallVector<APInt> res{inputAttr.getValues().front().getIntVal()};
   auto rankedResTy = RankedTensorType::get({}, getType().getElementType());
   return IntArrayElementsAttr::get(rankedResTy, res);
 }
@@ -1020,11 +1026,12 @@ LogicalResult IndexToTensorOp::canonicalize(IndexToTensorOp op,
   if (!paramToValueOp)
     return failure();
 
-  auto inputIntAttr = dyn_cast<IntegerAttr>(paramToValueOp.getValue());
-  if (!inputIntAttr)
+  std::optional<int64_t> inputInt =
+      tryGetConstantInt(paramToValueOp.getValue());
+  if (!inputInt)
     return failure();
 
-  SmallVector<APInt> res{inputIntAttr.getValue()};
+  SmallVector<APInt> res{APInt(64, *inputInt, /*isSigned=*/true)};
   auto rankedResTy = RankedTensorType::get({}, op.getType().getElementType());
   auto elementsAttr =
       cast<ElementsAttr>(IntArrayElementsAttr::get(rankedResTy, res));
@@ -1782,10 +1789,12 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
     return failure();
 
   // If a broadcast has an empty input, it is not equivalent to a reshape.
-  auto resTyAttr = dyn_cast<IntegerAttr>(resTy.getSymbolicNumElements());
-  auto inputTyAttr = dyn_cast<IntegerAttr>(inputTy.getSymbolicNumElements());
-  if ((resTyAttr && resTyAttr.getSInt() == 0) ||
-      (inputTyAttr && inputTyAttr.getSInt() == 0))
+  auto resNumElems =
+      MOSH::ShapeAttr::getStaticDim(resTy.getSymbolicNumElements());
+  auto inputNumElems =
+      MOSH::ShapeAttr::getStaticDim(inputTy.getSymbolicNumElements());
+  if ((resNumElems && *resNumElems == 0) ||
+      (inputNumElems && *inputNumElems == 0))
     return failure();
 
   // If a broadcast does not change the number of elements, it is equivalent to

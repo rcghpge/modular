@@ -4,7 +4,7 @@
 // CHECK: mo.graph @ops_with_params_no_dce<[[D0:[^,>]*]]>(%[[ARG0:.*]]: !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, %[[SH:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si32> {
 mo.graph @ops_with_params_no_dce<D0>(%arg0: !mo.tensor<[D0], si32>, %sh: !mo.tensor<[2], si64>) -> !mo.tensor<[D0], si32> {
   // Operations with parameters that are not used get DCE'd, but their parameter declarations remain
-  // CHECK-DAG: kgen.param.declare [[D1:[^ ]*]]: si64 = <[[D0]]>
+  // CHECK-DAG: kgen.param.declare [[D1:[^ ]*]]: scalar<si64> = <[[D0]]>
   %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[D0], si32> -> !mo.tensor<[D1], si32>
   // CHECK-DAG: %{{.*}} = mo.broadcast_to<() -> [[D4:.*]], [[D5:.*]]>
   %1 = mo.broadcast_to<() -> D4, D5>(%arg0, %sh) : (

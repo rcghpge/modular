@@ -155,7 +155,7 @@ static LogicalResult genericCanonicalize(Operation *op,
   // For the folder's result, we support converting these types of attributes
   // into a `ParamToValueOp`.
   if (isa<KGEN::ParamDeclRefAttr, KGEN::ParamOperatorAttr, IntegerAttr,
-          ShapeAttr>(resultAttr)) {
+          KGEN::SIMDAttr, ShapeAttr>(resultAttr)) {
     rewriter.replaceOpWithNewOp<ParamToValueOp>(op, resultAttr);
     return success();
   }
@@ -275,7 +275,7 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
     return {};
 
   if (input1 == input2) // fast path
-    return BoolAttr::get(getContext(), true);
+    return KGEN::splatIntLiteralToSIMD(true, cast<KGEN::SIMDType>(getType()));
 
   auto shape1 = dyn_cast_or_null<ShapeAttr>(input1);
   auto shape2 = dyn_cast_or_null<ShapeAttr>(input2);
@@ -284,7 +284,7 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
 
   // If the inputs are different rank, we can fold.
   if (shape1.getRank() != shape2.getRank())
-    return BoolAttr::get(getContext(), false);
+    return KGEN::splatIntLiteralToSIMD(false, cast<KGEN::SIMDType>(getType()));
 
   // If both inputs have the same static rank, we fold into an expression.
   return asExpression(shape1, shape2);
@@ -299,28 +299,28 @@ TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
 
 OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
   auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
-  auto dim = dyn_cast_or_null<IntegerAttr>(adaptor.getDim());
-  if (input && dim) {
-    auto normalizedAxis =
-        normalizeAxis(dim.getValue().getSExtValue(), input.getRank());
-    ArrayRef<TypedAttr> values = input.getValues();
-    ASSERT_STREAM((normalizedAxis >= 0) &&
-                      (normalizedAxis < static_cast<int64_t>(values.size())),
-                  "Normalized axis must be in range [0, "
-                      << values.size() << "] but it is " << normalizedAxis);
-    TypedAttr value = values[normalizedAxis];
-    if (value.getType() == getType())
-      return value;
+
+  std::optional<int64_t> axisOr = ShapeAttr::getStaticDim(adaptor.getDim());
+  if (!input || !axisOr)
     return {};
-  }
+
+  auto normalizedAxis = normalizeAxis(*axisOr, input.getRank());
+  ArrayRef<TypedAttr> values = input.getValues();
+  ASSERT_STREAM((normalizedAxis >= 0) &&
+                    (normalizedAxis < static_cast<int64_t>(values.size())),
+                "Normalized axis must be in range [0, "
+                    << values.size() << "] but it is " << normalizedAxis);
+  TypedAttr value = values[normalizedAxis];
+  Type resTy = getType();
+  if (value.getType() == resTy)
+    return value;
   return {};
 }
 
 OpFoldResult GetRankOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    auto indexTy = ShapeAttr::getDimType(getContext());
-    return IntegerAttr::get(indexTy, input.getRank());
-  }
+  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput()))
+    return MOSH::ShapeAttr::getDim(getContext(), input.getRank());
+
   return {};
 }
 
@@ -344,17 +344,17 @@ OpFoldResult NumElementsOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   auto inputAttr = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
-  auto startAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getStart());
-  auto endAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getEnd());
-  if (!inputAttr || !startAttr || !endAttr)
+  std::optional<int64_t> startOr = ShapeAttr::getStaticDim(adaptor.getStart());
+  std::optional<int64_t> endOr = ShapeAttr::getStaticDim(adaptor.getEnd());
+  if (!inputAttr || !startOr || !endOr)
     return {};
 
   // Clamp `start` and `end` to the range [0, rank], since based on slice
   // semantics these arguments may fall outside the rank of the `ShapeAttr`.
   // TODO: is this really needed? Maybe we should just enforce this in IR.
   int64_t rank = inputAttr.getRank();
-  int64_t end = clampAxis(endAttr.getValue().getSExtValue(), rank);
-  int64_t start = clampAxis(startAttr.getValue().getSExtValue(), rank);
+  int64_t end = clampAxis(*endOr, rank);
+  int64_t start = clampAxis(*startOr, rank);
 
   // Ensure that the indices we use to create slicedDims are valid.
   if (start > end) {

@@ -9,6 +9,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/Analysis/StaticReshapeDimensionsMappingAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/SplitSlicePatterns.h"
@@ -481,7 +482,7 @@ struct ConvToMatmulPattern
     // Check filter size — spatial dims must be 1x1.
     ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
     ArrayRef<TypedAttr> filterDims = filterTy.getTypedShapeAttr().getValues();
-    IntegerAttr intOneAttr = rewriter.getDimAttr(1);
+    TypedAttr intOneAttr = rewriter.getDimAttr(1);
     size_t spatialStart = isFCRS ? 2 : 0;
     if (filterDims[spatialStart] != intOneAttr ||
         filterDims[spatialStart + 1] != intOneAttr)
@@ -1095,7 +1096,7 @@ static bool isStaticConcat(ConcatOp op) {
   if (axis >= inputType.getRank())
     return false;
 
-  if (!isa<IntegerAttr>(inputType.getDim(axis)))
+  if (!isStaticDimAttr(inputType.getDim(axis)))
     return false;
 
   return true;
@@ -1145,12 +1146,12 @@ static std::optional<int64_t> findSqueezeAxis(MO::TensorType inputType,
   });
 
   auto [inputDim, outputDim] = *it;
-  auto inputDimInt = dyn_cast<mlir::IntegerAttr>(*inputDim);
+  std::optional<int64_t> inputDimInt = tryGetConstantInt(*inputDim);
 
   if (!inputDimInt)
     return std::nullopt;
 
-  if (inputDimInt.getSInt() != 1)
+  if (*inputDimInt != 1)
     return std::nullopt;
 
   auto offset = std::distance(zipIter.begin(), it);
@@ -1257,7 +1258,7 @@ struct SwimConcatThroughReshapeLikeOpsPattern
     const bool couldNotFindAnotherAxis =
         mappedConcatAxis == concatInputType.getRank();
     if (couldNotFindAnotherAxis ||
-        !isa<IntegerAttr>(concatInputType.getDim(mappedConcatAxis))) {
+        !isStaticDimAttr(concatInputType.getDim(mappedConcatAxis))) {
       return rewriter.notifyMatchFailure(
           concatOp,
           "Trailing ones or trailing dynamic dimensions are unsupported");
@@ -1298,7 +1299,7 @@ struct SwimConcatThroughReshapeLikeOpsPattern
 
     SmallVector<TypedAttr> newConcatOutputShape(firstBeforeType.getDims());
     newConcatOutputShape[newConcatAxis] = rewriter.getDimAttr(
-        cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getSInt() *
+        *tryGetConstantInt(newConcatOutputShape[newConcatAxis]) *
         reshapeOps.size());
     auto newConcatOutputType = concatInputType.cloneWith(newConcatOutputShape);
     auto newConcatOp = rewriter.create<ConcatOp>(
@@ -1766,7 +1767,7 @@ struct SplitAndSqueezesPattern
     for (auto [inDim, inferredInDim, expectedInDim] :
          llvm::zip(inDims, inferredInDims, expectedInDims)) {
       TypedAttr resolvedInDim =
-          isa<IntegerAttr>(inferredInDim) ? inferredInDim : inDim;
+          isStaticDimAttr(inferredInDim) ? inferredInDim : inDim;
       if (resolvedInDim != expectedInDim)
         return false;
     }
@@ -2604,7 +2605,7 @@ static bool isStaticSplit(SplitOp op) {
     return false;
 
   int64_t axis = normalizeAxis(*axisOr, inputType.getRank());
-  if (!isa<IntegerAttr>(inputType.getDim(axis)))
+  if (!isStaticDimAttr(inputType.getDim(axis)))
     return false;
 
   return true;
@@ -2641,7 +2642,7 @@ static std::optional<int64_t> mapAxisThroughStaticReshape(
 
   // No non-1 dimension found, or it is dynamic — unsupported.
   if (mappedAxis == static_cast<int64_t>(beforeType.getRank()) ||
-      !isa<IntegerAttr>(beforeType.getDim(mappedAxis))) {
+      !isStaticDimAttr(beforeType.getDim(mappedAxis))) {
     return std::nullopt;
   }
 
@@ -2786,7 +2787,7 @@ struct SinkSplitThroughElementwisePattern
     rewriter.setInsertionPoint(op);
     auto inputType = llvm::cast<TensorType>(op.getInput().getType());
     uint64_t lastDimSize =
-        llvm::cast<IntegerAttr>(inputType.getDims().back()).getSInt();
+        *MOSH::ShapeAttr::getStaticDim(inputType.getDims().back());
 
     SmallVector<Value, 2> elementwiseOperands;
     if (!constantsToConcatenate.empty()) {
@@ -2939,9 +2940,9 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 
     auto firstReshapeType = cast<ReshapeOpType>(*users.begin()).getType();
     SmallVector<TypedAttr> newReshapeShape(firstReshapeType.getDims());
-    newReshapeShape[newSplitAxis] = rewriter.getDimAttr(
-        llvm::cast<IntegerAttr>(newReshapeShape[newSplitAxis]).getSInt() *
-        op->getNumResults());
+    newReshapeShape[newSplitAxis] =
+        rewriter.getDimAttr(*tryGetConstantInt(newReshapeShape[newSplitAxis]) *
+                            op->getNumResults());
     auto newReshapeType = firstReshapeType.cloneWith(newReshapeShape);
     auto newReshape =
         rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
@@ -3078,8 +3079,8 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     }
 
     // Both sizes at sliceAxis must be statically known.
-    if (!isa<IntegerAttr>(inputType.getDim(sliceAxis)) ||
-        !isa<IntegerAttr>(sliceType.getDim(sliceAxis))) {
+    if (!isStaticDimAttr(inputType.getDim(sliceAxis)) ||
+        !isStaticDimAttr(sliceType.getDim(sliceAxis))) {
       return rewriter.notifyMatchFailure(
           op, "Slice dimension must be statically known");
     }
