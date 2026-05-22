@@ -144,9 +144,15 @@ typedef struct M_driver_queue_execute_config_gpu_t {
   uint32_t num_attributes;   ///< Number of elements pointed to by attributes.
 } M_driver_queue_execute_config_gpu_t;
 
-// Selects the launch config mode, currently only GPU is supported
+/** NPU - Temporary struct for NPU launch configuration. */
+typedef struct M_driver_queue_execute_config_npu_t {
+  uint32_t cuBitmask;
+} M_driver_queue_execute_config_npu_t;
+
+// Selects the launch config mode.
 typedef enum M_driver_queue_execute_mode_t {
   M_DRIVER_QUEUE_EXECUTE_MODE_GPU, ///< Specify execution on a GPU device.
+  M_DRIVER_QUEUE_EXECUTE_MODE_NPU, ///< Specify execution on a NPU device.
 } M_driver_queue_execute_mode_t;
 
 /**
@@ -159,6 +165,9 @@ typedef struct M_driver_queue_execute_config_t {
     /// Execution launch configuration for GPU, used when mode is
     /// M_DRIVER_QUEUE_EXECUTE_MODE_GPU.
     M_driver_queue_execute_config_gpu_t gpu;
+    /// Execution launch configuration for NPU, used when mode is
+    /// M_DRIVER_QUEUE_EXECUTE_MODE_NPU.
+    M_driver_queue_execute_config_npu_t npu;
   } config; ///< The union discriminated by mode.
 } M_driver_queue_execute_config_t;
 
