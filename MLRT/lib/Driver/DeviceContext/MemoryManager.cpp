@@ -1554,8 +1554,11 @@ MemoryManager *MemoryManager::onHost(Device &device, size_t alignment) {
   // Bump up the default chunk percent so that when the host memory manager is
   // primed by the Python layer (see `_prime_pinned_memory_cache`), then the
   // first allocation does not cause the entire cache to be allocated at once.
-  // See GEX-3739 for more information.
-  size_t defaultChunkPercent = (device.api() == Device::hipAPI) ? 8 : 2;
+  // 8% of the default 16 GiB pool = 1.28 GiB, which is large enough to fit the
+  // 1 GiB priming allocation without tripping the `useMaxSize` heuristic in
+  // MemoryManagerFreeList::allocate. On 8x B200 this drops `max serve` startup
+  // priming from ~55s to ~4s.
+  size_t defaultChunkPercent = 8;
 
   size_t chunkSize = std::min(
       maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
