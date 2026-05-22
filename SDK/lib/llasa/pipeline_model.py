@@ -16,8 +16,6 @@ import numpy as np
 from max.driver import Buffer, Device
 from max.engine import InferenceSession, Model
 from max.graph.weights import Weights, WeightsAdapter
-from max.interfaces import AudioGenerationOutput, GenerationStatus, PipelineTask
-from max.interfaces.request import RequestID
 from max.nn import ReturnLogits
 from max.nn.kv_cache import KVCacheInputs
 from max.pipelines import (
@@ -35,6 +33,12 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineModel,
 )
+from max.pipelines.modeling.types import (
+    AudioGenerationOutput,
+    GenerationStatus,
+    PipelineTask,
+)
+from max.pipelines.request import RequestID
 from max.profiler import Tracer, traced
 from transformers.models.auto.configuration_auto import AutoConfig
 

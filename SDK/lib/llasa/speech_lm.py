@@ -12,14 +12,14 @@ import re
 
 import numpy as np
 from max import driver, pipelines
-from max.interfaces import (
+from max.pipelines.lib.model_manifest import ModelManifest
+from max.pipelines.modeling.types import (
     PipelineTask,
     RequestID,
     SamplingParams,
     TextGenerationInputs,
     TextGenerationRequest,
 )
-from max.pipelines.lib.model_manifest import ModelManifest
 
 from .config import LlasaConfig
 from .prompt_template import create_llasa_prompt

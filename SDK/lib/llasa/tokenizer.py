@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import numpy as np
-from max.interfaces import (
+from max.pipelines import AudioGenerationConfig, PipelineConfig, TextTokenizer
+from max.pipelines.core import TTSContext
+from max.pipelines.modeling.types import (
     AudioGenerationRequest,
     PipelineTokenizer,
     TextGenerationRequest,
 )
-from max.pipelines import AudioGenerationConfig, PipelineConfig, TextTokenizer
-from max.pipelines.core import TTSContext
 from transformers import AutoTokenizer
 
 from .config import LlasaConfig
