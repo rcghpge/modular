@@ -198,12 +198,6 @@ public:
 
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
-  // Async fence: enqueues encode-signal an increasing value; synchronize
-  // waits on it. Fixes DRIV-164 and DRIV-104.
-  NS::SharedPtr<MTL::SharedEvent> syncEvent_;
-  uint64_t lastSubmittedSignalValue_ = 0;
-  // Keeps synchronize's barrier from queueing ahead of its signal-emitter.
-  std::mutex commitMutex_;
   // Log state for capturing GPU shader print output.
   NS::SharedPtr<MTL::LogState> logState_;
   MTL::LogState *getOrCreateLogState(bool enable = true);

@@ -522,9 +522,7 @@ MetalDevice::getTrackedBuffers() const {
 
 MetalDeviceContext::MetalDeviceContext(
     MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {
-  syncEvent_ = NS::TransferPtr(device.metalDevice()->newSharedEvent());
-}
+    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {}
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                                                        const void *src,
@@ -541,24 +539,15 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   if (byteSize == 0)
     return success();
 
-  // For host destination buffers, we can do a direct memcpy
   if (!isMetalBuffer(dst)) {
-    // Host buffer - do direct memcpy
-
-    // create a empty command buffer
+    // Empty cmdBuffer drains prior GPU work in case `src` or `dst` aliases a
+    // shared MTLBuffer the GPU is still writing.
     MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
     if (cmdBuffer == nullptr)
       RETURN_ERROR("Failed to create command buffer");
-
-    // add completion handler to the command buffer
-
-    cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-      std::memcpy(dst, src, byteSize);
-    });
-
     cmdBuffer->commit();
     cmdBuffer->waitUntilCompleted();
-
+    std::memcpy(dst, src, byteSize);
     return success();
   }
 
@@ -584,34 +573,19 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                             srcResult.offset, dstResult.offset, byteSize);
   }
 
-  // Source is regular host memory - use memcpy approach
-
+  // Source is regular host memory — drain prior GPU work, then memcpy into
+  // the shared MTLBuffer's CPU pointer on this thread.
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
     RETURN_ERROR("Failed to create command buffer");
-
-  // For memcpy operations, we need to wait for completion even though we commit
-  // to queue
-
-  __block size_t capturedByteSize = byteSize;
-  __block size_t capturedOffset = dstResult.offset;
-  MTL::Buffer *dstBuf = dstResult.buffer;
-
-  // Add completion handler to perform the memcpy when GPU is done
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    void *dstContents = dstBuf->contents();
-    if (dstContents) {
-      // Apply offset to destination pointer
-      void *dstPtr = static_cast<char *>(dstContents) + capturedOffset;
-      std::memcpy(dstPtr, src, capturedByteSize);
-
-      // If Managed mode, mark the range as modified
-    }
-  });
-
-  // Commit to queue but wait for memcpy completion
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
+
+  void *dstContents = dstResult.buffer->contents();
+  if (dstContents == nullptr)
+    RETURN_ERROR("Destination Metal buffer contents() returned null");
+  void *dstPtr = static_cast<char *>(dstContents) + dstResult.offset;
+  std::memcpy(dstPtr, src, byteSize);
 
   return success();
 }
@@ -649,30 +623,19 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
                             srcResult.offset, dstResult.offset, byteSize);
   }
 
+  // Drain the kernel that produced `src` before reading its shared storage
+  // on this thread.
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
     RETURN_ERROR("Failed to create command buffer");
-
-  // For memcpy operations, we need to wait for completion even though we commit
-  // to queue Add completion handler to perform the memcpy when GPU is done
-  __block size_t capturedOffset = srcResult.offset;
-  MTL::Buffer *srcBuf = srcResult.buffer;
-
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    void *srcContents = srcBuf->contents();
-    if (srcContents) {
-      // Apply offset to source pointer
-      void *srcPtr = static_cast<char *>(srcContents) + capturedOffset;
-      std::memcpy(dst, srcPtr, byteSize);
-    }
-  });
-
-  // Commit to queue but wait for memcpy completion
-  // When doing cpu memcopy, we need to wait for the command buffer to complete
-  // before committing the next command buffer otherwise, the next command
-  // buffer will be executed before the current one is completed
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
+
+  void *srcContents = srcResult.buffer->contents();
+  if (srcContents == nullptr)
+    RETURN_ERROR("Source Metal buffer contents() returned null");
+  void *srcPtr = static_cast<char *>(srcContents) + srcResult.offset;
+  std::memcpy(dst, srcPtr, byteSize);
 
   return success();
 }
@@ -736,46 +699,39 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   if (reinterpret_cast<uintptr_t>(dstPtr) % valSize != 0)
     RETURN_ERROR("destination buffer not properly aligned");
 
-  // Push  an empty command buffer to the queue
+  // Drain any kernel reading `dst` before overwriting its shared storage
+  // on this thread.
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
     RETURN_ERROR("Failed to create command buffer");
-
-  // add completion handler to the command buffer
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    switch (valSize) {
-    case 1:
-      std::memset(dstPtr, static_cast<uint8_t>(val), byteSize);
-      break;
-    case 2: {
-      uint16_t v16 = static_cast<uint16_t>(val);
-      uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p16[i] = v16;
-      break;
-    }
-    case 4: {
-      uint32_t v32 = static_cast<uint32_t>(val);
-      uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p32[i] = v32;
-      break;
-    }
-    case 8: {
-      uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p64[i] = val;
-      break;
-    }
-    }
-  });
-
-  // commit the command buffer
   cmdBuffer->commit();
-  // When doing cpu memcopy, we need to wait for the command buffer to complete
-  // before committing the next command buffer otherwise, the next command
-  // buffer will be executed before the current one is completed
   cmdBuffer->waitUntilCompleted();
+
+  switch (valSize) {
+  case 1:
+    std::memset(dstPtr, static_cast<uint8_t>(val), byteSize);
+    break;
+  case 2: {
+    uint16_t v16 = static_cast<uint16_t>(val);
+    uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p16[i] = v16;
+    break;
+  }
+  case 4: {
+    uint32_t v32 = static_cast<uint32_t>(val);
+    uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p32[i] = v32;
+    break;
+  }
+  case 8: {
+    uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p64[i] = val;
+    break;
+  }
+  }
 
   return success();
 }
@@ -900,11 +856,43 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   ensureThreadlocalAutoreleasePoolExists();
 
-  // 1) Validate pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
   MTL::ComputePipelineState *pipeline = metalFunc.getPipelineState();
+  const MetalDevice &metalDevice = MetalDevice::cast(device());
+  MTL::Device *mtlDevice = metalDevice.metalDevice();
 
-  // Create command buffer with log state to capture GPU print output.
+  // 1) Validate everything before opening an encoder — Metal asserts on a
+  //    cmdBuffer dropped with an open encoder.
+  for (uint32_t i = 0; i < argCount; ++i) {
+    if (args[i] == nullptr)
+      RETURN_ERROR("Null argument at index " + std::to_string(i));
+    if (argSizes[i] == 0)
+      RETURN_ERROR("Unknown argument size at index " + std::to_string(i));
+  }
+  if (sharedMemBytes > 0) {
+    DEFINE_OR_RETURN_ERROR(uint32_t, maxSharedMemBytes,
+                           metalDevice.getAttribute(
+                               Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK));
+    if (sharedMemBytes > maxSharedMemBytes)
+      RETURN_ERROR(
+          "External memory byte count " + std::to_string(sharedMemBytes) +
+          " exceeds device limit of " + std::to_string(maxSharedMemBytes));
+  }
+
+  // 2) Allocate per-arg MTLBuffers before opening the encoder so an
+  //    allocation error doesn't leave one open.
+  MTL::ResourceOptions argBufOpts =
+      getResourceOptions(Device::AllocMode::ASYNC);
+  llvm::SmallVector<NS::SharedPtr<MTL::Buffer>, 8> argBufs;
+  argBufs.reserve(argCount);
+  for (uint32_t i = 0; i < argCount; ++i) {
+    DEFINE_OR_RETURN_ERROR(
+        MTL::Buffer *, tmpBuf,
+        allocateNewBuffer(mtlDevice, args[i], argSizes[i], argBufOpts));
+    argBufs.emplace_back(NS::TransferPtr(tmpBuf));
+  }
+
+  // 3) Create command buffer (with log state for GPU print capture).
   MTL::CommandBuffer *cmdBuffer = nullptr;
   if (MTL::LogState *ls =
           getOrCreateLogState(isLoggingEnabled(attrs, numAttrs))) {
@@ -918,77 +906,24 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   if (cmdBuffer == nullptr)
     RETURN_ERROR("Failed to create command buffer");
 
-  // 3) Create compute encoder
+  // 4) Encode + dispatch + commit. Cross-cmdBuffer ordering is handled by
+  //    Metal hazard tracking on the tracked buffers declared via
+  //    `useResource`.
   MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
   if (encoder == nullptr)
     RETURN_ERROR("Failed to create compute command encoder");
-
   encoder->setComputePipelineState(pipeline);
-  const MetalDevice &metalDevice = MetalDevice::cast(device());
-  MTL::Device *mtlDevice = metalDevice.metalDevice();
-
-  // 4) Bind caller-visible buffer arguments.
-  // Threadgroup memory is handled via !air.global_bindings and is not a
-  // kernel function argument, so argCount matches func.argumentCount() from
-  // pipeline reflection.  setThreadgroupMemoryLength (below) handles the
-  // threadgroup allocation separately.
-  for (uint32_t i = 0; i < argCount; ++i) {
-    if (args[i] == nullptr) {
-      encoder->endEncoding();
-      RETURN_ERROR("Null argument at index " + std::to_string(i));
-    }
-
-    const size_t argSize = argSizes[i];
-
-    if (argSize == 0) {
-      RETURN_ERROR("Unknown argument size at index " + std::to_string(i));
-    }
-
-    // We have more complex argument, such as pointer to a struct. Allocate
-    // new MTLBuffer and set it.
-    MTL::ResourceOptions options = getResourceOptions(Device::AllocMode::ASYNC);
-    DEFINE_OR_RETURN_ERROR(
-        MTL::Buffer *, tmpBuf,
-        allocateNewBuffer(mtlDevice, args[i], argSize, options));
-    NS::SharedPtr<MTL::Buffer> buf = NS::TransferPtr(tmpBuf);
-    encoder->setBuffer(buf.get(), 0, i);
-  }
-
-  // 5) Set resources that might be used by the kernel
-  // FIXME: only set resources that are used by the kernel
+  for (uint32_t i = 0; i < argCount; ++i)
+    encoder->setBuffer(argBufs[i].get(), 0, i);
+  // FIXME: only mark resources actually used by the kernel.
   for (const auto &it : metalDevice.getTrackedBuffers())
     encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
-
-  if (sharedMemBytes > 0) {
-    DEFINE_OR_RETURN_ERROR(uint32_t, maxSharedMemBytes,
-                           metalDevice.getAttribute(
-                               Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK));
-    if (sharedMemBytes > maxSharedMemBytes) {
-      encoder->endEncoding();
-      RETURN_ERROR(
-          "External memory byte count " + std::to_string(sharedMemBytes) +
-          " exceeds device limit of " + std::to_string(maxSharedMemBytes));
-    }
+  if (sharedMemBytes > 0)
     encoder->setThreadgroupMemoryLength(sharedMemBytes, /*index=*/0);
-  }
-
-  // 6) Dispatch
-  MTL::Size gridSize{gridX, gridY, gridZ};
-  MTL::Size threadgroupSize{blockX, blockY, blockZ};
-
-  encoder->dispatchThreadgroups(gridSize, threadgroupSize);
-
-  // 7) End encoding
+  encoder->dispatchThreadgroups(MTL::Size{gridX, gridY, gridZ},
+                                MTL::Size{blockX, blockY, blockZ});
   encoder->endEncoding();
-
-  // 8) Stamp + commit under commitMutex_ so synchronize() can't slip its
-  //    barrier between our counter bump and our commit.
-  {
-    std::lock_guard<std::mutex> lock(commitMutex_);
-    uint64_t signalValue = ++lastSubmittedSignalValue_;
-    cmdBuffer->encodeSignalEvent(syncEvent_.get(), signalValue);
-    cmdBuffer->commit(); // async (DRIV-164)
-  }
+  cmdBuffer->commit(); // async (DRIV-164)
 
   return success();
 }
@@ -1005,25 +940,14 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
   // Check for any pending errors first, similar to CUDA's behavior
   RETURN_IF_ERROR(checkPendingError());
 
-  // Drain via an empty barrier buffer: waitUntilSignaledValue alone returns
-  // at the GPU signal point, ahead of prior buffers' completion handlers
-  // (LogState print delivery, error propagation). The barrier waits for the
-  // signal AND flushes those handlers in one shot.
-  MTL::CommandBuffer *barrier = nullptr;
-  {
-    // commitMutex_ held only across counter read + barrier commit, not the
-    // wait, so concurrent enqueues aren't blocked while the GPU drains.
-    std::lock_guard<std::mutex> lock(commitMutex_);
-    uint64_t target = lastSubmittedSignalValue_;
-    if (target == 0)
-      return success();
-    barrier = commandQueue_->commandBuffer();
-    if (barrier == nullptr)
-      RETURN_ERROR("Failed to create barrier command buffer");
-    barrier->encodeWait(syncEvent_.get(), target);
-    barrier->commit();
-  }
-  barrier->waitUntilCompleted();
+  // Empty cmdBuffer acts as a fence: Metal serializes cmdBuffers in commit
+  // order, and waitUntilCompleted blocks until our cmdBuffer (and all prior
+  // commits + their completion handlers) finish.
+  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for sync");
+  cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted();
   return success();
 }
 
