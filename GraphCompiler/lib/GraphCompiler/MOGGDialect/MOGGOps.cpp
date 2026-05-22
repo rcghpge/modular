@@ -955,29 +955,38 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
 
   sdb.structDecl(
       structNameVal, parameters, {MojoValue(traitName)}, fields, [&]() {
-        // Emit method signature.
-        sdb.verbatim(MojoValue(kDecoratorAlwaysInline));
-        std::string sig;
-        llvm::raw_string_ostream os(sig);
-        os << "def " << methodName
-           << "[dtype: DType, rank: Int, simd_width: Int,"
-           << " element_alignment: Int = 1]("
-           << "self, idx: std.utils.IndexList[rank]";
+        // Trait-conforming method: load/store/compute. Parameter and argument
+        // names must match the trait signature exactly so the @always_inline
+        // body can reference `self.*`, `simd_width`, `dtype`, etc. without
+        // counter mangling — hence `NamedMojoDef::asVerbatim`.
+        MojoValue idxType = MojoValue(kStructIndexList)[kParameterRank];
+        MojoValue simdType =
+            MojoValue(kStructSIMD)[{kParameterDType, kParameterSimdWidth}];
+        SmallVector<NamedMojoDef> methodParameters = {
+            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
+            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
+            NamedMojoDef::asVerbatim(kParameterSimdWidth, kStructInt),
+            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
+                                     MojoValue(1)),
+        };
+        SmallVector<NamedMojoDef> methodArgs;
+        methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
+        methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterIdx, idxType));
         if (isOutputLambda)
-          os << ", val: SIMD[dtype, simd_width]";
-        os << ")";
+          methodArgs.push_back(
+              NamedMojoDef::asVerbatim(kParameterVal, simdType));
+        std::optional<MojoValue> returnType;
         if (methodReturnsValue)
-          os << " -> SIMD[dtype, simd_width]";
-        os << ":";
-        sdb.verbatim(MojoValue(sig));
-        sdb.increaseIndentation();
+          returnType = simdType;
 
-        emitFusionStructMethodBody(state, sdb, lambdaBody, fusedInputs,
-                                   captureTensorTypes, extraTensorCaptures,
-                                   scalarCaptures, inlineConstants,
-                                   isOutputLambda, generateStoreForOutput);
-
-        sdb.decreaseIndentation();
+        sdb.def(methodName, methodParameters, methodArgs, returnType,
+                /*exported=*/false, /*raises=*/false,
+                /*isAlwaysInline=*/true, [&](const MOGG::FunctionBody &) {
+                  emitFusionStructMethodBody(
+                      state, sdb, lambdaBody, fusedInputs, captureTensorTypes,
+                      extraTensorCaptures, scalarCaptures, inlineConstants,
+                      isOutputLambda, generateStoreForOutput);
+                });
       });
 
   // Debug: dump the shape/strides of each captured tensor.
@@ -1616,10 +1625,11 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
     mojoReturnType = typeToMojo(functionType.getResult(0));
 
   bool errOccurred = false;
-  state.builder.fn(
+  state.builder.def(
       getSymNameAttr().str(), {}, inputTypes,
       /*returnType=*/mojoReturnType, /*exported=*/false,
-      /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
+      /*raises=*/isThrows(), /*isAlwaysInline=*/false,
+      [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
 
         for (auto &&[mlirArg, mojoArg] :
@@ -1647,12 +1657,13 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
   static const MOGG::MojoValue vUnsafePointer = MOGG::kStructUnsafePointer;
   static const MOGG::MojoValue vOpaquePointer = MOGG::kComptimeOpaquePointer;
 
-  state.builder.fn(
+  state.builder.def(
       getSymNameAttr().strref(), {},
       {MOGG::NamedMojoDef("arg",
                           vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}]),
        MOGG::NamedMojoDef("arg", vOpaquePointer)},
-      std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
+      std::nullopt, /*exported=*/true, /*raises=*/false,
+      /*isAlwaysInline=*/false, [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
         state.builder.comment(
             "This is the entry point of the kernel. The first argument is a "

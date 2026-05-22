@@ -177,6 +177,10 @@ struct NamedMojoDef {
   UniqueMojoIdentifier name;
   MojoValue type;
   std::optional<MojoValue> defaultValue;
+  /// When true, the name is emitted verbatim (no counter suffix) and no type
+  /// annotation is emitted if `type` is empty. Used for method signatures
+  /// that must match a Mojo trait (e.g. `self`, `idx`, `dtype`, `rank`).
+  bool verbatim = false;
 
   NamedMojoDef(UniqueMojoIdentifier name, MojoValue type,
                std::optional<MojoValue> defaultValue = std::nullopt)
@@ -185,6 +189,17 @@ struct NamedMojoDef {
   NamedMojoDef(const std::string &name, MojoValue type,
                std::optional<MojoValue> defaultValue = std::nullopt)
       : NamedMojoDef(UniqueMojoIdentifier(name), type, defaultValue) {}
+
+  /// Build a NamedMojoDef whose name is emitted verbatim. Passing an empty
+  /// `type` (default `MojoValue()`) suppresses the `: type` annotation,
+  /// which is needed for the implicit `self` argument of struct methods.
+  static NamedMojoDef
+  asVerbatim(llvm::StringRef name, MojoValue type = MojoValue(""),
+             std::optional<MojoValue> defaultValue = std::nullopt) {
+    NamedMojoDef def(name.str(), type, defaultValue);
+    def.verbatim = true;
+    return def;
+  }
 };
 
 using MojoValueCache = std::stack<llvm::StringMap<MojoValue>>;
@@ -200,12 +215,14 @@ public:
   }
 
   /// Creates a function with the specified parameter and argument types, with
-  /// optional raises. The returned object is a RAII guard that will recover the
-  /// original indentation level when it goes out of scope.
-  void fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
-          ArrayRef<NamedMojoDef> arguments, std::optional<MojoValue> returnType,
-          bool exported, bool raises,
-          std::function<void(const FunctionBody &)> &&funcBody);
+  /// optional raises and `@always_inline` decorator. The returned object is a
+  /// RAII guard that will recover the original indentation level when it goes
+  /// out of scope.
+  void def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
+           ArrayRef<NamedMojoDef> arguments,
+           std::optional<MojoValue> returnType, bool exported, bool raises,
+           bool isAlwaysInline,
+           std::function<void(const FunctionBody &)> &&funcBody);
 
   /// Creates a lambda with the specified parameter and argument types. The
   /// returned object is a RAII guard that will recover the original indentation

@@ -115,25 +115,28 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                                      bool raises, FunctionBody &body) {
   std::string str;
   llvm::raw_string_ostream stream(str);
+  auto emitNamedDef = [&](const NamedMojoDef &def, StringRef typeSep,
+                          SmallVectorImpl<MojoValue> &out) {
+    MojoValue name =
+        def.verbatim ? MojoValue(def.name.prefix) : newVar(def.name);
+    stream << name;
+    if (!(def.verbatim && def.type.text.empty()))
+      stream << typeSep << def.type;
+    if (def.defaultValue.has_value())
+      stream << " = " << *def.defaultValue;
+    out.push_back(name);
+  };
   if (!parameters.empty()) {
     stream << "[";
     llvm::interleaveComma(parameters, stream, [&](const NamedMojoDef &param) {
-      MojoValue paramName = newVar(param.name);
-      stream << paramName << " : " << param.type;
-      if (param.defaultValue.has_value())
-        stream << " = " << *param.defaultValue;
-      body.parameters.push_back(paramName);
+      emitNamedDef(param, " : ", body.parameters);
     });
     stream << "]";
   }
 
   stream << "(";
   llvm::interleaveComma(operands, stream, [&](const NamedMojoDef &operand) {
-    MojoValue operandName = newVar(operand.name);
-    stream << operandName << ": " << operand.type;
-    if (operand.defaultValue.has_value())
-      stream << " = " << *operand.defaultValue;
-    body.arguments.push_back(operandName);
+    emitNamedDef(operand, ": ", body.arguments);
   });
   stream << ")";
 
@@ -147,17 +150,19 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
   return str;
 }
 
-void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
-                     ArrayRef<NamedMojoDef> arguments,
-                     std::optional<MojoValue> returnType, bool exported,
-                     bool raises,
-                     std::function<void(const FunctionBody &)> &&funcBody) {
+void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
+                      ArrayRef<NamedMojoDef> arguments,
+                      std::optional<MojoValue> returnType, bool exported,
+                      bool raises, bool isAlwaysInline,
+                      std::function<void(const FunctionBody &)> &&funcBody) {
   newline();
 
   FunctionBody body;
 
   MojoBuilderScopeGuard guard(this, true);
 
+  if (isAlwaysInline)
+    statement("@always_inline");
   if (exported)
     statement("@export");
   statement("def ", name,

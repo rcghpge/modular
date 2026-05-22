@@ -411,6 +411,11 @@ constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
 /// `UnsafePointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
+/// Argument names used in trait-conforming fusion struct methods
+/// (`load`/`store`/`compute`).
+constexpr llvm::StringLiteral kParameterSelf = "self";
+constexpr llvm::StringLiteral kParameterIdx = "idx";
+constexpr llvm::StringLiteral kParameterVal = "val";
 
 //===----------------------------------------------------------------------===//
 // Stdlib package names
