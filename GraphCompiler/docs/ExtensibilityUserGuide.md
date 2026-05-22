@@ -61,7 +61,7 @@ struct BottomK:
 
 This indicates the resulting methods in the struct correspond to the
 mo-operation “mo.bottom_k”. If we instead we did
-`@compiler.register("my_cool_op")` , then this would would correspond to call
+`@compiler.register("my_cool_op")` , then this would correspond to call
 to a custom op with symbol “my_cool_op.”
 
 ### Required Methods

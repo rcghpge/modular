@@ -102,7 +102,7 @@ The compiler will later use the symbol to match the kernel during lowering.
 Custom ops can target these using `mo.custom {symbol = "MyOp"}`
 (see <ExtensibilityUserGuide.md>).
 
-The analysis parses Mojo packages/bytecode into MLIR, walsk every
+The analysis parses Mojo packages/bytecode into MLIR, walks every
 function/struct, and builds multiple lookup tables with registered kernels,
 execute/shape/view functions, opaque-type map. By default, the main two
 components are loaded:

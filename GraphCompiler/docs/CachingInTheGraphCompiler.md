@@ -65,7 +65,7 @@ requirements:
    routines do not typically guarantee stability.
 2. **Semantic Encoding**: the hash function is the only thing ensuring the
    correct compiled artifact is associated with a piece of IR.
-3. **Incremental:**: The hash should avoid changing when code not semantically
+3. **Incremental**: The hash should avoid changing when code not semantically
    relevant to the IR under consideration changes.
 
 ## The Old Implementation

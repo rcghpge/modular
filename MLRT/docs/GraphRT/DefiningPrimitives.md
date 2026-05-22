@@ -503,7 +503,7 @@ pointers, for example like shared or unique pointers:
 
 ```c++
 static void allocate_thing(Result<std::unique_ptr<MyAcceleratorType>> result) {
-  result.emplace(new MyCoolAcceleratorThing(...))
+  result.emplace(new MyCoolAcceleratorThing(...));
 }
 ```
 
