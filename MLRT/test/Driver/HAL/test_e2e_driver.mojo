@@ -30,12 +30,12 @@ def do_execute[
     device_spec: DeviceSpec,
 ](mut ctx: Context[device_spec]) raises:
     # Compile the kernel and load it into the plugin.
-    ref (bundle, name) = ctx.compile[type_of(vec_add), vec_add]()
+    ref (bundle, info) = ctx.compile[type_of(vec_add), vec_add]()
     print("Compiled and loaded bundle")
-    print("  function_name:", name)
+    print("  function_name:", info.function_name)
 
     # Load function from the bundle.
-    var func = ctx.load_function(bundle, name)
+    var func = ctx.load_function(bundle, info.function_name)
     print("Loaded function handle")
 
     # Allocate device memory.
