@@ -251,7 +251,7 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   when absolute size (above) is specified. Otherwise, a value of 0 disables the
   memory manager.
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT`**: Chunk size as
-  percentage of max memory manager size (default: 2%). Integer-valued. Must be
+  percentage of max memory manager size (default: 8%). Integer-valued. Must be
   between 1 and 100; clamped to these limits if found to lie outside.
 
 #### Host Memory Configuration
