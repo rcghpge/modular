@@ -4,11 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/MODialect/Patterns/Fusion.h"
+
 #include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/SplitSlicePatterns.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -32,12 +33,28 @@
 
 using namespace M;
 using namespace M::MO;
+using namespace M::MOGG;
 using namespace GraphCompiler::Matchers;
 
-namespace M::MOGG {
+namespace M::MO {
 
-#define GEN_PASS_DEF_PATTERNFUSION
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
+void PackParamCache::put(MO::TensorType inputTy,
+                         mlir::DictionaryAttr kgenParams,
+                         MO::TensorType outputTy) {
+  cache[inputTy][kgenParams] = outputTy;
+}
+
+MO::TensorType PackParamCache::get(MO::TensorType inputTy,
+                                   mlir::DictionaryAttr kgenParams) {
+  auto cacheIt = cache.find(inputTy);
+  if (cacheIt == cache.end())
+    return {};
+  auto &kgenParamsToOutTy = cacheIt->second;
+  auto it = kgenParamsToOutTy.find(kgenParams);
+  if (it == kgenParamsToOutTy.end())
+    return {};
+  return it->second;
+}
 
 namespace {
 
@@ -91,36 +108,6 @@ static DeviceRefAttr getTargetDevice(MO::MOHasDeviceInterface op,
 
   return graphDevice;
 }
-
-// TODO(#29430) make this more general and apply to all shape function calls.
-struct PackParamCache {
-  /// Associate `outputTy` with `(inputTy, kgenParams)` as a new cache entry.
-  void put(MO::TensorType inputTy, DictionaryAttr kgenParams,
-           MO::TensorType outputTy) {
-    cache[inputTy][kgenParams] = outputTy;
-  }
-
-  /// Return the output type associated with `(inputTy, kgenParams)`, or null if
-  /// the entry doesn't exist.
-  MO::TensorType get(MO::TensorType inputTy, DictionaryAttr kgenParams) {
-    auto cacheIt = cache.find(inputTy);
-    if (cacheIt == cache.end())
-      return {};
-
-    auto &kgenParamsToOutTy = cacheIt->second;
-    auto it = kgenParamsToOutTy.find(kgenParams);
-    if (it == kgenParamsToOutTy.end())
-      return {};
-
-    return it->second;
-  }
-
-private:
-  // Output tensor type of a packing operation is determined solely by the input
-  // tensor type and the extra kgen parameters. Therefore we can cache the
-  // output tensor type based on the (input_ty, kgen_params) tuple.
-  DenseMap<MO::TensorType, DenseMap<DictionaryAttr, MO::TensorType>> cache;
-};
 
 Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
                              MO::GraphOp graphOp, PackParamCache &cache,
@@ -4183,126 +4170,48 @@ private:
 
 } // namespace
 
-struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
-  using PatternFusionBase::PatternFusionBase;
+void applyFuseAllReduceAddRMSNormQuantFP8(MO::AllReduceSumOp allReduceOp,
+                                          M::DeviceRefAttr targetDeviceRef) {
+  FuseAllReduceAddRMSNormQuantFP8PatternMatcher fuser(allReduceOp,
+                                                      targetDeviceRef);
+  fuser.apply();
+}
 
-  void runOnOperation() override {
-    MLIRContext *ctx = &getContext();
+void applyFuseParallelBundledAllReduceAddRMSNormQuantFP8(
+    MO::BundledAllReduceSumOp bundledAllReduceOp) {
+  FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher(
+      bundledAllReduceOp)
+      .apply();
+}
 
-    RewritePatternSet patterns{ctx};
+void populateFusionPatterns(mlir::RewritePatternSet &patterns,
+                            PackParamCache &cache,
+                            M::DeviceRefAttr targetDeviceRef,
+                            const MHAOptions &mhaOpts) {
+  mlir::MLIRContext *ctx = patterns.getContext();
 
-    DeviceRefAttr targetDeviceRef =
-        targetDevice == "" ? nullptr
-                           : DeviceRefAttr::get(ctx, targetDevice.getValue(),
-                                                targetDeviceId.getValue());
+  patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
+  patterns.add<ConvConstFilterPattern>(ctx, targetDeviceRef);
 
-    // Apply the special pattern to fuse allReduceOps at the beginning.
-    llvm::SmallVector<MO::AllReduceSumOp> allReduceOps;
-    getOperation()->walk([&](MO::AllReduceSumOp allReduceSumOp) {
-      allReduceOps.push_back(allReduceSumOp);
-    });
-    for (auto allReduceOp : allReduceOps) {
-      FuseAllReduceAddRMSNormQuantFP8PatternMatcher allReduceFuser(
-          allReduceOp, targetDeviceRef);
-      allReduceFuser.apply();
-    }
+  patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
+               ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
+               LayerNormPattern, RMSNormFusedResidualAddPattern,
+               ReduceRMSNormRoPEPattern, ConcatSlicePattern,
+               MatmulFusedPartialRMSNormPattern>(ctx);
 
-    // Parallel-region analog: fuse `mo.parallel { mo.bundled.allreduce.sum }`
-    // followed by per-device add + rms_norm + quantize_fp8 chains *outside*
-    // the parallel into a single `mo.parallel { fused }` op in one step.
-    llvm::SmallVector<MO::BundledAllReduceSumOp> bundledAllReduceOps;
-    getOperation()->walk([&](MO::BundledAllReduceSumOp op) {
-      bundledAllReduceOps.push_back(op);
-    });
-    for (auto bundledAllReduceOp : bundledAllReduceOps) {
-      // Earlier rewrites in this same loop may have erased the parent
-      // parallel of this op; skip stale entries.
-      if (!bundledAllReduceOp.getOperation()->getBlock())
-        continue;
-      FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher(
-          bundledAllReduceOp)
-          .apply();
-    }
+  patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
+               RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
+                                                            targetDeviceRef);
 
-    MO::GraphOp graphOp = getOperation();
-
-    // Phase 1: Convert slices into splits so that the RoPE pattern can match
-    // split ops created from adjacent slice pairs.
-    {
-      RewritePatternSet sliceToSplitPatterns{ctx};
-      sliceToSplitPatterns.add<SliceToSplitPattern>(ctx);
-      if (failed(
-              applyPatternsGreedily(graphOp, std::move(sliceToSplitPatterns))))
-        return signalPassFailure();
-    }
-
-    // Phase 2: Main fusion patterns including the new RoPE fusion.
-    PackParamCache cache;
-    patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
-
-    patterns.add<ConvConstFilterPattern>(ctx, targetDeviceRef);
-
-    patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
-                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
-                 LayerNormPattern, RMSNormFusedResidualAddPattern,
-                 ReduceRMSNormRoPEPattern, ConcatSlicePattern,
-                 MatmulFusedPartialRMSNormPattern>(ctx);
-
-    patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
-                 RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
-                                                              targetDeviceRef);
-
-    if (enableMHAPattern.getValue()) {
-      patterns.add<MultiHeadAttentionPattern>(
-          ctx, mhaAllowUnsafeBCast.getValue(),
-          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue(),
-          targetDeviceRef);
-    }
-
-    if (failed(applyPatternsGreedily(graphOp, std::move(patterns))))
-      return signalPassFailure();
-
-    // Phase 3: Lower any splits that survived fusion back to slices.
-    {
-      // TODO(GEX-3695): Properly query the target info in the Graph Compiler.
-      // Determine the effective arch name for the physical device.
-      // Or use mockArchName if set (for testing only).
-      StringRef effectiveArch = mockArchName.getValue();
-      std::string queriedArch;
-      if (effectiveArch.empty()) {
-        // On macOS, Metal API requires main-thread access. MLIR runs passes
-        // over multiple GraphOps in parallel (worker threads), so guard the
-        // Metal device query with a main-thread check to prevent crashes. On
-        // other platforms (e.g. Linux+CUDA), thread-safety is not an issue.
-        bool canQueryDevice = true;
-#if defined(__APPLE__)
-        canQueryDevice = pthread_main_np() != 0;
-#endif
-        if (canQueryDevice) {
-          auto gpuDevice = M::Driver::Device::create("gpu", 0);
-          if (!gpuDevice.isError()) {
-            auto archName = gpuDevice.get()->getArchName();
-            if (!archName.isError()) {
-              queriedArch = archName.get();
-              effectiveArch = queriedArch;
-            }
-          }
-        }
-      }
-
-      RewritePatternSet splitToSlicePatterns{ctx};
-      splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
-      // MatmulAddPattern produces mo.fused_matmul_add which is only lowered on
-      // SM100 (B200). Match any SM100 variant (e.g. sm_100a).
-      if (effectiveArch.starts_with("sm_100"))
-        splitToSlicePatterns.add<MatmulAddPattern>(ctx);
-      if (failed(
-              applyPatternsGreedily(graphOp, std::move(splitToSlicePatterns))))
-        return signalPassFailure();
-    }
-
-    MO::synchronizeMetadataUpdates(graphOp);
+  if (mhaOpts.enable) {
+    patterns.add<MultiHeadAttentionPattern>(ctx, mhaOpts.allowUnsafeBCast,
+                                            mhaOpts.allowInternalReshape,
+                                            mhaOpts.debug, targetDeviceRef);
   }
-};
+}
 
-} // namespace M::MOGG
+void populateFusionMatmulAddPatterns(mlir::RewritePatternSet &patterns) {
+  patterns.add<MatmulAddPattern>(patterns.getContext());
+}
+
+} // namespace M::MO

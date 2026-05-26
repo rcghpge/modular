@@ -531,11 +531,32 @@ modular_cc_library(
         ":MOAnalysis",
         ":MODialect",
         ":MOGGDialect",
+        ":MOGGDialectPassesIncGen",
+        ":MOPatterns",
         ":MOTarget",
         ":MOTransformsIncGen",
         ":RMODialect",
         ":RMOSupport",
+        "//MLRT:Driver/DeviceContext",
         "//Support:Context",
+    ],
+)
+
+modular_cc_library(
+    name = "MOPatterns",
+    srcs = glob(["lib/GraphCompiler/MODialect/Patterns/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MODialect/Patterns/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":GraphCompilerPublic.headers",
+        ":MOAnalysis",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOGGFusionSupport",
+        ":MOSHDialect",
+        "//KGEN:KGENDialect",
+        "//MLRT:Driver/DeviceContext",
+        "//Support:DeviceSpecs",
     ],
 )
 
@@ -860,6 +881,7 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOGGFusionSupport",
         ":MOGGToMGP",
+        ":MOPatterns",
         ":Support",
         "//KGEN:TransformUtils",
         "//MLRT:AsyncRT/CompilerSupport",
