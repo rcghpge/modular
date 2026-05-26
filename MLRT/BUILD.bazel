@@ -188,7 +188,8 @@ modular_shared_library(
         "//Support:SymbolExport",
         "//Support:Threading",
         "//Support:TypeID",
-        "//bazel/third-party:tcmalloc",
+        "//bazel/third-party:tcmalloc_numa_aware",
+        "//bazel/third-party:tcmalloc_want_numa_aware",
         "@llvm-project//llvm:Support",
     ],
 )
