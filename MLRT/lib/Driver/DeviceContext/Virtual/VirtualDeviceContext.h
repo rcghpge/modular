@@ -23,6 +23,7 @@
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -74,6 +75,12 @@ public:
   ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
 
   ErrorOr<DeviceContextRef> createContext() override;
+
+  DLDevice getDLDevice(bool /*pinned*/) const override {
+    // VirtualDevice is compile-only and does not support DLPack operations.
+    assert(false && "DLPack not supported on virtual (compile-only) devices");
+    return {};
+  }
 
   static const VirtualDevice &cast(const Device &device);
 

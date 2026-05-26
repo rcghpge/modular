@@ -97,6 +97,10 @@ public:
 
   ErrorOrSuccess runHealthcheck() const override;
 
+  DLDevice getDLDevice(bool pinned) const override {
+    return pinned ? DLDevice{kDLROCMHost, 0} : DLDevice{kDLROCM, id()};
+  }
+
 private:
   // We only support HIP architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;
@@ -299,6 +303,7 @@ public:
       uint32_t argCount = 0, const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations.
+  std::optional<intptr_t> getDLPackStream() const override;
   ErrorOr<DeviceStreamRef> stream() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) override;

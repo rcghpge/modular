@@ -67,6 +67,8 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() override;
 
+  DLDevice getDLDevice(bool /*pinned*/) const override { return {kDLCPU, 0}; }
+
   static const CpuDevice &cast(const Device &device);
 
   static ErrorOr<CpuDevice &> get(int id);

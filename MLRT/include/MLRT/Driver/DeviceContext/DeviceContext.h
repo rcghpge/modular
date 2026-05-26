@@ -22,6 +22,7 @@
 #include "Support/LogicalResult.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include <dlpack/dlpack.h>
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
@@ -364,6 +365,14 @@ public:
 
   virtual ErrorOr<void *> getCurrentDriverContext() const = 0;
   virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) = 0;
+
+  /// Returns the DLDevice (type + id) for this device, for use in the DLPack
+  /// protocol. The `pinned` argument selects the host-pinned variant when true
+  /// (e.g. kDLCUDAHost instead of kDLCUDA).
+  ///
+  /// Override this in a Device subclass to add DLPack support for new device
+  /// types without modifying the core DLPack bridge code.
+  virtual DLDevice getDLDevice(bool pinned) const = 0;
 
 protected:
   Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment);
@@ -886,6 +895,16 @@ public:
   }
 
   // Synchronize asynchronous operations.
+
+  /// Returns the stream pointer for use in the DLPack protocol, or nullopt if
+  /// this context has no CUDA-style stream model (e.g. Metal, Hexagon).
+  ///
+  /// Override this in a DeviceContext subclass to expose a stream pointer
+  /// through DLPack without modifying the core DLPack bridge code.
+  virtual std::optional<intptr_t> getDLPackStream() const {
+    return std::nullopt;
+  }
+
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                              int *greatestPriority) = 0;

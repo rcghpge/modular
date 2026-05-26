@@ -90,6 +90,11 @@ public:
   ErrorOr<const char *> getArchName() const override;
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
 
+  DLDevice getDLDevice(bool pinned) const override {
+    // Metal has no pinned-memory DLPack variant; pinned buffers are plain CPU.
+    return pinned ? DLDevice{kDLCPU, 0} : DLDevice{kDLMetal, id()};
+  }
+
   MTL::Device *metalDevice() const { return device_.get(); }
 
   // Buffer tracking methods

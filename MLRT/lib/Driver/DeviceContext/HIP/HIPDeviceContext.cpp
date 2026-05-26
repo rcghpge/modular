@@ -1517,6 +1517,13 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
                                      blockZ, sharedMemBytes, args, stream_);
 }
 
+std::optional<intptr_t> HIPDeviceContext::getDLPackStream() const {
+  ErrorOr<DeviceStreamRef> errStream = stream();
+  if (errStream.isError())
+    return std::nullopt;
+  return reinterpret_cast<intptr_t>((*errStream)->ptr());
+}
+
 ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
   // This function is const only for the duration of its execution;
   // `this` is non-const downstream so cast in order to provide

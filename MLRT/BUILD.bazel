@@ -617,6 +617,7 @@ modular_cc_library(
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Configuration",
+        "@dlpack",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -641,6 +642,7 @@ modular_shared_library(
         "//Support:Buffer",
         "//Support:Configuration",
         "//Support:SymbolExport",
+        "@dlpack",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -723,6 +725,7 @@ modular_cc_library(
         "//Support:Profiling",
         "//Support:SymbolExport",
         "//Target:DriverPlugin",
+        "@dlpack",
         "@llvm-project//llvm:Support",
     ] + select({
         "@platforms//os:linux": ["//bazel/third-party:NVPTX"],

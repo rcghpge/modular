@@ -106,6 +106,10 @@ public:
 
   ErrorOrSuccess runHealthcheck() const override;
 
+  DLDevice getDLDevice(bool pinned) const override {
+    return pinned ? DLDevice{kDLCUDAHost, 0} : DLDevice{kDLCUDA, id()};
+  }
+
   ErrorOr<CUevent> eventCachePop(bool useCache = true) const;
   void eventCachePush(CUevent event) const;
 
@@ -374,6 +378,7 @@ public:
       uint32_t argCount = 0, const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations.
+  std::optional<intptr_t> getDLPackStream() const override;
   ErrorOr<DeviceStreamRef> stream() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) override;
