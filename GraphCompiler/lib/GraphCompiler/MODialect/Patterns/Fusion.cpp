@@ -2593,8 +2593,11 @@ struct MultiHeadAttentionPattern
           return value != mlir::ShapedType::kDynamic;
         });
 
-    if (dimD != 128 || !isDimHStatic)
-      return Error("Right now must prove D == 128 && static H for llama2.");
+    // Original guard was `dimD != 128 || !isDimHStatic` to restrict the GPU
+    // MHA fusion to Llama2's head_dim. This was blocking GPT-2 124M fused
+    // attention. Relax the guard to add dimD != 64.
+    if ((dimD != 64 && dimD != 128) || !isDimHStatic)
+      return Error("Right now must prove (D == 128 || D == 64) && static H.");
 
     // CHECK 3: The GPU kernel requires an attention mask tensor.
     if (!matcher->hasAttentionMask())
