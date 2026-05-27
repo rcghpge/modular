@@ -965,6 +965,17 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addSetMemory(
   return nullptr;
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceGraphBuilder_addEmpty(DeviceGraphBuilder *builder,
+                                    const int32_t *depIds, int64_t numDeps) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addEmpty", TRACY_COLOR_GRAY);
+  ErrorOr<DeviceGraphNode> nodeOrErr =
+      builder->addEmpty(makeDepsArrayRef(depIds, numDeps));
+  if (nodeOrErr.isError())
+    return raiseError(nodeOrErr.getError());
+  return nullptr;
+}
+
 // Writes the id of the most recently added node into *result. Returns an
 // error string if no nodes have been added to the builder.
 MODULAR_EXPORT const char *

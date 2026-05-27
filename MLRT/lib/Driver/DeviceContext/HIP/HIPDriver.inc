@@ -60,6 +60,8 @@ HIP_FUNC(hipGraphAddMemcpyNode1D, Result, hipGraphNode_t *, hipGraph_t,
          hipMemcpyKind)
 HIP_FUNC(hipGraphAddMemsetNode, Result, hipGraphNode_t *, hipGraph_t,
          const hipGraphNode_t *, size_t, const hipMemsetParams *)
+HIP_FUNC(hipGraphAddEmptyNode, Result, hipGraphNode_t *, hipGraph_t,
+         const hipGraphNode_t *, size_t)
 
 HIP_FUNC(hipGraphInstantiate, Result, hipGraphExec_t *, hipGraph_t, hipGraphNode_t *,
           char *, size_t)

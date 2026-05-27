@@ -60,6 +60,8 @@ public:
   ErrorOr<DeviceGraphNode>
   addSetMemory(void *dst, size_t byteSize, uint64_t val, size_t valSize,
                llvm::ArrayRef<DeviceGraphNode> dependencies) override;
+  ErrorOr<DeviceGraphNode>
+  addEmpty(llvm::ArrayRef<DeviceGraphNode> dependencies) override;
 
   ErrorOr<DeviceGraphRef> instantiate() override;
 

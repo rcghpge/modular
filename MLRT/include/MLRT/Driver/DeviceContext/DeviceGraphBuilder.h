@@ -163,6 +163,17 @@ public:
     return addSetMemory(dst.ptr(), dst.byteSize(), val, valSize, dependencies);
   }
 
+  /// Add an empty (no-op) node to the graph. Empty nodes do no work at
+  /// execution time and exist purely for transitive ordering: a single empty
+  /// node fanned in from m predecessors and out to n successors expresses an
+  /// m-to-n barrier with m+n edges instead of m*n edges, and can serve as a
+  /// stable handle for "the completion of this phase" when the producer set
+  /// is not visible to the consumer.
+  ///
+  /// \param dependencies Explicit dependency list; see above.
+  virtual ErrorOr<DeviceGraphNode>
+  addEmpty(llvm::ArrayRef<DeviceGraphNode> dependencies) = 0;
+
   /// Instantiate the currently constructed device graph into its executable
   /// format. Can be subsequently replayed multiple times.
   virtual ErrorOr<DeviceGraphRef> instantiate() = 0;

@@ -73,6 +73,8 @@ CUDA_FUNC(cuGraphAddMemcpyNode, Result, CUgraphNode *, CUgraph,
 CUDA_FUNC(cuGraphAddMemsetNode, Result, CUgraphNode *, CUgraph,
           const CUgraphNode *, size_t, const CUDA_MEMSET_NODE_PARAMS *,
           CUcontext)
+CUDA_FUNC(cuGraphAddEmptyNode, Result, CUgraphNode *, CUgraph,
+          const CUgraphNode *, size_t)
 
 CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *,
           char *, size_t)

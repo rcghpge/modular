@@ -262,6 +262,22 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(
   return DeviceGraphNode{id};
 }
 
+ErrorOr<DeviceGraphNode>
+CUDADeviceGraphBuilder::addEmpty(llvm::ArrayRef<DeviceGraphNode> dependencies) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
+  CUgraphNode node = nullptr;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddEmptyNode(
+      &node, graph_, deps.data(), deps.size()));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
 ErrorOr<DeviceGraphRef> CUDADeviceGraphBuilder::instantiate() {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());

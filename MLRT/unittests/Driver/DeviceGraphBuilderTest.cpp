@@ -320,4 +320,73 @@ TEST(DeviceGraphBuilderTest, IndependentMemsetSequences) {
     EXPECT_EQ(hostB[i], 0xCCu) << "bufB at index " << i;
 }
 
+// Empty nodes do no work but carry transitive ordering. Two independent
+// memset roots fan in to a single empty node, and two host-to-device copies
+// fan out from that empty node. Each copy is explicitly ordered after the
+// empty node only — never against the memsets directly. If the empty node
+// fails to propagate the dependency edges, the copies could race with the
+// memsets and a final buffer would hold the memset pattern instead of the
+// copy pattern.
+TEST(DeviceGraphBuilderTest, EmptyNodeFanInFanOutJoin) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceBufferRef, bufA, ctx->enqueueCreateBuffer(byteSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufB, ctx->enqueueCreateBuffer(byteSize));
+
+  llvm::SmallVector<uint8_t> patternA(byteSize, 0xCCu);
+  llvm::SmallVector<uint8_t> patternB(byteSize, 0xDDu);
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+
+  // Fan-in: two independent memset roots.
+  ASSIGN_NO_ERR(DeviceGraphNode, memsetA,
+                builder->addSetMemory(*bufA, /*val=*/0xAAu, /*valSize=*/1,
+                                      /*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphNode, memsetB,
+                builder->addSetMemory(*bufB, /*val=*/0xBBu, /*valSize=*/1,
+                                      /*dependencies=*/{}));
+
+  // Join via an empty node.
+  DeviceGraphNode fanInDeps[] = {memsetA, memsetB};
+  ASSIGN_NO_ERR(DeviceGraphNode, joinNode, builder->addEmpty(fanInDeps));
+
+  // Fan-out: two copies that depend only on the empty node. Transitive
+  // ordering through the empty node must keep them after both memsets.
+  EXPECT_NO_ERR(builder->addCopyHostToDevice(
+      *bufA, patternA.data(), llvm::ArrayRef<DeviceGraphNode>(joinNode)));
+  EXPECT_NO_ERR(builder->addCopyHostToDevice(
+      *bufB, patternB.data(), llvm::ArrayRef<DeviceGraphNode>(joinNode)));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  llvm::SmallVector<uint8_t> hostA(byteSize, 0);
+  llvm::SmallVector<uint8_t> hostB(byteSize, 0);
+  EXPECT_NO_ERR(bufA->copyTo(hostA.data()));
+  EXPECT_NO_ERR(bufB->copyTo(hostB.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(hostA[i], 0xCCu) << "bufA at index " << i;
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(hostB[i], 0xDDu) << "bufB at index " << i;
+}
+
+// A solo empty node with no dependencies and no successors must still
+// instantiate and replay without error: an empty node is a valid graph root.
+TEST(DeviceGraphBuilderTest, EmptyNodeAsSoleGraphRoot) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addEmpty(/*dependencies=*/{}));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+}
+
 } // namespace

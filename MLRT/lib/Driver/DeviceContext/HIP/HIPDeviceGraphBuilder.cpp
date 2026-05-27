@@ -230,6 +230,22 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addSetMemory(
   return DeviceGraphNode{id};
 }
 
+ErrorOr<DeviceGraphNode>
+HIPDeviceGraphBuilder::addEmpty(llvm::ArrayRef<DeviceGraphNode> dependencies) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<hipGraphNode_t>, deps,
+                         resolveDeps(dependencies));
+  hipGraphNode_t node = nullptr;
+  HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddEmptyNode(
+      &node, graph_, deps.data(), deps.size()));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
 ErrorOr<DeviceGraphRef> HIPDeviceGraphBuilder::instantiate() {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
