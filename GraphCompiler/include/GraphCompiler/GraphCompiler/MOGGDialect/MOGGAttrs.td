@@ -32,7 +32,7 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
     (`execute` / `shape` / `elementwise` / `update_view`):
 
       - `signature`     : the LIT `FnTypeGeneratorType` for the function.
-      - `params`        : the fn-level `ParamDeclAttr` list for this
+      - `params`        : the def-level `ParamDeclAttr` list for this
                           function (each entry has `getName()` and
                           `getType()`).
       - `arg_params`    : per-argument `{struct-slot-name -> bound-value}`
