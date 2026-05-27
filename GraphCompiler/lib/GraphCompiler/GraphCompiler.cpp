@@ -539,23 +539,16 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
   // the `mogg.opaque_type_mapping` attribute via `MOGG::copyKernelDecls`.
   // `mogg-rewrite-opaque-types` immediately below still runs, so user
   // `!mo.opaque<"simple">` references on freshly-cloned ops get rewritten.
-  if (!opts.kernelDeclsPrePopulated) {
-    if (failed(buildOrRunStage(
-            [&](auto &p) {
+  if (failed(buildOrRunStage(
+          [&](auto &p) {
+            if (!opts.kernelDeclsPrePopulated) {
               p.addPass(MOGG::createImportPackages(
                   {.mojoPkgPaths = kernelLibraryPaths, .litMlirPaths = {}}));
-            },
-            "")))
-      return failure();
-  }
-
-  // --- rewrite-opaque-types ---
-  // Applies the `mogg.opaque_type_mapping` attribute to all `!mo.opaque`
-  // references in the module. Always runs; a no-op when ops are already
-  // fully-qualified (e.g. constant fold sub-modules whose ops were extracted
-  // from an already-rewritten parent module).
-  if (failed(buildOrRunStage(
-          [&](auto &p) { p.addPass(MOGG::createRewriteOpaqueTypes()); }, "")))
+              p.addPass(MOGG::createVerifyKernels());
+            }
+            p.addPass(MOGG::createRewriteOpaqueTypes());
+          },
+          "")))
     return failure();
 
   // --- mo-pipeline ---
