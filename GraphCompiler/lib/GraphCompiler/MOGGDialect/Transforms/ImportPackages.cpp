@@ -48,7 +48,7 @@ namespace {
 
 // Mojo-source method names of extensibility kernels live in MojoIdentifiers.h
 // (`kMoggExecuteFuncName`, `kMoggShapeFuncName`, `kMoggElementwiseFuncName`,
-// `kMoggUpdateViewFuncName`).
+// `kMoggUpdateViewFuncName`, `kMoggBuildGraphFuncName`).
 
 /// Return the slot names of a well-known stdlib parameterised struct whose
 /// declaration is not present in the loaded kernel package (its decl lives
@@ -281,6 +281,7 @@ struct ScannedKernel {
   KGEN::LIT::FnOp shapeFn;       // may be null
   KGEN::LIT::FnOp elementwiseFn; // may be null
   KGEN::LIT::FnOp updateViewFn;  // may be null; only present on view kernels
+  KGEN::LIT::FnOp buildGraphFn;  // may be null
 };
 
 /// One primitive (non-struct) function found while scanning.
@@ -337,6 +338,8 @@ static mlir::LogicalResult scanForKernelDecls(
             kernel.elementwiseFn = func;
           else if (srcName == kMoggUpdateViewFuncName)
             kernel.updateViewFn = func;
+          else if (srcName == kMoggBuildGraphFuncName)
+            kernel.buildGraphFn = func;
           else
             recognized = false;
           if (recognized && !func.getIsStatic()) {
@@ -625,13 +628,15 @@ struct ImportPackagesPass
         fnLocs.push_back(kernel.elementwiseFn.getLoc());
       if (kernel.updateViewFn)
         fnLocs.push_back(kernel.updateViewFn.getLoc());
+      if (kernel.buildGraphFn)
+        fnLocs.push_back(kernel.buildGraphFn.getLoc());
 
-      // execute / update_view may return user-defined parameterised opaque
-      // structs (e.g. `SIMDPair[P0, P1]`) whose slot mappings are needed by
-      // `inferOpaqueParameters` -- compute them in soft mode so that other
-      // result types (tensors, none, ...) fall back to UnitAttr.
-      // shape / elementwise return stdlib `IndexList`/`SIMD`; strict mode
-      // catches misuse.
+      // execute / update_view / build_graph may return user-defined
+      // parameterised opaque structs (e.g. `SIMDPair[P0, P1]`) whose slot
+      // mappings are needed by `inferOpaqueParameters` -- compute them in
+      // soft mode so that other result types (tensors, none, ...) fall back
+      // to UnitAttr. shape / elementwise return stdlib `IndexList`/`SIMD`;
+      // strict mode catches misuse.
       auto executeAttr =
           buildFunctionAttr(kernel.executeFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
@@ -644,8 +649,11 @@ struct ImportPackagesPass
       auto updateViewAttr =
           buildFunctionAttr(kernel.updateViewFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
+      auto buildGraphAttr =
+          buildFunctionAttr(kernel.buildGraphFn, /*computeResultParams=*/true,
+                            /*strictResultParams=*/false);
       if (failed(executeAttr) || failed(shapeAttr) || failed(elementwiseAttr) ||
-          failed(updateViewAttr)) {
+          failed(updateViewAttr) || failed(buildGraphAttr)) {
         signalPassFailure();
         return;
       }
@@ -657,6 +665,8 @@ struct ImportPackagesPass
             kernel.executeFn ? kernel.executeFn : kernel.elementwiseFn;
         if (!paramSrcFn)
           paramSrcFn = kernel.shapeFn ? kernel.shapeFn : kernel.updateViewFn;
+        if (!paramSrcFn)
+          paramSrcFn = kernel.buildGraphFn;
         if (paramSrcFn) {
           if (auto structDecl = mlir::dyn_cast<KGEN::LIT::StructDeclOp>(
                   paramSrcFn->getParentOp())) {
@@ -671,7 +681,7 @@ struct ImportPackagesPass
       KernelDeclOp::create(builder, mlir::FusedLoc::get(ctx, fnLocs),
                            kernel.mojoName, kernel.registration, *executeAttr,
                            *shapeAttr, *elementwiseAttr, *updateViewAttr,
-                           structParams,
+                           *buildGraphAttr, structParams,
                            mlir::BoolAttr::get(ctx, isUserDefined));
     }
 

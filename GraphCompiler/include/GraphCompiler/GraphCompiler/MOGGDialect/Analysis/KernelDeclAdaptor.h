@@ -270,8 +270,9 @@ private:
 };
 
 /// Top-level adaptor for a mogg.kernel.decl op. Decodes execute, shape,
-/// elementwise, and update_view signatures directly from the stored LIT types
-/// without relying on MOGG pre-elaboration annotation attributes.
+/// elementwise, update_view, and build_graph signatures directly from the
+/// stored LIT types without relying on MOGG pre-elaboration annotation
+/// attributes.
 struct KernelDeclAdaptor {
   mlir::StringAttr registeredOpName;
   /// Fully-resolved Mojo name of the kernel struct
@@ -281,6 +282,7 @@ struct KernelDeclAdaptor {
   std::optional<KernelDeclFunctionAdaptor> shapeFunction;
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> updateViewFunction;
+  std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
   /// Struct-level ParamDeclAttrs shared by all functions of this kernel
   /// (e.g. `dtype`, `target`). Per-function `ParamDeclAttr`s are accessible
   /// via each function variant's owning `MOGG_KernelFunctionAttr`.
@@ -293,7 +295,8 @@ struct KernelDeclAdaptor {
 
   /// Return the function adaptor for a given MOGG function label
   /// (e.g. `kMoggExecuteFunctionLabel`, `kMoggShapeFunctionLabel`,
-  ///  `kMoggUpdateViewFunctionLabel`, `kMoggElementwiseFunctionLabel`).
+  ///  `kMoggUpdateViewFunctionLabel`, `kMoggElementwiseFunctionLabel`,
+  ///  `kMoggBuildGraphFunctionLabel`).
   /// Returns nullptr if the label is not recognised or the function is absent.
   const KernelDeclFunctionAdaptor *
   getFunctionByLabel(llvm::StringRef label) const;

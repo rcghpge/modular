@@ -72,6 +72,7 @@ constexpr llvm::StringLiteral kMoggShapeFunctionLabel = "mogg.shape";
 constexpr llvm::StringLiteral kMoggUpdateViewFunctionLabel = "mogg.update_view";
 constexpr llvm::StringLiteral kMoggElementwiseFunctionLabel =
     "mogg.elementwise";
+constexpr llvm::StringLiteral kMoggBuildGraphFunctionLabel = "mogg.build_graph";
 
 /// Mojo source method names of extensibility kernels (`@register`-decorated
 /// structs) and the decorator-spelling constants. `kFnRegister`,
@@ -84,6 +85,7 @@ using KGEN::kMoggExecuteFuncName;
 constexpr llvm::StringLiteral kMoggShapeFuncName = "shape";
 constexpr llvm::StringLiteral kMoggElementwiseFuncName = "elementwise";
 constexpr llvm::StringLiteral kMoggUpdateViewFuncName = "update_input_view";
+constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
 
 constexpr llvm::StringLiteral kMoggTargetParameterName = "target";
 

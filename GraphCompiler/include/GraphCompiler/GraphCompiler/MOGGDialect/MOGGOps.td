@@ -1520,9 +1520,14 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     built-in decl with the same registration name.
 
     Each function variant (`execute` / `shape` / `elementwise` /
-    `update_view`) is a `MOGG_KernelFunctionAttr` that bundles its
-    signature, its fn-level `ParamDeclAttr` list, and the cached
-    per-result parameter mapping.
+    `update_view` / `build_graph`) is a `MOGG_KernelFunctionAttr` that
+    bundles its signature, its fn-level `ParamDeclAttr` list, and the
+    cached per-result parameter mapping.
+
+    A kernel may carry a `build_graph` signature alongside `execute`. The
+    `build_graph` function has the same tensor signature as `execute` but
+    takes a `DeviceGraphBuilder` as its launch argument in place of the
+    `DeviceContext`.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
@@ -1530,6 +1535,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
       OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
       OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
       OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
+      OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
       ArrayAttr:$struct_params,
       BoolAttr:$is_user_defined);
 
@@ -1539,6 +1545,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     (`shape` `=` $shape^)?
     (`elementwise` `=` $elementwise^)?
     (`update_view` `=` $update_view^)?
+    (`build_graph` `=` $build_graph^)?
     `struct_params` `=` $struct_params
     `is_user_defined` `=` $is_user_defined
     attr-dict

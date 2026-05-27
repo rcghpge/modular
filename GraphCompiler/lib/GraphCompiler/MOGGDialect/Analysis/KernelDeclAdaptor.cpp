@@ -406,6 +406,11 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
     updateViewFunction->fullyResolvedName = mlir::StringAttr::get(
         ctx, llvm::formatv("{}.update_input_view", structName).str());
   }
+  buildGraphFunction = buildFn(decl.getBuildGraph());
+  if (buildGraphFunction) {
+    buildGraphFunction->fullyResolvedName = mlir::StringAttr::get(
+        ctx, llvm::formatv("{}.build_graph", structName).str());
+  }
 
   if (auto ewFn = decl.getElementwise()) {
     elementwiseFunction = buildFn(ewFn);
@@ -433,6 +438,8 @@ KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
     return updateViewFunction ? &*updateViewFunction : nullptr;
   if (label == kMoggElementwiseFunctionLabel)
     return elementwiseFunction ? &*elementwiseFunction : nullptr;
+  if (label == kMoggBuildGraphFunctionLabel)
+    return buildGraphFunction ? &*buildGraphFunction : nullptr;
   return nullptr;
 }
 
