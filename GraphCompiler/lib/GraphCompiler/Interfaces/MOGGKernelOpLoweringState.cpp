@@ -269,11 +269,6 @@ Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
   MO::IOKind io = tensorInfos.isOutput ? MO::IOKind::Output : MO::IOKind::Input;
   bool mut = tensorInfos.isOutput || isa<MO::BufferType>(stubValue.getType());
 
-  // Exclusive is True unless it's used by a view kernel
-  bool isExclusive = llvm::none_of(stubValue.getUsers(), [](Operation *use) {
-    return isa<MOGG::CallViewOp>(use);
-  });
-
   // Build the new tensor type.
   auto ioAttr = MO::IOKindAttr::get(ctx, io);
   auto mutAttr = BoolAttr::get(ctx, mut);
@@ -281,8 +276,7 @@ Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
 
   // Build the tensor object.
   return MOGG::TensorInitOp::create(builder, loc, newTensorTy, bufferValue,
-                                    dynamicDimensions, mutAttr, ioAttr,
-                                    BoolAttr::get(ctx, isExclusive))
+                                    dynamicDimensions, mutAttr, ioAttr)
       .getResult();
 }
 
@@ -509,8 +503,7 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
     tensorVal = MOGG::TensorInitOp::create(
         builder, loc, tensorType, emptyBuffer, dynamicDimensions,
         /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
-        /*exclusive=*/BoolAttr::get(ctx, true));
+        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
   }
 
   else if (bindOp.hasAffineViewOperation()) {
@@ -540,10 +533,6 @@ void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
       operandsMapping.get(constantOp.getResult(), /*isInsideStub=*/true);
 
   // Exclusive is True unless it's used by a view kernel.
-  bool isExclusive =
-      llvm::none_of(constantOp.getResult().getUsers(),
-                    [](Operation *use) { return isa<MOGG::CallViewOp>(use); });
-
   builder.setInsertionPoint(constantOp);
   SmallVector<Value> dynamicDimensions;
   MO::TensorType tensorType =
@@ -554,8 +543,7 @@ void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
       builder, loc, tensorType, bufferValue,
       /*dynamicDimensions=*/ArrayRef<Value>{},
       /*mut=*/BoolAttr::get(ctx, false),
-      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
-      BoolAttr::get(ctx, isExclusive));
+      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
   constantOp.getResult().replaceAllUsesWith(constantValue);
   constantOp->erase();
 }

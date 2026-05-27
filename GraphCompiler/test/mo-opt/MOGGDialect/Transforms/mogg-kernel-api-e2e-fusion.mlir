@@ -220,7 +220,6 @@ mo.graph @variadic_fusion_multiple() -> !mo.tensor<[4], f32> {
 // CHECK: x.shape = [3, 2]
 // CHECK: x.strides = [1, 3]
 // CHECK: x.address_space = AddressSpace.GENERIC
-// CHECK: x.exclusive = False
 // CHECK-LABEL: Running 'view_fusion_print_specs':
 // CHECK: 'view_fusion_print_specs' returned tensor<3x2xf32> [1.000000e+00, 4.000000e+00, 2.000000e+00, 5.000000e+00, 3.000000e+00, 6.000000e+00]
 mo.graph @view_fusion_print_specs() -> !mo.tensor<[3, 2], f32> {
@@ -240,7 +239,6 @@ mo.graph @view_fusion_print_specs() -> !mo.tensor<[3, 2], f32> {
 // CHECK: x.shape = [2, 3]
 // CHECK: x.strides = [3, 1]
 // CHECK: x.address_space = AddressSpace.GENERIC
-// CHECK: x.exclusive = False
 // CHECK-LABEL: Running 'double_view_fusion_print_specs':
 // CHECK: 'double_view_fusion_print_specs' returned tensor<2x3xf32> [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]
 mo.graph @double_view_fusion_print_specs() -> !mo.tensor<[2, 3], f32> {

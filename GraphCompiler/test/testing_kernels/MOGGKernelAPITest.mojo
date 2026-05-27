@@ -328,7 +328,6 @@ struct PrintTensorSpecOp:
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
-        print("x.exclusive =", x.exclusive)
 
         @parameter
         @always_inline
@@ -371,7 +370,6 @@ struct PrintTensorSpecViewOp:
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
-        print("x.exclusive =", x.exclusive)
 
     @staticmethod
     def update_input_view(input: InputTensor) -> type_of(input):
@@ -412,7 +410,6 @@ struct PrintTensorSpecFusedOp:
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
-        print("x.exclusive =", x.exclusive)
 
         @parameter
         @always_inline

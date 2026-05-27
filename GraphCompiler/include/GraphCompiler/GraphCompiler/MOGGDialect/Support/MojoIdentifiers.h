@@ -341,7 +341,6 @@ constexpr llvm::StringLiteral kFieldIoSpec = "io_spec";
 
 /// `StaticTensorSpec` fields.
 constexpr llvm::StringLiteral kFieldStaticLayout = "static_layout";
-constexpr llvm::StringLiteral kFieldExclusive = "exclusive";
 constexpr llvm::StringLiteral kFieldRank = "rank";
 constexpr llvm::StringLiteral kFieldShapeTuple = "shape_tuple";
 constexpr llvm::StringLiteral kFieldStridesTuple = "strides_tuple";
@@ -569,7 +568,6 @@ public:
 
   MojoValue staticLayout() const { return value.get(kFieldStaticLayout); }
   MojoValue alignment() const { return value.get(kFieldAlignment); }
-  MojoValue exclusive() const { return value.get(kFieldExclusive); }
   MojoValue rank() const { return value.get(kFieldRank); }
 
   /// `get_internals()` returns a struct exposing the shape/strides tuples;

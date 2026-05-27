@@ -1329,8 +1329,7 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
                                            MojoValue(false), // False constant
                                            MojoValue(kEnumIoInput),
                                            staticSpec.staticLayout(),
-                                           staticSpec.alignment(),
-                                           staticSpec.exclusive()};
+                                           staticSpec.alignment()};
 
   // Build runtime arguments
   SmallVector<MojoValue> runtimeArgs = {
@@ -2494,7 +2493,6 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto tensorTy = MO::dynCastFromTensorLike(getType());
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
   auto mutParam = getMut();
-  auto exclusiveParam = getExclusive();
   auto ioParam = MojoValue(kStructIO).get(MO::stringifyIOKind(getIo()));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
@@ -2513,7 +2511,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   state.setMojoValueFor(
       getResult(), state.builder.var(moggTensorInit(
                        {dTypeParam, rankParam, mutParam, ioParam, layoutParam,
-                        alignmentParam, exclusiveParam},
+                        alignmentParam},
                        {OpaquePointerRef(ManagedTensorSliceRef(
                                              state.getMojoValueFor(getBuffer()))
                                              .unsafePtr())

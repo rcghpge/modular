@@ -6,11 +6,11 @@
 // CHECK:         mogg.call.execute["mo.matmul"]
 // CHECK:       }
 // CHECK:       mogg.generic.compiled.region
-// CHECK:         mogg.tensor.__init__(%{{.*}}) {exclusive = true, io = 1 : i32, mut = false}
-// CHECK:         mogg.tensor.__init__(%{{.*}}) {exclusive = true, io = 1 : i32, mut = false}
-// CHECK:         mogg.tensor.__init__(%{{.*}}) {exclusive = true, io = 1 : i32, mut = false}
-// CHECK:         mogg.tensor.__init__(%{{.*}}) {exclusive = true, io = 0 : i32, mut = true}
-// CHECK:         mogg.tensor.__init__(%{{.*}}) {exclusive = true, io = 0 : i32, mut = true}
+// CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 1 : i32, mut = false}
+// CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 1 : i32, mut = false}
+// CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 1 : i32, mut = false}
+// CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 0 : i32, mut = true}
+// CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 0 : i32, mut = true}
 // CHECK:         mogg.call.stub @stub_0
 // CHECK:         mogg.async.ready : !mef.chain
 // CHECK:         mogg.output
