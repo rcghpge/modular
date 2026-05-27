@@ -39,23 +39,21 @@ mo.graph @llama_dupe_params<N1, N2 -> O1, O2>(
   // CHECK-SAME: !mo.tensor<[D1, D2], bf16> -> !mo.tensor<[N1, D2], bf16>
   // CHECK-NEXT: mo.concat
   // CHECK-SAME: (!mo.tensor<[N1, D2], bf16>, !mo.tensor<[N1, N1], bf16>) -> !mo.tensor<[N1, N2], bf16>
-  // CHECK-NEXT: kgen.param.declare assert1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
+  // CHECK-NEXT: kgen.param.declare assert1: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
 
   %1 = mo.broadcast_to<() -> D1, D2>(%input, %shape) : (!mo.tensor<[], bf16>, !mo.tensor<[2], si32>) -> !mo.tensor<[D1, D2], bf16>
   %2 = mo.rebind(%1) : !mo.tensor<[D1, D2], bf16> -> !mo.tensor<[N1, D2], bf16>
   %3 = mo.concat[1] (%2, %dummy) : (!mo.tensor<[N1, D2], bf16>, !mo.tensor<[N1, N1], bf16>) -> !mo.tensor<[N1, N2], bf16>
-  kgen.param.declare assert1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
+  kgen.param.declare assert1: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
 
-  // CHECK-NEXT: kgen.param.declare assert2: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
+  // CHECK-NEXT: kgen.param.declare assert2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D2, N1), N2))>
   %4 = mo.broadcast_to<() -> D3, D4>(%input, %shape) : (!mo.tensor<[], bf16>, !mo.tensor<[2], si32>) -> !mo.tensor<[D3, D4], bf16>
   %5 = mo.rebind(%4) : !mo.tensor<[D3, D4], bf16> -> !mo.tensor<[N1, D4], bf16>
   %6 = mo.concat[1] (%5, %dummy) : (!mo.tensor<[N1, D4], bf16>, !mo.tensor<[N1, N1], bf16>) -> !mo.tensor<[N1, N2], bf16>
-  kgen.param.declare assert2: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D4, N1), N2))>
+  kgen.param.declare assert2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] out_dim must be equivalent to the sum of the input dims along the concat axis" : !kgen.string}, eq(:scalar<si64> add(D4, N1), N2))>
 
   %res = mo.select(%selector, %3, %6) : (!mo.tensor<[N1, N2], bool>, !mo.tensor<[N1, N2], bf16>, !mo.tensor<[N1, N2], bf16>) -> !mo.tensor<[N1, N2], bf16>
 
   // CHECK: mo.output<N1, N2>
   mo.output<N1, N2> %res : !mo.tensor<[N1, N2], bf16>
 }
-
-

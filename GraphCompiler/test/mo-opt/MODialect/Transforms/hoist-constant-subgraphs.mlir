@@ -230,15 +230,15 @@ mo.graph @caller_complex_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tenso
 mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_invariant: !mo.tensor<[seq_len], f32>, %arg2_invariant: !mo.tensor<[seq_len], f32>) -> (!mo.tensor<[seq_len], f32>) attributes {isSubgraph} {
 
   // This assert can be hoisted as it only depends on seq_len
-  kgen.param.declare ASSERT: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 seq_len, 1))>
+  kgen.param.declare ASSERT: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> seq_len, 1))>
 
   %86 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %1715 = mo.slice<() -> NEW_DIM>(%arg0, %86, %86, %86) : (!mo.tensor<[seq_len], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[NEW_DIM], f32>
 
   // This assert cannot be hoisted as it depends on NEW_DIM, which is defined
   // by an operation that cannot be hoisted.
-  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 NEW_DIM, 1))>
-  kgen.param.declare ASSERT2: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 NEW_DIM, 1))>
+  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> NEW_DIM, 1))>
+  kgen.param.declare ASSERT2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> NEW_DIM, 1))>
 
   // These ops depend only on callsite-invariant args %arg1_invariant, %arg2_invariant
   %0 = mo.mul(%arg1_invariant, %arg2_invariant) : !mo.tensor<[seq_len], f32>
@@ -259,12 +259,12 @@ mo.graph @caller<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1: !mo.tensor<[
   %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[seq_len], f32>
 
   // Hoisted ops for call 1
-  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 seq_len, 1))>
+  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> seq_len, 1))>
   // CHECK: mo.call @param_declare_op
   %res1 = mo.call @param_declare_op(%arg0, %cst1, %cst2) : (!mo.tensor<[seq_len], f32>, !mo.tensor<[seq_len], f32>, !mo.tensor<[seq_len], f32>) -> !mo.tensor<[seq_len], f32>
 
   // Hoisted ops for call 2 (same invariant arguments)
-  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:si64 seq_len, 1))>
+  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, eq(:scalar<si64> seq_len, 1))>
   // CHECK: mo.call @param_declare_op
   %res2 = mo.call @param_declare_op(%arg1, %cst1, %cst2) : (!mo.tensor<[seq_len], f32>, !mo.tensor<[seq_len], f32>, !mo.tensor<[seq_len], f32>) -> !mo.tensor<[seq_len], f32>
 

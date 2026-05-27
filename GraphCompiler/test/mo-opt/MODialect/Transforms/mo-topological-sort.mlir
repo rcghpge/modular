@@ -11,11 +11,11 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 
   %res = mo.static.broadcast_to(%input_rs) : !mo.tensor<[D2, 768], f32> -> !mo.tensor<[D3, 768], f32>
 
-  kgen.param.declare D3: si64 = <add(D2, D1)>
+  kgen.param.declare D3: scalar<si64> = <add(D2, D1)>
 
   %input_rs = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D2, 768], f32>
 
-  kgen.param.declare D2: si64 = <max(D1, 1)>
+  kgen.param.declare D2: scalar<si64> = <max(D1, 1)>
 
   mo.output<D3> %res : !mo.tensor<[D3, 768], f32>
 }
@@ -27,8 +27,8 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 // CHECK-SAME:  ) -> !mo.tensor<[[[OUT]], 768], f32> {
 //
 // NOTE these are all reordered
-// CHECK-NEXT:    kgen.param.declare [[D2:.*]]: si64 = <max([[D1]], 1)>
-// CHECK-NEXT:    kgen.param.declare [[D3:.*]]: si64 = <add([[D1]], [[D2]])>
+// CHECK-NEXT:    kgen.param.declare [[D2:.*]]: scalar<si64> = <max([[D1]], 1)>
+// CHECK-NEXT:    kgen.param.declare [[D3:.*]]: scalar<si64> = <add([[D1]], [[D2]])>
 // CHECK-NEXT:    %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D2]], 768], f32>
 // CHECK-NEXT:    %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT_RS]]) : !mo.tensor<[[[D2]], 768], f32> -> !mo.tensor<[[[D3]], 768], f32>
 // CHECK-NEXT:    %[[UNUSED:.*]] = mo.relu(%[[RES]]) : !mo.tensor<[[[D3]], 768], f32>
@@ -45,9 +45,9 @@ mo.graph @sort_with_nested_region<D0, D1>(
 
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[D0], f32> {
     %1 = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
-    kgen.param.declare D5: si64 = <mul(D1, D4)>
+    kgen.param.declare D5: scalar<si64> = <mul(D1, D4)>
     %2 = mo.static.broadcast_to(%1) : !mo.tensor<[D3], f32> -> !mo.tensor<[D0], f32>
-    kgen.param.declare D4: si64 = <min(D1, 1)>
+    kgen.param.declare D4: scalar<si64> = <min(D1, 1)>
     mo.yield %2 : !mo.tensor<[D0], f32>
 
   } else {
@@ -56,8 +56,8 @@ mo.graph @sort_with_nested_region<D0, D1>(
     mo.yield %4 : !mo.tensor<[D0], f32>
   }
 
-  kgen.param.declare D3: si64 = <div(D2, D1)>
-  kgen.param.declare D2: si64 = <add(D1, 1)>
+  kgen.param.declare D3: scalar<si64> = <div(D2, D1)>
+  kgen.param.declare D2: scalar<si64> = <add(D1, 1)>
 
   mo.output %0 : !mo.tensor<[D0], f32>
 }
@@ -70,15 +70,15 @@ mo.graph @sort_with_nested_region<D0, D1>(
 // CHECK-SAME:  ) -> !mo.tensor<[[[D0]]], f32> {
 //
 // NOTE these are reordered
-// CHECK-NEXT:  kgen.param.declare [[D2:.*]]: si64 = <add([[D1]], 1)>
-// CHECK-NEXT:  kgen.param.declare [[D3:.*]]: si64 = <div([[D2]], [[D1]])>
+// CHECK-NEXT:  kgen.param.declare [[D2:.*]]: scalar<si64> = <add([[D1]], 1)>
+// CHECK-NEXT:  kgen.param.declare [[D3:.*]]: scalar<si64> = <div([[D2]], [[D1]])>
 //
 // CHECK-NEXT:  %[[RES:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[[[D0]]], f32> {
 // CHECK-NEXT:    %[[V1:.*]] = mo.static.broadcast_to(%[[SCALAR]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D3]]], f32>
 // CHECK-NEXT:    %[[V2:.*]] = mo.static.broadcast_to(%1) : !mo.tensor<[[[D3]]], f32> -> !mo.tensor<[[[D0]]], f32>
 // NOTE these are reordered
-// CHECK-NEXT:    kgen.param.declare [[D4:.*]]: si64 = <min([[D1]], 1)>
-// CHECK-NEXT:    kgen.param.declare [[D5:.*]]: si64 = <mul([[D1]], [[D4]])>
+// CHECK-NEXT:    kgen.param.declare [[D4:.*]]: scalar<si64> = <min([[D1]], 1)>
+// CHECK-NEXT:    kgen.param.declare [[D5:.*]]: scalar<si64> = <mul([[D1]], [[D4]])>
 //
 // CHECK-NEXT:    mo.yield %[[V2]] : !mo.tensor<[[[D0]]], f32>
 //
@@ -100,9 +100,9 @@ mo.graph @sort_with_nested_non_graph_region<D0, D1>(
 
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[D0], f32> {
     %1 = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
-    kgen.param.declare D5: si64 = <mul(D1, D4)>
+    kgen.param.declare D5: scalar<si64> = <mul(D1, D4)>
     %2 = mo.static.broadcast_to(%1) : !mo.tensor<[D3], f32> -> !mo.tensor<[D0], f32>
-    kgen.param.declare D4: si64 = <min(D1, 1)>
+    kgen.param.declare D4: scalar<si64> = <min(D1, 1)>
     mo.yield %2 : !mo.tensor<[D0], f32>
 
   } else {
@@ -111,8 +111,8 @@ mo.graph @sort_with_nested_non_graph_region<D0, D1>(
     mo.yield %4 : !mo.tensor<[D0], f32>
   }
 
-  kgen.param.declare D3: si64 = <div(D2, D1)>
-  kgen.param.declare D2: si64 = <add(D1, 1)>
+  kgen.param.declare D3: scalar<si64> = <div(D2, D1)>
+  kgen.param.declare D2: scalar<si64> = <add(D1, 1)>
 
   mo.output %0 : !mo.tensor<[D0], f32>
 }

@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mo.graph @matmul_assert
 // CHECK-SAME: <[[D0:[^ ]*]], [[D1:[^ ]*]], [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D0]], [[D1]]], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D0]], [[D3]]], f32> {
-// CHECK-NEXT: kgen.param.declare chain: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[[D1]] != [[D2]]" : !kgen.string}, eq(:si64 [[D1]], [[D2]]))>
+// CHECK-NEXT: kgen.param.declare chain: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[[D1]] != [[D2]]" : !kgen.string}, eq(:scalar<si64> [[D1]], [[D2]]))>
 // CHECK-NEXT: [[V0:[^ ]*]] = mosh.param.to_value: !mo.chain = <chain>
 // CHECK-NEXT: [[V1:[^ ]*]]:2 = mo.guard[[[V0]]] ([[VARG0]], [[VARG1]]) : !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.matmul([[V1]]#0, [[V1]]#1) : (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D0]], [[D3]]], f32>
@@ -10,8 +10,8 @@
 mo.graph @matmul_assert<D0, D1, D2, D3>(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.tensor<[D2, D3], f32> ) -> !mo.tensor<[D0, D3], f32>
 {
   kgen.param.declare chain: !mo.chain =
-    <apply(:(i1) ->
-    !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:si64 D1, D2))>
+    <apply(:(!kgen.scalar<bool>) ->
+    !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:scalar<si64> D1, D2))>
 
   %chain = mosh.param.to_value: !mo.chain = <chain>
 
