@@ -904,7 +904,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
   params.argCount = argCount;
 
   // Node handle is intentionally discarded; callers retrieve it via
-  // AsyncRT_DeviceGraphBuilder_lastNodeId.
+  // AsyncRT_DeviceGraphBuilder_lastNodeIdOrNone.
   ErrorOr<DeviceGraphNode> nodeOrErr = builder->addFunctionDirect(
       *func, params, makeDepsArrayRef(depIds, numDeps));
   if (nodeOrErr.isError())
@@ -914,8 +914,8 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
 
 // Memcpy and memset graph-builder nodes. Node IDs are intentionally discarded
 // to match AsyncRT_DeviceGraphBuilder_addFunctionDirect; callers retrieve the
-// id via AsyncRT_DeviceGraphBuilder_lastNodeId. The trailing (depIds, numDeps)
-// pair carries the explicit dependency list — see `makeDepsArrayRef`.
+// id via AsyncRT_DeviceGraphBuilder_lastNodeIdOrNone. The trailing (depIds,
+// numDeps) pair carries the explicit dependency list — see `makeDepsArrayRef`.
 
 MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addCopyHostToDevice(
     DeviceGraphBuilder *builder, DeviceBuffer *dst, const void *src,
@@ -976,18 +976,18 @@ AsyncRT_DeviceGraphBuilder_addEmpty(DeviceGraphBuilder *builder,
   return nullptr;
 }
 
-// Writes the id of the most recently added node into *result. Returns an
-// error string if no nodes have been added to the builder.
-MODULAR_EXPORT const char *
-AsyncRT_DeviceGraphBuilder_lastNodeId(DeviceGraphBuilder *builder,
-                                      int32_t *result) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_lastNodeId",
+// Returns the id of the most recently added node, or -1 if no nodes have
+// been added yet. Cannot fail. The -1 sentinel mirrors the lower bound of
+// the Mojo-side scope helper which uses (start_id, end_id] to enumerate
+// the ids of nodes added during a region; non-scope callers (the various
+// `add_*` helpers in `DeviceGraphBuilder.mojo`) call this immediately
+// after a successful add and treat -1 as a logic error.
+MODULAR_EXPORT int32_t
+AsyncRT_DeviceGraphBuilder_lastNodeIdOrNone(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_lastNodeIdOrNone",
                        TRACY_COLOR_GRAY);
   std::optional<DeviceGraphNode> node = builder->lastNode();
-  if (!node)
-    return raiseError("graph builder has no nodes");
-  *result = node->id;
-  return nullptr;
+  return node ? node->id : -1;
 }
 
 MODULAR_EXPORT const char *
