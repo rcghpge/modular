@@ -24,13 +24,20 @@ using namespace M;
 
 namespace M::MOGG {
 
-void EmitMojoState::setFusionStructFor(Value val, MojoValue instance,
-                                       StringLiteral bindMethod,
-                                       MojoValue typeName) {
-  [[maybe_unused]] auto [it, inserted] = fusionStructInstances.try_emplace(
+void EmitMojoState::setFusionStructLoweringFor(Value val, MojoValue instance,
+                                               StringLiteral bindMethod,
+                                               MojoValue typeName) {
+  [[maybe_unused]] auto [it, inserted] = lambdaLowerings.try_emplace(
       val,
-      EmittedFusionInfo{std::move(instance), bindMethod, std::move(typeName)});
-  ASSERT_STREAM(inserted, << "value already bound to a fusion struct");
+      FusionStructInfo{std::move(instance), bindMethod, std::move(typeName)});
+  ASSERT_STREAM(inserted, << "value already bound to a lambda lowering");
+}
+
+void EmitMojoState::setElementwiseFuncLoweringFor(Value val,
+                                                  MojoValue funcName) {
+  [[maybe_unused]] auto [it, inserted] = lambdaLowerings.try_emplace(
+      val, ElementwiseFuncInfo{std::move(funcName)});
+  ASSERT_STREAM(inserted, << "value already bound to a lambda lowering");
 }
 
 /// Remove parameters from inferByInputs that appear in the function's result

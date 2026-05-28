@@ -106,13 +106,14 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                                      ArrayRef<NamedMojoDef> operands,
                                      std::optional<MojoValue> retType,
                                      FunctionBody &body) {
-  return funcDefBase(parameters, operands, retType, false, body);
+  return funcDefBase(parameters, operands, retType, /*effectsClause=*/"", body);
 }
 
 std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                                      ArrayRef<NamedMojoDef> operands,
                                      std::optional<MojoValue> retType,
-                                     bool raises, FunctionBody &body) {
+                                     StringRef effectsClause,
+                                     FunctionBody &body) {
   std::string str;
   llvm::raw_string_ostream stream(str);
   auto emitNamedDef = [&](const NamedMojoDef &def, StringRef typeSep,
@@ -140,8 +141,8 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
   });
   stream << ")";
 
-  if (raises)
-    stream << " raises";
+  if (!effectsClause.empty())
+    stream << " " << effectsClause;
 
   if (retType.has_value())
     stream << " -> " << *retType;
@@ -166,7 +167,8 @@ void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
   if (exported)
     statement("@export");
   statement("def ", name,
-            funcDefBase(parameters, arguments, returnType, raises, body));
+            funcDefBase(parameters, arguments, returnType,
+                        /*effectsClause=*/raises ? "raises" : "", body));
 
   // This is necessary to increase indentation and the value cache. The reason
   // we defer them is because we create the guard early to ensure that argument
@@ -189,11 +191,38 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   if (isInline)
     statement("@always_inline");
   statement(isAsync ? "async def " : "def ", lambdaParam,
-            funcDefBase(parameters, arguments, returnType, false, body));
+            funcDefBase(parameters, arguments, returnType, body));
 
   MojoBuilderScopeGuard guard(this);
   lambdaBody(body);
   return lambdaParam;
+}
+
+MojoValue MojoBuilder::registerPassableElementwiseDef(
+    StringLiteral funcNameHint, ArrayRef<NamedMojoDef> parameters,
+    ArrayRef<NamedMojoDef> arguments, ArrayRef<MojoValue> capturedVarNames,
+    std::optional<MojoValue> returnType,
+    std::function<void(const FunctionBody &)> &&defBody) {
+  MojoValue funcName = newVar(funcNameHint.str());
+  FunctionBody body;
+
+  // Only the `{var ...}` clause; register-passability follows from the
+  // captures. The `register_passable` keyword is gone from the frontend (now
+  // warns and is ignored), so don't emit it.
+  std::string captureClause;
+  llvm::raw_string_ostream cos(captureClause);
+  cos << "{";
+  llvm::interleaveComma(capturedVarNames, cos,
+                        [&](const MojoValue &v) { cos << "var " << v.text; });
+  cos << "}";
+
+  statement(
+      "def ", funcName,
+      funcDefBase(parameters, arguments, returnType, captureClause, body));
+
+  MojoBuilderScopeGuard guard(this);
+  defBody(body);
+  return funcName;
 }
 
 MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {

@@ -294,6 +294,11 @@ constexpr llvm::StringLiteral kFnMoggAsyncPackBorrow =
     "builtin_primitives.primitives.mogg_async_pack_borrow";
 constexpr llvm::StringLiteral kFnGetBufferMemStorageHandle =
     "builtin_primitives.primitives.get_buffer_mem_storage_handle";
+/// register_passable value-arg `foreach` overload, selected via the `func`
+/// kwarg. The legacy `foreach_fusion` overload is reached through
+/// `CallForeachOp::getKernelSymName()` instead.
+constexpr llvm::StringLiteral kFnMoggForeach =
+    "builtin_primitives.primitives.foreach";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "extensibility.managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
@@ -414,6 +419,14 @@ constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
 /// `UnsafePointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
+/// Runtime kwargs of `foreach` / `foreach_fusion`: `func`/`tensor`/`ctx`
+/// selects `foreach`, `tensor`/`elem`/`ctx` selects `foreach_fusion`. Keep in
+/// sync with
+/// `max/kernels/src/graph_compiler/builtin_primitives/primitives.mojo`.
+constexpr llvm::StringLiteral kParameterForeachFunc = "func";
+constexpr llvm::StringLiteral kParameterForeachTensor = "tensor";
+constexpr llvm::StringLiteral kParameterForeachElem = "elem";
+constexpr llvm::StringLiteral kParameterForeachCtx = "ctx";
 /// Argument names used in trait-conforming fusion struct methods
 /// (`load`/`store`/`compute`).
 constexpr llvm::StringLiteral kParameterSelf = "self";
