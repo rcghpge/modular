@@ -112,6 +112,10 @@ struct KernelDeclContextPtrListAdaptor {
   }
 };
 
+struct KernelDeclGraphBuilderAdaptor {
+  bool operator==(const KernelDeclGraphBuilderAdaptor &) const { return true; }
+};
+
 struct KernelDeclUnsupportedAdaptor {
   bool operator==(const KernelDeclUnsupportedAdaptor &) const { return false; }
 };
@@ -131,7 +135,7 @@ using KernelDeclOperandVariant =
     std::variant<KernelDeclTensorAdaptor, KernelDeclVariadicTensorAdaptor,
                  KernelDeclScalarAdaptor, KernelDeclOpaqueAdaptor,
                  KernelDeclContextPtrAdaptor, KernelDeclContextPtrListAdaptor,
-                 KernelDeclUnsupportedAdaptor>;
+                 KernelDeclGraphBuilderAdaptor, KernelDeclUnsupportedAdaptor>;
 
 /// One argument decoded from a kernel's stored LIT signature.
 struct KernelDeclOperandAdaptor {
@@ -196,6 +200,18 @@ struct KernelDeclOperandAdaptor {
     return std::holds_alternative<KernelDeclContextPtrListAdaptor>(
         underlyingType);
   }
+
+  bool isBuilderType() const {
+    return std::holds_alternative<KernelDeclGraphBuilderAdaptor>(
+        underlyingType);
+  }
+
+  /// Launch arguments are the trailing "where to run" argument of a kernel
+  /// function: a DeviceContext / DeviceContextList for `execute` / `shape`,
+  /// or a DeviceGraphBuilder for `build_graph`. They share the
+  /// "must-appear-last" placement rule and are skipped together when
+  /// aligning input arguments across function variants.
+  bool isLaunchArgument() const { return isContextType() || isBuilderType(); }
 
   bool isUnsupportedType() const {
     return std::holds_alternative<KernelDeclUnsupportedAdaptor>(underlyingType);
@@ -341,6 +357,8 @@ StreamType &operator<<(StreamType &os, const KernelDeclOperandVariant &var) {
         } else if constexpr (std::is_same_v<T,
                                             KernelDeclContextPtrListAdaptor>) {
           os << "*Context";
+        } else if constexpr (std::is_same_v<T, KernelDeclGraphBuilderAdaptor>) {
+          os << "GraphBuilder";
         } else if constexpr (std::is_same_v<T, KernelDeclUnsupportedAdaptor>) {
           os << "Unsupported";
         }

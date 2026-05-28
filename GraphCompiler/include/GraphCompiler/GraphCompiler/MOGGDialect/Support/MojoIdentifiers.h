@@ -128,6 +128,7 @@ constexpr llvm::StringLiteral kLeafFusedOutputVariadicTensors =
 constexpr llvm::StringLiteral kLeafSIMD = "SIMD";
 constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
 constexpr llvm::StringLiteral kLeafDeviceContextList = "DeviceContextList";
+constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 
 /// Mojo module name for the builtin primitives package that the
 /// `MojoRegistry` loads alongside every kernel subpackage.

@@ -229,6 +229,10 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContextList))
     return KernelDeclContextPtrListAdaptor{};
 
+  // --- Device graph builder (launch arg of build_graph) ---
+  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceGraphBuilder))
+    return KernelDeclGraphBuilderAdaptor{};
+
   // --- Opaque: unrecognised struct ---
   return KernelDeclOpaqueAdaptor{buildOpaqueSymbol(ctx, sym)};
 }

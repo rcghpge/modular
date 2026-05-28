@@ -49,76 +49,93 @@ declVerifyShapeFunctionHasNoDPSOutputs(KernelDeclOp decl,
   return success();
 }
 
-LogicalResult declVerifyShapeFunctionInputsMatchExecuteFunction(
-    KernelDeclOp decl, const KernelDeclAdaptor &adaptor) {
-  if (!adaptor.shapeFunction.has_value())
-    return success();
+// Return `s` with its first ASCII letter uppercased. Used so error messages
+// that start with a role label like "execute" or "build_graph" begin with a
+// capital, while mid-sentence uses keep the original lowercase.
+static std::string capitalize(llvm::StringRef s) {
+  if (s.empty())
+    return "";
+  std::string out = s.str();
+  out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+  return out;
+}
 
-  auto skipContextType =
+/// Walk the input argument lists of `lhs` and `rhs` in parallel, skipping
+/// launch args (DeviceContext / DeviceGraphBuilder) from either side, and
+/// require pairwise compatibility. `lhsKind` / `rhsKind` are lowercase role
+/// labels used in error messages (e.g. "execute" / "shape").
+///
+/// A pair is compatible when types match exactly, or when the lhs side has a
+/// `MutableInputTensor` and the rhs side has a non-mutable tensor (shape /
+/// build_graph cannot mutate their inputs, so a relaxed match is allowed).
+LogicalResult verifyInputArgumentsAlign(KernelDeclOp decl,
+                                        const KernelDeclFunctionAdaptor &lhs,
+                                        llvm::StringRef lhsKind,
+                                        const KernelDeclFunctionAdaptor &rhs,
+                                        llvm::StringRef rhsKind) {
+  auto skipLaunchArg =
       [](const llvm::SmallVector<KernelDeclOperandAdaptor> &inputs,
          uint64_t &idx) -> std::optional<KernelDeclOperandAdaptor> {
     while (idx < inputs.size()) {
       const auto &arg = inputs[idx];
-      if (!arg.isContextType())
+      if (!arg.isLaunchArgument())
         return arg;
       ++idx;
     }
     return std::nullopt;
   };
 
-  uint64_t execIndex = 0, shapeIndex = 0;
+  uint64_t lhsIndex = 0, rhsIndex = 0;
   while (true) {
-    const auto execArgOpt =
-        skipContextType(adaptor.executeFunction->inputArguments, execIndex);
-    const auto shapeArgOpt =
-        skipContextType(adaptor.shapeFunction->inputArguments, shapeIndex);
-    if (!execArgOpt.has_value() || !shapeArgOpt.has_value())
+    const auto lhsArgOpt = skipLaunchArg(lhs.inputArguments, lhsIndex);
+    const auto rhsArgOpt = skipLaunchArg(rhs.inputArguments, rhsIndex);
+    if (!lhsArgOpt.has_value() || !rhsArgOpt.has_value())
       break;
 
     auto isCompatibleArgs = [&]() {
-      if (*execArgOpt == *shapeArgOpt)
+      if (*lhsArgOpt == *rhsArgOpt)
         return true;
-      return execArgOpt->isMutableTensorType() &&
-             (shapeArgOpt->isTensorType() &&
-              !shapeArgOpt->isMutableTensorType());
+      return lhsArgOpt->isMutableTensorType() &&
+             (rhsArgOpt->isTensorType() && !rhsArgOpt->isMutableTensorType());
     };
 
     if (!isCompatibleArgs()) {
       return decl->emitError()
-             << "Shape function and execute function input argument types do "
-                "not match. Execute function input at position "
-             << execArgOpt->sourceDescriptor->position << " is a "
-             << execArgOpt->underlyingType
-             << " but corresponding shape function argument at position "
-             << shapeIndex << " is a " << shapeArgOpt->underlyingType;
+             << capitalize(rhsKind) << " function and " << lhsKind
+             << " function input argument types do not match. "
+             << capitalize(lhsKind) << " function input at position "
+             << lhsArgOpt->sourceDescriptor->position << " is a "
+             << lhsArgOpt->underlyingType << " but corresponding " << rhsKind
+             << " function argument at position " << rhsIndex << " is a "
+             << rhsArgOpt->underlyingType;
     }
-    ++execIndex;
-    ++shapeIndex;
+    ++lhsIndex;
+    ++rhsIndex;
   }
 
-  bool execEnd = execIndex == adaptor.executeFunction->inputArguments.size();
-  bool shapeEnd = shapeIndex == adaptor.shapeFunction->inputArguments.size();
+  bool lhsEnd = lhsIndex == lhs.inputArguments.size();
+  bool rhsEnd = rhsIndex == rhs.inputArguments.size();
 
-  if (!execEnd || !shapeEnd) {
+  if (!lhsEnd || !rhsEnd) {
     std::stringstream errorMessage;
-    errorMessage
-        << "Execute and shape functions do not have the same input tensors. ";
+    errorMessage << capitalize(lhsKind) << " and " << rhsKind.str()
+                 << " functions do not have the same input tensors. ";
     auto appendUnmatchedInputs =
         [&](const llvm::SmallVector<KernelDeclOperandAdaptor> &inputs,
             uint64_t idx) {
-          while (skipContextType(inputs, idx).has_value()) {
+          while (skipLaunchArg(inputs, idx).has_value()) {
             errorMessage << inputs[idx].sourceDescriptor->position << ",";
             ++idx;
           }
         };
-    if (execEnd) {
-      errorMessage << "Shape function inputs at positions (";
-      appendUnmatchedInputs(adaptor.shapeFunction->inputArguments, shapeIndex);
-      errorMessage << ") do not appear in the execute function";
+    if (lhsEnd) {
+      errorMessage << capitalize(rhsKind) << " function inputs at positions (";
+      appendUnmatchedInputs(rhs.inputArguments, rhsIndex);
+      errorMessage << ") do not appear in the " << lhsKind.str() << " function";
     } else {
-      errorMessage << "Execute function inputs at positions (";
-      appendUnmatchedInputs(adaptor.executeFunction->inputArguments, execIndex);
-      errorMessage << ") do not appear in the shape function";
+      errorMessage << capitalize(lhsKind) << " function inputs at positions (";
+      appendUnmatchedInputs(lhs.inputArguments, lhsIndex);
+      errorMessage << ") do not appear in the " << rhsKind.str() << " function";
     }
     return decl->emitError(errorMessage.str());
   }
@@ -126,74 +143,153 @@ LogicalResult declVerifyShapeFunctionInputsMatchExecuteFunction(
   return success();
 }
 
-LogicalResult declVerifyExecuteFunctionDoesNotReturnATensor(
+LogicalResult declVerifyShapeFunctionInputsMatchExecuteFunction(
     KernelDeclOp decl, const KernelDeclAdaptor &adaptor) {
-  if (!adaptor.executeFunction->outputResult.has_value())
+  if (!adaptor.shapeFunction.has_value())
     return success();
-  if (adaptor.executeFunction->outputResult->isTensorType()) {
+
+  if (adaptor.executeFunction.has_value() &&
+      verifyInputArgumentsAlign(decl, *adaptor.executeFunction, "execute",
+                                *adaptor.shapeFunction, "shape")
+          .failed())
+    return failure();
+
+  if (adaptor.buildGraphFunction.has_value() &&
+      verifyInputArgumentsAlign(decl, *adaptor.buildGraphFunction,
+                                "build_graph", *adaptor.shapeFunction, "shape")
+          .failed())
+    return failure();
+
+  return success();
+}
+
+/// build_graph must align with execute modulo their launch arguments
+/// (DeviceContext vs DeviceGraphBuilder). Same tensor signature is required.
+LogicalResult
+declVerifyExecuteMatchesBuildGraph(KernelDeclOp decl,
+                                   const KernelDeclAdaptor &adaptor) {
+  if (!adaptor.executeFunction.has_value() ||
+      !adaptor.buildGraphFunction.has_value())
+    return success();
+  return verifyInputArgumentsAlign(decl, *adaptor.executeFunction, "execute",
+                                   *adaptor.buildGraphFunction, "build_graph");
+}
+
+/// A build_graph method records nodes against a DeviceGraphBuilder, so the
+/// signature must explicitly accept one. There is no meaningful default for
+/// this argument.
+LogicalResult declVerifyBuildGraphHasBuilder(KernelDeclOp decl,
+                                             const KernelDeclAdaptor &adaptor) {
+  if (!adaptor.buildGraphFunction.has_value())
+    return success();
+
+  bool hasBuilder = llvm::any_of(
+      adaptor.buildGraphFunction->inputArguments,
+      [](const KernelDeclOperandAdaptor &arg) { return arg.isBuilderType(); });
+
+  if (!hasBuilder) {
     decl->emitError()
-        << "Value semantics kernels (return a tensor) are not yet supported";
+        << "build_graph method must accept a DeviceGraphBuilder argument";
     return failure();
   }
+  return success();
+}
+
+LogicalResult declVerifyExecuteFunctionDoesNotReturnATensor(
+    KernelDeclOp decl, const KernelDeclAdaptor &adaptor) {
+  auto doesNotReturnTensor =
+      [&decl](const std::optional<KernelDeclFunctionAdaptor> &func)
+      -> LogicalResult {
+    if (!func.has_value() || !func->outputResult.has_value())
+      return success();
+    if (func->outputResult->isTensorType()) {
+      decl->emitError()
+          << "Value semantics kernels (return a tensor) are not yet supported";
+      return failure();
+    }
+    return success();
+  };
+
+  if (doesNotReturnTensor(adaptor.executeFunction).failed() ||
+      doesNotReturnTensor(adaptor.buildGraphFunction).failed())
+    return failure();
   return success();
 }
 
 LogicalResult
 declVerifyOutputsAppearBeforeInputs(KernelDeclOp decl,
                                     const KernelDeclAdaptor &adaptor) {
-  int64_t indexOfFirstInput = std::numeric_limits<int64_t>::max();
-  for (const auto &arg : adaptor.executeFunction->inputArguments) {
-    indexOfFirstInput =
-        std::min<int64_t>(indexOfFirstInput, arg.sourceDescriptor->position);
-  }
-
-  int64_t indexOfLastOutput = std::numeric_limits<int64_t>::min();
-  for (const auto &arg : adaptor.executeFunction->outputArguments) {
-    indexOfLastOutput =
-        std::max<int64_t>(indexOfLastOutput, arg.sourceDescriptor->position);
-  }
-
-  if (indexOfFirstInput < indexOfLastOutput) {
-    decl->emitError()
-        << "Outputs must appear before inputs in the function signature";
-    return failure();
-  }
-  return success();
-}
-
-LogicalResult
-declVerifyContextsAppearLastInSignature(KernelDeclOp decl,
-                                        const KernelDeclAdaptor &adaptor) {
-  const auto contextsAreLast =
+  auto outputsBeforeInputs =
       [&decl](const std::optional<KernelDeclFunctionAdaptor> &func)
       -> LogicalResult {
     if (!func.has_value())
       return success();
-    if (llvm::count_if(func->inputArguments,
-                       [](const KernelDeclOperandAdaptor &arg) {
-                         return arg.isContextType();
-                       }) > 1) {
-      decl->emitError() << "There can be at most one context";
-      return failure();
-    }
-    int64_t indexOfLastArgument = std::numeric_limits<int64_t>::min();
-    int64_t indexOfContextArgument = std::numeric_limits<int64_t>::max();
+    int64_t indexOfFirstInput = std::numeric_limits<int64_t>::max();
     for (const auto &arg : func->inputArguments) {
-      if (arg.isContextType())
-        indexOfContextArgument = arg.sourceDescriptor->position;
-      indexOfLastArgument = std::max<int64_t>(indexOfLastArgument,
-                                              arg.sourceDescriptor->position);
+      indexOfFirstInput =
+          std::min<int64_t>(indexOfFirstInput, arg.sourceDescriptor->position);
     }
-    if (indexOfContextArgument < indexOfLastArgument) {
-      decl->emitError() << "Context argument must be the last argument in the "
-                           "function signature";
+    int64_t indexOfLastOutput = std::numeric_limits<int64_t>::min();
+    for (const auto &arg : func->outputArguments) {
+      indexOfLastOutput =
+          std::max<int64_t>(indexOfLastOutput, arg.sourceDescriptor->position);
+    }
+    if (indexOfFirstInput < indexOfLastOutput) {
+      decl->emitError()
+          << "Outputs must appear before inputs in the function signature";
       return failure();
     }
     return success();
   };
 
-  if (contextsAreLast(adaptor.executeFunction).failed() ||
-      contextsAreLast(adaptor.shapeFunction).failed())
+  if (outputsBeforeInputs(adaptor.executeFunction).failed() ||
+      outputsBeforeInputs(adaptor.buildGraphFunction).failed())
+    return failure();
+  return success();
+}
+
+/// Each kernel function variant has at most one launch arg
+/// (DeviceContext / DeviceContextList on execute / shape, DeviceGraphBuilder
+/// on build_graph) and the launch arg must come last in the signature.
+LogicalResult
+declVerifyContextsAppearLastInSignature(KernelDeclOp decl,
+                                        const KernelDeclAdaptor &adaptor) {
+  const auto launchArgsAreLast =
+      [&decl](const std::optional<KernelDeclFunctionAdaptor> &func,
+              llvm::StringRef argLower,
+              llvm::StringRef argTitle) -> LogicalResult {
+    if (!func.has_value())
+      return success();
+    if (llvm::count_if(func->inputArguments,
+                       [](const KernelDeclOperandAdaptor &arg) {
+                         return arg.isLaunchArgument();
+                       }) > 1) {
+      decl->emitError() << "There can be at most one " << argLower;
+      return failure();
+    }
+    int64_t indexOfLastArgument = std::numeric_limits<int64_t>::min();
+    int64_t indexOfLaunchArgument = std::numeric_limits<int64_t>::max();
+    for (const auto &arg : func->inputArguments) {
+      if (arg.isLaunchArgument())
+        indexOfLaunchArgument = arg.sourceDescriptor->position;
+      indexOfLastArgument = std::max<int64_t>(indexOfLastArgument,
+                                              arg.sourceDescriptor->position);
+    }
+    if (indexOfLaunchArgument < indexOfLastArgument) {
+      decl->emitError() << argTitle
+                        << " argument must be the last argument "
+                           "in the function signature";
+      return failure();
+    }
+    return success();
+  };
+
+  if (launchArgsAreLast(adaptor.executeFunction, "context", "Context")
+          .failed() ||
+      launchArgsAreLast(adaptor.shapeFunction, "context", "Context").failed() ||
+      launchArgsAreLast(adaptor.buildGraphFunction, "graph builder",
+                        "Graph builder")
+          .failed())
     return failure();
   return success();
 }
@@ -238,7 +334,8 @@ declVerifyOpaqueArgumentsArePassedByReference(KernelDeclOp decl,
   };
 
   if (opaquesByReference(adaptor.executeFunction).failed() ||
-      opaquesByReference(adaptor.shapeFunction).failed())
+      opaquesByReference(adaptor.shapeFunction).failed() ||
+      opaquesByReference(adaptor.buildGraphFunction).failed())
     return failure();
   return success();
 }
@@ -275,7 +372,8 @@ declVerifyAtMostOneVariadicInputAndOutput(KernelDeclOp decl,
   };
 
   if (atMostOneVariadic(adaptor.executeFunction).failed() ||
-      atMostOneVariadic(adaptor.shapeFunction).failed())
+      atMostOneVariadic(adaptor.shapeFunction).failed() ||
+      atMostOneVariadic(adaptor.buildGraphFunction).failed())
     return failure();
   return success();
 }
@@ -283,15 +381,22 @@ declVerifyAtMostOneVariadicInputAndOutput(KernelDeclOp decl,
 LogicalResult
 declVerifyExecuteNotReturningOpaqueAndThrows(KernelDeclOp decl,
                                              KernelDeclAdaptor &adaptor) {
-  if (!adaptor.executeFunction->outputResult.has_value())
+  auto notOpaqueAndThrows =
+      [&decl](std::optional<KernelDeclFunctionAdaptor> &func) -> LogicalResult {
+    if (!func.has_value() || !func->outputResult.has_value())
+      return success();
+    auto sig = func->attr.getSignature();
+    if (func->outputResult->isOpaqueType() && sig.isThrows()) {
+      decl->emitError() << "Functions that raise and return a custom type are "
+                           "not yet supported";
+      return failure();
+    }
     return success();
-  // Copy sig to call non-const isThrows.
-  auto sig = adaptor.executeFunction->attr.getSignature();
-  if (adaptor.executeFunction->outputResult->isOpaqueType() && sig.isThrows()) {
-    decl->emitError() << "Functions that raise and return a custom type are "
-                         "not yet supported";
+  };
+
+  if (notOpaqueAndThrows(adaptor.executeFunction).failed() ||
+      notOpaqueAndThrows(adaptor.buildGraphFunction).failed())
     return failure();
-  }
   return success();
 }
 
@@ -378,6 +483,15 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
       if (setFlagIfFailed(failed,
                           declVerifyShapeFunctionInputsMatchExecuteFunction,
                           decl, adaptor)
+              .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, declVerifyBuildGraphHasBuilder, decl, adaptor)
+              .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, declVerifyExecuteMatchesBuildGraph, decl,
+                          adaptor)
               .failed())
         continue;
 
