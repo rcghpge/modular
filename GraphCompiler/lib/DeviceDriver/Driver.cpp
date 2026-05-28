@@ -11,6 +11,7 @@
 #include "Support/AssertStream.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -158,11 +159,19 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
                      << " bytes; sub-byte float type)\n";
         return new DeviceMemory(M::copyRCRef(this), buf, spec);
       }
-      // The Mojo poison check has no `max_finite` for the scale-only /
-      // no-mantissa formats `float8_e3m4` and `float8_e8m0fnu`. Skip the
-      // fill for these so the host write and the load-site check stay in
-      // agreement.
-      if (dtype == DType::f8e3m4 || dtype == DType::f8e8m0fnu) {
+      // Skip the fill for fp8 formats. Two reasons:
+      // - `float8_e3m4` and `float8_e8m0fnu` are scale-only / no-mantissa
+      //   formats for which `max_finite` is not defined.
+      // - The remaining fp8 formats have such a narrow dynamic range that
+      //   the `max_finite` sentinel collides with the saturate-to-max
+      //   value produced by legitimate quantization, generating pervasive
+      //   false-positive uninit-read aborts.
+      // The Mojo poison-check set is kept in agreement with this exclusion.
+      if (llvm::is_contained(
+              std::initializer_list<DType>{DType::f8e3m4, DType::f8e8m0fnu,
+                                           DType::f8e4m3fn, DType::f8e4m3fnuz,
+                                           DType::f8e5m2, DType::f8e5m2fnuz},
+              dtype)) {
         llvm::errs() << "DEBUG_ALLOC_POISON: skipping " << dtype
                      << " allocation (" << totalBytes
                      << " bytes; not in Mojo poison-check set)\n";
