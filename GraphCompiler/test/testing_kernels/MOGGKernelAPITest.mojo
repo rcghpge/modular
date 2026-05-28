@@ -267,7 +267,7 @@ struct FooWithStructParam[flip: Bool]:
 def _matmul[
     elementwise_lambda_fn: Optional[
         def[
-            dtype: DType, width: Int, *, alignment: Int = 1
+            dtype: DType, width: SIMDSize, *, alignment: Int = 1
         ](IndexList[2], SIMD[dtype, width]) capturing -> None
     ] = None,
 ](
@@ -462,7 +462,7 @@ struct AddElementwise:
     @staticmethod
     def elementwise[
         dtype: DType,
-        width: Int,
+        width: SIMDSize,
     ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return lhs + rhs
 
@@ -530,7 +530,7 @@ struct MatmulFuseOut:
         @parameter
         @always_inline
         def out_func[
-            dtype: DType, width: Int, *, alignment: Int = 1
+            dtype: DType, width: SIMDSize, *, alignment: Int = 1
         ](idx: IndexList[2], val: SIMD[dtype, width]):
             c._fused_store(idx, rebind[SIMD[c.dtype, width]](val))
 
@@ -1000,7 +1000,7 @@ struct CastElementwise:
     def elementwise[
         dtype: DType,
         out_dtype: DType,
-        width: Int,
+        width: SIMDSize,
     ](x: SIMD[dtype, width]) -> SIMD[out_dtype, width]:
         return x.cast[out_dtype]()
 
@@ -1010,7 +1010,7 @@ struct PrintVectorSize:
     @staticmethod
     def elementwise[
         dtype: DType,
-        width: Int,
+        width: SIMDSize,
     ](x: SIMD[dtype, width], idx: IndexList) -> SIMD[dtype, width]:
         if idx[0] == 0:
             # Only print once
@@ -1347,7 +1347,7 @@ struct ElemwiseAddWithParam:
     @staticmethod
     def elementwise[
         dtype: DType,
-        width: Int,
+        width: SIMDSize,
         bias: Int,
     ](input: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return input + Scalar[dtype](bias)
@@ -1358,7 +1358,7 @@ struct ElemwiseAddWithIndex:
     @staticmethod
     def elementwise[
         dtype: DType,
-        width: Int,
+        width: SIMDSize,
         rank: Int,
     ](input: SIMD[dtype, width], indices: IndexList[rank]) -> SIMD[
         dtype, width

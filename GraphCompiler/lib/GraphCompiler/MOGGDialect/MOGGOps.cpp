@@ -19,6 +19,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -982,7 +983,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   auto structName = state.structDefsBuilder.getIdentifier("FusionStruct");
   MojoValue structNameVal = state.structDefsBuilder.newVar(structName);
   auto &sdb = state.structDefsBuilder;
-
+  const auto simdWidthType = isOutputLambda ? kStructSIMDSize : kStructInt;
   sdb.structDecl(
       structNameVal, parameters, {MojoValue(traitName)}, fields, [&]() {
         // Trait-conforming method: load/store/compute. Parameter and argument
@@ -995,7 +996,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         SmallVector<NamedMojoDef> methodParameters = {
             NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
             NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
-            NamedMojoDef::asVerbatim(kParameterSimdWidth, kStructInt),
+            NamedMojoDef::asVerbatim(kParameterSimdWidth, simdWidthType),
             NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
                                      MojoValue(1)),
         };

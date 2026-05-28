@@ -215,6 +215,7 @@ constexpr llvm::StringLiteral kStructDeviceContextList =
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
+constexpr llvm::StringLiteral kStructSIMDSize = "SIMDSize";
 constexpr llvm::StringLiteral kStructUInt = "UInt";
 constexpr llvm::StringLiteral kStructBool = "Bool";
 constexpr llvm::StringLiteral kStructAddressSpace = "std.memory.AddressSpace";
