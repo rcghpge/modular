@@ -149,12 +149,11 @@ ErrorOr<llvm::SmallVector<std::string>>
 M::MOGG::getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx) {
   llvm::SourceMgr sourceMgr;
   llvm::SmallVector<std::string> paths;
-  for (llvm::StringLiteral name : kMoggKernelsSubpackageNames) {
-    auto pathOr = resolveLITModulePath(ctx, sourceMgr, name);
-    if (pathOr.isError())
-      return pathOr.takeError();
-    paths.push_back(pathOr.takeValue());
-  }
+  auto kernelAPIPathOr =
+      resolveLITModulePath(ctx, sourceMgr, kMoggKernelsModuleName);
+  if (kernelAPIPathOr.isError())
+    return kernelAPIPathOr.takeError();
+  paths.push_back(*kernelAPIPathOr);
   auto primitivesPathOr =
       resolveLITModulePath(ctx, sourceMgr, kMoggPrimitivesModuleName);
   if (primitivesPathOr.isError())

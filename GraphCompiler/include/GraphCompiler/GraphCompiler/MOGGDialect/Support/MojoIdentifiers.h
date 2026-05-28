@@ -130,21 +130,9 @@ constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
 constexpr llvm::StringLiteral kLeafDeviceContextList = "DeviceContextList";
 constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 
-/// Mojo module name for the builtin primitives package that the
-/// `MojoRegistry` loads alongside every kernel subpackage.
+/// Mojo module names that the MojoRegistry imports unconditionally.
+constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
 constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
-
-/// Subpackages of `builtin_kernels` that carry `@compiler.register`
-/// kernel definitions. Each is its own Mojo package so consumers can pull
-/// only the slice they need, but the MojoRegistry has to load every one so
-/// every registration is visible to the graph compiler.
-constexpr llvm::StringLiteral kMoggKernelsSubpackageNames[] = {
-    "attention_kernels",      "common_kernels",      "conv_kernels",
-    "distributed_kernels",    "elementwise_kernels", "ep_kernels",
-    "gather_scatter_kernels", "kv_cache_kernels",    "linalg_kernels",
-    "logprobs_kernels",       "nan_check_kernels",   "quantization_kernels",
-    "reductions_kernels",
-};
 
 /// `@register_internal` name of the helper that prefixes an async error with
 /// its region name. Called from `AsyncErrorOp::emitMojo` alongside the op's
@@ -442,19 +430,6 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
     kPackagesToImport[] = {
         {"builtin_primitives.primitives", "builtin_primitives"},
         {"builtin_kernels", "builtin_kernels"},
-        {"attention_kernels", ""},
-        {"common_kernels", ""},
-        {"conv_kernels", ""},
-        {"distributed_kernels", ""},
-        {"elementwise_kernels", ""},
-        {"ep_kernels", ""},
-        {"gather_scatter_kernels", ""},
-        {"kv_cache_kernels", ""},
-        {"linalg_kernels", ""},
-        {"logprobs_kernels", ""},
-        {"nan_check_kernels", ""},
-        {"quantization_kernels", ""},
-        {"reductions_kernels", ""},
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
         {"std.utils", ""},
