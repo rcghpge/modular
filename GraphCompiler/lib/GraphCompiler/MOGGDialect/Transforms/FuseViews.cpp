@@ -54,7 +54,7 @@ bool isViewKernelOfType(Operation *op) {
   if (callViews.size() != 1)
     return false;
 
-  if (callViews.front().getKernelName() != OpTy::getOperationName())
+  if (callViews.front().getMoOpName() != OpTy::getOperationName())
     return false;
 
   return true;

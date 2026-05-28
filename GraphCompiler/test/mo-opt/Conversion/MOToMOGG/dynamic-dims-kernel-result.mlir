@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: mo.graph @gather_dynamic_output_dims
 // CHECK: mogg.kernel
-// CHECK: mogg.call.shape["mo.gather"]
+// CHECK: mogg.call.shape["{{.*}}.Gather"]
 // The dynamic dimensions D4, D5 from gather's result type should be passed
 // to the kernel stub as output parameter declarations.
 // CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D4 : !kgen.scalar<si64>{{.*}}D5 : !kgen.scalar<si64>{{.*}}]>
@@ -27,7 +27,7 @@ mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
 
 // CHECK-LABEL: mo.graph @avg_pool_dynamic_output_dims
 // CHECK: mogg.kernel
-// CHECK: mogg.call.shape["mo.avg_pool"]
+// CHECK: mogg.call.shape["{{.*}}.AvgPool"]
 // The dynamic dimensions D3, D4 from avg_pool's result type should be passed
 // to the kernel stub as output parameter declarations.
 // CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D3 : !kgen.scalar<si64>{{.*}}D4 : !kgen.scalar<si64>{{.*}}]>

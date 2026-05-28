@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
@@ -86,7 +87,8 @@ static Value lowerScalarDim(Location &loc, OpBuilder builder, TypedAttr dim) {
 // Support fusion for new-style kernels which go directly to KGEN ops
 template <typename ViewOp>
 static void fuseViewOpDimKGEN(M::MOGG::KernelOp kernel, ViewOp viewOpUser,
-                              Value result) {
+                              Value result,
+                              const M::MOGG::MojoRegistry &registry) {
   mlir::IRRewriter builder(kernel.getContext());
 
   // Save the old output placeholder and associated type
@@ -127,11 +129,12 @@ static void fuseViewOpDimKGEN(M::MOGG::KernelOp kernel, ViewOp viewOpUser,
     parameters.set("value", builder.getIndexAttr(0));
   }
   StringRef funcName = viewOpUser.getOperationName();
+  M::MOGG::PrimitiveDeclOp primitive = registry.lookupPrimitive(funcName);
 
   builder.setInsertionPoint(outputOp);
   auto newIndexValue =
       M::MOGG::CallAffineOp::create(builder, loc, newIndexValueType,
-                                    builder.getStringAttr(funcName), operands,
+                                    primitive.getSymNameAttr(), operands,
                                     builder.getDictionaryAttr(parameters))
           .getResult();
   outputOp->setOperand(1, newIndexValue);
@@ -148,9 +151,9 @@ static void fuseViewOpDimKGEN(M::MOGG::KernelOp kernel, ViewOp viewOpUser,
 }
 
 template <typename ViewOp>
-static void fuseViewOpDim(M::MOGG::KernelOp kernel, ViewOp viewOp,
-                          Value result) {
-  fuseViewOpDimKGEN(kernel, viewOp, result);
+static void fuseViewOpDim(M::MOGG::KernelOp kernel, ViewOp viewOp, Value result,
+                          const M::MOGG::MojoRegistry &registry) {
+  fuseViewOpDimKGEN(kernel, viewOp, result, registry);
 
   SmallVector<Operation *> ops{kernel, viewOp};
   kernel.setFusionInfoAttr(M::MOGG::createFusionInfo<M::MOGG::FusionAffineAttr>(
@@ -166,7 +169,8 @@ static void fuseViewOpDim(M::MOGG::KernelOp kernel, ViewOp viewOp,
 // Exported shared function: one iteration of reshape-into-epilogue fusion.
 // Returns the number of views fused. Called by both FuseReshapesIntoEpilogues
 // and FuseEpilogues.
-size_t M::MOGG::fuseReshapesIntoEpiloguesStep(MO::GraphOp graph) {
+size_t M::MOGG::fuseReshapesIntoEpiloguesStep(MO::GraphOp graph,
+                                              const MojoRegistry &registry) {
   SmallVector<Operation *> opsToErase;
 
   graph.walk([&](MOGG::KernelOp kernel) {
@@ -174,13 +178,13 @@ size_t M::MOGG::fuseReshapesIntoEpiloguesStep(MO::GraphOp graph) {
       Value result = kernel.getResult(0);
       Operation *user = *result.getUsers().begin();
       if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
-        fuseViewOpDim(kernel, addDim, result);
+        fuseViewOpDim(kernel, addDim, result, registry);
         opsToErase.push_back(user);
       } else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user)) {
-        fuseViewOpDim(kernel, split, result);
+        fuseViewOpDim(kernel, split, result, registry);
         opsToErase.push_back(user);
       } else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user)) {
-        fuseViewOpDim(kernel, merge, result);
+        fuseViewOpDim(kernel, merge, result, registry);
         opsToErase.push_back(user);
       }
     }
@@ -202,10 +206,11 @@ struct FuseReshapesIntoEpiloguesPass
 
   void runOnOperation() override {
     auto graph = getOperation();
+    MojoRegistry registry(graph->getParentOfType<mlir::ModuleOp>());
     size_t totalFused = 0;
     size_t fused;
     do {
-      fused = fuseReshapesIntoEpiloguesStep(graph);
+      fused = fuseReshapesIntoEpiloguesStep(graph, registry);
       totalFused += fused;
       if (fused > 0) {
         IRRewriter rewriter(&getContext());

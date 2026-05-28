@@ -11,11 +11,11 @@ mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5
 // CHECK: mogg.kernel(%[[ARG0]]: !mo.tensor<[50], ui32>, %[[ARG1]]: !mo.tensor<[5, 10], ui32>)
 
 // CHECK: %[[ARR:.*]] = mogg.tensor.shape
-// CHECK: %[[NEW_0:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG0]], %[[ARR]])
-// CHECK: %[[NEW_1:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG1]], %[[ARR]])
+// CHECK: %[[NEW_0:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%[[ARG0]], %[[ARR]])
+// CHECK: %[[NEW_1:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%[[ARG1]], %[[ARR]])
 
 // CHECK: mogg.bind (%[[NEW_0]], %[[NEW_1]]) elemwise_lambda
-// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
 
 
 mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5, 10], ui32>) -> (!mo.tensor<[N, 5, L], ui32>) {
@@ -29,11 +29,11 @@ mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tens
 // CHECK: mogg.kernel(%[[ARG0]]: !mo.tensor<[50], ui32>, %[[ARG1]]: !mo.tensor<[5, 10], ui32>)
 
 // CHECK: %[[ARR:.*]] = mogg.tensor.shape
-// CHECK: %[[NEW_0:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG0]], %[[ARR]])
-// CHECK: %[[NEW_1:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG1]], %[[ARR]])
+// CHECK: %[[NEW_0:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%[[ARG0]], %[[ARR]])
+// CHECK: %[[NEW_1:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%[[ARG1]], %[[ARR]])
 
 // CHECK: mogg.bind (%[[NEW_0]], %[[NEW_1]]) elemwise_lambda
-// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
 
 
 
@@ -49,8 +49,8 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
 // CHECK: mogg.kernel(%[[ARG0]] as %{{.*}}: !mo.tensor<[50], ui32>, %[[ARG0]] as %{{.*}}: !mo.tensor<[50], ui32>)
 
 // CHECK: %[[ARR:.*]] = mogg.tensor.shape
-// CHECK: %[[RESHAPED1:.*]] = mogg.call.view["mo.static.reshape"] (%{{.*}}, %[[ARR]])
-// CHECK: %[[RESHAPED2:.*]] = mogg.call.view["mo.static.reshape"] (%{{.*}}, %[[ARR]])
+// CHECK: %[[RESHAPED1:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%{{.*}}, %[[ARR]])
+// CHECK: %[[RESHAPED2:.*]] = mogg.call.view["{{.*}}.StaticReshape"] (%{{.*}}, %[[ARR]])
 
 // CHECK: mogg.bind (%[[RESHAPED1]], %[[RESHAPED2]]) elemwise_lambda
 // CHECK: mogg.kernel(%{{.*}}: !mo.tensor<[N, 5, L], ui32>, %[[ARG0]]: !mo.tensor<[50], ui32>)
@@ -66,7 +66,7 @@ mo.graph @dontFuseCompound<N, M>(%arg0 : !mo.tensor<[M], ui32>, %arg1 : !mo.tens
 // CHECK-LABEL: mo.graph @dontFuseCompound<N, M>
 // CHECK-NEXT: mogg.kernel(%arg0: !mo.tensor<[M], ui32>, %arg1: !mo.tensor<[N], ui32>) -> !mo.tensor<[N], ui32> {
 // CHECK: mogg.tensor.shape
-// CHECK: mogg.call.view["mo.static.reshape"] (%arg0, %{{.*}}) {kernel_param = {}}
+// CHECK: mogg.call.view["{{.*}}.StaticReshape"] (%arg0, %{{.*}})
 // CHECK: mogg.bind (%{{.*}}, %arg1) elemwise_lambda
 
 // Example with multiple view operations fused

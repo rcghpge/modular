@@ -2,7 +2,7 @@
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["single_device_context"]
+// CHECK: mogg.call.execute["{{.*}}.SingleDeviceContext"]
 mo.graph @single_device_context(%arg0: !mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0> {
   %0 = mo.custom {symbol = "single_device_context", device = #M.device_ref<"cpu", 0>}(%arg0) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
   mo.output %0 : !mo.tensor<[4], f32, gpu:0>
@@ -12,7 +12,7 @@ mo.graph @single_device_context(%arg0: !mo.tensor<[4], f32, gpu:0>) -> !mo.tenso
 
 // CHECK-LABEL: mo.graph @multi_device_context
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["multi_device_context"]
+// CHECK: mogg.call.execute["{{.*}}.MultiDeviceContext"]
 mo.graph @multi_device_context(
     %arg0: !mo.tensor<[4], f32, gpu:0>
 ) -> !mo.tensor<[4], f32, gpu:1> {
@@ -27,7 +27,7 @@ mo.graph @multi_device_context(
 
 // CHECK-LABEL: mo.graph @multi_device_context_dedup
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["multi_device_context_dedup"]
+// CHECK: mogg.call.execute["{{.*}}.MultiDeviceContextDedup"]
 mo.graph @multi_device_context_dedup(
     %arg0: !mo.tensor<[4], f32, gpu:0>,
     %arg1: !mo.tensor<[4], f32, gpu:1>
@@ -44,7 +44,7 @@ mo.graph @multi_device_context_dedup(
 // CHECK-LABEL: mo.graph @single_variadic_device_context
 // CHECK: mogg.kernel
 // CHECK: mogg.as_tuple
-// CHECK: mogg.call.execute["variadic_device_context"]
+// CHECK: mogg.call.execute["{{.*}}.VariadicDeviceContext"]
 
 mo.graph @single_variadic_device_context(
     %arg0: !mo.tensor<[4], f32, gpu:0>
@@ -60,7 +60,7 @@ mo.graph @single_variadic_device_context(
 // CHECK-LABEL: mo.graph @multi_variadic_device_context
 // CHECK: mogg.kernel
 // CHECK: mogg.as_tuple
-// CHECK: mogg.call.execute["variadic_device_context"]
+// CHECK: mogg.call.execute["{{.*}}.VariadicDeviceContext"]
 
 mo.graph @multi_variadic_device_context(
     %arg0: !mo.tensor<[4], f32, gpu:0>,

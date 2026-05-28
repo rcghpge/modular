@@ -219,10 +219,8 @@ getKernelOutputFusionLambdaType(MojoRegistry &registry,
     return Error("TensorFusedOp result must be a kernel call output");
 
   // Check if the output operand corresponds to an output lambda.
-  if (!registry.containsKernel(executeOp.getKernelName()))
-    return KernelOutputFusionLambdaType::Output;
   KernelDeclAdaptor adaptor(
-      registry.getResolvedKernel(executeOp.getKernelName()));
+      registry.lookupKernelBySymName(executeOp.getKernelSymName()));
   if (!adaptor.executeFunction.has_value())
     return KernelOutputFusionLambdaType::Output;
   const auto &outputArgs = adaptor.executeFunction->outputArguments;

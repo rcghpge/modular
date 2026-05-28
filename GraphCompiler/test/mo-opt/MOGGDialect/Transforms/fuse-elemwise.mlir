@@ -8,9 +8,9 @@ mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3],
 
 // CHECK-LABEL: mo.graph @simpleDoubleUse
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.add"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -24,13 +24,13 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 
 // CHECK-LABEL: mo.graph @rightmostTreeFusion
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
-// CHECK-NEXT: mogg.call.elementwise["mo.add"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sub"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -44,13 +44,13 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 
 // CHECK-LABEL: mo.graph @leftmostTreeFusion
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
-// CHECK-NEXT: mogg.call.elementwise["mo.add"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sub"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -71,20 +71,20 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 
 // CHECK-LABEL: mo.graph @multipleDiamondPattern
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
-// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
-// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.add"]
-// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
-// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Tanh"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Rsqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sub"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Rsqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Rsqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Mul"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Rsqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Mul"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   // Top level ops.
@@ -112,22 +112,22 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 
 // CHECK-LABEL: mo.graph @inversePyramid
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.tanh"]
-// CHECK-NEXT: mogg.call.elementwise["mo.div"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
-// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
-// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
-// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.sqrt"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
-// CHECK-NEXT:  mogg.call.elementwise["mo.mul"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Tanh"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Div"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sub"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Mul"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Sqrt"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT:  mogg.call.elementwise["{{.*}}.Mul"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @controlFlow<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, M], f32>) -> (!mo.tensor<[N, M], f32>) {
   %relu = mo.relu(%arg0) : !mo.tensor<[N, M], f32>
@@ -146,14 +146,14 @@ mo.graph @controlFlow<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, 
 // Check all kernels are compiled but unfused.
 // CHECK-LABEL: mo.graph @controlFlow
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.relu"]
+// CHECK: mogg.call.elementwise["{{.*}}.ReLU"]
 // CHECK: mo.if
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.add"]
-// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Tanh"]
 // CHECK: else
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.mul"]
+// CHECK: mogg.call.elementwise["{{.*}}.Mul"]
 
 
 mo.graph @noDuplicationOfCompute() -> (!mo.tensor<[5], f32>,!mo.tensor<[5], f32>) {
@@ -167,12 +167,12 @@ mo.graph @noDuplicationOfCompute() -> (!mo.tensor<[5], f32>,!mo.tensor<[5], f32>
 
 // CHECK-LABEL: mo.graph @noDuplicationOfCompute
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.tanh"]
+// CHECK: mogg.call.elementwise["{{.*}}.Tanh"]
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.relu"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @withDuplicationOfCompute() -> (!mo.tensor<[5], f32, gpu:0>,!mo.tensor<[5], f32, gpu:0>) {
   %0 = mo.constant {value = #M.dense_array<-1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32, gpu:0>
@@ -185,9 +185,9 @@ mo.graph @withDuplicationOfCompute() -> (!mo.tensor<[5], f32, gpu:0>,!mo.tensor<
 
 // CHECK-LABEL: mo.graph @withDuplicationOfCompute
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.add"]
-// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.Tanh"]
 // CHECK: mogg.kernel
-// CHECK: mogg.call.elementwise["mo.add"]
-// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
-// CHECK-NOT: mogg.kernel
+// CHECK: mogg.call.elementwise["{{.*}}.Add"]
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-NOT: mogg.kernel{{[^.]}}

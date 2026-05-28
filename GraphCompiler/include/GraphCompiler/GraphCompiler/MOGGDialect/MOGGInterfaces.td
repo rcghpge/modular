@@ -27,6 +27,12 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
       "mlir::DictionaryAttr", "getKernelParams", (ins),
       "return $_op->template getAttrOfType<DictionaryAttr>(\"kernel_param\");"
     >,
+    InterfaceMethod<
+      "Returns the sym_name of the kernel decl this op references, or null "
+      "if this op does not directly reference a kernel decl.",
+      "mlir::StringAttr", "getKernelSymNameAttr", (ins),
+      "return $_op->template getAttrOfType<mlir::StringAttr>(\"kernelSymName\");"
+    >,
   ];
 }
 

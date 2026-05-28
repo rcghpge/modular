@@ -5,7 +5,7 @@
 // CHECK:       [[EMPTY_BUFF:%.*]] = mogg.empty_buffer : !mgp.buffer
 // CHECK-NEXT:  [[EMPTY_TENSOR:%.*]] = mogg.tensor.__init__([[EMPTY_BUFF]]) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32, {io = 1 : i32, mut = false}>
 // CHECK-NEXT:  [[FUSED:%.*]] = mogg.tensor.fused([[IN]], [[EMPTY_TENSOR]]) : (!mo.tensor<[4, 5, 2, 3], f32{{.*}}>, !mo.tensor<[4, 5, 2, 3], f32, {io = 1 : i32, mut = false}>) -> !mo.tensor<[4, 5, 2, 3], f32{{.*}}>
-// CHECK:       mogg.call.execute["mo.reduce.add"] inputs([[FUSED]]
+// CHECK:       mogg.call.execute["{{.*}}.ReduceAdd"] inputs([[FUSED]]
 
 mo.graph @reduce_fused_input(%arg0: !mo.tensor<[4, 5, 2, 3], f32>, %arg1: !mo.tensor<[4, 5, 2, 3], f32>, %arg2: !mo.tensor<[4, 5, 1, 3], f32>) -> (!mo.tensor<[4, 5, 1, 3], f32>) {
   %axis = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>

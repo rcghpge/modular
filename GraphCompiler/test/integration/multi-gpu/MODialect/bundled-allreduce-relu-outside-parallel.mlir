@@ -17,8 +17,8 @@
 // CHECK-FUSED:      mo.parallel
 // CHECK-FUSED:        mogg.kernel
 // CHECK-FUSED:          mogg.bind {{.*}} output_lambda
-// CHECK-FUSED:            mogg.call.elementwise["mo.relu"]
-// CHECK-FUSED:          mogg.call.execute["mo.bundled.allreduce.sum"]
+// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-FUSED:          mogg.call.execute["{{.*}}.BundledAllReduceSum"]
 // CHECK-FUSED:        mo.yield
 
 mo.graph @bundled_allreduce_relu_outside(

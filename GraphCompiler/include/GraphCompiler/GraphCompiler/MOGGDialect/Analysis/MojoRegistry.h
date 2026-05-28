@@ -38,10 +38,14 @@ public:
   /// `name`.
   bool containsKernel(llvm::StringRef name) const;
 
+  KernelDeclOp lookupKernelBySymName(llvm::StringRef symName) const;
+
   /// Returns the `mogg.primitive.decl` op whose `registration` matches
   /// `name`. Asserts that the primitive exists; use `containsPrimitive` for
   /// an existence check.
   PrimitiveDeclOp lookupPrimitive(llvm::StringRef name) const;
+
+  PrimitiveDeclOp lookupPrimitiveBySymName(llvm::StringRef symName) const;
 
   /// Returns true if a `mogg.primitive.decl` op exists for `name`.
   bool containsPrimitive(llvm::StringRef name) const;
@@ -55,7 +59,9 @@ public:
 
 private:
   llvm::StringMap<llvm::SmallVector<KernelDeclOp>> kernelByName;
+  llvm::StringMap<KernelDeclOp> kernelBySymName;
   llvm::StringMap<PrimitiveDeclOp> primitiveByName;
+  llvm::StringMap<PrimitiveDeclOp> primitiveBySymName;
 };
 
 /// Clone every `mogg.kernel.decl` and `mogg.primitive.decl` op from `src`

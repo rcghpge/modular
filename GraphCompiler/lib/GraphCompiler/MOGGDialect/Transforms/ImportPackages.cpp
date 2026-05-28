@@ -26,6 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -806,11 +807,20 @@ struct StripKernelDeclsPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+
+    // Collect every kernel sym_name still referenced in the module.
+    llvm::DenseSet<mlir::StringAttr> usedSymNames;
+    module.walk([&](KernelCallInterface op) {
+      usedSymNames.insert(op.getKernelSymNameAttr());
+    });
+
     for (auto decl : llvm::make_early_inc_range(module.getOps<KernelDeclOp>()))
-      decl.erase();
+      if (!usedSymNames.contains(decl.getSymNameAttr()))
+        decl.erase();
     for (auto decl :
          llvm::make_early_inc_range(module.getOps<PrimitiveDeclOp>()))
-      decl.erase();
+      if (!usedSymNames.contains(decl.getSymNameAttr()))
+        decl.erase();
   }
 };
 

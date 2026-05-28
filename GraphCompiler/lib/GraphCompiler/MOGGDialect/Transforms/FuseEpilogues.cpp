@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -26,13 +27,13 @@ static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
   if (!callExecuteOp)
     return false;
 
-  auto kernelName = callExecuteOp.getKernelNameAttr().strref();
+  auto opName = callExecuteOp.getMoOpName();
 
-  return (kernelName.contains(MO::ConcatOp::getOperationName()) ||
-          kernelName.contains(MO::MatmulOp::getOperationName()) ||
-          kernelName.contains(MO::BatchMatmulOp::getOperationName()) ||
-          kernelName.contains(MO::ConvOp::getOperationName()) ||
-          kernelName.contains(MO::ConvTransposeOp::getOperationName()));
+  return (opName.contains(MO::ConcatOp::getOperationName()) ||
+          opName.contains(MO::MatmulOp::getOperationName()) ||
+          opName.contains(MO::BatchMatmulOp::getOperationName()) ||
+          opName.contains(MO::ConvOp::getOperationName()) ||
+          opName.contains(MO::ConvTransposeOp::getOperationName()));
 }
 
 static bool containsDistributedOp(MOGG::KernelOp kernel) {
@@ -41,17 +42,17 @@ static bool containsDistributedOp(MOGG::KernelOp kernel) {
   if (!callExecuteOp)
     return false;
 
-  auto kernelName = callExecuteOp.getKernelNameAttr().strref();
+  auto opName = callExecuteOp.getMoOpName();
 
-  return (kernelName.contains(MO::AllGatherOp::getOperationName()) ||
-          kernelName.contains(MO::AllReduceSumOp::getOperationName()) ||
-          kernelName.contains(MO::ReduceScatterSumOp::getOperationName()) ||
-          kernelName.contains(MO::DistributedBroadcastOp::getOperationName()) ||
-          kernelName.contains(MO::EPDispatchOp::getOperationName()) ||
-          kernelName.contains(MO::EPDispatchFP8Op::getOperationName()) ||
-          kernelName.contains(MO::EPDispatchNVFP4Op::getOperationName()) ||
-          kernelName.contains(MO::EPDispatchMXFP4Op::getOperationName()) ||
-          kernelName.contains(MO::EPCombineOp::getOperationName()));
+  return (opName.contains(MO::AllGatherOp::getOperationName()) ||
+          opName.contains(MO::AllReduceSumOp::getOperationName()) ||
+          opName.contains(MO::ReduceScatterSumOp::getOperationName()) ||
+          opName.contains(MO::DistributedBroadcastOp::getOperationName()) ||
+          opName.contains(MO::EPDispatchOp::getOperationName()) ||
+          opName.contains(MO::EPDispatchFP8Op::getOperationName()) ||
+          opName.contains(MO::EPDispatchNVFP4Op::getOperationName()) ||
+          opName.contains(MO::EPDispatchMXFP4Op::getOperationName()) ||
+          opName.contains(MO::EPCombineOp::getOperationName()));
 }
 
 static bool containsMutableStore(MOGG::KernelOp kernel) {
@@ -63,8 +64,7 @@ static bool containsMutableStore(MOGG::KernelOp kernel) {
 
     for (auto elementwiseOp :
          bindOp.getBody()->getOps<MOGG::CallElementwiseOp>()) {
-      if (elementwiseOp.getKernelNameAttr().strref() ==
-          MO::MutableStoreOp::getOperationName())
+      if (elementwiseOp.getMoOpName() == MO::MutableStoreOp::getOperationName())
         return true;
     }
   }
@@ -367,6 +367,7 @@ struct FuseEpilogues : public impl::FuseEpiloguesBase<FuseEpilogues> {
 
   void runOnOperation() override {
     MO::GraphOp moGraph = getOperation();
+    MojoRegistry registry(moGraph->getParentOfType<mlir::ModuleOp>());
     // Run epilogue fusion interleaved with affine view fusion until
     // convergence. This handles multi-hop cases where an affine view separates
     // a producer from a potential epilogue:
@@ -377,7 +378,7 @@ struct FuseEpilogues : public impl::FuseEpiloguesBase<FuseEpilogues> {
     size_t fused;
     do {
       fused = fuseEpilogues(moGraph);
-      fused += fuseReshapesIntoEpiloguesStep(moGraph);
+      fused += fuseReshapesIntoEpiloguesStep(moGraph, registry);
     } while (fused > 0);
   }
 };

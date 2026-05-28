@@ -337,8 +337,8 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
 
   builder.setInsertionPointToStart(elemwiseBody);
   auto callElementwise = CallElementwiseOp::create(
-      builder, loc, resultValTp, adaptor.registeredOpName.strref(),
-      outlinedArgs);
+      builder, loc, resultValTp, adaptor.fullyResolvedName.strref(),
+      adaptor.registeredOpName.strref(), outlinedArgs);
   cast<KernelCallInterface>(callElementwise.getOperation())
       .setKernelParams(forwardedParameters);
   OutputOp::create(builder, loc, callElementwise->getResults());
@@ -346,8 +346,12 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
 
   SmallVector<Value> contextValue;
   addContextIfPresent(moOp, contextValue, adaptor, builder, true);
-  auto ret = CallForeachOp::create(builder, loc, bindOp.getOutput(),
-                                   outputValue, contextValue);
+
+  auto foreachPrim =
+      registry.lookupPrimitive(CallForeachOp::getOperationName());
+  auto ret =
+      CallForeachOp::create(builder, loc, foreachPrim.getSymName(),
+                            bindOp.getOutput(), outputValue, contextValue);
 
   return ret;
 }
@@ -372,15 +376,18 @@ MOGGKernelBuilder::lowerToViewKernel(KernelOp kernelOp,
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
-  auto view =
-      MOGG::CallViewOp::create(builder, loc, outputVal.getType(),
-                               adaptor.registeredOpName.strref(), inputs);
+  auto view = MOGG::CallViewOp::create(
+      builder, loc, outputVal.getType(), adaptor.fullyResolvedName.strref(),
+      adaptor.registeredOpName.strref(), inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
   // mogg.call.view above).
   SmallVector<Value> contextValue;
   addContextIfPresent(moOp, contextValue, adaptor, builder, true);
-  MOGG::CallMaterializeOp::create(builder, loc, view->getResult(0), outputVal,
-                                  contextValue);
+  auto materializePrimitive =
+      registry.lookupPrimitive(CallMaterializeOp::getOperationName());
+  MOGG::CallMaterializeOp::create(builder, loc,
+                                  materializePrimitive.getSymName(),
+                                  view->getResult(0), outputVal, contextValue);
 
   return view;
 }
@@ -437,7 +444,8 @@ MOGGKernelBuilder::lowerToNormalKernel(KernelOp kernelOp,
   auto execSig = adaptor.executeFunction->attr.getSignature();
   bool isThrows = execSig.isThrows();
 
-  return CallExecuteOp::create(builder, loc, adaptor.registeredOpName.strref(),
+  return CallExecuteOp::create(builder, loc, adaptor.fullyResolvedName.strref(),
+                               adaptor.registeredOpName.strref(),
                                regRetTypeAttr, isThrows, inputs, outputs);
 }
 
@@ -467,7 +475,7 @@ MOGGKernelBuilder::lowerToShapeKernel(KernelOp kernelOp,
   bool isThrows = shapeSig.isThrows();
 
   return MOGG::CallShapeOp::create(
-      builder, loc, adaptor.registeredOpName, TypeAttr::get(retType),
+      builder, loc, adaptor.fullyResolvedName, TypeAttr::get(retType),
       isThrows ? builder.getUnitAttr() : UnitAttr(), inputs);
 }
 

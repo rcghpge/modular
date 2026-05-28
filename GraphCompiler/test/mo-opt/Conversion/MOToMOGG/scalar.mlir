@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: mo.graph @mean
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["mo.reduce.mean"]
+// CHECK: mogg.call.execute["{{.*}}.Mean"]
 
 mo.graph @mean(%input: !mo.tensor<[100, 50], f32>) -> (!mo.tensor<[100, 1], f32>) {
   %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>

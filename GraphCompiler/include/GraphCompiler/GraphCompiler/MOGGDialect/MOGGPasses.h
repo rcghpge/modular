@@ -32,6 +32,10 @@ class GraphOp;
 } // namespace M::MO
 
 namespace M::MOGG {
+class MojoRegistry;
+} // namespace M::MOGG
+
+namespace M::MOGG {
 
 /// How to build kernels. Release is optimized with no debug information,
 /// relwithdebinfo is optimized with debug information, debug is not optimized
@@ -106,7 +110,8 @@ void liftBufferCacheSlots(mlir::ModuleOp module);
 /// SplitDim/MergeDim/AddSingletonDim ops into kernel output lambdas.
 /// Returns the number of views fused. Shared by FuseReshapesIntoEpilogues and
 /// FuseEpilogues.
-size_t fuseReshapesIntoEpiloguesStep(MO::GraphOp graph);
+size_t fuseReshapesIntoEpiloguesStep(MO::GraphOp graph,
+                                     const MojoRegistry &registry);
 
 } // namespace M::MOGG
 

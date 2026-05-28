@@ -9,7 +9,7 @@
 // CHECK-LABEL: mo.graph @matmul_add_4hop
 // Single fused kernel: all ops absorbed
 // CHECK: mogg.kernel
-// CHECK-NOT: mogg.kernel
+// CHECK-NOT: mogg.kernel{{[^.]}}
 mo.graph @matmul_add_4hop(%arg0: !mo.tensor<[4, 8], f32>, %arg1: !mo.tensor<[8, 8], f32, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[4, 8], f32>, %arg3: !mo.tensor<[32], f32>, %arg4: !mo.tensor<[4, 8], f32>, %arg5: !mo.tensor<[32], f32>, %arg6: !mo.tensor<[4, 8], f32>) -> !mo.tensor<[4, 8], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[4, 8], f32>, !mo.tensor<[8, 8], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[4, 8], f32>
   %add1 = mo.add(%mm, %arg2) : !mo.tensor<[4, 8], f32>

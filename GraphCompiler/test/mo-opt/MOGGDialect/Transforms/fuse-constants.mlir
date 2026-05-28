@@ -40,8 +40,8 @@ mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 // Check broadcasted f64 constants get fused
 mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>) -> !mo.tensor<[D14, D15], f64> {
@@ -61,8 +61,8 @@ mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>)
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 // Check broadcasted si32 constants get fused
 mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32>) -> !mo.tensor<[D14, D15], si32> {
@@ -81,8 +81,8 @@ mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check broadcasted si64 constants get fused
@@ -102,8 +102,8 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check broadcasted si16 constants get fused
@@ -123,8 +123,8 @@ mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check broadcasted si8 constants get fused
@@ -144,8 +144,8 @@ mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>)
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check broadcasted ui8 constants get fused
@@ -165,8 +165,8 @@ mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>)
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check broadcasted ui16 constants get fused
@@ -186,8 +186,8 @@ mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
 // CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST1]]
-// CHECK: mogg.call.view["mo.static.broadcast_to"] (%[[CST2]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST1]]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"] (%[[CST2]]
 
 
 // Check transpose permutation gets fused
@@ -203,7 +203,7 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 // Check permutation is in kernel and used in transpose.
 // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0>
 // CHECK-NEXT: mogg.output_placeholders
-// CHECK: mogg.call.view["mo.transpose"] (%{{.*}}, %[[PERM]]
+// CHECK: mogg.call.view["{{.*}}.Transpose"] (%{{.*}}, %[[PERM]]
 
 mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[12, 64], f32> {
   %cst = mo.constant {value = dense_resource<const_6> : tensor<12x64xf32>} : !mo.tensor<[12, 64], f32>

@@ -20,7 +20,7 @@ mo.graph @conv_const_params(
 
 // CHECK-LABEL: mo.graph @conv_const_params
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["mo.conv"]
+// CHECK: mogg.call.execute["{{.*}}.Conv"]
 mo.graph @conv_unknown_params(
   %input: !mo.tensor<[4, 3, 3, 1], f32>,
   %filter: !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
@@ -40,4 +40,4 @@ mo.graph @conv_unknown_params(
 
 // CHECK-LABEL: mo.graph @conv_unknown_params
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["mo.conv"]
+// CHECK: mogg.call.execute["{{.*}}.Conv"]

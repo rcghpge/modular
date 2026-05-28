@@ -4,7 +4,7 @@
 // CHECK:       [[LAMBDA:%.*]] = mogg.bind ({{.*}}) output_lambda
 // CHECK:       [[RESHAPE:%.*]] = mogg.tensor.reshape({{.*}}, {{.*}}) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32{{.*}}}>, !kgen.scalar<si64>) -> !mo.tensor<[A, 1], f32{{.*}}>
 // CHECK-NEXT:  [[FUSED:%.*]] = mogg.tensor.fused([[LAMBDA]], [[RESHAPE]]) : (!mo.tensor<[A, 1], f32{{.*}}>, !mo.tensor<[A, 1], f32{{.*}}>) -> !mo.tensor<[A, 1], f32{{.*}}>
-// CHECK:       mogg.call.execute["mo.reduce.add"] {{.*}} outputs([[FUSED]]
+// CHECK:       mogg.call.execute["{{.*}}.ReduceAdd"] {{.*}} outputs([[FUSED]]
 
 mo.graph @reduce_split_dim_dyn<A, B>(%arg0: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[2, 2, 1], f32>) {
   %axis = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>

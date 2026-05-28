@@ -5,7 +5,7 @@
 // CHECK-LABEL: mo.graph @avg_pool_mixed_dims
 // CHECK: mogg.kernel
 // CHECK-SAME: (%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER:.*]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> ()
-// CHECK:   mogg.call.shape["mo.avg_pool"]
+// CHECK:   mogg.call.shape["{{.*}}.AvgPool"]
 // CHECK-SAME: (%[[INPUT]], %[[FILTER]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]]
 // CHECK-SAME: : !mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mogg.shape_func_result<4>
 // CHECK-SAME: {isThrows, kernel_param = {output_rank = 4 : index}}
@@ -29,7 +29,7 @@ mo.graph @avg_pool_mixed_dims<() -> D1, D2>(
 // CHECK: mogg.kernel
 // CHECK-SAME: (%[[G_INPUT:.*]]: !mo.tensor<[10, D0], f32>, %[[G_INDICES:.*]]: !mo.tensor<[D1, 20], si32>, %[[G_AXIS:.*]]: !mo.tensor<[], si32>) -> ()
 // CHECK:   mogg.as_scalar
-// CHECK:   mogg.call.shape["mo.gather"]
+// CHECK:   mogg.call.shape["{{.*}}.Gather"]
 // CHECK-SAME: (%[[G_INPUT]], %[[G_INDICES]]
 // CHECK-SAME: : !mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mo.scalar<si32>) -> !mogg.shape_func_result<3>
 // CHECK-SAME: {isThrows, kernel_param = {output_rank = 3 : index}}

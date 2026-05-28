@@ -14,6 +14,6 @@ mo.graph @simpleTwoKernelsWithParams(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.ten
 // CHECK-NEXT: mogg.kernel(%[[ARG0]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
 // CHECK: mogg.output_placeholders : !mo.tensor<[4, 3], f32>
 // CHECK: mogg.bind (%{{.*}}) elemwise_lambda (%{{.*}}: f32, %{{.*}}: !pop.array<2, index>) {
-// CHECK: mogg.call.elementwise["elemwise_add_with_param"] (%{{.*}}) {kernel_param = {bias = 1 : i64}} : f32 -> f32
-// CHECK-NEXT: mogg.call.elementwise["elemwise_add_with_param"] (%{{.*}}) {kernel_param = {bias = 2 : i64}} : f32 -> f32
+// CHECK: mogg.call.elementwise["{{.*}}.ElemwiseAddWithParam"] (%{{.*}}) {kernel_param = {bias = 1 : i64}
+// CHECK-NEXT: mogg.call.elementwise["{{.*}}.ElemwiseAddWithParam"] (%{{.*}}) {kernel_param = {bias = 2 : i64}
 // CHECK: mogg.output

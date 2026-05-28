@@ -11,7 +11,7 @@ mo.graph @too_few_args() -> () {
   mogg.kernel () -> () {
     // expected-error@below{{Kernel stub 'stub_0' expects 1 arguments, but got 0}}
     mogg.call.stub @stub_0
-    mogg.call.execute["foo"]
+    mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }
@@ -28,7 +28,7 @@ mo.graph @too_many_args() -> () {
     %0:2 = mogg.output_placeholders : !mo.tensor<[], f32>, !mo.tensor<[], f32>
     // expected-error@below{{Kernel stub 'stub_0' expects 1 arguments, but got 2}}
     mogg.call.stub @stub_0 %0#0, %0#1 : !mo.tensor<[], f32>, !mo.tensor<[], f32>
-    mogg.call.execute["foo"]
+    mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }
@@ -45,7 +45,7 @@ mo.graph @mismatching_args() -> () {
     %0 = mogg.output_placeholders : !mo.tensor<[], f64>
     // expected-error@below{{Kernel stub 'stub_0' expects argument 0 to have type !mo.tensor<[], f32>, but got !mo.tensor<[], f64>}}
     mogg.call.stub @stub_0 %0 : !mo.tensor<[], f64>
-    mogg.call.execute["foo"]
+    mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }
@@ -56,7 +56,7 @@ mo.graph @does_not_exist() -> () {
   mogg.kernel () -> () {
     // expected-error@below{{There is no kernel stub named 'stub_that_does_not_exist'}}
     mogg.call.stub @stub_that_does_not_exist
-    mogg.call.execute["foo"]
+    mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }
@@ -72,7 +72,7 @@ mo.graph @wrong_abi(%0 : !mo.tensor<[], f32>) -> () {
   mogg.kernel () -> () {
     // expected-error@below{{Call site should be in the MOGG ABI}}
     mogg.call.stub @stub_1
-    mogg.call.execute["foo"]
+    mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }

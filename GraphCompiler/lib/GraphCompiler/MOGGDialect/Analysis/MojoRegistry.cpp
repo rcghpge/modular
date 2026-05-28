@@ -21,21 +21,18 @@
 using namespace M;
 using namespace M::MOGG;
 
-static void
-populateRegistry(mlir::ModuleOp module,
-                 llvm::StringMap<llvm::SmallVector<KernelDeclOp>> &kernelByName,
-                 llvm::StringMap<PrimitiveDeclOp> &primitiveByName) {
-  for (auto decl : module.getOps<KernelDeclOp>())
+MojoRegistry::MojoRegistry(mlir::ModuleOp module) {
+  for (auto decl : module.getOps<KernelDeclOp>()) {
     kernelByName[decl.getRegistration()].push_back(decl);
+    kernelBySymName[decl.getSymName()] = decl;
+  }
   for (auto decl : module.getOps<PrimitiveDeclOp>()) {
     llvm::StringRef reg = decl.getRegistration();
-    if (!primitiveByName.contains(reg))
+    if (!primitiveByName.contains(reg)) {
       primitiveByName[reg] = decl;
+      primitiveBySymName[decl.getSymName()] = decl;
+    }
   }
-}
-
-MojoRegistry::MojoRegistry(mlir::ModuleOp module) {
-  populateRegistry(module, kernelByName, primitiveByName);
 }
 
 llvm::ArrayRef<KernelDeclOp>
@@ -50,10 +47,26 @@ bool MojoRegistry::containsKernel(llvm::StringRef name) const {
   return kernelByName.contains(name);
 }
 
+KernelDeclOp
+MojoRegistry::lookupKernelBySymName(llvm::StringRef symName) const {
+  auto it = kernelBySymName.find(symName);
+  ASSERT_STREAM(it != kernelBySymName.end(),
+                "no kernel registered for '" << symName << "'");
+  return it->second;
+}
+
 PrimitiveDeclOp MojoRegistry::lookupPrimitive(llvm::StringRef name) const {
   auto it = primitiveByName.find(name);
   ASSERT_STREAM(it != primitiveByName.end(),
                 "no primitive registered for '" << name << "'");
+  return it->second;
+}
+
+PrimitiveDeclOp
+MojoRegistry::lookupPrimitiveBySymName(llvm::StringRef symName) const {
+  auto it = primitiveBySymName.find(symName);
+  ASSERT_STREAM(it != primitiveBySymName.end(),
+                "no primitive registered for '" << symName << "'");
   return it->second;
 }
 

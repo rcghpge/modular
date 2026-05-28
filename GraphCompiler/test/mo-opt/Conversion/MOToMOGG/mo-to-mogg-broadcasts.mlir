@@ -9,6 +9,6 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT: %[[KERNEL:.*]] = mogg.kernel(%[[IN1:.*]]: !mo.tensor<[N, M, L], f32>) -> !mo.tensor<[N, M, K], f32>
 // CHECK: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[N, M, K], f32>
 // CHECK: mogg.tensor.shape
-// CHECK: mogg.call.view["mo.static.broadcast_to"]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"]
 // CHECK: mogg.call.materialize
 // CHECK: mo.output %[[KERNEL]] : !mo.tensor<[N, M, K], f32>

@@ -7,7 +7,7 @@
 // CHECK: mogg.kernel
 // CHECK: %[[OUT:.*]] = mogg.output_placeholders
 // CHECK: %{{.*}} = mogg.tensor.shape
-// CHECK: mogg.call.view["mo.static.broadcast_to"]
+// CHECK: mogg.call.view["{{.*}}.StaticBroadcastTo"]
 // CHECK: mogg.call.materialize
 
 mo.graph @broadcast_to(%arg0: !mo.tensor<[1, 8], f32>) -> !mo.tensor<[6, 3, 8], f32> {

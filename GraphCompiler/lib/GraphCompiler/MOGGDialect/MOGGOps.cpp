@@ -342,9 +342,39 @@ MojoValue callFunctionNestedInStruct(const KernelDeclFunctionAdaptor &fnAdaptor,
   return fullFn(params.functionParameters, operands);
 }
 
+/// Common verifySymbolUses logic for ops implementing KernelCallInterface.
+/// Looks up the KernelDeclOp and delegates to `check` for the op-specific
+/// function presence check.
+static LogicalResult verifySymbolUsesForKernelDeclCall(
+    KernelCallInterface op, SymbolTableCollection &symbolTable,
+    llvm::function_ref<LogicalResult(KernelDeclOp)> check) {
+  auto symAttr = op.getKernelSymNameAttr();
+  auto decl = symbolTable.lookupNearestSymbolFrom<KernelDeclOp>(op, symAttr);
+  if (!decl)
+    return op->emitOpError("'")
+           << symAttr.getValue() << "' does not refer to a kernel.decl op";
+  return check(decl);
+}
+
+static LogicalResult
+verifySymbolUsesForPrimitiveDeclCall(KernelCallInterface op,
+                                     SymbolTableCollection &symbolTable) {
+  auto symAttr = op.getKernelSymNameAttr();
+  auto decl = symbolTable.lookupNearestSymbolFrom<PrimitiveDeclOp>(op, symAttr);
+  if (!decl)
+    return op->emitOpError("'")
+           << symAttr.getValue() << "' does not refer to a primitive.decl op";
+  return success();
+}
+
+LogicalResult
+CallAffineOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForPrimitiveDeclCall(*this, symbolTable);
+}
+
 LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
-  auto primDecl = state.registry.lookupPrimitive(getMojoKernelTarget());
-  MojoValue symbolName(primitiveMojoName(primDecl));
+  auto primDecl = state.registry.lookupPrimitiveBySymName(getKernelSymName());
+  MojoValue symbolName(getKernelSymName());
 
   SmallVector<MojoValue> mojoOperands = state.getMojoValuesFor(getOperands());
 
@@ -694,7 +724,7 @@ static void emitFusionStructBodyOps(
             resolveStructOperand(input, valueMap, scalarCaptureValues, state));
 
       KernelDeclOp elemKernelDecl =
-          state.registry.getResolvedKernel(elemOp.getKernelName());
+          state.registry.lookupKernelBySymName(elemOp.getKernelSymName());
       KernelDeclAdaptor elemAdaptor(elemKernelDecl);
       const KernelDeclFunctionAdaptor &elemFnAdaptor =
           elemAdaptor.isElementwise() ? *elemAdaptor.elementwiseFunction
@@ -734,7 +764,7 @@ static void emitFusionStructBodyOps(
 
     if (auto callOp = dyn_cast<MOGG::CallAffineOp>(&op)) {
       auto affinePrimDecl =
-          state.registry.lookupPrimitive(callOp.getMojoKernelTarget());
+          state.registry.lookupPrimitiveBySymName(callOp.getKernelSymName());
       MojoValue symbolName(primitiveMojoName(affinePrimDecl));
 
       SmallVector<MojoValue> inputs;
@@ -1109,6 +1139,11 @@ LogicalResult CallForeachOp::verify() {
   return success();
 }
 
+LogicalResult
+CallForeachOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForPrimitiveDeclCall(*this, symbolTable);
+}
+
 Value CallForeachOp::getDeviceContext() {
   if (getContext().empty())
     return nullptr;
@@ -1180,10 +1215,7 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
                                 ? MojoValue(getOperationName()).quote()
                                 : *traceNameOr;
 
-  // Look up the foreach primitive by this op's registration name; the Mojo
-  // source name (e.g. `foreach_fusion`) is opaque to the GC.
-  auto foreachPrim = state.registry.lookupPrimitive(getOperationName());
-  MojoValue foreachFunc(primitiveMojoName(foreachPrim));
+  MojoValue foreachFunc(getKernelSymName());
   state.builder.verbatim(
       foreachFunc({MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
                    MojoValue(kParameterSimdWidth).equal(simdWidthExpr),
@@ -1205,6 +1237,11 @@ LogicalResult CallMaterializeOp::verify() {
   return success();
 }
 
+LogicalResult
+CallMaterializeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForPrimitiveDeclCall(*this, symbolTable);
+}
+
 Value CallMaterializeOp::getDeviceContext() {
   if (getContext().empty())
     return nullptr;
@@ -1221,7 +1258,8 @@ Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 bool CallMaterializeOp::isThrows() { return true; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
-  auto viewMatPrimDecl = state.registry.lookupPrimitive(getOperationName());
+  auto viewMatPrimDecl =
+      state.registry.lookupPrimitiveBySymName(getKernelSymName());
   // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
   std::swap(mojoOperands[0], mojoOperands[1]);
@@ -1262,6 +1300,17 @@ LogicalResult CallExecuteOp::verify() {
     return emitError("Can use at most one context or tuple of contexts");
 
   return success();
+}
+
+LogicalResult
+CallExecuteOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getExecute())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'execute' function";
+        return success();
+      });
 }
 
 Value CallExecuteOp::getDeviceContext() {
@@ -1347,7 +1396,7 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
 
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   KernelDeclOp execKernelDecl =
-      state.registry.getResolvedKernel(getKernelName());
+      state.registry.lookupKernelBySymName(getKernelSymName());
   KernelDeclAdaptor execAdaptor(execKernelDecl);
   const KernelDeclFunctionAdaptor &execFnAdaptor = *execAdaptor.executeFunction;
 
@@ -2847,6 +2896,16 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
 // CallViewOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult CallViewOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getUpdateView())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'update_view' function";
+        return success();
+      });
+}
+
 LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   // Get the kernel inputs.
   SmallVector<MojoValue> inputMojoValues;
@@ -2859,7 +2918,8 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
     inputMojoValues.push_back(inputValue);
   }
 
-  KernelDeclOp uvKernelDecl = state.registry.getResolvedKernel(getKernelName());
+  KernelDeclOp uvKernelDecl =
+      state.registry.lookupKernelBySymName(getKernelSymName());
   KernelDeclAdaptor uvAdaptor(uvKernelDecl);
   const KernelDeclFunctionAdaptor &uvFnAdaptor = *uvAdaptor.updateViewFunction;
 
@@ -2888,11 +2948,23 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
 // CallElementwiseOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult
+CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getElementwise())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'elementwise' function";
+        return success();
+      });
+}
+
 LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // Get the lambda inputs
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
-  KernelDeclOp ewKernelDecl = state.registry.getResolvedKernel(getKernelName());
+  KernelDeclOp ewKernelDecl =
+      state.registry.lookupKernelBySymName(getKernelSymName());
   KernelDeclAdaptor ewAdaptor(ewKernelDecl);
   const KernelDeclFunctionAdaptor &ewFnAdaptor =
       ewAdaptor.isElementwise() ? *ewAdaptor.elementwiseFunction
@@ -3174,6 +3246,17 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
 // CallShapeOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult
+CallShapeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getShape())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'shape' function";
+        return success();
+      });
+}
+
 // MOGG_KernelCallInterface methods
 Value CallShapeOp::getDeviceContext() {
   // Shape functions typically don't need device contexts
@@ -3194,16 +3277,13 @@ Type CallShapeOp::getKernelReturnOutput() {
 bool CallShapeOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
-  if (!state.registry.containsKernel(getShapeFuncName())) {
-    return emitError("Shape function ") << getShapeFuncName() << " not found";
-  }
   KernelDeclOp shapeKernelDecl =
-      state.registry.getResolvedKernel(getShapeFuncName());
+      state.registry.lookupKernelBySymName(getKernelSymName());
   KernelDeclAdaptor shapeAdaptor(shapeKernelDecl);
   const KernelDeclFunctionAdaptor *shapeFnAdaptor =
       shapeAdaptor.shapeFunction ? &*shapeAdaptor.shapeFunction : nullptr;
   if (!shapeFnAdaptor) {
-    return emitError("Shape function not present for ") << getShapeFuncName();
+    return emitError("Shape function not present for ") << getKernelSymName();
   }
 
   // Rebind all inputs to ensure specs are deduced (tensors -> InputTensor,

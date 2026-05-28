@@ -12,7 +12,7 @@ mo.graph @conv2d_constant_filter(
   %pa = mo.constant {value = #M.dense_array<1, 2, 3, -16> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mogg.call.execute["mo.conv"]
+  // CHECK: mogg.call.execute["{{.*}}.Conv"]
   // CHECK-SAME: filter_layout = ""
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
@@ -32,7 +32,7 @@ mo.graph @conv3d_constant_filter(%input: !mo.tensor<[1, 8, 8, 8, 3], f32>) -> !m
   %pa = mo.constant {value = #M.dense_array<0, 1, 0, 1, 0, 1> : tensor<6xsi64>} : !mo.tensor<[6], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mogg.call.execute["mo.conv"]
+  // CHECK: mogg.call.execute["{{.*}}.Conv"]
   // CHECK-SAME: filter_layout = ""
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[1, 8, 8, 8, 3], f32>, !mo.tensor<[2, 2, 2, 3, 4], f32, {layout = #mo.layout<QRSCF>}>,

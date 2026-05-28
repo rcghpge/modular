@@ -3,13 +3,13 @@
 // CHECK-LABEL: mo.graph @input_output_fusion
 // CHECK: mogg.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
-// CHECK: mogg.call.elementwise["mo.ceil"]
+// CHECK: mogg.call.elementwise["{{.*}}.Ceil"]
 // CHECK: mogg.call.foreach
 // CHECK: mogg.kernel
-// CHECK: mogg.call.execute["test_custom_op"]
+// CHECK: mogg.call.execute["{{.*}}.TestCustomOp"]
 // CHECK: mogg.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
-// CHECK: mogg.call.elementwise["mo.relu"]
+// CHECK: mogg.call.elementwise["{{.*}}.ReLU"]
 // CHECK: mogg.call.foreach
 
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
