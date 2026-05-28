@@ -24,6 +24,12 @@ using namespace MGP;
 
 namespace {
 
+static llvm::StringRef extractStackTrace(mlir::OpaqueLoc opaqueLoc) {
+  if (auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc))
+    return pythonFrame.stack_trace();
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // AttachPythonStackTraces
 //===----------------------------------------------------------------------===//
@@ -42,43 +48,23 @@ struct AttachPythonStackTraces
     : public impl::AttachPythonStackTracesBase<AttachPythonStackTraces> {
   using AttachPythonStackTracesBase::AttachPythonStackTracesBase;
 
-  /// Recursively strip OpaqueLocs from a location tree, converting each to
-  // its fallback location or a FusedLoc carrying the Python stack trace.
-  static std::optional<Location> stripOpaqueLocs(mlir::MLIRContext *ctx,
-                                                 Location loc) {
-    if (auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc)) {
-      Location fallback = opaqueLoc.getFallbackLocation();
-      auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc);
-      char *stackTrace = pythonFrame ? pythonFrame.stack_trace() : nullptr;
-      if (stackTrace && *stackTrace)
-        return mlir::FusedLoc::get(ctx, {fallback},
-                                   StringAttr::get(ctx, stackTrace));
-      return fallback;
-    }
-
-    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
-      SmallVector<Location> children;
-      bool changed = false;
-      for (Location child : fusedLoc.getLocations()) {
-        if (auto newChild = stripOpaqueLocs(ctx, child)) {
-          children.push_back(*newChild);
-          changed = true;
-        } else {
-          children.push_back(child);
-        }
-      }
-      if (changed)
-        return mlir::FusedLoc::get(ctx, children, fusedLoc.getMetadata());
-      return std::nullopt;
-    }
-
-    return std::nullopt;
-  }
-
   void runOnOperation() override {
     mlir::MLIRContext *ctx = &getContext();
 
-    getOperation()->walk([&ctx](Operation *op) {
+    // Recursively strip OpaqueLocs from a location tree, converting each to
+    // its fallback location or a FusedLoc carrying the Python stack trace.
+    mlir::AttrTypeReplacer replacer;
+    replacer.addReplacement(
+        [&](mlir::OpaqueLoc opaqueLoc) -> mlir::LocationAttr {
+          Location fallback = opaqueLoc.getFallbackLocation();
+          llvm::StringRef stackTrace = extractStackTrace(opaqueLoc);
+          if (!stackTrace.empty())
+            return mlir::FusedLoc::get(ctx, {fallback},
+                                       StringAttr::get(ctx, stackTrace));
+          return fallback;
+        });
+
+    getOperation()->walk([&ctx, &replacer](Operation *op) {
       Location loc = op->getLoc();
 
       // Embed the trace into the assert message for better diagnostics.
@@ -86,13 +72,12 @@ struct AttachPythonStackTraces
       // FusedLoc don't apply here.
       if (auto assertOp = dyn_cast<AssertOp>(op)) {
         if (auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc)) {
-          auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc);
-          char *stackTrace = pythonFrame ? pythonFrame.stack_trace() : nullptr;
-          if (stackTrace && *stackTrace) {
+          llvm::StringRef stackTrace = extractStackTrace(opaqueLoc);
+          if (!stackTrace.empty()) {
             std::string fullMsg = "\nSource Traceback:\n";
             llvm::raw_string_ostream ss(fullMsg);
             ss << stackTrace << '\n';
-            StringAttr msg = mlir::cast<StringAttr>(assertOp.getMessageAttr());
+            StringAttr msg = assertOp.getMessageAttr();
             mlir::Diagnostic diag(loc, mlir::DiagnosticSeverity::Error);
             diag << msg.str();
             FormatScopedDiagnosticHandler::emitDiagnosticSeverityToStream(ss,
@@ -102,8 +87,8 @@ struct AttachPythonStackTraces
         }
       }
 
-      if (auto newLoc = stripOpaqueLocs(ctx, loc))
-        op->setLoc(*newLoc);
+      replacer.replaceElementsIn(op, /*replaceAttrs=*/false,
+                                 /*replaceLocs=*/true, /*replaceTypes=*/false);
     });
   }
 };
