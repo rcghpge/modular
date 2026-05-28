@@ -339,8 +339,23 @@ TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
     DeviceBufferRef bad = ctx->createBufferOwning(aPtr, allocLen,
                                                   /* ownning = */ true);
   }
-  // Trigger deferred error.
-  EXPECT_ERR_MSG(ctx->synchronize(), "failed");
+  // The bad-buffer free surfaces an error differently per backend:
+  //   CUDA: cuMemFree_v2 is deferred via event handler; the handler fires
+  //         during the first synchronize's event poll and sets a pending
+  //         error; the second synchronize returns that error.
+  //   HIP:  hipFree is called immediately and sets a pending error; the
+  //         first synchronize returns it.
+  // Call synchronize twice and assert that exactly one call returns an error
+  // containing "failed".
+  auto err1 = ctx->synchronize();
+  auto err2 = ctx->synchronize();
+  if (err1.isError()) {
+    EXPECT_THAT(err1.getError(), testing::HasSubstr("failed"));
+    EXPECT_FALSE(err2.isError()) << err2.getError();
+  } else {
+    EXPECT_TRUE(err2.isError());
+    EXPECT_THAT(err2.getError(), testing::HasSubstr("failed"));
+  }
 
   free(aPtr);
 }

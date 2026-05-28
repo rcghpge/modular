@@ -121,10 +121,10 @@ private:
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
   RETURN_IF_PENDING_ERROR(ctx);                                                \
-  std::optional<CUDAContextScope> __cudaWithContext;                           \
+  std::optional<CUDAContextScope> cudaWithContext;                             \
   if (!(ctx).isBoundToCurrentThread()) {                                       \
-    __cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());        \
-    CUDA_CHECK_ERR(__cudaWithContext->status());                               \
+    cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());          \
+    CUDA_CHECK_ERR(cudaWithContext->status());                                 \
   }
 
 // This MUST be called during all synchronous API calls like
@@ -133,21 +133,19 @@ private:
 #define POLL_PENDING_EVENTS(ctx) RETURN_IF_ERROR((ctx).pollPendingEvents());
 
 #define CUDA_WITH_CTX(ctx)                                                     \
-  std::optional<CUDAContextScope> __cudaWithContext;                           \
+  std::optional<CUDAContextScope> cudaWithContext;                             \
   if (!(ctx).isBoundToCurrentThread()) {                                       \
-    __cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());        \
-    CUDA_CHECK(__cudaWithContext->status());                                   \
+    cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());          \
+    CUDA_CHECK(cudaWithContext->status());                                     \
   }
 
 #define CUDA_WITH_DEV_ERR(dev)                                                 \
-  CUDAContextScope __cudaWithContext(*(dev).cudaContext(),                     \
-                                     (dev).cudaDriver());                      \
-  CUDA_CHECK_ERR(__cudaWithContext.status());
+  CUDAContextScope cudaWithContext(*(dev).cudaContext(), (dev).cudaDriver());  \
+  CUDA_CHECK_ERR(cudaWithContext.status());
 
 #define CUDA_WITH_DEV(dev)                                                     \
-  CUDAContextScope __cudaWithContext(*(dev).cudaContext(),                     \
-                                     (dev).cudaDriver());                      \
-  CUDA_CHECK(__cudaWithContext.status());
+  CUDAContextScope cudaWithContext(*(dev).cudaContext(), (dev).cudaDriver());  \
+  CUDA_CHECK(cudaWithContext.status());
 
 #define CHECK_IS_CUDA_ERR(dev)                                                 \
   do {                                                                         \
@@ -1470,8 +1468,26 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
     POLL_PENDING_EVENTS(*this);
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
   } else {
-    CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr)); // Only support sync allocations.
-    MAYBE_SYNC(*this);
+    // Defer cuMemFree_v2 until after GPU stream work completes. This prevents
+    // a use-after-free when a kernel (e.g. allreduce reduce-scatter) is still
+    // reading memory via P2P on another GPU while the CPU drops its reference.
+    // During CUDA graph capture the stream records ops but does not execute
+    // them, so no P2P race is possible; free immediately to keep the memory
+    // pool available for subsequent capture allocations.
+    if (isStreamCapturing(driver_, stream_)) {
+      CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr));
+    } else {
+      RETURN_IF_ERROR(enqueueEventHandler(
+          [contextRef = DeviceContextRef::copy(this), ptr = ptr]() {
+            auto &cudaCtx = static_cast<CUDADeviceContext &>(*contextRef);
+            CUDA_WITH_CTX(cudaCtx);
+            CUDADriver::Result result = cudaCtx.driver_.cuMemFree_v2(ptr);
+            if (result != CUDADriver::SUCCESS) {
+              cudaCtx.setPendingError(
+                  formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result));
+            }
+          }));
+    }
   }
   return success();
 }
