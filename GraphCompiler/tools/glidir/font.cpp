@@ -7,12 +7,19 @@
 #include "font.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
 
-namespace M::MlirViz {
+namespace M::GlidIR {
 
 alignas(M::kAsmResourceBlobAlignment) constexpr char fontDataArray[] = {
 #embed MLIR_VIZ_FONT
 };
 
-llvm::StringRef getFontData() { return {fontDataArray, sizeof(fontDataArray)}; }
+alignas(M::kAsmResourceBlobAlignment) constexpr char emojiFontDataArray[] = {
+#embed MLIR_VIZ_EMOJI_FONT
+};
 
-} // namespace M::MlirViz
+llvm::StringRef getFontData() { return {fontDataArray, sizeof(fontDataArray)}; }
+llvm::StringRef getEmojiFontData() {
+  return {emojiFontDataArray, sizeof(emojiFontDataArray)};
+}
+
+} // namespace M::GlidIR
