@@ -108,15 +108,15 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
       KGEN::getCanonicalAttr(mlir::cast<mlir::TypedAttr>(params[0]));
   mlir::TypedAttr rawInputAttr = mlir::cast<mlir::TypedAttr>(params[1]);
 
-  // mut is a Bool struct: { value: i1 }.
+  // mut is a Bool struct: { value: scalar<bool> }.
   auto mutStruct = KGEN::sugarDynCast<KGEN::LIT::LITStructAttr>(mutAttr);
   if (!mutStruct || mutStruct.getValues().empty())
     return std::nullopt;
   auto [_1, mutValueAttr] = mutStruct.getValues().front();
-  auto mutIntAttr = KGEN::sugarDynCast<mlir::IntegerAttr>(mutValueAttr);
-  if (!mutIntAttr)
+  auto mutBoolAttr = KGEN::sugarDynCast<KGEN::SIMDAttr>(mutValueAttr);
+  if (!mutBoolAttr)
     return std::nullopt;
-  bool mut = mutIntAttr.getValue().getBoolValue();
+  bool mut = mutBoolAttr.getAsBool();
 
   int64_t input = kIOSpecIOUnknown;
 
