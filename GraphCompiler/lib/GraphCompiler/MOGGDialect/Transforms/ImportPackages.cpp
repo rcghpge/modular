@@ -563,6 +563,17 @@ struct ImportPackagesPass
       return;
     }
 
+    llvm::sort(kernels, [](const ScannedKernel &lhs, const ScannedKernel &rhs) {
+      return StringRef(lhs.mojoName) < StringRef(rhs.mojoName);
+    });
+
+    llvm::sort(primitives, [](const ScannedPrimitiveFunction &lhs,
+                              const ScannedPrimitiveFunction &rhs) {
+      auto lhsName = getFullyResolvedMojoName(lhs.func);
+      auto rhsName = getFullyResolvedMojoName(rhs.func);
+      return StringRef(lhsName) < StringRef(rhsName);
+    });
+
     buildOpaqueTypeMapping(pkg, opaqueTypeMapping);
 
     auto emptyArray = mlir::ArrayAttr::get(ctx, {});
