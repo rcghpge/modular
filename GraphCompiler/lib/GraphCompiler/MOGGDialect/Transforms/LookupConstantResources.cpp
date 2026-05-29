@@ -32,7 +32,7 @@ struct LookupConstantResources
     bool wasInterrupted =
         kernelStubOp
             ->walk([&](MGP::BufferConstantOp bufferConstantOp) {
-              auto elementsAttr = bufferConstantOp.getAValue();
+              auto elementsAttr = bufferConstantOp.getValue();
               auto it = llvm::find(constantResources, elementsAttr);
               if (it == constantResources.end()) {
                 bufferConstantOp->emitError(

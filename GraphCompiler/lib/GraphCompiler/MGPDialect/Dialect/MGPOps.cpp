@@ -317,7 +317,7 @@ LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MOGG::MojoValue function(primitiveMojoName(primDecl));
 
-  auto elementsAttr = getAValue();
+  auto elementsAttr = getValue();
   auto kernelOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
   auto constantResources = kernelOp.getConstantResources();
   auto it = llvm::find(constantResources, elementsAttr);
@@ -369,8 +369,8 @@ void TensorSpecCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                    "for tensor specs of statically known rank");
   TensorSpecCreateOp::build(odsBuilder, odsState,
                             /*runtimeDims=*/runtimeDims,
-                            /*aRawDims=*/spec.getRawDims(),
-                            /*bRawDType=*/spec.getRawDType());
+                            /*rawDims=*/spec.getRawDims(),
+                            /*rawDType=*/spec.getRawDType());
 }
 
 /// Parses a !mgp.tensor_spec type where the element type must be known,
@@ -408,7 +408,7 @@ static void printRawDimsAndDType(AsmPrinter &p, const TensorSpecCreateOp &op,
 LogicalResult TensorSpecCreateOp::verify() {
   auto impliedSpecType =
       TensorSpecType::getChecked([this]() { return emitOpError(); },
-                                 getContext(), getARawDims(), getBRawDType());
+                                 getContext(), getRawDims(), getRawDType());
   if (impliedSpecType == nullptr)
     return failure();
   assert(impliedSpecType.hasRank());
@@ -429,8 +429,8 @@ LogicalResult TensorSpecCreateOp::verify() {
 LogicalResult TensorSpecCreateOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto rawDimsAttr = adaptor.getARawDimsAttr();
-  auto rawDTypeAttr = adaptor.getBRawDTypeAttr();
+  auto rawDimsAttr = adaptor.getRawDimsAttr();
+  auto rawDTypeAttr = adaptor.getRawDTypeAttr();
   ASSERT_STREAM(rawDimsAttr && rawDTypeAttr, << "mismatched operand type");
   inferredReturnTypes.emplace_back(
       TensorSpecType::get(rawDimsAttr, rawDTypeAttr));
@@ -454,7 +454,7 @@ LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue mgpBufferRemoveCachedFunc(primitiveMojoName(primDecl));
   state.builder.call(mgpBufferRemoveCachedFunc, {},
                      {state.getMojoValueFor(getTheContext()),
-                      state.getMojoValueFor(getBBufferSlot())});
+                      state.getMojoValueFor(getBufferSlot())});
 
   return success();
 }
@@ -471,7 +471,7 @@ OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
   auto bufferConstant = getBuffer().getDefiningOp<BufferConstantOp>();
   if (bufferConstant)
     return IntegerAttr::get(IndexType::get(getContext()),
-                            bufferConstant.getAValue().size());
+                            bufferConstant.getValue().size());
 
   return {};
 }
@@ -982,8 +982,8 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MOGG::MojoValue function(primitiveMojoName(primDecl));
 
-  MOGG::MojoValue debugStringParam = MOGG::MojoValue(getADebugString()).quote();
-  MOGG::MojoValue labelParam = MOGG::MojoValue(getBLabel()).quote();
+  MOGG::MojoValue debugStringParam = MOGG::MojoValue(getDebugString()).quote();
+  MOGG::MojoValue labelParam = MOGG::MojoValue(getLabel()).quote();
   MOGG::MojoValue ctxVar = state.getMojoValueFor(getTheContext());
 
   state.builder.call(function, {debugStringParam, labelParam}, ctxVar);

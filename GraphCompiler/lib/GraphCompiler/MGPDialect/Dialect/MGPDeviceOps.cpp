@@ -48,7 +48,7 @@ static void getDeviceAttrOrDefault(MLIRContext *ctx, DeviceRefAttr &device) {
 }
 
 /// Returns the raw alignment for an elements attribute.
-static uint64_t getRawAlign(ElementsAttr value) {
+static uint64_t computeRawAlign(ElementsAttr value) {
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (errOrOptAlign.isError())
     return 0;
@@ -142,8 +142,8 @@ LogicalResult BufferConstantExternalOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                             ElementsAttr aValue) {
-  return build(odsBuilder, odsState, aValue, getRawAlign(aValue));
+                             ElementsAttr value) {
+  return build(odsBuilder, odsState, value, computeRawAlign(value));
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -151,7 +151,7 @@ void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 LogicalResult BufferConstantOp::verify() {
   // We can only construct from attributes which are dense arrays (ie rank-1)
   // of uint8_ts.
-  ElementsAttr value = getAValue();
+  ElementsAttr value = getValue();
   ShapedType shapedType = cast<ShapedType>(value.getType());
   if (value.size() != shapedType.getNumElements())
     return emitOpError("does not support splat attributes.");
@@ -194,7 +194,7 @@ LogicalResult BufferConstantOp::inferReturnTypes(
 }
 
 std::optional<uint64_t> BufferConstantOp::getOptAlign() {
-  return rawSizeToOptSize(getBRawAlign());
+  return rawSizeToOptSize(getRawAlign());
 }
 
 //===----------------------------------------------------------------------===//
@@ -219,21 +219,21 @@ LogicalResult BufferAllocOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferAllocOp::verify() {
-  if (getCDevice() != getOutBuffer().getType().getDevice()) {
+  if (getDevice() != getOutBuffer().getType().getDevice()) {
     return emitOpError("expected result buffer device does not match actual "
                        "result buffer device (")
-           << getCDevice() << " vs " << getOutBuffer().getType().getDevice()
+           << getDevice() << " vs " << getOutBuffer().getType().getDevice()
            << ").";
   }
-  if (!isValidRawAlign(getBRawAlign()))
-    return emitOpError("invalid alignment ") << getBRawAlign() << ".";
-  return verifyConsistentDevices(getOperation(), {getCDevice()});
+  if (!isValidRawAlign(getRawAlign()))
+    return emitOpError("invalid alignment ") << getRawAlign() << ".";
+  return verifyConsistentDevices(getOperation(), {getDevice()});
 }
 
 LogicalResult BufferAllocOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  DeviceRefAttr device = adaptor.getCDevice();
+  DeviceRefAttr device = adaptor.getDevice();
   getDeviceAttrOrDefault(context, device);
   inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
@@ -255,10 +255,9 @@ LogicalResult BufferHostToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue function(primitiveMojoName(primDecl));
 
   MojoValue hostDeviceParam =
-      MojoValue(getCHostDevice() ? getCHostDevice().getLabel() : "cpu").quote();
+      MojoValue(getHostDevice() ? getHostDevice().getLabel() : "cpu").quote();
   MojoValue otherDeviceParam =
-      MojoValue(getDOtherDevice() ? getDOtherDevice().getLabel() : "gpu")
-          .quote();
+      MojoValue(getOtherDevice() ? getOtherDevice().getLabel() : "gpu").quote();
 
   state.builder.call(function, {hostDeviceParam, otherDeviceParam},
                      state.getMojoValuesFor(getOperands().drop_front()));
@@ -267,12 +266,12 @@ LogicalResult BufferHostToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferHostToDeviceOp::verify() {
-  if (getHostBuffer().getType().getDevice() != getCHostDevice())
+  if (getHostBuffer().getType().getDevice() != getHostDevice())
     return emitOpError("expected host buffer to be on 'host' device ")
-           << getCHostDevice() << ".";
-  if (getOtherBuffer().getType().getDevice() != getDOtherDevice())
+           << getHostDevice() << ".";
+  if (getOtherBuffer().getType().getDevice() != getOtherDevice())
     return emitOpError("expected other buffer to be on 'other' device ")
-           << getDOtherDevice() << ".";
+           << getOtherDevice() << ".";
   return success();
 }
 
@@ -297,10 +296,9 @@ LogicalResult BufferDeviceToHostOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue function(primitiveMojoName(primDecl));
 
   MojoValue otherDeviceParam =
-      MojoValue(getCOtherDevice() ? getCOtherDevice().getLabel() : "gpu")
-          .quote();
+      MojoValue(getOtherDevice() ? getOtherDevice().getLabel() : "gpu").quote();
   MojoValue hostDeviceParam =
-      MojoValue(getDHostDevice() ? getDHostDevice().getLabel() : "cpu").quote();
+      MojoValue(getHostDevice() ? getHostDevice().getLabel() : "cpu").quote();
 
   state.builder.call(function, {otherDeviceParam, hostDeviceParam},
                      state.getMojoValuesFor(getOperands().drop_front()));
@@ -309,12 +307,12 @@ LogicalResult BufferDeviceToHostOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferDeviceToHostOp::verify() {
-  if (getHostBuffer().getType().getDevice() != getDHostDevice())
+  if (getHostBuffer().getType().getDevice() != getHostDevice())
     return emitOpError("expected host buffer to be on 'host' device ")
-           << getDHostDevice() << ".";
-  if (getOtherBuffer().getType().getDevice() != getCOtherDevice())
+           << getHostDevice() << ".";
+  if (getOtherBuffer().getType().getDevice() != getOtherDevice())
     return emitOpError("expected other buffer to be on 'other' device ")
-           << getCOtherDevice() << ".";
+           << getOtherDevice() << ".";
   return success();
 }
 
@@ -338,8 +336,8 @@ LogicalResult BufferDeviceToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MojoValue function(primitiveMojoName(primDecl));
 
-  MojoValue srcDeviceParam = MojoValue(getCSrcDevice().getLabel()).quote();
-  MojoValue destDeviceParam = MojoValue(getDDstDevice().getLabel()).quote();
+  MojoValue srcDeviceParam = MojoValue(getSrcDevice().getLabel()).quote();
+  MojoValue destDeviceParam = MojoValue(getDstDevice().getLabel()).quote();
 
   state.builder.call(function, {srcDeviceParam, destDeviceParam},
                      state.getMojoValuesFor(getOperands().drop_front()));
@@ -348,17 +346,17 @@ LogicalResult BufferDeviceToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferDeviceToDeviceOp::verify() {
-  if (getCSrcDevice().getLabel() != getDDstDevice().getLabel()) {
+  if (getSrcDevice().getLabel() != getDstDevice().getLabel()) {
     return emitOpError("expecting source and destination devices to have the "
                        "same device label.");
   }
-  if (getSrcBuffer().getType().getDevice() != getCSrcDevice() ||
-      getDstBuffer().getType().getDevice() != getDDstDevice()) {
+  if (getSrcBuffer().getType().getDevice() != getSrcDevice() ||
+      getDstBuffer().getType().getDevice() != getDstDevice()) {
     return emitOpError(
                "expecting input chain and source buffer to be on device '")
-           << getCSrcDevice()
+           << getSrcDevice()
            << "', and output chain and destination buffer to be on device '"
-           << getDDstDevice() << "'.";
+           << getDstDevice() << "'.";
   }
   return success();
 }
@@ -549,7 +547,7 @@ LogicalResult BufferToBoolOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferToBoolOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
+  return verifyConsistentDevices(getOperation(), {getDevice()});
 }
 
 //===----------------------------------------------------------------------===//
@@ -577,7 +575,7 @@ LogicalResult BufferSetWithIndexOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 LogicalResult BufferSetWithIndexOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
+  return verifyConsistentDevices(getOperation(), {getDevice()});
 }
 
 InOutSignatureAttr::InOutSemantics
@@ -866,7 +864,7 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 
   MOGG::MojoValue tensorSpecAsyncVar = state.getMojoValueFor(getSpec());
   MOGG::MojoValue bufferVar = state.getMojoValueFor(getBuffer());
-  MOGG::MojoValue labelLiteral = MOGG::MojoValue(getBLabel()).quote();
+  MOGG::MojoValue labelLiteral = MOGG::MojoValue(getLabel()).quote();
   MOGG::MojoValue labelString = state.builder.var(
       MOGG::MojoValue(MOGG::kStructString)({}, {labelLiteral}));
   MOGG::MojoStringRef label(labelString);

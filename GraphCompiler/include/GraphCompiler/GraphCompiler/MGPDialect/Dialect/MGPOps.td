@@ -84,14 +84,13 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ElementsAttr:$aValue,                             // 0
-                       UI64Attr:$bRawAlign                               // 1
-                  );
+  let arguments = (ins
+    ElementsAttr:$value,
+    UI64Attr:$rawAlign
+  );
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    custom<ElementsAttrWithAlign>($aValue, $bRawAlign) attr-dict
+    custom<ElementsAttrWithAlign>($value, $rawAlign) attr-dict
   }];
   let hasVerifier = 1;
 
@@ -101,7 +100,7 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
   }];
 
   let builders = [
-    OpBuilder<(ins "mlir::ElementsAttr":$aValue)>
+    OpBuilder<(ins "mlir::ElementsAttr":$value)>
   ];
 
   let extraClassDefinition = [{
@@ -109,12 +108,12 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
 
     // Lift the value
     SmallVector<Attribute> BufferConstantOp::getLiftableAttributes() {
-      return {getAValueAttr()};
+      return {getValueAttr()};
     }
 
     // Ignore the alignment.
     SmallVector<Attribute> BufferConstantOp::getIgnorableAttributes() {
-      return {getBRawAlignAttr()};
+      return {getRawAlignAttr()};
     }
 
   }];
@@ -342,23 +341,25 @@ def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   // NOTE: The two attributes effectively encode the result's tensor spec type
   // in a form understandable by MEF.
-  let arguments = (ins Variadic<Index>:$runtimeDims,
-                   UI64ArrayElementsAttr:$aRawDims,  // 0
-                   UI8Attr:$bRawDType);              // 1
+  let arguments = (ins
+    Variadic<Index>:$runtimeDims,
+    UI64ArrayElementsAttr:$rawDims,
+    UI8Attr:$rawDType
+  );
   let results = (outs MGP_TensorSpecType:$result);
   let assemblyFormat = [{
     $runtimeDims attr-dict
-    `:` custom<RawDimsAndDType>($aRawDims, $bRawDType)
+    `:` custom<RawDimsAndDType>($rawDims, $rawDType)
   }];
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "TensorSpecType":$spec,
-                   CArg<"ValueRange", "{}">:$runtimeDims)>
+    OpBuilder<(ins
+      "TensorSpecType":$spec,
+      CArg<"ValueRange", "{}">:$runtimeDims
+    )>
   ];
 }
 
@@ -410,8 +411,6 @@ def AssertOp : MGP_Op<"assert", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins I1:$cond, StrAttr:$message);
   let results = (outs ChainType:$outChain);
   let assemblyFormat = "$cond `,` $message attr-dict";
@@ -800,16 +799,14 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
     after LowerAlignmentsPass, which is OK.
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_ContextType:$theContext,
-    Index:$bBufferSlot  // 1
+    Index:$bufferSlot
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $bBufferSlot `]`
+    $inChain `,` $theContext `[` $bufferSlot `]`
     attr-dict
   }];
 }
@@ -939,17 +936,15 @@ def DebugPrintOp : MGP_Op<"debug.print", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_ContextType:$theContext,
-    StrAttr:$aDebugString,  // 0
-    DefaultValuedAttr<StrAttr, "\"\"">:$bLabel  // 1
+    StrAttr:$debugString,
+    DefaultValuedAttr<StrAttr, "\"\"">:$label
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `,` $aDebugString ( `,` $bLabel^ )? attr-dict
+    $inChain `,` $theContext `,` $debugString ( `,` $label^ )? attr-dict
   }];
 }
 
@@ -1414,32 +1409,26 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     Index:$runtimeSize,
     MGP_DeviceContextType:$deviceContext,
-    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign,  // 1
-    MGP_OptDeviceRefAttr:$cDevice  // 2
+    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign,
+    MGP_OptDeviceRefAttr:$device
   );
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $runtimeSize `,` $deviceContext
-    ( `,` `align` $bRawAlign^ )? attr-dict
+    ( `,` `align` $rawAlign^ )? attr-dict
     `:` custom<BufferTypeToDevice>(
-          type($outBuffer), $cDevice, type($inChain)) `,` qualified(type($deviceContext))
+          type($outBuffer), $device, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t BufferAllocOp::getRawAlign() { return getBRawAlign(); }
-
     SmallVector<mlir::Attribute> BufferAllocOp::getIgnorableAttributes() {
-      return {getBRawAlignAttr(), getCDeviceAttr()};
+      return {getRawAlignAttr(), getDeviceAttr()};
     }
-
-    M::DeviceRefAttr BufferAllocOp::getDevice() { return getCDevice(); }
   }];
 }
 
@@ -1553,28 +1542,26 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$hostBuffer,
     MGP_DeviceBufferType:$otherBuffer,
     MGP_DeviceContextType:$deviceContext,
-    MGP_OptDeviceRefAttr:$cHostDevice,  // 2
-    MGP_OptDeviceRefAttr:$dOtherDevice  // 3
+    MGP_OptDeviceRefAttr:$hostDevice,
+    MGP_OptDeviceRefAttr:$otherDevice
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $hostBuffer `,` $otherBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($hostBuffer), type($otherBuffer),
-          $cHostDevice, $dOtherDevice, type($inChain)) `,` qualified(type($deviceContext))
+          $hostDevice, $otherDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
 
-    M::DeviceRefAttr BufferHostToDeviceOp::getDevice() { return getDOtherDevice(); }
+    M::DeviceRefAttr BufferHostToDeviceOp::getDevice() { return getOtherDevice(); }
 }];
 }
 
@@ -1609,28 +1596,26 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$otherBuffer,
     MGP_DeviceBufferType:$hostBuffer,
     MGP_DeviceContextType:$deviceContext,
-    MGP_OptDeviceRefAttr:$cOtherDevice,  // 2
-    MGP_OptDeviceRefAttr:$dHostDevice  // 3
+    MGP_OptDeviceRefAttr:$otherDevice,
+    MGP_OptDeviceRefAttr:$hostDevice
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $otherBuffer `,` $hostBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($otherBuffer), type($hostBuffer),
-          $cOtherDevice, $dHostDevice, type($inChain)) `,` qualified(type($deviceContext))
+          $otherDevice, $hostDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
 
-    M::DeviceRefAttr BufferDeviceToHostOp::getDevice() { return getCOtherDevice(); }
+    M::DeviceRefAttr BufferDeviceToHostOp::getDevice() { return getOtherDevice(); }
   }];
 }
 
@@ -1664,36 +1649,27 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$srcBuffer,
     MGP_DeviceBufferType:$dstBuffer,
     MGP_DeviceContextType:$srcDeviceContext,
     MGP_DeviceContextType:$dstDeviceContext,
-    M_DeviceRefAttr:$cSrcDevice,  // 0
-    M_DeviceRefAttr:$dDstDevice  // 1
+    M_DeviceRefAttr:$srcDevice,
+    M_DeviceRefAttr:$dstDevice
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $srcBuffer `,` $srcDeviceContext`,` $dstBuffer `,` $dstDeviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($srcBuffer), type($dstBuffer),
-          $cSrcDevice, $dDstDevice, type($inChain)) `,` qualified(type($srcDeviceContext))`,` qualified(type($dstDeviceContext))
+          $srcDevice, $dstDevice, type($inChain)) `,` qualified(type($srcDeviceContext))`,` qualified(type($dstDeviceContext))
   }];
   let hasVerifier = 1;
 
-  let extraClassDeclaration = [{
-    M::DeviceRefAttr getSrcDevice();
-    M::DeviceRefAttr getDstDevice();
-    }];
-
   let extraClassDefinition = [{
 
-    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getDDstDevice(); }
-    M::DeviceRefAttr BufferDeviceToDeviceOp::getSrcDevice() { return getCSrcDevice(); }
-    M::DeviceRefAttr BufferDeviceToDeviceOp::getDstDevice() { return getDDstDevice(); }
+    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getDstDevice(); }
     }];
 
 }
@@ -1825,8 +1801,6 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     MGP_DeviceBufferType:$inBuffer,
     Index:$offset,
@@ -1907,8 +1881,6 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$inBuffer
@@ -1939,24 +1911,17 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$buffer,
-    MGP_OptDeviceRefAttr:$bDevice  // 1
+    MGP_OptDeviceRefAttr:$device
   );
   let results = (outs I1:$result);
   let hasVerifier = 1;
 
   let assemblyFormat = [{
     $inChain `,` $buffer attr-dict
-      `:` custom<BufferTypeToDevice>(type($buffer), $bDevice, type($inChain))
-  }];
-
-  let extraClassDefinition = [{
-
-    M::DeviceRefAttr BufferToBoolOp::getDevice() { return getBDevice(); }
+      `:` custom<BufferTypeToDevice>(type($buffer), $device, type($inChain))
   }];
 }
 
@@ -1992,22 +1957,16 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     MGP_DeviceBufferType:$buffer,
     Variadic<Index>:$values,
-    MGP_OptDeviceRefAttr:$bDevice  // 1
+    MGP_OptDeviceRefAttr:$device
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{$buffer ( `,` $values^ )? attr-dict
-    `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
+    `:` custom<BufferTypeToDevice>(type($buffer), $device)
   }];
   let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    M::DeviceRefAttr BufferSetWithIndexOp::getDevice() { return getBDevice(); }
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -2046,25 +2005,23 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$buffer,
     MGP_TensorSpecType:$spec,
-    DefaultValuedAttr<StrAttr, "\"\"">:$bLabel
+    DefaultValuedAttr<StrAttr, "\"\"">:$label
   );
   let results = (outs ChainType:$outChain);
 
   let extraClassDefinition = [{
     SmallVector<Attribute> DebugTensorPrintOp::getLiftableAttributes() {
-      return {getBLabelAttr()};
+      return {getLabelAttr()};
     }
   }];
 
   let assemblyFormat = [{
     $inChain `,` $buffer `,` $spec
-    ( `,` $bLabel^ )? attr-dict `:` functional-type(operands, results)
+    ( `,` $label^ )? attr-dict `:` functional-type(operands, results)
   }];
 }
 
