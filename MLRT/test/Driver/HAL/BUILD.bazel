@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "modular_py_test", "mojo_test")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_py_test", "mojo_shared_library", "mojo_test")
 
 package(
     default_visibility = ["//MLRT:consumers"],
@@ -75,15 +75,44 @@ mojo_test(
 )
 
 # ---------------------------------------------------------------------------
+# Standalone vec_add.so exercising the cross-.so user-kernel
+# pattern against the HAL _mojo_module library.
+# ---------------------------------------------------------------------------
+mojo_shared_library(
+    name = "vec_add",
+    srcs = ["vec_add.mojo"],
+    shared_lib_name = "vec_add.so",
+    target_compatible_with = select({
+        "//:nvidia_gpu": [],
+        "//:apple_gpu": [],
+        "//:amd_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//max/python/max/sys/_hal:_mojo_module",
+        "@mojo//:std",
+    ],
+)
+
+# ---------------------------------------------------------------------------
 # Python HAL test
 # ---------------------------------------------------------------------------
 modular_py_test(
     name = "test_python_hal",
     srcs = ["test_python_hal.py"],
     data = select({
-        "//:nvidia_gpu": ["//Target:CUDAPlugin.so"],
-        "//:apple_gpu": ["//Target:MetalPlugin.so"],
-        "//:amd_gpu": ["//Target:HIPPlugin.so"],
+        "//:nvidia_gpu": [
+            ":vec_add",
+            "//Target:CUDAPlugin.so",
+        ],
+        "//:apple_gpu": [
+            ":vec_add",
+            "//Target:MetalPlugin.so",
+        ],
+        "//:amd_gpu": [
+            ":vec_add",
+            "//Target:HIPPlugin.so",
+        ],
         "//conditions:default": [],
     }),
     env = select({
@@ -98,6 +127,14 @@ modular_py_test(
         },
         "//conditions:default": {},
     }),
+    ignore_unresolved_imports = [
+        # mojo.importer is provided by @mojo//:python (already pulled in via
+        # //max/python/max/sys/_hal); the pydeps graph doesn't see it.
+        "mojo.importer",
+        # vec_add.so is a Mojo extension loaded at runtime via mojo.importer,
+        # invisible to the Python import-graph analyzer.
+        "vec_add.vec_add",
+    ],
     tags = ["gpu"],
     target_compatible_with = select({
         "//:nvidia_gpu": [],

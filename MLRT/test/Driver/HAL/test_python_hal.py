@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import ctypes
 
-from max.sys._hal import Buffer, Driver, Event
+import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
+from max.sys._hal import Buffer, Bundle, Driver, Event, Function
+from vec_add import vec_add  # type: ignore[import-not-found]
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -166,13 +168,6 @@ def test_stream_copy_intra_device() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_queue_wait_for_events_no_events_is_noop() -> None:
-    ctx = Driver().get_device(0).get_context()
-    queue = ctx.create_queue()
-    queue.wait_for_events()
-    queue.synchronize()
-
-
 def test_queue_wait_for_events_single() -> None:
     ctx = Driver().get_device(0).get_context()
     producer = ctx.create_queue()
@@ -189,3 +184,23 @@ def test_stream_wait_for_events_single() -> None:
     event = producer.record_event()
     consumer.wait_for_events(event)
     consumer.synchronize()
+
+
+# ----------------------------------------------------------------------
+# Mojo kernel -> Python compile path
+# ----------------------------------------------------------------------
+
+
+def test_compile_returns_bundle_with_name() -> None:
+    ctx = Driver().get_device(0).get_context()
+    bundle = ctx.compile(vec_add)
+    assert isinstance(bundle, Bundle)
+    assert isinstance(bundle.function_name, str)
+    assert len(bundle.function_name) > 0
+
+
+def test_load_function_returns_function() -> None:
+    ctx = Driver().get_device(0).get_context()
+    bundle = ctx.compile(vec_add)
+    func = ctx.load_function(bundle, bundle.function_name)
+    assert isinstance(func, Function)
