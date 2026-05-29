@@ -15,7 +15,7 @@ mo.graph @chain_create_input_folded_away<D1, D2, D3, D4>
   %arg1: !mo.tensor<[D1, D2, D3, D4], f32>
 ) -> (!mo.tensor<[D1, D2, D3, D4], f32>, !mo.tensor<[D1, D2, D3, D4], f32>){
 
-  kgen.param.declare COND: i1 = <eq(:si64 D1, D2)>
+  kgen.param.declare COND: i1 = <to_builtin(:scalar<bool> eq(:si64 D1, D2))>
   kgen.param.declare CH: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "error!" : !kgen.string}, COND)>
 
   %ch0 = mosh.param.to_value: !mo.chain = <CH>

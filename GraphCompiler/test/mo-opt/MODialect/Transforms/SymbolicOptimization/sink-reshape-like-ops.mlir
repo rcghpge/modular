@@ -147,11 +147,11 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
     %287 = mo.erf(%286) : !mo.tensor<[P49878, P49533, 3072], f32>
     %288 = mo.static.broadcast_to(%elemwise4) : !mo.tensor<[], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %289 = mo.add(%287, %288) : !mo.tensor<[P49878, P49533, 3072], f32>
-    kgen.param.declare P49316: i1 = <eq(:si64 P49878, 1)>
-    kgen.param.declare P49317: i1 = <eq(:si64 P49878, 1)>
+    kgen.param.declare P49316: i1 = <to_builtin(:scalar<bool> eq(:si64 P49878, 1))>
+    kgen.param.declare P49317: i1 = <to_builtin(:scalar<bool> eq(:si64 P49878, 1))>
     kgen.param.declare P49318: i1 = <or(P49316, P49317)>
-    kgen.param.declare P49325: i1 = <eq(:si64 P49533, 1)>
-    kgen.param.declare P49326: i1 = <eq(:si64 P49533, 1)>
+    kgen.param.declare P49325: i1 = <to_builtin(:scalar<bool> eq(:si64 P49533, 1))>
+    kgen.param.declare P49326: i1 = <to_builtin(:scalar<bool> eq(:si64 P49533, 1))>
     kgen.param.declare P49327: i1 = <or(P49325, P49326)>
     %290 = mo.mul(%284, %289) : !mo.tensor<[P49878, P49533, 3072], f32>
     mo.output %290 : !mo.tensor<[P49878, P49533, 3072], f32>

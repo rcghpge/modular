@@ -92,11 +92,11 @@ module {
     %117 = mo.merge_dim[0] (%116) : (!mo.tensor<[D474, W619], si64>) -> !mo.tensor<[param_expr_625], si64>
     kgen.param.declare param_expr_627: scalar<si64> = <mul_no_wrap(D474, 81)>
     %118 = mo.gather(%104, %117, %27) : (!mo.tensor<[param_expr_627], f32>, !mo.tensor<[param_expr_625], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[param_expr_625], f32>
-    kgen.param.declare assert599: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D52]> : !mosh.ape != #mosh<ape[var_div596, 45]> : !mosh.ape" : !kgen.string}, eq(:scalar<si64> mul_no_wrap(div(mul_no_wrap(D474, W619), 45), 45), mul_no_wrap(D474, W619)))>
+    kgen.param.declare assert599: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D52]> : !mosh.ape != #mosh<ape[var_div596, 45]> : !mosh.ape" : !kgen.string}, to_builtin(:scalar<bool> eq(:scalar<si64> mul_no_wrap(div(mul_no_wrap(D474, W619), 45), 45), mul_no_wrap(D474, W619))))>
     kgen.param.declare param_expr_625: scalar<si64> = <mul_no_wrap(D474, W619)>
     kgen.param.declare param_expr_626: scalar<si64> = <cond(eq(:scalar<si64> div(mul_no_wrap(D474, W619), 45), 0), 0, div(mul_no_wrap(D474, W619), cond(eq(:scalar<si64> div(mul_no_wrap(D474, W619), 45), 0), 1, div(mul_no_wrap(D474, W619), 45))))>
     %119 = mo.split_dim[0] (%118) : (!mo.tensor<[param_expr_625], f32>) -> !mo.tensor<[param_expr_624, param_expr_626], f32>
-    kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:scalar<si64> div(mul_no_wrap(D474, W619), 45), D474))>
+    kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, to_builtin(:scalar<bool> eq(:scalar<si64> div(mul_no_wrap(D474, W619), 45), D474)))>
     kgen.param.declare param_expr_624: scalar<si64> = <div(mul_no_wrap(D474, W619), 45)>
     %120 = mo.rebind(%119) : !mo.tensor<[param_expr_624, param_expr_626], f32> -> !mo.tensor<[param_expr_624, 45], f32>
     %121 = mo.concat[1] (%99, %120) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[param_expr_624, 45], f32>) -> !mo.tensor<[D474, 77], f32>
