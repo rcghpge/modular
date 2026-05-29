@@ -9,6 +9,7 @@
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -753,6 +754,116 @@ TEST_F(MemoryManagerTest, LoggingOutput) {
 
     // Note: We can't easily verify log output in unit tests,
     // but we can ensure operations succeed with logging enabled
+  }
+}
+
+TEST_F(MemoryManagerTest, OOMFragmentationDumpStructure) {
+  // Populate the free list and chunks with a mix of free/in-use blocks, then
+  // invoke the OOM diagnostic directly and verify it emits the structural
+  // markers we depend on at production log parse time: begin/end sentinels,
+  // mm summary, freelist label, per-bucket lines, and per-chunk layout.
+  CpuDeviceRef device = createTestDevice();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  std::vector<void *> ptrs;
+  for (int i = 0; i < 6; ++i) {
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(64 + i * 32, mode));
+    ptrs.push_back(ptr);
+  }
+  // Free two non-adjacent blocks so the free list has multiple entries and
+  // doesn't collapse to a single coalesced run.
+  EXPECT_NO_ERR(freeList.free(ptrs[1]));
+  ptrs[1] = nullptr;
+  EXPECT_NO_ERR(freeList.free(ptrs[3]));
+  ptrs[3] = nullptr;
+
+  testing::internal::CaptureStderr();
+  freeList.dumpFragmentationDiagnostic(8192, "synthetic test OOM");
+  std::string output = testing::internal::GetCapturedStderr();
+
+  EXPECT_THAT(output, testing::HasSubstr("oom log ===== begin ====="));
+  EXPECT_THAT(output, testing::HasSubstr("oom log ===== end ====="));
+  EXPECT_THAT(output, testing::HasSubstr("synthetic test OOM"));
+  EXPECT_THAT(output, testing::HasSubstr("oom log request="));
+  EXPECT_THAT(output, testing::HasSubstr("oom log mm max_cache="));
+  EXPECT_THAT(output, testing::HasSubstr("oom log freelist=[mm:root]"));
+  // At least one bucket line should appear with stats (count=, total=...).
+  EXPECT_THAT(output, testing::HasSubstr("oom log   bucket="));
+  // We allocated, so chunk 0 should be reported with the per-chunk layout
+  // fields used to diagnose fragmentation.
+  EXPECT_THAT(output, testing::HasSubstr("oom log chunk=0 base="));
+  EXPECT_THAT(output, testing::HasSubstr("largest_free="));
+  EXPECT_THAT(output, testing::HasSubstr("in_use_blocks="));
+  EXPECT_THAT(output, testing::HasSubstr("free_blocks="));
+
+  for (void *ptr : ptrs) {
+    if (ptr != nullptr) {
+      EXPECT_NO_ERR(freeList.free(ptr));
+    }
+  }
+}
+
+TEST_F(MemoryManagerTest, OOMFragmentationDumpEmptyState) {
+  // Calling the diagnostic before any chunk has been allocated must not crash
+  // and must still emit the begin/end sentinels plus a chunks=0 summary so
+  // production logs are unambiguous about the "MM never primed" failure mode.
+  CpuDeviceRef device = createTestDevice();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
+
+  testing::internal::CaptureStderr();
+  freeList.dumpFragmentationDiagnostic(1024, "no allocations yet");
+  std::string output = testing::internal::GetCapturedStderr();
+
+  EXPECT_THAT(output, testing::HasSubstr("oom log ===== begin ====="));
+  EXPECT_THAT(output, testing::HasSubstr("oom log ===== end ====="));
+  EXPECT_THAT(output, testing::HasSubstr("no allocations yet"));
+  EXPECT_THAT(output, testing::HasSubstr(" chunks=0"));
+  // With no chunks the root free list buckets should all be marked empty.
+  EXPECT_THAT(output, testing::HasSubstr("oom log   bucket=0 empty"));
+  EXPECT_THAT(output, testing::HasSubstr("oom log   bucket=1 empty"));
+  // No chunk should be reported when none have been allocated.
+  EXPECT_THAT(output, testing::Not(testing::HasSubstr("oom log chunk=")));
+}
+
+TEST_F(MemoryManagerTest, OOMFragmentationDumpHistogramAndTopN) {
+  // Allocate a fan of differently-sized blocks then free them in a pattern
+  // that leaves multiple free entries across distinct log2 size buckets, so
+  // we can verify the histogram and top-N largest output land in stderr.
+  CpuDeviceRef device = createTestDevice();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  // Pick sizes that span multiple log2 buckets after alignment.
+  std::vector<size_t> sizes = {64, 64, 128, 128, 256, 256, 512};
+  std::vector<void *> ptrs;
+  for (size_t s : sizes) {
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(s, mode));
+    ptrs.push_back(ptr);
+  }
+  // Free every other block to keep free entries in the list (not coalesced
+  // into one run with their neighbors).
+  for (size_t i = 0; i < ptrs.size(); i += 2) {
+    EXPECT_NO_ERR(freeList.free(ptrs[i]));
+    ptrs[i] = nullptr;
+  }
+
+  testing::internal::CaptureStderr();
+  freeList.dumpFragmentationDiagnostic(4096, "hist+topN coverage");
+  std::string output = testing::internal::GetCapturedStderr();
+
+  EXPECT_THAT(output, testing::HasSubstr("hist+topN coverage"));
+  // The histogram line uses the "2^<bucket>=<count>" token format.
+  EXPECT_THAT(output, testing::ContainsRegex("oom log {3}bucket=[01] hist( 2\\^"
+                                             "[0-9]+=[0-9]+)+"));
+  // The top-N line uses "topN=<size>,<size>,..." format.
+  EXPECT_THAT(output, testing::ContainsRegex("oom log {3}bucket=[01] top[0-9]+="
+                                             "[0-9KMGT]"));
+
+  for (void *ptr : ptrs) {
+    if (ptr != nullptr) {
+      EXPECT_NO_ERR(freeList.free(ptr));
+    }
   }
 }
 

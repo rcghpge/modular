@@ -181,6 +181,15 @@ public:
 
   void logLargestBlocksInfo(size_t wrappedSize, std::string missReason) const;
 
+  // Dump a detailed snapshot of this free list (and its parents) plus the
+  // per-chunk allocation layout to stderr. Unlike logLargestBlocksInfo, this
+  // is unconditional: it does not depend on the memory_manager_log config
+  // flag. Intended for OOM diagnostic: call only when an allocation is about
+  // to fail (driver memAlloc errored out, or a no-fallback path is taking an
+  // Error return). Acquires the memory manager mutex; caller must not hold it.
+  void dumpFragmentationDiagnostic(size_t requestedSize,
+                                   llvm::Twine reason) const;
+
 private:
   friend class MemoryManager;
   friend class MemoryManager::Chunk;

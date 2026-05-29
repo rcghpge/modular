@@ -746,6 +746,7 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
   }
 
   freeList->logLargestBlocksInfo(wrappedSize, missReason);
+  freeList->dumpFragmentationDiagnostic(wrappedSize, missReason);
 
   std::string message;
   llvm::raw_string_ostream os(message);
@@ -785,6 +786,158 @@ void MemoryManagerFreeList::logLargestBlocksInfo(size_t wrappedSize,
       cur = cur->parent_;
     }
   }
+}
+
+void MemoryManagerFreeList::dumpFragmentationDiagnostic(
+    size_t requestedSize, llvm::Twine reason) const {
+  // Free list buffers_[i] is sorted non-descending by size: head is smallest,
+  // tail is largest. We rely on this to capture the top-N largest blocks in
+  // a single forward walk using a ring buffer of size N.
+  static constexpr int kHistBuckets = 64;
+  static constexpr int kTopN = 10;
+
+  // Acquire a coherent snapshot of the memory manager state.
+  std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+
+  auto logLine = [this](llvm::Twine msg) { memoryManager_.logErr(msg); };
+
+  logLine("oom log ===== begin =====");
+  {
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    os << "oom log request=" << humanMemorySize(requestedSize) << " reason=\""
+       << reason.str() << "\"";
+    logLine(os.str());
+  }
+  {
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    os << "oom log mm max_cache="
+       << humanMemorySize(memoryManager_.maxCacheSize_)
+       << " cache_used=" << humanMemorySize(memoryManager_.cacheSize_)
+       << " free=" << humanMemorySize(memoryManager_.freeSize_)
+       << " free_blocks=" << memoryManager_.freeCount_
+       << " chunk_size=" << humanMemorySize(memoryManager_.chunkSize_)
+       << " chunks=" << memoryManager_.chunkCount_;
+    logLine(os.str());
+  }
+
+  // Walk the free list chain (this + parents).
+  const MemoryManagerFreeList *cur = this;
+  while (cur != nullptr) {
+    {
+      std::string s;
+      llvm::raw_string_ostream os(s);
+      os << "oom log freelist=[" << cur->label_ << "]@"
+         << static_cast<const void *>(cur)
+         << " primary=" << cur->primaryFreeBuffers_;
+      logLine(os.str());
+    }
+    for (int i = 0; i < kNumFreeBufferLists; ++i) {
+      MemoryManager::Desc *first = cur->freeBuffers_[i];
+      if (first == nullptr) {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        os << "oom log   bucket=" << i << " empty";
+        logLine(os.str());
+        continue;
+      }
+
+      uint64_t hist[kHistBuckets] = {0};
+      size_t topRing[kTopN] = {0};
+      size_t count = 0;
+      size_t total = 0;
+      size_t smallest = ~size_t{0};
+      size_t largest = 0;
+      for (MemoryManager::Desc *d = first; d != nullptr; d = d->nextFree_) {
+        size_t sz = d->size_.load(std::memory_order_relaxed);
+        ++count;
+        total += sz;
+        if (sz < smallest)
+          smallest = sz;
+        if (sz > largest)
+          largest = sz;
+        int bucket = (sz == 0) ? 0
+                               : std::min(kHistBuckets - 1,
+                                          static_cast<int>(llvm::Log2_64(sz)));
+        ++hist[bucket];
+        topRing[(count - 1) % kTopN] = sz;
+      }
+
+      {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        os << "oom log   bucket=" << i << " count=" << count
+           << " total=" << humanMemorySize(total)
+           << " smallest=" << humanMemorySize(smallest)
+           << " largest=" << humanMemorySize(largest);
+        logLine(os.str());
+      }
+      {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        os << "oom log   bucket=" << i << " hist";
+        for (int b = 0; b < kHistBuckets; ++b) {
+          if (hist[b] > 0)
+            os << " 2^" << b << "=" << hist[b];
+        }
+        logLine(os.str());
+      }
+      {
+        // Ring buffer holds the last min(count, kTopN) sizes visited, which
+        // are the largest because the list is sorted ascending. Output them
+        // in descending order.
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        int topCount = static_cast<int>(std::min<size_t>(count, kTopN));
+        os << "oom log   bucket=" << i << " top" << topCount << "=";
+        for (int j = 0; j < topCount; ++j) {
+          if (j > 0)
+            os << ",";
+          int idx = static_cast<int>((count - 1 - j + kTopN) % kTopN);
+          os << humanMemorySize(topRing[idx]);
+        }
+        logLine(os.str());
+      }
+    }
+    cur = cur->parent_;
+  }
+
+  // Per-chunk layout. The killer fragmentation signal: if largest_free per
+  // chunk is tiny while free bytes are large, the chunk is shredded.
+  int chunkIdx = 0;
+  for (MemoryManager::Chunk *chunk = memoryManager_.chunks_.get();
+       chunk != nullptr; chunk = chunk->next_.get(), ++chunkIdx) {
+    size_t freeBlocks = 0;
+    size_t inUseBlocks = 0;
+    size_t freeBytes = 0;
+    size_t inUseBytes = 0;
+    size_t largestFree = 0;
+    for (MemoryManager::Desc *d = chunk->descs_; d != nullptr; d = d->next_) {
+      size_t sz = d->size_.load(std::memory_order_relaxed);
+      if (d->isFree()) {
+        ++freeBlocks;
+        freeBytes += sz;
+        if (sz > largestFree)
+          largestFree = sz;
+      } else {
+        ++inUseBlocks;
+        inUseBytes += sz;
+      }
+    }
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    os << "oom log chunk=" << chunkIdx << " base=" << chunk->base_
+       << " size=" << humanMemorySize(chunk->size_)
+       << " in_use_blocks=" << inUseBlocks
+       << " in_use=" << humanMemorySize(inUseBytes)
+       << " free_blocks=" << freeBlocks
+       << " free=" << humanMemorySize(freeBytes)
+       << " largest_free=" << humanMemorySize(largestFree);
+    logLine(os.str());
+  }
+
+  logLine("oom log ===== end =====");
 }
 
 bool MemoryManager::allocateChunk() {
@@ -1128,6 +1281,10 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // verifies this combination so it too will need to be updated if this
     // changes.
 
+    dumpFragmentationDiagnostic(
+        wrappedSize, memoryManager_.useOnlyMemoryManagerMode_
+                         ? "use-only-memory-manager-mode with mm disabled"
+                         : "graph capturing in progress, no driver fallback");
     return Error(
         "[Use only memory manager mode]: Memory manager cannot satisfy "
         "allocation (memory manager is disabled): " +
@@ -1152,6 +1309,11 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
   if (err.isError()) {
     LOG_MSG("allocate_buffer(" + TWINE(size) + ") - failed with " +
             err.getError());
+    // The memory manager could not satisfy the request and the device driver
+    // also failed: this is a true OOM. Dump fragmentation state so we can tell
+    // a fragmented-pool OOM apart from a hard out-of-budget OOM.
+    dumpFragmentationDiagnostic(wrappedSize, "device driver memAlloc failed: " +
+                                                 llvm::Twine(err.getError()));
     return err.takeError();
   }
 
