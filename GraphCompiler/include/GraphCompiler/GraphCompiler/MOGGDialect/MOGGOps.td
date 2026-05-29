@@ -40,17 +40,19 @@ include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 
 
 // Base class for ops in this dialect.
-class MOGG_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MOGGDialect, mnemonic, traits>;
+class MOGG_Op<string mnemonic, list<Trait> traits = []> :
+  Op<MOGGDialect, mnemonic, traits>;
 
-class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
-    : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>]>;
+class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []> :
+  MOGG_Op<mnemonic, traits # [
+    DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>,
+  ]>;
 
-class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
-    : MOGG_Op<mnemonic, traits # [
-              Terminator,
-              DeclareOpInterfaceMethods<MOGG_KernelTerminator>
-            ]>;
+class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []> :
+  MOGG_Op<mnemonic, traits # [
+    DeclareOpInterfaceMethods<MOGG_KernelTerminator>,
+    Terminator,
+  ]>;
 
 def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!kgen.simd<1, si64>">,
     BuildableType<"KGEN::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
@@ -61,7 +63,9 @@ def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGE
 //===----------------------------------------------------------------------===//
 
 def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [
-  Pure, MO_HasDeviceInterface, MO_SingleDevice
+  MO_HasDeviceInterface,
+  MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Concat Operation along axis zero";
   let description = [{
@@ -121,8 +125,9 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
 }
 
 def MOGG_SliceOp : MOGG_Op<"slice", [
-  Pure, MO_HasDeviceInterface,
-  MO_SingleDeviceWithHostOperands<["start", "stop"]>
+  MO_HasDeviceInterface,
+  MO_SingleDeviceWithHostOperands<["start", "stop"]>,
+  Pure,
 ]> {
   let summary = "Contiguous zero-copy slice op lowerable to mgp.tensor.slice";
   let description = [{
@@ -133,9 +138,11 @@ def MOGG_SliceOp : MOGG_Op<"slice", [
     mgp.tensor.slice in MOGGToMGP.
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndexScalarIfRanked:$start,
-                       MO_IndexScalarIfRanked:$stop);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndexScalarIfRanked:$start,
+    MO_IndexScalarIfRanked:$stop
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -147,8 +154,10 @@ def MOGG_SliceOp : MOGG_Op<"slice", [
 // AsTupleOp
 //===----------------------------------------------------------------------===//
 
-def MOGG_AsTupleOp
-    : MOGG_Op<"as_tuple", [Pure, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_AsTupleOp : MOGG_Op<"as_tuple", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
+]> {
   let summary = "MOGG tuple creation operation";
   let description = [{
     This operation creates tuple of values that will be later been translated to
@@ -169,8 +178,10 @@ def MOGG_AsTupleOp
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-def MOGG_OutputOp
-    : MOGG_Op<"output", [Terminator, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_OutputOp : MOGG_Op<"output", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Terminator,
+]> {
   let summary = "MOGG output operation";
   let description = [{
     The "mogg.output" operation specifies the output values for a region in a
@@ -195,14 +206,16 @@ def MOGG_OutputOp
 
 def MOGG_CallStubOp : MOGG_Op<"call.stub", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Calls into an outlined stub";
   let description = [{}];
-  let arguments = (ins FlatSymbolRefAttr:$name,
-                       Variadic<AnyType>:$inputs,
-                       OptionalAttr<I64Attr>:$affinity_device_id);
-  let results = (outs Variadic<AnyType>: $outputs);
+  let arguments = (ins
+    FlatSymbolRefAttr:$name,
+    Variadic<AnyType>:$inputs,
+    OptionalAttr<I64Attr>:$affinity_device_id
+  );
+  let results = (outs Variadic<AnyType>:$outputs);
   let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
 
   let extraClassDeclaration = [{
@@ -215,7 +228,7 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [
 
 def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Calls into an outlined stub asynchronously";
   let description = [{
@@ -232,9 +245,11 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
     deduplication) before emitting Mojo text. A plain I64Attr is unaffected
     by that transformation.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$name,
-                       Variadic<AnyType>:$inputs,
-                       OptionalAttr<I64Attr>:$affinity_device_id);
+  let arguments = (ins
+    FlatSymbolRefAttr:$name,
+    Variadic<AnyType>:$inputs,
+    OptionalAttr<I64Attr>:$affinity_device_id
+  );
   let results = (outs MOGG_TaskHandle:$task_handle);
   let assemblyFormat = "$name (`(` $inputs^ `:` type($inputs) `)`)? `->` type(results) attr-dict";
 
@@ -247,10 +262,10 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
 }
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
-]>  {
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -258,10 +273,12 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     is an element-wise kernel.
   }];
 
-  let arguments = (ins StrAttr:$kernelSymName,
-                       MO_Tensor:$input,
-                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output,
-                       Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context);
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    MO_Tensor:$input,
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output,
+    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context
+  );
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
@@ -271,10 +288,11 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 
 
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
-    AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>]>  {
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -289,12 +307,14 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
     ```
   }];
 
-  let arguments = (ins StrAttr:$kernelSymName,
-                       StrAttr: $moOpName,
-                       OptionalAttr<TypeAttr>:$regRetType,
-                       UnitAttr:$isThrows,
-                       Variadic<AnyType>:$inputs,
-                       Variadic<AnyType>:$outputs);
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    StrAttr:$moOpName,
+    OptionalAttr<TypeAttr>:$regRetType,
+    UnitAttr:$isThrows,
+    Variadic<AnyType>:$inputs,
+    Variadic<AnyType>:$outputs
+  );
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
@@ -308,8 +328,8 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
-]>  {
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
   let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
   let description = [{
     This represents a call to the mojo implementation of `view_copy_impl`
@@ -325,10 +345,11 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
   }];
 
   let arguments = (ins
-                       StrAttr:$kernelSymName,
-                       AnyType:$input,
-                       MO_Tensor:$output,
-                       Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context);
+    StrAttr:$kernelSymName,
+    AnyType:$input,
+    MO_Tensor:$output,
+    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context
+  );
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
@@ -338,11 +359,12 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
 
 
 def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-    Pure,
-    HasParent<"MOGG::BindLambdaOp">]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  HasParent<"MOGG::BindLambdaOp">,
+  Pure,
+]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
   let description = [{
     This represents a call to the `elementwise` method.
@@ -355,8 +377,12 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     kgen.call "Add::elementwise"(...)
     ```
   }];
-  let arguments = (ins StrAttr: $kernelSymName, StrAttr: $moOpName, Variadic<AnyType>: $inputs);
-  let results = (outs Variadic<AnyType>: $outputs);
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    StrAttr:$moOpName,
+    Variadic<AnyType>:$inputs
+  );
+  let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` type($outputs)
@@ -365,10 +391,11 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-    Pure]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  Pure,
+]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";
   let description = [{
     This represents a call to `update_input_view` functions for a corresponding
@@ -382,19 +409,22 @@ def MOGG_CallViewOp : MOGG_Op<"call.view", [
     kgen.call "Add::update_input_view"(...)
     ```
   }];
-  let arguments = (ins StrAttr: $kernelSymName,
-                       StrAttr: $moOpName,
-                       Variadic<AnyType>: $inputs);
-  let results = (outs MO_Tensor: $output);
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    StrAttr:$moOpName,
+    Variadic<AnyType>:$inputs
+  );
+  let results = (outs MO_Tensor:$output);
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` qualified(type($output))
   }];
 }
 
-def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
-    Pure,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_AsScalarOp : MOGG_Op<"as_scalar", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
+]> {
   let summary = "Converts a tensor that contains one element to a scalar";
   let description = [{
     Given a tensor with one element, ie with a shape of [] or [1], etc, convert
@@ -407,13 +437,13 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
 }
 
 def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-    AttrSizedOperandSegments,
-    IsolatedFromAbove,
-    SingleBlock,
-    MO_HasDeviceInterface,
-    MO_ExplicitDevice
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  IsolatedFromAbove,
+  MO_ExplicitDevice,
+  MO_HasDeviceInterface,
+  SingleBlock,
 ]> {
   let summary = "A representation of a kernel which can be fused into and compiled.";
   let description = [{
@@ -516,8 +546,10 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 }
 
 // lower to ManageTensorSlice.load
-def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  HasParent<"MOGG::BindLambdaOp">,
+]> {
   let summary = "Load a value from mo.tensor at the given indices";
   let description = [{
      This operation represent a tensor load at the given indices. It is needed
@@ -541,8 +573,11 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
 
   }];
 
-  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor, POP_ArrayType:$indices);
-  let results = (outs AnyType: $outputs);
+  let arguments = (ins
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
+    POP_ArrayType:$indices
+  );
+  let results = (outs AnyType:$outputs);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -551,8 +586,9 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
 
 
 def MOGG_BindLambdaOp : MOGG_Op<"bind", [
-    SingleBlock,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  SingleBlock,
+]> {
   let summary = "Bind a fusion interface to a tensor";
   let description = [{
      This operation exposes a fusion interface to a tensor. It build the connection
@@ -580,11 +616,12 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
      ```
   }];
 
-  let arguments = (ins MOGG_BindLambdaKind: $bindKind,
-                       Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>: $fusibleTensors);
+  let arguments = (ins
+    MOGG_BindLambdaKind:$bindKind,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$fusibleTensors
+  );
 
-
-  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>: $output);
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output);
   let regions = (region SizedRegion<1>:$lambda);
 
   let extraClassDeclaration = [{
@@ -612,13 +649,13 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
 
 
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
-    IsolatedFromAbove,
-    SingleBlockImplicitTerminator<"MOGG::OutputOp">,
-    MO_HasDeviceInterface,
-    MO_ExplicitDevice,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclInterface
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+  DeclInterface,
+  IsolatedFromAbove,
+  MO_ExplicitDevice,
+  MO_HasDeviceInterface,
+  SingleBlockImplicitTerminator<"MOGG::OutputOp">,
 ]> {
   let summary = "An abstract function representing a compiled body of code";
   let description = [{
@@ -693,12 +730,12 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
 }
 
 def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-    Pure,
-    HasParent<"MOGG::BindLambdaOp">
-  ]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  HasParent<"MOGG::BindLambdaOp">,
+  Pure,
+]> {
   let summary = "Represents a mojo call to an affine remapping function";
   let description = [{
     This represents a call to a mojo function to remap the indices argument inside a fusion lambda.
@@ -711,22 +748,22 @@ def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
   }];
 
   let arguments = (ins
-     StrAttr:$kernelSymName,
-     Variadic<AnyType>:$operands,
-     OptionalAttr<DictionaryAttr>:$params
+    StrAttr:$kernelSymName,
+    Variadic<AnyType>:$operands,
+    OptionalAttr<DictionaryAttr>:$params
   );
 
-   let results = (outs AnyType:$result);
+  let results = (outs AnyType:$result);
 
-   let assemblyFormat = [{
-     `[` $kernelSymName `]` `(`($operands^)?`)` ($params^)? attr-dict
-       (`:` type($operands)^)? `->` type($result)
-   }];
+  let assemblyFormat = [{
+    `[` $kernelSymName `]` `(`($operands^)?`)` ($params^)? attr-dict
+      (`:` type($operands)^)? `->` type($result)
+  }];
 }
 
 def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$dataPointer);
@@ -751,7 +788,8 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
 }
 
 def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
-    DeclareOpInterfaceMethods<ParamOpInterface>]>, OneParamDecl {
+  DeclareOpInterfaceMethods<ParamOpInterface>,
+]>, OneParamDecl {
   let summary = "Inserts a placeholder for a value and the param name";
   let description = [{
     This is a placeholder for each input/output buffer's alignment parameter.
@@ -769,8 +807,8 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
     ```
   }];
 
-  let arguments = (
-    ins AnyType:$operand,
+  let arguments = (ins
+    AnyType:$operand,
     KGEN_ParamDeclAttr:$paramDecl
   );
   let assemblyFormat = [{
@@ -878,7 +916,8 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
     with the runtime, depends on the device.
   }];
 
-  let arguments = (ins ArrayAttr:$symbols,
+  let arguments = (ins
+    ArrayAttr:$symbols,
     ConfinedAttr<
       ElementsAttr,
       [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
@@ -889,9 +928,9 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 
 
 def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
-   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-   MO_HasDeviceInterface,
-   MO_ExplicitDevice
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  MO_ExplicitDevice,
+  MO_HasDeviceInterface,
 ]> {
   let summary = "Executes a compiled kernel on a given device.";
   let description = [{
@@ -914,14 +953,15 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
     scheme. Otherwise the kernel is synchronous.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands,
-                       FlatSymbolRefAttr:$calleeSymbol,
-                       ArrayAttr:$usedParams,
-                       MO_ParamDecls:$outputParamDecls,
-                       OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
-                       BoolAttr:$isAsync,
-                       ArrayAttr:$constantResources
-                       );
+  let arguments = (ins
+    Variadic<AnyType>:$operands,
+    FlatSymbolRefAttr:$calleeSymbol,
+    ArrayAttr:$usedParams,
+    MO_ParamDecls:$outputParamDecls,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+    BoolAttr:$isAsync,
+    ArrayAttr:$constantResources
+  );
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
@@ -930,27 +970,28 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
 }
 
 def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
-  IsolatedFromAbove,
-  Symbol,
-  SingleBlock,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   FunctionOpInterface,
+  IsolatedFromAbove,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  SingleBlock,
+  Symbol,
 ]> {
   let summary = "Op that outlines a kernel";
   let description = [{
     This op defines a kernel that will eventually be compiled to Mojo text.
   }];
-  let arguments = (ins SymbolNameAttr:$sym_name,
-                       TypeAttrOf<FunctionType>:$function_type,
-                       MOGG_FusionInfoAttr:$fusionInfo,
-                       OptionalAttr<BoolAttr>:$isAsync,
-                       DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
-                       MOGG_ABIKind:$abi,
-                       // The following is necessary for -symbol-dce
-                       DefaultValuedAttr<StrAttr, "\"private\"">:$sym_visibility
-                       );
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttrOf<FunctionType>:$function_type,
+    MOGG_FusionInfoAttr:$fusionInfo,
+    OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
+    MOGG_ABIKind:$abi,
+    // The following is necessary for -symbol-dce
+    DefaultValuedAttr<StrAttr, "\"private\"">:$sym_visibility
+  );
 
   let regions = (region SizedRegion<1>:$body);
 
@@ -981,8 +1022,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
 }
 
 def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Represents the construction of a tensor";
   let description = [{
@@ -990,11 +1031,12 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
     to the constructor of a ManagedTensorSlice.
   }];
 
-  let arguments = (ins MGP_DeviceBufferType:$buffer,
-                       Variadic<SI64Scalar>:$dims,
-                       BoolAttr:$mut,
-                       MO_IOKind:$io
-                  );
+  let arguments = (ins
+    MGP_DeviceBufferType:$buffer,
+    Variadic<SI64Scalar>:$dims,
+    BoolAttr:$mut,
+    MO_IOKind:$io
+  );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 
   let assemblyFormat = [{
@@ -1003,9 +1045,9 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
 }
 
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  Pure,
 ]> {
   let results = (outs ChainType:$output);
 
@@ -1021,7 +1063,7 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
 }
 
 def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let arguments = (ins Variadic<MOGG_TaskHandle>:$task_handles);
 
@@ -1046,10 +1088,10 @@ def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
 /// TODO(GEX-2434): Wrap kernel body arguments in a mogg.async<T> to fully model
 /// the fact that they are not values but pointers that must be unpacked.
 def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
-  Pure,
-  SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelArgumentConsumer>,
+  Pure,
+  SameOperandsAndResultType,
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
@@ -1087,12 +1129,14 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 }
 
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  Pure,
 ]> {
-  let arguments = (ins AnyType:$input,
-                   Optional<MGP_DeviceContextType>:$deviceCtx);
+  let arguments = (ins
+    AnyType:$input,
+    Optional<MGP_DeviceContextType>:$deviceCtx
+  );
   let results = (outs AnyType:$output);
   let summary = "Packs an sync value and returns it as async";
   let description = [{
@@ -1109,11 +1153,14 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 
 
 def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  Pure,
 ]> {
-  let arguments = (ins AnyType:$input, AnyType:$mem);
+  let arguments = (ins
+    AnyType:$input,
+    AnyType:$mem
+  );
   let results = (outs AnyType:$output);
   let summary = "Borrows the input tensor ref value";
   let description = [{
@@ -1147,8 +1194,8 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
 }
 
 def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Represents an empty buffer (actually of size 1) allocated on the stack";
   let description = [{
@@ -1161,8 +1208,8 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
 }
 
 def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Build a Mojo FusedInput / FusedOutput ManagedTensorSlice object";
   let description = [{
@@ -1194,8 +1241,10 @@ def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
     ```
   }];
 
-  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$lambda,
-                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
+  let arguments = (ins
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$lambda,
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor
+  );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
 
   let assemblyFormat = [{
@@ -1213,8 +1262,8 @@ def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
 }
 
 def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Reshape a ManagedTensorSlice object into a new aliased tensor with a different shape";
   let description = [{
@@ -1234,8 +1283,10 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
     ```
   }];
 
-  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
-                       Variadic<SI64Scalar>:$dynamic_dims);
+  let arguments = (ins
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
+    Variadic<SI64Scalar>:$dynamic_dims
+  );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
 
   let assemblyFormat = [{
@@ -1243,9 +1294,10 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   }];
 }
 
-def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
-
+def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
+]> {
   let summary = "create a scalar constant value";
   let description = [{
 
@@ -1262,9 +1314,11 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
-def MOGG_YieldOp
-    : MOGG_Op<"yield",
-      [Terminator, HasParent<"MOGG::TryOp">, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_YieldOp : MOGG_Op<"yield", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  HasParent<"MOGG::TryOp">,
+  Terminator,
+]> {
   let summary = "MOGG yield operation";
   let description = [{
     The "mogg.yield" operation specifies the output values for a mogg.try / except statement.
@@ -1276,7 +1330,7 @@ def MOGG_YieldOp
 }
 
 def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Wraps a kernel terminator in a Trace context manager";
   let description = [{
@@ -1290,8 +1344,8 @@ def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
 }
 
 def MOGG_RaiseOp : MOGG_Op<"raise", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   Terminator,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
 ]> {
   let summary = "Re-raises a kernel error with full context";
   let description = [{
@@ -1306,7 +1360,7 @@ def MOGG_RaiseOp : MOGG_Op<"raise", [
 
 def MOGG_TryOp : MOGG_Op<"try", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let summary = "Op that represent a try / except statement";
   let description = [{
@@ -1323,7 +1377,7 @@ def MOGG_TryOp : MOGG_Op<"try", [
 }
 
 def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let arguments = (ins MOGG_Error:$error);
   let results = (outs AnyType:$output);
@@ -1353,10 +1407,10 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
 }
 
 def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  Pure
+  Pure,
 ]> {
   let summary = "Call a shape function";
   let description = [{
@@ -1385,8 +1439,10 @@ def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
   }];
 }
 
-def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
+]> {
   let summary = "Gets a single dimension from a shape function result";
   let description = [{
     This operation extracts a single dimension at the specified index from a
@@ -1413,8 +1469,8 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
 }
 
 def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Construct a mojo shape object";
   let description = [{
@@ -1428,8 +1484,10 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
     ```
   }];
 
-  let arguments = (ins Variadic<SI64Scalar>:$dynamic_dims,
-                       MOSH_ShapeAttr:$shape);
+  let arguments = (ins
+    Variadic<SI64Scalar>:$dynamic_dims,
+    MOSH_ShapeAttr:$shape
+  );
   let results = (outs MOGG_Shape:$result);
 
   let assemblyFormat = [{
@@ -1453,9 +1511,9 @@ def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyn
 }
 
 def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
   SameOperandsAndResultType,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Returns the memory storage handle of a tensor or buffer.";
   let description = [{
@@ -1474,8 +1532,8 @@ def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef"
 }
 
 def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
 ]> {
   let summary = "Returns a chain to feed MRP primitives";
   let description = [{
@@ -1547,14 +1605,17 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     `DeviceContext`.
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
-      OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
-      OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
-      OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
-      OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
-      OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
-      ArrayAttr:$struct_params,
-      BoolAttr:$is_user_defined);
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$registration,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
+    ArrayAttr:$struct_params,
+    BoolAttr:$is_user_defined
+  );
 
   let assemblyFormat = [{
     $sym_name `registration` `=` $registration
@@ -1589,8 +1650,11 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
     are not populated for primitives.
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, StrAttr:$registration,
-      MOGG_KernelFunctionAttr:$function);
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$registration,
+    MOGG_KernelFunctionAttr:$function
+  );
 
   let assemblyFormat = [{
     $sym_name `registration` `=` $registration `function` `=` $function
