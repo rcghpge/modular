@@ -36,15 +36,15 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
-    Op<MGPDialect, mnemonic, traits>;
+  Op<MGPDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
 def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
 ]> {
   let arguments = (ins IndexAttr:$resourceSlot);
   let results = (outs MGP_DeviceBufferType:$outBuffer);
@@ -63,14 +63,14 @@ def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
 }
 
 def BufferConstantOp : MGP_Op<"buffer.constant", [
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
-      "getLiftableAttributes",
-      "getIgnorableAttributes"
-    ]>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
-    Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+    "getLiftableAttributes",
+    "getIgnorableAttributes"
+  ]>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Allocates and initializes a buffer from a host attribute.";
   let description = [{
@@ -148,12 +148,12 @@ def ContextCreateOp : MGP_Op<"context.create"> {
 //===----------------------------------------------------------------------===//
 
 def TensorCreateOp : MGP_Op<"tensor.create", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
-    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+  DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";
@@ -174,10 +174,12 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$buffer,
-                       MGP_TensorSpecType:$tensorSpec);
-  let results = (outs MGP_DeviceTensorType: $outTensor);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer,
+    MGP_TensorSpecType:$tensorSpec
+  );
+  let results = (outs MGP_DeviceTensorType:$outTensor);
   let assemblyFormat = [{
     $inChain `,` $buffer `,` $tensorSpec attr-dict
     `:` custom<TensorTypeToDeviceBufferSpec>(type($outTensor),
@@ -191,11 +193,11 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
 //===----------------------------------------------------------------------===//
 
 def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
   let description = [{
@@ -227,9 +229,9 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
 //===----------------------------------------------------------------------===//
 
 def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
   let description = [{
@@ -246,7 +248,7 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
     ```
   }];
 
-  let arguments = (ins MGP_DeviceTensorType: $tensor);
+  let arguments = (ins MGP_DeviceTensorType:$tensor);
   let results = (outs MGP_TensorSpecType:$outSpec);
   let assemblyFormat = [{
     $tensor attr-dict `:` type($tensor)
@@ -260,12 +262,12 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 //===----------------------------------------------------------------------===//
 
 def TensorSliceOp : MGP_Op<"tensor.slice", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
-    DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Zero-copy contiguous slice of a tensor along one dimension.";
   let description = [{
@@ -310,8 +312,9 @@ def TensorSliceOp : MGP_Op<"tensor.slice", [
 //===----------------------------------------------------------------------===//
 
 def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
-  Pure, InferTypeOpAdaptor,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and
@@ -364,9 +367,9 @@ def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
 //===----------------------------------------------------------------------===//
 
 def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  Pure,
 ]> {
   let summary = [{
     Return the dimension of the tensor_spec at the specified axis.
@@ -376,8 +379,10 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
     If the dimension is known statically, it is returned as a constant index.
   }];
 
-  let arguments = (ins MGP_TensorSpecType: $spec,
-                   UI64Attr:$axis);
+  let arguments = (ins
+    MGP_TensorSpecType:$spec,
+    UI64Attr:$axis
+  );
   let results = (outs Index:$dim);
   let assemblyFormat = [{
     `[` $axis `]` $spec attr-dict `:` type($spec)
@@ -391,10 +396,10 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 //===----------------------------------------------------------------------===//
 
 def AssertOp : MGP_Op<"assert", [
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  ]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
+]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{
     Return an error with the given message if the condition is false.
@@ -429,15 +434,16 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
     of the kernel.  The chain can be used for error handling or side-effect dependencies.
   }];
 
-  let arguments = (ins MGP_ContextType:$theContext,
-                       Variadic<AnyType>:$args,
-                       UI64Attr:$aRuntimeSlot,                         // 0
-                       UI64Attr:$bModuleIndex,                         // 1
-                       UI64Attr:$cFunctionIndex,                       // 2
-                       StrAttr:$dSummary,                              // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync, // 4
-                       ArrayAttr:$fConstantResource                    // 5
-                       );
+  let arguments = (ins
+    MGP_ContextType:$theContext,
+    Variadic<AnyType>:$args,
+    UI64Attr:$aRuntimeSlot,  // 0
+    UI64Attr:$bModuleIndex,  // 1
+    UI64Attr:$cFunctionIndex,  // 2
+    StrAttr:$dSummary,  // 3
+    DefaultValuedAttr<BoolAttr, "false">:$eIsAsync,  // 4
+    ArrayAttr:$fConstantResource  // 5
+  );
   let results = (outs Variadic<AnyType>:$outResults);
 }
 
@@ -446,10 +452,9 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
 //===----------------------------------------------------------------------===//
 
 def GuardOp : MGP_Op<"guard", [
-  InferTypeOpAdaptor,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-]>
-{
+  InferTypeOpAdaptor,
+]> {
   let summary = "SSA-value guard operation";
 
   let description = [{
@@ -476,8 +481,10 @@ def GuardOp : MGP_Op<"guard", [
     ```
   }];
 
-  let arguments = (ins ChainType:$chain,
-                       Variadic<AnyType>:$inputs);
+  let arguments = (ins
+    ChainType:$chain,
+    Variadic<AnyType>:$inputs
+  );
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
@@ -488,8 +495,9 @@ def GuardOp : MGP_Op<"guard", [
 }
 
 
-def ExtendLifetimeOp : MGP_Op<"extend.lifetime",
-  [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
+def ExtendLifetimeOp : MGP_Op<"extend.lifetime", [
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+]> {
   let summary = "SSA-value guard operation";
 
   let description = [{
@@ -498,7 +506,10 @@ def ExtendLifetimeOp : MGP_Op<"extend.lifetime",
     values to match the lifetime of the input chain.
   }];
 
-  let arguments = (ins ChainType:$gate, Variadic<AnyType>:$inputs);
+  let arguments = (ins
+    ChainType:$gate,
+    Variadic<AnyType>:$inputs
+  );
   let results = (outs ChainType:$results);
   let assemblyFormat = [{
     ` ` operands ` ` attr-dict `:` functional-type(operands, results)
@@ -510,14 +521,19 @@ def ExtendLifetimeOp : MGP_Op<"extend.lifetime",
 //===----------------------------------------------------------------------===//
 
 def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
-    AttrConstraint<
-      CPred<"CompiledFrameworkLabel::isValidFrameworkName("
-            "cast<StringAttr>($_self).getValue())">,
-      "must be a recognized framework name.">]>;
+  AttrConstraint<
+    CPred<"CompiledFrameworkLabel::isValidFrameworkName("
+          "cast<StringAttr>($_self).getValue())">,
+    "must be a recognized framework name.">,
+]>;
 
-def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
-                               IsolatedFromAbove, RegionKindInterface,
-                               HasOnlyGraphRegion, Symbol]> {
+def ModelOp : MGP_Op<"model", [
+  HasOnlyGraphRegion,
+  HasParent<"ModuleOp">,
+  IsolatedFromAbove,
+  RegionKindInterface,
+  Symbol,
+]> {
   let summary = [{
     Represents an executable model with 'init' and 'execute' entry points.
   }];
@@ -581,12 +597,14 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   //    MEF metadata extraction, and that index matches the MLIR canonical
   //    asciibetical order.
   //  - The extra attributes must appear last since optional.
-  let arguments = (ins M_DeviceRefArrayAttr:$devices,                   // 0
-                       ModelFrameworkAttr:$frameworkName,               // 1
-                       TypeAttrOf<FunctionType>:$inputOutputTypes,      // 2
-                       SymbolNameAttr:$sym_name,                        // 3
-                       UnitAttr:$isSubgraph,                            // 4
-                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 5
+  let arguments = (ins
+    M_DeviceRefArrayAttr:$devices,  // 0
+    ModelFrameworkAttr:$frameworkName,  // 1
+    TypeAttrOf<FunctionType>:$inputOutputTypes,  // 2
+    SymbolNameAttr:$sym_name,  // 3
+    UnitAttr:$isSubgraph,  // 4
+    OptionalAttr<DictionaryAttr>:$theExtraAttrs  // 5
+  );
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
@@ -643,14 +661,16 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     /// `inputArgLocs` specifies the location information for the
     /// explicit arguments to the 'execute' entry point, and thus should
     /// have the same length as `inputTypes`.
-    OpBuilder<(ins "StringAttr":$sym_name,
-                   "StringRef":$frameworkName,
-                   "ArrayRef<DeviceRef>":$devices,
-                   "ArrayRef<Type>":$inputTypes,
-                   "ArrayRef<Type>":$outputTypes,
-                   "ArrayRef<Location>":$inputArgLocs,
-                   CArg<"bool", "false">:$isSubgraph,
-                   CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs)>
+    OpBuilder<(ins
+      "StringAttr":$sym_name,
+      "StringRef":$frameworkName,
+      "ArrayRef<DeviceRef>":$devices,
+      "ArrayRef<Type>":$inputTypes,
+      "ArrayRef<Type>":$outputTypes,
+      "ArrayRef<Location>":$inputArgLocs,
+      CArg<"bool", "false">:$isSubgraph,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs
+    )>
   ];
 
   let assemblyFormat = [{
@@ -670,7 +690,8 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
 //===----------------------------------------------------------------------===//
 
 def RuntimeCreateOp : MGP_Op<"runtime.create", [
-    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,]> {
+  DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
+]> {
   let summary = "Creates a runtime to coordinate execution.";
   let description = [{
     Creates a runtime within an `!mgp.context` slot.
@@ -690,9 +711,11 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot);         // 1
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    UI64Attr:$aRuntimeSlot  // 1
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` attr-dict
@@ -709,8 +732,8 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack", "resultsToPack"]>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack", "resultsToPack"]>
 ]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
@@ -733,10 +756,15 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Index:$bBufferSlot);         // 1
-  let results = (outs MGP_DeviceBufferType:$outBuffer, Variadic<PointerOf<PointerOf<KGEN_NoneType>>>:$optional_memStorageHandle);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    Index:$bBufferSlot  // 1
+  );
+  let results = (outs
+    MGP_DeviceBufferType:$outBuffer,
+    Variadic<PointerOf<PointerOf<KGEN_NoneType>>>:$optional_memStorageHandle
+  );
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` attr-dict
     `:` qualified(type($outBuffer)) (`,` qualified(type($optional_memStorageHandle))^)?
@@ -757,8 +785,8 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
-  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface>,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface>,
 ]> {
   let summary = "Removes the buffer stored at the specified state slot.";
   let description = [{
@@ -774,10 +802,11 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Index:$bBufferSlot         // 1
-                       );
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    Index:$bBufferSlot  // 1
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]`
@@ -790,7 +819,7 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
 //===----------------------------------------------------------------------===//
 
 def IntCacheOp : MGP_Op<"int.cache", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
 ]> {
   let summary = "Stores an integer value into a dedicated state slot.";
   let description = [{
@@ -807,10 +836,12 @@ def IntCacheOp : MGP_Op<"int.cache", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Index:$value,
-                       UI64Attr:$bIntSlot);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    Index:$value,
+    UI64Attr:$bIntSlot
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bIntSlot `]` `,` $value attr-dict
@@ -822,8 +853,8 @@ def IntCacheOp : MGP_Op<"int.cache", [
 //===----------------------------------------------------------------------===//
 
 def IntGetCachedOp : MGP_Op<"int.get_cached", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>
 ]> {
   let summary = "Retrieves an integer value from a dedicated state slot.";
   let description = [{
@@ -839,9 +870,11 @@ def IntGetCachedOp : MGP_Op<"int.get_cached", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Index:$bIntSlot);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    Index:$bIntSlot
+  );
   let results = (outs Index:$result);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bIntSlot `]` attr-dict
@@ -853,8 +886,8 @@ def IntGetCachedOp : MGP_Op<"int.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Get the runtime size of a buffer in bytes.";
   let description = [{
@@ -868,8 +901,11 @@ def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain, MGP_DeviceBufferType:$buffer);
-  let results = (outs  Index:$size);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer
+  );
+  let results = (outs Index:$size);
   let assemblyFormat = [{
     $inChain `,` $buffer attr-dict
     `:` qualified(type($buffer))
@@ -905,11 +941,13 @@ def DebugPrintOp : MGP_Op<"debug.print", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       StrAttr: $aDebugString,                        // 0
-                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel);  // 1
-  let results = (outs ChainType: $outChain);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    StrAttr:$aDebugString,  // 0
+    DefaultValuedAttr<StrAttr, "\"\"">:$bLabel  // 1
+  );
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `,` $aDebugString ( `,` $bLabel^ )? attr-dict
   }];
@@ -939,10 +977,12 @@ def DebugPrintIntOp : MGP_Op<"debug.print.int", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Index:$value,
-                       DefaultValuedAttr<StrAttr, "\"\"">:$aLabel);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    Index:$value,
+    DefaultValuedAttr<StrAttr, "\"\"">:$aLabel
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `,` $value ( `,` $aLabel^ )? attr-dict
@@ -955,7 +995,7 @@ def DebugPrintIntOp : MGP_Op<"debug.print.int", [
 
 def MGP_CallOp : MGP_Op<"call", [
   CallOpInterface,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Call a subgraph.";
   let description = [{
@@ -1108,12 +1148,9 @@ def StringConcatOp : MGP_Op<"string.concat", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 class MGP_DeviceOp<string mnemonic, list<Trait> traits = []> :
-    MGP_Op<
-      mnemonic,
-      [
-        DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
-      ] # traits
-    >;
+  MGP_Op<mnemonic, [
+    DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
+  ] # traits>;
 
 def MGP_OptDeviceRefAttr :
   DefaultValuedAttr<M_DeviceRefAttr, "kCPULabel, 0">;
@@ -1128,11 +1165,13 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceContextType:$deviceContext,
-                       MGP_OptDeviceRefAttr:$bDevice,  // 1
-                       StrAttr:$cTag,
-                       StrAttr:$dFilePath); // 2
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceContextType:$deviceContext,
+    MGP_OptDeviceRefAttr:$bDevice,  // 1
+    StrAttr:$cTag,
+    StrAttr:$dFilePath  // 2
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
@@ -1150,11 +1189,13 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceContextType:$deviceContext,
-                       MGP_OptDeviceRefAttr:$bDevice,  // 1
-                       StrAttr:$cTag,
-                       StrAttr:$dFilePath); // 2
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceContextType:$deviceContext,
+    MGP_OptDeviceRefAttr:$bDevice,  // 1
+    StrAttr:$cTag,
+    StrAttr:$dFilePath  // 2
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
@@ -1171,9 +1212,9 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
 // ModuleLoadOp
 //===----------------------------------------------------------------------===//
 
-def ModuleLoadOp : MGP_DeviceOp<"module.load",
-    [DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,]
-> {
+def ModuleLoadOp : MGP_DeviceOp<"module.load", [
+  DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
+]> {
   let summary = "Loads functions and constants for device from compiled module.";
   let description = [{
     Loads functions and constants from a compiled module encoded into a byte
@@ -1210,16 +1251,17 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load",
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,                                   // 0
-                       AnyAttrOf<[M_MultiLineStringAttr, ElementsAttr]>:$bImage, // 1
-                       M_MultiLineStringAttr:$cFunctionSymbols,                  // 2
-                       M_MultiLineStringAttr:$dConstantSymbols,                  // 3
-                       MGP_OptDeviceRefAttr:$eDevice,                            // 4
-                       UI64Attr:$fModuleIndex,                                   // 5
-                       DefaultValuedAttr<BoolAttr, "false">:$gDebuginfo          // 6
-                       );
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    UI64Attr:$aRuntimeSlot,  // 0
+    AnyAttrOf<[M_MultiLineStringAttr, ElementsAttr]>:$bImage,  // 1
+    M_MultiLineStringAttr:$cFunctionSymbols,  // 2
+    M_MultiLineStringAttr:$dConstantSymbols,  // 3
+    MGP_OptDeviceRefAttr:$eDevice,  // 4
+    UI64Attr:$fModuleIndex,  // 5
+    DefaultValuedAttr<BoolAttr, "false">:$gDebuginfo  // 6
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `[` $fModuleIndex `]` `,` $bImage `,`
@@ -1248,7 +1290,7 @@ def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
 
     When we create the load module op we can remove it.
   }];
-  let results = (outs ChainType: $outChain);
+  let results = (outs ChainType:$outChain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1256,12 +1298,13 @@ def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
 //===----------------------------------------------------------------------===//
 
 def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
-      "getLiftableAttributes",
-      "getIgnorableAttributes"
-    ]>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]> ]> {
+  DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+    "getLiftableAttributes",
+    "getIgnorableAttributes"
+  ]>,
+  InferTypeOpAdaptor,
+]> {
   let summary = "Initializes a buffer from an external constant.";
   let description = [{
     Returns an `!mgp.buffer` on the given device that is initialized at
@@ -1289,14 +1332,16 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_OpaqueType:$weightsRegistry,
-                       MGP_OpaqueType:$name,
-                       UI64Attr:$aSize,                                        // 0
-                       UI64Attr:$bAlign,                                       // 1
-                       MGP_OptDeviceRefAttr:$cDevice,                          // 2
-                       DefaultValuedAttr<BoolAttr, "false">:$dHasAlias,        // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$eIsPlaceholder);  // 4
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_OpaqueType:$weightsRegistry,
+    MGP_OpaqueType:$name,
+    UI64Attr:$aSize,  // 0
+    UI64Attr:$bAlign,  // 1
+    MGP_OptDeviceRefAttr:$cDevice,  // 2
+    DefaultValuedAttr<BoolAttr, "false">:$dHasAlias,  // 3
+    DefaultValuedAttr<BoolAttr, "false">:$eIsPlaceholder  // 4
+  );
 
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
@@ -1338,11 +1383,11 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 //===----------------------------------------------------------------------===//
 
 def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
-    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-    InferTypeOpAdaptor
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+  DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
@@ -1371,11 +1416,13 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       Index:$runtimeSize,
-                       MGP_DeviceContextType:$deviceContext,
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign, // 1
-                       MGP_OptDeviceRefAttr:$cDevice);                         // 2
+  let arguments = (ins
+    ChainType:$inChain,
+    Index:$runtimeSize,
+    MGP_DeviceContextType:$deviceContext,
+    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign,  // 1
+    MGP_OptDeviceRefAttr:$cDevice  // 2
+  );
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $runtimeSize `,` $deviceContext
@@ -1429,10 +1476,12 @@ def BufferCacheOp : MGP_Op<"buffer.cache"> {
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$bBufferSlot);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    MGP_DeviceBufferType:$buffer,
+    UI64Attr:$bBufferSlot
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` `,`
@@ -1467,8 +1516,10 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
     `:` custom<BufferTypeToChain>(type($buffer), type($inChain))
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$buffer);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer
+  );
   let results = (outs ChainType:$outChain);
 }
 
@@ -1477,9 +1528,9 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
 //===----------------------------------------------------------------------===//
 
 def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
   let summary = "Copies a host buffer into a non-host buffer.";
   let description = [{
@@ -1504,12 +1555,14 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$hostBuffer,
-                       MGP_DeviceBufferType:$otherBuffer,
-                       MGP_DeviceContextType:$deviceContext,
-                       MGP_OptDeviceRefAttr:$cHostDevice,   // 2
-                       MGP_OptDeviceRefAttr:$dOtherDevice); // 3
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$hostBuffer,
+    MGP_DeviceBufferType:$otherBuffer,
+    MGP_DeviceContextType:$deviceContext,
+    MGP_OptDeviceRefAttr:$cHostDevice,  // 2
+    MGP_OptDeviceRefAttr:$dOtherDevice  // 3
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $hostBuffer `,` $otherBuffer `,` $deviceContext attr-dict
@@ -1530,9 +1583,9 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
   let summary = "Copies a non-host buffer into a host buffer.";
   let description = [{
@@ -1558,12 +1611,14 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$otherBuffer,
-                       MGP_DeviceBufferType:$hostBuffer,
-                       MGP_DeviceContextType:$deviceContext,
-                       MGP_OptDeviceRefAttr:$cOtherDevice, // 2
-                       MGP_OptDeviceRefAttr:$dHostDevice); // 3
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$otherBuffer,
+    MGP_DeviceBufferType:$hostBuffer,
+    MGP_DeviceContextType:$deviceContext,
+    MGP_OptDeviceRefAttr:$cOtherDevice,  // 2
+    MGP_OptDeviceRefAttr:$dHostDevice  // 3
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $otherBuffer `,` $hostBuffer `,` $deviceContext attr-dict
@@ -1584,9 +1639,9 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
   let summary = "Copies a non-host buffer into another non-host buffer.";
   let description = [{
@@ -1611,13 +1666,15 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$srcBuffer,
-                       MGP_DeviceBufferType:$dstBuffer,
-                       MGP_DeviceContextType:$srcDeviceContext,
-                       MGP_DeviceContextType:$dstDeviceContext,
-                       M_DeviceRefAttr:$cSrcDevice,   // 0
-                       M_DeviceRefAttr:$dDstDevice);  // 1
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$srcBuffer,
+    MGP_DeviceBufferType:$dstBuffer,
+    MGP_DeviceContextType:$srcDeviceContext,
+    MGP_DeviceContextType:$dstDeviceContext,
+    M_DeviceRefAttr:$cSrcDevice,  // 0
+    M_DeviceRefAttr:$dDstDevice  // 1
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $srcBuffer `,` $srcDeviceContext`,` $dstBuffer `,` $dstDeviceContext attr-dict
@@ -1647,9 +1704,9 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 //===----------------------------------------------------------------------===//
 
 def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
@@ -1675,11 +1732,13 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$outBuffer,
-                       Variadic<MGP_DeviceBufferType>:$inBuffers,
-                       MGP_DeviceContextType:$ctx,
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$outBuffer,
+    Variadic<MGP_DeviceBufferType>:$inBuffers,
+    MGP_DeviceContextType:$ctx,
+    MGP_OptDeviceRefAttr:$bDevice  // 1
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`
@@ -1697,9 +1756,9 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
 def BufferPlanOp : MGP_Op<"buffer.plan", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Runtime memory planning for buffers";
   let description = [{
@@ -1737,11 +1796,11 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 //===----------------------------------------------------------------------===//
 
 def BufferSliceOp : MGP_Op<"buffer.slice", [
-    Pure,
-    InferTypeOpAdaptor,
-    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Borrows a slice of parent buffer on device with dynamically "
                 "known offset and size.";
@@ -1786,11 +1845,11 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 //===----------------------------------------------------------------------===//
 
 def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
-    Pure,
-    InferTypeOpAdaptor,
-    AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+  DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Bulk slice of a buffer pool into N sub-buffers.";
   let description = [{
@@ -1832,9 +1891,9 @@ def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
 //===----------------------------------------------------------------------===//
 
 def BufferToIndexOp : MGP_Op<"buffer.to_index", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  Pure,
 ]> {
   let summary = "Returns contents of the buffer to an `index`";
   let description = [{
@@ -1850,8 +1909,10 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$inBuffer);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$inBuffer
+  );
 
   let results = (outs Index:$out);
 
@@ -1865,8 +1926,8 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
 //===----------------------------------------------------------------------===//
 
 def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Returns contents of a 1-byte buffer as an i1.";
   let description = [{
@@ -1880,9 +1941,11 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$buffer,
-                       MGP_OptDeviceRefAttr:$bDevice);  // 1
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer,
+    MGP_OptDeviceRefAttr:$bDevice  // 1
+  );
   let results = (outs I1:$result);
   let hasVerifier = 1;
 
@@ -1902,10 +1965,10 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
 //===----------------------------------------------------------------------===//
 
 def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
-    // TODO: #37615
-    /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  // TODO: #37615
+  /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
   let summary = "Set a buffer with the values from index inputs.";
   let description = [{
@@ -1931,9 +1994,11 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceBufferType:$buffer,
-                       Variadic<Index>:$values,
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let arguments = (ins
+    MGP_DeviceBufferType:$buffer,
+    Variadic<Index>:$values,
+    MGP_OptDeviceRefAttr:$bDevice  // 1
+  );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{$buffer ( `,` $values^ )? attr-dict
     `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
@@ -1950,11 +2015,11 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 //===----------------------------------------------------------------------===//
 
 def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
-      "getLiftableAttributes"
-    ]>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  ]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+    "getLiftableAttributes"
+  ]>,
+]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
   let description = [{
@@ -1983,11 +2048,13 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_DeviceBufferType:$buffer,
-                       MGP_TensorSpecType:$spec,
-                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel);
-  let results = (outs ChainType: $outChain);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer,
+    MGP_TensorSpecType:$spec,
+    DefaultValuedAttr<StrAttr, "\"\"">:$bLabel
+  );
+  let results = (outs ChainType:$outChain);
 
   let extraClassDefinition = [{
     SmallVector<Attribute> DebugTensorPrintOp::getLiftableAttributes() {
@@ -2006,10 +2073,10 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
 //===----------------------------------------------------------------------===//
 
 def MGP_SyncOp : MGP_DeviceOp<"sync", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-    Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
+  Pure,
 ]> {
   let summary = "Schedules a device specific sync";
   let description = [{
@@ -2018,11 +2085,13 @@ def MGP_SyncOp : MGP_DeviceOp<"sync", [
     gpu this records a gpu event.
   }];
 
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       MGP_DeviceContextType:$deviceContext,
-                       MGP_OptDeviceRefAttr:$bDevice);               // 1
-  let results = (outs ChainType: $outChain);
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    MGP_DeviceContextType:$deviceContext,
+    MGP_OptDeviceRefAttr:$bDevice  // 1
+  );
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`
         functional-type(operands, results)
