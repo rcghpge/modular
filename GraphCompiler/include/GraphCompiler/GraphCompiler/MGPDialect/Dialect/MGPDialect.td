@@ -93,7 +93,7 @@ def MGPDialect : Dialect {
       arguments and results match the native framework representation.
 
     MGP does not include:
-    - Primitives/kernals, such as `MGP.add`. These must be supplied by a
+    - Primitives/kernels, such as `MGP.add`. These must be supplied by a
       supporting dialect and runtime implementation.
     - GPU or other non-CPU buffer or tensor representations. These will be
       added by supporting dialects.

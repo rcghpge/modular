@@ -567,7 +567,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams &init_params)
 
   // TODO: in case of UCX error handling is enabled, we can clean up AM based
   // connections error handling, if user requested disabled error handling, we
-  // dont care about it.
+  // don't care about it.
   auto &uw = uws.front();
   uw->regAmCallback(UcxCallbackOp::CONN_CHECK, connectionCheckAmCb, this);
   uw->regAmCallback(UcxCallbackOp::DISCONNECT, connectionTermAmCb, this);

@@ -1878,7 +1878,7 @@ This is a deduplication pass. It eliminates duplicate operands on both
 `mogg.kernel` and each `mogg.bind` (lambda) inside the kernel. Since every
 fusion pass in the pipeline (at `mogg`) can introduce duplicate operands or
 lambda arguments (fusion passes splice operand lists when they inline) it is
-run inbetween passes in the fusion "subpipeline". So, the idea is to keep
+run in between passes in the fusion "subpipeline". So, the idea is to keep
 fusion passes simple at the cost of running simplification multiple times.
 Walks kernel inputs and bind lambda operands in reverse order, replacing uses
 of duplicate block arguments and erasing redundant operands/arguments.

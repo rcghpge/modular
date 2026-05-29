@@ -136,7 +136,7 @@ list:
 - `Scalar`
   - This is just syntax sugar over **ManagedTensorSlice’s** of one value
   - At the moment, this just dereferences the associated pointer, other
-    implementations are open in the future (e.g. dont make a whole tensor for
+    implementations are open in the future (e.g. don't make a whole tensor for
     one value).
   - The tensor must be on host
 

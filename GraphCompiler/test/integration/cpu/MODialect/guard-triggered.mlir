@@ -2,7 +2,7 @@
 // RUN: mt --execute  --model-inputs=ones --input-shapes=1x3 --input-shapes=40x4 --result-output-style=full %t.mlir > %t.output || true
 
 // using the rather laborious specification of passes above because
-// predicate-assert-deps pass doesn't currently handle mo.guard ops and I dont
+// predicate-assert-deps pass doesn't currently handle mo.guard ops and I don't
 // want any interactions with that pass in this test
 
 // using the ... || true construct on the 2nd RUN line since lit seems to

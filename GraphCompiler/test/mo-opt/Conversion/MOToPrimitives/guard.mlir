@@ -1,7 +1,7 @@
 // RUN: mo-opt --mo-shape-inference --mo-infer-layouts --mogg-import-packages --mo-to-mogg --mogg-to-mgp --mo-topological-sort %s | FileCheck %s
 
 // using the rather laborious specification of passes above because
-// predicate-asserts-deps pass doesn't currently handle mo.guard ops and I dont
+// predicate-asserts-deps pass doesn't currently handle mo.guard ops and I don't
 // want any interactions with that pass in this test
 
 // CHECK-LABEL: mgp.model @add_guard
