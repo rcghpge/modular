@@ -7,7 +7,7 @@
 // CHECK: %[[PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[PLACEHOLDER]]) output_lambda (%[[ARG6:.*]]: f32, %[[ARG7:.*]]: !pop.array<2, index>)
 // CHECK: %[[INSERT_IDX:.*]] = mogg.call.affine["{{.*}}.insert_index"] (%[[ARG7]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
-// CHECK: %[[LOAD:.*]] = "mogg.tensor.load"(%[[ARG2]], %[[INSERT_IDX]]) : (!mo.tensor<[1, seq_len, 4096], f32>, !pop.array<3, index>) -> f32
+// CHECK: %[[LOAD:.*]] = mogg.tensor.load(%[[ARG2]], %[[INSERT_IDX]]) : (!mo.tensor<[1, seq_len, 4096], f32>, !pop.array<3, index>) -> f32
 // CHECK: %[[ADD:.*]] = mogg.call.elementwise["{{.*}}.Add"] (%[[ARG6]], %[[LOAD]]) {{.*}} : f32, f32 -> f32
 // CHECK: mogg.output %[[ADD]], %[[INSERT_IDX]] : f32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
