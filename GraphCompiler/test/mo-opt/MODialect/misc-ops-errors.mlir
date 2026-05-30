@@ -267,63 +267,48 @@ mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2],
 //===----------------------------------------------------------------------===//
 
 mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output must have the same element type}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
 // -----
 
 mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #0 must be unranked or non-scalar tensor, but got '!mo.tensor<[], f32>'}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
 // -----
 
 mo.graph @gather_float_indices(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
-  mo.output %0 : !mo.tensor<[2, 2], f32>
-}
-
-// -----
-
-mo.graph @gather_non_scalar_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
-  // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
 // -----
 
 mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
   // expected-error @below {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
 // -----
 
 mo.graph @gather_result_rank_too_big(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?], f32>
 }
 
 // -----
 
 mo.graph @gather_result_rank_too_small(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32>
   mo.output %0 : !mo.tensor<[?], f32>
 }
 

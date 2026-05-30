@@ -263,7 +263,7 @@ DEFINE_REDUCE_INFER_MO_TYPES(MOArgMaxOp, true)
 
 void RMO::inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
-    TensorValue updates, TensorValue indices, TensorValue axis,
+    TensorValue updates, TensorValue indices,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
@@ -287,13 +287,30 @@ void RMO::inferMOTypesScatterImpl(
   moInputParamDecls.push_back({});
   moInputParamDecls.push_back({});
 
-  // Axis must be a scalar
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
-
   // The output of scatter has the same type as the input
   moResultTypes.push_back(input.getType());
   moOutputParamDecls.push_back({});
+}
+
+void RMO::inferMOTypesScatterImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices, TensorValue axis,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  // The input/updates/indices operands and result type are identical to the
+  // attribute-axis `scatter` op.
+  inferMOTypesScatterImpl(context, graphOp, input, updates, indices, rmoResults,
+                          moOperandTypes, moResultTypes, moInputParamDecls,
+                          moOutputParamDecls);
+
+  // The scatter-reduction ops additionally take the axis as a scalar operand.
+  // It is appended after `indices`; the result type lives in a separate vector,
+  // so operand ordering is preserved.
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
 }
 
 void RMO::inferMOTypesElemwiseUnaryImpl(
@@ -595,16 +612,12 @@ void MOGatherOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue indices = cast<TensorValue>(operands.getIndices());
-  TensorValue axis = cast<TensorValue>(operands.getAxis());
 
-  // `input` and `indices` types pass through.
+  // `input` and `indices` types pass through. `axis` is a compile-time `index`
+  // attribute and contributes no MO operand.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(indices.getType());
-  moInputParamDecls.push_back({});
-
-  // `axis` must be a scalar.
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
 
   if (!requireRmoResults(graphOp, rmoResults, "gather"))

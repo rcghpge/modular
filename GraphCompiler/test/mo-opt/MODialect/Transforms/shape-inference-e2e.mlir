@@ -42,26 +42,22 @@ mo.graph @batch_matmul_static_rank<D1, D2, D3, D4, D5, D6>(%arg0: !mo.tensor<[D1
 // CHECK-NEXT: }
 
 mo.graph @materialize_gather_axis_0_si32_e2e<D6, D7>(%arg0: !mo.tensor<[D6, 2], f32>, %arg1: !mo.tensor<[2, D7], si32>) -> !mo.tensor<[2, D7, 2], f32> {
-    %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-    %1 = mo.gather(%arg0, %arg1, %0) : (!mo.tensor<[D6, 2], f32>, !mo.tensor<[2, D7], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, D7, 2], f32>
+    %1 = mo.gather(%arg0, %arg1) {axis = 0 : index} : (!mo.tensor<[D6, 2], f32>, !mo.tensor<[2, D7], si32>) -> !mo.tensor<[2, D7, 2], f32>
     mo.output %1 : !mo.tensor<[2, D7, 2], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @materialize_gather_axis_0_si32_e2e<[[D6:.*]], [[D7:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D6]], 2], f32>, [[VARG1:%.*]]: !mo.tensor<[2, [[D7]]], si32>) -> !mo.tensor<[2, [[D7]], 2], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.gather([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[[[D6]], 2], f32>, !mo.tensor<[2, [[D7]]], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, [[D7]], 2], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.gather([[VARG0]], [[VARG1]]) {axis = 0 : index} : (!mo.tensor<[[[D6]], 2], f32>, !mo.tensor<[2, [[D7]]], si32>) -> !mo.tensor<[2, [[D7]], 2], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[2, [[D7]], 2], f32>
 // CHECK-NEXT: }
 
 mo.graph @materialize_gather_axis_neg_1_si32_e2e<D6, D7>(%arg0: !mo.tensor<[D6, 2], f32>, %arg1: !mo.tensor<[2, D7], si32>) -> !mo.tensor<[D6, 2, D7], f32> {
-    %0 = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-    %1 = mo.gather(%arg0, %arg1, %0) : (!mo.tensor<[D6, 2], f32>, !mo.tensor<[2, D7], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D6, 2, D7], f32>
+    %1 = mo.gather(%arg0, %arg1) {axis = -1 : index} : (!mo.tensor<[D6, 2], f32>, !mo.tensor<[2, D7], si32>) -> !mo.tensor<[D6, 2, D7], f32>
     mo.output %1 : !mo.tensor<[D6, 2, D7], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @materialize_gather_axis_neg_1_si32_e2e<[[D6:.*]], [[D7:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D6]], 2], f32>, [[VARG1:%.*]]: !mo.tensor<[2, [[D7]]], si32>) -> !mo.tensor<[[[D6]], 2, [[D7]]], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.gather([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[[[D6]], 2], f32>, !mo.tensor<[2, [[D7]]], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D6]], 2, [[D7]]], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.gather([[VARG0]], [[VARG1]]) {axis = -1 : index} : (!mo.tensor<[[[D6]], 2], f32>, !mo.tensor<[2, [[D7]]], si32>) -> !mo.tensor<[[[D6]], 2, [[D7]]], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D6]], 2, [[D7]]], f32>
 // CHECK-NEXT: }
 
@@ -253,9 +249,8 @@ mo.graph @slice_4d(%arg0: !mo.tensor<[10, 20, 30, 40], f32>) -> !mo.tensor<[3, 3
 // CHECK-SAME:    %[[UPDATES:.*]]: !mo.tensor<[1, 1, 2], f32>,
 // CHECK-SAME:    %[[INDICES:.*]]: !mo.tensor<[1, 1, 2], si32>
 mo.graph @scatter<N>(%arg0: !mo.tensor<[N, 2, 3], f32>, %arg1: !mo.tensor<[1, 1, 2], f32>, %arg2: !mo.tensor<[1, 1, 2], si32>) -> !mo.tensor<[N, 2, 3], f32> {
-    %0 = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
     kgen.param.declare assert2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[scatter] indices shape cannot be bigger than input shape" : !kgen.string}, ge(:scalar<si64> N, 1))>
-    %1 = mo.scatter(%arg0, %arg1, %arg2, %0) : (!mo.tensor<[N, 2, 3], f32>, !mo.tensor<[1, 1, 2], f32>, !mo.tensor<[1, 1, 2], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[N, 2, 3], f32>
+    %1 = mo.scatter(%arg0, %arg1, %arg2) {axis = -1 : index} : (!mo.tensor<[N, 2, 3], f32>, !mo.tensor<[1, 1, 2], f32>, !mo.tensor<[1, 1, 2], si32>) -> !mo.tensor<[N, 2, 3], f32>
     mo.output %1 : !mo.tensor<[N, 2, 3], f32>
 }
 

@@ -8,11 +8,10 @@ mo.graph @gather_scalar_indices<N1, N2 -> out>(
   %dummy: !mo.tensor<[N1, 10, N2], f32>
 ) -> !mo.tensor<[out], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %idx = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
-  %n2 = mo.gather(%dummy_shape, %idx, %axis) : (
-    !mo.tensor<[3], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+  %n2 = mo.gather(%dummy_shape, %idx) {axis = 0 : index} : (
+    !mo.tensor<[3], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[], si64>
   %shape = mo.static.reshape(%n2) : !mo.tensor<[], si64> -> !mo.tensor<[1], si64>
 
@@ -34,11 +33,10 @@ mo.graph @gather_1d_indices<N1, N2 -> out0, out1>(
   %dummy: !mo.tensor<[N1, 10, N2], f32>
 ) -> !mo.tensor<[out0, out1], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %indices = mo.constant {value = #M.dense_array<-1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
-  %shape = mo.gather(%dummy_shape, %indices, %axis) : (
-    !mo.tensor<[3], si64>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+  %shape = mo.gather(%dummy_shape, %indices) {axis = 0 : index} : (
+    !mo.tensor<[3], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2], si64>
 
   // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[[[N2]], 10], si64>

@@ -38,14 +38,13 @@ mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.ten
   %1 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %2 = mo.constant {value = #M.dense_array<2, 2, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %3 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %4 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %5 = mo.constant {value = #M.dense_array<4> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %6 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
   %7 = mo.static.broadcast_to(%6) : !mo.tensor<[], f32> -> !mo.tensor<[2, 2, 3, 1, 10], f32>
   %8 = mo.shape_of(%arg0) : (!mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[5], si64>
   %9 = mo.shape_of(%7) : (!mo.tensor<[2, 2, 3, 1, 10], f32>) -> !mo.tensor<[5], si64>
-  %10 = mo.gather(%8, %5, %4) : (!mo.tensor<[5], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
-  %11 = mo.gather(%9, %3, %4) : (!mo.tensor<[5], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %10 = mo.gather(%8, %5) {axis = 0 : index} : (!mo.tensor<[5], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
+  %11 = mo.gather(%9, %3) {axis = 0 : index} : (!mo.tensor<[5], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
   %12 = mo.div(%10, %11) : !mo.tensor<[1], si64>
   %13 = mo.static.reshape(%12) : !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
   %14 = mo.conv(%arg0, %7) {filter_layout = ""} [strides = %2, dilations = %1, paddings = %0, num_groups = %13] : (!mo.tensor<[11, 4, 4, 6, 5], f32>, !mo.tensor<[2, 2, 3, 1, 10], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[11, 2, 2, 2, 10], f32>

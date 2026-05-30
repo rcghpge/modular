@@ -276,8 +276,9 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
   StaticizeAdaptor<GatherOp> adaptor(inputs);
 
-  // We only staticize over 1D tensors for now, so axis must be 0.
-  if (tryGetConstantInt(adaptor.getAxis()) != 0)
+  // We only staticize over 1D tensors for now, so axis must be 0. `axis` is a
+  // compile-time `index` attribute.
+  if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
   // We require the input to be staticized to a list of symbolic values.

@@ -27,21 +27,20 @@ mo.graph @avg_pool_mixed_dims<() -> D1, D2>(
 
 // CHECK-LABEL: mo.graph @gather_fallback_shape_func
 // CHECK: mogg.kernel
-// CHECK-SAME: (%[[G_INPUT:.*]]: !mo.tensor<[10, D0], f32>, %[[G_INDICES:.*]]: !mo.tensor<[D1, 20], si32>, %[[G_AXIS:.*]]: !mo.tensor<[], si32>) -> ()
-// CHECK:   mogg.as_scalar
-// CHECK:   mogg.call.shape["{{.*}}.Gather"]
-// CHECK-SAME: (%[[G_INPUT]], %[[G_INDICES]]
-// CHECK-SAME: : !mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mo.scalar<si32>) -> !mogg.shape_func_result<3>
-// CHECK-SAME: {isThrows, kernel_param = {output_rank = 3 : index}}
-// CHECK: } fusionInfo = "shapeof(mo.gather)":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[D5 : !kgen.scalar<si64>, D6 : !kgen.scalar<si64>, D7 : !kgen.scalar<si64>]>}
+// CHECK-SAME: (%[[G_INPUT:.*]]: !mo.tensor<[10, D0], f32>, %[[G_INDICES:.*]]: !mo.tensor<[D1, 20], si32>) -> !mo.tensor<[D1, 20, D0], f32>
+// CHECK-NOT: mogg.as_scalar
+// CHECK:   mogg.call.execute["{{.*}}.Gather"]
+// CHECK-SAME: inputs(%{{.*}}, %{{.*}}, %{{.*}} : !mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mogg.context)
+// CHECK-SAME: outputs(%{{.*}} : !mo.tensor<[D1, 20, D0], f32>)
+// CHECK-SAME: {isThrows, kernel_param = {axis = 0 : index}, moOpName = "mo.gather"}
+// CHECK: } fusionInfo = "mo.gather":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[]>}
 mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   %input : !mo.tensor<[10, D0], f32>,
-  %indices : !mo.tensor<[D1, 20], si32>,
-  %axis: !mo.tensor<[], si32>
+  %indices : !mo.tensor<[D1, 20], si32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
 
-  %res = mo.gather<() -> D5, D6, D7>(%input, %indices, %axis) :
-    (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D5, D6, D7], f32>
+  %res = mo.gather<() -> D5, D6, D7>(%input, %indices) {axis = 0 : index} :
+    (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>) -> !mo.tensor<[D5, D6, D7], f32>
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }

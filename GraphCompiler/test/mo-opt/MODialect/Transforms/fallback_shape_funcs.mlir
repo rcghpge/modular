@@ -344,12 +344,11 @@ mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
 
 mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   %input : !mo.tensor<[10, D0], f32>,
-  %indices : !mo.tensor<[D1, 20], si32>,
-  %axis: !mo.tensor<[], si32>
+  %indices : !mo.tensor<[D1, 20], si32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
 
-  %res = mo.gather<() -> D5, D6, D7>(%input, %indices, %axis) :
-    (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D5, D6, D7], f32>
+  %res = mo.gather<() -> D5, D6, D7>(%input, %indices) {axis = 0 : index} :
+    (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>) -> !mo.tensor<[D5, D6, D7], f32>
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }
@@ -357,15 +356,14 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]], [[D4:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[10, [[D0]]], f32>
 // CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]], 20], si32>
-// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["mo.gather"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]])
-// CHECK-SAME:   {dataDeptTensors = [2 : i32]} :
-// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
+// CHECK-NEXT: mo.invoke_shape_func["mo.gather"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {axis = 0 : index}} :
+// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) :
-// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
+// CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]]) {axis = 0 : index} :
+// CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
 //
 // CHECK-NEXT: mo.output<[[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
@@ -545,12 +543,11 @@ mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
 mo.graph @scatter_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
   %input: !mo.tensor<[D0, D1], f32>,
   %updates: !mo.tensor<[D2, D3], f32>,
-  %indices: !mo.tensor<[D4, D5], si32>,
-  %axis: !mo.tensor<[], si32>
+  %indices: !mo.tensor<[D4, D5], si32>
 ) -> !mo.tensor<[D6, D7], f32> {
 
-  %res = mo.scatter<() -> D8, D9>(%input, %updates, %indices, %axis) : (
-    !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si32>, !mo.tensor<[], si32>
+  %res = mo.scatter<() -> D8, D9>(%input, %updates, %indices) {axis = 0 : index} : (
+    !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si32>
   ) -> !mo.tensor<[D8, D9], f32>
 
   mo.output<D8, D9> %res : !mo.tensor<[D8, D9], f32>
@@ -559,16 +556,15 @@ mo.graph @scatter_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
 // CHECK-SAME:    <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]] -> [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
 // CHECK-SAME:    %[[UPDATES:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>,
-// CHECK-SAME:    %[[INDICES:.*]]: !mo.tensor<[[[D4]], [[D5]]], si32>,
-// CHECK-SAME:    %[[AXIS:.*]]: !mo.tensor<[], si32>
+// CHECK-SAME:    %[[INDICES:.*]]: !mo.tensor<[[[D4]], [[D5]]], si32>
 // CHECK-SAME:  ) -> !mo.tensor<[[[D6]], [[D7]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["mo.scatter"]<() -> [[D8:.*]], [[D9:.*]]>(%[[INPUT]], %[[UPDATES]], %[[INDICES]], %[[AXIS]])
-// CHECK-SAME:     {dataDeptTensors = [3 : i32]} :
-// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>, !mo.tensor<[], si32>)
+// CHECK-NEXT:   mo.invoke_shape_func["mo.scatter"]<() -> [[D8:.*]], [[D9:.*]]>(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+// CHECK-SAME:     {dataDeptTensors = [], kgenParams = {axis = 0 : index}} :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>)
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.scatter(%[[INPUT]], %[[UPDATES]], %[[INDICES]], %[[AXIS]]) : (
-// CHECK-SAME:     !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>, !mo.tensor<[], si32>
+// CHECK-NEXT:   %[[RES:.*]] = mo.scatter(%[[INPUT]], %[[UPDATES]], %[[INDICES]]) {axis = 0 : index} : (
+// CHECK-SAME:     !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>
 // CHECK-SAME:   ) -> !mo.tensor<[[[D8]], [[D9]]], f32>
 //
 // CHECK-NEXT:   mo.output<[[D8]], [[D9]]> %[[RES]] : !mo.tensor<[[[D8]], [[D9]]], f32>

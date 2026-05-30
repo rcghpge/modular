@@ -34,10 +34,9 @@ mo.graph @range_shape_func_success() -> !mo.tensor<[D0], si32> {
 mo.graph @gather_shape_func_success() -> !mo.tensor<[D0, D1], f32> {
   %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>} : !mo.tensor<[4, 2], f32>
   %indices = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
 
-  %result = mo.gather<() -> D0, D1>(%input, %indices, %axis) :
-    (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D0, D1], f32>
+  %result = mo.gather<() -> D0, D1>(%input, %indices) {axis = 0 : index} :
+    (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[D0, D1], f32>
 
   mo.output %result : !mo.tensor<[D0, D1], f32>
 }

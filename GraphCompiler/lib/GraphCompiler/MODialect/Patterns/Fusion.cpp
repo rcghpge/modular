@@ -182,18 +182,23 @@ struct GatherSumPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ReduceAddOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    Value input, indices, gatherAxis, reduceAxis;
+    Value input, indices, reduceAxis;
 
-    if (!m_Op<MO::ReduceAddOp>(
-             m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
-                                m_MOMatrix(m_Any(&indices)),
-                                m_ScalarConstant(&gatherAxis, 0)),
-             m_ScalarConstant(&reduceAxis, 1))
+    // The gather `axis` is now a compile-time `index` attribute, so it is no
+    // longer a matchable operand; we check it explicitly below.
+    if (!m_Op<MO::ReduceAddOp>(m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
+                                                  m_MOMatrix(m_Any(&indices))),
+                               m_ScalarConstant(&reduceAxis, 1))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !indices || !gatherAxis || !reduceAxis)
+    if (!input || !indices || !reduceAxis)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    // The gather axis must be 0.
+    auto gatherOp = op.getInput().getDefiningOp<MO::GatherOp>();
+    if (!gatherOp || gatherOp.getAxisAttr().getInt() != 0)
+      return rewriter.notifyMatchFailure(op, "gather axis must be 0");
 
     rewriter.replaceOpWithNewOp<MO::GatherSumOp>(
         op, op->getResultTypes(), SmallVector<Value>{input, indices});

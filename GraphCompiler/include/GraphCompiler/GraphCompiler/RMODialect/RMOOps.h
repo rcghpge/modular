@@ -32,10 +32,21 @@ MO::TensorType refineShape(MO::TensorType ty1, MO::TensorType ty2);
 MO::TensorType refineShapeWithDType(MO::TensorType ty1, MO::TensorType ty2,
                                     DType dtype);
 
-/// inferMoTypesImpl for all scatter-like ops
+/// inferMoTypesImpl for scatter-reduction ops whose axis is a scalar tensor
+/// operand (`scatter.add/max/min/mul`).
 void inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue updates, TensorValue indices, TensorValue axis,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
+
+/// inferMoTypesImpl for `scatter`, whose axis is a compile-time `index`
+/// attribute (so it contributes no MO operand type).
+void inferMOTypesScatterImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,

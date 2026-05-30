@@ -36,7 +36,6 @@ mo.graph @reshape_bad_annotated_rank<D0 -> D1, D2>(%arg0: !mo.tensor<[D0, 320], 
   %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %1 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %2 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %3 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %4 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %5 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   %6 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -47,8 +46,8 @@ mo.graph @reshape_bad_annotated_rank<D0 -> D1, D2>(%arg0: !mo.tensor<[D0, 320], 
   %11 = mo.rebind<() -> D5>(%0) : !mo.tensor<[1], si32> -> !mo.tensor<[D5], si32>
   %12 = mo.static.reshape(%10) : !mo.tensor<[1], si32> -> !mo.tensor<[], si32>
   %13 = mo.range<() -> D6>(%2, %12, %1) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D6], si32>
-  %14 = mo.gather<() -> D7>(%9, %11, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[D5], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D7], si64>
-  %15 = mo.gather<() -> D8>(%9, %13, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[D6], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D8], si64>
+  %14 = mo.gather<() -> D7>(%9, %11) {axis = 0 : index} : (!mo.tensor<[2], si64>, !mo.tensor<[D5], si32>) -> !mo.tensor<[D7], si64>
+  %15 = mo.gather<() -> D8>(%9, %13) {axis = 0 : index} : (!mo.tensor<[2], si64>, !mo.tensor<[D6], si32>) -> !mo.tensor<[D8], si64>
   %16 = mo.concat<() -> D9>[0] (%14, %4, %15) : (!mo.tensor<[D7], si64>, !mo.tensor<[1], si64>, !mo.tensor<[D8], si64>) -> !mo.tensor<[D9], si64>
   // expected-error@below {{shape function result #0 returned shape of rank 3, but the type annotation has shape of rank 2}}
   %17 = mo.reshape<() -> D10, D11>(%8, %16) : (!mo.tensor<[D3, D4], f32>, !mo.tensor<[D9], si64>) -> !mo.tensor<[D10, D11], f32>

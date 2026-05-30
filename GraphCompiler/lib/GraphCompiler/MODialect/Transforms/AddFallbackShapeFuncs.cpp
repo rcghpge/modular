@@ -542,9 +542,10 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
 ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::GatherOp op) {
+  // `axis` is a compile-time `index` attribute threaded to the shape function.
   buildForOpResult(graph, builder, op, MO::GatherOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
+                   /*kgenParams=*/{{"axis", op.getAxisAttr()}},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
@@ -713,7 +714,20 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
   return success();
 }
 
-// ScatterLike ops
+// `mo.scatter` carries its axis as a compile-time `index` attribute (threaded
+// to the shape function), so it uses the generic op-result builder rather than
+// the scatter-like one used by the reduction variants.
+ErrorOrSuccess Fallback<MO::ScatterOp>::build(GraphOp &graph,
+                                              OpBuilder &builder,
+                                              MO::ScatterOp op) {
+  buildForOpResult(graph, builder, op, MO::ScatterOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/{{"axis", op.getAxisAttr()}},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
+  return success();
+}
+
+// ScatterLike ops (axis is a scalar tensor operand)
 
 #define BUILD_SCATTER_LIKE_OP(OP)                                              \
   ErrorOrSuccess Fallback<OP>::build(GraphOp &graph, OpBuilder &builder,       \
@@ -721,7 +735,6 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
     return buildForScatterLikeOp(graph, builder, op);                          \
   }
 
-BUILD_SCATTER_LIKE_OP(MO::ScatterOp)
 BUILD_SCATTER_LIKE_OP(MO::ScatterAddOp)
 BUILD_SCATTER_LIKE_OP(MO::ScatterMaxOp)
 BUILD_SCATTER_LIKE_OP(MO::ScatterMinOp)

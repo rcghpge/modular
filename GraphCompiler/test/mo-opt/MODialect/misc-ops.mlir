@@ -195,10 +195,8 @@ mo.graph @split_negative_axis<D0, D1>(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.t
 
 // CHECK: mo.graph @gather(%[[INPUT:.*]]: !mo.tensor<[2, 2], f32>, %[[INDICES:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
 mo.graph @gather(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  // CHECK: mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
+  // CHECK: mo.gather(%[[INPUT]], %[[INDICES]]) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 

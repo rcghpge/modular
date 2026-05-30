@@ -1885,10 +1885,8 @@ struct GathersToSplitPattern
       if (!userGatherOp)
         continue;
 
-      // Axis must be 0
-      std::optional<int64_t> maybeAxis =
-          tryGetConstantInt(userGatherOp.getAxis());
-      if (!maybeAxis.has_value() || maybeAxis.value() != 0)
+      // Axis must be 0 (`axis` is a compile-time `index` attribute).
+      if (userGatherOp.getAxisAttr().getInt() != 0)
         continue;
 
       // Indices must be a singleton within [0, inputAxis0Dim)

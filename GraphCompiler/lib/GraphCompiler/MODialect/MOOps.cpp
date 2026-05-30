@@ -1961,6 +1961,48 @@ LogicalResult GatherOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScatterOp::verify() {
+  // `axis` is a compile-time `index` attribute; its range against the input
+  // rank is validated during shape materialization. Here we only check the
+  // shared scatter shape/rank invariants.
+  TensorType inputTy = getInput().getType();
+  TensorType resTy = getResult().getType();
+
+  // Input and result shapes must match if both static.
+  if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
+      inputTy.getShapeAttr() != resTy.getShapeAttr()) {
+    return emitError("input and result shapes must match if both static");
+  }
+
+  // Input, updates, indices and result must all share the same rank when
+  // ranked.
+  uint64_t expectedRank = 0;
+  bool haveExpected = false;
+  auto rankMatches = [&](TensorValue tensor) -> bool {
+    TensorType ty = tensor.getType();
+    if (!ty.hasRank())
+      return true;
+    if (!haveExpected) {
+      expectedRank = ty.getRank();
+      haveExpected = true;
+      return true;
+    }
+    return ty.getRank() == expectedRank;
+  };
+  if (!rankMatches(getInput()) || !rankMatches(getUpdates()) ||
+      !rankMatches(getIndices()) || !rankMatches(getResult())) {
+    return emitError(
+        "output and inputs (except axis) of a scatter op must have the "
+        "same rank");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
 

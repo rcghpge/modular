@@ -350,7 +350,6 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   %input: !mo.tensor<[seq_len, batch_size], si32>
 ) -> !mo.tensor<[O1, O2], si32> {
 
-  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
   %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %zeros = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
@@ -360,7 +359,7 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   // which folds to
   //   `[-1, batch_size]`
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[seq_len, batch_size], si32>) -> !mo.tensor<[2], si64>
-  %batch_size = mo.gather(%input_shape, %one, %zero) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %batch_size = mo.gather(%input_shape, %one) {axis = 0 : index} : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
   %neg_one_and_batch_size = mo.concat[0] (%neg_one, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %cond = mo.equal(%neg_one_and_batch_size, %zeros) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
   %target_shape = mo.select(%cond, %input_shape, %neg_one_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
@@ -382,13 +381,12 @@ mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
   %dummy: !mo.tensor<[N1, N2, N3], si32>
 ) -> !mo.tensor<[O1, O2], si32> {
 
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N2, N3], si32>) -> !mo.tensor<[3], si32>
   %three_idx = mosh.param.to_value = <3>
   %three = mo.index.to_tensor(%three_idx) -> !mo.tensor<[], si32>
   %range = mo.range(%one, %three, %one) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2], si32>
-  %shape = mo.gather(%dummy_shape, %range, %zero) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2], si32>
+  %shape = mo.gather(%dummy_shape, %range) {axis = 0 : index} : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2], si32>
 
   // CHECK: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[[[N2]], [[N3]]], si32>
   %res = mo.broadcast_to<() -> D1, D2>(%input, %shape) : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[D1, D2], si32>
@@ -416,7 +414,6 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
   %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %zero_scalar = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
   %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
 
@@ -424,13 +421,13 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
   // case). It can't be constant folded because `mo.shape_of(%input)` isn't a
   // constant op as it's formulated (the 1st input dimension is dynamic).
   %in_shape = mo.shape_of(%input) : (!mo.tensor<[D0, 2304], f32>) -> !mo.tensor<[2], si64>
-  %last_dim = mo.gather(%in_shape, %neg_one, %zero_scalar) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %last_dim = mo.gather(%in_shape, %neg_one) {axis = 0 : index} : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
   %add = mo.add(%last_dim, %two) : !mo.tensor<[1], si64>
   %div = mo.div(%add, %three) : !mo.tensor<[1], si64>
   %mul = mo.mul(%div, %two) : !mo.tensor<[1], si64>
 
   // Prepare the start/stop bounds.
-  %d0 = mo.gather(%in_shape, %zero, %zero_scalar) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %d0 = mo.gather(%in_shape, %zero) {axis = 0 : index} : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
   %start = mo.concat[0] (%zero, %div) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %stop = mo.concat[0] (%d0, %mul) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
 

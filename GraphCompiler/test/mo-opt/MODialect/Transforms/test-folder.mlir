@@ -214,10 +214,10 @@ mo.graph @no_fold_select(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f
 // CHECK-NEXT: mo.output %[[OUT]]
 
 // This is still folded as the axis has only one legal value.
-mo.graph @fold_gather_dyn_axis(%axis : !mo.tensor<[], si32>) -> !mo.tensor<[3], si64> {
+mo.graph @fold_gather_dyn_axis() -> !mo.tensor<[3], si64> {
     %data = mo.constant {value = #M.dense_array<0, 11, 22, 33, 44, 55> : tensor<6xsi64>} : !mo.tensor<[6], si64>
     %indices = mo.constant {value = #M.dense_array<3, 1, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-    %gather = mo.gather(%data, %indices, %axis) : (!mo.tensor<[6], si64>, !mo.tensor<[3], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[3], si64>
+    %gather = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[6], si64>, !mo.tensor<[3], si32>) -> !mo.tensor<[3], si64>
     mo.output %gather : !mo.tensor<[3], si64>
 }
 // CHECK-LABEL: mo.graph @fold_gather_dyn_axis

@@ -772,15 +772,20 @@ let arguments = (ins MO_Tensor:$input,
   }];
 }
 
-def RMO_MOScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
+// `rmo.mo.scatter` takes its axis as a compile-time `index` attribute (unlike
+// the `scatter.add/max/min/mul` reduction variants, which still take a scalar
+// axis tensor operand via `RMO_MOAnaloguePureScatterOp`). It therefore defines
+// its operands and `inferMOTypes` directly instead of through that base class.
+def RMO_MOScatterOp : RMO_MOAnaloguePureTensorOp<"scatter",
+  [AllDTypesMatch<["input", "updates", "result"]>]> {
   let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices.
 
     It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
+    scalar `axis` compile-time `index` attribute. The output is a copy of the
+    input, with certain elements updated based on `updates` and `indices`.
 
     For each entry in `indices`, the target index for `input` is obtained by
     making a copy of the entry's own index, and then updating the `axis`
@@ -800,10 +805,31 @@ def RMO_MOScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.mo.scatter(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter(%inputs, %updates, %indices) {axis = 0 : index} : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
+  }];
+  let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
+                       MO_IndicesTensor:$indices,
+                       IndexAttr:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
+      MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+      std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+      SmallVectorImpl<Type> &moResultTypes,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesScatterImpl(
+          context, graphOp, cast<TensorValue>(operands.getInput()),
+          cast<TensorValue>(operands.getUpdates()),
+          cast<TensorValue>(operands.getIndices()), rmoResults, moOperandTypes,
+          moResultTypes, moInputParamDecls, moOutputParamDecls);
+      }
   }];
 }
 
@@ -1715,23 +1741,21 @@ def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather",
     where `indices` appears at given axis of input.
 
     The values of `axis` and `indices` follows numpy semantics, e.g., -1
-    represents the last axis.
+    represents the last axis. `axis` is a compile-time `index` attribute.
 
     Example:
 
     ```mlir
       %input : !mo.tensor<[2, 2], f32>
       %indices: !mo.tensor<[2], si64>
-      %axis = mo.constant {
-        value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.gather(%input, %indices, %axis) : (
-        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+      %res = rmo.mo.gather(%input, %indices) {axis = 0 : index} : (
+        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>
       ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
   let arguments = (ins MO_Tensor:$input,
                        MO_IndicesTensor:$indices,
-                       MO_IndicesTensor:$axis,
+                       IndexAttr:$axis,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 }

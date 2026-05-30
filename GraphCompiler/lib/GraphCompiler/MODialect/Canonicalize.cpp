@@ -2368,10 +2368,33 @@ struct FoldNoOpScatterLikeOp : public OpInterfaceRewritePattern<ScatterLike> {
     return success();
   }
 };
+
+// `mo.scatter` carries its axis as a compile-time attribute and so is not part
+// of the `ScatterLike` interface; fold its no-op form (empty indices) directly.
+struct FoldNoOpScatterOp : public OpRewritePattern<ScatterOp> {
+  using OpRewritePattern<ScatterOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getInput().getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op,
+                                         "input and result types do not match");
+
+    std::optional<int64_t> numIndices =
+        op.getIndices().getType().getNumElements();
+
+    if (numIndices != 0)
+      return rewriter.notifyMatchFailure(op, "non-empty indices tensor");
+
+    rewriter.replaceAllOpUsesWith(op, op.getInput());
+    return success();
+  }
+};
 } // namespace
 
 void MODialect::getCanonicalizationPatterns(RewritePatternSet &patterns) const {
-  patterns.add<FoldNoOpPadLikeOp, FoldNoOpScatterLikeOp>(patterns.getContext());
+  patterns.add<FoldNoOpPadLikeOp, FoldNoOpScatterLikeOp, FoldNoOpScatterOp>(
+      patterns.getContext());
 }
 
 } // namespace M::MO

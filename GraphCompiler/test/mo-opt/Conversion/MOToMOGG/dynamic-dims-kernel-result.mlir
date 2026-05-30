@@ -4,24 +4,22 @@
 // the kernel stub. This tests the fix for passing dynamic dimensions from
 // result types of operations inside the kernel stub.
 
-// This test uses mo.gather which produces output with dynamic dimensions.
-// The fix ensures that these dynamic dimensions are properly passed to the
-// kernel stub via outputParamDecls.
+// This test uses mo.gather, whose output shape is derivable from its inputs
+// once the axis is a compile-time attribute. The kernel stub therefore lowers
+// to a direct call.execute carrying the axis kernel param.
 
 // CHECK-LABEL: mo.graph @gather_dynamic_output_dims
 // CHECK: mogg.kernel
-// CHECK: mogg.call.shape["{{.*}}.Gather"]
-// The dynamic dimensions D4, D5 from gather's result type should be passed
-// to the kernel stub as output parameter declarations.
-// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D4 : !kgen.scalar<si64>{{.*}}D5 : !kgen.scalar<si64>{{.*}}]>
+// CHECK: mogg.call.execute["{{.*}}.Gather"]
+// CHECK-SAME: kernel_param = {axis = 0 : index}
+// CHECK-SAME: moOpName = "mo.gather"
 mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, 64], f32>,
-  %indices : !mo.tensor<[D1], si32>,
-  %axis: !mo.tensor<[], si32>
+  %indices : !mo.tensor<[D1], si32>
 ) -> !mo.tensor<[D2, D3], f32> {
   // The gather operation uses new dimension names (D4, D5) for its output
-  %res = mo.gather<() -> D4, D5>(%input, %indices, %axis) :
-    (!mo.tensor<[D0, 64], f32>, !mo.tensor<[D1], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D4, D5], f32>
+  %res = mo.gather<() -> D4, D5>(%input, %indices) {axis = 0 : index} :
+    (!mo.tensor<[D0, 64], f32>, !mo.tensor<[D1], si32>) -> !mo.tensor<[D4, D5], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }
 

@@ -3509,7 +3509,7 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
 def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_SingleDeviceWithHostOperands<["axis"]>
+  MO_SingleDevice
 ]> {
   let summary = "`gather` operation";
   let description = [{
@@ -3525,24 +3525,22 @@ def MO_GatherOp : MO_TensorOp<"gather", [
     where `indices` appears at given axis of input.
 
     The values of `axis` and `indices` follows numpy semantics, e.g., -1
-    represents the last axis.
+    represents the last axis. `axis` is a compile-time `index` attribute.
 
     Example:
 
     ```mlir
       %input : !mo.tensor<[2, 2], f32>
       %indices: !mo.tensor<[2], si64>
-      %axis = mo.constant {
-        value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.gather(%input, %indices, %axis) : (
-        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+      %res = mo.gather(%input, %indices) {axis = 0 : index} : (
+        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>
       ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
   let arguments = (ins MO_NonScalarIfRanked:$input,
                        MO_IndicesTensor:$indices,
-                       MO_RankedScalarIndexTensor:$axis,
+                       IndexAttr:$axis,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
@@ -3620,15 +3618,18 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits, MO_HostOnly]> {
+def MO_ScatterOp : MO_TensorOp<"scatter", [
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly
+]> {
   let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices.
 
     It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
+    scalar `axis` compile-time `index` attribute. The output is a copy of the
+    input, with certain elements updated based on `updates` and `indices`.
 
     For each entry in `indices`, the target index for `input` is obtained by
     making a copy of the entry's own index, and then updating the `axis`
@@ -3648,7 +3649,7 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits, MO_HostOnly]> {
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = mo.scatter(%inputs, %updates, %indices) : (
+      %res = mo.scatter(%inputs, %updates, %indices) {axis = 0 : index} : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
@@ -3657,13 +3658,15 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits, MO_HostOnly]> {
   let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
                        MO_IndicesTensor:$indices,
-                       MO_RankedScalarIndexTensor:$axis,
+                       IndexAttr:$axis,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 class MO_ScatterReductionOp<string name, list<Trait> traits = []>

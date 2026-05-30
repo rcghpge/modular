@@ -142,7 +142,8 @@ ConvTransposeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<int32_t> GatherOp::getDataDependentInputIndices() { return {2}; }
+// `axis` is a compile-time `index` attribute, so no operand value is needed.
+SmallVector<int32_t> GatherOp::getDataDependentInputIndices() { return {}; }
 
 ShapeMaterializeResult
 GatherOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
@@ -150,8 +151,26 @@ GatherOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   Location loc = getLoc();
   TypedAttr inputShape = inputAttrs[0];
   TypedAttr indicesShape = inputAttrs[1];
-  TypedAttr axis = inputAttrs[2];
-  return materializeGatherShape(graphOp, loc, inputShape, indicesShape, axis);
+  return materializeGatherShape(graphOp, loc, inputShape, indicesShape,
+                                getAxisAttr());
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+// `axis` is a compile-time `index` attribute, so no operand value is needed.
+SmallVector<int32_t> ScatterOp::getDataDependentInputIndices() { return {}; }
+
+ShapeMaterializeResult
+ScatterOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr updatesShape = inputAttrs[1];
+  TypedAttr indicesShape = inputAttrs[2];
+  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
+                                 indicesShape, getAxisAttr());
 }
 
 //===----------------------------------------------------------------------===//

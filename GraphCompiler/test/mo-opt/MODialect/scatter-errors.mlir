@@ -12,8 +12,8 @@ mo.graph @forward() -> !mo.tensor<[2, 3], si32> {
 
 // -----
 
-mo.graph @same_rank(%input : !mo.tensor<[10], si32>, %updates : !mo.tensor<[10, 10], si32>, %indices : !mo.tensor<[10], si64>, %axis : !mo.tensor<[], si64>) -> !mo.tensor<[?], si32> {
-  // expected-error@below {{Output and inputs (except axis) of a scatter-like op must have the same rank}}
-  %0 = mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[10], si32>, !mo.tensor<[10, 10], si32>, !mo.tensor<[10], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?], si32>
+mo.graph @same_rank(%input : !mo.tensor<[10], si32>, %updates : !mo.tensor<[10, 10], si32>, %indices : !mo.tensor<[10], si64>) -> !mo.tensor<[?], si32> {
+  // expected-error@below {{output and inputs (except axis) of a scatter op must have the same rank}}
+  %0 = mo.scatter(%input, %updates, %indices) {axis = 0 : index} : (!mo.tensor<[10], si32>, !mo.tensor<[10, 10], si32>, !mo.tensor<[10], si64>) -> !mo.tensor<[?], si32>
   mo.output %0 : !mo.tensor<[?], si32>
 }
