@@ -17,7 +17,7 @@
 // CHECK-FUSED:      mo.parallel
 // CHECK-FUSED:        mogg.kernel
 // CHECK-FUSED:          mogg.bind {{.*}} output_lambda
-// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.Activation"]
+// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.ReLU"]
 // CHECK-FUSED:          mogg.call.execute["{{.*}}.BundledAllReduceSum"]
 // CHECK-FUSED:        mo.yield
 
@@ -41,8 +41,8 @@ mo.graph @bundled_allreduce_relu_outside(
   }
 
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], f32, gpu:0-1>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-  %relu_0 = mo.activation(%res_0) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
-  %relu_1 = mo.activation(%res_1) {activation = "relu"} : !mo.tensor<[3], f32, gpu:1>
+  %relu_0 = mo.relu(%res_0) : !mo.tensor<[3], f32, gpu:0>
+  %relu_1 = mo.relu(%res_1) : !mo.tensor<[3], f32, gpu:1>
   %res0_host, %ch3 = mo.transfer[%out_ch] %relu_0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
   %res1_host, %ch4 = mo.transfer[%ch3] %relu_1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
   mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>

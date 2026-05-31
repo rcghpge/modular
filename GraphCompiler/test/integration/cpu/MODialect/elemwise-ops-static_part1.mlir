@@ -111,7 +111,7 @@ mo.graph @sub() -> (!mo.tensor<[5], f32>) {
 
 mo.graph @relu() -> (!mo.tensor<[5], f32>) {
   %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.activation(%0) {activation = "relu"} : !mo.tensor<[5], f32>
+  %1 = mo.relu(%0) : !mo.tensor<[5], f32>
   mo.output %1 : !mo.tensor<[5], f32>
 }
 // CHECK{LITERAL}: 'relu' returned tensor<5xf32> [0.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00, 5.000000e+00]
@@ -121,7 +121,7 @@ mo.graph @combined() -> (!mo.tensor<[5], f32>) {
   %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
   %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
   %add = mo.add(%0, %1) : !mo.tensor<[5], f32>
-  %relu = mo.activation(%add) {activation = "relu"} : !mo.tensor<[5], f32>
+  %relu = mo.relu(%add) : !mo.tensor<[5], f32>
   mo.output %relu : !mo.tensor<[5], f32>
 }
 // CHECK{LITERAL}: 'combined' returned tensor<5xf32> [2.000000e+00, 3.000000e+00, 0.000000e+00, 0.000000e+00, 1.000000e+01]

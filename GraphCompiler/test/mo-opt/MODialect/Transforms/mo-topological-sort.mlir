@@ -7,7 +7,7 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 ) -> !mo.tensor<[out, 768], f32> {
 
   // `%unused` makes a regression test that ensures we don't move `mo.output`.
-  %unused = mo.activation(%res) {activation = "relu"} : !mo.tensor<[D3, 768], f32>
+  %unused = mo.relu(%res) : !mo.tensor<[D3, 768], f32>
 
   %res = mo.static.broadcast_to(%input_rs) : !mo.tensor<[D2, 768], f32> -> !mo.tensor<[D3, 768], f32>
 
@@ -31,7 +31,7 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 // CHECK-NEXT:    kgen.param.declare [[D3:.*]]: scalar<si64> = <add([[D1]], [[D2]])>
 // CHECK-NEXT:    %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D2]], 768], f32>
 // CHECK-NEXT:    %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT_RS]]) : !mo.tensor<[[[D2]], 768], f32> -> !mo.tensor<[[[D3]], 768], f32>
-// CHECK-NEXT:    %[[UNUSED:.*]] = mo.activation(%[[RES]]) {activation = "relu"} : !mo.tensor<[[[D3]], 768], f32>
+// CHECK-NEXT:    %[[UNUSED:.*]] = mo.relu(%[[RES]]) : !mo.tensor<[[[D3]], 768], f32>
 //
 // CHECK-NEXT:    mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]], 768], f32>
 // CHECK-NEXT: }

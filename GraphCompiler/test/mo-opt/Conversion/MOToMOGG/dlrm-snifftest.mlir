@@ -60,9 +60,9 @@ module {
     %94 = "mo.gather_sum"(%arg2, %79) : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D473, 100], si32>) -> !mo.tensor<[D473, 1, 32], f32>
     %95 = mo.static.reshape(%94) : !mo.tensor<[D473, 1, 32], f32> -> !mo.tensor<[D473, 32], f32>
     %96 = mo.matmul(%arg1, %arg13) : (!mo.tensor<[D474, 256], f32>, !mo.tensor<[256, 128], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 128], f32>
-    %97 = mo.activation(%96) {activation = "relu"} : !mo.tensor<[D474, 128], f32>
+    %97 = mo.relu(%96) : !mo.tensor<[D474, 128], f32>
     %98 = mo.matmul(%97, %arg12) : (!mo.tensor<[D474, 128], f32>, !mo.tensor<[128, 32], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 32], f32>
-    %99 = mo.activation(%98) {activation = "relu"} : !mo.tensor<[D474, 32], f32>
+    %99 = mo.relu(%98) : !mo.tensor<[D474, 32], f32>
     kgen.param.declare assert555: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:scalar<si64> D473, D474))>
     kgen.param.declare assert557: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:scalar<si64> D473, D474))>
     kgen.param.declare assert559: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:scalar<si64> D473, D474))>
@@ -101,9 +101,9 @@ module {
     %120 = mo.rebind(%119) : !mo.tensor<[param_expr_624, param_expr_626], f32> -> !mo.tensor<[param_expr_624, 45], f32>
     %121 = mo.concat[1] (%99, %120) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[param_expr_624, 45], f32>) -> !mo.tensor<[D474, 77], f32>
     %122 = mo.matmul(%121, %arg11) : (!mo.tensor<[D474, 77], f32>, !mo.tensor<[77, 256], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 256], f32>
-    %123 = mo.activation(%122) {activation = "relu"} : !mo.tensor<[D474, 256], f32>
+    %123 = mo.relu(%122) : !mo.tensor<[D474, 256], f32>
     %124 = mo.matmul(%123, %arg10) : (!mo.tensor<[D474, 256], f32>, !mo.tensor<[256, 64], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 64], f32>
-    %125 = mo.activation(%124) {activation = "relu"} : !mo.tensor<[D474, 64], f32>
+    %125 = mo.relu(%124) : !mo.tensor<[D474, 64], f32>
     %126 = mo.layout.transform(%25) {kgenParams = {a_shape = dense<[-9223372036854775808, 64]> : vector<2xi64>, a_type = f32, b_shape = dense<[64, 1]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 1]> : vector<2xi64>, c_type = f32}} : !mo.tensor<[64, 1], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[64, 24], f32, {layout = #mo.layout<KNkni>}>
     %127 = mo.matmul(%125, %126) : (!mo.tensor<[D474, 64], f32>, !mo.tensor<[64, 24], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[D474, 1], f32>
     %128 = mo.sin(%127) : !mo.tensor<[D474, 1], f32>

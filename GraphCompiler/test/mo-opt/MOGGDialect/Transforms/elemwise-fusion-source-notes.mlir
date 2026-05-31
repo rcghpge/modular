@@ -22,7 +22,7 @@
 mo.graph @elemwise_source_notes(
     %arg0: !mo.tensor<[4, 3], f32>
 ) -> (!mo.tensor<[4, 3], f32>) {
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[4, 3], f32> loc(fused<"  File \22model.py\22, line 10\n    trace_relu\n">["model.py":10:0])
+  %0 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32> loc(fused<"  File \22model.py\22, line 10\n    trace_relu\n">["model.py":10:0])
   %1 = mo.add(%0, %arg0) : !mo.tensor<[4, 3], f32> loc(fused<"  File \22model.py\22, line 20\n    trace_add\n">["model.py":20:0])
   mo.output %1 : !mo.tensor<[4, 3], f32>
 }

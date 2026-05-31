@@ -21,7 +21,7 @@ mo.graph @parallel_distinct_params<D0, D1>(
   %res_bundle = mo.parallel (%x) in
       (%bundle : !mo.bundle<[!mo.tensor<[D0, 3], f32>, !mo.tensor<[D1, 3], f32>]>)
       -> (!mo.bundle<[!mo.tensor<[D0, 3], f32>, !mo.tensor<[D1, 3], f32>]>) {
-    %1 = mo.activation(%x) {activation = "relu"} : !mo.tensor<[D0, 3], f32>
+    %1 = mo.relu(%x) : !mo.tensor<[D0, 3], f32>
     mo.yield %1 : !mo.tensor<[D0, 3], f32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle)

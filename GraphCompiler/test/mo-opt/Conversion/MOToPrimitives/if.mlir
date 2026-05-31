@@ -66,7 +66,7 @@ mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) 
     %1 = mo.mul(%arg0, %arg0): !mo.tensor<[2], f32>
     mo.yield %1 : !mo.tensor<[2], f32>
   } else {
-    %1 = mo.activation(%arg0) {activation = "relu"}: !mo.tensor<[2], f32>
+    %1 = mo.relu(%arg0): !mo.tensor<[2], f32>
     mo.yield %1 : !mo.tensor<[2], f32>
   }
 
@@ -74,7 +74,7 @@ mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) 
     %1 = mo.mul(%if_0, %if_0): !mo.tensor<[2], f32>
     mo.yield %1 : !mo.tensor<[2], f32>
   } else {
-    %1 = mo.activation(%if_0) {activation = "relu"}: !mo.tensor<[2], f32>
+    %1 = mo.relu(%if_0): !mo.tensor<[2], f32>
     mo.yield %1 : !mo.tensor<[2], f32>
   }
   mo.output %if_1 : !mo.tensor<[2], f32>

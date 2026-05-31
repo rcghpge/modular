@@ -9,7 +9,7 @@ mo.graph @parallel_symbolic<N>(
   %bundle = mo.tensor.bundle(%arg0, %arg1) : (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>) -> (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>)
   %res_bundle = mo.parallel (%x) in (%bundle : !mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>) {
-    %1 = mo.activation(%x) {activation = "relu"} : !mo.tensor<[N, 3], si32>
+    %1 = mo.relu(%x) : !mo.tensor<[N, 3], si32>
     mo.yield %1 : !mo.tensor<[N, 3], si32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>) -> (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>)
@@ -32,7 +32,7 @@ mo.graph @parallel_symbolic_add_relu<N>(
   %res_bundle = mo.parallel (%x) in (%bundle : !mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>)
          -> (!mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>) {
     %added = mo.add(%x, %x) : !mo.tensor<[N, 3], f32>
-    %relu = mo.activation(%added) {activation = "relu"} : !mo.tensor<[N, 3], f32>
+    %relu = mo.relu(%added) : !mo.tensor<[N, 3], f32>
     mo.yield %relu : !mo.tensor<[N, 3], f32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>) -> (!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>)

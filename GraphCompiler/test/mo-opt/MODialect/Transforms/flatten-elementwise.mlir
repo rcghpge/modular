@@ -10,14 +10,14 @@
 !tax = !mo.tensor<[], si64>
 
 // CHECK-MO-LABEL: mo.graph @binary_elemwise_with_parameter
-// CHECK-MO: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
 // CHECK-MO: mo.add({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
 
 // CHECK-MOGG-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View("mo.static.reshape":{{.*}}, "mo.static.reshape":{{.*}}, Elementwise("mo.activation":{{.*}}, "mo.add":{{.*}}))
+// CHECK-MOGG: fusionInfo = View("mo.static.reshape":{{.*}}, "mo.static.reshape":{{.*}}, Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
 mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, %arg1 : !mo.tensor<[2,2,P1,5], f32>) -> !mo.tensor<[P1,4,5], f32> {
-    %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[P1,4,5], f32>
+    %0 = mo.relu(%arg0) : !mo.tensor<[P1,4,5], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[P1,4,5], f32> -> !mo.tensor<[2,2,P1,5], f32>
     %2 = mo.add(%1, %arg1) : !mo.tensor<[2,2,P1,5], f32>
     %3 = mo.static.reshape(%2) : !mo.tensor<[2,2,P1,5], f32> -> !mo.tensor<[P1,4,5], f32>
@@ -25,25 +25,25 @@ mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, 
 }
 
 // CHECK-MO-LABEL: mo.graph @with_non_elemwise
-// CHECK-MO-NOT: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[{{.*}},{.*}}], f32>
+// CHECK-MO-NOT: mo.relu({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 // CHECK-MO-NOT: mo.add({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 
 // CHECK-MOGG-LABEL: mo.graph @with_non_elemwise
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.activation":{{.*}}, "mo.add":{{.*}}))
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
 // CHECK-MOGG: mogg.kernel
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.activation":{{.*}}, "mo.add":{{.*}}))
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel
 mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb, %arg2: !tax) -> !tta {
-    %0 = mo.activation(%arg0) {activation = "relu"} : !tta
+    %0 = mo.relu(%arg0) : !tta
     %1 = mo.static.reshape(%0) : !tta -> !ttb
     %2 = mo.add(%1, %arg1) : !ttb
     %3 = mo.static.reshape(%2) : !ttb -> !tta
 
     %4 = mo.reduce.softmax(%3, %arg2) : (!tta, !tax) -> !tta
 
-    %5 = mo.activation(%4) {activation = "relu"} : !tta
+    %5 = mo.relu(%4) : !tta
     %6 = mo.static.reshape(%5) : !tta -> !ttb
     %7 = mo.add(%6, %arg1) : !ttb
     %8 = mo.static.reshape(%7) : !ttb -> !tta
@@ -52,7 +52,7 @@ mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb, %arg2: !tax) -> !tta {
 }
 
 // CHECK-MO-LABEL: mo.graph @many_reshapes
-// CHECK-MO-NOT: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[{{.*}},{.*}}], f32>
+// CHECK-MO-NOT: mo.relu({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 // CHECK-MO-NOT: mo.add({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 
 // CHECK-MOGG-LABEL: mo.graph @many_reshapes
@@ -87,7 +87,7 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
     %e4 = mo.static.reshape(%t0) : !tt -> !tte
     %e5 = mo.static.reshape(%c2) : !ttc -> !tte
 
-    %e_relu_1 = mo.activation(%e1) {activation = "relu"} : !tte
+    %e_relu_1 = mo.relu(%e1) : !tte
     %e_add_1 = mo.add(%e1, %e2) : !tte
     %e_add_2 = mo.add(%e3, %e4) : !tte
     %e_add_3 = mo.add(%e2, %e5) : !tte
@@ -104,16 +104,16 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
 
 // CHECK-MO-LABEL: mo.graph @with_cast
 // CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f32>) -> !mo.tensor<[24], f16>
-// CHECK-MO: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[24], f16>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[24], f16>
 // CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f16>) -> !mo.tensor<[24], f64>
 
 // CHECK-MOGG-LABEL: mo.graph @with_cast
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.cast":{{.*}}, "mo.activation":{{.*}}, "mo.cast":{{.*}}))
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.cast":{{.*}}, "mo.relu":{{.*}}, "mo.cast":{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel{{[^.]}}
 mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f64> {
     %0 = mo.cast(%arg0) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f16>
-    %1 = mo.activation(%0) {activation = "relu"} : !mo.tensor<[1,2,3,4], f16>
+    %1 = mo.relu(%0) : !mo.tensor<[1,2,3,4], f16>
     %2 = mo.static.reshape(%1) : !mo.tensor<[1,2,3,4], f16> -> !mo.tensor<[2,3,4], f16>
     %3 = mo.cast(%2) : (!mo.tensor<[2,3,4], f16>) -> !mo.tensor<[2,3,4], f64>
     mo.output %3 : !mo.tensor<[2,3,4], f64>
@@ -121,16 +121,16 @@ mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f
 
 // CHECK-MO-LABEL: mo.graph @with_pow
 // CHECK-MO: mo.pow({{.*}} : !mo.tensor<[6], f32>, {{.*}} : !mo.tensor<[6], si32>) : !mo.tensor<[6], f32>
-// CHECK-MO: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[6], f32>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[6], f32>
 
 // CHECK-MOGG-LABEL: mo.graph @with_pow
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.pow":{{.*}}, "mo.activation":{{.*}}))
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.pow":{{.*}}, "mo.relu":{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel{{[^.]}}
 mo.graph @with_pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) -> !mo.tensor<[3,2], f32> {
     %0 = mo.pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) : !mo.tensor<[3,2], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[3,2], f32> -> !mo.tensor<[3,2,1], f32>
-    %2 = mo.activation(%1) {activation = "relu"} : !mo.tensor<[3,2,1], f32>
+    %2 = mo.relu(%1) : !mo.tensor<[3,2,1], f32>
     %3 = mo.static.reshape(%2) : !mo.tensor<[3,2,1], f32> -> !mo.tensor<[3,2], f32>
     mo.output %3 : !mo.tensor<[3,2], f32>
 }

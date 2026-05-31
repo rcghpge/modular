@@ -74,7 +74,7 @@ mo.graph @neg_dynamic_m(%arg0: !mo.tensor<[dyn_m, 1536], bf16, gpu:0>, %arg1: !m
 // CHECK: mo.add
 mo.graph @neg_elementwise_residual(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[65536, 1536], bf16, gpu:0>) -> !mo.tensor<[65536, 1536], bf16, gpu:0> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[65536, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[65536, 1536], bf16, gpu:0>
-  %1 = mo.activation(%arg2) {activation = "relu"} : !mo.tensor<[65536, 1536], bf16, gpu:0>
+  %1 = mo.relu(%arg2) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   %2 = mo.add(%0, %1) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   mo.output %2 : !mo.tensor<[65536, 1536], bf16, gpu:0>
 }
@@ -87,6 +87,6 @@ mo.graph @neg_elementwise_residual(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>
 mo.graph @neg_downstream_elementwise(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[65536, 1536], bf16, gpu:0>) -> !mo.tensor<[65536, 1536], bf16, gpu:0> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[65536, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[65536, 1536], bf16, gpu:0>
   %1 = mo.add(%0, %arg2) : !mo.tensor<[65536, 1536], bf16, gpu:0>
-  %2 = mo.activation(%1) {activation = "relu"} : !mo.tensor<[65536, 1536], bf16, gpu:0>
+  %2 = mo.relu(%1) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   mo.output %2 : !mo.tensor<[65536, 1536], bf16, gpu:0>
 }

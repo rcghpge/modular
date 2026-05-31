@@ -99,9 +99,9 @@ mo.graph @slice_to_split_host_constant<N>(%input: !mo.tensor<[N], si32, dev:0>) 
   %out2 = mo.slice(%input, %start1, %stop1, %step) : (!mo.tensor<[N], si32, dev:0>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si32, dev:0>
   %out3 = mo.slice(%input, %start2, %stop2, %step) : (!mo.tensor<[N], si32, dev:0>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si32, dev:0>
 
-  %o1 = mo.activation(%out1) {activation = "relu"} : !mo.tensor<[1], si32, dev:0>
-  %o2 = mo.activation(%out2) {activation = "relu"} : !mo.tensor<[2], si32, dev:0>
-  %o3 = mo.activation(%out3) {activation = "relu"} : !mo.tensor<[3], si32, dev:0>
+  %o1 = mo.relu(%out1) : !mo.tensor<[1], si32, dev:0>
+  %o2 = mo.relu(%out2) : !mo.tensor<[2], si32, dev:0>
+  %o3 = mo.relu(%out3) : !mo.tensor<[3], si32, dev:0>
   mo.output %o1, %o2, %o3 : !mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>
 }
 

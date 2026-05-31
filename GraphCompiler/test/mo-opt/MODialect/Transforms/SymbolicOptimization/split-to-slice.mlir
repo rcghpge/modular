@@ -7,9 +7,9 @@ mo.graph @split_to_slice<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], s
     !mo.tensor<[N], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
 }
 
@@ -32,9 +32,9 @@ mo.graph @split_to_slice_with_device<N>(%input: !mo.tensor<[N], si32, dev:0>) ->
     !mo.tensor<[N], si32, dev:0>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"} : !mo.tensor<[1], si32, dev:0>
-  %o2 = mo.activation(%out2) {activation = "relu"} : !mo.tensor<[2], si32, dev:0>
-  %o3 = mo.activation(%out3) {activation = "relu"} : !mo.tensor<[3], si32, dev:0>
+  %o1 = mo.relu(%out1) : !mo.tensor<[1], si32, dev:0>
+  %o2 = mo.relu(%out2) : !mo.tensor<[2], si32, dev:0>
+  %o3 = mo.relu(%out3) : !mo.tensor<[3], si32, dev:0>
   mo.output %o1, %o2, %o3 : !mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>
 }
 
@@ -57,9 +57,9 @@ mo.graph @split_to_slice_3D<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!m
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[N, H, 3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
 }
 // CHECK-LABEL: mo.graph @split_to_slice_3D<N, H, K>
@@ -84,9 +84,9 @@ mo.graph @split_to_slice_3D_axis1<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) 
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[N, H, 3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
 }
 // CHECK-LABEL: mo.graph @split_to_slice_3D_axis1<N, H, K>
@@ -112,9 +112,9 @@ mo.graph @no_run_split_to_slice_3D_axis0<N, H, K>(%input: !mo.tensor<[N, H, K], 
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[N, H, 3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
 }
 // CHECK-LABEL: mo.graph @no_run_split_to_slice_3D_axis0<N, H, K>
@@ -127,9 +127,9 @@ mo.graph @no_run_split_to_slice_dyn_axis<N, H, K>(%input: !mo.tensor<[N, H, K], 
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[N, H, 3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
 }
 // CHECK-LABEL: mo.graph @no_run_split_to_slice_dyn_axis<N, H, K>
@@ -154,9 +154,9 @@ mo.graph @no_run_split_to_slice_dyn_splits<N, H, K>(%input: !mo.tensor<[N, H, K]
   %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
-  %o1 = mo.activation(%out1) {activation = "relu"}: !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.activation(%out2) {activation = "relu"}: !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.activation(%out3) {activation = "relu"}: !mo.tensor<[N, H, 3], si32>
+  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
+  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
+  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
   mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
 }
 // CHECK-LABEL: mo.graph @no_run_split_to_slice_dyn_splits<N, H, K>

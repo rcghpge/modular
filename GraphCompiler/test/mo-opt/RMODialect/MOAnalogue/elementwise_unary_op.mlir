@@ -111,12 +111,12 @@ mo.graph @not_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], bool>) -> !mo.tensor<[D0, D
 // -----
 
 mo.graph @relu_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-  %1 = rmo.mo.activation(%arg0) {activation = "relu"} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
+  %1 = rmo.mo.relu(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
   mo.output %1 : !mo.tensor<[D0, D1], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @relu_ok<D0, D1>([[VARG0:[^ ]*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.activation([[VARG0]]) {activation = "relu"} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
+// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.relu([[VARG0]]) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[D0, D1], f32>
 
 // -----

@@ -41,7 +41,7 @@ mo.graph @parallel_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2],
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
-    %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[2, 2], f32>
+    %relu = mo.relu(%mm) : !mo.tensor<[2, 2], f32>
     mo.yield %relu : !mo.tensor<[2, 2], f32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)

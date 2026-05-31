@@ -14,7 +14,7 @@ attributes {argument_names = ["buffer0", "tensor0"], result_names = []}
   %ch2 = rmo.mo.mutable.store(%buf, %res1, %ch1)   : (!bt_gpu, !tt_gpu, !ct) -> (!ct)
 
   %vbuf2, %ch3 = rmo.mo.mutable.load(%buf, %ch2)  : (!bt_gpu, !ct) -> (!tt_gpu, !ct)
-  %res2 = rmo.mo.activation(%vbuf2) {activation = "relu"} : (!tt_gpu) -> !tt_gpu
+  %res2 = rmo.mo.relu(%vbuf2) : (!tt_gpu) -> !tt_gpu
   %ch4 = rmo.mo.mutable.store(%buf, %res2, %ch3) : (!bt_gpu, !tt_gpu, !ct) -> (!ct)
 
   mo.output

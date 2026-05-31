@@ -25,7 +25,7 @@ mo.graph @parallel_neg_relu_f32() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2]
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %neg = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
-    %relu = mo.activation(%neg) {activation = "relu"} : !mo.tensor<[2, 2], f32>
+    %relu = mo.relu(%neg) : !mo.tensor<[2, 2], f32>
     mo.yield %relu : !mo.tensor<[2, 2], f32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
@@ -54,7 +54,7 @@ mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %neg1 = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
-    %relu = mo.activation(%neg1) {activation = "relu"} : !mo.tensor<[2, 2], f32>
+    %relu = mo.relu(%neg1) : !mo.tensor<[2, 2], f32>
     %neg2 = mo.negative(%relu) : !mo.tensor<[2, 2], f32>
     mo.yield %neg2 : !mo.tensor<[2, 2], f32>
   }

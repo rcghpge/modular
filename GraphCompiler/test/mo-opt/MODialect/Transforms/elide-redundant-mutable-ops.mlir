@@ -37,7 +37,7 @@ mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt)
 // CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
 // CHECK-NOT: mo.mutable.store
 // CHECK-NOT: mo.mutable.load
-// CHECK: [[res2:%.*]] = mo.activation([[res1]]) {activation = "relu"}
+// CHECK: [[res2:%.*]] = mo.relu([[res1]])
 // CHECK: mo.mutable.store([[buf]], [[res2]], [[ch1]])
 mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
 {
@@ -46,7 +46,7 @@ mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
   %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!bt, !ct) -> (!tt, !ct)
   %res1 = mo.add(%vbuf, %rhs) : !tt
 
-  %res2 = mo.activation(%res1) {activation = "relu"} : !tt
+  %res2 = mo.relu(%res1) : !tt
   %ch2 = mo.mutable.store(%buf, %res2, %ch1) : (!bt, !tt, !ct) -> (!ct)
 
   mo.output %buf : !bt

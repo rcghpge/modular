@@ -12,7 +12,7 @@ mo.graph @static_ranks<D11, D12, D13, D14>(%arg0: !mo.tensor<[D11, D12], f32>, %
     %1 = mo.add(%arg0, %0) : !mo.tensor<[D11, D12], f32>
     %2 = mo.exp(%1) : !mo.tensor<[D11, D12], f32>
     %3 = mo.sub(%2, %1) : !mo.tensor<[D11, D12], f32>
-    %4 = mo.activation(%3) {activation = "relu"} : !mo.tensor<[D11, D12], f32>
+    %4 = mo.relu(%3) : !mo.tensor<[D11, D12], f32>
     mo.output %4 : !mo.tensor<[D11, D12], f32>
 }
 
@@ -23,7 +23,7 @@ mo.graph @static_ranks<D11, D12, D13, D14>(%arg0: !mo.tensor<[D11, D12], f32>, %
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V2:%.*]] = mo.exp([[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V3:%.*]] = mo.sub([[V2]], [[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
-// CHECK-NEXT:   [[V4:%.*]] = mo.activation([[V3]]) {activation = "relu"} : !mo.tensor<[[[D11]], [[D12]]], f32>
+// CHECK-NEXT:   [[V4:%.*]] = mo.relu([[V3]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT: }
 

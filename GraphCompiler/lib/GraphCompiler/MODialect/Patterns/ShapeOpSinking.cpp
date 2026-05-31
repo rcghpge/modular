@@ -1770,9 +1770,8 @@ struct SinkSplitThroughElementwisePattern
     auto elementwiseType =
         llvm::cast<TensorType>(firstOwner->getResultTypes().front())
             .cloneWithNewDim(splitAxis, lastDimSize);
-    // Carry over the original elementwise op's attributes (e.g. the
-    // `activation` attribute on `mo.activation`); rebuilding from just the
-    // operands and result type would otherwise drop required inherent
+    // Carry over the original elementwise op's attributes; rebuilding from just
+    // the operands and result type would otherwise drop required inherent
     // attributes and leave the new op malformed.
     OperationState elementwiseOpState(loc, firstOwner->getName(),
                                       elementwiseOperands, elementwiseType,

@@ -89,7 +89,7 @@ mo.graph @parallel_multi_yield(
   // CHECK-SAME: -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
   %out0, %out1 = mo.parallel (%arg) in (%bundle : !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
       -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32>
     %n = mo.negative(%arg) : !mo.tensor<[3], f32>
     mo.yield %r, %n : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
   }
@@ -133,7 +133,7 @@ mo.graph @parallel_three_outputs(
   // CHECK-SAME: -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
   %relu_b, %neg_b, %orig_b = mo.parallel (%arg) in (%bundle : !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
       -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>, !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32>
     %n = mo.negative(%arg) : !mo.tensor<[3], f32>
     mo.yield %r, %n, %arg : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
   }

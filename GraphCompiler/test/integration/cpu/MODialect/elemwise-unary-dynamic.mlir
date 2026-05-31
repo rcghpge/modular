@@ -2,7 +2,7 @@
 // RUN: mt --execute --input-shapes=5 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @relu<D0>(%arg0 : !mo.tensor<[D0], f32>) -> !mo.tensor<[D0], f32> {
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[D0], f32>
+  %0 = mo.relu(%arg0) : !mo.tensor<[D0], f32>
   mo.output %0 : !mo.tensor<[D0], f32>
 }
 // CHECK{LITERAL}: 'relu' returned tensor<5xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00]

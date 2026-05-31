@@ -1269,17 +1269,17 @@ struct BackwardMathematicalCanonicalizationDivSqrtToRsqrt
   }
 };
 
-// Builds an `mo.activation` op with the given `name` that replaces `root`,
-// reusing `root`'s location and result type.
-static MO::ActivationOp createActivationOp(DeviceAwareRewriter &rewriter,
-                                           mlir::Operation *root, Value input,
-                                           llvm::StringRef name) {
-  return rewriter.create<MO::ActivationOp>(
+// Builds an activation op of type `OpT` that replaces `root`, reusing `root`'s
+// location and result type.
+template <typename OpT>
+static OpT createActivationOp(DeviceAwareRewriter &rewriter,
+                              mlir::Operation *root, Value input) {
+  return rewriter.create<OpT>(
       root->getLoc(), llvm::cast<TensorType>(root->getResult(0).getType()),
-      input, mlir::StringAttr::get(root->getContext(), name));
+      input);
 }
 
-// max(x, bcast(0)) -> activation<relu>(x)
+// max(x, bcast(0)) -> mo.relu(x)
 struct BackwardMathematicalCanonicalizationMaxToRelu
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MaxOp> {
   BackwardMathematicalCanonicalizationMaxToRelu(MLIRContext *ctx)
@@ -1295,14 +1295,14 @@ struct BackwardMathematicalCanonicalizationMaxToRelu
              .match(maxOp)) {
       return failure();
     }
-    auto relu = createActivationOp(rewriter, maxOp, x, "relu");
+    auto relu = createActivationOp<MO::ReluOp>(rewriter, maxOp, x);
     rewriter.replaceAllUsesWith(maxOp, relu);
 
     return success();
   }
 };
 
-// div(1, add(1, exp(-x))) -> activation<sigmoid>(x)
+// div(1, add(1, exp(-x))) -> mo.sigmoid(x)
 struct BackwardMathematicalCanonicalizationExpToSigmoid
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
   BackwardMathematicalCanonicalizationExpToSigmoid(MLIRContext *ctx)
@@ -1321,14 +1321,14 @@ struct BackwardMathematicalCanonicalizationExpToSigmoid
              .match(divOp)) {
       return failure();
     }
-    auto sigmoid = createActivationOp(rewriter, divOp, x, "sigmoid");
+    auto sigmoid = createActivationOp<MO::SigmoidOp>(rewriter, divOp, x);
     rewriter.replaceAllUsesWith(divOp, sigmoid);
 
     return success();
   }
 };
 
-// mul(x, activation<sigmoid>(x)) -> activation<silu>(x)
+// mul(x, mo.sigmoid(x)) -> mo.silu(x)
 struct BackwardMathematicalCanonicalizationSigmoidMulToSilu
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
   BackwardMathematicalCanonicalizationSigmoidMulToSilu(MLIRContext *ctx)
@@ -1336,11 +1336,10 @@ struct BackwardMathematicalCanonicalizationSigmoidMulToSilu
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MulOp mulOp,
                              DeviceAwareRewriter &rewriter) const override {
-    // Returns true if `act` is `activation<sigmoid>(in)`.
+    // Returns true if `act` is `mo.sigmoid(in)`.
     auto isSigmoidOf = [](Value act, Value in) {
-      auto activationOp = act.getDefiningOp<MO::ActivationOp>();
-      return activationOp && activationOp.getActivation() == "sigmoid" &&
-             activationOp.getInput() == in;
+      auto sigmoidOp = act.getDefiningOp<MO::SigmoidOp>();
+      return sigmoidOp && sigmoidOp.getInput() == in;
     };
 
     Value lhs = mulOp.getInputX();
@@ -1353,14 +1352,14 @@ struct BackwardMathematicalCanonicalizationSigmoidMulToSilu
     else
       return failure();
 
-    auto silu = createActivationOp(rewriter, mulOp, x, "silu");
+    auto silu = createActivationOp<MO::SiluOp>(rewriter, mulOp, x);
     rewriter.replaceAllUsesWith(mulOp, silu);
 
     return success();
   }
 };
 
-// mul(x, activation<sigmoid>(mul(1.702, x))) -> activation<gelu_quick>(x)
+// mul(x, mo.sigmoid(mul(1.702, x))) -> mo.gelu_quick(x)
 struct BackwardMathematicalCanonicalizationSigmoidMulToGeluQuick
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
   BackwardMathematicalCanonicalizationSigmoidMulToGeluQuick(MLIRContext *ctx)
@@ -1368,17 +1367,17 @@ struct BackwardMathematicalCanonicalizationSigmoidMulToGeluQuick
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MulOp mulOp,
                              DeviceAwareRewriter &rewriter) const override {
-    // Returns true if `act` is `activation<sigmoid>(mul(1.702, in))`.
+    // Returns true if `act` is `mo.sigmoid(mul(1.702, in))`.
     auto isQuickSigmoidOf = [](Value act, Value in) {
-      auto activationOp = act.getDefiningOp<MO::ActivationOp>();
-      if (!activationOp || activationOp.getActivation() != "sigmoid")
+      auto sigmoidOp = act.getDefiningOp<MO::SigmoidOp>();
+      if (!sigmoidOp)
         return false;
       Value inner;
       if (!m_BinaryCommutativeOp<MO::MulOp>(
                m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
                    1.702),
                m_Any(&inner))
-               .match(activationOp.getInput()))
+               .match(sigmoidOp.getInput()))
         return false;
       return inner == in;
     };
@@ -1393,14 +1392,14 @@ struct BackwardMathematicalCanonicalizationSigmoidMulToGeluQuick
     else
       return failure();
 
-    auto gelu = createActivationOp(rewriter, mulOp, x, "gelu_quick");
+    auto gelu = createActivationOp<MO::GeluQuickOp>(rewriter, mulOp, x);
     rewriter.replaceAllUsesWith(mulOp, gelu);
 
     return success();
   }
 };
 
-// mul(mul(0.5, x), add(1, erf(x / sqrt(2)))) -> activation<gelu>(x)
+// mul(mul(0.5, x), add(1, erf(x / sqrt(2)))) -> mo.gelu(x)
 struct BackwardMathematicalCanonicalizationErfToGelu
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
   BackwardMathematicalCanonicalizationErfToGelu(MLIRContext *ctx)
@@ -1451,7 +1450,7 @@ struct BackwardMathematicalCanonicalizationErfToGelu
     if (!matchScaledInput(erfArg, &xErf) || xErf != xHalf)
       return failure();
 
-    auto gelu = createActivationOp(rewriter, mulOp, xHalf, "gelu");
+    auto gelu = createActivationOp<MO::GeluOp>(rewriter, mulOp, xHalf);
     rewriter.replaceAllUsesWith(mulOp, gelu);
 
     return success();
@@ -1460,7 +1459,7 @@ struct BackwardMathematicalCanonicalizationErfToGelu
 
 // mul(mul(0.5, x),
 //     add(1, tanh(mul(0.7978845608028654, add(x, mul(0.044715, x^3))))))
-//   -> activation<gelu_tanh>(x)
+//   -> mo.gelu_tanh(x)
 struct BackwardMathematicalCanonicalizationTanhToGeluTanh
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
   BackwardMathematicalCanonicalizationTanhToGeluTanh(MLIRContext *ctx)
@@ -1510,7 +1509,7 @@ struct BackwardMathematicalCanonicalizationTanhToGeluTanh
     if (xHalf != xPoly || !isCubeOf(cube, xHalf))
       return failure();
 
-    auto gelu = createActivationOp(rewriter, mulOp, xHalf, "gelu_tanh");
+    auto gelu = createActivationOp<MO::GeluTanhOp>(rewriter, mulOp, xHalf);
     rewriter.replaceAllUsesWith(mulOp, gelu);
 
     return success();

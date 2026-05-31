@@ -142,7 +142,7 @@ mo.graph @success_reshape_both_sides(
 // CHECK-NEXT: [[V3:[^ ]*]] = mo.min([[V1]], [[V2]]) : !mo.tensor<[300], f32>
 // CHECK-NEXT: [[V4:[^ ]*]] = mo.static.reshape([[V3]]) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
 // CHECK-NEXT: [[V5:[^ ]*]] = mo.static.reshape([[V4]]) : !mo.tensor<[300, 1], f32> -> !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V6:[^ ]*]] = mo.activation([[V5]]) {activation = "relu"} : !mo.tensor<[300], f32>
+// CHECK-NEXT: [[V6:[^ ]*]] = mo.relu([[V5]]) : !mo.tensor<[300], f32>
 // CHECK-NEXT: [[V7:[^ ]*]] = mo.static.reshape([[V6]]) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
 // CHECK-NEXT: mo.output [[V7]] : !mo.tensor<[300, 1], f32>
 mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> {
@@ -151,6 +151,6 @@ mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32>
   %2 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>
   %3 = mo.static.reshape(%2) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
   %4 = mo.min(%arg0, %3) : !mo.tensor<[300, 1], f32>
-  %5 = mo.activation(%4) {activation = "relu"} : !mo.tensor<[300, 1], f32>
+  %5 = mo.relu(%4) : !mo.tensor<[300, 1], f32>
   mo.output %5 : !mo.tensor<[300, 1], f32>
 }

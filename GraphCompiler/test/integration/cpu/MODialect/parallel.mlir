@@ -7,8 +7,8 @@
 mo.graph @sequential_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %res1 = mo.activation(%const1) {activation = "relu"} : !mo.tensor<[3], si32>
-  %res2 = mo.activation(%const2) {activation = "relu"} : !mo.tensor<[3], si32>
+  %res1 = mo.relu(%const1) : !mo.tensor<[3], si32>
+  %res2 = mo.relu(%const2) : !mo.tensor<[3], si32>
   mo.output %res1, %res2 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
@@ -23,7 +23,7 @@ mo.graph @parallel_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
-    %1 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], si32>
+    %1 = mo.relu(%arg0) : !mo.tensor<[3], si32>
     mo.yield %1 : !mo.tensor<[3], si32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
@@ -40,7 +40,7 @@ mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) 
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %added = mo.add(%arg0, %bias) : !mo.tensor<[3], si32>
-    %relu = mo.activation(%added) {activation = "relu"} : !mo.tensor<[3], si32>
+    %relu = mo.relu(%added) : !mo.tensor<[3], si32>
     mo.yield %relu : !mo.tensor<[3], si32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
@@ -61,7 +61,7 @@ mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %added = mo.add(%arg0, %arg0) : !mo.tensor<[3], si32>
-    %relu = mo.activation(%added) {activation = "relu"} : !mo.tensor<[3], si32>
+    %relu = mo.relu(%added) : !mo.tensor<[3], si32>
     mo.yield %relu : !mo.tensor<[3], si32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
@@ -87,7 +87,7 @@ mo.graph @parallel_diamond() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
-    %r = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], si32>
+    %r = mo.relu(%arg0) : !mo.tensor<[3], si32>
     %n = mo.negative(%arg0) : !mo.tensor<[3], si32>
     %sum = mo.add(%r, %n) : !mo.tensor<[3], si32>
     mo.yield %sum : !mo.tensor<[3], si32>

@@ -27,6 +27,6 @@
 // CHECK:           mogg.raise
 
 mo.graph @relu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %result = mo.activation(%x) {activation = "relu"} : !mo.tensor<[4], f32>
+  %result = mo.relu(%x) : !mo.tensor<[4], f32>
   mo.output %result : !mo.tensor<[4], f32>
 }

@@ -19,7 +19,7 @@ mo.graph @merge_simple(%arg0: !mo.tensor<[3], f32, gpu:0>,
   %a = mo.parallel (%arg) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %c = mo.parallel (%arg) in (%a
@@ -33,7 +33,7 @@ mo.graph @merge_simple(%arg0: !mo.tensor<[3], f32, gpu:0>,
   // is replaced by A's yield operand (%r), and A's yield is dropped since
   // it had no external users beyond the now-absorbed B.
   // CHECK:     mo.parallel
-  // CHECK:       %[[R:[a-zA-Z0-9_]+]] = mo.activation
+  // CHECK:       %[[R:[a-zA-Z0-9_]+]] = mo.relu
   // CHECK:       %[[N:[a-zA-Z0-9_]+]] = mo.negative(%[[R]])
   // CHECK:       mo.yield %[[N]] :
   // CHECK-NOT: mo.parallel
@@ -59,7 +59,7 @@ mo.graph @merge_with_non_shared_between(
   %a = mo.parallel (%arg) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   // This bundle is constructed AFTER %a but before %c; merged parallel is
@@ -79,7 +79,7 @@ mo.graph @merge_with_non_shared_between(
   // One merged parallel; residuals bundle may appear after it in the block.
   // CHECK:     mo.tensor.bundle
   // CHECK:     mo.parallel
-  // CHECK:       mo.activation
+  // CHECK:       mo.relu
   // CHECK:       mo.add
   // CHECK:     mo.tensor.bundle
   // CHECK-NOT: mo.parallel
@@ -108,7 +108,7 @@ mo.graph @merge_chain_both(
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c:2 = mo.parallel (%arg) in (%a#0
@@ -125,7 +125,7 @@ mo.graph @merge_chain_both(
   // single trailing result.
   // CHECK: %[[M:[a-zA-Z0-9_]+]]:{{[0-9]+}} = mo.parallel
   // CHECK-SAME: buffers(%{{.*}} : !mo.buffer<[1], ui8, gpu:0>, %{{.*}} : !mo.buffer<[1], ui8, gpu:1>)
-  // CHECK:   mo.activation
+  // CHECK:   mo.relu
   // CHECK:   mo.negative
   // CHECK:   mo.yield
   // CHECK-NOT: mo.parallel
@@ -156,7 +156,7 @@ mo.graph @no_merge_buffer_mismatch(
               %sigA1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c:2 = mo.parallel (%arg) in (%a#0
@@ -199,7 +199,7 @@ mo.graph @merge_chain_producer_only(
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c = mo.parallel (%arg) in (%a#0
@@ -212,7 +212,7 @@ mo.graph @merge_chain_producer_only(
   // Merged op carries A's buffers and chain.
   // CHECK:     mo.parallel
   // CHECK-SAME: buffers(%{{.*}} : !mo.buffer<[1], ui8, gpu:0>, %{{.*}} : !mo.buffer<[1], ui8, gpu:1>)
-  // CHECK:       mo.activation
+  // CHECK:       mo.relu
   // CHECK:       mo.negative
   // CHECK:       mo.yield
   // CHECK-NOT: mo.parallel
@@ -239,7 +239,7 @@ mo.graph @merge_multi_producer_chain(%arg0: !mo.tensor<[3], f32, gpu:0>,
   %a = mo.parallel (%arg) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %b2 = mo.parallel (%arg) in (%a
@@ -262,7 +262,7 @@ mo.graph @merge_multi_producer_chain(%arg0: !mo.tensor<[3], f32, gpu:0>,
   // check because B's output transitively depends on A); then A absorbs
   // the merged BC.
   // CHECK:     mo.parallel
-  // CHECK:       mo.activation
+  // CHECK:       mo.relu
   // CHECK:       mo.negative
   // CHECK:       mo.add
   // CHECK:       mo.yield
@@ -293,7 +293,7 @@ mo.graph @merge_multi_producer_independent(
   %a = mo.parallel (%arg) in (%ab
         : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %b3 = mo.parallel (%arg) in (%bb
@@ -317,7 +317,7 @@ mo.graph @merge_multi_producer_independent(
   // merge places the result at B's slot).
   // CHECK:     mo.parallel
   // CHECK:       mo.negative
-  // CHECK:       mo.activation
+  // CHECK:       mo.relu
   // CHECK:       mo.add
   // CHECK:       mo.yield
   // CHECK-NOT: mo.parallel
@@ -348,7 +348,7 @@ mo.graph @no_merge_multi_producer_all_cycle(
   %a = mo.parallel (%arg) in (%ab
         : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %b4 = mo.parallel (%arg) in (%bb

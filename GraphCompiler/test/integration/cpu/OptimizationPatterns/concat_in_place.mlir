@@ -5,7 +5,7 @@
 
 // CHECK-IR-LABEL: mo.graph @concat_static_output
 // CHECK-IR-SAME:(%[[ARG0:.*]]:
-// CHECK-IR: %[[VAL1:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"}
+// CHECK-IR: %[[VAL1:.*]] = mo.relu(%[[ARG0]])
 // CHECK-IR: %[[VAL2:.*]] = mo.tanh(%[[ARG0]])
 // CHECK-IR: %[[VAL3:.*]] = mogg.concat(%[[VAL1]], %[[VAL2]])
 // CHECK-IR: mo.output %[[VAL3]]
@@ -17,7 +17,7 @@
 
 mo.graph @concat_static_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], f32>
+  %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %out = mo.concat[0](%0, %1) : (
     !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
@@ -27,7 +27,7 @@ mo.graph @concat_static_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], 
 
 // CHECK-IR-LABEL: mo.graph @concat_nested_output
 // CHECK-IR:(%[[ARG0:.*]]:
-// CHECK-IR: %[[VAL1:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"}
+// CHECK-IR: %[[VAL1:.*]] = mo.relu(%[[ARG0]])
 // CHECK-IR: %[[VAL2:.*]] = mo.tanh(%[[ARG0]])
 // CHECK-IR: %[[VAL3:.*]] = mogg.concat(%[[VAL1]], %[[VAL2]])
 // CHECK-IR: %[[VAL4:.*]] = mo.sin(%[[ARG0]])
@@ -40,7 +40,7 @@ mo.graph @concat_static_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], 
 
 mo.graph @concat_nested_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[9], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], f32>
+  %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %2 = mo.concat[0](%0, %1) : (
     !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
@@ -56,7 +56,7 @@ mo.graph @concat_nested_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[9], 
 // CHECK-IR-SAME: (%[[ARG0:.*]]: !mo.tensor<[3], f32>,
 // CHECK-IR-SAME:  %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[6], f32>
 // CHECK-IR:     %[[VAL4:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[6], f32> {
-// CHECK-IR-DAG:   %[[VAL2:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"} : !mo.tensor<[3], f32>
+// CHECK-IR-DAG:   %[[VAL2:.*]] = mo.relu(%[[ARG0]]) : !mo.tensor<[3], f32>
 // CHECK-IR-DAG:   %[[VAL3:.*]] = mo.tanh(%[[ARG0]]) : !mo.tensor<[3], f32>
 // CHECK-IR-DAG:   %[[VAL5:.*]] = mogg.concat(%[[VAL2]], %[[VAL3]]) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) -> !mo.tensor<[6], f32>
 // CHECK-IR:       mo.yield %[[VAL5]] : !mo.tensor<[6], f32>
@@ -74,7 +74,7 @@ mo.graph @concat_nested_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[9], 
 mo.graph @concat_within_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[6], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %2 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[6], f32> {
-    %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], f32>
+    %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
     %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
     %2 = mo.concat[0](%0, %1) : (
       !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
@@ -97,7 +97,7 @@ mo.graph @concat_within_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 // CHECK-IR-SAME:   (%[[ARG0:.*]]: !mo.tensor<[3], f32>,
 // CHECK-IR-SAME:    %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[6], f32>
 // CHECK-IR-DAG:    %[[NEG:.*]] = mo.not(%[[COND]]) : !mo.tensor<[], bool>
-// CHECK-IR-DAG:    %[[VAL1:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"} : !mo.tensor<[3], f32>
+// CHECK-IR-DAG:    %[[VAL1:.*]] = mo.relu(%[[ARG0]]) : !mo.tensor<[3], f32>
 // CHECK-IR-DAG:    %[[VAL2:.*]] = mo.tanh(%[[ARG0]]) : !mo.tensor<[3], f32>
 // CHECK-IR:        %[[VAL3:.*]] = mo.if(%[[NEG]] : !mo.tensor<[], bool>) -> !mo.tensor<[6], f32> {
 // CHECK-IR:          %[[VAL4:.*]] = mo.concat[0] (%[[VAL1]], %[[VAL2]]) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) -> !mo.tensor<[6], f32>
@@ -117,7 +117,7 @@ mo.graph @concat_within_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 mo.graph @concat_across_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[6], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %neg = mo.not(%cond) : !mo.tensor<[], bool>
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], f32>
+  %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %2 = mo.if(%neg : !mo.tensor<[], bool>) -> !mo.tensor<[6], f32> {
     %3 = mo.concat[0](%0, %1) : (
@@ -135,7 +135,7 @@ mo.graph @concat_across_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 
 // CHECK-IR-LABEL: mo.graph @concat_multi_user_input
 // CHECK-IR-SAME:(%[[ARG0:.*]]:
-// CHECK-IR: %[[VAL1:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"}
+// CHECK-IR: %[[VAL1:.*]] = mo.relu(%[[ARG0]])
 // CHECK-IR: %[[VAL2:.*]] = mo.tanh(%[[VAL1]])
 // CHECK-IR: %[[VAL3:.*]] = mogg.concat(%[[VAL1]], %[[VAL2]])
 // CHECK-IR: mo.output %[[VAL3]]
@@ -145,7 +145,7 @@ mo.graph @concat_across_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 
 mo.graph @concat_multi_user_input(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], f32>) {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], f32>
+  %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%0) : !mo.tensor<[3], f32>
   %out = mo.concat[0](%0, %1) : (
     !mo.tensor<[3], f32>, !mo.tensor<[3], f32>

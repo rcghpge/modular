@@ -346,22 +346,94 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   }];
 }
 
-def RMO_MOActivationOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"activation"> {
-  let summary = "Elementwise activation function operation";
+def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"relu"> {
+  let summary = "Rectified linear unit operation";
   let description = [{
-    Applies the elementwise activation function named by the `activation`
-    attribute to the input tensor. The supported names are `"relu"`,
-    `"gelu"`, `"gelu_tanh"`, `"gelu_quick"`, `"sigmoid"`, and `"silu"`.
+    Returns `max(0, x)`, where `x` is the input tensor.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.activation(%arg) {activation = "relu"} : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.relu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
-  let arguments = (ins MO_Tensor:$input, StrAttr:$activation,
-                       MO_ParamDecls:$outputParamDecls);
+}
+
+def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu"> {
+  let summary = "Gaussian error linear unit operation";
+  let description = [{
+    Returns the exact GELU activation `0.5 * x * (1 + erf(x / sqrt(2)))`, where
+    `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_MOGeluTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_tanh"> {
+  let summary = "Tanh approximation of the GELU operation";
+  let description = [{
+    Returns the tanh approximation of GELU
+    `0.5 * x * (1 + tanh(0.7978845608028654 * (x + 0.044715 * x^3)))`, where
+    `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.gelu_tanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_MOGeluQuickOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_quick"> {
+  let summary = "Quick (sigmoid) approximation of the GELU operation";
+  let description = [{
+    Returns the quick approximation of GELU `x * sigmoid(1.702 * x)`, where `x`
+    is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.gelu_quick(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sigmoid"> {
+  let summary = "Sigmoid operation";
+  let description = [{
+    Returns the sigmoid activation `1 / (1 + exp(-x))`, where `x` is the input
+    tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_MOSiluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"silu"> {
+  let summary = "SiLU (Swish) operation";
+  let description = [{
+    Returns the SiLU (Swish) activation `x * sigmoid(x)`, where `x` is the input
+    tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.silu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
 }
 
 def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"round"> {

@@ -11,7 +11,7 @@
 // CHECK-CANON-LABEL: mo.graph @bundle_fold
 // CHECK-CANON-NOT: mo.tensor.bundle
 // CHECK-CANON-NOT: mo.tensor.unbundle
-// CHECK-CANON: mo.activation
+// CHECK-CANON: mo.relu
 mo.graph @bundle_fold(
     %in0: !mo.tensor<[3], f32>,
     %in1: !mo.tensor<[3], f32>
@@ -22,7 +22,7 @@ mo.graph @bundle_fold(
   %r0, %r1 = mo.tensor.unbundle(%b)
       : (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
      -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)
-  %res0 = mo.activation(%r0) {activation = "relu"} : !mo.tensor<[3], f32>
-  %res1 = mo.activation(%r1) {activation = "relu"} : !mo.tensor<[3], f32>
+  %res0 = mo.relu(%r0) : !mo.tensor<[3], f32>
+  %res1 = mo.relu(%r1) : !mo.tensor<[3], f32>
   mo.output %res0, %res1 : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }

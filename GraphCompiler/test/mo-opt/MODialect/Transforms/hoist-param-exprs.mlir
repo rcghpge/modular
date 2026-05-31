@@ -178,8 +178,8 @@ mo.graph @parallel_bundle_param_expr<D0>(
   %res_bundle = mo.parallel (%x) in
       (%bundle : !mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>)
       -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>) {
-    // CHECK-DAG: mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>
-    %1 = mo.activation(%x) {activation = "relu"} : !mo.tensor<[div(D0, 2), 3], f32>
+    // CHECK-DAG: mo.relu({{.*}}) : !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>
+    %1 = mo.relu(%x) : !mo.tensor<[div(D0, 2), 3], f32>
     mo.yield %1 : !mo.tensor<[div(D0, 2), 3], f32>
   }
   // CHECK-DAG: mo.tensor.unbundle{{.*}} -> (!mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>, !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>)
@@ -228,11 +228,11 @@ mo.graph @parallel_block_arg_param_expr<N, M>(
   // propagate into the body block args so they agree with the rewritten
   // bundle producer's output element types.
   // CHECK-DAG: mo.parallel ([[BA:%[a-zA-Z0-9_]+]]) in {{.*}} : !mo.bundle<[!mo.tensor<[[[ALIAS_BA]]], f32>, !mo.tensor<[[[ALIAS_BA]]], f32>]>
-  // CHECK-DAG: mo.activation([[BA]]) {activation = "relu"} : !mo.tensor<[[[ALIAS_BA]]], f32>
+  // CHECK-DAG: mo.relu([[BA]]) : !mo.tensor<[[[ALIAS_BA]]], f32>
   %res_bundle = mo.parallel (%x) in
       (%bundle : !mo.bundle<[!mo.tensor<[add(N, M)], f32>, !mo.tensor<[add(N, M)], f32>]>)
       -> (!mo.bundle<[!mo.tensor<[N], f32>, !mo.tensor<[N], f32>]>) {
-    %1 = mo.activation(%x) {activation = "relu"} : !mo.tensor<[add(N, M)], f32>
+    %1 = mo.relu(%x) : !mo.tensor<[add(N, M)], f32>
     %2 = mo.rebind(%1) : !mo.tensor<[add(N, M)], f32> -> !mo.tensor<[N], f32>
     mo.yield %2 : !mo.tensor<[N], f32>
   }

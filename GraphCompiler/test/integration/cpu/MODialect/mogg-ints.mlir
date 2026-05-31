@@ -30,7 +30,7 @@ mo.graph @fused_si32() -> (!mo.tensor<[6], si32>) {
   %0 = "mo.constant"() {value = #M.dense_array<1, -2, 14, 4, -2, -6> : tensor<6xsi32>} : () -> !mo.tensor<[6], si32>
   %1 = "mo.constant"() {value = #M.dense_array<-4, 563, 129, 6, -4, 1> : tensor<6xsi32>} : () -> !mo.tensor<[6], si32>
   %2 = mo.mul(%0, %1) : !mo.tensor<[6], si32>
-  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[6], si32>
+  %3 = mo.relu(%2) : !mo.tensor<[6], si32>
   mo.output %3 : !mo.tensor<[6], si32>
 }
 
@@ -42,7 +42,7 @@ mo.graph @fused_si16() -> (!mo.tensor<[6], si16>) {
   %0 = "mo.constant"() {value = #M.dense_array<1, -2, 14, 4, -2, -6> : tensor<6xsi16>} : () -> !mo.tensor<[6], si16>
   %1 = "mo.constant"() {value = #M.dense_array<-4, 563, 129, 6, -4, 1> : tensor<6xsi16>} : () -> !mo.tensor<[6], si16>
   %2 = mo.mul(%0, %1) : !mo.tensor<[6], si16>
-  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[6], si16>
+  %3 = mo.relu(%2) : !mo.tensor<[6], si16>
   mo.output %3 : !mo.tensor<[6], si16>
 }
 
@@ -54,7 +54,7 @@ mo.graph @fused_ui16() -> (!mo.tensor<[6], ui16>) {
   %0 = "mo.constant"() {value = #M.dense_array<1, 0, 14, 4, 2, 0> : tensor<6xui16>} : () -> !mo.tensor<[6], ui16>
   %1 = "mo.constant"() {value = #M.dense_array<0, 563, 129, 6, 4, 1> : tensor<6xui16>} : () -> !mo.tensor<[6], ui16>
   %2 = mo.mul(%0, %1) : !mo.tensor<[6], ui16>
-  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[6], ui16>
+  %3 = mo.relu(%2) : !mo.tensor<[6], ui16>
   mo.output %3 : !mo.tensor<[6], ui16>
 }
 
@@ -94,7 +94,7 @@ mo.graph @fused_si64() -> (!mo.tensor<[6], si64>) {
   %0 = "mo.constant"() {value = #M.dense_array<1, -2, 14, 4, -2, -6> : tensor<6xsi64>} : () -> !mo.tensor<[6], si64>
   %1 = "mo.constant"() {value = #M.dense_array<-4, 563, 129, 6, -4, 1> : tensor<6xsi64>} : () -> !mo.tensor<[6], si64>
   %2 = mo.mul(%0, %1) : !mo.tensor<[6], si64>
-  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[6], si64>
+  %3 = mo.relu(%2) : !mo.tensor<[6], si64>
   mo.output %3 : !mo.tensor<[6], si64>
 }
 

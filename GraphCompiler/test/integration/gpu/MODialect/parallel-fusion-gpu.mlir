@@ -39,7 +39,7 @@ mo.graph @parallel_gpu_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2,
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>) {
     %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0>
-    %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[2, 2], f32, gpu:0>
+    %relu = mo.relu(%mm) : !mo.tensor<[2, 2], f32, gpu:0>
     mo.yield %relu : !mo.tensor<[2, 2], f32, gpu:0>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>)
