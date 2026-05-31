@@ -8,7 +8,7 @@
 // CHECK-NOT: mo.mutable.load
 // CHECK: mo.negative([[tensor]])
 // CHECK: mo.abs([[tensor]])
-// CHECK: mo.relu([[tensor]])
+// CHECK: mo.activation([[tensor]]) {activation = "relu"}
 mo.graph @all_same_buffer(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 {
   %0 = mo.chain.create()
@@ -17,7 +17,7 @@ mo.graph @all_same_buffer(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], 
   %outTensor_3, %outChain_2 = mo.mutable.load(%buf, %outChain) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
   %1 = mo.negative(%outTensor) : !mo.tensor<[2, 2], f32>
   %2 = mo.abs(%outTensor_1) : !mo.tensor<[2, 2], f32>
-  %3 = mo.relu(%outTensor_3) : !mo.tensor<[2, 2], f32>
+  %3 = mo.activation(%outTensor_3) {activation = "relu"} : !mo.tensor<[2, 2], f32>
   mo.output %1, %2, %3 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
@@ -29,7 +29,7 @@ mo.graph @all_same_buffer(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], 
 // CHECK: [[tensor2:%.*]], [[ch3:%.*]] = mo.mutable.load([[buf0]], [[ch2]])
 // CHECK: mo.negative([[tensor0]])
 // CHECK: mo.abs([[tensor1]])
-// CHECK: mo.relu([[tensor2]])
+// CHECK: mo.activation([[tensor2]]) {activation = "relu"}
 mo.graph @different_buffer_in_between(%buf1: !mo.buffer<[2, 2], f32>, %buf2: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 {
   %0 = mo.chain.create()
@@ -38,6 +38,6 @@ mo.graph @different_buffer_in_between(%buf1: !mo.buffer<[2, 2], f32>, %buf2: !mo
   %outTensor_3, %outChain_2 = mo.mutable.load(%buf1, %outChain_0) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
   %1 = mo.negative(%outTensor) : !mo.tensor<[2, 2], f32>
   %2 = mo.abs(%outTensor_1) : !mo.tensor<[2, 2], f32>
-  %3 = mo.relu(%outTensor_3) : !mo.tensor<[2, 2], f32>
+  %3 = mo.activation(%outTensor_3) {activation = "relu"} : !mo.tensor<[2, 2], f32>
   mo.output %1, %2, %3 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }

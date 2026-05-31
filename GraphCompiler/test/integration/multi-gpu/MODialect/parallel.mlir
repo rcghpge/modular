@@ -13,7 +13,7 @@ mo.graph @parallel_multi_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si3
   %res_bundle = mo.parallel (%arg0) in
       (%bundle : !mo.bundle<[3], si32, gpu:0-1>)
       -> (!mo.bundle<[3], si32, gpu:0-1>) {
-    %1 = mo.relu(%arg0) : !mo.tensor<[3], si32, gpu:0>
+    %1 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[3], si32, gpu:0>
     mo.yield %1 : !mo.tensor<[3], si32, gpu:0>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], si32, gpu:0-1>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)
@@ -38,7 +38,7 @@ mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3
       (%bundle : !mo.bundle<[3], si32, gpu:0-1>)
       -> (!mo.bundle<[3], si32, gpu:0-1>) {
     %neg = mo.negative(%arg0) : !mo.tensor<[3], si32, gpu:0>
-    %relu = mo.relu(%neg) : !mo.tensor<[3], si32, gpu:0>
+    %relu = mo.activation(%neg) {activation = "relu"} : !mo.tensor<[3], si32, gpu:0>
     mo.yield %relu : !mo.tensor<[3], si32, gpu:0>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], si32, gpu:0-1>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)

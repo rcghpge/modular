@@ -141,13 +141,13 @@ mo.graph @flatten_dim_symbolic_with_rebind<D1,D2,D12>(%input : !mo.tensor<[D1,D2
 // CHECK: %[[V1:.*]] = mo.split_dim[0] ({{.*}}) : (!mo.tensor<[mul_no_wrap(D1, D2, D3, D4)], f32>) -> !mo.tensor<[D1, mul_no_wrap(D2, D3, D4)], f32>
 // CHECK-NEXT: %[[V2:.*]] = mo.split_dim[1] (%[[V1]]) : (!mo.tensor<[D1, mul_no_wrap(D2, D3, D4)], f32>) -> !mo.tensor<[D1, D2, mul_no_wrap(D3, D4)], f32>
 // CHECK-NEXT: %[[V3:.*]] = mo.split_dim[2] (%[[V2]]) : (!mo.tensor<[D1, D2, mul_no_wrap(D3, D4)], f32>) -> !mo.tensor<[D1, D2, D3, D4], f32>
-// CHECK-NEXT: %[[V4:.*]] = mo.relu(%[[V3]]) : !mo.tensor<[D1, D2, D3, D4], f32>
+// CHECK-NEXT: %[[V4:.*]] = mo.activation(%[[V3]]) {activation = "relu"} : !mo.tensor<[D1, D2, D3, D4], f32>
 // CHECK-NEXT: mo.output %[[V4]] : !mo.tensor<[D1, D2, D3, D4], f32>
 mo.graph @unflatten_dim_symbolic<D1,D2,D3,D4>() -> (!mo.tensor<[D1,D2,D3,D4], f32>) {
 	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
 	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[mul_no_wrap(D1,D2,D3,D4)], f32>
 	%2 = mo.static.reshape(%1) : !mo.tensor<[mul_no_wrap(D1,D2,D3,D4)], f32> -> !mo.tensor<[D1,D2,D3,D4], f32>
-	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,D3,D4], f32>
+	%3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[D1,D2,D3,D4], f32>
 	mo.output %3 : !mo.tensor<[D1,D2,D3,D4], f32>
 }
 
@@ -167,12 +167,12 @@ mo.graph @flatten_dim_partially_symbolic<D1,D2,D3,D4>(%input : !mo.tensor<[D1,D2
 // CHECK: %[[V0:.*]] = mo.split_dim[0] ({{.*}}) : (!mo.tensor<[D12], f32>) -> !mo.tensor<[D1, cond(eq(:scalar<si64> D1, 0), 0, div(D12, cond(eq(:scalar<si64> D1, 0), 1, D1)))], f32>
 // CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1] (%[[V0]]) : (!mo.tensor<[D1, cond(eq(:scalar<si64> D1, 0), 0, div(D12, cond(eq(:scalar<si64> D1, 0), 1, D1)))], f32>) -> !mo.tensor<[D1, D2, cond(eq(:scalar<si64> D2, 0), 0, div(cond(eq(:scalar<si64> D1, 0), 0, div(D12, cond(eq(:scalar<si64> D1, 0), 1, D1))), cond(eq(:scalar<si64> D2, 0), 1, D2)))], f32>
 // CHECK-NEXT: %[[V2:.*]] = mo.rebind(%[[V1]]) : !mo.tensor<[D1, D2, cond(eq(:scalar<si64> D2, 0), 0, div(cond(eq(:scalar<si64> D1, 0), 0, div(D12, cond(eq(:scalar<si64> D1, 0), 1, D1))), cond(eq(:scalar<si64> D2, 0), 1, D2)))], f32> -> !mo.tensor<[D1, D2, 3], f32>
-// CHECK-NEXT: %[[V3:.*]] = mo.relu(%[[V2]]) : !mo.tensor<[D1, D2, 3], f32>
+// CHECK-NEXT: %[[V3:.*]] = mo.activation(%[[V2]]) {activation = "relu"} : !mo.tensor<[D1, D2, 3], f32>
 mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,3], f32>) {
 	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
 	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[D12], f32>
 	%2 = mo.static.reshape(%1) : !mo.tensor<[D12], f32> -> !mo.tensor<[D1,D2,3], f32>
-	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,3], f32>
+	%3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[D1,D2,3], f32>
 	mo.output %3 : !mo.tensor<[D1,D2,3], f32>
 }
 

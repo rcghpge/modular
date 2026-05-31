@@ -12,8 +12,8 @@ mo.graph @single_callsite(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f3
   // These ops would be hoistable if there were multiple callsites with same invariant args
   // CHECK: %[[MUL_OUT:.+]] = mo.mul(%[[ARG1]], %[[ARG2]])
   %0 = mo.mul(%arg1, %arg2) : !mo.tensor<[4], f32>
-  // CHECK: %[[RELU_OUT:.+]] = mo.relu(%[[MUL_OUT]])
-  %1 = mo.relu(%0) : !mo.tensor<[4], f32>
+  // CHECK: %[[RELU_OUT:.+]] = mo.activation(%[[MUL_OUT]]) {activation = "relu"}
+  %1 = mo.activation(%0) {activation = "relu"} : !mo.tensor<[4], f32>
 
   // CHECK: %[[ADD_OUT:.+]] = mo.add(%[[ARG0]], %[[RELU_OUT]])
   %2 = mo.add(%arg0, %1) : !mo.tensor<[4], f32>
@@ -49,7 +49,7 @@ module {
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG:.+]]: !mo.tensor<[4], f32>)
 mo.graph @callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
   // This op depends only on callsite-invariant arg1 and should be hoisted
-  %0 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
+  %0 = mo.activation(%arg1_invariant) {activation = "relu"} : !mo.tensor<[4], f32>
 
   // This op depends on non-invariant arg0 and the hoisted boundary value
   // CHECK: %[[ADD_OUT:.+]] = mo.add(%[[ARG0]], %[[HOISTED_ARG]])
@@ -66,11 +66,11 @@ mo.graph @caller_callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tens
   %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
 
   // Hoisted ops for both calls (same invariant argument %cst)
-  // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CONST]])
+  // CHECK: %[[HOISTED_RELU1:.+]] = mo.activation(%[[CONST]]) {activation = "relu"}
   // CHECK: %[[CALL1_RESULT:.+]] = mo.call @callsite_invariant(%[[CALLER_ARG0]], %[[HOISTED_RELU1]])
   %res1 = mo.call @callsite_invariant(%arg0, %cst) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
-  // CHECK: %[[HOISTED_RELU2:.+]] = mo.relu(%[[CONST]])
+  // CHECK: %[[HOISTED_RELU2:.+]] = mo.activation(%[[CONST]]) {activation = "relu"}
   // CHECK: %[[CALL2_RESULT:.+]] = mo.call @callsite_invariant(%[[CALLER_ARG1]], %[[HOISTED_RELU2]])
   %res2 = mo.call @callsite_invariant(%arg1, %cst) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
@@ -92,8 +92,8 @@ module {
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG1:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG2:.+]]: !mo.tensor<[4], f32>)
 mo.graph @multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
   // Hoistable ops from callsite-invariant argument
-  %0 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
-  %1 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
+  %0 = mo.activation(%arg1_invariant) {activation = "relu"} : !mo.tensor<[4], f32>
+  %1 = mo.activation(%arg1_invariant) {activation = "relu"} : !mo.tensor<[4], f32>
 
   // Non-invariant ops using boundary values
   // CHECK: %[[ADD1_OUT:.+]] = mo.add(%[[ARG0]], %[[HOISTED_ARG1]])
@@ -112,14 +112,14 @@ mo.graph @caller_multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !m
   %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
 
   // Hoisted ops for call 1
-  // CHECK: %[[HOISTED_RELU1_1:.+]] = mo.relu(%[[CONST1]])
-  // CHECK: %[[HOISTED_RELU1_2:.+]] = mo.relu(%[[CONST1]])
+  // CHECK: %[[HOISTED_RELU1_1:.+]] = mo.activation(%[[CONST1]]) {activation = "relu"}
+  // CHECK: %[[HOISTED_RELU1_2:.+]] = mo.activation(%[[CONST1]]) {activation = "relu"}
   // CHECK: %[[CALL1_RESULT:.+]] = mo.call @multi_boundary_invariant(%[[CALLER_ARG0]], %[[HOISTED_RELU1_1]], %[[HOISTED_RELU1_2]])
   %res1 = mo.call @multi_boundary_invariant(%arg0, %cst1) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
   // Hoisted ops for call 2 (same invariant argument)
-  // CHECK: %[[HOISTED_RELU2_1:.+]] = mo.relu(%[[CONST1]])
-  // CHECK: %[[HOISTED_RELU2_2:.+]] = mo.relu(%[[CONST1]])
+  // CHECK: %[[HOISTED_RELU2_1:.+]] = mo.activation(%[[CONST1]]) {activation = "relu"}
+  // CHECK: %[[HOISTED_RELU2_2:.+]] = mo.activation(%[[CONST1]]) {activation = "relu"}
   // CHECK: %[[CALL2_RESULT:.+]] = mo.call @multi_boundary_invariant(%[[CALLER_ARG1]], %[[HOISTED_RELU2_1]], %[[HOISTED_RELU2_2]])
   %res2 = mo.call @multi_boundary_invariant(%arg1, %cst1) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
@@ -141,8 +141,8 @@ module {
 // CHECK-LABEL: mo.graph @mixed_callsites
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
-  // CHECK: %[[RELU_OUT:.+]] = mo.relu(%[[ARG1]])
-  %0 = mo.relu(%arg1) : !mo.tensor<[4], f32>
+  // CHECK: %[[RELU_OUT:.+]] = mo.activation(%[[ARG1]]) {activation = "relu"}
+  %0 = mo.activation(%arg1) {activation = "relu"} : !mo.tensor<[4], f32>
   // CHECK: %[[ADD_OUT:.+]] = mo.add(%[[ARG0]], %[[RELU_OUT]])
   %1 = mo.add(%arg0, %0) : !mo.tensor<[4], f32>
   // CHECK: mo.output %[[ADD_OUT]]
@@ -183,7 +183,7 @@ module {
 mo.graph @complex_invariant_pattern(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>, %arg2_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
   // These ops depend only on callsite-invariant args %arg1_invariant, %arg2_invariant
   %0 = mo.mul(%arg1_invariant, %arg2_invariant) : !mo.tensor<[4], f32>
-  %1 = mo.relu(%0) : !mo.tensor<[4], f32>
+  %1 = mo.activation(%0) {activation = "relu"} : !mo.tensor<[4], f32>
 
   // This op depends on non-invariant arg0 and the hoisted boundary value
   // CHECK: %[[ADD_OUT:.+]] = mo.add(%[[ARG0]], %[[HOISTED_ARG]])
@@ -203,13 +203,13 @@ mo.graph @caller_complex_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tenso
 
   // Hoisted ops for call 1
   // CHECK: %[[HOISTED_MUL1:.+]] = mo.mul(%[[CONST1]], %[[CONST2]])
-  // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[HOISTED_MUL1]])
+  // CHECK: %[[HOISTED_RELU1:.+]] = mo.activation(%[[HOISTED_MUL1]]) {activation = "relu"}
   // CHECK: %[[CALL1_RESULT:.+]] = mo.call @complex_invariant_pattern(%[[CALLER_ARG0]], %[[HOISTED_RELU1]])
   %res1 = mo.call @complex_invariant_pattern(%arg0, %cst1, %cst2) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
   // Hoisted ops for call 2 (same invariant arguments)
   // CHECK: %[[HOISTED_MUL2:.+]] = mo.mul(%[[CONST1]], %[[CONST2]])
-  // CHECK: %[[HOISTED_RELU2:.+]] = mo.relu(%[[HOISTED_MUL2]])
+  // CHECK: %[[HOISTED_RELU2:.+]] = mo.activation(%[[HOISTED_MUL2]]) {activation = "relu"}
   // CHECK: %[[CALL2_RESULT:.+]] = mo.call @complex_invariant_pattern(%[[CALLER_ARG1]], %[[HOISTED_RELU2]])
   %res2 = mo.call @complex_invariant_pattern(%arg1, %cst1, %cst2) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
@@ -242,7 +242,7 @@ mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_inv
 
   // These ops depend only on callsite-invariant args %arg1_invariant, %arg2_invariant
   %0 = mo.mul(%arg1_invariant, %arg2_invariant) : !mo.tensor<[seq_len], f32>
-  %1 = mo.relu(%0) : !mo.tensor<[seq_len], f32>
+  %1 = mo.activation(%0) {activation = "relu"} : !mo.tensor<[seq_len], f32>
 
   // This op depends on non-invariant arg0 and the hoisted boundary value
   %2 = mo.add(%arg0, %1) : !mo.tensor<[seq_len], f32>
@@ -290,7 +290,7 @@ module {
 // CHECK-LABEL: mo.graph @chains_non_trailing
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>, %[[CH0:.+]]: !mo.chain, %[[CH1:.+]]: !mo.chain)
 mo.graph @chains_non_trailing(%arg0_invariant: !mo.tensor<[4], f32>, %ch_mid_unused: !mo.chain, %ch_mid: !mo.chain, %arg1: !mo.tensor<[4], f32>, %ch_trailing: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain) attributes {isSubgraph} {
-  %0 = mo.relu(%arg0_invariant) : !mo.tensor<[4], f32>
+  %0 = mo.activation(%arg0_invariant) {activation = "relu"} : !mo.tensor<[4], f32>
   %1 = mo.add(%0, %arg1) : !mo.tensor<[4], f32>
   mo.output %1, %ch_mid, %ch_trailing : !mo.tensor<[4], f32>, !mo.chain, !mo.chain
 }
@@ -305,11 +305,11 @@ mo.graph @caller_chains_non_trailing(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.ten
 
   // Unused mid chain (ch_unused) removed from call; operands are
   // (tensors, two chains) - 4 operands total.
-  // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CST]])
+  // CHECK: %[[HOISTED_RELU1:.+]] = mo.activation(%[[CST]]) {activation = "relu"}
   // CHECK: %[[CALL1:.+]] = mo.call @chains_non_trailing(%[[CALLER_ARG0]], %[[HOISTED_RELU1]], %[[CH1]], %[[CH2]])
   %res1, %out_ch_mid1, %out_ch_trailing1 = mo.call @chains_non_trailing(%cst, %ch_unused, %ch1, %arg0, %ch2) : (!mo.tensor<[4], f32>, !mo.chain, !mo.chain, !mo.tensor<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain)
 
-  // CHECK: %[[HOISTED_RELU2:.+]] = mo.relu(%[[CST]])
+  // CHECK: %[[HOISTED_RELU2:.+]] = mo.activation(%[[CST]]) {activation = "relu"}
   // CHECK: %[[CALL2:.+]] = mo.call @chains_non_trailing(%[[CALLER_ARG1]], %[[HOISTED_RELU2]], %[[CH1]], %[[CH2]])
   %res2, %out_ch_mid2, %out_ch_trailing2 = mo.call @chains_non_trailing(%cst, %ch_unused, %ch1, %arg1, %ch2) : (!mo.tensor<[4], f32>, !mo.chain, !mo.chain, !mo.tensor<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain)
 

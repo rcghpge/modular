@@ -49,12 +49,12 @@ mo.graph @negative_mixed_mixed<D0 -> D1>(%arg0: !mo.tensor<[20, D0], f32>) -> !m
 // -----
 
 mo.graph @relu_mixed_static<D0>(%arg0: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32> {
-  %1 = rmo.mo.relu(%arg0) : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32>
+  %1 = rmo.mo.activation(%arg0) {activation = "relu"} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32>
   mo.output %1 : !mo.tensor<[20, 10], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @relu_mixed_static<D0>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32> {
-// CHECK-NEXT: %[[V0:.*]] = mo.relu(%[[ARG0]]) : !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V0:.*]] = mo.activation(%[[ARG0]]) {activation = "relu"} : !mo.tensor<[20, D0], f32>
 // CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32>
 // CHECK-NEXT: mo.output %[[V1]] : !mo.tensor<[20, 10], f32>
 

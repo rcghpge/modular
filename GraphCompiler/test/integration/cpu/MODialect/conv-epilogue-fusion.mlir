@@ -12,7 +12,7 @@ mo.graph @conv_test0(%input : !mo.tensor<[1, 5, 5, 2], f32>, %filter : !mo.tenso
   %cst0 = mo.constant {value = #M.dense_array<-19.0,-18.0,-17.0,-16.0,-15.0,-14.0,-13.0,-12.0,-11.0,-10.0,-9.0,-8.0,-7.0,-6.0,-5.0,-4.0,-3.0,-2.0,-1.0> : tensor<19xf32>} : !mo.tensor<[19], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[19], f32> -> !mo.tensor<[1, 3, 3, 19], f32>
   %add = mo.add(%output, %bcast) : !mo.tensor<[1, 3, 3, 19], f32>
-  %relu = mo.relu(%add) : !mo.tensor<[1, 3, 3, 19], f32>
+  %relu = mo.activation(%add) {activation = "relu"} : !mo.tensor<[1, 3, 3, 19], f32>
   mo.output %relu : !mo.tensor<[1, 3, 3, 19], f32>
 }
 
@@ -53,7 +53,7 @@ mo.graph @conv_test2(%input : !mo.tensor<[3, 5, 8, 2], f32>, %filter : !mo.tenso
   %perm = mo.constant {value = #M.dense_array<1,0,2,3> : tensor<4xsi32>} : !mo.tensor<[4], si32>
   %trans = mo.transpose(%cst1, %perm) : (!mo.tensor<[2, 3, 2, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[3, 2, 2, 3], f32>
   %add = mo.add(%mul, %trans) : !mo.tensor<[3, 2, 2, 3], f32>
-  %relu = mo.relu(%add) : !mo.tensor<[3, 2, 2, 3], f32>
+  %relu = mo.activation(%add) {activation = "relu"} : !mo.tensor<[3, 2, 2, 3], f32>
   mo.output %relu : !mo.tensor<[3, 2, 2, 3], f32>
 }
 

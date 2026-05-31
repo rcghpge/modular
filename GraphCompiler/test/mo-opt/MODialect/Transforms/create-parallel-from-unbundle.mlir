@@ -39,8 +39,8 @@ mo.graph @wrap_unary_relu(
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
      -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-  %r0 = mo.relu(%u#0) : !mo.tensor<[3], f32, gpu:0>
-  %r1 = mo.relu(%u#1) : !mo.tensor<[3], f32, gpu:1>
+  %r0 = mo.activation(%u#0) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+  %r1 = mo.activation(%u#1) {activation = "relu"} : !mo.tensor<[3], f32, gpu:1>
 
   // The allreduce parallel is untouched; a fresh parallel appears adjacent,
   // taking the allreduce's bundle output directly (after canonicalize
@@ -48,7 +48,7 @@ mo.graph @wrap_unary_relu(
   // CHECK: %[[AR:[a-zA-Z0-9_]+]]:2 = mo.parallel
   // CHECK:   mo.bundled.allreduce.sum
   // CHECK: mo.parallel ({{.*}}) in (%[[AR]]#0
-  // CHECK:   mo.relu
+  // CHECK:   mo.activation
   // CHECK:   mo.yield
 
   %t0, %tc0 = mo.transfer[%ar#1] %r0
@@ -151,20 +151,20 @@ mo.graph @wrap_chain_two_relu(
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
      -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-  %r0a = mo.relu(%u#0) : !mo.tensor<[3], f32, gpu:0>
-  %r1a = mo.relu(%u#1) : !mo.tensor<[3], f32, gpu:1>
-  %r0b = mo.relu(%r0a) : !mo.tensor<[3], f32, gpu:0>
-  %r1b = mo.relu(%r1a) : !mo.tensor<[3], f32, gpu:1>
+  %r0a = mo.activation(%u#0) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+  %r1a = mo.activation(%u#1) {activation = "relu"} : !mo.tensor<[3], f32, gpu:1>
+  %r0b = mo.activation(%r0a) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+  %r1b = mo.activation(%r1a) {activation = "relu"} : !mo.tensor<[3], f32, gpu:1>
 
   // Allreduce parallel untouched, then two fresh parallels appear in
   // sequence (proves the fixed-point loop fired more than once).
   // CHECK: %[[AR:[a-zA-Z0-9_]+]]:2 = mo.parallel
   // CHECK:   mo.bundled.allreduce.sum
   // CHECK: mo.parallel ({{.*}}) in (%[[AR]]#0
-  // CHECK:   mo.relu
+  // CHECK:   mo.activation
   // CHECK:   mo.yield
   // CHECK: mo.parallel
-  // CHECK:   mo.relu
+  // CHECK:   mo.activation
   // CHECK:   mo.yield
 
   %t0, %tc0 = mo.transfer[%ar#1] %r0b
@@ -201,7 +201,7 @@ mo.graph @reject_shared_binary_consumer(
               %sig1 : !mo.buffer<[1], ui8, gpu:0>)
       chain(%ch)
       -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>]>) {
-    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
@@ -211,7 +211,7 @@ mo.graph @reject_shared_binary_consumer(
   // %add consumes BOTH unbundled elements; the peer-uniqueness check
   // rejects the candidate and the add stays outside any parallel.
   // CHECK: mo.parallel
-  // CHECK:   mo.relu
+  // CHECK:   mo.activation
   // CHECK-NOT: mo.parallel
   // CHECK: mo.add
   %add = mo.add(%u#0, %u#1) : !mo.tensor<[3], f32, gpu:0>
@@ -324,16 +324,16 @@ mo.graph @reject_fork_unbundle(
       : (!mo.bundle<[3], f32, gpu:0-1>)
      -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
   // %u#0 has two users; the single-use precondition fails and nothing wraps.
-  %r0a = mo.relu(%u#0) : !mo.tensor<[3], f32, gpu:0>
-  %r0b = mo.relu(%u#0) : !mo.tensor<[3], f32, gpu:0>
-  %r1  = mo.relu(%u#1) : !mo.tensor<[3], f32, gpu:1>
+  %r0a = mo.activation(%u#0) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+  %r0b = mo.activation(%u#0) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
+  %r1  = mo.activation(%u#1) {activation = "relu"} : !mo.tensor<[3], f32, gpu:1>
 
   // CHECK: mo.parallel
   // CHECK:   mo.bundled.allreduce.sum
   // CHECK-NOT: mo.parallel
-  // CHECK: mo.relu
-  // CHECK: mo.relu
-  // CHECK: mo.relu
+  // CHECK: mo.activation
+  // CHECK: mo.activation
+  // CHECK: mo.activation
 
   %t0, %tc0 = mo.transfer[%ar#1] %r0a
       : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>

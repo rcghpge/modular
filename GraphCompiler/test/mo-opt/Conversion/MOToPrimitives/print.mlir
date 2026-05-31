@@ -32,7 +32,7 @@ mo.graph @print(%arg0: !mo.tensor<[4, 5], f32>) {
 
 mo.graph @print_chained(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
-  %0 = mo.relu(%arg0): !mo.tensor<[4, 5], f32>
+  %0 = mo.activation(%arg0) {activation = "relu"}: !mo.tensor<[4, 5], f32>
   mo.debug.tensor.print(%ch0, %0) {label = "label"} : !mo.tensor<[4, 5], f32>
   mo.output
 }

@@ -346,18 +346,22 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   }];
 }
 
-def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"relu"> {
-  let summary = "Rectified linear unit operation";
+def RMO_MOActivationOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"activation"> {
+  let summary = "Elementwise activation function operation";
   let description = [{
-    Returns `max(0, x)`, where `x` is the input tensor.
+    Applies the elementwise activation function named by the `activation`
+    attribute to the input tensor. The supported names are `"relu"`,
+    `"gelu"`, `"gelu_tanh"`, `"gelu_quick"`, `"sigmoid"`, and `"silu"`.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.relu(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.activation(%arg) {activation = "relu"} : !mo.tensor<[2, 3], f32>
     ```
   }];
+  let arguments = (ins MO_Tensor:$input, StrAttr:$activation,
+                       MO_ParamDecls:$outputParamDecls);
 }
 
 def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"round"> {

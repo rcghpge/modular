@@ -24,7 +24,7 @@ mo.graph @keep_nontrivial_parallel(%a: !mo.tensor<[3], f32>, %b: !mo.tensor<[3],
   %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
   %res_bundle = mo.parallel (%arg) in (%bundle : !mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) {
-    %r = mo.relu(%arg) : !mo.tensor<[3], f32>
+    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32>
     mo.yield %r : !mo.tensor<[3], f32>
   }
   %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)

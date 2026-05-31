@@ -70,15 +70,15 @@ mo.graph @multiple_rebind<D0, D1>(
   %arg0: !mo.tensor<[D1, D0], f32>
 ) -> !mo.tensor<[42, 10], f32> {
 
-  %0 = mo.relu (%arg0) : !mo.tensor<[D1, D0], f32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[D1, D0], f32>
 
   %1 = mo.rebind(%0) : !mo.tensor<[D1, D0], f32> -> !mo.tensor<[42, 10], f32>
 
-  %2 = mo.relu (%1) : !mo.tensor<[42, 10], f32>
+  %2 = mo.activation(%1) {activation = "relu"} : !mo.tensor<[42, 10], f32>
 
   %3 = mo.rebind(%2) : !mo.tensor<[42, 10], f32> -> !mo.tensor<[D1, D0], f32>
 
-  %4 = mo.relu (%3) : !mo.tensor<[D1, D0], f32>
+  %4 = mo.activation(%3) {activation = "relu"} : !mo.tensor<[D1, D0], f32>
 
   %5 = mo.rebind(%4) : !mo.tensor<[D1, D0], f32> -> !mo.tensor<[42, 10], f32>
 

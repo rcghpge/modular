@@ -85,31 +85,31 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
 
 mo.graph @checkBasicFusionBehavior<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
-  %relu = mo.relu(%mm) : !mo.tensor<[M, N], f32>
+  %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[M, N], f32>
   mo.output %relu : !mo.tensor<[M, N], f32>
 }
 
 // CHECK-LABEL: @checkBasicFusionBehavior
 // CHECK: mogg.kernel
-// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.relu":{{.*}})
+// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.activation":{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
-  %relu = mo.relu(%mm) : !mo.tensor<[M, N], f32>
+  %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[M, N], f32>
   mo.output %relu : !mo.tensor<[M, N], f32>
 }
 
 // CHECK-LABEL: @checkNoFuseInputInterfaceDisabled
 // CHECK: mogg.kernel
-// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.relu":{{.*}})
+// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.activation":{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel{{[^.]}}
 
 mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
-  %relu = mo.relu(%mm) : !mo.tensor<[M, N], f32>
+  %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[M, N], f32>
   mo.output %relu : !mo.tensor<[M, N], f32>
 }
 
@@ -120,13 +120,13 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
 
 mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
-  %relu = mo.relu(%mm) : !mo.tensor<[M, N], f32>
+  %relu = mo.activation(%mm) {activation = "relu"} : !mo.tensor<[M, N], f32>
   mo.output %relu : !mo.tensor<[M, N], f32>
 }
 
 // CHECK-LABEL: @checkNoFuseNoElementwiseAttr
 // CHECK: mogg.kernel
-// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.relu":{{.*}})
+// CHECK: fusionInfo = Epilogue("mo.matmul":{{.*}}, "mo.activation":{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel{{[^.]}}
 

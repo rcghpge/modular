@@ -60,7 +60,7 @@ mo.graph @add_relu(%buf: !bt) -> (!bt, !c)
   %ch2 = mo.mutable.store(%buf, %res1, %ch1) : (!bt, !tt, !c) -> (!c)
 
   %vbuf2, %ch3 = mo.mutable.load(%buf, %ch2) : (!bt, !c) -> (!tt, !c)
-  %res2 = mo.relu(%vbuf2) : !tt
+  %res2 = mo.activation(%vbuf2) {activation = "relu"} : !tt
   %ch4 = mo.mutable.store(%buf, %res2, %ch3) : (!bt, !tt, !c) -> (!c)
 
   mo.output %buf, %ch4 : !bt, !c

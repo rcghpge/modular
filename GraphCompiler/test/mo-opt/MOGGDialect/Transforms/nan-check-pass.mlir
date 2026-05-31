@@ -22,7 +22,7 @@ mo.graph @fused_elementwise() -> !mo.tensor<[4], f32> {
   %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
   %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<10.0, 20.0, 30.0, 40.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[4], f32>
-  %3 = mo.relu(%2) : !mo.tensor<[4], f32>
+  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[4], f32>
   %4 = mo.negative(%3) : !mo.tensor<[4], f32>
   mo.output %4 : !mo.tensor<[4], f32>
 }
@@ -50,7 +50,7 @@ mo.graph @two_regions(%arg0: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
   %1 = mo.add(%arg0, %0) : !mo.tensor<[4], f32>
   %2 = mo.custom {symbol = "test_custom_op", device = #M.device_ref<"cpu", 0>}(%1) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
-  %3 = mo.relu(%2) : !mo.tensor<[4], f32>
+  %3 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[4], f32>
   mo.output %3 : !mo.tensor<[4], f32>
 }
 
@@ -64,7 +64,7 @@ mo.graph @two_regions(%arg0: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK:       mo.output
 
 mo.graph @integer_skipped(%arg0: !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32> {
-  %0 = mo.relu(%arg0) : !mo.tensor<[4], si32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[4], si32>
   mo.output %0 : !mo.tensor<[4], si32>
 }
 
@@ -82,8 +82,8 @@ mo.graph @integer_skipped(%arg0: !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32>
 // CHECK:       mo.output
 
 mo.graph @mixed_types(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], si32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], si32>) {
-  %0 = mo.relu(%arg0) : !mo.tensor<[4], f32>
-  %1 = mo.relu(%arg1) : !mo.tensor<[4], si32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[4], f32>
+  %1 = mo.activation(%arg1) {activation = "relu"} : !mo.tensor<[4], si32>
   mo.output %0, %1 : !mo.tensor<[4], f32>, !mo.tensor<[4], si32>
 }
 
@@ -97,6 +97,6 @@ mo.graph @mixed_types(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], si32>)
 // CHECK:       custom__nan_check_raise
 
 mo.graph @label_present(%arg0: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %0 = mo.relu(%arg0) : !mo.tensor<[4], f32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
 }

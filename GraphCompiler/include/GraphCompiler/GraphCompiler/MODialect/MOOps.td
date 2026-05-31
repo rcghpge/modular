@@ -669,7 +669,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
     %res = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
         -> (!mo.bundle<[...]>) {
-      %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
+      %1 = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
     ```
@@ -1434,18 +1434,26 @@ def MO_RoundOp : MO_ElementWiseUnaryFloatMonoTypeOp<"round", [Idempotent]> {
   }];
 }
 
-def MO_ReluOp : MO_ElementWiseUnaryMonoTypeOp<"relu", [Idempotent]> {
-  let summary = "Rectified linear unit operation";
+def MO_ActivationOp : MO_ElementWiseUnaryMonoTypeOp<"activation"> {
+  let summary = "Elementwise activation function operation";
   let description = [{
-    Returns `max(0, x)`, where `x` is the input tensor.
+    Applies the elementwise activation function named by the `activation`
+    attribute to the input tensor. The supported names are `"relu"`,
+    `"gelu"`, `"gelu_tanh"`, `"gelu_quick"`, `"sigmoid"`, and `"silu"`.
+
+    The implementation lives in the `mo.activation` kernel, which dispatches
+    on the `activation` attribute at compile time, so this single op replaces
+    the per-activation ops (e.g. `mo.relu`) and the Python-level compositions
+    of `mo.exp`/`mo.erf`/etc. used by `sigmoid`/`silu`/`gelu`.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
+      %res = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[2, 3], f32>
     ```
   }];
+  let arguments = (ins MO_Tensor:$input, StrAttr:$activation);
 }
 
 def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt"> {

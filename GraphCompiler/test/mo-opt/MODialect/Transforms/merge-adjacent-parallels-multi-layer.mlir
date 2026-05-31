@@ -45,7 +45,7 @@ mo.graph @double_push_reproducer(%arg0: !mo.tensor<[3], f32, gpu:0>,
   // %z: outermost producer.
   %z = mo.parallel (%arg) in (%b : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
 
@@ -64,14 +64,14 @@ mo.graph @double_push_reproducer(%arg0: !mo.tensor<[3], f32, gpu:0>,
   // of the walk's use_empty() skip.
   %x = mo.parallel (%arg) in (%z : !mo.bundle<[3], f32, gpu:0-1>)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
-    %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
+    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
 
   // Fixed point should collapse all three parallels into one.
   // CHECK:     mo.parallel
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.negative
   // CHECK:       mo.yield
   // CHECK-NOT: mo.parallel
@@ -121,14 +121,14 @@ mo.graph @multi_layer_allreduce_chain(
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L1b:2 = mo.parallel (%arg) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L1add = mo.parallel (%arg_a, %arg_b) in (
@@ -144,14 +144,14 @@ mo.graph @multi_layer_allreduce_chain(
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L2b:2 = mo.parallel (%arg) in (%dt_d : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L2a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L2add = mo.parallel (%arg_a, %arg_b) in (
@@ -167,14 +167,14 @@ mo.graph @multi_layer_allreduce_chain(
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L2b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L3b:2 = mo.parallel (%arg) in (%dt_f : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L3a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L3add = mo.parallel (%arg_a, %arg_b) in (
@@ -191,18 +191,18 @@ mo.graph @multi_layer_allreduce_chain(
   // they have no direct parallel-to-parallel SSA input dependency (only
   // chain dependencies).
   // CHECK:     mo.parallel
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.add
   // CHECK:       mo.yield
   // CHECK:     mo.parallel
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.add
   // CHECK:       mo.yield
   // CHECK:     mo.parallel
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.add
   // CHECK:       mo.yield
   // CHECK-NOT: mo.parallel
@@ -242,14 +242,14 @@ mo.graph @cross_layer_cascade(
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L1b:2 = mo.parallel (%arg) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L1add = mo.parallel (%arg_a, %arg_b) in (
@@ -267,13 +267,13 @@ mo.graph @cross_layer_cascade(
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %x = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %x : !mo.tensor<[4], f32, gpu:0>
   }
   %L2relu = mo.parallel (%arg) in (
       %L2a#0 : !mo.bundle<[4], f32, gpu:0-1>)
       -> (!mo.bundle<[4], f32, gpu:0-1>) {
-    %r = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
+    %r = mo.activation(%arg) {activation = "relu"} : !mo.tensor<[4], f32, gpu:0>
     mo.yield %r : !mo.tensor<[4], f32, gpu:0>
   }
 
@@ -289,11 +289,11 @@ mo.graph @cross_layer_cascade(
   // With cross-layer SSA dependencies, the fixed-point merge should
   // cascade everything into a single parallel.
   // CHECK:     mo.parallel
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.add
-  // CHECK:       mo.relu
-  // CHECK:       mo.relu
+  // CHECK:       mo.activation
+  // CHECK:       mo.activation
   // CHECK:       mo.negative
   // CHECK:       mo.yield
   // CHECK-NOT: mo.parallel

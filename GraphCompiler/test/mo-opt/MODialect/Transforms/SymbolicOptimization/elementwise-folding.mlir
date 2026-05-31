@@ -314,11 +314,11 @@ mo.graph @rsqrt_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 
 
 // relu(x) -> max(x, 0)
 mo.graph @relu_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %0 = mo.relu(%input) : !mo.tensor<[1, 2, 3], f32>
+  %0 = mo.activation(%input) {activation = "relu"} : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
 // CHECK-LABEL: @relu_roundtrip
-// CHECK-NEXT:   %[[OUT:.*]] = mo.relu({{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:   %[[OUT:.*]] = mo.activation({{.*}}) {activation = "relu"} : !mo.tensor<[1, 2, 3], f32>
 // CHECK-NEXT:   mo.output %[[OUT]] : !mo.tensor<[1, 2, 3], f32>
 
 // x * 2 -> x + x

@@ -12,9 +12,9 @@ mo.graph @acid() -> (!mo.tensor<[5], f32>) {
   %2 = mo.add(%0, %1) : !mo.tensor<[5], f32>
   %3 = mo.mul(%0, %2) : !mo.tensor<[5], f32>
   %4 = mo.sub(%0, %2) : !mo.tensor<[5], f32>
-  %5 = mo.relu(%4) : !mo.tensor<[5], f32>
+  %5 = mo.activation(%4) {activation = "relu"} : !mo.tensor<[5], f32>
   %6 = mo.add(%0, %5) : !mo.tensor<[5], f32>
-  %7 = mo.relu(%6) : !mo.tensor<[5], f32>
+  %7 = mo.activation(%6) {activation = "relu"} : !mo.tensor<[5], f32>
   %8 = mo.erf(%7) : !mo.tensor<[5], f32>
   %9 = mo.add(%3, %8) : !mo.tensor<[5], f32>
   %10 = mo.add(%0, %1) : !mo.tensor<[5], f32>

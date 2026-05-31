@@ -5,7 +5,7 @@
 
 mo.graph @concat_dynamic_output<D0>(%arg0: !mo.tensor<[D0], f32>) -> !mo.tensor<[add(D0, D0)], f32> {
   %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %0 = mo.relu(%arg0) : !mo.tensor<[D0], f32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[D0], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[D0], f32>
   %out = mo.concat[0](%0, %1) : (
     !mo.tensor<[D0], f32>, !mo.tensor<[D0], f32>

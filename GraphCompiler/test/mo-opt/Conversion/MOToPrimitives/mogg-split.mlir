@@ -62,13 +62,13 @@ mo.graph @mogg_split_chain_prop<D0, D1, D2>(
   %dummy: !mo.tensor<[D1, D2], si64>
 ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>) {
 
-  %0 = mo.relu(%input): !mo.tensor<[D0, 8], f32>
+  %0 = mo.activation(%input) {activation = "relu"}: !mo.tensor<[D0, 8], f32>
 
   %res:2 = mogg.split(%0) : (!mo.tensor<[D0, 8], f32>
   ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>)
 
-  %1 = mo.relu(%res#0): !mo.tensor<[D1, 8], f32>
-  %2 = mo.relu(%res#1): !mo.tensor<[D2, 8], f32>
+  %1 = mo.activation(%res#0) {activation = "relu"}: !mo.tensor<[D1, 8], f32>
+  %2 = mo.activation(%res#1) {activation = "relu"}: !mo.tensor<[D2, 8], f32>
 
   mo.output %1, %2 : !mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>
 }

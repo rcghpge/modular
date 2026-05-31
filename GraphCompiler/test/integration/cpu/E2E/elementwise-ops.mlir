@@ -18,7 +18,7 @@ mo.graph @few_elemwise_ops() -> !mo.tensor<[2, 3], si32> {
   %2 = "mo.constant"() {value = #M.dense_array<1, -1, 1, -1, -1, 1> : tensor<6xsi32>} : () -> !mo.tensor<[2, 3], si32>
   %3 = "mo.constant"() {value = #M.dense_array<8, -5, 4, 23, -9, 7> : tensor<6xsi32>} : () -> !mo.tensor<[2, 3], si32>
   %4 = mo.add(%0, %1) : !mo.tensor<[2, 3], si32>
-  %5 = mo.relu(%2) : !mo.tensor<[2, 3], si32>
+  %5 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[2, 3], si32>
   %6 = mo.sub(%4, %3) : !mo.tensor<[2, 3], si32>
   %7 = mo.add(%6, %5) : !mo.tensor<[2, 3], si32>
   mo.output %7 : !mo.tensor<[2, 3], si32>
@@ -32,7 +32,7 @@ mo.graph @few_elemwise_ops_cast() -> !mo.tensor<[2, 3], f32> {
   %2 = "mo.constant"() {value = #M.dense_array<1, -1, 1, -1, -1, 1> : tensor<6xsi32>} : () -> !mo.tensor<[2, 3], si32>
   %3 = "mo.constant"() {value = #M.dense_array<8, -5, 4, 23, -9, 7> : tensor<6xsi32>} : () -> !mo.tensor<[2, 3], si32>
   %4 = mo.add(%0, %1) : !mo.tensor<[2, 3], si32>
-  %5 = mo.relu(%2) : !mo.tensor<[2, 3], si32>
+  %5 = mo.activation(%2) {activation = "relu"} : !mo.tensor<[2, 3], si32>
   %6 = mo.sub(%4, %3) : !mo.tensor<[2, 3], si32>
   %7 = mo.add(%6, %5) : !mo.tensor<[2, 3], si32>
   %8 = mo.cast(%7) : (!mo.tensor<[2, 3], si32>) -> !mo.tensor<[2, 3], f32>

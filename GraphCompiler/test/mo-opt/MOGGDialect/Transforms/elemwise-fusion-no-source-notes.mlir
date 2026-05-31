@@ -25,7 +25,7 @@ mo.graph @elemwise_no_source_notes(
   // These ops will be fused by --mogg-fuse-elementwise, creating FusionInfoAttr,
   // but they have no fused<"..."> location metadata so collectSourceNotes()
   // returns an empty list.
-  %0 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32>
+  %0 = mo.activation(%arg0) {activation = "relu"} : !mo.tensor<[4, 3], f32>
   %1 = mo.add(%0, %arg0) : !mo.tensor<[4, 3], f32>
   mo.output %1 : !mo.tensor<[4, 3], f32>
 }

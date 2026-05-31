@@ -10,7 +10,7 @@
 // CHECK-NEXT: #           ├── mo.static.broadcast_to ({{[^)]+}}) : (!mo.tensor<[1, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #           ├── mo.static.broadcast_to ({{[^)]+}}) : (!mo.tensor<[1, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #           └── Elementwise
-// CHECK-NEXT: #               ├── mo.relu ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.activation ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #               ├── mo.add ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>, !mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #               ├── mo.tanh ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #               ├── mo.add ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>, !mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
@@ -30,7 +30,7 @@ mo.graph @big_fusion(
     %bcast_bias = mo.static.broadcast_to(%bias) : !mo.tensor<[1, 40], f32> -> !mo.tensor<[20, 40], f32>
     %bcast_scale = mo.static.broadcast_to(%scale) : !mo.tensor<[1, 40], f32> -> !mo.tensor<[20, 40], f32>
     %bcast_offset = mo.static.broadcast_to(%offset) : !mo.tensor<[1, 40], f32> -> !mo.tensor<[20, 40], f32>
-    %relu  = mo.relu(%mm): !mo.tensor<[20, 40], f32>
+    %relu  = mo.activation(%mm) {activation = "relu"}: !mo.tensor<[20, 40], f32>
     %add   = mo.add(%relu, %bcast_bias): !mo.tensor<[20, 40], f32>
     %tanh  = mo.tanh(%add): !mo.tensor<[20, 40], f32>
     %add2  = mo.add(%tanh, %bcast_offset): !mo.tensor<[20, 40], f32>

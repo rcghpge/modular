@@ -1269,30 +1269,32 @@ struct BackwardMathematicalCanonicalizationDivSqrtToRsqrt
   }
 };
 
-// relu(x) -> max(x, bcast(0))
+// activation<relu>(x) -> max(x, bcast(0))
 struct ForwardMathematicalCanonicalizationReluToMax
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::ReluOp> {
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::ActivationOp> {
   ForwardMathematicalCanonicalizationReluToMax(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 1) {}
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::ReluOp reluOp,
+  deviceAwareMatchAndRewrite(MO::ActivationOp activationOp,
                              DeviceAwareRewriter &rewriter) const override {
-    Location loc = reluOp->getLoc();
-    TensorType tensorType = reluOp.getType();
+    if (activationOp.getActivation() != "relu")
+      return rewriter.notifyMatchFailure(activationOp, "not a relu activation");
+    Location loc = activationOp->getLoc();
+    TensorType tensorType = activationOp.getType();
 
     auto bcast0ErrOr =
         createBroadcastedScalarConstantOpOfType(tensorType, 0, rewriter, loc);
     if (bcast0ErrOr.isError())
-      return rewriter.notifyMatchFailure(reluOp, bcast0ErrOr.getError());
-    auto maxOp = rewriter.create<MO::MaxOp>(loc, tensorType, reluOp.getInput(),
-                                            *bcast0ErrOr);
-    rewriter.replaceAllUsesWith(reluOp, maxOp);
+      return rewriter.notifyMatchFailure(activationOp, bcast0ErrOr.getError());
+    auto maxOp = rewriter.create<MO::MaxOp>(
+        loc, tensorType, activationOp.getInput(), *bcast0ErrOr);
+    rewriter.replaceAllUsesWith(activationOp, maxOp);
 
     return success();
   }
 };
 
-// max(x, bcast(0)) -> relu(x)
+// max(x, bcast(0)) -> activation<relu>(x)
 struct BackwardMathematicalCanonicalizationMaxToRelu
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MaxOp> {
   BackwardMathematicalCanonicalizationMaxToRelu(MLIRContext *ctx)
@@ -1308,8 +1310,9 @@ struct BackwardMathematicalCanonicalizationMaxToRelu
              .match(maxOp)) {
       return failure();
     }
-    auto relu =
-        rewriter.create<MO::ReluOp>(maxOp->getLoc(), maxOp.getType(), x);
+    auto relu = rewriter.create<MO::ActivationOp>(
+        maxOp->getLoc(), maxOp.getType(), x,
+        mlir::StringAttr::get(maxOp.getContext(), "relu"));
     rewriter.replaceAllUsesWith(maxOp, relu);
 
     return success();
