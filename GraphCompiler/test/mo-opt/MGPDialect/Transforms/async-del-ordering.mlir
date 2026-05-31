@@ -15,8 +15,8 @@
 // For non-throwing kernels, there is no try/except block. AsyncDelOp should
 // appear before AsyncReadyOp.
 // ============================================================================
-mo.graph @non_throwing_cumsum(%input : !mo.tensor<[5], f32>, %axis : !mo.tensor<[], si64>) -> !mo.tensor<[5], f32> {
-  %res = mo.cumsum(%input, %axis) {reverse = 0 : index, exclusive = 0 : index} : (!mo.tensor<[5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[5], f32>
+mo.graph @non_throwing_cumsum(%input : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
+  %res = mo.cumsum(%input) {axis = 0 : index, reverse = 0 : index, exclusive = 0 : index} : (!mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
   mo.output %res : !mo.tensor<[5], f32>
 }
 

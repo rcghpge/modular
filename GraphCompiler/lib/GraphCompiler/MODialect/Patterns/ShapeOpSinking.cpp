@@ -157,11 +157,8 @@ static bool isStaticSplit(SplitOp op) {
   if (!inputType.hasRank())
     return false;
 
-  auto axisOr = tryGetConstantInt(op.getAxis());
-  if (!axisOr)
-    return false;
-
-  int64_t axis = normalizeAxis(*axisOr, inputType.getRank());
+  // `axis` is a compile-time `index` attribute.
+  int64_t axis = normalizeAxis(op.getAxisAttr().getInt(), inputType.getRank());
   if (!isStaticDimAttr(inputType.getDim(axis)))
     return false;
 
@@ -1039,10 +1036,9 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
   deviceAwareMatchAndRewrite(SoftmaxOp op,
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue inputTensor;
-    TensorValue axisTensor;
     auto reshapeP =
         m_Op<Static::ReshapeOp>(rewriter.pushOp(), m_Any(&inputTensor));
-    auto softmaxOpP = m_Op<SoftmaxOp>(reshapeP, m_Any(&axisTensor));
+    auto softmaxOpP = m_Op<SoftmaxOp>(reshapeP);
 
     if (!softmaxOpP.match(op))
       return rewriter.notifyMatchFailure(op, "Pattern not matched.");
@@ -1062,12 +1058,11 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     if (!inputTy.hasRank() || !reshapedTy.hasRank())
       return rewriter.notifyMatchFailure(op, "Shape must be ranked");
 
-    std::optional<int64_t> maybeAxis = tryGetConstantInt(axisTensor);
-    if (!maybeAxis.has_value())
-      return rewriter.notifyMatchFailure(op, "Axis is not a constant");
+    // `axis` is a compile-time `index` attribute.
+    int64_t axisVal = op.getAxisAttr().getInt();
 
     // Only support sinking when the final axis is used for now.
-    if (maybeAxis.value() != clampAxis(-1, (int64_t)reshapedTy.getRank()))
+    if (axisVal != clampAxis(-1, (int64_t)reshapedTy.getRank()))
       return rewriter.notifyMatchFailure(op, "Can't sink non-last axis");
 
     // Ensure the shape of the last axis is not changed
@@ -1088,9 +1083,11 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     newOp.getInputMutable().set(inputTensor);
     newOp.getResult().setType(inputTensor.getType().cloneWith(outputDType));
 
-    // Ensure the softmax axis still points to the last axis
-    newOp.getAxisMutable().set(rewriter.createHostConstant(
-        op->getLoc(), clampAxis(-1, (int64_t)inputTy.getRank())));
+    // Ensure the softmax axis still points to the last axis. `axis` is a
+    // compile-time `index` attribute.
+    newOp.setAxisAttr(
+        mlir::Builder(newOp.getContext())
+            .getIndexAttr(clampAxis(-1, (int64_t)inputTy.getRank())));
 
     TensorValue output = rewriter.create<Static::ReshapeOp>(
         op->getLoc(), op.getResult().getType(), newOp.getResult());
@@ -1638,8 +1635,8 @@ struct SinkSplitThroughElementwisePattern
 
     auto firstResultType =
         llvm::cast<TensorType>(op.getResults().front().getType());
-    int64_t splitAxis = normalizeAxis(*tryGetConstantInt(op.getAxis()),
-                                      firstResultType.getRank());
+    int64_t splitAxis =
+        normalizeAxis(op.getAxisAttr().getInt(), firstResultType.getRank());
 
     if (splitAxis != static_cast<int64_t>(firstResultType.getRank() - 1))
       return rewriter.notifyMatchFailure(op, "Split must be on last axis");
@@ -1876,7 +1873,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
       return rewriter.notifyMatchFailure(op, "Unsupported reshape");
 
     int64_t splitAxis =
-        normalizeAxis(*tryGetConstantInt(op.getAxis()), splitType.getRank());
+        normalizeAxis(op.getAxisAttr().getInt(), splitType.getRank());
 
     std::optional<int64_t> newSplitAxisOpt = mapAxisThroughStaticReshape(
         staticReshapeDimensionsMappingAnalysis, splitType, splitAxis);
@@ -1905,12 +1902,14 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     SmallVector<Value> newSplitOpOperands = op.getOperands();
     newSplitOpOperands[0] = newReshape;
     newSplitOpOperands[1] = rewriter.createHostConstant(loc, newSplitSizes);
-    newSplitOpOperands[2] =
-        rewriter.createHostConstant(loc, int64_t(newSplitAxis));
-    OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
-                                newSplitTypes, op->getAttrs(),
-                                op->getSuccessors());
-    auto newSplit = rewriter.create(splitOpState);
+    // `axis` is a compile-time `index` attribute, so update it in the attribute
+    // dictionary rather than as an operand.
+    SmallVector<NamedAttribute> newSplitAttrs(op->getAttrs());
+    auto newSplit = rewriter.create<SplitOp>(
+        loc, newSplitTypes, newSplitOpOperands[0], newSplitOpOperands[1],
+        llvm::APInt(64, newSplitAxis));
+    newSplit->setAttr(op.getOutputParamDeclsAttrName(),
+                      op.getOutputParamDeclsAttr());
 
     SmallVector<Operation *> reshapeOps(users);
     SmallVector<Value> splitResults(newSplit->getResults());
@@ -2232,11 +2231,8 @@ struct SinkBroadcastsThroughReduction
       return rewriter.notifyMatchFailure(
           loc, "BCast to be statically ranked to work.");
 
-    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
-    if (!maybeAxis.has_value())
-      return rewriter.notifyMatchFailure(
-          loc, "Need to know axis to perform optimization.");
-    int64_t reductionAxis = maybeAxis.value();
+    // `axis` is a compile-time `index` attribute and is always known.
+    int64_t reductionAxis = op.getAxisAttr().getInt();
 
     // respect negative axis rules
     int64_t initialRank = input.getType().getRank();
@@ -2333,11 +2329,10 @@ struct SinkBroadcastsThroughReduction
     // Now we know we are reducing along a non-broadcasted axis, we can elide
     // the broadcast for later.
     int64_t newAxis = reductionAxis - numBeforeAxis;
-    TensorValue newAxisTensor =
-        rewriter.createDeviceConstant(op->getLoc(), newAxis);
     auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));
     clonedReduction.getInputMutable().assign(bcastOpInput);
-    clonedReduction.getAxisMutable().assign(newAxisTensor);
+    // `axis` is a compile-time `index` attribute, not an operand.
+    clonedReduction->setAttr("axis", rewriter.getIndexAttr(newAxis));
 
     TensorType newTy = bcastOpInput.getType()
                            .cloneWithNewDim(newAxis, 1)

@@ -18,8 +18,6 @@ mo.graph @select_add_mask<SEQ, FIN_SEQ, DIM>(
     %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
     %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
     %select_cond = mo.constant {value = #M.dense_array<false, true, true, false> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
@@ -44,7 +42,7 @@ mo.graph @select_add_mask<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.add(%maskedNormAttnMatrix, %attn_mask): !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain) {axis = 3 : index} : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %perm2) : (!mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, FIN_SEQ, DIM], f32>
@@ -75,8 +73,6 @@ mo.graph @add_select_mask<SEQ, FIN_SEQ, DIM>(
     %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
     %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
     %select_cond = mo.constant {value = #M.dense_array<false, true, true, false> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
@@ -101,7 +97,7 @@ mo.graph @add_select_mask<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.select(%select_cond_bcast, %maskedNormAttnMatrix, %neg_inf_bcast) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain) {axis = 3 : index} : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %perm2) : (!mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, FIN_SEQ, DIM], f32>
@@ -129,8 +125,6 @@ mo.graph @select_add_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
     %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
     %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
     %select_cond = mo.constant {value = #M.dense_array<false, true, true, false> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
@@ -155,7 +149,7 @@ mo.graph @select_add_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.select(%select_cond_bcast, %maskedNormAttnMatrix, %neg_inf_bcast) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain) {axis = 3 : index} : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This breaks pattern matching
     %softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%softmax): (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>

@@ -218,17 +218,14 @@ void MOCastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 static void inferMOTypesReduceImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
-    TensorValue axis, std::optional<ValueRange> rmoResults,
-    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls,
     bool returnIndices) {
-  // input type remains the same
+  // input type remains the same. `axis` is a compile-time `index` attribute,
+  // not an operand, so it contributes no MO operand.
   moOperandTypes.push_back(input.getType());
-  moInputParamDecls.push_back({});
-
-  // Axis must be a scalar
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
 
   if (!requireRmoResults(graphOp, rmoResults,
@@ -246,10 +243,10 @@ static void inferMOTypesReduceImpl(
       SmallVectorImpl<Type> &moResultTypes,                                    \
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,    \
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) { \
-    inferMOTypesReduceImpl(                                                    \
-        context, graphOp, cast<TensorValue>(operands.getInput()),              \
-        cast<TensorValue>(operands.getAxis()), rmoResults, moOperandTypes,     \
-        moResultTypes, moInputParamDecls, moOutputParamDecls, ReturnIndices);  \
+    inferMOTypesReduceImpl(context, graphOp,                                   \
+                           cast<TensorValue>(operands.getInput()), rmoResults, \
+                           moOperandTypes, moResultTypes, moInputParamDecls,   \
+                           moOutputParamDecls, ReturnIndices);                 \
   }
 
 DEFINE_REDUCE_INFER_MO_TYPES(MOMeanOp, false)
@@ -1065,18 +1062,14 @@ void MOCumSumOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
-  TensorValue axis = cast<TensorValue>(operands.getAxis());
 
-  // `input` / `output` types are identical.
+  // `input` / `output` types are identical. `axis` is a compile-time `index`
+  // attribute and contributes no MO operand.
   TensorType inOutTy = input.getType();
   moOperandTypes.push_back(inOutTy);
   moInputParamDecls.push_back({});
   moResultTypes.push_back(inOutTy);
   moOutputParamDecls.push_back({});
-
-  // `axis` type is 0D.
-  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
 }
 
 void MOMutableLoadOp::inferMOTypesImpl(

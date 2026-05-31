@@ -16,8 +16,6 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2, RS6513>(
     %51 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
     %54 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
     %Q = mo.transpose(%Q_raw, %54) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 
     // This is the K^T tensor in BHDS
@@ -35,7 +33,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2, RS6513>(
     %maskedNormAttnMatrix = mo.add(%normAttnMatrix, %attn_mask) : !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix, %axis) : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
+    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix) {axis = 3 : index} : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %54) : (!mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, SUM_C1_S2, RS6513], f32>
@@ -76,8 +74,6 @@ mo.graph @llama2_min_framework_cpu_mha_no_trigger<REFINE_S2, SUM_C1_S2, RS6513>(
     %51 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
     %54 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
     %Q = mo.transpose(%Q_raw, %54) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 
     // This is the K^T tensor in BHDS
@@ -95,7 +91,7 @@ mo.graph @llama2_min_framework_cpu_mha_no_trigger<REFINE_S2, SUM_C1_S2, RS6513>(
     %maskedNormAttnMatrix = mo.add(%normAttnMatrix, %attn_mask) : !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix, %axis) : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
+    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix) {axis = 3 : index} : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This breaks pattern matching
     %softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%softmax): (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>

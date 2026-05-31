@@ -81,23 +81,21 @@ bool isOne(Value val) {
 LogicalResult
 canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
                                          PatternRewriter &rewriter) {
-  TensorValue axisArr = op.getAxis();
+  // `operandIndex` is retained for API compatibility; `axis` is now an
+  // attribute, not an operand.
+  (void)operandIndex;
   TensorType inputTy = op.getInput().getType();
-  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
-  if (!maybeAxis.has_value() || !inputTy.hasRank())
+  if (!inputTy.hasRank())
     return failure();
 
-  int64_t axis = maybeAxis.value();
+  // `axis` is a compile-time `index` attribute and is always known.
+  int64_t axis = op.getAxisAttr().getInt();
   if (axis >= 0)
     return failure();
 
-  OpBuilder builder(op);
-  builder.setInsertionPoint(op);
   int64_t newAxis = axis + inputTy.getRank();
-  auto newAxisOp = ConstantOp::create(builder, op.getLoc(), newAxis,
-                                      getHostDevice(op.getContext()));
-  rewriter.modifyOpInPlace(op,
-                           [&] { op->setOperand(operandIndex, newAxisOp); });
+  rewriter.modifyOpInPlace(
+      op, [&] { op->setAttr("axis", rewriter.getIndexAttr(newAxis)); });
   return success();
 }
 
@@ -581,11 +579,11 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
       break;
     }
 
-    // Split must have same axis.
-    std::optional<int64_t> splitAxis = tryGetConstantInt(definingOp.getAxis());
-    if (splitAxis && outType.hasRank())
-      splitAxis = normalizeAxis(*splitAxis, outType.getRank());
-    if (!splitAxis || *splitAxis != axis) {
+    // Split must have same axis (`axis` is a compile-time `index` attribute).
+    int64_t splitAxis = definingOp.getAxisAttr().getInt();
+    if (outType.hasRank())
+      splitAxis = normalizeAxis(splitAxis, outType.getRank());
+    if (splitAxis != axis) {
       split = nullptr;
       break;
     }
@@ -1290,13 +1288,13 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
 // ReduceAddOp
 //===----------------------------------------------------------------------===//
 OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
-  auto axisArr = dyn_cast_if_present<IntArrayElementsAttr>(adaptor.getAxis());
   TensorType inputTy = getInput().getType();
 
-  if (!axisArr || !inputTy.hasRank())
+  if (!inputTy.hasRank())
     return {};
 
-  int64_t axis = getIntBlob(axisArr).front();
+  // `axis` is a compile-time `index` attribute and is always known.
+  int64_t axis = getAxisAttr().getInt();
   int64_t rank = inputTy.getRank();
   axis = (axis + rank) % rank;
 

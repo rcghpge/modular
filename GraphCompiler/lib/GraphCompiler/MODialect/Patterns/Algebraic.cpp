@@ -740,11 +740,11 @@ struct MergeParallelMatmulPattern
                                                 concatenatedWeights)
                           .getResult();
 
-    // Split the output.
+    // Split the output. `axis` is a compile-time `index` attribute.
     Value splitSizes = rewriter.createHostConstant(loc, columnsInEachMatmul);
-    Value concatAxis = rewriter.createHostConstant(loc, innerDimIndex);
-    auto splitOp = rewriter.create<SplitOp>(loc, matmulTypes, newMatmul,
-                                            splitSizes, concatAxis);
+    auto splitOp =
+        rewriter.create<SplitOp>(loc, matmulTypes, newMatmul, splitSizes,
+                                 llvm::APInt(64, innerDimIndex));
 
     for (uint64_t idx = 0; idx < matmulUsers.size(); ++idx) {
       rewriter.replaceAllUsesWith(matmulUsers[idx].getResult(),
@@ -2136,9 +2136,9 @@ struct GathersToSplitPattern
     rewriter.setInsertionPoint(dominantGatherOp);
     Value splitSizes = rewriter.createHostConstant(
         loc, SmallVector<int64_t>(inputAxis0Dim, 1));
-    Value axis = rewriter.createHostConstant(loc, 0);
-    auto splitOp =
-        rewriter.create<SplitOp>(loc, resultTypes, input, splitSizes, axis);
+    // `axis` is a compile-time `index` attribute.
+    auto splitOp = rewriter.create<SplitOp>(loc, resultTypes, input, splitSizes,
+                                            llvm::APInt(64, 0));
 
     // Replace each gather user of input with split result
     for (auto [idx, gatherOp] : idxToGather)
@@ -2240,13 +2240,9 @@ struct SplitAndSqueezesPattern
       return rewriter.notifyMatchFailure(op, "unranked input");
     int64_t inputRank = inputTy.getRank();
 
-    // Split axis must be a constant
-    std::optional<int64_t> maybeSplitAxis = tryGetConstantInt(op.getAxis());
-    if (!maybeSplitAxis.has_value())
-      return rewriter.notifyMatchFailure(op, "split axis isn't a constant");
-
-    // Normalized split axis, and check it's positive.
-    int64_t splitAxis = maybeSplitAxis.value();
+    // Normalized split axis, and check it's positive. `axis` is a compile-time
+    // `index` attribute.
+    int64_t splitAxis = op.getAxisAttr().getInt();
     splitAxis = (splitAxis < 0) ? inputRank + splitAxis : splitAxis;
     if (splitAxis <= 0) {
       return rewriter.notifyMatchFailure(
@@ -2299,7 +2295,6 @@ struct SplitAndSqueezesPattern
     std::iota(permVec.begin() + splitAxis + 1, permVec.end(), splitAxis + 1);
     permVec[0] = splitAxis;
     Value perm = rewriter.createHostConstant(loc, permVec);
-    Value zeroAxis = rewriter.createHostConstant(loc, 0);
 
     // Construct transpose (before split op)
     TensorType transposedInputTy = permuteDims(inputTy, permVec);
@@ -2313,8 +2308,9 @@ struct SplitAndSqueezesPattern
       TensorType newResTy = permuteDims(oldResTensorTy, permVec);
       newSplitResTypes.push_back(newResTy);
     }
+    // `axis` is a compile-time `index` attribute.
     auto newSplitOp = rewriter.replaceOpWithNewOp<SplitOp>(
-        op, newSplitResTypes, transposeOp, splitSizes, zeroAxis,
+        op, newSplitResTypes, transposeOp, splitSizes, llvm::APInt(64, 0),
         op.getOutputParamDecls());
 
     // Rectify rebind consumers because the results dimensions have been

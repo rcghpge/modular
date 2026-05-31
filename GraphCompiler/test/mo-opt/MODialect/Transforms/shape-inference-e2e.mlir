@@ -62,38 +62,32 @@ mo.graph @materialize_gather_axis_neg_1_si32_e2e<D6, D7>(%arg0: !mo.tensor<[D6, 
 // CHECK-NEXT: }
 
 mo.graph @materialize_mean_axis_0_si32_e2e<D4>(%arg0: !mo.tensor<[D4, 2], f32>) -> !mo.tensor<[1, 2], f32> {
-    %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-    %1 = mo.reduce.mean(%arg0, %0) : (!mo.tensor<[D4, 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 2], f32>
+    %1 = mo.reduce.mean(%arg0) {axis = 0 : index} : (!mo.tensor<[D4, 2], f32>) -> !mo.tensor<[1, 2], f32>
     mo.output %1 : !mo.tensor<[1, 2], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @materialize_mean_axis_0_si32_e2e<[[D4:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[1, 2], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mean([[VARG0]], [[V0]]) : (!mo.tensor<[[[D4]], 2], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 2], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mean([[VARG0]]) {axis = 0 : index} : (!mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[1, 2], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[1, 2], f32>
 // CHECK-NEXT: }
 
 mo.graph @materialize_prod_axis_1_si64_e2e<D4>(%arg0: !mo.tensor<[D4, 2], f32>) -> !mo.tensor<[D4, 1], f32> {
-    %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %1 = mo.reduce.mul(%arg0, %0) : (!mo.tensor<[D4, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D4, 1], f32>
+    %1 = mo.reduce.mul(%arg0) {axis = 1 : index} : (!mo.tensor<[D4, 2], f32>) -> !mo.tensor<[D4, 1], f32>
     mo.output %1 : !mo.tensor<[D4, 1], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @materialize_prod_axis_1_si64_e2e<[[D4:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[[[D4]], 1], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mul([[VARG0]], [[V0]]) : (!mo.tensor<[[[D4]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D4]], 1], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mul([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[[[D4]], 1], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D4]], 1], f32>
 // CHECK-NEXT: }
 
 mo.graph @materialize_sum_axis_neg_1_si64_e2e<D4>(%arg0: !mo.tensor<[D4, 2], f32>) -> !mo.tensor<[D4, 1], f32> {
-    %0 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-    %1 = mo.reduce.add(%arg0, %0) : (!mo.tensor<[D4, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D4, 1], f32>
+    %1 = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[D4, 2], f32>) -> !mo.tensor<[D4, 1], f32>
     mo.output %1 : !mo.tensor<[D4, 1], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @materialize_sum_axis_neg_1_si64_e2e<[[D4:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[[[D4]], 1], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.add([[VARG0]], [[V0]]) : (!mo.tensor<[[[D4]], 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D4]], 1], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.add([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[[[D4]], 2], f32>) -> !mo.tensor<[[[D4]], 1], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D4]], 1], f32>
 // CHECK-NEXT: }
 
@@ -444,27 +438,23 @@ mo.graph @avg_pool2d_ceil_mode_true_dyn_input_dims<D7, D8>(%arg0: !mo.tensor<[D7
 // CHECK-NEXT: }
 
 mo.graph @arg_min<D5, D6>(%arg0: !mo.tensor<[D5, D6], si64>) -> !mo.tensor<[D5, 1], si64> {
-    %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %1 = mo.reduce.arg_min(%arg0, %0) : (!mo.tensor<[D5, D6], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D5, 1], si64>
+    %1 = mo.reduce.arg_min(%arg0) {axis = 1 : index} : (!mo.tensor<[D5, D6], si64>) -> !mo.tensor<[D5, 1], si64>
     mo.output %1 : !mo.tensor<[D5, 1], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @arg_min<[[D5:.*]], [[D6:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D5]], [[D6]]], si64>) -> !mo.tensor<[[[D5]], 1], si64> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.arg_min([[VARG0]], [[V0]]) : (!mo.tensor<[[[D5]], [[D6]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D5]], 1], si64>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.arg_min([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[[[D5]], [[D6]]], si64>) -> !mo.tensor<[[[D5]], 1], si64>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D5]], 1], si64>
 // CHECK-NEXT: }
 
 
 mo.graph @arg_max<D5, D6>(%arg0: !mo.tensor<[D5, D6], si64>) -> !mo.tensor<[D5, 1], si64> {
-    %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %1 = mo.reduce.arg_max(%arg0, %0) : (!mo.tensor<[D5, D6], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D5, 1], si64>
+    %1 = mo.reduce.arg_max(%arg0) {axis = 1 : index} : (!mo.tensor<[D5, D6], si64>) -> !mo.tensor<[D5, 1], si64>
     mo.output %1 : !mo.tensor<[D5, 1], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @arg_max<[[D5:.*]], [[D6:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D5]], [[D6]]], si64>) -> !mo.tensor<[[[D5]], 1], si64> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.arg_max([[VARG0]], [[V0]]) : (!mo.tensor<[[[D5]], [[D6]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D5]], 1], si64>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.arg_max([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[[[D5]], [[D6]]], si64>) -> !mo.tensor<[[[D5]], 1], si64>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D5]], 1], si64>
 // CHECK-NEXT: }
 
@@ -541,14 +531,12 @@ mo.graph @tile(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[20, 60], f32> {
 // CHECK-NEXT: }
 
 mo.graph @partially_parameterized_signature<in, D6, D7>(%arg0: !mo.tensor<[in, D6, D7], f32>) -> !mo.tensor<[in, 1, D7], f32> {
-    %0 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-    %1 = mo.reduce.mul(%arg0, %0) : (!mo.tensor<[in, D6, D7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[in, 1, D7], f32>
+    %1 = mo.reduce.mul(%arg0) {axis = 1 : index} : (!mo.tensor<[in, D6, D7], f32>) -> !mo.tensor<[in, 1, D7], f32>
     mo.output %1 : !mo.tensor<[in, 1, D7], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @partially_parameterized_signature<in, [[D6:.*]], [[D7:.*]]>([[VARG0:%.*]]: !mo.tensor<[in, [[D6]], [[D7]]], f32>) -> !mo.tensor<[in, 1, [[D7]]], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mul([[VARG0]], [[V0]]) : (!mo.tensor<[in, [[D6]], [[D7]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[in, 1, [[D7]]], f32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.reduce.mul([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[in, [[D6]], [[D7]]], f32>) -> !mo.tensor<[in, 1, [[D7]]], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[in, 1, [[D7]]], f32>
 // CHECK-NEXT: }
 
@@ -880,8 +868,7 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2>(%arg0: !mo.t
 //  CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[N]], 20], f32>
 mo.graph @split_shape<N>(%arg0: !mo.tensor<[N, 20], f32>) -> (!mo.tensor<[N, 5], f32>, !mo.tensor<[N, 15], f32>) {
     %0 = mo.constant {value = #M.dense_array<5, 15> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %1 = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-    %2:2 = mo.split[%1 : !mo.tensor<[], si32>] (%arg0, %0) : (!mo.tensor<[N, 20], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[N, 5], f32>, !mo.tensor<[N, 15], f32>)
+    %2:2 = mo.split(%arg0, %0) {axis = -1 : index} : (!mo.tensor<[N, 20], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[N, 5], f32>, !mo.tensor<[N, 15], f32>)
     mo.output %2#0, %2#1 : !mo.tensor<[N, 5], f32>, !mo.tensor<[N, 15], f32>
 }
 

@@ -366,10 +366,8 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
       "TensorValue", "getInput", (ins)>,
     InterfaceMethod<"Get input tensor as a MutableOperandRange",
       "::mlir::OpOperand&", "getInputMutable", (ins)>,
-    InterfaceMethod<"Get the axis tensor as a TypedValue",
-      "TensorValue", "getAxis", (ins)>,
-    InterfaceMethod<"Get the axis tensor as a MutableOperandRange",
-      "::mlir::OpOperand&", "getAxisMutable", (ins)>,
+    InterfaceMethod<"Get the reduction axis as an IntegerAttr",
+      "::mlir::IntegerAttr", "getAxisAttr", (ins)>,
     InterfaceMethod<"Get result tensor as a TypedValue",
       "TensorValue", "getResult", (ins)>
   ];

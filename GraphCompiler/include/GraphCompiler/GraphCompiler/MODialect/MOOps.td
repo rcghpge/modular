@@ -1361,19 +1361,18 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
-    %axis: !mo.tensor<[], i64>
-    %res = mo.cumsum(%arg, %axis) {exclusive = 1 : index, reverse = 0 : index} : (
-      !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
+    %res = mo.cumsum(%arg) {axis = 0 : index, exclusive = 1 : index, reverse = 0 : index} : (
+      !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarIndexTensor:$axis,
+                       IndexAttr:$axis,
                        IndexAttr:$exclusive,
                        IndexAttr:$reverse);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` $input `,` $axis `)` attr-dict
+    `(` $input `)` attr-dict
     `:` functional-type(operands, results)
   }];
 
@@ -1895,12 +1894,12 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [Pure,
                                   AllDTypesMatch<["input", "result"]>,
                                   AllShapeAttrsMatch<["input", "result"]>,
-                                  MO_SingleDeviceWithHostOperands<["axis"]>,
+                                  MO_SingleDevice,
                                   MO_ParamDeclaration]> {
-  let arguments = (ins MO_Tensor:$input, MO_RankedScalarIndexTensor:$axis);
+  let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` $input `)` attr-dict `:` functional-type($input, results)
   }];
 }
 
@@ -1943,12 +1942,12 @@ def MO_SoftmaxOp : MO_SoftmaxLikeOp<"reduce.softmax"> {
 
 class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
     name, traits # [MO_ReductionTraits,
-      MO_SingleDeviceWithHostOperands<["axis"]>,
+      MO_SingleDevice,
     ]>
 {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -1961,7 +1960,6 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 
   let builders = [
     /// Build reduction op and automatically infer output type if it is not given.
-    OpBuilder<(ins "TensorValue":$input, "TensorValue":$axis, CArg<"TensorType", "{}">:$outputTy)>,
     OpBuilder<(ins "TensorValue":$input, "int64_t":$axis, CArg<"TensorType", "{}">:$outputTy)>
   ];
 }
@@ -1983,10 +1981,8 @@ def MO_MeanOp : MO_MonotypeReductionOp<"reduce.mean"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.mean(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = mo.mean(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -2006,10 +2002,8 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.reduce.mul(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = mo.reduce.mul(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -2027,10 +2021,8 @@ def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.reduce.add(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = mo.reduce.add(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
   let hasFolder = 1;
@@ -2049,10 +2041,8 @@ def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.reduce.min(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = mo.reduce.min(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -2070,10 +2060,8 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = mo.reduce.max(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = mo.reduce.max(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -2167,7 +2155,7 @@ def MO_ReduceGroupNormOp : MO_TensorOp<"reduce.group_norm", [
 
 def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["axis"]>,
+  MO_SingleDevice,
   MO_ParamDeclaration,
 ]> {
   let summary = "Combined minimum and maximum reduction operation";
@@ -2182,20 +2170,20 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
     Example:
 
     ```mlir
-      %res = mo.reduce.reduce_min_and_max(%input, %axis) :
-        (!mo.tensor<[2, 10], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 2], f32>
+      %res = mo.reduce.reduce_min_and_max(%input) {axis = 1 : index} :
+        (!mo.tensor<[2, 10], f32>) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
   let arguments = (ins
     MO_Tensor:$input,
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` attr-dict `:`
+    functional-type($input, results)
   }];
 }
 
@@ -3300,7 +3288,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["splitSizes", "axis"]>,
+  MO_SingleDeviceWithHostOperands<["splitSizes"]>,
 ]> {
   let summary = "Splitting operation";
   let description = [{
@@ -3323,10 +3311,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
       %splitSizes = mo.constant {
         value = #M.dense_array<3, 5> : tensor<2xsi64>
       } : !mo.tensor<[2], si64>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>
-      } : !mo.tensor<[], si64>
-      %res:2 = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
+      %res:2 = mo.split(%input, %splitSizes) {axis = 1 : index} : (
         !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
       ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
     ```
@@ -3335,13 +3320,12 @@ def MO_SplitOp : MO_TensorOp<"split", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesVectorIfRanked:$splitSizes,
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `:` qualified(type($axis)) `]`
     `(` $input `,` $splitSizes `)` attr-dict `:` `(`
       qualified(type($input)) `,` qualified(type($splitSizes))
     `)` `->` `(` type($results) `)`
@@ -4153,7 +4137,7 @@ class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []>
     : MO_ReductionOp<mnemonic, traits> {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_RankedScalarIndexTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_IndicesTensor:$result);
@@ -4183,10 +4167,7 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"reduce.arg_max"> {
       %0 = mo.constant {
         value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
       } : !mo.tensor<[2, 2], si32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<si32>
-      } : !mo.tensor<[], si32>
-      %1 = mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = mo.arg_max(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -4210,10 +4191,7 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
       %0 = mo.constant {
         value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
       } : !mo.tensor<[2, 2], si32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<si32>
-      } : !mo.tensor<[], si32>
-      %1 = mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = mo.arg_min(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }

@@ -2,10 +2,9 @@
 
 // CHECK: mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> {
 mo.graph @reduce_mul_fold() -> !mo.tensor<[1], si64> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %input = mo.constant {value = #M.dense_array<2, 3, 4> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<24> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %output = mo.reduce.mul(%input, %axis) : (!mo.tensor<[3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %output = mo.reduce.mul(%input) {axis = 0 : index} : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1], si64>
   mo.output %output : !mo.tensor<[1], si64>
 }

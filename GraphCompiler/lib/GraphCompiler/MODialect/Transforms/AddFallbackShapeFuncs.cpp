@@ -770,7 +770,12 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SplitOp op) {
   Location loc = op->getLoc();
+  // The `split_ith_output_shape` Mojo shape function takes `split_axis` and
+  // `output_idx` as runtime scalar operands. `axis` is now a compile-time
+  // attribute on the op, so materialize it as a constant operand here.
   SmallVector<Value> operands(op->getOperands());
+  operands.push_back(
+      MO::ConstantOp::create(builder, loc, op.getAxisAttr().getInt()));
   operands.push_back(nullptr); // placeholder for output_idx
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     operands.back() =
@@ -780,7 +785,7 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                      "split_ith_output_shape", operands,
                      op.getOutputParamDecls(),
                      /*kgenParams=*/{},
-                     /*dataDepInputIdxs=*/{1, 2});
+                     /*dataDepInputIdxs=*/{1, 2, 3});
   }
   return success();
 }
@@ -878,11 +883,12 @@ Fallback<MO::ReduceGroupNormOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess
 Fallback<MO::ReduceMinAndMaxOp>::build(GraphOp &graph, OpBuilder &builder,
                                        MO::ReduceMinAndMaxOp op) {
+  // `axis` is a compile-time `index` attribute threaded to the shape function.
   buildForOpResult(graph, builder, op,
-                   MO::ReduceMinAndMaxOp::getOperationName(), op.getOperands(),
+                   MO::ReduceMinAndMaxOp::getOperationName(), op->getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{{"axis", op.getAxisAttr()}},
+                   /*dataDepInputIdxs=*/{});
   return success();
 }
 

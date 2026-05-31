@@ -7,7 +7,6 @@
 !ttc = !mo.tensor<[120], f32>
 !ttd = !mo.tensor<[6,20], f32>
 !tte = !mo.tensor<[1,2,12,5], f32>
-!tax = !mo.tensor<[], si64>
 
 // CHECK-MO-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
@@ -35,13 +34,13 @@ mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, 
 // CHECK-MOGG: mogg.kernel
 // CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel
-mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb, %arg2: !tax) -> !tta {
+mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb) -> !tta {
     %0 = mo.relu(%arg0) : !tta
     %1 = mo.static.reshape(%0) : !tta -> !ttb
     %2 = mo.add(%1, %arg1) : !ttb
     %3 = mo.static.reshape(%2) : !ttb -> !tta
 
-    %4 = mo.reduce.softmax(%3, %arg2) : (!tta, !tax) -> !tta
+    %4 = mo.reduce.softmax(%3) {axis = 2 : index} : (!tta) -> !tta
 
     %5 = mo.relu(%4) : !tta
     %6 = mo.static.reshape(%5) : !tta -> !ttb

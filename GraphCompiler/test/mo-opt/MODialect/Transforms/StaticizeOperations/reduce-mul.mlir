@@ -8,10 +8,9 @@ mo.graph @reduce_mul<N1, N2 -> out>(
   %dummy: !mo.tensor<[N1, 10, N2], f32>
 ) -> !mo.tensor<[out], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
-  %shape = mo.reduce.mul(%dummy_shape, %axis) : (
-    !mo.tensor<[3], si64>, !mo.tensor<[], si64>
+  %shape = mo.reduce.mul(%dummy_shape) {axis = 0 : index} : (
+    !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1], si64>
 
   // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_no_wrap([[N1]], [[N2]], 10)], si64>

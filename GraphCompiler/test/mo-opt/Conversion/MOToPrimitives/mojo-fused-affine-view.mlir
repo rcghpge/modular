@@ -7,8 +7,7 @@
 // CHECK:       mogg.call.execute["{{.*}}.ReduceAdd"] {{.*}} outputs([[FUSED]]
 
 mo.graph @reduce_split_dim_dyn<A, B>(%arg0: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[2, 2, 1], f32>) {
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
-  %1 = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[A, B], f32>, !mo.tensor<[], ui32>) -> !mo.tensor<[A, 1], f32>
+  %1 = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[A, B], f32>) -> !mo.tensor<[A, 1], f32>
   %2 = mo.split_dim[0](%1): (!mo.tensor<[A, 1], f32>) -> !mo.tensor<[2, 2, 1], f32>
   mo.output %2 : !mo.tensor<[2, 2, 1], f32>
 }

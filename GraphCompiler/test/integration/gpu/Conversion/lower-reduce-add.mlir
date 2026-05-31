@@ -11,10 +11,9 @@
 
 mo.graph @graph(%a : !mo.tensor<[4, 4], f32>) -> !mo.tensor<[4, 1], f32>
 {
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %ch0 = mo.chain.create()
   %a_gpu, %ch1 = mo.transfer[%ch0] %a : !mo.tensor<[4, 4], f32> to <"gpu", 0>
-  %b_gpu = mo.reduce.add (%a_gpu, %axis) { device = #M.device_ref<"gpu", 0> } : (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[4, 1], f32, gpu:0>
+  %b_gpu = mo.reduce.add (%a_gpu) { device = #M.device_ref<"gpu", 0>, axis = 1 : index } : (!mo.tensor<[4, 4], f32, gpu:0>) -> !mo.tensor<[4, 1], f32, gpu:0>
   %b, %ch2 = mo.transfer[%ch1] %b_gpu : !mo.tensor<[4, 1], f32, gpu:0> to <"cpu", 0>
   mo.output %b : !mo.tensor<[4, 1], f32>
 }

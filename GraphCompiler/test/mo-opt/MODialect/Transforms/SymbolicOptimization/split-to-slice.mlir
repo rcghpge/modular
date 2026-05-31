@@ -1,9 +1,8 @@
 // RUN: mo-opt -split-input-file --mo-symbolic-optimize %s | FileCheck %s
 
 mo.graph @split_to_slice<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[N], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
 
@@ -26,9 +25,8 @@ mo.graph @split_to_slice<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], s
 // -----
 
 mo.graph @split_to_slice_with_device<N>(%input: !mo.tensor<[N], si32, dev:0>) -> (!mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[N], si32, dev:0>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>)
 
@@ -51,9 +49,8 @@ mo.graph @split_to_slice_with_device<N>(%input: !mo.tensor<[N], si32, dev:0>) ->
 // -----
 
 mo.graph @split_to_slice_3D<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
@@ -78,9 +75,8 @@ mo.graph @split_to_slice_3D<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!m
 // -----
 
 mo.graph @split_to_slice_3D_axis1<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = 1 : index} : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
@@ -106,9 +102,8 @@ mo.graph @split_to_slice_3D_axis1<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) 
 
 // Check we don't run when the axis is 0, handled by the MGP optimization.
 mo.graph @no_run_split_to_slice_3D_axis0<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = 0 : index} : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
@@ -121,26 +116,10 @@ mo.graph @no_run_split_to_slice_3D_axis0<N, H, K>(%input: !mo.tensor<[N, H, K], 
 // CHECK: mo.split
 
 
-mo.graph @no_run_split_to_slice_dyn_axis<N, H, K>(%input: !mo.tensor<[N, H, K], si32>, %ax: !mo.tensor<[], si32>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
-    !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
-  ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
-
-  %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>
-  %o2 = mo.relu(%out2): !mo.tensor<[N, H, 2], si32>
-  %o3 = mo.relu(%out3): !mo.tensor<[N, H, 3], si32>
-  mo.output %o1, %o2, %o3 : !mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>
-}
-// CHECK-LABEL: mo.graph @no_run_split_to_slice_dyn_axis<N, H, K>
-// CHECK: mo.split
-
-
 // Check if it is only used in the output we don't convert to slices.
 mo.graph @no_run_split_to_slice_used_in_out<N, H, K>(%input: !mo.tensor<[N, H, K], si32>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
 
@@ -150,8 +129,7 @@ mo.graph @no_run_split_to_slice_used_in_out<N, H, K>(%input: !mo.tensor<[N, H, K
 // CHECK: mo.split
 
 mo.graph @no_run_split_to_slice_dyn_splits<N, H, K>(%input: !mo.tensor<[N, H, K], si32>, %splitSizes: !mo.tensor<[3], si64>) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[N, H, K], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[N, H, 1], si32>, !mo.tensor<[N, H, 2], si32>, !mo.tensor<[N, H, 3], si32>)
   %o1 = mo.relu(%out1): !mo.tensor<[N, H, 1], si32>

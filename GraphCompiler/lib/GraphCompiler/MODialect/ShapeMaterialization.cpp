@@ -488,7 +488,9 @@ SqueezeShapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 // SplitOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<int32_t> SplitOp::getDataDependentInputIndices() { return {1, 2}; }
+// `axis` is a compile-time `index` attribute; only `splitSizes` (operand 1) is
+// a data-dependent input affecting the output shapes.
+SmallVector<int32_t> SplitOp::getDataDependentInputIndices() { return {1}; }
 
 ShapeMaterializeResult
 SplitOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
@@ -496,9 +498,8 @@ SplitOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   Location loc = getLoc();
   TypedAttr inputShape = inputAttrs[0];
   TypedAttr splitSizes = inputAttrs[1];
-  TypedAttr axis = inputAttrs[2];
   return materializeSplitOutputShapes(graphOp, loc, inputShape, splitSizes,
-                                      axis);
+                                      getAxisAttr());
 }
 
 //===----------------------------------------------------------------------===//

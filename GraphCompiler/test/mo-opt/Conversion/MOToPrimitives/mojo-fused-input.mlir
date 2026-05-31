@@ -8,9 +8,8 @@
 // CHECK:       mogg.call.execute["{{.*}}.ReduceAdd"] inputs([[FUSED]]
 
 mo.graph @reduce_fused_input(%arg0: !mo.tensor<[4, 5, 2, 3], f32>, %arg1: !mo.tensor<[4, 5, 2, 3], f32>, %arg2: !mo.tensor<[4, 5, 1, 3], f32>) -> (!mo.tensor<[4, 5, 1, 3], f32>) {
-  %axis = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<[4, 5, 2, 3], f32>
-  %1 = mo.reduce.add(%0, %axis) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[], ui32>) -> !mo.tensor<[4, 5, 1, 3], f32>
+  %1 = mo.reduce.add(%0) {axis = 2 : index} : (!mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 1, 3], f32>
   %2 = mo.sub(%1, %arg2) : !mo.tensor<[4, 5, 1, 3], f32>
   mo.output %2 : !mo.tensor<[4, 5, 1, 3], f32>
 }

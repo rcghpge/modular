@@ -866,10 +866,9 @@ struct SplitZeroAxisPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::SplitOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    std::optional<int64_t> axis =
-        MO::tryGetConstantInt(cast<MO::TensorValue>(op.getAxis()));
-    if (!axis.has_value() || axis.value() != 0)
-      return rewriter.notifyMatchFailure(op, "axis not constant 0");
+    int64_t axis = op.getAxisAttr().getInt();
+    if (axis != 0)
+      return rewriter.notifyMatchFailure(op, "axis not 0");
 
     // Ensure input isn't constant
     if (op.getInput().getDefiningOp<MO::ConstantOp>())
@@ -907,13 +906,17 @@ struct LayerNormPattern
     auto bet = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&beta));
     auto ep = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&eps));
 
-    auto lastAxis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
+    // `axis` is a compile-time `index` attribute on `mo.reduce.mean`, so it is
+    // no longer matched as an operand; the mean ops are captured here and their
+    // axis attributes are validated (must be the last axis) after the match.
+    mlir::Operation *meanOp = nullptr;
+    mlir::Operation *varOp = nullptr;
     // TODO: Current capture system can't distinguish multiple uses of the same
     // value in the pattern, need to fix, this might be slightly risky
     Value input;
     auto x = m_Ranked(3, m_Any(&input));
-    auto mean = m_Op<MO::Static::BroadcastToOp>(
-        po(), m_Op<MO::MeanOp>(po(), x, lastAxis));
+    auto mean =
+        m_Op<MO::Static::BroadcastToOp>(po(), m_Op<MO::MeanOp>(&meanOp, x));
     auto diff = m_Op<MO::SubOp>(po(), x, mean);
     auto square = m_Optional(
         m_Op<MO::MulOp>(po(), diff, diff),
@@ -921,7 +924,7 @@ struct LayerNormPattern
             po(), diff,
             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
                 2)));
-    auto var = m_Op<MO::MeanOp>(po(), square, lastAxis);
+    auto var = m_Op<MO::MeanOp>(&varOp, square);
     // pytorch specific pattern
     auto pRatio = m_Op<MO::DivOp>(
         po(), diff,
@@ -947,6 +950,18 @@ struct LayerNormPattern
 
     if (!input || !beta || !gamma || !eps)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    // Both reductions must be along the last axis (the layer-norm axis).
+    auto isLastAxis = [&](mlir::Operation *meanLikeOp) {
+      auto reduction = cast<MO::MeanOp>(meanLikeOp);
+      int64_t rank = reduction.getInput().getType().getRank();
+      int64_t axis = reduction.getAxisAttr().getInt();
+      if (axis < 0)
+        axis += rank;
+      return axis == rank - 1;
+    };
+    if (!meanOp || !varOp || !isLastAxis(meanOp) || !isLastAxis(varOp))
+      return rewriter.notifyMatchFailure(op, "reduction axis is not last axis");
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -1051,7 +1066,6 @@ private:
 
   // Top of the pattern
   TensorValue softmaxInput;
-  TensorValue softmaxAxis;
   Operation *softmaxProducer = nullptr;
 
   // For unsafe broadcasts
@@ -1080,8 +1094,8 @@ public:
     auto maybeReshape1 =
         pOptionalReshape(&matcher.optReshape1, m_Any(&matcher.softmaxInput));
     auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
-    auto pSoftmaxAttnMatrix = m_Op<SoftmaxOp>(
-        &matcher.softmaxProducer, maybeBCast1, m_Any(&matcher.softmaxAxis));
+    auto pSoftmaxAttnMatrix =
+        m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
 
     // support up to two optional casts (from bf16 --> fp32 --> bf16)
     auto maybeCast1 = pOptionalCast(&matcher.optCast1, pSoftmaxAttnMatrix);
@@ -1100,9 +1114,10 @@ public:
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
 
-    std::optional<int64_t> axis = MO::tryGetConstantInt(matcher.softmaxAxis);
-    if (!axis.has_value() ||
-        size_t(axis.value()) != matcher.softmaxInput.getType().getRank() - 1)
+    // `axis` is a compile-time `index` attribute on the softmax op.
+    int64_t axis =
+        cast<SoftmaxOp>(matcher.softmaxProducer).getAxisAttr().getInt();
+    if (size_t(axis) != matcher.softmaxInput.getType().getRank() - 1)
       return Error("[MultiHeadAttentionEpilogueMatcher]: softmax axis is not "
                    "the last axis");
 
@@ -3497,10 +3512,8 @@ struct ReduceRMSNormRoPEPattern
       auto splitOp = dyn_cast<MO::SplitOp>(user);
       if (!splitOp || splitOp.getNumResults() != 2)
         continue;
-      auto maybeAxis = tryGetConstantInt(splitOp.getAxis());
-      if (!maybeAxis)
-        continue;
-      if (normalizeAxis(*maybeAxis, rank) != rmsAxis)
+      // `axis` is a compile-time `index` attribute.
+      if (normalizeAxis(splitOp.getAxisAttr().getInt(), rank) != rmsAxis)
         continue;
       normSplit = splitOp;
       break;
@@ -4000,13 +4013,9 @@ struct MatmulFusedPartialRMSNormPattern
           rmsNormOp, "split must produce exactly 2 results");
     }
 
-    // Check that the split is on the last axis (axis=1 for rank-2)
-    auto axisValue = tryGetConstantInt(rmsInputSplitOp.getAxis());
-    if (!axisValue) {
-      return rewriter.notifyMatchFailure(rmsNormOp,
-                                         "split axis must be constant");
-    }
-    int64_t axis = normalizeAxis(*axisValue, 2);
+    // Check that the split is on the last axis (axis=1 for rank-2). `axis` is
+    // a compile-time `index` attribute.
+    int64_t axis = normalizeAxis(rmsInputSplitOp.getAxisAttr().getInt(), 2);
     if (axis != 1) {
       return rewriter.notifyMatchFailure(rmsNormOp,
                                          "split must be on the last axis");

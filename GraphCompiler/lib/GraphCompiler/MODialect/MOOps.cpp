@@ -1904,14 +1904,12 @@ LogicalResult SplitOp::verify() {
   if (inputTy.getDtype() != resultTy.getDtype())
     return emitError("input and output element types must match");
 
-  // If the input has a static shape and the axis is a constant, then verify
-  // that the axis is in range.
+  // If the input has a static shape, verify that the axis is in range.
   // Then, if the results also have static shapes, verify that the sum of the
   // output shapes along the split axis matches the input shape, and that the
-  // other dimensions match.
-  std::optional<int64_t> axisOr = tryGetConstantInt(getAxis());
-  if (inputTy.hasStaticShape() && axisOr) {
-    int64_t axis = *axisOr;
+  // other dimensions match. `axis` is a compile-time `index` attribute.
+  if (inputTy.hasStaticShape()) {
+    int64_t axis = getAxisAttr().getInt();
     int64_t inputRank = inputTy.getRank();
     int64_t normalizedAxis = normalizeAxis(axis, inputRank);
     if ((normalizedAxis < 0) || (inputRank <= normalizedAxis))
@@ -2092,13 +2090,8 @@ static LogicalResult argVerify(Op *op) {
 
   TensorType resTy = op->getResult().getType();
   TensorType inputTy = op->getInput().getType();
-  TensorType axisTy = op->getAxis().getType();
 
   // TODO(#12939): Refactor this into verifyReduction.
-
-  if (!axisTy.getElementType().isSignedInteger(32) &&
-      !axisTy.getElementType().isSignedInteger(64))
-    return op->emitOpError("axis type must be si32 or si64");
 
   if ((inputTy.hasRank() && resTy.hasRank()) &&
       (inputTy.getRank() != resTy.getRank()))
@@ -2106,14 +2099,15 @@ static LogicalResult argVerify(Op *op) {
                            ": output rank must match input rank");
 
   if (resTy.hasRank()) {
-    auto optAxis = tryGetConstantInt(op->getAxis());
+    // `axis` is a compile-time `index` attribute and is always known.
+    int64_t optAxis = op->getAxisAttr().getInt();
     size_t reducedDims = 0;
     size_t dynamicOutDims = 0;
 
     for (int64_t axis = 0, rank = resTy.getRank(); axis < rank; ++axis) {
       int64_t resDim = resTy.getTypedShapeAttr().getIntDim(axis);
 
-      if (optAxis.has_value() && (axis == optAxis.value()) && (resDim != 1) &&
+      if ((axis == optAxis) && (resDim != 1) &&
           !mlir::ShapedType::isDynamic(resDim))
         return op->emitOpError(
             Op::getOperationName() +
@@ -2144,27 +2138,14 @@ static LogicalResult argVerify(Op *op) {
 
 template <typename TOp>
 void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
-                      TensorValue input, TensorValue axis,
-                      TensorType outputTy) {
-  TOp::build(odsBuilder, odsState, outputTy, input, axis);
-}
-
-template <typename TOp>
-void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<TOp>(
-      odsBuilder, odsState, input,
-      ConstantOp::create(odsBuilder, input.getLoc(), axis,
-                         getHostDevice(odsBuilder.getContext())),
-      outputTy);
+  // `axis` is a compile-time `index` attribute.
+  TOp::build(odsBuilder, odsState, outputTy, input,
+             odsBuilder.getIndexAttr(axis));
 }
 
 LogicalResult ArgMaxOp::verify() { return argVerify(this); }
 
-void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                     TensorValue input, TensorValue axis, TensorType outputTy) {
-  buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
-}
 void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                      TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
@@ -2176,10 +2157,6 @@ void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 LogicalResult ArgMinOp::verify() { return argVerify(this); }
 
-void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                     TensorValue input, TensorValue axis, TensorType outputTy) {
-  buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
-}
 void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                      TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
@@ -2390,10 +2367,6 @@ LogicalResult RebindOp::verify() {
 // ===----------------------------------------------------------------------===//
 
 void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                   TensorValue input, TensorValue axis, TensorType outputTy) {
-  buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
-}
-void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                    TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
 }
@@ -2402,11 +2375,6 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 // ReduceMulOp
 //===----------------------------------------------------------------------===//
 
-void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, TensorValue axis,
-                        TensorType outputTy) {
-  buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
-}
 void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                         TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
@@ -2417,11 +2385,6 @@ void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 //===----------------------------------------------------------------------===//
 
 void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, TensorValue axis,
-                        TensorType outputTy) {
-  buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
-}
-void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                         TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
 }
@@ -2429,12 +2392,6 @@ void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 //===----------------------------------------------------------------------===//
 // ReduceMinOp
 //===----------------------------------------------------------------------===//
-
-void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, TensorValue axis,
-                        TensorType outputTy) {
-  buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
-}
 
 void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                         TensorValue input, int64_t axis, TensorType outputTy) {
@@ -2445,11 +2402,6 @@ void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 // ReduceMaxOp
 //===----------------------------------------------------------------------===//
 
-void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, TensorValue axis,
-                        TensorType outputTy) {
-  buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
-}
 void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                         TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);

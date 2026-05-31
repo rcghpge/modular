@@ -174,9 +174,10 @@ class Split(TestBase):
     @staticmethod
     def generate_inputs(shapes):  # noqa: ANN001, ANN205
         start = np.random.randint(-128, 128, size=shapes[0]).astype(np.int32)
-        axis = np.random.randint(-start.ndim, start.ndim - 1, size=(1,)).astype(
-            np.int32
-        )
+        # The split axis is now a compile-time attribute on mo.split (the graph
+        # splits along a fixed axis), so pin the axis input to match the
+        # attribute baked into split.mlir (axis = 0).
+        axis = np.array([0], dtype=np.int32)
 
         dim_splitting_along = start.shape[axis[0]]
         split_sizes = []
@@ -243,9 +244,12 @@ class TransposeReduce(TestBase):
         permute = np.random.permutation(permute)
         # use randint for input to avoid fp tolerance issues
         input = np.random.randint(-5, 5, size=shapes[0]).astype(np.float32)
+        # The reduction axis is now a compile-time attribute on mo.reduce.add
+        # (the graph reduces along a fixed axis), so pin the axis input to
+        # match the attribute baked into transpose_reduce.mlir (axis = 3).
         return [
             input,
-            np.random.randint(0, len(shapes[0]), size=(1,)).astype(np.int32),
+            np.array([3], dtype=np.int32),
             permute,
         ]
 

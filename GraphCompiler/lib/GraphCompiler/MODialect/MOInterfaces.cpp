@@ -124,14 +124,12 @@ LogicalResult Impl::verifyReduction(Reduction op) {
     return op.emitOpError("input and output must either both have dynamic "
                           "ranks or both have the same size static ranks");
 
-  TensorValue axisArr = op.getAxis();
   TensorType inputTy = op.getInput().getType();
-
-  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
-  if (!maybeAxis.has_value() || !inputTy.hasRank())
+  if (!inputTy.hasRank())
     return success();
 
-  int64_t axis = maybeAxis.value();
+  // `axis` is a compile-time `index` attribute and is always known.
+  int64_t axis = op.getAxisAttr().getInt();
   int64_t rank = inputTy.getRank();
   if (axis < -rank || axis > rank - 1) {
     return op.emitOpError() << "axis must be between [-" << rank << ", "
@@ -147,8 +145,8 @@ Impl::materializeReductionShapeDefs(Reduction op,
   auto graphOp = op->getParentOfType<GraphOp>();
   Location loc = op->getLoc();
   TypedAttr inputShape = inputAttrs[0];
-  TypedAttr axis = inputAttrs[1];
-  return materializeReduceShape(graphOp, loc, inputShape, axis);
+  // `axis` is a compile-time `index` attribute, not an operand.
+  return materializeReduceShape(graphOp, loc, inputShape, op.getAxisAttr());
 }
 
 //===----------------------------------------------------------------------===//

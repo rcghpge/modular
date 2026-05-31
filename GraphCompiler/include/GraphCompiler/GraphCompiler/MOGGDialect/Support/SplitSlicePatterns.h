@@ -130,10 +130,10 @@ struct SliceToSplitPattern
     for (SliceOp sliceOp : sliceOps)
       originalSliceValues.push_back(sliceOp.getResult());
 
-    auto splitAxis = rewriter.createHostConstant(loc, sliceDimension);
-
-    auto splitOp = rewriter.create<SplitOp>(
-        loc, splitTypes, input, splitSizesOp.getResult(), splitAxis);
+    // `axis` is a compile-time `index` attribute.
+    auto splitOp = rewriter.create<SplitOp>(loc, splitTypes, input,
+                                            splitSizesOp.getResult(),
+                                            llvm::APInt(64, sliceDimension));
 
     rewriter.replaceAllUsesWith(originalSliceValues, splitOp.getResults());
     for (SliceOp sliceOp : sliceOps)
@@ -184,11 +184,8 @@ struct SplitToSlicePattern
         }))
       return rewriter.notifyMatchFailure(op, "Output shape is unknown.");
 
-    // We must have a constant axis.
-    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
-    if (!maybeAxis.has_value())
-      return rewriter.notifyMatchFailure(op, "axis is not constant");
-    int64_t axis = maybeAxis.value();
+    // `axis` is a compile-time `index` attribute.
+    int64_t axis = op.getAxisAttr().getInt();
 
     if constexpr (SkipAxisZero) {
       if (axis == 0)

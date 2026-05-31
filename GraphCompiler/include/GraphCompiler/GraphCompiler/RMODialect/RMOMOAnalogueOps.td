@@ -260,7 +260,7 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
 class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :  RMO_MOAnaloguePureUnaryElementWiseOp<name, traits # [Pure, AllDTypesMatch<["input", "result"]>]> {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_IndicesTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -272,12 +272,10 @@ class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :  RMO_MOAnalogu
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
 
+        // `input` type passes through; `axis` is a compile-time `index`
+        // attribute and contributes no MO operand.
         MO::TensorType inputTy = cast<MO::TensorType>(operands.getInput().getType());
         moOperandTypes.push_back(inputTy);
-        moInputParamDecls.push_back({});
-
-        MO::TensorType axisTy = cast<MO::TensorType>(operands.getAxis().getType());
-        moOperandTypes.push_back(axisTy);
         moInputParamDecls.push_back({});
 
         moResultTypes.push_back(inputTy);
@@ -652,7 +650,7 @@ class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,
     traits # !if(input_result_same_dtype, [AllDTypesMatch<["input", "result"]>], [])> {
   let arguments = (ins
     MO_Tensor:$input,
-    MO_IndicesTensor:$axis,
+    IndexAttr:$axis,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 }
@@ -670,10 +668,8 @@ def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.reduce.mean(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = rmo.mo.reduce.mean(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -691,10 +687,8 @@ def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.reduce.mul(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = rmo.mo.reduce.mul(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -712,10 +706,8 @@ def RMO_MOReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.reduce.add(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = rmo.mo.reduce.add(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -733,10 +725,8 @@ def MO_MOReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.reduce.min(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = rmo.mo.reduce.min(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -754,10 +744,8 @@ def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.reduce.max(%arg, %axis) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %res = rmo.mo.reduce.max(%arg) {axis = 1 : index} : (
+        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -786,10 +774,7 @@ def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_max"> {
       %0 = mo.constant {
         value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
       } : !mo.tensor<[2, 2], si32>
-      %axis = mo.constant {
-        value = #M.dense_array<1> : tensor<si32>
-      } : !mo.tensor<[], si32>
-      %1 = rmo.mo.reduce.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.reduce.arg_max(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -2605,14 +2590,13 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
-    %axis: !mo.tensor<[], i64>
-    %res = rmo.mo.cumsum(%arg, %axis) {exclusive = 1 : index, reverse = 0 : index} : (
-      !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
+    %res = rmo.mo.cumsum(%arg) {axis = 0 : index, exclusive = 1 : index, reverse = 0 : index} : (
+      !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins MO_Tensor:$input,
-                       MO_IndexScalarIfRanked:$axis,
+                       IndexAttr:$axis,
                        IndexAttr:$exclusive,
                        IndexAttr:$reverse,
                        MO_ParamDecls:$outputParamDecls);

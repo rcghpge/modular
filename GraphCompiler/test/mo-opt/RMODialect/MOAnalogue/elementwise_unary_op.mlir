@@ -77,13 +77,13 @@ mo.graph @log1p_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, 
 
 // -----
 
-mo.graph @logsoftmax_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[D0, D1], f32> {
-  %1 = rmo.mo.reduce.logsoftmax(%arg0, %arg1) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D0, D1], f32>
+mo.graph @logsoftmax_ok<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
+  %1 = rmo.mo.reduce.logsoftmax(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
   mo.output %1 : !mo.tensor<[D0, D1], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @logsoftmax_ok<D0, D1>([[VARG0:[^ ]*]]: !mo.tensor<[D0, D1], f32>, [[ARG1:%.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[D0, D1], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.reduce.logsoftmax([[VARG0]], [[ARG1]]) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D0, D1], f32>
+// CHECK-SAME: @logsoftmax_ok<D0, D1>([[VARG0:[^ ]*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.reduce.logsoftmax([[VARG0]]) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[D0, D1], f32>
 
 // -----

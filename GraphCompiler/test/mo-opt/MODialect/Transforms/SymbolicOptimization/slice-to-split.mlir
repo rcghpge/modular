@@ -2,8 +2,7 @@
 
 // CHECK-LABEL:  mo.graph @usual_case
 // CHECK-NEXT:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:    %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%{{.*}}, %[[SIZES]]) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) {axis = 1 : index} : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 // CHECK-NEXT:  }
 

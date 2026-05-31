@@ -457,8 +457,9 @@ ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                              ParamExprBuilder &b) {
   StaticizeAdaptor<ReduceMulOp> adaptor(inputs);
 
-  // We only staticize over 1D tensors for now, so axis must be 0.
-  if (tryGetConstantInt(adaptor.getAxis()) != 0)
+  // We only staticize over 1D tensors for now, so axis must be 0. `axis` is a
+  // compile-time `index` attribute.
+  if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
   // The result is just the product of individual symbolic elements from the

@@ -13,8 +13,7 @@
 // CHECK:         mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 mo.graph @sink_split_through_activation(%A: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %s0, %s1 = mo.split[%axis : !mo.tensor<[], si32>] (%A, %sizes) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %s0, %s1 = mo.split(%A, %sizes) {axis = 1 : index} : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   %r0 = mo.relu(%s0) : !mo.tensor<[2, 2], f32>
   %r1 = mo.relu(%s1) : !mo.tensor<[2, 2], f32>
   mo.output %r0, %r1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>

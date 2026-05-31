@@ -359,7 +359,9 @@ class ReductionShapeMaterialization
     : public mlir::OpTrait::TraitBase<ConcreteType,
                                       ReductionShapeMaterialization> {
 public:
-  SmallVector<int32_t> getDataDependentInputIndices() { return {1}; }
+  // `axis` is a compile-time `index` attribute, so no input operand is
+  // data-dependent.
+  SmallVector<int32_t> getDataDependentInputIndices() { return {}; }
 
   ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
     auto reduction = mlir::cast<Reduction>(this->getOperation());

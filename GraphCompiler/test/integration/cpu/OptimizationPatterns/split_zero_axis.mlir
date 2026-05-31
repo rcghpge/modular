@@ -4,9 +4,8 @@
 mo.graph @split_zero_axis(
   %input: !mo.tensor<[5, 4], f32>
 ) -> (!mo.tensor<[2, 4], f32>, !mo.tensor<[3, 4], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %split_sizes = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %res:2 = mo.split[%ax: !mo.tensor<[], si32>](%input, %split_sizes) : (
+  %res:2 = mo.split(%input, %split_sizes) {axis = 0 : index} : (
     !mo.tensor<[5, 4], f32>, !mo.tensor<[2], si64>
   ) -> (!mo.tensor<[2, 4], f32>, !mo.tensor<[3, 4], f32>)
 

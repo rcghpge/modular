@@ -14,7 +14,6 @@ mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128
   %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -28,7 +27,7 @@ mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128
   %20 = mo.slice(%19, %7, %8, %9) : (!mo.tensor<[1, 2048, 2048], f32, gpu:0>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 1024, 1024], f32, gpu:0>
   %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %22 = mo.add(%18, %21) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %23 = mo.reduce.softmax(%22, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %23 = mo.reduce.softmax(%22) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %24 = mo.static.broadcast_to(%23) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %25 = mo.batch_matmul(%24, %15) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>
   %26 = mo.transpose(%25, %5) : (!mo.tensor<[1, 32, 1024, 128], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -49,7 +48,6 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
   %7 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %9 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -63,7 +61,7 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
   %20 = mo.slice(%19, %7, %8, %9) : (!mo.tensor<[1, 1, 2048, 2048], f32, gpu:0>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 1024, 1024], f32, gpu:0>
   %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %22 = mo.add(%18, %21) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %23 = mo.reduce.softmax(%22, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %23 = mo.reduce.softmax(%22) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %24 = mo.static.broadcast_to(%23) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %25 = mo.batch_matmul(%24, %15) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>
   %26 = mo.transpose(%25, %5) : (!mo.tensor<[1, 32, 1024, 128], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -87,8 +85,7 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
     %7 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %8 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %9 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
+      %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
     %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
     %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
     %13 = mo.transpose(%10, %5) : (!mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 32, 1024, 128], bf16, gpu:0>
@@ -101,7 +98,7 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
     %20 = mo.slice(%19, %7, %8, %9) : (!mo.tensor<[1, 1, 2048, 2048], bf16, gpu:0>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 1024, 1024], bf16, gpu:0>
     %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 1, 1024, 1024], bf16, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>
     %22 = mo.add(%18, %21) : !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>
-    %23 = mo.reduce.softmax(%22, %axis) : (!mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>
+    %23 = mo.reduce.softmax(%22) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>
 
     // extra casts are in the model for some reason
     %24 = mo.cast(%23) : (!mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
@@ -131,7 +128,6 @@ mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose()
   %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -145,7 +141,7 @@ mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose()
   %20 = mo.slice(%19, %7, %8, %9) : (!mo.tensor<[1, 2048, 2048], f32, gpu:0>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 1024, 1024], f32, gpu:0>
   %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %22 = mo.add(%18, %21) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %23 = mo.reduce.softmax(%22, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %23 = mo.reduce.softmax(%22) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %24 = mo.static.broadcast_to(%23) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %25 = mo.batch_matmul(%24, %15) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>
 
@@ -178,7 +174,6 @@ mo.graph @multihead_flash_attention_rank4_mask_with_gqa() -> !mo.tensor<[1, 1024
   %6 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %7 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
 
   // Groups = 4, so key and value have an initial head dimension of 8
   %9 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -204,7 +199,7 @@ mo.graph @multihead_flash_attention_rank4_mask_with_gqa() -> !mo.tensor<[1, 1024
   %24 = mo.slice(%23, %6, %7, %8) : (!mo.tensor<[1, 1, 2048, 2048], f32, gpu:0>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 1024, 1024], f32, gpu:0>
   %25 = mo.static.broadcast_to(%24) : !mo.tensor<[1, 1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %26 = mo.add(%22, %25) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %27 = mo.reduce.softmax(%26, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %27 = mo.reduce.softmax(%26) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %28 = mo.static.broadcast_to(%27) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %29 = mo.batch_matmul(%28, %19) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>
   %30 = mo.transpose(%29, %5) : (!mo.tensor<[1, 32, 1024, 128], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -235,7 +230,6 @@ mo.graph @multihead_flash_attention_with_unsafe_bcasts_reshapes<A, B>(%dummy: !m
   %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -254,7 +248,7 @@ mo.graph @multihead_flash_attention_with_unsafe_bcasts_reshapes<A, B>(%dummy: !m
   %23 = mo.slice(%22, %7, %8, %9) : (!mo.tensor<[1, 2048, 2048], f32, gpu:0>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 1024, 1024], f32, gpu:0>
   %24 = mo.static.broadcast_to(%23) : !mo.tensor<[1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %25 = mo.add(%21, %24) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %26 = mo.reduce.softmax(%25, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %26 = mo.reduce.softmax(%25) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %27 = mo.static.broadcast_to(%26) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %28 = mo.batch_matmul(%27, %18) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 128], f32, gpu:0>
 
@@ -278,7 +272,6 @@ mo.graph @multihead_flash_attention_non_matching_D_dim() -> !mo.tensor<[1, 1024,
   %6 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %7 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %9 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
   %10 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
   %11 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
@@ -292,7 +285,7 @@ mo.graph @multihead_flash_attention_non_matching_D_dim() -> !mo.tensor<[1, 1024,
   %19 = mo.slice(%18, %6, %7, %8) : (!mo.tensor<[1, 2048, 2048], f32, gpu:0>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 1024, 1024], f32, gpu:0>
   %20 = mo.static.broadcast_to(%19) : !mo.tensor<[1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %21 = mo.add(%17, %20) : !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
-  %22 = mo.reduce.softmax(%21, %axis) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
+  %22 = mo.reduce.softmax(%21) {axis = 3 : index} : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>
   %23 = mo.batch_matmul(%22, %14) : (!mo.tensor<[1, 32, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, 32, 1024, 256], f32, gpu:0>) -> !mo.tensor<[1, 32, 1024, 256], f32, gpu:0>
   %24 = mo.transpose(%23, %4) : (!mo.tensor<[1, 32, 1024, 256], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
   mo.output %24 : !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
@@ -311,7 +304,6 @@ mo.graph @multihead_flash_attention_dynamic_H_dim<H0>() -> !mo.tensor<[1, 1024, 
   %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %axis = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>
@@ -325,7 +317,7 @@ mo.graph @multihead_flash_attention_dynamic_H_dim<H0>() -> !mo.tensor<[1, 1024, 
   %20 = mo.slice(%19, %7, %8, %9) : (!mo.tensor<[1, 2048, 2048], f32, gpu:0>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[1, 1024, 1024], f32, gpu:0>
   %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>
   %22 = mo.add(%18, %21) : !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>
-  %23 = mo.reduce.softmax(%22, %axis) : (!mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>
+  %23 = mo.reduce.softmax(%22) {axis = 3 : index} : (!mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>) -> !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>
   %24 = mo.static.broadcast_to(%23) : !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0> -> !mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>
   %25 = mo.batch_matmul(%24, %15) : (!mo.tensor<[1, H0, 1024, 1024], f32, gpu:0>, !mo.tensor<[1, H0, 1024, 128], f32, gpu:0>) -> !mo.tensor<[1, H0, 1024, 128], f32, gpu:0>
   %26 = mo.transpose(%25, %5) : (!mo.tensor<[1, H0, 1024, 128], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>

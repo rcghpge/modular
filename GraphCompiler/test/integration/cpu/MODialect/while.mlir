@@ -7,8 +7,7 @@ mo.graph @while_op() -> (!mo.tensor<[2], f32>) {
    %x = mo.constant {value = #M.dense_array<1.0, 1.0> : tensor<2xf32> } : !mo.tensor<[2], f32>
    %y = mo.constant {value = #M.dense_array<4.0> : tensor<1xf32> } : !mo.tensor<[], f32>
    %res = mo.while (%x as %xi: !mo.tensor<[2], f32>) {
-     %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-     %mean0 = mo.reduce.mean (%xi, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
+     %mean0 = mo.reduce.mean (%xi) {axis = 0 : index} : (!mo.tensor<[2], f32>) -> !mo.tensor<[1], f32>
      %mean1 = mo.static.reshape(%mean0) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
      %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
      mo.while.condition(%cond) %xi : !mo.tensor<[2], f32>

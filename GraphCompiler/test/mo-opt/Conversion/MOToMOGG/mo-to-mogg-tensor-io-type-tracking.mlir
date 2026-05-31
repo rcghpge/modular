@@ -30,10 +30,9 @@ mo.graph @with_variadic_inputs(%arg2: !mo.tensor<[2], si32>) -> (!mo.tensor<[6],
 // CHECK-LABEL: @with_variadic_outputs
 // CHECK-NOT: mogg.bind
 mo.graph @with_variadic_outputs() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %input = mo.constant {value = #M.dense_array<0, 1, 1, 2, 3, 5> : tensor<6xsi32>} : !mo.tensor<[6], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[6], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
   mo.output %out1, %out2, %out3 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>

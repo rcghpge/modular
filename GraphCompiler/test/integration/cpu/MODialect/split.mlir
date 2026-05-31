@@ -7,10 +7,9 @@
 // CHECK-NEXT: tensor<2xsi32> [3, 5]
 // CHECK-NEXT: tensor<3xsi32> [7, 11, 13]
 mo.graph @split_static_output() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %input = mo.constant {value = #M.dense_array<2, 3, 5, 7, 11, 13> : tensor<6xsi32>} : !mo.tensor<[6], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = 0 : index} : (
     !mo.tensor<[6], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
   mo.output %out1, %out2, %out3 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
@@ -21,10 +20,9 @@ mo.graph @split_static_output() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>
 // CHECK-NEXT: tensor<2xsi32> [1, 1]
 // CHECK-NEXT: tensor<3xsi32> [2, 3, 5]
 mo.graph @split_negative_axis() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %input = mo.constant {value = #M.dense_array<0, 1, 1, 2, 3, 5> : tensor<6xsi32>} : !mo.tensor<[6], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split(%input, %splitSizes) {axis = -1 : index} : (
     !mo.tensor<[6], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
   mo.output %out1, %out2, %out3 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
@@ -35,10 +33,9 @@ mo.graph @split_negative_axis() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>
 // CHECK-NEXT: tensor<2xsi32> [1, 4]
 // CHECK-NEXT: tensor<3xsi32> [1, 5, 9]
 mo.graph @split_dyn_output<() -> D0, D1, D2>() -> (!mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>, !mo.tensor<[D2], si32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %input = mo.constant {value = #M.dense_array<3, 1, 4, 1, 5, 9> : tensor<6xsi32>} : !mo.tensor<[6], si32>
   %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split<() -> D3, D4, D5>[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
+  %out1, %out2, %out3 = mo.split<() -> D3, D4, D5>(%input, %splitSizes) {axis = 0 : index} : (
     !mo.tensor<[6], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[D3], si32>, !mo.tensor<[D4], si32>, !mo.tensor<[D5], si32>)
   mo.output<D3, D4, D5> %out1, %out2, %out3 : !mo.tensor<[D3], si32>, !mo.tensor<[D4], si32>, !mo.tensor<[D5], si32>

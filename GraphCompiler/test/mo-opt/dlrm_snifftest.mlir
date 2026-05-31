@@ -15,7 +15,6 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %7 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
     %9 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
     %10 = mo.constant {value = #M.dense_array<-0.121941715, -0.112631559, 0.199184537, 0.260294795, -0.190447032, 0.214445293, 0.0505436063, 0.254368067, 0.18954441, -0.156480938, -0.0834032595, -1.882630e-01, -0.125319079, -0.225907743, 0.122629285, -0.0715062469, -0.184827894, -0.228427023, 0.229661107, 0.0153187215, -0.118268147, 0.159035563, 0.0799599587, 0.0667982101, 0.0901305377, -0.0790597349, 0.04434672, -0.278808236, 0.300504982, 0.0512512624, 0.156755388, -0.141259581, -0.0541819781, -0.207770735, -0.232766122, -0.180529654, 0.185262382, -0.155863777, -5.34206629E-4, 0.194931746, -3.772080e-02, 0.188996345, 0.128953159, 0.273819387, -0.0088250339, 0.191499621, 0.204237163, -0.0390079916, -0.292554468, 0.260827839, -0.114037767, 0.249398828, -0.0697858631, -0.271265894, -0.0694437474, 0.141885012, 8.175060e-02, 0.289748192, 0.165302575, 0.228590071, -0.0586845726, -0.22602132, 0.19075048, 0.0257503986> : tensor<64x1xf32>} : !mo.tensor<[64, 1], f32>
-    %11 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
     %12 = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1, 1, 1> : tensor<8xsi64>} : !mo.tensor<[8], si64>
     %13 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
     %14 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
@@ -32,7 +31,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %25 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[256], f32>
     %26 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[64], f32>
     %27 = mo.rebind<() -> D448>(%arg0) : !mo.tensor<[D473, 8, 100], si32> -> !mo.tensor<[D448, 8, 100], si32>
-    %28:8 = mo.split<() -> D449, D450, D451, D452, D453, D454, D455, D456, D457, D458, D459, D460, D461, D462, D463, D464, D465, D466, D467, D468, D469, D470, D471, D472>[%11 : !mo.tensor<[], si64>] (%27, %12) : (!mo.tensor<[D448, 8, 100], si32>, !mo.tensor<[8], si64>) -> (!mo.tensor<[D449, D450, D451], si32>, !mo.tensor<[D452, D453, D454], si32>, !mo.tensor<[D455, D456, D457], si32>, !mo.tensor<[D458, D459, D460], si32>, !mo.tensor<[D461, D462, D463], si32>, !mo.tensor<[D464, D465, D466], si32>, !mo.tensor<[D467, D468, D469], si32>, !mo.tensor<[D470, D471, D472], si32>)
+    %28:8 = mo.split<() -> D449, D450, D451, D452, D453, D454, D455, D456, D457, D458, D459, D460, D461, D462, D463, D464, D465, D466, D467, D468, D469, D470, D471, D472>(%27, %12) {axis = 1 : index} : (!mo.tensor<[D448, 8, 100], si32>, !mo.tensor<[8], si64>) -> (!mo.tensor<[D449, D450, D451], si32>, !mo.tensor<[D452, D453, D454], si32>, !mo.tensor<[D455, D456, D457], si32>, !mo.tensor<[D458, D459, D460], si32>, !mo.tensor<[D461, D462, D463], si32>, !mo.tensor<[D464, D465, D466], si32>, !mo.tensor<[D467, D468, D469], si32>, !mo.tensor<[D470, D471, D472], si32>)
     %29 = mo.rebind<() -> D445, D446, D447>(%28#0) : !mo.tensor<[D449, D450, D451], si32> -> !mo.tensor<[D445, D446, D447], si32>
     %30 = mo.shape_of(%29) : (!mo.tensor<[D445, D446, D447], si32>) -> !mo.tensor<[3], si64>
     %31 = mo.shape_of(%30) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -156,7 +155,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %149 = mo.rebind<() -> D318>(%43) : !mo.tensor<[D436, 100], si32> -> !mo.tensor<[D318, 100], si32>
     %150 = mo.gather<() -> D319>(%arg9, %149) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D318, 100], si32>) -> !mo.tensor<[D319, 100, 32], f32>
     %151 = mo.rebind<() -> D314>(%150) : !mo.tensor<[D319, 100, 32], f32> -> !mo.tensor<[D314, 100, 32], f32>
-    %152 = mo.reduce.add<() -> D315, D316, D317>(%151, %20) : (!mo.tensor<[D314, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D315, D316, D317], f32>
+    %152 = mo.reduce.add<() -> D315, D316, D317>(%151) {axis = 1 : index} : (!mo.tensor<[D314, 100, 32], f32>) -> !mo.tensor<[D315, D316, D317], f32>
     %153 = mo.rebind<() -> D311, D312, D313>(%152) : !mo.tensor<[D315, D316, D317], f32> -> !mo.tensor<[D311, D312, D313], f32>
     %154 = mo.shape_of(%153) : (!mo.tensor<[D311, D312, D313], f32>) -> !mo.tensor<[3], si64>
     %155 = mo.shape_of(%154) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -175,7 +174,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %168 = mo.rebind<() -> D296>(%58) : !mo.tensor<[D420, 100], si32> -> !mo.tensor<[D296, 100], si32>
     %169 = mo.gather<() -> D297>(%arg8, %168) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D296, 100], si32>) -> !mo.tensor<[D297, 100, 32], f32>
     %170 = mo.rebind<() -> D292>(%169) : !mo.tensor<[D297, 100, 32], f32> -> !mo.tensor<[D292, 100, 32], f32>
-    %171 = mo.reduce.add<() -> D293, D294, D295>(%170, %20) : (!mo.tensor<[D292, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D293, D294, D295], f32>
+    %171 = mo.reduce.add<() -> D293, D294, D295>(%170) {axis = 1 : index} : (!mo.tensor<[D292, 100, 32], f32>) -> !mo.tensor<[D293, D294, D295], f32>
     %172 = mo.rebind<() -> D289, D290, D291>(%171) : !mo.tensor<[D293, D294, D295], f32> -> !mo.tensor<[D289, D290, D291], f32>
     %173 = mo.shape_of(%172) : (!mo.tensor<[D289, D290, D291], f32>) -> !mo.tensor<[3], si64>
     %174 = mo.shape_of(%173) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -194,7 +193,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %187 = mo.rebind<() -> D274>(%73) : !mo.tensor<[D404, 100], si32> -> !mo.tensor<[D274, 100], si32>
     %188 = mo.gather<() -> D275>(%arg7, %187) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D274, 100], si32>) -> !mo.tensor<[D275, 100, 32], f32>
     %189 = mo.rebind<() -> D270>(%188) : !mo.tensor<[D275, 100, 32], f32> -> !mo.tensor<[D270, 100, 32], f32>
-    %190 = mo.reduce.add<() -> D271, D272, D273>(%189, %20) : (!mo.tensor<[D270, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D271, D272, D273], f32>
+    %190 = mo.reduce.add<() -> D271, D272, D273>(%189) {axis = 1 : index} : (!mo.tensor<[D270, 100, 32], f32>) -> !mo.tensor<[D271, D272, D273], f32>
     %191 = mo.rebind<() -> D267, D268, D269>(%190) : !mo.tensor<[D271, D272, D273], f32> -> !mo.tensor<[D267, D268, D269], f32>
     %192 = mo.shape_of(%191) : (!mo.tensor<[D267, D268, D269], f32>) -> !mo.tensor<[3], si64>
     %193 = mo.shape_of(%192) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -213,7 +212,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %206 = mo.rebind<() -> D252>(%88) : !mo.tensor<[D388, 100], si32> -> !mo.tensor<[D252, 100], si32>
     %207 = mo.gather<() -> D253>(%arg6, %206) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D252, 100], si32>) -> !mo.tensor<[D253, 100, 32], f32>
     %208 = mo.rebind<() -> D248>(%207) : !mo.tensor<[D253, 100, 32], f32> -> !mo.tensor<[D248, 100, 32], f32>
-    %209 = mo.reduce.add<() -> D249, D250, D251>(%208, %20) : (!mo.tensor<[D248, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D249, D250, D251], f32>
+    %209 = mo.reduce.add<() -> D249, D250, D251>(%208) {axis = 1 : index} : (!mo.tensor<[D248, 100, 32], f32>) -> !mo.tensor<[D249, D250, D251], f32>
     %210 = mo.rebind<() -> D245, D246, D247>(%209) : !mo.tensor<[D249, D250, D251], f32> -> !mo.tensor<[D245, D246, D247], f32>
     %211 = mo.shape_of(%210) : (!mo.tensor<[D245, D246, D247], f32>) -> !mo.tensor<[3], si64>
     %212 = mo.shape_of(%211) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -232,7 +231,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %225 = mo.rebind<() -> D230>(%103) : !mo.tensor<[D372, 100], si32> -> !mo.tensor<[D230, 100], si32>
     %226 = mo.gather<() -> D231>(%arg5, %225) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D230, 100], si32>) -> !mo.tensor<[D231, 100, 32], f32>
     %227 = mo.rebind<() -> D226>(%226) : !mo.tensor<[D231, 100, 32], f32> -> !mo.tensor<[D226, 100, 32], f32>
-    %228 = mo.reduce.add<() -> D227, D228, D229>(%227, %20) : (!mo.tensor<[D226, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D227, D228, D229], f32>
+    %228 = mo.reduce.add<() -> D227, D228, D229>(%227) {axis = 1 : index} : (!mo.tensor<[D226, 100, 32], f32>) -> !mo.tensor<[D227, D228, D229], f32>
     %229 = mo.rebind<() -> D223, D224, D225>(%228) : !mo.tensor<[D227, D228, D229], f32> -> !mo.tensor<[D223, D224, D225], f32>
     %230 = mo.shape_of(%229) : (!mo.tensor<[D223, D224, D225], f32>) -> !mo.tensor<[3], si64>
     %231 = mo.shape_of(%230) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -251,7 +250,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %244 = mo.rebind<() -> D208>(%118) : !mo.tensor<[D356, 100], si32> -> !mo.tensor<[D208, 100], si32>
     %245 = mo.gather<() -> D209>(%arg4, %244) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D208, 100], si32>) -> !mo.tensor<[D209, 100, 32], f32>
     %246 = mo.rebind<() -> D204>(%245) : !mo.tensor<[D209, 100, 32], f32> -> !mo.tensor<[D204, 100, 32], f32>
-    %247 = mo.reduce.add<() -> D205, D206, D207>(%246, %20) : (!mo.tensor<[D204, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D205, D206, D207], f32>
+    %247 = mo.reduce.add<() -> D205, D206, D207>(%246) {axis = 1 : index} : (!mo.tensor<[D204, 100, 32], f32>) -> !mo.tensor<[D205, D206, D207], f32>
     %248 = mo.rebind<() -> D201, D202, D203>(%247) : !mo.tensor<[D205, D206, D207], f32> -> !mo.tensor<[D201, D202, D203], f32>
     %249 = mo.shape_of(%248) : (!mo.tensor<[D201, D202, D203], f32>) -> !mo.tensor<[3], si64>
     %250 = mo.shape_of(%249) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -270,7 +269,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %263 = mo.rebind<() -> D186>(%133) : !mo.tensor<[D340, 100], si32> -> !mo.tensor<[D186, 100], si32>
     %264 = mo.gather<() -> D187>(%arg3, %263) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D186, 100], si32>) -> !mo.tensor<[D187, 100, 32], f32>
     %265 = mo.rebind<() -> D182>(%264) : !mo.tensor<[D187, 100, 32], f32> -> !mo.tensor<[D182, 100, 32], f32>
-    %266 = mo.reduce.add<() -> D183, D184, D185>(%265, %20) : (!mo.tensor<[D182, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D183, D184, D185], f32>
+    %266 = mo.reduce.add<() -> D183, D184, D185>(%265) {axis = 1 : index} : (!mo.tensor<[D182, 100, 32], f32>) -> !mo.tensor<[D183, D184, D185], f32>
     %267 = mo.rebind<() -> D179, D180, D181>(%266) : !mo.tensor<[D183, D184, D185], f32> -> !mo.tensor<[D179, D180, D181], f32>
     %268 = mo.shape_of(%267) : (!mo.tensor<[D179, D180, D181], f32>) -> !mo.tensor<[3], si64>
     %269 = mo.shape_of(%268) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -289,7 +288,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %282 = mo.rebind<() -> D164>(%148) : !mo.tensor<[D324, 100], si32> -> !mo.tensor<[D164, 100], si32>
     %283 = mo.gather<() -> D165>(%arg2, %282) {axis = 0 : index} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D164, 100], si32>) -> !mo.tensor<[D165, 100, 32], f32>
     %284 = mo.rebind<() -> D160>(%283) : !mo.tensor<[D165, 100, 32], f32> -> !mo.tensor<[D160, 100, 32], f32>
-    %285 = mo.reduce.add<() -> D161, D162, D163>(%284, %20) : (!mo.tensor<[D160, 100, 32], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[D161, D162, D163], f32>
+    %285 = mo.reduce.add<() -> D161, D162, D163>(%284) {axis = 1 : index} : (!mo.tensor<[D160, 100, 32], f32>) -> !mo.tensor<[D161, D162, D163], f32>
     %286 = mo.rebind<() -> D157, D158, D159>(%285) : !mo.tensor<[D161, D162, D163], f32> -> !mo.tensor<[D157, D158, D159], f32>
     %287 = mo.shape_of(%286) : (!mo.tensor<[D157, D158, D159], f32>) -> !mo.tensor<[3], si64>
     %288 = mo.shape_of(%287) : (!mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
@@ -389,7 +388,7 @@ mo.graph @dlrm<D473, D474 -> D475>(%arg0: !mo.tensor<[D473, 8, 100], si32>, %arg
     %378 = mo.batch_matmul<() -> D84>(%376, %377) : (!mo.tensor<[D78, D79, D80], f32>, !mo.tensor<[D81, D82, D83], f32>) -> !mo.tensor<[D84, 9, 9], f32>
     %379 = mo.rebind<() -> D77>(%378) : !mo.tensor<[D84, 9, 9], f32> -> !mo.tensor<[D77, 9, 9], f32>
     %380 = mo.shape_of(%379) : (!mo.tensor<[D77, 9, 9], f32>) -> !mo.tensor<[3], si32>
-    %381 = mo.reduce.mul<() -> D76>(%380, %19) : (!mo.tensor<[3], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[D76], si32>
+    %381 = mo.reduce.mul<() -> D76>(%380) {axis = 0 : index} : (!mo.tensor<[3], si32>) -> !mo.tensor<[D76], si32>
     %382 = mo.rebind<() -> D75>(%381) : !mo.tensor<[D76], si32> -> !mo.tensor<[D75], si32>
     %383 = mo.shape_of(%382) : (!mo.tensor<[D75], si32>) -> !mo.tensor<[1], si64>
     %384 = mo.shape_of(%383) : (!mo.tensor<[1], si64>) -> !mo.tensor<[1], si32>
