@@ -215,14 +215,32 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
   bool use_striping =
       shouldUseStriping(transfer_size) && valid_rails.size() > 1;
 
+  // Allocate a data request, draining completed requests inline if the pool
+  // is temporarily full. The calling thread can poll the data CQ directly
+  // without cross-thread coordination.
+  static constexpr auto kDrainTimeout = std::chrono::milliseconds(100);
+  auto allocateWithDrain =
+      [&](size_t rail_id, nixlLibfabricReq::OpType op) -> nixlLibfabricReq * {
+    nixlLibfabricReq *req = data_rails_[rail_id]->allocateDataRequest(op);
+    if (!req) {
+      auto deadline = std::chrono::steady_clock::now() + kDrainTimeout;
+      do {
+        progressActiveDataRails();
+        req = data_rails_[rail_id]->allocateDataRequest(op);
+      } while (!req && std::chrono::steady_clock::now() < deadline);
+    }
+    return req;
+  };
+
   if (!use_striping) {
     // Round-robin: use one rail for entire transfer
     size_t rail_idx = round_robin_counter.fetch_add(1) % valid_rails.size();
     size_t rail_id = valid_rails[rail_idx];
-    // Allocate request
-    nixlLibfabricReq *req = data_rails_[rail_id]->allocateDataRequest(op_type);
+    // Allocate request, draining the CQ inline if the pool is temporarily full.
+    nixlLibfabricReq *req = allocateWithDrain(rail_id, op_type);
     if (!req) {
-      NIXL_ERROR << "Failed to allocate request for rail " << rail_id;
+      NIXL_ERROR << "Failed to allocate data request for rail " << rail_id
+                 << " after " << kDrainTimeout.count() << "ms drain timeout";
       return NIXL_ERR_BACKEND;
     }
     // Retain BEFORE installing the completion callback or posting so the
@@ -288,11 +306,12 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
           chunk_size + (i == num_rails - 1 ? remainder : 0);
       if (current_chunk_size == 0)
         break;
-      // Allocate request
-      nixlLibfabricReq *req =
-          data_rails_[rail_id]->allocateDataRequest(op_type);
+      // Allocate request, draining the CQ inline if the pool is temporarily
+      // full.
+      nixlLibfabricReq *req = allocateWithDrain(rail_id, op_type);
       if (!req) {
-        NIXL_ERROR << "Failed to allocate request for rail " << rail_id;
+        NIXL_ERROR << "Failed to allocate data request for rail " << rail_id
+                   << " after " << kDrainTimeout.count() << "ms drain timeout";
         return NIXL_ERR_BACKEND;
       }
 
