@@ -850,11 +850,15 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, uint32_t argCount,
-    const size_t *argSizes) {
+    [[maybe_unused]] const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
+
+  // Metal-specific kernel-launch payload travels via args[0]; per-arg
+  // sizes and the buffers-to-mark-resident list live on mtlArgs.
+  auto *mtlArgs = static_cast<MetalEnqueueFunctionArgs *>(args[0]);
 
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
   MTL::ComputePipelineState *pipeline = metalFunc.getPipelineState();
@@ -864,9 +868,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   // 1) Validate everything before opening an encoder — Metal asserts on a
   //    cmdBuffer dropped with an open encoder.
   for (uint32_t i = 0; i < argCount; ++i) {
-    if (args[i] == nullptr)
+    if (mtlArgs->args[i] == nullptr)
       RETURN_ERROR("Null argument at index " + std::to_string(i));
-    if (argSizes[i] == 0)
+    if (mtlArgs->argSizes[i] == 0)
       RETURN_ERROR("Unknown argument size at index " + std::to_string(i));
   }
   if (sharedMemBytes > 0) {
@@ -886,9 +890,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   llvm::SmallVector<NS::SharedPtr<MTL::Buffer>, 8> argBufs;
   argBufs.reserve(argCount);
   for (uint32_t i = 0; i < argCount; ++i) {
-    DEFINE_OR_RETURN_ERROR(
-        MTL::Buffer *, tmpBuf,
-        allocateNewBuffer(mtlDevice, args[i], argSizes[i], argBufOpts));
+    DEFINE_OR_RETURN_ERROR(MTL::Buffer *, tmpBuf,
+                           allocateNewBuffer(mtlDevice, mtlArgs->args[i],
+                                             mtlArgs->argSizes[i], argBufOpts));
     argBufs.emplace_back(NS::TransferPtr(tmpBuf));
   }
 
@@ -915,7 +919,12 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   encoder->setComputePipelineState(pipeline);
   for (uint32_t i = 0; i < argCount; ++i)
     encoder->setBuffer(argBufs[i].get(), 0, i);
-  // FIXME: only mark resources actually used by the kernel.
+  // Mark the buffers reachable through the kernel's pointer arguments as
+  // resident so the GPU may access them.
+  for (int32_t i = 0; i < mtlArgs->numBuffers; i++)
+    encoder->useResource(getMetalBuffer(mtlArgs->buffers[i]->ptr()),
+                         MTL::ResourceUsageWrite);
+  // FIXME: GEX-3761 only mark resources actually used by the kernel.
   for (const auto &it : metalDevice.getTrackedBuffers())
     encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
   if (sharedMemBytes > 0)

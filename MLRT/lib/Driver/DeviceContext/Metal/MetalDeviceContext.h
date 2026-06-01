@@ -125,6 +125,24 @@ private:
   mutable std::map<uintptr_t, BufferAllocation> allocations_;
 };
 
+// Metal-specific kernel-launch payload threaded through `args[0]` of
+// `MetalDeviceContext::enqueueFunctionExecDirect`. Per-argument sizes,
+// per-argument kind (device pointer vs scalar), and the set of buffers to
+// mark resident travel here rather than on the `DeviceContext` signature so
+// the shared interface does not grow Metal-specific concepts. The layout
+// must stay in sync with the Mojo-side `MetalEnqueueFunctionArgs` declared
+// in `oss/modular/mojo/stdlib/std/gpu/host/device_context.mojo`.
+struct MetalEnqueueFunctionArgs {
+  void **args;
+  const size_t *argSizes;
+  // Parallel to `args`/`argSizes`; `argCount`-sized. Entry `i` is `true`
+  // iff `args[i]` holds the device address of a `DeviceBuffer`, and `false`
+  // for scalar arguments. Captures are scalars and so are `false`.
+  bool *argIsDevicePtr;
+  DeviceBuffer **buffers;
+  int32_t numBuffers;
+};
+
 class MetalDeviceContext : public DeviceContext {
 public:
   MetalDeviceContext(MetalDevice &device,

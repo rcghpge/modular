@@ -225,15 +225,22 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   void *in0Ptr = in0Device->ptr();
   void *in1Ptr = in1Device->ptr();
   uint32_t lengthValue = static_cast<uint32_t>(length);
-  void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+  void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
   size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
                        sizeof(lengthValue)};
+  bool argIsDevicePtr[] = {true, true, true, false};
+  DeviceBuffer *kernelBuffers[] = {
+      outDevice.getPointer(), in0Device.getPointer(), in1Device.getPointer()};
+  MetalEnqueueFunctionArgs metalArgs = {
+      kernelArgs, argSizes, argIsDevicePtr, kernelBuffers,
+      sizeof(kernelBuffers) / sizeof(DeviceBuffer *)};
+  void *args[] = {&metalArgs};
 
   // Execute kernel
   constexpr uint32_t blockDim = 256;
   EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
       *libFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0, nullptr, 0,
-      args, sizeof(args) / sizeof(void *), argSizes));
+      args, sizeof(kernelArgs) / sizeof(void *), argSizes));
 
   // Copy results back
   EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(outHost, *outDevice));
@@ -332,16 +339,23 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
     void *in0Ptr = in0Device->ptr();
     void *in1Ptr = in1Device->ptr();
     uint32_t lengthValue = static_cast<uint32_t>(length);
-    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+    void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
     size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
                          sizeof(lengthValue)};
+    bool argIsDevicePtr[] = {true, true, true, false};
+    DeviceBuffer *kernelBuffers[] = {
+        outDevice.getPointer(), in0Device.getPointer(), in1Device.getPointer()};
+    MetalEnqueueFunctionArgs metalArgs = {
+        kernelArgs, argSizes, argIsDevicePtr, kernelBuffers,
+        sizeof(kernelBuffers) / sizeof(DeviceBuffer *)};
+    void *args[] = {&metalArgs};
 
     // Execute kernel
     uint32_t gridSize =
         static_cast<uint32_t>((length + blockDim - 1) / blockDim);
     EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
         *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
-        sizeof(args) / sizeof(void *), argSizes));
+        sizeof(kernelArgs) / sizeof(void *), argSizes));
     EXPECT_NO_ERR(ctx_->synchronize());
 
     // Copy results back
@@ -442,9 +456,17 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       void *in0Ptr = in0Device->ptr();
       void *in1Ptr = in1Device->ptr();
       uint32_t lengthValue = static_cast<uint32_t>(length);
-      void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+      void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
       size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
                            sizeof(lengthValue)};
+      bool argIsDevicePtr[] = {true, true, true, false};
+      DeviceBuffer *kernelBuffers[] = {outDevice.getPointer(),
+                                       in0Device.getPointer(),
+                                       in1Device.getPointer()};
+      MetalEnqueueFunctionArgs metalArgs = {
+          kernelArgs, argSizes, argIsDevicePtr, kernelBuffers,
+          sizeof(kernelBuffers) / sizeof(DeviceBuffer *)};
+      void *args[] = {&metalArgs};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
@@ -454,7 +476,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
           *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
-          sizeof(args) / sizeof(void *), argSizes));
+          sizeof(kernelArgs) / sizeof(void *), argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
@@ -601,9 +623,17 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
       void *in0Ptr = in0Device->ptr();
       void *in1Ptr = in1Device->ptr();
       uint32_t lengthValue = static_cast<uint32_t>(length);
-      void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+      void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
       size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
                            sizeof(lengthValue)};
+      bool argIsDevicePtr[] = {true, true, true, false};
+      DeviceBuffer *kernelBuffers[] = {outDevice.getPointer(),
+                                       in0Device.getPointer(),
+                                       in1Device.getPointer()};
+      MetalEnqueueFunctionArgs metalArgs = {
+          kernelArgs, argSizes, argIsDevicePtr, kernelBuffers,
+          sizeof(kernelBuffers) / sizeof(DeviceBuffer *)};
+      void *args[] = {&metalArgs};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
@@ -613,7 +643,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
           *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
-          sizeof(args) / sizeof(void *), argSizes));
+          sizeof(kernelArgs) / sizeof(void *), argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
@@ -698,10 +728,12 @@ TEST_F(MetalDeviceContextTestBase, MetalPrint_CapturesOutput) {
                  << fnOr.getError();
   DeviceFunctionRef fn = fnOr.takeValue();
 
+  MetalEnqueueFunctionArgs metalArgs = {nullptr, nullptr, nullptr, nullptr, 0};
+  void *args[] = {&metalArgs};
   testing::internal::CaptureStdout();
   EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
       *fn, 1, 1, 1, 1, 1, 1, /*sharedMemBytes=*/0,
-      /*attrs=*/nullptr, /*numAttrs=*/0, /*args=*/nullptr));
+      /*attrs=*/nullptr, /*numAttrs=*/0, args));
   EXPECT_NO_ERR(ctx_->synchronize());
   std::string output = testing::internal::GetCapturedStdout();
 
@@ -725,10 +757,12 @@ TEST_F(MetalDeviceContextTestBase, MetalPrint_DisabledByAttribute) {
   DeviceFunctionRef fn = fnOr.takeValue();
 
   Device::Attribute attrs[] = {Device::Attribute::METAL_DISABLE_LOGGING};
+  MetalEnqueueFunctionArgs metalArgs = {nullptr, nullptr, nullptr, nullptr, 0};
+  void *args[] = {&metalArgs};
   testing::internal::CaptureStdout();
   EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
       *fn, 1, 1, 1, 1, 1, 1, /*sharedMemBytes=*/0, static_cast<void *>(attrs),
-      /*numAttrs=*/1, /*args=*/nullptr));
+      /*numAttrs=*/1, args));
   EXPECT_NO_ERR(ctx_->synchronize());
   std::string output = testing::internal::GetCapturedStdout();
 
