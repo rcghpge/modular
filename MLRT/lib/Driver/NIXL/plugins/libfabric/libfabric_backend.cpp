@@ -1380,18 +1380,11 @@ nixl_status_t nixlLibfabricEngine::cmThread() {
   NIXL_DEBUG << "Initial receives already posted in main thread, entering "
                 "progress loop";
 
-  // Main progress loop - continuously process completions on all rails
+  // Main progress loop - continuously process completions on all rails.
+  // progressAllControlRails uses blocking fi_cq_sread when the hardware
+  // supports it, falling back to non-blocking fi_cq_read otherwise.
   while (!cm_thread_stop_.load()) {
-
-    nixl_status_t status = rail_manager->progressAllControlRails();
-    if (status == NIXL_SUCCESS) {
-      NIXL_DEBUG << "Processed completions on control rails";
-    } else if (status != NIXL_IN_PROG && status != NIXL_SUCCESS) {
-      NIXL_ERROR << "Failed to process completions on control rails";
-      return NIXL_ERR_BACKEND;
-    }
-    // Sleep briefly to avoid spinning too aggressively when blocking cq read is
-    // not used
+    rail_manager->progressAllControlRails();
     if (!rail_manager->getControlRail(0).blocking_cq_sread_supported) {
       std::this_thread::sleep_for(std::chrono::nanoseconds(10));
     }

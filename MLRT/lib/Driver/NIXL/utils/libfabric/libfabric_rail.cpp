@@ -1273,7 +1273,14 @@ uint64_t nixlLibfabricRail::getMemoryKey(struct fid_mr *mr) const {
 
 nixlLibfabricReq *
 nixlLibfabricRail::allocateControlRequest(size_t needed_size) {
-  return control_request_pool_.allocate(needed_size);
+  while (true) {
+    nixlLibfabricReq *req = control_request_pool_.allocate(needed_size);
+    if (req)
+      return req;
+    // Pool is full — block until the CM thread releases a slot.
+    std::unique_lock<std::mutex> lock(control_slots_mutex_);
+    control_slots_cv_.wait_for(lock, std::chrono::milliseconds(1));
+  }
 }
 
 nixlLibfabricReq *
@@ -1290,6 +1297,7 @@ void nixlLibfabricRail::releaseRequest(nixlLibfabricReq *req) {
   if (req->operation_type == nixlLibfabricReq::SEND ||
       req->operation_type == nixlLibfabricReq::RECV) {
     control_request_pool_.release(req);
+    control_slots_cv_.notify_one();
   } else {
     data_request_pool_.release(req);
   }

@@ -12,6 +12,7 @@
 #ifndef NIXL_SRC_UTILS_LIBFABRIC_LIBFABRIC_RAIL_H
 #define NIXL_SRC_UTILS_LIBFABRIC_LIBFABRIC_RAIL_H
 
+#include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <ostream>
@@ -317,6 +318,11 @@ private:
 
   // CQ progress mutex to protect completion queue operations
   mutable std::mutex cq_progress_mutex_;
+
+  // CV to block postXfer callers when the control request pool is full,
+  // woken by releaseRequest after each SEND/RECV slot is returned.
+  std::mutex control_slots_mutex_;
+  std::condition_variable control_slots_cv_;
 
   // Callback functions
   std::function<void(const std::string &)> notificationCallback;
