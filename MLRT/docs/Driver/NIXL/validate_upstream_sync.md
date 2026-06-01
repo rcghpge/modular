@@ -81,8 +81,58 @@ trigger the matching full-size variant.
 
 ## Local manual DI smoke
 
-For changes that touch cross-node KV transfer specifically, run
-through the manual two-workspace DI walkthrough:
+For changes that touch cross-node KV transfer specifically:
+
+- **KV transfer engine smoke test** — two-process test (sender + receiver, one
+  per node) that exercises `KVTransferEngine` + NIXL directly over EFA with no
+  model or scheduler involved. Validates data integrity and bandwidth at mc=32.
+
+  On the **receiver node**:
+
+  ```bash
+  MODULAR_NIXL_TRANSFER_BACKEND=libfabric FI_EFA_USE_DEVICE_RDMA=1 \
+    ./bazelw run //max/tests/integration/kv_cache/transfer_engine:test_transfer_engine_cross_node -- \
+      --role receiver \
+      --sender-addr tcp://<sender-node-ip>:5555
+  ```
+
+  On the **sender node**:
+
+  ```bash
+  MODULAR_NIXL_TRANSFER_BACKEND=libfabric FI_EFA_USE_DEVICE_RDMA=1 \
+    ./bazelw run //max/tests/integration/kv_cache/transfer_engine:test_transfer_engine_cross_node -- \
+      --role sender \
+      --sender-addr tcp://<sender-node-ip>:5555
+  ```
+
+  Both processes exit 0 and the sender prints bandwidth ≥ 10 GiB/s on a healthy
+  EFA link.
+
+  Parameter sweep — rows 2-4 are regression guards for known-brittle capacity
+  limits. Requests fire immediately (no inter-batch delay), which maximizes
+  pressure on NIXL. `--num-pages` defaults to `concurrency × pages-per-request`;
+  `--num-batches` defaults to 50. Known fixes on this branch:
+
+  Known patches that affect these stress boundaries:
+  - [#83975](https://github.com/modularml/modular/pull/83975) — TX queue
+    exhaustion under concurrent transfers (Row 2)
+  - [#86044](https://github.com/modularml/modular/pull/86044) — notification
+    drops at mc≥16 (Rows 2-3)
+  - [#87402](https://github.com/modularml/modular/pull/87402) — CM thread
+    error handling + control request pool CV backpressure (Row 3)
+  - [#87503](https://github.com/modularml/modular/pull/87503) — data request
+    pool inline CQ drain (Row 2)
+
+  | `--concurrency` | `--pages-per-request` | `--bytes-per-page` | `--num-batches` | Expected output                                                                 | Failure signal                             |
+  |-----------------|-----------------------|--------------------|-----------------|---------------------------------------------------------------------------------|--------------------------------------------|
+  | 1               | 64                    | 65536              | (default)       | `50 batches x 1 transfers: 0.20 GiB … 10.77 GiB/s`                              | Any error                                  |
+  | 128             | 64                    | 65536              | (default)       | `50 batches x 128 transfers: 25.00 GiB … 12.13 GiB/s`                           | Crash = data pool exhaustion               |
+  | 32              | 64                    | 65536              | 200             | `200 batches x 32 transfers: 25.00 GiB … 16.48 GiB/s`                           | Exhaustion = control pool exhaustion       |
+  | 1               | 2049                  | 131072             | (default)       | `50 batches x 1 transfers: 12.51 GiB … 8.54 GiB/s` + overflow warning per batch | No warning = xfer_id structural fix landed |
+
+  The sweep table becomes the CI parametrization when this test is wired into the
+  Mammoth orchestrator
+  ([SERVOPT-1405](https://linear.app/modularml/issue/SERVOPT-1405)).
 
 - [`run_efa_di_benchmark.md`](./run_efa_di_benchmark.md) — pairs two
   AWS B200 Coder workspaces over EFA and runs a DeepSeek V3.1 NVFP4
@@ -103,12 +153,9 @@ nightly variants or as accumulated flakiness.
 The current validation surface is mostly "big smoke tests" — there
 are open items to add targeted coverage:
 
-- [SERVOPT-1405](https://linear.app/modularml/issue/SERVOPT-1405) —
-  NIXL transfer smoke test for DI block count boundary conditions.
-
-When either of these lands, add it to the
-[In-tree unit tests](#in-tree-unit-tests) section above and drop the
-corresponding manual step.
+- Wire the KV transfer engine smoke test into Mammoth CI so it runs
+  automatically on every NIXL change rather than requiring a manual
+  two-node run.
 
 ## Suggested checklist for a sync PR
 
@@ -120,6 +167,9 @@ Paste this into the PR description:
 - [ ] `bt //MLRT/unittests/Driver/NIXL/Libfabric/...` green
 - [ ] `LibfabricVramSmoke` run on a B200 workspace (if libfabric or
       VRAM paths changed)
+- [ ] KV transfer engine smoke test: sender node and receiver node both
+      exited 0, sender printed ≥ 10 GiB/s over EFA (if NIXL transfer
+      path changed)
 - [ ] `benchmarkMammoth` triggered for all three quick-test combos,
       all green
 - [ ] Watched `#mammoth-benchmark-notifications` for one nightly
