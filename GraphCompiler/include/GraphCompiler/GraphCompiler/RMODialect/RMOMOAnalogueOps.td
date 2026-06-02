@@ -19,10 +19,10 @@ include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.td"
 include "GraphCompiler/GraphCompiler/MODialect/MOEnums.td"
 include "mlir/IR/BuiltinAttributes.td"
 
-class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
-  : RMO_Op<"mo." # mnemonic, traits # [
+class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
+  RMO_Op<"mo." # mnemonic, traits # [
+    DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
     MO_BufferOpConformance,
-    DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
   ]> {
   let builders = [
     /// This builder is an implicit return type based on "inferMOTypes" from
@@ -72,21 +72,21 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
 }
 
 // Base class for ops that map directly to a MO tensor op
-class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
-  : RMO_MOAnalogueOp<mnemonic, traits # [Pure]>;
+class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []> :
+  RMO_MOAnalogueOp<mnemonic, traits # [Pure]>;
 
 
 //===----------------------------------------------------------------------===//
 // 1-1 MO Op Analogues
 //===----------------------------------------------------------------------===//
 
-class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name, traits> {
+class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureTensorOp<name, traits> {
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureElementWiseOp<name, traits> {
+class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
 
   let extraClassDefinition = [{
@@ -103,11 +103,11 @@ class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
     }
   }];
 }
-class RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureUnaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+class RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureUnaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
 
-class RMO_MOAnaloguePureUnaryExplicitOutputOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureElementWiseOp<name, traits> {
+class RMO_MOAnaloguePureUnaryExplicitOutputOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
 
   let extraClassDefinition = [{
@@ -124,12 +124,16 @@ class RMO_MOAnaloguePureUnaryExplicitOutputOp<string name, list<Trait> traits = 
     }
   }];
 }
-class RMO_MOAnaloguePureUnaryExplicitOutputMonoTypeOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureUnaryExplicitOutputOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+class RMO_MOAnaloguePureUnaryExplicitOutputMonoTypeOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureUnaryExplicitOutputOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
 
-class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureElementWiseOp<name, traits> {
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
+class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureElementWiseOp<name, traits> {
+  let arguments = (ins
+    MO_Tensor:$input_x,
+    MO_Tensor:$input_y,
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let extraClassDefinition = [{
     void $cppClass::inferMOTypesImpl(
@@ -156,8 +160,8 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
   }];
 }
 
-class RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureBinaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+class RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureBinaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
 
 def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"abs"> {
   let summary = "Absolute value operation";
@@ -257,11 +261,16 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
   }];
 }
 
-class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :  RMO_MOAnaloguePureUnaryElementWiseOp<name, traits # [Pure, AllDTypesMatch<["input", "result"]>]> {
+class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureUnaryElementWiseOp<name, traits # [
+    AllDTypesMatch<["input", "result"]>,
+    Pure,
+  ]> {
   let arguments = (ins
     MO_Tensor:$input,
     IndexAttr:$axis,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let extraClassDefinition = [{
@@ -550,9 +559,11 @@ def RMO_MOBroadcastShapeOp : RMO_MOAnaloguePureTensorOp<"broadcast_shape"> {
     Given two tensors representing shapes, calculate the result of broadcasting
     the shapes.
   }];
-  let arguments = (ins MO_ShapeLikeIfRanked:$input_x,
-                       MO_ShapeLikeIfRanked:$input_y,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_ShapeLikeIfRanked:$input_x,
+    MO_ShapeLikeIfRanked:$input_y,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_ShapeLikeIfRanked:$shape);
 }
 
@@ -564,7 +575,8 @@ def RMO_MOReshapeOp : RMO_MOAnaloguePureTensorOp<"reshape"> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$newShape,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
@@ -577,7 +589,8 @@ def RMO_MOBroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$newShape,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
@@ -644,14 +657,19 @@ def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"sub"> {
   }];
 }
 
-class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,
-  list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name,
-    traits # !if(input_result_same_dtype, [AllDTypesMatch<["input", "result"]>], [])> {
+class RMO_MOAnaloguePureReductionOp<
+    string name,
+    bit input_result_same_dtype = 1,
+    list<Trait> traits = []> :
+  RMO_MOAnaloguePureTensorOp<
+    name,
+    traits # !if(input_result_same_dtype, [AllDTypesMatch<["input", "result"]>], [])
+  > {
   let arguments = (ins
     MO_Tensor:$input,
     IndexAttr:$axis,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
@@ -750,8 +768,8 @@ def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
   }];
 }
 
-class RMO_MOAnalogueArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
-  /*input_result_same_dtype=*/0> {
+class RMO_MOAnalogueArgMinMaxOp<string mnemonic> :
+  RMO_MOAnaloguePureReductionOp<mnemonic, /*input_result_same_dtype=*/0> {
   let results = (outs MO_IndicesTensor:$result);
 }
 
@@ -806,14 +824,15 @@ def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_min"> {
     }];
 }
 
-class RMO_MOAnaloguePureScatterOp<string name> : RMO_MOAnaloguePureTensorOp<
-  name, [AllDTypesMatch<["input", "updates", "result"]>]
-> {
-let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       MO_IndexScalarIfRanked:$axis,
-                       MO_ParamDecls:$outputParamDecls);
+class RMO_MOAnaloguePureScatterOp<string name> :
+  RMO_MOAnaloguePureTensorOp<name, [AllDTypesMatch<["input", "updates", "result"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    MO_IndexScalarIfRanked:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let extraClassDefinition = [{
@@ -1038,7 +1057,7 @@ def RMO_MOScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
   }];
 }
 
-def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
+def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv"> {
   let summary = "Convolution operation";
   let description = [{
     Computes the convolution product of the input with the given filter,
@@ -1113,7 +1132,8 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
     MO_IndicesTensor:$num_groups,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -1125,7 +1145,7 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
   }];
 }
 
-def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
+def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose"> {
   let summary = "Transposed convolution operation";
   let description = [{
     This op effectively computes the gradient of a convolution with
@@ -1203,7 +1223,8 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
     MO_Rank1IndexTensor:$output_paddings,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -1214,16 +1235,16 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
   }];
 }
 
-class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name,
-    traits # [AllDTypesMatch<["input", "result"]>]> {
+class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureTensorOp<name, traits # [AllDTypesMatch<["input", "result"]>]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_Rank1IndexTensor:$filter_shape,
     MO_Rank1IndexTensor:$strides,
     MO_Rank1IndexTensor:$dilations,
     MO_Rank1IndexTensor:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -1234,7 +1255,7 @@ class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
   }];
 }
 
-def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
+def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool"> {
   let summary = "Average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1281,10 +1302,11 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
     MO_Rank1IndexTensor:$dilations,
     MO_Rank1IndexTensor:$paddings,
     BoolAttr:$count_boundary,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 }
 
-def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
+def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true"> {
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1331,10 +1353,11 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
     MO_Rank1IndexTensor:$dilations,
     MO_Rank1IndexTensor:$paddings,
     BoolAttr:$count_boundary,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 }
 
-def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
+def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool"> {
   let summary = "Maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1375,7 +1398,7 @@ def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
   }];
 }
 
-def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
+def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true"> {
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1416,14 +1439,18 @@ def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
   }];
 }
 
-class RMO_MOAnaloguePureComparisonOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name, traits> {
+class RMO_MOAnaloguePureComparisonOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureTensorOp<name, traits> {
   let results = (outs MO_BooleanMask:$result);
 }
 
-class RMO_MOAnaloguePureBinaryComparisonOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureComparisonOp<name, traits #  [AllDTypesMatch<["input_x", "input_y"]>]> {
-  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
+class RMO_MOAnaloguePureBinaryComparisonOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureComparisonOp<name, traits # [AllDTypesMatch<["input_x", "input_y"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input_x,
+    MO_Tensor:$input_y,
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let extraClassDefinition = [{
     void $cppClass::inferMOTypesImpl(
@@ -1516,9 +1543,9 @@ def RMO_MONotEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"not_equal", [Commut
   }];
 }
 
-def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range",
-  [AllDTypesMatch<["start", "limit", "step", "result"]>]>
-{
+def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range", [
+  AllDTypesMatch<["start", "limit", "step", "result"]>,
+]> {
   let summary = "Range operation";
   let description = [{
     Creates a sequence of numbers. The sequence goes from `start` with
@@ -1557,7 +1584,8 @@ def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range",
     MO_Tensor:$start,
     MO_Tensor:$limit,
     MO_Tensor:$step,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_VectorIfRanked:$result);
 
   let assemblyFormat = [{
@@ -1581,7 +1609,8 @@ def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear"> {
     MO_IndicesVectorIfRanked:$size,
     MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     BoolAttr:$antialias,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
@@ -1619,7 +1648,8 @@ def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
     MO_IndicesVectorIfRanked:$size,
     MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     DefaultValuedAttr<I64Attr, "0">:$round_mode,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
@@ -1647,14 +1677,19 @@ def RMO_MOResizeBicubicOp : RMO_MOAnaloguePureTensorOp<"resize.bicubic"> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesVectorIfRanked:$size,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureLogicalBinaryOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureBinaryElementWiseOp<name, traits # [Commutative]> {
-  let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y, MO_ParamDecls:$outputParamDecls);
+class RMO_MOAnaloguePureLogicalBinaryOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureBinaryElementWiseOp<name, traits # [Commutative]> {
+  let arguments = (ins
+    MO_BooleanMask:$input_x,
+    MO_BooleanMask:$input_y,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_BooleanMask:$result);
 }
 
@@ -1709,8 +1744,9 @@ def RMO_MOXorOp : RMO_MOAnaloguePureLogicalBinaryOp<"xor"> {
   }];
 }
 
-def RMO_MOSelectOp : RMO_MOAnaloguePureTensorOp<"select",
-  [AllDTypesMatch<["x", "y", "result"]>]> {
+def RMO_MOSelectOp : RMO_MOAnaloguePureTensorOp<"select", [
+  AllDTypesMatch<["x", "y", "result"]>,
+]> {
   let summary = "Select operation";
   let description = [{
     Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
@@ -1725,12 +1761,17 @@ def RMO_MOSelectOp : RMO_MOAnaloguePureTensorOp<"select",
       %res = rmo.mo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
     ```
   }];
-  let arguments = (ins MO_BooleanMask:$cond, MO_Tensor:$x, MO_Tensor:$y, MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_BooleanMask:$cond,
+    MO_Tensor:$x,
+    MO_Tensor:$y,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureUnaryComparisonOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureComparisonOp<name, traits> {
+class RMO_MOAnaloguePureUnaryComparisonOp<string name, list<Trait> traits = []> :
+  RMO_MOAnaloguePureComparisonOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_ParamDecls:$outputParamDecls);
 
   let extraClassDefinition = [{
@@ -1786,8 +1827,9 @@ def RMO_MOIsInfOp : RMO_MOAnaloguePureUnaryComparisonOp<"is_inf"> {
   }];
 }
 
-def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "`gather` operation";
   let description = [{
     Gathers slices from input's axis according to indices.
@@ -1814,15 +1856,18 @@ def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather",
       ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndicesTensor:$indices,
-                       IndexAttr:$axis,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$indices,
+    IndexAttr:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{
     Variant of `mo.gather` that accepts multi-dimensional indices.
@@ -1856,11 +1901,13 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndicesTensor:$indices,
-                       // TODO(#21324): Support dynamic batchDims
-                       IndexAttr:$batchDims,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$indices,
+    // TODO(#21324): Support dynamic batchDims
+    IndexAttr:$batchDims,
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
@@ -1881,8 +1928,9 @@ def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.softmax"> {
   }];
 }
 
-def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Tiling operation";
   let description = [{
     Returns a new Tensor as the result of copying the input tensor N_i times
@@ -1904,12 +1952,14 @@ def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile",
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$repeats,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
-  [AllDTypesMatch<["input_shape", "result"]>]> {
+def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape", [
+  AllDTypesMatch<["input_shape", "result"]>,
+]> {
   let summary = "Squeeze-shape operation";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
@@ -1938,12 +1988,14 @@ def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
   let arguments = (ins
     MO_ShapeLikeIfRanked:$input_shape,
     MO_ShapeLikeIfRanked:$remove_indices,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_ShapeLikeIfRanked:$result);
 }
 
-def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Transposition operation";
   let description = [{
     Returns a new Tensor as the result of permuting the dimensions of the input
@@ -1970,20 +2022,24 @@ def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose",
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLikeIfRanked:$perm,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureTopKOp<string name> : RMO_MOAnaloguePureTensorOp<
-  name, [AllDTypesMatch<["input", "values"]>]
-> {
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndexScalarIfRanked:$K,
-                       MO_IndexScalarIfRanked:$axis,
-                       MO_CondLikeIfRanked:$sorted,
-                       MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$values,
-                      MO_I64Tensor:$indices);
+class RMO_MOAnaloguePureTopKOp<string name> :
+  RMO_MOAnaloguePureTensorOp<name, [AllDTypesMatch<["input", "values"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndexScalarIfRanked:$K,
+    MO_IndexScalarIfRanked:$axis,
+    MO_CondLikeIfRanked:$sorted,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs
+    MO_Tensor:$values,
+    MO_I64Tensor:$indices
+  );
 
   let extraClassDefinition = [{
     void $cppClass::inferMOTypesImpl(
@@ -2026,13 +2082,14 @@ def RMO_MOBottomKOp : RMO_MOAnaloguePureTopKOp<"bottom_k"> {
   }];
 }
 
-class RMO_MOAnaloguePureLinalgOp<string mnemonic, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<"linalg." # mnemonic, traits> {
+class RMO_MOAnaloguePureLinalgOp<string mnemonic, list<Trait> traits = []> :
+  RMO_MOAnaloguePureTensorOp<"linalg." # mnemonic, traits> {
   string cppNamespace = RMODialect.cppNamespace # "::LinAlg";
 }
 
-def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Matrix band part operation";
   let description = [{
     Copies a tensor setting everything outside central (diagonal) band of the
@@ -2078,13 +2135,15 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
     MO_IndexScalarIfRanked:$num_lower,
     MO_IndexScalarIfRanked:$num_upper,
     MO_CondLikeIfRanked:$exclude,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Constant-mode padding operation";
   let description = [{
     Pads the `input` tensor with a scalar tensor `constant` according to the
@@ -2113,12 +2172,14 @@ def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant",
     MO_Tensor:$input,
     MO_PaddingLikeIfRanked:$paddings,
     MO_ScalarTensorIfRanked:$constant,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
     Pads the `input` tensor by reflecting it according to the `paddings`.
@@ -2146,12 +2207,14 @@ def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect",
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLikeIfRanked:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
     Pads the `input` tensor by repeating border values according to `paddings`.
@@ -2179,12 +2242,14 @@ def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat",
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLikeIfRanked:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Slice operation";
   let description = [{
     Returns a new tensor with a subset of the elements from an N-dimensional
@@ -2226,11 +2291,13 @@ def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice",
       ) -> !mo.tensor<[?, ?], f32>
     ```
   }];
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndicesVectorIfRanked:$start,
-                       MO_IndicesVectorIfRanked:$stop,
-                       MO_IndicesVectorIfRanked:$step,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesVectorIfRanked:$start,
+    MO_IndicesVectorIfRanked:$stop,
+    MO_IndicesVectorIfRanked:$step,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
@@ -2267,13 +2334,15 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
     MO_FloatScalarIfRanked:$sampling_ratio,
     BoolAttr:$aligned,
     Builtin_StringAttr:$mode,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
-  [AllDTypesMatch<["mean", "variance"]>]> {
+def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal", [
+  AllDTypesMatch<["mean", "variance"]>,
+]> {
   let summary = "Normal distribution operation";
   let description = [{
     Returns a tensor with shape `shape` populated with random values from a
@@ -2301,13 +2370,15 @@ def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
     MO_FloatScalarIfRanked:$mean,
     MO_FloatScalarIfRanked:$variance,
     MO_IndicesVectorIfRanked:$seed,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform",
-  [AllDTypesMatch<["lowerBound", "upperBound", "result"]>]> {
+def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform", [
+  AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
+]> {
   let summary = "Uniform distribution operation";
   let description = [{
     Returns a tensor with shape `shape` populated with random values from a
@@ -2340,13 +2411,14 @@ def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform",
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureScatterNdOp<string name> : RMO_MOAnaloguePureTensorOp<
-  name, [AllDTypesMatch<["input", "updates", "result"]>]
-> {
-let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       MO_ParamDecls:$outputParamDecls);
+class RMO_MOAnaloguePureScatterNdOp<string name> :
+  RMO_MOAnaloguePureTensorOp<name, [AllDTypesMatch<["input", "updates", "result"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let extraClassDefinition = [{
@@ -2527,12 +2599,14 @@ def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_supp
         -> !mo.tensor<[?, ?], si64>
     ```
   }];
-  let arguments = (ins MO_Tensor:$boxes,
-                       MO_Tensor:$scores,
-                       MO_IndexScalarIfRanked:$maxOutputBoxesPerClass,
-                       MO_FloatScalarIfRanked:$iouThreshold,
-                       MO_FloatScalarIfRanked:$scoreThreshold,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$boxes,
+    MO_Tensor:$scores,
+    MO_IndexScalarIfRanked:$maxOutputBoxesPerClass,
+    MO_FloatScalarIfRanked:$iouThreshold,
+    MO_FloatScalarIfRanked:$scoreThreshold,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_IndicesTensor:$output);
 }
 
@@ -2558,8 +2632,9 @@ def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
   let results = (outs MO_Rank2I64Tensor:$result);
 }
 
-def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
-  [AllDTypesMatch<["input", "result"]>]> {
+def RMO_MOCumSumOp : RMO_MOAnaloguePureTensorOp<"cumsum", [
+  AllDTypesMatch<["input", "result"]>,
+]> {
   let summary = "Cumulative summation operation";
   let description = [{
     Returns the cumulative summation of input tensors along an axis. By default,
@@ -2595,22 +2670,27 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       IndexAttr:$axis,
-                       IndexAttr:$exclusive,
-                       IndexAttr:$reverse,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    IndexAttr:$axis,
+    IndexAttr:$exclusive,
+    IndexAttr:$reverse,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
 def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "outTensor"]>,
-  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-]>
-{
-  let arguments = (ins MO_Buffer:$inBuffer, MO_ParamDecls:$outputParamDecls, MO_Chain:$inChain);
+  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+]> {
+  let arguments = (ins
+    MO_Buffer:$inBuffer,
+    MO_ParamDecls:$outputParamDecls,
+    MO_Chain:$inChain
+  );
   let results = (outs MO_Tensor:$outTensor, MO_Chain:$outChain);
 
   let assemblyFormat = [{
@@ -2620,16 +2700,17 @@ def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
 }
 
 def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "inTensor"]>,
-  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-]>
-{
-  let arguments = (ins MO_Buffer:$inBuffer,
-                       MO_Tensor:$inTensor,
-                       MO_ParamDecls:$outputParamDecls,
-                       MO_Chain:$inChain);
+  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+]> {
+  let arguments = (ins
+    MO_Buffer:$inBuffer,
+    MO_Tensor:$inTensor,
+    MO_ParamDecls:$outputParamDecls,
+    MO_Chain:$inChain
+  );
 
   let results = (outs MO_Chain:$outChain);
 
@@ -2640,17 +2721,19 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
 }
 
 def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "slice"]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]> {
-  let arguments = (ins MO_Buffer:$inBuffer,
-                       MO_Tensor:$slice,
-                       MO_IndicesVectorIfRanked:$start,
-                       MO_IndicesVectorIfRanked:$stop,
-                       MO_IndicesVectorIfRanked:$step,
-                       MO_ParamDecls:$outputParamDecls,
-                       MO_Chain:$inChain);
+  let arguments = (ins
+    MO_Buffer:$inBuffer,
+    MO_Tensor:$slice,
+    MO_IndicesVectorIfRanked:$start,
+    MO_IndicesVectorIfRanked:$stop,
+    MO_IndicesVectorIfRanked:$step,
+    MO_ParamDecls:$outputParamDecls,
+    MO_Chain:$inChain
+  );
   let results = (outs MO_Chain:$outChain);
 
   let assemblyFormat = [{
