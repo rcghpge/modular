@@ -143,7 +143,6 @@ void M::MO::registerPasses() {
   MGP::registerLowerPrimitives();
   MOGG::registerSequenceFusion();
 
-  MOGG::registerRemoveRedundantOperands();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
@@ -384,8 +383,6 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createSequenceFusion());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
-  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
-  pm.addPass(MOGG::createRemoveRedundantOperands());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 

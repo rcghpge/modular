@@ -713,6 +713,9 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
 
     /// Return the single body block for the operation.
     Block &getBodyBlock() { return getBody().front(); }
+
+    /// Return the `mogg.output` op terminating the body block.
+    MOGG::OutputOp getBodyTerminator();
   }];
 }
 
@@ -1372,6 +1375,8 @@ def MOGG_TryOp : MOGG_Op<"try", [
     `except` $exceptRegion
     attr-dict `:` type($outputs)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [

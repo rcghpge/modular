@@ -1,9 +1,9 @@
 // TODO(GEX-2735): testfuse ops don't implement EmitsMojoInterface
 // XFAIL: *
 
-// RUN: mo-opt --allow-unregistered-dialect --mgp-lower-primitives --mogg-sequence-fusion --mogg-remove-redundant-operands --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s -o %t.mlir
+// RUN: mo-opt --allow-unregistered-dialect --mgp-lower-primitives --mogg-sequence-fusion --canonicalize --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck --check-prefix=FUSE-CHECK %s
-// RUN: mo-opt --allow-unregistered-dialect --mgp-lower-primitives --mogg-remove-redundant-operands --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s -o %t_no_fused.mlir
+// RUN: mo-opt --allow-unregistered-dialect --mgp-lower-primitives --canonicalize --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile %s -o %t_no_fused.mlir
 // RUN: mt --execute %t_no_fused.mlir | FileCheck %s
 
 // FUSE-CHECK-LABEL: --- Running 'test_myint':

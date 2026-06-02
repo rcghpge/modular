@@ -2563,6 +2563,10 @@ LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
 // GenericCompiledRegionOp
 //===----------------------------------------------------------------------===//
 
+OutputOp GenericCompiledRegionOp::getBodyTerminator() {
+  return cast<OutputOp>(getBodyBlock().getTerminator());
+}
+
 InOutSignatureAttr::InOutSemantics
 GenericCompiledRegionOp::getInOutSemantics(size_t index) {
   ASSERT_STREAM(
@@ -2621,16 +2625,103 @@ LogicalResult GenericCompiledRegionOp::verify() {
   return success();
 }
 
-LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
-                                                    PatternRewriter &rewriter) {
-  // Canonicalize sequences of grt.chain.create + mogg.generic.compiled.region
-  //
-  //     %ch = grt.chain.create(%0, %1)
-  //     mogg.generic.compiled.region(%ch)
-  //
-  // to
-  //
-  //     mogg.generic.compiled.region(%0, %1)
+// Combine two in/out semantics by unioning their read and write capabilities.
+// kNone='.', kIn='i', kOut='o', kMut='m' (see Support/.../MAttrs.td). When the
+// same value is passed as multiple operands, the surviving operand must reflect
+// every access the body performs through any of the duplicates.
+static InOutSignatureAttr::InOutSemantics
+unionInOutSemantics(InOutSignatureAttr::InOutSemantics a,
+                    InOutSignatureAttr::InOutSemantics b) {
+  using Sem = InOutSignatureAttr::InOutSemantics;
+  auto reads = [](Sem s) { return s == Sem::kIn || s == Sem::kMut; };
+  auto writes = [](Sem s) { return s == Sem::kOut || s == Sem::kMut; };
+  bool r = reads(a) || reads(b);
+  bool w = writes(a) || writes(b);
+  if (r && w)
+    return Sem::kMut;
+  if (r)
+    return Sem::kIn;
+  if (w)
+    return Sem::kOut;
+  return Sem::kNone;
+}
+
+// Canonicalize duplicated operands of a generic compiled region:
+//
+//     mogg.generic.compiled.region(%a, %b, %a) : (%x, %y, %z) { ...use %z... }
+//
+// to
+//
+//     mogg.generic.compiled.region(%a, %b) : (%x, %y) { ...use %x... }
+//
+// The block argument for each duplicate is redirected to the first
+// occurrence's argument, the duplicate operand/argument are erased, and the
+// surviving operand's in/out semantics absorb the union of the duplicates'.
+static LogicalResult deduplicateOperands(GenericCompiledRegionOp op,
+                                         PatternRewriter &rewriter) {
+  Block &entry = op.getBody().front();
+
+  // Map each distinct operand value to the index of its first occurrence and
+  // mark later duplicates for removal.
+  llvm::SmallDenseMap<Value, unsigned> firstIndex;
+  llvm::BitVector argsToRemove(op.getNumOperands());
+  for (OpOperand &operand : op.getOperandsMutable()) {
+    unsigned idx = operand.getOperandNumber();
+    if (!firstIndex.try_emplace(operand.get(), idx).second)
+      argsToRemove.set(idx);
+  }
+
+  if (argsToRemove.none())
+    return rewriter.notifyMatchFailure(op, "no duplicate operands");
+
+  // Redirect each duplicate block argument to its first occurrence so the body
+  // reads/writes the single surviving argument.
+  for (unsigned idx : argsToRemove.set_bits()) {
+    unsigned keptIdx = firstIndex[op.getOperand(idx)];
+    rewriter.replaceAllUsesWith(entry.getArgument(idx),
+                                entry.getArgument(keptIdx));
+  }
+
+  // Fold the removed entries' semantics into their first occurrence, then drop
+  // the duplicate entries. Empty signatures (used by some unittests) are left
+  // untouched.
+  InOutSignatureAttr oldSemantics = op.getInOutSignature();
+  InOutSignatureAttr newSemantics;
+  if (oldSemantics.size() != 0) {
+    SmallVector<InOutSignatureAttr::InOutSemantics> merged(oldSemantics.size());
+    for (size_t i = 0, e = oldSemantics.size(); i < e; ++i)
+      merged[i] = oldSemantics[i];
+    for (unsigned idx : argsToRemove.set_bits()) {
+      unsigned keptIdx = firstIndex[op.getOperand(idx)];
+      merged[keptIdx] = unionInOutSemantics(merged[keptIdx], oldSemantics[idx]);
+    }
+    SmallVector<InOutSignatureAttr::InOutSemantics> kept;
+    for (size_t i = 0, e = oldSemantics.size(); i < e; ++i)
+      if (!argsToRemove.test(i))
+        kept.push_back(merged[i]);
+    newSemantics = InOutSignatureAttr::get(op.getContext(), kept);
+  }
+
+  rewriter.modifyOpInPlace(op, [&]() {
+    op->eraseOperands(argsToRemove);
+    entry.eraseArguments(argsToRemove);
+    if (newSemantics)
+      op.setInOutSignatureAttr(newSemantics);
+  });
+
+  return success();
+}
+
+// Canonicalize sequences of grt.chain.create + mogg.generic.compiled.region
+//
+//     %ch = grt.chain.create(%0, %1)
+//     mogg.generic.compiled.region(%ch)
+//
+// to
+//
+//     mogg.generic.compiled.region(%0, %1)
+static LogicalResult sinkChainCreateOperands(GenericCompiledRegionOp op,
+                                             PatternRewriter &rewriter) {
   Region &body = op.getBody();
 
   llvm::BitVector blockArgsToRemove(op.getNumOperands());
@@ -2693,6 +2784,116 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
   });
 
   return success();
+}
+
+// Canonicalize redundant outputs of a generic compiled region by rebuilding it
+// with a collapsed result list:
+//   - drop non-chain results that have no uses, and
+//   - collapse duplicate `!mef.chain` outputs into the last chain output, which
+//     is always retained so error/side-effect propagation and async-completion
+//     sequencing are preserved.
+// Uses of removed chain results are rewired to the surviving chain.
+static LogicalResult removeRedundantResults(GenericCompiledRegionOp op,
+                                            PatternRewriter &rewriter) {
+  OutputOp outputOp = op.getBodyTerminator();
+
+  // Candidates for removal: every chain output (duplicate chains are collapsed
+  // into one), plus any non-chain output whose corresponding region result is
+  // unused.
+  llvm::BitVector toRemoveBits(outputOp->getNumOperands());
+
+  for (OpOperand &operand : outputOp->getOpOperands()) {
+    unsigned idx = operand.getOperandNumber();
+    bool isChain = isa<MEF::ChainType>(operand.get().getType());
+    if (!isChain && !op->getResult(idx).use_empty())
+      continue;
+    toRemoveBits.set(idx);
+  }
+
+  if (toRemoveBits.none())
+    return rewriter.notifyMatchFailure(op, "no removable outputs");
+
+  // Always keep the last chain output (collapsing any duplicates into it) so
+  // error/side-effect propagation and async-completion sequencing are
+  // preserved. Uses of the removed chains are rewired to this one.
+  std::optional<unsigned> keptChainNewIdx;
+  for (OpOperand &operand : llvm::reverse(outputOp->getOpOperands())) {
+    if (isa<MEF::ChainType>(operand.get().getType())) {
+      unsigned origIdx = operand.getOperandNumber();
+      toRemoveBits.reset(origIdx);
+      // Position of the kept chain within the collapsed result list.
+      unsigned newIdx = 0;
+      for (unsigned i = 0; i < origIdx; ++i)
+        if (!toRemoveBits.test(i))
+          ++newIdx;
+      keptChainNewIdx = newIdx;
+      break;
+    }
+  }
+
+  // Nothing to remove, or removing everything would leave no result and no
+  // side-effect chain: leave the op unchanged rather than asserting.
+  if (toRemoveBits.none() || toRemoveBits.all())
+    return rewriter.notifyMatchFailure(op, "no redundant outputs to remove");
+
+  // Collapse the terminator operand list, then rebuild the op with the
+  // corresponding (unwrapped) result types.
+  rewriter.modifyOpInPlace(outputOp,
+                           [&]() { outputOp->eraseOperands(toRemoveBits); });
+
+  SmallVector<Type> newResultTypes =
+      llvm::map_to_vector(outputOp->getOperandTypes(), [](Type type) -> Type {
+        if (auto asyncType = dyn_cast<AsyncType>(type))
+          return asyncType.getElementType();
+        return type;
+      });
+
+  // Rebuild the op with the collapsed result types, carrying over all of its
+  // attributes (inherent + discardable) so nothing relied on later in the
+  // pipeline (e.g. isStructuredKernel, emitsMojo) is dropped.
+  rewriter.setInsertionPoint(op);
+  auto newKernel = GenericCompiledRegionOp::create(
+      rewriter, op->getLoc(), newResultTypes, op.getOperands(),
+      op.getOutputParamDeclsAttr(), op.getInOutSignatureAttr(),
+      op.getFusionInfoAttr(),        // fusionInfo
+      op.getIsAsyncAttr(),           // isAsync
+      op.getConstantResourcesAttr(), // constantResources
+      op.getCanFuseIntoOtherAttr(),  // canFuseIntoOther
+      op.getCanBeFusedIntoAttr(),    // canBeFusedInto
+      op.getCanDuplicateAttr(),      // canDuplicate
+      op.getIsStructuredKernelAttr() // isStructuredKernel
+  );
+
+  newKernel.setDeviceRef(op.getExecutionDevice());
+  newKernel->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+  rewriter.inlineRegionBefore(op.getBody(), newKernel.getBody(),
+                              newKernel.getBody().end());
+
+  // Rewire uses: kept results map positionally; a removed chain redirects to
+  // the surviving chain; removed unused non-chain results have no uses.
+  unsigned curIdx = 0;
+  for (OpResult result : op->getOpResults()) {
+    if (toRemoveBits.test(result.getResultNumber())) {
+      if (keptChainNewIdx && isa<MEF::ChainType>(result.getType()))
+        rewriter.replaceAllUsesWith(result,
+                                    newKernel->getResult(*keptChainNewIdx));
+    } else {
+      rewriter.replaceAllUsesWith(result, newKernel.getResult(curIdx));
+      ++curIdx;
+    }
+  }
+  assert(curIdx == newKernel->getNumResults());
+  rewriter.eraseOp(op);
+  return success();
+}
+
+LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
+                                                    PatternRewriter &rewriter) {
+  if (succeeded(deduplicateOperands(op, rewriter)))
+    return success();
+  if (succeeded(sinkChainCreateOperands(op, rewriter)))
+    return success();
+  return removeRedundantResults(op, rewriter);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3914,6 +4115,97 @@ bool TryOp::isThrows() {
                         [](auto op) { return op.isThrows(); });
   };
   return regionThrows(getTryRegion()) && regionThrows(getExceptRegion());
+}
+
+namespace {
+// Pattern to remove unused results from TryOp and update yield operations.
+struct RemoveUnusedTryResults : public OpRewritePattern<TryOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TryOp tryOp,
+                                PatternRewriter &rewriter) const override {
+
+    // Collect which results are actually used
+    SmallVector<unsigned> usedResultIndices;
+    SmallVector<Type> usedResultTypes;
+    for (auto [idx, result] : llvm::enumerate(tryOp.getResults())) {
+      if (!result.use_empty()) {
+        usedResultIndices.push_back(idx);
+        usedResultTypes.push_back(result.getType());
+      }
+    }
+
+    // If all results are used, no change needed
+    if (usedResultIndices.size() == tryOp.getNumResults())
+      return failure();
+
+    // Create a new try op with only the used result types
+    auto newTryOp =
+        TryOp::create(rewriter, tryOp.getLoc(), TypeRange(usedResultTypes));
+
+    // Clone the try region
+    rewriter.cloneRegionBefore(tryOp.getTryRegion(), newTryOp.getTryRegion(),
+                               newTryOp.getTryRegion().begin());
+
+    // Clone the except region
+    rewriter.cloneRegionBefore(tryOp.getExceptRegion(),
+                               newTryOp.getExceptRegion(),
+                               newTryOp.getExceptRegion().begin());
+
+    // Update the yield operation in the try region
+    auto tryYield =
+        cast<YieldOp>(newTryOp.getTryRegion().front().getTerminator());
+    SmallVector<Value> newTryYieldOperands;
+    for (unsigned idx : usedResultIndices) {
+      newTryYieldOperands.push_back(tryYield.getOperand(idx));
+    }
+    rewriter.setInsertionPoint(tryYield);
+    rewriter.replaceOpWithNewOp<YieldOp>(tryYield, newTryYieldOperands);
+
+    // Update the yield operation in the except region
+    auto exceptYield =
+        cast<YieldOp>(newTryOp.getExceptRegion().front().getTerminator());
+    SmallVector<Value> newExceptYieldOperands;
+    SmallVector<Value> usedExceptValues;
+    for (unsigned idx : usedResultIndices) {
+      Value operand = exceptYield.getOperand(idx);
+      newExceptYieldOperands.push_back(operand);
+      usedExceptValues.push_back(operand);
+    }
+    rewriter.setInsertionPoint(exceptYield);
+    rewriter.replaceOpWithNewOp<YieldOp>(exceptYield, newExceptYieldOperands);
+
+    // Erase unused AsyncErrorOp operations from the except block to prevent CSE
+    // from merging them. Each AsyncErrorOp must remain distinct because they
+    // correspond to specific output indices for emit-mojo code generation.
+    SmallVector<Operation *> opsToErase;
+    for (Operation &op : newTryOp.getExceptRegion().front()) {
+      if (auto asyncError = dyn_cast<AsyncErrorOp>(&op)) {
+        if (!llvm::is_contained(usedExceptValues, asyncError.getResult())) {
+          opsToErase.push_back(&op);
+        }
+      }
+    }
+    for (Operation *op : opsToErase) {
+      rewriter.eraseOp(op);
+    }
+
+    // Replace uses of the old try op with the new one
+    // Map old results to new results for used indices
+    SmallVector<Value> replacements(tryOp.getNumResults());
+    for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices)) {
+      replacements[oldIdx] = newTryOp.getResult(newIdx);
+    }
+
+    rewriter.replaceOp(tryOp, replacements);
+    return success();
+  }
+};
+} // namespace
+
+void TryOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                        MLIRContext *context) {
+  results.add<RemoveUnusedTryResults>(context);
 }
 
 //===----------------------------------------------------------------------===//

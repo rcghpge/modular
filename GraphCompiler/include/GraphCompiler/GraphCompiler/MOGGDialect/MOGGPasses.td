@@ -289,16 +289,6 @@ def SequenceFusion: Pass<"mogg-sequence-fusion", "MGP::ModelOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantOperands: Pass<"mogg-remove-redundant-operands", "MGP::ModelOp"> {
-  let summary = "Removes all redundant operands as a result of seq fusion";
-  let description = [{}];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
 def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{

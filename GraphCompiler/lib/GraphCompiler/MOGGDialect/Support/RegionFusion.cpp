@@ -57,8 +57,8 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   SmallVector<Value> chainsThatShouldBeRemapped;
   for (auto result : allResults) {
     // We keep at least one chain output such that error could be propagated
-    // properly. The duplicated chain will be removed later in the pipeline
-    // (namely, remove-redundant-operands pass).
+    // properly. Duplicated chain outputs and operands are removed later in the
+    // pipeline by the GenericCompiledRegionOp canonicalization.
     bool isChain = isa<MEF::ChainType>(result.getType());
     if (isChain) {
       chainsThatShouldBeRemapped.push_back(result);

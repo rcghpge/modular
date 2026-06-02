@@ -1,6 +1,6 @@
-// RUN: mo-opt --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-remove-redundant-operands --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
+// RUN: mo-opt --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --canonicalize --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
-// RUN: mo-opt --mogg-import-packages --mgp-lower-primitives --mogg-remove-redundant-operands --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t_no_fused.mlir
+// RUN: mo-opt --mogg-import-packages --mgp-lower-primitives --canonicalize --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-strip-kernel-decls --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t_no_fused.mlir
 // RUN: mt --execute %t_no_fused.mlir | FileCheck %s
 
 // CHECK-LABEL:--- Running 'mip_add':
