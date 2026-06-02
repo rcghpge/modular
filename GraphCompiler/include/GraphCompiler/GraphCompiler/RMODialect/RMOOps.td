@@ -21,8 +21,11 @@ include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 
 // Base class for ops in this dialect.
-class RMO_Op<string mnemonic, list<Trait> traits = []>
-  : Op<RMODialect, mnemonic, traits # [RMO_TensorOpInterface, MO_ParamDeclaration]> {
+class RMO_Op<string mnemonic, list<Trait> traits = []> :
+  Op<RMODialect, mnemonic, traits # [
+    RMO_TensorOpInterface,
+    MO_ParamDeclaration,
+  ]> {
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -64,7 +67,7 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
       "ShapeAttr":$newShape,
       "StringRef":$message,
       CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls
-    )>
+    )>,
   ];
 
   // If we can prove the rebind is rebinding to the same shape, become no-op
@@ -72,12 +75,16 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
 }
 
 
-class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
+class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []> :
+  RMO_Op<name, traits # [
+    InferTypeOpAdaptor,
+    Pure,
+  ]> {
   let arguments = (ins
     MO_Tensor:$input_x,
     MO_Tensor:$input_y,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -157,12 +164,17 @@ def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
   }];
 }
 
-class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor, MO_SingleDevice]> {
+class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []> :
+  RMO_Op<name, traits # [
+    InferTypeOpAdaptor,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let arguments = (ins
     MO_Tensor:$input_x,
     MO_Tensor:$input_y,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_BooleanMask:$result);
 
   let assemblyFormat = [{
@@ -260,12 +272,17 @@ def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
   }];
 }
 
-class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor, MO_SingleDevice]> {
+class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []> :
+  RMO_Op<name, traits # [
+    InferTypeOpAdaptor,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let arguments = (ins
     MO_BooleanMask:$input_x,
     MO_BooleanMask:$input_y,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_BooleanMask:$result);
 
   let assemblyFormat = [{
@@ -357,7 +374,8 @@ def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$shapeLike,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let builders = [
@@ -369,8 +387,8 @@ def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
 }
 
 def RMO_ConcatOp : RMO_Op<"concat", [
-  Pure,
   InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -401,10 +419,11 @@ def RMO_ConcatOp : RMO_Op<"concat", [
   }];
 
   let arguments = (ins
-      Variadic<MO_Tensor>:$inputs,
-      Builtin_IntegerAttr:$axis,
-      OptionalAttr<AnyAttrOf<[Builtin_IntegerAttr,KGEN_ParamDeclRefAttr]>>:$out_dim,
-      MO_ParamDecls:$outputParamDecls);
+    Variadic<MO_Tensor>:$inputs,
+    Builtin_IntegerAttr:$axis,
+    OptionalAttr<AnyAttrOf<[Builtin_IntegerAttr, KGEN_ParamDeclRefAttr]>>:$out_dim,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -414,8 +433,8 @@ def RMO_ConcatOp : RMO_Op<"concat", [
 }
 
 def RMO_ReshapeOp : RMO_Op<"reshape", [
-  Pure,
   InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Reshape a tensor";
   let description = [{
@@ -438,8 +457,8 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
 }
 
 def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
-  Pure,
   InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Broadcast a tensor";
   let description = [{
@@ -460,8 +479,8 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
 }
 
 def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
-  Pure,
   InferTypeOpAdaptorWithIsCompatible,
+  Pure,
 ]> {
   let summary = "Converts a shape to a tensor";
   let description = [{
@@ -476,9 +495,9 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
 }
 
 def RMO_MatmulOp : RMO_Op<"matmul", [
-  Pure,
   InferTypeOpAdaptor,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Matrix multiplication operation";
   let description = [{
@@ -517,9 +536,9 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
 }
 
 def RMO_ConvOp : RMO_Op<"conv", [
-  Pure,
   InferTypeOpAdaptor,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Convolution operation";
   let description = [{
@@ -604,9 +623,9 @@ def RMO_ConvOp : RMO_Op<"conv", [
 }
 
 def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
-  Pure,
   InferTypeOpAdaptor,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Transposed convolution operation";
   let description = [{
@@ -688,25 +707,25 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
 }
 
 class RMO_PoolOp<string name> : RMO_Op<name, [
-  Pure,
   InferTypeOpAdaptor,
+  Pure,
 ]> {
-    let arguments = (ins
-      MO_Tensor:$input,
-      MOSH_ShapeAttr:$filter_shape,
-      MOSH_ShapeAttr:$strides,
-      MOSH_ShapeAttr:$dilations,
-      MOSH_ShapeAttr:$paddings,
-      BoolAttr:$ceil_mode
-    );
-    let results = (outs MO_Tensor:$result);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MOSH_ShapeAttr:$filter_shape,
+    MOSH_ShapeAttr:$strides,
+    MOSH_ShapeAttr:$dilations,
+    MOSH_ShapeAttr:$paddings,
+    BoolAttr:$ceil_mode
+  );
+  let results = (outs MO_Tensor:$result);
 
-    let assemblyFormat = [{
-      `(` operands `)` attr-dict `:` functional-type(operands, results)
-    }];
-  }
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
 
-def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool">{
+def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool"> {
   let summary = "Average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -751,7 +770,7 @@ def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool">{
   );
 }
 
-def RMO_MaxPoolOp : RMO_PoolOp<"max_pool">{
+def RMO_MaxPoolOp : RMO_PoolOp<"max_pool"> {
   let summary = "Maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -786,9 +805,9 @@ def RMO_MaxPoolOp : RMO_PoolOp<"max_pool">{
 }
 
 def RMO_SelectOp : RMO_Op<"select", [
-  Pure,
   InferTypeOpAdaptor,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Select operation with broadcasting and dtype casting";
   let description = [{
@@ -823,9 +842,9 @@ def RMO_SelectOp : RMO_Op<"select", [
 }
 
 def RMO_TopKOp : RMO_Op<"top_k", [
-  Pure,
   InferTypeOpAdaptor,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Top-K operation";
   let description = [{
@@ -861,8 +880,8 @@ def RMO_TopKOp : RMO_Op<"top_k", [
 }
 
 def RMO_SliceOp : RMO_Op<"slice", [
-  Pure,
   InferTypeOpAdaptor,
+  Pure,
 ]> {
   let summary = "Slice operation with type inference.""";
   let description = [{
@@ -902,11 +921,13 @@ def RMO_SliceOp : RMO_Op<"slice", [
       ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
-  let arguments = (ins MO_Tensor:$input,
-                       MOSH_ShapeAttr:$starts,
-                       MOSH_ShapeAttr:$stops,
-                       MOSH_ShapeAttr:$steps,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MOSH_ShapeAttr:$starts,
+    MOSH_ShapeAttr:$stops,
+    MOSH_ShapeAttr:$steps,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 }
 
