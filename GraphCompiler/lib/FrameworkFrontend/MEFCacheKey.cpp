@@ -110,7 +110,6 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
       return err.takeError();
   }
 
-  // Selected debug-config flags (GEX-2678).
   // Interpret config read failure as no config.
   auto configOr = M::Config::open();
   M::Config config = configOr.isError() ? M::Config() : configOr.takeValue();
@@ -118,12 +117,6 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
       llvm::formatv("max-debug.source-tracebacks={}",
                     config.getValueAsBool("max-debug.source-tracebacks", false))
           .str());
-  b3.update(llvm::formatv("max-debug.nan-check={}",
-                          config.getValueAsBool("max-debug.nan-check", false))
-                .str());
-  if (llvm::StringRef stride = config.getValue("max-debug.nan-check-stride");
-      !stride.empty())
-    b3.update(llvm::formatv("max-debug.nan-check-stride={}", stride).str());
 
   return hasher;
 }

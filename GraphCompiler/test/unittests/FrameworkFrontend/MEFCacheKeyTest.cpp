@@ -179,6 +179,29 @@ TEST_F(MEFCacheKeyTest, KernelLibraryPathInvalidatesKey) {
   EXPECT_NE(plainKey.takeValue(), extraKey.takeValue());
 }
 
+TEST_F(MEFCacheKeyTest, NanCheckInvalidatesKey) {
+  // `nan-check` is a `GCPipelineOptions` field (it gates `NanCheckPass`), so it
+  // is captured structurally via `gcPipelineOptions.print()` + the textual
+  // pipeline — the hasher does *not* read `max-debug.nan-check` from `Config`
+  // directly. Pin that: two hashers differing only in `nanCheck` must produce
+  // distinct keys for the same module.
+  auto plain = tryBuild();
+  if (!plain)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto withNanCheck =
+      tryBuild([](MO::GCPipelineOptions &gc) { gc.nanCheck = true; });
+  if (!withNanCheck)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto plainKey = plain->keyForModule(*mod);
+  auto nanKey = withNanCheck->keyForModule(*mod);
+  ASSERT_FALSE(plainKey.isError());
+  ASSERT_FALSE(nanKey.isError());
+  EXPECT_NE(plainKey.takeValue(), nanKey.takeValue());
+}
+
 TEST_F(MEFCacheKeyTest, ConvenienceMatchesIncremental) {
   // `computeMEFCacheKey` is documented to equal
   // `MEFCacheKeyHasher::build(...).keyForModule(...)`. Pin the
