@@ -2041,15 +2041,13 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
   state.builder.def(
       getSymNameAttr().strref(), {},
       {MOGG::NamedMojoDef("arg",
-                          vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}]),
-       MOGG::NamedMojoDef("arg", vOpaquePointer)},
+                          vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}])},
       std::nullopt, /*exported=*/true, /*raises=*/false,
       /*isAlwaysInline=*/false, [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
         state.builder.comment(
-            "This is the entry point of the kernel. The first argument is a "
-            "pointer to a list of inputs and outputs. The second is a pointer "
-            "to a runtime context.");
+            "This is the entry point of the kernel. The argument is a "
+            "pointer to a list of inputs and outputs.");
 
         auto runtimeArgument = functionBody.arguments.front();
         auto &kernelBody = getBody().front();
