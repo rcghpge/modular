@@ -31,42 +31,51 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
-class MO_Op<string mnemonic, list<Trait> traits = []>
-  : Op<MODialect, mnemonic, [MO_BufferOpConformance] # traits>;
+class MO_Op<string mnemonic, list<Trait> traits = []> :
+  Op<MODialect, mnemonic, [MO_BufferOpConformance] # traits>;
 
 // Base class for ops that work with tensors in the MO dialect.
-class MO_TensorOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_TensorOpInterface, MO_HasDeviceInterface] # traits>;
+class MO_TensorOp<string mnemonic, list<Trait> traits = []> :
+  MO_Op<mnemonic, [
+    MO_HasDeviceInterface,
+    MO_TensorOpInterface,
+  ] # traits>;
 
 // Base class for ops that work with tensors but do not have a notion of device.
-class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
+class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []> :
+  MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
 
 // Base class for ops working with control flow
-class MO_ControlOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<mnemonic, [MO_ControlOpInterface,
-                           MO_PreservedDuringKernelLowering,
-                           MO_ExecutesOnHost] # traits>;
+class MO_ControlOp<string mnemonic, list<Trait> traits = []> :
+  MO_TensorOp<mnemonic, [
+    MO_ControlOpInterface,
+    MO_ExecutesOnHost,
+    MO_PreservedDuringKernelLowering,
+  ] # traits>;
 
 // Base class for ops working with mutable buffers
-class MO_MutableOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-                     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-                     MO_HasDeviceInterface] # traits>;
+class MO_MutableOp<string mnemonic, list<Trait> traits = []> :
+  MO_Op<mnemonic, [
+    DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    MO_HasDeviceInterface,
+  ] # traits>;
 
 // Base class for ops working with mutable buffers that do not have a notion of device
-class MO_DeviceAgnosticMutableOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-                     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>] # traits>;
+class MO_DeviceAgnosticMutableOp<string mnemonic, list<Trait> traits = []> :
+  MO_Op<mnemonic, [
+    DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  ] # traits>;
 
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
 
 def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
-  Pure,
-  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_PreservedDuringKernelLowering,
+  Pure,
 ]> {
   let summary = "`scalar<si64>` to scalar `!mo.tensor` casting operation";
   let description = [{
@@ -89,10 +98,11 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 //===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
+
 def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
-  Pure,
-  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_PreservedDuringKernelLowering,
+  Pure,
 ]> {
   let summary = "Device transfer operation";
   let description = [{
@@ -130,8 +140,12 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
   let hasCanonicalizeMethod = 1;
 
   let builders = [
-    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice,
-      "ChainValue":$inChain, CArg<"bool", "true">:$alwaysElideSameDeviceCopy)>,
+    OpBuilder<(ins
+      "TensorValue":$input,
+      "DeviceRefAttr":$destDevice,
+      "ChainValue":$inChain,
+      CArg<"bool", "true">:$alwaysElideSameDeviceCopy
+    )>,
   ];
 }
 
@@ -140,12 +154,14 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 //===----------------------------------------------------------------------===//
 
 def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
-  HasParent<"ModuleOp">,
-  IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
-  RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
   DeclInterface,
+  HasOnlyGraphRegion,
+  HasParent<"ModuleOp">,
+  IsolatedFromAbove,
   MO_PreservedDuringKernelLowering,
+  RegionKindInterface,
+  SingleBlockImplicitTerminator<"OutputOp">,
   Symbol,
 ]> {
   let summary = "Computation graph operation";
@@ -252,11 +268,15 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 def MO_CallOp : MO_ControlOp<"call", [
   CallOpInterface,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
-  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, [
+    "getInChains",
+    "getInChainsMutable",
+    "getOutChains",
+  ]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   HasParent<"MO::GraphOp">,
+  MO_ExecutesOnHost,
   MO_ParamDeclaration,
-  MO_ExecutesOnHost
 ]> {
   let summary = "Call a computation graph";
   let description = [{
@@ -319,8 +339,10 @@ def MO_CallOp : MO_ControlOp<"call", [
 //===----------------------------------------------------------------------===//
 
 def MO_OutputOp : MO_ControlOp<"output", [
-  Terminator, ReturnLike, HasParent<"MO::GraphOp">,
-  DeclareOpInterfaceMethods<ParamOpInterface>
+  DeclareOpInterfaceMethods<ParamOpInterface>,
+  HasParent<"MO::GraphOp">,
+  ReturnLike,
+  Terminator,
 ]>, NoParamDecls {
   let summary = "Graph output operation";
   let description = [{
@@ -366,14 +388,17 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if", [
-  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions", "getSuccessorInputs"]>,
+  DeclInterface,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+    "getEntrySuccessorRegions",
+    "getSuccessorInputs",
+  ]>,
   HasOnlyGraphRegion,
   NoRegionArguments,
   RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
-  DeclInterface,
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
@@ -402,12 +427,14 @@ def IfOp : MO_ControlOp<"if", [
   }];
 
   let arguments = (ins
-      AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond,
-      MO_ParamDecls:$outputParamDecls
+    AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond,
+    MO_ParamDecls:$outputParamDecls
   );
   let results = (outs Variadic<AnyType>:$results);
-  let regions = (region SizedRegion<1>:$thenRegion,
-                        SizedRegion<1>:$elseRegion);
+  let regions = (region
+    SizedRegion<1>:$thenRegion,
+    SizedRegion<1>:$elseRegion
+  );
 
   let extraClassDeclaration = [{
     Block *getThenBlock();
@@ -433,16 +460,25 @@ def IfOp : MO_ControlOp<"if", [
 //===----------------------------------------------------------------------===//
 
 def WhileOp : MO_ControlOp<"while", [
-  DeclareOpInterfaceMethods<LoopLikeOpInterface,
-    ["getRegionIterArgs", "getInitsMutable", "getYieldedValuesMutable"]>,
-  DeclareOpInterfaceMethods<RegionBranchOpInterface,
-    ["getEntrySuccessorOperands", "getSuccessorInputs"]>,
-  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
+  DeclInterface,
+  DeclareOpInterfaceMethods<LoopLikeOpInterface, [
+    "getInitsMutable",
+    "getRegionIterArgs",
+    "getYieldedValuesMutable",
+  ]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, [
+    "getInChains",
+    "getInChainsMutable",
+    "getOutChains",
+  ]>,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+    "getEntrySuccessorOperands",
+    "getSuccessorInputs",
+  ]>,
   HasOnlyGraphRegion,
   RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlock,
-  DeclInterface,
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
@@ -484,8 +520,10 @@ def WhileOp : MO_ControlOp<"while", [
 
   let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>:$results);
-  let regions = (region SizedRegion<1>:$condRegion,
-                        SizedRegion<1>:$bodyRegion);
+  let regions = (region
+    SizedRegion<1>:$condRegion,
+    SizedRegion<1>:$bodyRegion
+  );
 
   let extraClassDeclaration = [{
     WhileConditionOp getCondTerminator();
@@ -518,11 +556,11 @@ def WhileOp : MO_ControlOp<"while", [
 //===----------------------------------------------------------------------===//
 
 def MO_YieldOp : MO_ControlOp<"yield", [
-  Terminator,
-  ReturnLike,
-  Pure,
+  DeclareOpInterfaceMethods<ParamOpInterface>,
   ParentOneOf<["IfOp", "WhileOp", "ParallelOp"]>,
-  DeclareOpInterfaceMethods<ParamOpInterface>
+  Pure,
+  ReturnLike,
+  Terminator,
 ]>, NoParamDecls {
   let hasVerifier = 1;
   let summary = "`yield` operation";
@@ -559,8 +597,10 @@ def MO_YieldOp : MO_ControlOp<"yield", [
 //===----------------------------------------------------------------------===//
 
 def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
-  DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
-    ["getSuccessorRegions", "getMutableSuccessorOperands"]>,
+  DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface, [
+    "getMutableSuccessorOperands",
+    "getSuccessorRegions",
+  ]>,
   HasParent<"WhileOp">,
   MO_PreservedDuringKernelLowering,
   Pure,
@@ -592,8 +632,10 @@ def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
 // Bundle/unbundle ops use Op<> directly (not MO_Op) to avoid
 // MO_BufferOpConformance — these are pure grouping ops with no mutation.
 
-def MO_TensorBundleOp : Op<MODialect, "tensor.bundle",
-    [Pure, MO_PreservedDuringKernelLowering]> {
+def MO_TensorBundleOp : Op<MODialect, "tensor.bundle", [
+  MO_PreservedDuringKernelLowering,
+  Pure,
+]> {
   let summary = "Bundle individual tensors into an mo.bundle.";
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
   let results = (outs MO_Bundle:$result);
@@ -608,8 +650,10 @@ def MO_TensorBundleOp : Op<MODialect, "tensor.bundle",
   ];
 }
 
-def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle",
-    [Pure, MO_PreservedDuringKernelLowering]> {
+def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle", [
+  MO_PreservedDuringKernelLowering,
+  Pure,
+]> {
   let summary = "Extract individual tensors from an mo.bundle.";
   let arguments = (ins MO_Bundle:$input);
   let results = (outs Variadic<MO_Tensor>:$outputs);
@@ -629,16 +673,20 @@ def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle",
 //===----------------------------------------------------------------------===//
 
 def MO_ParallelOp : MO_TensorOp<"parallel", [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
+  AttrSizedOperandSegments,
+  DeclInterface,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, [
+    "getInChains",
+    "getInChainsMutable",
+    "getOutChains",
+  ]>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_PreservedDuringKernelLowering,
-  MO_ExecutesOnHost, // TODO this should be MO_MultiDevice
   HasOnlyGraphRegion,
+  MO_ExecutesOnHost, // TODO this should be MO_MultiDevice
+  MO_PreservedDuringKernelLowering,
   RegionKindInterface,
   SingleBlock,
-  DeclInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
-  AttrSizedOperandSegments,
 ]> {
   let summary = "`parallel` region operation";
   let description = [{
@@ -701,15 +749,19 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     /// Build a chainless ParallelOp with an empty body region.  One block
     /// argument is added per bundle input, typed as the bundle's first
     /// element type.
-    OpBuilder<(ins "ValueRange":$inputs,
-                   "TypeRange":$resultTypes)>,
+    OpBuilder<(ins
+      "ValueRange":$inputs,
+      "TypeRange":$resultTypes
+    )>,
     /// Build a ParallelOp with an empty body region.  One block argument is
     /// added per bundle input, typed as the bundle's first element type.
     /// `buffers` and `inChain` must be both present or both absent.
-    OpBuilder<(ins "ValueRange":$inputs,
-                   "ValueRange":$buffers,
-                   "Value":$inChain,
-                   "TypeRange":$resultTypes)>,
+    OpBuilder<(ins
+      "ValueRange":$inputs,
+      "ValueRange":$buffers,
+      "Value":$inChain,
+      "TypeRange":$resultTypes
+    )>,
   ];
 
   let extraClassDeclaration = [{
@@ -802,10 +854,10 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 //===----------------------------------------------------------------------===//
 
 def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
-    MO_ConstantLike,
-    Pure,
-    MO_PreservedDuringKernelLowering,
-    MO_ExplicitDevice,
+  MO_ConstantLike,
+  MO_ExplicitDevice,
+  MO_PreservedDuringKernelLowering,
+  Pure,
 ]> {
   let summary = "External constant operation";
   let description = [{
@@ -858,11 +910,11 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
 //===----------------------------------------------------------------------===//
 
 def MO_ConstantOp : MO_TensorOp<"constant", [
-    ConstantLike,
-    MO_ConstantLike,
-    Pure,
-    MO_PreservedDuringKernelLowering,
-    MO_SingleDevice,
+  ConstantLike,
+  MO_ConstantLike,
+  MO_PreservedDuringKernelLowering,
+  MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Constant operation";
   let description = [{
@@ -878,12 +930,12 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
   }];
 
   let arguments = (ins
-    ConfinedAttr<
-      ElementsAttr,
-      [AnyAttrOf<[M_ArrayElementsAttr,
-                  Builtin_DenseResourceElementsAttr,
-                  M_AlignedBytesAttr]>]
-    >:$value);
+    ConfinedAttr<ElementsAttr, [AnyAttrOf<[
+      Builtin_DenseResourceElementsAttr,
+      M_AlignedBytesAttr,
+      M_ArrayElementsAttr,
+    ]>]>:$value
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
@@ -898,50 +950,77 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     OpBuilder<(ins "Type":$resultType, "ElementsAttr":$value)>,
 
     /// Create a new rank-1 tensor mo.constant of int32 value.
-    OpBuilder<(ins "ArrayRef<int32_t>":$values,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "ArrayRef<int32_t>":$values,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int32 value.
-    OpBuilder<(ins "int32_t":$value,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "int32_t":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-1 tensor mo.constant of int64 value.
-    OpBuilder<(ins "ArrayRef<int64_t>":$values,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "ArrayRef<int64_t>":$values,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int64 value.
-    OpBuilder<(ins "int64_t":$value,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "int64_t":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-1 tensor mo.constant of any float type.
-    OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "ArrayRef<APFloat>":$values,
+      "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of given float type.
-    OpBuilder<(ins "APFloat":$value, "Type":$elementType,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "APFloat":$value,
+      "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-1 tensor mo.constant of any int type.
-    OpBuilder<(ins "ArrayRef<APInt>":$values, "Type":$elementType,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "ArrayRef<APInt>":$values,
+      "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of given int type.
-    OpBuilder<(ins "APInt":$value, "Type":$elementType,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "APInt":$value,
+      "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of f32 type.
-    OpBuilder<(ins "float":$value,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "float":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of f64 type.
-    OpBuilder<(ins "double":$value,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "double":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-1 tensor mo.constant of boolean value.
-    OpBuilder<(ins "ArrayRef<bool>":$values,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "ArrayRef<bool>":$values,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
     /// Create a new rank-0 (scalar) tensor mo.constant of boolean value.
-    OpBuilder<(ins "bool":$value,
-      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins
+      "bool":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef
+    )>,
   ];
 }
 
-
 def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
   ConstantLike,
-  Pure,
+  MO_HostOnly,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  Pure,
 ]> {
   let summary = "Scalar constant operation";
   let description = [{
@@ -955,11 +1034,12 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
   }];
 
   let arguments = (ins
-      AnyAttrOf<[
-                  Builtin_IntegerAttr,
-                  BoolAttr,
-                  Builtin_FloatAttr,
-                  ]>:$value);
+    AnyAttrOf<[
+      BoolAttr,
+      Builtin_FloatAttr,
+      Builtin_IntegerAttr,
+    ]>:$value
+  );
   let results = (outs MO_Scalar:$result);
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
@@ -968,84 +1048,93 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
   let hasVerifier = true;
 
   let builders = [
-    OpBuilder<(ins "TypedAttr":$value)>
+    OpBuilder<(ins "TypedAttr":$value)>,
   ];
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // Elementwise ops
 //===----------------------------------------------------------------------===//
 
 // For ops where each output depends only on the corresponding indices in the inputs
-class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits #
-     [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike, MO_SingleDevice,
-      MO_ParamDeclaration]>
-{
+class MO_ElementWiseOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    MO_ElementWiseLike,
+    MO_ParamDeclaration,
+    MO_SameOperandsAndResultShape,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let results = (outs MO_Tensor:$result);
 }
 
 // Like MO_ElementWiseOp, but the dtypes and shapes match for all results/operands
-class MO_ElementWiseMonoTypeOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_SameOperandsAndResultType]> {
+class MO_ElementWiseMonoTypeOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseOp<name, traits # [MO_SameOperandsAndResultType]> {
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($result))
   }];
 }
 
-class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
+class MO_ElementWiseUnaryOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseOp<name, traits # [MO_ElementWiseUnary]> {
   let arguments = (ins MO_Tensor:$input);
 }
 
-class MO_ElementWiseUnaryMonoTypeOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseMonoTypeOp<name, traits # [MO_ElementWiseUnary]> {
+class MO_ElementWiseUnaryMonoTypeOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseMonoTypeOp<name, traits # [MO_ElementWiseUnary]> {
   let arguments = (ins MO_Tensor:$input);
 }
 
-class MO_ElementWiseUnaryFloatMonoTypeOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseUnaryMonoTypeOp<name, traits> {
+class MO_ElementWiseUnaryFloatMonoTypeOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseUnaryMonoTypeOp<name, traits> {
   let arguments = (ins MO_FloatTensor:$input);
 }
 
-class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
+class MO_ElementWiseBinaryOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseOp<name, traits # [MO_ElementWiseBinary]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
-class MO_ElementWiseBinaryMonoTypeOp<string name, list<Trait> traits = []>
-    : MO_ElementWiseMonoTypeOp<name, traits # [MO_ElementWiseBinary]> {
+class MO_ElementWiseBinaryMonoTypeOp<string name, list<Trait> traits = []> :
+  MO_ElementWiseMonoTypeOp<name, traits # [MO_ElementWiseBinary]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
-class MO_ComparisonOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [Pure, MO_SameOperandsElementType,
-                            MO_SameOperandsAndResultShape, MO_SingleDevice,
-                            MO_ParamDeclaration]> {
+class MO_ComparisonOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    MO_ParamDeclaration,
+    MO_SameOperandsAndResultShape,
+    MO_SameOperandsElementType,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let results = (outs MO_BooleanMask:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 
-class MO_ComparisonUnaryOp<string name, list<Trait> traits = []>
-    : MO_ComparisonOp<name, traits> {
+class MO_ComparisonUnaryOp<string name, list<Trait> traits = []> :
+  MO_ComparisonOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x);
 }
 
-class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
-    : MO_ComparisonOp<name, traits> {
+class MO_ComparisonBinaryOp<string name, list<Trait> traits = []> :
+  MO_ComparisonOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
 }
 
-class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [
-  Commutative, Pure, MO_SameOperandsAndResultType, MO_ElementWiseBinary,
-  MO_SingleDevice, MO_ParamDeclaration
-]> {
+class MO_LogicalBinaryOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    Commutative,
+    MO_ElementWiseBinary,
+    MO_ParamDeclaration,
+    MO_SameOperandsAndResultType,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y);
   let results = (outs MO_BooleanMask:$result);
   let assemblyFormat = [{
@@ -1366,10 +1455,12 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       IndexAttr:$axis,
-                       IndexAttr:$exclusive,
-                       IndexAttr:$reverse);
+  let arguments = (ins
+    MO_Tensor:$input,
+    IndexAttr:$axis,
+    IndexAttr:$exclusive,
+    IndexAttr:$reverse
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` $input `)` attr-dict
@@ -1552,8 +1643,8 @@ def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt"> {
 }
 
 def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [
-  Pure,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  Pure,
 ]> {
   let summary = "Casting operation";
   let description = [{
@@ -1651,7 +1742,7 @@ def MO_GreaterOp : MO_ComparisonBinaryOp<"greater", [
 }
 
 def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal", [
-  DeclareOpInterfaceMethods<MO_Staticization>
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Comparison operation";
   let description = [{
@@ -1671,7 +1762,7 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal", [
 
 def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [
   Commutative,
-  DeclareOpInterfaceMethods<MO_Staticization>
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Comparison operation";
   let description = [{
@@ -1724,9 +1815,11 @@ def MO_OrOp : MO_LogicalBinaryOp<"or"> {
 }
 
 def MO_NotOp : MO_TensorOp<"not", [
-  Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_SingleDevice
+  MO_ElementWiseUnary,
+  MO_SameOperandsAndResultType,
+  MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Logical negation operation";
   let description = [{
@@ -1765,12 +1858,12 @@ def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
 def MO_SelectOp : MO_TensorOp<"select", [
-  Pure,
-  MO_SameOperandsAndResultShape,
   DeclareOpInterfaceMethods<MO_Staticization>,
   MO_ParamDeclaration,
-  MO_SingleDevice
-]>{
+  MO_SameOperandsAndResultShape,
+  MO_SingleDevice,
+  Pure,
+]> {
   let summary = "Select operation";
   let description = [{
     Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
@@ -1795,9 +1888,9 @@ def MO_SelectOp : MO_TensorOp<"select", [
 }
 
 def MO_SliceOp : MO_TensorOp<"slice", [
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_SingleDeviceWithHostOperands<["start", "stop", "step"]>
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_SingleDeviceWithHostOperands<["start", "stop", "step"]>,
 ]> {
   let summary = "Slice operation";
   let description = [{
@@ -1840,11 +1933,13 @@ def MO_SliceOp : MO_TensorOp<"slice", [
       ) -> !mo.tensor<[?, ?], f32>
     ```
   }];
-  let arguments = (ins MO_Tensor:$input,
-                       MO_IndicesVectorIfRanked:$start,
-                       MO_IndicesVectorIfRanked:$stop,
-                       MO_IndicesVectorIfRanked:$step,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesVectorIfRanked:$start,
+    MO_IndicesVectorIfRanked:$stop,
+    MO_IndicesVectorIfRanked:$step,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -1853,7 +1948,6 @@ def MO_SliceOp : MO_TensorOp<"slice", [
   let hasVerifier = 1;
   let hasFolder = 1;
 }
-
 
 def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub", [
   DeclareOpInterfaceMethods<MO_Staticization>,
@@ -1890,12 +1984,14 @@ def MO_TanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"tanh"> {
 // Softmax-like ops
 //===----------------------------------------------------------------------===//
 
-class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [Pure,
-                                  AllDTypesMatch<["input", "result"]>,
-                                  AllShapeAttrsMatch<["input", "result"]>,
-                                  MO_SingleDevice,
-                                  MO_ParamDeclaration]> {
+class MO_SoftmaxLikeOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    AllDTypesMatch<["input", "result"]>,
+    AllShapeAttrsMatch<["input", "result"]>,
+    MO_ParamDeclaration,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
@@ -1940,15 +2036,16 @@ def MO_SoftmaxOp : MO_SoftmaxLikeOp<"reduce.softmax"> {
 // Reduction ops
 //===----------------------------------------------------------------------===//
 
-class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-    name, traits # [MO_ReductionTraits,
-      MO_SingleDevice,
-    ]>
-{
+class MO_ReductionOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    MO_ReductionTraits,
+    MO_SingleDevice,
+  ]> {
   let arguments = (ins
     MO_Tensor:$input,
     IndexAttr:$axis,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -1960,7 +2057,11 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 
   let builders = [
     /// Build reduction op and automatically infer output type if it is not given.
-    OpBuilder<(ins "TensorValue":$input, "int64_t":$axis, CArg<"TensorType", "{}">:$outputTy)>
+    OpBuilder<(ins
+      "TensorValue":$input,
+      "int64_t":$axis,
+      CArg<"TensorType", "{}">:$outputTy
+    )>,
   ];
 }
 
@@ -2071,11 +2172,11 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
 //===----------------------------------------------------------------------===//
 
 def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
-  Pure,
   AllDTypesMatch<["input", "result"]>,
   AllShapeAttrsMatch<["input", "result"]>,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
   MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  Pure,
 ]> {
   let summary = "RMS normalization operation";
   let description = [{
@@ -2116,10 +2217,10 @@ def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
 }
 
 def MO_ReduceGroupNormOp : MO_TensorOp<"reduce.group_norm", [
-  Pure,
   AllShapeAttrsMatch<["input", "result"]>,
-  MO_SingleDeviceWithHostOperands<["epsilon", "numGroups"]>,
   MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["epsilon", "numGroups"]>,
+  Pure,
 ]> {
   let summary = "Group normalization operation";
   let description = [{
@@ -2154,9 +2255,9 @@ def MO_ReduceGroupNormOp : MO_TensorOp<"reduce.group_norm", [
 }
 
 def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
-  Pure,
-  MO_SingleDevice,
   MO_ParamDeclaration,
+  MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Combined minimum and maximum reduction operation";
   let description = [{
@@ -2188,9 +2289,9 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
 }
 
 def MO_ReduceRMSNormRoPEOp : MO_TensorOp<"reduce.rms_norm.RoPE", [
-  Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
   MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  Pure,
 ]> {
   let hasVerifier = 1;
   let summary = "Fused RMS normalization with Rotary Position Embedding";
@@ -2235,9 +2336,9 @@ def MO_ReduceRMSNormRoPEOp : MO_TensorOp<"reduce.rms_norm.RoPE", [
 }
 
 def MO_ReduceRMSNormFusedResidualAddOp : MO_TensorOp<"reduce.rms_norm_fused_residual_add", [
-  Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon1", "epsilon2", "weightOffset1", "weightOffset2"]>,
   MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["epsilon1", "epsilon2", "weightOffset1", "weightOffset2"]>,
+  Pure,
 ]> {
   let summary = "Fused RMS norm with residual add operation";
   let description = [{
@@ -2282,11 +2383,11 @@ def MO_ReduceRMSNormFusedResidualAddOp : MO_TensorOp<"reduce.rms_norm_fused_resi
 //===----------------------------------------------------------------------===//
 
 def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
-]>{
+  MO_SlidingWindow,
+]> {
   let summary = "Average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -2333,7 +2434,8 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     BoolAttr:$count_boundary,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2347,11 +2449,11 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 }
 
 def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
-]>{
+  MO_SlidingWindow,
+]> {
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -2398,7 +2500,8 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     BoolAttr:$count_boundary,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2412,11 +2515,11 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
 }
 
 def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
-]>{
+  MO_SlidingWindow,
+]> {
   let summary = "Maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -2462,7 +2565,8 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2476,11 +2580,11 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
 }
 
 def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
-]>{
+  MO_SlidingWindow,
+]> {
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -2526,7 +2630,8 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2540,11 +2645,11 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
 }
 
 def MO_ConvOp : MO_TensorOp<"conv", [
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["strides", "dilations", "paddings", "num_groups"]>,
-]>{
+  MO_SlidingWindow,
+]> {
   let summary = "Convolution operation";
   let description = [{
     Computes the convolution product of the input with the given filter,
@@ -2641,12 +2746,12 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 }
 
 def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
-  MO_ViewLike,
-  MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["strides", "dilations", "paddings", "output_paddings"]>,
-]>{
+  MO_SlidingWindow,
+  MO_ViewLike,
+]> {
   let summary = "Transposed convolution operation";
   let description = [{
     This op effectively computes the gradient of a convolution with
@@ -2724,7 +2829,8 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     MO_ShapeLikeIfRanked:$output_paddings,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2742,14 +2848,16 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
 // Shape related ops
 //===----------------------------------------------------------------------===//
 
-class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<mnemonic,
-    traits # [MO_ParamDeclaration, MO_SameFirstOperandAndResultsElementType]
-> {
+class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []> :
+  MO_TensorOp<mnemonic, traits # [
+    MO_ParamDeclaration,
+    MO_SameFirstOperandAndResultsElementType,
+  ]> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$newShape,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2791,15 +2899,19 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
     /// The third optional parameter should represent the shape of the
     /// second arg (e.g. from ShapeOfOp). If not given a ShapeOfOp will be
     /// inserted. It is provided to avoid Op duplication before CSE.
-    OpBuilder<(ins "TensorValue":$input, "TensorValue":$broadcastLike, CArg<"TensorValue", "{}">:$shapeOfInput)>,
+    OpBuilder<(ins
+      "TensorValue":$input,
+      "TensorValue":$broadcastLike,
+      CArg<"TensorValue", "{}">:$shapeOfInput
+    )>,
   ];
 }
 
 def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
-  Pure,
   MO_ExecutesOnHost,
   MO_PreservedDuringKernelLowering,
   MO_ViewLike,
+  Pure,
 ]> {
   let summary = "Add a singleton dimension to a tensor shape";
   let description = [{
@@ -2821,10 +2933,10 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
 }
 
 def MO_SplitDimOp : MO_TensorOp<"split_dim", [
-  Pure,
-  MO_ViewLike,
+  MO_ExecutesOnHost,
   MO_PreservedDuringKernelLowering,
-  MO_ExecutesOnHost
+  MO_ViewLike,
+  Pure,
 ]> {
   let summary = "Splits a single dimensions of a tensor into two";
   let description = [{
@@ -2852,10 +2964,10 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [
 }
 
 def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
-  Pure,
-  MO_ViewLike,
+  MO_ExecutesOnHost,
   MO_PreservedDuringKernelLowering,
-  MO_ExecutesOnHost
+  MO_ViewLike,
+  Pure,
 ]> {
   let summary = "Merge two dimensions of a tensor into one";
   let description = [{
@@ -2882,11 +2994,11 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
-  MO_ViewLike,
-  MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_ExecutesOnHost
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_ExecutesOnHost,
+  MO_PreservedDuringKernelLowering,
+  MO_ViewLike,
 ]> {
   let summary = "Reshape operation";
   let description = [{
@@ -2922,9 +3034,9 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 }
 
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_HostOnly,
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
@@ -2954,7 +3066,8 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
   let arguments = (ins
     MO_ShapeLike:$input_shape,
     MO_ShapeLike:$remove_indices,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_ShapeLike:$result);
 
   let assemblyFormat = [{
@@ -2968,9 +3081,9 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 }
 
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_HostOnly,
 ]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
@@ -2996,7 +3109,8 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
   let arguments = (ins
     MO_ShapeLike:$input_shape,
     MO_ShapeLike:$padding_indices,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_ShapeLike:$result);
 
   let assemblyFormat = [{
@@ -3010,8 +3124,8 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
+  MO_ExecutesOnHost,
   MO_ParamDeclaration,
-  MO_ExecutesOnHost
 ]> {
   let summary = "Shape operation";
   let description = [{
@@ -3051,7 +3165,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_SingleDevice
+  MO_SingleDevice,
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
@@ -3087,9 +3201,11 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
     In this example, `shape1` will compute to [10, 2, 5]
   }];
 
-  let arguments = (ins MO_ShapeLike:$input_x,
-                       MO_ShapeLike:$input_y,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_ShapeLike:$input_x,
+    MO_ShapeLike:$input_y,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_ShapeLike:$shape);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3099,14 +3215,14 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
 }
 
 /// Used to model MO ops that accept both MO_Tensor and MOSH_ShapeType.
-class MOShape_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MODialect, "shape." # mnemonic, traits> {
+class MOShape_Op<string mnemonic, list<Trait> traits = []> :
+  Op<MODialect, "shape." # mnemonic, traits> {
   string cppNamespace = MODialect.cppNamespace # "::Shape";
 }
 
 def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [
-  Pure,
   MO_PreservedDuringKernelLowering,
+  Pure,
 ]> {
   let summary = "Casting operation";
   let description = [{
@@ -3128,8 +3244,8 @@ def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [
 }
 
 def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [
-  Pure,
   MO_PreservedDuringKernelLowering,
+  Pure,
 ]> {
   let summary = "Casting operation";
   let description = [{
@@ -3153,13 +3269,17 @@ def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [
   let hasCanonicalizeMethod = 1;
 }
 
-class MOStatic_TensorOp<string mnemonic, list<Trait> traits = []>
-    : MO_TensorOp<"static." # mnemonic, traits> {
+class MOStatic_TensorOp<string mnemonic, list<Trait> traits = []> :
+  MO_TensorOp<"static." # mnemonic, traits> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 }
 
-class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
-    : MOStatic_TensorOp<mnemonic, traits # [Pure, MO_SameFirstOperandAndResultsElementType, MO_SingleDevice]> {
+class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []> :
+  MOStatic_TensorOp<mnemonic, traits # [
+    MO_SameFirstOperandAndResultsElementType,
+    MO_SingleDevice,
+    Pure,
+  ]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 
   let arguments = (ins MO_Tensor:$input);
@@ -3172,8 +3292,9 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 }
 
 def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
-    DeclareOpInterfaceMethods<MO_Staticization>, MO_ViewLike
-  ]> {
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_ViewLike,
+]> {
   let summary = "Broadcasting operation";
   let description = [{
     Broadcasts the input tensor to the result tensor. The shape of the input and
@@ -3204,8 +3325,8 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
 }
 
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
-  MO_ViewLike,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_ViewLike,
 ]> {
   let summary = "Reshape operation";
   let description = [{
@@ -3235,9 +3356,9 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
 
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_SingleDevice
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_SingleDevice,
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -3271,7 +3392,8 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   let arguments = (ins
     IndexAttr:$axis,
     Variadic<MO_Tensor>:$inputs,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -3321,7 +3443,8 @@ def MO_SplitOp : MO_TensorOp<"split", [
     MO_Tensor:$input,
     MO_IndicesVectorIfRanked:$splitSizes,
     IndexAttr:$axis,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let assemblyFormat = [{
@@ -3337,7 +3460,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
 def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_SingleDevice
+  MO_SingleDevice,
 ]> {
   let summary = "Fused Concatenation + slice operation";
   let description = [{
@@ -3352,8 +3475,9 @@ def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
     Variadic<MO_Tensor>:$inputs,
     ArrayAttr:$static_starts,
     ArrayAttr:$static_steps,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$concatResult, MO_Tensor: $sliceResult);
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$concatResult, MO_Tensor:$sliceResult);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
@@ -3365,7 +3489,7 @@ def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["perm"]>
+  MO_SingleDeviceWithHostOperands<["perm"]>,
 ]> {
   let summary = "Transposition operation";
   let description = [{
@@ -3393,7 +3517,8 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$perm,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict
@@ -3430,7 +3555,8 @@ def MO_TileOp : MO_TensorOp<"tile", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_ShapeLike:$repeats,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict
@@ -3444,7 +3570,7 @@ def MO_TileOp : MO_TensorOp<"tile", [
 def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   MO_PadLikeTraits,
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["paddings", "constant"]>
+  MO_SingleDeviceWithHostOperands<["paddings", "constant"]>,
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
@@ -3474,7 +3600,8 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
     MO_Tensor:$input,
     MO_PaddingLike:$paddings,
     MO_RankedScalarTensor:$constant,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3483,9 +3610,9 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
 }
 
 def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
+  MO_HostOnly,
   MO_PadLikeTraits,
   MO_ParamDeclaration,
-  MO_HostOnly
 ]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
@@ -3514,7 +3641,8 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLike:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3523,9 +3651,9 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
 }
 
 def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
+  MO_HostOnly,
   MO_PadLikeTraits,
   MO_ParamDeclaration,
-  MO_HostOnly
 ]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
@@ -3554,7 +3682,8 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLike:$paddings,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3567,9 +3696,9 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
 //===----------------------------------------------------------------------===//
 
 def MO_GatherOp : MO_TensorOp<"gather", [
-  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_SingleDevice
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_SingleDevice,
 ]> {
   let summary = "`gather` operation";
   let description = [{
@@ -3598,10 +3727,12 @@ def MO_GatherOp : MO_TensorOp<"gather", [
     ```
   }];
 
-  let arguments = (ins MO_NonScalarIfRanked:$input,
-                       MO_IndicesTensor:$indices,
-                       IndexAttr:$axis,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_NonScalarIfRanked:$input,
+    MO_IndicesTensor:$indices,
+    IndexAttr:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3620,14 +3751,16 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
     The gather axis is 0 and reduction axis is 1.
   }];
 
-  let arguments = (ins MO_NonScalarIfRanked:$input,
-                       MO_IndicesTensor:$indices);
+  let arguments = (ins
+    MO_NonScalarIfRanked:$input,
+    MO_IndicesTensor:$indices
+  );
   let results = (outs MO_Tensor:$result);
 }
 
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_SingleDevice
+  MO_SingleDevice,
 ]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{
@@ -3660,11 +3793,13 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
     ```
   }];
 
-  let arguments = (ins MO_NonScalarIfRanked:$input,
-                       MO_IndicesTensor:$indices,
-                       // TODO(#21324): Support dynamic batchDims
-                       IndexAttr:$batchDims,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_NonScalarIfRanked:$input,
+    MO_IndicesTensor:$indices,
+    // TODO(#21324): Support dynamic batchDims
+    IndexAttr:$batchDims,
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -3680,7 +3815,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 
 def MO_ScatterOp : MO_TensorOp<"scatter", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_HostOnly,
 ]> {
   let summary = "`scatter` operation";
   let description = [{
@@ -3715,11 +3850,13 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       IndexAttr:$axis,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    IndexAttr:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3729,14 +3866,18 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
   let hasVerifier = 1;
 }
 
-class MO_ScatterReductionOp<string name, list<Trait> traits = []>
-  : MO_TensorOp<"scatter." # name, traits # [MO_ScatterLikeTraits, MO_HostOnly]>
-{
-  let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       MO_RankedScalarIndexTensor:$axis,
-                       MO_ParamDecls:$outputParamDecls);
+class MO_ScatterReductionOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<"scatter." # name, traits # [
+    MO_HostOnly,
+    MO_ScatterLikeTraits,
+  ]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3892,7 +4033,10 @@ def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits, MO_SingleDevice]> {
+def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
+  MO_ScatterNdLikeTraits,
+  MO_SingleDevice,
+]> {
   let summary = "Multi-dimensional `scatter` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
@@ -3919,10 +4063,12 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits, MO_Singl
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -3930,13 +4076,17 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits, MO_Singl
   }];
 }
 
-class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-  "scatter_nd." # name, traits # [MO_ScatterNdLikeTraits, MO_SingleDevice]
-> {
-  let arguments = (ins MO_Tensor:$input,
-                       MO_NonScalarIfRanked:$updates,
-                       MO_IndicesTensor:$indices,
-                       MO_ParamDecls:$outputParamDecls);
+class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<"scatter_nd." # name, traits # [
+    MO_ScatterNdLikeTraits,
+    MO_SingleDevice,
+  ]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_NonScalarIfRanked:$updates,
+    MO_IndicesTensor:$indices,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -4060,8 +4210,10 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 // NonMaximumSuppressionOp
 //===----------------------------------------------------------------------===//
 
-def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
-    [MO_ParamDeclaration, MO_HostOnly]> {
+def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression", [
+  MO_HostOnly,
+  MO_ParamDeclaration,
+]> {
   let summary = "Non-max suppression operation";
   let description = [{
    Filters out boxes that have high intersection-over-union (IOU).
@@ -4082,13 +4234,15 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
     ```
   }];
   // TODO(#21506): Allow any ranked tensors as inputs.
-  let arguments = (ins MO_Rank3Tensor:$boxes,
-                       MO_Rank3Tensor:$scores,
-                       MO_RankedScalarIndexTensor:$maxOutputBoxesPerClass,
-                       MO_RankedScalarFloatTensor:$iouThreshold,
-                       MO_RankedScalarFloatTensor:$scoreThreshold,
-                       MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Rank2IndexTensor: $output);
+  let arguments = (ins
+    MO_Rank3Tensor:$boxes,
+    MO_Rank3Tensor:$scores,
+    MO_RankedScalarIndexTensor:$maxOutputBoxesPerClass,
+    MO_RankedScalarFloatTensor:$iouThreshold,
+    MO_RankedScalarFloatTensor:$scoreThreshold,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Rank2IndexTensor:$output);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
@@ -4099,8 +4253,8 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
 //===----------------------------------------------------------------------===//
 
 def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
+  MO_HostOnly,
   MO_ParamDeclaration,
-  MO_HostOnly
 ]> {
   let summary = "Nonzero-value indices operation";
   let description = [{
@@ -4133,12 +4287,13 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
 //===----------------------------------------------------------------------===//
 
 // Base class for ArgMin and ArgMax.
-class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []>
-    : MO_ReductionOp<mnemonic, traits> {
+class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> :
+  MO_ReductionOp<mnemonic, traits> {
   let arguments = (ins
     MO_Tensor:$input,
     IndexAttr:$axis,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_IndicesTensor:$result);
   let assemblyFormat = [{
@@ -4201,10 +4356,10 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
 //===----------------------------------------------------------------------===//
 
 def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
-  MO_SingleDeviceWithHostOperands<["shape", "mean", "variance"]>,
-  MO_ParamDeclaration,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["mean", "variance"]>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["shape", "mean", "variance"]>,
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
@@ -4248,10 +4403,10 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 //===----------------------------------------------------------------------===//
 
 def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
-  MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound"]>,
-  MO_ParamDeclaration,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound"]>,
 ]> {
   let summary = "Uniform distribution operation";
   let description = [{
@@ -4294,11 +4449,11 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
 //===----------------------------------------------------------------------===//
 
 def MO_RangeOp : MO_TensorOp<"range", [
-  MO_SameOperandsAndResultElementType,
-  MO_SingleDeviceWithHostOperands<["start", "limit", "step"]>,
-  MO_ParamDeclaration,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_ParamDeclaration,
+  MO_SameOperandsAndResultElementType,
+  MO_SingleDeviceWithHostOperands<["start", "limit", "step"]>,
 ]> {
   let summary = "Range operation";
   let description = [{
@@ -4338,7 +4493,8 @@ def MO_RangeOp : MO_TensorOp<"range", [
     MO_RankedScalarTensor:$start,
     MO_RankedScalarTensor:$limit,
     MO_RankedScalarTensor:$step,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_VectorIfRanked:$result);
 
   let assemblyFormat = [{
@@ -4355,10 +4511,10 @@ def MO_RangeOp : MO_TensorOp<"range", [
 //===----------------------------------------------------------------------===//
 
 
-def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-   MO_ParamDeclaration,
-   MO_HostOnly
+def MO_ResizeLinearOp : MO_TensorOp<"resize.linear", [
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly,
+  MO_ParamDeclaration,
 ]> {
   let summary = "Linear resize operation";
   let description = [{
@@ -4374,7 +4530,8 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
     MO_IndicesTensor:$size,
     MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     BoolAttr:$antialias,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -4383,11 +4540,10 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   }];
 }
 
-
-def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-   MO_ParamDeclaration,
-   MO_HostOnly
+def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest", [
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly,
+  MO_ParamDeclaration,
 ]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
@@ -4420,7 +4576,8 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
     MO_IndicesTensor:$size,
     MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
     DefaultValuedAttr<I64Attr, "0">:$round_mode,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -4429,11 +4586,10 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   }];
 }
 
-
-def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-   MO_ParamDeclaration,
-   MO_SingleDeviceWithHostOperands<["size"]>
+def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic", [
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["size"]>,
 ]> {
   let summary = "Bicubic resize operation";
   let description = [{
@@ -4456,7 +4612,8 @@ def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
   let arguments = (ins
     MO_Tensor:$input,
     MO_IndicesTensor:$size,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -4472,61 +4629,62 @@ def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_HostOnly,
 ]> {
-    let summary = "ROI alignment operation";
-    let description = [{
-      ROI align consumes an input tensor and regions of interest in which to apply pooling.
+  let summary = "ROI alignment operation";
+  let description = [{
+    ROI align consumes an input tensor and regions of interest in which to apply pooling.
 
-      Example:
-      ```mlir
-        %inp: !mo.tensor<[1, 10, 10, 1], f32>
-        %rois: !mo.tensor<[1, 5], f32>
-        %output_height = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
-        %spatial_scale = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-        %sampling_ratio = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+    Example:
+    ```mlir
+      %inp: !mo.tensor<[1, 10, 10, 1], f32>
+      %rois: !mo.tensor<[1, 5], f32>
+      %output_height = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %spatial_scale = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+      %sampling_ratio = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
 
-        %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
-          {aligned = false,  mode = "AVG"}
-          : (!mo.tensor<[1, 10, 10, 1], f32>,
-            !mo.tensor<[1, 5], f32>,
-            !mo.tensor<[], si64>,
-            !mo.tensor<[], si64>,
-            !mo.tensor<[], f32>,
-            !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
-      ```
+      %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
+        {aligned = false,  mode = "AVG"}
+        : (!mo.tensor<[1, 10, 10, 1], f32>,
+          !mo.tensor<[1, 5], f32>,
+          !mo.tensor<[], si64>,
+          !mo.tensor<[], si64>,
+          !mo.tensor<[], f32>,
+          !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
+    ```
 
-    }];
-    let arguments = (ins
-      MO_Rank4Tensor:$input,
-      MO_Rank2Tensor:$rois,
-      MO_RankedScalarIndexTensor:$output_height,
-      MO_RankedScalarIndexTensor:$output_width,
-      MO_RankedScalarFloatTensor:$spatial_scale,
-      MO_RankedScalarFloatTensor:$sampling_ratio,
-      BoolAttr:$aligned,
-      Builtin_StringAttr:$mode,
-      MO_ParamDecls:$outputParamDecls);
+  }];
+  let arguments = (ins
+    MO_Rank4Tensor:$input,
+    MO_Rank2Tensor:$rois,
+    MO_RankedScalarIndexTensor:$output_height,
+    MO_RankedScalarIndexTensor:$output_width,
+    MO_RankedScalarFloatTensor:$spatial_scale,
+    MO_RankedScalarFloatTensor:$sampling_ratio,
+    BoolAttr:$aligned,
+    Builtin_StringAttr:$mode,
+    MO_ParamDecls:$outputParamDecls
+  );
 
-    let results = (outs MO_Rank4Tensor:$result);
+  let results = (outs MO_Rank4Tensor:$result);
 
-    let assemblyFormat = [{
+  let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
-    }];
-    // TODO: add verifier that checks that 2nd rois dimension is 4
-  }
+  }];
+  // TODO: add verifier that checks that 2nd rois dimension is 4
+}
 
 //===----------------------------------------------------------------------===//
 // Matmul related ops
 //===----------------------------------------------------------------------===//
 
 class MO_DotBase<string name, list<Trait> traits = []> :
-    MO_TensorOp<name, traits # [
-    Pure,
+  MO_TensorOp<name, traits # [
     MO_MatmulLike,
     MO_ParamDeclaration,
-    MO_SingleDevice
-]> {
+    MO_SingleDevice,
+    Pure,
+  ]> {
   let description = [{
     Base class for all generic dot products (i.e. tensor contractions with two
     inputs), for example matmuls.
@@ -4549,8 +4707,8 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
     ```
   }];
 
-  let arguments = (
-    ins MO_Rank2Tensor:$input_a,
+  let arguments = (ins
+    MO_Rank2Tensor:$input_a,
     MO_Rank2Tensor:$input_b,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
     DefaultValuedAttr<BoolAttr, "false">:$packed_b
@@ -4565,11 +4723,11 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 }
 
 def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
-  Pure,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_MatmulLike,
   MO_ParamDeclaration,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDevice,
+  Pure,
 ]> {
   let summary = "Batched matrix-matrix multiplication operation";
   let description = [{
@@ -4593,12 +4751,18 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
     MO_Tensor:$input_a,
     MO_Tensor:$input_b,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
 
   let builders = [
     /// Create matmul with default attribute flags off.
-    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b, "ArrayRef<KGEN::ParamDeclAttr>":$decls)>,
+    OpBuilder<(ins
+      "Type":$type,
+      "Value":$input_a,
+      "Value":$input_b,
+      "ArrayRef<KGEN::ParamDeclAttr>":$decls
+    )>,
   ];
 
   let assemblyFormat = [{
@@ -4642,8 +4806,8 @@ def MO_FusedMatmulAddOp : MO_DotBase<"fused_matmul_add"> {
     ```
   }];
 
-  let arguments = (
-    ins MO_Rank2Tensor:$input_a,
+  let arguments = (ins
+    MO_Rank2Tensor:$input_a,
     MO_Rank2Tensor:$input_b,
     MO_Tensor:$residual,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b
@@ -4659,15 +4823,15 @@ def MO_FusedMatmulAddOp : MO_DotBase<"fused_matmul_add"> {
 // Linear Algebra ops
 //===----------------------------------------------------------------------===//
 
-class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
-    : MO_TensorOp<"linalg." # mnemonic, traits # [Pure]> {
+class MO_LinalgOp<string mnemonic, list<Trait> traits = []> :
+  MO_TensorOp<"linalg." # mnemonic, traits # [Pure]> {
   string cppNamespace = MODialect.cppNamespace # "::LinAlg";
 }
 
 // TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
 def MO_BandPartOp : MO_LinalgOp<"band_part", [
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["num_lower", "num_upper", "exclude"]>
+  MO_SingleDeviceWithHostOperands<["num_lower", "num_upper", "exclude"]>,
 ]> {
   let summary = "Matrix band part operation";
   let description = [{
@@ -4714,7 +4878,8 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
     MO_RankedScalarIndexTensor:$num_lower,
     MO_RankedScalarIndexTensor:$num_upper,
     MO_CondLike:$exclude,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -4732,7 +4897,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_ExecutesOnHost
+  MO_ExecutesOnHost,
 ]> {
   let summary = "Shape function call operation";
   let description = [{
@@ -4790,7 +4955,10 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
     annotations.
   }];
 
-  let arguments = (ins MO_Tensor:$input, OptionalAttr<DictionaryAttr>:$kgenParams);
+  let arguments = (ins
+    MO_Tensor:$input,
+    OptionalAttr<DictionaryAttr>:$kgenParams
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -4808,7 +4976,7 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
 
 def MO_LayerNormOp : MO_TensorOp<"reduce.layer_norm", [
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["epsilon"]>
+  MO_SingleDeviceWithHostOperands<["epsilon"]>,
 ]> {
   let summary = "Layer normalization operation";
   let description = [{
@@ -4823,11 +4991,13 @@ def MO_LayerNormOp : MO_TensorOp<"reduce.layer_norm", [
     of the last input dimension.
   }];
 
-  let arguments = (ins MO_Tensor:$input,
-                       MO_Tensor:$gamma,
-                       MO_Tensor:$beta,
-                       MO_Tensor:$epsilon,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$gamma,
+    MO_Tensor:$beta,
+    MO_Tensor:$epsilon,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -4838,10 +5008,11 @@ def MO_LayerNormOp : MO_TensorOp<"reduce.layer_norm", [
 //===----------------------------------------------------------------------===//
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
+
 def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
-  MemoryEffects<[MemWrite]>,
+  MO_ExecutesOnHost,
   MO_PreservedDuringKernelLowering,
-  MO_ExecutesOnHost
+  MemoryEffects<[MemWrite]>,
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4855,23 +5026,25 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
     ```
   }];
 
-  let arguments = (ins MO_Chain: $inChain, StrAttr: $value,
-                   DefaultValuedAttr<StrAttr, "\"\"">: $label);
+  let arguments = (ins
+    MO_Chain:$inChain,
+    StrAttr:$value,
+    DefaultValuedAttr<StrAttr, "\"\"">:$label
+  );
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
     `(` operands `)` attr-dict
   }];
 }
 
-
 //===----------------------------------------------------------------------===//
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 
 def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
-  MemoryEffects<[MemWrite]>,
+  MO_PreservedDuringKernelLowering,
   MO_SingleDeviceWithHostOperands<[], ["input"]>,
-  MO_PreservedDuringKernelLowering
+  MemoryEffects<[MemWrite]>,
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4887,8 +5060,11 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
     ```
   }];
 
-  let arguments = (ins MO_Chain: $inChain, MO_Tensor: $input,
-                   DefaultValuedAttr<StrAttr, "\"\"">: $label);
+  let arguments = (ins
+    MO_Chain:$inChain,
+    MO_Tensor:$input,
+    DefaultValuedAttr<StrAttr, "\"\"">:$label
+  );
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` qualified(type($input))
@@ -4896,20 +5072,23 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 }
 
 // Class for top-k/bottom-k operators
-class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<
-      mnemonic, [
-        MO_ParamDeclaration,
-        DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-        MO_SingleDeviceWithHostOperands<["k", "axis", "sorted"]>
-      ] # traits> {
-  let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarIndexTensor:$K,
-                       MO_RankedScalarIndexTensor:$axis,
-                       MO_CondLike:$sorted,
-                       MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$values,
-                      MO_I64Tensor:$indices);
+class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []> :
+  MO_TensorOp<mnemonic, [
+    DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+    MO_ParamDeclaration,
+    MO_SingleDeviceWithHostOperands<["k", "axis", "sorted"]>,
+  ] # traits> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarIndexTensor:$K,
+    MO_RankedScalarIndexTensor:$axis,
+    MO_CondLike:$sorted,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs
+    MO_Tensor:$values,
+    MO_I64Tensor:$indices
+  );
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
@@ -4972,8 +5151,12 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
 }
 
 def MO_CustomOp : MO_TensorOp<"custom", [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, [
+    "getInChains",
+    "getInChainsMutable",
+    "getOutChains",
+  ]>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_ExplicitDevice,
   MO_ParamDeclaration,
@@ -5024,11 +5207,13 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands,
-                       StrAttr:$symbol,
-                       DefaultValuedAttr<M_DeviceRefAttr, "\"cpu\", 0">:$device,
-                       DefaultValuedAttr<DictionaryAttr, "{}">:$parameters,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    Variadic<AnyType>:$operands,
+    StrAttr:$symbol,
+    DefaultValuedAttr<M_DeviceRefAttr, "\"cpu\", 0">:$device,
+    DefaultValuedAttr<DictionaryAttr, "{}">:$parameters,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
@@ -5095,9 +5280,11 @@ def MO_AssertOp : MO_Op<"assert"> {
     ```
   }];
 
-  let arguments = (ins Optional<MO_Chain>:$inChain,
-                       BoolScalar:$cond,
-                       AttrOfType<KGEN_StringType>:$message);
+  let arguments = (ins
+    Optional<MO_Chain>:$inChain,
+    BoolScalar:$cond,
+    AttrOfType<KGEN_StringType>:$message
+  );
   let results = (outs MO_Chain:$chain);
 
   let builders = [
@@ -5128,7 +5315,7 @@ def MO_GuardOp : MO_Op<"guard", [
   AllTypesMatch<["inputs", "results"]>,
   InferTypeOpAdaptor,
   MO_PreservedDuringKernelLowering,
-  Pure
+  Pure,
 ]> {
   let summary = "SSA-value guard operation";
   let description = [{
@@ -5153,8 +5340,10 @@ def MO_GuardOp : MO_Op<"guard", [
     ```
   }];
 
-  let arguments = (ins MO_Chain:$chain,
-                       Variadic<MO_AnyNonBufferType>:$inputs);
+  let arguments = (ins
+    MO_Chain:$chain,
+    Variadic<MO_AnyNonBufferType>:$inputs
+  );
 
   let results = (outs Variadic<MO_AnyNonBufferType>:$results);
 
@@ -5168,10 +5357,10 @@ def MO_GuardOp : MO_Op<"guard", [
 
 def MO_ChainCreateOp : MO_Op<"chain.create", [
   Commutative,
-  Pure,
+  MO_ExecutesOnHost,
   MO_HasDeviceInterface,
   MO_PreservedDuringKernelLowering,
-  MO_ExecutesOnHost
+  Pure,
 ]> {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
@@ -5234,8 +5423,8 @@ def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
 // graph inputs works and this op will only be used in a pass where the shape
 // attr of the results of this op are derived from an existing mo.buffer value.
 def MO_BufferCreateOp : MO_Op<"buffer.create", [
+  MO_PreservedDuringKernelLowering,
   Pure,
-  MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Creates an uninitialized buffer on a specific device.";
   let description = [{
@@ -5257,12 +5446,11 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
 def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "outTensor"]>,
-  MO_SingleDeviceWithHostOperands</*hostOperands*/[], /*deviceOperands*/["inBuffer"]>,
   // Note: outTensor is a result, not an operand. The trait will generate
   // a device constraint for it by default.
-  MO_PreservedDuringKernelLowering
-]>
-{
+  MO_PreservedDuringKernelLowering,
+  MO_SingleDeviceWithHostOperands</*hostOperands*/[], /*deviceOperands*/["inBuffer"]>,
+]> {
   let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
   let description = [{
     Allows modelling of in-place operations in MO in conjunction with mo.mutable.store.
@@ -5276,7 +5464,7 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   }];
 
   let arguments = (ins MO_Buffer:$inBuffer, MO_Chain:$inChain);
-  let results   = (outs MO_Tensor:$outTensor, MO_Chain:$outChain);
+  let results = (outs MO_Tensor:$outTensor, MO_Chain:$outChain);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -5291,8 +5479,7 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   MO_SingleDeviceWithHostOperands<
     /*hostOperands*/[],
     /*deviceOperands*/["inBuffer", "inTensor"]>,
-]>
-{
+]> {
   let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
   let description = [{
     Allows modelling of in-place operations in MO in conjunction with mo.mutable.load.
@@ -5305,8 +5492,12 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
     the operation becomes ineligibile for fusion with compute operations.
   }];
 
-  let arguments = (ins MO_Buffer:$inBuffer, MO_Tensor:$inTensor, MO_Chain:$inChain);
-  let results   = (outs MO_Chain:$outChain);
+  let arguments = (ins
+    MO_Buffer:$inBuffer,
+    MO_Tensor:$inTensor,
+    MO_Chain:$inChain
+  );
+  let results = (outs MO_Chain:$outChain);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -5317,8 +5508,7 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
   MO_SingleDeviceWithHostOperands<
     /*hostOperands*/["start", "stop", "step"],
     /*deviceOperands*/["inBuffer", "slice"]>,
-]>
-{
+]> {
   let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
   let description = [{
     Stores the  tensor `slice` to a subset of the elements in `inBuffer`.
@@ -5364,13 +5554,15 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
     Both consumes and produces a chain. The output chain is allowed to have at
     most one use.
   }];
-  let arguments = (ins MO_Buffer:$inBuffer,
-                       MO_Tensor:$slice,
-                       MO_IndicesVectorIfRanked:$start,
-                       MO_IndicesVectorIfRanked:$stop,
-                       MO_IndicesVectorIfRanked:$step,
-                       MO_Chain:$inChain,
-                       MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Buffer:$inBuffer,
+    MO_Tensor:$slice,
+    MO_IndicesVectorIfRanked:$start,
+    MO_IndicesVectorIfRanked:$stop,
+    MO_IndicesVectorIfRanked:$step,
+    MO_Chain:$inChain,
+    MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -5383,22 +5575,23 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 // Collective ops
 //===----------------------------------------------------------------------===//
 
-class MO_DistributedOp<string name, list<Trait> traits = []> : MO_TensorOp<name, [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_SameVariadicOperandSize,
-  MO_SameVariadicResultSize
-] # traits> {
+class MO_DistributedOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, [
+    DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    MO_SameVariadicOperandSize,
+    MO_SameVariadicResultSize,
+  ] # traits> {
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
-  let results   = (outs Variadic<MO_Tensor>:$outputs);
+  let results = (outs Variadic<MO_Tensor>:$outputs);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 
 def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
+  AllTypesMatch<["inputs", "outputs"]>,
   MO_MultiDevice,
-  AllTypesMatch<["inputs", "outputs"]>
 ]> {
   let summary = "Allreduce sum across N devices.";
   let description = [{
@@ -5424,9 +5617,9 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 }
 
 def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
-  Pure,
+  MO_BundledCollective,
   MO_PreservedDuringKernelLowering,
-  MO_BundledCollective
+  Pure,
 ]> {
   let summary = "Expand a per-device tensor to all launches' tensors.";
   let description = [{
@@ -5461,11 +5654,11 @@ def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
 }
 
 def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
-  MO_SingleDeviceWithPeerInputs<>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_BundledCollective,
   MO_SameVariadicOperandSize,
-  MO_BundledCollective
+  MO_SingleDeviceWithPeerInputs<>,
 ]> {
   let summary = "Per-device allreduce sum, for use inside mo.parallel.";
   let description = [{
@@ -5506,13 +5699,12 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
   }];
 }
 
-def MO_BundledAllReduceAddRMSNormQuantFP8Op : MO_TensorOp<
-    "bundled.allreduce_add_rms_norm_quant_fp8", [
-  MO_SingleDeviceWithPeerInputs<["epsilon", "weightOffset", "scaleUb"]>,
+def MO_BundledAllReduceAddRMSNormQuantFP8Op : MO_TensorOp<"bundled.allreduce_add_rms_norm_quant_fp8", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_BundledCollective,
   MO_SameVariadicOperandSize,
-  MO_BundledCollective
+  MO_SingleDeviceWithPeerInputs<["epsilon", "weightOffset", "scaleUb"]>,
 ]> {
   let summary = "Per-device fused allreduce.sum + add + rms_norm + fp8 "
                 "quantize, for use inside mo.parallel.";
@@ -5550,7 +5742,7 @@ def MO_BundledAllReduceAddRMSNormQuantFP8Op : MO_TensorOp<
 }
 
 def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
-  MO_MultiDevice
+  MO_MultiDevice,
 ]> {
   let summary = "ReduceScatter sum across N devices.";
   let description = [{
@@ -5628,7 +5820,7 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
 }
 
 def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_add_rms_norm_quant_fp8", [
-  MO_MultiDevice
+  MO_MultiDevice,
 ]> {
   let summary = "Fused AllreduceSum + Add + RMSNorm + Quant across N devices for a single device.";
   let description = [{
@@ -5648,8 +5840,8 @@ def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_a
     Variadic<MO_Tensor>:$residual,
     Variadic<MO_Tensor>:$gamma,
     Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>: $weightOffset,
-    Variadic<MO_RankedScalarFloatTensor>: $scaleUb,
+    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    Variadic<MO_RankedScalarFloatTensor>:$scaleUb,
     MO_Chain:$inChain
   );
   let results = (outs
@@ -5664,7 +5856,7 @@ def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_a
 }
 
 def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
-  MO_MultiDeviceFrom<"inputTokens">
+  MO_MultiDeviceFrom<"inputTokens">,
 ]> {
   let summary = "Multi-device Expert Parallelism BF16 dispatch.";
   let description = [{
@@ -5703,7 +5895,7 @@ def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
 }
 
 def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
-  MO_MultiDeviceFrom<"inputTokens">
+  MO_MultiDeviceFrom<"inputTokens">,
 ]> {
   let summary = "Multi-device Expert Parallelism FP8 dispatch.";
   let description = [{
@@ -5744,7 +5936,7 @@ def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
 }
 
 def MO_EPDispatchNVFP4Op : MO_DistributedOp<"distributed.ep.dispatch.nvfp4", [
-  MO_MultiDeviceFrom<"inputTokens">
+  MO_MultiDeviceFrom<"inputTokens">,
 ]> {
   let summary = "Multi-device Expert Parallelism NVFP4 dispatch.";
   let description = [{
@@ -5792,7 +5984,7 @@ def MO_EPDispatchNVFP4Op : MO_DistributedOp<"distributed.ep.dispatch.nvfp4", [
 }
 
 def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
-  MO_MultiDeviceFrom<"inputTokens">
+  MO_MultiDeviceFrom<"inputTokens">,
 ]> {
   let summary = "Multi-device Expert Parallelism MXFP4 dispatch.";
   let description = [{
@@ -5838,7 +6030,7 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
 }
 
 def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
-  MO_MultiDeviceFrom<"inputTokens">
+  MO_MultiDeviceFrom<"inputTokens">,
 ]> {
   let summary = "Multi-device Expert Parallelism fused combine.";
   let description = [{
@@ -5881,11 +6073,11 @@ def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
 // MO_MultiDeviceFrom<"outputs"> to infer execution devices from the variadic
 // outputs rather than the default inputs.
 def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
-  MO_TensorOpInterface,
-  MO_HasDeviceInterface,
-  MO_MultiDeviceFrom<"outputs">,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_HasDeviceInterface,
+  MO_MultiDeviceFrom<"outputs">,
+  MO_TensorOpInterface,
 ]> {
   let summary = "Broadcast from root device to all participating devices.";
   let description = [{
