@@ -20,14 +20,14 @@ include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 
-class MOSH_Op<string mnemonic, list<Trait> traits = []>
-    : Op<MOSHDialect, mnemonic, traits>;
+class MOSH_Op<string mnemonic, list<Trait> traits = []> :
+  Op<MOSHDialect, mnemonic, traits>;
 
 def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [
-    Pure,
-    AllTypesMatch<["value", "result"]>,
-    DeclareOpInterfaceMethods<ParamOpInterface>]>,
-    NoParamDecls {
+  AllTypesMatch<["value", "result"]>,
+  DeclareOpInterfaceMethods<ParamOpInterface>,
+  Pure,
+]>, NoParamDecls {
   let summary = "create an SSA value from a parameter value";
   let description = [{
     The `mo.param.to_value` operation materializes the value of a parameter
@@ -53,8 +53,8 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [
 }
 
 def MOSH_ParamFromValueOp : MOSH_Op<"param.from_value", [
-    AllTypesMatch<["paramDecl", "value"]>,
-    DeclareOpInterfaceMethods<ParamOpInterface>,
+  AllTypesMatch<["paramDecl", "value"]>,
+  DeclareOpInterfaceMethods<ParamOpInterface>,
 ]>, OneParamDecl {
   let summary = "Create a parameter from an SSA value";
 
@@ -70,7 +70,10 @@ def MOSH_ParamFromValueOp : MOSH_Op<"param.from_value", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MOSH_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
+def MOSH_BroadcastOp : MOSH_Op<"broadcast", [
+  Commutative,
+  Pure,
+]> {
   let summary = "Shape broadcasting operation";
   let description = [{
     Given two tensor shapes, return the shape that both broadcast to under the
@@ -120,14 +123,19 @@ def MOSH_ConcatOp : MOSH_Op<"concat", [Pure]> {
   let builders = [
     /// Convenience method that works well with `rewriter.create(...)`
     OpBuilder<(ins
-      "TypedValue<ShapeType>":$input1, "TypedValue<ShapeType>":$input2)>,
+      "TypedValue<ShapeType>":$input1,
+      "TypedValue<ShapeType>":$input2
+    )>,
   ];
 
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
 }
 
-def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
+def MOSH_EqualOp : MOSH_Op<"eq", [
+  Commutative,
+  Pure,
+]> {
   let summary = "Check if two shapes are equal.";
   let description = [{
     Compare individual dimensions of the input shapes, and return `true` if they
