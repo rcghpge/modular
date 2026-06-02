@@ -1,0 +1,20 @@
+load("//bazel:api.bzl", "modular_cc_test")
+
+package(default_visibility = ["//visibility:private"])
+
+modular_cc_test(
+    name = "MEFCacheKeyTest",
+    srcs = ["MEFCacheKeyTest.cpp"],
+    mojo_deps = ["//max:builtin_kernels"],
+    deps = [
+        "//GraphCompiler:FrameworkFrontend",
+        "//GraphCompiler:MODialect",
+        "//GraphCompiler:MOFOptions",
+        "//GraphCompiler:MOGGDialect",
+        "//GraphCompiler:Support",
+        "//Support:Context",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)

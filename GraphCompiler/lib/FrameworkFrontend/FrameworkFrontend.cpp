@@ -22,6 +22,7 @@
 #include "GraphCompiler/GraphCompiler/Passes.h"
 #include "GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GraphCompiler/GraphCompiler/Version.h"
+#include "GraphCompiler/MEFCacheKey.h"
 #include "GraphCompiler/MOFOptions.h"
 #include "GraphCompiler/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
@@ -359,15 +360,6 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
   return bufOr.takeValue();
 }
 
-/// Get the textual key used to represent the compilation pipeline.
-static void getMOToMGPPipelineKey(llvm::raw_ostream &os, MLIRContext *ctx,
-                                  const MO::GCPipelineOptions &options) {
-  auto gcPipelinePasses = mlir::PassManager::on<ModuleOp>(
-      ctx, mlir::OpPassManager::Nesting::Implicit);
-  MO::buildGCPipeline(gcPipelinePasses, options);
-  gcPipelinePasses.printAsTextualPipeline(os);
-}
-
 M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
                                                      FileFormat format) {
   // Clone the ModuleOp so compilation doesn't have side effects on the input
@@ -424,104 +416,14 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     return convertMOToMEF(*moduleOp, gcPipelineOptions, enableMEFMetadata);
   }
 
-  // Write the MAX Graph MEF cache key:
-  // - The pass pipeline as a list of pass names.
-  // - Graph compiler options that affect lowering and export.
-  // - Mojo compilation defines (e.g. LOGGING_LEVEL, ASSERT_LEVEL).
-  // - The model IR, by writing the ModuleOp.
-  //   This does NOT include the model weights
-  // - The graph compiler version string
-  // - Mojo compile-time defines (e.g. -Dflag=True / _set_mojo_define), which
-  //   affect kernel selection and must invalidate the cache when changed.
-  WriteableBufferRef keyBuf = WriteableBuffer::get();
-  mofLoweringOptions.print(*keyBuf);
-  gcPipelineOptions.print(*keyBuf);
-  getMOToMGPPipelineKey(*keyBuf, mlirCtx, gcPipelineOptions);
+  auto keyHashOr = computeMEFCacheKey(*moduleOp, mofLoweringOptions,
+                                      gcPipelineOptions, maxContext);
+  if (keyHashOr.isError())
+    return keyHashOr.takeError();
+  std::string keyHash = keyHashOr.takeValue();
 
-  if (auto *compilationCtx = maxContext->get<KGEN::CompilationContext>())
-    compilationCtx->print(*keyBuf);
-
-  if (auto result = M::MOGG::graphCompilerCacheKey(*keyBuf, mlirCtx))
-    return result.takeError();
-
-  // Include mojo compilation defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.)
-  // in the cache key so that changing them invalidates the cache.
-  if (auto *compileCtx = maxContext->get<KGEN::CompilationContext>())
-    compileCtx->print(*keyBuf);
-
-  // We include the binary contents of any extra kernel mojo packages provided.
-  // These paths have already been validated by MOToMGP pass pipeline.
-  for (const std::string &libraryPath : gcPipelineOptions.kernelLibraryPaths) {
-    // TODO(MOCO-1570): If mojopkg files had a hash key as part of its format,
-    // this wouldn't be needed. We would have to detect the file is a mojopkg
-    // and act accordingly for this.
-    auto bufferOr = M::openInputFile(libraryPath);
-
-    if (bufferOr.isError())
-      return Error(
-          Twine(
-              "failed to open file specified as additional kernel library: ") +
-          libraryPath);
-
-    *keyBuf << (*bufferOr)->getBuffer();
-  }
-
-  // Include the binary contents of built-in kernel packages (`kernels`,
-  // `primitives`) so that changes to them invalidate the MEF cache.
-  auto builtInPathsOr = MOGG::getBuiltInKernelPackagePaths(mlirCtx);
-  if (builtInPathsOr.isError())
-    return builtInPathsOr.takeError();
-  for (const std::string &libraryPath : *builtInPathsOr) {
-    auto bufferOr = M::openInputFile(libraryPath);
-    if (bufferOr.isError())
-      return Error(Twine("failed to open built-in kernel package: ") +
-                   libraryPath);
-    *keyBuf << (*bufferOr)->getBuffer();
-  }
-
-  // Include debug flags in the cache key so that builds with source notes
-  // (Python stack traces in error messages) and NaN/Inf checking are cached
-  // separately from builds without. Since locations are stripped below, the
-  // debug flags wouldn't otherwise affect the key, causing stale cache hits.
-  // See GEX-2678.
-  auto cacheKeyConfigOr = M::Config::open();
-  auto configHasFlag = [&](llvm::StringRef key) {
-    return !cacheKeyConfigOr.isError() &&
-           cacheKeyConfigOr->getValueAsBool(key, false);
-  };
-  if (configHasFlag("max-debug.source-tracebacks"))
-    *keyBuf << "max-debug.source-tracebacks=1";
-  if (configHasFlag("max-debug.nan-check")) {
-    *keyBuf << "max-debug.nan-check=1";
-    if (!cacheKeyConfigOr.isError()) {
-      StringRef strideStr =
-          cacheKeyConfigOr->getValue("max-debug.nan-check-stride");
-      if (!strideStr.empty())
-        *keyBuf << "max-debug.nan-check-stride=" << strideStr;
-    }
-  }
-
-  // We specifically use a version of the module without location information
-  // for caching. Otherwise, python refactors that don't change the module would
-  // invalidate the cache.
-  // This means that runtime errors may print an old location.
-  // This is preferred to constantly having cache misses.
-  auto stripDebugInfo = mlir::PassManager::on<ModuleOp>(
-      mlirCtx, mlir::OpPassManager::Nesting::Implicit);
-  stripDebugInfo.addPass(mlir::createStripDebugInfoPass());
-  OwningOpRef<ModuleOp> moduleOpNoDebug = moduleOp->clone();
-  if (failed(stripDebugInfo.run(*moduleOpNoDebug)))
-    return Error::getStaticString(
-        "failed to strip location information from the module op");
-
-  MOGG::normalizeAllNames(*moduleOpNoDebug);
-  if (failed(Cache::writeOperationToCacheKey(*moduleOpNoDebug, keyBuf)))
-    return Error::getStaticString("failed to write module op to cache key");
-
-  // Look up the model in the MEF cache.
   auto mefCache = RCRef<Cache::TransformCache>::create(*mefBackendOr);
-  std::string keyBufHash;
-  auto maybeMefOr = mefCache->findSync(std::move(keyBuf), &keyBufHash);
+  auto maybeMefOr = mefCache->findKeyedSync(keyHash);
   if (maybeMefOr.isError())
     return maybeMefOr.takeError();
   std::optional<BufferRef> maybeMef = maybeMefOr.takeValue();
@@ -550,7 +452,7 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   BufferRef outputBuffer = outBufOr.takeValue();
 
   // Insert MEF buffer to cache, ignoring failure to insert.
-  (void)mefCache->insertKeyedSync(std::move(keyBufHash), outputBuffer.copy());
+  (void)mefCache->insertKeyedSync(keyHash, outputBuffer.copy());
 
   return outputBuffer;
 }

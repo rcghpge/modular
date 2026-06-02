@@ -40,7 +40,10 @@ pkg_files(
 modular_cc_library(
     name = "FrameworkFrontend",
     srcs = glob(["lib/FrameworkFrontend/**/*.cpp"]),
-    hdrs = ["include/GraphCompiler/FrameworkFrontend.h"],
+    hdrs = [
+        "include/GraphCompiler/FrameworkFrontend.h",
+        "include/GraphCompiler/MEFCacheKey.h",
+    ],
     deps = [
         ":MOFOptions",
         "//Cache",
