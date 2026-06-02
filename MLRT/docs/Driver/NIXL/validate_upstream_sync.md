@@ -15,8 +15,8 @@ loading, or telemetry.
 ## In-tree unit tests
 
 These run via `bazel test` and cover the agent core, UCX plugin, and
-libfabric plugin. Run on a host with a CUDA GPU (`bt-h100` or
-`bt-b200` if you're on a CPU box):
+libfabric plugin. Run on a host with a CUDA GPU (`bt-b200` if
+you're on a CPU box):
 
 ```bash
 bt //MLRT/unittests/Driver/NIXL/Core/...
