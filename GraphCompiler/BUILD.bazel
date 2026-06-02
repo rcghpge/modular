@@ -45,7 +45,6 @@ modular_cc_library(
         "include/GraphCompiler/MEFCacheKey.h",
     ],
     deps = [
-        ":MOFOptions",
         "//Cache",
         "//GraphCompiler:CommonDriver",
         "//GraphCompiler:CompileDriver",
@@ -56,6 +55,7 @@ modular_cc_library(
         "//Support:Buffer",
         "//Support:Configuration",
         "//Support:Context",
+        "//Support:ML",
         "//max/internal:MOFDriver",
     ],
 )
@@ -1469,15 +1469,4 @@ modular_cc_library(
         "//Support:ML",
     ],
     alwayslink = True,
-)
-
-modular_cc_library(
-    name = "MOFOptions",
-    srcs = glob(["lib/MOFOptions/*.cpp"]),
-    hdrs = ["include/GraphCompiler/MOFOptions.h"],
-    deps = [
-        "//Support:Base",
-        "//Support:Context",
-        "//Support:ML",
-    ],
 )

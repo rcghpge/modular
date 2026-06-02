@@ -19,7 +19,6 @@ modular_cc_binary(
         "//GraphCompiler:ExecutionDriver",
         "//GraphCompiler:FrameworkFrontend",
         "//GraphCompiler:MEFModel",
-        "//GraphCompiler:MOFOptions",
         "//Init",
         "//Support:Context",
         "//Support:Globals",

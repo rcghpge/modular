@@ -9,7 +9,6 @@ modular_cc_test(
     deps = [
         "//GraphCompiler:FrameworkFrontend",
         "//GraphCompiler:MODialect",
-        "//GraphCompiler:MOFOptions",
         "//GraphCompiler:MOGGDialect",
         "//GraphCompiler:Support",
         "//Support:Context",

@@ -19,9 +19,6 @@ class DriverConfig;
 class DriverOptions;
 class ExecutorDriverOptions;
 enum class FileFormat : uint8_t;
-namespace MOF {
-struct MOFLoweringOptions;
-}
 namespace MO {
 struct GCPipelineOptions;
 }
@@ -46,8 +43,7 @@ public:
   EXPORT_FOR_MT void setDriverOptions(const DriverOptions &options);
 
   // TODO: overrideLoweringOptions is only used by mt
-  EXPORT_FOR_MT void overrideLoweringOptions(MOF::MOFLoweringOptions &,
-                                             MO::GCPipelineOptions &);
+  EXPORT_FOR_MT void overrideLoweringOptions(MO::GCPipelineOptions &);
 
   ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs);
 

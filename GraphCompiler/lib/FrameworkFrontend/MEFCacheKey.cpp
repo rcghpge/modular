@@ -11,7 +11,6 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
-#include "GraphCompiler/MOFOptions.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
@@ -73,15 +72,15 @@ std::string finalizeHasher(const llvm::BLAKE3 &hasher) {
 
 } // namespace
 
-ErrorOr<MEFCacheKeyHasher> MEFCacheKeyHasher::build(
-    mlir::MLIRContext &mlirCtx, MOF::MOFLoweringOptions &mofLoweringOptions,
-    const MO::GCPipelineOptions &gcPipelineOptions, ContextRef maxContext) {
+ErrorOr<MEFCacheKeyHasher>
+MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
+                         const MO::GCPipelineOptions &gcPipelineOptions,
+                         ContextRef maxContext) {
   MEFCacheKeyHasher hasher;
   llvm::BLAKE3 &b3 = hasher.prefixHasher;
   BLAKE3Stream os(b3);
 
-  // Lowering options + pipeline options + textual pipeline
-  mofLoweringOptions.print(os);
+  // Pipeline options + textual pipeline
   gcPipelineOptions.print(os);
   feedMOToMGPPipelineKey(b3, &mlirCtx, gcPipelineOptions);
 
@@ -151,11 +150,12 @@ MEFCacheKeyHasher::keyForModule(mlir::ModuleOp module) const {
   return finalizeHasher(finalizer);
 }
 
-ErrorOr<std::string> computeMEFCacheKey(
-    mlir::ModuleOp module, MOF::MOFLoweringOptions &mofLoweringOptions,
-    const MO::GCPipelineOptions &gcPipelineOptions, ContextRef maxContext) {
-  auto hasherOr = MEFCacheKeyHasher::build(
-      *module.getContext(), mofLoweringOptions, gcPipelineOptions, maxContext);
+ErrorOr<std::string>
+computeMEFCacheKey(mlir::ModuleOp module,
+                   const MO::GCPipelineOptions &gcPipelineOptions,
+                   ContextRef maxContext) {
+  auto hasherOr = MEFCacheKeyHasher::build(*module.getContext(),
+                                           gcPipelineOptions, maxContext);
   if (hasherOr.isError())
     return hasherOr.takeError();
   return hasherOr.takeValue().keyForModule(module);

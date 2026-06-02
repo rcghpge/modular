@@ -9,7 +9,6 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
-#include "GraphCompiler/MOFOptions.h"
 #include "Support/Context.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -32,7 +31,7 @@ namespace {
 
 /// Test fixture that constructs the inputs the hasher needs: an MLIR
 /// context with the dialects ``computeMEFCacheKey`` touches, default
-/// `MOFLoweringOptions` / `GCPipelineOptions`, a fresh `Context`.
+/// `GCPipelineOptions`, a fresh `Context`.
 class MEFCacheKeyTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -59,11 +58,10 @@ protected:
   /// `kernelLibraryPaths`).
   std::optional<MEFCacheKeyHasher>
   tryBuild(llvm::function_ref<void(MO::GCPipelineOptions &)> configureGC = {}) {
-    MOF::MOFLoweringOptions mof;
     MO::GCPipelineOptions gc;
     if (configureGC)
       configureGC(gc);
-    auto hasherOr = MEFCacheKeyHasher::build(ctx, mof, gc, maxContext);
+    auto hasherOr = MEFCacheKeyHasher::build(ctx, gc, maxContext);
     if (hasherOr.isError())
       return std::nullopt;
     return std::move(hasherOr).takeValue();
@@ -193,9 +191,8 @@ TEST_F(MEFCacheKeyTest, ConvenienceMatchesIncremental) {
   auto incrementalKey = hasher->keyForModule(*mod);
   ASSERT_FALSE(incrementalKey.isError());
 
-  MOF::MOFLoweringOptions mof;
   MO::GCPipelineOptions gc;
-  auto convenienceKey = computeMEFCacheKey(*mod, mof, gc, maxContext);
+  auto convenienceKey = computeMEFCacheKey(*mod, gc, maxContext);
   ASSERT_FALSE(convenienceKey.isError());
 
   EXPECT_EQ(incrementalKey.takeValue(), convenienceKey.takeValue());

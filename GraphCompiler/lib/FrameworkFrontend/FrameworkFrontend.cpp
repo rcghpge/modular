@@ -23,7 +23,6 @@
 #include "GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GraphCompiler/GraphCompiler/Version.h"
 #include "GraphCompiler/MEFCacheKey.h"
-#include "GraphCompiler/MOFOptions.h"
 #include "GraphCompiler/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
@@ -65,8 +64,7 @@ struct MOFConfig {
   std::optional<size_t> deviceID;
   std::optional<DeviceSpec> deviceSpec;
 
-  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
-                               MO::GCPipelineOptions &gcPipelineOptions) const {
+  void overrideLoweringOptions(MO::GCPipelineOptions &gcPipelineOptions) const {
     gcPipelineOptions.compiledFrameworkLabel =
         CompiledFrameworkLabel::asLabelString(
             CompiledFrameworkLabel::kModularModel);
@@ -177,18 +175,10 @@ MOFContext::setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
 }
 
 void MOFContext::overrideLoweringOptions(
-    MOFLoweringOptions &mofLoweringOptions,
     MO::GCPipelineOptions &gcPipelineOptions) {
-  if (impl->driverOptions) {
-    mofLoweringOptions.debugTensorPrintOptions.style =
-        impl->driverOptions->resultOutputStyle;
-    mofLoweringOptions.debugTensorPrintOptions.precision =
-        impl->driverOptions->printPrecision;
-    mofLoweringOptions.debugTensorPrintOptions.binaryDir =
-        impl->driverOptions->binaryOutputDir;
+  if (impl->driverOptions)
     gcPipelineOptions.minimumCpuAlignment =
         impl->driverOptions->minimumCpuAlignment;
-  }
   if (impl->clOptions)
     static_cast<const MO::GraphCompilerOptions &>(*impl->clOptions)
         .overrideLoweringOptions(gcPipelineOptions);
@@ -196,8 +186,7 @@ void MOFContext::overrideLoweringOptions(
       CompiledFrameworkLabel::asLabelString(
           CompiledFrameworkLabel::kModularModel);
   if (impl->mofConfig)
-    impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
-                                             gcPipelineOptions);
+    impl->mofConfig->overrideLoweringOptions(gcPipelineOptions);
 
   // Enable NaN/Inf checking from the max-debug.nan-check config key, and
   // read the sampling stride from max-debug.nan-check-stride if set.
@@ -385,9 +374,8 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
       loweringDiagScope(mlirCtx, telemetryContext);
 
   // Gather all the options from all the sources.
-  MOFLoweringOptions mofLoweringOptions;
   MO::GCPipelineOptions gcPipelineOptions;
-  overrideLoweringOptions(mofLoweringOptions, gcPipelineOptions);
+  overrideLoweringOptions(gcPipelineOptions);
 
   // If the caller (Python `KernelLibrary` via `Analysis::seed_kernel_decls`)
   // already seeded the model module with kernel decls + the opaque-type
@@ -396,7 +384,6 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   if ((*moduleOp)->hasAttr(MOGG::kOpaqueTypeMappingAttrName))
     gcPipelineOptions.kernelDeclsPrePopulated = true;
 
-  mofLoweringOptions.setupContext(maxContext.copy());
   bool enableMEFMetadata = impl->getEnableMEFMetadata();
 
   auto baseCacheDirOr = M::getMaxCacheDir();
@@ -416,8 +403,7 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     return convertMOToMEF(*moduleOp, gcPipelineOptions, enableMEFMetadata);
   }
 
-  auto keyHashOr = computeMEFCacheKey(*moduleOp, mofLoweringOptions,
-                                      gcPipelineOptions, maxContext);
+  auto keyHashOr = computeMEFCacheKey(*moduleOp, gcPipelineOptions, maxContext);
   if (keyHashOr.isError())
     return keyHashOr.takeError();
   std::string keyHash = keyHashOr.takeValue();
@@ -463,9 +449,8 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   auto telemetryContext =
       impl->maxContext->get<GML::MaxEngineTelemetryContext>();
   // Gather all the options from all the sources.
-  MOFLoweringOptions mofLoweringOptions;
   MO::GCPipelineOptions gcPipelineOptions;
-  overrideLoweringOptions(mofLoweringOptions, gcPipelineOptions);
+  overrideLoweringOptions(gcPipelineOptions);
 
   MOGG::GraphCompilerCacheKey graphCompilerOptions{&compileCtx.mlirCtx};
 
@@ -494,8 +479,6 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
     // We have an MLIR model, try to lower it to a MEF-capable encoding.
     switch (format) {
     case FileFormat::kMODialect: {
-      mofLoweringOptions.setupContext(compileCtx.context.copy());
-
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
       if (failed(runGcPipeline(compileCtx.module.get(), gcPipelineOptions)))
         return Error(Twine("Graph compilation failed") +
@@ -526,8 +509,7 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   }
 
   WriteableBufferRef keyBuffer =
-      makeCacheKey(std::move(file), mofLoweringOptions, gcPipelineOptions,
-                   graphCompilerOptions);
+      makeCacheKey(std::move(file), gcPipelineOptions, graphCompilerOptions);
 
   // Include mojo compilation defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.)
   // in the cache key so that changing them invalidates the cache.

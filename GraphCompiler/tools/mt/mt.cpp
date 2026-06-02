@@ -11,7 +11,6 @@
 #include "GraphCompiler/FrameworkFrontend.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
-#include "GraphCompiler/MOFOptions.h"
 #include "Init/Init.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "MLRT/AsyncRT/Runtime/Utils.h"
@@ -93,16 +92,15 @@ static int setupMLIRAndRun(
 
 static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
                          M::BufferRef fileBuffer, const ModelList &models) {
-  MOF::MOFLoweringOptions mofLoweringOptions;
-  MO::GCPipelineOptions gcPipelineOptions;
-  ctx.overrideLoweringOptions(mofLoweringOptions, gcPipelineOptions);
   const ExecutorDriverOptions *driverOptions = ctx.getExecutorDriverOptions();
   assert(driverOptions && "cannot run a binary file via the API");
 
-  auto runModels = [&, context =
-                           maxCtx.copy()](CPUDevice &cpuDevice,
-                                          MLIRContext *ctx) -> LogicalResult {
-    mofLoweringOptions.setupContext(context);
+  auto runModels =
+      [&, context = maxCtx.copy()](CPUDevice &cpuDevice,
+                                   MLIRContext *mlirCtx) -> LogicalResult {
+    context->emplaceIfMissing<DebugTensorPrintOptions>(
+        driverOptions->resultOutputStyle, driverOptions->printPrecision,
+        driverOptions->binaryOutputDir);
     bool hadFailure = false;
     for (const auto &model : models) {
       if (failed(runModel(model.get(), cpuDevice, *driverOptions))) {
