@@ -3748,9 +3748,10 @@ struct ReduceRMSNormRoPEPattern
 // Into:
 //   %out = mo.matmul_add(%a, %b, %residual) {transpose_b = ...}
 //
-// The residual must have rank 2 (same shape as the matmul output — no
-// broadcast).  The fused op is GPU-only and requires a single consumer for
-// the matmul result.
+// Only a 1D bias is fused: the addend must be a rank-1 tensor broadcast to the
+// matmul's [M, N] output (`add(matmul, broadcast(bias_1d))`). A full rank-2
+// residual is left as a separate `mo.add`. The fused op is GPU-only and
+// requires a single consumer for the matmul result.
 //
 //===----------------------------------------------------------------------===//
 
@@ -3812,18 +3813,15 @@ struct MatmulAddPattern
     return inputInnerDim == outputInnerDim;
   }
 
-  // Returns failure if the matmul's type/alignment preconditions for
-  // fused_matmul_add are not met: output must be bfloat16, N and K must be
-  // static, and (N * sizeof(c_type)) and (K * sizeof(a_type)) must each be
-  // multiples of 16 bytes.
-  // TODO: Move these checks into the kernel code.
   static LogicalResult
   checkKernelConstraints(MO::MatmulOp matmulOp, MO::AddOp addOp,
                          MO::DeviceAwareRewriter &rewriter) {
     Type cType = matmulOp.getResult().getType().getElementType();
-    if (!cType.isBF16())
+    Type aType = matmulOp.getInputA().getType().getElementType();
+    Type bType = matmulOp.getInputB().getType().getElementType();
+    if (!cType.isBF16() || !aType.isBF16() || !bType.isBF16())
       return rewriter.notifyMatchFailure(
-          addOp, "fused_matmul_add requires bfloat16 output type");
+          addOp, "fused_matmul_add requires bfloat16 input and output types");
 
     int64_t dimN = matmulOp.getResult().getType().getIntDim(1);
     int64_t dimK = matmulOp.getInputA().getType().getIntDim(1);
@@ -3831,14 +3829,6 @@ struct MatmulAddPattern
         dimK == mlir::ShapedType::kDynamic)
       return rewriter.notifyMatchFailure(
           addOp, "fused_matmul_add does not support dynamic N or K dimensions");
-
-    Type aType = matmulOp.getInputA().getType().getElementType();
-    int64_t cBytes = cType.getIntOrFloatBitWidth() / 8;
-    int64_t aBytes = aType.getIntOrFloatBitWidth() / 8;
-    if ((dimN * cBytes) % 16 != 0 || (dimK * aBytes) % 16 != 0)
-      return rewriter.notifyMatchFailure(
-          addOp, "fused_matmul_add requires (N * sizeof(c_type)) and "
-                 "(K * sizeof(a_type)) to each be multiples of 16 bytes");
 
     return success();
   }
@@ -3882,19 +3872,21 @@ struct MatmulAddPattern
                                          "matmul result has multiple uses");
     }
 
-    int64_t matmulDimM = matmulOp.getInputA().getType().getIntDim(0);
-    if (matmulDimM == 1 || matmulDimM == mlir::ShapedType::kDynamic) {
-      return rewriter.notifyMatchFailure(
-          addOp, "gemv / dynamic M dimension not supported");
-    }
-
     if (failed(checkKernelConstraints(matmulOp, addOp, rewriter)))
       return failure();
 
-    // Detect a 1D -> 2D broadcast
+    // Only fuse a 1D bias (`matmul + broadcast(bias_1d)`).
+    // TODO: Enable fusion of a full 2D residual
+    bool is1DBias = false;
     if (auto broadcastOp = residual.getDefiningOp<MO::Static::BroadcastToOp>();
-        broadcastOp && !reshapeOp && is1DTo2DBroadcast(broadcastOp))
+        broadcastOp && !reshapeOp && is1DTo2DBroadcast(broadcastOp)) {
       residual = broadcastOp.getInput();
+      is1DBias = true;
+    }
+    if (!is1DBias) {
+      return rewriter.notifyMatchFailure(
+          addOp, "fused_matmul_add only fuses a 1D bias, not a 2D residual");
+    }
 
     if (wouldBlockPrologueFusion(residual)) {
       return rewriter.notifyMatchFailure(

@@ -1,18 +1,21 @@
 // RUN: mo-opt %s --mogg-pattern-fusion=mock-arch-name=sm_100 | FileCheck %s
 
+// Negative: a full 2D residual is not fused; it stays a separate mo.add.
 // CHECK-LABEL: mo.graph @matmul_add_2d
-// CHECK: %[[OUT:.*]] = mo.fused_matmul_add
-// CHECK: mo.output %[[OUT]]
+// CHECK: mo.matmul
+// CHECK-NOT: mo.fused_matmul_add
+// CHECK: mo.add
 mo.graph @matmul_add_2d(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[65536, 1536], bf16, gpu:0>) -> !mo.tensor<[65536, 1536], bf16, gpu:0> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[65536, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[65536, 1536], bf16, gpu:0>
   %1 = mo.add(%0, %arg2) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   mo.output %1 : !mo.tensor<[65536, 1536], bf16, gpu:0>
 }
 
+// Negative: a 2D residual is not fused (the reshape doesn't change that).
 // CHECK-LABEL: mo.graph @matmul_reshape_add_2d
-// CHECK: %[[FUSED:.*]] = mo.fused_matmul_add{{.*}}transpose_b = true
-// CHECK: %[[OUT:.*]] = mo.static.reshape(%[[FUSED]]) : !mo.tensor<[65536, 1536], bf16, gpu:0> -> !mo.tensor<[32, 2048, 1536], bf16, gpu:0>
-// CHECK: mo.output %[[OUT]]
+// CHECK: mo.matmul
+// CHECK-NOT: mo.fused_matmul_add
+// CHECK: mo.add
 mo.graph @matmul_reshape_add_2d(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0>, %arg2: !mo.tensor<[32, 2048, 1536], bf16, gpu:0>) -> !mo.tensor<[32, 2048, 1536], bf16, gpu:0> {
   %0 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %1 = mo.transpose(%arg1, %0) : (!mo.tensor<[1536, 1536], bf16, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>
@@ -45,23 +48,23 @@ mo.graph @neg_matmul_multiple_uses(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>
   mo.output %0, %1 : !mo.tensor<[65536, 1536], bf16, gpu:0>, !mo.tensor<[65536, 1536], bf16, gpu:0>
 }
 
-// Negative: matmul is GEMV (M == 1).
-// CHECK-LABEL: mo.graph @neg_gemv
+// Negative: a 2D residual is not fused, even at M == 1.
+// CHECK-LABEL: mo.graph @gemv
 // CHECK: mo.matmul
 // CHECK-NOT: mo.fused_matmul_add
 // CHECK: mo.add
-mo.graph @neg_gemv(%arg0: !mo.tensor<[1, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[1, 1536], bf16, gpu:0>) -> !mo.tensor<[1, 1536], bf16, gpu:0> {
+mo.graph @gemv(%arg0: !mo.tensor<[1, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[1, 1536], bf16, gpu:0>) -> !mo.tensor<[1, 1536], bf16, gpu:0> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[1, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, 1536], bf16, gpu:0>
   %1 = mo.add(%0, %arg2) : !mo.tensor<[1, 1536], bf16, gpu:0>
   mo.output %1 : !mo.tensor<[1, 1536], bf16, gpu:0>
 }
 
-// Negative: matmul has a dynamic M dimension.
-// CHECK-LABEL: mo.graph @neg_dynamic_m
+// Negative: a 2D residual is not fused (dynamic M doesn't change that).
+// CHECK-LABEL: mo.graph @dynamic_m
 // CHECK: mo.matmul
 // CHECK-NOT: mo.fused_matmul_add
 // CHECK: mo.add
-mo.graph @neg_dynamic_m(%arg0: !mo.tensor<[dyn_m, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[dyn_m, 1536], bf16, gpu:0>) -> !mo.tensor<[dyn_m, 1536], bf16, gpu:0> {
+mo.graph @dynamic_m(%arg0: !mo.tensor<[dyn_m, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[dyn_m, 1536], bf16, gpu:0>) -> !mo.tensor<[dyn_m, 1536], bf16, gpu:0> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[dyn_m, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[dyn_m, 1536], bf16, gpu:0>
   %1 = mo.add(%0, %arg2) : !mo.tensor<[dyn_m, 1536], bf16, gpu:0>
   mo.output %1 : !mo.tensor<[dyn_m, 1536], bf16, gpu:0>
