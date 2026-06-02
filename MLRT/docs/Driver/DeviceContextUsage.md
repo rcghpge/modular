@@ -7,7 +7,7 @@ was special cased so a null pointer was passed, but this is no longer true.
 
 Selection of the appropriate device contexts is made during MO to MOGG lowering.
 If a MOGG Primitive takes a DeviceContext argument, it is added to the calls by
-[`addContextIfPresent`](https://github.com/modularml/modular/blob/a58f8e68c386c59065142749432d9863be0be381/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.cpp#L103).
+[`addContextIfPresent`](https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.cpp#L234).
 
 The added arguments are of the type `mogg.device_context_placeholder`, which
 become `mgp.device_context` attributes. When lowered to MEF, all device

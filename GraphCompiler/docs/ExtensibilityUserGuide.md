@@ -6,8 +6,8 @@ users who want to invoke the resulting functions.
 
 ## Registering a New Kernel
 
-An example can be found in
-`max/kernels/src/Mogg/MOGGKernelAPI/MOGGKernelAPI.mojo` around line 3527.
+An example can be found in the `BottomK` struct in
+`max/kernels/src/graph_compiler/builtin_kernels/reductions.mojo`.
 
 ```python
 @compiler.register("mo.bottom_k")
@@ -16,35 +16,39 @@ struct BottomK:
     def execute[
         dtype: DType,
         rank: Int,
+        target: StaticString,
     ](
-        values: OutputTensor[dtype=dtype, rank=rank],
-        indices: InputTensor[dtype = DType.int64, rank=rank],
-        input: InputTensor[dtype=dtype, rank=rank],
+        values: OutputTensor[dtype=dtype, rank=rank, ...],
+        indices: OutputTensor[dtype=DType.int64, rank=rank, ...],
+        input: InputTensor[dtype=dtype, rank=rank, ...],
         k: Scalar,
         axis: Scalar,
-        sorted: Scalar[dtype = DType.bool],
-    ):
-        top_k(
-            managed_tensor_slice_to_ndbuffer(input),
-            k,
-            axis,
-            False,
-            managed_tensor_slice_to_ndbuffer(values),
-            managed_tensor_slice_to_ndbuffer(indices),
+        sorted: Scalar[DType.bool],
+        ctx: DeviceContext,
+    ) raises:
+        top_k[largest=False, target=target](
+            input.to_tile_tensor[DType.int64](),
+            Int(k),
+            Int(axis),
+            values.to_tile_tensor[DType.int64](),
+            indices.to_tile_tensor[DType.int64](),
             sorted,
+            ctx,
         )
 
     @staticmethod
     def shape(
-        input: ManagedTensorSlice,
+        input: InputTensor[...],
         k: Scalar,
         axis: Scalar,
-        sorted: Bool,
+        sorted: Scalar[DType.bool],
     ) raises -> IndexList[input.rank]:
-        return top_k_shape_impl(
-            managed_tensor_slice_to_ndbuffer(input),
-            k,
-            axis,
+        return rebind[IndexList[input.rank]](
+            top_k_shape_impl(
+                input.to_tile_tensor[DType.int64](),
+                Int(k),
+                Int(axis),
+            )
         )
 ```
 
@@ -344,8 +348,12 @@ You can access the input/output lambdas via `static_spec` parameter.
 
 ### Converting Between Tensor Types
 
-Plenty of examples can be found in the `managed_tensor_slice_to_ndbuffer`
-method in `max/kernels/src/Mogg/MOGGKernelAPI/MOGGKernelAPI.mojo`.
+A `ManagedTensorSlice` can be converted to the tensor types used by the
+underlying kernels via its `to_tile_tensor` and `to_layout_tensor` methods,
+defined in
+`max/kernels/src/graph_compiler/extensibility/managed_tensor_slice.mojo`.
+Plenty of examples of calling these can be found throughout the kernel
+registrations in `max/kernels/src/graph_compiler/builtin_kernels/`.
 
 ## Calling a New Kernel in the Graph API
 
