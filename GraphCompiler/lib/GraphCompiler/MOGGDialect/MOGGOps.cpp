@@ -2591,8 +2591,21 @@ LogicalResult GenericCompiledRegionOp::verify() {
     }
   }
 
-  if (!llvm::equal(getOperandTypes(), body.getArgumentTypes()))
-    return emitError("operand types must match region arguments");
+  // Each body block argument is a `!mogg.async<T>` wrapping the corresponding
+  // operand type `T`. The region boundary wraps operands into async values on
+  // entry; the body unpacks them via `mogg.async.unpack`. Arguments that are
+  // deliberately consumed as the raw async slot (e.g. a context) may instead be
+  // retyped to the plain operand type `T` during ABI lowering, so both forms
+  // are accepted.
+  for (auto [operandType, argType] :
+       llvm::zip(getOperandTypes(), body.getArgumentTypes())) {
+    if (argType == operandType)
+      continue;
+    auto asyncType = dyn_cast<AsyncType>(argType);
+    if (!asyncType || asyncType.getElementType() != operandType)
+      return emitError("each region body argument must be the corresponding "
+                       "operand type or a mogg.async of it");
+  }
 
   if (!getExecutionDevice())
     return emitError("Compiled regions must have a device");
@@ -2648,8 +2661,10 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
   if (blockArgsToRemove.none())
     return failure();
 
-  SmallVector<Type> newTypes =
-      llvm::map_to_vector(newOperands, [](Value v) { return v.getType(); });
+  // Body block arguments are `!mogg.async<T>` wrappers around the operand
+  // types.
+  SmallVector<Type> newTypes = llvm::map_to_vector(
+      newOperands, [](Value v) -> Type { return AsyncType::get(v.getType()); });
 
   SmallVector<Location> newLocs =
       llvm::map_to_vector(newOperands, [](Value v) { return v.getLoc(); });
@@ -2728,6 +2743,17 @@ LogicalResult AsTupleOp::verify() {
 // AsyncUnpackOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AsyncUnpackOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto asyncType = dyn_cast<AsyncType>(adaptor.getInput().getType());
+  if (!asyncType)
+    return emitOptionalError(location,
+                             "async.unpack input must be a mogg.async type");
+  inferredReturnTypes.push_back(asyncType.getElementType());
+  return success();
+}
+
 LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
                                           mlir::PatternRewriter &rewriter) {
   if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackOp>()) {
@@ -2746,7 +2772,8 @@ LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   MojoValue unpackedValue;
   mlir::TypedValue<mlir::Type> input = getInput();
-  mlir::Type inputType = input.getType();
+  // The input is a `!mogg.async<T>`; switch on the wrapped element type `T`.
+  mlir::Type inputType = cast<AsyncType>(input.getType()).getElementType();
 
   if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(inputType)) {
 
@@ -2819,6 +2846,17 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 // AsyncPackOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult
+AsyncPackOp::inferReturnTypes(MLIRContext *context,
+                              std::optional<Location> location, Adaptor adaptor,
+                              SmallVectorImpl<Type> &inferredReturnTypes) {
+  // The packed value is the `input` operand; the optional `deviceCtx` operand
+  // does not affect the result. The result is an `!mogg.async<T>` of the input.
+  inferredReturnTypes.push_back(
+      AsyncType::get(context, adaptor.getInput().getType()));
+  return success();
+}
+
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
@@ -2844,9 +2882,10 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult AsyncPackOp::verify() {
-  if (getInput().getType() != getResult().getType())
+  auto asyncType = dyn_cast<AsyncType>(getResult().getType());
+  if (!asyncType || asyncType.getElementType() != getInput().getType())
     return emitError(
-        "async.pack requires the same type for the result and operand 0");
+        "async.pack result must be a mogg.async of the input type");
   return success();
 }
 
@@ -3159,6 +3198,15 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
 // AsyncPackBorrowOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AsyncPackBorrowOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Like async.pack, the borrowed result is an `!mogg.async<T>` of the input.
+  inferredReturnTypes.push_back(
+      AsyncType::get(context, adaptor.getInput().getType()));
+  return success();
+}
+
 LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
@@ -3209,7 +3257,10 @@ enum class MGPRT_BorroweeType : size_t {
 LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
   MojoValue getBufferMemStorageHandleFn = kFnGetBufferMemStorageHandle;
   MojoValue inputVar = state.getMojoValueFor(getValue());
-  MojoValue typeVar = isa<MGP::DeviceBufferType>(getValue().getType())
+  // The value is a `!mogg.async<T>` (a runtime slot); dispatch on the wrapped
+  // element type.
+  Type valueType = getValue().getType().getElementType();
+  MojoValue typeVar = isa<MGP::DeviceBufferType>(valueType)
                           ? (size_t)MGPRT_BorroweeType::kBuffer
                           : (size_t)MGPRT_BorroweeType::kTensor;
   auto opaquePtr = state.builder.var(
@@ -3987,16 +4038,25 @@ static ParseResult parseKernel(
   if (parseParamDecls(p, resultParams) ||
       p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
       p.parseColon() || p.getCurrentLocation(&sigLoc) ||
-      parseRegionArguments(p, resultTypes, args) ||
-      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+      parseRegionArguments(p, resultTypes, args))
     return failure();
 
+  // The signature is written in terms of the operand (element) types `T`; the
+  // operands are `T` while the region body arguments are `!mogg.async<T>`.
   for (auto &arg : args)
     operandTypes.push_back(arg.type);
 
   // For GenericCompiledRegionOp, if the kernel takes in a chain, there will be
   // 1 fewer argument than operands.
   operandTypes.resize(operands.size(), MO::ChainType::get(p.getContext()));
+
+  // Wrap the parsed (element) types into `!mogg.async<T>` for the body block
+  // arguments before creating the region.
+  for (auto &arg : args)
+    arg.type = AsyncType::get(arg.type);
+
+  if (p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+    return failure();
 
   return success();
 }
@@ -4009,7 +4069,22 @@ static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
   p.printOperands(operands);
   p << ") : ";
 
-  printRegionArguments(p, resultTypes, region.getArguments());
+  // The body block arguments are `!mogg.async<T>`; print the unwrapped element
+  // type `T` so the signature reads in terms of the operand types.
+  p << '(';
+  llvm::interleaveComma(region.getArguments(), p, [&](BlockArgument arg) {
+    p.printRegionArgument(arg, /*argAttrs=*/{}, /*omitType=*/true);
+    p << ": ";
+    Type type = arg.getType();
+    if (auto asyncType = dyn_cast<AsyncType>(type))
+      type = asyncType.getElementType();
+    p.printType(type);
+  });
+  p << ')';
+  if (!resultTypes.empty()) {
+    p << ' ';
+    p.printArrowTypeList(resultTypes);
+  }
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 

@@ -15,6 +15,16 @@
 using namespace M;
 using namespace M::MGP;
 
+/// Returns the element type of a `!mogg.async<T>`, or the type itself
+/// otherwise. MGP region body arguments are async-wrapped, but the outlined
+/// kernel stub is called with unpacked values, so its parameter types use the
+/// element type.
+static Type getAsyncElementOrSelf(Type type) {
+  if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
+    return asyncType.getElementType();
+  return type;
+}
+
 void KernelOperandsMapping::addOperand(Value operandValue,
                                        bool isMGPRegionOperand,
                                        bool isKernelStubOperand,
@@ -116,10 +126,15 @@ KernelOperandsMapping::getTensorDynamicDimensions(MO::TensorType asTensor,
 }
 
 void KernelOperandsMapping::setupMGPRegionArgs(Block *mgpRegion) {
-  // Add the arguments.
+  // Add the arguments. Body block arguments are `!mogg.async<T>` wrappers
+  // around the operand types; they are unpacked to `T` by `lowerMOGGABI`.
   SmallVector<Location> locs = llvm::map_to_vector(
       mgpRegionOperands, [](Value v) { return v.getLoc(); });
-  mgpRegion->addArguments(ValueRange(mgpRegionOperands).getTypes(), locs);
+  SmallVector<Type> argTypes =
+      llvm::map_to_vector(mgpRegionOperands, [](Value v) -> Type {
+        return MOGG::AsyncType::get(v.getType());
+      });
+  mgpRegion->addArguments(argTypes, locs);
 
   // And now update the mapping with the created block arguments.
   for (auto &operand : operands) {
@@ -147,9 +162,11 @@ void KernelOperandsMapping::setupKernelStubArgs(Block *kernelStubBody) {
 
     unsigned idx = operandInfos.kernelOperandIdx.value();
     Value operand = kernelStubOperands[idx];
+    // The stub is called with unpacked values (lowerMOGGABI unpacks the async
+    // region arguments), so its parameter types are the element types.
     Type operandType = operandInfos.kernelStubOperandType
                            ? operandInfos.kernelStubOperandType
-                           : operand.getType();
+                           : getAsyncElementOrSelf(operand.getType());
 
     if (idx < kernelStubBody->getNumArguments()) {
       // Update the argument type if needed.

@@ -680,10 +680,41 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
 /// buffer/tensor and track its async reference.
 static Value createAsyncPackBorrowWithUnpack(OpBuilder &builder, Location loc,
                                              Value value, Value sourceValue) {
+  // The async value ref must be extracted from the async-backed value (the
+  // `!mogg.async<T>` runtime slot), not its unpacked `T` projection. If the
+  // source is a `mogg.async.unpack`, look through it to the async operand.
+  if (auto unpackOp = sourceValue.getDefiningOp<MOGG::AsyncUnpackOp>())
+    sourceValue = unpackOp.getInput();
+  // The result type (an AnyAsyncValueRef handle) is supplied by the op builder.
   auto asyncUnpackAnyAsyncValueRefOp =
       MOGG::AsyncUnpackAnyAsyncValueRefOp::create(builder, loc, sourceValue);
-  return MOGG::AsyncPackBorrowOp::create(builder, loc, value.getType(), value,
+  return MOGG::AsyncPackBorrowOp::create(builder, loc, value,
                                          asyncUnpackAnyAsyncValueRefOp);
+}
+
+/// Returns the element type of a `!mogg.async<T>`, or the type itself if it is
+/// not an async type. Region body arguments are async-wrapped, so checks on the
+/// underlying value type (e.g. chain detection) must unwrap first.
+static Type getAsyncElementOrSelf(Type type) {
+  if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
+    return asyncType.getElementType();
+  return type;
+}
+
+/// Rewires the consumers of an async value `asyncValue` to its synchronous
+/// `projection` (an unpack or a pass-through reinterpret). The projection op's
+/// own use of `asyncValue` is left untouched, as are the async-consuming ops
+/// (`mogg.async.unpack[.AnyAsyncValueRef]`) that must keep operating on the
+/// async value directly.
+static void rewireAsyncConsumersToProjection(Value asyncValue,
+                                             Value projection) {
+  Operation *projectionOp = projection.getDefiningOp();
+  asyncValue.replaceUsesWithIf(projection, [&](mlir::OpOperand &operand) {
+    Operation *owner = operand.getOwner();
+    return owner != projectionOp &&
+           !isa<MOGG::AsyncUnpackOp, MOGG::AsyncUnpackAnyAsyncValueRefOp>(
+               owner);
+  });
 }
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
@@ -696,11 +727,40 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   Operation *terminator = kernel.getBody().front().getTerminator();
 
   // Chain inputs should never be used by any ops. Replace them with a dummy
-  // chain.
+  // chain. Block arguments are `!mogg.async<T>`, so unwrap before checking.
   for (auto &&arg : kernel.getBody().front().getArguments()) {
-    if (isa<MEF::ChainType>(arg.getType())) {
+    if (isa<MEF::ChainType>(getAsyncElementOrSelf(arg.getType()))) {
       arg.replaceAllUsesWith(
           MOGG::ChainDummyOp::create(builder, loc).getResult());
+    }
+  }
+
+  // Unpack all inputs that should be unpacked first, so the body ops consume
+  // the unpacked `T` values. This must happen before packing outputs below,
+  // which inspects the (now unpacked) operands of the body ops.
+  builder.setInsertionPointToStart(&kernel.getBody().front());
+  for (auto v : kernel.getBody().getArguments()) {
+    // Chains are left as `!mogg.async<chain>` (already replaced with a dummy
+    // chain above); nothing consumes them directly.
+    if (isa<MEF::ChainType>(getAsyncElementOrSelf(v.getType())))
+      continue;
+
+    if (shouldUnpack.test(v.getArgNumber())) {
+      // Project the `!mogg.async<T>` argument to `T` and rewire consumers.
+      auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
+      rewireAsyncConsumersToProjection(v, unpackOp);
+    } else {
+      // This argument is deliberately not unpacked: the consuming op wants the
+      // raw async slot as a plain `T` value (e.g. the context for
+      // `mgp.buffer.get_cached`). Insert a pass-through reinterpret to a `T`
+      // value (its Mojo value remains the runtime slot) and rewire consumers,
+      // leaving the block argument as `!mogg.async<T>`. Keeping the argument
+      // async lets a single argument feed both a raw-slot consumer (via this
+      // reinterpret) and a consumer that unpacks it, which can happen after
+      // sequence fusion merges regions.
+      auto reinterpret = MOGG::ToMGPFromOpaqueOp::create(
+          builder, loc, getAsyncElementOrSelf(v.getType()), v);
+      rewireAsyncConsumersToProjection(v, reinterpret);
     }
   }
 
@@ -722,11 +782,11 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
                 value.getDefiningOp()))
           packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
       }
-      newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
-                                           packOperands);
+      newValue = MOGG::AsyncPackOp::create(
+          builder, loc, MOGG::AsyncType::get(value.getType()), packOperands);
     } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
       newValue = MOGG::AsyncPackBorrowOp::create(
-          builder, loc, value.getType(), value,
+          builder, loc, value,
           MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
     } else if (auto bufferGetCachedOp =
                    value.getDefiningOp<MGP::BufferGetCachedOp>()) {
@@ -742,7 +802,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
         oldBufferGetCachedOp->erase();
       }
       newValue = MOGG::AsyncPackBorrowOp::create(
-          builder, loc, value.getType(), bufferGetCachedOp.getOutBuffer(),
+          builder, loc, bufferGetCachedOp.getOutBuffer(),
           bufferGetCachedOp.getMemStorageHandle());
     } else if (auto tensorExtractBufferOp =
                    value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
@@ -788,23 +848,6 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     // ChainSinkOp to avoid it being DCE-ed if it's the only output.
     if (!isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
       MOGG::ChainSinkOp::create(builder, loc, value);
-  }
-
-  // Then, unpack all inputs that should be unpacked.
-  builder.setInsertionPointToStart(&kernel.getBody().front());
-  for (auto v : kernel.getBody().getArguments()) {
-    // Do not attempt to unpack a chain as there is nothing that we could be
-    // doing with it internally but still decrement its async reference. Also,
-    // do not unpack certain arguments if the primitive being lowered requests
-    // it.
-    if (shouldUnpack.test(v.getArgNumber()) &&
-        !isa<MEF::ChainType>(v.getType())) {
-      auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
-      v.replaceUsesWithIf(unpackOp, [](mlir::OpOperand &operand) {
-        return !isa<MOGG::AsyncUnpackOp, MOGG::AsyncUnpackAnyAsyncValueRefOp>(
-            operand.getOwner());
-      });
-    }
   }
 }
 

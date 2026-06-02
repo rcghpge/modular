@@ -217,9 +217,17 @@ struct RemoveRedundantOperands
         }
       }
 
-      // Create a new region op but with collapsed result type.
-      MOGG::GenericCompiledRegionOp newKernel = buildRegionOpWithResultType(
-          builder, regionOp, outputOp->getOperandTypes());
+      // Create a new region op but with collapsed result type. The terminator
+      // operands feeding `mogg.output` are `!mogg.async<T>` (pack results); the
+      // region's external results are the unwrapped element types `T`.
+      SmallVector<Type> newResultTypes = llvm::map_to_vector(
+          outputOp->getOperandTypes(), [](Type type) -> Type {
+            if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
+              return asyncType.getElementType();
+            return type;
+          });
+      MOGG::GenericCompiledRegionOp newKernel =
+          buildRegionOpWithResultType(builder, regionOp, newResultTypes);
 
       // The kept chain position relative to the new kernel results.
       unsigned curIdx = 0;

@@ -115,8 +115,12 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
     newKernel.setDeviceRef(MO::getDeviceOrDefaultAny(op));
 
   mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
+  // Body block arguments are `!mogg.async<T>` wrappers around the operand
+  // types. They are unpacked to `T` by `lowerMOGGABI` (called immediately after
+  // this region is built), which inserts `mogg.async.unpack` and rewires uses.
   for (Value operand : newKernel->getOperands())
-    kernelBody.addArgument(operand.getType(), operand.getLoc());
+    kernelBody.addArgument(MOGG::AsyncType::get(operand.getType()),
+                           operand.getLoc());
 
   // Build the kernel body.
   builder.setInsertionPoint(&kernelBody, kernelBody.begin());

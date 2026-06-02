@@ -106,6 +106,48 @@ def MOGG_Error : MOGG_Type<"Error", "error"> {
   }];
 }
 
+def MOGG_Async : MOGG_Type<"Async", "async"> {
+  let summary = "An asynchronous wrapper around a value type";
+  let description = [{
+    This type wraps an arbitrary MLIR type to model an asynchronously computed
+    value. Inside a `mogg.generic.compiled.region`, the body block arguments are
+    `!mogg.async<T>` rather than `T` to reflect that they are not values but
+    handles/pointers that must be unpacked before use. `mogg.async.unpack`
+    projects an `!mogg.async<T>` to a `T`, and `mogg.async.pack` injects a `T`
+    into an `!mogg.async<T>`.
+
+    Examples:
+    ```mlir
+    !mogg.async<!mgp.buffer>
+    !mogg.async<!mef.chain>
+    ```
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+
+  let builders = [
+    // Builds an `!mogg.async<T>` without an explicit context, reusing the
+    // context of the wrapped element type.
+    TypeBuilderWithInferredContext<(ins "Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
+// A `!mogg.async<T>` whose wrapped element type `T` is one of `allowedTypes`.
+// Built on `MOGG_Async` via `ConfinedType` so the generated C++ accessor is a
+// `TypedValue<MOGG::AsyncType>` (the base type's `cppType` is preserved); the
+// `MOGG_Async` predicate already guarantees the value is an async type.
+class MOGG_AsyncOf<list<Type> allowedTypes> : ConfinedType<MOGG_Async,
+  [Or<!foreach(allowedType, allowedTypes,
+        SubstLeaves<"$_self",
+                    "llvm::cast<MOGG::AsyncType>($_self).getElementType()",
+                    allowedType.predicate>)>],
+  "an !mogg.async of " #
+    !interleave(!foreach(allowedType, allowedTypes, allowedType.summary),
+                " or ")>;
+
 //===----------------------------------------------------------------------===//
 // Scalar predicates
 //===----------------------------------------------------------------------===//

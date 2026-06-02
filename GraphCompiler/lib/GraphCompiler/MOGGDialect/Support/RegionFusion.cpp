@@ -149,9 +149,12 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   builder.setInsertionPoint(&newBody, newBody.begin());
 
   // Create a mapping from outside SSA value to internal SSA value for inputs.
+  // Body block arguments are `!mogg.async<T>` wrappers around the operand
+  // types.
   DenseMap<Value, Value> outsideValueToInternalValue;
   for (Value operand : fusedRegionOperands) {
-    auto newArg = newBody.addArgument(operand.getType(), loc);
+    auto newArg =
+        newBody.addArgument(MOGG::AsyncType::get(operand.getType()), loc);
     outsideValueToInternalValue[operand] = newArg;
   }
 

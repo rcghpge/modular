@@ -38,7 +38,9 @@ struct SimplifyExtendLifetimesPass
 
       kernel->insertOperands(kernel->getNumOperands(), extend.getInputs());
       for (Value v : extend.getInputs()) {
-        kernel.getBody().addArgument(v.getType(), v.getLoc());
+        // Body block arguments are `!mogg.async<T>` wrappers around operands.
+        kernel.getBody().addArgument(MOGG::AsyncType::get(v.getType()),
+                                     v.getLoc());
         kernel.setInOutSignatureAttr(kernel.getInOutSignature().append(
             {InOutSignatureAttr::InOutSemantics::kNone}));
       }

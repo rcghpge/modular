@@ -35,6 +35,7 @@ include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 
@@ -1085,26 +1086,21 @@ def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
     `(` $task_handles `)` attr-dict `:` `(` type($task_handles) `)`
   }];
 }
-/// TODO(GEX-2434): Wrap kernel body arguments in a mogg.async<T> to fully model
-/// the fact that they are not values but pointers that must be unpacked.
+
 def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelArgumentConsumer>,
+  InferTypeOpAdaptor,
   Pure,
-  SameOperandsAndResultType,
 ]> {
-  let arguments = (ins AnyType:$input);
+  let arguments = (ins MOGG_Async:$input);
   let results = (outs AnyType:$output);
   let summary = "Unpacks an async value and returns it as sync";
   let description = [{
     The values outside of a `mogg.generic.compiled.region` are asynchronous.
-    This operation unpacks them and returns values of the same type. This could
-    have been an implicit behaviour but this op is meant to formalize the
-    process of unpacking which will actually happen.
-
-    Note: The real types of the kernel operands should be pointers but this is
-    not reflected in the IR. This is why this operation has the same input and
-    output types.
+    This operation projects an `!mogg.async<T>` to its underlying `T`, modeling
+    the fact that the async value is really a handle/pointer that must be
+    unpacked before use. It is the inverse of `mogg.async.pack`.
   }];
 
   let assemblyFormat = [{
@@ -1131,17 +1127,18 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  InferTypeOpAdaptor,
   Pure,
 ]> {
   let arguments = (ins
     AnyType:$input,
     Optional<MGP_DeviceContextType>:$deviceCtx
   );
-  let results = (outs AnyType:$output);
+  let results = (outs MOGG_Async:$output);
   let summary = "Packs an sync value and returns it as async";
   let description = [{
-    This is the opposite of the unpacking operation. It packs synchronous values
-    into asynchronous values.
+    This is the opposite of the unpacking operation. It injects a synchronous
+    `T` value into an `!mogg.async<T>`.
   }];
 
   let assemblyFormat = [{
@@ -1155,13 +1152,14 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+  InferTypeOpAdaptor,
   Pure,
 ]> {
   let arguments = (ins
     AnyType:$input,
     AnyType:$mem
   );
-  let results = (outs AnyType:$output);
+  let results = (outs MOGG_Async:$output);
   let summary = "Borrows the input tensor ref value";
   let description = [{
     When another operation returns an async value, we add this borrow to keep
@@ -1513,17 +1511,28 @@ def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyn
 def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
-  SameOperandsAndResultType,
 ]> {
   let summary = "Returns the memory storage handle of a tensor or buffer.";
   let description = [{
-    For a given MGP device buffer or tensor, returns the AnyAsyncValueRef that
-    represents the memory storage. This is required as the borrowee to
-    mogg.async.pack.borrow.
+    For a given MGP device buffer or tensor (or its `!mogg.async<T>` wrapper),
+    returns the AnyAsyncValueRef that represents the memory storage. This is
+    required as the borrowee to mogg.async.pack.borrow. The result is always an
+    AnyAsyncValueRef handle, independent of the input type.
   }];
 
-  let arguments = (ins AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$value);
-  let results = (outs AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$result);
+  let arguments = (ins MOGG_AsyncOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$value);
+  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
+
+  let builders = [
+    // The result is always an AnyAsyncValueRef handle (`!kgen.pointer<pointer<
+    // none>>`), so callers need only supply the source value.
+    OpBuilder<(ins "::mlir::Value":$value), [{
+      build($_builder, $_state,
+            ::M::KGEN::PointerType::get(::M::KGEN::PointerType::get(
+                ::M::KGEN::NoneType::get($_builder.getContext()))),
+            value);
+    }]>,
+  ];
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)

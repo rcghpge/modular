@@ -37,8 +37,13 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
         [&](MOGG::GenericCompiledRegionOp kernelOp) {
           auto loc = kernelOp.getLoc();
           auto resultTypes = kernelOp->getResultTypes();
-          auto functionType = TypeAttr::get(FunctionType::get(
-              ctx, kernelOp->getOperandTypes(), kernelOp.getResultTypes()));
+          // The MGP-ABI stub takes the region body verbatim, whose block
+          // arguments are `!mogg.async<T>` (the void** runtime slots). The
+          // function signature must match those body argument types, not the
+          // region's `T` operand types.
+          auto functionType = TypeAttr::get(
+              FunctionType::get(ctx, kernelOp.getBodyBlock().getArgumentTypes(),
+                                kernelOp.getResultTypes()));
           auto stubName =
               StringAttr::get(kernelOp->getContext(),
                               llvm::formatv("region_{}", stubNumber++).str());

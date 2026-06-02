@@ -10,8 +10,9 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
   %lhs = index.constant 42
   %rhs = index.constant -20
   %3 = mogg.generic.compiled.region (%lhs, %rhs, %lhs, %rhs) : (%arg2: index, %arg3: index, %arg4: index, %arg5: index) -> index{
-    %out = mogg.async.pack(%arg2) : (index) -> index
-    mogg.output %out : index
+    %unpacked = mogg.async.unpack(%arg2) : (!mogg.async<index>) -> index
+    %out = mogg.async.pack(%unpacked) : (index) -> !mogg.async<index>
+    mogg.output %out : !mogg.async<index>
   } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"....">}
   %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
   mef.output %4 : !mef.chain

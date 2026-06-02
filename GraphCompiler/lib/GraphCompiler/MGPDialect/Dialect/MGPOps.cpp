@@ -443,8 +443,8 @@ LogicalResult TensorSpecCreateOp::inferReturnTypes(
 
 llvm::BitVector BufferRemoveCachedOp::operandsToUnpack() {
   llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context because the type is defined in
-                  // C++ only.
+  res[1] = false; // Do not unpack the context; it is consumed as the raw async
+                  // slot (the type is defined in C++ only).
   return res;
 }
 
@@ -542,8 +542,8 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 
 llvm::BitVector BufferGetCachedOp::operandsToUnpack() {
   llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context because the type is defined in
-                  // C++ only.
+  res[1] = false; // Do not unpack the context; it is consumed as the raw async
+                  // slot (the type is defined in C++ only).
   return res;
 }
 
@@ -592,8 +592,8 @@ LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
 
 llvm::BitVector IntCacheOp::operandsToUnpack() {
   llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context because the type is defined in
-                  // C++ only.
+  res[1] = false; // Do not unpack the context; it is consumed as the raw async
+                  // slot (the type is defined in C++ only).
   return res;
 }
 
@@ -613,8 +613,8 @@ LogicalResult IntCacheOp::emitMojo(MOGG::EmitMojoState &state) {
 
 llvm::BitVector IntGetCachedOp::operandsToUnpack() {
   llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context because the type is defined in
-                  // C++ only.
+  res[1] = false; // Do not unpack the context; it is consumed as the raw async
+                  // slot (the type is defined in C++ only).
   return res;
 }
 
