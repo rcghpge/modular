@@ -2045,13 +2045,19 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
           op, "Slice that reduces an axis to size 1 is not supported");
     }
 
-    // start/stop/step must be constants so that we can rebuild them.
     auto startValues = tryGetConstantIntVector(op.getStart());
-    auto stopValues = tryGetConstantIntVector(op.getStop());
     auto stepValues = tryGetConstantIntVector(op.getStep());
-    if (!startValues || !stopValues || !stepValues) {
-      return rewriter.notifyMatchFailure(op,
-                                         "start/stop/step must be constants");
+    if (!startValues || !stepValues) {
+      return rewriter.notifyMatchFailure(op, "start/step must be constants");
+    }
+    int64_t stopAtAxis;
+    if (auto stopValues = tryGetConstantIntVector(op.getStop())) {
+      stopAtAxis = (*stopValues)[sliceAxis];
+    } else if ((*stepValues)[sliceAxis] == 1) {
+      stopAtAxis = (*startValues)[sliceAxis] + sliceType.getIntDim(sliceAxis);
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "stop must be constant unless the slice axis has unit step");
     }
 
     // Compute the reshape analysis from sliceType (before reshape) to
@@ -2111,7 +2117,7 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
         return rewriter.notifyMatchFailure(
             op, "Input dimension is not divisible by contraction factor");
       }
-      int64_t stop = (*stopValues)[sliceAxis];
+      int64_t stop = stopAtAxis;
       int64_t inputDimSize = inputType.getIntDim(sliceAxis);
       if (stop % contractionFactor != 0 && stop < inputDimSize) {
         return rewriter.notifyMatchFailure(
@@ -2142,7 +2148,7 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     SmallVector<int64_t> newStop(newRank, std::numeric_limits<int64_t>::max());
     SmallVector<int64_t> newStep(newRank, 1);
     newStart[newSliceAxis] = (*startValues)[sliceAxis] / contractionFactor;
-    newStop[newSliceAxis] = (*stopValues)[sliceAxis] / contractionFactor;
+    newStop[newSliceAxis] = stopAtAxis / contractionFactor;
     // Preserve the original step for the 1-to-1 case; the expansion case
     // already enforces step == 1.
     newStep[newSliceAxis] = (*stepValues)[sliceAxis];

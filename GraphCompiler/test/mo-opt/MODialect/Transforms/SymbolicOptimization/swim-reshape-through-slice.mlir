@@ -175,3 +175,48 @@ mo.graph @no_conversion_slice_to_unit_dim_then_squeeze(%arg0: !mo.tensor<[2, 3],
   %reshape = mo.static.reshape(%slice) : !mo.tensor<[1, 3], si32> -> !mo.tensor<[3], si32>
   mo.output %reshape : !mo.tensor<[3], si32>
 }
+
+// -----
+
+// Dynamic stop with unit step on the sliced axis. The stop vector is not a
+// constant (here a graph argument, as happens when it is shape-materialized for
+// a fused qkv slice), but the sliced axis has step 1 and a statically known
+// result extent, so the stop is recovered as start + result_dim (0 + 4) and the
+// reshape still swims through.
+//
+// BEFORE: [6, 8] -> slice (dynamic stop) -> [6, 4] -> reshape -> [2, 3, 4]
+// AFTER:  [6, 8] -> reshape -> [2, 3, 8] -> slice -> [2, 3, 4]
+
+// CHECK-LABEL: mo.graph @swim_reshape_through_slice_dynamic_stop
+// CHECK-DAG:   %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1>
+// CHECK-DAG:   %[[STOP:.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807, 4>
+// CHECK-DAG:   %[[START:.*]] = mo.constant {value = #M.dense_array<0, 0, 0>
+// CHECK:       %[[RESHAPE:.*]] = mo.static.reshape(%arg0) : !mo.tensor<[6, 8], f32> -> !mo.tensor<[2, 3, 8], f32>
+// CHECK:       %[[SLICE:.*]] = mo.slice(%[[RESHAPE]], %[[START]], %[[STOP]], %[[STEP]]) : (!mo.tensor<[2, 3, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 3, 4], f32>
+// CHECK:       mo.output %[[SLICE]]
+
+mo.graph @swim_reshape_through_slice_dynamic_stop(%arg0: !mo.tensor<[6, 8], f32>, %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3, 4], f32> {
+  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %slice = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[6, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[6, 4], f32>
+  %reshape = mo.static.reshape(%slice) : !mo.tensor<[6, 4], f32> -> !mo.tensor<[2, 3, 4], f32>
+  mo.output %reshape : !mo.tensor<[2, 3, 4], f32>
+}
+
+// -----
+
+// No conversion: dynamic stop with non-unit step on the sliced axis. Without a
+// constant stop the sliced extent cannot be recovered from start + result_dim
+// (the step != 1 makes that count ambiguous), so the pattern bails.
+
+// CHECK-LABEL: mo.graph @no_conversion_dynamic_stop_step_not_one
+// CHECK:       mo.slice
+// CHECK:       mo.static.reshape
+
+mo.graph @no_conversion_dynamic_stop_step_not_one(%arg0: !mo.tensor<[6, 8], f32>, %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3, 4], f32> {
+  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %slice = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[6, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[6, 4], f32>
+  %reshape = mo.static.reshape(%slice) : !mo.tensor<[6, 4], f32> -> !mo.tensor<[2, 3, 4], f32>
+  mo.output %reshape : !mo.tensor<[2, 3, 4], f32>
+}
