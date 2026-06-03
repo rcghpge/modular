@@ -83,7 +83,7 @@ struct SymbolicOptimizationPass
   LogicalResult applyCorePatterns() {
     // First run all the optimizations with slices turned into split when
     // possible.
-    if (applyCorePatternsPlusExtraPatterns<SliceToSplitPattern>().failed())
+    if (applyCorePatternsPlusExtraPatterns<SliceToSplitPattern<>>().failed())
       return failure();
 
     // Once all split operation patterns have run, convert them to slice and run

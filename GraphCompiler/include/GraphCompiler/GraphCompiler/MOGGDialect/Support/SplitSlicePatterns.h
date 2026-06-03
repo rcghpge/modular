@@ -22,6 +22,7 @@ namespace M::MO {
 
 /// Replaces adjacent slice ops that together partition one axis of a common
 /// input with a single split op. This is the inverse of SplitToSlicePattern.
+template <bool AllowDynamicStop = false>
 struct SliceToSplitPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SliceOp> {
   SliceToSplitPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
@@ -40,8 +41,14 @@ struct SliceToSplitPattern
       return rewriter.notifyMatchFailure(op, "Only one slice op");
 
     if (!llvm::all_of(sliceOps, [](SliceOp sliceOp) {
-          return sliceOp.getStart().getDefiningOp<ConstantOp>() &&
-                 sliceOp.getStop().getDefiningOp<ConstantOp>();
+          bool startStepConstant =
+              sliceOp.getStart().getDefiningOp<ConstantOp>() &&
+              sliceOp.getStep().getDefiningOp<ConstantOp>();
+          if constexpr (AllowDynamicStop)
+            return startStepConstant;
+          else
+            return startStepConstant &&
+                   sliceOp.getStop().getDefiningOp<ConstantOp>();
         })) {
       return rewriter.notifyMatchFailure(
           op, "Start and step operands must be constants");
@@ -101,15 +108,52 @@ struct SliceToSplitPattern
           .getSExtValue();
     };
 
-    std::sort(sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
-      return getSliceValue(lhs.getStart()) < getSliceValue(rhs.getStop());
-    });
+    SmallVector<int64_t> splitSizes;
 
-    for (uint64_t i = 1; i < sliceOps.size(); ++i) {
-      if (getSliceValue(sliceOps[i].getStart()) <
-          getSliceValue(sliceOps[i - 1].getStop())) {
-        return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+    if constexpr (AllowDynamicStop) {
+      if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
+            return getSliceValue(sliceOp.getStep()) != 1;
+          })) {
+        return rewriter.notifyMatchFailure(op,
+                                           "Sliced dimension step must be 1");
       }
+
+      const auto sliceSize = [&](SliceOp sliceOp) {
+        return sliceOp.getType().getIntDim(sliceDimension);
+      };
+
+      std::sort(sliceOps.begin(), sliceOps.end(),
+                [&](SliceOp lhs, SliceOp rhs) {
+                  return getSliceValue(lhs.getStart()) <
+                         getSliceValue(rhs.getStart());
+                });
+
+      for (uint64_t i = 1; i < sliceOps.size(); ++i) {
+        if (getSliceValue(sliceOps[i].getStart()) <
+            getSliceValue(sliceOps[i - 1].getStart()) +
+                sliceSize(sliceOps[i - 1])) {
+          return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+        }
+      }
+
+      for (SliceOp sliceOp : sliceOps)
+        splitSizes.push_back(sliceSize(sliceOp));
+    } else {
+      std::sort(
+          sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
+            return getSliceValue(lhs.getStart()) < getSliceValue(rhs.getStop());
+          });
+
+      for (uint64_t i = 1; i < sliceOps.size(); ++i) {
+        if (getSliceValue(sliceOps[i].getStart()) <
+            getSliceValue(sliceOps[i - 1].getStop())) {
+          return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+        }
+      }
+
+      for (SliceOp sliceOp : sliceOps)
+        splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
+                             getSliceValue(sliceOp.getStart()));
     }
 
     Location loc = op.getLoc();
@@ -118,12 +162,6 @@ struct SliceToSplitPattern
     SmallVector<Type> splitTypes;
     for (SliceOp sliceOp : sliceOps)
       splitTypes.push_back(sliceOp.getType());
-
-    SmallVector<int64_t> splitSizes;
-    for (SliceOp sliceOp : sliceOps) {
-      splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
-                           getSliceValue(sliceOp.getStart()));
-    }
     auto splitSizesOp = rewriter.createHostConstant(loc, splitSizes);
 
     SmallVector<Value> originalSliceValues;

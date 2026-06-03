@@ -68,7 +68,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     // split ops created from adjacent slice pairs.
     {
       RewritePatternSet sliceToSplitPatterns{ctx};
-      sliceToSplitPatterns.add<SliceToSplitPattern>(ctx);
+      sliceToSplitPatterns.add<SliceToSplitPattern</*AllowDynamicStop=*/true>>(
+          ctx);
       if (failed(
               applyPatternsGreedily(graphOp, std::move(sliceToSplitPatterns))))
         return signalPassFailure();

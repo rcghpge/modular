@@ -193,3 +193,78 @@ mo.graph @rope_wrong_split_axis(
   %result = mo.add(%normed_cos, %rotated_sin) : !mo.tensor<[4, 4], f32, gpu:0>
   mo.output %result : !mo.tensor<[4, 4], f32, gpu:0>
 }
+
+// ============================================================
+// Text (positive) vs Vision (negative)
+//
+// The text decoder RoPE is rotate-half: split(normed) -> negate(x2) ->
+// concat(-x2, x1), so the fusion fires. The Gemma4 *vision* RoPE is
+// complex-multiplication: each split half is itself sliced into real/imag
+// parts (x[..., :h] / x[..., h:]) with no `negate` at all. Once
+// SliceToSplitPattern rewrites those complementary slices into a `mo.split`,
+// the RMSNorm output's split-half `x2` has exactly one use -- but that use is
+// a `mo.split`, not a `mo.negative`. The fusion must decline (and, crucially,
+// must not abort on an unchecked `cast<NegativeOp>`).
+// ============================================================
+
+// Text rotate-half RoPE: pattern fires.
+// CHECK-LABEL: mo.graph @rope_text_rotate_half
+// CHECK:       mo.reduce.rms_norm.RoPE
+mo.graph @rope_text_rotate_half<seq_len>(
+  %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
+  %weight:   !mo.tensor<[4], f32, gpu:0>,
+  %epsilon:  !mo.tensor<[], f32>,
+  %offset:   !mo.tensor<[], f32>,
+  %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
+  %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
+) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
+  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
+    {multiply_before_cast = false} :
+    (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
+     !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %x1, %x2 = mo.split(%normed, %split_sizes) {axis = 1 : index} :
+    (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
+    -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
+  %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
+  %rotated = mo.concat[1](%neg_x2, %x1) :
+    (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
+    -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %rotated_sin = mo.mul(%rotated, %sin_vals) : !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %result = mo.add(%normed_cos, %rotated_sin) : !mo.tensor<[seq_len, 4], f32, gpu:0>
+  mo.output %result : !mo.tensor<[seq_len, 4], f32, gpu:0>
+}
+
+// Vision RoPE shape: x2's single use is a split, not a negate. The pattern
+// must decline without aborting (regression test for the unchecked-cast fix).
+// CHECK-LABEL: mo.graph @rope_vision_split_user_not_negate
+// CHECK:       mo.reduce.rms_norm
+// CHECK-NOT:   mo.reduce.rms_norm.RoPE
+mo.graph @rope_vision_split_user_not_negate<seq_len>(
+  %input:   !mo.tensor<[seq_len, 4], f32, gpu:0>,
+  %weight:  !mo.tensor<[4], f32, gpu:0>,
+  %epsilon: !mo.tensor<[], f32>,
+  %offset:  !mo.tensor<[], f32>
+) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
+  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
+    {multiply_before_cast = false} :
+    (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
+     !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %x1, %x2 = mo.split(%normed, %split_sizes) {axis = 1 : index} :
+    (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
+    -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
+  // x2's single use is another split (real/imag halves), NOT a negate.
+  %inner_sizes = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %x_re, %x_im = mo.split(%x2, %inner_sizes) {axis = 1 : index} :
+    (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[2], si64>)
+    -> (!mo.tensor<[seq_len, 1], f32, gpu:0>, !mo.tensor<[seq_len, 1], f32, gpu:0>)
+  %x2_back = mo.concat[1](%x_im, %x_re) :
+    (!mo.tensor<[seq_len, 1], f32, gpu:0>, !mo.tensor<[seq_len, 1], f32, gpu:0>)
+    -> !mo.tensor<[seq_len, 2], f32, gpu:0>
+  %result = mo.concat[1](%x1, %x2_back) :
+    (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
+    -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  mo.output %result : !mo.tensor<[seq_len, 4], f32, gpu:0>
+}

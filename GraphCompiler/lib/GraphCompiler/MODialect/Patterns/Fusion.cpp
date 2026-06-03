@@ -3541,7 +3541,13 @@ struct ReduceRMSNormRoPEPattern
     // ---- 2. x2 must feed a NegativeOp ------------------------------------
     if (!x2.hasOneUse())
       return rewriter.notifyMatchFailure(rmsNormOp, "x2 has multiple uses");
-    auto negOp = cast<MO::NegativeOp>(*x2.getUsers().begin());
+    // x2 having a single use does not guarantee that use is a negate (e.g. the
+    // Gemma4 vision RoPE feeds the split halves elsewhere). dyn_cast + bail
+    // rather than an unchecked cast, which would abort on a non-negate user.
+    auto negOp = dyn_cast<MO::NegativeOp>(*x2.getUsers().begin());
+    if (!negOp)
+      return rewriter.notifyMatchFailure(rmsNormOp,
+                                         "x2's single use is not a negate");
 
     // ---- 3. neg(x2) and x1 feed a ConcatOp on the last axis -------------
     if (!negOp.getResult().hasOneUse()) {
