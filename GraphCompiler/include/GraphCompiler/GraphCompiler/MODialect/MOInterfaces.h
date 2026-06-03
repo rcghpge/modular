@@ -256,6 +256,15 @@ public:
   }
 };
 
+// Marks an op as a "composite" op: a dedicated MO op that represents a fused
+// subgraph produced (or directly emitted) for a pattern-matching fusion.
+// Composite ops live in the `mo.composite.*` namespace and exist to give
+// pattern-based fusions a typed, named result instead of an `mo.custom`. This
+// is a pure marker trait used to distinguish them from core MO operators.
+template <typename ConcreteType>
+class MOComposite : public mlir::OpTrait::TraitBase<ConcreteType, MOComposite> {
+};
+
 template <typename ConcreteType>
 class MOSingleDeviceWithHostOperands
     : public mlir::OpTrait::TraitBase<ConcreteType,

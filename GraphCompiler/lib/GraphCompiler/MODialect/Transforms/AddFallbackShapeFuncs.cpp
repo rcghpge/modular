@@ -75,8 +75,8 @@ HAS_FALLBACK(MO::ReduceGroupNormOp)
 HAS_FALLBACK(MO::LayerNormOp)
 HAS_FALLBACK(MO::ReduceMinAndMaxOp)
 HAS_FALLBACK(MO::ReduceRMSNormOp)
-HAS_FALLBACK(MO::ReduceRMSNormRoPEOp)
-HAS_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
+HAS_FALLBACK(MO::Composite::ReduceRMSNormRoPEOp)
+HAS_FALLBACK(MO::Composite::ReduceRMSNormFusedResidualAddOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MaxPoolCeilOp)
 HAS_FALLBACK(MO::MeanOp)
@@ -177,8 +177,8 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::LayerNormOp)
       CALL_FALLBACK(MO::ReduceMinAndMaxOp)
       CALL_FALLBACK(MO::ReduceRMSNormOp)
-      CALL_FALLBACK(MO::ReduceRMSNormRoPEOp)
-      CALL_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
+      CALL_FALLBACK(MO::Composite::ReduceRMSNormRoPEOp)
+      CALL_FALLBACK(MO::Composite::ReduceRMSNormFusedResidualAddOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MaxPoolCeilOp)
       CALL_FALLBACK(MO::MeanOp)
@@ -857,11 +857,10 @@ ErrorOrSuccess Fallback<MO::ReduceRMSNormOp>::build(GraphOp &graph,
   return success();
 }
 
-ErrorOrSuccess
-Fallback<MO::ReduceRMSNormRoPEOp>::build(GraphOp &graph, OpBuilder &builder,
-                                         MO::ReduceRMSNormRoPEOp op) {
+ErrorOrSuccess Fallback<MO::Composite::ReduceRMSNormRoPEOp>::build(
+    GraphOp &graph, OpBuilder &builder, MO::Composite::ReduceRMSNormRoPEOp op) {
   buildForOpResult(graph, builder, op,
-                   MO::ReduceRMSNormRoPEOp::getOperationName(),
+                   MO::Composite::ReduceRMSNormRoPEOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/
                    {{"multiply_before_cast", op.getMultiplyBeforeCastAttr()}},
@@ -892,15 +891,16 @@ Fallback<MO::ReduceMinAndMaxOp>::build(GraphOp &graph, OpBuilder &builder,
   return success();
 }
 
-ErrorOrSuccess Fallback<MO::ReduceRMSNormFusedResidualAddOp>::build(
+ErrorOrSuccess Fallback<MO::Composite::ReduceRMSNormFusedResidualAddOp>::build(
     GraphOp &graph, OpBuilder &builder,
-    MO::ReduceRMSNormFusedResidualAddOp op) {
+    MO::Composite::ReduceRMSNormFusedResidualAddOp op) {
   // Both output and intermediate have the same shape as input.
-  buildForOpResult(graph, builder, op.getOutput(),
-                   MO::ReduceRMSNormFusedResidualAddOp::getOperationName(),
-                   op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{});
+  buildForOpResult(
+      graph, builder, op.getOutput(),
+      MO::Composite::ReduceRMSNormFusedResidualAddOp::getOperationName(),
+      op.getOperands(), op.getOutputParamDecls(),
+      /*kgenParams=*/{},
+      /*dataDepInputIdxs=*/{});
   return success();
 }
 

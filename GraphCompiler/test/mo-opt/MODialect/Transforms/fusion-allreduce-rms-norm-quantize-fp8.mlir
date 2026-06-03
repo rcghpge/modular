@@ -2,7 +2,7 @@
 // `mo.bundled.allreduce.sum` followed (outside the parallel) by per-device
 // add + rms_norm + quantize_fp8 chains, and rewrites the parallel in one
 // step so its body contains the fused
-// `mo.bundled.allreduce_add_rms_norm_quant_fp8` op.
+// `mo.composite.bundled.allreduce_add_rms_norm_quant_fp8` op.
 // RUN: mo-opt %s --mogg-pattern-fusion \
 // RUN:   | FileCheck --enable-var-scope %s
 
@@ -112,7 +112,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
 // CHECK: mo.tensor.bundle
 // CHECK: mo.parallel
 // CHECK:   mo.bundled.expand
-// CHECK:   mo.bundled.allreduce_add_rms_norm_quant_fp8
+// CHECK:   mo.composite.bundled.allreduce_add_rms_norm_quant_fp8
 // CHECK:   mo.yield
 // CHECK-NOT: mo.bundled.allreduce.sum
 // CHECK-NOT: mo.reduce.rms_norm
@@ -233,7 +233,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
 // CHECK-LABEL: mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use
 // CHECK: mo.parallel
 // CHECK:   mo.bundled.expand
-// CHECK:   mo.bundled.allreduce_add_rms_norm_quant_fp8
+// CHECK:   mo.composite.bundled.allreduce_add_rms_norm_quant_fp8
 // CHECK:   mo.yield
 // CHECK: mo.tensor.unbundle
 // CHECK: mo.add

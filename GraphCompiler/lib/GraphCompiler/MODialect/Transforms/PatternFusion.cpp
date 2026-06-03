@@ -119,8 +119,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
       RewritePatternSet splitToSlicePatterns{ctx};
       splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
-      // MatmulAddPattern produces mo.fused_matmul_add which is only lowered on
-      // SM100 (B200). Match any SM100 variant (e.g. sm_100a).
+      // MatmulAddPattern produces mo.composite.matmul_add which is only lowered
+      // on SM100 (B200). Match any SM100 variant (e.g. sm_100a).
       if (effectiveArch.starts_with("sm_100"))
         MO::populateFusionMatmulAddPatterns(splitToSlicePatterns);
       if (failed(

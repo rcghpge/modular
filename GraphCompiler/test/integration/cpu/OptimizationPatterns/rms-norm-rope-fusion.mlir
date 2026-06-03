@@ -7,7 +7,7 @@
 
 // Basic RoPE on GPU, no casts.
 // CHECK-LABEL: mo.graph @rope_basic
-// CHECK:       mo.reduce.rms_norm.RoPE
+// CHECK:       mo.composite.rms_norm_rope
 mo.graph @rope_basic<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -37,7 +37,7 @@ mo.graph @rope_basic<seq_len>(
 
 // RoPE with commuted add operands (rotated*sin first, normed*cos second).
 // CHECK-LABEL: mo.graph @rope_commuted_add
-// CHECK:       mo.reduce.rms_norm.RoPE
+// CHECK:       mo.composite.rms_norm_rope
 mo.graph @rope_commuted_add<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -68,7 +68,7 @@ mo.graph @rope_commuted_add<seq_len>(
 
 // RoPE with multiply_before_cast = true.
 // CHECK-LABEL: mo.graph @rope_multiply_before_cast
-// CHECK:       mo.reduce.rms_norm.RoPE
+// CHECK:       mo.composite.rms_norm_rope
 mo.graph @rope_multiply_before_cast<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -103,7 +103,7 @@ mo.graph @rope_multiply_before_cast<seq_len>(
 // Wrong concat order: concat(x1, -x2) instead of concat(-x2, x1).
 // CHECK-LABEL: mo.graph @rope_wrong_concat_order
 // CHECK:       mo.reduce.rms_norm
-// CHECK-NOT:   mo.reduce.rms_norm.RoPE
+// CHECK-NOT:   mo.composite.rms_norm_rope
 mo.graph @rope_wrong_concat_order<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -135,7 +135,7 @@ mo.graph @rope_wrong_concat_order<seq_len>(
 // Missing mul(normed, cos) — add uses normed directly; pattern should not fire.
 // CHECK-LABEL: mo.graph @rope_missing_cos_mul
 // CHECK:       mo.reduce.rms_norm
-// CHECK-NOT:   mo.reduce.rms_norm.RoPE
+// CHECK-NOT:   mo.composite.rms_norm_rope
 mo.graph @rope_missing_cos_mul<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -165,7 +165,7 @@ mo.graph @rope_missing_cos_mul<seq_len>(
 // Split along axis 0 instead of the last axis: pattern should not fire.
 // CHECK-LABEL: mo.graph @rope_wrong_split_axis
 // CHECK:       mo.reduce.rms_norm
-// CHECK-NOT:   mo.reduce.rms_norm.RoPE
+// CHECK-NOT:   mo.composite.rms_norm_rope
 mo.graph @rope_wrong_split_axis(
   %input:    !mo.tensor<[4, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,

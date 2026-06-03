@@ -7,8 +7,7 @@
 
 // Basic GEMV + partial RMS norm fusion on GPU.
 // CHECK-LABEL: mo.graph @gemv_partial_rms_norm_basic
-// CHECK: mo.custom
-// CHECK-SAME: symbol = "mo.matmul_fused_partial_rms_norm"
+// CHECK: mo.composite.matmul_fused_partial_rms_norm
 // CHECK-NOT: mo.matmul
 // CHECK-NOT: mo.slice
 // CHECK-NOT: mo.reduce.rms_norm
@@ -55,7 +54,7 @@ mo.graph @gemv_partial_rms_norm_basic(
 // Wrong device (CPU) - pattern should not fire
 // CHECK-LABEL: mo.graph @cpu_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @cpu_not_fused(
   %x: !mo.tensor<[1, 1024], f32, cpu:0>,
   %W: !mo.tensor<[1024, 512], f32, cpu:0>,
@@ -91,7 +90,7 @@ mo.graph @cpu_not_fused(
 // M > 1 (not GEMV) - pattern should not fire
 // CHECK-LABEL: mo.graph @m_not_one_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @m_not_one_not_fused(
   %x: !mo.tensor<[4, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -127,7 +126,7 @@ mo.graph @m_not_one_not_fused(
 // Missing transpose_b - pattern should not fire
 // CHECK-LABEL: mo.graph @transpose_b_false_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @transpose_b_false_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -163,7 +162,7 @@ mo.graph @transpose_b_false_not_fused(
 // Non-unit step - pattern should not fire
 // CHECK-LABEL: mo.graph @non_unit_step_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @non_unit_step_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -201,7 +200,7 @@ mo.graph @non_unit_step_not_fused(
 // Missing unnormed slice - pattern should not fire
 // CHECK-LABEL: mo.graph @missing_unnormed_slice_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @missing_unnormed_slice_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -225,7 +224,7 @@ mo.graph @missing_unnormed_slice_not_fused(
 // Matmul has other user - pattern should not fire
 // CHECK-LABEL: mo.graph @matmul_has_other_user_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @matmul_has_other_user_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -264,7 +263,7 @@ mo.graph @matmul_has_other_user_not_fused(
 // Normed slice has other user - pattern should not fire
 // CHECK-LABEL: mo.graph @normed_slice_has_other_user_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @normed_slice_has_other_user_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -303,7 +302,7 @@ mo.graph @normed_slice_has_other_user_not_fused(
 // Non-constant slice bounds - pattern should not fire
 // CHECK-LABEL: mo.graph @non_constant_slice_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @non_constant_slice_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,
@@ -340,7 +339,7 @@ mo.graph @non_constant_slice_not_fused(
 // multiply_before_cast=false (Llama-style) - pattern should not fire
 // CHECK-LABEL: mo.graph @multiply_before_cast_false_not_fused
 // CHECK: mo.reduce.rms_norm
-// CHECK-NOT: mo.matmul_fused_partial_rms_norm
+// CHECK-NOT: matmul_fused_partial_rms_norm
 mo.graph @multiply_before_cast_false_not_fused(
   %x: !mo.tensor<[1, 1024], f32, gpu:0>,
   %W: !mo.tensor<[1024, 512], f32, gpu:0>,

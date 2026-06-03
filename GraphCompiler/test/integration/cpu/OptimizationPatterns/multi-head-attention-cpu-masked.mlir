@@ -50,7 +50,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2, RS6513>(
 // CHECK-SAME: [[MASK:%[a-zA-Z0-9_]*]]: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>)
 // CHECK-SAME: -> !mo.tensor<[1, 6, REFINE_S2, RS6513]
 // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V1:%.*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[QUERY]], [[KEYT]], [[VALUE]], [[MASK]], [[NORM]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>
+// CHECK-NEXT: [[V1:%.*]] = mo.composite.masked_flash_attention_cpu([[QUERY]], [[KEYT]], [[VALUE]], [[MASK]], [[NORM]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.transpose([[V1]], [[V0]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 // CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 
@@ -105,7 +105,7 @@ mo.graph @llama2_min_framework_cpu_mha_no_trigger<REFINE_S2, SUM_C1_S2, RS6513>(
 
 // The exact same as above, but without the fused op
 // CHECK: mo.graph @llama2_min_framework_cpu_mha_no_trigger
-// CHECK-NOT: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.masked_flash_attention_cpu
 
 // CHECK-MT: --- Running 'llama2_min_framework_cpu_mha_no_trigger':
 // CHECK-MT: [

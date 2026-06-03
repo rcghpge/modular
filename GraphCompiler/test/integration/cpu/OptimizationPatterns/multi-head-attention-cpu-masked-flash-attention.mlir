@@ -51,7 +51,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2>(
 // CHECK-SAME: [[MASK:%[a-zA-Z0-9_]*]]: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>)
 // CHECK-SAME: -> !mo.tensor<[1, 6, REFINE_S2, 64]
 // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V1:%.*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[QUERY]], [[KEYT]], [[VALUE]], [[MASK]], [[NORM]]) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, 64], f32>
+// CHECK-NEXT: [[V1:%.*]] = mo.composite.masked_flash_attention_cpu([[QUERY]], [[KEYT]], [[VALUE]], [[MASK]], [[NORM]]) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, 64], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.transpose([[V1]], [[V0]]) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, 64], f32>
 // CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[1, 6, REFINE_S2, 64], f32>
 
@@ -65,7 +65,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2>(
 
 mo.graph @llama2_min_framework_cpu_mha_gt<REFINE_S2, SUM_C1_S2>(%arg0: !mo.tensor<[1, REFINE_S2, 6, 64], f32>, %arg1: !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, %arg2: !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, 64], f32> {
     %0 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %1 = mo.custom {symbol = "with_mask_flash_attention_cpu", device = #M.device_ref<"cpu", 0>}(%arg0, %arg1, %arg2, %arg4, %arg3) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, 64], f32>
+    %1 = mo.composite.masked_flash_attention_cpu(%arg0, %arg1, %arg2, %arg4, %arg3) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, 64], f32>
     %2 = mo.transpose(%1, %0) : (!mo.tensor<[1, REFINE_S2, 6, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, 64], f32>
     mo.output %2 : !mo.tensor<[1, 6, REFINE_S2, 64], f32>
 }

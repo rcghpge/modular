@@ -470,6 +470,12 @@ def MO_HostOnly : MO_OpTrait<"MOHostOnly">;
 // Marks an op that executes on the host using tensors from any device.
 def MO_ExecutesOnHost : MO_OpTrait<"MOExecutesOnHost">;
 
+// Marks an op as a "composite" op: a dedicated MO op representing a fused
+// subgraph emitted for a pattern-matching fusion. Composite ops live in the
+// `mo.composite.*` namespace (see MOCompositeOps.td) and exist so fusions can
+// produce a typed, named op instead of an `mo.custom`.
+def MO_CompositeOpTrait : MO_OpTrait<"MOComposite">;
+
 // Helper to get the operand numbers for the given operand names.
 class getOperandNumbers<list<string> operandNames> {
   string ret = !interleave(!foreach(name, operandNames,

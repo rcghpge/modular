@@ -56,7 +56,7 @@ mo.graph @select_mask<SEQ, FIN_SEQ, DIM>(
 // CHECK-NEXT: [[V5:%.*]] = mo.not([[V3]]) : !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 // CHECK-NEXT: [[V6:%.*]] = mo.cast([[V5]]) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 // CHECK-NEXT: [[V7:%.*]] = mo.mul([[V4]], [[V6]]) : !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
-// CHECK-NEXT: [[V8:%.*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[VARG0]], [[VARG1]], [[VARG2]], [[V7]], [[VARG3]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, SEQ, 2, DIM], f32>
+// CHECK-NEXT: [[V8:%.*]] = mo.composite.masked_flash_attention_cpu([[VARG0]], [[VARG1]], [[VARG2]], [[V7]], [[VARG3]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, SEQ, 2, DIM], f32>
 // CHECK-NEXT: [[V9:%.*]] = mo.transpose([[V8]], [[V0]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, SEQ, DIM], f32>
 // CHECK-NEXT: mo.output [[V9]] : !mo.tensor<[1, 2, SEQ, DIM], f32>
 
@@ -127,7 +127,7 @@ mo.graph @select_mask_reverse<SEQ, FIN_SEQ, DIM>(
 // CHECK-NEXT: [[V4:%.*]] = mo.static.broadcast_to([[V1]]) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 // CHECK-NEXT: [[V5:%.*]] = mo.cast([[V3]]) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 // CHECK-NEXT: [[V6:%.*]] = mo.mul([[V4]], [[V5]]) : !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
-// CHECK-NEXT: [[V7:%.*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[VARG0]], [[VARG1]], [[VARG2]], [[V6]], [[VARG3]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, SEQ, 2, DIM], f32>
+// CHECK-NEXT: [[V7:%.*]] = mo.composite.masked_flash_attention_cpu([[VARG0]], [[VARG1]], [[VARG2]], [[V6]], [[VARG3]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, SEQ, 2, DIM], f32>
 // CHECK-NEXT: [[V8:%.*]] = mo.transpose([[V7]], [[V0]]) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, SEQ, DIM], f32>
 // CHECK-NEXT: mo.output [[V8]] : !mo.tensor<[1, 2, SEQ, DIM], f32>
 
@@ -179,7 +179,7 @@ mo.graph @select_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
 }
 // The exact same as above, but without the fused op
 // CHECK: mo.graph @select_mask_no_trigger
-// CHECK-NOT: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.masked_flash_attention_cpu
 
 // CHECK-MT: --- Running 'select_mask_no_trigger':
 // CHECK-MT: [

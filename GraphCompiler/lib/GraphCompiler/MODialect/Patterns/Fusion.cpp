@@ -2424,19 +2424,13 @@ struct MultiHeadAttentionPattern
 
     SmallVector<TypedAttr> mhaOutputShape =
         permute(initialOutputShape, permuteBHSD2BSHD);
-    SmallVector<Value> customOpInputs = {query, key, value};
-
-    if (matcher.hasAttentionMask()) {
-      customOpInputs.push_back(matcher.getAttentionMask());
-    }
-
     // Kernel expects FP32 scale
     auto normScalar = cast<TensorValue>(matcher.getNormScalar());
     TensorValue normScalarAsFP32 = rewriter.create<CastOp>(
         rootOp.getLoc(), normScalar.getType().cloneWith(DType::f32),
         normScalar);
 
-    // The scale operand to all variants of masked_flash_attention are scalar
+    // The scale operand to all variants of flash attention are scalar
     // values, which must always be on the host. If they are not present on
     // the host, transfer the value.
     if (!isOnHost(normScalarAsFP32.getDefiningOp())) {
@@ -2450,20 +2444,35 @@ struct MultiHeadAttentionPattern
               .getResult());
     }
 
-    customOpInputs.push_back(normScalarAsFP32);
-
-    StringRef kernelName;
+    // Replace the matched subgraph with the device/mask-specific composite op.
+    // Each is a 1:1 wrapper around an existing flash-attention kernel, so the
+    // op name alone selects the kernel (no dispatch in the graph compiler). The
+    // GPU attention fusion always carries a mask (see runAdditionalGPUChecks).
+    TensorType resultTy = rootOp.getType().cloneWith(mhaOutputShape);
+    TensorValue mhaResult;
     if (isCPUDevice) {
-      kernelName = matcher.hasAttentionMask() ? "with_mask_flash_attention_cpu"
-                                              : "no_mask_flash_attention_cpu";
+      if (matcher.hasAttentionMask())
+        mhaResult = cast<TensorValue>(
+            rewriter
+                .create<MO::Composite::MaskedFlashAttentionCPUOp>(
+                    rootOp.getLoc(), resultTy, query, key, value,
+                    matcher.getAttentionMask(), normScalarAsFP32)
+                .getResult());
+      else
+        mhaResult = cast<TensorValue>(
+            rewriter
+                .create<MO::Composite::NoMaskFlashAttentionCPUOp>(
+                    rootOp.getLoc(), resultTy, query, key, value,
+                    normScalarAsFP32)
+                .getResult());
     } else {
-      kernelName = "masked_flash_attention_gpu";
+      mhaResult = cast<TensorValue>(
+          rewriter
+              .create<MO::Composite::MaskedFlashAttentionGPUOp>(
+                  rootOp.getLoc(), resultTy, query, key, value,
+                  matcher.getAttentionMask(), normScalarAsFP32)
+              .getResult());
     }
-
-    auto customOp = rewriter.create<CustomOp>(
-        rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},
-        customOpInputs, StringAttr::get(getContext(), kernelName));
-    auto mhaResult = cast<TensorValue>(customOp.getResult(0));
 
     // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.
     //
@@ -2741,10 +2750,12 @@ struct RMSNormFusedResidualAddPattern
     // The fused operation returns two outputs: [output, intermediate]
     // where output = rms_norm(rms_norm(input) + residual)
     // and intermediate = rms_norm(input) + residual
-    auto fusedOp = rewriter.create<MO::ReduceRMSNormFusedResidualAddOp>(
-        op.getLoc(), op.getResult().getType(), addOp.getResult().getType(),
-        originalInput, residualInput, gamma1, gamma2, eps1, eps2, weightOffset1,
-        weightOffset2, multiplyBeforeCast.getValue(), op.getOutputParamDecls());
+    auto fusedOp =
+        rewriter.create<MO::Composite::ReduceRMSNormFusedResidualAddOp>(
+            op.getLoc(), op.getResult().getType(), addOp.getResult().getType(),
+            originalInput, residualInput, gamma1, gamma2, eps1, eps2,
+            weightOffset1, weightOffset2, multiplyBeforeCast.getValue(),
+            op.getOutputParamDecls());
 
     // Replace the outer rms_norm with the first output of the fused operation
     rewriter.replaceOp(op, fusedOp.getOutput());
@@ -2815,7 +2826,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!rmsNormOp.getMultiplyBeforeCast())
       return rewriter.notifyMatchFailure(op, "multiply_before_cast required");
 
-    // Otherwise only fuse the RMSNorm + Quant.
+    // Otherwise only fuse the RMSNorm + Quant into a dedicated composite op.
     SmallVector<Value> fusedOperands = {
         rmsNormOp.getInput(),        // rms_norm.input
         rmsNormOp.getWeight(),       // rms_norm.gamma
@@ -2824,11 +2835,9 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
         op.getOperand(1),            // quantize.scale_ub
     };
 
-    rewriter.replaceOpWithNewOp<MO::CustomOp>(
-        op, op.getResultTypes(), fusedOperands,
-        StringAttr::get(getContext(),
-                        "rms_norm_fused_quantize_dynamic_scaled_fp8"),
-        op.getDevice());
+    rewriter.replaceOpWithNewOp<
+        MO::Composite::RMSNormFusedQuantizeDynamicScaledFP8Op>(
+        op, op.getResultTypes(), fusedOperands);
 
     return mlir::success();
   }
@@ -2964,20 +2973,21 @@ public:
 
     // Build the op
 
-    auto allReduceFusedOp = MO::AllReduceAddRMSNormQuantFP8Op::create(
-        builder, allReduceOp.getLoc(),
-        /*output=*/outputTypes,
-        /*outScale=*/outScaleTypes,
-        /*outResidual=*/outResidualTypes,
-        /*outChain=*/allReduceOp.getOutChain().getType(),
-        /*inputs=*/allReduceOp.getInputs(),
-        /*signalBuffers=*/allReduceOp.getSignalBuffers(),
-        /*residual=*/residualOperands,
-        /*gamma=*/gammaOperands,
-        /*epsilon=*/epsilonOperands,
-        /*weightOffset=*/weightOffsetOperands,
-        /*scaleUb=*/scaleUbOperands,
-        /*inChain=*/allReduceOp.getInChain());
+    auto allReduceFusedOp =
+        MO::Composite::AllReduceAddRMSNormQuantFP8Op::create(
+            builder, allReduceOp.getLoc(),
+            /*output=*/outputTypes,
+            /*outScale=*/outScaleTypes,
+            /*outResidual=*/outResidualTypes,
+            /*outChain=*/allReduceOp.getOutChain().getType(),
+            /*inputs=*/allReduceOp.getInputs(),
+            /*signalBuffers=*/allReduceOp.getSignalBuffers(),
+            /*residual=*/residualOperands,
+            /*gamma=*/gammaOperands,
+            /*epsilon=*/epsilonOperands,
+            /*weightOffset=*/weightOffsetOperands,
+            /*scaleUb=*/scaleUbOperands,
+            /*inChain=*/allReduceOp.getInChain());
 
     // Replace the original outputs with the new op.
     // Replace the output chain.
@@ -3346,7 +3356,7 @@ private:
       fusedSignals.push_back(mapping.lookupOrDefault(sig));
     Value fusedChain = mapping.lookupOrDefault(allReduceOp.getInChain());
 
-    auto fusedOp = MO::BundledAllReduceAddRMSNormQuantFP8Op::create(
+    auto fusedOp = MO::Composite::BundledAllReduceAddRMSNormQuantFP8Op::create(
         bodyBuilder, allReduceOp.getLoc(),
         /*output=*/quantizeOps[0].getResult(0).getType(),
         /*outScale=*/quantizeOps[0].getResult(1).getType(),
@@ -3470,7 +3480,7 @@ static MO::AddOp followToAdd(Value v, SmallVectorImpl<Operation *> &chain) {
 ///   rotated = concat(-x2, x1, axis=-1)
 ///   result  = normed * cos + rotated * sin   (with optional up/downcasts)
 ///
-/// into a single mo.reduce.rms_norm.RoPE op.
+/// into a single mo.composite.rms_norm_rope op.
 ///
 /// The split must be a SplitOp (created by SliceToSplitPattern).
 /// Between casts and muls, and between muls and the add, there may be chains
@@ -3698,7 +3708,7 @@ struct ReduceRMSNormRoPEPattern
     auto outputTy = downcastOp ? downcastOp.getResult().getType()
                                : cast<MO::TensorType>(addResult.getType());
 
-    auto fusedOp = rewriter.create<MO::ReduceRMSNormRoPEOp>(
+    auto fusedOp = rewriter.create<MO::Composite::ReduceRMSNormRoPEOp>(
         rmsNormOp.getLoc(), outputTy, rmsNormOp.getInput(),
         rmsNormOp.getWeight(), rmsNormOp.getEpsilon(),
         rmsNormOp.getWeightOffset(), cosVals, sinVals,
@@ -3908,7 +3918,7 @@ struct MatmulAddPattern
           residual.getLoc(), matmulOp.getResult().getType(), residual);
     }
 
-    Value newOutput = rewriter.create<MO::FusedMatmulAddOp>(
+    Value newOutput = rewriter.create<MO::Composite::FusedMatmulAddOp>(
         addOp.getLoc(), matmulOp.getResult().getType(), matmulOp.getInputA(),
         matmulOp.getInputB(), residual,
         rewriter.getBoolAttr(matmulOp.getTransposeB()));
@@ -4055,26 +4065,17 @@ struct MatmulFusedPartialRMSNormPattern
     auto normedResultTy = rmsNormOp.getResult().getType();
     auto unnormedResultTy = cast<MO::TensorType>(unnormedOutput.getType());
 
-    SmallVector<Value> customOpInputs = {
-        matmulOp.getInputA(),       // input (x)
-        matmulOp.getInputB(),       // weight (W)
-        rmsNormOp.getWeight(),      // gamma
-        rmsNormOp.getEpsilon(),     // epsilon
-        rmsNormOp.getWeightOffset() // weight_offset
-    };
-
-    SmallVector<Type> customOpResultTypes = {normedResultTy, unnormedResultTy};
-
-    // Create the fused custom op. The kernel hardcodes
+    // Create the fused composite op. The kernel hardcodes
     // multiply_before_cast=True and transpose_b=True, so we don't need to pass
     // these as attributes.
-    auto fusedOp = rewriter.create<MO::CustomOp>(
-        rmsNormOp->getLoc(), customOpResultTypes, customOpInputs,
-        StringAttr::get(getContext(), "mo.matmul_fused_partial_rms_norm"));
+    auto fusedOp = rewriter.create<MO::Composite::MatmulFusedPartialRMSNormOp>(
+        rmsNormOp->getLoc(), normedResultTy, unnormedResultTy,
+        matmulOp.getInputA(), matmulOp.getInputB(), rmsNormOp.getWeight(),
+        rmsNormOp.getEpsilon(), rmsNormOp.getWeightOffset());
 
     // Replace uses - CSE will clean up unused ops
-    rewriter.replaceAllUsesWith(rmsNormOp.getResult(), fusedOp.getResult(0));
-    rewriter.replaceAllUsesWith(unnormedOutput, fusedOp.getResult(1));
+    rewriter.replaceAllUsesWith(rmsNormOp.getResult(), fusedOp.getNormed());
+    rewriter.replaceAllUsesWith(unnormedOutput, fusedOp.getUnnormed());
 
     return mlir::success();
   }
@@ -4136,7 +4137,7 @@ struct ConcatSlicePattern
     auto startsAttr = rewriter.rewriter.getI64ArrayAttr(*startValues);
     auto stepsAttr = rewriter.rewriter.getI64ArrayAttr(*stepValues);
 
-    auto fusedOp = rewriter.create<MO::FusedConcatSliceOp>(
+    auto fusedOp = rewriter.create<MO::Composite::FusedConcatSliceOp>(
         sliceOp->getLoc(), concatOp.getResult().getType(),
         sliceOp.getResult().getType(), concatOp.getAxisAttr().getValue(),
         concatOp.getInputs(), startsAttr, stepsAttr,

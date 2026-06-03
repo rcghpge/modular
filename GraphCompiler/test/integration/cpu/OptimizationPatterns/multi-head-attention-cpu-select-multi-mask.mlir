@@ -51,7 +51,7 @@ mo.graph @select_add_mask<SEQ, FIN_SEQ, DIM>(
     mo.output %answer: !mo.tensor<[1, 2, SEQ, DIM], f32>
 }
 // CHECK-LABEL: mo.graph @select_add_mask<SEQ, FIN_SEQ, DIM>
-// CHECK: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK: mo.composite.masked_flash_attention_cpu
 
 
 // Golden output generated from disabling the pattern.
@@ -106,7 +106,7 @@ mo.graph @add_select_mask<SEQ, FIN_SEQ, DIM>(
     mo.output %answer: !mo.tensor<[1, 2, SEQ, DIM], f32>
 }
 // CHECK-LABEL: mo.graph @add_select_mask<SEQ, FIN_SEQ, DIM>
-// CHECK: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK: mo.composite.masked_flash_attention_cpu
 
 // CHECK-MT: --- Running 'add_select_mask':
 // CHECK-MT: [
@@ -162,7 +162,7 @@ mo.graph @select_add_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
 }
 // The exact same as above, but without the fused op
 // CHECK: mo.graph @select_add_mask_no_trigger
-// CHECK-NOT: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.masked_flash_attention_cpu
 
 // CHECK-MT: --- Running 'select_add_mask_no_trigger':
 // CHECK-MT: [

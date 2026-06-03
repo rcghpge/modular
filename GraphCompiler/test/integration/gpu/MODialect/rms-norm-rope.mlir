@@ -16,7 +16,7 @@ mo.graph @rms_norm_rope_gpu() -> !mo.tensor<[2, 4], f32> {
   %cos_vals = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0> : tensor<2x4xf32>} : !mo.tensor<[2, 4], f32, gpu:0>
   %sin_vals = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<2x4xf32>} : !mo.tensor<[2, 4], f32, gpu:0>
 
-  %result = mo.reduce.rms_norm.RoPE(%input, %weight, %epsilon, %offset, %cos_vals, %sin_vals)
+  %result = mo.composite.rms_norm_rope(%input, %weight, %epsilon, %offset, %cos_vals, %sin_vals)
     {multiply_before_cast = false} :
     (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>,

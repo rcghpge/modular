@@ -2,7 +2,7 @@
 // and fail gracefully
 // RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
 
-// CHECK-NOT: mo.custom {symbol = "no_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.no_mask_flash_attention_cpu
 mo.graph @cpu_flash_attn_pattern<BH, B, H, S, D>(
     %attn_mat: !mo.tensor<[BH, S, S], f32>,
     %value_pre_transposed: !mo.tensor<[B, S, H, D], f32>,

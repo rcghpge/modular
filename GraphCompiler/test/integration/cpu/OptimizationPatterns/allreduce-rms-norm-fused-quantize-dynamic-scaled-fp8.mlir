@@ -54,7 +54,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
 }
 
 // CHECK-LABEL: mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8
-// CHECK: mo.distributed.allreduce_add_rms_norm_quant_fp8(
+// CHECK: mo.composite.distributed.allreduce_add_rms_norm_quant_fp8(
 
 mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq_len>(
   %input0: !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>,
@@ -120,7 +120,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
     mo.output %norm_quant0#0, %norm_quant1#0, %norm_quant2#0, %norm_quant3#0, %out0, %out1, %out2, %out3, %out_chain : !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:0>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:1>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:2>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:3>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.chain
 }
 // CHECK-LABEL: mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use
-// CHECK: %[[OUTS_V:.*]]:4, %[[OUTS_S:.*]]:4, %[[OUTS_R:.*]]:4, %[[OUT0_C:.*]] = mo.distributed.allreduce_add_rms_norm_quant_fp8(
+// CHECK: %[[OUTS_V:.*]]:4, %[[OUTS_S:.*]]:4, %[[OUTS_R:.*]]:4, %[[OUT0_C:.*]] = mo.composite.distributed.allreduce_add_rms_norm_quant_fp8(
 // CHECK: %[[OUT0:.*]] = mo.add(%{{.*}}, %[[OUTS_R]]#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
 // CHECK: %[[OUT1:.*]] = mo.add(%{{.*}}, %[[OUTS_R]]#1) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
 // CHECK: %[[OUT2:.*]] = mo.add(%{{.*}}, %[[OUTS_R]]#2) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>

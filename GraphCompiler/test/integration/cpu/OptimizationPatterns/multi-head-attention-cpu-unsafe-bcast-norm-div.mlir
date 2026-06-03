@@ -47,5 +47,5 @@ mo.graph @unsafe_bcast_norm_using_div<B, S, KV_S, H, D, BCAST1>(
 // CHECK-ALLOW-BCAST-NEXT: [[V2:%.[a-zA-Z0-9_]*]] = mo.cast([[V0]]) : (!mo.tensor<[], f64>) -> !mo.tensor<[], f32>
 // CHECK-ALLOW-BCAST-NEXT: [[V3:%.[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[V2]]) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
 // CHECK-ALLOW-BCAST-NEXT: [[V4:%.[a-zA-Z0-9_]*]] = mo.div([[V3]], [[VARG3]]) : !mo.tensor<[], f32
-// CHECK-ALLOW-BCAST-NEXT: [[V5:[^ ]*]] = mo.custom {symbol = "no_mask_flash_attention_cpu"}([[VARG0]], [[VARG1]], [[VARG2]], [[V4]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, KV_S, H, D], f32>, !mo.tensor<[BCAST1, KV_S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[BCAST1, S, H, D], f32>
+// CHECK-ALLOW-BCAST-NEXT: [[V5:[^ ]*]] = mo.composite.no_mask_flash_attention_cpu([[VARG0]], [[VARG1]], [[VARG2]], [[V4]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, KV_S, H, D], f32>, !mo.tensor<[BCAST1, KV_S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[BCAST1, S, H, D], f32>
 // CHECK-ALLOW-BCAST-NEXT: mo.output [[V5]] : !mo.tensor<[BCAST1, S, H, D], f32>

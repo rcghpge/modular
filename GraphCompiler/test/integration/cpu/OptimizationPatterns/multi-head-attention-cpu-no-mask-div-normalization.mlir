@@ -57,7 +57,7 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
 // CHECK-NEXT: [[V3:%.[a-zA-Z0-9_]*]] = mo.cast([[V0]]) : (!mo.tensor<[], f64>) -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V4:%.[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[V3]]) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V5:%.[a-zA-Z0-9_]*]] = mo.div([[V4]], [[V2]]) : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V6:%.[a-zA-Z0-9_]*]] = mo.custom {symbol = "no_mask_flash_attention_cpu"}([[QUERY]], [[KEYT]], [[VALUE]], [[V5]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[B, S, H, D], f32>
+// CHECK-NEXT: [[V6:%.[a-zA-Z0-9_]*]] = mo.composite.no_mask_flash_attention_cpu([[QUERY]], [[KEYT]], [[VALUE]], [[V5]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[B, S, H, D], f32>
 // CHECK-NEXT: [[V7:%.*]] = mo.transpose([[V6]], [[V1]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, S, D], f32>
 // CHECK-NEXT: mo.output [[V7]] : !mo.tensor<[B, H, S, D], f32>
 
@@ -106,7 +106,7 @@ mo.graph @cpu_flash_attn_not_pattern<B, H, S, D> (
 
 // The exact same as above, but without the fused op
 // CHECK: mo.graph @cpu_flash_attn_not_pattern
-// CHECK-NOT: mo.custom {symbol = "no_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.no_mask_flash_attention_cpu
 
 // CHECK-MT: --- Running 'cpu_flash_attn_not_pattern':
 // CHECK-MT: [

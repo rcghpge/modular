@@ -13,7 +13,7 @@ mo.graph @rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
   mo.output %norm_quant#0, %norm_quant#1 : !mo.tensor<[total_seq_len, 10], f8e4m3fn, gpu:0>, !mo.tensor<[1, total_seq_len], bf16, gpu:0>
 }
 // CHECK-LABEL: mo.graph @rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>
-// CHECK: "rms_norm_fused_quantize_dynamic_scaled_fp8"
+// CHECK: mo.composite.rms_norm_fused_quantize_dynamic_scaled_fp8
 
 mo.graph @rms_norm_quantize_dynamic_scaled_fp8_tokenwise<total_seq_len>(
   %input: !mo.tensor<[total_seq_len, 10], bf16, gpu:0>,
@@ -27,7 +27,7 @@ mo.graph @rms_norm_quantize_dynamic_scaled_fp8_tokenwise<total_seq_len>(
   mo.output %norm_quant#0, %norm_quant#1 : !mo.tensor<[total_seq_len, 10], f8e4m3fn, gpu:0>, !mo.tensor<[1, total_seq_len], bf16, gpu:0>
 }
 // CHECK-LABEL: mo.graph @rms_norm_quantize_dynamic_scaled_fp8_tokenwise<total_seq_len>
-// CHECK: "rms_norm_fused_quantize_dynamic_scaled_fp8"
+// CHECK: mo.composite.rms_norm_fused_quantize_dynamic_scaled_fp8
 
 // multiply_before_cast = true is explicit, so this pattern matches.
 mo.graph @rms_norm_quantize_dynamic_scaled_fp8_multiply_before_cast_missing<total_seq_len>(
@@ -42,7 +42,7 @@ mo.graph @rms_norm_quantize_dynamic_scaled_fp8_multiply_before_cast_missing<tota
   mo.output %norm_quant#0, %norm_quant#1 : !mo.tensor<[total_seq_len, 10], f8e4m3fn, gpu:0>, !mo.tensor<[1, total_seq_len], bf16, gpu:0>
 }
 // CHECK-LABEL: mo.graph @rms_norm_quantize_dynamic_scaled_fp8_multiply_before_cast_missing<total_seq_len>
-// CHECK: "rms_norm_fused_quantize_dynamic_scaled_fp8"
+// CHECK: mo.composite.rms_norm_fused_quantize_dynamic_scaled_fp8
 
 mo.graph @rms_norm_quantize_dynamic_scaled_fp8_device_wrong<total_seq_len>(
   %input: !mo.tensor<[total_seq_len, 10], bf16, cpu:0>,

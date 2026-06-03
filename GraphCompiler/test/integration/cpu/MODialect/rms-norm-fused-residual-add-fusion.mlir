@@ -20,5 +20,5 @@ mo.graph @rms_norm_fused_residual_add() -> !mo.tensor<[3, 2], f32> {
 
 // CHECK-MT: 'rms_norm_fused_residual_add' returned tensor<3x2xf32> [2.1796{{[0-9]*}}e+00, 7.3139{{[0-9]*}}e+00, 4.6759{{[0-9]*}}e+00, 8.7830{{[0-9]*}}e+00, 6.8252{{[0-9]*}}e+00, 1.0572{{[0-9]*}}e+01]
 // CHECK-NOT-IR: "mgp.generic.execute"{{.*}}dSummary = {{.*}}"mo.reduce.rms_norm{{.*}}+mo.add{{.*}}
-// CHECK-IR: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.reduce.rms_norm_fused_residual_add{{.*}}
+// CHECK-IR: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.composite.rms_norm_fused_residual_add{{.*}}
 // CHECK-NOT-IR: "mgp.generic.execute"{{.*}}dSummary = {{.*}}"mo.reduce.rms_norm{{.*}}+mo.add{{.*}}

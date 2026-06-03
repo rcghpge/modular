@@ -11,5 +11,6 @@ include "GraphCompiler/GraphCompiler/MODialect/MODialect.td"
 include "GraphCompiler/GraphCompiler/MODialect/MOTypes.td"
 include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.td"
 include "GraphCompiler/GraphCompiler/MODialect/MOOps.td"
+include "GraphCompiler/GraphCompiler/MODialect/MOCompositeOps.td"
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MO_TD

@@ -1,7 +1,7 @@
 // RUN: mo-opt --mogg-pattern-fusion %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: @multihead_flash_attention_rank3_mask
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // Checks if bcasting a mask of rank 3 works with the pattern
 mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
   %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
@@ -35,7 +35,7 @@ mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128
 }
 
 // CHECK-LABEL: @multihead_flash_attention_rank4_mask
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // Checks if bcasting a mask of rank 4 works with the pattern
 mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
   %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
@@ -70,7 +70,7 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
 
 // Make sure supports BF16 pattern which usually has some random casts inserted
 // CHECK-LABEL: @multihead_flash_attention_rank4_mask_bf16_with_casts
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // CHECK-SAME: !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>, !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>, !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>,
 // CHECK-SAME: !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
 // Checks if bcasting a mask of rank 4 works with the pattern
@@ -111,7 +111,7 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
 
 // Check the pattern and replacement with the custom op doesn't "absorb" the transpose
 // CHECK-LABEL: @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // Because we don't absorb the transpose, we have two transpose:
 //  - a new transpose to transform BHSD -> BSDH
 //  - the old unabsorbed transpose
@@ -156,7 +156,7 @@ mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose()
 
 // Make sure we have the custom operator and the K and V have head dimension 8
 // CHECK-LABEL: @multihead_flash_attention_rank4_mask
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // CHECK-SAME: (
 // CHECK-SAME: !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>,
 // CHECK-SAME: !mo.tensor<[1, 1024, 8, 128], f32, gpu:0>,
@@ -211,7 +211,7 @@ mo.graph @multihead_flash_attention_rank4_mask_with_gqa() -> !mo.tensor<[1, 1024
 // We should have some runtime checks before and after the flash attention kernel
 // due to extraneous reshapes/bcasts
 
-// CHECK: mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}
+// CHECK: mo.composite.masked_flash_attention_gpu
 // CHECK: kgen.param.declare MHA_ROOT_TRANSPOSE_BCAST_OR_RESHAPE_CHECK
 // CHECK: kgen.param.declare MHA_ROOT_TRANSPOSE_BCAST_OR_RESHAPE_CHECK
 // CHECK: kgen.param.declare MHA_ROOT_TRANSPOSE_BCAST_OR_RESHAPE_CHECK

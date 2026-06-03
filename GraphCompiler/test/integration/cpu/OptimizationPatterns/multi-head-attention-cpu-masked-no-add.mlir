@@ -41,7 +41,7 @@ mo.graph @mha_masked_no_norm<REFINE_S2, SUM_C1_S2, RS6513>(
 // CHECK: mo.graph @mha_masked_no_norm<REFINE_S2, SUM_C1_S2, RS6513>([[VARG0:%.*]]: !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, [[VARG1:%.*]]: !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, [[VARG2:%.*]]: !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, [[VARG3:%.*]]: !mo.tensor<[], f32>, [[VARG4:%.*]]: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32> {
 // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V2:%.*]] = mo.custom {symbol = "with_mask_flash_attention_cpu"}([[VARG0]], [[VARG1]], [[VARG2]], [[VARG4]], [[V1]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>
+// CHECK-NEXT: [[V2:%.*]] = mo.composite.masked_flash_attention_cpu([[VARG0]], [[VARG1]], [[VARG2]], [[VARG4]], [[V1]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>
 // CHECK-NEXT: [[V3:%.*]] = mo.transpose([[V2]], [[V0]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 // mo.output [[V3]] : !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 
@@ -91,7 +91,7 @@ mo.graph @mha_masked_no_norm_wrong_device<REFINE_S2, SUM_C1_S2, RS6513>(
 }
 // The exact same as above, but without the fused op
 // CHECK: mo.graph @mha_masked_no_norm_wrong_device
-// CHECK-NOT: mo.custom {symbol = "with_mask_flash_attention_cpu"}
+// CHECK-NOT: mo.composite.masked_flash_attention_cpu
 
 // CHECK-MT: --- Running 'mha_masked_no_norm_wrong_device':
 // CHECK-MT: [

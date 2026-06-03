@@ -3321,7 +3321,7 @@ void BundledAllReduceSumOp::getEffects(
 // BundledAllReduceAddRMSNormQuantFP8Op
 //===----------------------------------------------------------------------===//
 
-void BundledAllReduceAddRMSNormQuantFP8Op::getEffects(
+void Composite::BundledAllReduceAddRMSNormQuantFP8Op::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   for (auto &sig : getSignalBuffersMutable())
     effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
@@ -3761,7 +3761,7 @@ void DistributedBroadcastOp::getEffects(
 // AllReduceAddRMSNormQuantFP8Op
 //===----------------------------------------------------------------------===//
 
-void AllReduceAddRMSNormQuantFP8Op::getEffects(
+void Composite::AllReduceAddRMSNormQuantFP8Op::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   MutableOperandRange signalBuffers = getSignalBuffersMutable();
 
@@ -3773,12 +3773,12 @@ void AllReduceAddRMSNormQuantFP8Op::getEffects(
 // ReduceRMSNormRoPEOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReduceRMSNormRoPEOp::verify() {
+LogicalResult Composite::ReduceRMSNormRoPEOp::verify() {
   auto inputTy = cast<TensorType>(getInput().getType());
   if (!inputTy.getDeviceRef())
     return emitOpError("input must be on a device");
   if (inputTy.getDeviceRef().getLabel() != M::kGPULabel)
-    return emitOpError("mo.reduce.rms_norm.RoPE is only supported on GPU");
+    return emitOpError("mo.composite.rms_norm_rope is only supported on GPU");
   return success();
 }
 

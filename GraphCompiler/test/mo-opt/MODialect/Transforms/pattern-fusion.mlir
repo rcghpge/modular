@@ -81,7 +81,7 @@ mo.graph @matmul_transpose_b_indirect_constant_weight(%input: !mo.tensor<[1000, 
 
 // CHECK-LABEL: mo.graph @batch_matmul_scale_on_gpu
 // CHECK: %[[SCALE:.*]], %{{.*}} = mo.transfer
-// CHECK: %[[RESULT:.*]] = mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "masked_flash_attention_gpu"}(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[SCALE]])
+// CHECK: %[[RESULT:.*]] = mo.composite.masked_flash_attention_gpu(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[SCALE]])
 // CHECK: mo.output %[[RESULT]]
 mo.graph @batch_matmul_scale_on_gpu<batch, seq_len>(
   %arg1: !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>,
