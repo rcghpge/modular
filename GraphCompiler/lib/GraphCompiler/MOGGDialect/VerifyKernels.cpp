@@ -450,6 +450,40 @@ LogicalResult declVerifyElementwiseFunction(KernelDeclOp decl,
   return success();
 }
 
+LogicalResult
+declVerifyTileElementwiseFunction(KernelDeclOp decl,
+                                  const KernelDeclAdaptor &adaptor) {
+  if (!adaptor.tileElementwiseFunction.has_value())
+    return success();
+
+  const KernelDeclFunctionAdaptor &fn = *adaptor.tileElementwiseFunction;
+
+  auto sig = fn.attr.getSignature();
+  if (sig.isThrows())
+    return decl->emitError() << "Tile elementwise kernels can't throw";
+
+  if (!fn.outputArguments.empty())
+    return decl->emitError()
+           << "Tile elementwise kernels must return a TileTensor value";
+  if (!fn.outputResult.has_value() || !fn.outputResult->isTileType())
+    return decl->emitError()
+           << "Tile elementwise kernels must return a TileTensor value";
+
+  size_t operandsCount = 0;
+  for (const auto &arg : fn.inputArguments) {
+    ++operandsCount;
+    if (!arg.isTileType())
+      return decl->emitError()
+             << "Tile elementwise kernels must have TileTensor operands";
+  }
+
+  if (!operandsCount)
+    return decl->emitError()
+           << "Tile elementwise kernels must have at least one operand";
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
@@ -466,9 +500,13 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
               .failed())
         continue;
 
-      // Elementwise-only kernels: verify only the elementwise function.
+      // Elementwise-only kernels: verify elementwise function(s).
       if (!adaptor.executeFunction.has_value()) {
         if (setFlagIfFailed(failed, declVerifyElementwiseFunction, decl,
+                            adaptor)
+                .failed())
+          continue;
+        if (setFlagIfFailed(failed, declVerifyTileElementwiseFunction, decl,
                             adaptor)
                 .failed())
           continue;

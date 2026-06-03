@@ -75,11 +75,18 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
                                                         kParameterSize};
   static constexpr llvm::StringLiteral kIndexListParams[] = {
       kParameterSize, kParameterElementType};
+  static constexpr llvm::StringLiteral kTileTensorParams[] = {
+      kParameterMut,         kParameterDType,        kParameterLayoutType,
+      kParameterOrigin,      kParameterAddressSpace, kParameterLinearIdxType,
+      kParameterElementSize, "origin_mut",
+  };
   auto leaf = symbol.getLeafReference().strref();
   if (leaf == kLeafSIMD)
     return kSimdParams;
   if (leaf == kLeafIndexList)
     return kIndexListParams;
+  if (leaf == kLeafTileTensor)
+    return kTileTensorParams;
   return {};
 }
 
@@ -279,10 +286,11 @@ struct ScannedKernel {
   mlir::StringAttr registration;
   mlir::StringAttr mojoName;
   KGEN::LIT::FnOp executeFn;
-  KGEN::LIT::FnOp shapeFn;       // may be null
-  KGEN::LIT::FnOp elementwiseFn; // may be null
-  KGEN::LIT::FnOp updateViewFn;  // may be null; only present on view kernels
-  KGEN::LIT::FnOp buildGraphFn;  // may be null
+  KGEN::LIT::FnOp shapeFn;           // may be null
+  KGEN::LIT::FnOp elementwiseFn;     // SIMD overload, may be null
+  KGEN::LIT::FnOp tileElementwiseFn; // TileTensor overload, may be null
+  KGEN::LIT::FnOp updateViewFn; // may be null; only present on view kernels
+  KGEN::LIT::FnOp buildGraphFn; // may be null
 };
 
 /// One primitive (non-struct) function found while scanning.
@@ -335,9 +343,30 @@ static mlir::LogicalResult scanForKernelDecls(
             kernel.executeFn = func;
           else if (srcName == kMoggShapeFuncName)
             kernel.shapeFn = func;
-          else if (srcName == kMoggElementwiseFuncName)
-            kernel.elementwiseFn = func;
-          else if (srcName == kMoggUpdateViewFuncName)
+          else if (srcName == kMoggElementwiseFuncName) {
+            // Route to SIMD or TileTensor slot based on return type leaf name.
+            // Unwrap LIT::RefType sugar first, matching the pattern used in
+            // computeValueParams, since parameterised return types may be
+            // wrapped in a reference at the function definition site.
+            bool isTile = false;
+            auto checkLeaf = [&](mlir::Type ty) -> bool {
+              if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty))
+                ty = ref.getElementType();
+              if (auto st = KGEN::sugarDynCast<KGEN::LIT::StructType>(ty))
+                return st.getSymbol().getLeafReference() == kLeafTileTensor;
+              return false;
+            };
+            if (!func.getResultTypes().empty())
+              isTile = checkLeaf(func.getResultTypes().front());
+            // Fallback: check first argument type in case the result type is
+            // a generator that does not resolve to a StructType directly.
+            if (!isTile && !func.getArgumentTypes().empty())
+              isTile = checkLeaf(func.getArgumentTypes().front());
+            if (isTile)
+              kernel.tileElementwiseFn = func;
+            else
+              kernel.elementwiseFn = func;
+          } else if (srcName == kMoggUpdateViewFuncName)
             kernel.updateViewFn = func;
           else if (srcName == kMoggBuildGraphFuncName)
             kernel.buildGraphFn = func;
@@ -638,6 +667,8 @@ struct ImportPackagesPass
         fnLocs.push_back(kernel.shapeFn.getLoc());
       if (kernel.elementwiseFn)
         fnLocs.push_back(kernel.elementwiseFn.getLoc());
+      if (kernel.tileElementwiseFn)
+        fnLocs.push_back(kernel.tileElementwiseFn.getLoc());
       if (kernel.updateViewFn)
         fnLocs.push_back(kernel.updateViewFn.getLoc());
       if (kernel.buildGraphFn)
@@ -658,6 +689,9 @@ struct ImportPackagesPass
       auto elementwiseAttr =
           buildFunctionAttr(kernel.elementwiseFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/true);
+      auto tileElementwiseAttr = buildFunctionAttr(kernel.tileElementwiseFn,
+                                                   /*computeResultParams=*/true,
+                                                   /*strictResultParams=*/true);
       auto updateViewAttr =
           buildFunctionAttr(kernel.updateViewFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
@@ -665,7 +699,8 @@ struct ImportPackagesPass
           buildFunctionAttr(kernel.buildGraphFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
       if (failed(executeAttr) || failed(shapeAttr) || failed(elementwiseAttr) ||
-          failed(updateViewAttr) || failed(buildGraphAttr)) {
+          failed(tileElementwiseAttr) || failed(updateViewAttr) ||
+          failed(buildGraphAttr)) {
         signalPassFailure();
         return;
       }
@@ -692,8 +727,8 @@ struct ImportPackagesPass
 
       KernelDeclOp::create(builder, mlir::FusedLoc::get(ctx, fnLocs),
                            kernel.mojoName, kernel.registration, *executeAttr,
-                           *shapeAttr, *elementwiseAttr, *updateViewAttr,
-                           *buildGraphAttr, structParams,
+                           *shapeAttr, *elementwiseAttr, *tileElementwiseAttr,
+                           *updateViewAttr, *buildGraphAttr, structParams,
                            mlir::BoolAttr::get(ctx, isUserDefined));
     }
 

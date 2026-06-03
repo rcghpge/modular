@@ -1625,6 +1625,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
     OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
     OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
     ArrayAttr:$struct_params,
@@ -1636,6 +1637,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     (`execute` `=` $execute^)?
     (`shape` `=` $shape^)?
     (`elementwise` `=` $elementwise^)?
+    (`tile_elementwise` `=` $tile_elementwise^)?
     (`update_view` `=` $update_view^)?
     (`build_graph` `=` $build_graph^)?
     `struct_params` `=` $struct_params

@@ -220,6 +220,10 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
     return KernelDeclScalarAdaptor{};
   }
 
+  // --- TileTensor ---
+  if (sym.getLeafReference().strref() == kLeafTileTensor)
+    return KernelDeclTileTensorAdaptor{};
+
   // --- Device context ---
   // Use root+leaf matching because DeviceContext lives under std::gpu::host
   // (depth varies across package exports).
@@ -429,6 +433,12 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
     }
   }
 
+  if (auto tileEwFn = decl.getTileElementwise()) {
+    tileElementwiseFunction = buildFn(tileEwFn);
+    tileElementwiseFunction->fullyResolvedName = mlir::StringAttr::get(
+        ctx, llvm::formatv("{}.elementwise", structName).str());
+  }
+
   structParams = decl.getStructParams();
 }
 
@@ -442,6 +452,8 @@ KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
     return updateViewFunction ? &*updateViewFunction : nullptr;
   if (label == kMoggElementwiseFunctionLabel)
     return elementwiseFunction ? &*elementwiseFunction : nullptr;
+  if (label == "tile_elementwise")
+    return tileElementwiseFunction ? &*tileElementwiseFunction : nullptr;
   if (label == kMoggBuildGraphFunctionLabel)
     return buildGraphFunction ? &*buildGraphFunction : nullptr;
   return nullptr;

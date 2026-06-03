@@ -127,6 +127,7 @@ constexpr llvm::StringLiteral kLeafFusedOutputVariadicTensors =
     "_FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kLeafSIMD = "SIMD";
 constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
+constexpr llvm::StringLiteral kLeafTileTensor = "TileTensor";
 constexpr llvm::StringLiteral kLeafDeviceContextList = "DeviceContextList";
 constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 
@@ -417,6 +418,11 @@ constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";
 constexpr llvm::StringLiteral kParameterTaskId = "task_id";
 constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
+constexpr llvm::StringLiteral kParameterElementSize = "element_size";
+constexpr llvm::StringLiteral kParameterLayoutType = "LayoutType";
+constexpr llvm::StringLiteral kParameterOrigin = "origin";
+constexpr llvm::StringLiteral kParameterAddressSpace = "address_space";
+constexpr llvm::StringLiteral kParameterLinearIdxType = "linear_idx_type";
 /// `UnsafePointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
 /// Runtime kwargs of `foreach` / `foreach_fusion`: `func`/`tensor`/`ctx`

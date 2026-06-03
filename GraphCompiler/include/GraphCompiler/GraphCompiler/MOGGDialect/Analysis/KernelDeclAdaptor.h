@@ -102,6 +102,10 @@ struct KernelDeclScalarAdaptor {
   bool operator==(const KernelDeclScalarAdaptor &) const { return true; }
 };
 
+struct KernelDeclTileTensorAdaptor {
+  bool operator==(const KernelDeclTileTensorAdaptor &) const { return true; }
+};
+
 struct KernelDeclContextPtrAdaptor {
   bool operator==(const KernelDeclContextPtrAdaptor &) const { return true; }
 };
@@ -133,9 +137,10 @@ struct KernelDeclOpaqueAdaptor {
 
 using KernelDeclOperandVariant =
     std::variant<KernelDeclTensorAdaptor, KernelDeclVariadicTensorAdaptor,
-                 KernelDeclScalarAdaptor, KernelDeclOpaqueAdaptor,
-                 KernelDeclContextPtrAdaptor, KernelDeclContextPtrListAdaptor,
-                 KernelDeclGraphBuilderAdaptor, KernelDeclUnsupportedAdaptor>;
+                 KernelDeclScalarAdaptor, KernelDeclTileTensorAdaptor,
+                 KernelDeclOpaqueAdaptor, KernelDeclContextPtrAdaptor,
+                 KernelDeclContextPtrListAdaptor, KernelDeclGraphBuilderAdaptor,
+                 KernelDeclUnsupportedAdaptor>;
 
 /// One argument decoded from a kernel's stored LIT signature.
 struct KernelDeclOperandAdaptor {
@@ -183,6 +188,10 @@ struct KernelDeclOperandAdaptor {
 
   bool isScalarType() const {
     return std::holds_alternative<KernelDeclScalarAdaptor>(underlyingType);
+  }
+
+  bool isTileType() const {
+    return std::holds_alternative<KernelDeclTileTensorAdaptor>(underlyingType);
   }
 
   bool isOpaqueType() const {
@@ -297,6 +306,7 @@ struct KernelDeclAdaptor {
   std::optional<KernelDeclFunctionAdaptor> executeFunction;
   std::optional<KernelDeclFunctionAdaptor> shapeFunction;
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
+  std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> updateViewFunction;
   std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
   /// Struct-level ParamDeclAttrs shared by all functions of this kernel
@@ -307,6 +317,7 @@ struct KernelDeclAdaptor {
   explicit KernelDeclAdaptor(KernelDeclOp decl);
 
   bool isElementwise() const { return elementwiseFunction.has_value(); }
+  bool isTileElementwise() const { return tileElementwiseFunction.has_value(); }
   bool isViewKernel() const { return updateViewFunction.has_value(); }
 
   /// Return the function adaptor for a given MOGG function label
