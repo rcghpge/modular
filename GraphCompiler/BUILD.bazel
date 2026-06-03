@@ -12,6 +12,7 @@ package_group(
         "//GraphCompiler/...",
         "//MLRT/...",
         "//SDK/...",
+        "//mach/...",
         "//max/...",
         "//oss/modular/max/...",
         "//utils/...",
