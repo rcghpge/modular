@@ -209,7 +209,7 @@ mo.graph @rope_wrong_split_axis(
 
 // Text rotate-half RoPE: pattern fires.
 // CHECK-LABEL: mo.graph @rope_text_rotate_half
-// CHECK:       mo.reduce.rms_norm.RoPE
+// CHECK:       mo.composite.rms_norm_rope
 mo.graph @rope_text_rotate_half<seq_len>(
   %input:    !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:   !mo.tensor<[4], f32, gpu:0>,
@@ -240,7 +240,7 @@ mo.graph @rope_text_rotate_half<seq_len>(
 // must decline without aborting (regression test for the unchecked-cast fix).
 // CHECK-LABEL: mo.graph @rope_vision_split_user_not_negate
 // CHECK:       mo.reduce.rms_norm
-// CHECK-NOT:   mo.reduce.rms_norm.RoPE
+// CHECK-NOT:   mo.composite.rms_norm_rope
 mo.graph @rope_vision_split_user_not_negate<seq_len>(
   %input:   !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %weight:  !mo.tensor<[4], f32, gpu:0>,
