@@ -251,7 +251,8 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     if (baseFileName.empty())
       baseFileName = "temp";
 
-    // Save the emitted Mojo code to a file if max.temps_dir is set.
+    // Save the emitted Mojo code to a file if an IR dump directory is set
+    // (via `MODULAR_DEBUG=ir-output-dir=<dir>` or the legacy `max.temps_dir`).
     if (auto outFile = openIntermediateTextFile(baseFileName, ".mojo")) {
       outFile->os() << mojoText;
       outFile->keep();
