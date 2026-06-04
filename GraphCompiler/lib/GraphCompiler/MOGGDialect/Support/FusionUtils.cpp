@@ -228,12 +228,17 @@ getKernelOutputFusionLambdaType(MojoRegistry &registry,
     return KernelOutputFusionLambdaType::Output;
   const auto *tensorArg = std::get_if<KernelDeclTensorAdaptor>(
       &outputArgs[*outputIdx].underlyingType);
-  if (!tensorArg ||
-      tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor) {
+  if (!tensorArg)
     return KernelOutputFusionLambdaType::Output;
-  }
 
-  // Now that we know the expect expects a _FusedComputeOutputTensor, let's
+  // Tile-based compute fusion: kernel operand is _FusedComputeOutputTileTensor.
+  if (tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTileTensor)
+    return KernelOutputFusionLambdaType::ComputeTile;
+
+  if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor)
+    return KernelOutputFusionLambdaType::Output;
+
+  // Now that we know the kernel expects a _FusedComputeOutputTensor, let's
   // check if we build an output or compute lambda.
   if (!enableComputeLambdas)
     return KernelOutputFusionLambdaType::OutputLegacyForCompute;

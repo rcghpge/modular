@@ -132,8 +132,10 @@ enum class KernelOutputFusionLambdaType {
   OutputLegacyForCompute, // Classic output fusion lambda with a store for
                           // legacy support of mixed-precision (kernel operand
                           // is _FusedComputeOutputTensor).
-  Compute, // New compute fusion lambda with a return (kernel operand is
-           // _FusedComputeOutputTensor).
+  Compute,     // New compute fusion lambda with a return (kernel operand is
+               // _FusedComputeOutputTensor).
+  ComputeTile, // Tile-based compute fusion lambda with a TileTensor return
+               // (kernel operand is _FusedComputeOutputTileTensor).
 };
 
 // Returns the FusedTensor kind to be emitted by the Graph Compiler for

@@ -934,10 +934,15 @@ static void emitElementwiseLambdaBodyOps(
 
 /// Emit the final return value or store expression for the fusion struct
 /// method.
-static void emitFusionStructReturnOrStore(
-    EmitMojoState &state, MojoBuilder &sdb, Block *lambdaBody,
-    ArrayRef<MO::TensorType> captureTensorTypes,
-    const DenseMap<Value, MojoValue> &valueMap, bool generateStoreForOutput) {
+static void
+emitFusionStructReturnOrStore(EmitMojoState &state, MojoBuilder &sdb,
+                              Block *lambdaBody,
+                              ArrayRef<MO::TensorType> captureTensorTypes,
+                              const DenseMap<Value, MojoValue> &valueMap,
+                              KernelOutputFusionLambdaType lambdaType) {
+  bool generateStoreForOutput =
+      lambdaType == KernelOutputFusionLambdaType::Output ||
+      lambdaType == KernelOutputFusionLambdaType::OutputLegacyForCompute;
 
   auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
   auto resultIt = valueMap.find(outputOp.getOperand(0));
@@ -998,7 +1003,7 @@ static void emitFusionStructMethodBody(
     ArrayRef<std::pair<Value, unsigned>> extraTensorCaptures,
     ArrayRef<std::tuple<Value, std::string, std::string>> scalarCaptures,
     ArrayRef<std::pair<Value, MojoValue>> inlineConstants, bool isOutputLambda,
-    bool generateStoreForOutput) {
+    KernelOutputFusionLambdaType lambdaType) {
 
   DenseMap<Value, MojoValue> valueMap;
   DenseSet<Value> scalarCaptureValues;
@@ -1036,7 +1041,7 @@ static void emitFusionStructMethodBody(
 
   // Phase 3: Emit the final return or store.
   emitFusionStructReturnOrStore(state, sdb, lambdaBody, captureTensorTypes,
-                                valueMap, generateStoreForOutput);
+                                valueMap, lambdaType);
 }
 
 /// Emit a trait-conforming fusion struct definition and register it with the
@@ -1046,7 +1051,7 @@ static void emitFusionStructMethodBody(
 static LogicalResult
 emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
                  OperandRange fusibleTensors, ArrayRef<MojoValue> fusedInputs,
-                 bool isOutputLambda, bool generateStoreForOutput) {
+                 bool isOutputLambda, KernelOutputFusionLambdaType lambdaType) {
   if (failed(verifyBindLambdaBodyOpsForMojoEmission(bindOp, lambdaBody)))
     return failure();
 
@@ -1062,9 +1067,15 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     traitName = kTraitInputFusion;
     methodName = "load";
     methodReturnsValue = true;
-  } else if (generateStoreForOutput) {
+  } else if (lambdaType == KernelOutputFusionLambdaType::Output ||
+             lambdaType ==
+                 KernelOutputFusionLambdaType::OutputLegacyForCompute) {
     traitName = kTraitOutputFusion;
     methodName = "store";
+  } else if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+    traitName = kTraitComputeOutputFusionTile;
+    methodName = "compute";
+    methodReturnsValue = true;
   } else {
     traitName = kTraitComputeOutputFusion;
     methodName = "compute";
@@ -1119,7 +1130,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
                   emitFusionStructMethodBody(
                       state, sdb, lambdaBody, fusedInputs, captureTensorTypes,
                       extraTensorCaptures, scalarCaptures, inlineConstants,
-                      isOutputLambda, generateStoreForOutput);
+                      isOutputLambda, lambdaType);
                 });
       });
 
@@ -1184,7 +1195,11 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         *outputLambdaType == KernelOutputFusionLambdaType::Output) {
       return kFnManagedTensorSliceBindToFusedOutput;
     }
-    // Both compute-output cases use the same Mojo method name;
+    if (!outputLambdaType.isError() &&
+        *outputLambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+      return kFnManagedTensorSliceBindToFusedComputeOutputTile;
+    }
+    // Both SIMD compute-output cases use the same Mojo method name;
     // overload resolution distinguishes by trait type.
     return kFnManagedTensorSliceBindToFusedComputeOutput;
   }();
@@ -1396,10 +1411,11 @@ static LogicalResult emitElementwiseRegisterPassableBody(
 LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
   bool isOutputLambda = getBindKind() == BindLambdaKind::OutputLambda;
-  bool generateStoreForOutput = isOutputLambda;
+  // Default to Compute (return-based) so that non-output lambdas (InputLambda)
+  // emit a return rather than a store in emitFusionStructReturnOrStore.
+  auto lambdaType = KernelOutputFusionLambdaType::Compute;
   if (isOutputLambda) {
-    // We need to check if we have a Compute Lambda (in that case we return the
-    // output instead of doing a store).
+    // Determine whether this is a store, compute, or tile-compute lambda.
     if (!getResult().hasOneUse())
       return emitError("BindLambdaOp should have a unique use");
     auto fusedOp =
@@ -1410,9 +1426,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         state.registry, fusedOp, state.enableComputeLambdas);
     if (outputLambdaTypeOr.isError())
       return emitError(outputLambdaTypeOr.getError());
-
-    generateStoreForOutput =
-        *outputLambdaTypeOr != KernelOutputFusionLambdaType::Compute;
+    lambdaType = *outputLambdaTypeOr;
   }
 
   Block *lambdaBody = getBody();
@@ -1436,7 +1450,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
                                                fusibleTensors, fusedInputs);
 
   return emitFusionStruct(*this, state, lambdaBody, fusibleTensors, fusedInputs,
-                          isOutputLambda, generateStoreForOutput);
+                          isOutputLambda, lambdaType);
 }
 
 //===----------------------------------------------------------------------===//

@@ -353,6 +353,9 @@ constexpr llvm::StringLiteral kFnManagedTensorSliceBindToFusedOutput =
     "_bind_to_fused_output";
 constexpr llvm::StringLiteral kFnManagedTensorSliceBindToFusedComputeOutput =
     "_bind_to_fused_compute_output";
+constexpr llvm::StringLiteral
+    kFnManagedTensorSliceBindToFusedComputeOutputTile =
+        "_bind_to_fused_compute_output_tile";
 
 /// Methods on misc Mojo types.
 constexpr llvm::StringLiteral kFnBitcast = "bitcast";
@@ -372,6 +375,8 @@ constexpr llvm::StringLiteral kTraitOutputFusion =
     "extensibility.managed_tensor_slice.OutputFusion";
 constexpr llvm::StringLiteral kTraitComputeOutputFusion =
     "extensibility.managed_tensor_slice.ComputeOutputFusion";
+constexpr llvm::StringLiteral kTraitComputeOutputFusionTile =
+    "extensibility.managed_tensor_slice.ComputeOutputFusionTile";
 constexpr llvm::StringLiteral kTraitElementwiseFusion =
     "extensibility.managed_tensor_slice.ElementwiseFusion";
 
@@ -415,14 +420,14 @@ constexpr llvm::StringLiteral kParameterSize = "size";
 constexpr llvm::StringLiteral kParameterStaticSpecs = "static_specs";
 constexpr llvm::StringLiteral kParameterSimdWidth = "simd_width";
 constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";
-constexpr llvm::StringLiteral kParameterTaskId = "task_id";
-constexpr llvm::StringLiteral kParameterOutput = "output";
-constexpr llvm::StringLiteral kParameterElementType = "element_type";
 constexpr llvm::StringLiteral kParameterElementSize = "element_size";
 constexpr llvm::StringLiteral kParameterLayoutType = "LayoutType";
 constexpr llvm::StringLiteral kParameterOrigin = "origin";
 constexpr llvm::StringLiteral kParameterAddressSpace = "address_space";
 constexpr llvm::StringLiteral kParameterLinearIdxType = "linear_idx_type";
+constexpr llvm::StringLiteral kParameterTaskId = "task_id";
+constexpr llvm::StringLiteral kParameterOutput = "output";
+constexpr llvm::StringLiteral kParameterElementType = "element_type";
 /// `UnsafePointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
 /// Runtime kwargs of `foreach` / `foreach_fusion`: `func`/`tensor`/`ctx`
@@ -485,6 +490,7 @@ constexpr int64_t kIOSpecIOInput = 1;
 constexpr int64_t kIOSpecIOFusedInput = 2;
 constexpr int64_t kIOSpecIOFusedOutput = 3;
 constexpr int64_t kIOSpecIOFusedComputeOutput = 31;
+constexpr int64_t kIOSpecIOFusedComputeOutputTile = 32;
 constexpr int64_t kIOSpecIOUnknown = -1;
 
 constexpr llvm::StringLiteral kInputTensor = "InputTensor";
@@ -494,6 +500,8 @@ constexpr llvm::StringLiteral kFusedInputTensor = "FusedInputTensor";
 constexpr llvm::StringLiteral kFusedOutputTensor = "FusedOutputTensor";
 constexpr llvm::StringLiteral kFusedComputeOutputTensor =
     "FusedComputeOutputTensor";
+constexpr llvm::StringLiteral kFusedComputeOutputTileTensor =
+    "FusedComputeOutputTileTensor";
 
 /// Mojo `IO` enum member-alias short names (the names that appear inside
 /// `KGEN::SugarKind::MemberAlias` attributes when an `IOSpec` parameter is
@@ -503,6 +511,8 @@ constexpr llvm::StringLiteral kIoOutput = "Output";
 constexpr llvm::StringLiteral kIoFusedInput = "FusedInput";
 constexpr llvm::StringLiteral kIoFusedOutput = "FusedOutput";
 constexpr llvm::StringLiteral kIoFusedComputeOutput = "FusedComputeOutput";
+constexpr llvm::StringLiteral kIoFusedComputeOutputTile =
+    "_FusedComputeOutputTile";
 
 //===----------------------------------------------------------------------===//
 // Wrapper classes for high-traffic Mojo types

@@ -38,6 +38,7 @@ enum class IOSpec {
   FusedInputTensor,
   FusedOutputTensor,
   FusedComputeOutputTensor,
+  FusedComputeOutputTileTensor,
 };
 
 //===----------------------------------------------------------------------===//
@@ -295,9 +296,9 @@ private:
 };
 
 /// Top-level adaptor for a mogg.kernel.decl op. Decodes execute, shape,
-/// elementwise, update_view, and build_graph signatures directly from the
-/// stored LIT types without relying on MOGG pre-elaboration annotation
-/// attributes.
+/// elementwise, tile_elementwise, update_view, and build_graph signatures
+/// directly from the stored LIT types without relying on MOGG pre-elaboration
+/// annotation attributes.
 struct KernelDeclAdaptor {
   mlir::StringAttr registeredOpName;
   /// Fully-resolved Mojo name of the kernel struct

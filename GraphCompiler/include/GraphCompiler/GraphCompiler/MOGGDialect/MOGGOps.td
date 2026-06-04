@@ -1609,7 +1609,8 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     built-in decl with the same registration name.
 
     Each function variant (`execute` / `shape` / `elementwise` /
-    `update_view` / `build_graph`) is a `MOGG_KernelFunctionAttr` that
+    `tile_elementwise` / `update_view` / `build_graph`) is a
+    `MOGG_KernelFunctionAttr` that
     bundles its signature, its fn-level `ParamDeclAttr` list, and the
     cached per-result parameter mapping.
 
