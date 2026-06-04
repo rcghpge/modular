@@ -87,22 +87,10 @@ For changes that touch cross-node KV transfer specifically:
   per node) that exercises `KVTransferEngine` + NIXL directly over EFA with no
   model or scheduler involved. Validates data integrity and bandwidth at mc=32.
 
-  On the **receiver node**:
-
   ```bash
-  MODULAR_NIXL_TRANSFER_BACKEND=libfabric FI_EFA_USE_DEVICE_RDMA=1 \
-    ./bazelw run //max/tests/integration/kv_cache/transfer_engine:test_transfer_engine_cross_node -- \
-      --role receiver \
-      --sender-addr tcp://<sender-node-ip>:5555
-  ```
-
-  On the **sender node**:
-
-  ```bash
-  MODULAR_NIXL_TRANSFER_BACKEND=libfabric FI_EFA_USE_DEVICE_RDMA=1 \
-    ./bazelw run //max/tests/integration/kv_cache/transfer_engine:test_transfer_engine_cross_node -- \
-      --role sender \
-      --sender-addr tcp://<sender-node-ip>:5555
+  ./bazelw run \
+    //max/tests/integration/kv_cache/transfer_engine:run_cross_node -- \
+    --sender-host <sender-node-ip> --receiver-host <receiver-node-ip>
   ```
 
   Both processes exit 0 and the sender prints bandwidth ≥ 10 GiB/s on a healthy
@@ -111,9 +99,9 @@ For changes that touch cross-node KV transfer specifically:
   Parameter sweep — rows 2-4 are regression guards for known-brittle capacity
   limits. Requests fire immediately (no inter-batch delay), which maximizes
   pressure on NIXL. `--num-pages` defaults to `concurrency × pages-per-request`;
-  `--num-batches` defaults to 50. Known fixes on this branch:
+  `--num-batches` defaults to 50.
 
-  Known patches that affect these stress boundaries:
+  Known patches that address these stress boundaries:
   - [#83975](https://github.com/modularml/modular/pull/83975) — TX queue
     exhaustion under concurrent transfers (Row 2)
   - [#86044](https://github.com/modularml/modular/pull/86044) — notification
@@ -130,9 +118,8 @@ For changes that touch cross-node KV transfer specifically:
   | 32              | 64                    | 65536              | 200             | `200 batches x 32 transfers: 25.00 GiB … 16.48 GiB/s`                           | Exhaustion = control pool exhaustion       |
   | 1               | 2049                  | 131072             | (default)       | `50 batches x 1 transfers: 12.51 GiB … 8.54 GiB/s` + overflow warning per batch | No warning = xfer_id structural fix landed |
 
-  The sweep table becomes the CI parametrization when this test is wired into the
-  Mammoth orchestrator
-  ([SERVOPT-1405](https://linear.app/modularml/issue/SERVOPT-1405)).
+  The sweep table will become the CI parametrization once the test is
+  wired into `nixlKvSmokeTest.yaml`.
 
 - [`run_efa_di_benchmark.md`](./run_efa_di_benchmark.md) — pairs two
   AWS B200 Coder workspaces over EFA and runs a DeepSeek V3.1 NVFP4
@@ -153,9 +140,9 @@ nightly variants or as accumulated flakiness.
 The current validation surface is mostly "big smoke tests" — there
 are open items to add targeted coverage:
 
-- Wire the KV transfer engine smoke test into Mammoth CI so it runs
-  automatically on every NIXL change rather than requiring a manual
-  two-node run.
+- Wire `nixlKvSmokeTest.yaml` into `validateNIXLSync.yaml` and the
+  nightly so the KV transfer smoke test runs automatically on every
+  NIXL change.
 
 ## Suggested checklist for a sync PR
 
