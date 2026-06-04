@@ -218,6 +218,19 @@ def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"exp"> {
   }];
 }
 
+def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"ceil"> {
+  let summary = "Ceil operation";
+  let description = [{
+    Returns the elementwise smallest integer greater than `x`, where `x` is
+    input tensor.
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"floor"> {
   let summary = "Floor operation";
   let description = [{
