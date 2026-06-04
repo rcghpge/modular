@@ -8,6 +8,8 @@
 #include "Context.h"
 #include "Device.h"
 
+using M::Target::HIP::hipErrorStatus;
+
 DriverResult<M_driver_event_t>
 M_driver_event::create(M_driver_context &ctx, M_driver_event_flags_t flags) {
   M_driver_device &dev = ctx.getDevice();
@@ -20,10 +22,10 @@ M_driver_event::create(M_driver_context &ctx, M_driver_event_flags_t flags) {
 
   HIPApi &hip = dev.getDriver().hip();
   hipEvent_t event;
-  hipError_t result =
-      hip.hipEventCreateWithFlags(&event, hipEventDisableTiming);
-  if (result != hipSuccess)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (hipError_t r = hip.hipEventCreateWithFlags(&event, hipEventDisableTiming);
+      r != hipSuccess)
+    return tl::unexpected(
+        hipErrorStatus(&dev.getDriver(), r, "hipEventCreateWithFlags"));
 
   return new M_driver_event(event);
 }
@@ -35,9 +37,8 @@ M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipEventDestroy(event->event);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipEventDestroy(event->event); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipEventDestroy");
 
   delete event;
   return M_DRIVER_STATUS_SUCCESS;
@@ -50,9 +51,8 @@ M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipEventSynchronize(event->event);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipEventSynchronize(event->event); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipEventSynchronize");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -74,5 +74,5 @@ M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
     *is_ready = false;
     return M_DRIVER_STATUS_SUCCESS;
   }
-  return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  return hipErrorStatus(&dev.getDriver(), result, "hipEventQuery");
 }

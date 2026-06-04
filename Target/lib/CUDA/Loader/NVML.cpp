@@ -10,14 +10,18 @@
 
 #include "NVML.h"
 
+#include <cstdio>
 #include <dlfcn.h>
 
 namespace M::Target::CUDA {
 
-std::optional<NVML> NVML::load() {
+DriverResult<NVML> NVML::load() {
   void *lib = dlopen("libnvidia-ml.so.1", RTLD_NOW);
-  if (!lib)
-    return std::nullopt;
+  if (!lib) {
+    fprintf(stderr, "CUDAPlugin: dlopen(libnvidia-ml.so.1) failed: %s\n",
+            dlerror());
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
+  }
 
   NVML nvml{};
   nvml.lib = lib;
@@ -25,8 +29,9 @@ std::optional<NVML> NVML::load() {
 #define NVML_FN(name)                                                          \
   nvml.name = reinterpret_cast<decltype(&::name)>(dlsym(lib, #name));          \
   if (!nvml.name) {                                                            \
+    fprintf(stderr, "CUDAPlugin: dlsym(%s) failed: %s\n", #name, dlerror());   \
     nvml.unload();                                                             \
-    return std::nullopt;                                                       \
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);                         \
   }
 
 #include "NVML.inc"

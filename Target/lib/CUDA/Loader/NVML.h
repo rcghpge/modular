@@ -11,8 +11,9 @@
 #ifndef TARGET_LIB_CUDA_NVML_H
 #define TARGET_LIB_CUDA_NVML_H
 
+#include "Target/lib/CUDA/Error.h"
+
 #include <nvml.h>
-#include <optional>
 
 namespace M::Target::CUDA {
 
@@ -29,7 +30,7 @@ struct NVML {
   NVML &operator=(NVML &&) = default;
   NVML() = default;
 
-  static std::optional<NVML> load();
+  static DriverResult<NVML> load();
   void unload();
 
   /// Returns the NVML driver version string, or nullptr on failure.

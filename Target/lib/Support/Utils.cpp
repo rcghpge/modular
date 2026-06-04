@@ -35,6 +35,7 @@ void copyStatusMessage(char *dstMsgBuf, int64_t dstMsgBufSize,
 }
 
 M_driver_status_t CustomStatus::create(llvm::Twine message) {
+  std::lock_guard<std::mutex> lock(mutex);
   M_driver_status_t status = customStatusCodeNext++;
   llvm::SmallString<64> &storage = messages[status];
   message.toVector(storage);
@@ -47,11 +48,14 @@ M_driver_status_t CustomStatus::getMessage(M_driver_status_t status,
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
   if (status > 0)
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
-  else if (status > -M_DRIVER_NUM_STANDARD_STATUS_CODES) {
+  if (status > -M_DRIVER_NUM_STANDARD_STATUS_CODES) {
     copyStatusMessage(buffer, size, standardStatusMessages[-status]);
     return M_DRIVER_STATUS_SUCCESS;
-  } else if (status > M_DRIVER_STATUS_CUSTOM_CODES_BASE)
+  }
+  if (status > M_DRIVER_STATUS_CUSTOM_CODES_BASE)
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  std::lock_guard<std::mutex> lock(mutex);
 
   auto iter = messages.find(status);
   if (iter != messages.end()) {

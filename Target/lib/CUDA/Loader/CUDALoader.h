@@ -11,8 +11,9 @@
 #ifndef TARGET_LIB_CUDA_CUDALOADER_H
 #define TARGET_LIB_CUDA_CUDALOADER_H
 
+#include "Target/lib/CUDA/Error.h"
+
 #include <cuda.h>
-#include <optional>
 
 namespace M::Target::CUDA {
 
@@ -29,7 +30,7 @@ struct CUDALoader {
   CUDALoader &operator=(CUDALoader &&) = default;
   CUDALoader() = default;
 
-  static std::optional<CUDALoader> load();
+  static DriverResult<CUDALoader> load();
   void unload();
 };
 

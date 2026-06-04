@@ -9,6 +9,9 @@
 #include "Device.h"
 #include "Error.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
+
+using M::Target::HIP::hipErrorStatus;
 
 DriverResult<M_driver_runtime_bundle_t>
 M_driver_runtime_bundle::load(M_driver_context &ctx,
@@ -28,9 +31,10 @@ M_driver_runtime_bundle::load(M_driver_context &ctx,
     return tl::unexpected(M_DRIVER_STATUS_INCOMPATIBLE);
 
   hipModule_t module;
-  hipError_t err = hip.hipModuleLoadData(&module, bundle->mapped_data.data);
-  if (err != hipSuccess)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (hipError_t r = hip.hipModuleLoadData(&module, bundle->mapped_data.data);
+      r != hipSuccess)
+    return tl::unexpected(
+        hipErrorStatus(&device.getDriver(), r, "hipModuleLoadData"));
 
   return new M_driver_runtime_bundle{.module = std::move(module)};
 }
@@ -47,9 +51,8 @@ M_driver_runtime_bundle::unload(M_driver_context &ctx,
   if (auto result = device.deviceMethodPreamble(); !result)
     return result.error();
 
-  hipError_t err = hip.hipModuleUnload(bundle->module);
-  if (err != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipModuleUnload(bundle->module); r != hipSuccess)
+    return hipErrorStatus(&device.getDriver(), r, "hipModuleUnload");
 
   delete bundle;
   return M_DRIVER_STATUS_SUCCESS;
@@ -68,10 +71,12 @@ M_driver_function::load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
     return tl::unexpected(result.error());
 
   hipFunction_t func;
-  hipError_t err =
-      hip.hipModuleGetFunction(&func, bundle->module, function_name);
-  if (err != hipSuccess)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (hipError_t r =
+          hip.hipModuleGetFunction(&func, bundle->module, function_name);
+      r != hipSuccess)
+    return tl::unexpected(
+        hipErrorStatus(&device.getDriver(), r,
+                       "hipModuleGetFunction " + llvm::Twine(function_name)));
 
   return new M_driver_function{.function = std::move(func)};
 }

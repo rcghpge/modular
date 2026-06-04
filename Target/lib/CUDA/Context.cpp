@@ -8,20 +8,25 @@
 #include "Device.h"
 #include "Memory.h"
 
+using M::Target::CUDA::cudaErrorStatus;
+
 DriverResult<M_driver_context_t>
 M_driver_context::create(M_driver_device &dev) {
   CUcontext primaryCtx;
-  CUDA_CHECK_DR(
-      dev.driver.rawCuda.cuDevicePrimaryCtxRetain(&primaryCtx, dev.deviceId),
-      M_DRIVER_STATUS_BAD_DEVICE);
+  if (CUresult r = dev.driver.rawCuda.cuDevicePrimaryCtxRetain(&primaryCtx,
+                                                               dev.deviceId);
+      r != CUDA_SUCCESS)
+    return tl::unexpected(
+        cudaErrorStatus(&dev.driver, r, "cuDevicePrimaryCtxRetain"));
 
   return new M_driver_context(dev, primaryCtx);
 }
 
 M_driver_status_t M_driver_context::destroy(M_driver_context_t ctx) {
-  CUDA_CHECK(ctx->device.driver.rawCuda.cuDevicePrimaryCtxRelease(
-                 ctx->device.deviceId),
-             M_DRIVER_STATUS_BAD_CONTEXT);
+  if (CUresult r = ctx->device.driver.rawCuda.cuDevicePrimaryCtxRelease(
+          ctx->device.deviceId);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&ctx->device.driver, r, "cuDevicePrimaryCtxRelease");
   delete ctx;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -37,7 +42,8 @@ DriverResult<M_driver_memory_t> M_driver_context::allocPinned(uint64_t size) {
   if (result == CUDA_ERROR_OUT_OF_MEMORY)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
   if (result != CUDA_SUCCESS)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+    return tl::unexpected(
+        cudaErrorStatus(&device.driver, result, "cuMemAllocHost"));
   M_driver_memory_t memory = new (std::nothrow) M_driver_memory(memAlloc);
   if (!memory)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
@@ -55,7 +61,8 @@ DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
   if (result == CUDA_ERROR_OUT_OF_MEMORY)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
   if (result != CUDA_SUCCESS)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+    return tl::unexpected(
+        cudaErrorStatus(&device.driver, result, "cuMemAlloc"));
   M_driver_memory_t memory =
       new (std::nothrow) M_driver_memory(reinterpret_cast<void *>(devicePtr));
   if (!memory)
@@ -71,9 +78,8 @@ M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   auto &driver = device.driver.rawCuda;
   void *ptr = memory->ptr;
   delete memory;
-  CUresult result = driver.cuMemFreeHost(ptr);
-  if (result != CUDA_SUCCESS)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (CUresult r = driver.cuMemFreeHost(ptr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemFreeHost");
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -85,8 +91,7 @@ M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
   auto &driver = device.driver.rawCuda;
   CUdeviceptr devicePtr = reinterpret_cast<CUdeviceptr>(memory->ptr);
   delete memory;
-  CUresult result = driver.cuMemFree(devicePtr);
-  if (result != CUDA_SUCCESS)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (CUresult r = driver.cuMemFree(devicePtr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemFree");
   return M_DRIVER_STATUS_SUCCESS;
 }

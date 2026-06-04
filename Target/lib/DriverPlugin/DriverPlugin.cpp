@@ -219,13 +219,21 @@ ErrorOr<int64_t> Driver::Create(std::string const &soPath) {
     M_driver_status_t status = impl->create(&version, &impl->driverHandle_);
     if (status != M_DRIVER_STATUS_SUCCESS &&
         status != M_DRIVER_STATUS_NO_DEVICES) {
-      char message[1024];
-      (void)impl->status_message(impl->driverHandle_, status, message,
-                                 sizeof(message));
+      // On init failure a plugin may hand back a degraded driver handle whose
+      // sole purpose is to carry the error message; recover it here.
+      char message[1024] = {0};
+      M_driver_status_t msgStatus = impl->status_message(
+          impl->driverHandle_, status, message, sizeof(message));
+      std::string detail =
+          msgStatus == M_DRIVER_STATUS_SUCCESS ? message : "no message";
+      // Destroy the degraded handle (reset_ only clears the pointer) before
+      // tearing down, so we do not leak it.
+      if (impl->destroy && impl->driverHandle_)
+        impl->destroy(impl->driverHandle_);
       impl->reset_();
       return Error(std::string("Failed initialization: Driver plugin failed "
                                "create() on ") +
-                   soPath);
+                   soPath + ": " + detail);
     }
     if (version.major != M_DRIVER_INTERFACE_VERSION_MAJOR ||
         version.minor != M_DRIVER_INTERFACE_VERSION_MINOR) {

@@ -6,6 +6,8 @@
 //
 #include "Device.h"
 
+using M::Target::CUDA::cudaErrorStatus;
+
 DriverResult<M_driver_device_t> M_driver_device::create(M_driver_driver &driver,
                                                         int64_t deviceId) {
   DriverResult<int64_t> count = driver.deviceCount();
@@ -15,8 +17,10 @@ DriverResult<M_driver_device_t> M_driver_device::create(M_driver_driver &driver,
     return tl::unexpected(M_DRIVER_STATUS_BAD_DEVICE);
 
   CUdevice cudaDevice{};
-  CUDA_CHECK_DR(driver.rawCuda.cuDeviceGet(&cudaDevice, deviceId),
-                M_DRIVER_STATUS_BAD_DEVICE);
+  if (CUresult r = driver.rawCuda.cuDeviceGet(&cudaDevice, deviceId);
+      r != CUDA_SUCCESS)
+    return tl::unexpected(cudaErrorStatus(
+        &driver, r, "cuDeviceGet device " + llvm::Twine(deviceId)));
 
   return new M_driver_device(driver, cudaDevice);
 }

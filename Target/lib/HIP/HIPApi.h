@@ -54,7 +54,9 @@
   HIP_FN(hipEventRecord)                                                       \
   HIP_FN(hipStreamWaitEvent)                                                   \
   HIP_FN(hipEventSynchronize)                                                  \
-  HIP_FN(hipEventQuery)
+  HIP_FN(hipEventQuery)                                                        \
+  HIP_FN(hipGetErrorName)                                                      \
+  HIP_FN(hipGetErrorString)
 
 struct HIPApi {
   // dlopen handle to loaded libamdhip64.so.
@@ -81,7 +83,7 @@ struct HIPApi {
     if (!lib) {
       fprintf(stderr, "HIPPlugin: dlopen(libamdhip64.so) failed: %s\n",
               dlerror());
-      return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+      return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
     }
 
     auto api = HIPApi();
@@ -110,6 +112,19 @@ struct HIPApi {
     }
   }
 };
+
+struct M_driver_driver;
+
+namespace llvm {
+class Twine;
+} // namespace llvm
+
+namespace M::Target::HIP {
+
+M_driver_status_t hipErrorStatus(M_driver_driver *driver, hipError_t result,
+                                 llvm::Twine const &context);
+
+} // namespace M::Target::HIP
 
 #undef __HIP_DISABLE_CPP_FUNCTIONS__
 

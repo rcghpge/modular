@@ -10,6 +10,7 @@
 #include "Driver.h"
 #include "Error.h"
 #include "HIPApi.h"
+#include "llvm/ADT/Twine.h"
 
 struct M_driver_device {
 private:
@@ -18,11 +19,11 @@ private:
 
 public:
   DriverResult<void> deviceMethodPreamble() {
-    hipError_t result = this->driver.hip().hipSetDevice(this->deviceId);
-    if (result != hipSuccess) {
-      return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
-    }
-
+    if (hipError_t r = this->driver.hip().hipSetDevice(this->deviceId);
+        r != hipSuccess)
+      return tl::unexpected(M::Target::HIP::hipErrorStatus(
+          &this->driver, r,
+          "hipSetDevice device " + llvm::Twine(this->deviceId)));
     return {};
   }
   [[nodiscard]] static DriverResult<M_driver_device_t>

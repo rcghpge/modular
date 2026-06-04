@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <mutex>
 
 namespace M::Target {
 
@@ -48,11 +49,14 @@ struct CustomStatus {
                              numCustomStatusCodes) {}
 
   /// Small buffer optimized storage for a small number of custom statuses.
+  /// Access is guarded by `mutex`;
   llvm::SmallDenseMap<M_driver_status_t, llvm::SmallString<64>> messages;
-  /// Number of custom tsatus messages.
+  /// Number of custom status messages.
   int64_t numCustomStatusCodes;
   /// Status code for the next ephemeral status message.
   M_driver_status_t customStatusCodeNext;
+  /// Serializes access to `messages` and `customStatusCodeNext`.
+  std::mutex mutex;
 
   /// Create an ephemeral status code from the given message.
   ///

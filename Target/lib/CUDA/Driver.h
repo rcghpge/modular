@@ -21,6 +21,8 @@ struct M_driver_driver {
   NVML rawNvml;
   CustomStatus status;
 
+  M_driver_status_t initStatus = M_DRIVER_STATUS_SUCCESS;
+
   [[nodiscard]] static DriverResult<M_driver_driver_t> create();
   static M_driver_status_t destroy(M_driver_driver_t driver);
 

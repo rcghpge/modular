@@ -18,11 +18,12 @@ M_driver_status_t M_driver_create(M_driver_version *version,
   version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
   version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
 
-  DriverResult<M_driver_driver_t> res = M_driver_driver::create();
-  if (!res)
-    return res.error();
-  *driver = *res;
-  return M_DRIVER_STATUS_SUCCESS;
+  DriverResult<M_driver_driver_t> result = M_driver_driver::create();
+  if (!result)
+    return result.error();
+
+  *driver = *result;
+  return (*driver)->initStatus;
 }
 
 M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {

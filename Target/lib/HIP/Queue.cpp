@@ -8,8 +8,11 @@
 #include "Context.h"
 #include "Device.h"
 #include "Event.h"
+#include "llvm/ADT/Twine.h"
 
 #include <algorithm>
+
+using M::Target::HIP::hipErrorStatus;
 
 DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
   M_driver_device &dev = ctx.getDevice();
@@ -21,10 +24,11 @@ DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
   int constexpr kDefaultHipPriority = 0;
 
   hipStream_t stream;
-  hipError_t result = hip.hipStreamCreateWithPriority(
-      &stream, hipStreamNonBlocking, kDefaultHipPriority);
-  if (result != hipSuccess)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (hipError_t r = hip.hipStreamCreateWithPriority(
+          &stream, hipStreamNonBlocking, kDefaultHipPriority);
+      r != hipSuccess)
+    return tl::unexpected(
+        hipErrorStatus(&dev.getDriver(), r, "hipStreamCreateWithPriority"));
 
   return new M_driver_queue(ctx, stream);
 }
@@ -41,7 +45,7 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
   hipError_t result = hip.hipStreamDestroy(queue->stream);
   delete queue;
   if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return hipErrorStatus(&dev.getDriver(), result, "hipStreamDestroy");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -53,10 +57,10 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result =
-      hip.hipMemcpyAsync(dst->ptr, src, size, hipMemcpyHostToDevice, stream);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipMemcpyAsync(dst->ptr, src, size,
+                                        hipMemcpyHostToDevice, stream);
+      r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync HtoD");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -69,10 +73,10 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result =
-      hip.hipMemcpyAsync(dst, src->ptr, size, hipMemcpyDeviceToHost, stream);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipMemcpyAsync(dst, src->ptr, size,
+                                        hipMemcpyDeviceToHost, stream);
+      r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync DtoH");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -85,10 +89,10 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipMemcpyAsync(dst->ptr, src->ptr, size,
-                                         hipMemcpyDeviceToDevice, stream);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipMemcpyAsync(dst->ptr, src->ptr, size,
+                                        hipMemcpyDeviceToDevice, stream);
+      r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync DtoD");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -105,28 +109,28 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
 
   switch (valueSize) {
   case 1: {
-    hipError_t result = hip.hipMemsetAsync(
-        dstPtr, static_cast<int>(value & 0xff), size, stream);
-    if (result != hipSuccess)
-      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    if (hipError_t r = hip.hipMemsetAsync(
+            dstPtr, static_cast<int>(value & 0xff), size, stream);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r, "hipMemsetAsync");
     break;
   }
   case 2: {
     if ((size & 1) != 0)
       return M_DRIVER_STATUS_INVALID_ARG;
-    hipError_t result = hip.hipMemsetD16Async(
-        dstPtr, static_cast<unsigned short>(value), size >> 1, stream);
-    if (result != hipSuccess)
-      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    if (hipError_t r = hip.hipMemsetD16Async(
+            dstPtr, static_cast<unsigned short>(value), size >> 1, stream);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r, "hipMemsetD16Async");
     break;
   }
   case 4: {
     if ((size & 3) != 0)
       return M_DRIVER_STATUS_INVALID_ARG;
-    hipError_t result = hip.hipMemsetD32Async(dstPtr, static_cast<int>(value),
-                                              size >> 2, stream);
-    if (result != hipSuccess)
-      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    if (hipError_t r = hip.hipMemsetD32Async(dstPtr, static_cast<int>(value),
+                                             size >> 2, stream);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r, "hipMemsetD32Async");
     break;
   }
   case 8: {
@@ -135,10 +139,11 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
     uint32_t hiBits = static_cast<uint32_t>(value >> 32);
     uint32_t loBits = static_cast<uint32_t>(value & 0xfffffffful);
     if (hiBits == loBits) {
-      hipError_t result = hip.hipMemsetD32Async(
-          dstPtr, static_cast<int>(loBits), size >> 2, stream);
-      if (result != hipSuccess)
-        return M_DRIVER_STATUS_UNKNOWN_ERROR;
+      if (hipError_t r = hip.hipMemsetD32Async(dstPtr, static_cast<int>(loBits),
+                                               size >> 2, stream);
+          r != hipSuccess)
+        return hipErrorStatus(&dev.getDriver(), r,
+                              "hipMemsetD32Async (uint64 broadcast)");
     } else {
       size_t len = size >> 3;
       if (len > 0) {
@@ -156,21 +161,25 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
         // 7.2.0, 7.2.1, and 7.2.2.
         void *hiPtr = reinterpret_cast<void *>(
             reinterpret_cast<uintptr_t>(dstPtr) + sizeof(uint32_t));
-        hipError_t result = hip.hipMemsetD32Async(dstPtr, loBits, 1, stream);
-        if (result != hipSuccess)
-          return M_DRIVER_STATUS_UNKNOWN_ERROR;
-        result = hip.hipMemsetD32Async(hiPtr, hiBits, 1, stream);
-        if (result != hipSuccess)
-          return M_DRIVER_STATUS_UNKNOWN_ERROR;
+        if (hipError_t r = hip.hipMemsetD32Async(dstPtr, loBits, 1, stream);
+            r != hipSuccess)
+          return hipErrorStatus(&dev.getDriver(), r,
+                                "hipMemsetD32Async (uint64 low half seed)");
+        if (hipError_t r = hip.hipMemsetD32Async(hiPtr, hiBits, 1, stream);
+            r != hipSuccess)
+          return hipErrorStatus(&dev.getDriver(), r,
+                                "hipMemsetD32Async (uint64 high half seed)");
         for (size_t filled = 1; filled < len;) {
           size_t copyCount = std::min(filled, len - filled);
           void *dstCopy = reinterpret_cast<void *>(
               reinterpret_cast<uintptr_t>(dstPtr) + filled * sizeof(uint64_t));
-          result =
-              hip.hipMemcpyAsync(dstCopy, dstPtr, copyCount * sizeof(uint64_t),
-                                 hipMemcpyDeviceToDevice, stream);
-          if (result != hipSuccess)
-            return M_DRIVER_STATUS_UNKNOWN_ERROR;
+          if (hipError_t r = hip.hipMemcpyAsync(
+                  dstCopy, dstPtr, copyCount * sizeof(uint64_t),
+                  hipMemcpyDeviceToDevice, stream);
+              r != hipSuccess)
+            return hipErrorStatus(
+                &dev.getDriver(), r,
+                "hipMemcpyAsync DtoD (uint64 broadcast doubling)");
           filled += copyCount;
         }
       }
@@ -190,9 +199,8 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipEventRecord(event->event, stream);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipEventRecord(event->event, stream); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipEventRecord");
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -205,9 +213,10 @@ M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
 
   HIPApi &hip = dev.getDriver().hip();
   for (uint32_t i = 0; i < num_events; ++i) {
-    hipError_t result = hip.hipStreamWaitEvent(stream, events[i]->event, 0);
-    if (result != hipSuccess)
-      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    if (hipError_t r = hip.hipStreamWaitEvent(stream, events[i]->event, 0);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r,
+                            "hipStreamWaitEvent event " + llvm::Twine(i));
   }
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -219,9 +228,8 @@ M_driver_status_t M_driver_queue::synchronize() {
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipStreamSynchronize(stream);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipStreamSynchronize(stream); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipStreamSynchronize");
 
   return M_DRIVER_STATUS_SUCCESS;
 }

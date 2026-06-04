@@ -6,22 +6,26 @@
 
 #include "Driver.h"
 
+#include <memory>
+
+using M::Target::HIP::hipErrorStatus;
+
 DriverResult<M_driver_driver_t> M_driver_driver::create() {
   DriverResult<HIPApi> api = HIPApi::load();
   if (!api)
     return tl::unexpected(api.error());
 
-  if (api->hipInit(0) != hipSuccess) {
-    // dropping api automatically unloads
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
-  }
+  auto driver = std::make_unique<M_driver_driver>(std::move(*api));
 
-  return new M_driver_driver(std::move(*api));
+  if (hipError_t r = driver->hip().hipInit(0); r != hipSuccess)
+    driver->initStatus = hipErrorStatus(driver.get(), r, "hipInit");
+
+  return driver.release();
 }
 
 DriverResult<int64_t> M_driver_driver::deviceCount() {
   int countAsInt = 0;
-  if (rawHipApi.hipGetDeviceCount(&countAsInt) != hipSuccess)
-    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
+  if (hipError_t r = rawHipApi.hipGetDeviceCount(&countAsInt); r != hipSuccess)
+    return tl::unexpected(hipErrorStatus(this, r, "hipGetDeviceCount"));
   return static_cast<int64_t>(countAsInt);
 }

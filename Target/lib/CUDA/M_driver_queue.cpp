@@ -11,6 +11,10 @@
 #include "HAL/M_driver_api.h"
 #include "Queue.h"
 
+#include "llvm/Support/FormatVariadic.h"
+
+using M::Target::CUDA::cudaErrorStatus;
+
 M_driver_status_t M_driver_queue_create(M_driver_context_t context,
                                         M_driver_queue_t *queue) {
   if (context == nullptr)
@@ -131,9 +135,16 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
       .numAttrs = gpu.num_attributes,
   };
 
-  CUDA_CHECK(cuda.cuLaunchKernelEx(&launchConfig, function->function, args,
-                                   /*extra=*/nullptr),
-             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (CUresult r = cuda.cuLaunchKernelEx(&launchConfig, function->function,
+                                         args, /*extra=*/nullptr);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(
+        &queue->context.device.driver, r,
+        llvm::formatv("cuLaunchKernelEx grid=({0},{1},{2}) block=({3},{4},{5}) "
+                      "smem={6}",
+                      gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
+                      gpu.block.y, gpu.block.z, gpu.shared_mem_bytes)
+            .str());
 
   return M_DRIVER_STATUS_SUCCESS;
 }

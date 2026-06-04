@@ -10,6 +10,10 @@
 #include "Function.h"
 #include "HAL/M_driver_api.h"
 #include "Queue.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
+
+using M::Target::HIP::hipErrorStatus;
 
 M_driver_status_t M_driver_queue_create(M_driver_context_t context,
                                         M_driver_queue_t *queue) {
@@ -83,12 +87,18 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
   HIPApi &hip = dev.getDriver().hip();
   auto &gpu = config->config.gpu;
 
-  hipError_t result = hip.hipModuleLaunchKernel(
-      function->function, gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
-      gpu.block.y, gpu.block.z, gpu.shared_mem_bytes, queue->stream, args,
-      /*extra=*/nullptr);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  if (hipError_t r = hip.hipModuleLaunchKernel(
+          function->function, gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
+          gpu.block.y, gpu.block.z, gpu.shared_mem_bytes, queue->stream, args,
+          /*extra=*/nullptr);
+      r != hipSuccess)
+    return hipErrorStatus(
+        &dev.getDriver(), r,
+        llvm::formatv("hipModuleLaunchKernel grid=({0},{1},{2}) "
+                      "block=({3},{4},{5}) smem={6}",
+                      gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
+                      gpu.block.y, gpu.block.z, gpu.shared_mem_bytes)
+            .str());
 
   return M_DRIVER_STATUS_SUCCESS;
 }

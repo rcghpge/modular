@@ -9,25 +9,26 @@
 
 #include "HAL/M_driver_common.h"
 
+#include "llvm/ADT/Twine.h"
+
 #include <cuda.h>
+#include <nvml.h>
 #include <tl/expected.hpp>
 
 #define M_DRIVER_STATUS_UNIMPLEMENTED (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 0)
 #define M_DRIVER_NUM_CUSTOM_STATUS_CODES 1
 
-#define CUDA_CHECK(stmt, errorCode)                                            \
-  do {                                                                         \
-    CUresult result = (stmt);                                                  \
-    if (result != CUDA_SUCCESS)                                                \
-      return errorCode;                                                        \
-  } while (false)
+struct M_driver_driver;
 
-#define CUDA_CHECK_DR(stmt, errorCode)                                         \
-  do {                                                                         \
-    CUresult result = (stmt);                                                  \
-    if (result != CUDA_SUCCESS)                                                \
-      return tl::unexpected(errorCode);                                        \
-  } while (false)
+namespace M::Target::CUDA {
+
+M_driver_status_t cudaErrorStatus(M_driver_driver *driver, CUresult result,
+                                  llvm::Twine const &context);
+
+M_driver_status_t nvmlErrorStatus(M_driver_driver *driver, nvmlReturn_t result,
+                                  llvm::Twine const &context);
+
+} // namespace M::Target::CUDA
 
 #define RETURN_IF_ERROR(stmt, error)                                           \
   do {                                                                         \

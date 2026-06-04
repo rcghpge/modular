@@ -10,12 +10,13 @@
 
 #include "CUDALoader.h"
 
+#include <cstdio>
 #include <dlfcn.h>
 #include <stdlib.h>
 
 namespace M::Target::CUDA {
 
-std::optional<CUDALoader> CUDALoader::load() {
+DriverResult<CUDALoader> CUDALoader::load() {
   // We use both NVML and CUDA Driver to access devices. NVML discovers devices
   // in the order of PCI bus ID, so we want to force CUDA to enumerate in the
   // same order.
@@ -27,8 +28,10 @@ std::optional<CUDALoader> CUDALoader::load() {
   setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID", 1);
 
   void *lib = dlopen("libcuda.so.1", RTLD_NOW | RTLD_GLOBAL);
-  if (!lib)
-    return std::nullopt;
+  if (!lib) {
+    fprintf(stderr, "CUDAPlugin: dlopen(libcuda.so.1) failed: %s\n", dlerror());
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
+  }
 
   CUDALoader loader{};
   loader.lib = lib;
@@ -50,8 +53,10 @@ std::optional<CUDALoader> CUDALoader::load() {
   loader.name =                                                                \
       reinterpret_cast<decltype(&::name)>(dlsym(lib, CUDA_XSTR(name)));        \
   if (!loader.name) {                                                          \
+    fprintf(stderr, "CUDAPlugin: dlsym(%s) failed: %s\n", CUDA_XSTR(name),     \
+            dlerror());                                                        \
     loader.unload();                                                           \
-    return std::nullopt;                                                       \
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);                         \
   }
 
 #include "CUDALoader.inc"

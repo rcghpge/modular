@@ -82,6 +82,7 @@ modular_cc_test(
     deps = [
         ":DriverPluginTests",
         "//bazel/third-party:CUDAHeaders",
+        "//bazel/third-party:NVMLHeaders",
         "@tl_expected",
     ],
 )

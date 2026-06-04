@@ -17,6 +17,8 @@
 #include <memory>
 #include <utility>
 
+using M::Target::CUDA::cudaErrorStatus;
+
 static std::pair<llvm::SmallVector<CUjit_option, 2>,
                  llvm::SmallVector<uintptr_t, 2>>
 setupCompilationOptions(const char *debugLevel, int32_t optimizationLevel) {
@@ -68,11 +70,12 @@ M_driver_runtime_bundle::load(M_driver_context &ctx,
       setupCompilationOptions(opts->debug_level, opts->optimization_level);
 
   CUmodule module;
-  CUDA_CHECK_DR(
-      cuda.cuModuleLoadDataEx(&module, bundle->mapped_data.data,
-                              optionKind.size(), optionKind.data(),
-                              reinterpret_cast<void **>(optionValues.data())),
-      M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (CUresult r = cuda.cuModuleLoadDataEx(
+          &module, bundle->mapped_data.data, optionKind.size(),
+          optionKind.data(), reinterpret_cast<void **>(optionValues.data()));
+      r != CUDA_SUCCESS)
+    return tl::unexpected(
+        cudaErrorStatus(&ctx.device.driver, r, "cuModuleLoadDataEx"));
 
   auto runtimeBundle = new M_driver_runtime_bundle{.module = module};
 
@@ -86,8 +89,8 @@ M_driver_runtime_bundle::unload(M_driver_context &ctx,
   QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
-  CUDA_CHECK(cuda.cuModuleUnload(bundle->module),
-             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (CUresult r = cuda.cuModuleUnload(bundle->module); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&ctx.device.driver, r, "cuModuleUnload");
 
   delete bundle;
   return M_DRIVER_STATUS_SUCCESS;
@@ -101,16 +104,19 @@ M_driver_function::load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUfunction func;
-  CUresult result =
-      cuda.cuModuleGetFunction(&func, bundle->module, function_name);
-  if (result != CUDA_SUCCESS) {
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
-  }
+  if (CUresult r =
+          cuda.cuModuleGetFunction(&func, bundle->module, function_name);
+      r != CUDA_SUCCESS)
+    return tl::unexpected(
+        cudaErrorStatus(&ctx.device.driver, r,
+                        "cuModuleGetFunction " + llvm::Twine(function_name)));
 
-  CUDA_CHECK_DR(
-      cuda.cuFuncSetAttribute(
-          func, CU_FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED, 1),
-      M_DRIVER_STATUS_UNKNOWN_ERROR);
+  if (CUresult r = cuda.cuFuncSetAttribute(
+          func, CU_FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED, 1);
+      r != CUDA_SUCCESS)
+    return tl::unexpected(cudaErrorStatus(
+        &ctx.device.driver, r,
+        "cuFuncSetAttribute NON_PORTABLE_CLUSTER_SIZE_ALLOWED"));
 
   auto ptr =
       std::make_unique<M_driver_function>(M_driver_function{.function = func});
