@@ -45,6 +45,7 @@ from extensibility import (
 )
 
 from std.utils import IndexList, StaticTuple
+from std.utils.coord import Coord, coord_to_index_list
 
 
 # TODO(MOCO-1413): remove this need to keep imported exported funcs alive.
@@ -212,7 +213,7 @@ struct Foo:
     ) raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
@@ -251,7 +252,7 @@ struct FooWithStructParam[flip: Bool]:
     ) raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             var v = rebind[SIMD[z.dtype, width]](x.load[width](idx))
             comptime if Self.flip:
                 return -v
@@ -331,9 +332,7 @@ struct PrintTensorSpecOp:
 
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
         foreach[func](outp, ctx)
@@ -353,9 +352,7 @@ struct PrintTensor:
 
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
 
         foreach[func](outp, ctx)
@@ -384,9 +381,7 @@ struct PrintTensorSpecViewOp:
 
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
         foreach[func](outp, ctx)
@@ -413,9 +408,7 @@ struct PrintTensorSpecFusedOp:
 
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
 
         foreach[func](outp, ctx)
@@ -442,9 +435,7 @@ struct PrintOutputShapeStridesFusedOp:
 
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[output.rank]) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             return (
                 rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
                 * 2.0
@@ -480,7 +471,7 @@ struct AddFuseLHS:
     ) capturing raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
@@ -501,7 +492,7 @@ struct AddFuseInputs:
     ) capturing raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
@@ -624,7 +615,7 @@ struct VariadicAdd:
     ) capturing raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
 
             comptime for i in range(inputs.size):
@@ -703,7 +694,7 @@ struct ElementwisePrintShape:
     ) capturing raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
         print("input.shape =", x._spec.shape)
@@ -728,7 +719,7 @@ struct CustomOpThatRaises:
 
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
         foreach[func](z, ctx)
@@ -781,7 +772,7 @@ struct MONNXAbsOverload:
     ) raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
@@ -800,7 +791,7 @@ struct MTorchAbsOverload:
     ) raises:
         @parameter
         @always_inline
-        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
@@ -1246,9 +1237,7 @@ struct InplaceNoOutFunc:
     ) capturing raises:
         @parameter
         @always_inline
-        def func[
-            width: Int
-        ](idx: IndexList[output.rank]) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             var val = input._fused_load[width](idx)
             return val * SIMD[output.dtype, width](2.0)
 
