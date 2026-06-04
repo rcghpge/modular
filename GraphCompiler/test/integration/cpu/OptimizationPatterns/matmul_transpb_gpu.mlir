@@ -1,5 +1,5 @@
 // Test on GPU we prefer matmul(A, B, transpose_b=true) on GPU
-// RUN: mo-opt %s --mo-infer-layouts --mogg-pattern-fusion --mo-constant-fold | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts --mo-pattern-fusion --mo-constant-fold | FileCheck %s
 
 // Check the existing transposes are absorbed by pattern for gpu
 // CHECK-LABEL: mo.graph @matmul_existing_transb

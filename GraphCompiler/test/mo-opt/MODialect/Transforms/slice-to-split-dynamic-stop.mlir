@@ -3,10 +3,10 @@
 // still combine into a split (the dynamic-shape RoPE rotate-half case).
 //
 // The split results are routed to mo.output so the SplitToSlicePattern run at
-// the end of mogg-pattern-fusion leaves the split in place ("Split used in
+// the end of mo-pattern-fusion leaves the split in place ("Split used in
 // output"), making the fold observable.
 
-// RUN: mo-opt %s --mogg-pattern-fusion -split-input-file | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion -split-input-file | FileCheck %s
 
 // Dynamic stop, unit step on the sliced axis: two adjacent slices that together
 // cover axis 1 are combined into a split even though their stop operands are

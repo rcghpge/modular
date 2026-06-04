@@ -1,6 +1,6 @@
 // COM: Test pattern matching on a pattern with broadcasts during the normalization step of MHA
-// RUN: mo-opt %s --mogg-pattern-fusion="mha-allow-unsafe-bcast=0" | FileCheck %s
-// RUN: mo-opt %s --mogg-pattern-fusion="mha-allow-unsafe-bcast=1" | FileCheck %s --check-prefix=CHECK-ALLOW-BCAST --enable-var-scope
+// RUN: mo-opt %s --mo-pattern-fusion="mha-allow-unsafe-bcast=0" | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion="mha-allow-unsafe-bcast=1" | FileCheck %s --check-prefix=CHECK-ALLOW-BCAST --enable-var-scope
 
 // RUN: mo-opt %s --gc-pipeline -o %t.mlir
 

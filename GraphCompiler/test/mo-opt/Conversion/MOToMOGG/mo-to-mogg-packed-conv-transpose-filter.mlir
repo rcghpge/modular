@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-infer-layouts --mogg-pattern-fusion --mogg-import-packages --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts --mo-pattern-fusion --mogg-import-packages --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv_transpose2d_constant_filter
 mo.graph @conv_transpose2d_constant_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>) -> !mo.tensor<[1, 6, 6, 2], f32> {

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
 // CHECK-LABEL: mo.graph @concat_slice_fusion
 // CHECK: %[[OUT0:.*]], %[[OUT1:.*]] = mo.composite.concat_slice

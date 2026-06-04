@@ -58,7 +58,7 @@ def JitCompileKernels: Pass<"jit", "ModuleOp"> {
   ];
 }
 
-def PatternFusion: Pass<"mogg-pattern-fusion", "MO::GraphOp"> {
+def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let description = [{
     This pass includes a variety of pattern rewrites which replaces a series of

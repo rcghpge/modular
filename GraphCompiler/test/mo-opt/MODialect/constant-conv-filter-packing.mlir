@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-infer-layouts --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts --mo-pattern-fusion | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv2d_constant_filter
 mo.graph @conv2d_constant_filter(

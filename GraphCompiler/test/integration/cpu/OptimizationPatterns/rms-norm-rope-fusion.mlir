@@ -1,5 +1,5 @@
 // COM: Test RMSNorm + RoPE fusion pattern.
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
 // ============================================================
 // Positive tests — pattern should fire and produce reduce.rms_norm.RoPE

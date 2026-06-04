@@ -1,6 +1,6 @@
 // COM: check examples which mix select and explicit masking
 
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s --enable-var-scope
 
 // RUN: mo-opt %s -gc-pipeline -o %t.mlir
 // RUN: mt --execute %t.mlir --input-shapes=1x2x2x3 --input-shapes=1x2x2x3 --input-shapes=1x2x2x3 --input-shapes="" --input-shapes=1x2x2x2 --model-inputs=random --result-output-style=full | FileCheck %s -check-prefix=CHECK-MT

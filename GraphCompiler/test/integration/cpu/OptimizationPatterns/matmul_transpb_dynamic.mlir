@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-infer-layouts --mogg-pattern-fusion | FileCheck %s --check-prefix=CHECK-PATTERN
+// RUN: mo-opt %s --mo-shape-inference --mo-infer-layouts --mo-pattern-fusion | FileCheck %s --check-prefix=CHECK-PATTERN
 // RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=4x2 --input-shapes=4x2 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 

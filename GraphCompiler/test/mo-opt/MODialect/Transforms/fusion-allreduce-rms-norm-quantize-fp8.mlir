@@ -1,9 +1,9 @@
-// `--mogg-pattern-fusion` matches an `mo.parallel` whose body is just a
+// `--mo-pattern-fusion` matches an `mo.parallel` whose body is just a
 // `mo.bundled.allreduce.sum` followed (outside the parallel) by per-device
 // add + rms_norm + quantize_fp8 chains, and rewrites the parallel in one
 // step so its body contains the fused
 // `mo.composite.bundled.allreduce_add_rms_norm_quant_fp8` op.
-// RUN: mo-opt %s --mogg-pattern-fusion \
+// RUN: mo-opt %s --mo-pattern-fusion \
 // RUN:   | FileCheck --enable-var-scope %s
 
 // ============================================================================

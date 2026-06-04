@@ -1,4 +1,4 @@
-// RUN: mo-opt --mogg-pattern-fusion %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-pattern-fusion %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: @multihead_flash_attention_rank3_mask
 // CHECK: mo.composite.masked_flash_attention_gpu

@@ -1,5 +1,5 @@
 // Check pattern works
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
 // Check E2E performance. Note we also run the case where the pattern does not
 // trigger (due to improper devices in graph) E2E to help establish correctness.

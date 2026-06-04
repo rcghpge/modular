@@ -1,5 +1,5 @@
 // COM: Test GEMV + Partial RMS Norm fusion pattern.
-// RUN: mo-opt %s --mo-infer-layouts --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts --mo-pattern-fusion | FileCheck %s
 
 // ============================================================
 // Positive tests - pattern should fire

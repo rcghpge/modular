@@ -1,6 +1,6 @@
 // Check pattern works for partial matches which should not infinitely loop
 // and fail gracefully
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
 // CHECK-NOT: mo.composite.no_mask_flash_attention_cpu
 mo.graph @cpu_flash_attn_pattern<BH, B, H, S, D>(

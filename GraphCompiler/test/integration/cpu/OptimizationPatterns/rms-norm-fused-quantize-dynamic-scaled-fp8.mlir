@@ -1,5 +1,5 @@
 // COM: Test RMSNorm + FP8 dynamic quantization op fusion
-// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
 mo.graph @rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
   %input: !mo.tensor<[total_seq_len, 10], bf16, gpu:0>,

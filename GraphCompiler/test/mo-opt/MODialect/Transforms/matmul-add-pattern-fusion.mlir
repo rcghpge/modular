@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-pattern-fusion=mock-arch-name=sm_100 | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion=mock-arch-name=sm_100 | FileCheck %s
 
 // Negative: a full 2D residual is not fused; it stays a separate mo.add.
 // CHECK-LABEL: mo.graph @matmul_add_2d

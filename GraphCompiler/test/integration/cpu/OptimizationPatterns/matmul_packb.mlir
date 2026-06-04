@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-infer-layouts --mogg-pattern-fusion | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s --mo-infer-layouts --mo-pattern-fusion | FileCheck %s --check-prefix=CHECK-IR
 // RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: cat %t.mlir | FileCheck %s --check-prefix=CHECK-MGP
 // RUN: mt --execute --input-shapes=2x2 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
