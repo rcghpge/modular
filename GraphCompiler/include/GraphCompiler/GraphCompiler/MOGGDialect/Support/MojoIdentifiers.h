@@ -252,6 +252,9 @@ constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
     "extensibility.managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "std.runtime.tracing.Trace";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
+constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
+constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";
+constexpr llvm::StringLiteral kFnRowMajor = "layout.row_major";
 
 constexpr llvm::StringLiteral kAliasIndexListToTileLayout =
     "extensibility.managed_tensor_slice._IndexListToTileLayout";
@@ -266,6 +269,9 @@ constexpr llvm::StringLiteral kEnumTraceLevelOp =
     "std.runtime.tracing.TraceLevel.OP";
 /// `DType.int8` member used to spell out a one-byte dtype.
 constexpr llvm::StringLiteral kEnumDTypeInt8 = "int8";
+/// `DType.int` member: the native index-sized integer dtype used for the
+/// dynamic (runtime) elements of layout `Coord`s.
+constexpr llvm::StringLiteral kEnumDTypeInt = "int";
 
 //===----------------------------------------------------------------------===//
 // Mojo free-function names (emitted into Mojo source)

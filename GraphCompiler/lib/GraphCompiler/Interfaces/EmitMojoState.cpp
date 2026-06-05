@@ -870,6 +870,34 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
   return MojoValue(kStructIndexList)({rankParam}, mojoDims);
 }
 
+MojoValue EmitMojoState::getShapeAsCoordMojoValue(MOSH::ShapeAttr shapeAttr,
+                                                  ValueRange dynamicDims) {
+  SmallVector<MojoValue> coordElems;
+  unsigned nextDynDim = 0;
+  for (TypedAttr dim : shapeAttr.getValues()) {
+    if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dim)) {
+      // Static dim: compile-time `Idx[N]` component.
+      coordElems.push_back(MojoValue(kAliasIdx)[*staticDim]);
+    } else {
+      // Dynamic dim: runtime `Scalar[DType.int](<dim>)` component. The dynamic
+      // element type must be Scalar[DType.int] (not Int) so it matches the
+      // element-type the ManagedTensorSlice layout machinery rebinds to.
+      ASSERT_STREAM(nextDynDim < dynamicDims.size(),
+                    "Missing dynamic dimension");
+      MojoValue scalarInt =
+          MojoValue(kStructScalar)[MojoValue(kStructDType).get(kEnumDTypeInt)];
+      coordElems.push_back(
+          scalarInt({}, {getMojoValueFor(dynamicDims[nextDynDim++])}));
+    }
+  }
+  // Rank-0 tensors are represented as rank-1 with a single static `1`.
+  if (coordElems.empty())
+    coordElems.push_back(
+        MojoValue(kAliasIdx)[MojoValue(static_cast<int64_t>(1))]);
+
+  return MojoValue(kStructCoord)({}, coordElems);
+}
+
 void EmitMojoState::addDebugPrintTensorSpecs(const MojoValue &tensorValue,
                                              const MojoValue &indicesValue,
                                              bool isInput,

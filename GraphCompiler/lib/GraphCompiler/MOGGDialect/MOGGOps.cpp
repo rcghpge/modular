@@ -1814,19 +1814,19 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   ManagedTensorSliceRef mts(inputValue);
   StaticTensorSpecRef staticSpec(mts.staticSpec());
 
-  // Build template parameters
-  SmallVector<MojoValue> templateParams = {dtype,
-                                           rank,
+  // Build template parameters. The static layout is conveyed through the
+  // layout argument's type (below), so no separate layout param.
+  SmallVector<MojoValue> templateParams = {dtype, rank,
                                            MojoValue(false), // False constant
                                            MojoValue(kEnumIoInput),
-                                           staticSpec.staticLayout(),
                                            staticSpec.alignment()};
 
-  // Build runtime arguments
+  // Build runtime arguments: the slice already carries its layout (shape and
+  // strides as static-aware Coords), so forward it directly.
   SmallVector<MojoValue> runtimeArgs = {
       OpaquePointerRef(mts.rawPtr())
           .bitcast(MojoValue(kComptimeDTypeNoneType))(),
-      mts.shape()};
+      inputValue.get("runtime_layout")()};
 
   // Generate the mogg_tensor_init call
   auto tensorInitPrimDecl =
@@ -3225,27 +3225,30 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto ioParam = MojoValue(kStructIO).get(MO::stringifyIOKind(getIo()));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
-  auto layoutParam = state.builder.comptime(
-      state.getStaticTileLayoutFromIndexListsMojoValue(tensorTy));
   MojoValue alignmentParam(
       static_cast<uint64_t>(M::Driver::getPreferredAlignment(
           MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
-  auto shapeVar = state.builder.var(state.getShapeAsIndexListMojoValue(
-      tensorTy.getTypedShapeAttr(), getDims()));
+  // Encode the shape as a `Coord` (static dims as `Idx[N]`, dynamic dims as
+  // `Scalar[DType.int](<dim>)`), then build a row-major `Layout` from it. The
+  // layout conveys the static/dynamic structure to `mogg_tensor_init` through
+  // its Coord element types instead of a separate static-layout parameter.
+  auto shapeVar = state.builder.var(
+      state.getShapeAsCoordMojoValue(tensorTy.getTypedShapeAttr(), getDims()));
+  auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
   auto tensorInitPrimDecl2 =
       state.registry.lookupPrimitive(this->getOperationName());
   ASSERT_STREAM(tensorInitPrimDecl2,
                 "Primitive not found for " << getOperationName().str());
   MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl2));
   state.setMojoValueFor(
-      getResult(), state.builder.var(moggTensorInit(
-                       {dTypeParam, rankParam, mutParam, ioParam, layoutParam,
-                        alignmentParam},
-                       {OpaquePointerRef(ManagedTensorSliceRef(
-                                             state.getMojoValueFor(getBuffer()))
-                                             .unsafePtr())
-                            .bitcast(MojoValue(kComptimeDTypeNoneType))(),
-                        shapeVar})));
+      getResult(),
+      state.builder.var(moggTensorInit(
+          {dTypeParam, rankParam, mutParam, ioParam, alignmentParam},
+          {OpaquePointerRef(
+               ManagedTensorSliceRef(state.getMojoValueFor(getBuffer()))
+                   .unsafePtr())
+               .bitcast(MojoValue(kComptimeDTypeNoneType))(),
+           layoutVar})));
 
   return success();
 }
