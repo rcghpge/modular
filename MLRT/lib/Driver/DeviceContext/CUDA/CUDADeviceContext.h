@@ -85,6 +85,17 @@ public:
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
   ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
+  // CUDA Virtual Memory Management (VMM) for the defragmenting allocator.
+  bool vmmSupported() const override { return true; }
+  ErrorOr<size_t> vmmGranularity() const override;
+  ErrorOr<void *> vmmAddressReserve(size_t byteSize) override;
+  ErrorOrSuccess vmmAddressFree(void *va, size_t byteSize) override;
+  ErrorOr<uint64_t> vmmCreate(size_t byteSize) override;
+  ErrorOrSuccess vmmRelease(uint64_t handle) override;
+  ErrorOrSuccess vmmMapAndSetAccess(void *va, size_t byteSize,
+                                    uint64_t handle) override;
+  ErrorOrSuccess vmmUnmap(void *va, size_t byteSize) override;
+
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   ErrorOr<Device::GraphMemInfo> getGraphMemoryInfo() const override;
@@ -116,6 +127,13 @@ public:
 private:
   void eventCacheClear() const;
 
+  // CUmemAccessDesc list (owning device + every P2P-capable peer) used to grant
+  // access to VMM mappings. VMM access does NOT inherit from
+  // cuCtxEnablePeerAccess, so each mapping must be made accessible to every
+  // device that may read it (e.g. multi-GPU expert-parallel collectives).
+  // Computed once and cached.
+  const std::vector<CUmemAccessDesc> &vmmAccessDescs() const;
+
   // CUDA 13 only supports Turing (sm_75) architectures and later.
   static constexpr int MIN_COMPUTE_CAPABILITY = 75;
 
@@ -135,6 +153,11 @@ private:
   const CUDADriver &driver_;
   const CUdevice cudaDevice_;
   nvmlDevice_t nvmlDevice_;
+
+  // Lazily-computed, cached VMM peer-access descriptor list (see
+  // vmmAccessDescs()).
+  mutable std::once_flag vmmAccessOnce_;
+  mutable std::vector<CUmemAccessDesc> vmmAccessDescs_;
   // Device context to be shared across all `CUDADeviceContext` objects. We
   // initialize this with the primary device context for the device to be able
   // to share resources with libraries using the CUDA Runtime API.

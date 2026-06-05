@@ -254,6 +254,29 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   percentage of max memory manager size (default: 8%). Integer-valued. Must be
   between 1 and 100; clamped to these limits if found to lie outside.
 
+#### Defragmenting Allocator (CUDA VMM)
+
+The memory manager can back its chunks with CUDA Virtual Memory Management
+(VMM) instead of a single contiguous `cuMemAlloc` region. With VMM, chunks are
+composed of remappable physical *granules* mapped into reserved virtual
+address space. When the free lists cannot satisfy a request because no single
+free block is large enough — even though enough memory is free in aggregate
+(external fragmentation) — the manager reserves a fresh contiguous virtual
+range and maps physically-scattered free granules into it, so the request
+succeeds. This eliminates the "plenty free but no contiguous block" OOM.
+
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM`**: Enable the VMM-backed
+  defragmenting allocator. **Default: false** (opt-in for now). Set to
+  `1`/`true` to enable it on CUDA devices that support VMM (it auto-disables on
+  devices that do not, and on non-CUDA backends); the legacy `cuMemAlloc` chunk
+  path is used otherwise. Cross-GPU access is granted automatically to every
+  P2P-capable peer (VMM mappings do not inherit `cuCtxEnablePeerAccess`).
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB`**: Physical granule
+  (page) size in MiB (default: 256). Rounded up to the device VMM allocation
+  granularity; all VMM reservations and the pool/chunk sizes are rounded to a
+  multiple of it. Smaller granules reduce internal fragmentation but increase
+  the number of physical handles the manager tracks.
+
 #### Host Memory Configuration
 
 - **`MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_SIZE`**: Host memory manager

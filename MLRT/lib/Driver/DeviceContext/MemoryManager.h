@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <vector>
 
 namespace llvm {
 class raw_fd_ostream;
@@ -78,7 +79,8 @@ private:
   friend class MemoryManagerFreeList;
 
   MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
-                size_t alignment, bool isHost, bool useOnlyMemoryManagerMode);
+                size_t alignment, bool isHost, bool useOnlyMemoryManagerMode,
+                bool vmmEnabled = false, size_t vmmPageSize = 0);
 
   Device &device() const;
 
@@ -87,6 +89,37 @@ private:
                             size_t wrappedSize) const;
   bool allocateChunk();
   bool freeLocked(void *buf);
+
+  // ---- VMM (defragmenting allocator) ----
+  //
+  // Acquire physical+virtual backing for a chunk of `allocSize` bytes. When
+  // `vmmEnabled_`, reserves VA + creates/maps/sets-access granules (reusing the
+  // free-granule pool first) and fills `handles`; otherwise calls chunkAlloc.
+  // Returns false on failure (leaving nothing allocated), like a failed
+  // chunkAlloc. Caller holds `mu_`.
+  bool acquireChunkBacking(size_t allocSize, void **base,
+                           std::vector<uint64_t> *handles, size_t *pageSize);
+  // Tear down a VMM chunk's backing: unmap each granule, return handles to the
+  // free-granule pool (or release if `releaseToDriver`), and free the VA.
+  // Caller holds `mu_`.
+  void releaseChunkBacking(Chunk *chunk, bool releaseToDriver);
+  // Defragment to satisfy a request larger than any contiguous free block:
+  // reserve fresh contiguous VA, recycle granules from the free-granule pool
+  // and from wholly-free VMM chunks, map them into the new VA, and materialize
+  // the result as a new in-use chunk owned by `freeList`. Returns the buffer
+  // pointer, or an Error if not enough physical memory is reclaimable. Caller
+  // must NOT hold `mu_` (this acquires it).
+  ErrorOr<void *> defragForRequest(size_t size,
+                                   MemoryManagerFreeList *freeList);
+
+  // Registry of per-stream (child) free-lists, so a VMM allocation miss can
+  // flush sibling streams' completed frees to the root free-list (a freed block
+  // sits in its per-stream buffer until that stream polls events).
+  void registerChildFreeList(MemoryManagerFreeList *fl);
+  void unregisterChildFreeList(MemoryManagerFreeList *fl);
+  // Poll pending events on every registered child context except `except`,
+  // firing completed free->root flush handlers. Caller must NOT hold `mu_`.
+  void flushSiblingFreeLists(const DeviceContext *except);
 
   // Avoid malloc under lock.
   Desc *popDesc();
@@ -119,6 +152,22 @@ private:
   // This setting is useful for bazel to enforce the cap on gpu memory used by
   // a particular test. This enables better binpacking of tests on a CI runner.
   const bool useOnlyMemoryManagerMode_;
+
+  // VMM (CUDA Virtual Memory Management) defragmenting allocator. When enabled,
+  // chunks are backed by remappable physical granules so a large contiguous
+  // allocation can be assembled from physically-scattered free memory.
+  const bool vmmEnabled_;
+  // Physical granule size (bytes); a multiple of the device VMM granularity.
+  // All VMM reservations/mappings are rounded up to this.
+  const size_t pageSize_;
+  // Pool of physical granule handles that are currently unmapped and available
+  // for reuse (fed by retiring wholly-free VMM chunks).
+  std::vector<uint64_t> freeGranulePool_;
+
+  // Registered per-stream (child) free-lists and a lock guarding the list.
+  // Used by flushSiblingFreeLists() on an allocation miss.
+  std::mutex childFreeListsMu_;
+  std::vector<MemoryManagerFreeList *> childFreeLists_;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;

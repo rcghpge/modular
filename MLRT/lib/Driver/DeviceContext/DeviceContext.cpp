@@ -275,6 +275,29 @@ ErrorOr<size_t> Device::maxSingleAllocationSize() const {
   return info.total;
 }
 
+// Default VMM implementations: unsupported. Backends that support VMM (CUDA)
+// override `vmmSupported()` and these methods. The MemoryManager never calls
+// the methods below unless `vmmSupported()` returned true.
+static Error vmmUnsupportedError() {
+  return Error("Virtual Memory Management (VMM) is not supported on this "
+               "device");
+}
+ErrorOr<size_t> Device::vmmGranularity() const { return vmmUnsupportedError(); }
+ErrorOr<void *> Device::vmmAddressReserve(size_t) {
+  return vmmUnsupportedError();
+}
+ErrorOrSuccess Device::vmmAddressFree(void *, size_t) {
+  return vmmUnsupportedError();
+}
+ErrorOr<uint64_t> Device::vmmCreate(size_t) { return vmmUnsupportedError(); }
+ErrorOrSuccess Device::vmmRelease(uint64_t) { return vmmUnsupportedError(); }
+ErrorOrSuccess Device::vmmMapAndSetAccess(void *, size_t, uint64_t) {
+  return vmmUnsupportedError();
+}
+ErrorOrSuccess Device::vmmUnmap(void *, size_t) {
+  return vmmUnsupportedError();
+}
+
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
   return memoryManager_->allocationAlignment();
 }

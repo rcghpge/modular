@@ -94,6 +94,66 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "MemoryManagerVMMTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMTest.cpp",
+    ],
+    env = {
+        # Enable the VMM defragmenting allocator process-wide (config is parsed
+        # once per process and cannot be toggled per-test). 256 MiB granules and
+        # chunk_percent=25 give 4 chunks in the 4 GiB test pool; only-mode
+        # removes the driver backdoor so a successful large allocation can only
+        # have come from defrag.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "256",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "MemoryManagerVMMControlTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMControlTest.cpp",
+    ],
+    env = {
+        # VMM explicitly disabled (this is the control for MemoryManagerVMMTest):
+        # the fragmented-pool request must fail without defrag.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "False",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "GPUMemoryManagerFallthroughTest",
     size = "medium",
     srcs = [

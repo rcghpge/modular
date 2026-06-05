@@ -316,6 +316,32 @@ public:
                                     bool isHost) = 0;
   virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) = 0;
 
+  // ---- CUDA Virtual Memory Management (VMM) support ----
+  //
+  // These back the MemoryManager's defragmenting allocator: a large contiguous
+  // *virtual* allocation can be assembled from physically-scattered free
+  // granules by reserving fresh VA and mapping arbitrary physical handles into
+  // it (see MemoryManager::defragForRequest). They are only used when
+  // `vmmSupported()` is true; backends without VMM (HIP/CPU/Metal) keep the
+  // plain chunkAlloc/chunkFree path. Handles are opaque
+  // (CUmemGenericAllocationHandle) carried as uint64_t; VA is carried as void*.
+  //
+  // All sizes passed here must be multiples of `vmmGranularity()`.
+  virtual bool vmmSupported() const { return false; }
+  // Physical allocation granularity in bytes (e.g. 2 MiB on B200).
+  virtual ErrorOr<size_t> vmmGranularity() const;
+  // Reserve / free a contiguous virtual address range (no physical backing).
+  virtual ErrorOr<void *> vmmAddressReserve(size_t byteSize);
+  virtual ErrorOrSuccess vmmAddressFree(void *va, size_t byteSize);
+  // Create / release one physical granule (handle is opaque, 0 == invalid).
+  virtual ErrorOr<uint64_t> vmmCreate(size_t byteSize);
+  virtual ErrorOrSuccess vmmRelease(uint64_t handle);
+  // Map `handle` into [va, va+byteSize) and grant this device R/W access.
+  virtual ErrorOrSuccess vmmMapAndSetAccess(void *va, size_t byteSize,
+                                            uint64_t handle);
+  // Unmap [va, va+byteSize); the handle remains valid for reuse.
+  virtual ErrorOrSuccess vmmUnmap(void *va, size_t byteSize);
+
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
   /// Largest single contiguous device allocation. Defaults to

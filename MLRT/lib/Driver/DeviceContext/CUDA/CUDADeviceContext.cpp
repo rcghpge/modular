@@ -510,6 +510,124 @@ ErrorOrSuccess CUDADevice::chunkFree(void *ptr, bool isHost) {
   return success();
 }
 
+// ---- CUDA Virtual Memory Management (VMM) ----
+//
+// Builds the CUmemAllocationProp describing a pinned device granule on this
+// device. Mirrors the multicast path in createMulticastBuffer.
+static CUmemAllocationProp cudaVmmAllocProp(CUdevice cudaDevice) {
+  CUmemAllocationProp memProp = {};
+  memProp.type = CUmemAllocationType::PINNED;
+  memProp.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
+  memProp.location.id = cudaDevice;
+  return memProp;
+}
+
+ErrorOr<size_t> CUDADevice::vmmGranularity() const {
+  CUDA_WITH_DEV_ERR(*this);
+  CUmemAllocationProp memProp = cudaVmmAllocProp(cudaDevice_);
+  size_t granularity = 0;
+  CUDA_CHECK_ERR(driver_.cuMemGetAllocationGranularity(
+      &granularity, &memProp,
+      CUmemAllocationGranularity_flags::GRANULARITY_MINIMUM));
+  return granularity;
+}
+
+ErrorOr<void *> CUDADevice::vmmAddressReserve(size_t byteSize) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUdeviceptr va = nullptr;
+  CUDA_CHECK_ERR(driver_.cuMemAddressReserve(&va, byteSize, 0, nullptr, 0));
+  return reinterpret_cast<void *>(va);
+}
+
+ErrorOrSuccess CUDADevice::vmmAddressFree(void *va, size_t byteSize) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(
+      driver_.cuMemAddressFree(reinterpret_cast<CUdeviceptr>(va), byteSize));
+  return success();
+}
+
+ErrorOr<uint64_t> CUDADevice::vmmCreate(size_t byteSize) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUmemAllocationProp memProp = cudaVmmAllocProp(cudaDevice_);
+  CUmemGenericAllocationHandle handle = 0;
+  CUDA_CHECK_ERR(driver_.cuMemCreate(&handle, byteSize, &memProp, 0));
+  return static_cast<uint64_t>(handle);
+}
+
+ErrorOrSuccess CUDADevice::vmmRelease(uint64_t handle) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(
+      driver_.cuMemRelease(static_cast<CUmemGenericAllocationHandle>(handle)));
+  return success();
+}
+
+const std::vector<CUmemAccessDesc> &CUDADevice::vmmAccessDescs() const {
+  std::call_once(vmmAccessOnce_, [&]() {
+    auto pushDesc = [&](CUdevice dev) {
+      CUmemAccessDesc d = {};
+      d.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
+      d.location.id = dev;
+      d.flags = CUmemAccess_flags::CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+      vmmAccessDescs_.push_back(d);
+    };
+    // The owning device always has access.
+    pushDesc(cudaDevice_);
+
+    // Grant access to every other GPU that can peer-access this device's memory
+    // over a fast link. Use the same P2P + native-atomic (NVLink proxy) policy
+    // as canAccess(), evaluated via raw ordinals so we do not eagerly
+    // initialize peer device contexts.
+    int count = 0;
+    if (driver_.cuDeviceGetCount(&count) != CUDADriver::SUCCESS)
+      return;
+    for (int ord = 0; ord < count; ++ord) {
+      CUdevice peerDev;
+      if (driver_.cuDeviceGet(&peerDev, ord) != CUDADriver::SUCCESS)
+        continue;
+      if (peerDev == cudaDevice_)
+        continue;
+      // Can `peerDev` access memory physically resident on this device?
+      int canAccessPeer = 0;
+      if (driver_.cuDeviceCanAccessPeer(&canAccessPeer, peerDev, cudaDevice_) !=
+              CUDADriver::SUCCESS ||
+          !canAccessPeer)
+        continue;
+      int isNativeAtomicSupported = 0;
+      if (driver_.cuDeviceGetP2PAttribute(
+              &isNativeAtomicSupported,
+              CUdevice_P2PAttribute::
+                  CU_DEVICE_P2P_ATTRIBUTE_NATIVE_ATOMIC_SUPPORTED,
+              peerDev, cudaDevice_) != CUDADriver::SUCCESS ||
+          !isNativeAtomicSupported)
+        continue;
+      pushDesc(peerDev);
+    }
+  });
+  return vmmAccessDescs_;
+}
+
+ErrorOrSuccess CUDADevice::vmmMapAndSetAccess(void *va, size_t byteSize,
+                                              uint64_t handle) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUdeviceptr ptr = reinterpret_cast<CUdeviceptr>(va);
+  CUDA_CHECK_ERR(driver_.cuMemMap(
+      ptr, byteSize, 0, static_cast<CUmemGenericAllocationHandle>(handle), 0));
+  // Grant read/write access to the owning device and every P2P-capable peer so
+  // multi-GPU (expert-parallel) kernels and collectives can read VMM-backed
+  // buffers. VMM access does not inherit from cuCtxEnablePeerAccess.
+  const std::vector<CUmemAccessDesc> &descs = vmmAccessDescs();
+  CUDA_CHECK_ERR(
+      driver_.cuMemSetAccess(ptr, byteSize, descs.data(), descs.size()));
+  return success();
+}
+
+ErrorOrSuccess CUDADevice::vmmUnmap(void *va, size_t byteSize) {
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(
+      driver_.cuMemUnmap(reinterpret_cast<CUdeviceptr>(va), byteSize));
+  return success();
+}
+
 ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
   Device::MemInfo memInfo;
   CUDA_WITH_DEV_ERR(*this);

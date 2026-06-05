@@ -65,6 +65,15 @@ private:
   size_t size_ = 0;
   std::unique_ptr<Chunk> next_ = nullptr;
   Desc *descs_ = nullptr; // Ordered list of all memory regions in this chunk.
+
+  // VMM (CUDA Virtual Memory Management) backing. When `vmmBacked_` is true,
+  // `base_` is a virtual address reservation and the physical memory is a
+  // vector of granule handles (one per `pageSize_` slice of [base_,
+  // base_+size_)). Plain (`cuMemAlloc`) chunks leave these empty. See
+  // MemoryManager VMM path.
+  bool vmmBacked_ = false;
+  size_t pageSize_ = 0;
+  std::vector<uint64_t> vmmHandles_;
 };
 
 // Describes a memory region managed by the memory manager. These descriptors
@@ -405,13 +414,57 @@ MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
       enableRedzones();
     }
   }
+
+  // Register per-stream (child) free-lists so a VMM allocation miss can flush
+  // sibling streams' completed frees to the root (see flushSiblingFreeLists).
+  if (ctx_ != nullptr && parent_ != nullptr)
+    memoryManager_.registerChildFreeList(this);
 }
 
 DeviceContext *MemoryManagerFreeList::context() { return ctx_; }
 
 const DeviceContext *MemoryManagerFreeList::context() const { return ctx_; }
 
-MemoryManagerFreeList::~MemoryManagerFreeList() { flushToParent(); }
+MemoryManagerFreeList::~MemoryManagerFreeList() {
+  if (ctx_ != nullptr && parent_ != nullptr)
+    memoryManager_.unregisterChildFreeList(this);
+  flushToParent();
+}
+
+void MemoryManager::registerChildFreeList(MemoryManagerFreeList *fl) {
+  std::lock_guard<std::mutex> lock(childFreeListsMu_);
+  childFreeLists_.push_back(fl);
+}
+
+void MemoryManager::unregisterChildFreeList(MemoryManagerFreeList *fl) {
+  std::lock_guard<std::mutex> lock(childFreeListsMu_);
+  auto it = std::find(childFreeLists_.begin(), childFreeLists_.end(), fl);
+  if (it != childFreeLists_.end())
+    childFreeLists_.erase(it);
+}
+
+void MemoryManager::flushSiblingFreeLists(const DeviceContext *except) {
+  // Poll pending events on every registered child context so their completed
+  // frees migrate from per-stream free buffers to the root free-list (where
+  // allocateDesc and defrag can use them). Safe: pollPendingEvents only runs
+  // handlers whose device work has completed, and it releases its own lock
+  // before running each handler, so there is no lock-order inversion with the
+  // free() path (mu_ -> pendingWorkMutex_). The registry lock is held across
+  // the loop so entries cannot be removed mid-iteration; this relies on child
+  // contexts being stable during allocation (created at startup, destroyed at
+  // shutdown), which holds for MAX Serve.
+  std::lock_guard<std::mutex> lock(childFreeListsMu_);
+  const DeviceContext *lastPolled = nullptr;
+  for (MemoryManagerFreeList *fl : childFreeLists_) {
+    DeviceContext *c = fl->ctx_;
+    // Skip the caller's context (already polled) and cheaply de-dup the
+    // adjacent freeList_/graphFreeList_ pair of the same context.
+    if (c == nullptr || c == except || c == lastPolled)
+      continue;
+    lastPolled = c;
+    (void)c->pollPendingEvents();
+  }
+}
 
 void MemoryManagerFreeList::logMsg(llvm::Twine msg) const {
   memoryManager_.logErr("[" + label_ + "] " + msg);
@@ -653,10 +706,12 @@ void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
 
 MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
                              size_t alignment, bool isHost,
-                             bool useOnlyMemoryManagerMode)
+                             bool useOnlyMemoryManagerMode, bool vmmEnabled,
+                             size_t vmmPageSize)
     : device_(device), isHost_(isHost),
       useOnlyMemoryManagerMode_(useOnlyMemoryManagerMode),
-      maxCacheSize_(maxSize), chunkSize_(chunkSize),
+      vmmEnabled_(vmmEnabled), pageSize_(vmmPageSize), maxCacheSize_(maxSize),
+      chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the memory manager.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
@@ -963,7 +1018,12 @@ bool MemoryManager::allocateChunk() {
     }
   }
 
-  const size_t allocSize = std::min(chunkSize_, remainingBudget);
+  size_t allocSize = std::min(chunkSize_, remainingBudget);
+  if (vmmEnabled_ && pageSize_ != 0) {
+    // VMM reservations/mappings must be whole granules; round down to fit
+    // within the remaining budget.
+    allocSize = (allocSize / pageSize_) * pageSize_;
+  }
 
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
@@ -977,20 +1037,19 @@ bool MemoryManager::allocateChunk() {
   }
 
   void *ptr = nullptr;
-  ErrorOrSuccess err = device().chunkAlloc(&ptr, allocSize, isHost());
-  if (err.isError()) {
-    llvm::raw_string_ostream os(lastChunkAllocFailureDetail_);
-    os << "chunkAlloc(" << humanMemorySize(allocSize) << ") failed with "
-       << err.getError()
-       << " (remaining_budget: " << humanMemorySize(remainingBudget)
-       << " ; device_free: " << currentDeviceFree
-       << " ; device_total: " << currentDeviceTotal << ")";
-    LOG_ERR("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
-            err.getError());
-    // Keep chunks_ unmodified.
+  std::vector<uint64_t> handles;
+  size_t chunkPageSize = 0;
+  if (!acquireChunkBacking(allocSize, &ptr, &handles, &chunkPageSize)) {
+    // acquireChunkBacking records lastChunkAllocFailureDetail_ and frees any
+    // partial backing on failure.
     return false;
   }
   auto chunk = std::make_unique<Chunk>(*this, ptr, allocSize);
+  if (vmmEnabled_) {
+    chunk->vmmBacked_ = true;
+    chunk->pageSize_ = chunkPageSize;
+    chunk->vmmHandles_ = std::move(handles);
+  }
   chunk->next_ = std::move(chunks_);
   chunks_ = std::move(chunk);
 
@@ -999,6 +1058,281 @@ bool MemoryManager::allocateChunk() {
   LOG_ERR("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
           0, 0);
   return true;
+}
+
+// Acquire physical+virtual backing for a chunk. Plain path delegates to
+// chunkAlloc; VMM path reserves contiguous VA and maps `allocSize/pageSize_`
+// granules (reusing the free-granule pool before creating new physical memory).
+bool MemoryManager::acquireChunkBacking(size_t allocSize, void **base,
+                                        std::vector<uint64_t> *handles,
+                                        size_t *pageSize) {
+  *pageSize = 0;
+  if (!vmmEnabled_) {
+    ErrorOrSuccess err = device().chunkAlloc(base, allocSize, isHost());
+    if (err.isError()) {
+      llvm::raw_string_ostream os(lastChunkAllocFailureDetail_);
+      os << "chunkAlloc(" << humanMemorySize(allocSize) << ") failed with "
+         << err.getError();
+      LOG_ERR("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
+              err.getError());
+      return false;
+    }
+    return true;
+  }
+
+  assert(pageSize_ != 0 && (allocSize % pageSize_) == 0 &&
+         "VMM allocSize must be a whole number of granules");
+  *pageSize = pageSize_;
+  const size_t numPages = allocSize / pageSize_;
+
+  ErrorOr<void *> vaOr = device().vmmAddressReserve(allocSize);
+  if (vaOr.isError()) {
+    lastChunkAllocFailureDetail_ = "vmmAddressReserve(" +
+                                   humanMemorySize(allocSize) +
+                                   ") failed with " + vaOr.getError();
+    return false;
+  }
+  void *va = *vaOr;
+
+  std::vector<uint64_t> acquired;
+  acquired.reserve(numPages);
+  // Roll back: unmap mapped pages, return their (still-valid) handles to the
+  // pool, free the VA reservation. Records the failure reason.
+  auto rollback = [&](const std::string &why) {
+    for (size_t i = 0; i < acquired.size(); ++i) {
+      void *pageVa = static_cast<char *>(va) + i * pageSize_;
+      ErrorOrSuccess e = device().vmmUnmap(pageVa, pageSize_);
+      if (e.isError())
+        LOG_ERR(llvm::Twine("vmmUnmap during rollback failed: ") +
+                e.getError());
+      freeGranulePool_.push_back(acquired[i]);
+    }
+    ErrorOrSuccess e = device().vmmAddressFree(va, allocSize);
+    if (e.isError())
+      LOG_ERR(llvm::Twine("vmmAddressFree during rollback failed: ") +
+              e.getError());
+    lastChunkAllocFailureDetail_ = why;
+  };
+
+  for (size_t i = 0; i < numPages; ++i) {
+    uint64_t handle = 0;
+    if (!freeGranulePool_.empty()) {
+      handle = freeGranulePool_.back();
+      freeGranulePool_.pop_back();
+    } else {
+      ErrorOr<uint64_t> h = device().vmmCreate(pageSize_);
+      if (h.isError()) {
+        rollback("vmmCreate(" + humanMemorySize(pageSize_) + ") failed with " +
+                 h.getError());
+        return false;
+      }
+      handle = *h;
+    }
+    void *pageVa = static_cast<char *>(va) + i * pageSize_;
+    ErrorOrSuccess mapErr =
+        device().vmmMapAndSetAccess(pageVa, pageSize_, handle);
+    if (mapErr.isError()) {
+      // The handle is valid but unmapped; keep it in the pool for reuse.
+      freeGranulePool_.push_back(handle);
+      rollback(std::string("vmmMapAndSetAccess failed with ") +
+               mapErr.getError());
+      return false;
+    }
+    acquired.push_back(handle);
+  }
+
+  *base = va;
+  *handles = std::move(acquired);
+  return true;
+}
+
+// Tear down a chunk's backing. VMM chunks unmap each granule and either release
+// it to the driver or return it to the free-granule pool for reuse, then free
+// the VA reservation. Plain chunks call chunkFree.
+void MemoryManager::releaseChunkBacking(Chunk *chunk, bool releaseToDriver) {
+  if (!chunk->vmmBacked_) {
+    ErrorOrSuccess err = device().chunkFree(chunk->base_, isHost());
+    if (err.isError()) {
+      logErr(err.getError());
+      abort();
+    }
+    return;
+  }
+  const size_t ps = chunk->pageSize_;
+  for (size_t i = 0; i < chunk->vmmHandles_.size(); ++i) {
+    void *pageVa = static_cast<char *>(chunk->base_) + i * ps;
+    ErrorOrSuccess e = device().vmmUnmap(pageVa, ps);
+    if (e.isError())
+      LOG_ERR(llvm::Twine("vmmUnmap failed: ") + e.getError());
+    if (releaseToDriver) {
+      ErrorOrSuccess r = device().vmmRelease(chunk->vmmHandles_[i]);
+      if (r.isError())
+        LOG_ERR(llvm::Twine("vmmRelease failed: ") + r.getError());
+    } else {
+      freeGranulePool_.push_back(chunk->vmmHandles_[i]);
+    }
+  }
+  chunk->vmmHandles_.clear();
+  ErrorOrSuccess e = device().vmmAddressFree(chunk->base_, chunk->size_);
+  if (e.isError())
+    LOG_ERR(llvm::Twine("vmmAddressFree failed: ") + e.getError());
+}
+
+ErrorOr<void *>
+MemoryManager::defragForRequest(size_t size, MemoryManagerFreeList *freeList) {
+  assert(vmmEnabled_ && pageSize_ != 0);
+  std::lock_guard<std::mutex> lock(mu_);
+
+  // Round the request up to whole granules.
+  const size_t allocSize = ((size + pageSize_ - 1) / pageSize_) * pageSize_;
+  const size_t pagesNeeded = allocSize / pageSize_;
+
+  // A chunk is reclaimable iff it is VMM-backed and *every* desc in it is free
+  // and owned by the ROOT free-list. Root ownership is the post-stream-flush
+  // "no live device reference remains" signal (per-stream free-lists may still
+  // be referenced by in-flight work). Note a wholly-free chunk can hold more
+  // than one free desc: coalescing only merges adjacent same-owner blocks, so a
+  // chunk filled by allocations from different streams (e.g. EP ranks) leaves
+  // several free descs even once fully released. We must accept those, not just
+  // the single-spanning-desc case.
+  auto chunkIsReclaimable = [&](Chunk *c) -> bool {
+    if (!c->vmmBacked_ || c->descs_ == nullptr)
+      return false;
+    for (Desc *d = c->descs_; d != nullptr; d = d->next_) {
+      if (!d->isFree() || d->owner() != freeList_.get())
+        return false;
+    }
+    return true;
+  };
+
+  // Feasibility: free-granule pool + reclaimable whole chunks + uncommitted
+  // budget must cover the request, else this is an honest aggregate OOM.
+  size_t reclaimablePages = freeGranulePool_.size();
+  for (Chunk *c = chunks_.get(); c != nullptr; c = c->next_.get()) {
+    if (chunkIsReclaimable(c))
+      reclaimablePages += c->vmmHandles_.size();
+  }
+  size_t budgetPages = 0;
+  {
+    size_t remainingBudget =
+        maxCacheSize_ - std::min(maxCacheSize_, cacheSize_);
+    ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
+    if (!memInfo.isError())
+      remainingBudget = std::min((*memInfo).free, remainingBudget);
+    budgetPages = remainingBudget / pageSize_;
+  }
+  if (reclaimablePages + budgetPages < pagesNeeded) {
+    return Error("defrag: insufficient reclaimable memory (need " +
+                 humanMemorySize(allocSize) + ", reclaimable " +
+                 humanMemorySize(reclaimablePages * pageSize_) + ", budget " +
+                 humanMemorySize(budgetPages * pageSize_) + ")");
+  }
+
+  // Reserve fresh contiguous VA for the whole request.
+  ErrorOr<void *> vaOr = device().vmmAddressReserve(allocSize);
+  if (vaOr.isError())
+    return Error(std::string("defrag: vmmAddressReserve failed: ") +
+                 vaOr.getError());
+  void *va = *vaOr;
+
+  // Gather `pagesNeeded` physical granules: pool first, then retire wholly-free
+  // chunks into the pool, then create new physical for any remainder.
+  std::vector<uint64_t> granules;
+  granules.reserve(pagesNeeded);
+  auto drainPool = [&]() {
+    while (granules.size() < pagesNeeded && !freeGranulePool_.empty()) {
+      granules.push_back(freeGranulePool_.back());
+      freeGranulePool_.pop_back();
+    }
+  };
+  drainPool();
+
+  // Retire reclaimable chunks (splice out of the singly-linked unique_ptr chain
+  // of `chunks_`), recycling their granules into the pool.
+  std::unique_ptr<Chunk> *slot = &chunks_;
+  while (*slot != nullptr && granules.size() < pagesNeeded) {
+    Chunk *c = slot->get();
+    if (chunkIsReclaimable(c)) {
+      // Remove every (free, root-owned) desc of this chunk from the free-list
+      // and recycle the desc objects.
+      Desc *d = c->descs_;
+      while (d != nullptr) {
+        Desc *nextD = d->next_;
+        freeList_->removeFromFreeList(d);
+        pushDesc(d);
+        d = nextD;
+      }
+      c->descs_ = nullptr;
+      releaseChunkBacking(c, /*releaseToDriver=*/false); // granules -> pool
+      cacheSize_ -= c->size_;
+      --chunkCount_;
+      *slot = std::move(c->next_); // unlink; *slot now points to the next chunk
+      drainPool();
+    } else {
+      slot = &((*slot)->next_);
+    }
+  }
+
+  // Roll back: return gathered granules to the pool (valid, unmapped) and free
+  // the VA reservation. The retired chunks' memory is preserved in the pool.
+  auto rollback = [&](const std::string &why) -> Error {
+    for (uint64_t h : granules)
+      freeGranulePool_.push_back(h);
+    granules.clear();
+    ErrorOrSuccess fe = device().vmmAddressFree(va, allocSize);
+    if (fe.isError())
+      LOG_ERR(llvm::Twine("defrag rollback vmmAddressFree failed: ") +
+              fe.getError());
+    return Error(why);
+  };
+
+  // Create new physical granules for any remaining shortfall.
+  while (granules.size() < pagesNeeded) {
+    ErrorOr<uint64_t> h = device().vmmCreate(pageSize_);
+    if (h.isError())
+      return rollback(std::string("defrag: vmmCreate failed: ") + h.getError());
+    granules.push_back(*h);
+  }
+
+  // Map the granules into the fresh VA. Two-phase: nothing is published until
+  // every page is mapped; on failure, unmap what we mapped and roll back.
+  for (size_t mapped = 0; mapped < pagesNeeded; ++mapped) {
+    void *pageVa = static_cast<char *>(va) + mapped * pageSize_;
+    ErrorOrSuccess me =
+        device().vmmMapAndSetAccess(pageVa, pageSize_, granules[mapped]);
+    if (me.isError()) {
+      for (size_t j = 0; j < mapped; ++j) {
+        void *pj = static_cast<char *>(va) + j * pageSize_;
+        ErrorOrSuccess ue = device().vmmUnmap(pj, pageSize_);
+        if (ue.isError())
+          LOG_ERR(llvm::Twine("defrag rollback vmmUnmap failed: ") +
+                  ue.getError());
+      }
+      return rollback(std::string("defrag: vmmMapAndSetAccess failed: ") +
+                      me.getError());
+    }
+  }
+
+  // Materialize the new VA as a fully-backed in-use chunk owned by `freeList`.
+  // The Chunk ctor places a single free desc spanning the chunk on the root
+  // free-list; claim it as in-use exactly like allocateDesc's exact-fit branch.
+  auto chunk = std::make_unique<Chunk>(*this, va, allocSize);
+  chunk->vmmBacked_ = true;
+  chunk->pageSize_ = pageSize_;
+  chunk->vmmHandles_ = std::move(granules);
+  Desc *desc = chunk->descs_;
+  freeList_->removeFromFreeList(desc);
+  allocatedMap_.add(desc);
+  desc->allocatedBy_ = freeList;
+
+  chunk->next_ = std::move(chunks_);
+  chunks_ = std::move(chunk);
+  cacheSize_ += allocSize;
+  ++chunkCount_;
+
+  LOG_ERR("defrag_alloc(" + TWINE_PTR(va) + " ; " + TWINE(allocSize) + ")", 0,
+          0);
+  return va;
 }
 
 Device &MemoryManager::device() const { return device_; }
@@ -1109,19 +1443,24 @@ void MemoryManager::clear() {
 
     freeList_->removeFromFreeList(desc);
     delete desc;
-    // Release the chunk memory.
+    // Release the chunk memory (VMM-aware: unmaps granules, releases handles,
+    // frees the VA reservation; plain chunks call chunkFree).
     LOG_ERR("free_chunk(" + TWINE_PTR(chunk->base_) + ", " +
             TWINE(chunk->size_) + ")");
-    ErrorOrSuccess err = device().chunkFree(chunk->base_, isHost());
-    if (err.isError()) {
-      logErr(err.getError());
-      abort();
-    }
-    assert(!err.isError());
+    releaseChunkBacking(chunk.get(), /*releaseToDriver=*/true);
 
     chunk = std::move(nextChunk);
   }
   chunks_ = nullptr;
+
+  // Release any granules sitting in the free-granule pool back to the driver.
+  for (uint64_t handle : freeGranulePool_) {
+    ErrorOrSuccess err = device().vmmRelease(handle);
+    if (err.isError()) {
+      logErr(err.getError());
+    }
+  }
+  freeGranulePool_.clear();
   for (int i = 0; i < MemoryManagerFreeList::kNumFreeBufferLists; ++i) {
     assert(freeList_->freeBuffers_[i] == nullptr);
   }
@@ -1215,7 +1554,12 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     MemoryManager::Desc *desc = nullptr;
     {
       std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-      if (wrappedSize > memoryManager_.chunkSize_) {
+      // Under VMM we deliberately do NOT grow the chunk to max: keeping chunks
+      // bounded lets freed buffers form wholly-free chunks that defrag can
+      // recycle, and requests larger than a chunk fall through to
+      // defragForRequest (which reserves fresh VA of exactly the request size).
+      if (wrappedSize > memoryManager_.chunkSize_ &&
+          !memoryManager_.vmmEnabled_) {
         // Check heuristics if chunk size should be updated.
 
         if (memoryManager_.chunks_ == nullptr) {
@@ -1259,6 +1603,59 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         return redzoneFillAndWrap(desc->ptr_, size);
       }
       return desc->ptr_;
+    }
+
+    // On a miss under VMM, this stream's already-completed frees may still be
+    // sitting in its per-stream free buffers: a freed block only migrates to
+    // the root free-list when its enqueued event handler fires. Poll pending
+    // events to fire those handlers -- safe because pollPendingEvents only runs
+    // handlers whose device work has completed -- then retry. This both lets a
+    // plain retry succeed and gives defragForRequest more root-owned memory to
+    // reclaim. Must run OUTSIDE the memory-manager lock (the flush handlers
+    // take it). Gated on VMM so the default allocator path is unchanged.
+    if (memoryManager_.vmmEnabled_ && ctx_ != nullptr &&
+        !ctx_->isGraphCapturing()) {
+      ErrorOrSuccess polled = ctx_->pollPendingEvents();
+      if (!polled.isError() && wrappedSize <= memoryManager_.chunkSize_) {
+        std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+        desc = allocateDesc(wrappedSize);
+      }
+      // Still nothing: the free memory may be stranded in *sibling* streams'
+      // per-stream free buffers. Poll every child context to flush their
+      // completed frees to the root, then retry. (Same safety/lock argument as
+      // above; see flushSiblingFreeLists.)
+      if (desc == nullptr) {
+        memoryManager_.flushSiblingFreeLists(ctx_);
+        if (wrappedSize <= memoryManager_.chunkSize_) {
+          std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+          desc = allocateDesc(wrappedSize);
+        }
+      }
+      if (desc != nullptr) {
+        if (redzoneEnable_) {
+          return redzoneFillAndWrap(desc->ptr_, size);
+        }
+        return desc->ptr_;
+      }
+    }
+
+    // VMM defrag: the free-list could not satisfy a (typically large) request
+    // because no single contiguous block is big enough, even though enough
+    // memory is free in aggregate. Reserve fresh contiguous VA and remap
+    // physically-scattered free granules into it. Skipped during graph capture
+    // (VMM map/unmap is capture-illegal); falls through to the existing
+    // error/backdoor path on failure.
+    if (memoryManager_.vmmEnabled_ && !(ctx_ && ctx_->isGraphCapturing())) {
+      ErrorOr<void *> defragPtr =
+          memoryManager_.defragForRequest(wrappedSize, this);
+      if (!defragPtr.isError()) {
+        if (redzoneEnable_) {
+          return redzoneFillAndWrap(*defragPtr, size);
+        }
+        return *defragPtr;
+      }
+      LOG_MSG("defragForRequest(" + TWINE(wrappedSize) +
+              ") failed: " + defragPtr.getError());
     }
 
     if (memoryManager_.useOnlyMemoryManagerMode_)
@@ -1685,13 +2082,45 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
 
+  // VMM (CUDA Virtual Memory Management) defragmenting allocator. Disabled by
+  // default for now; set `memory_manager_vmm=1` to opt in on CUDA devices that
+  // support VMM (it auto-disables where vmmSupported() is false). When enabled
+  // we back chunks with remappable physical granules so a large contiguous
+  // allocation can be assembled from physically-scattered free memory
+  // (MemoryManager::defragForRequest). Granule (page) size is rounded up from
+  // `memory_manager_vmm_page_mb` (default 256 MiB) to the device VMM
+  // granularity, and all VMM sizes are rounded to it.
+  bool vmmEnabled = DeviceContext::configAsBool("memory_manager_vmm", false) &&
+                    device.vmmSupported();
+  size_t vmmPageSize = 0;
+  if (vmmEnabled) {
+    ErrorOr<size_t> granularity = device.vmmGranularity();
+    if (granularity.isError()) {
+      // Cannot determine granularity: disable VMM and fall back to plain
+      // chunks.
+      llvm::errs() << "DeviceContext.MemoryManager: VMM requested but "
+                      "granularity query failed ("
+                   << granularity.getError() << "); disabling VMM.\n";
+      vmmEnabled = false;
+    } else {
+      size_t pageMb = static_cast<size_t>(std::max<int64_t>(
+          1, DeviceContext::configAsInt("memory_manager_vmm_page_mb", 256)));
+      vmmPageSize = llvm::alignTo(pageMb * 1024 * KB, *granularity);
+      // Round pool/chunk sizes to whole granules.
+      maxCacheSize = llvm::alignTo(maxCacheSize, vmmPageSize);
+      chunkSize = std::min(maxCacheSize, llvm::alignTo(chunkSize, vmmPageSize));
+    }
+  }
+
   auto result = new MemoryManager(
       /*device=*/device,
       /*maxSize=*/maxCacheSize,
       /*chunkSize=*/chunkSize,
       /*alignment=*/alignment,
       /*isHost=*/false,
-      /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
+      /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode,
+      /*vmmEnabled=*/vmmEnabled,
+      /*vmmPageSize=*/vmmPageSize);
 
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
