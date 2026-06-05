@@ -85,7 +85,8 @@ For changes that touch cross-node KV transfer specifically:
 
 - **KV transfer engine smoke test** — two-process test (sender + receiver, one
   per node) that exercises `KVTransferEngine` + NIXL directly over EFA with no
-  model or scheduler involved. Validates data integrity and bandwidth at mc=32.
+  model or scheduler involved. Runs as a 4-row sequential sweep in CI via
+  `nixlKvSmokeTest.yaml` (~75s per row, ~5.5 min total). For manual runs:
 
   ```bash
   ./bazelw run \
@@ -93,15 +94,18 @@ For changes that touch cross-node KV transfer specifically:
     --sender-host <sender-node-ip> --receiver-host <receiver-node-ip>
   ```
 
-  Both processes exit 0 and the sender prints bandwidth ≥ 10 GiB/s on a healthy
-  EFA link.
+  The authoritative sweep parameters are in
+  `.github/workflows/nixlKvSmokeTest.yaml`.
+  Each row targets a specific regression boundary:
 
-  Parameter sweep — rows 2-4 are regression guards for known-brittle capacity
-  limits. Requests fire immediately (no inter-batch delay), which maximizes
-  pressure on NIXL. `--num-pages` defaults to `concurrency × pages-per-request`;
-  `--num-batches` defaults to 50.
+  | Row | Label                     | Failure signal                        |
+  |-----|---------------------------|---------------------------------------|
+  | 1   | baseline (mc=1)           | Any error — EFA transfer path broken  |
+  | 2   | data pool (mc=128)        | Crash = data pool exhaustion          |
+  | 3   | control pool (mc=32, 200b)| Timeout = control pool exhaustion     |
+  | 4   | xfer-id boundary          | Warning absent = structural fix in    |
 
-  Known patches that address these stress boundaries:
+  Known patches that address these boundaries:
   - [#83975](https://github.com/modularml/modular/pull/83975) — TX queue
     exhaustion under concurrent transfers (Row 2)
   - [#86044](https://github.com/modularml/modular/pull/86044) — notification
@@ -110,16 +114,6 @@ For changes that touch cross-node KV transfer specifically:
     error handling + control request pool CV backpressure (Row 3)
   - [#87503](https://github.com/modularml/modular/pull/87503) — data request
     pool inline CQ drain (Row 2)
-
-  | `--concurrency` | `--pages-per-request` | `--bytes-per-page` | `--num-batches` | Expected output                                                                 | Failure signal                             |
-  |-----------------|-----------------------|--------------------|-----------------|---------------------------------------------------------------------------------|--------------------------------------------|
-  | 1               | 64                    | 65536              | (default)       | `50 batches x 1 transfers: 0.20 GiB … 10.77 GiB/s`                              | Any error                                  |
-  | 128             | 64                    | 65536              | (default)       | `50 batches x 128 transfers: 25.00 GiB … 12.13 GiB/s`                           | Crash = data pool exhaustion               |
-  | 32              | 64                    | 65536              | 200             | `200 batches x 32 transfers: 25.00 GiB … 16.48 GiB/s`                           | Exhaustion = control pool exhaustion       |
-  | 1               | 2049                  | 131072             | (default)       | `50 batches x 1 transfers: 12.51 GiB … 8.54 GiB/s` + overflow warning per batch | No warning = xfer_id structural fix landed |
-
-  The sweep table will become the CI parametrization once the test is
-  wired into `nixlKvSmokeTest.yaml`.
 
 - [`run_efa_di_benchmark.md`](./run_efa_di_benchmark.md) — pairs two
   AWS B200 Coder workspaces over EFA and runs a DeepSeek V3.1 NVFP4
