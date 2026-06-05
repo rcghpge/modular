@@ -430,8 +430,8 @@ struct PrintOutputShapeStridesFusedOp:
     ) capturing raises:
         print("output._static_shape_tuple = ", output._static_shape_tuple)
         print("output._static_strides_tuple = ", output._static_strides_tuple)
-        print("output._runtime_shape = ", output._spec.shape)
-        print("output._runtime_strides = ", output._runtime_strides)
+        print("output._runtime_shape = ", output.shape())
+        print("output._runtime_strides = ", output.strides())
 
         @parameter
         @always_inline
@@ -635,10 +635,12 @@ struct Transpose2DOp:
     ](x: InputTensor[dtype=dtype, rank=2, ...]) -> StaticTuple[IndexList[2], 2]:
         var new_stride = IndexList[2]()
         var new_shape = IndexList[2]()
-        new_stride[0] = x._runtime_strides[1]
-        new_stride[1] = x._runtime_strides[0]
-        new_shape[0] = x._spec.shape[1]
-        new_shape[1] = x._spec.shape[0]
+        var x_strides = x.strides()
+        var x_shape = x.shape()
+        new_stride[0] = x_strides[1]
+        new_stride[1] = x_strides[0]
+        new_shape[0] = x_shape[1]
+        new_shape[1] = x_shape[0]
 
         return StaticTuple[IndexList[2], 2](new_shape, new_stride)
 
@@ -697,8 +699,8 @@ struct ElementwisePrintShape:
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
-        print("input.shape =", x._spec.shape)
-        print("output.shape =", z._spec.shape)
+        print("input.shape =", x.shape())
+        print("output.shape =", z.shape())
 
         foreach[func](z, ctx)
 

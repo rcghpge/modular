@@ -1317,7 +1317,7 @@ static SmallVector<TensorCaptureVars> materializeTensorCaptureVars(
     TensorCaptureVars v;
     v.ptrVar = state.builder.var(t.get("_ptr"));
     v.shapeVar = state.builder.var(t.get("shape")());
-    v.stridesVar = state.builder.var(t.get("_runtime_strides"));
+    v.stridesVar = state.builder.var(t.get("strides")());
     v.staticSpec = t.get("static_spec");
     tensorVars.push_back(std::move(v));
   };
