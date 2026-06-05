@@ -72,6 +72,8 @@ constexpr llvm::StringLiteral kMoggShapeFunctionLabel = "mogg.shape";
 constexpr llvm::StringLiteral kMoggUpdateViewFunctionLabel = "mogg.update_view";
 constexpr llvm::StringLiteral kMoggElementwiseFunctionLabel =
     "mogg.elementwise";
+constexpr llvm::StringLiteral kMoggTileElementwiseFunctionLabel =
+    "tile_elementwise";
 constexpr llvm::StringLiteral kMoggBuildGraphFunctionLabel = "mogg.build_graph";
 
 /// Mojo source method names of extensibility kernels (`@register`-decorated
@@ -222,6 +224,9 @@ constexpr llvm::StringLiteral kStructBool = "Bool";
 constexpr llvm::StringLiteral kStructAddressSpace = "std.memory.AddressSpace";
 constexpr llvm::StringLiteral kStructDType = "DType";
 constexpr llvm::StringLiteral kStructSIMD = "SIMD";
+constexpr llvm::StringLiteral kStructTileTensor = "TileTensor";
+constexpr llvm::StringLiteral kStructTensorLayout = "TensorLayout";
+constexpr llvm::StringLiteral kStructTileCopier = "TileCopier";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
@@ -327,6 +332,7 @@ constexpr llvm::StringLiteral kFnPrint = "print";
 
 /// `ManagedTensorSlice` fields.
 constexpr llvm::StringLiteral kFieldUnsafePtr = "unsafe_ptr";
+constexpr llvm::StringLiteral kFnUnsafeOriginCast = "unsafe_origin_cast";
 constexpr llvm::StringLiteral kFieldShape = "shape";
 constexpr llvm::StringLiteral kFieldStrides = "strides";
 constexpr llvm::StringLiteral kFieldStaticSpec = "static_spec";
@@ -342,6 +348,9 @@ constexpr llvm::StringLiteral kFieldStaticLayout = "static_layout";
 constexpr llvm::StringLiteral kFieldRank = "rank";
 constexpr llvm::StringLiteral kFieldShapeTuple = "shape_tuple";
 constexpr llvm::StringLiteral kFieldStridesTuple = "strides_tuple";
+
+/// `TileTensor` fields.
+constexpr llvm::StringLiteral kFieldLayout = "layout";
 
 /// `StaticString` fields.
 constexpr llvm::StringLiteral kFieldByteLength = "byte_length";
@@ -400,6 +409,7 @@ constexpr llvm::StringLiteral kComptimeMutableInputTensor =
     "extensibility.managed_tensor_slice._MutableInputTensor";
 constexpr llvm::StringLiteral kComptimeUInt8 = "UInt8";
 constexpr llvm::StringLiteral kComptimeMutAnyOrigin = "MutAnyOrigin";
+constexpr llvm::StringLiteral kComptimeMutExternalOrigin = "MutExternalOrigin";
 constexpr llvm::StringLiteral kComptimeNone = "None";
 constexpr llvm::StringLiteral kComptimeOptionalErrorEmpty = "Optional[Error]()";
 constexpr llvm::StringLiteral kComptimeMutByteBuffer =
@@ -443,6 +453,8 @@ constexpr llvm::StringLiteral kParameterForeachCtx = "ctx";
 constexpr llvm::StringLiteral kParameterSelf = "self";
 constexpr llvm::StringLiteral kParameterIdx = "idx";
 constexpr llvm::StringLiteral kParameterVal = "val";
+constexpr llvm::StringLiteral kParameterTileCoords = "tile_coords";
+constexpr llvm::StringLiteral kParameterCopier = "copier";
 
 //===----------------------------------------------------------------------===//
 // Stdlib package names
@@ -631,6 +643,55 @@ public:
 
   MojoValue unsafePtr() const { return value.get(kFieldUnsafePtr)(); }
   MojoValue byteLength() const { return value.get(kFieldByteLength)(); }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `TileTensor` value. Encapsulates construction and
+/// field-access patterns used during tile-based epilogue fusion emission.
+class TileTensorRef {
+public:
+  explicit TileTensorRef(MojoValue v) : value(std::move(v)) {}
+
+  /// `val.layout` — the runtime tile layout.
+  MojoValue layout() const { return value.get(kFieldLayout); }
+
+  /// `val.dim[d]()` — compile-time dimension query.
+  MojoValue dim(unsigned d) const { return value.get("dim")[d](); }
+
+  /// Emits the backing `InlineArray` storage for a local tile:
+  ///   `InlineArray[Scalar[dtype],
+  ///   LayoutType.static_product](uninitialized=True)`
+  static MojoValue makeStorage() {
+    MojoValue scalarDtype = MojoValue(kStructScalar)["dtype"];
+    MojoValue layoutProduct =
+        MojoValue(kParameterLayoutType).get("static_product");
+    return MojoValue(kStructInlineArray)[{scalarDtype, layoutProduct}](
+        {}, {"uninitialized=True"});
+  }
+
+  /// Constructs a mutable `TileTensor` backed by register-local `InlineArray`
+  /// storage with the given layout:
+  ///   `TileTensor(storage.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+  ///   layout)`
+  static MojoValue fromMutStorage(const MojoValue &storage,
+                                  const MojoValue &layout) {
+    MojoValue ptr = storage.get(kFieldUnsafePtr)().get(
+        kFnUnsafeOriginCast)[kComptimeMutAnyOrigin]();
+    return MojoValue(kStructTileTensor)({}, {ptr, layout});
+  }
+
+  /// Constructs a `TileTensor` from a raw pointer into global (HBM) memory:
+  ///   `TileTensor((ptr).unsafe_origin_cast[MutExternalOrigin](), layout)`
+  /// The pointer expression is parenthesised to handle compound expressions
+  /// (e.g. `self.ptr_N + offset`) before the method dispatch.
+  static MojoValue fromExternalPtr(const MojoValue &ptr,
+                                   const MojoValue &layout) {
+    MojoValue parenPtr(llvm::formatv("({})", ptr.text).str());
+    MojoValue castPtr =
+        parenPtr.get(kFnUnsafeOriginCast)[kComptimeMutExternalOrigin]();
+    return MojoValue(kStructTileTensor)({}, {castPtr, layout});
+  }
 
   MojoValue value;
 };

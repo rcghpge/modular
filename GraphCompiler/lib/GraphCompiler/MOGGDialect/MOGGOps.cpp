@@ -795,7 +795,9 @@ static void emitElementwiseLambdaBodyOps(
     ArrayRef<std::pair<Value, unsigned>> extraTensorCaptures,
     DenseMap<Value, MojoValue> &valueMap,
     const DenseSet<Value> &scalarCaptureValues,
-    const ElementwiseBodyRenderer &renderer) {
+    const ElementwiseBodyRenderer &renderer,
+    KernelOutputFusionLambdaType lambdaType =
+        KernelOutputFusionLambdaType::Compute) {
 
   for (auto &op : lambdaBody->getOperations()) {
     if (isa<MOGG::OutputOp>(&op))
@@ -828,23 +830,72 @@ static void emitElementwiseLambdaBodyOps(
                 .str();
       }
 
-      auto loadExpr = renderer.buildLoadExpr(captureIdx, indicesExpr);
-      valueMap[loadOp.getOutputs()] = sdb.var(MojoValue(loadExpr));
+      if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+        auto captureN = std::to_string(captureIdx);
+        TileTensorRef val("val");
+
+        // Local storage for the destination tile.
+        auto storageVar = sdb.var(TileTensorRef::makeStorage());
+
+        // Dest TileTensor backed by local storage with val's layout.
+        auto dstVar =
+            sdb.var(TileTensorRef::fromMutStorage(storageVar, val.layout()));
+
+        // Tile-offset pointer into the captured tensor.
+        MojoValue tileOffset("0");
+        for (unsigned d = 0; d < loadRank; ++d) {
+          MojoValue coord = MojoValue(kParameterTileCoords)[d];
+          MojoValue stride =
+              MojoValue(std::string("self.strides_") + captureN)[d];
+          MojoValue term = coord * val.dim(d) * stride;
+          tileOffset = (d == 0) ? term : tileOffset + term;
+        }
+        auto tileOffsetVar = sdb.var(tileOffset);
+
+        // Src TileTensor for captured data in global memory at the tile
+        // position.
+        MojoValue capturePtr =
+            MojoValue(std::string("self.ptr_") + captureN) + tileOffsetVar;
+        auto srcVar =
+            sdb.var(TileTensorRef::fromExternalPtr(capturePtr, val.layout()));
+
+        // Copy captured tile from global memory into local dst.
+        sdb.verbatim(
+            MojoValue(kParameterCopier).get("copy")({}, {dstVar, srcVar}));
+        valueMap[loadOp.getOutputs()] = dstVar;
+      } else {
+        auto loadExpr = renderer.buildLoadExpr(captureIdx, indicesExpr);
+        valueMap[loadOp.getOutputs()] = sdb.var(MojoValue(loadExpr));
+      }
       continue;
     }
 
     if (auto elemOp = dyn_cast<MOGG::CallElementwiseOp>(&op)) {
-      SmallVector<MojoValue> inputs;
-      for (auto input : elemOp.getInputs())
-        inputs.push_back(resolveStructOperand(
-            input, valueMap, scalarCaptureValues, state, renderer));
-
       KernelDeclOp elemKernelDecl =
           state.registry.lookupKernelBySymName(elemOp.getKernelSymName());
       KernelDeclAdaptor elemAdaptor(elemKernelDecl);
+
+      bool useTileElementwise =
+          lambdaType == KernelOutputFusionLambdaType::ComputeTile &&
+          elemAdaptor.isTileElementwise();
+
+      SmallVector<MojoValue> inputs;
+      for (auto input : elemOp.getInputs()) {
+        if (useTileElementwise) {
+          // Tile path: pass TileTensor values directly without SIMD rebind.
+          auto it = valueMap.find(input);
+          ASSERT_STREAM(it != valueMap.end(),
+                        << "missing tile value in body map");
+          inputs.push_back(it->second);
+        } else {
+          inputs.push_back(resolveStructOperand(
+              input, valueMap, scalarCaptureValues, state, renderer));
+        }
+      }
       const KernelDeclFunctionAdaptor &elemFnAdaptor =
-          elemAdaptor.isElementwise() ? *elemAdaptor.elementwiseFunction
-                                      : *elemAdaptor.executeFunction;
+          useTileElementwise            ? *elemAdaptor.tileElementwiseFunction
+          : elemAdaptor.isElementwise() ? *elemAdaptor.elementwiseFunction
+                                        : *elemAdaptor.executeFunction;
       MojoValue mojoSymbolName(elemFnAdaptor.fullyResolvedName.strref());
 
       Value outputVal = elemOp.getOutputs().front();
@@ -861,9 +912,12 @@ static void emitElementwiseLambdaBodyOps(
         }
         return state.inferDefaultKernelParamValue(elemOp, paramName);
       };
-      llvm::StringRef elemFuncLabel = elemAdaptor.isElementwise()
-                                          ? MOGG::kMoggElementwiseFunctionLabel
-                                          : MOGG::kMoggExecuteFunctionLabel;
+      llvm::StringRef elemFuncLabel =
+          useTileElementwise
+              ? llvm::StringRef(MOGG::kMoggTileElementwiseFunctionLabel)
+              : (elemAdaptor.isElementwise()
+                     ? llvm::StringRef(MOGG::kMoggElementwiseFunctionLabel)
+                     : llvm::StringRef(MOGG::kMoggExecuteFunctionLabel));
       auto maybeParams = EmitMojoState::inferKernelParameters(
           elemAdaptor, elemFuncLabel, inferParam);
       if (maybeParams.isError()) {
@@ -950,6 +1004,12 @@ emitFusionStructReturnOrStore(EmitMojoState &state, MojoBuilder &sdb,
                 << "missing output value in struct body map");
   MojoValue resultValue = resultIt->second;
 
+  // Tile-based compute fusion: return the result TileTensor directly.
+  if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+    sdb.returnsValue(resultValue);
+    return;
+  }
+
   if (generateStoreForOutput) {
     auto tensorTy = captureTensorTypes[0];
     auto dtype = state.mlirDTypeToMojoType(tensorTy.getDtype());
@@ -1017,7 +1077,11 @@ static void emitFusionStructMethodBody(
       },
       valueMap, scalarCaptureValues);
 
-  valueMap[lambdaBody->getArguments().back()] = MojoValue("idx");
+  // For tile compute fusion, the position parameter is tile_coords; for
+  // SIMD compute/output fusion it is idx.
+  bool isTile = lambdaType == KernelOutputFusionLambdaType::ComputeTile;
+  valueMap[lambdaBody->getArguments().back()] =
+      MojoValue(isTile ? kParameterTileCoords : kParameterIdx);
 
   for (unsigned i = 0; i < fusedInputs.size(); ++i) {
     Value blockArg = lambdaBody->getArgument(i);
@@ -1025,9 +1089,16 @@ static void emitFusionStructMethodBody(
       valueMap[blockArg] = MojoValue("val");
       continue;
     }
+
+    if (isTile) {
+      // Tile captures are resolved lazily by the LoadTensorOp handler in
+      // emitElementwiseLambdaBodyOps, which looks up each capture via
+      // extraTensorCaptures and emits copier.copy into a local dst TileTensor.
+      continue;
+    }
+
     auto tensorTy = captureTensorTypes[i];
     auto rank = tensorTy.getRank() == 0 ? 1 : tensorTy.getRank();
-
     auto loadExpr = renderer.buildLoadExpr(
         i,
         llvm::formatv("rebind[{0}[{1}]](idx)", kStructIndexList, rank).str());
@@ -1037,7 +1108,7 @@ static void emitFusionStructMethodBody(
   // Phase 2: Emit body operations.
   emitElementwiseLambdaBodyOps(state, sdb, lambdaBody, captureTensorTypes,
                                extraTensorCaptures, valueMap,
-                               scalarCaptureValues, renderer);
+                               scalarCaptureValues, renderer, lambdaType);
 
   // Phase 3: Emit the final return or store.
   emitFusionStructReturnOrStore(state, sdb, lambdaBody, captureTensorTypes,
@@ -1105,24 +1176,48 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         // body can reference `self.*`, `simd_width`, `dtype`, etc. without
         // counter mangling — hence `NamedMojoDef::asVerbatim`.
         MojoValue idxType = MojoValue(kStructIndexList)[kParameterRank];
-        MojoValue simdType =
-            MojoValue(kStructSIMD)[{kParameterDType, kParameterSimdWidth}];
-        SmallVector<NamedMojoDef> methodParameters = {
-            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
-            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
-            NamedMojoDef::asVerbatim(kParameterSimdWidth, simdWidthType),
-            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
-                                     MojoValue(1)),
-        };
+        SmallVector<NamedMojoDef> methodParameters;
         SmallVector<NamedMojoDef> methodArgs;
-        methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
-        methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterIdx, idxType));
-        if (isOutputLambda)
-          methodArgs.push_back(
-              NamedMojoDef::asVerbatim(kParameterVal, simdType));
         std::optional<MojoValue> returnType;
-        if (methodReturnsValue)
-          returnType = simdType;
+
+        if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+          MojoValue tileTensorType = MojoValue(kStructTileTensor)[{
+              kParameterDType, kParameterLayoutType, kComptimeMutAnyOrigin}];
+          methodParameters = {
+              NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
+              NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
+              NamedMojoDef::asVerbatim(kParameterLayoutType,
+                                       kStructTensorLayout),
+              NamedMojoDef::asVerbatim(kParameterCopier, kStructTileCopier),
+          };
+          methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
+          methodArgs.push_back(
+              NamedMojoDef::asVerbatim(kParameterTileCoords, idxType));
+          methodArgs.push_back(
+              NamedMojoDef::asVerbatim(kParameterCopier, kParameterCopier));
+          methodArgs.push_back(
+              NamedMojoDef::asVerbatim(kParameterVal, tileTensorType));
+          returnType = tileTensorType;
+        } else {
+          // SIMD-based fusion paths.
+          MojoValue simdType =
+              MojoValue(kStructSIMD)[{kParameterDType, kParameterSimdWidth}];
+          methodParameters = {
+              NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
+              NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
+              NamedMojoDef::asVerbatim(kParameterSimdWidth, simdWidthType),
+              NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
+                                       MojoValue(1)),
+          };
+          methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
+          methodArgs.push_back(
+              NamedMojoDef::asVerbatim(kParameterIdx, idxType));
+          if (isOutputLambda)
+            methodArgs.push_back(
+                NamedMojoDef::asVerbatim(kParameterVal, simdType));
+          if (methodReturnsValue)
+            returnType = simdType;
+        }
 
         sdb.def(methodName, methodParameters, methodArgs, returnType,
                 /*exported=*/false, /*raises=*/false,
