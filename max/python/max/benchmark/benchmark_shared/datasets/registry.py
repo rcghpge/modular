@@ -19,15 +19,12 @@ from dataclasses import dataclass
 
 @dataclass
 class DatasetRegistryEntry:
-    """Registry entry for a benchmark dataset.
-
-    Attributes:
-        class_name: The name of the BenchmarkDataset subclass that implements this dataset.
-        has_multiturn_chat_support: Whether this dataset supports multiturn chat scenarios.
-    """
+    """Registry entry for a benchmark dataset."""
 
     class_name: str
+    """The name of the BenchmarkDataset subclass that implements this dataset."""
     has_multiturn_chat_support: bool
+    """Whether this dataset supports multiturn chat scenarios."""
 
 
 """Registry mapping dataset names to their implementation metadata and capabilities.
@@ -84,6 +81,10 @@ DATASET_REGISTRY: Mapping[str, DatasetRegistryEntry] = {
         class_name="CodeDebugBenchmarkDataset",
         has_multiturn_chat_support=True,
     ),
+    "chat-judge": DatasetRegistryEntry(
+        class_name="ChatJudgeBenchmarkDataset",
+        has_multiturn_chat_support=True,
+    ),
     "obfuscated-conversations": DatasetRegistryEntry(
         class_name="ObfuscatedConversationsBenchmarkDataset",
         has_multiturn_chat_support=False,
@@ -122,6 +123,10 @@ DATASET_REGISTRY: Mapping[str, DatasetRegistryEntry] = {
     ),
     "instruct-coder": DatasetRegistryEntry(
         class_name="InstructCoderBenchmarkDataset",
+        has_multiturn_chat_support=True,
+    ),
+    "nemotron-opencode": DatasetRegistryEntry(
+        class_name="NemotronOpenCodeBenchmarkDataset",
         has_multiturn_chat_support=True,
     ),
 }

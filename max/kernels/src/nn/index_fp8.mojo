@@ -28,7 +28,7 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.sync import barrier
 from std.gpu.memory import external_memory
 from nn.attention.mha_operand import RaggedMHAOperand, MHAOperand
-from nn.attention.gpu.nvidia.sm90.attention import q_tma
+from nn.attention.gpu.nvidia.common import q_tma
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
 
@@ -44,7 +44,7 @@ struct IndexSmemStorage[
     var scratch: InlineArray[Scalar[DType.float32], Self.BN * 8]
 
 
-@__name(t"fp8_index_{dtype}", mangle=True)
+@__name(t"fp8_index_{dtype}")
 def fp8_index_kernel[
     dtype: DType,
     OutputLT: TensorLayout,
@@ -373,7 +373,7 @@ def fp8_index[
     )
 
 
-@__name(t"fp8_index_matmul_max_{dtype}", mangle=True)
+@__name(t"fp8_index_matmul_max_{dtype}")
 def _index_matmul_max[
     dtype: DType,
     output_layout: Layout,
@@ -444,7 +444,7 @@ def _index_matmul_max[
     o_batch[seq_idx, key_idx, head_idx] = accum
 
 
-@__name(t"fp8_index_reduce_logits", mangle=True)
+@__name(t"fp8_index_reduce_logits")
 def _reduce_logits[
     logits_layout: Layout,
     output_layout: Layout,

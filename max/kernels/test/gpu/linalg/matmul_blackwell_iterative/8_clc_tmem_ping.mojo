@@ -338,10 +338,8 @@ def stsm_helper[
 
         comptime for k in range(stsmx4_lane_size // 2):
             var pair = SIMD[vec_dtype, 2](
-                rebind[Scalar[vec_dtype]](vec[i * stsmx4_lane_size + 2 * k]),
-                rebind[Scalar[vec_dtype]](
-                    vec[i * stsmx4_lane_size + 2 * k + 1]
-                ),
+                vec[i * stsmx4_lane_size + 2 * k],
+                vec[i * stsmx4_lane_size + 2 * k + 1],
             )
             var casted = pair.cast[dst.dtype]()
             v[2 * k] = casted[0]
@@ -985,9 +983,9 @@ def blackwell_kernel_8[
     cta_group: Int = 1,
     num_clc_pipeline_stages: Int = 2,
 ](
-    c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    a: LayoutTensor[a_type, a_layout, MutAnyOrigin],
-    b: LayoutTensor[b_type, b_layout, MutAnyOrigin],
+    c: LayoutTensor[c_type, c_layout, _],
+    a: LayoutTensor[a_type, a_layout, _],
+    b: LayoutTensor[b_type, b_layout, _],
     ctx: DeviceContext,
 ) raises:
     var M = c.dim[0]()

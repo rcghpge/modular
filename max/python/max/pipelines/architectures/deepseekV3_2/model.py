@@ -15,19 +15,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph
+from max.graph import Graph
 from max.graph.weights import WeightData
 from max.nn.comm.ep import EPCommInitializer, EPConfig
-from max.nn.kv_cache import KVCacheParamInterface, MultiKVCacheParams
-from max.pipelines.lib import CompilationTimer, KVCacheConfig, PipelineConfig
-from max.pipelines.lib.quant import parse_quant_config
-from transformers import AutoConfig
+from max.nn.kv_cache import MultiKVCacheParams
+from max.pipelines.lib import CompilationTimer, PipelineConfig
+from max.pipelines.weights.quant import parse_quant_config
 from typing_extensions import override
 
 from ..deepseekV3.model import DeepseekV3Model
@@ -40,6 +39,8 @@ logger = logging.getLogger("max.pipelines")
 class DeepseekV3_2Model(DeepseekV3Model):
     """A DeepseekV3.2 model."""
 
+    model_config_cls: ClassVar[type[Any]] = DeepseekV3_2Config
+
     @classmethod
     @override
     def _ep_max_rank_send_tokens_for_pipeline(
@@ -47,23 +48,6 @@ class DeepseekV3_2Model(DeepseekV3Model):
     ) -> int:
         """Each rank holds full-length activations before EP MoE (no RS like V3 TP_EP)."""
         return pipeline_config.runtime.max_batch_input_tokens
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParamInterface:
-        return DeepseekV3_2Config.construct_kv_params(
-            huggingface_config=huggingface_config,
-            pipeline_config=pipeline_config,
-            devices=devices,
-            kv_cache_config=kv_cache_config,
-            cache_dtype=cache_dtype,
-        )
 
     def _create_model_config(
         self, state_dict: dict[str, WeightData]
@@ -89,7 +73,7 @@ class DeepseekV3_2Model(DeepseekV3Model):
             graph_mode = "auto"
 
         dtype = self.dtype
-        if dtype == DType.float8_e4m3fn:
+        if dtype in (DType.float8_e4m3fn, DType.uint8, DType.float4_e2m1fn):
             quant_config = parse_quant_config(config, state_dict, dtype)
         else:
             quant_config = None
@@ -100,8 +84,10 @@ class DeepseekV3_2Model(DeepseekV3Model):
         else:
             if ep_size % len(self.devices) != 0:
                 raise ValueError(
-                    "If you are running with expert parallelism, ep_size must"
-                    " be set to the total number of GPUs across nodes."
+                    f"ep_size={ep_size} is not divisible by the number of GPUs"
+                    f" on this node ({len(self.devices)}). ep_size must equal"
+                    f" n_gpus_per_node * n_nodes. For a single-node deployment"
+                    f" set ep_size={len(self.devices)}."
                 )
             n_nodes = ep_size // len(self.devices)
 
@@ -122,9 +108,15 @@ class DeepseekV3_2Model(DeepseekV3Model):
             )
 
             if config.n_shared_experts == 1:
-                # Only enable shared expert fusion if the shared expert is of
-                # the same shape as routed experts.
-                ep_kwargs["fused_shared_expert"] = True
+                # Fuse into EP dispatch only when shared experts use the same
+                # quantized layout as routed experts (modelopt ``*shared_experts*``
+                # ignore leaves them bf16 → separate unfused path).
+                if quant_config is None:
+                    ep_kwargs["fused_shared_expert"] = True
+                else:
+                    ep_kwargs["fused_shared_expert"] = (
+                        quant_config.shared_experts_weight_dtype is None
+                    )
 
             if quant_config is not None:
                 ep_kwargs["dispatch_quant_config"] = quant_config
@@ -148,7 +140,7 @@ class DeepseekV3_2Model(DeepseekV3Model):
             correction_bias_dtype = None
 
         # Initialize config with parameters from pipeline_config
-        model_config = DeepseekV3_2Config.initialize(self.pipeline_config)
+        model_config = self.model_config_cls.initialize(self.pipeline_config)
 
         # Finalize config with state_dict-dependent parameters
         model_config.norm_dtype = norm_dtype

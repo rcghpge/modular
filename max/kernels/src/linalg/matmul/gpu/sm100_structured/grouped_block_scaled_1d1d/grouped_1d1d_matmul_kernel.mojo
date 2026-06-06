@@ -37,7 +37,7 @@ This is a port of grouped_matmul_sm100_1d1d.mojo to the structured kernels
 architecture.
 """
 
-from std.builtin.device_passable import DevicePassable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.collections import Optional
 from std.math import align_up, ceildiv
 from std.memory import Pointer, UnsafePointer, bitcast
@@ -84,7 +84,6 @@ from layout import (
     Idx,
     Layout,
     RowMajorLayout,
-    RuntimeInt,
     TensorLayout,
     TileTensor,
     row_major,
@@ -363,7 +362,9 @@ struct NullSwiGLUOutput(SwiGLUOutput):
     ):
         pass
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
         pass
 
     @staticmethod
@@ -493,8 +494,10 @@ struct RealSwiGLUOutput[
             ) * SF_ATOM_K
             ptr_u32.store(byte_idx // 4, UInt32(0))
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
-        target.bitcast[Self]()[] = self
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:
@@ -1161,9 +1164,7 @@ struct Grouped1D1DMatmulKernel[
                 if use_group_cache:
                     s_scale = sched_expert_scales[Int(grp)]
                 else:
-                    s_scale = rebind[Scalar[DType.float32]](
-                        expert_scales[Int(eid)]
-                    )
+                    s_scale = expert_scales[Int(eid)]
                 found = True
                 break
             grp += 1
@@ -1206,12 +1207,11 @@ struct Grouped1D1DMatmulKernel[
     @__llvm_arg_metadata(sfa_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(sfb_tma_op, `nvvm.grid_constant`)
     @__name(
-        StaticString(Self.config.get_kernal_name())
+        StaticString(Self.config.get_kernel_name())
         + StaticString(
             "_fused_compute_epi" if Self.elementwise_compute_lambda_fn
             is not None else ""
         ),
-        mangle=True,
     )
     def run(
         # Grid-constant TMA descriptors
@@ -1359,7 +1359,7 @@ struct Grouped1D1DMatmulKernel[
         fence_mbarrier_init()
         cluster_sync()
 
-        # SAFE (PDLLevel(1)) tier: block-wide PDL fence fires after all SMEM
+        # SAFE (PDLLevel.ON) tier: block-wide PDL fence fires after all SMEM
         # / barrier init but before any warp touches GMEM. Orders every
         # warp's subsequent _compute_iter0_ctx read of a_offsets /
         # expert_ids / expert_scales, the scheduler's direct reads, and all
@@ -1367,7 +1367,7 @@ struct Grouped1D1DMatmulKernel[
         # this fence and lets the Load warp's split-then-wait handle PDL
         # ordering, at the cost of letting the scheduler and iter-0 ctx
         # reads race ahead of the previous grid's writes.
-        comptime if Self.pdl_level == PDLLevel(1):
+        comptime if Self.pdl_level == PDLLevel.ON:
             wait_on_dependent_grids()
 
         var mma_op = Self.MmaOp()
@@ -1870,12 +1870,12 @@ struct Grouped1D1DMatmulKernel[
                 # Layout mapping (k_atom, row) → flat SMEM offset within atom.
                 comptime sfb_atom_layout = TileLayout(
                     Coord(
-                        Idx[Self.config.num_sf_k_tiles](),
-                        Idx[SF_ATOM_M[0]](),
+                        Idx[Self.config.num_sf_k_tiles],
+                        Idx[SF_ATOM_M[0]],
                     ),
                     Coord(
-                        Idx[SF_ATOM_M[0] * ROW_STRIDE](),
-                        Idx[ROW_STRIDE](),
+                        Idx[SF_ATOM_M[0] * ROW_STRIDE],
+                        Idx[ROW_STRIDE],
                     ),
                 )
 
@@ -1910,9 +1910,7 @@ struct Grouped1D1DMatmulKernel[
                     # Hoist loop-invariant SF coords outside k_tile loop.
                     # sfb_n_coord must be visible to ALL lanes (cp.async
                     # needs it per-lane), so compute outside elect_one_sync.
-                    var a_scale_offset = rebind[Scalar[DType.uint32]](
-                        a_scale_offsets[Int(ctx.group_idx())]
-                    )
+                    var a_scale_offset = a_scale_offsets[Int(ctx.group_idx())]
                     var _sfa_coord: Int
                     var sfb_n_coord: Int
                     _sfa_coord, sfb_n_coord = Self._get_sf_coords(
@@ -2053,12 +2051,8 @@ struct Grouped1D1DMatmulKernel[
                                         var smem_offset = Int(
                                             sfb_atom_layout(
                                                 Coord(
-                                                    Idx[k_atom](),
-                                                    RuntimeInt(
-                                                        Scalar[DType.int64](
-                                                            row_in_atom
-                                                        )
-                                                    ),
+                                                    Idx[k_atom],
+                                                    Int64(row_in_atom),
                                                 )
                                             )
                                         )
@@ -2244,9 +2238,9 @@ struct Grouped1D1DMatmulKernel[
                 for i in range(lane, num_active_experts, WARP_SIZE):
                     var eid = expert_ids[i]
                     sched_expert_ids[i] = eid
-                    sched_expert_scales[i] = rebind[Scalar[DType.float32]](
-                        expert_scales[Int(eid)]
-                    ) if eid >= 0 else Float32(1.0)
+                    sched_expert_scales[i] = expert_scales[
+                        Int(eid)
+                    ] if eid >= 0 else Float32(1.0)
 
             # --- Steady-state: use SMEM cache (fast) ---
             # warp.broadcast() is shuffle_idx with full mask — it includes an
@@ -2537,9 +2531,7 @@ struct Grouped1D1DMatmulKernel[
 
                 # Scale factor load with offset
                 # TMA 4D now has TileTensor overload - pass tiles directly
-                var a_scale_offset = rebind[Scalar[DType.uint32]](
-                    a_scale_offsets[Int(group_idx)]
-                )
+                var a_scale_offset = a_scale_offsets[Int(group_idx)]
 
                 var sfa_m_coord: Int
                 var sfb_n_coord: Int
@@ -2804,11 +2796,7 @@ struct Grouped1D1DMatmulKernel[
 
         # Per-expert SF-block base in the 5D scale tile. Computed once per
         # epilogue call; mirrors `ep_comm.mojo:4068-4070`.
-        var scales_offset_blocks = Int(
-            rebind[Scalar[DType.uint32]](
-                a_scale_offsets[Int(active_expert_idx)]
-            )
-        )
+        var scales_offset_blocks = Int(a_scale_offsets[Int(active_expert_idx)])
         var sf_block_base = (
             Int(m_start) // SF_MN_GROUP_SIZE + scales_offset_blocks
         ) * SF_MN_GROUP_SIZE

@@ -28,7 +28,7 @@ from max.nn.quant_config import (
     WeightScaleSpec,
 )
 from max.pipelines.lib import MAXModelConfigBase, SupportedEncoding
-from max.pipelines.lib.config.config_enums import supported_encoding_dtype
+from max.pipelines.modeling.config_enums import supported_encoding_dtype
 from pydantic import Field
 from typing_extensions import Self
 
@@ -122,9 +122,12 @@ def _make_nvfp4_config(num_layers: int, num_single_layers: int) -> QuantConfig:
         attn_quantized_layers=all_layers,
         embedding_output_dtype=DType.bfloat16,
         format=QuantFormat.NVFP4,
-        # BFL FLUX.2-NVFP4 ships scales already in the 5D TCGEN-interleaved
-        # layout, so quantized_matmul skips the runtime interleave pass.
-        scales_pre_interleaved=True,
+        # BFL ships scales in 5D TCGEN5 interleaved layout flattened to 2D,
+        # but that storage can't be K-sharded by slicing axis 1 (the 5D dims
+        # mix rows and K-blocks). The weight adapter deinterleaves to true
+        # ``[M, K//16]`` at load time and lets the runtime
+        # ``block_scales_interleave`` op rebuild the 5D layout per-shard.
+        scales_pre_interleaved=False,
     )
 
 

@@ -30,7 +30,7 @@ from std.utils.numerics import get_accum_type
 
 
 @always_inline
-@__name(t"mha_cross_bmm0_{q_type}_{p_type}", mangle=True)
+@__name(t"mha_cross_bmm0_{q_type}_{p_type}")
 def _bmm0_bs[
     QLayoutType: TensorLayout,
     KVLayoutType: TensorLayout,
@@ -139,7 +139,7 @@ def _bmm0_bs[
 
 
 @always_inline
-@__name(t"mha_cross_bmm1_{output_type}_{p_type}", mangle=True)
+@__name(t"mha_cross_bmm1_{output_type}_{p_type}")
 def _bmm1_bs[
     QLayoutType: TensorLayout,
     KVLayoutType: TensorLayout,
@@ -295,9 +295,7 @@ def mha_cross_gpu_naive[
     # FIXME: RUNP-356 Direct access to CUDA within DeviceContext
     var p_buffer = TileTensor(
         p_device,
-        row_major(
-            (Idx(batch_size * num_heads), Idx(q_max_seq_len), Idx(num_keys))
-        ),
+        row_major((batch_size * num_heads, q_max_seq_len, num_keys)),
     )
     var q_device = DeviceBuffer[q_type](
         ctx, q.ptr, q.num_elements(), owning=False

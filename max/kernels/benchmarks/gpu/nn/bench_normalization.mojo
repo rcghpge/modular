@@ -72,7 +72,7 @@ def bench_layer_norm_gpu[
     def gamma_fn[
         width: Int, rank: Int, alignment: Int
     ](coords: IndexList[rank]) -> SIMD[dtype, width]:
-        var idx = gamma.layout(Idx(coords[0]))
+        var idx = gamma.layout(coords[0])
 
         return gamma.raw_load[width=width, alignment=alignment](idx)
 
@@ -80,7 +80,7 @@ def bench_layer_norm_gpu[
     @__copy_capture(beta)
     @parameter
     def output_fn[
-        width: Int, rank_: Int, alignment: Int
+        width: SIMDSize, rank_: Int, alignment: Int
     ](coords: IndexList[rank_], val: SIMD[dtype, width]) -> None:
         var idx = data_buf.layout(Coord(coords))
 
@@ -156,7 +156,7 @@ def bench_rms_norm_gpu[
     @__copy_capture(data_buf)
     @parameter
     def identity_output_fn[
-        width: Int, alignment: Int
+        width: SIMDSize, alignment: Int
     ](coords: IndexList[rank], val: SIMD[dtype, width]) -> None:
         var idx = data_buf.layout(Coord(coords))
         data_buf.raw_store[width=width, alignment=alignment](idx, val)

@@ -35,31 +35,41 @@ def register_all_models() -> None:
 
     from .bert import bert_arch
     from .deepseekV2 import deepseekV2_arch
+    from .deepseekV2_modulev3 import deepseekV2_modulev3_arch
     from .deepseekV3 import deepseekV3_arch
     from .deepseekV3_2 import deepseekV3_2_arch
+    from .deepseekV3_modulev3 import deepseekV3_modulev3_arch
     from .deepseekV3_nextn import deepseekV3_nextn_arch
-    from .eagle3_deepseekV3 import eagle3_deepseekV3_arch
-    from .eagle_llama3 import eagle_llama_arch
+    from .dflash_llama3 import dflash_llama_arch
+    from .eagle3_deepseekV3 import (
+        eagle3_deepseekV3_arch,
+        eagle3_mha_deepseekV3_arch,
+    )
+    from .eagle_llama3 import eagle3_llama_arch, eagle_llama_arch
     from .exaone import exaone_arch
     from .exaone_modulev3 import exaone_modulev3_arch
     from .flux2 import flux2_arch, flux2_klein_arch
-    from .flux2_modulev3 import (
-        flux2_klein_modulev3_arch,
-        flux2_modulev3_arch,
-    )
     from .gemma3 import gemma3_arch
     from .gemma3_modulev3 import gemma3_modulev3_arch
     from .gemma3multimodal import gemma3_multimodal_arch
     from .gemma3multimodal_modulev3 import gemma3_multimodal_modulev3_arch
     from .gemma4 import gemma4_arch
+    from .gemma4_assistant import gemma4_assistant_arch
+    from .glm5_1 import glm5_1_arch
     from .gpt_oss import gpt_oss_arch
     from .gpt_oss_modulev3 import gpt_oss_modulev3_arch
     from .granite import granite_arch
     from .granite_modulev3 import granite_modulev3_arch
+    from .hy_v3 import hy_v3_arch
     from .idefics3 import idefics3_arch
     from .idefics3_modulev3 import idefics3_modulev3_arch
     from .internvl import internvl_arch
-    from .kimik2_5 import eagle3_kimik25_arch, kimik2_5_arch, kimivl_arch
+    from .kimik2_5 import (
+        eagle3_kimik25_arch,
+        eagle3_mha_kimik25_arch,
+        kimik2_5_arch,
+        kimivl_arch,
+    )
     from .lfm2 import lfm2_arch
     from .llama3 import llama_arch
     from .llama3_modulev3 import llama_modulev3_arch
@@ -88,8 +98,11 @@ def register_all_models() -> None:
     from .qwen_image import qwen_image_arch
     from .qwen_image_edit import qwen_image_edit_arch, qwen_image_edit_plus_arch
     from .step3p5 import step3p5_arch
+    from .unified_dflash_kimi_k25 import unified_dflash_kimi_k25_arch
+    from .unified_dflash_llama3 import unified_dflash_llama3_arch
     from .unified_eagle_llama3 import unified_eagle_llama3_arch
     from .unified_mtp_deepseekV3 import unified_mtp_deepseekV3_arch
+    from .unified_mtp_gemma4 import unified_mtp_gemma4_arch
     from .wan import wan_arch, wan_i2v_arch
     from .z_image_modulev3 import z_image_arch
 
@@ -97,28 +110,35 @@ def register_all_models() -> None:
         exaone_arch,
         exaone_modulev3_arch,
         deepseekV2_arch,
+        deepseekV2_modulev3_arch,
         deepseekV3_arch,
+        deepseekV3_modulev3_arch,
         deepseekV3_2_arch,
         deepseekV3_nextn_arch,
+        dflash_llama_arch,
         eagle3_deepseekV3_arch,
+        eagle3_mha_deepseekV3_arch,
+        eagle3_llama_arch,
         eagle_llama_arch,
         flux2_arch,
         flux2_klein_arch,
-        flux2_modulev3_arch,
-        flux2_klein_modulev3_arch,
         gemma3_arch,
         gemma3_modulev3_arch,
         gemma3_multimodal_arch,
         gemma3_multimodal_modulev3_arch,
         gemma4_arch,
+        gemma4_assistant_arch,
+        glm5_1_arch,
         granite_arch,
         granite_modulev3_arch,
         gpt_oss_arch,
         gpt_oss_modulev3_arch,
+        hy_v3_arch,
         internvl_arch,
         idefics3_arch,
         idefics3_modulev3_arch,
         eagle3_kimik25_arch,
+        eagle3_mha_kimik25_arch,
         kimik2_5_arch,
         kimivl_arch,
         llama_arch,
@@ -153,8 +173,11 @@ def register_all_models() -> None:
         qwen_image_edit_arch,
         qwen_image_edit_plus_arch,
         step3p5_arch,
+        unified_dflash_kimi_k25_arch,
+        unified_dflash_llama3_arch,
         unified_eagle_llama3_arch,
         unified_mtp_deepseekV3_arch,
+        unified_mtp_gemma4_arch,
         wan_arch,
         wan_i2v_arch,
         z_image_arch,
@@ -162,6 +185,12 @@ def register_all_models() -> None:
 
     for arch in architectures:
         PIPELINE_REGISTRY.register(arch)
+
+    # Optional: pull in private tool parsers.
+    try:
+        import tool_parsers  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        pass
 
     _MODELS_ALREADY_REGISTERED = True
 

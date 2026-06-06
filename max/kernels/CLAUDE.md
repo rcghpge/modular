@@ -37,7 +37,6 @@ This project uses Bazel for building. Commands should be run through the
 ./bazelw test //max/kernels/test/linalg/...
 
 # Run GPU tests with specific hardware
-./bazelw test --config=remote-h100 //max/kernels/test/gpu/...  # For H100 GPU
 ./bazelw test --config=remote-b200 //max/kernels/test/gpu/...  # For B200 GPU
 ./bazelw test --config=remote-mi355 //max/kernels/test/gpu/... # For MI355 GPU
 ```
@@ -51,7 +50,7 @@ source utils/start-modular.sh
 # Run a mojo test in this directory
 mojo /path/to/file.mojo
 
-# Alternaitve ways include
+# Alternative ways include
 ./bazelw run //KGEN/tools/mojo -- /path/to/file.mojo
 
 # Or use the bmojo alias (after sourcing start-modular.sh)

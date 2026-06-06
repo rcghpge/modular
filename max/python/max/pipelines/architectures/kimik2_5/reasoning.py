@@ -18,9 +18,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from max.interfaces import PipelineTokenizer, ReasoningParser, ReasoningSpan
 from max.pipelines.lib.reasoning import register
 from max.pipelines.lib.tokenizer import convert_token_to_id
+from max.pipelines.modeling.types import (
+    ParsedReasoningDelta,
+    PipelineTokenizer,
+    ReasoningParser,
+    ReasoningSpan,
+)
 
 
 @register("kimik2_5")
@@ -43,7 +48,7 @@ class KimiK2_5ReasoningParser(ReasoningParser):
 
     Reasoning can be disabled through the chat template by including a
     ``</think>`` token at the end of the prompt; this is detected by
-    :meth:`is_prompt_in_reasoning`.
+    :meth:`will_reason_after_prompt`.
     """
 
     def __init__(
@@ -55,15 +60,23 @@ class KimiK2_5ReasoningParser(ReasoningParser):
         self.think_start_token_id = think_start_token_id
         self.think_end_token_id = think_end_token_id
         # Retained only to disambiguate the "implicit pre-fill" path in
-        # :meth:`is_prompt_in_reasoning`. ``stream()`` never treats it as
+        # :meth:`will_reason_after_prompt`. ``stream()`` never treats it as
         # an end-of-reasoning delimiter.
         self.tool_section_start_token_id = tool_section_start_token_id
 
     def stream(
         self,
         delta_token_ids: Sequence[int],
-    ) -> tuple[ReasoningSpan, bool]:
-        """Identify a reasoning span within a streaming delta chunk."""
+        is_currently_reasoning: bool = True,
+    ) -> ParsedReasoningDelta:
+        """Identify a reasoning span within a streaming delta chunk.
+
+        When ``is_currently_reasoning=False`` and the chunk contains no
+        ``<think>`` opener, returns an empty span so non-reasoning chunks
+        (turns where the chat template prefilled ``</think>``, or any
+        chunk after reasoning ended in a prior chunk) aren't misclassified
+        as reasoning.
+        """
         start_token_idx: int | None = None
         end_token_idx: int | None = None
         for i, token_id in enumerate(delta_token_ids):
@@ -74,9 +87,26 @@ class KimiK2_5ReasoningParser(ReasoningParser):
                 # Take the earliest start token
                 start_token_idx = i
             elif token_id == self.think_end_token_id:
-                # Take the earliest end token
-                end_token_idx = i
-                break
+                # Only consume an end token if we have an active reasoning
+                # span — either pre-seeded via ``is_currently_reasoning`` or
+                # opened by a ``<think>`` earlier in this chunk. A stray
+                # ``</think>`` from prior content should not pull content
+                # tokens into the reasoning region.
+                if is_currently_reasoning or start_token_idx is not None:
+                    end_token_idx = i
+                    break
+
+        if start_token_idx is None and not is_currently_reasoning:
+            # No reasoning section in this chunk and we weren't already
+            # inside one — empty span, all tokens are content.
+            empty_span = ReasoningSpan(
+                reasoning_with_delimiters=(0, 0),
+                reasoning=(0, 0),
+            )
+            return ParsedReasoningDelta(
+                span=empty_span,
+                is_still_reasoning=False,
+            )
 
         if start_token_idx is None:
             start_reasoning = 0
@@ -100,27 +130,27 @@ class KimiK2_5ReasoningParser(ReasoningParser):
             reasoning=(start_reasoning, end_reasoning),
         )
         is_still_reasoning = end_token_idx is None
-        return span, is_still_reasoning
+        return ParsedReasoningDelta(
+            span=span,
+            is_still_reasoning=is_still_reasoning,
+        )
 
-    def is_prompt_in_reasoning(
+    def will_reason_after_prompt(
         self,
         prompt_token_ids: Sequence[int],
     ) -> bool:
-        """Decide whether the next generated token is in a reasoning span.
+        """Predicts whether the model will emit reasoning after this prompt.
 
         Kimi K2.5 chat templates emit ``<think>`` to open the new assistant
         turn's reasoning section, and ``</think>`` to close the prior
-        assistant turn's reasoning section. A multi-turn prompt therefore
-        can contain many ``<think>``/``</think>`` tokens, only the
-        most-recently-emitted one of which describes the *current* state.
+        assistant turn's reasoning section.
 
         Scan right-to-left and return based on the first delimiter seen:
 
         * ``<think>`` → reasoning is currently open → ``True``.
         * ``</think>`` (or ``<|tool_calls_section_begin|>``) → reasoning
           is currently closed → ``False``.
-        * No delimiters at all → assume reasoning, matching the implicit
-          pre-fill seeding used elsewhere in the pipeline.
+        * No delimiters at all → reasoning is not in use → ``False``.
         """
         end_token_ids: tuple[int, ...]
         if self.tool_section_start_token_id is not None:
@@ -136,7 +166,7 @@ class KimiK2_5ReasoningParser(ReasoningParser):
                 return True
             if token_id in end_token_ids:
                 return False
-        return True
+        return False
 
     @classmethod
     async def from_tokenizer(
@@ -161,3 +191,11 @@ class KimiK2_5ReasoningParser(ReasoningParser):
             think_end_token_id=think_end_id,
             tool_section_start_token_id=tool_section_start_id,
         )
+
+    @classmethod
+    async def reasoning_end_token_id(
+        cls,
+        tokenizer: PipelineTokenizer[Any, Any, Any],
+    ) -> int | None:
+        """Returns the ``</think>`` token id."""
+        return await convert_token_to_id(tokenizer, "</think>")

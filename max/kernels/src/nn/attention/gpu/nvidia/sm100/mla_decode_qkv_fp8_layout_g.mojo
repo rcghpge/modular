@@ -57,6 +57,7 @@ from std.gpu.compute.arch.tcgen05 import (
     tcgen05_load_wait,
     tcgen05_release_allocation_lock,
     tcgen05_st,
+    tcgen05_store_wait,
 )
 from layout.tma_async import (
     SharedMemBarrier,
@@ -71,7 +72,7 @@ from layout import (
     stack_allocation as tt_stack_allocation,
 )
 from layout.tile_layout import row_major as tt_row_major
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
     KVTMATile,
 )
@@ -223,11 +224,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             Self.config.decoding_warp_split_k,
         ],
     ) -> Int:
-        comptime _W: Int = Int(
-            Self.MaskType.mask_strategies[Self.BM, Self.BN_QK]()[
-                0
-            ]._upper_triangular_window_size
-        )
+        comptime _W: Int = Self.MaskType.sliding_window_size()
         var global_lo = max(offset_position.cache_len() + 1 - _W, 0)
         var local_lo = max(global_lo - offset_position.kv_start_row, 0)
         return local_lo // Self.BN_QK
@@ -312,11 +309,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         comptime SlidingWindowMask: Bool = (
             MaskTypeName == "SlidingWindowCausalMask"
         )
-        comptime _sliding_window_size: Int = Int(
-            Self.MaskType.mask_strategies[Self.BM, Self.BN_QK]()[
-                0
-            ]._upper_triangular_window_size
-        )
+        comptime _sliding_window_size: Int = Self.MaskType.sliding_window_size()
 
         # S TMEM base / stride (matches mma()).
         var s0_tmem = tmem_addr + UInt32(Self.config.TMEM_S0)
@@ -466,8 +459,8 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             # Per-row max: register-only reduce + 4-way SMEM consolidation.
             # Double-buffered to avoid the W-W race between N+1's write and
             # iteration N's read.
-            comptime rescale_threshold: Float32 = Float32(
-                -8 if size_of[Self.fp8_type]() >= 2 else 0
+            comptime rescale_threshold: Float32 = (
+                Self.config.skip_correction_threshold
             )
             var buf_offset = (tiles_done & 1) * WARPGROUP_SIZE
             var max_buf = TileTensor[
@@ -500,9 +493,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             comptime for i in range(0, half_load // 2):
                 var element = float2_register[i]
                 float2_register[i] = exp2(element.fma(log2e_f32, -new_max))
-                float2_current_sum += rebind[SIMD[Self.AccumType, 2]](
-                    float2_register[i]
-                )
+                float2_current_sum += float2_register[i]
 
             # Correction-scale write to TMEM (skip on the first processed
             # tile — no prior O accumulator to correct).
@@ -517,6 +508,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                     repeat=1,
                     pack=False,
                 ](corr_scale_tmem, _scale_tuple)
+                tcgen05_store_wait()
                 c_prod.commit()
 
             # Wait for MMA to release P SMEM, then write the FP8 P-row
@@ -893,11 +885,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             Self.MaskType.get_type_name() == "SlidingWindowCausalMask"
         )
         comptime if _sliding_window_mask_corr:
-            comptime _W_corr: Int = Int(
-                Self.MaskType.mask_strategies[Self.BM, Self.BN_QK]()[
-                    0
-                ]._upper_triangular_window_size
-            )
+            comptime _W_corr: Int = Self.MaskType.sliding_window_size()
             var _global_lo_corr = max(
                 offset_position.cache_len() + 1 - _W_corr, 0
             )
@@ -955,12 +943,10 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                     var float2_register = o_row_subtile.vectorize[2]()
 
                     comptime for j in range(0, correction_inner_count):
-                        var element = rebind[SIMD[Self.AccumType, 2]](
-                            float2_register[j]
+                        var element = float2_register[j]
+                        float2_register[j] = element * SIMD[Self.AccumType, 2](
+                            scale_value
                         )
-                        float2_register[j] = rebind[
-                            type_of(float2_register[j])
-                        ](element * SIMD[Self.AccumType, 2](scale_value))
                     var _o_st_corr = InlineArray[
                         Scalar[Self.AccumType], per_warp_corr_elems
                     ](uninitialized=True)
@@ -976,6 +962,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                         o_tmem_subtile,
                         _o_st_corr,
                     )
+                    tcgen05_store_wait()
                 o_cons.release()
             tiles_done += 1
 
@@ -998,7 +985,6 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
     )
     @__name(
         t"sm100_mla_decode_qkv_fp8_layout_g_{Self.q_type}_{Self.kv_type}_{Self.output_type}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
-        mangle=True,
     )
     def kernel(
         # Q/K/O TMA tile types must use the exact symbolic forms below —

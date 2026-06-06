@@ -21,24 +21,24 @@ from max.driver import CPU, Accelerator, Device
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef
-from max.interfaces import (
+from max.nn.kv_cache import KVCacheParams, KVConnectorType
+from max.pipelines.core import TextContext
+from max.pipelines.kv_cache import PagedKVCacheManager
+from max.pipelines.modeling.types import (
     BatchType,
     GenerationStatus,
-    MAXPushQueue,
     Pipeline,
     RequestID,
-    SchedulerResult,
     TextGenerationInputs,
     TextGenerationOutput,
     TokenBuffer,
 )
-from max.kv_cache import PagedKVCacheManager
-from max.nn.kv_cache import KVCacheParams, KVConnectorType
-from max.pipelines.core import TextContext
+from max.serve.queue import MAXPushQueue
 from max.serve.scheduler.config import TokenGenerationSchedulerConfig
 from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
 )
+from max.serve.scheduler_result import SchedulerResult
 
 
 def rand(length: int) -> np.ndarray:
@@ -109,7 +109,8 @@ def create_kv_cache(
         host_kvcache_swap_space_gb=999,
         data_parallel_degree=dp,
         devices=device_refs,
-        num_eagle_speculative_tokens=num_speculative_tokens,
+        speculative_method="eagle" if num_speculative_tokens > 0 else None,
+        num_draft_tokens=num_speculative_tokens,
         is_mla=is_mla,
         # num_q_heads must be divisible by the per-replica device count
         # (TP shards) when MLA is enabled.
@@ -142,7 +143,6 @@ def create_paged_scheduler(
     num_blocks: int = 9999,
     max_batch_size: int = 512,
     page_size: int = 128,
-    max_forward_steps_tg: int = 10,
     target_tokens_per_batch_ce: int = 8192,
     enable_prefix_caching: bool = False,
     enable_in_flight_batching: bool = False,
@@ -173,7 +173,6 @@ def create_paged_scheduler(
     # Create a scheduler with a paged manager
     scheduler_config = TokenGenerationSchedulerConfig(
         max_batch_size=max_batch_size,
-        max_forward_steps_tg=max_forward_steps_tg,
         target_tokens_per_batch_ce=target_tokens_per_batch_ce,
         max_seq_len=max_seq_len,
         enable_chunked_prefill=enable_chunked_prefill,

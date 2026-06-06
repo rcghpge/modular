@@ -26,14 +26,6 @@ import hf_repo_lock
 import numpy as np
 import pytest
 from max.driver import DeviceSpec
-from max.interfaces import (
-    RequestID,
-    SamplingParams,
-    TextGenerationInputs,
-    TextGenerationRequest,
-    TextGenerationRequestMessage,
-    TextGenerationResponseFormat,
-)
 from max.pipelines import PipelineConfig
 from max.pipelines.core import TextContext
 from max.pipelines.lib import MAXModelConfig, SamplingConfig, TextTokenizer
@@ -44,6 +36,14 @@ from max.pipelines.lib.pipeline_variants.overlap_text_generation import (
     OverlapTextGenerationPipeline,
 )
 from max.pipelines.lib.registry import PipelineRegistry
+from max.pipelines.modeling.types import (
+    RequestID,
+    SamplingParams,
+    TextGenerationInputs,
+    TextGenerationRequest,
+    TextGenerationRequestMessage,
+    TextGenerationResponseFormat,
+)
 
 pytest_plugins = "test_common.registry"
 
@@ -118,6 +118,7 @@ def test_eagle_structured_output_json_schema_gpu(
         sampling_params=SamplingParams(max_new_tokens=50, top_k=1),
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -127,6 +128,8 @@ def test_eagle_structured_output_json_schema_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 
@@ -251,6 +254,7 @@ def test_eagle_structured_output_heterogeneous_batch_gpu(
         sampling_params=SamplingParams(max_new_tokens=50, top_k=1),
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -260,6 +264,8 @@ def test_eagle_structured_output_heterogeneous_batch_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 

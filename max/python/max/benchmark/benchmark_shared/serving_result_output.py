@@ -35,6 +35,9 @@ from max.benchmark.benchmark_shared.config import (
     BenchmarkTask,
     ServingBenchmarkConfig,
 )
+from max.benchmark.benchmark_shared.datasets.chat_judge import (
+    ChatJudgeChatSamples,
+)
 from max.benchmark.benchmark_shared.datasets.types import (
     ChatSamples,
     RequestSamples,
@@ -44,11 +47,9 @@ from max.benchmark.benchmark_shared.lora_benchmark_manager import (
     LoRABenchmarkManager,
 )
 from max.benchmark.benchmark_shared.metrics import (
+    BenchmarkResult,
     LoRAMetrics,
-    PixelGenerationBenchmarkResult,
-    ServingBenchmarkMetrics,
     SpecDecodeStats,
-    TextGenerationBenchmarkResult,
 )
 from max.benchmark.benchmark_shared.server_metrics import print_server_metrics
 from max.benchmark.benchmark_shared.utils import print_section
@@ -176,21 +177,46 @@ def print_workload_stats(samples: Samples) -> None:
         all_input_lens: list[int] = []
         all_output_lens: list[int] = []
         all_delays: list[float] = []
+        sessions_with_system = 0
+        system_prompt_tokens: list[int] = []
 
+        is_chat_judge = isinstance(samples, ChatJudgeChatSamples)
         for session in sessions:
             current_context_length = 0
+            session_system_tokens = 0
             for msg in session.messages:
-                current_context_length += msg.num_tokens
-                if msg.source == "user":
-                    all_input_lens.append(current_context_length)
+                if msg.source == "system":
+                    sessions_with_system += 1
+                    system_prompt_tokens.append(msg.num_tokens)
+                    session_system_tokens = msg.num_tokens
+                elif is_chat_judge:
+                    # chat-judge sends [system?, user_i] per turn without
+                    # accumulating prior turns, so per-turn input length is
+                    # system_prompt + this user turn's content.
+                    all_input_lens.append(
+                        session_system_tokens + msg.num_tokens
+                    )
+                    if msg.delay_until_next_message is not None:
+                        all_delays.append(msg.delay_until_next_message)
                 else:
-                    all_output_lens.append(msg.num_tokens)
-                if msg.delay_until_next_message is not None:
-                    all_delays.append(msg.delay_until_next_message)
+                    current_context_length += msg.num_tokens
+                    if msg.source == "user":
+                        all_input_lens.append(current_context_length)
+                    else:
+                        all_output_lens.append(msg.num_tokens)
+                    if msg.delay_until_next_message is not None:
+                        all_delays.append(msg.delay_until_next_message)
 
         total_prefix = sum(s.prefix_turns for s in sessions)
         total_turns = sum(num_turns_list)
         print(f"  {'Total sessions:':<30} {len(sessions)}")
+        if sessions_with_system:
+            avg_sys = sum(system_prompt_tokens) / sessions_with_system
+            print(
+                f"  {'Sessions with explicit system role:':<30}"
+                f" {sessions_with_system} / {len(sessions)}"
+                f" (avg {avg_sys:.1f} tokens)"
+            )
         if total_prefix > 0:
             print(
                 f"  {'Total turns (measured):':<30}"
@@ -206,11 +232,14 @@ def print_workload_stats(samples: Samples) -> None:
             )
         )
         print()
-        print(
-            _format_distribution_table(
-                all_output_lens, "Output length (per turn)"
+        if all_output_lens:
+            print(
+                _format_distribution_table(
+                    all_output_lens, "Output length (per turn)"
+                )
             )
-        )
+        else:
+            print("  Output length (per turn):  none recorded")
         print()
         print(
             _format_distribution_table(num_turns_list, "Num turns per session")
@@ -259,7 +288,7 @@ def print_lora_benchmark_results(metrics: LoRAMetrics) -> None:
 
 
 def print_benchmark_summary(
-    metrics: ServingBenchmarkMetrics,
+    metrics: BenchmarkResult,
     request_rate: float,
     max_concurrency: int | None,
     achieved_request_rate: float,
@@ -338,6 +367,16 @@ def print_benchmark_summary(
                 prefix="output token throughput", unit="tok/s"
             )
         )
+        total_tpm = (
+            (t.total_input + t.total_output) * 60.0 / agg.duration
+            if agg.duration > 0
+            else float("nan")
+        )
+        print(
+            "{:<40} {:<10.2f}".format(
+                "Total TPM (input+output, whole bench):", total_tpm
+            )
+        )
         print(
             "{:<40} {:<10.2f}".format(
                 "Global Cached Token Rate:",
@@ -347,8 +386,15 @@ def print_benchmark_summary(
         )
         print_section(title="Time to First Token")
         print(t.ttft_ms.format_with_prefix(prefix="TTFT", unit="ms"))
-        print_section(title="Time per Output Token (excl. 1st token)")
+        print_section(title="Time per Output Token")
+        print("[(latency - TTFT) / (output_tokens - 1), per request]")
         print(t.tpot_ms.format_with_prefix(prefix="TPOT", unit="ms"))
+        if t.step_tpot_ms is not None:
+            print_section(title="Time per Output Token (step-based)")
+            print("[ITL / tokens_per_step, per decode step]")
+            print(
+                t.step_tpot_ms.format_with_prefix(prefix="Step TPOT", unit="ms")
+            )
         print_section(title="Inter-token Latency")
         print(t.itl_ms.format_with_prefix(prefix="ITL", unit="ms"))
         if t.per_turn_cached_token_rate is not None:
@@ -479,8 +525,7 @@ def _parse_metadata(metadata: list[str] | None) -> dict[str, str]:
 def save_result_json(
     result_filename: str | None,
     args: ServingBenchmarkConfig,
-    benchmark_result: TextGenerationBenchmarkResult
-    | PixelGenerationBenchmarkResult,
+    benchmark_result: BenchmarkResult,
     *,
     benchmark_task: BenchmarkTask,
     model_id: str,
@@ -504,7 +549,7 @@ def save_result_json(
         "tokenizer_id": tokenizer_id,
         "num_prompts": (
             agg.completed
-            if (agg := benchmark_result.metrics.aggregates) is not None
+            if (agg := benchmark_result.aggregates) is not None
             else 0
         ),
         "dataset_name": args.dataset_name,
@@ -531,8 +576,7 @@ def save_result_json(
 
 def save_output_lengths(
     args: ServingBenchmarkConfig,
-    benchmark_result: TextGenerationBenchmarkResult
-    | PixelGenerationBenchmarkResult,
+    benchmark_result: BenchmarkResult,
     benchmark_task: BenchmarkTask,
     *,
     iteration_config: tuple[int | None, float] | None = None,
@@ -545,7 +589,6 @@ def save_output_lengths(
             "--record-output-lengths is only supported for text-generation"
         )
         return
-    assert isinstance(benchmark_result, TextGenerationBenchmarkResult)
     args_to_save = (
         "backend",
         "burstiness",
@@ -568,7 +611,7 @@ def save_output_lengths(
         args_dict["max_concurrency"] = mc_snap
         args_dict["request_rate"] = rr_snap
     output_lens_dict["args"] = {x: args_dict[x] for x in args_to_save}
-    text_data = benchmark_result.metrics.text_data
+    text_data = benchmark_result.text_data
     output_lens_dict["output_lengths"] = (
         text_data.output_lens if text_data is not None else []
     )

@@ -19,10 +19,13 @@ from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef
-from max.interfaces import RequestID
-from max.kv_cache import IncrementCacheLengthsProcessor, PagedKVCacheManager
-from max.kv_cache.paged_kv_cache.cache_manager import _padded_lut_cols
 from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams
+from max.pipelines.kv_cache import (
+    IncrementCacheLengthsProcessor,
+    PagedKVCacheManager,
+)
+from max.pipelines.kv_cache.paged_kv_cache.cache_manager import _padded_lut_cols
+from max.pipelines.modeling.types import RequestID
 from test_common.context_utils import create_text_context
 
 
@@ -239,7 +242,7 @@ async def test_alloc_num_speculative_steps_allocates_extra_blocks() -> None:
     page_size = 4
     kv_manager = _make_kv_manager(page_size=page_size, total_num_pages=16)
     kv_manager_spec = _make_kv_manager(
-        page_size=page_size, total_num_pages=16, num_eagle_speculative_tokens=4
+        page_size=page_size, total_num_pages=16, num_draft_tokens=4
     )
 
     ctx = create_text_context(np.array([1, 2, 3], dtype=np.int64))
@@ -275,7 +278,7 @@ async def test_alloc_spec_decoding_empty_draft_tokens_allocates_same_as_dummy() 
     kv_manager = _make_kv_manager(
         page_size=page_size,
         total_num_pages=16,
-        num_eagle_speculative_tokens=num_speculative_tokens,
+        num_draft_tokens=num_speculative_tokens,
     )
 
     tokens = np.array([1, 2, 3], dtype=np.int64)
@@ -316,7 +319,7 @@ async def test_alloc_with_draft_tokens_to_verify_reserves_more_blocks() -> None:
     """alloc with speculative tokens reserves more blocks than without."""
     page_size = 4
     kv_manager = _make_kv_manager(
-        page_size=page_size, total_num_pages=16, num_eagle_speculative_tokens=4
+        page_size=page_size, total_num_pages=16, num_draft_tokens=4
     )
 
     ctx = create_text_context(np.array([1, 2, 3], dtype=np.int64))
@@ -335,7 +338,7 @@ async def test_runtime_inputs_with_num_speculative_steps() -> None:
     """runtime_inputs passes through num_speculative_steps without error."""
     page_size = 4
     kv_manager = _make_kv_manager(
-        page_size=page_size, total_num_pages=16, num_eagle_speculative_tokens=4
+        page_size=page_size, total_num_pages=16, num_draft_tokens=4
     )
 
     ctx = create_text_context(np.array([1, 2, 3], dtype=np.int64))
@@ -523,3 +526,18 @@ async def test_multi_cache_lifecycle() -> None:
     # Single release covers all caches.
     kv_manager.release(ctx.request_id, replica_idx=0)
     assert not kv_manager.contains(ctx.request_id, replica_idx=0)
+
+
+def test_alloc_dummy_uses_null_block_without_refcount() -> None:
+    """Dummy requests map to the null block."""
+    kv_manager = _make_kv_manager(total_num_pages=8)
+    pool = kv_manager._replica[0].block_manager.device_block_pool
+    assert pool.null_block.is_null
+    assert pool.null_block.bid == 8
+    assert 8 not in pool.free_blocks
+    assert pool.num_free_blocks == 8
+
+    dummy_id = RequestID("dummy-test")
+    kv_manager.alloc_dummy(dummy_id, replica_idx=0)
+    assert pool.num_free_blocks == 8
+    assert kv_manager.get_req_blocks(dummy_id, replica_idx=0) == [8]

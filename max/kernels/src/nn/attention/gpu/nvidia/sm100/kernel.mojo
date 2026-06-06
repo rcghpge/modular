@@ -19,6 +19,11 @@ from std.gpu import (
     thread_idx,
     warp_id,
 )
+from std.gpu.primitives.grid_controls import (
+    PDLLevel,
+    launch_dependent_grids,
+    wait_on_dependent_grids,
+)
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from std.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
 from std.gpu.primitives.warp import broadcast
@@ -30,19 +35,15 @@ from std.gpu.compute.arch.tcgen05 import (
 from std.gpu.memory import fence_mbarrier_init
 from std.gpu.primitives.cluster import block_rank_in_cluster, cluster_sync
 from layout.tma_async import RaggedTMA3DTile
-from nn.attention.gpu.nvidia.sm100.attention import (
-    FA4Config,
-    EnableForcedOrdering,
-)
+from nn.attention.gpu.nvidia.sm100.attention import FA4Config, MHA_PDL_LEVEL
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
     SharedMemPointer,
     SM100TensorAccumulatorSS,
     SM100TensorAccumulatorTS,
     elect,
-    FA4MiscMBars,
     kv_sub_tile_rows,
 )
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     get_seq_info,
     KVTMATile,
     MHAPosition,
@@ -115,16 +116,6 @@ struct SM100MHA2Q[
     comptime num_qk_stages = Self.config.num_qk_stages
     comptime num_pv_stages = Self.config.num_pv_stages
 
-    # Unified misc barriers type managing all barriers including K/V/O pipelines
-    comptime MiscMBarsType = FA4MiscMBars[
-        num_qk_stages=Self.num_qk_stages,
-        num_pv_stages=Self.num_pv_stages,
-        num_kv_stages=Self.config.num_kv_stages,
-        use_order_barriers=EnableForcedOrdering,
-        use_fused_kv=Self.config.use_fused_kv,
-        pair_cta=Self.pair_cta,
-    ]
-
     # First MMA is Q@K' (can be staged by num_qk_stages)
     # (BM x depth) @ (BN x depth)' -> (BM x BN)
     comptime UMMA0Type = SM100TensorAccumulatorSS[
@@ -191,14 +182,13 @@ struct SM100MHA2Q[
         `nvvm.cluster_dim`=StaticTuple[Int32, 3](Int32(Self.cta_group), 1, 1)
     )
     @__name(
-        t"sm100_mha_2q_depth{Self.config.qk_depth}_{Self.qkv_type}_{Self.output_type}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
-        mangle=True,
+        t"sm100_mha_{Self.config.num_qo}q_depth{Self.config.qk_depth}_{Self.qkv_type}_{Self.output_type}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
     )
     def kernel(
         q_tma_op: QTMATile[
             Self.KVLUTType.dtype,
             Self.config.swizzle_mode,
-            BM=Self.config.BM // 2,
+            BM=Self.config.BM // Self.config.num_qo,
             depth=Self.config.qk_depth,
             group=Self.config.group,
             decoding=False,
@@ -220,7 +210,10 @@ struct SM100MHA2Q[
         ragged_tma_store: RaggedTMA3DTile[
             Self.output_type,
             Self.config.swizzle_mode,
-            BM=Self.config.BM // 2,
+            # 2Q: BM=128 (each WG writes one of two Q halves).
+            # 1Q: BM=128 (both WGs cover the full BM=128 Q rows and write
+            # disjoint depth-column ranges).
+            BM=Self.config.BM // Self.config.num_qo,
             BN=Self.config.ov_depth,
             group=Self.config.group if Self.fuse_gqa else 1,
         ],
@@ -266,7 +259,7 @@ struct SM100MHA2Q[
         max_seq_len = pack.max_seq_len
         partition = pack.partition
 
-        comptime num_qo = Self.config.num_qo()
+        comptime num_qo = Self.config.num_qo
         # TODO: We may want to support num_qo>2 for depth=64?
         comptime assert (
             num_qo == 1 or num_qo == 2
@@ -274,7 +267,12 @@ struct SM100MHA2Q[
         var smem = Self.SmemType()
         var misc_mbars = smem.misc_mbars()
 
-        # https://github.com/NVIDIA/cutlass/blob/main/examples/77_blackwell_fmha/kernel/sm100_fmha_fwd_kernel_tma_warpspecialized.hpp
+        # Per-warpgroup register allocation, mirroring CUTLASS's
+        # `sm100_fmha_fwd_kernel_tma_warpspecialized.hpp`.  Softmax gets
+        # the largest slice (192), correction the next (88), and the
+        # MMA-leader/other path runs lean (40); inactive warps drop to
+        # the minimum (24).  Sum × WG size must stay ≤ the SM register
+        # file; bump together if a path starts spilling.
         comptime num_reg_softmax = 192
         comptime num_reg_correction = 88
         comptime num_reg_other = 40
@@ -291,7 +289,7 @@ struct SM100MHA2Q[
         elif warp_idx == 1:
             tcgen05_alloc[Int32(Self.cta_group)](
                 smem.tmem_addr_ptr(),
-                UInt32(512),
+                UInt32(Self.config.sm100_tmem_cols),
             )
         elif warp_idx == 2:
             e = elect()
@@ -309,6 +307,20 @@ struct SM100MHA2Q[
             cluster_sync()
         else:
             barrier()
+
+        # Programmatic Dependent Launch (PDL).  This is the only point every
+        # thread of every CTA reaches before the warp-specialized early
+        # returns below (invalid tiles bail in warps 0-13 while warps 14-15
+        # fall through), so it is the only divergence-free place to honor the
+        # contract that *every* CTA signal launch-dependents — otherwise a
+        # back-to-back consumer grid's `wait` hangs (see MLA decode).  The
+        # data-independent prologue above (barrier init, tmem alloc, TMA
+        # descriptor prefetch) overlaps the predecessor grid's tail; `wait`
+        # fences here before the data-dependent Q/K/V loads in `fa4_load`;
+        # `launch` lets the successor grid's prologue overlap our compute.
+        comptime if MHA_PDL_LEVEL > PDLLevel.OFF:
+            wait_on_dependent_grids()
+            launch_dependent_grids()
 
         # warp group partitioning
         # Two QO:
@@ -395,6 +407,7 @@ struct SM100MHA2Q[
                     Self.page_size,
                 ](
                     smem,
+                    seq_info.prompt_idx,
                     pos.score_row,
                     pos.num_keys,
                     mask,
@@ -497,7 +510,7 @@ struct SM100MHA2Q[
                         var tmem_addr = smem.tmem_addr_ptr()[]
                         tcgen05_release_allocation_lock[Int32(Self.cta_group)]()
                         tcgen05_dealloc[Int32(Self.cta_group)](
-                            tmem_addr, UInt32(512)
+                            tmem_addr, UInt32(Self.config.sm100_tmem_cols)
                         )
                         return
                 var execute: Bool = seq_info.is_valid()
@@ -517,11 +530,15 @@ struct SM100MHA2Q[
                     )
                     fa4_mma[Self.config, page_size=Self.page_size](
                         smem,
+                        seq_info.prompt_idx,
                         pos.score_row,
                         pos.num_keys,
                         mask,
                     )
             else:
+                # 24 is the floor for `setmaxnreg.dec` on SM90+ — drop
+                # this warpgroup's allocation to the minimum so the
+                # active WGs can claim its share of the SM register file.
                 warpgroup_reg_dealloc[24]()
 
         # Pair-CTA: cluster_sync before dealloc so that stmatrix
@@ -534,14 +551,20 @@ struct SM100MHA2Q[
             if warp_idx == 0:
                 var tmem_addr = smem.tmem_addr_ptr()[]
                 tcgen05_release_allocation_lock[Int32(Self.cta_group)]()
-                tcgen05_dealloc[Int32(Self.cta_group)](tmem_addr, UInt32(512))
+                tcgen05_dealloc[Int32(Self.cta_group)](
+                    tmem_addr, UInt32(Self.config.sm100_tmem_cols)
+                )
 
     @staticmethod
     @always_inline
     def mask_status(
-        mask: Self.MaskType, score_row: UInt32, kv_row: UInt32
+        mask: Self.MaskType,
+        seq_id: UInt32,
+        score_row: UInt32,
+        kv_row: UInt32,
     ) -> TileMaskStatus:
         return mask.status(
+            seq_id,
             Index[dtype=DType.int32](
                 Int(score_row),
                 Int(kv_row),

@@ -39,7 +39,10 @@ CTA role split (cta_group=2):
 
 from std.sys import size_of
 from std.gpu.primitives.cluster import block_rank_in_cluster
-from std.gpu.compute.arch.mma_nvidia_sm100 import mma_arrive_multicast
+from std.gpu.compute.arch.mma_nvidia_sm100 import (
+    UMMAKind,
+    mma_arrive_multicast,
+)
 from linalg.arch.sm100.mma import smem_descriptor
 from nn.attention.mha_mask import MHAMask, TileMaskStatus
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
@@ -61,6 +64,7 @@ def depth512_mma[
     page_size: Int,
 ](
     smem: Depth512AttentionSMem[config=config],
+    seq_id: UInt32,
     score_row: UInt32,
     num_keys: UInt32,
     mask: MaskType,
@@ -87,6 +91,9 @@ def depth512_mma[
     comptime assert BK1 % config.MMA_K == 0, "BK1 must be a multiple of MMA_K"
 
     # ---- MMA types -----------------------------------------------------------
+    comptime mma_kind = (
+        UMMAKind.KIND_F8F6F4 if qkv_dtype.is_float8() else UMMAKind.KIND_F16
+    )
 
     # Q@K' → S: SS MMA, cta_group=2
     comptime UMMA_QK = SM100TensorAccumulatorSS[
@@ -99,6 +106,7 @@ def depth512_mma[
         swizzle_b=config.swizzle_mode,
         transpose_b=True,
         cta_group=cta_group,
+        mma_kind=mma_kind,
     ]
 
     # P@V MMA types are defined inside pv_mma (depth-dependent).
@@ -181,11 +189,11 @@ def depth512_mma[
     # ---- Iteration bounds (must match load_warp exactly) ---------------------
 
     var kv_row: UInt32 = mask.start_column[PairBM_mask, BN, page_size](
-        score_row
+        seq_id, score_row
     )
     var iter_count: UInt32 = (
         mask.last_masked_set_end[PairBM_mask, BN, page_size](
-            score_row, num_keys
+            seq_id, score_row, num_keys
         )
         - 1
     )
@@ -203,6 +211,7 @@ def depth512_mma[
     e = elect()
 
     # CTA mask for multicast arrive: signal both CTAs in the pair.
+    # 0b11 = (1 << cta_group) - 1 for cta_group=2.
     comptime cta_mask = UInt16(0x3)
 
     # ---- Helper: P@V with depth-dependent commit strategy ---------------------
@@ -230,6 +239,7 @@ def depth512_mma[
                 swizzle_b=config.swizzle_mode,
                 transpose_b=False,
                 cta_group=cta_group,
+                mma_kind=mma_kind,
             ]
             comptime UMMA_PV_hi = SM100TensorAccumulatorSS[
                 qkv_dtype,
@@ -241,6 +251,7 @@ def depth512_mma[
                 swizzle_b=config.swizzle_mode,
                 transpose_b=False,
                 cta_group=cta_group,
+                mma_kind=mma_kind,
             ]
 
             # -- P@V_lo → O_lo (own pipeline slots) --
@@ -302,6 +313,7 @@ def depth512_mma[
                 swizzle_b=config.swizzle_mode,
                 transpose_b=False,
                 cta_group=cta_group,
+                mma_kind=mma_kind,
             ]
 
             # Single P@V → O (no split)
@@ -369,6 +381,7 @@ def depth512_mma[
         comptime if check_mask:
             if (
                 mask.status(
+                    seq_id,
                     Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
                     Index[dtype=DType.int32](PairBM_mask, BN),
                 )

@@ -42,7 +42,7 @@ to nothing and the resulting PTX is byte-identical to a build with no
 trace plumbing at all.
 """
 
-from std.builtin.device_passable import DevicePassable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.memory import UnsafePointer
 
 
@@ -87,7 +87,9 @@ struct NullTrace(TraceBuf):
         """
         pass
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
         pass
 
     @staticmethod
@@ -110,13 +112,13 @@ struct GmemTrace(TraceBuf):
     comptime device_type: AnyType = Self
     """Device-side type alias. `GmemTrace` is trivially device-passable."""
 
-    var ptr: UnsafePointer[UInt64, MutAnyOrigin]
+    var ptr: UnsafePointer[UInt64, MutExternalOrigin]
     """Device pointer to a `u64` buffer sized for the caller's
     `num_blocks * events_per_block` slot count, zero-initialized on
     first use."""
 
     @always_inline
-    def __init__(out self, ptr: UnsafePointer[UInt64, MutAnyOrigin]):
+    def __init__(out self, ptr: UnsafePointer[UInt64, MutExternalOrigin]):
         """Wraps a device pointer as a trace buffer.
 
         Args:
@@ -136,8 +138,10 @@ struct GmemTrace(TraceBuf):
         """
         self.ptr.store(offset, val)
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
-        target.bitcast[Self]()[] = self
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:

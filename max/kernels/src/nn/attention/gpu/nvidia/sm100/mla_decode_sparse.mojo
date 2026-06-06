@@ -56,7 +56,7 @@ from layout import (
     row_major,
     stack_allocation as tt_stack_allocation,
 )
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
 )
 from nn.attention.mha_mask import MHAMask
@@ -322,7 +322,7 @@ struct MLA_SM100_Decode_Sparse[
             Int32(Self.config.num_threads)
         )
     )
-    @__llvm_metadata(`nvvm.minctasm`=Int(1))
+    @__llvm_metadata(`nvvm.minctasm`=SIMDSize(1))
     def kernel(
         q_tma: QOTMATile[
             dtype=Self.q_type,
@@ -401,8 +401,13 @@ struct MLA_SM100_Decode_Sparse[
             " Sliding window is supported only by MLA_SM100_Decode_QKV_FP8"
             " (native FP8)."
         )
-        # Softmax now includes the epilogue, so it needs more registers
-        # Correction does less work now (no epilogue), so it needs fewer
+        # Per-warpgroup register allocation.  Softmax carries the
+        # epilogue (O scale + writeback) in this variant, so it gets the
+        # larger 184-register slice; correction (72) is leaner because it
+        # no longer holds the epilogue.  The MMA / load / store WG also
+        # runs lean (72), and the FP8→FP16 convert WG matches softmax
+        # (184) since both hold larger working sets.  Sum must stay ≤
+        # total SM register budget; bump together if a path spills.
         comptime num_reg_softmax = 184
         comptime num_reg_correction = 72
         comptime num_reg_keep_mma_load_store = 72

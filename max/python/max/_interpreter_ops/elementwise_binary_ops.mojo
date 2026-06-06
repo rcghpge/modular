@@ -18,16 +18,17 @@ binary boolean ops (And, Or, Xor), and Pow.
 """
 
 from std.os import abort
+from std.gpu.host import DeviceContext
 from std.python import PythonObject
 from std.python.bindings import PythonModuleBuilder
 from std.sys.info import has_accelerator, simd_width_of
+from std.utils.coord import Coord
 
 from std.algorithm.functional import elementwise, IndexList
-from std.memory import OpaquePointer
 from std.reflection import reflect
-from std.runtime.asyncrt import DeviceContextPtr
-from tensor import ElementwiseBinaryOp
-from MOGGKernelAPI.MOGGKernelAPI import (
+
+from extensibility import ElementwiseBinaryOp
+from builtin_kernels import (
     Add,
     Sub,
     Mul,
@@ -140,7 +141,7 @@ def bin_elementwise_dispatcher[
         out_buffer: The output buffer object.
         lhs_buffer: The left-hand side buffer object.
         rhs_buffer: The right-hand side buffer object.
-        device_context_ptr: Device context pointer (null for CPU).
+        device_context_ptr: Device context pointer.
     """
     var dtype = _get_dtype(lhs_buffer)
     var rhs_dtype = _get_dtype(rhs_buffer)
@@ -273,7 +274,7 @@ def pow_dispatcher(
         out_buffer: The output buffer object.
         lhs_buffer: The base buffer object.
         rhs_buffer: The exponent buffer object.
-        device_context_ptr: Device context pointer (null for CPU).
+        device_context_ptr: Device context pointer.
     """
     var dtype = _get_dtype(lhs_buffer)
     var rhs_dtype = _get_dtype(rhs_buffer)
@@ -402,7 +403,7 @@ def bin_bool_dispatcher[
         out_buffer: The output buffer object.
         lhs_buffer: The left-hand side buffer object.
         rhs_buffer: The right-hand side buffer object.
-        device_context_ptr: Device context pointer (null for CPU).
+        device_context_ptr: Device context pointer.
     """
     var dtype = _get_dtype(lhs_buffer)
 
@@ -433,7 +434,7 @@ def bin_elementwise_op[
     lhs_ptr: UnsafePointer[Scalar[dtype], MutExternalOrigin],
     rhs_ptr: UnsafePointer[Scalar[dtype], MutExternalOrigin],
     size: Int,
-    ctx: Optional[OpaquePointer[MutExternalOrigin]],
+    ctx: DeviceContext,
 ) raises:
     """Binary elementwise operation: out = op(lhs, rhs).
 
@@ -447,32 +448,29 @@ def bin_elementwise_op[
         lhs_ptr: Pointer to the left-hand side buffer data.
         rhs_ptr: Pointer to the right-hand side buffer data.
         size: Number of elements to process.
-        ctx: Device context pointer (null for CPU).
+        ctx: Device context.
     """
 
     @always_inline
     @parameter
     @__copy_capture(out_ptr, lhs_ptr, rhs_ptr)
-    def func[width: Int, rank: Int, alignment: Int = 1](idx: IndexList[rank]):
-        var i = rebind[IndexList[1]](idx)[0]
+    def func[width: Int, alignment: Int = 1](idx: Coord):
+        var i = Int(idx[0].value())
 
         var res = op.elementwise(
             lhs_ptr.load[width=width](i), rhs_ptr.load[width=width](i)
         )
         out_ptr.store[width=width](i, res)
 
-    if not ctx:
-        elementwise[func, simd_width=simd_width_of[dtype]()](IndexList[1](size))
+    if ctx.api() == "cpu":
+        elementwise[func, simd_width=simd_width_of[dtype]()](Coord(size), ctx)
     else:
         # GPU execution - check GPU availability and op/dtype support
         comptime if has_accelerator():
             comptime if _is_gpu_allowed_binary_op[
                 op
             ]() and dtype != DType.float64:
-                var device_ctx = DeviceContextPtr(ctx.unsafe_value())
-                elementwise[func, simd_width=1, target="gpu"](
-                    IndexList[1](size), device_ctx
-                )
+                elementwise[func, simd_width=1, target="gpu"](Coord(size), ctx)
             else:
                 raise Error(
                     "GPU execution not supported for this binary elementwise"
@@ -490,7 +488,7 @@ def pow_elementwise_op[
     lhs_ptr: UnsafePointer[Scalar[dtype], MutExternalOrigin],
     rhs_ptr: UnsafePointer[Scalar[dtype], MutExternalOrigin],
     size: Int,
-    ctx: Optional[OpaquePointer[MutExternalOrigin]],
+    ctx: DeviceContext,
 ) raises:
     """Pow elementwise operation: out = lhs ** rhs.
 
@@ -505,30 +503,27 @@ def pow_elementwise_op[
         lhs_ptr: Pointer to the base buffer data.
         rhs_ptr: Pointer to the exponent buffer data.
         size: Number of elements to process.
-        ctx: Device context pointer (null for CPU).
+        ctx: Device context.
     """
 
     @always_inline
     @parameter
     @__copy_capture(out_ptr, lhs_ptr, rhs_ptr)
-    def func[width: Int, rank: Int, alignment: Int = 1](idx: IndexList[rank]):
-        var i = rebind[IndexList[1]](idx)[0]
+    def func[width: Int, alignment: Int = 1](idx: Coord):
+        var i = Int(idx[0].value())
 
         var res = Pow.elementwise[dtype, dtype, width](
             lhs_ptr.load[width=width](i), rhs_ptr.load[width=width](i)
         )
         out_ptr.store[width=width](i, res)
 
-    if not ctx:
-        elementwise[func, simd_width=simd_width_of[dtype]()](IndexList[1](size))
+    if ctx.api() == "cpu":
+        elementwise[func, simd_width=simd_width_of[dtype]()](Coord(size), ctx)
     else:
         # GPU execution - check GPU availability and dtype support
         comptime if has_accelerator():
             comptime if dtype != DType.float64:
-                var device_ctx = DeviceContextPtr(ctx.unsafe_value())
-                elementwise[func, simd_width=1, target="gpu"](
-                    IndexList[1](size), device_ctx
-                )
+                elementwise[func, simd_width=1, target="gpu"](Coord(size), ctx)
             else:
                 raise Error(
                     "GPU execution not supported for pow with dtype float64"

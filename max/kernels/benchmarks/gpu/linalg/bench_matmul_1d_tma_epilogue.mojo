@@ -49,10 +49,12 @@ from layout import (
     Idx,
     Coord,
     RowMajorLayout,
-    RuntimeInt,
     row_major,
 )
 from linalg.matmul.gpu import _matmul_gpu
+from linalg.matmul.gpu.sm100_structured.default.dispatch_fused_bias_residual import (
+    fused_bias_residual_matmul_dispatch_sm100,
+)
 from std.utils import IndexList
 
 
@@ -204,16 +206,16 @@ def bench_matmul_1d_tma_epilogue[
     comptime simd_size = 4
     comptime transpose_b = True
 
-    var shape_c = Coord(Idx(M), Idx[N]())
-    var shape_a = Coord(Idx(M), Idx[K]())
-    var shape_b = Coord(Idx[N](), Idx[K]())
+    var shape_c = Coord(M, Idx[N])
+    var shape_a = Coord(M, Idx[K])
+    var shape_b = Coord(Idx[N], Idx[K])
 
     var c_size = M * N
     var a_size = M * K
     var b_size = N * K
 
     # 1D bias layout: shape [N]
-    comptime bias_layout = row_major(Coord(Idx[N]()))
+    comptime bias_layout = row_major(Coord(Idx[N]))
 
     var cb_a = CacheBustingBuffer[dtype](a_size, simd_size, ctx)
     var cb_b = CacheBustingBuffer[dtype](b_size, simd_size, ctx)
@@ -252,16 +254,16 @@ def bench_matmul_1d_tma_epilogue[
             @__copy_capture(tensor_c, bias_tile)
             def epilogue_lambda[
                 _dtype: DType,
-                width: Int,
+                width: SIMDSize,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
             ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
                 # 1D bias: broadcast bias[j] across all M rows.
-                var epi_val = bias_tile.load[width=width](
-                    Coord(Idx(idx[1]))
-                ).cast[_dtype]()
+                var epi_val = bias_tile.load[width=width](Coord(idx[1])).cast[
+                    _dtype
+                ]()
                 return val + epi_val
 
             _matmul_gpu[
@@ -271,25 +273,23 @@ def bench_matmul_1d_tma_epilogue[
             ](tensor_c, tensor_a, tensor_b, ctx)
 
         else:  # "tma_bias"
-            # Wrap 1D bias as a (1, N) TileTensor to match the 2D
-            # epilogue type _matmul_gpu expects. The kernel only
-            # uses the raw pointer for 1D bias.
-            var epi_1 = RuntimeInt[DType.int64](Scalar[DType.int64](1))
-            var epi_n = RuntimeInt[DType.int64](Scalar[DType.int64](N))
+            # Wrap 1D bias as a (1, N) TileTensor to match the 2D epilogue
+            # type the fused dispatcher expects. The kernel only uses the raw
+            # pointer for 1D bias.
+            var epi_1 = Int64(1)
+            var epi_n = Int64(N)
             var epilogue_for_gpu = TileTensor(
                 bias_tile.ptr, row_major(Coord(epi_1, epi_n))
             ).as_immut()
-            _matmul_gpu[
-                use_tensor_core=True,
+            fused_bias_residual_matmul_dispatch_sm100[
                 transpose_b=transpose_b,
-                has_epilogue_tensor=True,
                 epilogue_is_1d=True,
             ](
                 tensor_c,
                 tensor_a,
                 tensor_b,
+                epilogue_for_gpu.as_any_origin(),
                 ctx,
-                epilogue_tensor=epilogue_for_gpu,
             )
 
     @parameter
@@ -366,15 +366,15 @@ def bench_matmul_1d_tma_epilogue[
             @__copy_capture(bias_ver_nd)
             def ver_epilogue_lambda[
                 _dtype: DType,
-                width: Int,
+                width: SIMDSize,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
             ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
-                var epi_val = bias_ver_nd.load[width=width](
-                    Coord(Idx(idx[1]))
-                ).cast[_dtype]()
+                var epi_val = bias_ver_nd.load[width=width](Coord(idx[1])).cast[
+                    _dtype
+                ]()
                 return val + epi_val
 
             _matmul_gpu[
@@ -384,23 +384,21 @@ def bench_matmul_1d_tma_epilogue[
             ](c_kernel_nd, a_ver_nd, b_ver_nd, ctx)
 
         else:
-            var ver_epi_1 = RuntimeInt[DType.int64](Scalar[DType.int64](1))
-            var ver_epi_n = RuntimeInt[DType.int64](Scalar[DType.int64](N))
+            var ver_epi_1 = Int64(1)
+            var ver_epi_n = Int64(N)
             var ver_epilogue = TileTensor(
                 bias_ver_dev.unsafe_ptr(),
                 row_major(Coord(ver_epi_1, ver_epi_n)),
             ).as_immut()
-            _matmul_gpu[
-                use_tensor_core=True,
+            fused_bias_residual_matmul_dispatch_sm100[
                 transpose_b=transpose_b,
-                has_epilogue_tensor=True,
                 epilogue_is_1d=True,
             ](
                 c_kernel_nd,
                 a_ver_nd,
                 b_ver_nd,
+                ver_epilogue.as_any_origin(),
                 ctx,
-                epilogue_tensor=ver_epilogue,
             )
 
         # Add 1D bias to reference output (broadcast across M rows).
@@ -420,6 +418,7 @@ def bench_matmul_1d_tma_epilogue[
                     ).cast[dtype]()
 
             ctx.enqueue_copy(c_ref_dev, c_ref_host)
+            ctx.synchronize()
             bias_host.free()
             c_ref_host.free()
 

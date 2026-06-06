@@ -18,8 +18,8 @@ exits. This is the default behavior.
 
 This has a huge concrete advantage over eagerly executing one operation
 at a time: by controlling the boundary of where the eager context starts
-and ends, we can give advanced users a tool to _enable fine-grained
-bounds for automatic fusion_!
+and ends, we can give advanced users a tool to *enable fine-grained
+bounds for automatic fusion*.
 
 In practice the easiest way to do this is to mark a function as
 `F.functional`. This function is then assumed to be "atomic" for the
@@ -45,6 +45,7 @@ in another Graph API usage.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import hashlib
 import logging
@@ -52,6 +53,7 @@ import os
 import threading
 import weakref
 from collections import OrderedDict
+from collections.abc import Generator
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -61,7 +63,6 @@ from max._core.dialects import builtin, rmo
 from max._mlir_context import in_default_mlir_context
 from max.dtype import DType
 from max.experimental import _passes
-from max.experimental import functional as F
 from max.experimental.support import driver_tensor_type
 from max.experimental.tensor import (
     GraphValue,
@@ -76,7 +77,6 @@ from max.graph import (
     BufferValue,
     DeviceRef,
     Graph,
-    Shape,
     Value,
     ops,
 )
@@ -90,10 +90,10 @@ _SESSION_LOCK = threading.Lock()
 _SESSION: engine.api.InferenceSession | None = None
 _SEED: Tensor | None = None
 
-# Each distinct (op name, input dtypes/shapes) combination produces a unique
-# graph and thus a unique cache entry.  128 is generous for typical workloads
-# (a handful of custom ops x a few shape variants) while bounding memory.
-_EAGER_MODEL_CACHE_MAX_SIZE = 128
+# Bounds memory: each entry pins an engine.Model + its MEF buffer.
+_EAGER_MODEL_CACHE_MAX_SIZE = int(
+    os.environ.get("MAX_EAGER_MODEL_CACHE_SIZE", "128")
+)
 _EAGER_MODEL_CACHE_LOCK = threading.Lock()
 _EAGER_MODEL_CACHE: OrderedDict[
     tuple[str, tuple[tuple[str, str], ...]],
@@ -140,7 +140,7 @@ def _interpreter_max_ops() -> int:
     compiler so fusion optimizations can kick in.
 
     Returns:
-        The op-count threshold (default 30).
+        The op-count threshold (default 1024).
     """
     raw = os.environ.get(_INTERPRETER_MAX_OPS_ENV_VAR, "")
     if raw.strip().isdigit():
@@ -198,7 +198,7 @@ def _cached_signal_buffers(
 ) -> tuple[list[driver.Buffer], list[BufferType]]:
     """Returns (runtime_buffers, buffer_types) for the given GPU device IDs.
 
-    Signal buffers are 513 MB each — far too expensive to re-allocate per
+    Signal buffers are 1025 MB each — far too expensive to re-allocate per
     eager graph.  ``lru_cache`` ensures they are allocated once for each
     unique device set and reused for all subsequent graphs.
 
@@ -206,9 +206,12 @@ def _cached_signal_buffers(
     and avoids mutable module-level state.  In pytest-xdist each worker is
     a separate process, so there are no cross-worker conflicts.
     """
-    # Signal buffers: 1 MB signal + 512 MB communication scratch per GPU.
-    # Must stay in sync with the Mojo ``Signal`` struct size.
-    _NUM_BYTES = (1 + 512) * 1024 * 1024
+    # Signal buffers: 1 MB signal + 256 MB communication scratch per GPU.
+    # Must stay in sync with ``Signals.NUM_BYTES`` in ``max.nn.comm.allreduce``
+    # and the Mojo ``Signal`` struct size. 1 GiB scratch supports
+    # hidden_dim * max_batch_input_tokens * dtype_bytes up to ~1 GiB
+    # (e.g., Kimi-K2.5 at hidden_dim=20480, max_batch_input_tokens=16384).
+    _NUM_BYTES = (1 + 1024) * 1024 * 1024
 
     try:
         driver.enable_all_peer_access()
@@ -241,15 +244,12 @@ def _make_unrealized(
     ctx: RealizationContext,
     values: tuple[GraphValue, ...],
     mapping: DeviceMapping | None,
-    global_shape: Shape | None,
 ) -> Tensor:
     """Wraps graph values into a Tensor, dispatching to sharded constructor if needed."""
     state = RealizationState(values, ctx)
     if mapping is not None and mapping.mesh.num_devices > 1:
         placements = mapping.to_placements()
-        return Tensor._from_unrealized_shards(
-            state, mapping.mesh, placements, global_shape
-        )
+        return Tensor._from_unrealized_shards(state, mapping.mesh, placements)
     return Tensor(state=state)
 
 
@@ -273,7 +273,7 @@ def _eager_model_cache_key(
     Returns:
         A tuple of ``(asm_hex_digest, ((resolved_path, content_hash), ...))``.
     """
-    module_asm = graph._module.operation.get_asm(
+    module_asm = graph._module.asm(
         assume_verified=True,
         enable_debug_info=False,
         pretty_debug_info=False,
@@ -293,14 +293,10 @@ def _eager_model_cache_key(
 def _load_eager_model(graph: Graph) -> engine.Model:
     """Loads or retrieves a cached compiled model for an eager graph.
 
-    Only caches graphs that use custom kernel libraries (custom ops),
-    since those bypass the interpreter and incur expensive per-call
-    compilation.  Regular graphs use the interpreter fast path and are
-    not cached.
-
-    The compiled ``Model`` is keyed by a hash of the graph IR plus the
-    resolved kernel library paths and content hashes so that recompiling
-    a ``.mojopkg`` automatically invalidates the cache.
+    The cache is load-bearing even though the C++ MEF cache exists below
+    it: ~74% of a MEF hit is spent bytecode-serializing seeded MOGG
+    kernel decls into the C++ cache key (``FrameworkFrontend.cpp:518``).
+    A Python hit here skips the whole ``session.load`` roundtrip.
 
     Returns:
         A compiled ``engine.Model`` ready for execution.
@@ -308,9 +304,6 @@ def _load_eager_model(graph: Graph) -> engine.Model:
     global _EAGER_MODEL_CACHE_SESSION
 
     session = _session()
-    if not graph.kernel_libraries_paths:
-        return session.load(graph)
-
     key = _eager_model_cache_key(graph)
 
     with _EAGER_MODEL_CACHE_LOCK:
@@ -398,13 +391,9 @@ class EagerRealizationContext(RealizationContext):
                 s._graph_value for t in outputs for s in t.local_shards
             ]
             self.graph.output(*flat_values)
-        # Remove dead values and inputs
-        module: builtin.ModuleOp = _core.Operation._from_cmlir(
-            self.graph._module.operation
-        )  # type: ignore
         # Remove sources that no longer exist from the graph
         _core.lower(
-            module,
+            self.graph._module,
             [
                 builtin.passes.RemoveDeadValuesPass(),
                 rmo.passes.LegalizeRMOOps(),
@@ -565,10 +554,9 @@ class EagerRealizationContext(RealizationContext):
         values: tuple[GraphValue, ...],
         *,
         mapping: DeviceMapping | None = None,
-        global_shape: Shape | None = None,
     ) -> Tensor:
         """Creates an unrealized tensor backed by graph value(s)."""
-        tensor = _make_unrealized(self, values, mapping, global_shape)
+        tensor = _make_unrealized(self, values, mapping)
         self.unrealized.append(weakref.ref(tensor))
         return tensor
 
@@ -582,7 +570,7 @@ class EagerRealizationContext(RealizationContext):
         resulting ``BufferValue`` list so subsequent collectives in the
         same graph reuse the same buffers.
 
-        The runtime ``driver.Buffer`` objects (513 MB each) are allocated
+        The runtime ``driver.Buffer`` objects (1025 MB each) are allocated
         once per device set via :func:`_cached_signal_buffers` and shared
         across all eager contexts to avoid repeated allocation.
 
@@ -603,7 +591,7 @@ class EagerRealizationContext(RealizationContext):
         if len(gpu_ids) < 2:
             return None
 
-        # Get or allocate shared runtime buffers (expensive — 513 MB each).
+        # Get or allocate shared runtime buffers (expensive — 1+256 MB each).
         runtime_bufs, buf_types = _cached_signal_buffers(tuple(gpu_ids))
 
         # Add signal buffer types as new graph inputs (per-graph, cheap).
@@ -631,6 +619,8 @@ class EagerRealizationContext(RealizationContext):
     ):
         self.graph.__exit__(exception_type, exception, traceback)
         if not exception:
+            from max.experimental import functional as F
+
             F._run(self.realize_all())
 
 
@@ -676,9 +666,6 @@ class GraphRealizationContext(RealizationContext):
     Unlike eager contexts, this context does not support executing operations
     immediately. Attempting to realize tensors will raise a TypeError.
 
-    Attributes:
-        graph: The graph being constructed in this context.
-
     Example::
 
         graph = Graph("my_model", input_types=[TensorType(...)])
@@ -690,6 +677,7 @@ class GraphRealizationContext(RealizationContext):
     """
 
     graph: Graph
+    """The graph being constructed in this context."""
     signal_buffers: list[BufferValue] | None
 
     def __init__(
@@ -739,10 +727,9 @@ class GraphRealizationContext(RealizationContext):
         values: tuple[GraphValue, ...],
         *,
         mapping: DeviceMapping | None = None,
-        global_shape: Shape | None = None,
     ) -> Tensor:
         """Creates a tensor backed by graph value(s)."""
-        return _make_unrealized(self, values, mapping, global_shape)
+        return _make_unrealized(self, values, mapping)
 
     def __enter__(self):
         self.graph.__enter__()
@@ -755,3 +742,46 @@ class GraphRealizationContext(RealizationContext):
         traceback: TracebackType | None,
     ):
         self.graph.__exit__(exception_type, exception, traceback)
+
+
+def in_graph_context() -> bool:
+    """Returns ``True`` when executing inside a :class:`~max.graph.Graph` context."""
+    try:
+        _ = Graph.current
+    except LookupError:
+        return False
+    return True
+
+
+@contextlib.contextmanager
+def ensure_context() -> Generator[None]:
+    """Ensures a realization context exists for Tensor / TensorValue conversion."""
+    if current_realization_context(None) is not None:
+        yield
+        return
+    ctx: EagerRealizationContext | GraphRealizationContext = (
+        GraphRealizationContext(Graph.current)
+        if in_graph_context()
+        else EagerRealizationContext()
+    )
+    with ctx, realization_context(ctx):
+        yield
+
+
+@contextlib.contextmanager
+def lazy() -> Generator[None]:
+    """Defers tensor realization until explicitly awaited."""
+    with LazyRealizationContext() as ctx, realization_context(ctx):
+        yield
+
+
+__all__ = [
+    "EagerRealizationContext",
+    "GraphRealizationContext",
+    "LazyRealizationContext",
+    "ensure_context",
+    "in_graph_context",
+    "lazy",
+    "seed",
+    "set_seed",
+]

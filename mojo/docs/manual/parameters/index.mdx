@@ -190,8 +190,8 @@ different repeat counts.
 [infer-only parameter](#infer-only-parameters). The compiler infers
 the type from `msg`, so you only pass `count` explicitly.
 
-For more on generics—trait bounds, conditional conformance, and value
-generics—see [generics](/docs/manual/generics/).
+For more on generics, including trait conformance, conditional conformance,
+and value generics, see [generics](/docs/manual/generics/).
 
 ## Parameterized structs
 
@@ -318,11 +318,18 @@ The difference between parameters and `comptime` members is that parameter
 values are specified by the user, but `comptime` members represent either
 constant values or values derived from the input parameters.
 
-A trait can declare a `comptime` member, which must be defined by all conforming
-structs.
+A required value is a `comptime` member without an initializer. Conforming
+types must provide a value for it. This is useful when the trait needs a
+compile-time constant that varies across conforming types. For example, a
+Measurable trait might require a `unit` string and an `always_positive`
+boolean to validate measurements.
 
-Referencing `comptime` members works just like referencing struct parameters—you
-can reference a member using dot syntax (such as `Self.IteratorType`).
+Common trait-provided values include constants (like seeds), and trait
+compositions for refinements.
+
+Referencing `comptime` members works just like referencing struct
+parameters. You can reference a member using dot syntax (such as
+`Self.IteratorType`).
 
 #### `comptime` members as enumerations
 
@@ -558,8 +565,6 @@ The compiler infers the `dt` parameter based on the type of the `v`
 value passed into it, as if you wrote `rsqrt[DType.float16](v)` explicitly.
 Figure 1 shows a mental model for how parameter inference works.
 
-<!--  rumdl-disable MD033 -->
-
 <figure>
 
 ![](../images/parameters/parameter-inference.png#light)
@@ -567,8 +572,6 @@ Figure 1 shows a mental model for how parameter inference works.
 
 <figcaption><b>Figure 1.</b> Parameter inference</figcaption>
 </figure>
-
-<!--  rumdl-enable MD033 -->
 
 Parameter inference can seem a little confusing: it might seem like the compiler
 is inferring compile-time parameter values from run-time argument values. But in
@@ -1011,7 +1014,7 @@ var instance1 = UseDefault()  # instance of HasDefault[10, 0]
 ```
 
 When defining parameterized APIs, you can use partially-bound and unbound types
-to express type bounds with less boilerplate, a feature called
+to express type constraints with less boilerplate, a feature called
 [automatic parameterization](#automatic-parameterization):
 
 ```mojo no-test
@@ -1092,7 +1095,7 @@ For example, to define a function that takes any kind of `SIMD` value, you could
 write this:
 
 ```mojo no-test
-def take_simd[dtype: DType, size: Int, //](vec: SIMD[dtype, size]): 
+def take_simd[dtype: DType, size: Int, //](vec: SIMD[dtype, size]):
     pass
 ```
 
@@ -1242,7 +1245,7 @@ parameter (it's *partially bound*):
 
 ```mojo
 def eat(f: Fudge[5, ...]):
-    print("Ate " + String(f))
+    print("Ate", f)
 ```
 
 The `eat()` function takes a `Fudge` struct with the first parameter (`sugar`)

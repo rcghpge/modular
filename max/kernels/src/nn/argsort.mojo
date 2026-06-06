@@ -32,6 +32,7 @@ from std.memory import stack_allocation
 from layout import Idx, TensorLayout, TileTensor, row_major
 from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 
+from std.utils.coord import Coord
 from std.utils.index import IndexList, StaticTuple
 
 
@@ -55,20 +56,22 @@ def _argsort_cpu[
     comptime assert input.flat_rank == 1
 
     @parameter
-    def fill_indices_iota[
-        width: Int, rank: Int, alignment: Int = 1
-    ](offset: IndexList[rank]):
-        indices.raw_store(
-            offset[0],
-            iota[indices.dtype, width](Scalar[indices.dtype](offset[0])),
+    def fill_indices_iota[width: Int, alignment: Int = 1](offset: Coord):
+        indices.store(
+            offset,
+            iota[indices.dtype, width](
+                Scalar[indices.dtype](offset[0].value())
+            ),
         )
 
     elementwise[
         fill_indices_iota, simd_width_of[indices.dtype](), target="cpu"
-    ](indices.num_elements())
+    ](indices.num_elements(), DeviceContext(api="cpu"))
 
     @parameter
     def cmp_fn(a: Scalar[indices.dtype], b: Scalar[indices.dtype]) -> Bool:
+        comptime assert a.dtype.is_integral()
+        comptime assert b.dtype.is_integral()
         comptime if ascending:
             return input[a] < input[b]
         else:
@@ -102,9 +105,7 @@ def _sentinel_val[dtype: DType, ascending: Bool]() -> Scalar[dtype]:
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](256))
-@__name(
-    t"bitonic_local_sort_{input_dtype}_{indices_dtype}_{ascending}", mangle=True
-)
+@__name(t"bitonic_local_sort_{input_dtype}_{indices_dtype}_{ascending}")
 def _bitonic_local_sort_kernel[
     input_dtype: DType,
     indices_dtype: DType,
@@ -182,7 +183,6 @@ def _bitonic_local_sort_kernel[
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](256))
 @__name(
     t"bitonic_merge_local_{input_dtype}_{indices_dtype}_{ascending}",
-    mangle=True,
 )
 def _bitonic_merge_local_kernel[
     input_dtype: DType,
@@ -293,7 +293,7 @@ def _argsort_gpu_impl[
     @__llvm_metadata(
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](BLOCK_SIZE)
     )
-    @__name(t"bitonic_global_step_{ascending}", mangle=True)
+    @__name(t"bitonic_global_step_{ascending}")
     def bitonic_global_step(
         indices_arg: TileTensor[
             indices.dtype, indices.LayoutType, indices.origin
@@ -402,15 +402,15 @@ def _argsort_gpu[
 
     if n.is_power_of_two():
         var input_copy_buffer = ctx.enqueue_create_buffer[input.dtype](n)
-        var input_copy = TileTensor(input_copy_buffer, row_major(Idx(n)))
+        var input_copy = TileTensor(input_copy_buffer, row_major(n))
 
         # Initialize indices with iota.
         @parameter
         @__copy_capture(indices, input, input_copy)
         def fill_indices_iota_no_padding[
-            width: Int, rank: Int, alignment: Int = 1
-        ](offset: IndexList[rank]):
-            var i = offset[0]
+            width: Int, alignment: Int = 1
+        ](offset: Coord):
+            var i = offset[0].value()
 
             indices.raw_store(
                 i,
@@ -441,25 +441,21 @@ def _argsort_gpu[
     var padded_input_buffer = ctx.enqueue_create_buffer[input.dtype](
         pow_2_length
     )
-    var padded_input = TileTensor(
-        padded_input_buffer, row_major(Idx(pow_2_length))
-    )
+    var padded_input = TileTensor(padded_input_buffer, row_major(pow_2_length))
 
     var padded_indices_buffer = ctx.enqueue_create_buffer[indices.dtype](
         pow_2_length
     )
     var padded_indices = TileTensor(
         padded_indices_buffer,
-        row_major(Idx(pow_2_length)),
+        row_major(pow_2_length),
     )
 
     # Initialize indices with sequential values and copy input data to device
     @parameter
     @__copy_capture(padded_indices, padded_input, input, indices, n)
-    def fill_indices_iota[
-        width: Int, rank: Int, alignment: Int = 1
-    ](offset: IndexList[rank]):
-        var i = offset[0]
+    def fill_indices_iota[width: Int, alignment: Int = 1](offset: Coord):
+        var i = Int(offset[0].value())
         if i < n:
             padded_indices.raw_store(
                 i, iota[padded_indices.dtype, width](Scalar[indices.dtype](i))
@@ -496,12 +492,8 @@ def _argsort_gpu[
     # Extract the unpadded indices from the padded indices.
     @parameter
     @__copy_capture(padded_indices, indices)
-    def extract_indices[
-        width: Int, rank: Int, alignment: Int = 1
-    ](offset: IndexList[rank]):
-        indices.raw_store(
-            offset[0], padded_indices.raw_load[width=width](offset[0])
-        )
+    def extract_indices[width: Int, alignment: Int = 1](offset: Coord):
+        indices.store(offset, padded_indices.load[width=width](offset))
 
     # Extract the unpadded indices from the padded indices.
     elementwise[

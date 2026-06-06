@@ -3,12 +3,22 @@ load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 package(default_visibility = ["//max:consumers"])
 
 _EXTRA_CONSTRAINTS = {
+    # Bounded masked DRAM->SRAM copy proof; the masked `cp.async` zero-fill
+    # is NVIDIA-specific and verified on B200 only.
+    "scout_tt_bounded_copy.mojo": ["//:nvidia_gpu"],
     "test_mma_ws_ts.mojo": select({
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_cudnn_conv.mojo": ["//:nvidia_gpu"],
     "test_miopen_conv.mojo": ["//:amd_gpu"],
+    # 4-wave implicit-GEMM conv inherits the matmul's MI355X-only MFMA
+    # + chiplet/L2 swizzle; not compilable on other AMD parts.
+    "test_amd_4wave_conv_dtypes.mojo": ["//:mi355_gpu"],
+    "test_amd_4wave_conv_miopen.mojo": ["//:mi355_gpu"],
+    "test_amd_4wave_conv_residual.mojo": ["//:mi355_gpu"],
+    "test_amd_4wave_conv_rt_hw.mojo": ["//:mi355_gpu"],
+    "test_amd_4wave_conv3d.mojo": ["//:mi355_gpu"],
     "test_conv2d_sm100.mojo": select({
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -42,6 +52,12 @@ _EXTRA_CONSTRAINTS = {
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    # Drives the SM100 MLA FP8-KV decode kernel (MLA_SM100_Decode_KV_FP8).
+    # SM100-only.
+    "test_mla_decode_kv_fp8_magnitude_stress.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_index_fp8.mojo": select({
         "//:h100_gpu": [],
         "//:b200_gpu": [],
@@ -72,11 +88,23 @@ _EXTRA_CONSTRAINTS = {
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    "test_mla_prefill_sparse.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_mla_decode_sparse_kv_fp8_smoke.mojo": select({
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_mla_decode_sparse_kv_fp8.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "test_mla_decode_sparse_kv_bf16_smoke.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "test_mla_decode_sparse_kv_bf16.mojo": select({
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
@@ -144,6 +172,63 @@ _EXTRA_CONSTRAINTS = {
     "test_rope_split_store.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
+    }),
+    # FP8 quantize+store path is SM100-only (uses float8_e4m3fn).
+    "test_rope_split_store_fp8.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    # SM100 FA4 1Q attention-sink double-count regression. SM100-only
+    # (exercises the FA4 `fa4_softmax` 1Q warp-specialized path).
+    "attention/test_mha_sm100_1q_sink.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    # SM100 MHA with fp8 KV via dequant-staging + existing bf16 FA4 path.
+    # SM100-only.
+    "attention/test_mha_sm100_fp8_kv_d256_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_fp8_kv_d256_decode.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_fp8_kv_d512_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_fp8_kv_d512_decode.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d256_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d512_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d128_decode.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d256_decode.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d512_decode.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d64_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "attention/test_mha_sm100_qkv_fp8_d128_prefill.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
     }),
     # TODO(KERN-2410): Investigate and enable on macOS
     "test_bicubic.mojo": select({
@@ -268,10 +353,52 @@ _FILECHECK_TESTS = [
             "test_mla_decode_paged_variable.mojo",
             "test_mla_prefill_generic_paged.mojo",
             "test_mla_prefill_blockscale_paged.mojo",
+            "test_mla_prefill_blockscale_large_cache.mojo",
             "test_mla_prefill_per_token_scale_paged.mojo",
             "_paged_prefill_test_utils.mojo",
+            # Dtype-parameterized 4-wave conv test (explicit per-dtype
+            # targets are declared below).
+            "test_amd_4wave_conv_dtypes.mojo",
         ],
     )
+]
+
+# Dtype-parameterized 4-wave conv correctness tests. Single source
+# file (`test_amd_4wave_conv_dtypes.mojo`); one `mojo_test` target per
+# dtype, each with `-D DTYPE=<dtype>`. Black-box correctness check of
+# `amd_4wave_conv` vs `structured_4wave_matmul` on a host-materialized
+# im2col matrix, asserting byte-identity across all supported dtypes
+# (FP8 + BF16 + FP16). MI355X only.
+[
+    mojo_test(
+        name = "test_amd_4wave_conv_dtypes_" + dtype + ".mojo.test",
+        size = "large",
+        srcs = ["test_amd_4wave_conv_dtypes.mojo"],
+        copts = [
+            "-D",
+            "DTYPE=" + dtype,
+        ],
+        exec_properties = {
+            "test.resources:gpu-memory": "3",
+        },
+        tags = ["gpu"],
+        target_compatible_with = [
+            "//:has_gpu",
+            "//:mi355_gpu",
+        ],
+        deps = [
+            "//max:internal_utils",
+            "//max:linalg",
+            "//max:nn",
+            "//max:testdata",
+            "@mojo//:std",
+        ],
+    )
+    for dtype in [
+        "float8_e4m3fn",
+        "bfloat16",
+        "float16",
+    ]
 ]
 
 # test_mha_causal_mask.mojo split by depth and optional pair-CTA flag.
@@ -446,7 +573,7 @@ _MHA_CAUSAL_MASK_AMD_DTYPES = {
 _MLA_DECODE_PAGED_CONFIGS = [
     "256",
     "128",
-    "64",
+    # "64",  # QUA-375 / KERN-2912: disabled due to nondeterminism
 ]
 
 [
@@ -507,19 +634,38 @@ _MLA_PREFILL_PAGED_PAGE_SIZES = [
     "256",
 ]
 
-# (test_file_basename, test_label_prefix) — paged-prefill tests share
-# the same ``_paged_prefill_test_utils.mojo`` helper and the same
-# ``page_size`` parameterisation. Each variant has its own entry so
-# the BUILD rule only needs to differ by srcs/name prefix.
+# (test_file, test_label_prefix, page_sizes, gpu_memory) — paged-prefill
+# tests share the same ``_paged_prefill_test_utils.mojo`` helper and the
+# same ``page_size`` parameterisation. Each variant has its own entry so
+# the BUILD rule only differs by srcs/name/page_sizes/memory.
 _MLA_PREFILL_PAGED_VARIANTS = [
-    ("test_mla_prefill_generic_paged.mojo", "test_mla_prefill_generic_paged"),
+    (
+        "test_mla_prefill_generic_paged.mojo",
+        "test_mla_prefill_generic_paged",
+        _MLA_PREFILL_PAGED_PAGE_SIZES,
+        "5",
+    ),
     (
         "test_mla_prefill_blockscale_paged.mojo",
         "test_mla_prefill_blockscale_paged",
+        _MLA_PREFILL_PAGED_PAGE_SIZES,
+        "5",
     ),
     (
         "test_mla_prefill_per_token_scale_paged.mojo",
         "test_mla_prefill_per_token_scale_paged",
+        _MLA_PREFILL_PAGED_PAGE_SIZES,
+        "5",
+    ),
+    # Large-cache_length finiteness sweep: production page_size (256) only,
+    # targeting the softmax-accumulator / scale-range / partition-count axis at
+    # cache_length up to 94715 (not the partial-page page_size < BN bug). Needs
+    # more GPU memory than the partial-page variants.
+    (
+        "test_mla_prefill_blockscale_large_cache.mojo",
+        "test_mla_prefill_blockscale_large_cache",
+        ["256"],
+        "10",
     ),
 ]
 
@@ -536,7 +682,7 @@ _MLA_PREFILL_PAGED_VARIANTS = [
             "page_size={}".format(page_size),
         ],
         exec_properties = {
-            "test.resources:gpu-memory": "5",
+            "test.resources:gpu-memory": gpu_memory,
         },
         main = src,
         tags = ["gpu"],
@@ -552,6 +698,6 @@ _MLA_PREFILL_PAGED_VARIANTS = [
             "@mojo//:std",
         ],
     )
-    for (src, label) in _MLA_PREFILL_PAGED_VARIANTS
-    for page_size in _MLA_PREFILL_PAGED_PAGE_SIZES
+    for (src, label, page_sizes, gpu_memory) in _MLA_PREFILL_PAGED_VARIANTS
+    for page_size in page_sizes
 ]

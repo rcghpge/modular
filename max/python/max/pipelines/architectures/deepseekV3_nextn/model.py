@@ -18,16 +18,16 @@ import logging
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
 from max.driver import Buffer, Device, DLPackArray
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph, ops
+from max.graph import Graph, ops
 from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.nn.comm.ep import EPCommInitializer
-from max.nn.kv_cache import KVCacheInputs, KVCacheParams
+from max.nn.kv_cache import KVCacheInputs
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
@@ -38,14 +38,13 @@ from max.pipelines.lib import (
     PipelineConfig,
     PipelineModel,
 )
-from max.pipelines.lib.config.config_enums import (
+from max.pipelines.lib.utils import compute_data_parallel_splits
+from max.pipelines.modeling.config_enums import (
     is_float4_encoding,
     supported_encoding_dtype,
 )
-from max.pipelines.lib.utils import compute_data_parallel_splits
 from max.support.algorithm import flatten2d
 from max.support.human_readable_formatter import to_human_readable_bytes
-from transformers import AutoConfig
 from typing_extensions import override
 
 from ..deepseekV2.model import DeepseekV2Model
@@ -68,6 +67,8 @@ class DeepseekV3NextNInputs(DeepseekV3Inputs):
 
 
 class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
+    model_config_cls: ClassVar[type[Any]] = DeepseekV3NextNConfig
+
     def __init__(
         self,
         pipeline_config: PipelineConfig,
@@ -102,23 +103,6 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
             # safetensors may omit weights shared with the target model
             # (e.g. embed_tokens, lm_head) so we must be able to add them.
             state_dict[key] = cast(WeightData, value)
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParams:
-        return DeepseekV3NextNConfig.construct_kv_params(
-            huggingface_config=huggingface_config,
-            pipeline_config=pipeline_config,
-            devices=devices,
-            kv_cache_config=kv_cache_config,
-            cache_dtype=cache_dtype,
-        )
 
     @classmethod
     def estimate_weights_size(cls, pipeline_config: PipelineConfig) -> int:
@@ -586,54 +570,6 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
                 np.array([return_n_logits], dtype=np.int64)
             ),
             data_parallel_splits=Buffer.from_numpy(data_parallel_splits),
-        )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-        hidden_states: Buffer | None = None,
-    ) -> DeepseekV3NextNInputs:
-        """Prepare inputs for next token generation.
-
-        Args:
-            next_tokens: Next tokens to process
-            prev_model_inputs: Previous model inputs
-            hidden_states: Hidden states from the base model (optional, will use
-                          hidden_states from prev_model_inputs if not provided)
-
-        Returns:
-            NextN model inputs for next token
-        """
-        assert isinstance(prev_model_inputs, DeepseekV3NextNInputs)
-
-        # Use provided hidden_states, or fall back to previous hidden_states
-        # This allows EAGLE pipeline to set hidden_states after calling this method
-        if hidden_states is None:
-            hidden_states = prev_model_inputs.hidden_states
-
-        # If still None after fallback, that's a real error
-        if hidden_states is None:
-            raise ValueError(
-                "hidden_states must be provided for DeepSeekV3 NextN model"
-            )
-        row_offsets_size = prev_model_inputs.input_row_offsets.shape[0]
-        next_device_row_offsets = self._device_input_row_offsets_prealloc[
-            :row_offsets_size
-        ]
-        next_host_row_offsets = self._host_input_row_offsets_prealloc[
-            :row_offsets_size
-        ]
-        return DeepseekV3NextNInputs(
-            tokens=next_tokens,
-            hidden_states=hidden_states,
-            input_row_offsets=next_device_row_offsets,
-            host_input_row_offsets=next_host_row_offsets,
-            signal_buffers=self.signal_buffers,
-            batch_context_lengths=self._batch_context_lengths_prealloc_cpu,
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
-            return_n_logits=prev_model_inputs.return_n_logits,
-            data_parallel_splits=prev_model_inputs.data_parallel_splits,
         )
 
 

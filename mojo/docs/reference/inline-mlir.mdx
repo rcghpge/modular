@@ -68,16 +68,12 @@ Mojo provides four built-in identifiers to reference MLIR
 from source code. Each corresponds to a common MLIR
 building block:
 
-<!-- markdownlint-disable MD013 -->
-
 | Built-in            | Purpose                      | Produces                |
 |---------------------|------------------------------|-------------------------|
 | `__mlir_type`       | Reference an MLIR type       | A type                  |
 | `__mlir_attr`       | Reference an MLIR attribute  | Compile-time value      |
 | `__mlir_op`         | Invoke an MLIR operation     | Runtime value or `None` |
 | `__mlir_region`     | Define a single-block region | Statement (no value)    |
-
-<!-- markdownlint-enable MD013 -->
 
 You don't need to be an expert in MLIR basics to work through this page,
 but it helps to recognize a few core ideas: dialects, operations,
@@ -95,9 +91,7 @@ in Mojo. You can use these types in variable declarations,
 parameter lists, and `comptime` aliases, just as you'd use
 built-in types like `Float64` or `UnsafePointer[Int]`.
 
-<!-- markdownlint-disable MD024 -->
 ### Dot and backtick syntax
-<!-- markdownlint-enable MD024 -->
 
 For simple type names that are valid identifiers, use dot syntax. Use
 backticks when the name includes special characters like `!`, `<`, or `>`:
@@ -137,12 +131,14 @@ type. For a full list, see
 [MLIR's Builtin Types
 documentation](https://mlir.llvm.org/docs/Dialects/Builtin/#types).
 
-Dialect-defined MLIR types use the `!` prefix. For example:
+Dialect-defined MLIR types use the `!` prefix. Without it, the
+compiler rejects the type with an error like:
 
 ```text
-dialect types must include a `!` prefix. '__mlir_type.`kgen.dtype`' is
-invalid; use '__mlir_type.`!kgen.dtype`' instead
+invalid MLIR type: kgen.dtype
 ```
+
+Use `__mlir_type.`!kgen.dtype`` instead.
 
 Here's a runnable example that declares MLIR-typed variables,
 assigns values with `__mlir_attr`, and converts them back to
@@ -158,9 +154,7 @@ def mlir_types_in_action():
     print(Int(mlir_value=count))   # 0
 ```
 
-<!-- markdownlint-disable MD024 -->
 ### Bracket syntax
-<!-- markdownlint-enable MD024 -->
 
 Use bracket syntax when you need to build a type from values
 known at compile time. The compiler splices Mojo expressions
@@ -204,13 +198,13 @@ and `!kgen.dtype` appear here alongside builtin types.
 ```mojo
 # Parameter is a compile-time MLIR string (for example, "hello")
 struct StringLiteral[value: __mlir_type.`!kgen.string`]:
-    ...
+    # ...
 
 # Parameter is a compile-time dtype (for example, f32 or si64)
 def example[dtype: __mlir_type.`!kgen.dtype`]():
     # For dtype=f32, produces: !kgen.scalar<f32>
     var a: __mlir_type[`!kgen.scalar<`, dtype, `>`]
-    ...
+    # ...
 ```
 
 ### Properties of raw MLIR types
@@ -225,9 +219,7 @@ produces an error.
 Use `__mlir_attr` to define MLIR attributes in Mojo. An MLIR
 attribute is a compile-time constant embedded in the IR.
 
-<!-- markdownlint-disable MD024 -->
 ### Dot and backtick syntax
-<!-- markdownlint-enable MD024 -->
 
 Use dot syntax for simple attribute names. Use backticks when
 you need full MLIR literal syntax:
@@ -284,9 +276,7 @@ def main():
     print(circle_area_approx(10))  # 300
 ```
 
-<!-- markdownlint-disable MD024 -->
 ### Bracket syntax
-<!-- markdownlint-enable MD024 -->
 
 Use bracket syntax when you need to build an attribute from
 compile-time values. This follows the same rules as
@@ -408,18 +398,13 @@ def main():
 
 ### Special attributes
 
-Four attributes have special meaning to the compiler:
+Three attributes have special meaning to the compiler:
 
-<!-- markdownlint-disable MD013 -->
-
-| Attribute     | Purpose                                                         |
-|---------------|-----------------------------------------------------------------|
-| `_type`       | Sets the result type when the compiler can't infer it           |
-| `_properties` | Passes MLIR operation properties as a `DictionaryAttr`          |
-| `_region`     | References a named `__mlir_region` as a region argument         |
-| `_type=None`  | Marks an operation that produces no result                      |
-
-<!-- markdownlint-enable MD013 -->
+| Attribute     | Purpose                                                              |
+|---------------|----------------------------------------------------------------------|
+| `_type`       | Sets the result type; pass `None` for an operation with no result    |
+| `_properties` | Passes MLIR operation properties as a `DictionaryAttr`               |
+| `_region`     | References a named `__mlir_region` as a region argument              |
 
 ### `_type`
 
@@ -464,7 +449,7 @@ provide `_type`, you'll receive an error:
 
 Some MLIR operations store configuration in properties instead
 of attributes. Attributes are compile-time constants in Mojo.
-Properties store typed, mutable data on the operation. Pass
+Properties store compile-time metadata on the operation. Pass
 them as a `DictionaryAttr`:
 
 ```mojo
@@ -538,7 +523,7 @@ __mlir_region name(arg: type, ...):
 
 ### Basic usage
 
-Some MLIR operations accept a region argument — a block of code that
+Some MLIR operations accept a region argument, a block of code that
 the operation controls. You define the region with `__mlir_region` and
 connect it to the operation with the `_region` attribute.
 
@@ -571,10 +556,9 @@ operation that uses the region. Here, `hlcf.loop` passes the
 current loop value as `i`. The `_region` attribute takes the
 region name as a string.
 
-This loop runs indefinitely. The `hlcf` dialect's conditional
-exit (`hlcf.break`) requires nested regions that can't be
-expressed with `__mlir_region`. In practice, it's simpler to
-use Mojo's `for` and `while` loops for control flow.
+This loop runs indefinitely. To exit conditionally, wrap `hlcf.break` in
+`hlcf.if`. In practice, it's simpler to use Mojo's `for` and `while` loops
+for control flow.
 
 The following example uses a Mojo `while` loop for control
 flow and MLIR operations for the computation inside. The
@@ -635,14 +619,13 @@ name. Each `__mlir_region` defines a single block.
 
 ### Region arguments
 
-Region arguments look like function arguments, but they don't
-support Mojo argument conventions like `borrowed`, `owned`,
-`ref`, `out`, or `mut`. The operation provides the argument
-values directly as raw MLIR values:
+Region arguments look like function arguments, but they don't support Mojo
+passing conventions like `ref`, `var`, or `mut`. The operation provides
+the argument values directly as raw MLIR values:
 
 ```mojo
 # Region arguments receive raw MLIR values from the enclosing
-# operation. No Mojo argument conventions apply.
+# operation. Mojo conventions don't apply.
 __mlir_region my_region(
     x: __mlir_type.index,              # Raw index from the operation
     y: __mlir_type.`!kgen.scalar<f32>`, # Raw f32 scalar
@@ -650,15 +633,13 @@ __mlir_region my_region(
     # x and y are raw MLIR values, not Mojo types.
     # Wrap them (for example, Int(mlir_value=x)) to use
     # Mojo operations on them.
-    ...
+    # ...
 ```
 
 ## Common dialects
 
 These dialect prefixes appear frequently in the stdlib and
 kernel code:
-
-<!-- markdownlint-disable MD013 -->
 
 | Prefix    | Covers                                                    |
 |-----------|-----------------------------------------------------------|
@@ -669,8 +650,6 @@ kernel code:
 | `llvm.*`  | LLVM dialect: traps, inline assembly, pointer ops         |
 | `nvvm.*`  | NVIDIA GPU intrinsics: barriers, async copies, tensor ops |
 | `co.*`    | Coroutine ops: suspend, resume, destroy, await            |
-
-<!-- markdownlint-enable MD013 -->
 
 The `pop`, `kgen`, `co` and `lit` dialects are internal implementation
 details of the compiler and may change without notice.

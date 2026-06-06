@@ -13,6 +13,7 @@
 
 
 import asyncio
+import io
 import json
 import logging
 import sys
@@ -27,18 +28,26 @@ import pytest_asyncio
 from async_asgi_testclient import TestClient as AsyncTestClient
 from fastapi import FastAPI
 from fastapi.testclient import TestClient as SyncTestClient
-from max.interfaces import (
+from max.pipelines.architectures.kimik2_5.tool_parser import KimiToolParser
+from max.pipelines.core import TextContext
+from max.pipelines.core.exceptions import InputError, PromptTooLongError
+from max.pipelines.lib import (
+    PIPELINE_REGISTRY,
+    PipelineConfig,
+    PipelineRuntimeConfig,
+)
+from max.pipelines.modeling.types import (
     BaseContext,
     GenerationStatus,
     PipelineTask,
     RequestID,
+    TextGenerationRequestTool,
+    TextGenerationResponseFormat,
 )
-from max.pipelines.architectures.kimik2_5.tool_parser import KimiToolParser
-from max.pipelines.core import TextContext
-from max.pipelines.lib import PIPELINE_REGISTRY, PipelineConfig
 from max.serve.api_server import ServingTokenGeneratorSettings, fastapi_app
 from max.serve.config import APIType, Settings
 from max.serve.mocks.mock_api_requests import simple_openai_request
+from max.serve.parser import LlamaToolParser
 from max.serve.pipelines.echo_gen import (
     EchoPipelineTokenizer,
     EchoTokenGenerator,
@@ -50,11 +59,14 @@ from max.serve.router.openai_routes import (
     OpenAICompletionResponseGenerator,
     _create_response_format,
     _process_chat_log_probabilities,
+    _resolve_grammar_constraints,
+    _validate_decodable_images,
     get_tool_parser,
     openai_create_chat_completion,
 )
 from max.serve.schemas.openai import (
     ChatCompletionLogprobs,
+    ChatCompletionMessageToolCall,
     ChatCompletionTokenLogprob,
     CreateChatCompletionRequest,
     CreateChatCompletionResponse,
@@ -64,6 +76,7 @@ from max.serve.worker_interface.zmq_interface import ZmqModelWorkerProxy
 from openai.types.chat.chat_completion_stream_options_param import (
     ChatCompletionStreamOptionsParam,
 )
+from PIL import Image
 
 if sys.version_info >= (3, 11):
     from asyncio import TaskGroup
@@ -220,6 +233,119 @@ async def test_openai_chat_completion_empty_model_name(app) -> None:  # noqa: AN
         choice = response.choices[0]
         assert choice.message.content == request_content
         assert choice.finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completion_prompt_too_long_returns_400(
+    app: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``PromptTooLongError`` from the tokenizer must surface as 400."""
+
+    async def _raise(self, request) -> None:  # noqa: ANN001
+        raise PromptTooLongError(num_tokens=4096, max_length=2048)
+
+    monkeypatch.setattr(EchoPipelineTokenizer, "new_context", _raise)
+
+    async with AsyncTestClient(app) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json=simple_openai_request(model_name="echo", content="anything"),
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["message"].startswith("Prompt is too long")
+    assert "4096 tokens" in body["error"]["message"]
+    assert "2048 tokens" in body["error"]["message"]
+    assert body["error"]["type"] == "invalid_request_error"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completion_input_error_returns_400(app) -> None:  # noqa: ANN001
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline.all_tokens = AsyncMock(
+            side_effect=InputError("invalid image input")
+        )
+
+        response_json = await client.post(
+            "/v1/chat/completions",
+            json=simple_openai_request(model_name="echo", content="test data"),
+        )
+
+        assert response_json.status_code == 400
+        assert response_json.json()["error"]["message"] == "invalid image input"
+        assert response_json.json()["error"]["type"] == "invalid_request_error"
+
+
+@pytest.mark.asyncio
+async def test_openai_error_envelope_shape(app) -> None:  # noqa: ANN001
+    """HTTP errors are returned in the OpenAI ``{"error": {...}}`` envelope."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline.all_tokens = AsyncMock(
+            side_effect=InputError("bad request")
+        )
+
+        response = await client.post(
+            "/v1/chat/completions",
+            json=simple_openai_request(model_name="echo", content="test data"),
+        )
+
+        assert response.status_code == 400
+        body = response.json()
+        assert body["error"]["message"] == "bad request"
+        assert body["error"]["type"] == "invalid_request_error"
+        assert body["error"]["code"] == "400"
+        assert "detail" not in body
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_schema_validation_error_uses_openai_envelope(
+    app,  # noqa: ANN001
+) -> None:
+    """Pydantic ``ValidationError`` from the chat schema surfaces as the OpenAI envelope.
+
+    Regression that composes SERVSYS-1257 (strongly-typed ``messages`` field,
+    so unknown roles raise ``pydantic.ValidationError`` at
+    ``CreateChatCompletionRequest.model_validate_json`` time) with the
+    ``HTTPException`` handler from #87521. The chat route catches
+    ``ValidationError`` and re-raises as ``HTTPException(status_code=400)``,
+    which the registered ``_openai_http_exception_handler`` turns into the
+    ``{"error": {"message", "type", "code", "param"}}`` body that
+    OpenAI/OpenRouter clients expect - not the raw FastAPI ``{"detail": ...}``.
+    """
+    async with AsyncTestClient(app) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "echo",
+                "messages": [{"role": "wizard", "content": "abracadabra"}],
+            },
+        )
+
+        assert response.status_code == 400
+        body = response.json()
+        assert "detail" not in body
+        assert body["error"]["type"] == "invalid_request_error"
+        assert body["error"]["code"] == "400"
+        # ``str(ValidationError)`` includes the offending input, so the
+        # rejected role makes it into the user-facing message.
+        assert "wizard" in body["error"]["message"]
+
+
+def test_validate_decodable_images_rejects_bad_bytes() -> None:
+    # Empty / non-image bytes must raise (the request handler maps this to a
+    # 400), not reach the worker and crash it later with an unhandled
+    # PIL.UnidentifiedImageError (HTTP 500).
+    for bad in (b"", b"tiny", b"\x00\x01\x02\x03"):
+        with pytest.raises(InputError):
+            _validate_decodable_images([bad])
+
+
+def test_validate_decodable_images_accepts_valid_image() -> None:
+    buf = io.BytesIO()
+    Image.new("RGB", (1, 1)).save(buf, format="PNG")
+    _validate_decodable_images([buf.getvalue()])  # must not raise
 
 
 def test_vllm_response_deserialization() -> None:
@@ -867,7 +993,7 @@ async def _run_completion_stream(
 async def _run_stream_with_kimi_tool_parser(
     chunks: list[TokenGeneratorOutput],
 ) -> list[CreateChatCompletionStreamResponse]:
-    """Stream with tool_use + KimiToolParser (same path as OpenAI + tools)."""
+    """Stream with parse_tool_calls + KimiToolParser (same path as OpenAI + tools)."""
     mock_pipeline = Mock()
     mock_pipeline.model_name = "test-model"
 
@@ -881,7 +1007,7 @@ async def _run_stream_with_kimi_tool_parser(
     generator = OpenAIChatResponseGenerator(
         mock_pipeline,
         parser=KimiToolParser(),
-        tool_use=True,
+        parse_tool_calls=True,
     )
     return [
         CreateChatCompletionStreamResponse.model_validate_json(p)
@@ -1171,13 +1297,15 @@ async def test_openai_chat_stream_kimi_tool_prefix_maps_to_delta_content(
 
 def test_create_response_format_json_object() -> None:
     """Test that json_object format is converted to json_schema with permissive schema."""
-    result = _create_response_format({"type": "json_object"})
+    result = _create_response_format(
+        {"type": "json_object"}, enable_response_format_schema=True
+    )
 
     assert result is not None
     # json_object should be normalized to json_schema internally
-    assert result["type"] == "json_schema"
+    assert result.type == "json_schema"
     # Should use a permissive schema that accepts any JSON object
-    assert result["json_schema"] == {"type": "object"}
+    assert result.json_schema == {"type": "object"}
 
 
 def test_create_response_format_json_schema() -> None:
@@ -1195,27 +1323,560 @@ def test_create_response_format_json_schema() -> None:
         {
             "type": "json_schema",
             "json_schema": {"name": "person", "schema": person_schema},
-        }
+        },
+        enable_response_format_schema=True,
     )
 
     assert result is not None
-    assert result["type"] == "json_schema"
+    assert result.type == "json_schema"
     # Schema should contain the provided JSON schema
-    assert "properties" in result["json_schema"]
-    assert "name" in result["json_schema"]["properties"]
-    assert "age" in result["json_schema"]["properties"]
+    assert "properties" in result.json_schema
+    assert "name" in result.json_schema["properties"]
+    assert "age" in result.json_schema["properties"]
 
 
 def test_create_response_format_text() -> None:
     """Test that text format returns empty json_schema."""
-    result = _create_response_format({"type": "text"})
+    result = _create_response_format(
+        {"type": "text"}, enable_response_format_schema=False
+    )
 
     assert result is not None
-    assert result["type"] == "text"
-    assert result["json_schema"] == {}
+    assert result.type == "text"
+    assert result.json_schema == {}
 
 
 def test_create_response_format_none() -> None:
     """Test that None input returns None."""
-    result = _create_response_format(None)
+    result = _create_response_format(None, enable_response_format_schema=False)
     assert result is None
+
+
+@pytest.mark.parametrize("response_type", ["json_schema", "json_object"])
+def test_create_response_format_rejects_schema_without_flag(
+    response_type: str,
+) -> None:
+    """Reject json_schema / json_object at the route boundary when the
+    server was not started with --enable-structured-output.
+
+    Without this guard the worker hits the same condition later in
+    ``StructuredOutputHelper.update_context`` and the InputError escapes
+    the scheduler loop, killing the worker (MXSERV-106).
+    """
+    response_format: dict[str, Any] = {"type": response_type}
+    if response_type == "json_schema":
+        response_format["json_schema"] = {
+            "name": "person",
+            "schema": {"type": "object"},
+        }
+
+    with pytest.raises(InputError, match=r"--enable-structured-output"):
+        _create_response_format(
+            response_format,  # type: ignore[arg-type]
+            enable_response_format_schema=False,
+        )
+
+
+# ============================================================================
+# Tests for _resolve_grammar_constraints
+# ============================================================================
+
+
+def _make_tools(names: list[str]) -> list[TextGenerationRequestTool]:
+    """Helper to create tool definitions for testing."""
+    return [
+        TextGenerationRequestTool(
+            type="function",
+            function={"name": name, "description": None, "parameters": {}},
+        )
+        for name in names
+    ]
+
+
+def _make_response_format(
+    json_schema: dict[str, Any],
+) -> TextGenerationResponseFormat:
+    """Helper to create response format for testing."""
+    return TextGenerationResponseFormat(
+        type="json_schema",
+        json_schema=json_schema,
+        grammar=None,
+        grammar_enforced=True,
+        tools_forced=False,
+    )
+
+
+def test_resolve_grammar_constraints_tools_required() -> None:
+    """When tool_choice='required', constrain to all tools, no response schema."""
+    tools = _make_tools(["get_weather", "search"])
+    response_format = _make_response_format({"type": "object"})
+
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=tools,
+            tool_choice="required",
+            response_format=response_format,
+        )
+    )
+
+    assert grammar_tools == tools
+    assert schema is None  # response_format ignored when tools forced
+    assert tools_forced is True  # tool_choice=required forces tools
+    assert (
+        enforce_from_start is True
+    )  # forced tools enforce from the first token
+
+
+def test_resolve_grammar_constraints_named_function() -> None:
+    """When tool_choice names a specific function, constrain to that tool only."""
+    tools = _make_tools(["get_weather", "search"])
+    response_format = _make_response_format({"type": "object"})
+
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=tools,
+            tool_choice={
+                "type": "function",
+                "function": {"name": "get_weather"},
+            },
+            response_format=response_format,
+        )
+    )
+
+    assert grammar_tools is not None
+    assert len(grammar_tools) == 1
+    assert grammar_tools[0]["function"]["name"] == "get_weather"
+    assert schema is None  # response_format ignored when tools forced
+    assert tools_forced is True  # specific function forces tools
+    assert enforce_from_start is True
+
+
+def test_resolve_grammar_constraints_auto_with_response_format() -> None:
+    """Auto mode + response_format: include all tools and response schema."""
+    tools = _make_tools(["get_weather", "search"])
+    response_format = _make_response_format({"type": "object"})
+
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=tools,
+            tool_choice="auto",
+            response_format=response_format,
+        )
+    )
+
+    assert grammar_tools == tools
+    assert schema == {"type": "object"}
+    assert tools_forced is False  # auto mode doesn't force tools
+    # auto + response_format: enforce from start since schema is in play
+    assert enforce_from_start is True
+
+
+def test_resolve_grammar_constraints_auto_no_response_format() -> None:
+    """Auto mode + no response_format: grammar generated for conditional enforcement."""
+    tools = _make_tools(["get_weather", "search"])
+
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=tools,
+            tool_choice="auto",
+            response_format=None,
+        )
+    )
+
+    # auto with tools now generates a grammar so the bitmask can engage
+    # conditionally once a tool-call start token is detected.
+    assert grammar_tools == tools
+    assert schema is None
+    assert tools_forced is False
+    assert enforce_from_start is False  # conditional enforcement
+
+
+def test_resolve_grammar_constraints_response_format_only() -> None:
+    """Response format only (no tools): constrain to JSON schema."""
+    response_format = _make_response_format({"type": "object"})
+
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=None,
+            tool_choice=None,
+            response_format=response_format,
+        )
+    )
+
+    assert grammar_tools is None
+    assert schema == {"type": "object"}
+    assert tools_forced is False
+    assert enforce_from_start is False  # no tools, no grammar to enforce
+
+
+def test_resolve_grammar_constraints_no_constraints() -> None:
+    """No tools, no response_format: no grammar generated."""
+    grammar_tools, schema, tools_forced, enforce_from_start = (
+        _resolve_grammar_constraints(
+            tools=None,
+            tool_choice=None,
+            response_format=None,
+        )
+    )
+
+    assert grammar_tools is None
+    assert schema is None
+    assert tools_forced is False
+    assert enforce_from_start is False
+
+
+# ============================================================================
+# Tests for OpenAIChatResponseGenerator with tool calling
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completion_tool_calling_with_reasoning(
+    patch_openai_metrics: None,
+) -> None:
+    """Test non-streaming response with tool calls and reasoning tokens."""
+    # The model outputs reasoning first, then a tool call JSON
+    tool_call_json = (
+        '{"name": "get_weather", "parameters": {"location": "Boston"}}'
+    )
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens="Let me check the weather for Boston...",
+            reasoning_token_count=7,
+            decoded_tokens=None,
+            token_count=0,
+            prompt_token_count=10,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens=tool_call_json,
+            token_count=15,
+            prompt_token_count=10,
+        ),
+    ]
+
+    mock_pipeline = Mock()
+    mock_pipeline.model_name = "test-model"
+    mock_pipeline.all_tokens = AsyncMock(return_value=chunks)
+
+    mock_request = _make_mock_request()
+
+    generator = OpenAIChatResponseGenerator(
+        mock_pipeline,
+        parser=LlamaToolParser(),
+        parse_tool_calls=True,
+    )
+    response = await generator.complete([mock_request])
+
+    # Check that reasoning is present
+    message = response.choices[0].message
+    assert message.reasoning == "Let me check the weather for Boston..."
+
+    # Check that tool calls were parsed
+    assert message.tool_calls is not None
+    assert len(message.tool_calls) == 1
+    tool_call = message.tool_calls[0]
+    assert isinstance(tool_call, ChatCompletionMessageToolCall)
+    assert tool_call.function.name == "get_weather"
+    assert tool_call.function.arguments == '{"location": "Boston"}'
+    assert tool_call.type == "function"
+    assert tool_call.id.startswith("call_")
+
+    # Check finish reason is tool_calls
+    assert response.choices[0].finish_reason == "tool_calls"
+
+    # Check usage includes reasoning tokens
+    assert response.usage is not None
+    assert response.usage.completion_tokens == 22  # 7 reasoning + 15 content
+    assert response.usage.prompt_tokens == 10
+    assert response.usage.total_tokens == 32
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_completion_tool_calling_with_content(
+    patch_openai_metrics: None,
+) -> None:
+    """Test non-streaming response with tool calls and regular content (no reasoning)."""
+    # The model outputs a tool call JSON without any reasoning
+    tool_call_json = '{"name": "get_time", "parameters": {"timezone": "EST"}}'
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="Here is the time: ",
+            token_count=4,
+            prompt_token_count=8,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens=tool_call_json,
+            token_count=12,
+            prompt_token_count=8,
+        ),
+    ]
+
+    mock_pipeline = Mock()
+    mock_pipeline.model_name = "test-model"
+    mock_pipeline.all_tokens = AsyncMock(return_value=chunks)
+
+    mock_request = _make_mock_request()
+
+    generator = OpenAIChatResponseGenerator(
+        mock_pipeline,
+        parser=LlamaToolParser(),
+        parse_tool_calls=True,
+    )
+    response = await generator.complete([mock_request])
+
+    # Check that reasoning is NOT present (no reasoning tokens)
+    message = response.choices[0].message
+    assert message.reasoning is None
+
+    # Check that tool calls were parsed
+    assert message.tool_calls is not None
+    assert len(message.tool_calls) == 1
+    tool_call = message.tool_calls[0]
+    assert isinstance(tool_call, ChatCompletionMessageToolCall)
+    assert tool_call.function.name == "get_time"
+    assert tool_call.function.arguments == '{"timezone": "EST"}'
+    assert tool_call.type == "function"
+
+    # Check finish reason is tool_calls
+    assert response.choices[0].finish_reason == "tool_calls"
+
+    # Check usage (no reasoning tokens)
+    assert response.usage is not None
+    assert response.usage.completion_tokens == 16  # 4 + 12
+    assert response.usage.prompt_tokens == 8
+    assert response.usage.total_tokens == 24
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_error_yields_json(
+    patch_openai_metrics: None,
+) -> None:
+    """Regression test for MXSERV-95: errors raised mid-stream are serialized as JSON."""
+    mock_pipeline = Mock()
+    mock_pipeline.model_name = "test-model"
+
+    async def mock_next_token_chunk(request: Any) -> Any:
+        raise ValueError(
+            "Input string is larger than tokenizer's max length (264823 > 262144)."
+        )
+        yield  # makes this an async generator despite the unconditional raise
+
+    mock_pipeline.next_token_chunk = mock_next_token_chunk
+    generator = OpenAIChatResponseGenerator(mock_pipeline)
+
+    results = [p async for p in generator.stream(_make_mock_request())]
+
+    # The error path does not emit [DONE]; exactly one item should be yielded.
+    assert len(results) == 1
+    payload = results[0]
+    assert isinstance(payload, str), (
+        f"Expected a JSON string, got {type(payload).__name__}: {payload!r}"
+    )
+
+    # Must parse as JSON — not as Python repr like ErrorResponse(error=Error(...))
+    parsed = json.loads(payload)
+    assert parsed["error"]["code"] == "500"
+    assert "262144" in parsed["error"]["message"]
+
+
+# ============================================================================
+# Tests for relaxed-request runtime flags:
+#   - allow_unsupported_logprobs: drop logprobs requests that the runtime
+#     cannot honor (e.g. overlap scheduler) instead of returning 400.
+#   - allow_extra_request_fields: silently drop unknown top-level body fields
+#     instead of failing pydantic validation with 400.
+# ============================================================================
+
+
+def test_pipeline_runtime_config_allow_unsupported_logprobs_default_false() -> (
+    None
+):
+    """``allow_unsupported_logprobs`` is opt-in; default preserves strictness."""
+    runtime = PipelineRuntimeConfig()
+    assert runtime.allow_unsupported_logprobs is False
+
+
+def test_pipeline_runtime_config_allow_extra_request_fields_default_false() -> (
+    None
+):
+    """``allow_extra_request_fields`` is opt-in; default preserves strictness."""
+    runtime = PipelineRuntimeConfig()
+    assert runtime.allow_extra_request_fields is False
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_logprobs_with_overlap_scheduler_rejected_by_default(
+    app,  # noqa: ANN001
+) -> None:
+    """With the overlap scheduler on and the flag off, logprobs is a 400."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.enable_overlap_scheduler = True
+        app.state.pipeline_config.runtime.allow_unsupported_logprobs = False
+
+        body = simple_openai_request(model_name="echo", content="hi")
+        body["logprobs"] = True
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 400
+    assert "overlap" in response.json()["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_logprobs_with_overlap_scheduler_dropped_when_flag_set(
+    app,  # noqa: ANN001
+) -> None:
+    """With the flag on, logprobs requests succeed and return ``logprobs: null``."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.enable_overlap_scheduler = True
+        app.state.pipeline_config.runtime.allow_unsupported_logprobs = True
+
+        body = simple_openai_request(
+            model_name="echo", content="logprobs please"
+        )
+        body["logprobs"] = True
+        body["top_logprobs"] = 5
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 200
+    parsed = CreateChatCompletionResponse.model_validate(response.json())
+    assert len(parsed.choices) == 1
+    choice = parsed.choices[0]
+    assert choice.message.content == "logprobs please"
+    # When logprobs is downgraded, the response carries no logprob content.
+    assert choice.logprobs is None or not choice.logprobs.content
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_extra_field_rejected_by_default(
+    app,  # noqa: ANN001
+) -> None:
+    """With the flag off, an unknown top-level field returns a 400."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.allow_extra_request_fields = False
+
+        body = simple_openai_request(model_name="echo", content="hello")
+        body["dynamic_temperature"] = {"</think>": 0}
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 400
+    assert "dynamic_temperature" in response.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_extra_field_dropped_when_flag_set(
+    app,  # noqa: ANN001
+) -> None:
+    """With the flag on, an unknown top-level field is dropped and the request succeeds."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.allow_extra_request_fields = True
+
+        body = simple_openai_request(model_name="echo", content="hello")
+        body["dynamic_temperature"] = {"</think>": 0}
+        body["some_other_vendor_field"] = "ignored"
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 200
+    parsed = CreateChatCompletionResponse.model_validate(response.json())
+    assert parsed.choices[0].message.content == "hello"
+
+
+@pytest.mark.asyncio
+async def test_completion_logprobs_with_overlap_scheduler_rejected_by_default(
+    app,  # noqa: ANN001
+) -> None:
+    """Legacy /v1/completions also rejects logprobs under the overlap scheduler."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.enable_overlap_scheduler = True
+        app.state.pipeline_config.runtime.allow_unsupported_logprobs = False
+
+        response = await client.post(
+            "/v1/completions",
+            json={
+                "model": "echo",
+                "prompt": "hi",
+                "logprobs": 3,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "overlap" in response.json()["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_completion_logprobs_with_overlap_scheduler_dropped_when_flag_set(
+    app,  # noqa: ANN001
+) -> None:
+    """Legacy /v1/completions silently drops logprobs when the flag is on."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.enable_overlap_scheduler = True
+        app.state.pipeline_config.runtime.allow_unsupported_logprobs = True
+
+        response = await client.post(
+            "/v1/completions",
+            json={
+                "model": "echo",
+                "prompt": "echo this",
+                "logprobs": 3,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    # The legacy endpoint returns the OpenAI logprobs container shape even
+    # when downgraded; what matters is that no per-token logprobs were
+    # actually emitted.
+    logprobs_field = body["choices"][0]["logprobs"]
+    assert logprobs_field is None or not logprobs_field.get("token_logprobs")
+
+
+@pytest.mark.asyncio
+async def test_completion_extra_field_rejected_by_default(
+    app,  # noqa: ANN001
+) -> None:
+    """Legacy /v1/completions rejects unknown fields by default."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.allow_extra_request_fields = False
+
+        response = await client.post(
+            "/v1/completions",
+            json={
+                "model": "echo",
+                "prompt": "hi",
+                "dynamic_temperature": {"</think>": 0},
+            },
+        )
+
+    assert response.status_code == 400
+    assert "dynamic_temperature" in response.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_completion_extra_field_dropped_when_flag_set(
+    app,  # noqa: ANN001
+) -> None:
+    """Legacy /v1/completions drops unknown fields when the flag is on."""
+    async with AsyncTestClient(app) as client:
+        app.state.pipeline_config.runtime.allow_extra_request_fields = True
+
+        response = await client.post(
+            "/v1/completions",
+            json={
+                "model": "echo",
+                "prompt": "echo this",
+                "dynamic_temperature": {"</think>": 0},
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["choices"][0]["text"] == "echo this"

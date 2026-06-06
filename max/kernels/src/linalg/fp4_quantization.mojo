@@ -32,6 +32,7 @@ from layout import (
     RuntimeLayout,
     TileTensor,
     row_major,
+    coord_to_index_list,
 )
 from layout.tile_layout import TensorLayout
 from std.logger import Logger
@@ -209,7 +210,7 @@ def quantize_dynamic_scaled_fp4fp8[
         tensor_sf,
         block_dim=block_dim,
         grid_dim=grid_dim,
-        attributes=pdl_launch_attributes(PDLLevel(1)),
+        attributes=pdl_launch_attributes(PDLLevel.ON),
     )
 
 
@@ -432,9 +433,7 @@ def block_scales_interleave_fp4[
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
-@__name(
-    t"block_scales_interleave_fp4_{scales_dtype}_{SF_VECTOR_SIZE}", mangle=True
-)
+@__name(t"block_scales_interleave_fp4_{scales_dtype}_{SF_VECTOR_SIZE}")
 def block_scales_interleave_fp4_kernel[
     scales_dtype: DType,
     input_scales_layout: Layout,
@@ -622,7 +621,7 @@ def naive_block_scaled_matmul[
     )
 
 
-@__name(t"naive_block_scaled_matmul", mangle=True)
+@__name(t"naive_block_scaled_matmul")
 def naive_block_scaled_matmul_kernel[
     c_type: DType,
     a_type: DType,
@@ -689,14 +688,10 @@ def naive_block_scaled_matmul_kernel[
             ).cast[accum_type]()
 
             comptime for k_idx in range(K_STEPS):
-                var a_val = rebind[Scalar[accum_type]](a_val_fp16x2[k_idx])
-                var b_val = rebind[Scalar[accum_type]](b_val_fp16x2[k_idx])
-                var a_scale_val = abs(
-                    rebind[Scalar[accum_type]](a_scale.cast[accum_type]())
-                )
-                var b_scale_val = abs(
-                    rebind[Scalar[accum_type]](b_scale.cast[accum_type]())
-                )
+                var a_val = a_val_fp16x2[k_idx]
+                var b_val = b_val_fp16x2[k_idx]
+                var a_scale_val = abs(a_scale.cast[accum_type]())
+                var b_scale_val = abs(b_scale.cast[accum_type]())
                 accum += a_val * b_val * a_scale_val * b_scale_val
         else:
             # MXFP8: one float8 value per byte.
@@ -728,7 +723,7 @@ def naive_block_scaled_matmul_kernel[
 @__llvm_arg_metadata(input_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(output_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(scales_tma_op, `nvvm.grid_constant`)
-@__name("quantize_dynamic_scaled_async_fp4_kernel", mangle=True)
+@__name("quantize_dynamic_scaled_async_fp4_kernel")
 def quantize_dynamic_scaled_async_fp4_kernel[
     input_dtype: DType,
     input_tile_rank: Int,
@@ -1145,7 +1140,7 @@ def quantize_dynamic_scaled_fp4_async[
         func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
             UInt32(smem_use)
         ),
-        attributes=pdl_launch_attributes(PDLLevel(1)),
+        attributes=pdl_launch_attributes(PDLLevel.ON),
     )
 
 
@@ -1153,7 +1148,7 @@ def quantize_dynamic_scaled_fp4_async[
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
 @__llvm_arg_metadata(scales_tma_op, `nvvm.grid_constant`)
-@__name("grouped_quantize_dynamic_scaled_async_fp4_kernel", mangle=True)
+@__name("grouped_quantize_dynamic_scaled_async_fp4_kernel")
 def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     output_dtype: DType,
     scales_dtype: DType,
@@ -1253,7 +1248,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_major(Coord(scales_tile_shape)),
     )
 
-    # We can safetly prefetch the row_offsets and scales_offsets before
+    # We can safely prefetch the row_offsets and scales_offsets before
     # `wait_on_dependent_grids()`.
     with PDL():
         if scale_tile_idx >= expert_tiles_start + expert_num_tiles:
@@ -1285,7 +1280,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             if is_valid:
                 var global_row = token_start + local_row
                 input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
-                    (Idx(global_row), Idx(input_col))
+                    (global_row, input_col)
                 )
 
             var thread_max = abs(input_vector).reduce_max()
@@ -1324,9 +1319,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
                     output_vector = rebind[SIMD[output_dtype, OUTPUT_WIDTH]](
                         input_f32.cast[output_dtype]()
                     )
-                output_tensor.store(
-                    (Idx(global_row), Idx(output_col)), output_vector
-                )
+                output_tensor.store((global_row, output_col), output_vector)
 
             if col_thread_idx % NUM_THREADS_PER_SF == 0:
                 var sf_group = col_thread_idx // NUM_THREADS_PER_SF
@@ -1442,7 +1435,7 @@ def grouped_quantize_dynamic_scaled_fp4_async[
             1,
         ),
         block_dim=(128,),
-        attributes=pdl_launch_attributes(PDLLevel(1)),
+        attributes=pdl_launch_attributes(PDLLevel.ON),
     )
 
 
@@ -1565,14 +1558,11 @@ def block_scaled_matmul_with_epilogue[
             @parameter
             @__copy_capture(c, n)
             def epilogue_wrapper[
-                simd_width: Int, rank: Int, alignment: Int = 1
-            ](idx: IndexList[rank]):
-                var c_coord = Index(idx[0], idx[1])
-                var c_val = rebind[SIMD[c_type, simd_width]](
-                    c.raw_load[width=simd_width](idx[0] * n + idx[1])
-                )
+                simd_width: Int, alignment: Int = 1
+            ](idx: Coord):
+                var c_val = c.load[width=simd_width](idx)
                 epilogue[c_type, simd_width, alignment=alignment](
-                    c_coord, c_val
+                    Index(idx[0].value(), idx[1].value()), c_val
                 )
 
             matmul[scales_type=scales_dtype](
@@ -1586,9 +1576,7 @@ def block_scaled_matmul_with_epilogue[
                 transpose_b=True,
                 c_row_major=True,
             )
-            elementwise[epilogue_wrapper, simd_size, target="gpu"](
-                Index(m, n), ctx
-            )
+            elementwise[epilogue_wrapper, simd_size, target="gpu"]((m, n), ctx)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1611,7 +1599,7 @@ def block_scaled_matmul[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    pdl_level: PDLLevel = PDLLevel(0),
+    pdl_level: PDLLevel = PDLLevel.OFF,
     _trace_description: StaticString = "",
     target: StaticString = "cpu",
 ](
@@ -1707,7 +1695,7 @@ def block_scaled_matmul[
     @always_inline
     @__copy_capture(c)
     def compute_lambda_wrapper[
-        _dtype: DType, _width: Int, *, alignment: Int = 1
+        _dtype: DType, _width: SIMDSize, *, alignment: Int = 1
     ](coords: IndexList[2], val: SIMD[_dtype, _width]):
         comptime if elementwise_compute_lambda_fn:
             comptime compute_lambda = elementwise_compute_lambda_fn.value()
@@ -2028,7 +2016,7 @@ def block_scales_interleave[
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
-@__name("quantize_mxfp4_amd_kernel", mangle=True)
+@__name("quantize_mxfp4_amd_kernel")
 def _quantize_mxfp4_amd_kernel[
     output_layout: TensorLayout,
     scales_layout: TensorLayout,
@@ -2065,7 +2053,7 @@ def _quantize_mxfp4_amd_kernel[
 
             # 1. Load 8x BF16.
             var input_vector = input.load[ELEMENTS_PER_THREAD](
-                Coord(Idx(global_row_idx), Idx(global_col_idx))
+                Coord(global_row_idx, global_col_idx)
             )
 
             # 2. Find per-thread max absolute value.
@@ -2083,23 +2071,19 @@ def _quantize_mxfp4_amd_kernel[
             var scale_f32 = e8m0_scale.cast[DType.float32]()
 
             # 5. Pack 8 BF16 -> 8 FP4 nibbles using AMD hardware intrinsic.
-            var packed = cast_float_to_fp4e2m1_amd(
-                rebind[SIMD[DType.bfloat16, 8]](input_vector), scale_f32
-            )
+            var packed = cast_float_to_fp4e2m1_amd(input_vector, scale_f32)
 
             # 6. Store packed output.
             var packed_bytes = bitcast[DType.uint8, 4](packed)
             output.store[width=4](
-                Coord(Idx(global_row_idx), Idx(col_thread_idx * 4)),
+                Coord(global_row_idx, col_thread_idx * 4),
                 packed_bytes,
             )
 
             # 7. First thread in the 4-thread group stores the scale.
             if global_col_idx % SF_VECTOR_SIZE == 0:
                 var scale_col = global_col_idx // SF_VECTOR_SIZE
-                scales.store(
-                    Coord(Idx(global_row_idx), Idx(scale_col)), e8m0_scale
-                )
+                scales.store(Coord(global_row_idx, scale_col), e8m0_scale)
 
 
 @always_inline
@@ -2192,7 +2176,7 @@ def quantize_mxfp4_amd[
     )
 
 
-@__name("quantize_dynamic_block_scaled_mxfp4_kernel", mangle=True)
+@__name("quantize_dynamic_block_scaled_mxfp4_kernel")
 def quantize_dynamic_block_scaled_mxfp4_kernel[
     in_dtype: DType,
     *,
@@ -2343,7 +2327,7 @@ def _mxfp4_dotprod_block_size(static_N: Int) -> Int:
     return target_block_size if (static_N % target_block_size) == 0 else 1
 
 
-@__name("matmul_dynamic_block_scaled_mxfp4_kernel", mangle=True)
+@__name("matmul_dynamic_block_scaled_mxfp4_kernel")
 def matmul_dynamic_block_scaled_mxfp4_kernel[
     out_dtype: DType, BLOCK_N: Int
 ](
@@ -2417,7 +2401,7 @@ def matmul_dynamic_block_scaled_mxfp4[
         )
 
 
-@__name("grouped_matmul_block_scaled_mxfp4_kernel", mangle=True)
+@__name("grouped_matmul_block_scaled_mxfp4_kernel")
 def grouped_matmul_block_scaled_mxfp4_kernel[
     out_dtype: DType, BLOCK_N: Int
 ](

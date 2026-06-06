@@ -161,9 +161,11 @@
     "docs/reference/simple-statements",
     "docs/reference/compound-statements",
     "docs/reference/function-declarations",
+    "docs/reference/closure-declarations",
     "docs/reference/struct-declarations",
     "docs/reference/trait-declarations",
     "docs/reference/inline-mlir",
+    "docs/reference/docstrings",
     {
       "label": "Decorators",
       "type": "category",

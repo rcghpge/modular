@@ -27,24 +27,24 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 import PIL.Image
-from max.interfaces import (
+from max.pipelines.core import PixelContext
+from max.pipelines.core.exceptions import PromptTooLongError
+from max.pipelines.diffusion.schedulers import SchedulerFactory
+from max.pipelines.modeling.types import (
     PipelineTokenizer,
     TokenBuffer,
 )
-from max.interfaces.generation import GenerationOutput
-from max.interfaces.provider_options import (
-    ImageProviderOptions,
-    PixelProviderOptionsBase,
-)
-from max.interfaces.request import OpenResponsesRequest
-from max.interfaces.request.open_responses import (
+from max.pipelines.modeling.types.generation import GenerationOutput
+from max.pipelines.request import OpenResponsesRequest
+from max.pipelines.request.open_responses import (
     InputImageContent,
     InputTextContent,
 )
-from max.pipelines.core import PixelContext
+from max.pipelines.request.provider_options import (
+    ImageProviderOptions,
+    PixelProviderOptionsBase,
+)
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
-
-from .diffusion_schedulers import SchedulerFactory
 
 if TYPE_CHECKING:
     import PIL.Image
@@ -149,6 +149,8 @@ class PipelineClassName(str, Enum):
     ZIMAGE = "ZImagePipeline"
     WAN = "WanPipeline"
     WAN_I2V = "WanImageToVideoPipeline"
+    QWEN_IMAGE_EDIT = "QwenImageEditPipeline"
+    QWEN_IMAGE_EDIT_PLUS = "QwenImageEditPlusPipeline"
 
     @classmethod
     def from_class_name(cls, class_name: str) -> PipelineClassName:
@@ -577,11 +579,10 @@ class PixelGenerationTokenizer(
                 add_special_tokens=add_special_tokens,
             )
             if max_sequence_length and len(raw_ids) > max_sequence_length:
-                raise ValueError(
-                    f"Prompt is too long for this model's text"
-                    f" encoder: {len(raw_ids)} tokens exceeds"
-                    f" the maximum of {max_sequence_length}"
-                    " tokens. Please shorten your prompt."
+                raise PromptTooLongError(
+                    len(raw_ids),
+                    max_sequence_length,
+                    limit_description="text encoder's maximum sequence length",
                 )
 
             return delegate(
@@ -633,9 +634,10 @@ class PixelGenerationTokenizer(
             max_sequence_length is not None
             and input_ids_array.shape[1] > max_sequence_length
         ):
-            raise ValueError(
-                "Input string is larger than tokenizer's max length "
-                f"({input_ids_array.shape[1]} > {max_sequence_length})."
+            raise PromptTooLongError(
+                input_ids_array.shape[1],
+                max_sequence_length,
+                limit_description="text encoder's maximum sequence length",
             )
 
         encoded_prompt = input_ids_array[0].astype(np.int64, copy=False)
@@ -964,7 +966,6 @@ class PixelGenerationTokenizer(
             model_name=request.body.model,
             input_image=preprocessed_image_array,  # Pass numpy array instead of PIL.Image
             output_format=image_specific.output_format,
-            residual_threshold=pixel_options.residual_threshold,
         )
 
         return context

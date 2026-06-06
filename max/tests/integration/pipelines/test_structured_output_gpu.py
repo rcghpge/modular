@@ -19,14 +19,6 @@ from typing import cast
 import hf_repo_lock
 import numpy as np
 from max.driver import DeviceSpec
-from max.interfaces import (
-    RequestID,
-    SamplingParams,
-    TextGenerationInputs,
-    TextGenerationRequest,
-    TextGenerationRequestMessage,
-    TextGenerationResponseFormat,
-)
 from max.pipelines import PipelineConfig, TextGenerationPipeline
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
@@ -38,6 +30,14 @@ from max.pipelines.lib import (
 from max.pipelines.lib.model_manifest import ModelManifest
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
 from max.pipelines.lib.registry import PipelineRegistry
+from max.pipelines.modeling.types import (
+    RequestID,
+    SamplingParams,
+    TextGenerationInputs,
+    TextGenerationRequest,
+    TextGenerationRequestMessage,
+    TextGenerationResponseFormat,
+)
 
 pytest_plugins = "test_common.registry"
 
@@ -91,6 +91,7 @@ def test_smollm_with_structured_output_gpu(
         sampling_params=sampling_params,
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -104,6 +105,8 @@ def test_smollm_with_structured_output_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 
@@ -161,7 +164,7 @@ def test_smollm_with_structured_output_gpu(
 def test_multistep_structured_output_gpu(
     pipeline_registry: PipelineRegistry,
 ) -> None:
-    """Test that multi-step execution (num_steps > 1) produces valid JSON."""
+    """Test structured output over multiple single-step pipeline invocations."""
     revision = hf_repo_lock.revision_for_hf_repo(
         "HuggingFaceTB/SmolLM2-135M-Instruct"
     )
@@ -208,6 +211,7 @@ def test_multistep_structured_output_gpu(
         sampling_params=sampling_params,
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -217,6 +221,8 @@ def test_multistep_structured_output_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 
@@ -229,7 +235,7 @@ def test_multistep_structured_output_gpu(
     kv_manager.claim(context.request_id, replica_idx=0)
 
     tokens = []
-    num_steps = 4  # Use multi-step execution
+    num_steps = 1
     while True:
         inputs: TextGenerationInputs[TextContext] = TextGenerationInputs(
             batches=[[context]], num_steps=num_steps
@@ -258,7 +264,7 @@ def test_multistep_structured_output_gpu(
 def test_multi_step_guided_decoding_gpu(
     pipeline_registry: PipelineRegistry,
 ) -> None:
-    """Test that multi-step execution works correctly with guided decoding."""
+    """Test that guided decoding works over repeated single-step invocations."""
     revision = hf_repo_lock.revision_for_hf_repo(
         "HuggingFaceTB/SmolLM2-135M-Instruct"
     )
@@ -299,6 +305,7 @@ def test_multi_step_guided_decoding_gpu(
         sampling_params=SamplingParams(max_new_tokens=30, top_k=1),
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -308,6 +315,8 @@ def test_multi_step_guided_decoding_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 
@@ -319,8 +328,8 @@ def test_multi_step_guided_decoding_gpu(
     kv_manager = pipeline.kv_manager
     kv_manager.claim(context.request_id, replica_idx=0)
 
-    # Use multi-step execution (num_steps > 1) with guided decoding
-    num_steps = 3
+    # Single-step execution with guided decoding per scheduler iteration.
+    num_steps = 1
     max_iterations = 20
 
     for _ in range(max_iterations):
@@ -382,6 +391,7 @@ def test_overlap_pipeline_structured_output_gpu(
         sampling_params=SamplingParams(max_new_tokens=50, top_k=1),
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -391,6 +401,8 @@ def test_overlap_pipeline_structured_output_gpu(
                 },
                 "required": ["name", "age"],
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 
@@ -499,6 +511,7 @@ def test_heterogeneous_batch_structured_output_gpu(
         sampling_params=SamplingParams(max_new_tokens=50, top_k=1),
         response_format=TextGenerationResponseFormat(
             type="json_schema",
+            grammar=None,
             json_schema={
                 "title": "Person",
                 "type": "object",
@@ -510,6 +523,8 @@ def test_heterogeneous_batch_structured_output_gpu(
                 "additionalProperties": False,
                 "strict": True,
             },
+            grammar_enforced=True,
+            tools_forced=False,
         ),
     )
 

@@ -29,18 +29,19 @@ from std.sys.intrinsics import (
     unlikely,
 )
 
-from std.builtin.device_passable import DevicePassable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.builtin.rebind import downcast
 from std.builtin.format_int import _write_int
 from std.builtin.simd import _simd_construction_checks
 from std.collections import OptionalReg
 from std.format._utils import FormatStruct, Named, TypeNames
 from std.reflection import reflect
-from std.memory import memcpy
+from std.memory import is_trivially_movable, memcpy
 from std.memory.memory import _free, _malloc
 from std.memory import UnsafeMaybeUninit
 from std.memory._poison import _check_not_poison, _check_not_poison_masked
 from std.os import abort
+from std._plugin import CurrentPlugin
 from std.python import PythonObject
 from std.utils._nicheable import (
     UnsafeSingleNicheable,
@@ -503,11 +504,6 @@ struct UnsafePointer[
     # Life cycle methods
     # ===-------------------------------------------------------------------===#
 
-    @always_inline("nodebug")
-    @doc_hidden
-    def __init__(out self, *, _unsafe_null: ()):
-        self.address = __mlir_attr[`#interp.pointer<0> : `, Self._mlir_type]
-
     @doc_hidden
     @always_inline("builtin")
     @implicit
@@ -538,6 +534,22 @@ struct UnsafePointer[
         ), "Pointer/Int size mismatch"
         self = UnsafePointer(to=unsafe_from_address).bitcast[type_of(self)]()[]
 
+    @always_inline
+    @doc_hidden
+    def __init__(out self, *, unsafe_from_address: IntLiteral):
+        """Create a pointer from a raw address.
+
+        This checks at compile time if the address is invalid and emits a compilation error.
+        """
+        comptime assert type_of(unsafe_from_address)() != 0, (
+            "UnsafePointer is non-nullable. To construct a null pointer, use"
+            " Optional[UnsafePointer] to model nullability."
+        )
+        comptime assert (
+            type_of(unsafe_from_address)() > 0
+        ), "UnsafePointer's address cannot be negative."
+        self = Self(unsafe_from_address=Int(unsafe_from_address))
+
     @always_inline("nodebug")
     def __init__(
         out self,
@@ -553,9 +565,7 @@ struct UnsafePointer[
 
     @always_inline("builtin")
     @implicit
-    def __init__[
-        disambig2: Int = 0
-    ](
+    def __init__(
         other: UnsafePointer,
         out self: UnsafePointer[
             other.type,
@@ -567,9 +577,6 @@ struct UnsafePointer[
 
         Args:
             other: The mutable pointer to cast from.
-
-        Parameters:
-            disambig2: Ignored. Works around name mangling conflict.
         """
         self.address = __mlir_op.`pop.pointer.bitcast`[
             _type=type_of(self)._mlir_type
@@ -601,7 +608,9 @@ struct UnsafePointer[
 
     @always_inline("builtin")
     @implicit
-    def __init__(
+    def __init__[
+        disambig2: Int = 0  # FIXME: Work around name mangling conflict.
+    ](
         other: UnsafePointer[...],
         out self: UnsafePointer[
             other.type,
@@ -613,6 +622,9 @@ struct UnsafePointer[
 
         Args:
             other: The pointer to cast from.
+
+        Parameters:
+            disambig2: Ignored. Works around name mangling conflict.
         """
         self.address = __mlir_op.`pop.pointer.bitcast`[
             _type=type_of(self)._mlir_type
@@ -1057,12 +1069,12 @@ struct UnsafePointer[
                 Self._UnsafePointerType._OriginCastType[ImmutExternalOrigin],
             ]().contains[T]()
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
         """Device dtype mapping from DeviceBuffer to the device's UnsafePointer.
         """
-        # TODO: Allow the low-level DeviceContext implementation to intercept
-        # these translations.
-        target.bitcast[Self.device_type]()[] = self.address
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:
@@ -1113,6 +1125,14 @@ struct UnsafePointer[
         ```
         """
         comptime alignment = align_of[Self.type]()
+        comptime if CurrentPlugin.unsafe_dangling_fn:
+            comptime address = CurrentPlugin.unsafe_dangling_fn.value()[
+                alignment
+            ]()
+            comptime assert (
+                address != 0
+            ), "UnsafePointer cannot be constructed with address 0"
+            return Self(unsafe_from_address=address)
         return Self(unsafe_from_address=alignment)
 
     @always_inline("nodebug")
@@ -1139,7 +1159,7 @@ struct UnsafePointer[
               of `T`.
         """
 
-        comptime if U.__move_ctor_is_trivial:
+        comptime if is_trivially_movable[U]():
             # If `moveinit` is trivial, we can avoid the branch introduced from
             # checking if the pointers are equal by using temporary stack
             # values.
@@ -1246,9 +1266,9 @@ struct UnsafePointer[
             for i in range(width):
                 v[i] = __mlir_op.`pop.load`[
                     alignment=alignment._int_mlir_index(),
-                    isVolatile=volatile._mlir_value,
-                    isInvariant=invariant._mlir_value,
-                    isNonTemporal=non_temporal._mlir_value,
+                    isVolatile=volatile.__mlir_i1__(),
+                    isInvariant=invariant.__mlir_i1__(),
+                    isNonTemporal=non_temporal.__mlir_i1__(),
                 ]((self + i).address)
             comptime if dtype.is_floating_point():
                 _check_not_poison[dtype, width](v)
@@ -1273,9 +1293,9 @@ struct UnsafePointer[
 
         var result = __mlir_op.`pop.load`[
             alignment=alignment._int_mlir_index(),
-            isVolatile=volatile._mlir_value,
-            isInvariant=invariant._mlir_value,
-            isNonTemporal=non_temporal._mlir_value,
+            isVolatile=volatile.__mlir_i1__(),
+            isInvariant=invariant.__mlir_i1__(),
+            isNonTemporal=non_temporal.__mlir_i1__(),
         ](address)
         comptime if dtype.is_floating_point():
             _check_not_poison[dtype, width](result)
@@ -1521,8 +1541,8 @@ struct UnsafePointer[
         else:
             __mlir_op.`pop.store`[
                 alignment=alignment._int_mlir_index(),
-                isVolatile=volatile._mlir_value,
-                isNonTemporal=non_temporal._mlir_value,
+                isVolatile=volatile.__mlir_i1__(),
+                isNonTemporal=non_temporal.__mlir_i1__(),
             ](val, self.bitcast[SIMD[dtype, width]]().address)
 
     @always_inline("nodebug")

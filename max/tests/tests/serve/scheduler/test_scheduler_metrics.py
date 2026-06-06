@@ -17,7 +17,7 @@ import logging
 from typing import Any
 from unittest.mock import patch
 
-from max.interfaces import BatchType
+from max.pipelines.modeling.types import BatchType
 from max.serve.scheduler.utils import BatchMetrics
 from pythonjsonlogger import jsonlogger
 
@@ -48,8 +48,11 @@ def _make_metrics(**overrides: Any) -> BatchMetrics:
         total_host_kv_blocks=21,
         h2d_blocks_copied=22,
         d2h_blocks_copied=23,
-        disk_blocks_written=0,
         disk_blocks_read=0,
+        disk_blocks_written=0,
+        used_disk_kv_pct=0.0,
+        total_disk_kv_blocks=0,
+        inflight_disk_ops=0,
         draft_tokens_generated=0,
         draft_tokens_accepted=0,
         avg_acceptance_length=0.0,
@@ -92,8 +95,11 @@ def test_metric_to_string() -> None:
         total_host_kv_blocks=21,
         h2d_blocks_copied=22,
         d2h_blocks_copied=23,
-        disk_blocks_written=0,
         disk_blocks_read=0,
+        disk_blocks_written=0,
+        used_disk_kv_pct=0.0,
+        total_disk_kv_blocks=0,
+        inflight_disk_ops=0,
         draft_tokens_generated=0,
         draft_tokens_accepted=0,
         avg_acceptance_length=0.0,
@@ -135,6 +141,27 @@ def test_metric_to_string() -> None:
     )
 
 
+def test_metric_to_string_with_disk_kv() -> None:
+    # When the tiered connector is active, the log line shows Disk: read/written
+    # counts inside the host clause and a separate Disk KVCache Usage clause.
+    metrics = _make_metrics(
+        disk_blocks_read=24,
+        disk_blocks_written=25,
+        used_disk_kv_pct=0.30,
+        total_disk_kv_blocks=100,
+        inflight_disk_ops=99,
+    )
+
+    formatted = metrics.pretty_format()
+    assert (
+        "Host KVCache Usage: 20.0% of 21 blocks, "
+        "Blocks copied: 22 H2D, 23 D2H, "
+        "Disk: 24 read, 25 written | "
+        "Disk KVCache Usage: 30.0% of 100 blocks, "
+        "Inflight Disk Ops: 99 |"
+    ) in formatted
+
+
 def test_metric_to_string_overlap_scheduler() -> None:
     # When the overlap scheduler is active, the measured batch execution
     # time belongs to the previous batch, not the current one. The log
@@ -166,8 +193,11 @@ def test_metric_to_string_overlap_scheduler() -> None:
         total_host_kv_blocks=0,
         h2d_blocks_copied=0,
         d2h_blocks_copied=0,
-        disk_blocks_written=0,
         disk_blocks_read=0,
+        disk_blocks_written=0,
+        used_disk_kv_pct=0.0,
+        total_disk_kv_blocks=0,
+        inflight_disk_ops=0,
         draft_tokens_generated=0,
         draft_tokens_accepted=0,
         avg_acceptance_length=0.0,
@@ -222,8 +252,11 @@ def test_metric_to_string_continuation_only_ce_batch() -> None:
         total_host_kv_blocks=0,
         h2d_blocks_copied=0,
         d2h_blocks_copied=0,
-        disk_blocks_written=0,
         disk_blocks_read=0,
+        disk_blocks_written=0,
+        inflight_disk_ops=0,
+        used_disk_kv_pct=0.0,
+        total_disk_kv_blocks=0,
         draft_tokens_generated=0,
         draft_tokens_accepted=0,
         avg_acceptance_length=0.0,
@@ -378,6 +411,8 @@ def test_publish_metrics_default_path() -> None:
     mock_metrics.dkv_nixl_write_gib_per_s.assert_not_called()
     mock_metrics.dkv_rpc_acquire_latency.assert_not_called()
     mock_metrics.dkv_rpc_read_latency.assert_not_called()
+    # Disk KV gated off (total_disk_kv_blocks=0).
+    mock_metrics.cache_used_disk_kv_pct.assert_not_called()
 
 
 def test_publish_metrics_subsystem_gating() -> None:
@@ -436,3 +471,16 @@ def test_publish_metrics_subsystem_gating() -> None:
     # RPC inactive (rpc_*_avg_ms=0.0).
     mock_metrics.dkv_rpc_acquire_latency.assert_not_called()
     mock_metrics.dkv_rpc_read_latency.assert_not_called()
+    # Disk KV gated off (total_disk_kv_blocks=0).
+    mock_metrics.cache_used_disk_kv_pct.assert_not_called()
+
+
+def test_publish_metrics_disk_kv_active() -> None:
+    """Batch with disk KV cache active emits the disk usage metric."""
+    metrics = _make_metrics(
+        total_disk_kv_blocks=100,
+        used_disk_kv_pct=0.30,
+    )
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+    mock_metrics.cache_used_disk_kv_pct.assert_called_once_with(30.0)

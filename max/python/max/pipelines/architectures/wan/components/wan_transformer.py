@@ -53,8 +53,13 @@ class WanTransformer(CompiledComponent):
     Supports MoE (dual expert) by compiling both transformers on device.
     """
 
-    # Diffusers pads to 512 but trims embeddings to 226 for cross-attn.
-    embed_seq_len: int = 226
+    # Wan-AI's reference implementation feeds 512-length text-encoder
+    # context to cross-attention. See:
+    # - diffusers WanPipeline.__call__ default:
+    #   https://github.com/huggingface/diffusers/blob/v0.38.0/src/diffusers/pipelines/wan/pipeline_wan.py#L403
+    # - cache-dit hardcoded 512:
+    #   https://github.com/vipshop/cache-dit/blob/v1.3.9/src/cache_dit/distributed/transformers/wan.py#L80
+    embed_seq_len: int = 512
 
     # Default resolution for block graph compilation (height, width, frames).
     default_resolution: tuple[int, int, int] = (720, 1280, 81)
@@ -362,9 +367,12 @@ class WanTransformer(CompiledComponent):
                 models = self._session.load_all(
                     self._graphs_module, weights_registry=combined_registry
                 )
-                pre_model = models[pre_graph.name]
-                combined_blocks_model = models[blocks_graph.name]
-                post_model = models[post_graph.name]
+                assert self._pre_graph is not None
+                assert self._blocks_graph is not None
+                assert self._post_graph is not None
+                pre_model = models[self._pre_graph.name]
+                combined_blocks_model = models[self._blocks_graph.name]
+                post_model = models[self._post_graph.name]
             self._model = BlockLevelModel(
                 pre_model,
                 post_model,

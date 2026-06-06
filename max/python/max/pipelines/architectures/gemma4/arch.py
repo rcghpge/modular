@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.graph.weights import WeightsFormat
-from max.interfaces import InputModality, PipelineTask
 from max.pipelines.lib import SupportedArchitecture
+from max.pipelines.modeling.types import InputModality, PipelineTask
 
 from .context import Gemma4Context
 from .model import Gemma3_MultiModalModel
@@ -25,6 +25,8 @@ example_repo_ids = [
     # pt = Pre-trained.
     "google/gemma-4-31B-it",
     # "google/gemma-4-26B-A4B-it"
+    "nvidia/Gemma-4-31B-IT-NVFP4",
+    # "nvidia/Gemma-4-26B-A4B-NVFP4"
 ]
 
 gemma4_arch = SupportedArchitecture(
@@ -33,20 +35,21 @@ gemma4_arch = SupportedArchitecture(
     default_encoding="bfloat16",
     supported_encodings={
         "bfloat16",
+        "float4_e2m1fnx2",
     },
     pipeline_model=Gemma3_MultiModalModel,
     task=PipelineTask.TEXT_GENERATION,
     tokenizer=Gemma4Tokenizer,
     default_weights_format=WeightsFormat.safetensors,
-    multi_gpu_supported=False,
+    multi_gpu_supported=True,
     input_modalities={
         InputModality.TEXT,
         InputModality.IMAGE,
         InputModality.VIDEO,
     },
     rope_type="normal",
-    required_arguments={"max_num_steps": 1},
     context_type=Gemma4Context,
     config=Gemma4ForConditionalGenerationConfig,
     tool_parser="gemma4",
+    reasoning_parser="gemma4",
 )

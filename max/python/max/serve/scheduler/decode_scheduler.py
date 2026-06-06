@@ -19,34 +19,36 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-from max.interfaces import (
-    MAXPullQueue,
-    MAXPushQueue,
-    Pipeline,
-    RequestID,
-    Scheduler,
-    SchedulerResult,
-    TextGenerationInputs,
-    TextGenerationOutput,
-)
-from max.interfaces.queue import drain_queue
-from max.kv_cache import (
+from max.pipelines.core import TextAndVisionContext, TextContext
+from max.pipelines.kv_cache import (
     InsufficientBlocksError,
     KVTransferEngine,
     KVTransferEngineMetadata,
     PagedKVCacheManager,
     TransferReqData,
 )
-from max.pipelines.core import TextAndVisionContext, TextContext
 from max.pipelines.lib import PipelineConfig, TextGenerationPipeline
+from max.pipelines.modeling.types import (
+    Pipeline,
+    RequestID,
+    TextGenerationInputs,
+    TextGenerationOutput,
+)
 from max.profiler import Tracer, traced
 from max.serve.config import Settings
+from max.serve.queue import (
+    MAXPullQueue,
+    MAXPushQueue,
+    drain_queue,
+)
 from max.serve.scheduler.base import (
     CancelRequest,
     PrefillRequest,
     PrefillResponse,
 )
 from max.serve.scheduler.di_dispatchers import DecodeDispatcherClient
+from max.serve.scheduler.interface import Scheduler
+from max.serve.scheduler_result import SchedulerResult
 
 from .base import SchedulerProgress
 from .batch_constructor import TextBatchConstructor
@@ -123,6 +125,12 @@ class DecodeScheduler(Scheduler):
 
         # Register draft KV cache blocks for speculative decoding so that
         # target and draft KV are bundled into a single NIXL transfer.
+        # Pass total_num_pages + 1 to match the null-block allocation in
+        # KVCacheParams.allocate_buffers (which allocates total_num_pages + 1
+        # pages so that index 0 can serve as a sentinel null block).  Without
+        # the +1, bytes_per_page = (N+1)*elts // N, which rounds differently
+        # on engines with different pool sizes, causing a NIXL length-mismatch
+        # at createXferReq time.  With +1, bytes_per_page = elts exactly.
         draft_kv_blocks = getattr(pipeline, "draft_kv_blocks", None)
         if isinstance(draft_kv_blocks, list):
             self.transfer_engine.register_tensor_group(
@@ -132,7 +140,7 @@ class DecodeScheduler(Scheduler):
                     dp=scheduler_config.data_parallel_degree,
                     group_name="draft",
                 ),
-                total_num_pages=self.kv_cache.get_num_pages(replica_idx=0),
+                total_num_pages=self.kv_cache.get_num_pages(replica_idx=0) + 1,
             )
 
         self.batch_constructor = TextBatchConstructor(

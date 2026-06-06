@@ -91,7 +91,7 @@ from layout import (
     row_major,
 )
 from layout.tile_layout import row_major as tt_row_major
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
     KVTMATile,
 )
@@ -262,7 +262,6 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
     )
     @__name(
         t"sm100_mla_decode_qkv_fp8_per_token_scale_rope_aware_{Self.fp8_type}_{Self.bf16_type}_{Self.output_type}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
-        mangle=True,
     )
     def kernel(
         # Q_nope TMA: FP8, 64×512, SWIZZLE_64B
@@ -583,7 +582,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                 prompt_idx=UInt32(offset_position.batch_idx),
                 lse_accum_split_ptr=lse_accum_split_ptr,
                 batch_size=batch_size,
-                scale_k_smem=scale_smem_base,
+                scale_k_smem=scale_smem_base.unsafe_origin_cast[MutAnyOrigin](),
                 q_scale_ptr=q_scale_ptr,
             )
         elif warp_idx >= 4 and warp_idx < 8:  # correction warpgroup
@@ -803,7 +802,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                 content_stage_ptr,
                 k0_bar[],
                 kv_head_idx=UInt32(0),
-                elect=Int32(1),
+                elect=elect_mask,
             )
             # K_rope TMA: load BF16 rope into kv_rope_smem
             var rope_stage_ptr = kv_rope_smem + stage0_idx * UInt32(
@@ -814,7 +813,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                 rope_stage_ptr,
                 k0_bar[],
                 kv_head_idx=UInt32(0),
-                elect=Int32(1),
+                elect=elect_mask,
             )
             # Scale TMA: load BN_QK float32 per-token scales into scale SMEM.
             # The scale TMA treats scales as a flat [1, total_elements] 2D
@@ -866,7 +865,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                     content_stage_ptr,
                     k_mbar[],
                     kv_head_idx=UInt32(0),
-                    elect=Int32(1),
+                    elect=elect_mask,
                 )
                 # K_rope TMA
                 var rope_stage_ptr = kv_rope_smem + stage_idx * UInt32(
@@ -877,7 +876,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                     rope_stage_ptr,
                     k_mbar[],
                     kv_head_idx=UInt32(0),
-                    elect=Int32(1),
+                    elect=elect_mask,
                 )
                 # Scale TMA
                 comptime if Self.has_per_token_scales:

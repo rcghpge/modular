@@ -50,7 +50,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from max.diagnostics.cpu import CPUMetrics
+    from max.profiler.cpu import CPUMetrics
 
     from .server_metrics import HistogramData, ParsedMetrics
 
@@ -390,7 +390,7 @@ class BaseBenchmarkMetrics(BaseModel, Metrics):
         return len(errors) == 0, errors
 
 
-# Workload-specific aggregates. ``ServingBenchmarkMetrics`` (below) holds at
+# Workload-specific aggregates. ``BenchmarkResult`` (below) holds at
 # most one per record, selected by ``task_type``; failed runs leave both
 # ``None``. Composing them as nested pydantic objects (rather than
 # mostly-Optional flat fields on the parent) lets consumers narrow once and
@@ -475,6 +475,11 @@ class TextGenAggregates(_CompletedRunBase):
     tpot_ms: StandardPercentileMetrics = Field(
         json_schema_extra={"phase": "decode"}
     )
+    # Per-step TPOT: ITL / tokens_per_step for each decode step.
+    # Only populated when chunk-level text is available for re-tokenization.
+    step_tpot_ms: StandardPercentileMetrics | None = Field(
+        default=None, json_schema_extra={"phase": "decode"}
+    )
     itl_ms: StandardPercentileMetrics = Field(
         json_schema_extra={"phase": "decode"}
     )
@@ -510,6 +515,13 @@ class TextGenAggregates(_CompletedRunBase):
         d = super().to_result_dict()
         d["total_input_tokens"] = self.total_input
         d["total_output_tokens"] = self.total_output
+        # Aggregate across the entire benchmark run (not per-GPU): sum of
+        # input + output tokens divided by wall-clock duration, in tokens/min.
+        d["aggregate_tokens_per_minute"] = (
+            (self.total_input + self.total_output) * 60.0 / self.duration
+            if self.duration > 0
+            else float("nan")
+        )
         d["max_concurrent_conversations"] = self.max_concurrent_conversations
         d["skip_first_n_requests"] = self.skip_first_n_requests
         d["skip_last_n_requests"] = self.skip_last_n_requests
@@ -531,6 +543,9 @@ class TextGenAggregates(_CompletedRunBase):
         ]:
             d.update(spm.to_flat_dict(name))
             d.update(spm.confidence_to_flat_dict(name))
+        if self.step_tpot_ms is not None:
+            d.update(self.step_tpot_ms.to_flat_dict("step_tpot_ms"))
+            d.update(self.step_tpot_ms.confidence_to_flat_dict("step_tpot_ms"))
         if self.per_turn_cached_token_rate is not None:
             d.update(
                 self.per_turn_cached_token_rate.to_flat_dict(
@@ -550,12 +565,16 @@ class TextGenAggregates(_CompletedRunBase):
             errors.append(
                 f"No output tokens generated (total_output={self.total_output})"
             )
+        optional_metrics: list[tuple[str, StandardPercentileMetrics]] = []
+        if self.step_tpot_ms is not None:
+            optional_metrics.append(("step_tpot_ms", self.step_tpot_ms))
         for name, m in [
             ("input_throughput", self.input_throughput),
             ("output_throughput", self.output_throughput),
             ("ttft_ms", self.ttft_ms),
             ("tpot_ms", self.tpot_ms),
             ("itl_ms", self.itl_ms),
+            *optional_metrics,
         ]:
             ok, sub_errors = m.validate_metrics()
             if not ok:
@@ -585,10 +604,14 @@ class TextGenAggregates(_CompletedRunBase):
 
     def confidence_warnings(self) -> list[str]:
         warns: list[str] = []
+        optional_pairs: list[tuple[str, StandardPercentileMetrics]] = []
+        if self.step_tpot_ms is not None:
+            optional_pairs.append(("step_tpot_ms", self.step_tpot_ms))
         for name, metric in [
             ("ttft_ms", self.ttft_ms),
             ("tpot_ms", self.tpot_ms),
             ("output_throughput", self.output_throughput),
+            *optional_pairs,
         ]:
             ci = getattr(metric, "confidence_info", None)
             if ci and ci.confidence in ("low", "insufficient_data"):
@@ -620,19 +643,59 @@ class PixelGenAggregates(_CompletedRunBase):
 BenchmarkType = Literal["text", "pixel"]
 
 
-class ServingBenchmarkMetrics(BaseModel):
-    """Per-iteration serving benchmark metrics.
+@dataclass(kw_only=True)
+class SteadyStateResult:
+    """Steady-state detection outcome and its per-window metrics."""
 
-    The workload-specific aggregates (latencies, throughput, etc.) are nested
-    in :attr:`text_data` / :attr:`pixel_data` so a successful run carries all
-    of its required fields together. :attr:`task_type` discriminates which
-    one is expected; both stay ``None`` for iterations that failed before
-    producing metrics, in which case only the always-collected GPU/CPU
-    sampling fields are populated.
-    """
+    detected: bool
+    start_index: int | None
+    end_index: int | None
+    count: int
+    warning: str | None
+    mode: str | None = None
+    # ``TextGenAggregates`` rather than ``BenchmarkResult``: steady
+    # state is text-only, and using the parent type would self-contain once
+    # steady-state data moves into ``BenchmarkResult`` for result
+    # publication.
+    metrics: TextGenAggregates | None = None
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    def to_result_dict(self) -> dict[str, object]:
+        """Return a flat dict of steady-state keys with the same layout as the full-run result dict."""
+        d: dict[str, object] = {
+            "steady_state_detected": self.detected,
+            "steady_state_start_index": self.start_index,
+            "steady_state_end_index": self.end_index,
+            "steady_state_count": self.count,
+            "steady_state_warning": self.warning,
+        }
+        if self.mode is not None:
+            d["steady_state_mode"] = self.mode
+        if self.metrics is not None:
+            t = self.metrics
+            for suffix, value in [
+                ("request_throughput", t.request_throughput),
+                ("mean_ttft_ms", t.ttft_ms.mean),
+                ("p99_ttft_ms", t.ttft_ms.p99),
+                ("mean_tpot_ms", t.tpot_ms.mean),
+                ("p99_tpot_ms", t.tpot_ms.p99),
+                ("mean_itl_ms", t.itl_ms.mean),
+                ("p99_itl_ms", t.itl_ms.p99),
+                ("mean_latency_ms", t.latency_ms.mean),
+                ("p99_latency_ms", t.latency_ms.p99),
+            ]:
+                d[f"steady_state_{suffix}"] = value
+            for name in ("ttft_ms", "tpot_ms", "itl_ms", "latency_ms"):
+                pm = getattr(t, name)
+                d.update(pm.confidence_to_flat_dict(f"steady_state_{name}"))
+        return d
 
+
+class BenchmarkResult(BaseModel):
+    """Per-iteration benchmark result for text- and pixel-generation tasks."""
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True, extra="forbid", strict=True
+    )
     task_type: BenchmarkType
     max_concurrency: int
 
@@ -644,18 +707,47 @@ class ServingBenchmarkMetrics(BaseModel):
     metrics_by_endpoint: Mapping[str, ParsedMetrics] = Field(
         default_factory=dict
     )
+    lora_metrics: LoRAMetrics | None = None
 
     # Workload aggregates. Exactly the one matching ``task_type`` is set on
     # success; both stay ``None`` for failed iterations / dry runs.
+    #
+    # IMPORTANT: keep these as two *separate* Optional fields, NOT a combined
+    # union ``aggregates: TextGenAggregates | PixelGenAggregates | None``.
+    # The generic CSV reporter in
+    # ``utils/benchmarking/results_publication/reporters/csv.py`` can only
+    # expand ``Optional[SingleStructuredType]`` recursively into per-field
+    # columns.  A two-type union returns ``None`` from
+    # ``_unwrap_optional_structured_type``, causing ``_flatten_model`` to fall
+    # through to ``json.dumps`` and emit a single opaque JSON-blob column —
+    # making the CSV output difficult to work with in spreadsheet tools.
     text_data: TextGenAggregates | None = None
     pixel_data: PixelGenAggregates | None = None
 
+    # Text-generation-only fields. Stay ``None`` for pixel workloads.
+    steady_state_result: SteadyStateResult | None = None
+    spec_decode_stats: SpecDecodeStats | None = None
+    session_server_stats: dict[str, list[ServerTokenStats]] | None = None
+    aggregate_server_stats: list[ServerTokenStats] | None = None
+
     @model_validator(mode="after")
-    def _check_data_matches_task_type(self) -> ServingBenchmarkMetrics:
+    def _check_data_matches_task_type(self) -> BenchmarkResult:
         if self.text_data is not None and self.task_type != "text":
             raise ValueError(f"text_data set but task_type={self.task_type!r}")
         if self.pixel_data is not None and self.task_type != "pixel":
             raise ValueError(f"pixel_data set but task_type={self.task_type!r}")
+        text_only_fields = (
+            self.steady_state_result,
+            self.spec_decode_stats,
+            self.session_server_stats,
+            self.aggregate_server_stats,
+        )
+        if self.task_type != "text" and any(
+            field is not None for field in text_only_fields
+        ):
+            raise ValueError(
+                f"text-only result fields set but task_type={self.task_type!r}"
+            )
         return self
 
     @property
@@ -741,6 +833,22 @@ class ServingBenchmarkMetrics(BaseModel):
                         "decode_batch_count": self.decode_batch_count,
                     }
                 )
+
+        if self.lora_metrics is not None:
+            d["lora_metrics"] = self.lora_metrics.to_result_dict()
+        if self.steady_state_result is not None:
+            d.update(self.steady_state_result.to_result_dict())
+        if self.spec_decode_stats is not None:
+            d.update(self.spec_decode_stats.to_result_dict())
+        if self.session_server_stats is not None:
+            d["session_server_stats"] = {
+                sid: [dataclasses.asdict(s) for s in stats]
+                for sid, stats in self.session_server_stats.items()
+            }
+        if self.aggregate_server_stats is not None:
+            d["aggregate_server_stats"] = [
+                dataclasses.asdict(s) for s in self.aggregate_server_stats
+            ]
         return d
 
     def validate_metrics(self) -> tuple[bool, list[str]]:
@@ -764,102 +872,6 @@ class ServingBenchmarkMetrics(BaseModel):
         if agg is None:
             return []
         return agg.confidence_warnings()
-
-
-@dataclass(kw_only=True)
-class SteadyStateResult:
-    """Steady-state detection outcome and its per-window metrics."""
-
-    detected: bool
-    start_index: int | None
-    end_index: int | None
-    count: int
-    warning: str | None
-    mode: str | None = None
-    # ``TextGenAggregates`` rather than ``ServingBenchmarkMetrics``: steady
-    # state is text-only, and using the parent type would self-contain once
-    # steady-state data moves into ``ServingBenchmarkMetrics`` for result
-    # publication.
-    metrics: TextGenAggregates | None = None
-
-    def to_result_dict(self) -> dict[str, object]:
-        """Return a flat dict of steady-state keys with the same layout as the full-run result dict."""
-        d: dict[str, object] = {
-            "steady_state_detected": self.detected,
-            "steady_state_start_index": self.start_index,
-            "steady_state_end_index": self.end_index,
-            "steady_state_count": self.count,
-            "steady_state_warning": self.warning,
-        }
-        if self.mode is not None:
-            d["steady_state_mode"] = self.mode
-        if self.metrics is not None:
-            t = self.metrics
-            for suffix, value in [
-                ("request_throughput", t.request_throughput),
-                ("mean_ttft_ms", t.ttft_ms.mean),
-                ("p99_ttft_ms", t.ttft_ms.p99),
-                ("mean_tpot_ms", t.tpot_ms.mean),
-                ("p99_tpot_ms", t.tpot_ms.p99),
-                ("mean_itl_ms", t.itl_ms.mean),
-                ("p99_itl_ms", t.itl_ms.p99),
-                ("mean_latency_ms", t.latency_ms.mean),
-                ("p99_latency_ms", t.latency_ms.p99),
-            ]:
-                d[f"steady_state_{suffix}"] = value
-            for name in ("ttft_ms", "tpot_ms", "itl_ms", "latency_ms"):
-                pm = getattr(t, name)
-                d.update(pm.confidence_to_flat_dict(f"steady_state_{name}"))
-        return d
-
-
-@dataclass(kw_only=True)
-class BaseBenchmarkResult:
-    """Base class for benchmark result objects."""
-
-    metrics: ServingBenchmarkMetrics
-    lora_metrics: LoRAMetrics | None = None
-
-    def to_result_dict(self) -> dict[str, object]:
-        d = self.metrics.to_result_dict()
-        if self.lora_metrics is not None:
-            d["lora_metrics"] = self.lora_metrics.to_result_dict()
-        return d
-
-    def validate_metrics(self) -> tuple[bool, list[str]]:
-        return self.metrics.validate_metrics()
-
-
-@dataclass(kw_only=True)
-class TextGenerationBenchmarkResult(BaseBenchmarkResult):
-    """Result from a text-generation benchmark iteration."""
-
-    steady_state_result: SteadyStateResult | None = None
-    spec_decode_stats: SpecDecodeStats | None = None
-    session_server_stats: dict[str, list[ServerTokenStats]] | None = None
-    aggregate_server_stats: list[ServerTokenStats] | None = None
-
-    def to_result_dict(self) -> dict[str, object]:
-        d = super().to_result_dict()
-        if self.steady_state_result is not None:
-            d.update(self.steady_state_result.to_result_dict())
-        if self.spec_decode_stats is not None:
-            d.update(self.spec_decode_stats.to_result_dict())
-        if self.session_server_stats is not None:
-            d["session_server_stats"] = {
-                sid: [dataclasses.asdict(s) for s in stats]
-                for sid, stats in self.session_server_stats.items()
-            }
-        if self.aggregate_server_stats is not None:
-            d["aggregate_server_stats"] = [
-                dataclasses.asdict(s) for s in self.aggregate_server_stats
-            ]
-        return d
-
-
-@dataclass(kw_only=True)
-class PixelGenerationBenchmarkResult(BaseBenchmarkResult):
-    """Result from a pixel generation benchmark iteration."""
 
 
 @dataclass
@@ -896,65 +908,6 @@ class ChunkTimingMetrics:
         }
 
 
-class TTSBenchmarkMetrics(BaseBenchmarkMetrics):
-    """Container for TTS (text-to-speech) serving benchmark metrics.
-
-    Extends BaseBenchmarkMetrics with TTS-specific fields: real-time factor,
-    chunk timing, audio quality scores, and output length statistics.
-    """
-
-    total_input: int
-    total_output: float
-    nonempty_response_chunks: int
-
-    ttft_ms: StandardPercentileMetrics
-    tpot_ms: StandardPercentileMetrics
-    itl_ms: StandardPercentileMetrics
-    rtf_perc: StandardPercentileMetrics
-    first_chunk: ChunkTimingMetrics
-    nth_chunk: ChunkTimingMetrics
-
-    word_error_rate: float
-    noise_suppression_score: float
-
-    min_output: float
-    mean_output: float
-    median_output: float
-    max_output: float
-
-    startup_time: float
-
-    def to_result_dict(self) -> dict[str, object]:
-        d = super().to_result_dict()
-        d["total_input"] = self.total_input
-        d["total_output"] = self.total_output
-        d["nonempty_response_chunks"] = self.nonempty_response_chunks
-        d["word_error_rate"] = self.word_error_rate
-        d["noise_suppression_score"] = self.noise_suppression_score
-        d["min_output"] = self.min_output
-        d["mean_output"] = self.mean_output
-        d["median_output"] = self.median_output
-        d["max_output"] = self.max_output
-        d["startup_time"] = self.startup_time
-        return d
-
-    def confidence_warnings(self) -> list[str]:
-        warns: list[str] = []
-        for name, metric in [
-            ("ttft_ms", self.ttft_ms),
-            ("tpot_ms", self.tpot_ms),
-            ("rtf_perc", self.rtf_perc),
-        ]:
-            ci = getattr(metric, "confidence_info", None)
-            if ci and ci.confidence in ("low", "insufficient_data"):
-                warns.append(
-                    f"{name}: {ci.confidence} confidence"
-                    f" (CI width {ci.ci_relative_width:.0%} of mean,"
-                    f" n={ci.sample_size})"
-                )
-        return warns
-
-
 # ---------------------------------------------------------------------------
 # Speculative decoding metrics
 # ---------------------------------------------------------------------------
@@ -972,6 +925,9 @@ class SpecDecodeMetrics:
       ``per_pos_rate_sum`` / ``per_pos_rate_count`` give running sums and counts
       of observed acceptance-rate samples per position. Window averages are
       computed via deltas.
+    - MAX-style histogram (``maxserve_spec_decode_avg_acceptance_length``):
+      ``avg_acceptance_length_sum`` / ``avg_acceptance_length_count`` track
+      observations of per-batch average acceptance length (tokens).
 
     A backend may populate either group; missing values default to 0/empty.
     """
@@ -982,6 +938,24 @@ class SpecDecodeMetrics:
     accepted_per_pos: dict[int, int] = field(default_factory=dict)
     per_pos_rate_sum: dict[int, float] = field(default_factory=dict)
     per_pos_rate_count: dict[int, int] = field(default_factory=dict)
+    avg_acceptance_length_sum: float = 0.0
+    avg_acceptance_length_count: float = 0.0
+
+    def __iadd__(self, other: SpecDecodeMetrics) -> SpecDecodeMetrics:
+        self.num_drafts += other.num_drafts
+        self.num_draft_tokens += other.num_draft_tokens
+        self.num_accepted_tokens += other.num_accepted_tokens
+        for pos, n in other.accepted_per_pos.items():
+            self.accepted_per_pos[pos] = self.accepted_per_pos.get(pos, 0) + n
+        for pos, s in other.per_pos_rate_sum.items():
+            self.per_pos_rate_sum[pos] = self.per_pos_rate_sum.get(pos, 0.0) + s
+        for pos, c in other.per_pos_rate_count.items():
+            self.per_pos_rate_count[pos] = (
+                self.per_pos_rate_count.get(pos, 0) + c
+            )
+        self.avg_acceptance_length_sum += other.avg_acceptance_length_sum
+        self.avg_acceptance_length_count += other.avg_acceptance_length_count
+        return self
 
 
 @dataclass
@@ -990,31 +964,29 @@ class SpecDecodeStats:
 
     Fields are ``None`` when the underlying metric was not exposed by the
     backend in the scraped Prometheus output.
-
-    Attributes:
-        num_drafts: Number of draft sequences generated.
-        draft_tokens: Total number of draft tokens generated.
-        accepted_tokens: Total number of draft tokens accepted.
-        acceptance_rate: Percentage of draft tokens accepted.
-        acceptance_length: Average number of tokens accepted per draft
-            (including the verified token).
-        per_position_acceptance_rates: Acceptance rate at each draft position
-            as a fraction (0-1). Empty when no per-position data was exposed.
     """
 
     num_drafts: int | None = None
+    """Number of draft sequences generated."""
     draft_tokens: int | None = None
+    """Total number of draft tokens generated."""
     accepted_tokens: int | None = None
+    """Total number of draft tokens accepted."""
     acceptance_rate: float | None = None
+    """Percentage of draft tokens accepted."""
     acceptance_length: float | None = None
+    """Average number of tokens accepted per draft (including verified token)."""
     per_position_acceptance_rates: list[float] = field(default_factory=list)
+    """Acceptance rate at each draft position as a fraction (0-1).
+
+    Empty when no per-position data was exposed.
+    """
 
     def to_result_dict(self) -> dict[str, object]:
         """Return a flat dict of spec-decode keys for the benchmark result.
 
-        Only fields the backend actually exposed are emitted; missing
-        aggregates (e.g. when only a per-position histogram is available, as
-        with MAX Serve) are omitted rather than written as ``None``.
+        Only fields the backend actually exposed are emitted; missing aggregates
+        are omitted rather than written as ``None``.
         """
         result: dict[str, object] = {}
         if self.acceptance_rate is not None:
@@ -1047,14 +1019,19 @@ def calculate_spec_decode_stats(
     ``maxserve_spec_decode_acceptance_rate_per_position`` histogram, whichever
     is available.
 
+    When only MAX histograms are present (no vLLM-style counters), an aggregate
+    **acceptance_rate** (0--100, matching the printed benchmark column) is the
+    count-weighted mean of per-position acceptance-rate observations pooled
+    across positions. **acceptance_length** can additionally be taken from the
+    ``maxserve_spec_decode_avg_acceptance_length`` histogram delta mean.
+
     Args:
         metrics_before: Snapshot taken before the benchmark window.
         metrics_after: Snapshot taken after the benchmark window.
 
     Returns:
         A ``SpecDecodeStats`` with whatever fields are derivable, or ``None``
-        when neither aggregate counters nor per-position data moved during
-        the window.
+        when no spec-decode metrics moved during the window.
     """
     delta_drafts = metrics_after.num_drafts - metrics_before.num_drafts
     delta_draft_tokens = (
@@ -1065,6 +1042,7 @@ def calculate_spec_decode_stats(
     )
 
     per_pos_rates: list[float] = []
+    pooled_acceptance_rate_percent: float | None = None
     if delta_drafts > 0 and (
         metrics_before.accepted_per_pos or metrics_after.accepted_per_pos
     ):
@@ -1081,6 +1059,8 @@ def calculate_spec_decode_stats(
             set(metrics_before.per_pos_rate_sum.keys())
             | set(metrics_after.per_pos_rate_sum.keys())
         )
+        total_sum_delta = 0.0
+        total_count_delta = 0.0
         for pos in positions:
             sum_delta = metrics_after.per_pos_rate_sum.get(
                 pos, 0.0
@@ -1089,12 +1069,33 @@ def calculate_spec_decode_stats(
                 pos, 0
             ) - metrics_before.per_pos_rate_count.get(pos, 0)
             if count_delta > 0:
+                total_sum_delta += sum_delta
+                total_count_delta += count_delta
                 # Histogram observations are recorded as percentages (0-100);
                 # normalize to a 0-1 fraction for parity with the vLLM path.
                 per_pos_rates.append((sum_delta / count_delta) / 100.0)
+        if total_count_delta > 0:
+            pooled_acceptance_rate_percent = total_sum_delta / total_count_delta
+
+    al_sum_delta = (
+        metrics_after.avg_acceptance_length_sum
+        - metrics_before.avg_acceptance_length_sum
+    )
+    al_count_delta = (
+        metrics_after.avg_acceptance_length_count
+        - metrics_before.avg_acceptance_length_count
+    )
+    acceptance_length_from_max_hist: float | None = None
+    if al_count_delta > 0:
+        acceptance_length_from_max_hist = al_sum_delta / al_count_delta
 
     has_aggregates = delta_draft_tokens > 0
-    if not has_aggregates and not per_pos_rates:
+    if (
+        not has_aggregates
+        and not per_pos_rates
+        and pooled_acceptance_rate_percent is None
+        and acceptance_length_from_max_hist is None
+    ):
         return None
 
     if has_aggregates:
@@ -1111,6 +1112,8 @@ def calculate_spec_decode_stats(
             per_position_acceptance_rates=per_pos_rates,
         )
     return SpecDecodeStats(
+        acceptance_rate=pooled_acceptance_rate_percent,
+        acceptance_length=acceptance_length_from_max_hist,
         per_position_acceptance_rates=per_pos_rates,
     )
 
@@ -1120,10 +1123,9 @@ def calculate_spec_decode_stats(
 # import (``server_metrics`` imports ``SpecDecodeMetrics`` from this module),
 # so we re-import them here once all of this module's classes are defined and
 # call ``model_rebuild()`` so pydantic can resolve the annotations.
-from max.diagnostics.cpu import CPUMetrics
+from max.profiler.cpu import CPUMetrics
 
 from .server_metrics import ParsedMetrics
 
 BaseBenchmarkMetrics.model_rebuild()
-ServingBenchmarkMetrics.model_rebuild()
-TTSBenchmarkMetrics.model_rebuild()
+BenchmarkResult.model_rebuild()

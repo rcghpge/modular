@@ -18,23 +18,22 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from max.interfaces import (
-    Pipeline,
-    RequestID,
-    Scheduler,
-    TextGenerationInputs,
-    TextGenerationOutput,
-)
-from max.kv_cache import (
+from max.pipelines.core import TextContext
+from max.pipelines.kv_cache import (
     KVTransferEngine,
     KVTransferEngineMetadata,
     PagedKVCacheManager,
     TransferReqData,
 )
-from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     PipelineConfig,
     TextGenerationPipeline,
+)
+from max.pipelines.modeling.types import (
+    Pipeline,
+    RequestID,
+    TextGenerationInputs,
+    TextGenerationOutput,
 )
 from max.profiler import Tracer, traced
 from max.serve.config import Settings
@@ -43,6 +42,7 @@ from max.serve.scheduler.base import (
     PrefillRequest,
     PrefillResponse,
 )
+from max.serve.scheduler.interface import Scheduler
 from max.serve.worker_interface.zmq_queue import ClientIdentity
 
 from .base import SchedulerProgress
@@ -98,6 +98,12 @@ class PrefillScheduler(Scheduler):
 
         # Register draft KV cache blocks for speculative decoding so that
         # target and draft KV are bundled into a single NIXL transfer.
+        # Pass total_num_pages + 1 to match the null-block allocation in
+        # KVCacheParams.allocate_buffers (which allocates total_num_pages + 1
+        # pages so that index 0 can serve as a sentinel null block).  Without
+        # the +1, bytes_per_page = (N+1)*elts // N, which rounds differently
+        # on engines with different pool sizes, causing a NIXL length-mismatch
+        # at createXferReq time.  With +1, bytes_per_page = elts exactly.
         draft_kv_blocks = getattr(pipeline, "draft_kv_blocks", None)
         if isinstance(draft_kv_blocks, list):
             self.transfer_engine.register_tensor_group(
@@ -107,7 +113,7 @@ class PrefillScheduler(Scheduler):
                     dp=scheduler_config.data_parallel_degree,
                     group_name="draft",
                 ),
-                total_num_pages=kv_cache.get_num_pages(replica_idx=0),
+                total_num_pages=kv_cache.get_num_pages(replica_idx=0) + 1,
             )
 
         self.outstanding_cancelled_requests: set[RequestID] = set()
@@ -123,6 +129,7 @@ class PrefillScheduler(Scheduler):
             pipeline=pipeline,
             kv_cache=kv_cache,
             batch_scheduling_strategy=BatchSchedulingStrategy.PREFILL_FIRST,
+            get_inflight_kv_transfer_count=lambda: len(self.active_transfers),
         )
         self.scheduler_logger = SchedulerLogger()
         self.dispatcher = dispatcher
@@ -182,6 +189,12 @@ class PrefillScheduler(Scheduler):
         for active in self.active_transfers.values():
             if self.transfer_engine.is_complete(active.transfer):
                 self.transfer_engine.cleanup_transfer(active.transfer)
+                blocks_released = len(
+                    self.kv_cache.get_req_blocks(
+                        active.context.request_id,
+                        replica_idx=active.replica_idx,
+                    )
+                )
                 # Release from paged cache (scheduler manages primary KV cache lifecycle)
                 self.kv_cache.release(
                     active.context.request_id, replica_idx=active.replica_idx
@@ -190,6 +203,13 @@ class PrefillScheduler(Scheduler):
                 # For regular pipelines, release() is a no-op
                 self.pipeline.release(active.context.request_id)
                 to_be_deleted.append(active.context.request_id)
+                logger.debug(
+                    "KV transfer complete for request %s: releasing %d blocks "
+                    "back to prefill pool. Remaining in-flight transfers: %d.",
+                    active.context.request_id,
+                    blocks_released,
+                    len(self.active_transfers) - len(to_be_deleted),
+                )
 
         for id in to_be_deleted:
             del self.active_transfers[id]
@@ -230,7 +250,6 @@ class PrefillScheduler(Scheduler):
         dst_idxs = dst_idxs[num_already_cached_blocks:]
         assert dst_idxs.count(-1) == 0
 
-        logger.debug("initiating transfer from prefill worker.")
         transfer_data = self.transfer_engine.initiate_send_transfer(
             remote_metadata,
             src_idxs,
@@ -242,6 +261,20 @@ class PrefillScheduler(Scheduler):
             context=context,
             replica_idx=src_replica_idx,
             transfer=transfer_data,
+        )
+        transfer_pinned = sum(
+            len(self.kv_cache.get_req_blocks(rid, replica_idx=at.replica_idx))
+            for rid, at in self.active_transfers.items()
+        )
+        logger.debug(
+            "KV transfer started for request %s: blocks pinned on prefill "
+            "pending transfer completion. Active in-flight transfers: %d, "
+            "directly holding %d blocks. Free blocks: %d / %d total.",
+            req_id,
+            len(self.active_transfers),
+            transfer_pinned,
+            self.kv_cache.num_free_blocks(src_replica_idx),
+            self.kv_cache.total_num_blocks(src_replica_idx),
         )
 
         assert context.tokens.generated_length != 0, (

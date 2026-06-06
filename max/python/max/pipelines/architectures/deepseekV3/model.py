@@ -17,35 +17,34 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from max.driver import Buffer, DevicePinnedBuffer, is_virtual_device_mode
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph, ops
+from max.graph import Graph, ops
 from max.graph.weights import WeightData
 from max.nn.comm.ep import EPCommInitializer, EPConfig
 from max.nn.comm.ep.ep_config import (
     calculate_ep_max_tokens_per_rank,
     estimate_ep_memory_usage,
 )
-from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface
+from max.nn.kv_cache import KVCacheInputs
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
-    KVCacheConfig,
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
 )
-from max.pipelines.lib.config.config_enums import (
+from max.pipelines.lib.utils import compute_data_parallel_splits
+from max.pipelines.modeling.config_enums import (
     is_float4_encoding,
     supported_encoding_dtype,
 )
-from max.pipelines.lib.quant import parse_quant_config
-from max.pipelines.lib.utils import compute_data_parallel_splits
+from max.pipelines.weights.quant import parse_quant_config
 from max.support.algorithm import flatten2d
 from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoConfig
@@ -92,6 +91,8 @@ class DeepseekV3Inputs(DeepseekV2Inputs):
 class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
     """A DeepseekV3 model."""
 
+    model_config_cls: ClassVar[type[Any]] = DeepseekV3Config
+
     _GRAPH_CAPTURE_HEADROOM_BYTES_PER_DEVICE = 8 * 1024**3
 
     @staticmethod
@@ -134,23 +135,6 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             use_allreduce=pipeline_config.runtime.ep_use_allreduce,
         )
 
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParamInterface:
-        return DeepseekV3Config.construct_kv_params(
-            huggingface_config=huggingface_config,
-            pipeline_config=pipeline_config,
-            devices=devices,
-            kv_cache_config=kv_cache_config,
-            cache_dtype=cache_dtype,
-        )
-
     def _create_model_config(
         self, state_dict: dict[str, WeightData]
     ) -> DeepseekV3Config:
@@ -187,8 +171,10 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
         else:
             if ep_size % len(self.devices) != 0:
                 raise ValueError(
-                    "If you are running with expert parallelism, ep_size must"
-                    " be set to the total number of GPUs across nodes."
+                    f"ep_size={ep_size} is not divisible by the number of GPUs"
+                    f" on this node ({len(self.devices)}). ep_size must equal"
+                    f" n_gpus_per_node * n_nodes. For a single-node deployment"
+                    f" set ep_size={len(self.devices)}."
                 )
             # TODO: Support TP attention for FP8 Deepseek-V3 models.
             if quant_config is not None and not quant_config.is_nvfp4:
@@ -849,30 +835,4 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             ),
             data_parallel_splits=data_parallel_splits,
             ep_inputs=ep_inputs,
-        )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> DeepseekV3Inputs:
-        assert isinstance(prev_model_inputs, DeepseekV3Inputs)
-        row_offsets_size = prev_model_inputs.input_row_offsets.shape[0]
-        next_row_offsets = self._device_input_row_offsets_prealloc[
-            :row_offsets_size
-        ]
-        next_host_input_row_offsets = self._host_input_row_offsets_prealloc[
-            :row_offsets_size
-        ]
-
-        return DeepseekV3Inputs(
-            tokens=next_tokens,
-            input_row_offsets=next_row_offsets,
-            host_input_row_offsets=next_host_input_row_offsets,
-            batch_context_lengths=self._batch_context_lengths_prealloc_cpu,
-            signal_buffers=self.signal_buffers,
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
-            return_n_logits=prev_model_inputs.return_n_logits,
-            data_parallel_splits=prev_model_inputs.data_parallel_splits,
-            ep_inputs=prev_model_inputs.ep_inputs,
         )

@@ -54,7 +54,6 @@ from layout import (
     IntTuple,
     Layout,
     LayoutTensor,
-    RuntimeInt,
     RuntimeLayout,
     UNKNOWN_VALUE,
 )
@@ -326,14 +325,10 @@ def load_AB_cuda_core[
     comptime a_sw = make_swizzle[a_type, a_swizzle]()
     var a_smem_ptr = a_smem_tiles[stage].ptr
     comptime a_rows_per_thread = BM // WARP_SIZE
-    comptime a_tv = tl_col_major(
-        Coord(Idx[WARP_SIZE](), Idx[a_rows_per_thread]())
-    )
+    comptime a_tv = tl_col_major(Coord(Idx[WARP_SIZE], Idx[a_rows_per_thread]))
 
     comptime for v in range(a_rows_per_thread):
-        var m = a_tv[linear_idx_type=DType.int32](
-            Coord(RuntimeInt[DType.int32](tid), Idx[v]())
-        )
+        var m = a_tv[linear_idx_type=DType.int32](Coord(Int32(tid), Idx[v]))
         var vec = a_gmem.load[K_actual, a_row_align](
             Int(a_row0 + m), Int(a_col0)
         )
@@ -348,14 +343,10 @@ def load_AB_cuda_core[
     comptime b_sw = make_swizzle[b_type, b_swizzle]()
     var b_smem_ptr = b_smem_tiles[stage].ptr
     comptime b_rows_per_thread = BN // WARP_SIZE
-    comptime b_tv = tl_col_major(
-        Coord(Idx[WARP_SIZE](), Idx[b_rows_per_thread]())
-    )
+    comptime b_tv = tl_col_major(Coord(Idx[WARP_SIZE], Idx[b_rows_per_thread]))
 
     comptime for v in range(b_rows_per_thread):
-        var n = b_tv[linear_idx_type=DType.int32](
-            Coord(RuntimeInt[DType.int32](tid), Idx[v]())
-        )
+        var n = b_tv[linear_idx_type=DType.int32](Coord(Int32(tid), Idx[v]))
         var vec = b_gmem.load[K_actual, b_row_align](
             Int(b_row0 + n), Int(b_col0)
         )
@@ -497,9 +488,7 @@ def stsm_helper[
         comptime for k in range(stsmx4_lane_size // cast_width):
             var src = SIMD[vec_dtype, cast_width]()
             comptime for _j in range(cast_width):
-                src[_j] = rebind[Scalar[vec_dtype]](
-                    vec[i * stsmx4_lane_size + k * cast_width + _j]
-                )
+                src[_j] = vec[i * stsmx4_lane_size + k * cast_width + _j]
             var casted = src.cast[dst.dtype]()
             comptime for _j in range(cast_width):
                 v[k * cast_width + _j] = casted[_j]
@@ -860,9 +849,7 @@ def zero_output[
 @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
-@__name(
-    t"grouped_matmul_sm100_{a_type}_{b_type}_{c_type}_em{expert_m}", mangle=True
-)
+@__name(t"grouped_matmul_sm100_{a_type}_{b_type}_{c_type}_em{expert_m}")
 def blackwell_tma_umma_warp_specialized_kernel[
     a_type: DType,
     b_type: DType,

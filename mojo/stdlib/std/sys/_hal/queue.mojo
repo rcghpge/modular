@@ -16,48 +16,49 @@ from .plugin import (
     EventHandle,
     QueueHandle,
     FunctionHandle,
-    MemoryHandle,
 )
-from .context import Context
+from .context import Context, Buffer
 from .event import Event, EventFlags, EVENT_FLAG_NONE, Waitable, _EventInner
 from .device import DeviceSpec
 from .status import STATUS_SUCCESS, HALError
 from std.collections import InlineArray
 from std.memory import (
-    ImmutPointer,
+    ArcPointer,
     OpaquePointer,
     UnsafePointer,
     UnsafeMaybeUninit,
 )
+from std.memory.arc_pointer import WeakPointer
 
 
 @fieldwise_init
-struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
+struct Queue[device_spec: DeviceSpec](ImplicitlyDestructible, Movable):
     """A command queue bound to a context.
 
     Parameters:
-        context_origin: The origin of the parent Context pointer.
         device_spec: The compilation target this queue is set up for.
     """
 
     var _handle: QueueHandle
-    var _raw: ImmutPointer[RawDriver, Self.context_origin]
-    var _context: ImmutPointer[
-        Context[Self.context_origin, Self.device_spec], Self.context_origin
-    ]
+    var _raw: ArcPointer[RawDriver]
+    var _context: ArcPointer[Context[Self.device_spec]]
+    var _self_ref: WeakPointer[Self]
 
-    def __init__[
-        o1: ImmutOrigin, o2: ImmutOrigin
-    ](
-        out self: Queue[origin_of(o1, o2), Self.device_spec],
-        ref[o1] context: Context[o2, Self.device_spec],
+    @staticmethod
+    def _create(
+        out _self: ArcPointer[Self], context: Context[Self.device_spec]
     ) raises HALError:
-        # This is a horrible hack that should be revisited as soon as
-        # we can express subtyping relations between origins and/or
-        # inferred/unbound inner origin params for arguments.
-        # See MOCO-3661, MOCO-3326.
-        self._context = rebind[type_of(self._context)](Pointer(to=context))
-        self._raw = rebind[type_of(self._raw)](context._raw)
+        _self = ArcPointer(Self(context))
+        _self[]._self_ref = WeakPointer(downgrade=_self)
+
+    @doc_hidden
+    def __init__(
+        out self: Queue[Self.device_spec],
+        ref context: Context[Self.device_spec],
+    ) raises HALError:
+        self._self_ref = WeakPointer[Self]()
+        self._context = context._self_ref.try_upgrade().value()
+        self._raw = context._raw
 
         ref raw = context._raw[]
 
@@ -81,15 +82,20 @@ struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
         except e:
             print("warning: destroy_queue failed:", e)
 
+        # Keep the context alive until after destroy_queue has finished so its
+        # underlying handle is not invalidated. Related to MOCO-3980.
+        _ = self._context^
+
     # TODO: revisit all of these when we get to queue dependency ordering
     def execute(
         self,
         func: FunctionHandle,
         grid: Tuple[UInt32, UInt32, UInt32],
         block: Tuple[UInt32, UInt32, UInt32],
-        args: UnsafePointer[OpaquePointer[MutExternalOrigin], MutAnyOrigin],
-        arg_sizes: UnsafePointer[UInt64, MutAnyOrigin],
+        args: UnsafePointer[mut=True, OpaquePointer[MutExternalOrigin], _],
+        arg_sizes: UnsafePointer[mut=True, UInt64, _],
         num_args: UInt32,
+        shared_mem_bytes: UInt32 = 0,
     ) raises HALError:
         """
         Enqueue an execution of the passed function as a kernel on this queue.
@@ -98,13 +104,20 @@ struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
         if backed by a stream.
         """
         self._raw[].execute_function(
-            self._handle, func, grid, block, args, arg_sizes, num_args
+            self._handle,
+            func,
+            grid,
+            block,
+            args,
+            arg_sizes,
+            num_args,
+            shared_mem_bytes=shared_mem_bytes,
         )
 
     def copy_to_device(
         self,
         dst: Buffer,
-        src: UnsafePointer[UInt8, MutAnyOrigin],
+        src: UnsafePointer[mut=False, UInt8, _],
         size: UInt64,
     ) raises HALError:
         """
@@ -116,7 +129,7 @@ struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
 
     def copy_from_device(
         self,
-        dst: UnsafePointer[UInt8, MutAnyOrigin],
+        dst: UnsafePointer[mut=True, UInt8, _],
         src: Buffer,
         size: UInt64,
     ) raises HALError:
@@ -144,7 +157,7 @@ struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
 
     def record_event[
         flags: EventFlags = EVENT_FLAG_NONE,
-    ](self, out event: Event[Self.context_origin, flags],) raises HALError:
+    ](self, out event: Event[flags],) raises HALError:
         """Creates a fresh event, records it on this queue's timeline, and
         returns it.
 
@@ -159,8 +172,8 @@ struct Queue[context_origin: ImmutOrigin, device_spec: DeviceSpec](Movable):
         var event_handle = self._raw[].create_event(
             self._context[]._handle, flags
         )
-        event = Event[Self.context_origin, flags](
-            _EventInner[Self.context_origin](
+        event = Event[flags](
+            _EventInner(
                 _handle=event_handle,
                 _context_handle=self._context[]._handle,
                 _raw=self._raw,

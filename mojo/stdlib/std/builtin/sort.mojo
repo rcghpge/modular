@@ -20,6 +20,7 @@ from std.math import ceil
 from std.sys import bit_width_of
 from std.bit import count_leading_zeros
 from std.memory import Span
+from std.memory.alloc import alloc, free, Layout
 
 # ===-----------------------------------------------------------------------===#
 # sort
@@ -54,7 +55,7 @@ def _insertion_sort[
         (array + j).init_pointee_move(value^)
 
 
-# put everything thats "<" to the left of pivot
+# put everything that's "<" to the left of pivot
 @always_inline
 def _quicksort_partition_right[
     T: Copyable,
@@ -83,7 +84,7 @@ def _quicksort_partition_right[
         right -= 1
 
 
-# put everything thats "<=" to the left of pivot
+# put everything that's "<=" to the left of pivot
 @always_inline
 def _quicksort_partition_left[
     T: Copyable,
@@ -363,10 +364,11 @@ def _stable_sort[
     //,
     cmp_fn: def(T, T) capturing[_] -> Bool,
 ](span: Span[T, origin]):
-    var temp_buff = alloc[T](len(span))
+    var layout = Layout[T](count=len(span))
+    var temp_buff = alloc(layout)
     var temp_buff_span = Span(ptr=temp_buff, length=len(span))
     _stable_sort_impl[cmp_fn](span, temp_buff_span)
-    temp_buff.free()
+    free(temp_buff, layout)
 
 
 # ===-----------------------------------------------------------------------===#

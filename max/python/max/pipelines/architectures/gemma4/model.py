@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -25,13 +25,12 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import BufferType, DeviceRef, Graph, Module, TensorType
 from max.graph.weights import WeightData, Weights, WeightsAdapter
-from max.interfaces import RequestID
-from max.kv_cache.paged_kv_cache.increment_cache_lengths import (
-    IncrementCacheLengthsProcessor,
-)
 from max.nn.comm import Signals
 from max.nn.kv_cache import KVCacheInputs, MultiKVCacheParams
 from max.nn.transformer import ReturnLogits
+from max.pipelines.kv_cache.paged_kv_cache.increment_cache_lengths import (
+    IncrementCacheLengthsProcessor,
+)
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
@@ -42,6 +41,7 @@ from max.pipelines.lib import (
     PipelineModelWithKVCache,
 )
 from max.pipelines.lib.vision_encoder_cache import VisionEncoderCache
+from max.pipelines.modeling.types import RequestID
 from max.profiler import traced
 from transformers import AutoConfig
 
@@ -140,6 +140,8 @@ class Gemma3_MultiModalModel(
             execution.
     """
 
+    model_config_cls: ClassVar[type[Any]] = Gemma4ForConditionalGenerationConfig
+
     language_model: Model
     """The compiled and initialized MAX Engine model ready for inference."""
 
@@ -215,33 +217,6 @@ class Gemma3_MultiModalModel(
         if pipeline_config.runtime.device_graph_capture:
             base += _GRAPH_CAPTURE_HEADROOM_BYTES
         return base
-
-    @classmethod
-    def calculate_max_seq_len(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        """Calculates the maximum sequence length for the InternVL model."""
-        return Gemma4ForConditionalGenerationConfig.calculate_max_seq_len(
-            pipeline_config, huggingface_config
-        )
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> MultiKVCacheParams:
-        """Gets the parameters required to configure the KV cache for InternVL."""
-        return Gemma4ForConditionalGenerationConfig.construct_kv_params(
-            huggingface_config,
-            pipeline_config,
-            devices,
-            kv_cache_config,
-            cache_dtype,
-        )
 
     def load_model(self, session: InferenceSession) -> tuple[Model, Model]:
         """Loads the compiled Gemma3 MultiModal models into the MAX Engine session.
@@ -458,12 +433,40 @@ class Gemma3_MultiModalModel(
             weight_alignment=1,
             strict=self._strict_state_dict_loading,
         )
-        vision_graph = Graph(
+        with Graph(
             "gemma4_vision",
-            vision_model,
-            vision_model.input_types(),
+            input_types=vision_model.input_types(),
             module=module,
-        )
+        ) as vision_graph:
+            # Extract inputs
+            all_inputs = vision_graph.inputs
+            n_devices = len(self.devices)
+
+            patches_flat_list = [inp.tensor for inp in all_inputs[:n_devices]]
+            all_inputs = all_inputs[n_devices:]
+
+            pixel_position_ids_list = [
+                inp.tensor for inp in all_inputs[:n_devices]
+            ]
+            all_inputs = all_inputs[n_devices:]
+
+            cu_seqlens_list = [inp.tensor for inp in all_inputs[:n_devices]]
+            all_inputs = all_inputs[n_devices:]
+
+            pool_weights_list = [inp.tensor for inp in all_inputs[:n_devices]]
+            all_inputs = all_inputs[n_devices:]
+
+            max_seq_len = all_inputs[0].tensor
+
+            outputs = vision_model(
+                patches_flat_list,
+                pixel_position_ids_list,
+                cu_seqlens_list,
+                pool_weights_list,
+                max_seq_len,
+            )
+            vision_graph.output(*outputs)
+
         return vision_graph, vision_model.state_dict()
 
     def _run_vision_encoder(self, raw: VisionRawInputs) -> list[Buffer]:
@@ -698,44 +701,6 @@ class Gemma3_MultiModalModel(
             kv_cache_inputs=kv_cache_inputs,
             images=image_inputs,
             video=video_inputs,
-            combined_embeds=self._empty_embeddings(),
-            combined_indices=self._empty_indices(),
-        )
-
-    @traced
-    def prepare_next_token_inputs(
-        self, next_tokens: Buffer, prev_model_inputs: ModelInputs
-    ) -> ModelInputs:
-        prev_model_inputs = cast(Gemma3MultiModalModelInputs, prev_model_inputs)
-
-        # Extract the global cache portion from combined kv_cache_inputs.
-        # Combined layout per replica: [primary_tp0..tpN, global_tp0..tpN].
-        n_devices = len(self.devices)
-        assert prev_model_inputs.kv_cache_inputs is not None
-        global_kv_inputs = KVCacheInputs(
-            inputs=prev_model_inputs.kv_cache_inputs.inputs[
-                n_devices : 2 * n_devices
-            ]
-        )
-        self._increment_global_cache_lengths_processor.execute(
-            kv_cache_inputs=global_kv_inputs,
-            prev_model_inputs=prev_model_inputs,
-        )
-
-        row_offsets_size = prev_model_inputs.input_row_offsets[0].shape[0]
-
-        # Slice each tensor in the list, not the list itself
-        next_row_offsets = [
-            offsets_prealloc[:row_offsets_size]
-            for offsets_prealloc in self._input_row_offsets_prealloc
-        ]
-
-        return Gemma3MultiModalModelInputs(
-            tokens=next_tokens,
-            input_row_offsets=next_row_offsets,
-            return_n_logits=prev_model_inputs.return_n_logits,
-            signal_buffers=self.signal_buffers,
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
             combined_embeds=self._empty_embeddings(),
             combined_indices=self._empty_indices(),
         )

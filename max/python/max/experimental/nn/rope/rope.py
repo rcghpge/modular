@@ -87,7 +87,7 @@ def positional_embedding(
 
 
 @module_dataclass
-class RotaryEmbedding(Module[[Tensor, DimLike], Tensor]):
+class RotaryEmbedding(Module[..., Tensor]):
     """Applies Rotary Positional Embeddings (RoPE) to input tensors.
 
     RoPE encodes positional information using complex-valued rotations applied
@@ -154,7 +154,7 @@ class RotaryEmbedding(Module[[Tensor, DimLike], Tensor]):
             Input activation tensor with rotary positional embeddings applied and
             the same shape as `x`.
         """
-        _, seq_len, _, _ = x.shape
+        seq_len = x.shape[1]
         start_pos = Dim(start_pos)
 
         x_complex = F.as_interleaved_complex(x)
@@ -185,7 +185,7 @@ class TransposedRotaryEmbedding(RotaryEmbedding):
             Input activation tensor with rotary positional embeddings applied and
             the same shape as `x`.
         """
-        _, seq_len, _, _ = x.shape
+        seq_len = x.shape[1]
         *rest, head_dim = x.shape
         start_pos = Dim(start_pos)
 

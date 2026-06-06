@@ -15,11 +15,10 @@ from std.sys.info import _current_target, simd_width_of
 from std.math.uutils import ufloordiv
 
 from std.algorithm.functional import elementwise
-from std.gpu.host import get_gpu_target
+from std.gpu.host import DeviceContext, get_gpu_target
 from std.gpu.host.info import is_cpu
 from layout import LayoutTensor, TileTensor
-from std.runtime.asyncrt import DeviceContextPtr
-from layout import Coord, Idx
+from layout import Coord, Idx, coord_to_index_list
 
 from std.utils import IndexList
 
@@ -100,7 +99,7 @@ def merge_ragged_tensors[
     a_row_offsets: TileTensor[DType.uint32, ...],
     b: TileTensor[dtype, ...],
     b_row_offsets: TileTensor[DType.uint32, ...],
-    ctx: DeviceContextPtr,
+    ctx: DeviceContext,
 ) raises:
     comptime assert c.flat_rank == rank, "c.flat_rank must equal rank"
     comptime assert a.flat_rank == rank, "a.flat_rank must equal rank"
@@ -117,23 +116,25 @@ def merge_ragged_tensors[
 
     @always_inline
     @parameter
-    def merge_fn[
-        width: Int, rank_: Int, alignment: Int = 1
-    ](idx: IndexList[rank_]):
-        comptime assert rank_ == rank, "Invalid rank passed to the kernel"
+    def merge_fn[width: Int, alignment: Int = 1](idx: Coord):
+        comptime assert idx.rank == rank, "Invalid rank passed to the kernel"
 
         var a_tensor_size = Int(a.dim[0]())
-        var is_tensor_a = idx[0] < a_tensor_size
+        var is_tensor_a = Int(idx[0].value()) < a_tensor_size
 
         var batch_id: Int
-        var src_idx: IndexList[rank_] = idx
+        var src_idx: IndexList[rank] = rebind[IndexList[rank]](
+            coord_to_index_list(idx)
+        )
         if is_tensor_a:
             batch_id = get_batch_from_row_offsets(a_row_offsets, src_idx[0])
         else:
-            src_idx[0] = idx[0] - a_tensor_size
+            src_idx[0] = Int(idx[0].value()) - a_tensor_size
             batch_id = get_batch_from_row_offsets(b_row_offsets, src_idx[0])
 
-        var dst_idx: IndexList[rank_] = idx
+        var dst_idx: IndexList[rank] = rebind[IndexList[rank]](
+            coord_to_index_list(idx)
+        )
         var dst_row_idx: Int = src_idx[0]
 
         if is_tensor_a:
@@ -171,7 +172,7 @@ def merge_ragged_tensors[
         )
 
         comptime for i in range(1, rank):
-            if idx[i] != 0:
+            if idx[i].value() != 0:
                 is_first_element = False
 
         if is_first_element:
@@ -188,16 +189,12 @@ def merge_ragged_tensors[
     comptime target_simd_width = simd_width_of[dtype, target=compile_target]()
     comptime kernel_simd_width = 1 if rank == 1 else target_simd_width
 
-    var shape = IndexList[rank]()
-    comptime for i in range(rank):
-        shape[i] = Int(c.dim[i]())
-
     elementwise[
         func=merge_fn,
         simd_width=kernel_simd_width,
         target=target,
         _trace_description="merge_ragged_tensors",
-    ](shape, ctx)
+    ](c.layout.shape_coord(), ctx)
 
 
 def eagle_prefill_shift_tokens[
@@ -209,7 +206,7 @@ def eagle_prefill_shift_tokens[
     tokens: TileTensor[dtype, ...],
     offsets: TileTensor[DType.uint32, ...],
     shift_next_tokens: TileTensor[dtype, ...],
-    ctx: DeviceContextPtr,
+    ctx: DeviceContext,
 ) raises:
     """Shift ragged tokens left by 1 per request, appending bonus tokens."""
     comptime assert output.flat_rank == 1
@@ -219,12 +216,10 @@ def eagle_prefill_shift_tokens[
 
     @always_inline
     @parameter
-    def shift_fn[
-        width: Int, rank_: Int, alignment: Int = 1
-    ](idx: IndexList[rank_]):
-        comptime assert rank_ == 1
+    def shift_fn[width: Int, alignment: Int = 1](idx: Coord):
+        comptime assert idx.rank == 1
 
-        var i = idx[0]
+        var i = Int(idx[0].value())
 
         # Shift left by 1 per batch, append bonus token
         var batch_id = get_batch_from_row_offsets(offsets, i)
@@ -232,15 +227,15 @@ def eagle_prefill_shift_tokens[
 
         if i < end - 1:
             # Not the last position: copy from next position
-            output.store(Coord(Idx(i)), tokens.load[width=1](Coord(Idx(i + 1))))
+            output.store(Coord(i), tokens.load[width=1](Coord(i + 1)))
         else:
             # Last position in batch: append shift_next_tokens
             output.store(
-                Coord(Idx(i)),
-                shift_next_tokens.load[width=1](Coord(Idx(batch_id))),
+                Coord(i),
+                shift_next_tokens.load[width=1](Coord(batch_id)),
             )
 
-    var shape = IndexList[1](Int(output.dim[0]()))
+    var shape = Coord(Int(output.dim[0]()))
 
     elementwise[
         func=shift_fn,

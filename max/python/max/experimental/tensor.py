@@ -117,7 +117,12 @@ from max.experimental.sharding import (
     PlacementMapping,
     Replicated,
     Sharded,
-    shard_shape,
+)
+from max.experimental.sharding.mappings import is_fully_replicated
+from max.experimental.sharding.per_shard_dim import (
+    is_per_shard_dim,
+    local_shape_at,
+    make_per_shard_dim,
 )
 from max.experimental.support import contextvar_context, driver_tensor_type
 from max.graph import (
@@ -132,6 +137,61 @@ from max.graph.value import HasTensorValue
 from rich.pretty import pretty_repr
 
 GraphValue: TypeAlias = graph.BufferValue | graph.TensorValue
+
+
+def _fold_sharded_shape(
+    shape: graph.Shape, mapping: DeviceMapping
+) -> graph.Shape:
+    """Folds per-rank wrappers on ``shape`` into the global shape per mapping."""
+    mesh = mapping.mesh
+    placements = mapping.to_placements()
+    mesh_shape = mesh.mesh_shape
+    n_devices = mesh.num_devices
+    folded: list[graph.Dim] = []
+    for ti, d in enumerate(shape):
+        if not is_per_shard_dim(d):
+            g = graph.Dim(d)
+            for mesh_axis, p in enumerate(placements):
+                if p.localized_axis() == ti and isinstance(p, Sharded):
+                    g = g * mesh_shape[mesh_axis]
+            folded.append(g)
+            continue
+        cells = list(d.per_shard)
+        if len(cells) != n_devices:
+            raise ValueError(
+                f"sharded dim {d!r} has {len(cells)} entries, expected "
+                f"{n_devices} for mesh {mesh!r}."
+            )
+        for mesh_axis in range(mesh.ndim - 1, -1, -1):
+            n = mesh_shape[mesh_axis]
+            p = placements[mesh_axis]
+            localizes_ti = p.localized_axis() == ti
+            new_cells: list[graph.Dim] = []
+            for start in range(0, len(cells), n):
+                block = cells[start : start + n]
+                if localizes_ti:
+                    new_cells.append(
+                        p.global_dim(
+                            make_per_shard_dim(tuple(block), force_wrap=True)
+                        )
+                    )
+                else:
+                    first = block[0]
+                    for x in block[1:]:
+                        if x != first:
+                            raise ValueError(
+                                f"global_shape: tensor axis {ti} has "
+                                f"per-rank cells {block!r} that disagree "
+                                f"along mesh axis {mesh_axis} (placement "
+                                f"{p!r}); non-localizing mesh axes must "
+                                "hold shape-identical shards."
+                            )
+                    new_cells.append(first)
+            cells = new_cells
+        assert len(cells) == 1
+        folded.append(cells[0])
+    return graph.Shape(folded)
+
 
 _CONTEXT: ContextVar[RealizationContext] = ContextVar("_CONTEXT")
 _DEFAULT_DEVICE: ContextVar[Device] = ContextVar("_DEFAULT_DEVICE")
@@ -306,14 +366,12 @@ class RealizationContext(
         values: tuple[GraphValue, ...],
         *,
         mapping: DeviceMapping | None = None,
-        global_shape: Any = None,
     ) -> Tensor:
         """Registers unrealized graph value(s) with the realization context.
 
         Args:
             values: Per-shard graph values (length-1 for unsharded).
             mapping: Device mapping for distributed tensors.
-            global_shape: The global tensor shape for distributed tensors.
 
         Returns:
             A new tensor associated with the unrealized value(s).
@@ -513,7 +571,6 @@ class Tensor(DLPackArray, HasTensorValue):
 
     # ─── Device mapping (always set) ────────────────────────────────────
     _mapping: DeviceMapping
-    _global_shape: graph.Shape | None  # always set for distributed tensors
 
     # ─── Placement helpers ────────────────────────────────────────────────
 
@@ -700,7 +757,6 @@ class Tensor(DLPackArray, HasTensorValue):
         self._mapping = PlacementMapping(
             DeviceMesh.single(device), (Replicated(),)
         )
-        self._global_shape = None
 
     @classmethod
     def from_graph_value(cls, value: graph.Value[Any]) -> Tensor:
@@ -803,14 +859,14 @@ class Tensor(DLPackArray, HasTensorValue):
         storages: tuple[driver.Buffer, ...],
         mesh: DeviceMesh,
         placements: tuple[Placement, ...],
-        global_shape: graph.ShapeLike,
+        global_shape: graph.ShapeLike | None = None,
     ) -> Tensor:
         """Creates a realized sharded tensor from per-device buffers.
 
-        This is an internal constructor. ``storages`` must have one entry per
-        device in the mesh, in row-major order.  All shards are realized
-        (concrete storage, no pending graph values).
+        ``global_shape`` is accepted for call-site back-compat; the global
+        shape is recovered from per-rank shards at access time.
         """
+        del global_shape
         if len(storages) != mesh.num_devices:
             raise ValueError(
                 f"Expected {mesh.num_devices} storages for mesh {mesh}, "
@@ -825,7 +881,6 @@ class Tensor(DLPackArray, HasTensorValue):
         instance._storages = storages
         instance._state = None
         instance._mapping = PlacementMapping(mesh, placements)
-        instance._global_shape = graph.Shape(global_shape)
         return instance
 
     @classmethod
@@ -834,14 +889,12 @@ class Tensor(DLPackArray, HasTensorValue):
         state: RealizationState,
         mesh: DeviceMesh,
         placements: tuple[Placement, ...],
-        global_shape: graph.ShapeLike | None = None,
     ) -> Tensor:
         """Creates an unrealized sharded tensor from a single state.
 
         ``state.values`` must have one entry per shard — all in the same
         graph.  Realization is atomic: all shards compile and execute
-        together.  If ``global_shape`` is omitted, it is derived from the
-        first shard's shape, placements, and mesh.
+        together.
         """
         if len(state.values) != mesh.num_devices:
             raise ValueError(
@@ -857,9 +910,6 @@ class Tensor(DLPackArray, HasTensorValue):
         instance._storages = None
         instance._state = state
         instance._mapping = PlacementMapping(mesh, placements)
-        instance._global_shape = (
-            graph.Shape(global_shape) if global_shape is not None else None
-        )
         return instance
 
     def _as_constant_external(self, name: str) -> Tensor:
@@ -877,10 +927,10 @@ class Tensor(DLPackArray, HasTensorValue):
             return F.constant_external(name, stype).to(self.device)
         assert self._mapping is not None
         _mesh = self._mapping.mesh
-        _placements = self._mapping.to_placements()
-        local = shard_shape(self.shape, _placements, _mesh.mesh_shape)
         values = []
+        shape = self.shape
         for i in range(_mesh.num_devices):
+            local = local_shape_at(shape, i)
             stype = TensorType(self.dtype, local, CPU())
             t = F.constant_external(f"{name}._shard.{i}", stype)
             t = t.to(_mesh.devices[i])
@@ -888,7 +938,6 @@ class Tensor(DLPackArray, HasTensorValue):
         return current_realization_context().create_unrealized(
             tuple(values),
             mapping=self._mapping,
-            global_shape=self.shape,
         )
 
     def _from_buffers_like(self, buffers: Sequence[driver.Buffer]) -> Tensor:
@@ -906,7 +955,6 @@ class Tensor(DLPackArray, HasTensorValue):
             tuple(buffers),
             self._mapping.mesh,
             self._mapping.to_placements(),
-            self.shape,
         )
 
     @classmethod
@@ -1342,6 +1390,7 @@ class Tensor(DLPackArray, HasTensorValue):
             TypeError: If the tensor is distributed.
         """
         if self.is_distributed:
+            # self.shape already reports the global, so no fold is needed.
             dist_type = DistributedTensorType(
                 self.dtype, self.shape, self.mesh, self.placements
             )
@@ -1372,36 +1421,50 @@ class Tensor(DLPackArray, HasTensorValue):
 
     @property
     def shape(self) -> graph.Shape:
-        """Gets the global shape of the tensor.
-
-        For sharded tensors this returns the logical global shape (not the
-        per-shard shape).  If no explicit global shape was set, it is
-        derived from the first shard's shape, placements, and mesh.
+        """Gets the global (logical) shape of the tensor.
 
         Returns:
-            Shape: The shape of the tensor.
+            The global shape of the tensor.
         """
-        if self._global_shape is not None:
-            return self._global_shape
-        if self.is_distributed:
-            # Get the shard shape from the first shard.
-            if self._storages is not None:
-                shard_shape = list(self._storages[0].shape)
-            else:
-                assert self._state is not None
-                sv = self._state.values[0]
-                shard_shape = list(sv.shape)
-            # Scale sharded dims back up by mesh size.
-            assert self._mapping is not None
-            _placements = self._mapping.to_placements()
-            _mesh = self._mapping.mesh
-            for ax, p in enumerate(_placements):
-                if isinstance(p, Sharded):
-                    d = p.axis % len(shard_shape)
-                    shard_shape[d] = shard_shape[d] * _mesh.mesh_shape[ax]
-            return graph.Shape(shard_shape)
-        shape = self._backing_value.shape
-        return shape if isinstance(shape, graph.Shape) else graph.Shape(shape)
+        if not self.is_distributed:
+            backing = self._backing_value.shape
+            return (
+                backing
+                if isinstance(backing, graph.Shape)
+                else graph.Shape(backing)
+            )
+        per_rank_shapes = self._per_rank_shapes()
+        ndim = len(per_rank_shapes[0])
+        sharded_axes = {
+            ax
+            for p in self._mapping.to_placements()
+            if (ax := p.localized_axis()) is not None
+        }
+        cells = [
+            tuple(graph.Dim(s[i]) for s in per_rank_shapes) for i in range(ndim)
+        ]
+        wrapped = graph.Shape(
+            [
+                make_per_shard_dim(cells[i], force_wrap=i in sharded_axes)
+                for i in range(ndim)
+            ]
+        )
+        globals_ = _fold_sharded_shape(wrapped, self._mapping)
+        return graph.Shape(
+            [
+                make_per_shard_dim(cells[i], global_dim=globals_[i])
+                if i in sharded_axes
+                else globals_[i]
+                for i in range(ndim)
+            ]
+        )
+
+    def _per_rank_shapes(self) -> list[list[graph.Dim]]:
+        """Returns one per-rank shape list per shard, in mesh order."""
+        if self._storages is not None:
+            return [list(s.shape) for s in self._storages]
+        assert self._state is not None
+        return [list(v.shape) for v in self._state.values]
 
     @property
     def dtype(self) -> DType:
@@ -1592,7 +1655,7 @@ class Tensor(DLPackArray, HasTensorValue):
             ValueError: If the tensor is distributed and not fully replicated.
         """
         if self.is_distributed:
-            if not self._mapping.is_fully_replicated:
+            if not is_fully_replicated(self._mapping):
                 # Reuse the standard error for non-replicated distributed
                 # tensors (Sharded, Partial, etc.).
                 self._check_not_distributed("item")
@@ -1677,7 +1740,7 @@ class Tensor(DLPackArray, HasTensorValue):
             )
         elif isinstance(target, DeviceMesh):
             if isinstance(self._mapping, NamedMapping):
-                mapping = NamedMapping(target, self._mapping.original_spec)
+                mapping = self._mapping._resolve(target)
             else:
                 mapping = PlacementMapping(target, self.placements)
         elif isinstance(target, DeviceMapping):

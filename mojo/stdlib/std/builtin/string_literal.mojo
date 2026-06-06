@@ -24,8 +24,6 @@ from std.collections.string.string_slice import (
 from std.os import PathLike
 from std.ffi import c_char, CStringSlice
 
-from std.python import ConvertibleToPython, PythonObject
-
 # ===-----------------------------------------------------------------------===#
 # StringLiteral
 # ===-----------------------------------------------------------------------===#
@@ -34,7 +32,6 @@ from std.python import ConvertibleToPython, PythonObject
 @__nonmaterializable(String)
 struct StringLiteral[value: __mlir_type.`!kgen.string`](
     Boolable,
-    ConvertibleToPython,
     Defaultable,
     FloatableRaising,
     ImplicitlyCopyable,
@@ -175,17 +172,6 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
     # Trait implementations
     # ===-------------------------------------------------------------------===#
 
-    def to_python_object(var self) raises -> PythonObject:
-        """Convert this value to a PythonObject.
-
-        Returns:
-            A PythonObject representing the value.
-
-        Raises:
-            If the Python runtime is not initialized or conversion fails.
-        """
-        return PythonObject(self)
-
     @always_inline("nodebug")
     def __bool__(self) -> Bool:
         """Convert the string to a bool value.
@@ -257,7 +243,9 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         Returns:
             A StringSlice view containing the character at the specified position.
         """
-        return StaticString(ptr=self.unsafe_ptr() + idx, length=1)
+        return StaticString(
+            unsafe_from_utf8=Span(ptr=self.unsafe_ptr() + idx, length=1)
+        )
 
     # TODO(MSTDL-1327): Reduce pain when string literals can't be
     # nonmaterializable by making them merge into StaticString.  They should
@@ -385,8 +373,10 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         #   Enforce UTF-8 encoding in StringLiteral so this is actually
         #   guaranteed to be valid.
         return StaticString(
-            ptr=self.unsafe_ptr(),
-            length=self.byte_length(),
+            unsafe_from_utf8=Span(
+                ptr=self.unsafe_ptr(),
+                length=self.byte_length(),
+            )
         )
 
     @always_inline("nodebug")

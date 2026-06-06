@@ -118,7 +118,6 @@ class MockPipelineModel(PipelineModelWithKVCache):  # type: ignore[type-arg]
                 n_heads=self.huggingface_config.num_attention_heads,
                 n_kv_heads=self.huggingface_config.num_key_value_heads,
                 head_dim=self.huggingface_config.head_dim,
-                zmq_endpoint_base=self.pipeline_config.runtime.zmq_endpoint_base,
             )
             if self.pipeline_config.lora
             and self.pipeline_config.lora.enable_lora
@@ -214,17 +213,4 @@ class MockPipelineModel(PipelineModelWithKVCache):  # type: ignore[type-arg]
             eos_prob=self.eos_prob,
             kv_cache_inputs=kv_cache_inputs,
             return_n_logits=return_n_logits,
-        )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> ModelInputs:
-        prev_model_inputs = cast(MockModelInputs, prev_model_inputs)
-        return MockModelInputs(
-            active_batch_size=prev_model_inputs.active_batch_size,
-            eos_prob=self.eos_prob,
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
-            return_n_logits=prev_model_inputs.return_n_logits,
         )

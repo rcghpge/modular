@@ -95,23 +95,33 @@ def test_missing_workload_config_is_allowed(
     assert "Dry run:" in stdout
 
 
-def test_error_missing_workload_config_with_upload(
-    capsys: pytest.CaptureFixture[str],
+def test_warn_missing_workload_config_with_upload(
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """--workload-config is required when --upload-results is set."""
+    """--upload-results without --workload-config logs a warning but proceeds."""
     base_cmd_args = [
         "--model",
         "HuggingFaceTB/SmolLM2-135M",
         "--max-concurrency",
         "1",
+        "--num-prompts",
+        "10",
         "--upload-results",
         "--dry-run",
     ]
 
-    with pytest.raises(SystemExit) as exc_info:
+    with caplog.at_level(logging.WARNING, logger="sweep-benchmark-serving"):
         sweep_benchmark_serving.main(base_cmd_args)
-    assert exc_info.value.code != 0
-    _ = capsys.readouterr()
+
+    expected_fragment = (
+        "--workload-config is not set while --upload-results is set"
+    )
+    assert any(
+        expected_fragment in record.message for record in caplog.records
+    ), (
+        f"Expected warning containing {expected_fragment!r} in log records:\n"
+        f"{[r.message for r in caplog.records]}"
+    )
 
 
 def test_correct_number_of_runs(
@@ -561,7 +571,7 @@ def test_result_filename_reaches_main_with_parsed_args(
     result_path = str(tmp_path / "result.json")
     received: dict[str, str | None] = {}
 
-    def capture_config(config: object) -> list[object]:
+    def capture_config(config: object, **kwargs: object) -> list[object]:
         received["result_filename"] = getattr(
             config, "result_filename", "NOT_SET"
         )
@@ -602,7 +612,7 @@ def test_result_filename_none_when_not_provided(
     """When --result-filename is not passed, config.result_filename must be None."""
     received: dict[str, str | None] = {}
 
-    def capture_config(config: object) -> list[object]:
+    def capture_config(config: object, **kwargs: object) -> list[object]:
         received["result_filename"] = getattr(
             config, "result_filename", "NOT_SET"
         )
@@ -656,7 +666,7 @@ def test_save_result_json_writes_valid_json(
     )
 
     mock_result = MagicMock()
-    mock_result.metrics.aggregates.completed = 5
+    mock_result.aggregates.completed = 5
     mock_result.to_result_dict.return_value = {
         "duration": 1.0,
         "completed": 5,
@@ -700,7 +710,7 @@ def test_result_json_written_at_specified_path(
     """
     result_path = tmp_path / "output" / "result.json"
 
-    def fake_benchmark(config: object) -> list[object]:
+    def fake_benchmark(config: object, **kwargs: object) -> list[object]:
         filename = getattr(config, "result_filename", None)
         if filename:
             Path(filename).parent.mkdir(parents=True, exist_ok=True)
@@ -1016,11 +1026,12 @@ def test_upload_writes_correct_data_to_correct_files(
 
     def fake_benchmark_serving_main(
         config: ServingBenchmarkConfig,
+        **kwargs: object,
     ) -> Iterator[BenchmarkRunResult]:
         assert config.model is not None
         for mc, sentinel in [(1, MC1_SENTINEL), (2, MC2_SENTINEL)]:
             mock_result = MagicMock()
-            mock_result.metrics.aggregates.completed = 5
+            mock_result.aggregates.completed = 5
             mock_result.to_result_dict.return_value = {
                 "duration": float(mc),
                 "completed": 5,

@@ -71,15 +71,16 @@ from std.sys.intrinsics import _type_is_eq
 
 from std.bit import bit_width, byte_swap, pop_count
 from std.builtin._format_float import _write_float
-from std.builtin.device_passable import DevicePassable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.builtin.format_int import _write_int
 from std.builtin.int import _FromInt
 from std.math import DivModable, Powable
 from std.memory import bitcast, memcpy, pack_bits
-from std.python import ConvertibleToPython, Python, PythonObject
+from std.python import Python, PythonObject
 
 from std.utils import IndexList, StaticTuple
 from std.utils._visualizers import lldb_formatter_wrapping_type
+from std.utils.coord import CoordLike, Coord
 from std.utils.numerics import FPUtils
 from std.utils.numerics import inf as _inf
 from std.utils.numerics import isinf as _isinf
@@ -319,8 +320,7 @@ struct FastMathFlag(Equatable, ImplicitlyCopyable, RegisterPassable):
 
     Examples:
         ```mojo
-        from builtin.simd import FastMathFlag
-
+        from std.builtin.simd import FastMathFlag
         var value = Float32(2.0)
         var multiplier = Float32(3.0)
         var accumulator = Float32(1.0)
@@ -408,7 +408,7 @@ struct SIMD[dtype: DType, size: Int](
     CeilDivable,
     Ceilable,
     Comparable,
-    ConvertibleToPython,
+    CoordLike,
     Defaultable,
     DevicePassable,
     DivModable,
@@ -578,9 +578,11 @@ struct SIMD[dtype: DType, size: Int](
     comptime device_type: AnyType = Self
     """SIMD types are remapped to the same type when passed to accelerator devices."""
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
         """Device type mapping is the identity function."""
-        target.bitcast[Self.device_type]()[] = self
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:
@@ -756,11 +758,7 @@ struct SIMD[dtype: DType, size: Int](
         )
 
         _simd_construction_checks[Self.dtype, Self.size]()
-        var s = __mlir_op.`pop.cast_from_builtin`[
-            _type=__mlir_type.`!kgen.scalar<bool>`
-        ](value._mlir_value)
-
-        self._mlir_value = rebind[Self._Mask._mlir_type](s)
+        self._mlir_value = rebind[Self._Mask._mlir_type](value._mlir_value)
 
     @always_inline("nodebug")
     def __init__(out self: SIMD[DType.bool, Self.size], *, fill: Bool):
@@ -772,13 +770,9 @@ struct SIMD[dtype: DType, size: Int](
             fill: The bool value to fill each element of the SIMD vector with.
         """
         _simd_construction_checks[Self.dtype, Self.size]()
-        var s = __mlir_op.`pop.cast_from_builtin`[
-            _type=__mlir_type.`!kgen.scalar<bool>`
-        ](fill._mlir_value)
-
         self._mlir_value = __mlir_op.`pop.simd.splat`[
             _type=Self._Mask._mlir_type
-        ](s)
+        ](fill._mlir_value)
 
     @doc_hidden
     @always_inline("builtin")
@@ -1390,7 +1384,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] == rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred eq>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred eq>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1407,7 +1401,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] != rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred ne>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred ne>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1424,7 +1418,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] > rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred gt>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred gt>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1442,7 +1436,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] >= rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred ge>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred ge>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1459,7 +1453,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] < rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred lt>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred lt>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1477,7 +1471,7 @@ struct SIMD[dtype: DType, size: Int](
             `i` is the value of `self[i] <= rhs[i]`.
         """
 
-        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred le>`](
+        var res = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#kgen<cmp_pred le>`](
             self._mlir_value, rhs._mlir_value
         )
         return Self._Mask(mlir_value=res)
@@ -1855,9 +1849,9 @@ struct SIMD[dtype: DType, size: Int](
             True if the SIMD scalar is non-zero and False otherwise.
         """
 
-        var ne_zero = __mlir_op.`pop.cmp`[pred=__mlir_attr.`#pop<cmp_pred ne>`](
-            self._mlir_value, Self(0)._mlir_value
-        )
+        var ne_zero = __mlir_op.`pop.cmp`[
+            pred=__mlir_attr.`#kgen<cmp_pred ne>`
+        ](self._mlir_value, Self(0)._mlir_value)
         return Bool(mlir_value=__mlir_op.`pop.simd.reduce_or`(ne_zero))
 
     @always_inline("nodebug")
@@ -3224,21 +3218,84 @@ struct SIMD[dtype: DType, size: Int](
 
         return self.shuffle[mask=indices()]()
 
-    # ===----------------------------------------------------------------------=== #
-    # ConvertibleToPython
-    # ===------------------------------------------------------------------=== #
+    # ===-------------------------------------------------------------------===#
+    # CoordLike
+    # ===-------------------------------------------------------------------===#
 
-    def to_python_object(var self) raises -> PythonObject:
-        """Convert this value to a PythonObject.
+    comptime ParamListType = Coord[Self].element_types
+    """The element types (Self for scalar types)."""
 
-        Raises:
-            If the conversion to a PythonObject failed.
+    comptime _ParamListType = Self.ParamListType.values
+    """The low-level parameter list of element types."""
+
+    comptime static_value: Int = -1
+    """Always -1 for runtime values (not statically known)."""
+
+    comptime DTYPE = Self.dtype
+    """The data type for the runtime integer value."""
+
+    @staticmethod
+    @always_inline("nodebug")
+    def __len__() -> Int:
+        """Get the length (always 1 for scalar types).
 
         Returns:
-            A PythonObject representing the value.
+            Always returns 1.
         """
-        comptime assert Self.size == 1, "only works with scalar values"
-        return PythonObject(self._refine[new_size=1]())
+        comptime assert (
+            Self.dtype.is_integral()
+        ), "CoordLike requires integral types"
+        comptime assert Self.size == 1, "CoordLike requires size == 1"
+        return 1
+
+    @always_inline("nodebug")
+    def product(self) -> Scalar[Self.dtype]:
+        """Calculate the product (returns the value for scalar types).
+
+        Returns:
+            The integer value.
+        """
+        comptime assert (
+            Self.dtype.is_integral()
+        ), "CoordLike requires integral types"
+        comptime assert Self.size == 1, "CoordLike requires size == 1"
+        return self[0]
+
+    @always_inline("nodebug")
+    def sum(self) -> Scalar[Self.dtype]:
+        """Calculate the sum (returns the value for scalar types).
+
+        Returns:
+            The integer value.
+        """
+        comptime assert (
+            Self.dtype.is_integral()
+        ), "CoordLike requires integral types"
+        comptime assert Self.size == 1, "CoordLike requires size == 1"
+        return self[0]
+
+    @always_inline("nodebug")
+    def value(self) -> Scalar[Self.dtype]:
+        """Get the scalar value.
+
+        Returns:
+            The runtime integer value.
+        """
+        comptime assert (
+            Self.dtype.is_integral()
+        ), "CoordLike requires integral types"
+        comptime assert Self.size == 1, "CoordLike requires size == 1"
+
+        return self[0]
+
+    @always_inline("nodebug")
+    def tuple(var self) -> Coord[*Self.ParamListType]:
+        """Get as a tuple (not valid for `Scalar` CoordLike).
+
+        Returns:
+            Never returns; aborts at compile time.
+        """
+        comptime assert False, "SIMD is not a tuple CoordLike type"
 
 
 comptime U8x16 = SIMD[DType.uint8, 16]

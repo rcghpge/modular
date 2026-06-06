@@ -115,10 +115,10 @@ def test_stream_parsing(
     parser = KimiK2_5ReasoningParser(
         THINK_START_TOKEN_ID, THINK_END_TOKEN_ID, TOOL_SECTION_START_TOKEN_ID
     )
-    span, is_still_reasoning = parser.stream(tokens)
-    assert span.extract_reasoning(tokens) == expected_reasoning
-    assert span.extract_content(tokens) == expected_content
-    assert is_still_reasoning is expected_is_still_reasoning
+    delta = parser.stream(tokens)
+    assert delta.span.extract_reasoning(tokens) == expected_reasoning
+    assert delta.span.extract_content(tokens) == expected_content
+    assert delta.is_still_reasoning is expected_is_still_reasoning
 
 
 def test_stream_no_tool_start_token_id_support() -> None:
@@ -126,39 +126,51 @@ def test_stream_no_tool_start_token_id_support() -> None:
         THINK_START_TOKEN_ID, THINK_END_TOKEN_ID, None
     )
     tokens = [10, TOOL_SECTION_START_TOKEN_ID, 30]
-    span, is_still_reasoning = parser.stream(tokens)
-    assert span.extract_reasoning(tokens) == [
+    delta = parser.stream(tokens)
+    assert delta.span.extract_reasoning(tokens) == [
         10,
         TOOL_SECTION_START_TOKEN_ID,
         30,
     ]
-    assert span.extract_content(tokens) == []
-    assert is_still_reasoning
+    assert delta.span.extract_content(tokens) == []
+    assert delta.is_still_reasoning
 
 
-def test_is_prompt_in_reasoning_tool_section_token_disables_reasoning() -> None:
+def test_will_reason_after_prompt_tool_section_token_disables_reasoning() -> (
+    None
+):
     parser = KimiK2_5ReasoningParser(
         THINK_START_TOKEN_ID, THINK_END_TOKEN_ID, TOOL_SECTION_START_TOKEN_ID
     )
     # Right-to-left scan: <|tool_calls_section_begin|> is treated as an
     # end-of-reasoning delimiter, so reasoning is disabled.
     prompt = [10, 20, TOOL_SECTION_START_TOKEN_ID, 30]
-    assert parser.is_prompt_in_reasoning(prompt) is False
+    assert parser.will_reason_after_prompt(prompt) is False
 
 
-def test_is_prompt_in_reasoning_think_end_disables_reasoning() -> None:
+def test_will_reason_after_prompt_think_end_disables_reasoning() -> None:
     parser = KimiK2_5ReasoningParser(
         THINK_START_TOKEN_ID, THINK_END_TOKEN_ID, TOOL_SECTION_START_TOKEN_ID
     )
     prompt = [10, THINK_START_TOKEN_ID, 20, THINK_END_TOKEN_ID, 30]
-    assert parser.is_prompt_in_reasoning(prompt) is False
+    assert parser.will_reason_after_prompt(prompt) is False
 
 
-def test_is_prompt_in_reasoning_empty_prompt_stays_active() -> None:
+def test_will_reason_after_prompt_no_delimiters_is_inactive() -> None:
+    """A prompt with no ``<think>`` / ``</think>`` is not in reasoning.
+
+    Covers the ``chat_template_kwargs={"thinking": False}`` case: the
+    chat template suppresses the trailing ``<think>``, so a first-turn
+    prompt contains no delimiter at all.
+    """
     parser = KimiK2_5ReasoningParser(
         THINK_START_TOKEN_ID, THINK_END_TOKEN_ID, TOOL_SECTION_START_TOKEN_ID
     )
-    assert parser.is_prompt_in_reasoning([]) is True
+    assert parser.will_reason_after_prompt([]) is False
+    # Same contract for a non-empty prompt without any delimiters.
+    assert (
+        parser.will_reason_after_prompt([1234, 5678, 9012, 3456, 7890]) is False
+    )
 
 
 @pytest.mark.asyncio

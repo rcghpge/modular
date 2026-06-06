@@ -314,9 +314,7 @@ def stsm_helper[
         comptime for k in range(stmtx_simd_width):
             var src = SIMD[vec_dtype, cast_width]()
             comptime for _j in range(cast_width):
-                src[_j] = rebind[Scalar[vec_dtype]](
-                    vec[i * stsmx_lane_size + k * cast_width + _j]
-                )
+                src[_j] = vec[i * stsmx_lane_size + k * cast_width + _j]
             var casted = src.cast[dst.dtype]()
             comptime for _j in range(cast_width):
                 v[k * cast_width + _j] = casted[_j]
@@ -660,18 +658,18 @@ def shared_memory_epilogue[
         ):
             var reg_val = compute_lambda_fn[alignment=alignment](
                 (Int(global_upper_row), Int(global_upper_col)),
-                c_smem_upper_frag[(Idx(i), Idx(0))],
+                c_smem_upper_frag[Coord(i, Idx[0])],
             )
-            c_smem_upper_frag[(Idx(i), Idx(0))] = reg_val
+            c_smem_upper_frag[Coord(i, Idx[0])] = reg_val
 
         if global_lower_row < Int64(Int(M)) and global_lower_col < Int64(
             Int(N)
         ):
             var reg_val = compute_lambda_fn[alignment=alignment](
                 (Int(global_lower_row), Int(global_lower_col)),
-                c_smem_lower_frag[(Idx(i), Idx(0))],
+                c_smem_lower_frag[i, Idx[0]],
             )
-            c_smem_lower_frag[(Idx(i), Idx(0))] = reg_val
+            c_smem_lower_frag[Coord(i, Idx[0])] = reg_val
 
         # If more than one chunk is created (happens when 8x4 is used)
         # they will be spaced 8 rows away from each other
@@ -816,7 +814,7 @@ def register_epilogue[
 
     comptime for i in range(repeats):
         # each tensor memory load (16x256b) may be repeated based on our desired size.
-        # if thats the case our fragment will be repeated as well. So process it in chunks i.e
+        # if that's the case our fragment will be repeated as well. So process it in chunks i.e
         # one 16x256b at a time.
         # inc represents the shift in global memory offset for each chunk, based on the repeat, and
         # offset represents the offset into the fragment for each chunk.

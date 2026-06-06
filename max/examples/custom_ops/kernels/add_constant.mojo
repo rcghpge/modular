@@ -12,9 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 import compiler
-from std.runtime.asyncrt import DeviceContextPtr
-from tensor import InputTensor, OutputTensor, foreach
 
+from std.gpu.host import DeviceContext
+
+from extensibility import InputTensor, OutputTensor, foreach
+
+from std.utils.coord import Coord
 from std.utils.index import IndexList
 
 
@@ -28,13 +31,11 @@ struct AddConstant[value: Int]:
         output: OutputTensor,
         x: InputTensor[dtype=output.dtype, rank=output.rank, ...],
         # the context is needed for some GPU calls
-        ctx: DeviceContextPtr,
+        ctx: DeviceContext,
     ) raises:
         @parameter
         @always_inline
-        def add_constant[
-            width: Int
-        ](idx: IndexList[x.rank]) -> SIMD[x.dtype, width]:
+        def add_constant[width: Int](idx: Coord) -> SIMD[x.dtype, width]:
             return x.load[width](idx) + Scalar[output.dtype](Self.value)
 
         foreach[add_constant, target=target](output, ctx)

@@ -86,7 +86,7 @@ coordinates required by the tensor, also known as the tensor's *flat rank*. For
 simple layouts, this is the same as the layout's *rank*: two for a 2D tensor,
 three for a 3D tensor, and so on. For simple coordinates, you can pass a set of
 individual coordinates, as shown above. For nested coordinates, you can pass the
-coordinates as a single [`Coord`](/docs/layout/coord/Coord/) value. For an
+coordinates as a single [`Coord`](/docs/std/utils/coord/Coord/) value. For an
 example using nested coordinates, see the section on
 [Tensor indexing and nested layouts](#tensor-indexing-and-nested-layouts).
 
@@ -103,7 +103,7 @@ def takes_2d(tensor2d: TileTensor[...]):
     # el0 = tensor2d[x]  # Compile-time error
 
 # OR
-def takes_2d_constrained(tensor2d: TileTensor[...] where tensor2d.flat_rank == 2):
+def takes_2d_constrained(tensor2d: TileTensor[...]) where tensor2d.flat_rank == 2:
     el0 = tensor2d[0, 0]
 ```
 
@@ -140,9 +140,9 @@ You can also access elements using the
 let you specify the vector size explicitly:
 
 ```mojo
-var elements = tensor.load[4]((Idx(row), Idx(col)))
+var elements = tensor.load[4]((row, col))
 elements = elements * 2
-tensor.store((Idx(row), Idx(col)), elements)
+tensor.store((row, col), elements)
 ```
 
 The `load()` and `store()` methods take the indices as a `Coord` object.
@@ -171,7 +171,7 @@ To access a value in a nested tensor, you can pass the nested coordinates as a
 `Coord` struct:
 
 ```mojo
-var el1 = tensor[Coord(Coord(Idx(1), Idx(0)), Coord(Idx(0), Idx(1)))]
+var el1 = tensor[Coord(Coord(Idx[1], Idx[0]), Coord(Idx[0], Idx[1]))]
 ```
 
 You can also pass a flattened version of the coordinates, either as a single
@@ -730,5 +730,5 @@ We also covered key patterns for optimizing data access:
 These patterns provide the building blocks for writing efficient kernels in Mojo
 while maintaining clean, readable code.
 
-To see some practical examples of `TileTensor` in use, see [Optimize custom
-ops for GPUs with Mojo](/max/tutorials/custom-ops-matmul/).
+To see some practical examples of `TileTensor` in use, see
+[Optimize custom ops for GPUs with Mojo](https://docs.modular.com/max/develop/custom-ops-matmul/).

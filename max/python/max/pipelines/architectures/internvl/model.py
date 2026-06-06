@@ -18,7 +18,7 @@ import math
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import numpy.typing as npt
@@ -33,7 +33,7 @@ from max.graph.weights import (
     WeightsAdapter,
 )
 from max.nn.comm import Signals
-from max.nn.kv_cache import KVCacheInputs, KVCacheParams
+from max.nn.kv_cache import KVCacheInputs
 from max.nn.transformer import ReturnLogits
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
@@ -180,9 +180,27 @@ def assert_image_embeddings_invariant(
 
 
 class InternVLModel(
-    AlwaysSignalBuffersMixin, PipelineModelWithKVCache[TextAndVisionContext]
+    AlwaysSignalBuffersMixin,
+    PipelineModelWithKVCache[TextAndVisionContext],
 ):
     """An InternVL pipeline model for multimodal text generation."""
+
+    model_config_cls: ClassVar[type[Any]] = InternVLConfig
+
+    @classmethod
+    def calculate_max_seq_len(
+        cls,
+        pipeline_config: PipelineConfig,
+        huggingface_config: AutoConfig,
+    ) -> int:
+        """Uses ``max_length`` when set, else ``llm_config.max_position_embeddings`` (config bounds)."""
+        max_seq_len = pipeline_config.model.max_length
+        if max_seq_len:
+            return max_seq_len
+        llm_config = getattr(
+            huggingface_config, "llm_config", huggingface_config
+        )
+        return getattr(llm_config, "max_position_embeddings", 4096)
 
     vision_model: Model
     """The compiled vision model for processing images."""
@@ -219,39 +237,6 @@ class InternVLModel(
 
         # Initialize vision stacker for optimized parallel stacking.
         self._stacker = _VisionStacker()
-
-    @staticmethod
-    def calculate_max_seq_len(
-        pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        """Calculates the maximum sequence length for the InternVL model."""
-        max_seq_len = pipeline_config.model.max_length
-        if max_seq_len:
-            return max_seq_len
-
-        # Get `max_position_embeddings` from the `llm_config`.
-        llm_config = getattr(
-            huggingface_config, "llm_config", huggingface_config
-        )
-        return getattr(llm_config, "max_position_embeddings", 4096)
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParams:
-        """Gets the parameters required to configure the KV cache for InternVL."""
-        return InternVLConfig.construct_kv_params(
-            huggingface_config,
-            pipeline_config,
-            devices,
-            kv_cache_config,
-            cache_dtype,
-        )
 
     @classmethod
     def estimate_activation_memory(
@@ -796,30 +781,4 @@ class InternVLModel(
             pixel_values=pixel_values,
             kv_cache_inputs=kv_cache_inputs,
             image_token_indices=image_token_indices,
-        )
-
-    def prepare_next_token_inputs(
-        self, next_tokens: Buffer, prev_model_inputs: ModelInputs
-    ) -> ModelInputs:
-        """Prepares the inputs for subsequent execution steps in a multi-step generation."""
-        assert isinstance(prev_model_inputs, InternVLInputs)
-        prev_inputs = prev_model_inputs
-
-        # Use pre-allocated row offsets for next token.
-        # Since the pre-allocated array has length max_batch_size, slice out
-        # only the current step's batch size.
-        offset = prev_inputs.input_row_offsets[0].shape[0]
-        next_row_offsets = [
-            offsets_prealloc[:offset]
-            for offsets_prealloc in self._input_row_offsets_prealloc
-        ]
-
-        return InternVLInputs(
-            tokens=next_tokens,
-            input_row_offsets=next_row_offsets,
-            signal_buffers=self.signal_buffers,
-            return_n_logits=prev_model_inputs.return_n_logits,
-            # Set vision model inputs to None after the first step
-            pixel_values=None,
-            kv_cache_inputs=prev_inputs.kv_cache_inputs,
         )

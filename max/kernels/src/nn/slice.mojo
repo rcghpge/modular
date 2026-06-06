@@ -18,7 +18,6 @@ from std.gpu.host import DeviceContext, get_gpu_target
 from layout import Coord, TileTensor, coord_to_index_list
 from layout.coord import DynamicCoord
 from layout.tile_layout import Layout
-from std.runtime.asyncrt import DeviceContextPtr
 from std.sys.info import simd_width_of, _current_target
 
 from std.utils._select import _select_register_value as select
@@ -177,7 +176,7 @@ def copy_to_slice[
     start: TileTensor[start_type, ...],
     end: TileTensor[end_type, ...],
     step: TileTensor[step_type, ...],
-    context: DeviceContextPtr = DeviceContextPtr(),
+    context: DeviceContext,
 ) raises:
     var expected_shape = slice_shape(buffer, start, end, step)
 
@@ -197,16 +196,13 @@ def copy_to_slice[
     @always_inline
     @__copy_capture(in_slice, buffer_slice_view)
     @parameter
-    def copy[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
-        var coords = Coord(rebind[IndexList[in_slice.rank]](idx))
+    def copy[simd_width: Int, alignment: Int = 1](idx: Coord):
         buffer_slice_view.store[width=simd_width](
-            coords, in_slice.load[width=simd_width](coords)
+            idx, in_slice.load[width=simd_width](idx)
         )
 
     elementwise[copy, 1, target=target, _trace_description="slice_copy"](
-        coord_to_index_list(buffer_slice_view.layout.shape_coord()),
+        buffer_slice_view.layout.shape_coord(),
         context,
     )
 
@@ -226,6 +222,7 @@ def slice_as_copy[
     start: TileTensor[index_type, ...],
     end: TileTensor[index_type, ...],
     step: TileTensor[index_type, ...],
+    ctx: DeviceContext,
 ) raises:
     comptime assert output.flat_rank == tensor.flat_rank
     # Apply slice to the tensor
@@ -235,16 +232,11 @@ def slice_as_copy[
     @always_inline
     @__copy_capture(sliced)
     @parameter
-    def copy[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
-        var index = Coord(rebind[IndexList[tensor.rank]](idx))
-        output.store[width=simd_width](
-            index, sliced.load[width=simd_width](index)
-        )
+    def copy[simd_width: Int, alignment: Int = 1](idx: Coord):
+        output.store[width=simd_width](idx, sliced.load[width=simd_width](idx))
 
     # Invoke copy.
-    elementwise[copy, 1](coord_to_index_list(output.layout.shape_coord()))
+    elementwise[copy, 1](output.layout.shape_coord(), ctx)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -321,7 +313,7 @@ def sliced_add[
     a: TileTensor[dtype, ...],
     b: TileTensor[dtype, ...],
     lora_end_idx: TileTensor[DType.int64, ...],
-    ctx: Optional[DeviceContext],
+    ctx: DeviceContext,
 ) raises:
     """Adds tensors a and b element-wise for rows < lora_end_idx, otherwise copies a.
 
@@ -342,27 +334,19 @@ def sliced_add[
 
     @parameter
     @__copy_capture(batch_end_idx, c, a, b)
-    def _sliced_add[
-        width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    def _sliced_add[width: Int, alignment: Int = 1](idx: Coord):
         var out_val: SIMD[dtype, width]
-        var coords = Coord(idx)
 
-        comptime assert a.flat_rank >= coords.flat_rank
-        comptime assert b.flat_rank >= coords.flat_rank
-        comptime assert c.flat_rank >= coords.flat_rank
-
-        if idx[0] >= batch_end_idx:
-            out_val = a.load[width](coords)
+        if Int(idx[0].value()) >= batch_end_idx:
+            out_val = a.load[width](idx)
         else:
-            var a_val = a.load[width](coords)
-            var b_val = b.load[width](coords)
+            var a_val = a.load[width](idx)
+            var b_val = b.load[width](idx)
             out_val = a_val + b_val
 
-        c.store[width](coords, out_val)
+        c.store[width](idx, out_val)
 
     comptime if target == "gpu":
-        assert ctx is not None, "DeviceContext required for GPU target"
         comptime compile_target = get_gpu_target()
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
@@ -372,13 +356,13 @@ def sliced_add[
             target=target,
             _trace_description="slice_add",
         ](
-            coord_to_index_list(c.layout.shape_coord()),
-            ctx.value(),
+            c.layout.shape_coord(),
+            ctx,
         )
     else:
         comptime compile_target = _current_target()
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
         elementwise[_sliced_add, simd_width, target=target](
-            coord_to_index_list(c.layout.shape_coord())
+            c.layout.shape_coord(), ctx
         )

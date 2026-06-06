@@ -20,7 +20,7 @@ relying on pydantic's ``extra='allow'`` keeps the surface explicit so a
 typo in field handling code is a static error rather than a silent extra.
 
 Request models are derived from the SDK's ``TypedDict`` "params" types via
-``create_model_from_typeddict``, then subclassed to add MAX-only sampling /
+``_model_from_typeddict``, then subclassed to add MAX-only sampling /
 routing extensions and to give a few fields stricter pydantic shapes
 (messages, tools, response_format, tool_choice). They use ``extra='forbid'``
 to match OpenAI's behavior on unknown request fields - misspelled or
@@ -29,8 +29,14 @@ unsupported fields surface as 4xx errors instead of being silently dropped.
 
 from __future__ import annotations
 
-import collections.abc
-from typing import Any, Literal, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Literal,
+    Optional,
+    get_type_hints,
+)
+
+from typing_extensions import NotRequired, TypedDict
 
 from openai.types import (
     CompletionUsage as CompletionUsage,
@@ -174,31 +180,73 @@ _FORBID_EXTRA = ConfigDict(
 )
 
 
+# TypedDicts for tool-call objects inside chat messages. These match
+# OpenAI's spec: ``function.name`` and ``function.arguments`` are both
+# Required[str].
+class _ToolCallFunction(TypedDict):
+    name: str
+    arguments: str
+
+
+class _ToolCallParam(TypedDict):
+    function: _ToolCallFunction
+    id: NotRequired[str]
+    type: NotRequired[str]
+
+
+# Content part for multi-modal messages. Superset of text, image_url,
+# and video_url parts; the route dispatches on ``type``.
+class _ContentPart(TypedDict):
+    type: str
+    text: NotRequired[str]
+    image_url: NotRequired[dict[str, str]]
+    video_url: NotRequired[dict[str, str]]
+
+
+# MAX chat message schema. Vendor extensions like ``reasoning_content``
+# are first-class fields so pydantic type-checks them at request
+# validation time.
+class ChatCompletionMessageParam(TypedDict):
+    role: Literal[
+        "developer", "system", "user", "assistant", "tool", "function"
+    ]
+    content: NotRequired[str | list[_ContentPart] | None]
+    name: NotRequired[str]
+    tool_call_id: NotRequired[str]
+    tool_calls: NotRequired[list[_ToolCallParam]]
+    function_call: NotRequired[_ToolCallFunction]
+    refusal: NotRequired[str | None]
+    audio: NotRequired[dict[str, str] | None]
+
+    # MAX vendor extensions.
+    reasoning_content: NotRequired[str | None]
+
+
+ChatCompletionMessageParam.__pydantic_config__ = ConfigDict(extra="allow")  # type: ignore[attr-defined]
+
+
 def _model_from_typeddict(name: str, td: type) -> type[BaseModel]:
     """Builds a pydantic ``BaseModel`` mirroring an OpenAI ``TypedDict``.
-
-    Normalizes ``Iterable[X]`` to ``list[X]`` so the resulting field is a
-    concrete sequence (pydantic stores ``Iterable`` as a one-shot validator
-    iterator that breaks subscripting and re-iteration).
 
     All fields default to ``None`` because OpenAI marks only a few fields
     (e.g. ``model``, ``messages``, ``input``) as ``Required[...]``; we
     re-declare the truly required ones in the subclass below with no
     default.
+
+    Field annotations are widened to ``Optional[T]`` so that clients which
+    explicitly serialize unset fields as ``null`` (e.g. ``"tool_choice":
+    null``) are accepted as equivalent to omission. OpenAI expresses this
+    via ``NotRequired`` on the TypedDict, but the underlying type aliases
+    (``ChatCompletionToolChoiceOptionParam`` and friends) are not
+    ``Optional`` themselves.
     """
     fields: dict[str, Any] = {}
+    # ``get_type_hints`` (without ``include_extras=True``) already strips
+    # Required/NotRequired qualifiers, which is what we want here since the
+    # top-level pydantic field is declared with a ``None`` default
+    # regardless.
     for field_name, annotation in get_type_hints(td).items():
-        # Strip Required/NotRequired qualifiers (valid in TypedDict definitions
-        # but rejected by Pydantic's create_model on Python 3.10).
-        if getattr(get_origin(annotation), "_name", "") in (
-            "Required",
-            "NotRequired",
-        ):
-            (annotation,) = get_args(annotation)
-        if get_origin(annotation) is collections.abc.Iterable:
-            (inner,) = get_args(annotation)
-            annotation = list[inner]  # type: ignore[valid-type]
-        fields[field_name] = (annotation, None)
+        fields[field_name] = (Optional[annotation], None)
     return create_model(name, __config__=_FORBID_EXTRA, **fields)
 
 
@@ -257,13 +305,12 @@ class CreateChatCompletionRequest(
     """
 
     # Required fields - re-declare so they have no default. Each message
-    # is an OpenAI ``ChatCompletionMessageParam`` TypedDict at the JSON
-    # level; we type as ``dict[str, Any]`` here because pydantic mangles
-    # the SDK's ``Iterable[ContentPart]`` typing inside the union (it
-    # stores a one-shot ``ValidatorIterator``). The route reads role and
-    # content via dict access.
+    # is validated against :class:`ChatCompletionMessageParam`, our
+    # explicit cross-section of the OpenAI message shapes plus MAX
+    # vendor extensions (``reasoning_content``). Pydantic emits plain
+    # dicts so the route reads fields via dict access.
     model: str
-    messages: list[dict[str, Any]] = Field(min_length=1)
+    messages: list[ChatCompletionMessageParam] = Field(min_length=1)
 
     # ``stream`` lives on the OpenAI streaming/non-streaming subclasses, not
     # on ``CompletionCreateParamsBase`` - declare it explicitly here.
@@ -300,30 +347,6 @@ class CreateEmbeddingRequest(_EmbeddingParamsBase):  # type: ignore[misc,valid-t
 # ---------------------------------------------------------------------------
 # MAX-only request/response types not part of the OpenAI spec.
 # ---------------------------------------------------------------------------
-
-
-class CreateAudioGenerationRequest(BaseModel):
-    """Audio generation request used by ``/v1/audio/speech``.
-
-    Note: this is a MAX-specific shape, not the OpenAI ``/v1/audio/speech``
-    schema. We may align with the OpenAI spec in a follow-up.
-    """
-
-    model_config = _FORBID_EXTRA
-
-    model: str
-    input: str
-    audio_prompt_tokens: list[int]
-    audio_prompt_transcription: str
-    instructions: str | None = None
-    response_format: Literal["wav", "mp3", "pcm"] | None = None
-    speed: float | None = None
-    min_tokens: int = 0
-
-
-class CreateAudioGenerationResponse(BaseModel):
-    audio_data: bytes
-    metadata: dict[str, Any]
 
 
 class LoadLoraRequest(BaseModel):

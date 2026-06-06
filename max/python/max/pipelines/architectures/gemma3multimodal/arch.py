@@ -12,9 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.graph.weights import WeightsFormat
-from max.interfaces import InputModality, PipelineTask
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import SupportedArchitecture, TextAndVisionTokenizer
+from max.pipelines.modeling.types import InputModality, PipelineTask
 
 from .model import Gemma3_MultiModalModel
 from .model_config import Gemma3ForConditionalGenerationConfig
@@ -46,7 +46,6 @@ gemma3_multimodal_arch = SupportedArchitecture(
     input_modalities={InputModality.TEXT, InputModality.IMAGE},
     rope_type="normal",
     required_arguments={
-        "max_num_steps": 1,
         "enable_prefix_caching": False,
         "enable_chunked_prefill": False,
     },

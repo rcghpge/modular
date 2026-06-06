@@ -16,7 +16,7 @@ from std.collections import Optional
 from std.math import ceildiv, floor
 from std.os import getenv
 from std.sys import argv, get_defined_bool, get_defined_string
-from std.builtin.device_passable import DevicePassable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.memory import bitcast
 from std.benchmark import (
     Bench,
@@ -28,7 +28,7 @@ from std.benchmark import (
 )
 from std.compile import compile_info
 from std.gpu import block_dim, global_idx, grid_dim
-from std.gpu.host import DeviceBuffer, DeviceContext
+from std.gpu.host import DeviceBuffer, DeviceContext, DeviceFunction
 from std.random import Random
 from std.utils import IndexList
 
@@ -43,8 +43,10 @@ struct InitializationType(DevicePassable, Equatable, TrivialRegisterPassable):
 
     comptime device_type: AnyType = Self
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
-        target.bitcast[Self.device_type]()[] = self
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:
@@ -99,7 +101,7 @@ def bench_compile_time[
                 keep(s.unsafe_ptr())
             elif emission_kind == "ptx":
                 with DeviceContext() as ctx:
-                    var func = ctx.compile_function_unchecked[func]()
+                    var func = DeviceFunction[func, None](ctx)
                     # Ensure that the compilation step is not optimized away.
                     keep(UnsafePointer(to=func))
                     clobber_memory()

@@ -333,10 +333,8 @@ def stsm_helper[
 
         comptime for k in range(stsmx4_lane_size // 2):
             var pair = SIMD[vec_dtype, 2](
-                rebind[Scalar[vec_dtype]](vec[i * stsmx4_lane_size + 2 * k]),
-                rebind[Scalar[vec_dtype]](
-                    vec[i * stsmx4_lane_size + 2 * k + 1]
-                ),
+                vec[i * stsmx4_lane_size + 2 * k],
+                vec[i * stsmx4_lane_size + 2 * k + 1],
             )
             var casted = pair.cast[dst.dtype]()
             v[2 * k] = casted[0]
@@ -788,9 +786,9 @@ def blackwell_kernel_7[
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     cta_group: Int = 1,
 ](
-    c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    a: LayoutTensor[a_type, a_layout, MutAnyOrigin],
-    b: LayoutTensor[b_type, b_layout, MutAnyOrigin],
+    c: LayoutTensor[c_type, c_layout, _],
+    a: LayoutTensor[a_type, a_layout, _],
+    b: LayoutTensor[b_type, b_layout, _],
     ctx: DeviceContext,
 ) raises:
     var M = c.dim[0]()
@@ -936,8 +934,8 @@ def test_blackwell_kernel_7[
 
     var a_shape = Coord(m, k)
     var b_shape = Coord(
-        Idx[NType.static_value if transpose_b else KType.static_value](),
-        Idx[KType.static_value if transpose_b else NType.static_value](),
+        Idx[NType.static_value if transpose_b else KType.static_value],
+        Idx[KType.static_value if transpose_b else NType.static_value],
     )
     var c_shape = Coord(m, n)
 
@@ -985,9 +983,9 @@ def test_blackwell_kernel_7[
         b_swizzle=b_swizzle,
         cta_group=2,
     ](
-        c_tt.to_layout_tensor().as_any_origin(),
-        a_tt.to_layout_tensor().as_any_origin(),
-        b_tt.to_layout_tensor().as_any_origin(),
+        c_tt.to_layout_tensor(),
+        a_tt.to_layout_tensor(),
+        b_tt.to_layout_tensor(),
         ctx,
     )
 
@@ -1007,9 +1005,9 @@ def test_blackwell_kernel_7[
                 b_swizzle=b_swizzle,
                 cta_group=2,
             ](
-                c_tt.to_layout_tensor().as_any_origin(),
-                a_tt.to_layout_tensor().as_any_origin(),
-                b_tt.to_layout_tensor().as_any_origin(),
+                c_tt.to_layout_tensor(),
+                a_tt.to_layout_tensor(),
+                b_tt.to_layout_tensor(),
                 ctx,
             )
 
@@ -1100,7 +1098,7 @@ def benchmark_blackwell_matmul(ctx: DeviceContext) raises:
                 a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
                 b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
                 benchmark=True,
-            ](ctx, Idx(shape[0]), Idx[shape[1]](), Idx[shape[2]]())
+            ](ctx, shape[0], Idx[shape[1]], Idx[shape[2]])
         except error:
             print("error")
 
@@ -1124,4 +1122,4 @@ def main() raises:
             cluster_shape=StaticTuple[Int32, 3](2, 1, 1),
             a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
             b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
-        ](ctx, Idx(4096), Idx[4096](), Idx[4096]())
+        ](ctx, Idx[4096], Idx[4096], Idx[4096])

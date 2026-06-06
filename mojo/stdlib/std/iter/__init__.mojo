@@ -54,6 +54,7 @@ for squared in map[square](values):
 """
 
 from std.builtin.constrained import _constrained_conforms_to
+from std.builtin.rebind import downcast
 from std.sys.intrinsics import _type_is_eq_parse_time
 
 
@@ -181,6 +182,48 @@ trait Iterator(ImplicitlyDestructible, Movable):
         """
         return (0, None)
 
+    def nth(var self, n: Int) -> Optional[Self.Element]:
+        """Advances the iterator by `n` elements (destroying them) and returns
+        the next element, or `None` if the iterator is exhausted first.
+
+        Args:
+            n: The 0-indexed position of the element to return. Must be
+                non-negative.
+
+        Returns:
+            The element at index `n`, or `None` if the iterator has fewer than
+            `n + 1` remaining elements.
+
+        Constraints:
+            `Self.Element` must conform to `ImplicitlyDestructible` so the
+            intermediate elements can be discarded.
+
+        Examples:
+
+        ```mojo
+        var l = [10, 20, 30, 40]
+        print(iter(l).nth(0).value())   # 10
+        print(iter(l).nth(3).value())   # 40
+        var missing = iter(l).nth(10)   # None
+        ```
+        """
+        comptime assert conforms_to(Self.Element, ImplicitlyDestructible)
+        debug_assert[assert_mode="safe"](n >= 0, "nth: n must be non-negative")
+        try:
+            for _ in range(n):
+                # `Self.Element` is only declared `Movable` on the trait, so a
+                # bare `_ = self.__next__()` won't type-check. Funnel the
+                # discard through the conformance we asserted above. Drop
+                # this workaround once MOCO-3947 lets us put the bound in a
+                # `where` clause on the method.
+                var elem = self.__next__()
+                _ = rebind_var[
+                    downcast[Self.Element, Movable & ImplicitlyDestructible]
+                ](elem^)
+            return self.__next__()
+        except StopIteration:
+            return None
+
 
 @always_inline
 def iter(
@@ -234,6 +277,55 @@ def next[
         StopIteration: If the iterator is exhausted.
     """
     return iterator.__next__()
+
+
+# ===-----------------------------------------------------------------------===#
+# empty
+# ===-----------------------------------------------------------------------===#
+
+
+@fieldwise_init
+struct _Empty[T: Movable](
+    ImplicitlyCopyable,
+    Iterable,
+    IterableOwned,
+    Iterator,
+):
+
+    """Iterator that yields nothing."""
+
+    comptime Element = Self.T
+
+    comptime IteratorType[
+        iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
+    ]: Iterator = Self
+
+    comptime IteratorOwnedType: Iterator = Self
+
+    def __iter__(var self) -> Self.IteratorOwnedType:
+        return self^
+
+    def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
+        return self.copy()
+
+    def __next__(mut self) raises StopIteration -> Self.Element:
+        raise StopIteration()
+
+    def bounds(self) -> Tuple[Int, Optional[Int]]:
+        return Tuple(0, Optional(0))
+
+
+@always_inline
+def empty[T: Movable]() -> _Empty[T]:
+    """Creates an iterator that yields nothing.
+
+    Parameters:
+        T: Type of the iterator's notional elements.
+
+    Returns:
+        An iterator that yields nothing.
+    """
+    return _Empty[T]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -412,7 +504,6 @@ struct _ZipIterator[origin: Origin, *Ts: Iterator](
                     UnsafePointer(to=res[i]).destroy_pointee()
 
             std.memory.forget_deinit(res^)
-
             raise StopIteration
 
     def bounds(self) -> Tuple[Int, Optional[Int]]:

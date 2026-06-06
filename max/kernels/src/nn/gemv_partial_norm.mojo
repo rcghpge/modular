@@ -126,7 +126,6 @@ through 15 are reserved for future per-iteration instrumentation."""
 )
 @__name(
     t"gemv_partial_norm_kernel_{c_type}_{a_type}_{b_type}_{num_threads}_{tile_n}",
-    mangle=True,
 )
 def gemv_partial_norm_kernel[
     c_type: DType,
@@ -261,15 +260,15 @@ def gemv_partial_norm_kernel[
         comptime for i in range(tile_n):
             var vec_weight_tile = weight_tile.vectorize[1, simd_width]()
             var b_vec = vec_weight_tile[i, thread_idx.x]
-            tile_w.store(Coord(Idx(i), Idx(0)), rebind[WeightVecType](b_vec))
+            tile_w.store(Coord(i, Idx[0]), b_vec)
 
         var act_vec = act_tile.vectorize[1, simd_width]()[0, thread_idx.x]
-        var act_native = rebind[NativeVecType](act_vec)
+        var act_native = act_vec
         comptime for j in range(tile_n):
             var weight_native = rebind[NativeVecType](
                 tile_w.vectorize[1, simd_width]()[j, 0]
             )
-            var local_accum = rebind[Scalar[accum_type]](acc[0, j])
+            var local_accum = acc[0, j]
             var ac = act_native.cast[accum_type]()
             var bc = weight_native.cast[accum_type]()
             comptime for l in range(simd_width):
@@ -287,7 +286,7 @@ def gemv_partial_norm_kernel[
     ](row_major[1, tile_n * k_warp_num]())
 
     comptime for ni in range(tile_n):
-        var val = warp.sum(rebind[Scalar[accum_type]](acc[0, ni]))
+        var val = warp.sum(acc[0, ni])
         if lid == 0:
             shmem[0, wid * tile_n + ni] = val
     barrier()
@@ -325,9 +324,7 @@ def gemv_partial_norm_kernel[
         var vals = SIMD[accum_type, tile_n](0)
         comptime for jj in range(k_warp_num):
             comptime for ni in range(tile_n):
-                vals[ni] += rebind[Scalar[accum_type]](
-                    shmem[0, jj * tile_n + ni]
-                )
+                vals[ni] += shmem[0, jj * tile_n + ni]
 
         if is_normed_block:
             comptime for ni in range(tile_n):
@@ -397,12 +394,10 @@ def gemv_partial_norm_kernel[
             var vec_data = SIMD[accum_type, simd_width](0)
             var gamma_val = SIMD[a_type, simd_width](0)
             if idx < n_normed:
-                vec_data = rebind[CVecType](
-                    normed_output.load[simd_width](Coord(Idx(0), Idx(idx)))
+                vec_data = normed_output.load[simd_width](
+                    Coord(Idx[0], idx)
                 ).cast[accum_type]()
-                gamma_val = rebind[AVecType](
-                    gamma.load[simd_width](Coord(Idx(idx)))
-                )
+                gamma_val = gamma.load[simd_width](Coord(idx))
 
             comptime if enable_trace:
                 if tid == 0:
@@ -428,7 +423,7 @@ def gemv_partial_norm_kernel[
             if idx < n_normed:
                 var gamma_accum = gamma_val.cast[accum_type]()
                 var out = (vec_data * norm_factor * gamma_accum).cast[c_type]()
-                normed_output.store[simd_width](Coord(Idx(0), Idx(idx)), out)
+                normed_output.store[simd_width](Coord(Idx[0], idx), out)
 
             comptime if enable_trace:
                 if tid == 0:
@@ -593,7 +588,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     var n_normed = Int(gamma.dim[0]())
     var n = Int(weight.dim[0]())
 
-    var y_layout = row_major(Coord(Idx(m), Idx(n)))
+    var y_layout = row_major(Coord(m, n))
     var y = TileTensor[c_type, type_of(y_layout), MutAnyOrigin](
         y_scratch, y_layout
     )
@@ -613,7 +608,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     @__copy_capture(normed_output)
     @parameter
     def output_fn[
-        width: Int, alignment: Int
+        width: SIMDSize, alignment: Int
     ](coords: IndexList[2], val: SIMD[c_type, width]) -> None:
         var idx = normed_output.layout(Coord(coords))
         normed_output.ptr.store[width=width, alignment=alignment](idx, val)

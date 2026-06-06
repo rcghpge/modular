@@ -16,10 +16,16 @@ modular_py_test(
             "test_benchmark_datasets_functional.py",
         ],
     ),
+    env = {
+        # Cap the tokenizer spawn pool so unit tests don't fan out across
+        # cpu_count workers.
+        "MAX_BENCHMARK_MAX_TOKENIZER_THREADS": "2",
+    },
     deps = [
         "//max/python/max/benchmark:benchmark_serving_lib",
         "//max/python/max/benchmark/benchmark_shared",
-        "//max/python/max/diagnostics",
+        "//max/python/max/profiler",
+        requirement("msgspec"),
         requirement("numpy"),
         requirement("pillow"),
         requirement("pydantic"),
@@ -35,6 +41,11 @@ modular_py_test(
 modular_py_test(
     name = "test_benchmark_datasets_functional",
     srcs = ["test_benchmark_datasets_functional.py"],
+    env = {
+        # Cap the tokenizer spawn pool so the functional tests don't fan
+        # out across cpu_count workers.
+        "MAX_BENCHMARK_MAX_TOKENIZER_THREADS": "2",
+    },
     tags = [
         "requires-network",
     ],

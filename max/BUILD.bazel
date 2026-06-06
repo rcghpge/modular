@@ -10,13 +10,16 @@ package_group(
     name = "consumers",
     packages = [
         "//",  # root BUILD.bazel file
+        "//Faux/...",
         "//GraphCompiler/...",
         "//Kernels/...",
         "//SDK/...",
         "//bazel/...",
         "//docs/...",
         "//examples/...",  # OSS only
+        "//mach/tools/...",  # mach engine's Python benchmark/MEF tooling
         "//max/...",
+        "//max_private/...",  # private-only entrypoints + tool parsers
         "//oss/...",
         "//oss/modular/max/...",
         "//utils/...",

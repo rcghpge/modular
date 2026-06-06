@@ -35,6 +35,7 @@ from std.gpu.compute.arch.tcgen05 import (
     tcgen05_ld,
     tcgen05_load_wait,
     tcgen05_st,
+    tcgen05_store_wait,
 )
 from std.gpu.primitives.warp import _vote_nvidia_helper
 from std.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
@@ -61,7 +62,7 @@ from layout.tma_async import (
     TMATensorTile,
 )
 from std.memory import bitcast
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
 )
 from nn.attention.mha_mask import MHAMask, MASK_VALUE
@@ -71,6 +72,7 @@ from std.utils.numerics import get_accum_type, min_or_neg_inf
 from std.utils.static_tuple import StaticTuple
 from linalg.arch.sm100.mma import smem_descriptor
 
+from nn.attention.gpu.nvidia.sm100.attention import SM100_RESERVED_SMEM_BYTES
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
     elect,
     LocalTensor,
@@ -82,8 +84,8 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
     MBarPipeline,
     sub_ftz,
 )
-from nn.attention.gpu.nvidia.sm90.attention import KVTMATile
-from std.builtin.device_passable import DevicePassable
+from nn.attention.gpu.nvidia.common import KVTMATile
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.sys._assembly import inlined_assembly
 
 
@@ -195,8 +197,10 @@ struct MLA_Decode_Pack[
     var lse_accum_split_ptr: Self.SplitAccumType
     comptime device_type: AnyType = Self
 
-    def _to_device_type(self, target: MutOpaquePointer[_]):
-        target.bitcast[Self.device_type]()[] = self
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode(self, target)
 
     @staticmethod
     def get_type_name() -> String:
@@ -264,8 +268,13 @@ struct MLA_SM100_Decode_Config:
     comptime TMEM_O: Int = 0
     comptime TMEM_S0: Int = Self.TMEM_O + 256
     comptime TMEM_S1: Int = Self.TMEM_S0 + 32
-    # Reserve 6 S slots (6 * 32 = 192 columns) to accommodate up to 6 pipeline stages.
-    # TMEM_S0..TMEM_S5 occupy columns 256..447. CORR_SCALE follows at 448.
+    # Upper bound on pipeline stages — kernels pick `num_kv_stages` ≤ this
+    # at config time, and TMEM is laid out to fit the worst case so
+    # downstream offsets (CORR_SCALE etc.) stay stable across configs.
+    # 6 stages × 32 cols/stage = 192 cols, sitting in TMEM cols 256..447
+    # between TMEM_O (256 cols) and CORR_SCALE (col 448), within the 512
+    # total TMEM columns on SM100.  Bump only if a kernel needs deeper
+    # KV pipelining and the resulting layout still fits.
     comptime MAX_TMEM_S_SLOTS: Int = 6
     comptime TMEM_CORR_SCALE: Int = Self.TMEM_S0 + Self.MAX_TMEM_S_SLOTS * 32
     comptime TMEM_CORR_LI: Int = Self.TMEM_CORR_SCALE + 1
@@ -280,7 +289,9 @@ struct MLA_SM100_Decode_Config:
     var content_swizzle_mode: TensorMapSwizzle  # FP8 content: SWIZZLE_64B
     var rope_swizzle_mode: TensorMapSwizzle  # BF16 rope: SWIZZLE_128B
     comptime MMA_K = 16
-    comptime sm100_smem_carveout = B200.shared_memory_per_multiprocessor - 1024
+    comptime sm100_smem_carveout = (
+        B200.shared_memory_per_multiprocessor - SM100_RESERVED_SMEM_BYTES
+    )
     comptime sm100_tmem_cols = 512
     comptime mbar_size = size_of[DType.int64]()  # 8
     comptime cta_group = 1  # TODO: support 2
@@ -295,6 +306,15 @@ struct MLA_SM100_Decode_Config:
     var per_token_scales_per_stage: Int  # BN_QK(64) tokens * 1 scale * sizeof(float32)(4) = 256 bytes per stage
     var decode_layout_g: Bool  # Layout G fold path (BM=32, MMA_M=32)
     var BK_PV: Int  # K of PV MMA. Sentinel default = BN_QK.
+    # Threshold (in log2 domain) below which the softmax rescale of the
+    # running output `O` and `mi` is SKIPPED. When `diff = mi - new_max`
+    # is greater than or equal to this threshold (i.e. the running max
+    # grew by less than `-threshold` in log2 domain), the rescale is
+    # treated as a no-op (scale_for_old_max = 1.0, new_max = mi). This
+    # matches FlashMLA's `-6.0` (TokenSpeed's `6.0`) and trades a tiny
+    # numerical bias for a saved `exp2` + TMEM publish on every iteration
+    # where the running max grows by less than ~6 in log2 domain.
+    var skip_correction_threshold: Float32
 
     def __init__(
         out self,
@@ -321,6 +341,10 @@ struct MLA_SM100_Decode_Config:
         # block sizes; existing call sites that don't pass these stay on 64.
         bn_qk: Int = 0,
         bk_pv: Int = 0,
+        # Threshold (in log2 domain) below which the softmax rescale of
+        # `O` and `mi` is skipped. Default `-6.0` matches FlashMLA's
+        # value.
+        skip_correction_threshold: Float32 = -6.0,
     ):
         self.num_q_heads = num_q_heads
         self.num_kv_heads = num_q_heads // group
@@ -328,6 +352,7 @@ struct MLA_SM100_Decode_Config:
         self.depth = depth
         self.q_depth = q_depth
         self.rope_depth = q_depth - depth
+        self.skip_correction_threshold = skip_correction_threshold
 
         self.decode_layout_g = decode_layout_g
         # Layout G uses the 1x4 datapath (BM=MMA_M=32); Layout E uses 2x2 (=64).
@@ -385,9 +410,9 @@ struct MLA_SM100_Decode_Config:
             and not per_token_scale_rope_aware
         )
         if _old_fp8_converter:
-            self.num_threads = 128 * 4
+            self.num_threads = WARPGROUP_SIZE * 4
         else:
-            self.num_threads = 128 * 3
+            self.num_threads = WARPGROUP_SIZE * 3
 
         # 4 bytes for the TMEM base pointer
         var smem_use = 4
@@ -3318,16 +3343,11 @@ struct MLA_SM100_Decode_Common[
         comptime SlidingWindowMask: Bool = (
             MaskTypeName == "SlidingWindowCausalMask"
         )
-        # Window size: 0 if not sliding.  Recovered from the trait-defined
-        # `mask_strategies()` method (the same channel SM100 MHA uses for
-        # sliding-window peeling) so we never touch `Self.MaskType.window_size`
-        # — that struct parameter is not exposed on the `MHAMask` trait and
-        # would fail type-checking even inside the comptime if guard.
-        comptime _sliding_window_size: Int = Int(
-            Self.MaskType.mask_strategies[Self.config.BM, Self.config.BN_QK]()[
-                0
-            ]._upper_triangular_window_size
-        )
+        # Window size: 0 if not sliding. The `MHAMask.sliding_window_size()`
+        # trait method is the canonical channel for this — `Self.MaskType.
+        # window_size` would fail type-checking inside the comptime if guard
+        # because it's a struct parameter, not exposed on the trait.
+        comptime _sliding_window_size: Int = Self.MaskType.sliding_window_size()
 
         # Same S base / stride as in mma()
         var s0_tmem = tmem_addr + UInt32(Self.config.TMEM_S0)
@@ -3575,9 +3595,8 @@ struct MLA_SM100_Decode_Common[
                 )
             current_max *= log2e_f32
 
-            # every softmax thread signals arrival on the shared-mem barrier
-            comptime rescale_threshold: Float32 = Float32(
-                -8 if size_of[Self.q_type]() >= 2 else 0
+            comptime rescale_threshold: Float32 = (
+                Self.config.skip_correction_threshold
             )
             # Double-buffered write/read: even iterations use buffer 0,
             # odd iterations use buffer 1.  Branchless selection via
@@ -3619,9 +3638,7 @@ struct MLA_SM100_Decode_Common[
             comptime for i in range(0, half_load // 2):
                 var element = float2_register[i]
                 float2_register[i] = exp2(element.fma(log2e_f32, -new_max))
-                float2_current_sum += rebind[SIMD[Self.AccumType, 2]](
-                    float2_register[i]
-                )
+                float2_current_sum += float2_register[i]
 
             # compute softmax using S_tmem_slot -> produce probabilities in regs
             # Expose correction scalars in SMEM for Correction warpgroup.
@@ -3642,6 +3659,7 @@ struct MLA_SM100_Decode_Common[
                     repeat=1,
                     pack=False,
                 ](corr_scale_tmem, _scale_tuple)
+                tcgen05_store_wait()
                 #  signal to the correction warpgroup:
                 c_prod.commit()
 
@@ -3992,11 +4010,7 @@ struct MLA_SM100_Decode_Common[
             Self.MaskType.get_type_name() == "SlidingWindowCausalMask"
         )
         comptime if _sliding_window_mask_corr:
-            comptime _W_corr: Int = Int(
-                Self.MaskType.mask_strategies[
-                    Self.config.BM, Self.config.BN_QK
-                ]()[0]._upper_triangular_window_size
-            )
+            comptime _W_corr: Int = Self.MaskType.sliding_window_size()
             var _global_lo_corr = max(
                 offset_position.cache_len() + 1 - _W_corr, 0
             )
@@ -4078,6 +4092,7 @@ struct MLA_SM100_Decode_Common[
                             o_tmem_subtile,
                             _o_st_corr,
                         )
+                        tcgen05_store_wait()
                 o_cons.release()
             tiles_done += 1
 

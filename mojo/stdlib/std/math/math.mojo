@@ -950,12 +950,7 @@ def log[
 
     comptime if is_nvidia_gpu() and dtype == DType.float32:
         comptime ln2 = 0.69314718055966295651160180568695068359375
-        return (
-            _call_ptx_intrinsic[
-                instruction="lg2.approx.f32", constraints="=f,f"
-            ](x)
-            * ln2
-        )
+        return ln2 * log2(x)
 
     return _log_base[27](x)
 
@@ -990,7 +985,7 @@ def log2[
 
     comptime if is_nvidia_gpu() and dtype == DType.float32:
         return _call_ptx_intrinsic[
-            instruction="lg2.approx.f32", constraints="=f,f"
+            instruction="lg2.approx.ftz.f32", constraints="=f,f"
         ](x)
     elif is_amd_gpu() and dtype in (DType.float32, DType.float16):
         return _call_amdgcn_intrinsic[
@@ -1119,6 +1114,9 @@ def tanh[
     Returns:
         The result of the elementwise tanh operation.
     """
+
+    comptime if CurrentPlugin.tanh_fn[dtype, width]:
+        return comptime (CurrentPlugin.tanh_fn[dtype, width].value())(x)
 
     comptime if is_nvidia_gpu():
         comptime instruction = "tanh.approx.f32"
@@ -3850,7 +3848,7 @@ def max[dtype: DType, //](x: SIMD[dtype, _], y: type_of(x), /) -> type_of(x):
 
 
 @always_inline
-def max[T: Copyable & Comparable](x: T, *ys: T) -> T:
+def max[T: Copyable & Comparable & ImplicitlyDestructible](x: T, *ys: T) -> T:
     """Gets the maximum value from a sequence of values.
 
     Parameters:
@@ -3918,7 +3916,7 @@ def min[dtype: DType, //](x: SIMD[dtype, _], y: type_of(x), /) -> type_of(x):
 
 
 @always_inline
-def min[T: Copyable & Comparable](x: T, *ys: T) -> T:
+def min[T: Copyable & Comparable & ImplicitlyDestructible](x: T, *ys: T) -> T:
     """Gets the minimum value from a sequence of values.
 
     Parameters:

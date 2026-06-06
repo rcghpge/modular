@@ -12,11 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 from .context import (
+    GrammarEnforcementState,
     PixelContext,
     SpecDecodingState,
+    StructuredOutputRegionDelimiters,
     TextAndVisionContext,
     TextContext,
-    TTSContext,
 )
 from .context_validators import (
     validate_aspect_ratio_args,
@@ -33,9 +34,10 @@ from .pixel_context_validators import (
 )
 
 __all__ = [
+    "GrammarEnforcementState",
     "PixelContext",
     "SpecDecodingState",
-    "TTSContext",
+    "StructuredOutputRegionDelimiters",
     "TextAndVisionContext",
     "TextContext",
     "validate_aspect_ratio_args",

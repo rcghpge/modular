@@ -48,7 +48,7 @@ from layout.tma_async import (
 )
 from layout import ComptimeInt, CoordLike, Layout, RowMajorLayout, TileTensor
 from layout.tile_layout import row_major as tt_row_major
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
     KVTMATile,
 )
@@ -176,11 +176,7 @@ struct MLA_SM100_Decode_QKV_FP8[
             Self.config.decoding_warp_split_k,
         ],
     ) -> Int:
-        comptime _W: Int = Int(
-            Self.MaskType.mask_strategies[Self.config.BM, Self.config.BN_QK]()[
-                0
-            ]._upper_triangular_window_size
-        )
+        comptime _W: Int = Self.MaskType.sliding_window_size()
         var global_lo = max(offset_position.cache_len() + 1 - _W, 0)
         var local_lo = max(global_lo - offset_position.kv_start_row, 0)
         return local_lo // Self.config.BN_QK
@@ -215,7 +211,6 @@ struct MLA_SM100_Decode_QKV_FP8[
     )
     @__name(
         t"sm100_mla_decode_qkv_fp8_{Self.q_type}_{Self.kv_type}_{Self.output_type}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
-        mangle=True,
     )
     def kernel(
         # Q TMA is FP8 with SWIZZLE_64B (same as KV)

@@ -16,7 +16,7 @@ from std.math import align_down, ceildiv
 from std.math.uutils import udivmod
 
 
-from std.os import abort
+from std.os import abort, getenv
 from std.ffi import _get_global_or_null, external_call
 from std.sys.info import align_of, simd_width_of, size_of
 
@@ -92,11 +92,12 @@ from linalg.utils import (
     partial_simd_store,
 )
 from std.gpu import block_dim, block_idx, thread_idx
-from std.gpu.host import get_gpu_target, DeviceContext
+from std.gpu.host import get_gpu_target, DeviceBuffer, DeviceContext
 from std.gpu.host._amdgpu_hip import HIP
 from std.gpu.host._nvidia_cuda import CUDA
 from std.gpu.host.info import _is_sm10x_gpu
 from layout import (
+    Coord,
     Idx,
     IntTuple,
     Layout,
@@ -134,6 +135,7 @@ from .conv_utils import (
     get_partition,
     reorder_padding,
 )
+from .gpu.amd.dispatch_3d import dispatch_amd_4wave_conv3d
 from .gpu.im2col_matmul_3d import dispatch_im2col_matmul_conv3d
 from .gpu.matmul_1x1x1_conv3d import dispatch_1x1x1_matmul_conv3d
 from .gpu.nvidia.sm100.qslice_conv3d import dispatch_qslice_conv3d_sm100
@@ -340,7 +342,7 @@ def _m_to_n_ho_wo_nhwc(m: Int, HO: Int, WO: Int) -> IndexList[3]:
 
         Returns (IndexList):
             The translated 3d indices in (N, Hout, Wout) format.
-    TODO(Fixel): This utility should be generalized into a im2col util
+    TODO: This utility should be generalized into a im2col util
     class with some additional layout agnostic logic.
     """
     var n, rem = divmod(m, HO * WO)
@@ -2932,7 +2934,7 @@ def pack_filter_from_fcrs(
         # Reinterpret as int64 for pack_filter (matches existing convention).
         var rscf_tile = TileTensor(
             rscf_buf.bitcast[Scalar[DType.int64]](),
-            row_major((Idx(dim_R), Idx(dim_S), Idx(dim_C), Idx(dim_F))),
+            row_major((dim_R, dim_S, dim_C, dim_F)),
         )
         pack_filter(rscf_tile, packed_filter, num_groups)
     else:
@@ -2966,11 +2968,11 @@ def pack_filter_from_fcrs(
             rscf_buf.bitcast[Scalar[DType.int64]](),
             row_major(
                 (
-                    Idx(dim_Q),
-                    Idx(dim_R),
-                    Idx(dim_S),
-                    Idx(dim_C),
-                    Idx(dim_F),
+                    dim_Q,
+                    dim_R,
+                    dim_S,
+                    dim_C,
+                    dim_F,
                 )
             ),
         )
@@ -3252,7 +3254,6 @@ def conv_nhwc_direct[
 
 @__name(
     t"conv2d_gpu_naive_nhwc_rscf_{input_type}_{filter_type}_{output_type}",
-    mangle=True,
 )
 def conv2d_gpu_naive_nhwc_rscf[
     input_layout: Layout,
@@ -3950,20 +3951,20 @@ def _conv_miopen[
         @__copy_capture(filter_frsc_ptr, F_dim, C_dim, R_dim, S_dim)
         @always_inline
         def transpose_fcrs_to_frsc[
-            _width: Int, _rank: Int, alignment: Int = 1
-        ](coords: IndexList[_rank]):
-            var f = coords[0]
-            var r = coords[1]
-            var s = coords[2]
-            var c = coords[3]
-            var val = filter.load_linear[width=_width](Index(f, c, r, s))
+            _width: Int, alignment: Int = 1
+        ](coords: Coord):
+            var f = Int(coords[0].value())
+            var r = Int(coords[1].value())
+            var s = Int(coords[2].value())
+            var c = Int(coords[3].value())
+            var val = filter.load[width=_width]((f, c, r, s))
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
             )
             filter_frsc_ptr.store(out_idx, val)
 
         elementwise[transpose_fcrs_to_frsc, 1, target="gpu"](
-            IndexList[4](F_dim, R_dim, S_dim, C_dim), ctx
+            (F_dim, R_dim, S_dim, C_dim), ctx
         )
         filter_shape[0] = UInt64(F_dim)
         filter_shape[1] = UInt64(C_dim)
@@ -3981,20 +3982,20 @@ def _conv_miopen[
         @__copy_capture(filter_frsc_ptr, R_dim, S_dim, C_dim, F_dim)
         @always_inline
         def transpose_rscf_to_frsc[
-            _width: Int, _rank: Int, alignment: Int = 1
-        ](coords: IndexList[_rank]):
-            var f = coords[0]
-            var r = coords[1]
-            var s = coords[2]
-            var c = coords[3]
-            var val = filter.load_linear[width=_width](Index(r, s, c, f))
+            _width: Int, alignment: Int = 1
+        ](coords: Coord):
+            var f = Int(coords[0].value())
+            var r = Int(coords[1].value())
+            var s = Int(coords[2].value())
+            var c = Int(coords[3].value())
+            var val = filter.load[width=_width]((r, s, c, f))
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
             )
             filter_frsc_ptr.store(out_idx, val)
 
         elementwise[transpose_rscf_to_frsc, 1, target="gpu"](
-            IndexList[4](F_dim, R_dim, S_dim, C_dim), ctx
+            (F_dim, R_dim, S_dim, C_dim), ctx
         )
 
         filter_shape[0] = UInt64(F_dim)
@@ -4016,14 +4017,14 @@ def _conv_miopen[
         @__copy_capture(filter_frsc_ptr, Q_dim, R_dim, S_dim, C_dim, F_dim)
         @always_inline
         def transpose_qrscf_to_fqrsc[
-            _width: Int, _rank: Int, alignment: Int = 1
-        ](coords: IndexList[_rank]):
-            var f = coords[0]
-            var q = coords[1]
-            var r = coords[2]
-            var s = coords[3]
-            var c = coords[4]
-            var val = filter.load_linear[width=_width](Index(q, r, s, c, f))
+            _width: Int, alignment: Int = 1
+        ](coords: Coord):
+            var f = Int(coords[0].value())
+            var q = Int(coords[1].value())
+            var r = Int(coords[2].value())
+            var s = Int(coords[3].value())
+            var c = Int(coords[4].value())
+            var val = filter.load[width=_width]((q, r, s, c, f))
             var out_idx = (
                 f * Q_dim * R_dim * S_dim * C_dim
                 + q * R_dim * S_dim * C_dim
@@ -4034,7 +4035,7 @@ def _conv_miopen[
             filter_frsc_ptr.store(out_idx, val)
 
         elementwise[transpose_qrscf_to_fqrsc, 1, target="gpu"](
-            Index(F_dim, Q_dim, R_dim, S_dim, C_dim), ctx
+            (F_dim, Q_dim, R_dim, S_dim, C_dim), ctx
         )
 
         filter_shape[0] = UInt64(F_dim)
@@ -4282,17 +4283,18 @@ def _conv_miopen[
         @parameter
         @__copy_capture(output_tmp)
         @always_inline
-        def miopen_epilogue[
-            _width: Int, _rank: Int, alignment: Int = 1
-        ](coords: IndexList[_rank]):
-            epilogue(coords, output_tmp.load_linear[width=_width](coords))
+        def miopen_epilogue[_width: Int, alignment: Int = 1](coords: Coord):
+            epilogue(
+                coord_to_index_list(coords),
+                output_tmp.load[width=_width](coords),
+            )
 
         elementwise[
             miopen_epilogue,
             simd_width_of[output_type, target=get_gpu_target()](),
             target="gpu",
         ](
-            coord_to_index_list(output.layout.shape_coord()),
+            output.layout.shape_coord(),
             ctx,
         )
         _ = output_tmp_data^
@@ -4641,7 +4643,246 @@ def conv_gpu[
             ):
                 return
 
-        # AMD GPU path: use MIOpen for conv2d.
+        # AMD MI355X (CDNA4): try the 4-wave implicit-GEMM conv first;
+        # falls back to MIOpen for shapes / configs the kernel can't
+        # cover. Beats MIOpen by ~1.2-2.6x on FLUX VAE / ResNet shapes
+        # on MI355X (see `bench_amd_4wave_conv_vs_miopen.mojo`). When
+        # `has_residual` is set, the dispatcher routes to the in-kernel
+        # fused residual path (`amd_4wave_conv[has_residual=True]`).
+        comptime if has_amd_gpu_accelerator():
+            from nn.conv.gpu.amd.dispatch import dispatch_amd_4wave_conv2d
+            from linalg.utils import elementwise_epilogue_type as _ew_2d_t
+
+            @parameter
+            @always_inline
+            def _amd_4wave_dispatch[
+                _epilogue_2d: Optional[_ew_2d_t] = None,
+            ]() raises -> Bool:
+                return dispatch_amd_4wave_conv2d[
+                    input_type,
+                    filter_type,
+                    output_type,
+                    filter_is_fcrs,
+                    has_residual=has_residual,
+                    elementwise_lambda_fn=_epilogue_2d,
+                ](
+                    input,
+                    filter,
+                    output,
+                    rebind[IndexList[2]](stride),
+                    rebind[IndexList[2]](dilation),
+                    rebind[IndexList[2]](symmetric_padding),
+                    num_groups,
+                    ctx,
+                    source_ptr=source_ptr,
+                    beta=beta,
+                )
+
+            # MIOpen-oracle audit. Gated on `MODULAR_CONV_AUDIT_MIOPEN=1`;
+            # re-runs the same conv via MIOpen and emits a single line
+            # with `max_abs / L1_rel / mean_abs` vs the just-produced
+            # `output`.
+            #
+            # Subtlety: the user-supplied `maybe_epilogue_func` is a
+            # `@__copy_capture(output, ...)` closure that writes its
+            # result into the *real* `output` tensor (see e.g.
+            # `Conv2dResidualAdd.output_fn` in kernels) — its
+            # write destination is captured, not derived from the
+            # `output` arg of `_conv_miopen`. So we bracket the MIOpen
+            # call with snapshot/restore D2D copies: snapshot 4-wave
+            # output → run MIOpen (overwrites `output` via the user's
+            # epilogue) → diff snapshot vs `output` → restore `output`
+            # from snapshot so downstream layers still see the 4-wave
+            # result.
+            #
+            # Residual convs (`has_residual=True`) extend the host-side
+            # diff with `+ beta * source[i]`, since MIOpen has no
+            # residual path and the 4-wave kernel does the residual add
+            # in-kernel. We pull `source_ptr`'s contents to host along
+            # with the other two buffers and combine them in the loop.
+            @parameter
+            @always_inline
+            def _audit_amd_4wave_vs_miopen() raises:
+                if getenv("MODULAR_CONV_AUDIT_MIOPEN", "0") != "1":
+                    return
+
+                var n_elements = output_lt.size()
+
+                # Snapshot our 4-wave result before MIOpen overwrites
+                # `output` via the user epilogue.
+                var our_buf = ctx.enqueue_create_buffer[output_type](n_elements)
+                var output_view = DeviceBuffer[output_type](
+                    ctx, output.ptr, n_elements, owning=False
+                )
+                ctx.enqueue_copy(our_buf, output_view)
+
+                # Run MIOpen + user's epilogue. The epilogue writes to
+                # its captured `output`, so `output` now contains
+                # MIOpen+bias.
+                _conv_miopen[
+                    maybe_epilogue_func=maybe_epilogue_func,
+                    filter_is_fcrs=filter_is_fcrs,
+                ](
+                    input,
+                    filter,
+                    output,
+                    stride,
+                    dilation,
+                    symmetric_padding,
+                    num_groups,
+                    ctx,
+                )
+
+                # Pull both to host for elementwise diff.
+                var host_our = ctx.enqueue_create_host_buffer[output_type](
+                    n_elements
+                )
+                var host_mio = ctx.enqueue_create_host_buffer[output_type](
+                    n_elements
+                )
+                var host_src = ctx.enqueue_create_host_buffer[output_type](
+                    n_elements if (
+                        has_residual and source_ptr.__bool__()
+                    ) else 1
+                )
+                ctx.enqueue_copy(host_our, our_buf)
+                ctx.enqueue_copy(host_mio, output_view)
+
+                comptime if has_residual:
+                    if source_ptr:
+                        var source_view = DeviceBuffer[output_type](
+                            ctx, source_ptr.value(), n_elements, owning=False
+                        )
+                        ctx.enqueue_copy(host_src, source_view)
+                ctx.synchronize()
+
+                var max_abs: Float32 = 0
+                var sum_abs_diff: Float32 = 0
+                var sum_abs_ref: Float32 = 0
+                # The 4-wave residual path does
+                # `result = (conv + beta*source) + bias` in kernel +
+                # epilogue. Our oracle here mirrors that as
+                # `mio + beta*source` (MIOpen already includes +bias
+                # from the user epilogue). Order of `+bias` and
+                # `+beta*source` differs but they commute modulo BF16
+                # rounding; the noise floor is unaffected.
+                var beta_f32: Float32 = beta
+                for i in range(n_elements):
+                    var a = Float32(host_our[i])
+                    var b = Float32(host_mio[i])
+
+                    comptime if has_residual:
+                        if source_ptr:
+                            b += beta_f32 * Float32(host_src[i])
+
+                    var d = abs(a - b)
+                    if d > max_abs:
+                        max_abs = d
+                    sum_abs_diff += d
+                    sum_abs_ref += abs(b)
+                var l1_rel = (
+                    sum_abs_diff / sum_abs_ref if sum_abs_ref
+                    > 0 else Float32(0)
+                )
+                var mean_abs = sum_abs_diff / Float32(n_elements)
+
+                var in_n = input_lt.dim[0]()
+                var in_h = input_lt.dim[1]()
+                var in_w = input_lt.dim[2]()
+                var in_c = input_lt.dim[3]()
+                var out_c = output_lt.dim[3]()
+                var r_dim: Int
+                var s_dim: Int
+
+                comptime if filter_is_fcrs:
+                    r_dim = filter_lt.dim[2]()
+                    s_dim = filter_lt.dim[3]()
+                else:
+                    r_dim = filter_lt.dim[0]()
+                    s_dim = filter_lt.dim[1]()
+
+                var resid_flag = 1 if has_residual else 0
+                print(
+                    "[CONV_AUDIT]",
+                    " N=",
+                    in_n,
+                    " H=",
+                    in_h,
+                    " W=",
+                    in_w,
+                    " C_in=",
+                    in_c,
+                    " C_out=",
+                    out_c,
+                    " R=",
+                    r_dim,
+                    " S=",
+                    s_dim,
+                    " stride=",
+                    stride[0],
+                    " has_resid=",
+                    resid_flag,
+                    " max_abs=",
+                    max_abs,
+                    " L1_rel=",
+                    l1_rel,
+                    " mean_abs=",
+                    mean_abs,
+                )
+
+                # Restore our 4-wave output so downstream layers don't
+                # see MIOpen results.
+                ctx.enqueue_copy(output_view, our_buf)
+
+                _ = our_buf^
+                _ = host_our^
+                _ = host_mio^
+                _ = host_src^
+
+            comptime if maybe_epilogue_func:
+                # Wrap the 4D NHWC epilogue into a 2D GEMM-space
+                # epilogue for the AMD 4-wave kernel. The kernel calls
+                # this with (m, n) coords where
+                # `m = batch*H_out*W_out + h*W_out + w` and `n = channel`.
+                # Mirrors the SM100 wrapper just above.
+                comptime _amd_4wave_epi = maybe_epilogue_func.value()
+                var _amd_4wave_out_h = output_lt.dim[1]()
+                var _amd_4wave_out_w = output_lt.dim[2]()
+                var _amd_4wave_hw = _amd_4wave_out_h * _amd_4wave_out_w
+
+                @parameter
+                @always_inline
+                @__copy_capture(_amd_4wave_hw, _amd_4wave_out_w)
+                def _amd_4wave_void_epilogue[
+                    _dtype: DType,
+                    _width: SIMDSize,
+                    *,
+                    alignment: Int = 1,
+                ](coords_2d: IndexList[2], val: SIMD[_dtype, _width]):
+                    var m = coords_2d[0]
+                    var n = coords_2d[1]
+                    var batch_idx: Int
+                    var rem: Int
+                    var h_idx: Int
+                    var w_idx: Int
+                    batch_idx, rem = divmod(m, _amd_4wave_hw)
+                    h_idx, w_idx = divmod(rem, _amd_4wave_out_w)
+                    _amd_4wave_epi(
+                        IndexList[4](batch_idx, h_idx, w_idx, n),
+                        rebind[SIMD[output_type, _width]](val),
+                    )
+
+                if _amd_4wave_dispatch[
+                    Optional[_ew_2d_t](_amd_4wave_void_epilogue)
+                ]():
+                    _audit_amd_4wave_vs_miopen()
+                    return
+            else:
+                if _amd_4wave_dispatch[]():
+                    _audit_amd_4wave_vs_miopen()
+                    return
+
+        # AMD GPU path: fall back to MIOpen for conv2d.
         comptime if has_amd_gpu_accelerator():
             _conv_miopen[
                 maybe_epilogue_func=maybe_epilogue_func,
@@ -4667,10 +4908,10 @@ def conv_gpu[
                 input.ptr,
                 row_major(
                     (
-                        Idx(_in_s[0]),
-                        Idx(_in_s[1]),
-                        Idx(_in_s[2]),
-                        Idx(_in_s[3]),
+                        _in_s[0],
+                        _in_s[1],
+                        _in_s[2],
+                        _in_s[3],
                     )
                 ),
             )
@@ -4679,10 +4920,10 @@ def conv_gpu[
                 filter.ptr,
                 row_major(
                     (
-                        Idx(_filt_s[0]),
-                        Idx(_filt_s[1]),
-                        Idx(_filt_s[2]),
-                        Idx(_filt_s[3]),
+                        _filt_s[0],
+                        _filt_s[1],
+                        _filt_s[2],
+                        _filt_s[3],
                     )
                 ),
             )
@@ -4707,10 +4948,10 @@ def conv_gpu[
                     output_tmp_lt.ptr.unsafe_origin_cast[MutAnyOrigin](),
                     row_major(
                         (
-                            Idx(_out_tmp_s[0]),
-                            Idx(_out_tmp_s[1]),
-                            Idx(_out_tmp_s[2]),
-                            Idx(_out_tmp_s[3]),
+                            _out_tmp_s[0],
+                            _out_tmp_s[1],
+                            _out_tmp_s[2],
+                            _out_tmp_s[3],
                         )
                     ),
                 )
@@ -4730,17 +4971,16 @@ def conv_gpu[
                 @__copy_capture(output_tmp_lt)
                 @always_inline
                 def epilogue_wrapper[
-                    _width: Int, _rank: Int, alignment: Int = 1
-                ](coords: IndexList[_rank]):
+                    _width: Int, alignment: Int = 1
+                ](coords: Coord):
                     comptime align = align_of[SIMD[output_type, _width]]()
-                    vec = output_tmp_lt.load[width=_width](
-                        rebind[IndexList[4]](coords)
-                    )
-                    epilogue(coords, vec)
+                    var idx = rebind[IndexList[4]](coord_to_index_list(coords))
+                    vec = output_tmp_lt.load[width=_width](idx)
+                    epilogue(idx, vec)
 
                 elementwise[
                     epilogue_wrapper, simd_width_of[output_type](), target="gpu"
-                ](output_lt.runtime_layout.shape.value.canonicalize(), ctx)
+                ](Coord(output_lt.runtime_layout.shape.value), ctx)
 
                 _ = output_tmp_data^
 
@@ -4750,10 +4990,10 @@ def conv_gpu[
                     output.ptr,
                     row_major(
                         (
-                            Idx(_out_s[0]),
-                            Idx(_out_s[1]),
-                            Idx(_out_s[2]),
-                            Idx(_out_s[3]),
+                            _out_s[0],
+                            _out_s[1],
+                            _out_s[2],
+                            _out_s[3],
                         )
                     ),
                 )
@@ -4788,9 +5028,9 @@ def conv_gpu[
     elif input_lt.rank == 5:
         comptime if filter_is_fcrs:
             conv3d_cudnn[input_type, filter_type, output_type](
-                input_lt,
-                filter_lt,
-                output_lt,
+                input,
+                filter,
+                output,
                 rebind[IndexList[3]](stride),
                 rebind[IndexList[3]](dilation),
                 rebind[IndexList[3]](symmetric_padding),
@@ -4843,6 +5083,92 @@ def conv_gpu[
                 ):
                     return
 
+            # AMD MI355X (CDNA4) native 3D implicit-GEMM: extends the
+            # 4-wave conv2d loader to NDHWC inputs and Q×R×S filters.
+            # Beats the im2col path by ~1.3–2.4× on WAN VAE shapes.
+            # Returns False on shapes it can't cover (Q==1, C_in below
+            # simd_width, C_out<64, non-square stride, FCQRS filter,
+            # grouped, dilated); caller then falls through to the
+            # im2col path below.
+            comptime if has_amd_gpu_accelerator():
+                from linalg.utils import (
+                    elementwise_epilogue_type as _ew_3d_t,
+                )
+
+                # Wrap the 5D NDHWC epilogue into a 2D GEMM-space
+                # void epilogue for the 4-wave kernel. The kernel
+                # calls this with (m, n) coords where m flattens
+                # batch*d*h*w and n is the channel.
+                comptime if maybe_epilogue_func:
+                    comptime _amd_3d_epi_5d = maybe_epilogue_func.value()
+                    var _amd_3d_D_out = output_lt.dim[1]()
+                    var _amd_3d_H_out = output_lt.dim[2]()
+                    var _amd_3d_W_out = output_lt.dim[3]()
+                    var _amd_3d_HW = _amd_3d_H_out * _amd_3d_W_out
+                    var _amd_3d_DHW = _amd_3d_D_out * _amd_3d_HW
+
+                    @parameter
+                    @always_inline
+                    @__copy_capture(_amd_3d_DHW, _amd_3d_HW, _amd_3d_W_out)
+                    def amd_3d_void_epilogue[
+                        _dtype: DType,
+                        _width: SIMDSize,
+                        *,
+                        alignment: Int = 1,
+                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
+                        var m = coords_2d[0]
+                        var n = coords_2d[1]
+                        var batch_idx: Int
+                        var rem: Int
+                        var d_idx: Int
+                        var rem2: Int
+                        var h_idx: Int
+                        var w_idx: Int
+                        batch_idx, rem = divmod(m, _amd_3d_DHW)
+                        d_idx, rem2 = divmod(rem, _amd_3d_HW)
+                        h_idx, w_idx = divmod(rem2, _amd_3d_W_out)
+                        _amd_3d_epi_5d(
+                            IndexList[5](batch_idx, d_idx, h_idx, w_idx, n),
+                            rebind[SIMD[output_type, _width]](val),
+                        )
+
+                    if dispatch_amd_4wave_conv3d[
+                        input_type,
+                        filter_type,
+                        output_type,
+                        filter_is_fcqrs=filter_is_fcrs,
+                        elementwise_lambda_fn=Optional[_ew_3d_t](
+                            amd_3d_void_epilogue
+                        ),
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[3]](stride),
+                        rebind[IndexList[3]](dilation),
+                        rebind[IndexList[3]](symmetric_padding),
+                        num_groups,
+                        ctx,
+                    ):
+                        return
+                else:
+                    if dispatch_amd_4wave_conv3d[
+                        input_type,
+                        filter_type,
+                        output_type,
+                        filter_is_fcqrs=filter_is_fcrs,
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[3]](stride),
+                        rebind[IndexList[3]](dilation),
+                        rebind[IndexList[3]](symmetric_padding),
+                        num_groups,
+                        ctx,
+                    ):
+                        return
+
             # Phase 2 path: explicit im2col + _matmul_gpu for bf16 3D convs.
             # Covers 3x3x3, 3x1x1, etc. and falls back to the naive kernel on
             # shapes it can't handle (grouped, dilated, non-bf16, etc.).
@@ -4879,7 +5205,6 @@ def conv_gpu[
 
 @__name(
     t"conv3d_gpu_naive_ndhwc_qrscf_{input_type}_{filter_type}_{output_type}",
-    mangle=True,
 )
 def conv3d_gpu_naive_ndhwc_qrscf[
     input_layout: Layout,
@@ -5029,9 +5354,9 @@ def _conv3d_cudnn_depth_tiled[
     filter_type: DType,
     output_type: DType,
 ](
-    input: LayoutTensor[input_type, ...],
-    filter: LayoutTensor[filter_type, ...],
-    output: LayoutTensor[output_type, ...],
+    input: TileTensor[input_type, ...],
+    filter: TileTensor[filter_type, ...],
+    output: TileTensor[output_type, ...],
     stride: IndexList[3],
     dilation: IndexList[3],
     padding: IndexList[3],
@@ -5047,17 +5372,20 @@ def _conv3d_cudnn_depth_tiled[
     comptime INT32_MAX_VAL = 2147483647
     comptime FIND_WS_CAP = 256 * 1024 * 1024
 
-    var N = input.dim[0]()
-    var D_in = input.dim[1]()
-    var H = input.dim[2]()
-    var W = input.dim[3]()
-    var C = input.dim[4]()
+    # TileTensor.dim[N]() returns Scalar[tensor.linear_idx_type]; wrap in Int()
+    # so the index arithmetic below unifies across input/filter/output (each
+    # carries a distinct linear_idx_type that does not auto-unify).
+    var N = Int(input.dim[0]())
+    var D_in = Int(input.dim[1]())
+    var H = Int(input.dim[2]())
+    var W = Int(input.dim[3]())
+    var C = Int(input.dim[4]())
 
-    var K_d = filter.dim[2]()  # kernel depth (Q in FCQRS)
-    var F_out = filter.dim[0]()  # output channels
-    var D_out = output.dim[1]()
-    var H_out = output.dim[2]()
-    var W_out = output.dim[3]()
+    var K_d = Int(filter.dim[2]())  # kernel depth (Q in FCQRS)
+    var F_out = Int(filter.dim[0]())  # output channels
+    var D_out = Int(output.dim[1]())
+    var H_out = Int(output.dim[2]())
+    var W_out = Int(output.dim[3]())
 
     var eff_k = (K_d - 1) * dilation[0] + 1  # effective kernel depth
 
@@ -5294,9 +5622,9 @@ def _conv3d_cudnn[
     filter_type: DType,
     output_type: DType,
 ](
-    input: LayoutTensor[input_type, ...],
-    filter: LayoutTensor[filter_type, ...],
-    output: LayoutTensor[output_type, ...],
+    input: TileTensor[input_type, ...],
+    filter: TileTensor[filter_type, ...],
+    output: TileTensor[output_type, ...],
     stride: IndexList[3],
     dilation: IndexList[3],
     padding: IndexList[3],
@@ -5711,9 +6039,9 @@ def conv3d_cudnn[
     filter_type: DType,
     output_type: DType,
 ](
-    input: LayoutTensor[input_type, ...],
-    filter: LayoutTensor[filter_type, ...],
-    output: LayoutTensor[output_type, ...],
+    input: TileTensor[input_type, ...],
+    filter: TileTensor[filter_type, ...],
+    output: TileTensor[output_type, ...],
     stride: IndexList[3],
     dilation: IndexList[3],
     padding: IndexList[3],

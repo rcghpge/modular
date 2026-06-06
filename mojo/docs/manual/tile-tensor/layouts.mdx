@@ -15,7 +15,7 @@ for `TileTensor`. In particular, it discusses the following types:
   a set of logical coordinates (like (*x*, *y*) in a two-dimensional array) to a
   linear index value. Layouts can also describe more complex organizations, like
   a matrix subdivided into tiles.
-- [`Coord`](/docs/layout/coord/Coord/) is a tuple-like container for
+- [`Coord`](/docs/std/utils/coord/Coord/) is a tuple-like container for
   storing integer coordinates that supports both compile-time and run-time
   values. It's used for defining logical coordinates and layout shapes, among
   other things.
@@ -151,28 +151,28 @@ representation of the layout in the form of a (*shape*:*stride*) pair.
 ### `Coord` and `Idx`: representing multidimensional coordinates {#coord-and-idx}
 
 Logical coordinates—and a layout's shape and size—are represented using the
-[`Coord`](/docs/layout/coord/Coord/) type, a tuple-like structure that
+[`Coord`](/docs/std/utils/coord/Coord/) type, a tuple-like structure that
 can hold both compile-time and run-time integer values. Each element of a
 `Coord` is either an integer value or a nested tuple.
 
 You can create a simple `Coord` with all compile-time values or all run-time
-values using the [`coord()`](/docs/layout/coord/coord-function/) function:
+values using the [`coord()`](/docs/std/utils/coord/coord/) function:
 
 ```mojo
 var comptime_coords = coord[4, 4]()
 var runtime_coords = coord[DType.int32]((a, b, c))
 ```
 
-When you need to mix compile-time and run-time values, you can use the
-[`Idx()`](/docs/layout/coord/Idx/)
-function to generate a compile-time or run-time integer.
+You can mix compile-time and run-time values:
+use a plain `Int` (or any `CoordLike`) for run-time values,
+and [`Idx[N]`](/docs/std/utils/coord/Idx/) for compile-time integers.
 
 ```mojo
-comptime comptime_int = Idx[columns]()  # Compile-time int from parameter value
-comptime comptime_int2 = Idx(4)  # Compile-time int from Int literal
-var runtime_int = Idx(rows)  # Run-time int from dynamic value
-var mixed_shape = Coord((Idx(rows), Idx[columns]()))
-var mixed_layout = row_major((Idx(rows), Idx[columns]()))
+comptime comptime_int = Idx[columns]  # Compile-time int from parameter value
+comptime comptime_int2 = Idx[4]  # Compile-time int from Int literal
+var runtime_int = rows # Run-time int from dynamic value
+var mixed_shape = Coord((rows, Idx[columns]))
+var mixed_layout = row_major((rows, Idx[columns]))
 ```
 
 You can create nested `Coord` values by passing nested tuples to the
@@ -180,7 +180,7 @@ constructor—either tuples of values constructed with `Idx`, or tuples
 of `Coord` values:
 
 ```mojo
-var shape1 = Coord((Idx[6](), Idx[8]()))
+var shape1 = Coord((Idx[6], Idx[8]))
 var shape2 = Coord((coord[2, 2](), coord[3, 4]()))
 var shape3 = Coord((shape1, shape2))
 print(shape3)
@@ -190,7 +190,7 @@ print(shape3)
 ((6, 8), ((2, 2), (3, 4)))
 ```
 
-The [`coord`](/docs/layout/coord/) package provides a number of
+The [`coord`](/docs/std/utils/coord/) module provides a number of
 functions for working with `Coords`.
 
 ### Modes
@@ -350,7 +350,7 @@ var a, b = 4, 8
 var row_major_runtime = row_major(coord[DType.int32]((a, b)))
 
 # Mixed layout with one run-time dimension and one compile-time dimension
-var row_major_mixed = row_major((Idx(rows), Idx[columns]()))
+var row_major_mixed = row_major((rows, Idx[columns]))
 ```
 
 ### Tiled layouts

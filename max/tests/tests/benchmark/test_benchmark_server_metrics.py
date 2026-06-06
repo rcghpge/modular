@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 import pytest
 from max.benchmark.benchmark_shared.metrics import (
+    BenchmarkResult,
     RatePercentileMetrics,
-    ServingBenchmarkMetrics,
     SpecDecodeMetrics,
     SpecDecodeStats,
     StandardPercentileMetrics,
@@ -76,9 +76,9 @@ maxserve_batch_execution_time_milliseconds_count{batch_type="TG"} 100.0
 
 def _make_metrics(
     metrics_by_endpoint: dict[str, ParsedMetrics],
-) -> ServingBenchmarkMetrics:
-    """Minimal text-gen ServingBenchmarkMetrics carrying only the fields under test."""
-    return ServingBenchmarkMetrics(
+) -> BenchmarkResult:
+    """Minimal text-gen BenchmarkResult carrying only the fields under test."""
+    return BenchmarkResult(
         task_type="text",
         max_concurrency=10,
         peak_gpu_memory_mib=[],
@@ -691,6 +691,41 @@ maxserve_spec_decode_acceptance_rate_per_position_count{position="1"} 100
     assert parsed.per_pos_rate_count == {0: 100, 1: 100}
 
 
+def test_parse_spec_decode_metrics_handles_maxserve_avg_acceptance_length() -> (
+    None
+):
+    """MAX Serve's avg acceptance length histogram is parsed for bench deltas."""
+    metrics_text = """# HELP maxserve_spec_decode_avg_acceptance_length Avg len.
+# TYPE maxserve_spec_decode_avg_acceptance_length histogram
+maxserve_spec_decode_avg_acceptance_length_sum 25.0
+maxserve_spec_decode_avg_acceptance_length_count 5
+"""
+
+    parsed = parse_spec_decode_metrics(metrics_text)
+
+    assert parsed is not None
+    assert parsed.avg_acceptance_length_sum == 25.0
+    assert parsed.avg_acceptance_length_count == 5.0
+
+
+def test_calculate_spec_decode_stats_from_maxserve_avg_length_histogram_only() -> (
+    None
+):
+    """Acceptance length is derived from the avg-acceptance-length histogram delta."""
+    before = SpecDecodeMetrics(
+        avg_acceptance_length_sum=10.0, avg_acceptance_length_count=2.0
+    )
+    after = SpecDecodeMetrics(
+        avg_acceptance_length_sum=30.0, avg_acceptance_length_count=5.0
+    )
+
+    stats = calculate_spec_decode_stats(before, after)
+
+    assert stats is not None
+    assert stats.acceptance_rate is None
+    assert stats.acceptance_length == pytest.approx((30.0 - 10.0) / (5.0 - 2.0))
+
+
 def test_calculate_spec_decode_stats_matches_vllm_math() -> None:
     """Acceptance math uses benchmark-window deltas like vLLM bench serve."""
     before = SpecDecodeMetrics(
@@ -738,7 +773,7 @@ def test_calculate_spec_decode_stats_from_maxserve_histogram_only() -> None:
     assert stats.num_drafts is None
     assert stats.draft_tokens is None
     assert stats.accepted_tokens is None
-    assert stats.acceptance_rate is None
+    assert stats.acceptance_rate == pytest.approx(69.0)
     assert stats.acceptance_length is None
 
 
@@ -770,3 +805,38 @@ def test_spec_decode_stats_to_result_dict_omits_missing_aggregates() -> None:
     assert stats.to_result_dict() == {
         "spec_decode_per_position_acceptance_rates": [0.88, 0.50],
     }
+
+
+def test_spec_decode_metrics_iadd() -> None:
+    """SpecDecodeMetrics.__iadd__ merges all fields by summation."""
+    a = SpecDecodeMetrics(
+        num_drafts=10,
+        num_draft_tokens=30,
+        num_accepted_tokens=20,
+        accepted_per_pos={0: 10, 1: 7},
+        per_pos_rate_sum={0: 800.0, 1: 500.0},
+        per_pos_rate_count={0: 10, 1: 10},
+        avg_acceptance_length_sum=5.0,
+        avg_acceptance_length_count=2.0,
+    )
+    b = SpecDecodeMetrics(
+        num_drafts=5,
+        num_draft_tokens=15,
+        num_accepted_tokens=11,
+        accepted_per_pos={0: 5, 2: 3},
+        per_pos_rate_sum={0: 400.0, 2: 300.0},
+        per_pos_rate_count={0: 5, 2: 5},
+        avg_acceptance_length_sum=3.0,
+        avg_acceptance_length_count=1.0,
+    )
+
+    a += b
+
+    assert a.num_drafts == 15
+    assert a.num_draft_tokens == 45
+    assert a.num_accepted_tokens == 31
+    assert a.accepted_per_pos == {0: 15, 1: 7, 2: 3}
+    assert a.per_pos_rate_sum == {0: 1200.0, 1: 500.0, 2: 300.0}
+    assert a.per_pos_rate_count == {0: 15, 1: 10, 2: 5}
+    assert a.avg_acceptance_length_sum == pytest.approx(8.0)
+    assert a.avg_acceptance_length_count == pytest.approx(3.0)

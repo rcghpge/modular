@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+import logging
 import pickle
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -23,7 +24,6 @@ import pytest
 from max.driver import DeviceSpec, accelerator_count
 from max.dtype import DType
 from max.entrypoints.cli.config import parse_task_flags
-from max.interfaces import SamplingParamsGenerationConfigDefaults
 from max.pipelines import PIPELINE_REGISTRY
 from max.pipelines.lib import (
     KVCacheConfig,
@@ -33,10 +33,15 @@ from max.pipelines.lib import (
     PipelineRuntimeConfig,
     SamplingConfig,
 )
-from max.pipelines.lib.config import AudioGenerationConfig
-from max.pipelines.lib.config.config_enums import SupportedEncoding
-from max.pipelines.lib.config.speculative_config import SpeculativeConfig
+from max.pipelines.lib.config.config import (
+    _DISABLE_AUTO_DEVICE_GRAPH_CAPTURE_ARCHITECTURES,
+    _DISABLE_AUTO_OVERLAP_SCHEDULER_ARCHITECTURES,
+)
 from max.pipelines.lib.model_manifest import ModelManifest
+from max.pipelines.modeling.config_enums import SupportedEncoding
+from max.pipelines.modeling.types import SamplingParamsGenerationConfigDefaults
+from max.pipelines.modeling.types.task import PipelineTask
+from max.pipelines.speculative.config import SpeculativeConfig
 from test_common.mocks import (
     mock_estimate_memory_footprint,
     mock_pipeline_config_resolve,
@@ -416,7 +421,7 @@ class TestPipelineConfigUtilityMethods:
         even when runtime kwargs are also present.
 
         The CLI ``serve`` flow flattens every flag into ``PipelineConfig``
-        kwargs, so taylorseer/FBC/teacache fields and runtime fields like
+        kwargs, so taylorseer/FBC fields and runtime fields like
         ``max_batch_size`` arrive together. Cache fields must not be wiped
         when the runtime config gets reconstructed from the runtime kwargs.
         """
@@ -452,6 +457,44 @@ class TestPipelineConfigUtilityMethods:
 
         assert config.runtime.max_batch_size == 4
         assert config.runtime.denoising_cache.first_block_caching is True
+
+
+class TestNeedsBitmaskConstraints:
+    """Tests for the ``PipelineConfig.needs_bitmask_constraints`` property.
+
+    The property drives whether the bitmask path is compiled into the
+    sampler graph, the unified Eagle graph, and the D2H pinned buffer.
+    Tool-call grammars are server-generated when a tool parser is
+    configured, so the bitmask path must wire in for that case even
+    without ``--enable-structured-output``.
+    """
+
+    @mock_pipeline_config_resolve
+    @pytest.mark.parametrize(
+        "enable_structured_output,tool_parser,expected",
+        [
+            (False, None, False),
+            (True, None, True),
+            (False, "kimik2_5", True),
+            (True, "kimik2_5", True),
+        ],
+    )
+    def test_truth_table(
+        self,
+        enable_structured_output: bool,
+        tool_parser: str | None,
+        expected: bool,
+    ) -> None:
+        config = PipelineConfig(
+            models=ModelManifest(
+                {"main": MAXModelConfig(model_path="test/model")}
+            ),
+            sampling=SamplingConfig(
+                enable_structured_output=enable_structured_output
+            ),
+            runtime=PipelineRuntimeConfig(tool_parser=tool_parser),
+        )
+        assert config.needs_bitmask_constraints is expected
 
 
 class TestDraftModelDefaultsInheritance:
@@ -1502,7 +1545,7 @@ def test_validate_and_resolve_overlap_scheduler__auto_enable_device_graph_captur
         MAXModelConfig, "architecture_name", property(lambda self: arch_name)
     )
     # Force PIPELINE_REGISTRY.retrieve_architecture to return a custom arch.
-    arch = SimpleNamespace(name=arch_name)
+    arch = SimpleNamespace(name=arch_name, task=PipelineTask.TEXT_GENERATION)
     monkeypatch.setattr(
         PIPELINE_REGISTRY,
         "retrieve_architecture",
@@ -1523,7 +1566,6 @@ def test_validate_and_resolve_overlap_scheduler__auto_enable_device_graph_captur
             }
         ),
         runtime=PipelineRuntimeConfig(
-            max_num_steps=42,
             force=force,
             max_batch_size=max_batch_size,
         ),
@@ -1533,7 +1575,59 @@ def test_validate_and_resolve_overlap_scheduler__auto_enable_device_graph_captur
     assert config.runtime.device_graph_capture is expected_device_graph_capture
     if expected_device_graph_capture:
         assert config.runtime.enable_overlap_scheduler is True
-        assert config.runtime.max_num_steps == 1
+
+
+@prepare_registry
+@mock_pipeline_config_resolve
+def test_validate_and_resolve_overlap_scheduler__no_auto_enable_for_non_text_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Embeddings (and other non-text-generation) architectures must not
+    auto-enable the overlap scheduler or device graph capture.
+
+    Both features only support ``PipelineTask.TEXT_GENERATION`` (see
+    ``get_pipeline_for_task`` in registry.py). The auto-enable logic uses a
+    blacklist, so an embeddings architecture that is absent from the blacklist
+    (e.g. ``MPNetForMaskedLM``) would otherwise be incorrectly auto-enabled and
+    crash pipeline construction. Regression test for QUA-460.
+    """
+    arch_name = "MPNetForMaskedLM"
+    # Sanity check: the architecture is intentionally NOT in the blacklist, so
+    # the only thing preventing auto-enable is the pipeline-task guard.
+    assert arch_name not in _DISABLE_AUTO_DEVICE_GRAPH_CAPTURE_ARCHITECTURES
+    assert arch_name not in _DISABLE_AUTO_OVERLAP_SCHEDULER_ARCHITECTURES
+
+    monkeypatch.setattr(
+        MAXModelConfig, "architecture_name", property(lambda self: arch_name)
+    )
+    arch = SimpleNamespace(
+        name=arch_name, task=PipelineTask.EMBEDDINGS_GENERATION
+    )
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "retrieve_architecture",
+        Mock(return_value=arch),
+    )
+    monkeypatch.setattr(
+        "max.pipelines.lib.config.config.accelerator_api",
+        Mock(return_value="cuda"),
+    )
+
+    config = PipelineConfig(
+        models=ModelManifest(
+            {
+                "main": MAXModelConfig(
+                    model_path="test/model",
+                    device_specs=[DeviceSpec.accelerator()],
+                )
+            }
+        ),
+        runtime=PipelineRuntimeConfig(max_batch_size=16),
+    )
+    config._validate_and_resolve_overlap_scheduler()
+
+    assert config.runtime.device_graph_capture is False
+    assert config.runtime.enable_overlap_scheduler is False
 
 
 @prepare_registry
@@ -1546,7 +1640,7 @@ def test_validate_and_resolve_overlap_scheduler__no_device_graph_capture_for_pre
     monkeypatch.setattr(
         MAXModelConfig, "architecture_name", property(lambda self: arch_name)
     )
-    arch = SimpleNamespace(name=arch_name)
+    arch = SimpleNamespace(name=arch_name, task=PipelineTask.TEXT_GENERATION)
     monkeypatch.setattr(
         PIPELINE_REGISTRY,
         "retrieve_architecture",
@@ -1567,7 +1661,6 @@ def test_validate_and_resolve_overlap_scheduler__no_device_graph_capture_for_pre
             }
         ),
         runtime=PipelineRuntimeConfig(
-            max_num_steps=42,
             max_batch_size=16,
             pipeline_role="prefill_only",
         ),
@@ -1576,7 +1669,6 @@ def test_validate_and_resolve_overlap_scheduler__no_device_graph_capture_for_pre
 
     # Overlap scheduling should be auto-enabled for prefill_only.
     assert config.runtime.enable_overlap_scheduler is True
-    assert config.runtime.max_num_steps == 1
     # But device graph capture should NOT be auto-enabled.
     assert config.runtime.device_graph_capture is False
 
@@ -1598,7 +1690,9 @@ def test_validate_and_resolve_overlap_scheduler__auto_override(
                 property(lambda self: arch_name),
             )
             # Force PIPELINE_REGISTRY.retrieve_architecture to return a custom arch
-            arch = SimpleNamespace(name=arch_name)
+            arch = SimpleNamespace(
+                name=arch_name, task=PipelineTask.TEXT_GENERATION
+            )
             m.setattr(
                 PIPELINE_REGISTRY,
                 "retrieve_architecture",
@@ -1624,11 +1718,10 @@ def test_validate_and_resolve_overlap_scheduler__auto_override(
                         )
                     }
                 ),
-                runtime=PipelineRuntimeConfig(max_num_steps=42),
+                runtime=PipelineRuntimeConfig(),
             )
             config._validate_and_resolve_overlap_scheduler()
             assert config.runtime.enable_overlap_scheduler is True
-            assert config.runtime.max_num_steps == 1
 
     # Don't override if the device is CPU
     with patch_retrieve_architecture("LlamaForCausalLM"):
@@ -1677,7 +1770,6 @@ def test_validate_and_resolve_overlap_scheduler__auto_override(
             )
             config._validate_and_resolve_overlap_scheduler()
             assert config.runtime.enable_overlap_scheduler is True
-            assert config.runtime.max_num_steps == 1
 
     # Don't override for other architectures
     with patch_retrieve_architecture("SomeOtherArchitecture"):
@@ -1737,8 +1829,7 @@ def test_validate_and_resolve_overlap_scheduler__validate(
     with pytest.raises(ValueError):
         config._validate_and_resolve_overlap_scheduler()
 
-    # prefill_only with overlap scheduler is now allowed (experimental),
-    # the runtime just logs a warning and sets max_num_steps=1.
+    # prefill_only with overlap scheduler is now allowed (experimental).
     config = PipelineConfig(
         models=ModelManifest(
             {
@@ -1755,26 +1846,6 @@ def test_validate_and_resolve_overlap_scheduler__validate(
     )
     config._validate_and_resolve_overlap_scheduler()
     assert config.runtime.enable_overlap_scheduler is True
-    assert config.runtime.max_num_steps == 1
-
-    # Error out if user tries to enable overlap scheduler with AudioGenerationConfig
-    config = AudioGenerationConfig(
-        models=ModelManifest(
-            {
-                "main": MAXModelConfig(
-                    model_path="test/model",
-                    device_specs=[DeviceSpec.accelerator()],
-                )
-            }
-        ),
-        runtime=PipelineRuntimeConfig(
-            pipeline_role="prefill_and_decode",
-            enable_overlap_scheduler=True,
-        ),
-        audio_decoder=Mock(),
-    )
-    with pytest.raises(ValueError):
-        config._validate_and_resolve_overlap_scheduler()
 
     # Error out if user tries to enable overlap scheduler with structured output
     config = PipelineConfig(
@@ -1795,6 +1866,49 @@ def test_validate_and_resolve_overlap_scheduler__validate(
 
 @prepare_registry
 @mock_pipeline_config_resolve
+def test_validate_and_resolve_max_num_steps_deprecated_override(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Non-1 max_num_steps is deprecated, warned, and forced to 1."""
+    config = PipelineConfig(
+        models=ModelManifest(
+            {
+                "main": MAXModelConfig(
+                    model_path="test/model",
+                    device_specs=[DeviceSpec.accelerator()],
+                )
+            }
+        ),
+        runtime=PipelineRuntimeConfig(max_num_steps=10),
+    )
+    with caplog.at_level(logging.WARNING):
+        config._validate_and_resolve_max_num_steps()
+    assert config.runtime.max_num_steps == 1
+    assert "deprecated" in caplog.text.lower()
+    assert "10" in caplog.text
+
+
+@prepare_registry
+@mock_pipeline_config_resolve
+def test_validate_and_resolve_max_num_steps_legacy_default() -> None:
+    """Legacy max_num_steps=-1 resolves silently to 1."""
+    config = PipelineConfig(
+        models=ModelManifest(
+            {
+                "main": MAXModelConfig(
+                    model_path="test/model",
+                    device_specs=[DeviceSpec.accelerator()],
+                )
+            }
+        ),
+        runtime=PipelineRuntimeConfig(max_num_steps=-1),
+    )
+    config._validate_and_resolve_max_num_steps()
+    assert config.runtime.max_num_steps == 1
+
+
+@prepare_registry
+@mock_pipeline_config_resolve
 @pytest.mark.parametrize(
     "num_speculative_tokens,expected_device_graph_capture",
     [
@@ -1811,7 +1925,10 @@ def test_auto_device_graph_capture_eagle_gating(
 ) -> None:
     """Eagle arch auto-enables graph capture only when num_speculative_tokens <= 1."""
     monkeypatch.setattr(MAXModelConfig, "huggingface_model_repo", Mock())
-    arch = SimpleNamespace(name="UnifiedEagleLlama3ForCausalLM")
+    arch = SimpleNamespace(
+        name="UnifiedEagleLlama3ForCausalLM",
+        task=PipelineTask.TEXT_GENERATION,
+    )
     monkeypatch.setattr(
         PIPELINE_REGISTRY,
         "retrieve_architecture",
@@ -2034,3 +2151,69 @@ def test_resolve_default_tool_parser__no_arch_default_is_noop(
     )
     config._resolve_default_tool_parser()
     assert config.runtime.tool_parser is None
+
+
+@pytest.mark.parametrize("sentinel", ["none", "None", "NONE", "nOnE"])
+@prepare_registry
+@mock_pipeline_config_resolve
+def test_resolve_default_reasoning_parser__none_sentinel_disables(
+    monkeypatch: pytest.MonkeyPatch,
+    sentinel: str,
+) -> None:
+    """Passing the case-insensitive ``"none"`` sentinel explicitly disables
+    the reasoning parser, overriding the architecture default and normalizing
+    the runtime value to ``None``."""
+    arch = SimpleNamespace(
+        name="KimiK25ForConditionalGeneration",
+        reasoning_parser="kimik2_5",
+    )
+    retrieve_mock = Mock(return_value=arch)
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY, "retrieve_architecture", retrieve_mock
+    )
+
+    config = PipelineConfig(
+        models=ModelManifest({"main": MAXModelConfig(model_path="test/model")}),
+        runtime=PipelineRuntimeConfig(reasoning_parser=sentinel),
+    )
+    config.models["main"]._huggingface_config = SimpleNamespace(
+        architectures=["KimiK25ForConditionalGeneration"]
+    )
+
+    config._resolve_default_reasoning_parser()
+
+    assert config.runtime.reasoning_parser is None
+    retrieve_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("sentinel", ["none", "None", "NONE", "nOnE"])
+@prepare_registry
+@mock_pipeline_config_resolve
+def test_resolve_default_tool_parser__none_sentinel_disables(
+    monkeypatch: pytest.MonkeyPatch,
+    sentinel: str,
+) -> None:
+    """Passing the case-insensitive ``"none"`` sentinel explicitly disables
+    the tool parser, overriding the architecture default (including callable
+    defaults) and normalizing the runtime value to ``None``."""
+    arch = SimpleNamespace(
+        name="KimiK25ForConditionalGeneration",
+        tool_parser="kimik2_5",
+    )
+    retrieve_mock = Mock(return_value=arch)
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY, "retrieve_architecture", retrieve_mock
+    )
+
+    config = PipelineConfig(
+        models=ModelManifest({"main": MAXModelConfig(model_path="test/model")}),
+        runtime=PipelineRuntimeConfig(tool_parser=sentinel),
+    )
+    config.models["main"]._huggingface_config = SimpleNamespace(
+        architectures=["KimiK25ForConditionalGeneration"]
+    )
+
+    config._resolve_default_tool_parser()
+
+    assert config.runtime.tool_parser is None
+    retrieve_mock.assert_not_called()

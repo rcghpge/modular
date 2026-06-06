@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, ClassVar
 
 import numpy as np
 from max.driver import Buffer, Device
@@ -24,7 +25,7 @@ from max.engine import InferenceSession, Model
 from max.graph import BufferType, DeviceRef, Graph, TensorType
 from max.graph.weights import SafetensorWeights, Weights, WeightsAdapter
 from max.nn.comm import Signals
-from max.nn.kv_cache import KVCacheInputs, KVCacheParams
+from max.nn.kv_cache import KVCacheInputs
 from max.nn.layer import Module
 from max.nn.transformer import ReturnLogits
 from max.pipelines.core import TextContext
@@ -35,9 +36,11 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModelWithKVCache,
+)
+from max.pipelines.lib.utils import (
+    parse_state_dict_from_weights,
     upper_bounded_default,
 )
-from max.pipelines.lib.utils import parse_state_dict_from_weights
 from max.profiler import traced
 from transformers import AutoConfig
 
@@ -66,6 +69,28 @@ class MistralInputs(ModelInputs):
 
 
 class MistralModel(PipelineModelWithKVCache[TextContext]):
+    model_config_cls: ClassVar[type[Any]] = MistralConfig
+
+    @classmethod
+    def calculate_max_seq_len(
+        cls,
+        pipeline_config: PipelineConfig,
+        huggingface_config: AutoConfig,
+    ) -> int:
+        """Bounds ``max_length`` by ``max_position_embeddings`` (config is permissive)."""
+        try:
+            return upper_bounded_default(
+                upper_bound=huggingface_config.max_position_embeddings,
+                default=pipeline_config.model.max_length,
+            )
+        except ValueError as e:
+            raise ValueError(
+                f"Unable to infer max_length for {cls.__qualname__}, "
+                f"the provided max_length ({pipeline_config.model.max_length}) "
+                f"exceeds the model's max_position_embeddings "
+                f"({huggingface_config.max_position_embeddings})."
+            ) from e
+
     model: Model
     """Compiled and initialized model ready for inference."""
 
@@ -157,58 +182,6 @@ class MistralModel(PipelineModelWithKVCache[TextContext]):
             ),
             kv_cache_inputs=kv_cache_inputs,
         )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> MistralInputs:
-        assert isinstance(prev_model_inputs, MistralInputs)
-
-        row_offsets_size = prev_model_inputs.input_row_offsets.shape[0]
-        next_row_offsets = self._input_row_offsets_prealloc[:row_offsets_size]
-
-        return MistralInputs(
-            tokens=next_tokens,
-            input_row_offsets=next_row_offsets,
-            signal_buffers=self.signal_buffers,
-            return_n_logits=prev_model_inputs.return_n_logits,
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
-        )
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParams:
-        return MistralConfig.construct_kv_params(
-            huggingface_config=huggingface_config,
-            pipeline_config=pipeline_config,
-            devices=devices,
-            kv_cache_config=kv_cache_config,
-            cache_dtype=cache_dtype,
-        )
-
-    @classmethod
-    def calculate_max_seq_len(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        try:
-            return upper_bounded_default(
-                upper_bound=huggingface_config.max_position_embeddings,
-                default=pipeline_config.model.max_length,
-            )
-        except ValueError as e:
-            raise ValueError(
-                "Unable to infer max_length for Mistral, the provided "
-                f"max_length ({pipeline_config.model.max_length}) exceeds the "
-                f"model's max_position_embeddings "
-                f"({huggingface_config.max_position_embeddings})."
-            ) from e
 
     def graph_inputs(self) -> tuple[TensorType | BufferType, ...]:
         # Generate DeviceRef

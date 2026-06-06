@@ -83,7 +83,7 @@ def run_rms_norm_gpu[
     @__copy_capture(data_buf)
     @parameter
     def identity_output_fn[
-        width: Int, alignment: Int
+        width: SIMDSize, alignment: Int
     ](coords: IndexList[rank], val: SIMD[dtype, width]) -> None:
         var idx = data_buf.layout(Coord(coords))
         data_buf.raw_store[width=width, alignment=alignment](idx, val)
@@ -97,7 +97,7 @@ def run_rms_norm_gpu[
     for r in range(rows):
         var vec = TileTensor(
             data_h.unsafe_ptr() + r * cols,
-            row_major(Idx(cols)),
+            row_major(cols),
         )
         var rms_ref = compute_rms(vec, cols, epsilon)
         for c in range(cols):

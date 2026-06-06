@@ -30,7 +30,6 @@ from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, Shape, TensorType, ops
 from max.graph.weights import WeightData
-from max.kv_cache import PagedKVCacheManager
 from max.nn.attention.mask_config import MHAMaskVariant
 from max.nn.attention.multi_latent_attention import MLAPrefillMetadata
 from max.nn.attention.multi_latent_attention_fp8 import (
@@ -58,6 +57,7 @@ from max.nn.rotary_embedding import (
 from max.pipelines.architectures.deepseekV3_2.layers.sparse_mla import (
     SparseLatentAttentionWithRopeFp8,
 )
+from max.pipelines.kv_cache import PagedKVCacheManager
 from test_common.context_utils import create_text_context
 from test_common.graph_utils import is_b100_b200
 from torch.utils.dlpack import from_dlpack
@@ -235,7 +235,11 @@ def test_mla_decode_graph_sparse_smoke() -> None:
                 kv_params, list(g.inputs[6:])
             )
             assert kv_collection.attention_dispatch_metadata is not None
+            assert kv_collection.mla_num_partitions is not None
+            assert kv_collection.mla_effective_split_len is not None
             scalar_args = kv_collection.attention_dispatch_metadata
+            num_partitions_scalar = kv_collection.mla_num_partitions
+            effective_split_len_scalar = kv_collection.mla_effective_split_len
 
             w_uk, w_uk_scale = attn.w_uk
             w_uv, w_uv_scale = attn.w_uv
@@ -259,6 +263,8 @@ def test_mla_decode_graph_sparse_smoke() -> None:
                 1e-6,
                 v_head_dim,
                 scalar_args,
+                num_partitions_scalar,
+                effective_split_len_scalar,
                 w_uk_scale=w_uk_scale,
                 w_uv_scale=w_uv_scale,
                 quant_config=quant_config,
@@ -412,7 +418,11 @@ def test_mla_prefill_decode_graph_sparse_smoke() -> None:
                 kv_params, list(g.inputs[7:])
             )
             assert kv_collection.attention_dispatch_metadata is not None
+            assert kv_collection.mla_num_partitions is not None
+            assert kv_collection.mla_effective_split_len is not None
             scalar_args = kv_collection.attention_dispatch_metadata
+            num_partitions_scalar = kv_collection.mla_num_partitions
+            effective_split_len_scalar = kv_collection.mla_effective_split_len
 
             w_k, w_k_scale = attn.w_k
             w_uk, w_uk_scale = attn.w_uk
@@ -450,6 +460,8 @@ def test_mla_prefill_decode_graph_sparse_smoke() -> None:
                 1e-6,
                 v_head_dim,
                 scalar_args,
+                num_partitions_scalar,
+                effective_split_len_scalar,
                 w_k_scale=w_k_scale,
                 w_uk_scale=w_uk_scale,
                 w_uv_scale=w_uv_scale,

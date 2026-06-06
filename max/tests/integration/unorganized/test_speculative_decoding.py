@@ -20,21 +20,21 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 from max.driver import Buffer, DeviceSpec, accelerator_count
-from max.interfaces import (
+from max.nn.kv_cache import KVCacheInputs
+from max.pipelines import PIPELINE_REGISTRY, PipelineConfig
+from max.pipelines.core import TextContext
+from max.pipelines.lib.config.model_config import MAXModelConfig
+from max.pipelines.lib.model_manifest import ModelManifest
+from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
+from max.pipelines.modeling.types import (
     PipelineTokenizer,
     RequestID,
     SamplingParams,
     TokenBuffer,
 )
-from max.nn.kv_cache import KVCacheInputs
-from max.pipelines import PIPELINE_REGISTRY, PipelineConfig
-from max.pipelines.core import TextContext
-from max.pipelines.lib.config.model_config import MAXModelConfig
-from max.pipelines.lib.config.speculative_config import SpeculativeConfig
-from max.pipelines.lib.model_manifest import ModelManifest
-from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
-from max.pipelines.lib.speculative_decoding import (
-    StandaloneSpeculativeDecodingPipeline,
+from max.pipelines.speculative.config import SpeculativeConfig
+from max.pipelines.speculative.standalone import (
+    _StandaloneSpeculativeDecodingPipeline,
 )
 from test_common.pipeline_model_dummy import DUMMY_GEMMA_ARCH, DUMMY_LLAMA_ARCH
 from test_common.registry import prepare_registry
@@ -44,7 +44,7 @@ from test_common.registry import prepare_registry
 class SpeculativeDecodingSetup:
     model_name: str
     tokenizer: PipelineTokenizer  # type: ignore[type-arg]
-    pipeline: StandaloneSpeculativeDecodingPipeline
+    pipeline: _StandaloneSpeculativeDecodingPipeline
     context1: TextContext
     context2: TextContext
     req_id1: RequestID
@@ -77,15 +77,13 @@ def setup_speculative_decoding_pipeline(num_steps: int = 1):  # noqa: ANN201
             speculative_method="standalone",
             num_speculative_tokens=10,
         ),
-        runtime=PipelineRuntimeConfig(
-            max_num_steps=num_steps, max_batch_size=4
-        ),
+        runtime=PipelineRuntimeConfig(max_batch_size=4),
     )
     pipeline_config.model.kv_cache.kv_cache_page_size = 128
     pipeline_config.model.kv_cache.device_memory_utilization = 0.3
 
     tokenizer, pipeline = PIPELINE_REGISTRY.retrieve(pipeline_config)
-    assert isinstance(pipeline, StandaloneSpeculativeDecodingPipeline)
+    assert isinstance(pipeline, _StandaloneSpeculativeDecodingPipeline)
 
     # Create contexts for two test prompts
     req_id1 = RequestID()
@@ -258,7 +256,7 @@ def test_draft_model_encoding_selection() -> None:
             speculative_method="standalone",
             num_speculative_tokens=10,
         ),
-        runtime=PipelineRuntimeConfig(max_num_steps=1, max_batch_size=4),
+        runtime=PipelineRuntimeConfig(max_batch_size=4),
     )
     pipeline_config.model.kv_cache.kv_cache_page_size = 128
     pipeline_config.model.kv_cache.device_memory_utilization = 0.3
@@ -268,7 +266,7 @@ def test_draft_model_encoding_selection() -> None:
     pipeline_config.draft_model.quantization_encoding = "float32"
 
     _, pipeline = PIPELINE_REGISTRY.retrieve(pipeline_config)
-    assert isinstance(pipeline, StandaloneSpeculativeDecodingPipeline)
+    assert isinstance(pipeline, _StandaloneSpeculativeDecodingPipeline)
 
     # Test 2: When draft_model.quantization_encoding is None (fallback to first supported)
     # This test verifies that the fallback mechanism works when no explicit encoding is set
@@ -291,7 +289,7 @@ def test_draft_model_encoding_selection() -> None:
             speculative_method="standalone",
             num_speculative_tokens=10,
         ),
-        runtime=PipelineRuntimeConfig(max_num_steps=1, max_batch_size=4),
+        runtime=PipelineRuntimeConfig(max_batch_size=4),
     )
     pipeline_config2.model.kv_cache.kv_cache_page_size = 128
     pipeline_config2.model.kv_cache.device_memory_utilization = 0.3
@@ -302,7 +300,7 @@ def test_draft_model_encoding_selection() -> None:
 
     # The pipeline should still be created successfully, falling back to the first supported encoding
     _, pipeline2 = PIPELINE_REGISTRY.retrieve(pipeline_config2)
-    assert isinstance(pipeline2, StandaloneSpeculativeDecodingPipeline)
+    assert isinstance(pipeline2, _StandaloneSpeculativeDecodingPipeline)
 
 
 # TODO(SERVOPT-995): Bug with draft model device selection when target model
@@ -334,13 +332,13 @@ def test_kv_cache_claiming_protocol() -> None:
             speculative_method="standalone",
             num_speculative_tokens=10,
         ),
-        runtime=PipelineRuntimeConfig(max_num_steps=1, max_batch_size=4),
+        runtime=PipelineRuntimeConfig(max_batch_size=4),
     )
     pipeline_config.model.kv_cache.kv_cache_page_size = 128
     pipeline_config.model.kv_cache.device_memory_utilization = 0.3
 
     _tokenizer, pipeline = PIPELINE_REGISTRY.retrieve(pipeline_config)
-    assert isinstance(pipeline, StandaloneSpeculativeDecodingPipeline)
+    assert isinstance(pipeline, _StandaloneSpeculativeDecodingPipeline)
 
     # Create a test context
     tokens = np.array([1, 450, 6593], dtype=np.int64)

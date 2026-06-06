@@ -12,19 +12,30 @@
 # ===----------------------------------------------------------------------=== #
 
 import json
+import os
+import struct
+import sys
 import uuid
+from typing import Any
 from unittest.mock import patch
 
+import llguidance.hf
 import pytest
-from max.interfaces import (
+from llguidance import LLMatcher, LLTokenizer
+from llguidance._tokenizer import TokenizerWrapper
+from max.pipelines.architectures.minimax_m2.tool_parser import (
+    MinimaxM2ToolParser,
+)
+from max.pipelines.lib.tool_parsing import (
+    _TOOL_CALL_ID_LENGTH,
+    StreamingToolCallState,
+)
+from max.pipelines.modeling.types import (
     ParsedToolCall,
     ParsedToolCallDelta,
     ParsedToolResponse,
 )
-from max.pipelines.architectures.minimax_m2.tool_parser import (
-    _TOOL_CALL_ID_LENGTH,
-    MinimaxM2ToolParser,
-)
+from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
 def test_single_tool_call_parsing() -> None:
@@ -400,15 +411,11 @@ def test_numeric_parameter_values() -> None:
 
 def test_reset_clears_buffer() -> None:
     """Test that reset() clears the internal buffer and streaming state."""
-    from max.pipelines.architectures.minimax_m2.tool_parser import (
-        _StreamingToolCallState,
-    )
-
     parser = MinimaxM2ToolParser()
 
     parser._buffer = "some accumulated data"
     parser._state.sent_content_idx = 10
-    parser._state.tool_calls.append(_StreamingToolCallState())
+    parser._state.tool_calls.append(StreamingToolCallState())
 
     parser.reset()
 
@@ -421,11 +428,14 @@ def test_parse_delta_accumulates() -> None:
     """Test that parse_delta accumulates tokens in buffer."""
     parser = MinimaxM2ToolParser()
 
+    # Before the section marker fully lands, the result is None.
     result1 = parser.parse_delta("<minimax:")
-    result2 = parser.parse_delta("tool_call>")
-
     assert result1 is None
-    assert result2 is None
+
+    # Once the marker completes, returns [] (not None) so the streaming
+    # path knows to suppress raw structural tokens even with no deltas yet.
+    result2 = parser.parse_delta("tool_call>")
+    assert result2 == []
     assert parser._buffer == "<minimax:tool_call>"
 
 
@@ -433,7 +443,7 @@ def test_parse_delta_single_tool_call_streaming() -> None:
     """Test streaming a single tool call token by token."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -469,7 +479,7 @@ def test_parse_delta_multiple_tool_calls_streaming() -> None:
     uuid_first = uuid.UUID("11111111-1111-1111-1111-111111111111")
     uuid_second = uuid.UUID("22222222-2222-2222-2222-222222222222")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         side_effect=[uuid_first, uuid_second],
     ):
         parser = MinimaxM2ToolParser()
@@ -513,7 +523,7 @@ def test_parse_delta_with_content_before_tools() -> None:
     """Test streaming when there's content before tool calls section."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -602,7 +612,9 @@ def test_parse_delta_partial_marker_handling() -> None:
 
     result2 = parser.parse_delta("tool_call>")
 
-    assert result2 is None
+    # Once the section marker is complete, the parser is inside the
+    # tool-calls section and returns [] to signal suppression.
+    assert result2 == []
     assert "<minimax:tool_call>" in parser._buffer
 
 
@@ -610,7 +622,7 @@ def test_parse_delta_mid_token_splits() -> None:
     """Test streaming with tokens that split mid-tag."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -620,7 +632,7 @@ def test_parse_delta_mid_token_splits() -> None:
             "call>",
             "<invoke na",
             'me="get_we',
-            'ather">',
+            'ather">',  # spellchecker:disable-line
             "<parameter",
             ' name="loc',
             'ation">New',
@@ -655,7 +667,7 @@ def test_parse_delta_ignores_invoke_after_end_tag() -> None:
     """Test that invoke blocks after </minimax:tool_call> are not parsed."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -680,7 +692,7 @@ def test_parse_delta_multiple_tool_call_blocks() -> None:
     uuid_first = uuid.UUID("11111111-1111-1111-1111-111111111111")
     uuid_second = uuid.UUID("22222222-2222-2222-2222-222222222222")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         side_effect=[uuid_first, uuid_second],
     ):
         parser = MinimaxM2ToolParser()
@@ -735,7 +747,7 @@ def test_parse_delta_no_content_after_end_tag() -> None:
     """Test that text after </minimax:tool_call> produces no content deltas."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -774,7 +786,7 @@ def test_parse_delta_streaming_empty_invoke() -> None:
     """Test that a streaming invoke with no parameters produces a {} argument delta."""
     fixed_uuid = uuid.UUID("12345678-1234-5678-9abc-def012345678")
     with patch(
-        "max.pipelines.architectures.minimax_m2.tool_parser.uuid.uuid4",
+        "max.pipelines.lib.tool_parsing.uuid.uuid4",
         return_value=fixed_uuid,
     ):
         parser = MinimaxM2ToolParser()
@@ -797,3 +809,186 @@ def test_parse_delta_streaming_empty_invoke() -> None:
             ParsedToolCallDelta(index=0, id=expected_id, name="ping"),
             ParsedToolCallDelta(index=0, arguments="{}"),
         ]
+
+
+# ---- Grammar tests (PR1) -----------------------------------------------------
+
+
+def _tool_def(name: str) -> dict[str, Any]:
+    """Build a minimal OpenAI-style tool definition for grammar tests."""
+    return {"type": "function", "function": {"name": name, "parameters": {}}}
+
+
+class _MinimalTokenizer:
+    """Minimal byte tokenizer for grammar compilation validation tests.
+
+    Maps each byte value to a token ID, providing a 256-token vocabulary
+    sufficient for testing grammar compilation without loading a real model.
+    """
+
+    eos_token_id: int = 0
+    bos_token_id: int | None = None
+    tokens: list[bytes] = [bytes([i]) for i in range(256)]
+
+    def __call__(self, s: bytes | str) -> list[int]:
+        if isinstance(s, str):
+            s = s.encode("utf-8")
+        return list(s)
+
+
+@pytest.fixture(scope="module")
+def ll_tokenizer() -> LLTokenizer:
+    """Minimal LLTokenizer for grammar compile smoke tests."""
+    wrapper = TokenizerWrapper(_MinimalTokenizer())
+    return LLTokenizer(wrapper, n_vocab=256)
+
+
+def test_generate_tool_call_grammar_compiles_with_tool_names(
+    ll_tokenizer: LLTokenizer,
+) -> None:
+    """Grammar with explicit tool names compiles cleanly."""
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(
+        tools=[_tool_def("get_weather"), _tool_def("search")]
+    )
+    assert isinstance(grammar, str)
+    assert len(grammar) > 0
+    matcher = LLMatcher(ll_tokenizer, grammar)
+    assert matcher is not None
+
+
+def test_generate_tool_call_grammar_compiles_without_tool_names(
+    ll_tokenizer: LLTokenizer,
+) -> None:
+    """Grammar with ``tools=None`` (any identifier) compiles cleanly."""
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(tools=None)
+    assert isinstance(grammar, str)
+    assert len(grammar) > 0
+    matcher = LLMatcher(ll_tokenizer, grammar)
+    assert matcher is not None
+
+
+def test_generate_tool_call_grammar_escapes_special_chars(
+    ll_tokenizer: LLTokenizer,
+) -> None:
+    """Tool names containing regex metacharacters are escaped."""
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(
+        tools=[
+            _tool_def("get_weather.v2"),
+            _tool_def("search+plus"),
+            _tool_def("tool[0]"),
+        ]
+    )
+    matcher = LLMatcher(ll_tokenizer, grammar)
+    assert matcher is not None
+
+
+def test_generate_tool_call_grammar_compiles_with_response_format_schema(
+    ll_tokenizer: LLTokenizer,
+) -> None:
+    """Combined tool-call + JSON-schema grammar compiles cleanly."""
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+    }
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(
+        tools=[_tool_def("get_weather")],
+        response_format_schema=schema,
+    )
+    assert isinstance(grammar, str)
+    assert len(grammar) > 0
+    matcher = LLMatcher(ll_tokenizer, grammar)
+    assert matcher is not None
+
+
+# ---- Real-tokenizer acceptance tests (PR1.3) ---------------------------------
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _grammar_fixtures  # type: ignore[import-not-found]
+
+_MINIMAX_HF_REPO = "MiniMaxAI/MiniMax-M2.7"
+
+
+def _token_allowed(bitmask: bytes, tok_id: int) -> bool:
+    """Return True if *tok_id* is set in the packed-int32 *bitmask*."""
+    word = struct.unpack_from("<I", bitmask, (tok_id // 32) * 4)[0]
+    return bool(word & (1 << (tok_id % 32)))
+
+
+@pytest.fixture(scope="module")
+def minimax_ll_tokenizer() -> tuple[LLTokenizer, PreTrainedTokenizerFast]:
+    """Real MiniMax HF tokenizer wrapped for llguidance.
+
+    Skipped if the tokenizer can't be downloaded (no HF_TOKEN, offline, etc).
+    """
+    try:
+        tok = AutoTokenizer.from_pretrained(_MINIMAX_HF_REPO)
+    except Exception as e:
+        pytest.skip(f"Could not download MiniMax tokenizer: {e}")
+    assert isinstance(tok, PreTrainedTokenizerFast)
+    return llguidance.hf.from_tokenizer(tok, n_vocab=len(tok)), tok
+
+
+@pytest.mark.parametrize(
+    "fixture", _grammar_fixtures.GOOD_ENVELOPES, ids=lambda f: f.name
+)
+def test_grammar_accepts_known_good_envelope(
+    minimax_ll_tokenizer: tuple[LLTokenizer, PreTrainedTokenizerFast],
+    fixture: "_grammar_fixtures.GoodEnvelope",
+) -> None:
+    """Walk each known-good envelope token-by-token; grammar must accept all.
+
+    Uses the real MiniMax HF tokenizer so token-boundary edge cases are
+    exercised (e.g., ``<minimax:tool_call>`` is token ID 200052 — a single
+    token — and must be accepted atomically by the Lark grammar rule rather
+    than byte-by-byte via a regex prefix).
+    """
+    ll_tok, hf_tok = minimax_ll_tokenizer
+    tool_names = sorted({name for name, _ in fixture.expected_calls})
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(
+        tools=[_tool_def(n) for n in tool_names]
+    )
+    matcher = LLMatcher(ll_tok, grammar)
+
+    token_ids = hf_tok.encode(fixture.envelope, add_special_tokens=False)
+    for i, tok_id in enumerate(token_ids):
+        bitmask = matcher.compute_bitmask()
+        assert _token_allowed(bitmask, tok_id), (
+            f"Grammar rejected valid token at step {i} "
+            f"(token_id={tok_id}, decoded={hf_tok.decode([tok_id])!r}) "
+            f"in fixture {fixture.name!r}"
+        )
+        matcher.consume_token(tok_id)
+    assert matcher.is_accepting(), (
+        f"Matcher did not reach accepting state for fixture {fixture.name!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture", _grammar_fixtures.BAD_ENVELOPES, ids=lambda f: f.name
+)
+def test_grammar_rejects_malformed_envelope(
+    minimax_ll_tokenizer: tuple[LLTokenizer, PreTrainedTokenizerFast],
+    fixture: "_grammar_fixtures.BadEnvelope",
+) -> None:
+    """Walk each malformed envelope token-by-token; grammar must reject."""
+    ll_tok, hf_tok = minimax_ll_tokenizer
+    # tools=None uses the permissive name pattern; rejection must hold
+    # even when names are unconstrained.
+    grammar = MinimaxM2ToolParser.generate_tool_call_grammar(tools=None)
+    matcher = LLMatcher(ll_tok, grammar)
+
+    token_ids = hf_tok.encode(fixture.envelope, add_special_tokens=False)
+    rejected = False
+    for tok_id in token_ids:
+        bitmask = matcher.compute_bitmask()
+        if not _token_allowed(bitmask, tok_id):
+            rejected = True
+            break
+        matcher.consume_token(tok_id)
+
+    if not rejected and matcher.is_accepting():
+        pytest.fail(
+            f"Grammar accepted malformed envelope {fixture.name!r}; "
+            f"expected rejection because: {fixture.rejection_hint}"
+        )

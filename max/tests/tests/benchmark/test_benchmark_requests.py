@@ -14,6 +14,7 @@
 """Unit tests for benchmark_shared.request module."""
 
 import concurrent.futures
+import json
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -36,10 +37,15 @@ from max.benchmark.benchmark_shared.request import (
     RequestFuncInput,
     RequestFuncOutput,
     SglangPixelGenerationRequestDriver,
+    SglangVideoRequestDriver,
     TRTLLMRequestDriver,
     VllmOmniPixelGenerationRequestDriver,
+    VllmOmniVideoRequestDriver,
     _build_sglang_pixel_generation_payload,
+    _build_sglang_video_payload,
     _build_vllm_omni_pixel_generation_payload,
+    _build_vllm_omni_video_payload,
+    _count_generated_media,
     async_request_lora_load,
     async_request_lora_unload,
     get_request_driver_class,
@@ -521,6 +527,141 @@ class TestRequestDriver:
         assert result.prompt_len == 1
 
     @pytest.mark.asyncio
+    async def test_openai_chat_completions_error_chunk_reports_server_message(
+        self,
+        mock_aiohttp_session: Any,
+        mock_openai_env: None,
+        mocker: MockerFixture,
+    ) -> None:
+        """Regression test for MXTOOLS-203: server error message is surfaced in output.error."""
+        request_input = RequestFuncInput(
+            model="test-model",
+            session_id=None,
+            sampling=SamplingConfig(),
+            prompt="A very long prompt",
+            images=[],
+            api_url="http://localhost:8000/v1/chat/completions",
+            prompt_len=264408,
+            max_tokens=100,
+            ignore_eos=False,
+        )
+
+        error_msg = "Input string is larger than tokenizer's max length (264823 > 262144)."
+        error_json = json.dumps(
+            {
+                "error": {
+                    "code": "500",
+                    "message": error_msg,
+                    "param": "",
+                    "type": "",
+                }
+            }
+        )
+
+        async def async_iter() -> AsyncIterator[bytes]:
+            yield f"data: {error_json}\n\n".encode()
+
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_aiohttp_session.setup_post_response(mock_response)
+
+        driver = OpenAIChatCompletionsRequestDriver()
+        result = await driver.request(request_input)
+
+        assert result.success is False
+        assert result.error == error_msg
+
+    @pytest.mark.asyncio
+    async def test_openai_chat_completions_forwards_tools(
+        self,
+        mock_aiohttp_session: Any,
+        mock_openai_env: None,
+        mocker: MockerFixture,
+    ) -> None:
+        """``tools`` on RequestFuncInput is forwarded as the chat ``tools`` field."""
+        tool_schemas = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "description": "Run a shell command",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"cmd": {"type": "string"}},
+                        "required": ["cmd"],
+                    },
+                },
+            },
+        ]
+        request_input = RequestFuncInput(
+            model="test-model",
+            session_id=None,
+            sampling=SamplingConfig(),
+            prompt="Run ls",
+            images=[],
+            api_url="http://localhost:8000/v1/chat/completions",
+            prompt_len=5,
+            max_tokens=50,
+            ignore_eos=False,
+            tools=tool_schemas,
+        )
+
+        async def async_iter() -> AsyncIterator[bytes]:
+            yield b'data: {"choices": [{"delta": {"content": "ok"}}]}\n\n'
+            yield b"data: [DONE]\n\n"
+
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_aiohttp_session.setup_post_response(mock_response)
+
+        driver = OpenAIChatCompletionsRequestDriver()
+        result = await driver.request(request_input)
+
+        assert result.success is True
+        # Inspect the POST payload to confirm the tools made it through.
+        _, post_kwargs = mock_aiohttp_session.post.call_args
+        assert post_kwargs["json"]["tools"] == tool_schemas
+
+    @pytest.mark.asyncio
+    async def test_openai_chat_completions_omits_tools_when_none(
+        self,
+        mock_aiohttp_session: Any,
+        mock_openai_env: None,
+        mocker: MockerFixture,
+    ) -> None:
+        """No ``tools`` field is sent when SampledRequest.tools is None/empty."""
+        request_input = RequestFuncInput(
+            model="test-model",
+            session_id=None,
+            sampling=SamplingConfig(),
+            prompt="hi",
+            images=[],
+            api_url="http://localhost:8000/v1/chat/completions",
+            prompt_len=1,
+            max_tokens=8,
+            ignore_eos=False,
+            tools=None,
+        )
+
+        async def async_iter() -> AsyncIterator[bytes]:
+            yield b'data: {"choices": [{"delta": {"content": "x"}}]}\n\n'
+            yield b"data: [DONE]\n\n"
+
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_aiohttp_session.setup_post_response(mock_response)
+
+        driver = OpenAIChatCompletionsRequestDriver()
+        result = await driver.request(request_input)
+
+        assert result.success is True
+        _, post_kwargs = mock_aiohttp_session.post.call_args
+        assert "tools" not in post_kwargs["json"]
+
+    @pytest.mark.asyncio
     async def test_openai_completions_request_driver_no_content(
         self,
         mock_aiohttp_session: Any,
@@ -705,11 +846,48 @@ class TestRequestDriverSelection:
             is SglangPixelGenerationRequestDriver
         )
 
+    def test_get_request_driver_class_pixel_gen_vllm_omni_video(self) -> None:
+        assert (
+            get_request_driver_class(
+                "http://localhost:8000/v1/videos/sync",
+                task="text-to-video",
+            )
+            is VllmOmniVideoRequestDriver
+        )
+
+    def test_get_request_driver_class_pixel_gen_sglang_video(self) -> None:
+        assert (
+            get_request_driver_class(
+                "http://localhost:8000/v1/videos",
+                task="text-to-video",
+            )
+            is SglangVideoRequestDriver
+        )
+
     def test_get_request_driver_class_pixel_gen_invalid_url(self) -> None:
         with pytest.raises(ValueError, match="pixel-generation"):
             get_request_driver_class(
                 "http://localhost:8000/v1/completions",
                 task="text-to-image",
+            )
+
+    def test_get_request_driver_class_text_gen_videos_sync_rejected(
+        self,
+    ) -> None:
+        """text-generation + /v1/videos/sync should raise, not return the
+        video driver."""
+        with pytest.raises(ValueError, match="Unsupported API URL"):
+            get_request_driver_class(
+                "http://localhost:8000/v1/videos/sync",
+                task="text-generation",
+            )
+
+    def test_get_request_driver_class_text_gen_videos_rejected(self) -> None:
+        """text-generation + /v1/videos should raise."""
+        with pytest.raises(ValueError, match="Unsupported API URL"):
+            get_request_driver_class(
+                "http://localhost:8000/v1/videos",
+                task="text-generation",
             )
 
     def test_get_request_driver_class_text_gen_chat_not_pixel(self) -> None:
@@ -817,6 +995,150 @@ class TestPixelGenerationPayloadBuilders:
         assert extra["width"] == 512
         assert "num_inference_steps" not in extra
 
+    def test_vllm_omni_video_payload_all_options(self) -> None:
+        opts = PixelGenerationImageOptions(
+            width=832,
+            height=480,
+            steps=50,
+            guidance_scale=4.0,
+            seed=42,
+            negative_prompt="blurry",
+            num_frames=81,
+        )
+        payload = _build_vllm_omni_video_payload(self._make_input(opts))
+        assert payload["prompt"] == "A beautiful sunset"
+        assert payload["model"] == "black-forest-labs/FLUX.2-dev"
+        assert payload["width"] == "832"
+        assert payload["height"] == "480"
+        assert payload["num_inference_steps"] == "50"
+        assert payload["guidance_scale"] == "4.0"
+        assert payload["seed"] == "42"
+        assert payload["negative_prompt"] == "blurry"
+        assert payload["num_frames"] == "81"
+
+    def test_vllm_omni_video_payload_no_options(self) -> None:
+        payload = _build_vllm_omni_video_payload(self._make_input(None))
+        assert payload["prompt"] == "A beautiful sunset"
+        assert payload["model"] == "black-forest-labs/FLUX.2-dev"
+        assert len(payload) == 2
+
+    def test_vllm_omni_video_payload_partial_options(self) -> None:
+        opts = PixelGenerationImageOptions(width=480, height=480, num_frames=33)
+        payload = _build_vllm_omni_video_payload(self._make_input(opts))
+        assert payload["width"] == "480"
+        assert payload["height"] == "480"
+        assert payload["num_frames"] == "33"
+        assert "num_inference_steps" not in payload
+        assert "guidance_scale" not in payload
+
+    def test_sglang_video_payload_all_options(self) -> None:
+        opts = PixelGenerationImageOptions(
+            width=832,
+            height=480,
+            steps=50,
+            guidance_scale=4.0,
+            seed=42,
+            negative_prompt="blurry",
+            num_frames=81,
+        )
+        payload = _build_sglang_video_payload(self._make_input(opts))
+        assert payload["prompt"] == "A beautiful sunset"
+        assert payload["model"] == "black-forest-labs/FLUX.2-dev"
+        assert payload["width"] == 832
+        assert payload["height"] == 480
+        assert payload["num_inference_steps"] == 50
+        assert payload["guidance_scale"] == 4.0
+        assert payload["seed"] == 42
+        assert payload["negative_prompt"] == "blurry"
+        assert payload["num_frames"] == 81
+        assert "n" not in payload
+        assert "response_format" not in payload
+
+    def test_sglang_video_payload_no_options(self) -> None:
+        payload = _build_sglang_video_payload(self._make_input(None))
+        assert payload["prompt"] == "A beautiful sunset"
+        assert payload["model"] == "black-forest-labs/FLUX.2-dev"
+        assert len(payload) == 2
+
+    def test_sglang_video_payload_partial_options(self) -> None:
+        opts = PixelGenerationImageOptions(width=832, height=480, num_frames=81)
+        payload = _build_sglang_video_payload(self._make_input(opts))
+        assert payload["width"] == 832
+        assert payload["height"] == 480
+        assert payload["num_frames"] == 81
+        assert "num_inference_steps" not in payload
+        assert "guidance_scale" not in payload
+
+
+class TestCountGeneratedMedia:
+    """Tests for _count_generated_media (OpenResponses response parser)."""
+
+    @staticmethod
+    def _wrap(content: list[dict[str, Any]]) -> dict[str, Any]:
+        """Wrap content items in the OpenResponses message envelope."""
+        return {
+            "output": [
+                {
+                    "id": "msg_test_0",
+                    "role": "assistant",
+                    "content": content,
+                    "status": "completed",
+                }
+            ]
+        }
+
+    def test_counts_output_image(self) -> None:
+        body = self._wrap(
+            [{"type": "output_image", "image_url": "http://x/img.png"}]
+        )
+        assert _count_generated_media(body) == 1
+
+    def test_counts_output_video(self) -> None:
+        # Regression: video responses were previously miscounted as 0, causing
+        # every text-to-video request to fail with "No output_image content
+        # found in OpenResponses response body." (PERF-2518).
+        body = self._wrap(
+            [
+                {
+                    "type": "output_video",
+                    "video_url": "http://x/vid.mp4",
+                    "format": "mp4",
+                    "frames_per_second": 16,
+                    "num_frames": 81,
+                }
+            ]
+        )
+        assert _count_generated_media(body) == 1
+
+    def test_counts_mixed_image_and_video(self) -> None:
+        body = self._wrap(
+            [
+                {"type": "output_image", "image_url": "http://x/a.png"},
+                {"type": "output_video", "video_url": "http://x/b.mp4"},
+                {"type": "output_image", "image_url": "http://x/c.png"},
+            ]
+        )
+        assert _count_generated_media(body) == 3
+
+    def test_ignores_non_media_content_types(self) -> None:
+        body = self._wrap(
+            [
+                {"type": "output_text", "text": "hello"},
+                {"type": "refusal", "refusal": "no"},
+                {"type": "reasoning_summary", "summary": "thinking"},
+            ]
+        )
+        assert _count_generated_media(body) == 0
+
+    def test_empty_output(self) -> None:
+        assert _count_generated_media({"output": []}) == 0
+
+    def test_missing_output_key(self) -> None:
+        assert _count_generated_media({}) == 0
+
+    def test_malformed_output_not_a_list(self) -> None:
+        assert _count_generated_media({"output": "not a list"}) == 0
+
 
 class TestValidateTaskAndEndpoint:
     """Tests for validate_task_and_endpoint."""
@@ -849,6 +1171,36 @@ class TestValidateTaskAndEndpoint:
     def test_pixel_gen_completions_rejected(self) -> None:
         with pytest.raises(ValueError, match="requires --endpoint"):
             validate_task_and_endpoint("text-to-image", "/v1/completions")
+
+    def test_pixel_gen_videos_sync_ok(self) -> None:
+        validate_task_and_endpoint("text-to-video", "/v1/videos/sync")
+
+    def test_text_gen_videos_sync_rejected(self) -> None:
+        with pytest.raises(ValueError, match="does not support"):
+            validate_task_and_endpoint("text-generation", "/v1/videos/sync")
+
+    def test_text_to_image_videos_sync_rejected(self) -> None:
+        with pytest.raises(ValueError, match="only valid for"):
+            validate_task_and_endpoint("text-to-image", "/v1/videos/sync")
+
+    def test_image_to_image_videos_sync_rejected(self) -> None:
+        with pytest.raises(ValueError, match="only valid for"):
+            validate_task_and_endpoint("image-to-image", "/v1/videos/sync")
+
+    def test_pixel_gen_videos_ok(self) -> None:
+        validate_task_and_endpoint("text-to-video", "/v1/videos")
+
+    def test_text_gen_videos_rejected(self) -> None:
+        with pytest.raises(ValueError, match="does not support"):
+            validate_task_and_endpoint("text-generation", "/v1/videos")
+
+    def test_text_to_image_videos_rejected(self) -> None:
+        with pytest.raises(ValueError, match="only valid for"):
+            validate_task_and_endpoint("text-to-image", "/v1/videos")
+
+    def test_image_to_image_videos_rejected(self) -> None:
+        with pytest.raises(ValueError, match="only valid for"):
+            validate_task_and_endpoint("image-to-image", "/v1/videos")
 
     def test_image_to_image_responses_ok(self) -> None:
         validate_task_and_endpoint("image-to-image", "/v1/responses")

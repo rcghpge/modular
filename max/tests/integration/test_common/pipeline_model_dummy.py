@@ -23,13 +23,6 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, TensorType
 from max.graph.weights import WeightsFormat
-from max.interfaces import (
-    PipelineTask,
-    PipelineTokenizer,
-    TextGenerationContext,
-    TextGenerationRequest,
-    TokenBuffer,
-)
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
@@ -50,6 +43,13 @@ from max.pipelines.lib import PipelineModelWithKVCache
 from max.pipelines.lib.interfaces import (
     ArchConfig,
     ArchConfigWithAttentionKVCache,
+)
+from max.pipelines.modeling.types import (
+    PipelineTask,
+    PipelineTokenizer,
+    TextGenerationContext,
+    TextGenerationRequest,
+    TokenBuffer,
 )
 from transformers import AutoConfig
 
@@ -104,21 +104,6 @@ class DummyPipelineModel(PipelineModelWithKVCache):  # type: ignore[type-arg]
             input3=Buffer.zeros((0, 0), DType.float32),
             input4=Buffer.zeros((0, 0), DType.float32),
             kv_cache_inputs=None,
-        )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> DummyModelInputs:
-        """Prepares the secondary inputs to be passed to `.execute()`.
-
-        While `prepare_initial_token_inputs` is responsible for managing the initial inputs.
-        This function is responsible for updating the inputs, for each step in a multi-step execution pattern.
-        """
-        return DummyModelInputs(
-            input1=Buffer.zeros((0, 0), DType.float32),
-            kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
         )
 
     @classmethod

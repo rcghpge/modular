@@ -17,6 +17,13 @@
 #        without initializer errors, missing method errors, missing
 #        required member errors, type mismatch errors, default
 #        method conflict errors, non-conforming argument errors.
+# Print-only tests: test_required_methods, test_provided_methods,
+#        test_able_to_say_hello, test_parameter_level_bounds, and
+#        test_fieldwise_bounds use print() rather than assertions
+#        because asserting on string representations is fragile
+#        (reflection-based output format can change). These tests
+#        still verify compilation, trait constraint satisfaction, and
+#        dispatch — successful execution without raising is the signal.
 from std.testing import assert_equal
 
 
@@ -160,26 +167,26 @@ def test_generic_associated_type() raises:
 
 from std.sys.info import bit_width_of
 
+comptime BaseElement = Copyable & ImplicitlyDestructible & Writable
+
 
 trait Test:
     comptime Element: RegisterPassable
     comptime element_bitwidth = bit_width_of[Self.Element]()
 
-    comptime KeyElement = Copyable & ImplicitlyDestructible & Writable
-
 
 @fieldwise_init
-struct SampleStruct_4[T: KeyElement](Test):
+struct SampleStruct_4[T: BaseElement](Test):
     comptime Element = Int64
     var x: Self.T
 
-    def show_element_bitwidth(self):
-        print(Self.element_bitwidth)
+    def show_element_bitwidth(self) raises:
+        assert_equal(Self.element_bitwidth, 64)
 
 
 def test_comptime_constants() raises:
     var s = SampleStruct_4[Int64](x=42)
-    s.show_element_bitwidth()  # 64
+    s.show_element_bitwidth()
     assert_equal(s.x, 42)
 
 
@@ -251,7 +258,7 @@ def test_trait_refinement() raises:
     assert_equal(Box_2("hello").to_pretty_string(), "Box with value: hello")
 
 
-# --- Parameter-level trait bounds ---
+# --- Parameter-level trait constraints ---
 
 
 def print_twice[T: Writable & Copyable](value: T):
@@ -263,7 +270,7 @@ def test_parameter_level_bounds():
     print_twice("hi")  # hi hi
 
 
-# --- Struct-level trait bounds ---
+# --- Struct-level trait constraints ---
 
 
 @fieldwise_init
@@ -280,7 +287,7 @@ def test_struct_level_bounds() raises:
     assert_equal(String(p), "(1, 2)")
 
 
-# --- Fieldwise trait bounds ---
+# --- Fieldwise trait constraints ---
 
 
 @fieldwise_init

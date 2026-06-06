@@ -19,12 +19,27 @@ from std.bit import prev_power_of_two
 from std.gpu.globals import WARP_SIZE
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.host.info import B200
+from std.gpu.primitives.grid_controls import PDLLevel
 
 
 comptime EnableForcedOrdering = get_defined_bool[
     "FA4ForcedSoftmaxOrdering", False
 ]()
 comptime EnableEarlyAdd = get_defined_bool["FA4AddEarly", False]()
+
+# Programmatic Dependent Launch level for the SM100 MHA prefill kernel.  On by
+# default so back-to-back attention grids in a stream overlap launch/prologue
+# latency; disable with `-D MHA_PDL=false`.  When > OFF the kernel emits
+# `wait_on_dependent_grids()` / `launch_dependent_grids()` and the dispatch
+# attaches the PROGRAMMATIC_STREAM_SERIALIZATION launch attribute.
+comptime MHA_PDL_LEVEL = PDLLevel.OVERLAP_AT_END if get_defined_bool[
+    "MHA_PDL", True
+]() else PDLLevel.OFF
+
+# Bytes per CTA in shared memory that the CUDA runtime reserves for
+# its own use; subtracted from `B200.shared_memory_per_multiprocessor`
+# to get the usable smem budget for SM100 attention kernels.
+comptime SM100_RESERVED_SMEM_BYTES = 1024
 
 
 struct FA4Config[
@@ -63,13 +78,18 @@ struct FA4Config[
     var swizzle_mode: TensorMapSwizzle
     var use_fused_kv: Bool
     var pair_cta: Bool
+    var num_qo: Int
+    var page_size: Int
+    var is_mla: Bool
 
     comptime qkv_dtype_size: Int = size_of[Self.qkv_dtype]()
     comptime rope_dtype_size: Int = size_of[Self.rope_dtype]()
     comptime scale_dtype_size: Int = size_of[Self.scale_dtype]()
 
     comptime MMA_K: Int = 16 if Self.qkv_dtype.is_half_float() else 32
-    comptime sm100_smem_carveout = B200.shared_memory_per_multiprocessor - 1024
+    comptime sm100_smem_carveout = (
+        B200.shared_memory_per_multiprocessor - SM100_RESERVED_SMEM_BYTES
+    )
     comptime sm100_tmem_cols = 512
     comptime mbar_size = size_of[DType.int64]()
     comptime num_correction_cols = 1
@@ -82,10 +102,6 @@ struct FA4Config[
         if self.fuse_gqa:
             return self.BM // self.group
         return self.BM
-
-    @always_inline
-    def num_qo(self) -> Int:
-        return 2
 
     @always_inline
     def cta_group(self) -> Int:
@@ -167,17 +183,30 @@ struct FA4Config[
         page_size: Int,
         is_mla: Bool,
         pair_cta: Bool = False,
+        num_qo: Int = 2,
     ):
         self.num_q_heads = num_q_heads
         self.num_kv_heads = num_q_heads // group
         self.group = group
         self.qk_depth = qk_depth
         self.pair_cta = pair_cta
-        self.BM = 256
+        self.num_qo = num_qo
+        self.page_size = page_size
+        self.is_mla = is_mla
         self.MMA_M = 256 if pair_cta else 128
+        # num_qo=1 halves BM to MMA_M (=128) — each CTA now covers half as
+        # many Q rows. supported() forbids num_qo=1 with pair_cta, so MMA_M
+        # is always 128 here when num_qo == 1.
+        if num_qo == 1:
+            self.BM = self.MMA_M
+        else:
+            self.BM = 256
         self.fuse_gqa = group > 1 and (self.MMA_M % group == 0) and not is_mla
-        self.swizzle_mode = swizzle_mode
-        swizzle_elems = swizzle_mode.bytes() // Self.qkv_dtype_size
+        comptime if Self.qkv_dtype.is_float8():
+            self.swizzle_mode = TensorMapSwizzle.SWIZZLE_64B
+        else:
+            self.swizzle_mode = swizzle_mode
+        swizzle_elems = self.swizzle_mode.bytes() // Self.qkv_dtype_size
         self.ov_depth = ov_depth
         self.padded_qk_depth = align_up(qk_depth, swizzle_elems)
         self.padded_ov_depth = align_up(ov_depth, swizzle_elems)
@@ -265,15 +294,18 @@ struct FA4Config[
         # - S producers: 2 (1 per warp group)
         # - C barriers: 4 (C0/C1 producer/consumer)
         # - Order barriers: 2 (only when EnableForcedOrdering)
-        # - Q1Sync barriers: num_qk_stages
+        # - Q1Sync barriers: num_qk_stages (only when num_qo == 2; num_qo=1
+        #   shares Q across both pipelines so no Q1Sync slot is needed —
+        #   FA4MiscMBars collapses Q1SyncIdx in that mode)
         # - O producers: 2 (O consumers reuse S_consumer[0], not separate)
-        # Total fixed = 8 + order_barrier_count + 2*num_pv_stages + num_qk_stages
+        # Total fixed = 8 + order_barrier_count + 2*num_pv_stages
+        #             + (num_qk_stages if num_qo == 2 else 0)
         comptime order_barrier_count: Int = 2 if EnableForcedOrdering else 0
         misc_mbars_fixed_size = (
             8
             + order_barrier_count
             + 2 * self.num_pv_stages
-            + self.num_qk_stages
+            + (self.num_qk_stages if num_qo == 2 else 0)
         )
         smem_use += misc_mbars_fixed_size * Self.mbar_size
 
@@ -295,9 +327,20 @@ struct FA4Config[
         smem_use += self.BM * qk_depth_bytes
         # q_scale: always 1 buffer (per-token scale only; 0 when no scaling).
         smem_use += self.BM * Self.scale_dtype_size
-        # Add space for correction smem when not using tmem for correction
+        # Add space for correction smem when not using tmem for correction.
+        # Must match `SM100AttentionSMem.correction_bytes` in smem.mojo: the
+        # layout reserves one Float32 slot per softmax thread, i.e.
+        # `2 * WARPGROUP_SIZE = 256` Float32 entries (1 KiB) regardless of
+        # `num_qo`. In 2Q this equals `BM * num_correction_cols`, but 1Q
+        # halves `BM` to 128 and needs the doubling factor here too.
+        # Without it, `smem_use` (passed as `shared_mem_bytes` at launch) is
+        # 512 bytes short of the smem.mojo layout, and the trailing mbar /
+        # tmem_addr regions overflow into unmapped __shared__ on init.
         smem_use += (
-            self.BM * Self.num_correction_cols * size_of[DType.float32]()
+            (2 if num_qo == 1 else 1)
+            * self.BM
+            * Self.num_correction_cols
+            * size_of[DType.float32]()
         )
 
         # We use one of two strategies:
@@ -380,12 +423,38 @@ struct FA4Config[
         self.smem_used = smem_use
 
     def supported(self) -> Bool:
+        # Runtime-k partial-page contraction (mma_maybe_partial_k, used only
+        # by the non-MLA fa4_mma path) cuts the P@V contraction at the loaded
+        # V boundary to avoid reading uninitialized SMEM. That cut is only
+        # safe when the loaded region is MMA_K-aligned, i.e. page_size is a
+        # multiple of MMA_K. A sub-tile page (page_size < BN) that is not
+        # MMA_K-aligned is therefore unsupported here. MLA prefill has its own
+        # MMA warps (does not use fa4_mma) and is exempt.
+        if (
+            not self.is_mla
+            and self.page_size != 0
+            and self.page_size < self.BN
+            and self.page_size % Self.MMA_K != 0
+        ):
+            return False
         base = (
             self.BN >= 64
             and self.num_kv_stages >= 2
             and self.tmem_used <= Self.sm100_tmem_cols
             and self.smem_used <= Self.sm100_smem_carveout
         )
+        if self.num_qo == 1:
+            # num_qo=1 is single-CTA only (pair-CTA only requires double
+            # the seq-len of single-CTA, num_qo=1 is for small seq-len).
+            # pair-CTA decreases perf in every benchmark I've tried
+            # anyway, so it especially doesn't make sense for small
+            # seq-len.
+            return (
+                base
+                and self.qk_depth >= 64
+                and self.qk_depth <= 256
+                and not self.pair_cta
+            )
         if self.pair_cta:
             # Pair-CTA: depth > 64 (depth=64 needs 32B swizzles) and <= 128.
             return base and self.qk_depth > 64 and self.qk_depth <= 128
@@ -395,6 +464,8 @@ struct FA4Config[
         return String(
             "pair_cta = ",
             self.pair_cta,
+            "\nnum_qo = ",
+            self.num_qo,
             "\nMMA_M = ",
             self.MMA_M,
             "\nqk_depth = ",

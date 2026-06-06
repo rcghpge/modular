@@ -48,15 +48,15 @@ from .device import DeviceSpec
 
 
 @fieldwise_init
-struct M_driver_slice(TrivialRegisterPassable):
-    var data: ImmutPointer[UInt8, ImmutAnyOrigin]
+struct M_driver_slice[origin: ImmutOrigin](TrivialRegisterPassable):
+    var data: ImmutPointer[UInt8, Self.origin]
     var size: UInt64
 
 
 @fieldwise_init
-struct M_driver_static_bundle(TrivialRegisterPassable):
-    var mapped_data: M_driver_slice
-    var file_type: ImmutPointer[Int8, ImmutAnyOrigin]
+struct M_driver_static_bundle[origin: ImmutOrigin](TrivialRegisterPassable):
+    var mapped_data: M_driver_slice[Self.origin]
+    var file_type: ImmutPointer[Int8, StaticConstantOrigin]
     var file_type_len: UInt64
 
 
@@ -91,7 +91,7 @@ struct M_driver_queue_execute_config:
 
 @fieldwise_init
 struct M_driver_bundle_compilation_options(TrivialRegisterPassable):
-    var debug_level: ImmutPointer[Int8, ImmutAnyOrigin]
+    var debug_level: ImmutPointer[Int8, ImmutExternalOrigin]
     var debug_level_len: UInt64
     var optimization_level: Int32
 
@@ -167,7 +167,11 @@ comptime QueueHandle = Handle[M_driver_queue]
 comptime EventHandle = Handle[M_driver_event]
 comptime FunctionHandle = Handle[M_driver_function]
 comptime MemoryHandle = Handle[M_driver_memory]
-comptime StaticBundleHandle = Handle[M_driver_static_bundle]
+# Pick a sensible nominal origin for the plugin function pointer. `load_bundle` rebinds the
+# concrete bundle (whatever its asm origin) into this for the FFI call. See MOCO-3661.
+comptime StaticBundleHandle = Handle[
+    M_driver_static_bundle[StaticConstantOrigin]
+]
 comptime RuntimeBundleHandle = Handle[M_driver_runtime_bundle]
 comptime ExecuteConfigHandle = Handle[M_driver_queue_execute_config]
 comptime CompilationOptionsHandle = Handle[M_driver_bundle_compilation_options]
@@ -296,6 +300,34 @@ struct RawDriver(Movable):
             )
 
     # ===-------------------------------------------------------------------===#
+    # Context lifecycle
+    # ===-------------------------------------------------------------------===#
+
+    def destroy_context(self, context: ContextHandle) raises HALError:
+        var status = self._raw.context_destroy.f(context)
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(t"failed to destroy context: {err.message}"),
+            )
+
+    # ===-------------------------------------------------------------------===#
+    # Bundle lifecycle
+    # ===-------------------------------------------------------------------===#
+
+    def unload_bundle(
+        self, context: ContextHandle, bundle: RuntimeBundleHandle
+    ) raises HALError:
+        var status = self._raw.bundle_unload.f(context, bundle)
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(t"failed to unload bundle: {err.message}"),
+            )
+
+    # ===-------------------------------------------------------------------===#
     # Memory operations
     # ===-------------------------------------------------------------------===#
 
@@ -327,6 +359,34 @@ struct RawDriver(Movable):
                 message=String(t"failed to free_sync: {err.message}"),
             )
 
+    def alloc_pinned(
+        self, context: ContextHandle, byte_size: UInt64
+    ) raises HALError -> MemoryHandle:
+        var mem = UnsafeMaybeUninit[MemoryHandle]()
+        var status = self._raw.memory_alloc_pinned.f(
+            context, byte_size, OutParam[MemoryHandle](to=mem)
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(t"failed to alloc_pinned: {err.message}"),
+            )
+        return mem.unsafe_assume_init_ref()
+
+    def free_pinned(
+        self,
+        context: ContextHandle,
+        mem: MemoryHandle,
+    ) raises HALError:
+        var status = self._raw.memory_free_pinned.f(context, mem)
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(t"failed to free_pinned: {err.message}"),
+            )
+
     def get_memory_property[
         name: StringLiteral, T: TrivialRegisterPassable
     ](self, mem: MemoryHandle) raises HALError -> T:
@@ -355,7 +415,7 @@ struct RawDriver(Movable):
         self,
         queue: QueueHandle,
         dst: MemoryHandle,
-        src: UnsafePointer[UInt8, MutAnyOrigin],
+        src: UnsafePointer[mut=False, UInt8, _],
         size: UInt64,
     ) raises HALError:
         var status = self._raw.queue_copy_to_device.f(queue, dst, src, size)
@@ -369,7 +429,7 @@ struct RawDriver(Movable):
     def copy_from_device(
         self,
         queue: QueueHandle,
-        dst: UnsafePointer[UInt8, MutAnyOrigin],
+        dst: UnsafePointer[mut=True, UInt8, _],
         src: MemoryHandle,
         size: UInt64,
     ) raises HALError:
@@ -477,7 +537,7 @@ struct RawDriver(Movable):
     def wait_for_events(
         self,
         queue: QueueHandle,
-        handles: UnsafePointer[EventHandle, MutAnyOrigin],
+        handles: UnsafePointer[mut=True, EventHandle, _],
         num_events: UInt32,
     ) raises HALError:
         var status = self._raw.queue_wait_for_events.f(
@@ -539,9 +599,10 @@ struct RawDriver(Movable):
         func: FunctionHandle,
         grid: Tuple[UInt32, UInt32, UInt32],
         block: Tuple[UInt32, UInt32, UInt32],
-        args: UnsafePointer[OpaquePointer[MutExternalOrigin], MutAnyOrigin],
-        arg_sizes: UnsafePointer[UInt64, MutAnyOrigin],
+        args: UnsafePointer[mut=True, OpaquePointer[MutExternalOrigin], _],
+        arg_sizes: UnsafePointer[mut=True, UInt64, _],
         num_args: UInt32,
+        shared_mem_bytes: UInt32 = 0,
     ) raises HALError:
         var config = M_driver_queue_execute_config(
             mode=M_driver_queue_execute_mode.GPU,
@@ -549,7 +610,7 @@ struct RawDriver(Movable):
                 M_driver_queue_execute_config_gpu(
                     grid=M_driver_dim(x=grid[0], y=grid[1], z=grid[2]),
                     block=M_driver_dim(x=block[0], y=block[1], z=block[2]),
-                    shared_mem_bytes=UInt32(0),
+                    shared_mem_bytes=shared_mem_bytes,
                     attributes={},
                     num_attributes=UInt32(0),
                 )
@@ -732,7 +793,7 @@ struct RawPlugin(Movable):
         def(
             queue: QueueHandle,
             dst: MemoryHandle,
-            src: UnsafePointer[UInt8, MutAnyOrigin],
+            src: UnsafePointer[UInt8, ImmutAnyOrigin],
             size: UInt64,
         ) thin -> PluginResultCode,
     ]

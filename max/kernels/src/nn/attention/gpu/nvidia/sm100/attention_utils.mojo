@@ -25,6 +25,7 @@ from std.math import ceildiv, exp2, align_up, iota
 from std.math.constants import log2e
 from std.sys import size_of
 from std.sys._assembly import inlined_assembly
+from std.sys.intrinsics import llvm_intrinsic
 from std.bit import prev_power_of_two, pop_count
 from std.gpu.globals import WARP_SIZE
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -53,6 +54,11 @@ from layout.tile_layout import (
 from layout.tma_async import PipelineState, SharedMemBarrier
 from std.memory import bitcast
 from nn.attention.gpu.nvidia.sm100.attention import FA4Config
+
+# `elect` is defined in the shared NVIDIA module so SM90 and SM100 can both use
+# it without a cross-architecture import. Re-exported here for the many SM100
+# callers (and tests) that import it from `attention_utils`.
+from nn.attention.gpu.nvidia.common import elect
 from nn.attention.mha_mask import MHAMask, MASK_VALUE, MaskStrategy
 from nn.attention.mha_operand import (
     MHAOperand,
@@ -63,6 +69,13 @@ from nn.attention.mha_operand import (
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
 from linalg.arch.sm100.mma import smem_descriptor
+
+
+# IEEE-754 FP32 exponent bias.  Clamping `exp2` inputs at
+# `-FP32_EXP_BIAS` keeps the result within FP32's representable range
+# (the smallest normal positive float32 is `2^-126`, and going much
+# more negative just underflows to zero).
+comptime FP32_EXP_BIAS = 127
 
 
 # TileTensor-based aliases for storage (native types)
@@ -873,6 +886,74 @@ struct SM100TensorAccumulatorTS[
                 elect,
             )
 
+    @staticmethod
+    @always_inline("nodebug")
+    def mma_maybe_partial_k[
+        *, stage_idx: Int = 0
+    ](
+        a: UInt32,
+        b: Self.BType,
+        c: UInt32,
+        *,
+        c_scale: UInt32,
+        elect: Int32,
+        valid_k_mmas: UInt32,
+    ):
+        # P@V contraction for the last KV tile, where only `valid_k_mmas`
+        # MMA_K-blocks (the loaded V pages) hold real data. Skipping the
+        # unloaded tail blocks is bit-identical to the full contraction
+        # (their P is exactly 0 after masking) AND avoids reading
+        # uninitialized V SMEM (the `0 * NaN = NaN` bug). Requires
+        # page_size % MMA_K == 0 so the loaded boundary is MMA_K-aligned;
+        # enforced by FA4Config.supported().
+        #
+        # Both full and partial last tiles run the partial primitive below: for
+        # a full tile every `@!%pv` validity guard is never-true, so it
+        # degenerates to the plain contraction.
+
+        # comptime k-block range owned by this pv stage -- mirror `mma`'s
+        # stage split as top-scope ternaries (NOT a `comptime if` block,
+        # whose branch scope would hide ks_start/ks_end from the loop).
+        comptime _multi = Self.num_stages != 1
+        comptime _start = 3 * stage_idx if Self.use_3_then_1_split else stage_idx
+        comptime _end = (
+            stage_idx + 3
+        ) if Self.use_3_then_1_split else stage_idx + 1
+        comptime ks_start = (
+            Self.num_k_blocks_per_stage * _start
+        ) if _multi else 0
+        comptime ks_end = min(
+            Self.num_k_blocks_per_stage * _end, Self.num_k_mmas
+        ) if _multi else Self.num_k_mmas
+
+        # Issue this stage's k-blocks as one fused inline-asm sequence.
+        # `bulk_mma_partial` predicates each block `jj` on a SEPARATE,
+        # warp-uniform validity guard (`@!%pv`, run iff `jj < valid_k_mmas`)
+        # while passing `elect` through UNMODIFIED, so the elect codegen
+        # matches the full-tile path (no BSYNC.RECONVERGENT) --
+        # unlike folding the test into `elect` via the old per-block
+        # `step_elect`. `a`/`b` are the stage-0 bases (as in the `mma` fast
+        # path above); the builder applies absolute per-block offsets, so no
+        # b_layout linearity is assumed. `c_scale` initializes `o` on stage 0's
+        # first block (jj 0; always valid since valid_k_mmas >= 1); every later
+        # block accumulates.
+        bulk_mma_partial[
+            Self.b_layout,
+            mma_k=Self.MMA_K,
+            num_k_mmas=ks_end - ks_start,
+            operand_size=Self.operand_size,
+            k_start=ks_start,
+            cta_group=Self.cta_group,
+        ](
+            Self.idesc,
+            a,
+            b,
+            c,
+            c_scale,
+            elect,
+            valid_k_mmas,
+        )
+
 
 def build_mma_ss(
     kind: String,
@@ -899,7 +980,9 @@ def build_mma_ss(
 .reg .pred %ps;
 setp.eq.s32 %pj, $6, 0;
 """
-    tcgen05_mma = "tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
+    tcgen05_mma = (
+        "@!%pj tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
+    )
     mask = (
         "{$1, $1, $1, $1}" if cta_group
         == 1 else "{$1, $1, $1, $1, $1, $1, $1, $1}"
@@ -919,9 +1002,7 @@ setp.eq.s32 %pj, $6, 0;
             mma += "mov.b64 %rdb, {%rb, $5};\n"
             if k == 1:  # set predicate to 1
                 mma += "setp.ne.b32 %ps, 1, 0;\n"
-        mma += String("@%pj bra skip", k, ";\n")
         mma += tcgen05_mma + " [$0], %rda, %rdb, $2, " + mask + ", %ps;\n"
-        mma += String("skip", k, ":\n")
     return mma + "}"
 
 
@@ -950,7 +1031,9 @@ def build_mma_ts(
 .reg .pred %ps;
 setp.eq.s32 %pj, $6, 0;
 """
-    tcgen05_mma = "tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
+    tcgen05_mma = (
+        "@!%pj tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
+    )
     mask = (
         "{$1, $1, $1, $1}" if cta_group
         == 1 else "{$1, $1, $1, $1, $1, $1, $1, $1}"
@@ -970,7 +1053,97 @@ setp.eq.s32 %pj, $6, 0;
             if k == 1:  # set predicate to 1
                 mma += "setp.ne.b32 %ps, 1, 0;\n"
         a_operand = "$7" if k == 0 else "%rab"
+        mma += String(
+            tcgen05_mma,
+            " [$0], [",
+            a_operand,
+            "], %rdb, $2, ",
+            mask,
+            ", %ps;\n",
+        )
+    return mma + "}"
+
+
+def build_mma_ts_partial(
+    kind: String,
+    layout_b: Layout,
+    *,
+    operand_size: Int,
+    mma_k: Int,
+    num_k_mmas: Int,
+    k_start: Int,
+    cta_group: Int = 1,
+) -> String:
+    # Partial-K variant of `build_mma_ts` for the last (partially loaded) KV
+    # tile. The A/B descriptor setup, the scale predicate `%ps`, and -- most
+    # importantly -- the elect predicate `%pj` ($6) are kept byte-identical to
+    # `build_mma_ts`. Keeping `%pj` a pure function of the unmodified `elect`
+    # operand is what preserves the compiler's single-lane elect recognition:
+    # folding the `jj < valid_k_mmas` test into the elect value (the old
+    # `step_elect = elect if ... else 0`) defeated that recognition and forced
+    # a `BSYNC.RECONVERGENT B0` into the SASS.
+    #
+    # Instead, validity rides a SEPARATE, warp-uniform predicate
+    # `%pv = (valid_k_mmas <= jj)` ($8 holds the warp-uniform `valid_k_mmas`),
+    # kept independent of `%pj`. Each loaded-conditional MMA is guarded `@!%pv`
+    # (runs iff loaded); validity is never folded into `%pj`. A block's MMA thus
+    # runs iff it is both loaded (`jj < valid_k_mmas`) and elected, and `%pv` --
+    # being warp-uniform -- never diverges, so no reconvergence is needed.
+    #
+    # Blocks use ABSOLUTE k-index `jj = k_start + k` (matching the per-block
+    # offsets the caller previously computed by hand), so the caller passes the
+    # un-offset (stage-0) A/B base and the absolute `valid_k_mmas`.
+    mma = """{
+.reg .b64 %rdb;
+.reg .s32 %ra;
+.reg .b32 %rab;
+.reg .s32 %rb;
+.reg .pred %pj;
+.reg .pred %ps;
+.reg .pred %pv;
+setp.eq.s32 %pj, $6, 0;
+"""
+    tcgen05_mma = "tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
+    mask = (
+        "{$1, $1, $1, $1}" if cta_group
+        == 1 else "{$1, $1, $1, $1, $1, $1, $1, $1}"
+    )
+    a_stride = mma_k * operand_size // 4  # tmem column stride per k-mma
+    for k in range(num_k_mmas):
+        jj = k_start + k
+        # Warp-uniform validity guard ($8 = valid_k_mmas): set `%pv` true once
+        # an absolute k-index lands past the loaded region; the MMA below is
+        # guarded `@!%pv`, so it runs only while loaded. Block jj == 0 is always
+        # loaded (valid_k_mmas >= 1) and needs no guard.
+        if jj != 0:
+            mma += String("setp.le.u32 %pv, $8, ", jj, ";\n")
+        if jj == 0:
+            mma += "mov.b64 %rdb, {$4, $5};\n"
+        else:
+            a_offset = a_stride * jj
+            mma += String("add.s32 %ra, $7, ", a_offset, ";\n")
+            mma += String("mov.b32 %rab, %ra;\n")
+            b_offset = (layout_b(IntTuple(0, mma_k * jj)) * operand_size) >> 4
+            mma += String("add.s32 %rb, $4, ", b_offset, ";\n")
+            mma += "mov.b64 %rdb, {%rb, $5};\n"
+        # Scale predicate: the absolute first block (jj == 0) initializes `o`
+        # from the runtime c_scale ($3); the first accumulate block pins
+        # %ps = 1 and it stays set for every later block.
+        if jj == 0:
+            mma += "setp.ne.b32 %ps, $3, 0;\n"
+        elif k == 0 or jj == 1:
+            mma += "setp.ne.b32 %ps, 1, 0;\n"
+        a_operand = "$7" if jj == 0 else "%rab"
+        # Elect predicate ($6) -- per-block `skip`, byte-identical to
+        # build_mma_ts; do NOT fold %pv in here, or the single-lane elect
+        # codegen breaks (forces BSYNC.RECONVERGENT).
         mma += String("@%pj bra skip", k, ";\n")
+        # Guard the MMA on the warp-uniform validity predicate (`@!%pv`, run
+        # only when loaded). jj == 0 is always loaded, so it is never guarded.
+        # `%pv` stays separate from the elect `%pj`, so the elect codegen is
+        # unchanged.
+        if jj != 0:
+            mma += "@!%pv "
         mma += String(
             tcgen05_mma,
             " [$0], [",
@@ -1052,21 +1225,56 @@ def bulk_mma[
     )
 
 
+@always_inline("nodebug")
+def bulk_mma_partial[
+    kind: UMMAKind,
+    //,
+    layout_b: Layout,
+    *,
+    mma_k: Int,
+    num_k_mmas: Int,
+    operand_size: Int,
+    k_start: Int = 0,
+    cta_group: Int = 1,
+](
+    idesc: UMMAInsDescriptor[kind],
+    a: UInt32,
+    b: MMASmemDescriptorPair,
+    c_tmem: UInt32,
+    c_scale: UInt32,
+    elect: Int32,
+    valid_k_mmas: UInt32,
+):
+    # P@V contraction for a partially-loaded last KV tile. Issues this stage's
+    # `num_k_mmas` k-blocks (absolute indices `k_start ..< k_start + num_k_mmas`)
+    # as a SINGLE fused inline-asm sequence. Each block's MMA carries a
+    # warp-uniform validity guard derived from `valid_k_mmas` (the count of
+    # loaded MMA_K blocks) that is kept entirely SEPARATE from the `elect`
+    # predicate -- so the elect codegen is identical to the full-tile `bulk_mma`
+    # (no BSYNC.RECONVERGENT). `a`/`b` are the un-offset (stage-0) bases; the
+    # builder applies absolute per-block offsets. See `build_mma_ts_partial`.
+    comptime assert num_k_mmas >= 1 and num_k_mmas <= 16
+    comptime assert cta_group in (1, 2)
+    comptime mma_string = build_mma_ts_partial(
+        String(kind),
+        layout_b,
+        operand_size=operand_size,
+        mma_k=mma_k,
+        num_k_mmas=num_k_mmas,
+        k_start=k_start,
+        cta_group=cta_group,
+    )
+
+    inlined_assembly[mma_string, NoneType, constraints="r,r,r,r,r,r,r,r,r"](
+        c_tmem, 0, idesc, c_scale, b.lo, b.hi, elect, a, valid_k_mmas
+    )
+
+
 @always_inline
-def elect() -> Int32:
-    # CAUTION: This function cannot be used to guard a `print`, else it will
-    # introduce a deadlock!
-    return inlined_assembly[
-        """{
-            .reg .b32 %re;
-            .reg .pred %pa;
-            mov.s32 $0, 0;
-            elect.sync %re|%pa, $1;
-            @%pa mov.s32 $0, 1;
-        }""",
-        Int32,
-        constraints="=r,r",
-    ](-1)
+def llvm_opaque_tid() -> UInt32:
+    return llvm_intrinsic[
+        "llvm.nvvm.read.ptx.sreg.tid.x", UInt32, has_side_effect=True
+    ]()
 
 
 @always_inline
@@ -1176,11 +1384,15 @@ def exp2_emulation[
 ](x: SIMD[DType.float32, 2]) -> SIMD[DType.float32, 2]:
     comptime if use_exp2_emulation:
         comptime fp32_round_int = SIMD[DType.float32, 2]((1 << 23) + (1 << 22))
-        clamped = max(x, -127)
+        clamped = max(x, -FP32_EXP_BIAS)
         # We want to round down here, so that the fractional part is in [0, 1)
         rounded = add_ftz_rm(clamped, fp32_round_int)
         rounded_back = sub_ftz(rounded, fp32_round_int)
         frac = sub_ftz(clamped, rounded_back)
+        # Degree-3 polynomial approximation of `2^x` on `x ∈ [0, 1)`.
+        # Coefficients lifted from Tri Dao's FlashAttention-3
+        # `exp2_emulated` (Dao-AILab/flash-attention, `flash_fwd_kernel*`)
+        # — fit by minimax over the unit interval.
         # Tri Dao assumes x <= 127.0 and y <= 127.0
         frac_ex2 = fma_ftz(
             fma_ftz(
@@ -1231,13 +1443,11 @@ def elect_mma_arrive[
 
     inlined_assembly[
         """{
-        .reg .pred %pb;
-        setp.eq.s32  %pb, $1, 0;
-        @%pb bra skip;
-        tcgen05.commit.cta_group::"""
+        .reg .pred %p;
+        setp.eq.s32  %p, $1, 0;
+        @!%p tcgen05.commit.cta_group::"""
         + String(cta_group)
         + """.mbarrier::arrive::one.shared::cluster.b64 [$0];
-        skip:
         }""",
         NoneType,
         constraints="r, r",
@@ -2007,68 +2217,33 @@ def apply_mask[
     comptime simd_size = 2
     comptime F32x2 = SIMD[DType.float32, simd_size]
 
-    comptime if (
-        MaskStrategy.LOWER_TRIANGULAR in mask_strategy
-        or MaskStrategy.UPPER_TRIANGULAR in mask_strategy
-        or (
-            MaskStrategy.OUT_OF_BOUNDS in mask_strategy
-            and MaskStrategy.COMPUTED not in mask_strategy
-        )
+    comptime if MaskStrategy.BITMASK in mask_strategy or (
+        MaskStrategy.OUT_OF_BOUNDS in mask_strategy
+        and MaskStrategy.COMPUTED not in mask_strategy
     ):
+        # Mask-driven bitmask path: each 32-col batch is masked by a 32-bit
+        # visibility pattern. Either the mask provides it via `mask_bits()`
+        # (`BITMASK`), or the kernel hardcodes "clip at num_keys" by setting
+        # `OUT_OF_BOUNDS` alone — used by softmax warps that fast-path the
+        # runtime-`NO_MASK` case.
         comptime num_batches = BN // 32
         comptime assert (BN % 32) == 0
 
-        # when score_row == kv_tile_start_row, 1 is valid
-        var n_valid: Int32 = max(1 + score_row - kv_tile_start_row, 0)
-        # OOB counter: number of in-bound columns (score_col < num_keys)
-        # remaining from the start of the current batch.
-        var n_valid_oob: Int32 = max(num_keys - kv_tile_start_row, 0)
-
         comptime for batch in range(num_batches):
-            var mask_bits: UInt32 = 0xFFFF_FFFF
+            var col_start: Int32 = kv_tile_start_row + Int32(32 * batch)
+            var mask_bits: UInt32
 
-            comptime if MaskStrategy.LOWER_TRIANGULAR in mask_strategy:
-                # Causal Mask
-                # score_row >= kv_tile_start_row
-                # 1 + score_row - kv_tile_start_row > 0
-                # n_valid > 0
-                mask_bits = (UInt32(1) << UInt32(n_valid)) - UInt32(
-                    1
-                ) if n_valid < 32 else mask_bits
-
-            comptime if MaskStrategy.UPPER_TRIANGULAR in mask_strategy:
-                # SlidingWindowCausalMask sliding window part
-                # score_row - kv_tile_start_row < window_size
-                # window_size + kv_tile_start_row - score_row > 0
-                # window_size + 1 - (1 + score_row - kv_tile_start_row) > 0
-                # window_size + 1 - n_valid > 0
-                #
-                # ex window_size = 1, score_row == kv_tile_start_row
-                #    n_valid = 1
-                # We should turn off `0`: first is on, and all the rest
-                # ex window_size = 4, score_row == kv_tile_start_row + 5
-                #    n_valid = 6
-                # We should turn off `2`: first two off, all the rest on
-                var mask_off_count: Int32 = (
-                    n_valid - mask_strategy._upper_triangular_window_size
+            comptime if MaskStrategy.BITMASK in mask_strategy:
+                mask_bits = mask.mask_bits(
+                    prompt_idx, score_row, col_start, num_keys
                 )
-                # we want mask_off_count `1`s
+            else:
+                # OUT_OF_BOUNDS alone: low `n_valid_oob` bits set, where
+                # n_valid_oob = max(num_keys - col_start, 0).
+                var n_valid_oob: Int32 = max(num_keys - col_start, 0)
                 mask_bits = (
-                    (
-                        mask_bits & (0xFFFF_FFFF << UInt32(mask_off_count))
-                    ) if mask_off_count
-                    < 32 else 0
-                ) if mask_off_count > 0 else mask_bits
-
-            comptime if MaskStrategy.OUT_OF_BOUNDS in mask_strategy:
-                # Bit i (0..31) of this batch corresponds to global column
-                # `kv_tile_start_row + 32*batch + i`. It is in-bounds iff
-                # that column is `< num_keys`, i.e. iff `i < n_valid_oob`.
-                # When `n_valid_oob >= 32`, all 32 columns are in-bound and
-                # the AND is a no-op.
-                mask_bits = (
-                    mask_bits & ((UInt32(1) << UInt32(n_valid_oob)) - UInt32(1))
-                ) if n_valid_oob < 32 else mask_bits
+                    (UInt32(1) << UInt32(n_valid_oob)) - UInt32(1)
+                ) if n_valid_oob < 32 else UInt32(0xFFFF_FFFF)
 
             comptime for n in range(32 // simd_size):
                 comptime frag_col_simd = n + 32 * batch // simd_size
@@ -2089,16 +2264,11 @@ def apply_mask[
                     var val: Float32 = s[i]
                     s[i] = val if in_bound else MASK_VALUE
 
-                # OOB is now folded into `mask_bits` above (when applicable),
-                # so we only need the optional log2e multiply that
-                # `apply_oob_mask` would otherwise perform.
                 comptime if MaskType.apply_log2e_after_mask:
                     s = mul_ftz(s, log2e)
 
                 srow[frag_col] = s[0]
                 srow[frag_col + 1] = s[1]
-            n_valid = max(n_valid - 32, 0)
-            n_valid_oob = max(n_valid_oob - 32, 0)
 
     else:
         comptime block_size = BN // simd_size
@@ -2189,6 +2359,7 @@ struct FA4MiscMBars[
     use_order_barriers: Bool = True,
     use_fused_kv: Bool = False,
     pair_cta: Bool = False,
+    num_qo: Int = 2,
 ](TrivialRegisterPassable):
     """Manages all mbarrier resources for FA4.
 
@@ -2208,10 +2379,14 @@ struct FA4MiscMBars[
             warp group overlap. When False, order barriers are omitted.
         use_fused_kv: Whether the K and V share the same pipeline, or separate.
         pair_cta: Whether to use 1-cta or 2-cta implementation.
+        num_qo: Number of Q tiles per CTA. When 1, the `Q1Sync` slot is
+            collapsed and `K_offset` shifts down by `num_qk_stages`. Must
+            be 2 for any caller of `q1_wait_mbar()`.
 
     Memory layout (count=128 first, then count=1):
-        [S0_cons] [S1_cons] [C0] [C1] [Order*] | [S0_prod] [S1_prod] [Q1Sync] [K] [V] [O_prod]
+        [S0_cons] [S1_cons] [C0] [C1] [Order*] | [S0_prod] [S1_prod] [Q1Sync**] [K] [V] [O_prod]
         *Order barriers only present when use_order_barriers=True
+        **Q1Sync barriers only present when num_qo == 2
     """
 
     var mbar_base: MBarType
@@ -2230,10 +2405,12 @@ struct FA4MiscMBars[
     # S producer barriers: 1 per warp group
     comptime S0_producer_offset = Self.order_offset + Self.num_order_barriers
     comptime S1_producer_offset = Self.S0_producer_offset + 1
-    # Q1Sync barriers
+    # Q1Sync barriers (collapsed when num_qo == 1; q1_wait_mbar() is
+    # then unsafe to call — see the comptime assert in q1_wait_mbar().)
     comptime Q1SyncIdx = Self.S1_producer_offset + 1
+    comptime Q1Sync_count: Int = Self.num_qk_stages if Self.num_qo == 2 else 0
     # K pipeline barriers
-    comptime K_offset = Self.Q1SyncIdx + Self.num_qk_stages
+    comptime K_offset = Self.Q1SyncIdx + Self.Q1Sync_count
     comptime K_barriers: Int = 2 * Self.num_qk_stages * Self.num_kv_stages
     # V pipeline barriers (separate from K, only in split mode)
     comptime V_offset: Int = Self.K_offset + Self.K_barriers
@@ -2349,6 +2526,10 @@ struct FA4MiscMBars[
 
     @always_inline
     def q1_wait_mbar(self) -> MBarType:
+        comptime assert Self.num_qo == 2, (
+            "q1_wait_mbar() requires num_qo == 2; the Q1Sync slot is"
+            " collapsed when num_qo == 1."
+        )
         return self.mbar_base + Self.Q1SyncIdx
 
     # K/V/O barrier accessors

@@ -17,12 +17,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Any, ClassVar
 
 import numpy as np
 from max.driver import Buffer, Device, DevicePinnedBuffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph
+from max.graph import Graph
 from max.graph.weights import Weights, WeightsAdapter, load_weights
 from max.nn.kv_cache import KVCacheInputs, KVCacheParams
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
@@ -36,7 +37,6 @@ from max.pipelines.lib import (
     UnifiedEagleOutputs,
 )
 from max.pipelines.lib.interfaces import PipelineModelWithKVCache
-from max.pipelines.lib.registry import AutoConfig
 from max.pipelines.lib.utils import parse_state_dict_from_weights
 
 from ..llama3.model_config import Llama3Config
@@ -72,17 +72,27 @@ class UnifiedEagleLlama3Inputs(ModelInputs):
     in_thinking_phase: Buffer | None = None
     """Per-batch ``bool`` flag set by the pipeline for relaxed acceptance
     during thinking. Not consumed by the unified_eagle_llama3 graph today,
-    but the field is required to satisfy the ``_UnifiedEagleInputs`` protocol
+    but the field is required to satisfy the ``_UnifiedSpecDecodeInputs`` protocol
     used by ``OverlapTextGenerationPipeline``."""
-    token_bitmasks: Buffer | None = None
-    """Grammar constraint bitmask for structured output.
 
-    Shape: [batch_size, num_speculative_tokens + 1, vocab_size].
-    Position i contains valid token mask given FSM state after consuming
-    draft[0:i-1]. Position num_speculative_tokens is for the bonus token.
-    None when structured output is not enabled (in this case an all-True
-    bitmask is passed to the graph).
+    pinned_bitmask: Buffer | None = None
+    """Pinned host bitmask for constrained decoding.
+
+    Shape ``[batch_size, num_speculative_tokens + 1, vocab_size]``.
+    Position i contains the valid-token mask given the FSM state after
+    consuming draft[0:i-1]; position ``num_speculative_tokens`` is for
+    the bonus token. ``None`` when structured output is disabled.
     """
+
+    wait_payload: Buffer | None = None
+    """CPU ``int64[2]`` payload = ``[flag._unsafe_ptr, 1]`` consumed by
+    the in-graph ``mo.wait_host_value_with_dep`` op. Only set when
+    structured output is enabled."""
+
+    device_bitmask_scratch: Buffer | None = None
+    """Device scratch buffer that receives the in-graph H2D from
+    ``pinned_bitmask``; the acceptance sampler reads from it. Only set
+    when structured output is enabled."""
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -111,11 +121,19 @@ class UnifiedEagleLlama3Inputs(ModelInputs):
                 self.top_p,
                 self.min_top_p,
             )
-        # token_bitmasks is only included when structured output is enabled.
-        # The graph is compiled with or without this input based on the
-        # enable_structured_output config flag.
-        if self.token_bitmasks is not None:
-            buffers += (self.token_bitmasks,)
+            # Constrained-decoding bitmask inputs are appended only on
+            # the spec-decode path. The bitmask triple's position in the
+            # tuple must match the order in ``input_types()``, which
+            # gates the bitmask inputs on both spec-decode and
+            # ``enable_structured_output``.
+            if self.pinned_bitmask is not None:
+                assert self.wait_payload is not None
+                assert self.device_bitmask_scratch is not None
+                buffers += (
+                    self.pinned_bitmask,
+                    self.wait_payload,
+                    self.device_bitmask_scratch,
+                )
         return buffers
 
 
@@ -140,6 +158,8 @@ class PersistentInputBuffers:
 
 class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
     """Unified EAGLE Llama3: target + draft in one compiled graph."""
+
+    model_config_cls: ClassVar[type[Any]] = Llama3Config
 
     model: Model
 
@@ -180,23 +200,6 @@ class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
         return Buffer.from_numpy(
             np.array([self._seed_counter], dtype=np.uint64)
         ).to(self.devices[0])
-
-    @classmethod
-    def get_kv_params(
-        cls,
-        huggingface_config: AutoConfig,
-        pipeline_config: PipelineConfig,
-        devices: list[DeviceRef],
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> KVCacheParams:
-        return Llama3Config.construct_kv_params(
-            huggingface_config,
-            pipeline_config,
-            devices,
-            kv_cache_config,
-            cache_dtype,
-        )
 
     def load_model(self, session: InferenceSession) -> Model:
         with CompilationTimer("unified_eagle_llama3_model") as timer:
@@ -251,7 +254,7 @@ class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
                 target=target_config,
                 draft=draft_config,
                 speculative_config=self.pipeline_config.speculative,
-                enable_structured_output=self.pipeline_config.sampling.enable_structured_output,
+                enable_structured_output=self.pipeline_config.needs_bitmask_constraints,
             )
 
             nn_model = UnifiedEagleLlama3Module(unified_config)
@@ -366,22 +369,4 @@ class UnifiedEagleLlama3Model(PipelineModelWithKVCache[TextContext]):
             return_n_logits=return_n_logits_buf,
             kv_cache_inputs=kv_cache_inputs,
             seed=self._next_seed(),
-        )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> UnifiedEagleLlama3Inputs:
-        raise NotImplementedError(
-            "Multistep execution is not supported for UnifiedEagleLlama3Model. "
-            "The unified pipeline handles iteration internally."
-        )
-
-    @classmethod
-    def calculate_max_seq_len(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        return Llama3Config.calculate_max_seq_len(
-            pipeline_config, huggingface_config
         )

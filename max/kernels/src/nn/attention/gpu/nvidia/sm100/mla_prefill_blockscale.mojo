@@ -32,7 +32,7 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
     expect_bytes_pred,
 )
 from nn.attention.gpu.mha import q_num_matrix_view_rows
-from nn.attention.gpu.nvidia.sm90.attention import (
+from nn.attention.gpu.nvidia.common import (
     get_seq_info,
     KVTMATile,
     kv_coord,
@@ -131,7 +131,6 @@ __extension SM100MLA:
     @__llvm_metadata(`nvvm.minctasm`=SIMDSize(1))
     @__name(
         t"sm100_mla_prefill_blockscale_{Self.qkv_dtype}_{Self.output_dtype}_{blockwise_scale}_nqh{Self.config.num_q_heads}_nkvh{Self.config.num_kv_heads}",
-        mangle=True,
     )
     def mla_prefill_kernel_blockscale[
         blockwise_scale: Int = 0,
@@ -165,7 +164,9 @@ __extension SM100MLA:
         ragged_tma_store: RaggedTMA3DTile[
             Self.output_dtype,
             Self.config.output_swizzle_mode,
-            BM=Self.config.fa4_config.BM // 2,
+            # `// fa4_config.num_qo` matches fa4_softmax's unified
+            # 1Q/2Q signature; numerically `// 2` for num_qo=2.
+            BM=Self.config.fa4_config.BM // Self.config.fa4_config.num_qo,
             BN=Self.config.fa4_config.ov_depth,
             group=config.fa4_config.group if config.fa4_config.fuse_gqa else 1,
         ],
@@ -358,6 +359,7 @@ __extension SM100MLA:
                 Self.page_size,
             ](
                 attn_smem,
+                seq_info.prompt_idx,
                 pos.score_row,
                 pos.num_keys,
                 mask,
@@ -415,6 +417,7 @@ __extension SM100MLA:
             Self.mma(
                 ptr_tmem_addr[0],
                 cvt_to_mma_pipeline,
+                seq_info.prompt_idx,
                 pos.score_row,
                 pos.num_keys,
                 mask,
@@ -441,7 +444,7 @@ __extension SM100MLA:
 
             var iter_count: UInt32 = (
                 mask.last_masked_set_end[Self.BM, Self.BN, Self.page_size](
-                    pos.score_row, pos.num_keys
+                    seq_info.prompt_idx, pos.score_row, pos.num_keys
                 )
                 - 1
             )
@@ -568,7 +571,7 @@ __extension SM100MLA:
 
         var kv_row: UInt32 = mask.start_column[
             Self.BM, Self.BN, Self.page_size
-        ](score_row)
+        ](seq_info.prompt_idx, score_row)
         var paged_rows = kv_lut.populate[Self.config.BN, base_alignment](
             seq_info.prompt_idx, kv_row
         )
@@ -577,7 +580,7 @@ __extension SM100MLA:
         ](seq_info.prompt_idx, kv_row)
         var iter_count: UInt32 = (
             mask.last_masked_set_end[Self.BM, Self.BN, Self.page_size](
-                score_row, num_keys
+                seq_info.prompt_idx, score_row, num_keys
             )
             - 1
         )
@@ -917,7 +920,9 @@ __extension SM100MLA:
 
                 comptime if check_mask:
                     if (
-                        Self.mask_status(mask, score_row, kv_row)
+                        Self.mask_status(
+                            mask, seq_info.prompt_idx, score_row, kv_row
+                        )
                         == TileMaskStatus.FULL_MASK
                     ):
                         continue
@@ -952,7 +957,9 @@ __extension SM100MLA:
                     var _skip_last = False
                     comptime if check_mask:
                         if (
-                            Self.mask_status(mask, score_row, kv_row)
+                            Self.mask_status(
+                                mask, seq_info.prompt_idx, score_row, kv_row
+                            )
                             == TileMaskStatus.FULL_MASK
                         ):
                             _skip_last = True
@@ -1156,7 +1163,9 @@ __extension SM100MLA:
 
                 comptime if check_mask:
                     if (
-                        Self.mask_status(mask, score_row, kv_row)
+                        Self.mask_status(
+                            mask, seq_info.prompt_idx, score_row, kv_row
+                        )
                         == TileMaskStatus.FULL_MASK
                     ):
                         continue
@@ -1189,7 +1198,9 @@ __extension SM100MLA:
                     var _skip_last = False
                     comptime if check_mask:
                         if (
-                            Self.mask_status(mask, score_row, kv_row)
+                            Self.mask_status(
+                                mask, seq_info.prompt_idx, score_row, kv_row
+                            )
                             == TileMaskStatus.FULL_MASK
                         ):
                             _skip_last = True
@@ -1330,6 +1341,7 @@ __extension SM100MLA:
     def mma(
         tmem_addr: UInt32,
         mut cvt_to_mma_pipeline: CvtToMMAPipeline,
+        seq_id: UInt32,
         score_row: UInt32,
         num_keys: UInt32,
         mask: Self.MaskType,
@@ -1416,7 +1428,7 @@ __extension SM100MLA:
 
             var iter_count: UInt32 = (
                 mask.total_iters[Self.BM, Self.BN, Self.page_size](
-                    score_row, num_keys
+                    seq_id, score_row, num_keys
                 )
                 - 1
             )
@@ -1555,7 +1567,7 @@ __extension SM100MLA:
             # We peel the first iteration, as we want to wait on q1
             var iter_count: UInt32 = (
                 mask.total_iters[Self.BM, Self.BN, Self.page_size](
-                    score_row, num_keys
+                    seq_id, score_row, num_keys
                 )
                 - 1
             )
@@ -1683,7 +1695,7 @@ def mla_sm100_prefill_blockscale[
     comptime RaggedStoreType = RaggedTMA3DTile[
         output_dtype,
         fa4_config.output_swizzle_mode,
-        BM=fa4_config.fa4_config.BM // 2,
+        BM=fa4_config.fa4_config.BM // fa4_config.fa4_config.num_qo,
         BN=fa4_config.fa4_config.ov_depth,
     ]
 
@@ -1765,7 +1777,7 @@ def _mla_prefill_sm100_valid_length_dispatch[
     ragged_tma_store: RaggedTMA3DTile[
         output_dtype,
         fa4_config.output_swizzle_mode,
-        BM=fa4_config.fa4_config.BM // 2,
+        BM=fa4_config.fa4_config.BM // fa4_config.fa4_config.num_qo,
         BN=fa4_config.fa4_config.ov_depth,
     ],
     q_tma_op: QTMATile[

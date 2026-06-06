@@ -20,15 +20,16 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import PIL.Image
-from max.interfaces import TokenBuffer
-from max.interfaces.provider_options import ImageProviderOptions
-from max.interfaces.request import OpenResponsesRequest
 from max.pipelines.core import PixelContext
+from max.pipelines.core.exceptions import PromptTooLongError
 from max.pipelines.lib.config import PipelineConfig
 from max.pipelines.lib.pixel_tokenizer import (
     PixelGenerationTokenizer,
     run_with_default_executor,
 )
+from max.pipelines.modeling.types import TokenBuffer
+from max.pipelines.request import OpenResponsesRequest
+from max.pipelines.request.provider_options import ImageProviderOptions
 
 logger = logging.getLogger("max.pipelines")
 
@@ -144,9 +145,10 @@ class ZImageTokenizer(PixelGenerationTokenizer):
             max_sequence_length is not None
             and input_ids_array.shape[1] > max_sequence_length
         ):
-            raise ValueError(
-                "Input string is larger than tokenizer's max length "
-                f"({input_ids_array.shape[1]} > {max_sequence_length})."
+            raise PromptTooLongError(
+                input_ids_array.shape[1],
+                max_sequence_length,
+                limit_description="text encoder's maximum sequence length",
             )
 
         encoded_prompt = input_ids_array[0].astype(np.int64, copy=False)
@@ -351,5 +353,4 @@ class ZImageTokenizer(PixelGenerationTokenizer):
             model_name=request.body.model,
             input_image=preprocessed_image_array,
             output_format=image_specific.output_format,
-            residual_threshold=pixel_options.residual_threshold,
         )

@@ -19,6 +19,7 @@ from std.collections.string._parsing_numbers.parsing_floats import _atof
 from std.collections.string._utf8 import UTF8Chunks, _is_valid_utf8
 from std.collections.string.format import _FormatUtils
 from std.collections.string.string_slice import (
+    BytesIter,
     CodepointSliceIter,
     GraphemeIndicesIter,
     GraphemeSliceIter,
@@ -41,7 +42,7 @@ from std.sys.info import is_32bit
 
 from std.bit import count_leading_zeros
 from std.memory import memcmp, memcpy, memset
-from std.python import ConvertibleFromPython, ConvertibleToPython, PythonObject
+from std.python import ConvertibleFromPython, PythonObject
 from std.reflection.traits import AllWritable
 
 # ===----------------------------------------------------------------------=== #
@@ -53,7 +54,6 @@ struct String(
     Boolable,
     Comparable,
     ConvertibleFromPython,
-    ConvertibleToPython,
     Defaultable,
     FloatableRaising,
     ImplicitlyCopyable,
@@ -605,7 +605,13 @@ struct String(
             - `unsafe_from_utf8_ptr` MUST be null terminated.
         """
         # Copy the data.
-        self = String(StringSlice(unsafe_from_utf8_ptr=unsafe_from_utf8_ptr))
+        self = String(
+            StringSlice(
+                unsafe_from_utf8=CStringSlice(
+                    unsafe_from_ptr=unsafe_from_utf8_ptr.bitcast[Int8]()
+                )
+            )
+        )
 
     def __init__(
         out self, *, unsafe_from_utf8_ptr: UnsafePointer[mut=False, UInt8, _]
@@ -620,7 +626,13 @@ struct String(
             - `unsafe_from_utf8_ptr` MUST be null terminated.
         """
         # Copy the data.
-        self = String(StringSlice(unsafe_from_utf8_ptr=unsafe_from_utf8_ptr))
+        self = String(
+            StringSlice(
+                unsafe_from_utf8=CStringSlice(
+                    unsafe_from_ptr=unsafe_from_utf8_ptr.bitcast[Int8]()
+                )
+            )
+        )
 
     @always_inline("nodebug")
     def __init__(out self, *, copy: Self):
@@ -822,6 +834,53 @@ struct String(
         """
         return StringSlice(self)[byte=byte]
 
+    def __getitem__[
+        I: Indexer, //
+    ](self, *, codepoint: I) -> StringSlice[origin_of(self)]:
+        """Gets the character at the specified position.
+
+        Parameters:
+            I: A type that can be used as an index.
+
+        Args:
+            codepoint: The codepoint index.
+
+        Returns:
+            A `StringSlice` view containing the unicode codepoint at the
+            specified position.
+        """
+        return StringSlice(self)[codepoint=codepoint]
+
+    @always_inline
+    def __getitem__(
+        self, *, codepoint: ContiguousSlice
+    ) -> StringSlice[origin_of(self)]:
+        """Gets a substring at the specified codepoint positions.
+
+        Args:
+            codepoint: A slice that specifies codepoint positions of the new
+                substring.
+
+        Returns:
+            A StringSlice containing the codepoints in the specified range.
+        """
+        return StringSlice(self)[codepoint=codepoint]
+
+    @always_inline
+    def __getitem__(
+        self, *, grapheme: Some[Indexer]
+    ) -> StringSlice[origin_of(self)]:
+        """Gets the character at the specified position.
+
+        Args:
+            grapheme: The grapheme index.
+
+        Returns:
+            A `StringSlice` view containing the unicode grapheme at the
+            specified position.
+        """
+        return StringSlice(self)[grapheme=grapheme]
+
     def __eq__(self, rhs: String) -> Bool:
         """Compares two Strings if they have the same values.
 
@@ -1002,17 +1061,6 @@ struct String(
         """
         return self
 
-    def to_python_object(var self) raises -> PythonObject:
-        """Convert this value to a PythonObject.
-
-        Returns:
-            A PythonObject representing the value.
-
-        Raises:
-            If the operation fails.
-        """
-        return PythonObject(self)
-
     def __init__(out self, *, py: PythonObject) raises:
         """Construct a `String` from a PythonObject.
 
@@ -1079,6 +1127,47 @@ struct String(
             instead of the heap.
         """
         return StringSlice(self).join(elems)
+
+    def bytes(self) -> BytesIter[origin_of(self)]:
+        """Returns an iterator over the raw UTF-8 bytes of this string.
+
+        Unlike `codepoints()` and `graphemes()`, this iterator operates at the
+        byte level and yields individual `Byte` values without interpreting
+        multi-byte UTF-8 sequences.
+
+        Returns:
+            An iterator type that returns successive `Byte` values stored in
+            this string.
+
+        Examples:
+
+        Iterate over the bytes of an ASCII string:
+
+        ```mojo
+        from std.testing import assert_equal, assert_raises
+
+        var s = String("abc")
+        var iter = s.bytes()
+        assert_equal(next(iter), Byte(ord("a")))
+        assert_equal(next(iter), Byte(ord("b")))
+        assert_equal(next(iter), Byte(ord("c")))
+        with assert_raises():
+            _ = next(iter) # raises StopIteration
+        ```
+
+        Multi-byte UTF-8 sequences are yielded as individual bytes:
+
+        ```mojo
+        from std.testing import assert_equal
+
+        # "é" is encoded in UTF-8 as two bytes: 0xC3 0xA9.
+        var s = String("é")
+        var iter = s.bytes()
+        assert_equal(next(iter), Byte(0xC3))
+        assert_equal(next(iter), Byte(0xA9))
+        ```
+        """
+        return StringSlice(self).bytes()
 
     def codepoints(self) -> CodepointsIter[origin_of(self)]:
         """Returns an iterator over the `Codepoint`s encoded in this string slice.
@@ -1200,18 +1289,6 @@ struct String(
             An iterator yielding `(byte_offset, grapheme)` pairs.
         """
         return StringSlice(self).grapheme_indices()
-
-    def nth_grapheme(self, n: Int) -> Optional[StringSlice[origin_of(self)]]:
-        """Return the `n`-th grapheme cluster (0-indexed), or `None` if out
-        of range.
-
-        Args:
-            n: The zero-based grapheme index. Must be non-negative.
-
-        Returns:
-            The `n`-th grapheme cluster, or `None` if `n` is out of range.
-        """
-        return StringSlice(self).nth_grapheme(n)
 
     def split_at_grapheme(
         self, n: Int

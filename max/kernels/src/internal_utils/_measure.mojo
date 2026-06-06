@@ -17,8 +17,10 @@ from std.sys import simd_width_of
 
 from std.algorithm import elementwise, mean, sum, vectorize
 from std.algorithm.functional import unswitch
+from std.gpu.host import DeviceContext
 
 from std.utils import IndexList
+from std.utils.coord import Coord
 
 # ===----------------------------------------------------------------------=== #
 # kl_div
@@ -55,20 +57,19 @@ def kl_div[
     x: type_of(output),
     y: type_of(output),
     len: Int,
+    ctx: DeviceContext,
 ) raises where dtype.is_floating_point():
     @parameter
-    def kl_div_elementwise[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    def kl_div_elementwise[simd_width: Int, alignment: Int = 1](idx: Coord):
         output.store(
-            idx[0],
+            idx[0].value(),
             kl_div(
-                x.load[width=simd_width](idx[0]),
-                y.load[width=simd_width](idx[0]),
+                x.load[width=simd_width](idx[0].value()),
+                y.load[width=simd_width](idx[0].value()),
             ),
         )
 
-    elementwise[kl_div_elementwise, simd_width_of[dtype]()](len)
+    elementwise[kl_div_elementwise, simd_width_of[dtype]()](len, ctx)
 
 
 def kl_div[
@@ -112,6 +113,7 @@ def correlation[
     u: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
     v: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
     len: Int,
+    ctx: DeviceContext,
     *,
     w: Optional[UnsafePointer[u.type, MutAnyOrigin]] = None,
     centered: Bool = True,
@@ -134,7 +136,7 @@ def correlation[
     var w_list = List[Scalar[dtype]]()
     if w:
         w_list = List[Scalar[dtype]](capacity=len)
-        _div(w_list.unsafe_ptr(), w.value(), _sum(w.value(), len), len)
+        _div(w_list.unsafe_ptr(), w.value(), _sum(w.value(), len), len, ctx)
     if centered:
         if w:
             umu = _dot[out_type=out_type](u, w_list.unsafe_ptr(), len)
@@ -289,19 +291,18 @@ def _sqrt[
     output: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     x: type_of(output),
     len: Int,
+    ctx: DeviceContext,
 ) raises:
     @parameter
-    def apply_fn[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    def apply_fn[simd_width: Int, alignment: Int = 1](idx: Coord):
         output.store(
-            idx[0],
+            idx[0].value(),
             rebind[SIMD[dtype, simd_width]](
-                sqrt(x.load[width=simd_width](idx[0]))
+                sqrt(x.load[width=simd_width](idx[0].value()))
             ),
         )
 
-    elementwise[apply_fn, simd_width_of[dtype]()](len)
+    elementwise[apply_fn, simd_width_of[dtype]()](len, ctx)
 
 
 def _mul[
@@ -311,20 +312,19 @@ def _mul[
     x: type_of(output),
     y: type_of(output),
     len: Int,
+    ctx: DeviceContext,
 ) raises:
     @parameter
-    def apply_fn[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    def apply_fn[simd_width: Int, alignment: Int = 1](idx: Coord):
         output.store(
-            idx[0],
+            idx[0].value(),
             rebind[SIMD[dtype, simd_width]](
-                x.load[width=simd_width](idx[0])
-                * y.load[width=simd_width](idx[0])
+                x.load[width=simd_width](idx[0].value())
+                * y.load[width=simd_width](idx[0].value())
             ),
         )
 
-    elementwise[apply_fn, simd_width_of[dtype]()](len)
+    elementwise[apply_fn, simd_width_of[dtype]()](len, ctx)
 
 
 def _div[
@@ -334,18 +334,19 @@ def _div[
     x: type_of(output),
     c: Scalar[dtype],
     len: Int,
+    ctx: DeviceContext,
 ) raises:
     @parameter
-    def apply_fn[
-        simd_width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    def apply_fn[simd_width: Int, alignment: Int = 1](idx: Coord):
         output.store(
-            idx[0],
-            rebind[SIMD[dtype, simd_width]](x.load[width=simd_width](idx[0]))
+            idx[0].value(),
+            rebind[SIMD[dtype, simd_width]](
+                x.load[width=simd_width](idx[0].value())
+            )
             / c,
         )
 
-    elementwise[apply_fn, simd_width_of[dtype]()](len)
+    elementwise[apply_fn, simd_width_of[dtype]()](len, ctx)
 
 
 def _sum[

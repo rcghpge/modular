@@ -60,7 +60,7 @@ from linalg.matmul.gpu._multistage_gemm_gpu import warp_split_k_reduction
 from linalg.utils import GemmShape, apply_epilogue, elementwise_epilogue_type
 from linalg.utils_gpu import MatmulConfig, block_swizzle
 from std.memory.unsafe import bitcast
-from std.runtime.asyncrt import DeviceContextPtr
+
 
 from std.utils.index import Index
 from std.utils.numerics import get_accum_type
@@ -574,7 +574,6 @@ def multistage_mma_q[
 
 @__name(
     t"multistage_qgemm_{a_type}_{b_packed_type}_{c_type}_g{group_size}",
-    mangle=True,
 )
 def multistage_qgemm_kernel[
     c_type: DType,
@@ -1050,7 +1049,7 @@ def unpack_4bit_int(val: SIMD[DType.uint32, _], idx: Int) -> UInt8:
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](128))
-@__name(t"repack_Q4_0_for_sm8x_{scales_type}", mangle=True)
+@__name(t"repack_Q4_0_for_sm8x_{scales_type}")
 def repack_Q4_0_for_sm8x[
     q_layout: Layout,
     repack_layout: Layout,
@@ -1238,9 +1237,7 @@ def repack_Q4_0_for_sm8x[
 # [K_groups, N]. The input is a uint8 tensor of shape
 # [K_groups * group_bytes, N].
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](128))
-@__name(
-    t"repack_GPTQ_for_sm8x_{scales_type}_g{group_size}_{has_perm}", mangle=True
-)
+@__name(t"repack_GPTQ_for_sm8x_{scales_type}_g{group_size}_{has_perm}")
 def repack_GPTQ_for_sm8x[
     in_layout: Layout,
     out_layout: Layout,
@@ -1620,7 +1617,7 @@ def matmul_gpu_qint4[
     c_tt: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
     a_tt: TileTensor[a_type, address_space=AddressSpace.GENERIC, ...],
     b_tt: TileTensor[DType.uint8, address_space=AddressSpace.GENERIC, ...],
-    ctx: DeviceContextPtr = DeviceContextPtr(),
+    ctx: Optional[DeviceContext] = None,
 ) raises:
     var c = c_tt.to_layout_tensor()
     var a = a_tt.to_layout_tensor()
@@ -1629,7 +1626,7 @@ def matmul_gpu_qint4[
     comptime assert a.rank == 2
     comptime assert b.rank == 2
     comptime assert is_gpu[target](), "unsupported target"
-    var cuda_ctx = ctx.get_device_context()
+    var cuda_ctx = ctx.value()
 
     matmul_gpu_qint4_impl[group_size, target, elementwise_lambda_fn](
         c, a, b, cuda_ctx
@@ -2140,18 +2137,23 @@ def matmul_gpu_qint4_impl[
 def gpu_qint4_repack_Q4_0[
     target: StaticString,
 ](
-    b: LayoutTensor[
-        mut=False, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_packed: LayoutTensor[
+    b_tt: TileTensor[DType.uint8, address_space=AddressSpace.GENERIC, ...],
+    b_packed_tt: TileTensor[
         mut=True, DType.uint8, address_space=AddressSpace.GENERIC, ...
     ],
-    ctx: DeviceContextPtr = DeviceContextPtr(),
+    ctx: Optional[DeviceContext] = None,
 ) raises:
+    # Host signature accepts TileTensor; bridge inward to LayoutTensor for the
+    # downstream `enqueue_function` whose kernel params are still LayoutTensor.
+    # Mirrors `matmul_gpu_qint4` above. Per
+    # Kernels/claude_kb/entries/exceptions/host-function-signatures.md the
+    # bridge moves inward, it does not disappear.
+    var b = b_tt.to_layout_tensor()
+    var b_packed = b_packed_tt.to_layout_tensor()
     comptime assert b.rank == 2
     comptime assert b_packed.rank == 2
     comptime assert is_gpu[target](), "unsupported target"
-    var cuda_ctx = ctx.get_device_context()
+    var cuda_ctx = ctx.value()
 
     comptime pack_factor = 8
     comptime group_size = 32
@@ -2185,8 +2187,10 @@ def gpu_qint4_repack_GPTQ[
     group_size: Int,
     target: StaticString,
 ](
-    b: LayoutTensor[mut=False, DType.uint8, ...],
-    b_packed: LayoutTensor[mut=True, DType.uint8, ...],
+    b_tt: TileTensor[DType.uint8, address_space=AddressSpace.GENERIC, ...],
+    b_packed_tt: TileTensor[
+        mut=True, DType.uint8, address_space=AddressSpace.GENERIC, ...
+    ],
     perm_idx: OptionalReg[
         LayoutTensor[
             mut=False,
@@ -2195,12 +2199,18 @@ def gpu_qint4_repack_GPTQ[
             ImmutAnyOrigin,
         ]
     ] = None,
-    ctx: DeviceContextPtr = DeviceContextPtr(),
+    ctx: Optional[DeviceContext] = None,
 ) raises:
+    # `b`/`b_packed` host params accept TileTensor and bridge inward to
+    # LayoutTensor for `enqueue_function` (same pattern as `matmul_gpu_qint4`).
+    # `perm_idx` stays LayoutTensor: the caller builds a bespoke immutable
+    # LayoutTensor view for it, so it is left out of this rotation.
+    var b = b_tt.to_layout_tensor()
+    var b_packed = b_packed_tt.to_layout_tensor()
     comptime assert b.rank == 2
     comptime assert b_packed.rank == 2
     comptime assert is_gpu[target](), "unsupported target"
-    var cuda_ctx = ctx.get_device_context()
+    var cuda_ctx = ctx.value()
 
     comptime pack_factor = 8
     comptime group_bytes = 2 + (group_size // 2)

@@ -357,7 +357,7 @@ struct BlockwiseFP8_1D2DMatmulKernel[
             1,
             2,
         ), "Only support cta_group == 1 or 2"
-        comptime assert Self.BK == 128, "Only support BK = 128"
+        comptime assert Self.BK in (64, 128), "Only support BK in (64, 128)"
 
     # ========== Computed Layouts (single source of truth) ==========
 
@@ -424,7 +424,7 @@ struct BlockwiseFP8_1D2DMatmulKernel[
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(a_scales_tma_op, `nvvm.grid_constant`)
-    @__name(StaticString(Self.config.get_kernal_name()), mangle=True)
+    @__name(StaticString(Self.config.get_kernel_name()))
     def run(
         # Grid-constant TMA descriptors
         a_tma_op: Self.ATmaOp,

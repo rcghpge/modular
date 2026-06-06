@@ -15,6 +15,7 @@
 These are Mojo built-ins, so you don't need to import them.
 """
 
+from std.builtin.rebind import downcast
 from std.collections import Deque
 from std.collections.deque import _DequeIter
 from std.collections.dict import _DictEntryIter, _DictKeyIter, _DictValueIter
@@ -81,9 +82,7 @@ def reversed[T: ReversibleRange](value: T) -> _StridedRange:
     return value.__reversed__()
 
 
-def reversed[
-    T: Copyable
-](ref value: List[T, ...]) -> _ListIter[T, origin_of(value), False]:
+def reversed[T: Copyable](ref value: List[T]) -> type_of(value.__reversed__()):
     """Get a reversed iterator of the input list.
 
     **Note**: iterators are currently non-raising.
@@ -142,7 +141,7 @@ def reversed[
 
 
 def reversed[
-    K: KeyElement,
+    K: KeyElement & Copyable & ImplicitlyDestructible,
     V: Copyable & ImplicitlyDestructible,
     H: Hasher,
 ](ref value: Dict[K, V, H],) -> _DictKeyIter[K, V, H, origin_of(value), False]:
@@ -167,7 +166,7 @@ def reversed[
 def reversed[
     dict_mutability: Bool,
     //,
-    K: KeyElement,
+    K: KeyElement & Copyable & ImplicitlyDestructible,
     V: Copyable & ImplicitlyDestructible,
     H: Hasher,
     dict_origin: Origin[mut=dict_mutability],
@@ -197,7 +196,7 @@ def reversed[
 def reversed[
     dict_mutability: Bool,
     //,
-    K: KeyElement,
+    K: KeyElement & Copyable & ImplicitlyDestructible,
     V: Copyable & ImplicitlyDestructible,
     H: Hasher,
     dict_origin: Origin[mut=dict_mutability],

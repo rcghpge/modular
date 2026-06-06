@@ -18,19 +18,19 @@ import contextlib
 import logging
 import queue
 from collections.abc import AsyncGenerator, AsyncIterator, Generator
-from typing import Generic
+from typing import Any, Generic
 
 import zmq
-from max.interfaces import (
+from max.pipelines.modeling.types import (
     BaseContextType,
     EmbeddingsContext,
     PipelineOutputType,
     PipelineTask,
     RequestID,
-    SchedulerResult,
     TextGenerationContext,
 )
-from max.interfaces.queue import MAXPullQueue, MAXPushQueue
+from max.serve.queue import MAXPullQueue, MAXPushQueue
+from max.serve.scheduler_result import SchedulerResult
 from max.serve.worker_interface import (
     ModelWorkerInterface,
     ModelWorkerProxy,
@@ -76,8 +76,8 @@ class ZmqModelWorkerProxy(
         the context, the queue is cleaned up from the pending output queues.
 
         Args:
-            req_id (RequestID): The unique identifier for the request.
-            data (BaseContextType): The input data associated with the request.
+            req_id: The unique identifier for the request.
+            data: The input data associated with the request.
 
         Yields:
             asyncio.Queue: The queue to receive streamed results for the request.
@@ -160,7 +160,7 @@ class ZmqModelWorkerProxy(
         This method sends a cancellation message to the worker for the given request ID.
 
         Args:
-            req_id (RequestID): The unique identifier of the request to cancel.
+            req_id: The unique identifier of the request to cancel.
         """
         # Send cancellation message to worker
         self.cancel_queue.put_nowait([req_id])
@@ -221,6 +221,28 @@ class ZmqModelWorkerProxy(
                 raise Exception("zmq detected a dead model worker") from None
 
 
+def _response_type_for_task(
+    pipeline_task: PipelineTask,
+) -> type[Any]:
+    """Maps a PipelineTask to the correct msgspec response type for ZMQ deserialization."""
+    from max.pipelines.modeling.types.generation import GenerationOutput
+    from max.pipelines.modeling.types.pipeline_variants import (
+        EmbeddingsGenerationOutput,
+        TextGenerationOutput,
+    )
+
+    if pipeline_task == PipelineTask.TEXT_GENERATION:
+        return dict[RequestID, SchedulerResult[TextGenerationOutput]]
+    elif pipeline_task == PipelineTask.EMBEDDINGS_GENERATION:
+        return dict[RequestID, SchedulerResult[EmbeddingsGenerationOutput]]
+    elif pipeline_task == PipelineTask.PIXEL_GENERATION:
+        return dict[RequestID, SchedulerResult[GenerationOutput]]
+    else:
+        raise ValueError(
+            f"PipelineTask ({pipeline_task}) does not have a response type defined."
+        )
+
+
 class ZmqModelWorkerInterface(
     Generic[BaseContextType, PipelineOutputType],
     ModelWorkerInterface[BaseContextType, PipelineOutputType],
@@ -230,7 +252,7 @@ class ZmqModelWorkerInterface(
         pipeline_task: PipelineTask,
         context_type: type[TextGenerationContext] | type[EmbeddingsContext],
     ) -> None:
-        response_type = pipeline_task.output_type
+        response_type = _response_type_for_task(pipeline_task)
 
         self.request_queue_config = ZmqConfig[BaseContextType](context_type)
         self.response_queue_config = ZmqConfig[
