@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-pipeline --mogg-import-packages --mo-to-mogg --mogg-to-mgp -o /dev/null
+// RUN: mo-opt %s --mo-pipeline --mo-to-mogg --mogg-to-mgp -o /dev/null
 
 // Regression test: `mo.parallel` with parameter-expression-form dims in
 // tensor types.

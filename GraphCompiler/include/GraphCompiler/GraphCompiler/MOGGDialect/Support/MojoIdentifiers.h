@@ -332,53 +332,10 @@ constexpr llvm::StringLiteral kFnGetSafeTaskId =
 constexpr llvm::StringLiteral kFnMax = "max";
 constexpr llvm::StringLiteral kFnPrint = "print";
 
-//===----------------------------------------------------------------------===//
-// Mojo field / method names (accessed on values via `.foo` in emitted code)
-//===----------------------------------------------------------------------===//
-
-/// `ManagedTensorSlice` fields.
-constexpr llvm::StringLiteral kFieldUnsafePtr = "unsafe_ptr";
-constexpr llvm::StringLiteral kFnUnsafeOriginCast = "unsafe_origin_cast";
-constexpr llvm::StringLiteral kFieldShape = "shape";
-constexpr llvm::StringLiteral kFieldStrides = "strides";
-constexpr llvm::StringLiteral kFieldStaticSpec = "static_spec";
-constexpr llvm::StringLiteral kFieldStaticShapeTuple = "_static_shape_tuple";
-constexpr llvm::StringLiteral kFieldStaticStridesTuple =
-    "_static_strides_tuple";
-constexpr llvm::StringLiteral kFieldAlignment = "alignment";
-constexpr llvm::StringLiteral kFieldPtr = "_ptr";
-constexpr llvm::StringLiteral kFieldIoSpec = "io_spec";
-
-/// `StaticTensorSpec` fields.
-constexpr llvm::StringLiteral kFieldStaticLayout = "static_layout";
-constexpr llvm::StringLiteral kFieldRank = "rank";
-constexpr llvm::StringLiteral kFieldShapeTuple = "shape_tuple";
-constexpr llvm::StringLiteral kFieldStridesTuple = "strides_tuple";
-
-/// `TileTensor` fields.
-constexpr llvm::StringLiteral kFieldLayout = "layout";
-
-/// `StaticString` fields.
-constexpr llvm::StringLiteral kFieldByteLength = "byte_length";
-
-/// `ManagedTensorSlice` bind methods for fusion lambdas.
-constexpr llvm::StringLiteral kFnManagedTensorSliceBindToFusedInput =
-    "_bind_to_fused_input";
-constexpr llvm::StringLiteral kFnManagedTensorSliceBindToFusedOutput =
-    "_bind_to_fused_output";
-constexpr llvm::StringLiteral kFnManagedTensorSliceBindToFusedComputeOutput =
-    "_bind_to_fused_compute_output";
-constexpr llvm::StringLiteral
-    kFnManagedTensorSliceBindToFusedComputeOutputTile =
-        "_bind_to_fused_compute_output_tile";
-
-/// Methods on misc Mojo types.
-constexpr llvm::StringLiteral kFnBitcast = "bitcast";
-constexpr llvm::StringLiteral kFnTakePointee = "take_pointee";
-constexpr llvm::StringLiteral kFnUnsafeDangling = "unsafe_dangling";
-constexpr llvm::StringLiteral kFnWait = "wait";
-constexpr llvm::StringLiteral kFnGetInternals = "get_internals";
-constexpr llvm::StringLiteral kFnOf = "of";
+// NOTE: Mojo field / method names accessed on values via `.foo` are no longer
+// free constants. Each one is a `static constexpr llvm::StringLiteral` member
+// of the wrapper class for the type that owns it (see "Wrapper classes for
+// high-traffic Mojo types" below).
 
 //===----------------------------------------------------------------------===//
 // Trait names (used in struct conformance declarations)
@@ -553,35 +510,51 @@ class ManagedTensorSliceRef {
 public:
   explicit ManagedTensorSliceRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Field accessors (return the raw field value, not a call).
-  MojoValue staticSpec() const { return value.get(kFieldStaticSpec); }
-  MojoValue staticShapeTuple() const {
-    return value.get(kFieldStaticShapeTuple);
-  }
-  MojoValue staticStridesTuple() const {
-    return value.get(kFieldStaticStridesTuple);
-  }
-  MojoValue alignment() const { return value.get(kFieldAlignment); }
-  MojoValue ioSpec() const { return value.get(kFieldIoSpec); }
+  /// Mojo field / method symbol names on `ManagedTensorSlice`.
+  static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
+  static constexpr llvm::StringLiteral kShape = "shape";
+  static constexpr llvm::StringLiteral kStrides = "strides";
+  static constexpr llvm::StringLiteral kStaticSpec = "static_spec";
+  static constexpr llvm::StringLiteral kStaticShapeTuple =
+      "_static_shape_tuple";
+  static constexpr llvm::StringLiteral kStaticStridesTuple =
+      "_static_strides_tuple";
+  static constexpr llvm::StringLiteral kAlignment = "alignment";
   /// `_ptr` is the underlying-storage pointer field used by VariadicTensors
   /// elements.
-  MojoValue rawPtr() const { return value.get(kFieldPtr); }
+  static constexpr llvm::StringLiteral kPtr = "_ptr";
+  static constexpr llvm::StringLiteral kIoSpec = "io_spec";
+  /// Bind methods for fusion lambdas.
+  static constexpr llvm::StringLiteral kBindToFusedInput =
+      "_bind_to_fused_input";
+  static constexpr llvm::StringLiteral kBindToFusedOutput =
+      "_bind_to_fused_output";
+  static constexpr llvm::StringLiteral kBindToFusedComputeOutput =
+      "_bind_to_fused_compute_output";
+  static constexpr llvm::StringLiteral kBindToFusedComputeOutputTile =
+      "_bind_to_fused_compute_output_tile";
+
+  /// Field accessors (return the raw field value, not a call).
+  MojoValue staticSpec() const { return value.get(kStaticSpec); }
+  MojoValue staticShapeTuple() const { return value.get(kStaticShapeTuple); }
+  MojoValue staticStridesTuple() const {
+    return value.get(kStaticStridesTuple);
+  }
+  MojoValue alignment() const { return value.get(kAlignment); }
+  MojoValue ioSpec() const { return value.get(kIoSpec); }
+  MojoValue rawPtr() const { return value.get(kPtr); }
 
   /// Method calls (parens included).
-  MojoValue unsafePtr() const { return value.get(kFieldUnsafePtr)(); }
-  MojoValue shape() const { return value.get(kFieldShape)(); }
-  MojoValue strides() const { return value.get(kFieldStrides)(); }
+  MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
+  MojoValue shape() const { return value.get(kShape)(); }
+  MojoValue strides() const { return value.get(kStrides)(); }
 
   /// Fusion bind method invocations. Returns the method handle (uncalled);
   /// the caller appends `({}, args)` to invoke.
-  MojoValue bindToFusedInput() const {
-    return value.get(kFnManagedTensorSliceBindToFusedInput);
-  }
-  MojoValue bindToFusedOutput() const {
-    return value.get(kFnManagedTensorSliceBindToFusedOutput);
-  }
+  MojoValue bindToFusedInput() const { return value.get(kBindToFusedInput); }
+  MojoValue bindToFusedOutput() const { return value.get(kBindToFusedOutput); }
   MojoValue bindToFusedComputeOutput() const {
-    return value.get(kFnManagedTensorSliceBindToFusedComputeOutput);
+    return value.get(kBindToFusedComputeOutput);
   }
 
   MojoValue value;
@@ -592,24 +565,26 @@ class StaticTensorSpecRef {
 public:
   explicit StaticTensorSpecRef(MojoValue v) : value(std::move(v)) {}
 
-  MojoValue staticLayout() const { return value.get(kFieldStaticLayout); }
-  MojoValue alignment() const { return value.get(kFieldAlignment); }
-  MojoValue rank() const { return value.get(kFieldRank); }
+  /// Mojo field / method symbol names on `StaticTensorSpec`.
+  static constexpr llvm::StringLiteral kStaticLayout = "static_layout";
+  static constexpr llvm::StringLiteral kAlignment = "alignment";
+  static constexpr llvm::StringLiteral kRank = "rank";
+  static constexpr llvm::StringLiteral kGetInternals = "get_internals";
+  /// `shape_tuple` / `strides_tuple` are comptime members of `StaticTensorSpec`
+  /// itself (not of the `get_internals()` result, which only carries the
+  /// runtime `alignment` / `address_space`).
+  static constexpr llvm::StringLiteral kShapeTuple = "shape_tuple";
+  static constexpr llvm::StringLiteral kStridesTuple = "strides_tuple";
 
-  /// `get_internals()` returns a struct exposing the shape/strides tuples;
-  /// chain with `shapeTuple()` / `stridesTuple()`.
-  MojoValue getInternals() const { return value.get(kFnGetInternals)(); }
+  MojoValue staticLayout() const { return value.get(kStaticLayout); }
+  MojoValue alignment() const { return value.get(kAlignment); }
+  MojoValue rank() const { return value.get(kRank); }
+  MojoValue shapeTuple() const { return value.get(kShapeTuple); }
+  MojoValue stridesTuple() const { return value.get(kStridesTuple); }
 
-  MojoValue value;
-};
-
-/// Wrapper around the result of `StaticTensorSpec.get_internals()`.
-class StaticTensorSpecInternalsRef {
-public:
-  explicit StaticTensorSpecInternalsRef(MojoValue v) : value(std::move(v)) {}
-
-  MojoValue shapeTuple() const { return value.get(kFieldShapeTuple); }
-  MojoValue stridesTuple() const { return value.get(kFieldStridesTuple); }
+  /// `get_internals()` returns a `StaticTensorSpecInternal` carrying the
+  /// runtime `alignment` / `address_space`.
+  MojoValue getInternals() const { return value.get(kGetInternals)(); }
 
   MojoValue value;
 };
@@ -619,14 +594,21 @@ class OpaquePointerRef {
 public:
   explicit OpaquePointerRef(MojoValue v) : value(std::move(v)) {}
 
+  /// Mojo method symbol names on `UnsafePointer` / `OpaquePointer`.
+  static constexpr llvm::StringLiteral kBitcast = "bitcast";
+  static constexpr llvm::StringLiteral kTakePointee = "take_pointee";
+  /// Type-level constructor (`OpaquePointer.unsafe_dangling()`); invoked on the
+  /// type rather than an instance, so there's no member accessor for it.
+  static constexpr llvm::StringLiteral kUnsafeDangling = "unsafe_dangling";
+
   /// `bitcast[Type]` — caller does `.bitcast(type)()` to invoke after
   /// supplying the type parameter.
   MojoValue bitcast(const MojoValue &targetType) const {
-    return value.get(kFnBitcast)[targetType];
+    return value.get(kBitcast)[targetType];
   }
 
   /// `take_pointee()` reads through the pointer.
-  MojoValue takePointee() const { return value.get(kFnTakePointee)(); }
+  MojoValue takePointee() const { return value.get(kTakePointee)(); }
 
   MojoValue value;
 };
@@ -636,7 +618,10 @@ class MojoTaskRef {
 public:
   explicit MojoTaskRef(MojoValue v) : value(std::move(v)) {}
 
-  MojoValue wait() const { return value.get(kFnWait)(); }
+  /// Mojo method symbol name on `Task`.
+  static constexpr llvm::StringLiteral kWait = "wait";
+
+  MojoValue wait() const { return value.get(kWait)(); }
 
   MojoValue value;
 };
@@ -647,8 +632,12 @@ class MojoStringRef {
 public:
   explicit MojoStringRef(MojoValue v) : value(std::move(v)) {}
 
-  MojoValue unsafePtr() const { return value.get(kFieldUnsafePtr)(); }
-  MojoValue byteLength() const { return value.get(kFieldByteLength)(); }
+  /// Mojo field / method symbol names on `String` / `StaticString`.
+  static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
+  static constexpr llvm::StringLiteral kByteLength = "byte_length";
+
+  MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
+  MojoValue byteLength() const { return value.get(kByteLength)(); }
 
   MojoValue value;
 };
@@ -659,8 +648,14 @@ class TileTensorRef {
 public:
   explicit TileTensorRef(MojoValue v) : value(std::move(v)) {}
 
+  /// Mojo field / method symbol names on `TileTensor` (and the `InlineArray` /
+  /// `UnsafePointer` it is built from).
+  static constexpr llvm::StringLiteral kLayout = "layout";
+  static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
+  static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";
+
   /// `val.layout` — the runtime tile layout.
-  MojoValue layout() const { return value.get(kFieldLayout); }
+  MojoValue layout() const { return value.get(kLayout); }
 
   /// `val.dim[d]()` — compile-time dimension query.
   MojoValue dim(unsigned d) const { return value.get("dim")[d](); }
@@ -682,8 +677,8 @@ public:
   ///   layout)`
   static MojoValue fromMutStorage(const MojoValue &storage,
                                   const MojoValue &layout) {
-    MojoValue ptr = storage.get(kFieldUnsafePtr)().get(
-        kFnUnsafeOriginCast)[kComptimeMutAnyOrigin]();
+    MojoValue ptr = storage.get(kUnsafePtr)().get(
+        kUnsafeOriginCast)[kComptimeMutAnyOrigin]();
     return MojoValue(kStructTileTensor)({}, {ptr, layout});
   }
 
@@ -695,11 +690,26 @@ public:
                                    const MojoValue &layout) {
     MojoValue parenPtr(llvm::formatv("({})", ptr.text).str());
     MojoValue castPtr =
-        parenPtr.get(kFnUnsafeOriginCast)[kComptimeMutExternalOrigin]();
+        parenPtr.get(kUnsafeOriginCast)[kComptimeMutExternalOrigin]();
     return MojoValue(kStructTileTensor)({}, {castPtr, layout});
   }
 
   MojoValue value;
+};
+
+/// Type-level helper for `ParameterList`. Wraps the `of` comptime factory used
+/// to pack a heterogeneous list of comptime values into a single
+/// `ParameterList`. Unlike the other wrappers this holds no instance — `of` is
+/// invoked on the `ParameterList` type itself.
+class ParameterListRef {
+public:
+  /// Mojo method symbol name on `ParameterList`.
+  static constexpr llvm::StringLiteral kOf = "of";
+
+  /// `ParameterList.of[elements]()`.
+  static MojoValue of(llvm::ArrayRef<MojoValue> elements) {
+    return MojoValue(kStructParameterList).get(kOf)[elements]();
+  }
 };
 
 } // namespace M::MOGG

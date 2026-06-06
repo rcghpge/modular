@@ -7,7 +7,8 @@
 
 // RUN: mo-opt %s --mogg-import-packages \
 // RUN:     --mo-create-parallel-from-unbundle --canonicalize \
-// RUN:     --mo-merge-adjacent-parallels --mo-pipeline --mo-to-mogg \
+// RUN:     --mo-merge-adjacent-parallels \
+// RUN:     --mo-pipeline=kernel-decls-pre-populated=true --mo-to-mogg \
 // RUN:     --mogg-pipeline | FileCheck %s --check-prefix=CHECK-FUSED
 
 // After create+merge + the full MOGG pipeline, relu is fused into the

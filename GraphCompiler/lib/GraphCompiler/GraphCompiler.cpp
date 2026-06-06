@@ -183,6 +183,22 @@ LogicalResult MO::runGcPipeline(ModuleOp module,
 
 void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
                             const MoPipelineOptions &opts) {
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+
+  // --- import-packages (first pass: populate mogg.kernel.decl ops) ---
+  // Skipped when `kernelDeclsPrePopulated` is set: the caller (Python compile
+  // path, constant folding) has already seeded the module with decl ops and
+  // the `mogg.opaque_type_mapping` attribute via `MOGG::copyKernelDecls`.
+  // `mogg-rewrite-opaque-types` immediately below still runs, so user
+  // `!mo.opaque<"simple">` references on freshly-cloned ops get rewritten.
+  if (!opts.kernelDeclsPrePopulated) {
+    pm.addPass(MOGG::createImportPackages(
+        {.mojoPkgPaths = kernelLibraryPaths, .litMlirPaths = {}}));
+    pm.addPass(MOGG::createVerifyKernels());
+  }
+
+  pm.addPass(MOGG::createRewriteOpaqueTypes());
   pm.addPass(KGEN::createVerifyParameters());
 
   if (opts.debugPrintAllTensors)
@@ -207,8 +223,6 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   std::optional<std::string> cacheDir;
   if (opts.cacheDir.hasValue())
     cacheDir = opts.cacheDir;
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
   // Run shape inference and constant fold.
   if (opts.useShapeInference)
@@ -460,6 +474,7 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
   moOpts.symbolicFfastMath = opts.symbolicFfastMath;
   moOpts.symbolicNoUndefinedMath = opts.symbolicNoUndefinedMath;
   moOpts.kernelLibraryPaths = kernelLibraryPaths;
+  moOpts.kernelDeclsPrePopulated = opts.kernelDeclsPrePopulated;
   moOpts.usePatterns = opts.usePatterns;
   moOpts.patternFusionMHAEnable = opts.patternFusionMHAEnable;
   moOpts.patternFusionMHAAllowUnsafeBCasts =
@@ -529,24 +544,6 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
 
     return success();
   };
-
-  // --- import-packages (first pass: populate mogg.kernel.decl ops) ---
-  // Skipped when `kernelDeclsPrePopulated` is set: the caller (Python compile
-  // path, constant folding) has already seeded the module with decl ops and
-  // the `mogg.opaque_type_mapping` attribute via `MOGG::copyKernelDecls`.
-  // `mogg-rewrite-opaque-types` immediately below still runs, so user
-  // `!mo.opaque<"simple">` references on freshly-cloned ops get rewritten.
-  if (failed(buildOrRunStage(
-          [&](auto &p) {
-            if (!opts.kernelDeclsPrePopulated) {
-              p.addPass(MOGG::createImportPackages(
-                  {.mojoPkgPaths = kernelLibraryPaths, .litMlirPaths = {}}));
-              p.addPass(MOGG::createVerifyKernels());
-            }
-            p.addPass(MOGG::createRewriteOpaqueTypes());
-          },
-          "")))
-    return failure();
 
   // --- mo-pipeline ---
   if (failed(buildOrRunStage([&](auto &p) { buildMoPipeline(p, moOpts); },

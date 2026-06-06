@@ -1280,7 +1280,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
       return "";
 
     if (bindOp.getBindKind() == BindLambdaKind::InputLambda)
-      return kFnManagedTensorSliceBindToFusedInput;
+      return ManagedTensorSliceRef::kBindToFusedInput;
 
     auto fusedOp =
         dyn_cast<MOGG::TensorFusedOp>(*bindOp.getResult().getUsers().begin());
@@ -1288,15 +1288,15 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         state.registry, fusedOp, state.enableComputeLambdas);
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::Output) {
-      return kFnManagedTensorSliceBindToFusedOutput;
+      return ManagedTensorSliceRef::kBindToFusedOutput;
     }
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::ComputeTile) {
-      return kFnManagedTensorSliceBindToFusedComputeOutputTile;
+      return ManagedTensorSliceRef::kBindToFusedComputeOutputTile;
     }
     // Both SIMD compute-output cases use the same Mojo method name;
     // overload resolution distinguishes by trait type.
-    return kFnManagedTensorSliceBindToFusedComputeOutput;
+    return ManagedTensorSliceRef::kBindToFusedComputeOutput;
   }();
   // Build the concrete parameterized type name for use by the variadic path
   // (e.g., FusionStruct_0[arg__0.static_spec, arg__1.static_spec]).
@@ -3574,12 +3574,12 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
   MojoValue typeVar = isa<MGP::DeviceBufferType>(valueType)
                           ? (size_t)MGPRT_BorroweeType::kBuffer
                           : (size_t)MGPRT_BorroweeType::kTensor;
-  auto opaquePtr = state.builder.var(
-      MojoValue{kComptimeOpaquePointer}.get(kFnUnsafeDangling)());
+  auto opaquePtr = state.builder.var(MojoValue{kComptimeOpaquePointer}.get(
+      OpaquePointerRef::kUnsafeDangling)());
   auto opaquePtrPtr = state.builder.var(
-      MojoValue{kStructUnsafePointer}({},
-                                      MojoValue(kParameterTo).equal(opaquePtr))
-          .get(kFnBitcast)({MojoValue(kComptimeDTypeNoneType)}));
+      OpaquePointerRef(MojoValue{kStructUnsafePointer}(
+                           {}, MojoValue(kParameterTo).equal(opaquePtr)))
+          .bitcast(MojoValue(kComptimeDTypeNoneType))());
 
   state.builder.call(getBufferMemStorageHandleFn, {},
                      {inputVar, typeVar, opaquePtrPtr});
@@ -3737,7 +3737,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
           [{MojoValue(
                 kStructScalar)[{MojoValue(kStructDType).get(kEnumDTypeInt8)}],
             MojoValue(kComptimeMutAnyOrigin)}]
-              .get(kFnUnsafeDangling)();
+              .get(OpaquePointerRef::kUnsafeDangling)();
   MojoValue zeroShape =
       MojoValue(kStructIndexList)({MojoValue("1")}, {MojoValue("0")});
   state.setMojoValueFor(getResult(),
@@ -3859,19 +3859,19 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   for (const auto &reboundInput : inputValues) {
     StaticTensorSpecRef spec(ManagedTensorSliceRef(reboundInput).staticSpec());
     staticSpecInternals.push_back(spec.getInternals());
-    // The shape/strides tuples are field accesses on the same `static_spec`
-    // value (they live alongside `get_internals()`'s return value).
+    // `shape_tuple` / `strides_tuple` are comptime members of the
+    // `StaticTensorSpec` itself, distinct from its `get_internals()` result.
     staticSpecShapes.push_back(
-        MojoValue(kFnToIndexList)({rank}, {spec.value.get(kFieldShapeTuple)}));
-    staticSpecStrides.push_back(MojoValue(kFnToIndexList)(
-        {rank}, {spec.value.get(kFieldStridesTuple)}));
+        MojoValue(kFnToIndexList)({rank}, {spec.shapeTuple()}));
+    staticSpecStrides.push_back(
+        MojoValue(kFnToIndexList)({rank}, {spec.stridesTuple()}));
   }
-  MojoValue inputSpecsInternalsComptime = state.builder.comptime(
-      MojoValue(kStructParameterList).get(kFnOf)[staticSpecInternals]());
-  MojoValue inputSpecsShapesComptime = state.builder.comptime(
-      MojoValue(kStructParameterList).get(kFnOf)[staticSpecShapes]());
-  MojoValue inputSpecsStridesComptime = state.builder.comptime(
-      MojoValue(kStructParameterList).get(kFnOf)[staticSpecStrides]());
+  MojoValue inputSpecsInternalsComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecInternals));
+  MojoValue inputSpecsShapesComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecShapes));
+  MojoValue inputSpecsStridesComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecStrides));
   MojoValue inputSpecsComptime =
       state.builder.comptime(MojoValue(kStructStaticTensorSpecList)[{
           inputSpecsInternalsComptime, inputSpecsShapesComptime,
@@ -3888,7 +3888,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     if (it != state.lambdaLowerings.end()) {
       const auto &fusionInfo = llvm::cast<FusionStructInfo>(it->second);
       anyFused = true;
-      if (fusionInfo.bindMethodName == kFnManagedTensorSliceBindToFusedInput)
+      if (fusionInfo.bindMethodName == ManagedTensorSliceRef::kBindToFusedInput)
         hasInputFusion = true;
     } else {
       allFused = false;
@@ -4396,10 +4396,11 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
   ASSERT_STREAM(primDecl,
                 "Primitive not found for " << getOperationName().str());
   MojoValue reshapeFunc(primitiveMojoName(primDecl));
-  state.setMojoValueFor(getResult(),
-                        state.builder.var(reshapeFunc(
-                            {MojoValue(kFieldStaticLayout).equal(layoutParam)},
-                            {tensorValue, shapeValue})));
+  state.setMojoValueFor(
+      getResult(),
+      state.builder.var(reshapeFunc(
+          {MojoValue(StaticTensorSpecRef::kStaticLayout).equal(layoutParam)},
+          {tensorValue, shapeValue})));
   return success();
 }
 

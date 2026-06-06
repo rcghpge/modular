@@ -315,6 +315,18 @@ struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
       llvm::cl::desc(
           "Paths to mojo packages containing mojo kernel definitions used to "
           "replace MO ops.")};
+  Option<bool> kernelDeclsPrePopulated{
+      *this, "kernel-decls-pre-populated",
+      llvm::cl::desc(
+          "If true, the input module has already been seeded with "
+          "`mogg.kernel.decl` / `mogg.primitive.decl` ops and a "
+          "`mogg.opaque_type_mapping` attribute (typically copied from "
+          "another module via `MOGG::copyKernelDecls`). Skips the "
+          "`mogg-import-packages` pass entirely. `mogg-rewrite-opaque-types` "
+          "still runs and consumes the prebuilt mapping to rewrite any "
+          "`!mo.opaque<\"simple\">` references on the input ops to their "
+          "fully-qualified form."),
+      llvm::cl::init(false)};
   Option<bool> usePatterns{
       *this, "use-patterns",
       llvm::cl::desc("Lower to hand-fused kernels using pattern matching."),
