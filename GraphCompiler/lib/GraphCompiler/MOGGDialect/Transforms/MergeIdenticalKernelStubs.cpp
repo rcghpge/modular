@@ -52,12 +52,6 @@ struct KernelStubOpEquivalenceInfo
                 DenseMapInfo<void *>::getEmptyKey()),
             0};
   }
-  static inline KernelStubHashEntry getTombstoneKey() {
-    return {MOGG::KernelStubOp::getFromOpaquePointer(
-                DenseMapInfo<void *>::getTombstoneKey()),
-            0};
-  }
-
   // We first compute the hash of a node and store it with the entry in the
   // dense set. This is an optimization where subsequent insertions of the same
   // op will not rehash. We will be comparing two entries when the hash collides
@@ -70,8 +64,7 @@ struct KernelStubOpEquivalenceInfo
     if (lhs.op == rhs.op)
       return true;
 
-    if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
-        rhs == getTombstoneKey() || rhs == getEmptyKey())
+    if (lhs == getEmptyKey() || rhs == getEmptyKey())
       return false;
 
     // Check if properties are equivalent modulo sym_name and fusionInfo

@@ -142,11 +142,6 @@ struct DenseMapInfo<M::Driver::HAL::FuncCacheKey> {
     return {.bundle = DenseMapInfo<M_driver_runtime_bundle_t>::getEmptyKey(),
             .name = ""};
   }
-  static inline M::Driver::HAL::FuncCacheKey getTombstoneKey() {
-    return {.bundle =
-                DenseMapInfo<M_driver_runtime_bundle_t>::getTombstoneKey(),
-            .name = ""};
-  }
   static unsigned getHashValue(const M::Driver::HAL::FuncCacheKey &val) {
     return hash_combine(val.bundle, val.name);
   }

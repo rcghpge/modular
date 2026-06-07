@@ -44,12 +44,6 @@ struct DenseMapInfo<M::MGP::ReuseKey> {
             DenseMapInfo<uint64_t>::getEmptyKey()};
   }
 
-  static inline KeyTy getTombstoneKey() {
-    return {mlir::TypedValue<mlir::IndexType>(),
-            DenseMapInfo<Attribute>::getTombstoneKey(),
-            DenseMapInfo<uint64_t>::getTombstoneKey()};
-  }
-
   static unsigned getHashValue(const KeyTy &k) {
     return hash_combine(DenseMapInfo<mlir::Value>::getHashValue(k.size),
                         DenseMapInfo<Attribute>::getHashValue(k.device),
