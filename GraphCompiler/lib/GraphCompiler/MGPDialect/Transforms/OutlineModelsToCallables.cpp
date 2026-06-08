@@ -257,22 +257,40 @@ class OutlineModelsToCallablesPass
   ///
   /// The original GraphContext is then "sealed", with the
   /// original `MGP::ModelOp` being erased.
-  GraphContext &rewriteAndSeal(ModuleContext &context, GraphContext &graph,
-                               llvm::SmallVector<ModelOp> ancestors) {
+  FailureOr<GraphContext *>
+  rewriteAndSeal(ModuleContext &context, GraphContext &graph,
+                 llvm::SmallVector<ModelOp> ancestors) {
 
     // If already visited this graph, we've resolved everything needed
     // and have emitted callables already. Can safely return the already-sealed
     // value.
     if (graph.isSealed())
-      return graph;
+      return &graph;
 
     // first, check if there's a cycle in arriving at this op
     // this should be cheap compared to the rest of what's going on
     // on account of subgraph call depth rarely (if ever) exceeding 2
-    for (auto ancestor : ancestors)
-      ASSERT_STREAM(ancestor.getNameAttr() !=
-                        graph.unsealedContext.value().getNameAttr(),
-                    "cycle detected in subgraph call graph");
+    for (ModelOp ancestor : ancestors) {
+      if (ancestor.getNameAttr() ==
+          graph.unsealedContext.value().getNameAttr()) {
+        InFlightDiagnostic diag = graph.unsealedContext.value().emitOpError(
+            "cycle detected in subgraph call graph");
+
+        // Annotate only the subgraphs that form the cycle, starting from the
+        // ancestor we are re-entering. Ancestors before that point are on the
+        // call stack but not part of the cycle itself.
+        bool inCycle = false;
+        for (ModelOp diagAncestor : ancestors) {
+          if (diagAncestor.getNameAttr() ==
+              graph.unsealedContext.value().getNameAttr())
+            inCycle = true;
+          if (inCycle)
+            diag.attachNote(diagAncestor.getLoc()) << "subgraph in cycle";
+        }
+
+        return failure();
+      }
+    }
 
     ancestors.push_back(graph.unsealedContext.value());
 
@@ -292,7 +310,7 @@ class OutlineModelsToCallablesPass
     struct CallContext {
       MGP::CallOp call;
       StringAttr prefixAttr;
-      std::reference_wrapper<GraphContext> toGraph;
+      GraphContext *toGraph;
 
       // within the scope of the containing graph,
       // these are the results of the call to the `init` callable
@@ -306,17 +324,25 @@ class OutlineModelsToCallablesPass
     llvm::SmallVector<CallContext> calls;
 
     // CallOps only happen in the Execute region
-    model.getExecute().walk([&](MGP::CallOp call) {
+    WalkResult result = model.getExecute().walk([&](MGP::CallOp call) {
       GraphContext *maybeCallee =
           context.getModel(call.getCalleeAttr().getAttr());
       ASSERT_STREAM(maybeCallee, << "CallOp's callee did not exist in module");
 
       StringAttr prefix = call.getPrefixAttr();
 
-      GraphContext &sealed = rewriteAndSeal(context, *maybeCallee, ancestors);
+      FailureOr<GraphContext *> sealed =
+          rewriteAndSeal(context, *maybeCallee, ancestors);
 
-      calls.push_back({call, prefix, sealed, {}, {}, {}});
+      if (failed(sealed))
+        return WalkResult::interrupt();
+
+      calls.push_back({call, prefix, sealed.value(), {}, {}, {}});
+      return WalkResult::advance();
     });
+
+    if (result.wasInterrupted())
+      return failure();
 
     // translate MGP::CallOp to InvokeOps in init and exec,
     // thread arg bundles through init output -> exec input
@@ -349,8 +375,7 @@ class OutlineModelsToCallablesPass
 
       for (auto &[call, prefix, ctx, initResults, initResultTypes,
                   execArgsBundle] : calls) {
-        GraphContext::SealedGraphContext target =
-            ctx.get().sealedContext.value();
+        GraphContext::SealedGraphContext target = ctx->sealedContext.value();
 
         // Create prefix here to pass down in.
         // This will also propagate through the bundle to exec,
@@ -428,7 +453,7 @@ class OutlineModelsToCallablesPass
         args.append(explicitArgs.begin(), explicitArgs.end());
 
         GraphContext::SealedGraphContext target =
-            callContext.toGraph.get().sealedContext.value();
+            callContext.toGraph->sealedContext.value();
 
         OpBuilder execBuilder(callContext.call);
 
@@ -571,7 +596,7 @@ class OutlineModelsToCallablesPass
 
     graph.seal();
     ancestors.pop_back();
-    return graph;
+    return &graph;
   }
 
   void runOnOperation() override {
@@ -592,7 +617,11 @@ class OutlineModelsToCallablesPass
 
       llvm::SmallVector<ModelOp> ancestors;
 
-      rewriteAndSeal(context, *entryGraph, ancestors);
+      FailureOr<GraphContext *> result =
+          rewriteAndSeal(context, *entryGraph, ancestors);
+
+      if (failed(result))
+        signalPassFailure();
     }
   }
 };

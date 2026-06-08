@@ -1,5 +1,6 @@
 // RUN: not mo-opt %s --mgp-outline-models-to-callables --allow-unregistered-dialect 2>&1 | FileCheck %s
 // CHECK: cycle detected in subgraph call graph
+// CHECK: subgraph in cycle
 
 // Test case: A -> B -> A cycle in subgraph calls
 
