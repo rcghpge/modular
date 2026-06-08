@@ -12,10 +12,12 @@
 #define GENERICML_MGPDIALECT_MGPOPS_TD
 
 include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.td"
-include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td"
-include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
-include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPAttrs.td"
+include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDeviceGraphOps.td"
+include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
+include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td"
+include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
+
 include "GraphCompiler/GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
 include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.td"

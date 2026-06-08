@@ -160,6 +160,85 @@ def MGP_DeviceContextType : MGP_Type<"DeviceContext", "device_context",
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceGraphType : MGP_Type<"DeviceGraph", "device_graph",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
+  let summary = "Type of a constructed device graph.";
+  let description = [{
+    Represents a constructed device-side graph (e.g. a CUDA graph) that can be
+    replayed via `mgp.device_graph.execute`.
+
+    The type carries the graph's signature as a `FunctionType`. Inputs are
+    buffers the caller must copy into the graph's frozen-input addresses at
+    replay time; results are buffers the graph writes through at replay time.
+    Both inputs and results are passed as operands to
+    `mgp.device_graph.execute` -- the distinction at the type level exists so
+    that the synthesis pass and verifiers can reason about read-only vs.
+    written operands without inspecting the build body.
+
+    The device the graph targets is encoded by the device parameter on the
+    individual `!mgp.buffer` types within the signature.
+
+    Example:
+    ```mlir
+    !mgp.device_graph<
+        (!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) ->
+        (!mgp.buffer<<"gpu", 0>>)>
+    ```
+  }];
+
+  let parameters = (ins "FunctionType":$signature);
+  let assemblyFormat = "`<` $signature `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphBuilderType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceGraphBuilderType : MGP_Type<"DeviceGraphBuilder",
+  "device_graph.builder",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
+  let summary = "Builder that records nodes into a device graph under construction.";
+  let description = [{
+    An opaque handle to a device-graph builder. Created in the build body of
+    `mgp.device_graph.create` (from the body's `!mgp.device_context`) and
+    threaded as the launch argument of `mogg.call.build_graph`, in place of the
+    `!mogg.context` that `mogg.call.execute` would take. Each kernel's
+    `build_graph` Mojo method records a node against the builder rather than
+    dispatching immediately; once every node is recorded the builder is
+    instantiated into an `!mgp.device_graph`.
+
+    Example:
+    ```mlir
+    !mgp.device_graph.builder
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphNodeType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceGraphNodeType : MGP_Type<"DeviceGraphNode", "device_graph.node",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
+  let summary = "Opaque handle to a node recorded into a device graph.";
+  let description = [{
+    An opaque handle to a single node recorded into a device graph via a
+    kernel's `build_graph` method. Produced by `mogg.call.build_graph` and
+    propagated out of the recording stub. The handle carries no structure yet;
+    it exists so that future cross-stub dependency tracking can name prior
+    nodes (a `depends_on` operand list) without inspecting the build body.
+
+    Example:
+    ```mlir
+    !mgp.device_graph.node
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 //
 // Device-generic types in the MGP dialect. All of these types accept an
 // #M.device_ref attribute indicating the specific type and 'virtual' device
