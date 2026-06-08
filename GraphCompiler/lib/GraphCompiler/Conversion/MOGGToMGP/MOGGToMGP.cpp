@@ -384,6 +384,7 @@ LogicalResult MOGraphLowering::createModelOp() {
       /*outputTypes=*/outputTypes,
       /*inputArgLocs=*/inputLocs,
       /*isSubgraph=*/graph.getIsSubgraph(),
+      /*isDeviceGraph=*/graph.getIsDeviceGraph(),
       /*extraAttrs=*/extraAttrs);
 
   loweringState.setModelOp(modelOp);

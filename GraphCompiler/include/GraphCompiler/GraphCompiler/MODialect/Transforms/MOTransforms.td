@@ -270,6 +270,23 @@ def ValidateDevicesPass : Pass<"mo-validate-devices", "GraphOp"> {
   ];
 }
 
+def VerifyDeviceGraphPass : Pass<"mo-verify-device-graph", "GraphOp"> {
+  let summary = "Verify that a device-graphable mo.graph has kernel "
+                "registrations that expose a build_graph entry point.";
+  let description = [{
+    When a `mo.graph` carries the `isDeviceGraph` attribute, every
+    kernel-backed op in its body must correspond to a `mogg.kernel.decl`
+    whose `build_graph` field is populated. This pass walks the graph body,
+    looks up each op in the module's `MojoRegistry`, and emits an error for
+    any op whose resolved kernel registration lacks a `build_graph` entry
+    point.
+
+    Ops with no registration in the registry (for example dialect-intrinsic
+    ops such as `mo.constant` or `mo.output`) are skipped. Graphs without
+    the `isDeviceGraph` attribute are no-ops.
+  }];
+}
+
 def DebugPrintAllTensorsPass : Pass<"mo-debug-print-all-tensors", "GraphOp"> {
   let summary = "Print all intermediate tensors as they are produced.";
   let description = [{

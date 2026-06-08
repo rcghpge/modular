@@ -14,7 +14,7 @@ from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
 from std.collections import InlineArray
-from std.gpu.host import DeviceContext, DeviceContextList
+from std.gpu.host import DeviceContext, DeviceContextList, DeviceGraphBuilder
 from extensibility import (
     InputTensor,
     InputVariadicTensors,
@@ -1358,3 +1358,27 @@ struct ElemwiseAddWithIndex:
         comptime for i in range(width):
             bias[i] = Scalar[dtype](indices[0] + i)
         return input + bias
+
+
+# Kernel that exposes both execute and build_graph entry points.
+@compiler.register("imposter_build_graph_capable")
+struct BuildGraphCapable:
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ):
+        pass
+
+    @staticmethod
+    def build_graph[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        builder: DeviceGraphBuilder,
+    ):
+        pass

@@ -592,18 +592,17 @@ def ModelOp : MGP_Op<"model", [
   //    probably choose a more consistent name and implement
   //    DerivedAttributeOpInterface to recover name if we really wanted
   //    that.
-  //  - The attributes are accessed by index within M::Module subclasses and
-  //    MEF metadata extraction, and that index matches the MLIR canonical
-  //    asciibetical order.
   //  - The extra attributes must appear last since optional.
   let arguments = (ins
-    M_DeviceRefArrayAttr:$devices,  // 0
-    ModelFrameworkAttr:$frameworkName,  // 1
-    TypeAttrOf<FunctionType>:$inputOutputTypes,  // 2
-    SymbolNameAttr:$sym_name,  // 3
-    UnitAttr:$isSubgraph,  // 4
-    OptionalAttr<DictionaryAttr>:$theExtraAttrs  // 5
+    M_DeviceRefArrayAttr:$devices,
+    ModelFrameworkAttr:$frameworkName,
+    TypeAttrOf<FunctionType>:$inputOutputTypes,
+    SymbolNameAttr:$sym_name,
+    UnitAttr:$isSubgraph,
+    UnitAttr:$isDeviceGraph,
+    OptionalAttr<DictionaryAttr>:$theExtraAttrs
   );
+
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
@@ -668,6 +667,7 @@ def ModelOp : MGP_Op<"model", [
       "ArrayRef<Type>":$outputTypes,
       "ArrayRef<Location>":$inputArgLocs,
       CArg<"bool", "false">:$isSubgraph,
+      CArg<"bool", "false">:$isDeviceGraph,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs
     )>
   ];

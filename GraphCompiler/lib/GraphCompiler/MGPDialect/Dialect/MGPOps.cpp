@@ -1169,7 +1169,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
                     StringRef frameworkName, ArrayRef<DeviceRef> devices,
                     ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
                     ArrayRef<Location> inputArgLocs, bool isSubgraph,
-                    ArrayRef<NamedAttribute> extraAttrs) {
+                    bool isDeviceGraph, ArrayRef<NamedAttribute> extraAttrs) {
   MLIRContext *ctx = state.getContext();
 
   SmallVector<Type> finalInputTypes(inputTypes.begin(), inputTypes.end());
@@ -1189,7 +1189,8 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   build(builder, state, ArrayAttr::get(ctx, deviceAttrs),
         StringAttr::get(ctx, frameworkName),
         TypeAttr::get(builder.getFunctionType(finalInputTypes, outputTypes)),
-        name, isSubgraph ? builder.getUnitAttr() : nullptr, extraAttrsDict);
+        name, isSubgraph ? builder.getUnitAttr() : nullptr,
+        isDeviceGraph ? builder.getUnitAttr() : nullptr, extraAttrsDict);
 
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();

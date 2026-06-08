@@ -190,7 +190,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     KGEN_ParamDeclArrayAttr:$inputParameters,
     KGEN_ParamDeclArrayAttr:$resultParameters,
     IntProp<"int64_t">:$counter,
-    UnitAttr:$isSubgraph
+    UnitAttr:$isSubgraph,
+    UnitAttr:$isDeviceGraph
   );
   let regions = (region SizedRegion<1>:$body);
 
@@ -583,7 +584,7 @@ def MO_YieldOp : MO_ControlOp<"yield", [
     Variadic<MO_AnyNonBufferType>:$operands,
     DefaultValuedAttr<
       KGEN_ParameterExprArrayAttr, "ArrayRef<TypedAttr>({})">:$parameters
-);
+  );
 
   let assemblyFormat = [{
     `` custom<OutputValues>($parameters) attr-dict ($operands^ `:` type($operands))?
