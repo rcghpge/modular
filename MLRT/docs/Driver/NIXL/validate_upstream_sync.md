@@ -70,8 +70,18 @@ via `gh`:
 
 ```bash
 gh workflow run benchmarkMammoth.yaml \
+  --repo modularml/modular \
+  --ref <branch> \
   -f cluster_config=1p1d_tp_prefill_dp_decode_kimi_k25_nvfp4_b200_aws \
   -f benchmark_config=quick-test-synthetic75k300-kimi-k25-nvfp4
+```
+
+To run all three quick-test combos in a single workflow:
+
+```bash
+gh workflow run validateNIXLSync.yaml \
+  --repo modularml/modular \
+  --ref <branch>
 ```
 
 Nightly CI runs the corresponding `synthetic-75k300-*` and
