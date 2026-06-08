@@ -648,11 +648,14 @@ class TileTensorRef {
 public:
   explicit TileTensorRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `TileTensor` (and the `InlineArray` /
+  /// Mojo field / method symbol names on `TileTensor` (and the
   /// `UnsafePointer` it is built from).
   static constexpr llvm::StringLiteral kLayout = "layout";
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";
+  static constexpr llvm::StringLiteral kDstAddressSpace = "dst_address_space";
+  static constexpr llvm::StringLiteral kAddressSpace = "address_space";
+  static constexpr llvm::StringLiteral kStaticProduct = "static_product";
 
   /// `val.layout` — the runtime tile layout.
   MojoValue layout() const { return value.get(kLayout); }
@@ -660,25 +663,26 @@ public:
   /// `val.dim[d]()` — compile-time dimension query.
   MojoValue dim(unsigned d) const { return value.get("dim")[d](); }
 
-  /// Emits the backing `InlineArray` storage for a local tile:
-  ///   `InlineArray[Scalar[dtype],
-  ///   LayoutType.static_product](uninitialized=True)`
+  /// Emits the backing stack-allocated storage pointer for a local tile, in
+  /// the address space the copier stages into:
+  ///   `stack_allocation[LayoutType.static_product, dtype,
+  ///   address_space = copier.dst_address_space]()`
   static MojoValue makeStorage() {
-    MojoValue scalarDtype = MojoValue(kStructScalar)["dtype"];
     MojoValue layoutProduct =
-        MojoValue(kParameterLayoutType).get("static_product");
-    return MojoValue(kStructInlineArray)[{scalarDtype, layoutProduct}](
-        {}, {"uninitialized=True"});
+        MojoValue(kParameterLayoutType).get(kStaticProduct);
+    MojoValue addressSpace =
+        MojoValue(kAddressSpace)
+            .equal(MojoValue(kParameterCopier).get(kDstAddressSpace));
+    return MojoValue(kFnStackAllocation)[{
+        layoutProduct, MojoValue(kParameterDType), addressSpace}]();
   }
 
-  /// Constructs a mutable `TileTensor` backed by register-local `InlineArray`
-  /// storage with the given layout:
-  ///   `TileTensor(storage.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-  ///   layout)`
+  /// Constructs a mutable `TileTensor` backed by stack-allocated storage with
+  /// the given layout:
+  ///   `TileTensor(storage.unsafe_origin_cast[MutAnyOrigin](), layout)`
   static MojoValue fromMutStorage(const MojoValue &storage,
                                   const MojoValue &layout) {
-    MojoValue ptr = storage.get(kUnsafePtr)().get(
-        kUnsafeOriginCast)[kComptimeMutAnyOrigin]();
+    MojoValue ptr = storage.get(kUnsafeOriginCast)[kComptimeMutAnyOrigin]();
     return MojoValue(kStructTileTensor)({}, {ptr, layout});
   }
 

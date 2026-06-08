@@ -21,8 +21,9 @@
 // The method body must use copier.copy — not simd_load — and must not cast to SIMD.
 // CHECK-NOT: simd_load_from_tensor_pointer
 // CHECK-NOT: rebind[SIMD
-// Dst: local InlineArray storage backing a TileTensor.
-// CHECK: InlineArray[Scalar[dtype], LayoutType.static_product](uninitialized=True)
+// Dst: stack-allocated storage in the copier's destination address space,
+// backing a TileTensor.
+// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = copier.dst_address_space]()
 // CHECK: TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), val.layout)
 // Tile offset: tile_coords[i] * val.dim[i]() * self.strides_N[i].
 // CHECK: tile_coords[0] * val.dim[0]() * self.strides_1[0]
