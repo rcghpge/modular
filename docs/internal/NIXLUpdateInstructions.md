@@ -59,11 +59,11 @@ and the disaggregated `benchmarkMammoth` quick-tests:
 ```bash
 gh workflow run validateNIXLSync.yaml \
   --repo modularml/modular \
-  --ref <branch>
+  --ref <branch-or-main>
 ```
 
-Running from a feature branch auto-builds the MAX Serve image from that
-commit and passes it to all three Mammoth quick-tests — no manual image
-build step needed.
+Running from any branch — including `main` — auto-builds the MAX Serve image
+from that commit and passes it to all three Mammoth quick-tests — no manual
+image build step needed.
 
 As a final sanity check, also run `br //:install`.

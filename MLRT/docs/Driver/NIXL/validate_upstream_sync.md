@@ -66,12 +66,13 @@ inference.
 | `1p1d_dp_prefill_dp_decode_deepseekv31_nvfp4_b200_aws` | `quick-test-synthetic75k300-deepseekv31-nvfp4` | ~30 min |
 
 Trigger from the GitHub UI ("Run workflow" on `benchmarkMammoth`), or
-via `gh`:
+via `gh`. Use `--ref main` to test against `main`, or `--ref <branch>` for a
+feature branch — both auto-build the MAX Serve image from the target ref:
 
 ```bash
 gh workflow run benchmarkMammoth.yaml \
   --repo modularml/modular \
-  --ref <branch> \
+  --ref <branch-or-main> \
   -f cluster_config=1p1d_tp_prefill_dp_decode_kimi_k25_nvfp4_b200_aws \
   -f benchmark_config=quick-test-synthetic75k300-kimi-k25-nvfp4
 ```
@@ -81,7 +82,7 @@ To run all three quick-test combos in a single workflow:
 ```bash
 gh workflow run validateNIXLSync.yaml \
   --repo modularml/modular \
-  --ref <branch>
+  --ref <branch-or-main>
 ```
 
 Nightly CI runs the corresponding `synthetic-75k300-*` and
