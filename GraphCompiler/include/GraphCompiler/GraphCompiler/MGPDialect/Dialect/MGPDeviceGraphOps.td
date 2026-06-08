@@ -384,6 +384,7 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
     DeviceGraphStagingYieldOp getYieldOp();
   }];
 
+  let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 

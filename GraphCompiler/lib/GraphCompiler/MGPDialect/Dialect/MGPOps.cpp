@@ -1577,6 +1577,117 @@ void DeviceGraphStagingOp::build(
     result.addTypes(unwrapAsync(operandType));
 }
 
+namespace {
+
+/// Drops results of an `mgp.device_graph.staging` op that have no uses, along
+/// with the matching operands of the body's `staging.yield`.
+struct RemoveUnusedStagingResults
+    : public OpRewritePattern<DeviceGraphStagingOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphStagingOp op,
+                                PatternRewriter &rewriter) const override {
+    // Collect the indices/types of the results that are actually used.
+    SmallVector<unsigned> usedResultIndices;
+    SmallVector<Type> usedResultTypes;
+    for (auto [idx, result] : llvm::enumerate(op.getResults())) {
+      if (!result.use_empty()) {
+        usedResultIndices.push_back(idx);
+        usedResultTypes.push_back(result.getType());
+      }
+    }
+
+    // Nothing to do if every result is used.
+    if (usedResultIndices.size() == op.getNumResults())
+      return failure();
+
+    // Snapshot the surviving yield operands before moving the body.
+    DeviceGraphStagingYieldOp oldYield = op.getYieldOp();
+    auto newYieldOperands =
+        llvm::map_to_vector(usedResultIndices, [&](unsigned idx) -> Value {
+          return oldYield.getOperand(idx);
+        });
+
+    // Build the slimmer op (keeping the inputs, hence the body block args) and
+    // move the body into it, then update the moved yield to carry only the used
+    // values.
+    auto newOp = DeviceGraphStagingOp::create(
+        rewriter, op.getLoc(), TypeRange(usedResultTypes), op.getInputs());
+    newOp.getBody().takeBody(op.getBody());
+    DeviceGraphStagingYieldOp newYield = newOp.getYieldOp();
+    rewriter.modifyOpInPlace(newYield, [&]() {
+      newYield.getOperandsMutable().assign(newYieldOperands);
+    });
+
+    // Map the surviving results back onto the original result positions.
+    SmallVector<Value> replacements(op.getNumResults());
+    for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices))
+      replacements[oldIdx] = newOp.getResult(newIdx);
+    rewriter.replaceOp(op, replacements);
+    return success();
+  }
+};
+
+/// De-duplicates results of an `mgp.device_graph.staging` op whose body
+/// `staging.yield` carries the same value more than once: the yield keeps one
+/// copy and every duplicate result is rewritten to the surviving one.
+struct DeduplicateStagingResults
+    : public OpRewritePattern<DeviceGraphStagingOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphStagingOp op,
+                                PatternRewriter &rewriter) const override {
+    DeviceGraphStagingYieldOp oldYield = op.getYieldOp();
+
+    // Map each distinct yielded value to the index it will occupy in the
+    // de-duplicated result list, and record where each old result lands.
+    llvm::SmallDenseMap<Value, unsigned> firstOccurrence;
+    SmallVector<Value> dedupedOperands;
+    SmallVector<Type> dedupedTypes;
+    SmallVector<unsigned> resultRemap(op.getNumResults());
+    for (auto [idx, operand] : llvm::enumerate(oldYield.getOperands())) {
+      auto [it, inserted] =
+          firstOccurrence.try_emplace(operand, dedupedOperands.size());
+      if (inserted) {
+        dedupedOperands.push_back(operand);
+        dedupedTypes.push_back(op.getResult(idx).getType());
+      }
+      resultRemap[idx] = it->second;
+    }
+
+    // Nothing to do if there are no duplicated yield operands.
+    if (dedupedOperands.size() == op.getNumResults())
+      return failure();
+
+    // Build the de-duplicated op (keeping the inputs, hence the body block
+    // args) and move the body into it, then update the moved yield to carry
+    // only the surviving values.
+    auto newOp = DeviceGraphStagingOp::create(
+        rewriter, op.getLoc(), TypeRange(dedupedTypes), op.getInputs());
+    newOp.getBody().takeBody(op.getBody());
+    DeviceGraphStagingYieldOp newYield = newOp.getYieldOp();
+    rewriter.modifyOpInPlace(newYield, [&]() {
+      newYield.getOperandsMutable().assign(dedupedOperands);
+    });
+
+    // Point each original result (including the duplicates) at its surviving
+    // de-duplicated result.
+    SmallVector<Value> replacements =
+        llvm::map_to_vector(resultRemap, [&](unsigned newIdx) -> Value {
+          return newOp.getResult(newIdx);
+        });
+    rewriter.replaceOp(op, replacements);
+    return success();
+  }
+};
+
+} // namespace
+
+void DeviceGraphStagingOp::getCanonicalizationPatterns(
+    RewritePatternSet &patterns, MLIRContext *ctx) {
+  patterns.add<RemoveUnusedStagingResults, DeduplicateStagingResults>(ctx);
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceGraphStagingYieldOp
 //===----------------------------------------------------------------------===//
