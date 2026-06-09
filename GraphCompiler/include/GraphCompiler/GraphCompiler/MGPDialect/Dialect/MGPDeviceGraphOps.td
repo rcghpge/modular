@@ -281,6 +281,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
     DeviceGraphDependenciesYieldOp getYieldOp();
   }];
 
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

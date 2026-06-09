@@ -1432,6 +1432,19 @@ LogicalResult DeviceGraphDependenciesOp::verify() {
   return success();
 }
 
+LogicalResult DeviceGraphDependenciesOp::fold(FoldAdaptor,
+                                              SmallVectorImpl<OpFoldResult> &) {
+  llvm::SmallSetVector<Value, 8> deduped;
+  deduped.insert_range(getDependencies());
+
+  // Nothing to do if every dependency edge is already distinct.
+  if (deduped.size() == getDependencies().size())
+    return failure();
+
+  getDependenciesMutable().assign(deduped.getArrayRef());
+  return success();
+}
+
 void DeviceGraphDependenciesOp::build(
     OpBuilder &builder, OperationState &result, ValueRange dependencies,
     llvm::function_ref<void(OpBuilder &, Location)> bodyBuilder) {

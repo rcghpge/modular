@@ -90,3 +90,41 @@ func.func @no_change() {
   "test.use"(%x, %y) : (!mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>>) -> ()
   return
 }
+
+// -----
+
+// Folder for `mgp.device_graph.dependencies`: duplicated dependency edges are
+// redundant (listing a predecessor twice does not change ordering), so the
+// repeats are dropped, keeping the first occurrence of each.
+// CHECK-LABEL: func.func @deduplicate_dependencies
+func.func @deduplicate_dependencies() {
+  // CHECK: %[[A:.+]] = "test.work"
+  // CHECK: %[[B:.+]] = "test.work2"
+  // CHECK: mgp.device_graph.dependencies dependencies(%[[A]], %[[B]]) {
+  // CHECK: } : (!mgp.device_graph.node, !mgp.device_graph.node) ->
+  %a = "test.work"() : () -> !mgp.device_graph.node
+  %b = "test.work2"() : () -> !mgp.device_graph.node
+  %node, %r = mgp.device_graph.dependencies dependencies(%a, %b, %a) {
+    %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
+  } : (!mgp.device_graph.node, !mgp.device_graph.node, !mgp.device_graph.node)
+    -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  return
+}
+
+// -----
+
+// Negative case: all dependency edges already distinct -- left unchanged.
+// CHECK-LABEL: func.func @no_change_dependencies
+func.func @no_change_dependencies() {
+  // CHECK: mgp.device_graph.dependencies dependencies(%{{.+}}, %{{.+}}) {
+  // CHECK: } : (!mgp.device_graph.node, !mgp.device_graph.node) ->
+  %a = "test.work"() : () -> !mgp.device_graph.node
+  %b = "test.work2"() : () -> !mgp.device_graph.node
+  %node, %r = mgp.device_graph.dependencies dependencies(%a, %b) {
+    %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
+  } : (!mgp.device_graph.node, !mgp.device_graph.node)
+    -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  return
+}
