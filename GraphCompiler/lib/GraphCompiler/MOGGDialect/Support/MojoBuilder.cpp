@@ -166,9 +166,19 @@ void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
     statement("@always_inline");
   if (exported)
     statement("@export");
+
+  // An exported function requires an explicit `abi` effect. Generated kernels
+  // use the Mojo ABI, which is a no-op on the function type.
+  std::string effects;
+  if (exported)
+    effects = "abi(\"Mojo\")";
+  if (raises) {
+    if (!effects.empty())
+      effects += " ";
+    effects += "raises";
+  }
   statement("def ", name,
-            funcDefBase(parameters, arguments, returnType,
-                        /*effectsClause=*/raises ? "raises" : "", body));
+            funcDefBase(parameters, arguments, returnType, effects, body));
 
   // This is necessary to increase indentation and the value cache. The reason
   // we defer them is because we create the guard early to ensure that argument
