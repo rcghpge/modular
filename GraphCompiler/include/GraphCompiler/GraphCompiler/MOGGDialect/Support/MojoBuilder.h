@@ -14,7 +14,9 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/ADT/SmartVariant.h"
 #include "Support/AssertStream.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <stack>
@@ -39,6 +41,18 @@ public:
     SmallVector<char> chars;
     integer.toString(chars);
     this->text.assign(chars.begin(), chars.end());
+  }
+  /// Formats a finite floating-point value as a Mojo float literal.
+  MojoValue(const llvm::APFloat &value) {
+    assert(value.isFinite() && "inf/nan have no Mojo float literal spelling");
+    llvm::SmallString<32> str;
+    value.toString(str);
+    // `APFloat::toString` renders an integral value as bare digits with no
+    // fractional part or exponent (e.g. "2"), so append ".0" to make it lex
+    // as a float literal.
+    if (str.find_first_of(".eE") == llvm::StringRef::npos)
+      str += ".0";
+    text = str.str();
   }
   MojoValue(bool val) : text(val ? "True" : "False") {}
   MojoValue(const char *str) : text(str) {}

@@ -36,6 +36,7 @@
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <cmath>
 #include <cstdlib>
 #include <future>
 
@@ -145,6 +146,27 @@ resolveStructOperand(Value operand, const DenseMap<Value, MojoValue> &valueMap,
                                    renderer.simdWidthParamName()));
   }
   return it->second;
+}
+
+/// Resolve a scalar-capture operand (e.g. an inlined broadcast constant scalar)
+/// of a fused elementwise call. A `!mo.scalar` is splatted to a SIMD vector:
+/// Mojo infers the vector `width` from SIMD operands, not from a bare
+/// scalar/literal, so a scalar in the `lhs` position would otherwise fail width
+/// inference; splatting makes it position-independent. Non-`!mo.scalar`
+/// captures are returned unwrapped, matching `resolveStructOperand`'s scalar
+/// handling.
+static MojoValue resolveScalarCaptureInput(
+    Value input, const DenseMap<Value, MojoValue> &valueMap,
+    EmitMojoState &state, const ElementwiseBodyRenderer &renderer) {
+  auto it = valueMap.find(input);
+  ASSERT_STREAM(it != valueMap.end(), << "missing value in body map");
+  auto scalarTy = dyn_cast<MO::ScalarType>(input.getType());
+  if (!scalarTy || scalarTy.getDtype().isInvalid())
+    return it->second;
+  return MojoValue(
+      llvm::formatv("{0}[{1}, {2}]({3})", kStructSIMD,
+                    state.mlirDTypeToMojoType(scalarTy.getDtype()).text,
+                    renderer.simdWidthParamName(), it->second.text));
 }
 
 static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
@@ -623,6 +645,41 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 // Fusion struct emission helpers for BindLambdaOp
 //===----------------------------------------------------------------------===//
 
+/// Convert a `mogg.constant.scalar` value attribute (an IntegerAttr or
+/// FloatAttr) to a Mojo literal. Integer and float scalar constants can be
+/// emitted directly into a lambda body, letting an elementwise call splat them
+/// (e.g. `Add.elementwise[dtype = ...](lhs_simd, 2.0)`). Returns std::nullopt
+/// for unsupported attribute kinds.
+static std::optional<MojoValue>
+scalarConstantAttrToMojoLiteral(TypedAttr attr) {
+  if (auto intScalar = MO::tryGetConstantInt(attr))
+    return MojoValue(*intScalar);
+  // `tryGetConstantFloat` returning a value guarantees `attr` is a FloatAttr.
+  auto floatScalar = MO::tryGetConstantFloat(attr);
+  if (!floatScalar)
+    return std::nullopt;
+  auto floatAttr = cast<mlir::FloatAttr>(attr);
+
+  // inf/nan have no Mojo float-literal spelling, so construct them via the
+  // numerics helpers parameterized on the scalar's dtype.
+  if (std::isinf(*floatScalar) || std::isnan(*floatScalar)) {
+    ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(floatAttr.getType());
+    if (dtypeOr.isError())
+      return std::nullopt;
+    MojoValue dtype = EmitMojoState::mlirDTypeToMojoType(*dtypeOr);
+    if (std::isnan(*floatScalar))
+      return MojoValue(kFnNumericsNan)[{dtype}]();
+    MojoValue inf = MojoValue(kFnNumericsInf)[{dtype}]();
+    if (std::signbit(*floatScalar))
+      return MojoValue("-" + inf.text);
+    return inf;
+  }
+
+  // Render the finite value as a Mojo float literal (formatting lives in the
+  // MojoValue APFloat constructor).
+  return MojoValue(floatAttr.getValue());
+}
+
 /// Collect struct compile-time parameters and fields from the lambda body.
 /// Each tensor capture becomes a StaticTensorSpec parameter and a
 /// ManagedTensorSlice field. Non-tensor captures (scalars) are appended
@@ -682,8 +739,9 @@ static void collectFusionCaptures(
         // rather than hardware integer division (~40 cycles).
         if (auto constOp = dyn_cast_or_null<MOGG::ConstantScalarOp>(
                 operand.getDefiningOp())) {
-          if (auto intScalar = MO::tryGetConstantInt(constOp.getValue())) {
-            inlineConstants.push_back({operand, MojoValue(*intScalar)});
+          if (auto literal =
+                  scalarConstantAttrToMojoLiteral(constOp.getValue())) {
+            inlineConstants.push_back({operand, *literal});
             continue;
           }
         }
@@ -838,6 +896,9 @@ static void emitElementwiseLambdaBodyOps(
           ASSERT_STREAM(it != valueMap.end(),
                         << "missing tile value in body map");
           inputs.push_back(it->second);
+        } else if (scalarCaptureValues.contains(input)) {
+          inputs.push_back(
+              resolveScalarCaptureInput(input, valueMap, state, renderer));
         } else {
           inputs.push_back(resolveStructOperand(
               input, valueMap, scalarCaptureValues, state, renderer));
@@ -3819,12 +3880,11 @@ LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
-  if (auto intScalar = MO::tryGetConstantInt(getValue())) {
-    state.setMojoValueFor(getResult(), MojoValue(*intScalar));
+  if (auto literal = scalarConstantAttrToMojoLiteral(getValue())) {
+    state.setMojoValueFor(getResult(), *literal);
     return success();
-  } else {
-    return emitError("TODO: unsupported scalar type");
   }
+  return emitError("TODO: unsupported scalar type");
 }
 
 //===----------------------------------------------------------------------===//

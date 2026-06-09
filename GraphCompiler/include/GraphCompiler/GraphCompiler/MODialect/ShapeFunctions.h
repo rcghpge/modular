@@ -332,6 +332,13 @@ inline std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   return MOSH::ShapeAttr::getStaticDim(attr);
 }
 
+/// Try converting `attr` to a constant double.
+inline std::optional<double> tryGetConstantFloat(TypedAttr attr) {
+  if (auto floatAttr = dyn_cast<FloatAttr>(attr))
+    return floatAttr.getValueAsDouble();
+  return std::nullopt;
+}
+
 /// Return true if `attr` is a statically known integer dimension
 inline bool isStaticDimAttr(TypedAttr attr) {
   return tryGetConstantInt(attr).has_value();

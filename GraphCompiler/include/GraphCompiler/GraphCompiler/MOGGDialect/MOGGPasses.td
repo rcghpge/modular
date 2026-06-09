@@ -130,6 +130,33 @@ def FuseConstants: Pass<"mogg-fuse-consts", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def InlineBroadcastConstantScalars:
+    Pass<"mogg-inline-broadcast-constant-scalars", "MO::GraphOp"> {
+  let summary = "Inline broadcast constant scalars into kernel lambdas";
+  let description = [{
+    When a compile-time constant scalar is fully broadcast
+    (`mo.static.broadcast_to` of a single-element `mo.constant`) and consumed by
+    a kernel lambda, this pass replaces the per-element zero-strided access with
+    a `mogg.constant.scalar` used directly by the computation.
+
+    Two lambda shapes are handled:
+    - Elementwise and input (prologue) lambdas consume the broadcast as a
+      fusible operand bound to a value arg; the operand and its block argument
+      are removed.
+    - Output (epilogue) lambdas capture the broadcast view directly in the body
+      and read it via `mogg.tensor.load`; the load is replaced by the scalar.
+
+    In all cases the broadcast view and the now-unused constant kernel operand
+    are removed, so the scalar is inlined as a literal instead of being loaded
+    from memory with a zero-strided access.
+  }];
+  let dependentDialects = ["M::MDialect", "M::MOGG::MOGGDialect"];
+  let statistics = [
+    Statistic<"numInlinedScalars", "# of inlined broadcast constant scalars",
+              "Number of broadcast constant scalars inlined into lambdas">
+  ];
+}
+
 def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse blocks of elementwise operations if possible";
   let description = [{
@@ -137,7 +164,7 @@ def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
     non-view kernel, and fuses the body lambda of the former into that of the
     consumer kernel.
   }];
-  
+
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -168,7 +195,7 @@ def FusePrologues: Pass<"mogg-fuse-prologues", "MO::GraphOp"> {
     another kernel. I.E fused directly into a matmul input loop.
   }];
 
-  
+
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -197,7 +224,7 @@ def FuseEpilogues: Pass<"mogg-fuse-epilogues", "MO::GraphOp"> {
     fusion across affine views.
   }];
 
-  
+
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",

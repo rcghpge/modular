@@ -278,6 +278,11 @@ constexpr llvm::StringLiteral kEnumDTypeInt = "int";
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kFnStackAllocation = "stack_allocation";
+/// `std.utils.numerics.nan[dtype]()` / `inf[dtype]()`: dtype-parameterized
+/// constructors for the special float values that have no Mojo literal
+/// spelling.
+constexpr llvm::StringLiteral kFnNumericsNan = "std.utils.numerics.nan";
+constexpr llvm::StringLiteral kFnNumericsInf = "std.utils.numerics.inf";
 constexpr llvm::StringLiteral kFnToManagedTensorSlice =
     "builtin_primitives.primitives.to_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromManagedTensorSlice =
@@ -425,6 +430,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
         {"std.utils", ""},
+        {"std.utils.numerics", ""},
         {"std.runtime", ""},
         {"std.runtime.tracing", ""},
         {"std.memory", ""},

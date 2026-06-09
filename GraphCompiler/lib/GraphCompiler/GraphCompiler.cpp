@@ -340,6 +340,12 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createFuseEpilogues());
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
+    // Inline fully-broadcast constant scalars into kernel lambdas (elementwise,
+    // prologue, and epilogue) so they are emitted as literals rather than
+    // zero-strided loads. Runs before FuseConstants so the broadcast source is
+    // still a constant kernel operand.
+    pm.addPass(MOGG::createInlineBroadcastConstantScalars());
+
     pm.addPass(MOGG::createFuseConstants());
     if (opts.fuseMutableLoadStore)
       pm.addPass(MOGG::createFuseMutableLoads());
