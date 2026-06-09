@@ -3589,9 +3589,6 @@ LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult AsyncUnpackAnyAsyncValueRefOp::canonicalize(
     AsyncUnpackAnyAsyncValueRefOp unpackOp, mlir::PatternRewriter &rewriter) {
-  ASSERT_STREAM(!unpackOp.getValue().getDefiningOp<AsyncPackOp>(),
-                << "WE do not support unpacking async memory refs from packed "
-                   "operations. This should not happen.");
   if (auto packOp = unpackOp.getValue().getDefiningOp<AsyncPackBorrowOp>()) {
     rewriter.replaceOp(unpackOp, packOp.getMem());
     return success();
