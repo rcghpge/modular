@@ -33,7 +33,7 @@ def vec_add_compiled(ctx_obj: PythonObject) raises -> PythonObject:
 
 
 @export
-def PyInit_vec_add() -> PythonObject:
+def PyInit_vec_add() abi("C") -> PythonObject:
     try:
         var b = PythonModuleBuilder("vec_add")
         b.def_function[vec_add_compiled](
