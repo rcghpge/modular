@@ -429,9 +429,9 @@ static mlir::LogicalResult scanForKernelDecls(
 }
 
 /// Load the post-elaboration primary body from a `.mojopkg` file by fully
-/// materializing the bytecode IR. No dependency packages are loaded and the
-/// postParseModule blob is not used: decorator matching uses the callee
-/// namespace instead of a symbol lookup into dep packages.
+/// materializing the bytecode IR. No dependency packages are loaded: decorator
+/// matching uses the callee namespace instead of a symbol lookup into dep
+/// packages.
 static OwningOpRef<ModuleOp> loadPackageModule(MLIRContext *ctx,
                                                llvm::StringRef path,
                                                ModuleOp parentModule) {
