@@ -76,3 +76,16 @@ mo.graph @wrong_abi(%0 : !mo.tensor<[], f32>) -> () {
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}
   mo.output
 }
+
+// -----
+
+// mogg.call.build_graph must reference a kernel.decl op.
+func.func @build_graph_missing_decl(
+    %in: !mo.tensor<[2, 4], f32, gpu:0>,
+    %b: !mgp.device_graph.builder) -> !mgp.device_graph.node {
+  // expected-error@+1 {{'missing.kernel' does not refer to a kernel.decl op}}
+  %node = mogg.call.build_graph["missing.kernel"]
+      inputs(%in : !mo.tensor<[2, 4], f32, gpu:0>)
+      builder(%b) -> !mgp.device_graph.node {moOpName = "mo.matmul"}
+  return %node : !mgp.device_graph.node
+}

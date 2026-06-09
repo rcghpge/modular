@@ -1905,6 +1905,47 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// CallBuildGraphOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CallBuildGraphOp::verify() {
+  // The launch argument is the dedicated `$builder` operand, so a context must
+  // not appear among the kernel inputs/outputs (that is the `call.execute`
+  // shape this op replaces).
+  auto isContext = [](Value v) { return isa<MOGG::ContextType>(v.getType()); };
+  if (llvm::any_of(getInputs(), isContext) ||
+      llvm::any_of(getOutputs(), isContext))
+    return emitError("mogg.call.build_graph takes a device-graph builder as "
+                     "its launch argument, not a context");
+  return success();
+}
+
+LogicalResult
+CallBuildGraphOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getBuildGraph())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'build_graph' function";
+        return success();
+      });
+}
+
+bool CallBuildGraphOp::isThrows() { return getIsThrows(); }
+
+LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
+  // TODO(GEX-3811): Emit the kernel's `build_graph` method against the builder
+  // (mirroring CallExecuteOp::emitMojo, but selecting buildGraphFunction /
+  // kMoggBuildGraphFunctionLabel, appending the builder as the launch arg, and
+  // capturing the returned node handle for the op result). Blocked on the
+  // Mojo-side build_graph ABI -- the DeviceGraphBuilder module path and the
+  // recorded-node return type need mlirTypeToMojoType mappings. This op has no
+  // end-to-end emit path yet (the synthesis pass that generates it does not
+  // emit build_graph stubs), so reaching emit here is a compiler bug.
+  return emitOpError("mogg.call.build_graph emit is not implemented yet");
+}
+
+//===----------------------------------------------------------------------===//
 // Error context helpers (used by KernelStubOp and AsyncErrorOp)
 //===----------------------------------------------------------------------===//
 

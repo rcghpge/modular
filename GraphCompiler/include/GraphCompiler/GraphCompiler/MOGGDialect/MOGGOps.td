@@ -326,6 +326,60 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 }
 
 
+def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
+  let summary = "Record a kernel's `build_graph` function into a device-graph builder";
+  let description = [{
+    The device-graph counterpart of `mogg.call.execute`. Instead of dispatching
+    the kernel's `execute` method against a `!mogg.context`, this op invokes the
+    kernel's `build_graph` method against a `!mgp.device_graph.builder`, which
+    records a node into the graph under construction rather than running the
+    kernel immediately.
+
+    The tensor signature (`inputs` / `outputs`) matches the `execute` call the
+    op was synthesized from; only the launch argument differs -- a builder in
+    place of a context. The op returns an `!mgp.device_graph.node` handle naming
+    the recorded node.
+
+    Unlike `mogg.call.execute`, this is not a kernel terminator and is not
+    wrapped in `mogg.with_trace`: it produces an SSA result (the node handle)
+    that flows to the recording stub's `mogg.output`.
+
+    Example:
+    ```mlir
+    %node = mogg.call.build_graph["linalg_kernels.__init__.Matmul"]
+        inputs(%in, %wt : !mo.tensor<...>, !mo.tensor<...>)
+        outputs(%out : !mo.tensor<...>)
+        builder(%builder) -> !mgp.device_graph.node
+
+    // Lowered to
+    var node = Matmul.build_graph[...](out, in, wt, builder)
+    ```
+  }];
+
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    StrAttr:$moOpName,
+    UnitAttr:$isThrows,
+    Variadic<AnyType>:$inputs,
+    Variadic<AnyType>:$outputs,
+    MGP_DeviceGraphBuilderType:$graphBuilder
+  );
+  let results = (outs MGP_DeviceGraphNodeType:$node);
+
+  let assemblyFormat = [{
+    `[` $kernelSymName `]` (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
+                        (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
+                        `builder` `(` $graphBuilder `)` `->` qualified(type($node)) attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+
 def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
