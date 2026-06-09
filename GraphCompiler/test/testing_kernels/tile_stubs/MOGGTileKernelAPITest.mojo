@@ -24,7 +24,7 @@ struct TileMatmulStub:
     def execute[
         transpose_b: Bool,
         packed_b: Bool,
-        lambdas_have_fusion: Bool,
+        has_epilogue_fusion: Bool,
         target: StaticString,
         _trace_name: StaticString,
     ](

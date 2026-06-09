@@ -97,7 +97,17 @@ constexpr llvm::StringLiteral kMoggOutputRankParameterName = "output_rank";
 /// The number of DPS (Destination Passing Style) output operands there are.
 constexpr llvm::StringLiteral kMoggNumDpsOutputs = "mogg.num_dps_outputs";
 
-/// `lambdas_have_fusion` parameter on accumulation-style fused kernels.
+/// `has_epilogue_fusion` parameter on accumulation-style fused kernels.
+constexpr llvm::StringLiteral kMoggHasEpilogueFusionParameterName =
+    "has_epilogue_fusion";
+
+/// `has_prologue_fusion` parameter: true iff a producer is fused into the
+/// kernel's input
+constexpr llvm::StringLiteral kMoggHasPrologueFusionParameterName =
+    "has_prologue_fusion";
+
+/// `lambdas_have_fusion` parameter: true iff the kernel has any fusion at all,
+/// i.e. `has_epilogue_fusion || has_prologue_fusion`.
 constexpr llvm::StringLiteral kMoggLambdasHaveFusionParameterName =
     "lambdas_have_fusion";
 

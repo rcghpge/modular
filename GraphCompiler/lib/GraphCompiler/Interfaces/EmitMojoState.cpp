@@ -747,7 +747,7 @@ static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
   return MojoValue(fusionInfo.toString()).quote();
 }
 
-static MojoValue getLambdasHaveFusionValue(mlir::Operation *kernelCallOp) {
+static MojoValue getHasEpilogueFusionValue(mlir::Operation *kernelCallOp) {
   // The kernel call op may be nested inside a WithTraceOp (MOGG ABI), so
   // BindLambdaOps may live in a parent block. Walk up the block hierarchy
   // (stopping at KernelStubOp) until we find BindLambdaOps.
@@ -776,6 +776,23 @@ static MojoValue getLambdasHaveFusionValue(mlir::Operation *kernelCallOp) {
     block = parentOp->getBlock();
   }
   return false;
+}
+
+static MojoValue getHasPrologueFusionValue(mlir::Operation *callOp) {
+  auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
+  if (!kernelStubOp)
+    return true;
+  FusionInfoAttr fusionInfo = kernelStubOp.getFusionInfoAttr();
+  if (!fusionInfo)
+    return true;
+  return !mlir::isa<FusionLeafAttr>(fusionInfo.getRoot());
+}
+
+// `lambdas_have_fusion` is the disjunction of the two: the kernel has any
+// fusion at all, i.e. a fused elementwise lambda OR a fused input producer.
+static MojoValue getHasLambdaFusionValue(mlir::Operation *callOp) {
+  return getHasEpilogueFusionValue(callOp).bitwise_logical_or(
+      getHasPrologueFusionValue(callOp));
 }
 
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
@@ -835,8 +852,12 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
+  if (paramName == MOGG::kMoggHasEpilogueFusionParameterName)
+    return getHasEpilogueFusionValue(callOp);
+  if (paramName == MOGG::kMoggHasPrologueFusionParameterName)
+    return getHasPrologueFusionValue(callOp);
   if (paramName == MOGG::kMoggLambdasHaveFusionParameterName)
-    return getLambdasHaveFusionValue(callOp);
+    return getHasLambdaFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
 }

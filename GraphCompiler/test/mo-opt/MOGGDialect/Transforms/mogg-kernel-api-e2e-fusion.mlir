@@ -46,7 +46,7 @@ mo.graph @elementwise3() -> !mo.tensor<[2, 3], f32> {
 // CHECK-IR: %[[OUT:.*]] = mogg.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
-// CHECK: lambdas_have_fusion = True
+// CHECK: has_epilogue_fusion = True
 // CHECK-LABEL: Running 'matmul_add':
 // CHECK: 'matmul_add' returned tensor<2x2xf32> [6.500000e+00, 5.500000e+00, 1.350000e+01, 1.250000e+01]
 mo.graph @matmul_add() -> !mo.tensor<[2, 2], f32> {
@@ -93,7 +93,7 @@ mo.graph @transpose_add(%arg0: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[3, 4], f3
 }
 
 // matmul (not fused)
-// CHECK: lambdas_have_fusion = False
+// CHECK: has_epilogue_fusion = False
 // CHECK-LABEL: Running 'matmul_no_fusion':
 // CHECK: 'matmul_no_fusion' returned tensor<2x2xf32> [5.500000e+00, 4.000000e+00, 1.150000e+01, 1.000000e+01]
 mo.graph @matmul_no_fusion() -> !mo.tensor<[2, 2], f32> {

@@ -479,6 +479,25 @@ struct AddFuseLHS:
         foreach[func](z, ctx)
 
 
+@compiler.register("imposter_has_prologue_fusion")
+struct ImposterHasPrologueFusion:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        has_prologue_fusion: Bool,
+    ](
+        output: OutputTensor,
+        x: FusedInputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+            return rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
+
+        foreach[func](output, ctx)
+
+
 @compiler.register("imposter_add_fuse_inputs")
 struct AddFuseInputs:
     @staticmethod
@@ -506,7 +525,7 @@ struct MatmulFuseOut:
     @staticmethod
     def execute[
         target: StaticString,
-        lambdas_have_fusion: Bool,
+        has_epilogue_fusion: Bool,
     ](
         c: FusedOutputTensor,
         a: InputTensor,
@@ -525,7 +544,7 @@ struct MatmulFuseOut:
         ](idx: IndexList[2], val: SIMD[dtype, width]):
             c._fused_store(idx, rebind[SIMD[c.dtype, width]](val))
 
-        print("lambdas_have_fusion =", lambdas_have_fusion)
+        print("has_epilogue_fusion =", has_epilogue_fusion)
 
         _matmul[elementwise_lambda_fn=out_func](c, a, b)
 
