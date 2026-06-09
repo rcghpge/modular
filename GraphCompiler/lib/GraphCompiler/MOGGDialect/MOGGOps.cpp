@@ -73,31 +73,6 @@ static std::string buildStructLoadExpr(StringRef captureIdx,
       .str();
 }
 
-/// Execute-scope locals backing one tensor capture in the register_passable
-/// elementwise path. `ptrVar`/`shapeVar`/`stridesVar` go in the def's capture
-/// clause; `staticSpec` is comptime and referenced directly (not captured).
-struct TensorCaptureVars {
-  MojoValue ptrVar;
-  MojoValue shapeVar;
-  MojoValue stridesVar;
-  MojoValue staticSpec;
-};
-
-/// Load expression for a register_passable elementwise body's local-var-backed
-/// tensor captures. Counterpart of `buildStructLoadExpr`.
-static std::string buildDefLoadExpr(const TensorCaptureVars &v,
-                                    StringRef simdWidthName,
-                                    StringRef elementAlignmentName,
-                                    StringRef indicesExpr) {
-  return llvm::formatv("{0}[static_spec = {1}, simd_width = {2}, "
-                       "element_alignment = {3}]"
-                       "({4}, {5}, {6}, {7})",
-                       kFnMsSimdLoadFromTensorPointer, v.staticSpec.text,
-                       simdWidthName, elementAlignmentName, v.ptrVar.text,
-                       v.shapeVar.text, v.stridesVar.text, indicesExpr)
-      .str();
-}
-
 namespace {
 /// The two pieces that differ between the fusion-struct and register_passable
 /// paths: how a tensor capture is loaded, and the SIMD-width parameter name.
@@ -121,30 +96,6 @@ struct FusionStructRenderer final : ElementwiseBodyRenderer {
     return buildStructLoadExpr(std::to_string(captureIdx), indicesExpr);
   }
   StringRef simdWidthParamName() const override { return "simd_width"; }
-};
-
-/// Register_passable def body: loads through the execute-scope locals in the
-/// def's `{var …}` capture clause and its own SIMD-width/element-alignment
-/// parameters. Holds captured names by value to avoid dangling into
-/// stack-locals.
-struct RegisterPassableRenderer final : ElementwiseBodyRenderer {
-  RegisterPassableRenderer(SmallVector<TensorCaptureVars> tensorVars,
-                           std::string simdWidthName,
-                           std::string elementAlignmentName)
-      : tensorVars(std::move(tensorVars)),
-        simdWidthName(std::move(simdWidthName)),
-        elementAlignmentName(std::move(elementAlignmentName)) {}
-  std::string buildLoadExpr(unsigned captureIdx,
-                            StringRef indicesExpr) const override {
-    return buildDefLoadExpr(tensorVars[captureIdx], simdWidthName,
-                            elementAlignmentName, indicesExpr);
-  }
-  StringRef simdWidthParamName() const override { return simdWidthName; }
-
-private:
-  SmallVector<TensorCaptureVars> tensorVars;
-  std::string simdWidthName;
-  std::string elementAlignmentName;
 };
 } // namespace
 
@@ -1307,202 +1258,6 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   return success();
 }
 
-/// Emit a `var` local per tensor capture holding ptr/shape/strides.
-static SmallVector<TensorCaptureVars> materializeTensorCaptureVars(
-    EmitMojoState &state, ArrayRef<MojoValue> fusedInputs,
-    ArrayRef<std::pair<Value, unsigned>> extraTensorCaptures) {
-  SmallVector<TensorCaptureVars> tensorVars;
-  tensorVars.reserve(fusedInputs.size() + extraTensorCaptures.size());
-  auto emitVarsForTensor = [&](const MojoValue &t) {
-    TensorCaptureVars v;
-    v.ptrVar = state.builder.var(t.get("_ptr"));
-    v.shapeVar = state.builder.var(t.get("shape")());
-    v.stridesVar = state.builder.var(t.get("strides")());
-    v.staticSpec = t.get("static_spec");
-    tensorVars.push_back(std::move(v));
-  };
-  for (auto &t : fusedInputs)
-    emitVarsForTensor(t);
-  for (auto &[val, _] : extraTensorCaptures)
-    emitVarsForTensor(state.getMojoValueFor(val));
-  return tensorVars;
-}
-
-/// Pre-resolved identifiers and signature pieces for a register_passable
-/// elementwise def. Resolving the param/arg ids in the outer scope lets the
-/// return type splice in the SIMD-width spelling before the body runs (`newVar`
-/// on an already-resolved id is a no-op, so the spellings flow through
-/// unchanged).
-struct ElementwiseDefSignature {
-  SmallVector<NamedMojoDef> templateParams;
-  SmallVector<NamedMojoDef> arguments;
-  MojoValue returnType;
-  MojoValue wName;
-  MojoValue eaName;
-  MojoValue idxName;
-};
-
-/// Build the def signature for an elementwise register_passable body.
-static ElementwiseDefSignature
-buildElementwiseDefSignature(MojoBuilder &builder, int64_t rank,
-                             const MojoValue &bodyDtype) {
-  auto wParamId = builder.getIdentifier("w");
-  auto eaParamId = builder.getIdentifier("ea");
-  auto idxArgId = builder.getIdentifier("idx");
-  ElementwiseDefSignature sig;
-  sig.wName = builder.newVar(wParamId);
-  sig.eaName = builder.newVar(eaParamId);
-  sig.idxName = builder.newVar(idxArgId);
-  sig.templateParams = {
-      NamedMojoDef(wParamId, MojoValue("Int")),
-      NamedMojoDef(eaParamId, MojoValue("Int"),
-                   /*defaultValue=*/MojoValue("1")),
-  };
-  sig.arguments = {
-      NamedMojoDef(
-          idxArgId,
-          MojoValue(llvm::formatv("{0}[{1}]", kStructIndexList, rank).str())),
-  };
-  sig.returnType = MojoValue(llvm::formatv("{0}[{1}, {2}]", kStructSIMD,
-                                           bodyDtype.text, sig.wName.text)
-                                 .str());
-  return sig;
-}
-
-/// Emit `print(...)` calls dumping each fused input's comptime
-/// shape/strides/alignment, when debug dumping is enabled. Mirrors the
-/// fusion-struct path's debug emission.
-static void
-maybeEmitDebugDumpFusedTensorSpecs(EmitMojoState &state,
-                                   ArrayRef<MojoValue> fusedInputs) {
-  if (!state.isDebugDumpFusedTensorSpecsEnabled())
-    return;
-  unsigned inputIdx = 0;
-  for (auto &t : fusedInputs) {
-    state.builder.call(
-        "print", {},
-        {MojoValue("input").quote(),
-         MojoValue("#" + std::to_string(inputIdx++) + ":").quote(),
-         MojoValue("shape =").quote(), t.get("_static_shape_tuple"),
-         MojoValue("strides =").quote(), t.get("_static_strides_tuple"),
-         MojoValue("alignment =").quote(), t.get("alignment")});
-  }
-}
-
-/// Emit a register_passable elementwise body at execute-function scope and
-/// register its name for the downstream `CallForeachOp`.
-///
-/// Unlike the fusion-struct path, whose implicit `FusionStruct` captures of
-/// host stack addresses don't survive `crossDeviceCaptures` on every target,
-/// this flattens each fused input's ptr/shape/strides into three execute-scope
-/// `var` locals listed explicitly in the body's `{var ...}` clause, loading via
-/// `simd_load_from_tensor_pointer`. Leaves one patchable layer (UnsafePointer +
-/// IndexList).
-static LogicalResult emitElementwiseRegisterPassableBody(
-    BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
-    OperandRange fusibleTensors, ArrayRef<MojoValue> fusedInputs) {
-  if (failed(verifyBindLambdaBodyOpsForMojoEmission(bindOp, lambdaBody)))
-    return failure();
-
-  // Reuse the legacy capture-collection: we want the same set of fields and
-  // extra-tensor / scalar bookkeeping, just consumed differently.
-  SmallVector<std::pair<MojoValue, MojoValue>> parameters;
-  SmallVector<std::pair<MojoValue, MojoValue>> fields;
-  SmallVector<MO::TensorType> captureTensorTypes;
-  SmallVector<std::pair<Value, unsigned>> extraTensorCaptures;
-  SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
-  SmallVector<std::pair<Value, MojoValue>> inlineConstants;
-  collectFusionCaptures(state, lambdaBody, fusibleTensors,
-                        /*isOutputLambda=*/false, parameters, fields,
-                        captureTensorTypes, extraTensorCaptures, scalarCaptures,
-                        inlineConstants);
-
-  // Derive the body's output dtype from the lambda terminator.
-  auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
-  ErrorOr<DType> bodyDtypeOr =
-      M::MO::fromMLIRType(outputOp.getOperand(0).getType());
-  if (bodyDtypeOr.isError())
-    return bindOp.emitError(
-        "Failed to determine elementwise body output dtype");
-  MojoValue bodyDtype = state.mlirDTypeToMojoType(*bodyDtypeOr);
-
-  // `idx: IndexList[rank]` must match the rank `foreach` iterates with. Use the
-  // indices arg's array size — the value BindLambdaOp::verify checks inputs
-  // against, well-defined even for index-only bodies. `captureTensorTypes`
-  // would mislead with no fusibles (falls back to 1, or an unrelated capture).
-  int64_t rank = 1;
-  if (auto idxArrayTy =
-          dyn_cast<KGEN::POP::ArrayType>(bindOp.getIndicesArg().getType())) {
-    if (auto resolvedSize = idxArrayTy.getResolvedSize())
-      rank = std::max<int64_t>(*resolvedSize, 1);
-  }
-
-  maybeEmitDebugDumpFusedTensorSpecs(state, fusedInputs);
-
-  // Emit execute-scope locals for each tensor capture's ptr/shape/strides.
-  SmallVector<TensorCaptureVars> tensorVars =
-      materializeTensorCaptureVars(state, fusedInputs, extraTensorCaptures);
-
-  // The `{var ...}` clause must list each captured local explicitly;
-  // `static_spec` is comptime and referenced without capture.
-  SmallVector<MojoValue> capturedVarNames;
-  capturedVarNames.reserve(3 * tensorVars.size() + scalarCaptures.size());
-  for (auto &v : tensorVars) {
-    capturedVarNames.push_back(v.ptrVar);
-    capturedVarNames.push_back(v.shapeVar);
-    capturedVarNames.push_back(v.stridesVar);
-  }
-  for (auto &[val, _, __] : scalarCaptures)
-    capturedVarNames.push_back(state.getMojoValueFor(val));
-
-  ElementwiseDefSignature sig =
-      buildElementwiseDefSignature(state.builder, rank, bodyDtype);
-
-  MojoValue funcName = state.builder.registerPassableElementwiseDef(
-      "func", sig.templateParams, sig.arguments, capturedVarNames,
-      sig.returnType, [&](const FunctionBody &) {
-        // Seed the value map: inline constants -> literal text, scalar captures
-        // -> their state mojo values, index arg -> renamed `idx`, each fused
-        // input -> a load from its captured triple.
-        DenseMap<Value, MojoValue> valueMap;
-        DenseSet<Value> scalarCaptureValues;
-        RegisterPassableRenderer renderer(tensorVars, sig.wName.text,
-                                          sig.eaName.text);
-        seedScalarValueMapEntries(
-            inlineConstants, scalarCaptures,
-            [&](Value val, StringRef) { return state.getMojoValueFor(val); },
-            valueMap, scalarCaptureValues);
-        valueMap[lambdaBody->getArguments().back()] = sig.idxName;
-        for (unsigned i = 0; i < fusedInputs.size(); ++i) {
-          Value blockArg = lambdaBody->getArgument(i);
-          auto tensorTy = captureTensorTypes[i];
-          int64_t loadRank = tensorTy.getRank() == 0 ? 1 : tensorTy.getRank();
-          auto loadExpr = renderer.buildLoadExpr(
-              i, llvm::formatv("rebind[{0}[{1}]]({2})", kStructIndexList,
-                               loadRank, sig.idxName.text)
-                     .str());
-          valueMap[blockArg] = state.builder.var(MojoValue(loadExpr));
-        }
-
-        emitElementwiseLambdaBodyOps(state, state.builder, lambdaBody,
-                                     captureTensorTypes, extraTensorCaptures,
-                                     valueMap, scalarCaptureValues, renderer);
-
-        // Final return value, rebound to the declared return type.
-        auto resultIt = valueMap.find(outputOp.getOperand(0));
-        ASSERT_STREAM(resultIt != valueMap.end(),
-                      << "missing output value in register_passable "
-                         "elementwise body map");
-        state.builder.returnsValue(MojoValue(
-            llvm::formatv("rebind[{0}[{1}, {2}]]({3})", kStructSIMD,
-                          bodyDtype.text, sig.wName.text, resultIt->second.text)
-                .str()));
-      });
-
-  state.setElementwiseFuncLoweringFor(bindOp.getOutput(), funcName);
-  return success();
-}
-
 LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
   bool isOutputLambda = getBindKind() == BindLambdaKind::OutputLambda;
@@ -1533,17 +1288,9 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
     state.markAsKeepAlive(input);
   }
 
-  // Graph-API lowering goes through `foreach[E: ElementwiseFusion]`, whose
-  // capturing shim closes over the FusionStruct without the elaborator
-  // flattening those captures into the outer register_passable wrapper.
-  // ElemwiseLambda routes through this path instead so each fused input's
-  // ptr/shape/strides triple is listed explicitly in the `{var ...}` clause.
-  // Input/Output/ComputeOutput keep the FusionStruct path — consumed via
-  // `bind_to_fused_*` helpers, never entering `crossDeviceCaptures`.
-  if (getBindKind() == BindLambdaKind::ElemwiseLambda)
-    return emitElementwiseRegisterPassableBody(*this, state, lambdaBody,
-                                               fusibleTensors, fusedInputs);
-
+  // Every BindLambda kind emits a `FusionStruct`; for `ElemwiseLambda` it
+  // conforms to `ElementwiseFusion` and `foreach_fusion` captures it by value
+  // so it survives `crossDeviceCaptures`.
   return emitFusionStruct(*this, state, lambdaBody, fusibleTensors, fusedInputs,
                           isOutputLambda, lambdaType);
 }
@@ -1635,34 +1382,16 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
                                 ? MojoValue(getOperationName()).quote()
                                 : *traceNameOr;
 
-  // ElementwiseFuncInfo -> register_passable `foreach` (`func`/`tensor`/`ctx`;
-  // the `func` kwarg disambiguates the same-named parametric-closure overload).
-  // FusionStructInfo -> `foreach_fusion` (`tensor`/`elem`/`ctx`), named by this
-  // op's `getKernelSymName()`.
-  MojoValue foreachFunc;
-  llvm::SmallVector<MojoValue, 3> bodyKwargs;
-  if (llvm::isa<ElementwiseFuncInfo>(lowering)) {
-    const auto &efInfo = llvm::cast<ElementwiseFuncInfo>(lowering);
-    foreachFunc = MojoValue(kFnMoggForeach);
-    bodyKwargs = {
-        MojoValue(kParameterForeachFunc).equal(efInfo.funcName),
-        MojoValue(kParameterForeachTensor).equal(mojoOutput),
-        MojoValue(kParameterForeachCtx).equal(contextValue),
-    };
-  } else {
-    const auto &fsInfo = llvm::cast<FusionStructInfo>(lowering);
-    foreachFunc = MojoValue(getKernelSymName());
-    bodyKwargs = {
-        MojoValue(kParameterForeachTensor).equal(mojoOutput),
-        MojoValue(kParameterForeachElem).equal(fsInfo.instance),
-        MojoValue(kParameterForeachCtx).equal(contextValue),
-    };
-  }
-  state.builder.verbatim(
-      foreachFunc({MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
-                   MojoValue(kParameterSimdWidth).equal(simdWidthExpr),
-                   MojoValue(kMoggTraceNameParameterName).equal(traceNameExpr)},
-                  bodyKwargs));
+  // `foreach_fusion` (`getKernelSymName()`, kwargs `tensor`/`elem`/`ctx`) takes
+  // the `ElementwiseFusion` fusion-struct instance as `elem`.
+  MojoValue elemValue = lowering.instance;
+  state.builder.verbatim(MojoValue(getKernelSymName())(
+      {MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
+       MojoValue(kParameterSimdWidth).equal(simdWidthExpr),
+       MojoValue(kMoggTraceNameParameterName).equal(traceNameExpr)},
+      {MojoValue(kParameterForeachTensor).equal(mojoOutput),
+       MojoValue(kParameterForeachElem).equal(elemValue),
+       MojoValue(kParameterForeachCtx).equal(contextValue)}));
   state.genAllKeepAliveStatements();
 
   return success();
@@ -3802,7 +3531,7 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
                      "lambda-based fusion has been removed");
   // The verifier restricts `lambda` to Input/OutputLambda, which always lower
   // through the FusionStruct path; ElemwiseLambda never reaches here.
-  const auto &fusionInfo = llvm::cast<FusionStructInfo>(loweringIt->second);
+  const auto &fusionInfo = loweringIt->second;
 
   // Check if the result feeds into an AsTupleOp (variadic path).
   // If so, defer binding -- AsTupleOp will construct a
@@ -3928,7 +3657,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   for (auto input : getInputs()) {
     auto it = state.lambdaLowerings.find(input);
     if (it != state.lambdaLowerings.end()) {
-      const auto &fusionInfo = llvm::cast<FusionStructInfo>(it->second);
+      const auto &fusionInfo = it->second;
       anyFused = true;
       if (fusionInfo.bindMethodName == ManagedTensorSliceRef::kBindToFusedInput)
         hasInputFusion = true;
@@ -3945,7 +3674,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     SmallVector<MojoValue> typeParams;
     for (auto input : getInputs()) {
       auto fusIt = state.lambdaLowerings.find(input);
-      const auto &fusionInfo = llvm::cast<FusionStructInfo>(fusIt->second);
+      const auto &fusionInfo = fusIt->second;
       fusionValues.push_back(fusionInfo.instance);
       typeParams.push_back(fusionInfo.typeName);
     }

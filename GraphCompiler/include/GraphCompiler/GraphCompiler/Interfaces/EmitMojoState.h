@@ -78,17 +78,12 @@ struct EmitMojoState {
   /// Name of the entry point of the current kernel
   std::string currentKernelName;
 
-  /// Maps a BindLambdaOp output value to how it was lowered: a fusion struct
-  /// or a register_passable elementwise def.
+  /// Maps a BindLambdaOp output value to how it was lowered (a fusion struct).
   mlir::DenseMap<Value, EmittedLambdaLowering> lambdaLowerings;
 
   /// Record a fusion struct lowering for a BindLambdaOp output value.
   void setFusionStructLoweringFor(Value val, MojoValue instance,
                                   StringLiteral bindMethod, MojoValue typeName);
-
-  /// Record a register_passable elementwise def lowering for a BindLambdaOp
-  /// output value.
-  void setElementwiseFuncLoweringFor(Value val, MojoValue funcName);
 
 private:
   /// A mapping between mlir::Value to MojoValue (text).

@@ -208,33 +208,6 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   return lambdaParam;
 }
 
-MojoValue MojoBuilder::registerPassableElementwiseDef(
-    StringLiteral funcNameHint, ArrayRef<NamedMojoDef> parameters,
-    ArrayRef<NamedMojoDef> arguments, ArrayRef<MojoValue> capturedVarNames,
-    std::optional<MojoValue> returnType,
-    std::function<void(const FunctionBody &)> &&defBody) {
-  MojoValue funcName = newVar(funcNameHint.str());
-  FunctionBody body;
-
-  // Only the `{var ...}` clause; register-passability follows from the
-  // captures. The `register_passable` keyword is gone from the frontend (now
-  // warns and is ignored), so don't emit it.
-  std::string captureClause;
-  llvm::raw_string_ostream cos(captureClause);
-  cos << "{";
-  llvm::interleaveComma(capturedVarNames, cos,
-                        [&](const MojoValue &v) { cos << "var " << v.text; });
-  cos << "}";
-
-  statement(
-      "def ", funcName,
-      funcDefBase(parameters, arguments, returnType, captureClause, body));
-
-  MojoBuilderScopeGuard guard(this);
-  defBody(body);
-  return funcName;
-}
-
 MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {
   statement("try:");
   MojoBuilderScopeGuard guard(this);

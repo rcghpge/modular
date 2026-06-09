@@ -149,16 +149,9 @@ struct FusionStructInfo {
   MojoValue typeName;
 };
 
-/// Lowering of an `ElemwiseLambda` BindLambdaOp output to a register_passable
-/// `def` named by `funcName`.
-struct ElementwiseFuncInfo {
-  MojoValue funcName;
-};
-
 /// How a BindLambdaOp output was lowered, stored in
 /// `EmitMojoState::lambdaLowerings`.
-using EmittedLambdaLowering =
-    M::SmartVariant<FusionStructInfo, ElementwiseFuncInfo>;
+using EmittedLambdaLowering = FusionStructInfo;
 
 // Class used to represent a unique mojo identifier.
 // It contains a static prefix, followed by a unique index `bar_45`
@@ -247,18 +240,6 @@ public:
                    std::optional<MojoValue> returnType, bool isInline,
                    bool isParameter, bool isAsync,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
-
-  /// Emit a nested def with an explicit `{var x, ...}` capture clause;
-  /// register-passability follows from the captures (the `register_passable`
-  /// keyword is no longer emitted). The body callback receives a FunctionBody
-  /// whose `parameters`/`arguments` hold the renamed identifiers; indentation,
-  /// counters, and value cache are scoped to it. Tailored to
-  /// `emitElementwiseRegisterPassableBody`.
-  MojoValue registerPassableElementwiseDef(
-      StringLiteral funcNameHint, ArrayRef<NamedMojoDef> parameters,
-      ArrayRef<NamedMojoDef> arguments, ArrayRef<MojoValue> capturedVarNames,
-      std::optional<MojoValue> returnType,
-      std::function<void(const FunctionBody &)> &&defBody);
 
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);
   void except(std::function<void(const MojoValue &)> &&exceptBlock);

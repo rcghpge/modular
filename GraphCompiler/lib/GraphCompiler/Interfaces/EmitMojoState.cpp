@@ -33,13 +33,6 @@ void EmitMojoState::setFusionStructLoweringFor(Value val, MojoValue instance,
   ASSERT_STREAM(inserted, << "value already bound to a lambda lowering");
 }
 
-void EmitMojoState::setElementwiseFuncLoweringFor(Value val,
-                                                  MojoValue funcName) {
-  [[maybe_unused]] auto [it, inserted] = lambdaLowerings.try_emplace(
-      val, ElementwiseFuncInfo{std::move(funcName)});
-  ASSERT_STREAM(inserted, << "value already bound to a lambda lowering");
-}
-
 /// Remove parameters from inferByInputs that appear in the function's result
 /// type but not in the actual input argument types.
 static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
