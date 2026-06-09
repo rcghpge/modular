@@ -13,12 +13,32 @@ modular_cc_test(
         ],
         exclude = [
             "KernelLoggerTest.cpp",
+            "MGPRTTakeHandleTest.cpp",
         ],
     ),
     deps = [
         "//GraphCompiler:MGPPrimitives",
         "//GraphCompiler:SafeTensor",
         "//GraphCompiler:Support",
+        "//Support:Globals",
+    ],
+)
+
+# Exercises the MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle entrypoint, so it
+# links the //GraphCompiler:MGPRT shared library (for the extern "C" symbol) and
+# //MLRT:Driver/DeviceContextImpl (to mint a CPU DeviceBuffer + install the
+# current CPUDevice) on top of the BaseTests dependencies.
+modular_cc_test(
+    name = "MGPRTTakeHandleTest",
+    size = "small",
+    srcs = ["MGPRTTakeHandleTest.cpp"],
+    deps = [
+        "//GraphCompiler:MGPPrimitives",
+        "//GraphCompiler:MGPRT",
+        "//GraphCompiler:SafeTensor",
+        "//GraphCompiler:Support",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//MLRT/unittests/Driver:TestUtils",
         "//Support:Globals",
     ],
 )

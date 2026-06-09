@@ -374,6 +374,46 @@ MGP_RT_CreateAsyncDeviceBufferRef(void *data, size_t size,
   }
 }
 
+/// Like MGP_RT_CreateAsyncDeviceBufferRef, but TAKES an already-owning
+/// DeviceBuffer handle the producer surrendered instead of minting a fresh
+/// owner with createBufferOwning. Used by mgp.buffer.alloc: the Mojo side hands
+/// over the live DeviceBuffer from enqueue_create_buffer via
+/// DeviceBuffer.take_handle() (deinit self, which suppresses __del__/release),
+/// and this entrypoint adopts that single reference net-zero.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
+    Driver::DeviceBuffer *handle, void *data, size_t size,
+    AsyncRTWrapper<AnyAsyncValueRef> async) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef &value = unwrap(async);
+
+  // TAKE the reference the Mojo owner just surrendered via take_handle(). The
+  // pairing is load-bearing: take_handle is `deinit self` (no release) and
+  // takeRCRef adopts the handle WITHOUT addRef, so the single live reference is
+  // transferred net-zero -- no addRef, no fresh DeviceBuffer
+  // (createBufferOwning would double-own the same allocation -> double free),
+  // no releasePtr. Using copyRCRef here would leak +1, since the Mojo side no
+  // longer releases.
+  Driver::DeviceBufferRef buf = M::takeRCRef(handle);
+
+  // Wrap the DeviceBuffer in an AsyncValue.
+  auto asyncDeviceBufferRef =
+      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(cpuDevice,
+                                                             std::move(buf));
+
+  // Finally, wrap the pointer and the AsyncValue wrapper in a TensorBufferRef.
+  auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
+      data, size, std::move(asyncDeviceBufferRef));
+
+  if (value.getPointer() && value.getPointer()->isIndirect()) {
+    value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
+  } else {
+    assert(!value.isReady());
+    value = value.createReady<TensorBufferRef>(cpuDevice,
+                                               std::move(tensorBufferRef));
+  }
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncNonTrackedBufferRef(void *data, size_t size,
                                       AsyncRTWrapper<AnyAsyncValueRef> async) {

@@ -3218,9 +3218,13 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> operands;
   for (auto [idx, operand] : llvm::enumerate(getOperands())) {
     MojoValue mojoVal = state.getMojoValueFor(operand);
-    // The first operand (input) is consumed, so use transfer for opaque types
-    // to handle move-only types correctly.
-    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType>(operand.getType()))
+    // The first operand (input) is consumed, so transfer (^ move) it for
+    // move-only opaque types and for buffer types: mgp.buffer.alloc yields a
+    // move-only OwnedByteBuffer that must be transferred into the pack helper;
+    // other buffer producers yield a trivial MutByteBuffer, for which the move
+    // is a no-op.
+    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType, MGP::DeviceBufferType>(
+                        operand.getType()))
       mojoVal = mojoVal.transfer();
     operands.push_back(mojoVal);
   }
