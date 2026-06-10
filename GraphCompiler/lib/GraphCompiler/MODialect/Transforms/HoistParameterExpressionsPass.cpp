@@ -94,14 +94,25 @@ struct RewriteParamExprTypes : public RewritePattern {
                                 PatternRewriter &origRewriter) const override {
     if (isa<KGEN::ParamDeclareOp>(op))
       return origRewriter.notifyMatchFailure(op, "skip parameter declarations");
-    // Skip true control-flow ops (mo.output, mo.if, mo.while) whose types
-    // are pinned by the enclosing graph's signature or whose regions carry
-    // non-tensor block arguments. mo.call is also a MOControlOpInterface op
-    // but it's just a symbol call whose result types can be freely rewritten
-    // (consumers pick up the new types via the output rebinds).
+    // Skip true control-flow ops (mo.output, mo.while, mo.yield, mo.rebind)
+    // whose types are pinned by the enclosing graph's signature or whose
+    // regions carry non-tensor block arguments.
+    //
+    // `mo.call` and `mo.if` are exceptions and ARE rewritten:
+    //  - mo.call is just a symbol call whose result types can be freely
+    //    rewritten (consumers pick up the new types via the output rebinds).
+    //  - mo.if has no region block arguments (`NoRegionArguments`) and its
+    //    results are not the graph signature, so a composite dim in an
+    //    mo.if result type (e.g. `mul_no_wrap(batch, seq)`) can be aliased
+    //    like any other op: the alias param is declared in the enclosing
+    //    region (where the expression's leaves live), and
+    //    `recursivelyReplaceElementsIn` rewrites the branch bodies and the
+    //    `mo.yield` operand types to match. Without this, the un-aliased
+    //    `ParamExpr` survives to MOGG kernel lowering and asserts in
+    //    `getTensorDynamicDimensions`.
     // TODO(GEX-3580): Revisit whether mo.call should implement
-    // MOControlOpInterface at all; dropping it would remove this exception.
-    if (isa<MO::MOControlOpInterface>(op) && !isa<MO::CallOp>(op))
+    // MOControlOpInterface at all; dropping it would remove that exception.
+    if (isa<MO::MOControlOpInterface>(op) && !isa<MO::CallOp, MO::IfOp>(op))
       return origRewriter.notifyMatchFailure(op, "skip control flow");
 
     // Don't rewrite individual ops inside mo.parallel bodies -- the body
@@ -145,8 +156,8 @@ struct RewriteParamExprTypes : public RewritePattern {
     // when its outer types are alias-clean but the body still
     // references the un-aliased form (e.g. block arg rebound to an
     // aliased dim before yield); the `MOControlOpInterface` early-out
-    // above keeps `mo.if` / `mo.while` / `mo.yield` etc. out of this
-    // path.
+    // above keeps `mo.while` / `mo.yield` / `mo.output` etc. out of this
+    // path (`mo.if` is handled like a normal op, see above).
     op->walk([&](Block *block) {
       for (BlockArgument arg : block->getArguments())
         if (collectComplexParams(rewriter, op, arg.getType()))
@@ -197,6 +208,35 @@ struct RewriteParamExprTypes : public RewritePattern {
       if (isa<MO::TensorType>(ty)) {
         auto rebind = rewriter.create<MO::RebindOp>(op->getLoc(), ty, res);
         rewriter.replaceAllUsesExcept(res, rebind, rebind);
+      }
+    }
+
+    // For `mo.if`, the region terminators (`mo.yield`) feed the op's results
+    // along the region-branch edge, so each yield operand type must equal the
+    // (now-rewritten) result type. `recursivelyReplaceElementsIn` only rewrites
+    // values produced *inside* the regions; a branch that yields a value
+    // defined outside the `mo.if` (or whose expression is in a different
+    // canonical form than the one aliased above) keeps its original
+    // expression-typed value, which would break the control-flow contract.
+    // Rebind every mismatching yield operand to the matching result type.
+    if (auto ifOp = dyn_cast<MO::IfOp>(op)) {
+      TypeRange resultTys = ifOp.getResultTypes();
+      for (Region *region : {&ifOp.getThenRegion(), &ifOp.getElseRegion()}) {
+        auto yieldOp = cast<MO::YieldOp>(region->front().getTerminator());
+        rewriter.setInsertionPoint(yieldOp);
+        llvm::SmallVector<Value> newYields(yieldOp.getOperands().begin(),
+                                           yieldOp.getOperands().end());
+        bool changed = false;
+        for (auto [i, ty] : llvm::enumerate(resultTys)) {
+          if (isa<MO::TensorType>(ty) && newYields[i].getType() != ty) {
+            newYields[i] = rewriter.create<MO::RebindOp>(yieldOp.getLoc(), ty,
+                                                         newYields[i]);
+            changed = true;
+          }
+        }
+        if (changed)
+          rewriter.modifyOpInPlace(yieldOp,
+                                   [&] { yieldOp->setOperands(newYields); });
       }
     }
 
