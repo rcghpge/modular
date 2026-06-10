@@ -28,7 +28,7 @@
 // Tile offset: tile_coords[i] * val.dim[i]() * self.strides_N[i].
 // CHECK: tile_coords[0] * val.dim[0]() * self.strides_1[0]
 // Src: bias TileTensor at tile position in global memory.
-// CHECK: TileTensor({{.*}}unsafe_origin_cast[MutExternalOrigin](), val.layout)
+// CHECK: TileTensor({{.*}}unsafe_origin_cast[MutUntrackedOrigin](), val.layout)
 // Copy and elementwise add.
 // CHECK: copier.copy(
 // CHECK: Add.elementwise(val,

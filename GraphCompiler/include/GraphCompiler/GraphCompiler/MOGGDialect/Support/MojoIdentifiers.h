@@ -382,7 +382,8 @@ constexpr llvm::StringLiteral kComptimeMutableInputTensor =
     "extensibility.managed_tensor_slice._MutableInputTensor";
 constexpr llvm::StringLiteral kComptimeUInt8 = "UInt8";
 constexpr llvm::StringLiteral kComptimeMutAnyOrigin = "MutAnyOrigin";
-constexpr llvm::StringLiteral kComptimeMutExternalOrigin = "MutExternalOrigin";
+constexpr llvm::StringLiteral kComptimeMutUntrackedOrigin =
+    "MutUntrackedOrigin";
 constexpr llvm::StringLiteral kComptimeNone = "None";
 constexpr llvm::StringLiteral kComptimeOptionalErrorEmpty = "Optional[Error]()";
 constexpr llvm::StringLiteral kComptimeMutByteBuffer =
@@ -695,14 +696,14 @@ public:
   }
 
   /// Constructs a `TileTensor` from a raw pointer into global (HBM) memory:
-  ///   `TileTensor((ptr).unsafe_origin_cast[MutExternalOrigin](), layout)`
+  ///   `TileTensor((ptr).unsafe_origin_cast[MutUntrackedOrigin](), layout)`
   /// The pointer expression is parenthesised to handle compound expressions
   /// (e.g. `self.ptr_N + offset`) before the method dispatch.
   static MojoValue fromExternalPtr(const MojoValue &ptr,
                                    const MojoValue &layout) {
     MojoValue parenPtr(llvm::formatv("({})", ptr.text).str());
     MojoValue castPtr =
-        parenPtr.get(kUnsafeOriginCast)[kComptimeMutExternalOrigin]();
+        parenPtr.get(kUnsafeOriginCast)[kComptimeMutUntrackedOrigin]();
     return MojoValue(kStructTileTensor)({}, {castPtr, layout});
   }
 

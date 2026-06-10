@@ -78,19 +78,19 @@ def do_execute[
     var length_val = Int(length)
 
     # Pack kernel arguments — order must match the kernel signature: a, b, result, n.
-    var args = alloc[OpaquePointer[MutExternalOrigin]](4)
+    var args = alloc[OpaquePointer[MutUntrackedOrigin]](4)
     var arg_sizes = alloc[UInt64](4)
 
-    args[0] = rebind[OpaquePointer[MutExternalOrigin]](
+    args[0] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=in0_ptr)
     )
-    args[1] = rebind[OpaquePointer[MutExternalOrigin]](
+    args[1] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=in1_ptr)
     )
-    args[2] = rebind[OpaquePointer[MutExternalOrigin]](
+    args[2] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=out_ptr)
     )
-    args[3] = rebind[OpaquePointer[MutExternalOrigin]](
+    args[3] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=length_val)
     )
     arg_sizes[0] = UInt64(size_of[UInt64]())
@@ -107,7 +107,7 @@ def do_execute[
         grid=(grid_dim, UInt32(1), UInt32(1)),
         block=(block_dim, UInt32(1), UInt32(1)),
         args=rebind[
-            UnsafePointer[OpaquePointer[MutExternalOrigin], MutAnyOrigin]
+            UnsafePointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]
         ](args),
         arg_sizes=rebind[UnsafePointer[UInt64, MutAnyOrigin]](arg_sizes),
         num_args=UInt32(4),

@@ -1147,7 +1147,7 @@ comptime _WrapperLayout = TileLayout[
 struct TensorWrapper(RegisterPassable):
     var buffer: TileTensor[
         dtype=DType.float32,
-        origin=MutExternalOrigin,
+        origin=MutUntrackedOrigin,
         LayoutType=_WrapperLayout,
     ]
 
@@ -1169,7 +1169,7 @@ struct ToTensorWrapper:
         stride_coord[1] = Int64(strides[1])
         return TensorWrapper(
             TileTensor(
-                tensor.unsafe_ptr().unsafe_origin_cast[MutExternalOrigin](),
+                tensor.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
                 _WrapperLayout(shape_coord, stride_coord),
             )
         )
