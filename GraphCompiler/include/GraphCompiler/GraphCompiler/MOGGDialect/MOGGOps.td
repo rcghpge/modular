@@ -208,6 +208,7 @@ def MOGG_OutputOp : MOGG_Op<"output", [
 def MOGG_CallStubOp : MOGG_Op<"call.stub", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  MOGG_StubCallOpInterface,
 ]> {
   let summary = "Calls into an outlined stub";
   let description = [{}];
@@ -221,15 +222,13 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [
 
   let extraClassDeclaration = [{
     KernelStubOp getCallee();
-    FlatSymbolRefAttr getCalleeSymbol() {
-      return getNameAttr();
-    }
   }];
 }
 
 def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  MOGG_StubCallOpInterface,
 ]> {
   let summary = "Calls into an outlined stub asynchronously";
   let description = [{
@@ -256,9 +255,6 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
 
   let extraClassDeclaration = [{
     KernelStubOp getCallee();
-    FlatSymbolRefAttr getCalleeSymbol() {
-      return getNameAttr();
-    }
   }];
 }
 

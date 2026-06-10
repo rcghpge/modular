@@ -36,6 +36,31 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
   ];
 }
 
+def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
+  let description = [{
+    Common interface for ops that call an outlined `mogg.kernel.stub` by symbol
+    (`mogg.call.stub` and `mogg.call.stub.async`). The callee symbol is stored
+    as the `$name` `FlatSymbolRefAttr`, so the default implementations forward
+    to the generated `getNameAttr`/`setNameAttr` accessors.
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the symbol reference of the callee kernel stub.",
+      "mlir::FlatSymbolRefAttr", "getCalleeSymbol", (ins), /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{ return $_op.getNameAttr(); }]
+    >,
+    InterfaceMethod<
+      "Sets the symbol reference of the callee kernel stub.",
+      "void", "setCalleeSymbol", (ins "mlir::FlatSymbolRefAttr":$callee),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{ $_op.setNameAttr(callee); }]
+    >,
+  ];
+}
+
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
     A terminator for `mogg.kernel` operation.

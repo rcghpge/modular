@@ -143,21 +143,26 @@ static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
   return hash;
 }
 
+// The call graph edge is a `StubCallOpInterface`, implemented by both
+// `mogg.call.stub` and `mogg.call.stub.async`. Using the interface as the
+// edge type lets the generic `CallGraphBase::build` discover both synchronous
+// and asynchronous stub calls as edges, so a caller stub is canonicalized
+// before it is hashed for deduplication.
 struct CallGraphNode : public KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
-                                            MOGG::CallStubOp> {
-  using Base =
-      KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp, MOGG::CallStubOp>;
+                                            MOGG::StubCallOpInterface> {
+  using Base = KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
+                             MOGG::StubCallOpInterface>;
   using Base::Base;
 
   unsigned hash;
 };
 
 struct CallStubOrCalleeName {
-  MOGG::CallStubOp callOp;
+  MOGG::StubCallOpInterface callOp;
   StringAttr name;
 
-  CallStubOrCalleeName(MOGG::CallStubOp call)
-      : callOp(call), name(callOp.getCalleeSymbol().getAttr()) {}
+  CallStubOrCalleeName(MOGG::StubCallOpInterface call)
+      : callOp(call), name(call.getCalleeSymbol().getAttr()) {}
   CallStubOrCalleeName(StringAttr n) : callOp(nullptr), name(n) {}
 };
 
@@ -203,10 +208,10 @@ void CallGraph::doRewrite(CallGraphNode *node) {
       // This preserves Python call site metadata for error messages and
       // NVTX trace detail strings.
       replacementCallee->setLoc(mlir::FusedLoc::get(
-          caller->getContext(),
+          replacementCallee->getContext(),
           {replacementCallee->getLoc(), callee->func->getLoc()}));
-      caller.setNameAttr(FlatSymbolRefAttr::get(
-          caller->getContext(), replacementCallee.getSymName()));
+      caller.setCalleeSymbol(
+          FlatSymbolRefAttr::get(replacementCallee.getSymNameAttr()));
     }
   }
 
@@ -256,27 +261,35 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
         });
     finalReplacements[replacement] = finalCandidate.name;
 
-    // Rewrite any CallStubOp entries to point at the chosen canonical name.
-    // The list may also hold pure StringAttr entries (callOp == nullptr) for
-    // top-level KernelStubOps recorded on the `node->callers.empty()` path
-    // above; those have no in-graph callsite to rewrite here and are
-    // separately handled by the ExecuteCompiledOp/CallStubAsyncOp walk
-    // below via `topLevelReplacements` + `finalReplacements`.
+    // Rewrite any in-graph callsite entries (CallStubOp / CallStubAsyncOp) to
+    // point at the chosen canonical name. The list may also hold pure
+    // StringAttr entries (callOp == nullptr) for top-level KernelStubOps
+    // recorded on the `node->callers.empty()` path above; those have no
+    // in-graph callsite to rewrite here and are separately handled by the
+    // ExecuteCompiledOp/CallStubAsyncOp walk below via `topLevelReplacements` +
+    // `finalReplacements`.
     for (auto &callOp : replacedCallOps)
       if (callOp.callOp)
-        callOp.callOp.setName(finalCandidate.name.strref());
+        callOp.callOp.setCalleeSymbol(
+            FlatSymbolRefAttr::get(finalCandidate.name));
   }
 
-  // The SCC call graph only tracks CallStubOp edges between KernelStubOps.
-  // Other callers (ExecuteCompiledOp in ModelOps, CallStubAsyncOp from
-  // mo.parallel lowering inside GenericCompiledRegionOps) are not in the
-  // graph and need their symbol references rewritten here.
+  // Rewrite external callers that are not call-graph nodes. Stub calls *inside
+  // KernelStubOp bodies* are graph edges (already rewritten in doRewrite), but
+  // two callers are not graph nodes and still need their symbol references
+  // updated to the deduplicated (top-level) callee:
+  //   - ExecuteCompiledOp in mgp.ModelOps (ModelOp -> region), and
+  //   - StubCallOpInterface ops (mogg.call.stub{,.async}) inside pre-outline
+  //     mogg.generic.compiled.region ops (before kernels are outlined into
+  //     KernelStubOp bodies).
+  // For stub calls that *are* graph edges, the callee has a graph caller and
+  // so is never in `topLevelReplacements`, making this walk a no-op for them.
   module.walk([&](Operation *op) {
     StringAttr calleeName;
     if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
       calleeName = execOp.getCalleeSymbolAttr().getAttr();
-    else if (auto asyncOp = dyn_cast<MOGG::CallStubAsyncOp>(op))
-      calleeName = asyncOp.getCalleeSymbol().getAttr();
+    else if (auto stubCall = dyn_cast<MOGG::StubCallOpInterface>(op))
+      calleeName = stubCall.getCalleeSymbol().getAttr();
     else
       return;
 
@@ -292,7 +305,7 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
     if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
       execOp.setCalleeSymbolAttr(newRef);
     else
-      cast<MOGG::CallStubAsyncOp>(op).setNameAttr(newRef);
+      cast<MOGG::StubCallOpInterface>(op).setCalleeSymbol(newRef);
   });
 }
 
