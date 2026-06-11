@@ -255,6 +255,24 @@ getDecoratorLambdaArgument(mlir::TypedAttr decorator,
   return answer;
 }
 
+/// If `decorator` is a MAX compiler decorator whose leaf name starts with
+/// `decoratorName`, return the static-string registration argument (operand 1).
+/// Returns a null StringAttr if the decorator does not match.
+static mlir::StringAttr
+getRegisterDecoratorStringValue(mlir::TypedAttr decorator,
+                                llvm::StringRef decoratorName) {
+  auto decoratorSymbolOr = getDecoratorSymbol(decorator);
+  if (!decoratorSymbolOr || !isMAXCompilerSymbol(*decoratorSymbolOr))
+    return {};
+  if (!decoratorSymbolOr->getLeafReference().strref().starts_with(
+          decoratorName))
+    return {};
+  auto apply = KGEN::sugarDynCast<KGEN::ParamOperatorAttr>(decorator);
+  if (!apply)
+    return {};
+  return getStringAttrFromStaticStringDecorator(apply.getOperand(1));
+}
+
 struct ExtensibilityAPIStructInfo {
   bool isElementwiseKernel = false;
   mlir::StringAttr registrationName{};
@@ -407,38 +425,33 @@ static mlir::LogicalResult scanForKernelDecls(
   if (failed(result))
     return result;
 
-  // Collect every standalone (non-struct-member) function decorated with
-  // @register_internal, regardless of the registration string. The decorator
-  // identity is established by the four checks below (max/compiler namespace,
-  // leaf == "register_internal", and a ParamOperatorAttr application carrying
-  // a static-string registration argument); any function passing those checks
-  // is a legitimate primitive, so we do not need to whitelist registration
-  // prefixes.
+  // Collect standalone functions registered with a decorator
+  // (@register_internal or @register_shape_function).
   mod.walk([&](KGEN::LIT::FnOp func) -> mlir::WalkResult {
     // Skip struct member functions; only collect standalone functions.
     if (mlir::isa<KGEN::LIT::StructDeclOp>(func->getParentOp()))
       return mlir::WalkResult::advance();
     for (mlir::TypedAttr decorator : func.getDecorators()) {
-      auto decoratorSymbolOr = getDecoratorSymbol(decorator);
-      if (!decoratorSymbolOr)
-        continue;
-      if (!isMAXCompilerSymbol(*decoratorSymbolOr))
-        continue;
-      if (!decoratorSymbolOr->getLeafReference().strref().starts_with(
-              kFnRegisterInternal))
-        continue;
-      auto apply = KGEN::sugarDynCast<KGEN::ParamOperatorAttr>(decorator);
-      if (!apply)
-        continue;
-      auto nameAttr =
-          getStringAttrFromStaticStringDecorator(apply.getOperand(1));
-      if (!nameAttr)
-        continue;
-      ScannedPrimitiveFunction prim;
-      prim.registration = nameAttr;
-      prim.func = func;
-      primitives.push_back(prim);
-      break;
+      // Match @register_internal (PrimitiveDecl).
+      if (auto primitiveRegistrationName =
+              getRegisterDecoratorStringValue(decorator, kFnRegisterInternal)) {
+        ScannedPrimitiveFunction prim;
+        prim.registration = primitiveRegistrationName;
+        prim.func = func;
+        primitives.push_back(prim);
+        break;
+      }
+
+      // Match @register_shape_function (ShapeFunctionDecl).
+      if (auto shapeFunctionRegistrationName = getRegisterDecoratorStringValue(
+              decorator, KGEN::kFnRegisterShapeFunction)) {
+        ScannedShapeFunction sf;
+        sf.registration = shapeFunctionRegistrationName;
+        sf.funcSymName = getFullyResolvedMojoName(func);
+        sf.func = func;
+        shapeFunctions.push_back(sf);
+        break;
+      }
     }
     return mlir::WalkResult::advance();
   });

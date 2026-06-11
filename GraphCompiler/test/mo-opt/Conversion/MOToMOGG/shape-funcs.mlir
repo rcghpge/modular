@@ -45,10 +45,10 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }
 
-// Shape function from a struct-internal `shape` method on a custom op.
+// Shape function from a standalone @register_shape_function on a custom op.
 // CHECK-LABEL: mo.graph @custom_op_shape_func
 // CHECK: mogg.kernel
-// CHECK:   mogg.call.shape["{{.*}}.TestCustomOp.shape"]
+// CHECK:   mogg.call.shape["{{.*}}.test_custom_op_shape"]
 // CHECK-SAME: -> !mogg.shape_func_result<2>
 mo.graph @custom_op_shape_func<D0, D1 -> D2, D3>(
   %input: !mo.tensor<[D0, D1], f32>

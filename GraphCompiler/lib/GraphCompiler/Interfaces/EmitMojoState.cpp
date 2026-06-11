@@ -759,6 +759,17 @@ ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
                          inferCallback);
 }
 
+ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
+    ShapeFunctionDeclOp shapeDecl,
+    std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
+  // Standalone shape functions have no struct-level params.
+  MOGG::KernelFunctionAttr fn = shapeDecl.getFunction();
+  return inferParameters(fn.getParams().getValue(),
+                         /*structLevelParams=*/{}, fn.getArgParams(),
+                         /*defaultAttrs=*/nullptr, fn.getSignature(),
+                         inferCallback);
+}
+
 // Returns the trace name from fusionInfo, or empty string if not set.
 static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
   // GEX-979: pass in trace description for fused kernel without

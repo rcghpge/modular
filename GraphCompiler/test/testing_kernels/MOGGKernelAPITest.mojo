@@ -937,12 +937,13 @@ struct TestCustomOp:
     ):
         print("World!")
 
-    @staticmethod
-    def shape[
-        dtype: DType, rank: Int
-    ](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
-        print("Hello")
-        return input.shape()
+
+@compiler.register_shape_function("test_custom_op")
+def test_custom_op_shape[
+    dtype: DType, rank: Int
+](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
+    print("Hello")
+    return input.shape()
 
 
 @compiler.register("single_device_context")

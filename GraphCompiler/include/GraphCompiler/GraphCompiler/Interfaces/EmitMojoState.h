@@ -26,6 +26,7 @@ class MojoRegistry;
 struct KernelDeclFunctionAdaptor;
 struct KernelDeclAdaptor;
 class PrimitiveDeclOp;
+class ShapeFunctionDeclOp;
 
 /// This struct holds all the necessary state to lower a MOGG operation into
 /// Mojo text.
@@ -350,6 +351,13 @@ public:
   /// primitive function (mogg.primitive.decl). No struct-level params.
   static ErrorOr<InferredParameters> inferKernelParameters(
       PrimitiveDeclOp primDecl,
+      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
+
+  /// Fill and return the list of inferred parameters for a standalone shape
+  /// function (mogg.shape_func.decl registered via @register_shape_function).
+  /// No struct-level params.
+  static ErrorOr<InferredParameters> inferKernelParameters(
+      ShapeFunctionDeclOp shapeDecl,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 
   /// Base function to infer all parameter values of a kernel.
