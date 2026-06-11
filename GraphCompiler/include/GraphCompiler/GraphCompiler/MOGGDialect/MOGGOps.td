@@ -1036,7 +1036,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   IsolatedFromAbove,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
-  SingleBlock,
+  SingleBlockImplicitTerminator<"MOGG::OutputOp">,
   Symbol,
 ]> {
   let summary = "Op that outlines a kernel";
@@ -1061,6 +1061,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
 
   let extraClassDeclaration = [{
     Block &getBodyBlock() { return getBody().front(); }
+    OutputOp getBodyTerminator();
     Region *getCallableRegion() { return &getBodyRegion(); }
     ArrayRef<Type> getArgumentTypes() {
       return getFunctionType().getInputs();

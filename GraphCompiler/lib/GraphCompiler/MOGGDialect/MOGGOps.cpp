@@ -1878,6 +1878,10 @@ static std::string collectCompactSourceNotes(Location rootLoc) {
 // KernelStubOp
 //===----------------------------------------------------------------------===//
 
+OutputOp KernelStubOp::getBodyTerminator() {
+  return cast<OutputOp>(getBodyBlock().getTerminator());
+}
+
 LogicalResult KernelStubOp::verify() {
   FunctionType funcType = getFunctionType();
   if (getAbi() == ABIKind::MOGG && funcType.getNumResults() > 1) {
