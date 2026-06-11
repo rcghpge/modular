@@ -1648,7 +1648,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     Holds the full function-type signatures (without bodies) for a Mojo kernel
     struct registered under a given MO op name. Multiple `mogg.kernel.decl` ops
     may share the same `registration` value when several structs are registered
-    for the same op.
+    for the same op (e.g. different device implementations).
 
     All function attributes are optional. A kernel carrying an `update_view`
     signature is implicitly a view kernel.
@@ -1658,11 +1658,13 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     override semantics: a user-defined decl takes precedence over any
     built-in decl with the same registration name.
 
-    Each function variant (`execute` / `shape` / `elementwise` /
-    `tile_elementwise` / `update_view` / `build_graph`) is a
-    `MOGG_KernelFunctionAttr` that
+    Each function variant (`execute` / `elementwise` / `tile_elementwise` /
+    `update_view` / `build_graph`) is a `MOGG_KernelFunctionAttr` that
     bundles its signature, its fn-level `ParamDeclAttr` list, and the
     cached per-result parameter mapping.
+
+    Shape inference is decoupled: the shape function for a registration lives
+    in a separate `mogg.shape_func.decl` op looked up by registration string.
 
     A kernel may carry a `build_graph` signature alongside `execute`. The
     `build_graph` function has the same tensor signature as `execute` but
@@ -1674,7 +1676,6 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     SymbolNameAttr:$sym_name,
     StrAttr:$registration,
     OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
-    OptionalAttr<MOGG_KernelFunctionAttr>:$shape,
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
@@ -1686,7 +1687,6 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
   let assemblyFormat = [{
     $sym_name `registration` `=` $registration
     (`execute` `=` $execute^)?
-    (`shape` `=` $shape^)?
     (`elementwise` `=` $elementwise^)?
     (`tile_elementwise` `=` $tile_elementwise^)?
     (`update_view` `=` $update_view^)?
@@ -1715,6 +1715,40 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
     `function` is a `MOGG_KernelFunctionAttr` that bundles the signature
     and the fn-level `ParamDeclAttr` list. Result-side slot-name mappings
     are not populated for primitives.
+  }];
+
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$registration,
+    MOGG_KernelFunctionAttr:$function
+  );
+
+  let assemblyFormat = [{
+    $sym_name `registration` `=` $registration `function` `=` $function
+    attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeFunctionDeclOp
+//===----------------------------------------------------------------------===//
+
+def MOGG_ShapeFunctionDeclOp : MOGG_Op<"shape_func.decl", [Symbol]> {
+  let summary = "Declares the shape function for a kernel op registration";
+  let description = [{
+    Records the signature of the shape function for a given op registration.
+    There is at most one `mogg.shape_func.decl` per registration string; the
+    import pass enforces this and errors on duplicates.
+
+    `sym_name` is the fully-qualified Mojo source name of the shape function.
+    For a struct-internal `shape` method it is `"<struct_sym>.shape"` (e.g.
+    `"MOGGBuiltins.MOGGBuiltins.AvgPool.shape"`).
+
+    `registration` is the op registration string (e.g. `"mo.avg_pool"`).
+
+    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature and
+    the fn-level `ParamDeclAttr` list. Result-side slot-name mappings are
+    populated in strict mode (shape functions always return stdlib `IndexList`).
   }];
 
   let arguments = (ins

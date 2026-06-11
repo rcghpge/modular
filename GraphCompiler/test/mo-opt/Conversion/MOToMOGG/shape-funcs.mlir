@@ -1,11 +1,11 @@
-// RUN: mo-opt %s --gc-pipeline="constant-fold=false" --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false kernel-library-paths=%kernel_api_test_pkg" --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
 
 // Test shape function lowering to MOGG dialect with experimental Mojo path
 
 // CHECK-LABEL: mo.graph @avg_pool_mixed_dims
 // CHECK: mogg.kernel
 // CHECK-SAME: (%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER:.*]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> ()
-// CHECK:   mogg.call.shape["{{.*}}.AvgPool"]
+// CHECK:   mogg.call.shape["{{.*}}.AvgPool.shape"]
 // CHECK-SAME: (%[[INPUT]], %[[FILTER]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]]
 // CHECK-SAME: : !mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mogg.shape_func_result<4>
 // CHECK-SAME: {isThrows, kernel_param = {output_rank = 4 : index}}
@@ -43,4 +43,17 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
     (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>) -> !mo.tensor<[D5, D6, D7], f32>
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
+}
+
+// Shape function from a struct-internal `shape` method on a custom op.
+// CHECK-LABEL: mo.graph @custom_op_shape_func
+// CHECK: mogg.kernel
+// CHECK:   mogg.call.shape["{{.*}}.TestCustomOp.shape"]
+// CHECK-SAME: -> !mogg.shape_func_result<2>
+mo.graph @custom_op_shape_func<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+  %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%input) :
+    (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }

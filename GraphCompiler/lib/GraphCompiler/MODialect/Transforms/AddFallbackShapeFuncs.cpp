@@ -222,18 +222,16 @@ struct AddFallbackShapeFunctions
                            << asOp.getSymbol() << "'";
           return mlir::WalkResult::interrupt();
         }
-        MOGG::KernelDeclOp declOp =
-            registry.getResolvedKernel(asOp.getSymbol());
-
         // Collect compile-time parameter names so the fallback can forward
         // matching custom-op attributes to the shape function call. Sourced
         // from the shape fn's own params (it may differ from execute, e.g.
         // shape typically omits `target`/`_trace_name`).
         StringSet<> inputParams;
-        if (auto shapeAttr = declOp.getShape()) {
-          for (mlir::Attribute attr : shapeAttr->getParams()) {
+        if (registry.containsShapeFunction(asOp.getSymbol())) {
+          auto shapeFn =
+              registry.lookupShapeFunction(asOp.getSymbol()).getFunction();
+          for (mlir::Attribute attr : shapeFn.getParams())
             inputParams.insert(mlir::cast<KGEN::ParamDeclAttr>(attr).getName());
-          }
         }
 
         auto result =

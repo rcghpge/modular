@@ -336,6 +336,16 @@ public:
       KernelDeclAdaptor &adaptor, llvm::StringRef funcLabel,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 
+  /// Fill and return the list of inferred parameters for a specific function
+  /// adaptor with struct-level params and defaults taken from
+  /// `parentStructAdaptor`. Use this when the function adaptor is built
+  /// independently (e.g. via KernelDeclFunctionAdaptor::fromShapeFunctionDecl)
+  /// rather than looked up through a label.
+  static ErrorOr<InferredParameters> inferKernelParameters(
+      KernelDeclFunctionAdaptor &fnAdaptor,
+      KernelDeclAdaptor &parentStructAdaptor,
+      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
+
   /// Fill and return the list of inferred parameters for a standalone
   /// primitive function (mogg.primitive.decl). No struct-level params.
   static ErrorOr<InferredParameters> inferKernelParameters(

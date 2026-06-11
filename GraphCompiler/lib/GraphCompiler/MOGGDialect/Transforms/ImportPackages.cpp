@@ -286,7 +286,6 @@ struct ScannedKernel {
   mlir::StringAttr registration;
   mlir::StringAttr mojoName;
   KGEN::LIT::FnOp executeFn;
-  KGEN::LIT::FnOp shapeFn;           // may be null
   KGEN::LIT::FnOp elementwiseFn;     // SIMD overload, may be null
   KGEN::LIT::FnOp tileElementwiseFn; // TileTensor overload, may be null
   KGEN::LIT::FnOp updateViewFn; // may be null; only present on view kernels
@@ -301,90 +300,109 @@ struct ScannedPrimitiveFunction {
   KGEN::LIT::FnOp func;
 };
 
+/// One shape method found inside a registered kernel struct during scanning.
+/// Emitted as a separate mogg.shape_func.decl, keyed by registration.
+/// `funcSymName` is the fully-computed sym_name for the emitted decl
+/// (i.e. "{kernelMojoName}.shape").
+struct ScannedShapeFunction {
+  mlir::StringAttr registration;
+  mlir::StringAttr funcSymName; // ready-to-use sym_name for ShapeFunctionDeclOp
+  KGEN::LIT::FnOp func;
+};
+
 /// Walk `mod` for struct declarations decorated with @compiler.register
-/// (kernels) and standalone functions decorated with @register_internal
-/// (primitives), collecting their signatures without annotating the module.
+/// (kernels), standalone functions decorated with @register_internal
+/// (primitives), and struct-internal shape methods (shapeFunctions).
 static mlir::LogicalResult scanForKernelDecls(
     mlir::ModuleOp mod, llvm::SmallVectorImpl<ScannedKernel> &kernels,
-    llvm::SmallVectorImpl<ScannedPrimitiveFunction> &primitives) {
+    llvm::SmallVectorImpl<ScannedPrimitiveFunction> &primitives,
+    llvm::SmallVectorImpl<ScannedShapeFunction> &shapeFunctions) {
   // Collect struct-based kernels.
   mlir::LogicalResult result = mlir::success();
-  mod.walk(
-      [&](KGEN::LIT::StructDeclOp structDeclOp) -> mlir::WalkResult {
-        if (structDeclOp.getDecorators().empty())
-          return mlir::WalkResult::advance();
+  mod.walk([&](KGEN::LIT::StructDeclOp structDeclOp) -> mlir::WalkResult {
+    if (structDeclOp.getDecorators().empty())
+      return mlir::WalkResult::advance();
 
-        ExtensibilityAPIStructInfo info;
-        ErrorOr<bool> isExtensibility =
-            isExtensibilityAPIStruct(structDeclOp, info);
-        if (isExtensibility.isError()) {
-          structDeclOp.emitError(isExtensibility.getError());
-          result = mlir::failure();
-          return mlir::WalkResult::interrupt();
-        }
-        if (!isExtensibility.takeValue())
-          return mlir::WalkResult::advance();
+    ExtensibilityAPIStructInfo info;
+    ErrorOr<bool> isExtensibility =
+        isExtensibilityAPIStruct(structDeclOp, info);
+    if (isExtensibility.isError()) {
+      structDeclOp.emitError(isExtensibility.getError());
+      result = mlir::failure();
+      return mlir::WalkResult::interrupt();
+    }
+    if (!isExtensibility.takeValue())
+      return mlir::WalkResult::advance();
 
-        ScannedKernel kernel;
-        kernel.structDeclOp = structDeclOp;
-        kernel.registration = info.registrationName;
-        kernel.mojoName = getFullyResolvedMojoName(structDeclOp);
+    ScannedKernel kernel;
+    kernel.structDeclOp = structDeclOp;
+    kernel.registration = info.registrationName;
+    kernel.mojoName = getFullyResolvedMojoName(structDeclOp);
 
-        for (auto &op : structDeclOp.getFields().front()) {
-          auto func = mlir::dyn_cast<KGEN::LIT::FnOp>(op);
-          if (!func)
-            continue;
-          auto srcNameOpt = func.getSourceName();
-          if (!srcNameOpt.has_value())
-            continue;
-          llvm::StringRef srcName = *srcNameOpt;
-          bool recognized = true;
-          if (srcName == kMoggExecuteFuncName)
-            kernel.executeFn = func;
-          else if (srcName == kMoggShapeFuncName)
-            kernel.shapeFn = func;
-          else if (srcName == kMoggElementwiseFuncName) {
-            // Route to SIMD or TileTensor slot based on return type leaf name.
-            // Unwrap LIT::RefType sugar first, matching the pattern used in
-            // computeValueParams, since parameterised return types may be
-            // wrapped in a reference at the function definition site.
-            bool isTile = false;
-            auto checkLeaf = [&](mlir::Type ty) -> bool {
-              if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty))
-                ty = ref.getElementType();
-              if (auto st = KGEN::sugarDynCast<KGEN::LIT::StructType>(ty))
-                return st.getSymbol().getLeafReference() == kLeafTileTensor;
-              return false;
-            };
-            if (!func.getResultTypes().empty())
-              isTile = checkLeaf(func.getResultTypes().front());
-            // Fallback: check first argument type in case the result type is
-            // a generator that does not resolve to a StructType directly.
-            if (!isTile && !func.getArgumentTypes().empty())
-              isTile = checkLeaf(func.getArgumentTypes().front());
-            if (isTile)
-              kernel.tileElementwiseFn = func;
-            else
-              kernel.elementwiseFn = func;
-          } else if (srcName == kMoggUpdateViewFuncName)
-            kernel.updateViewFn = func;
-          else if (srcName == kMoggBuildGraphFuncName)
-            kernel.buildGraphFn = func;
-          else
-            recognized = false;
-          if (recognized && !func.getIsStatic()) {
-            func.emitError()
-                << "Kernel entry point '" << srcName
-                << "' must be a @staticmethod (non-static methods are not "
-                   "supported)";
-            result = mlir::failure();
-            return mlir::WalkResult::interrupt();
-          }
-        }
+    for (auto &op : structDeclOp.getFields().front()) {
+      auto func = mlir::dyn_cast<KGEN::LIT::FnOp>(op);
+      if (!func)
+        continue;
+      auto srcNameOpt = func.getSourceName();
+      if (!srcNameOpt.has_value())
+        continue;
+      llvm::StringRef srcName = *srcNameOpt;
+      bool recognized = true;
+      if (srcName == kMoggExecuteFuncName)
+        kernel.executeFn = func;
+      else if (srcName == kMoggShapeFuncName) {
+        mlir::MLIRContext *ctx = mod.getContext();
+        ScannedShapeFunction sf;
+        sf.registration = info.registrationName;
+        sf.funcSymName = mlir::StringAttr::get(
+            ctx, llvm::formatv("{}.{}",
+                               getFullyResolvedMojoName(structDeclOp).strref(),
+                               kMoggShapeFuncName)
+                     .str());
+        sf.func = func;
+        shapeFunctions.push_back(sf);
+      } else if (srcName == kMoggElementwiseFuncName) {
+        // Route to SIMD or TileTensor slot based on return type leaf name.
+        // Unwrap LIT::RefType sugar first, matching the pattern used in
+        // computeValueParams, since parameterised return types may be
+        // wrapped in a reference at the function definition site.
+        bool isTile = false;
+        auto checkLeaf = [&](mlir::Type ty) -> bool {
+          if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty))
+            ty = ref.getElementType();
+          if (auto st = KGEN::sugarDynCast<KGEN::LIT::StructType>(ty))
+            return st.getSymbol().getLeafReference() == kLeafTileTensor;
+          return false;
+        };
+        if (!func.getResultTypes().empty())
+          isTile = checkLeaf(func.getResultTypes().front());
+        // Fallback: check first argument type in case the result type is
+        // a generator that does not resolve to a StructType directly.
+        if (!isTile && !func.getArgumentTypes().empty())
+          isTile = checkLeaf(func.getArgumentTypes().front());
+        if (isTile)
+          kernel.tileElementwiseFn = func;
+        else
+          kernel.elementwiseFn = func;
+      } else if (srcName == kMoggUpdateViewFuncName)
+        kernel.updateViewFn = func;
+      else if (srcName == kMoggBuildGraphFuncName)
+        kernel.buildGraphFn = func;
+      else
+        recognized = false;
+      if (recognized && !func.getIsStatic()) {
+        func.emitError()
+            << "Kernel entry point '" << srcName
+            << "' must be a @staticmethod (non-static methods are not "
+               "supported)";
+        result = mlir::failure();
+        return mlir::WalkResult::interrupt();
+      }
+    }
 
-        kernels.push_back(kernel);
-        return mlir::WalkResult::advance();
-      });
+    kernels.push_back(kernel);
+    return mlir::WalkResult::advance();
+  });
 
   if (failed(result))
     return result;
@@ -580,13 +598,15 @@ struct ImportPackagesPass
   void emitDecls(OpBuilder &builder, ModuleOp module, ModuleOp pkg,
                  llvm::StringSet<> &seenRegistrations,
                  llvm::StringSet<> &seenPrimitives,
+                 llvm::StringSet<> &seenShapeFunctions,
                  llvm::StringMap<std::string> &opaqueTypeMapping,
                  bool isUserDefined) {
     MLIRContext *ctx = module.getContext();
 
     SmallVector<ScannedKernel> kernels;
     SmallVector<ScannedPrimitiveFunction> primitives;
-    if (failed(scanForKernelDecls(pkg, kernels, primitives))) {
+    SmallVector<ScannedShapeFunction> shapeFunctions;
+    if (failed(scanForKernelDecls(pkg, kernels, primitives, shapeFunctions))) {
       module.emitError("failed to scan kernel package");
       signalPassFailure();
       return;
@@ -663,8 +683,6 @@ struct ImportPackagesPass
       fnLocs.push_back(kernel.structDeclOp.getLoc());
       if (kernel.executeFn)
         fnLocs.push_back(kernel.executeFn.getLoc());
-      if (kernel.shapeFn)
-        fnLocs.push_back(kernel.shapeFn.getLoc());
       if (kernel.elementwiseFn)
         fnLocs.push_back(kernel.elementwiseFn.getLoc());
       if (kernel.tileElementwiseFn)
@@ -678,14 +696,11 @@ struct ImportPackagesPass
       // parameterised opaque structs (e.g. `SIMDPair[P0, P1]`) whose slot
       // mappings are needed by `inferOpaqueParameters` -- compute them in
       // soft mode so that other result types (tensors, none, ...) fall back
-      // to UnitAttr. shape / elementwise return stdlib `IndexList`/`SIMD`;
-      // strict mode catches misuse.
+      // to UnitAttr. elementwise returns stdlib `SIMD`; strict mode catches
+      // misuse.
       auto executeAttr =
           buildFunctionAttr(kernel.executeFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
-      auto shapeAttr =
-          buildFunctionAttr(kernel.shapeFn, /*computeResultParams=*/true,
-                            /*strictResultParams=*/true);
       auto elementwiseAttr =
           buildFunctionAttr(kernel.elementwiseFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/true);
@@ -698,7 +713,7 @@ struct ImportPackagesPass
       auto buildGraphAttr =
           buildFunctionAttr(kernel.buildGraphFn, /*computeResultParams=*/true,
                             /*strictResultParams=*/false);
-      if (failed(executeAttr) || failed(shapeAttr) || failed(elementwiseAttr) ||
+      if (failed(executeAttr) || failed(elementwiseAttr) ||
           failed(tileElementwiseAttr) || failed(updateViewAttr) ||
           failed(buildGraphAttr)) {
         signalPassFailure();
@@ -711,9 +726,8 @@ struct ImportPackagesPass
         KGEN::LIT::FnOp paramSrcFn =
             kernel.executeFn ? kernel.executeFn : kernel.elementwiseFn;
         if (!paramSrcFn)
-          paramSrcFn = kernel.shapeFn ? kernel.shapeFn : kernel.updateViewFn;
-        if (!paramSrcFn)
-          paramSrcFn = kernel.buildGraphFn;
+          paramSrcFn =
+              kernel.updateViewFn ? kernel.updateViewFn : kernel.buildGraphFn;
         if (paramSrcFn) {
           if (auto structDecl = mlir::dyn_cast<KGEN::LIT::StructDeclOp>(
                   paramSrcFn->getParentOp())) {
@@ -727,9 +741,30 @@ struct ImportPackagesPass
 
       KernelDeclOp::create(builder, mlir::FusedLoc::get(ctx, fnLocs),
                            kernel.mojoName, kernel.registration, *executeAttr,
-                           *shapeAttr, *elementwiseAttr, *tileElementwiseAttr,
+                           *elementwiseAttr, *tileElementwiseAttr,
                            *updateViewAttr, *buildGraphAttr, structParams,
                            mlir::BoolAttr::get(ctx, isUserDefined));
+    }
+
+    // Emit mogg.shape_func.decl ops. At most one per registration is allowed
+    // across all packages.
+    for (auto &sf : shapeFunctions) {
+      if (!seenShapeFunctions.insert(sf.registration.strref()).second) {
+        sf.func.emitError() << "op '" << sf.registration.strref()
+                            << "' has multiple shape functions registered; "
+                               "only one is allowed per registration";
+        signalPassFailure();
+        return;
+      }
+      auto sfFunctionAttr =
+          buildFunctionAttr(sf.func, /*computeResultParams=*/true,
+                            /*strictResultParams=*/true);
+      if (failed(sfFunctionAttr)) {
+        signalPassFailure();
+        return;
+      }
+      ShapeFunctionDeclOp::create(builder, sf.func.getLoc(), sf.funcSymName,
+                                  sf.registration, *sfFunctionAttr);
     }
 
     for (auto &prim : primitives) {
@@ -774,6 +809,7 @@ struct ImportPackagesPass
     llvm::StringSet<> seenBuiltinRegistrations;
     llvm::StringSet<> seenUserRegistrations;
     llvm::StringSet<> seenPrimitives;
+    llvm::StringSet<> seenShapeFunctions;
     // Mapping from simple struct names to fully-qualified Mojo names, built
     // across all packages and applied to !mo.opaque types in the module.
     llvm::StringMap<std::string> opaqueTypeMapping;
@@ -791,6 +827,8 @@ struct ImportPackagesPass
       }
       for (auto decl : module.getOps<PrimitiveDeclOp>())
         seenPrimitives.insert(decl.getRegistration());
+      for (auto decl : module.getOps<ShapeFunctionDeclOp>())
+        seenShapeFunctions.insert(decl.getRegistration());
     }
 
     // Load built-in packages unless we're in append mode (already in the
@@ -812,7 +850,8 @@ struct ImportPackagesPass
           return;
         }
         emitDecls(builder, module, *pkg, seenBuiltinRegistrations,
-                  seenPrimitives, opaqueTypeMapping, /*isUserDefined=*/false);
+                  seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
+                  /*isUserDefined=*/false);
       }
     }
 
@@ -826,7 +865,7 @@ struct ImportPackagesPass
         return;
       }
       emitDecls(builder, module, *pkg, seenUserRegistrations, seenPrimitives,
-                opaqueTypeMapping, /*isUserDefined=*/true);
+                seenShapeFunctions, opaqueTypeMapping, /*isUserDefined=*/true);
     }
 
     // lit-mlir-paths mode: parse pre-compiled MLIR files (kgen-translate
@@ -840,7 +879,8 @@ struct ImportPackagesPass
         return;
       }
       emitDecls(builder, module, *litModule, seenBuiltinRegistrations,
-                seenPrimitives, opaqueTypeMapping, /*isUserDefined=*/false);
+                seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
+                /*isUserDefined=*/false);
     }
 
     persistOpaqueTypeMapping(module, opaqueTypeMapping);
@@ -865,6 +905,10 @@ struct StripKernelDeclsPass
         decl.erase();
     for (auto decl :
          llvm::make_early_inc_range(module.getOps<PrimitiveDeclOp>()))
+      if (!usedSymNames.contains(decl.getSymNameAttr()))
+        decl.erase();
+    for (auto decl :
+         llvm::make_early_inc_range(module.getOps<ShapeFunctionDeclOp>()))
       if (!usedSymNames.contains(decl.getSymNameAttr()))
         decl.erase();
   }

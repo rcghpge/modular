@@ -272,6 +272,11 @@ struct KernelDeclFunctionAdaptor {
 
   explicit KernelDeclFunctionAdaptor(KGEN::LIT::FnTypeGeneratorType sig);
 
+  KernelDeclFunctionAdaptor(KernelFunctionAttr attr,
+                            StringAttr fullyResolvedName);
+
+  KernelDeclFunctionAdaptor(ShapeFunctionDeclOp shapeDecl);
+
   /// Build an execute-compatible adaptor from an elementwise signature:
   /// promotes SIMD arguments to fused tensors, strips a trailing IndexList
   /// argument, and injects a synthetic fused-output tensor.
@@ -305,7 +310,6 @@ struct KernelDeclAdaptor {
   /// (e.g. `max.kernels.AddOp`). Built from `KernelDeclOp::getSymName()`.
   mlir::StringAttr fullyResolvedName;
   std::optional<KernelDeclFunctionAdaptor> executeFunction;
-  std::optional<KernelDeclFunctionAdaptor> shapeFunction;
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> updateViewFunction;
@@ -395,11 +399,6 @@ StreamType &operator<<(StreamType &os, const KernelDeclAdaptor &adaptor) {
   if (adaptor.executeFunction.has_value()) {
     os << "execute";
     adaptor.executeFunction->printNested(os, "  ");
-    os << "\n";
-  }
-  if (adaptor.shapeFunction.has_value()) {
-    os << "shape";
-    adaptor.shapeFunction->printNested(os, "  ");
     os << "\n";
   }
   if (adaptor.updateViewFunction.has_value()) {

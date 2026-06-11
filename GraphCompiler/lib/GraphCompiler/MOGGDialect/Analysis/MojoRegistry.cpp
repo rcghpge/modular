@@ -33,6 +33,10 @@ MojoRegistry::MojoRegistry(mlir::ModuleOp module) {
       primitiveBySymName[decl.getSymName()] = decl;
     }
   }
+  for (auto decl : module.getOps<ShapeFunctionDeclOp>()) {
+    shapeFuncByName[decl.getRegistration()] = decl;
+    shapeFuncBySymName[decl.getSymName()] = decl;
+  }
 }
 
 llvm::ArrayRef<KernelDeclOp>
@@ -74,6 +78,27 @@ bool MojoRegistry::containsPrimitive(llvm::StringRef name) const {
   return primitiveByName.contains(name);
 }
 
+ShapeFunctionDeclOp
+MojoRegistry::lookupShapeFunction(llvm::StringRef name) const {
+  auto it = shapeFuncByName.find(name);
+  ASSERT_STREAM(it != shapeFuncByName.end(),
+                "no shape function registered for '" << name << "'");
+  return it->second;
+}
+
+ShapeFunctionDeclOp
+MojoRegistry::lookupShapeFunctionBySymName(llvm::StringRef symName) const {
+  auto it = shapeFuncBySymName.find(symName);
+  ASSERT_STREAM(it != shapeFuncBySymName.end(),
+                "no shape function registered for sym_name '" << symName
+                                                              << "'");
+  return it->second;
+}
+
+bool MojoRegistry::containsShapeFunction(llvm::StringRef name) const {
+  return shapeFuncByName.contains(name);
+}
+
 KernelDeclOp MojoRegistry::getResolvedKernel(llvm::StringRef name) const {
   auto it = kernelByName.find(name);
   ASSERT_STREAM(it != kernelByName.end(),
@@ -110,6 +135,8 @@ void M::MOGG::copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst) {
   for (auto decl : src.getOps<KernelDeclOp>())
     builder.clone(*decl.getOperation());
   for (auto decl : src.getOps<PrimitiveDeclOp>())
+    builder.clone(*decl.getOperation());
+  for (auto decl : src.getOps<ShapeFunctionDeclOp>())
     builder.clone(*decl.getOperation());
 
   // Also carry over the opaque-type mapping so `mogg-rewrite-opaque-types`

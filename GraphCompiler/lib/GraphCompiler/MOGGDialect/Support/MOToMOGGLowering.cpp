@@ -457,10 +457,6 @@ MOGGKernelBuilder::lowerToShapeKernel(KernelOp kernelOp,
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
 
-  // Get the shape function from the adaptor
-  ASSERT_STREAM(adaptor.shapeFunction.has_value(),
-                "[MO-TO-MOGG] Shape function adaptor must have shape function");
-
   // Determine the return type based on output param decls
   auto shapeFuncOp = cast<MO::InvokeShapeFuncOp>(moOp);
   const uint64_t rank = shapeFuncOp.getOutputParamDecls().size();
@@ -471,11 +467,12 @@ MOGGKernelBuilder::lowerToShapeKernel(KernelOp kernelOp,
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
 
-  auto shapeSig = adaptor.shapeFunction->attr.getSignature();
-  bool isThrows = shapeSig.isThrows();
+  ShapeFunctionDeclOp shapeDecl =
+      registry.lookupShapeFunction(shapeFuncOp.getShapeFuncName());
+  bool isThrows = shapeDecl.getFunction().getSignature().isThrows();
 
   return MOGG::CallShapeOp::create(
-      builder, loc, adaptor.fullyResolvedName, TypeAttr::get(retType),
+      builder, loc, shapeDecl.getSymNameAttr(), TypeAttr::get(retType),
       isThrows ? builder.getUnitAttr() : UnitAttr(), inputs);
 }
 
@@ -617,7 +614,9 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
   };
   appendFn(declOp.getExecute());
   appendFn(declOp.getElementwise());
-  appendFn(declOp.getShape());
+  if (registry.containsShapeFunction(declOp.getRegistration()))
+    appendFn(
+        registry.lookupShapeFunction(declOp.getRegistration()).getFunction());
   appendFn(declOp.getUpdateView());
   ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
 
@@ -950,13 +949,14 @@ ErrorOr<KernelOp> MOGGKernelBuilder::lowerToKernelBase() {
   // For shape function invocations, use the shape function instead of the
   // execute function. Shape functions bind dimensions via parameter
   // declarations, not SSA results, so we explicitly clear the outputResult to
-  // avoid validation errors. The KernelDeclAdaptor may have a shapeFunction
-  // even for regular custom ops, so we gate on the op type, not the adaptor.
+  // avoid validation errors.
   bool isShapeFuncInvocation = isa<MO::InvokeShapeFuncOp>(moOp);
+  std::optional<KernelDeclFunctionAdaptor> shapeFnAdaptor;
+  if (isShapeFuncInvocation)
+    shapeFnAdaptor = KernelDeclFunctionAdaptor(registry.lookupShapeFunction(
+        cast<MO::InvokeShapeFuncOp>(moOp).getShapeFuncName()));
   const KernelDeclFunctionAdaptor *functionToMap =
-      (isShapeFuncInvocation && adaptor.shapeFunction.has_value())
-          ? &*adaptor.shapeFunction
-          : &*adaptor.executeFunction;
+      isShapeFuncInvocation ? &*shapeFnAdaptor : &*adaptor.executeFunction;
 
   if (isShapeFuncInvocation) {
     KernelDeclFunctionAdaptor modifiedFunction = *functionToMap;

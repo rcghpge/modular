@@ -327,6 +327,18 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
   }
 }
 
+KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
+    KernelFunctionAttr attr, StringAttr fullyResolvedName)
+    : KernelDeclFunctionAdaptor(attr.getSignature()) {
+  this->attr = attr;
+  this->fullyResolvedName = fullyResolvedName;
+}
+
+KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
+    ShapeFunctionDeclOp shapeDecl)
+    : KernelDeclFunctionAdaptor(shapeDecl.getFunction(),
+                                shapeDecl.getSymNameAttr()) {}
+
 KernelDeclFunctionAdaptor
 KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
     KGEN::LIT::FnTypeGeneratorType sig) {
@@ -393,54 +405,32 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
   // Build a function adaptor from an optional `MOGG_KernelFunctionAttr`.
   // The adaptor stores the attr directly; consumers read its cached
   // fn-level params and slot-name mappings through `f.attr.*`.
-  auto buildFn = [](std::optional<KernelFunctionAttr> fnAttr)
-      -> std::optional<KernelDeclFunctionAdaptor> {
+  auto buildFn =
+      [&](std::optional<KernelFunctionAttr> fnAttr,
+          StringRef methodName) -> std::optional<KernelDeclFunctionAdaptor> {
     if (!fnAttr)
       return std::nullopt;
     KernelDeclFunctionAdaptor f(fnAttr->getSignature());
     f.attr = *fnAttr;
+    f.fullyResolvedName = mlir::StringAttr::get(
+        ctx, llvm::formatv("{}.{}", fullyResolvedName, methodName).str());
     return f;
   };
 
-  llvm::StringRef structName = fullyResolvedName.strref();
-  executeFunction = buildFn(decl.getExecute());
-  if (executeFunction) {
-    executeFunction->fullyResolvedName = mlir::StringAttr::get(
-        ctx, llvm::formatv("{}.execute", structName).str());
-  }
-  shapeFunction = buildFn(decl.getShape());
-  if (shapeFunction) {
-    shapeFunction->fullyResolvedName =
-        mlir::StringAttr::get(ctx, llvm::formatv("{}.shape", structName).str());
-  }
-  updateViewFunction = buildFn(decl.getUpdateView());
-  if (updateViewFunction) {
-    updateViewFunction->fullyResolvedName = mlir::StringAttr::get(
-        ctx, llvm::formatv("{}.update_input_view", structName).str());
-  }
-  buildGraphFunction = buildFn(decl.getBuildGraph());
-  if (buildGraphFunction) {
-    buildGraphFunction->fullyResolvedName = mlir::StringAttr::get(
-        ctx, llvm::formatv("{}.build_graph", structName).str());
-  }
+  executeFunction = buildFn(decl.getExecute(), kMoggExecuteFuncName);
+  updateViewFunction = buildFn(decl.getUpdateView(), kMoggUpdateViewFuncName);
+  buildGraphFunction = buildFn(decl.getBuildGraph(), kMoggBuildGraphFuncName);
+  elementwiseFunction =
+      buildFn(decl.getElementwise(), kMoggElementwiseFuncName);
+  tileElementwiseFunction =
+      buildFn(decl.getTileElementwise(), kMoggElementwiseFuncName);
 
-  if (auto ewFn = decl.getElementwise()) {
-    elementwiseFunction = buildFn(ewFn);
-    elementwiseFunction->fullyResolvedName = mlir::StringAttr::get(
-        ctx, llvm::formatv("{}.elementwise", structName).str());
+  if (elementwiseFunction && !executeFunction) {
     // When there is no explicit execute, synthesise one from the elementwise
     // signature so callers always have an executeFunction to query.
-    if (!executeFunction) {
-      executeFunction =
-          KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
-              ewFn->getSignature());
-    }
-  }
-
-  if (auto tileEwFn = decl.getTileElementwise()) {
-    tileElementwiseFunction = buildFn(tileEwFn);
-    tileElementwiseFunction->fullyResolvedName = mlir::StringAttr::get(
-        ctx, llvm::formatv("{}.elementwise", structName).str());
+    executeFunction =
+        KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
+            decl.getElementwise()->getSignature());
   }
 
   structParams = decl.getStructParams();
@@ -450,8 +440,6 @@ const KernelDeclFunctionAdaptor *
 KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
   if (label == kMoggExecuteFunctionLabel)
     return executeFunction ? &*executeFunction : nullptr;
-  if (label == kMoggShapeFunctionLabel)
-    return shapeFunction ? &*shapeFunction : nullptr;
   if (label == kMoggUpdateViewFunctionLabel)
     return updateViewFunction ? &*updateViewFunction : nullptr;
   if (label == kMoggElementwiseFunctionLabel)

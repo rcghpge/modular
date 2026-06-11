@@ -16,14 +16,13 @@
 
 namespace M::MOGG {
 
-/// Indexes `mogg.kernel.decl` and `mogg.primitive.decl` ops in a module for
-/// fast lookup by registration name.
+/// Indexes `mogg.kernel.decl`, `mogg.primitive.decl`, and
+/// `mogg.shape_func.decl` ops in a module for fast lookup by registration
+/// name or sym_name.
 ///
 /// This is a plain helper, not an MLIR analysis: construct one at the entry
 /// of a pass that needs lookups, and let it go out of scope at the end. The
-/// index is built eagerly from the module's `mogg.kernel.decl` /
-/// `mogg.primitive.decl` ops; subsequent lookups are O(1). Construction is
-/// cheap (a StringMap of the kernel/primitive decls in the module).
+/// index is built eagerly; subsequent lookups are O(1).
 class MojoRegistry {
 public:
   explicit MojoRegistry(mlir::ModuleOp module);
@@ -50,6 +49,18 @@ public:
   /// Returns true if a `mogg.primitive.decl` op exists for `name`.
   bool containsPrimitive(llvm::StringRef name) const;
 
+  /// Returns the `mogg.shape_func.decl` op whose `registration` matches
+  /// `name`, or a null op if none exists.
+  ShapeFunctionDeclOp lookupShapeFunction(llvm::StringRef name) const;
+
+  /// Returns the `mogg.shape_func.decl` op whose `sym_name` matches
+  /// `symName`. Asserts that it exists.
+  ShapeFunctionDeclOp
+  lookupShapeFunctionBySymName(llvm::StringRef symName) const;
+
+  /// Returns true if a `mogg.shape_func.decl` op exists for `name`.
+  bool containsShapeFunction(llvm::StringRef name) const;
+
   /// Resolves the kernel to use for `name`, applying user-over-builtin override
   /// semantics. Asserts that the kernel exists; use `containsKernel` for an
   /// existence check. Also asserts that at most one user-defined decl claims
@@ -62,6 +73,8 @@ private:
   llvm::StringMap<KernelDeclOp> kernelBySymName;
   llvm::StringMap<PrimitiveDeclOp> primitiveByName;
   llvm::StringMap<PrimitiveDeclOp> primitiveBySymName;
+  llvm::StringMap<ShapeFunctionDeclOp> shapeFuncByName;
+  llvm::StringMap<ShapeFunctionDeclOp> shapeFuncBySymName;
 };
 
 /// Clone every `mogg.kernel.decl` and `mogg.primitive.decl` op from `src`

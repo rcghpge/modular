@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 
 using namespace M;
@@ -32,17 +33,17 @@ template <typename Func, typename... Args>
 // KernelDeclAdaptor-based verification (mogg.kernel.decl path)
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-declVerifyShapeFunctionHasNoDPSOutputs(KernelDeclOp decl,
-                                       const KernelDeclAdaptor &adaptor) {
-  if (!adaptor.shapeFunction.has_value())
+LogicalResult declVerifyShapeFunctionHasNoDPSOutputs(
+    KernelDeclOp decl,
+    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
+  if (!shapeFunction.has_value())
     return success();
-  if (!adaptor.shapeFunction->outputArguments.empty()) {
+  if (!shapeFunction->outputArguments.empty()) {
     decl->emitError() << "Shape functions must not have any output tensor "
                          "arguments";
     return failure();
   }
-  if (!adaptor.shapeFunction->outputResult.has_value()) {
+  if (!shapeFunction->outputResult.has_value()) {
     decl->emitError() << "Shape functions must return a shape";
     return failure();
   }
@@ -144,19 +145,20 @@ LogicalResult verifyInputArgumentsAlign(KernelDeclOp decl,
 }
 
 LogicalResult declVerifyShapeFunctionInputsMatchExecuteFunction(
-    KernelDeclOp decl, const KernelDeclAdaptor &adaptor) {
-  if (!adaptor.shapeFunction.has_value())
+    KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
+    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
+  if (!shapeFunction.has_value())
     return success();
 
   if (adaptor.executeFunction.has_value() &&
       verifyInputArgumentsAlign(decl, *adaptor.executeFunction, "execute",
-                                *adaptor.shapeFunction, "shape")
+                                *shapeFunction, "shape")
           .failed())
     return failure();
 
   if (adaptor.buildGraphFunction.has_value() &&
       verifyInputArgumentsAlign(decl, *adaptor.buildGraphFunction,
-                                "build_graph", *adaptor.shapeFunction, "shape")
+                                "build_graph", *shapeFunction, "shape")
           .failed())
     return failure();
 
@@ -251,9 +253,9 @@ declVerifyOutputsAppearBeforeInputs(KernelDeclOp decl,
 /// Each kernel function variant has at most one launch arg
 /// (DeviceContext / DeviceContextList on execute / shape, DeviceGraphBuilder
 /// on build_graph) and the launch arg must come last in the signature.
-LogicalResult
-declVerifyContextsAppearLastInSignature(KernelDeclOp decl,
-                                        const KernelDeclAdaptor &adaptor) {
+LogicalResult declVerifyContextsAppearLastInSignature(
+    KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
+    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
   const auto launchArgsAreLast =
       [&decl](const std::optional<KernelDeclFunctionAdaptor> &func,
               llvm::StringRef argLower,
@@ -286,7 +288,7 @@ declVerifyContextsAppearLastInSignature(KernelDeclOp decl,
 
   if (launchArgsAreLast(adaptor.executeFunction, "context", "Context")
           .failed() ||
-      launchArgsAreLast(adaptor.shapeFunction, "context", "Context").failed() ||
+      launchArgsAreLast(shapeFunction, "context", "Context").failed() ||
       launchArgsAreLast(adaptor.buildGraphFunction, "graph builder",
                         "Graph builder")
           .failed())
@@ -294,9 +296,9 @@ declVerifyContextsAppearLastInSignature(KernelDeclOp decl,
   return success();
 }
 
-LogicalResult
-declVerifyOpaqueArgumentsArePassedByReference(KernelDeclOp decl,
-                                              KernelDeclAdaptor &adaptor) {
+LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
+    KernelDeclOp decl, KernelDeclAdaptor &adaptor,
+    std::optional<KernelDeclFunctionAdaptor> shapeFunction) {
   auto opaquesByReference =
       [&decl](std::optional<KernelDeclFunctionAdaptor> &func) -> LogicalResult {
     if (!func.has_value())
@@ -334,15 +336,15 @@ declVerifyOpaqueArgumentsArePassedByReference(KernelDeclOp decl,
   };
 
   if (opaquesByReference(adaptor.executeFunction).failed() ||
-      opaquesByReference(adaptor.shapeFunction).failed() ||
+      opaquesByReference(shapeFunction).failed() ||
       opaquesByReference(adaptor.buildGraphFunction).failed())
     return failure();
   return success();
 }
 
-LogicalResult
-declVerifyAtMostOneVariadicInputAndOutput(KernelDeclOp decl,
-                                          const KernelDeclAdaptor &adaptor) {
+LogicalResult declVerifyAtMostOneVariadicInputAndOutput(
+    KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
+    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
   // TODO: (GEX-1994) Remove this.
   if (adaptor.registeredOpName.strref().starts_with("mo."))
     return success();
@@ -372,7 +374,7 @@ declVerifyAtMostOneVariadicInputAndOutput(KernelDeclOp decl,
   };
 
   if (atMostOneVariadic(adaptor.executeFunction).failed() ||
-      atMostOneVariadic(adaptor.shapeFunction).failed() ||
+      atMostOneVariadic(shapeFunction).failed() ||
       atMostOneVariadic(adaptor.buildGraphFunction).failed())
     return failure();
   return success();
@@ -491,9 +493,14 @@ declVerifyTileElementwiseFunction(KernelDeclOp decl,
 struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
+    MojoRegistry registry(moduleOp);
 
     bool failed = false;
     for (KernelDeclOp decl : moduleOp.getOps<KernelDeclOp>()) {
+      std::optional<KernelDeclFunctionAdaptor> shapeFnAdaptor;
+      if (registry.containsShapeFunction(decl.getRegistration()))
+        shapeFnAdaptor = KernelDeclFunctionAdaptor(
+            registry.lookupShapeFunction(decl.getRegistration()));
       KernelDeclAdaptor adaptor(decl);
 
       if (setFlagIfFailed(failed, declVerifyHasEntryPoint, decl, adaptor)
@@ -514,13 +521,13 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
       }
 
       if (setFlagIfFailed(failed, declVerifyShapeFunctionHasNoDPSOutputs, decl,
-                          adaptor)
+                          shapeFnAdaptor)
               .failed())
         continue;
 
       if (setFlagIfFailed(failed,
                           declVerifyShapeFunctionInputsMatchExecuteFunction,
-                          decl, adaptor)
+                          decl, adaptor, shapeFnAdaptor)
               .failed())
         continue;
 
@@ -544,17 +551,17 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
         continue;
 
       if (setFlagIfFailed(failed, declVerifyContextsAppearLastInSignature, decl,
-                          adaptor)
+                          adaptor, shapeFnAdaptor)
               .failed())
         continue;
 
       if (setFlagIfFailed(failed, declVerifyOpaqueArgumentsArePassedByReference,
-                          decl, adaptor)
+                          decl, adaptor, shapeFnAdaptor)
               .failed())
         continue;
 
       if (setFlagIfFailed(failed, declVerifyAtMostOneVariadicInputAndOutput,
-                          decl, adaptor)
+                          decl, adaptor, shapeFnAdaptor)
               .failed())
         continue;
 

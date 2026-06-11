@@ -3780,13 +3780,13 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult
 CallShapeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  return verifySymbolUsesForKernelDeclCall(
-      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
-        if (!decl.getShape())
-          return emitOpError("kernel '")
-                 << getKernelSymName() << "' has no 'shape' function";
-        return success();
-      });
+  auto symAttr = getKernelSymNameAttr();
+  auto decl =
+      symbolTable.lookupNearestSymbolFrom<ShapeFunctionDeclOp>(*this, symAttr);
+  if (!decl)
+    return emitOpError("'")
+           << symAttr.getValue() << "' does not refer to a shape_func.decl op";
+  return success();
 }
 
 // MOGG_KernelCallInterface methods
@@ -3809,15 +3809,6 @@ Type CallShapeOp::getKernelReturnOutput() {
 bool CallShapeOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
-  KernelDeclOp shapeKernelDecl =
-      state.registry.lookupKernelBySymName(getKernelSymName());
-  KernelDeclAdaptor shapeAdaptor(shapeKernelDecl);
-  const KernelDeclFunctionAdaptor *shapeFnAdaptor =
-      shapeAdaptor.shapeFunction ? &*shapeAdaptor.shapeFunction : nullptr;
-  if (!shapeFnAdaptor) {
-    return emitError("Shape function not present for ") << getKernelSymName();
-  }
-
   // Rebind all inputs to ensure specs are deduced (tensors -> InputTensor,
   // etc.)
   SmallVector<MojoValue> kernelOperands;
@@ -3828,15 +3819,25 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(
-      shapeAdaptor, MOGG::kMoggShapeFunctionLabel, inferParam);
+  // TODO(GEX-3825): We need to access the parent struct to find parameters
+  // defined at the struct-level. This is temporary, and will be removed once
+  // shape functions are all moved out of the kernel struct.
+  ShapeFunctionDeclOp shapeDecl =
+      state.registry.lookupShapeFunctionBySymName(getKernelSymName());
+  KernelDeclOp kernelDecl =
+      state.registry.getResolvedKernel(shapeDecl.getRegistration());
+  KernelDeclFunctionAdaptor shapeFnAdaptor = shapeDecl;
+  KernelDeclAdaptor adaptor(kernelDecl);
+  auto maybeParams =
+      EmitMojoState::inferKernelParameters(shapeFnAdaptor, adaptor, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
   // Call the shape function and return its value via the kernel terminator.
-  MojoValue result = state.builder.var(callFunctionNestedInStruct(
-      *shapeFnAdaptor, *maybeParams, kernelOperands, state));
+  MojoValue shapeFn(getKernelSymName());
+  MojoValue result = state.builder.var(shapeFn[maybeParams->structParameters](
+      maybeParams->functionParameters, kernelOperands));
   state.genAllKeepAliveStatements();
   state.builder.returnsValue(result);
 

@@ -67,23 +67,16 @@ ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
         llvm::formatv("no kernel registered for '{}'", info.operationName)
             .str());
   }
-  KernelDeclAdaptor adaptor(registry.getResolvedKernel(info.operationName));
+  KernelDeclOp kernelDecl = registry.getResolvedKernel(info.operationName);
+  KernelDeclAdaptor adaptor(kernelDecl);
 
-  if (info.functionLabel == MOGG::kMoggShapeFunctionLabel) {
-    if (!adaptor.shapeFunction.has_value()) {
-      return Error(llvm::formatv("Could not find a shape function for '{}'",
-                                 info.operationName)
-                       .str());
-    }
-  } else {
-    if (!adaptor.executeFunction.has_value() &&
-        !adaptor.elementwiseFunction.has_value()) {
-      return Error(
-          llvm::formatv(
-              "Could not find an execute or elementwise function for '{}'",
-              info.operationName)
-              .str());
-    }
+  if (!adaptor.executeFunction.has_value() &&
+      !adaptor.elementwiseFunction.has_value()) {
+    return Error(
+        llvm::formatv(
+            "Could not find an execute or elementwise function for '{}'",
+            info.operationName)
+            .str());
   }
 
   return adaptor;
