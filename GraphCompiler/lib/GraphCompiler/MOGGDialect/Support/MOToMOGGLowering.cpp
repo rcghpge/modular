@@ -338,9 +338,7 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
   builder.setInsertionPointToStart(elemwiseBody);
   auto callElementwise = CallElementwiseOp::create(
       builder, loc, resultValTp, adaptor.fullyResolvedName.strref(),
-      adaptor.registeredOpName.strref(), outlinedArgs);
-  cast<KernelCallInterface>(callElementwise.getOperation())
-      .setKernelParams(forwardedParameters);
+      adaptor.registeredOpName.strref(), outlinedArgs, forwardedParameters);
   OutputOp::create(builder, loc, callElementwise->getResults());
   builder.setInsertionPointAfter(bindOp);
 
@@ -351,7 +349,8 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
       registry.lookupPrimitive(CallForeachOp::getOperationName());
   auto ret =
       CallForeachOp::create(builder, loc, foreachPrim.getSymName(),
-                            bindOp.getOutput(), outputValue, contextValue);
+                            bindOp.getOutput(), outputValue, contextValue,
+                            /*kernel_param=*/DictionaryAttr());
 
   return ret;
 }
@@ -378,7 +377,8 @@ MOGGKernelBuilder::lowerToViewKernel(KernelOp kernelOp,
       mapping.operandMapping, builder);
   auto view = MOGG::CallViewOp::create(
       builder, loc, outputVal.getType(), adaptor.fullyResolvedName.strref(),
-      adaptor.registeredOpName.strref(), inputs);
+      adaptor.registeredOpName.strref(), inputs,
+      /*kernel_param=*/DictionaryAttr());
   // MaterializeOp always takes an input tensor (with view updated by the
   // mogg.call.view above).
   SmallVector<Value> contextValue;
@@ -387,7 +387,8 @@ MOGGKernelBuilder::lowerToViewKernel(KernelOp kernelOp,
       registry.lookupPrimitive(CallMaterializeOp::getOperationName());
   MOGG::CallMaterializeOp::create(builder, loc,
                                   materializePrimitive.getSymName(),
-                                  view->getResult(0), outputVal, contextValue);
+                                  view->getResult(0), outputVal, contextValue,
+                                  /*kernel_param=*/DictionaryAttr());
 
   return view;
 }
@@ -446,7 +447,8 @@ MOGGKernelBuilder::lowerToNormalKernel(KernelOp kernelOp,
 
   return CallExecuteOp::create(builder, loc, adaptor.fullyResolvedName.strref(),
                                adaptor.registeredOpName.strref(),
-                               regRetTypeAttr, isThrows, inputs, outputs);
+                               regRetTypeAttr, isThrows, inputs, outputs,
+                               /*kernel_param=*/DictionaryAttr());
 }
 
 KernelCallInterface
@@ -473,7 +475,8 @@ MOGGKernelBuilder::lowerToShapeKernel(KernelOp kernelOp,
 
   return MOGG::CallShapeOp::create(
       builder, loc, shapeDecl.getSymNameAttr(), TypeAttr::get(retType),
-      isThrows ? builder.getUnitAttr() : UnitAttr(), inputs);
+      isThrows ? builder.getUnitAttr() : UnitAttr(), inputs,
+      /*kernel_param=*/DictionaryAttr());
 }
 
 static ErrorOr<NamedAttribute>

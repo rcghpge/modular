@@ -274,7 +274,8 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     StrAttr:$kernelSymName,
     MO_Tensor:$input,
     AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output,
-    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context
+    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
 
   let assemblyFormat = [{
@@ -310,7 +311,8 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
     OptionalAttr<TypeAttr>:$regRetType,
     UnitAttr:$isThrows,
     Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs
+    Variadic<AnyType>:$outputs,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
 
   let assemblyFormat = [{
@@ -363,8 +365,10 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     UnitAttr:$isThrows,
     Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs,
-    MGP_DeviceGraphBuilderType:$graphBuilder
+    MGP_DeviceGraphBuilderType:$graphBuilder,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
+
   let results = (outs MGP_DeviceGraphNodeType:$node);
 
   let assemblyFormat = [{
@@ -399,7 +403,8 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
     StrAttr:$kernelSymName,
     AnyType:$input,
     MO_Tensor:$output,
-    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context
+    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
 
   let assemblyFormat = [{
@@ -431,7 +436,8 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   let arguments = (ins
     StrAttr:$kernelSymName,
     StrAttr:$moOpName,
-    Variadic<AnyType>:$inputs
+    Variadic<AnyType>:$inputs,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
   let results = (outs Variadic<AnyType>:$outputs);
 
@@ -463,7 +469,8 @@ def MOGG_CallViewOp : MOGG_Op<"call.view", [
   let arguments = (ins
     StrAttr:$kernelSymName,
     StrAttr:$moOpName,
-    Variadic<AnyType>:$inputs
+    Variadic<AnyType>:$inputs,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
   let results = (outs MO_Tensor:$output);
 
@@ -804,13 +811,13 @@ def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
   let arguments = (ins
     StrAttr:$kernelSymName,
     Variadic<AnyType>:$operands,
-    OptionalAttr<DictionaryAttr>:$params
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
 
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
-    `[` $kernelSymName `]` `(`($operands^)?`)` ($params^)? attr-dict
+    `[` $kernelSymName `]` `(`($operands^)?`)` ($kernel_param^)? attr-dict
       (`:` type($operands)^)? `->` type($result)
   }];
 }
@@ -1485,7 +1492,8 @@ def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
     StrAttr:$kernelSymName,
     TypeAttr:$retType,
     UnitAttr:$isThrows,
-    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar, AnyTuple]>>:$operands
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar, AnyTuple]>>:$operands,
+    OptionalAttr<DictionaryAttr>:$kernel_param
   );
   let assemblyFormat = [{
     `[` $kernelSymName `]` `(` $operands `:` type($operands) `)` `->` $retType attr-dict

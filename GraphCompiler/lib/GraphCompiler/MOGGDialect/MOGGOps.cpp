@@ -430,8 +430,7 @@ LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
 
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
-    return state.inferDefaultKernelParamValue(*this, paramName,
-                                              getParamsAttr());
+    return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(primDecl, inferParam);
   if (maybeParams.isError())
@@ -981,8 +980,7 @@ static void emitElementwiseLambdaBodyOps(
       }
 
       auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
-        return state.inferDefaultKernelParamValue(callOp, paramName,
-                                                  callOp.getParamsAttr());
+        return state.inferDefaultKernelParamValue(callOp, paramName);
       };
       auto maybeParams =
           EmitMojoState::inferKernelParameters(affinePrimDecl, inferParam);

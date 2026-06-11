@@ -20,18 +20,17 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
     InterfaceMethod<
       "Inject a dictionary attribute for kernel parameters",
       "void", "setKernelParams", (ins "mlir::DictionaryAttr":$params),
-      "$_op->setAttr(\"kernel_param\", params);"
+      "$_op.setKernelParamAttr(params);"
     >,
     InterfaceMethod<
       "Returns the value that represents the lowered KGEN mojo object",
       "mlir::DictionaryAttr", "getKernelParams", (ins),
-      "return $_op->template getAttrOfType<DictionaryAttr>(\"kernel_param\");"
+      "return $_op.getKernelParamAttr();"
     >,
     InterfaceMethod<
-      "Returns the sym_name of the kernel decl this op references, or null "
-      "if this op does not directly reference a kernel decl.",
+      "Returns the sym_name of the kernel decl this op references.",
       "mlir::StringAttr", "getKernelSymNameAttr", (ins),
-      "return $_op->template getAttrOfType<mlir::StringAttr>(\"kernelSymName\");"
+      "return $_op.getKernelSymNameAttr();"
     >,
   ];
 }

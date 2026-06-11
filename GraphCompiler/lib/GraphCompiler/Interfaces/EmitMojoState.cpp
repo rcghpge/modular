@@ -830,7 +830,7 @@ static MojoValue getHasLambdaFusionValue(mlir::Operation *callOp) {
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
-  auto inferFromMliParam = [&](Attribute customParam) -> ErrorOr<MojoValue> {
+  auto inferFromMlirParam = [&](Attribute customParam) -> ErrorOr<MojoValue> {
     // Convert it to mojo
     // TODO: Convert custom mlir parameter to the right mojo parameter type is
     // hardcoded here and brittle. Besides the param name, we would also need
@@ -861,12 +861,12 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   if (auto kernelCallOp = dyn_cast<KernelCallInterface>(callOp);
       kernelCallOp && kernelCallOp.getKernelParams()) {
     if (auto customParam = kernelCallOp.getKernelParams().get(paramName))
-      return inferFromMliParam(customParam);
+      return inferFromMlirParam(customParam);
   }
 
   if (customParamDict) {
     if (auto customParam = customParamDict.get(paramName))
-      return inferFromMliParam(customParam);
+      return inferFromMlirParam(customParam);
   }
 
   // Some special parameters are common to all kernels.
