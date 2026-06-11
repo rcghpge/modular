@@ -383,6 +383,10 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
   let extraClassDeclaration = [{
     /// Returns the `mgp.device_graph.staging.yield` terminating the body.
     DeviceGraphStagingYieldOp getYieldOp();
+
+    Block &getBodyBlock() {
+      return getBody().front();
+    }
   }];
 
   let hasCanonicalizer = 1;

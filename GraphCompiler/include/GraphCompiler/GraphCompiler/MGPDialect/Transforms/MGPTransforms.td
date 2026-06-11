@@ -705,4 +705,26 @@ def OutlineModelsToCallables : Pass<"mgp-outline-models-to-callables", "mlir::Mo
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// StageDeviceGraphsPass
+//===----------------------------------------------------------------------===//
+
+def StageDeviceGraphsPass :
+    Pass<"mgp-stage-device-graphs", "MGP::ModelOp"> {
+  let summary = "Stage the execute body of an `isDeviceGraph` model into a "
+                "`mgp.device_graph.staging` op.";
+  let description = [{
+    Part of device-graph synthesis. For each `mgp.model` marked `isDeviceGraph`,
+    moves every `mogg.generic.compiled.region` in the execute block into a single
+    `mgp.device_graph.staging` op. The regions' free values become the op's
+    inputs (entering the body as `!mogg.async<T>` block args, unpacked inside),
+    and values produced inside but consumed outside become the op's results
+    (packed for the async yield, external uses rewired). The staging op is an
+    `IsolatedFromAbove`, transient container that later synthesis passes lower
+    into `mgp.device_graph.create` / `mgp.device_graph.execute`.
+
+    For models without `isDeviceGraph`, the pass is a no-op.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
