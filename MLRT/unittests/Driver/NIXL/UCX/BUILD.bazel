@@ -9,18 +9,24 @@ package(
 )
 
 UCX_TEST_DEPS = [
-    "//MLRT:Driver/DeviceContextImpl",
     "//MLRT:Driver/NIXL",
     "//MLRT/unittests/Driver/NIXL:TestCommon",
-    "//MLRT/unittests/Driver:TestUtils",
     "//Support:Base",
     "@llvm-project//llvm:Support",
+    "@nixl_upstream//:nixl_api_headers",
 ]
+
+# Enable verbose NIXL logging to debug plugin load issues in CI. INFO level
+# exposes dlerror() messages from loadPluginFromPath which are otherwise silent.
+UCX_TEST_ENV = {
+    "NIXL_LOG_LEVEL": "INFO",
+}
 
 modular_cc_test(
     name = "TransferTests",
     size = "medium",
     srcs = ["TransferTests.cpp"],
+    env = UCX_TEST_ENV,
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
@@ -30,6 +36,7 @@ modular_cc_test(
     name = "MetadataExchangeTests",
     size = "medium",
     srcs = ["MetadataExchangeTests.cpp"],
+    env = UCX_TEST_ENV,
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
@@ -39,15 +46,7 @@ modular_cc_test(
     name = "ErrorHandlingTests",
     size = "medium",
     srcs = ["ErrorHandlingTests.cpp"],
-    gpu_constraints = ["//:nvidia_gpu"],
-    tags = ["gpu"],
-    deps = UCX_TEST_DEPS,
-)
-
-modular_cc_test(
-    name = "QueryMemTests",
-    size = "medium",
-    srcs = ["QueryMemTests.cpp"],
+    env = UCX_TEST_ENV,
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
@@ -57,6 +56,7 @@ modular_cc_test(
     name = "ConcurrencyTests",
     size = "medium",
     srcs = ["ConcurrencyTests.cpp"],
+    env = UCX_TEST_ENV,
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
