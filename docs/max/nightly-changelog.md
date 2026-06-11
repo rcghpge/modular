@@ -16,6 +16,12 @@ This version is still a work in progress.
   per-head query/key RMSNorm, and split-half RoPE. Runs multi-GPU with
   tensor-parallel attention and expert-parallel MoE.
 - Added NVFP4 quantization support for Gemma 4.
+- Gemma 4 can now run native FP8 attention with an FP8 KV cache on B200
+  (SM100): Q, K, and V are `float8_e4m3fn` read directly from the paged cache,
+  and both Q@K^T and P@V execute as raw FP8 matmuls at tensorwise scale = 1
+  (no per-block scales, no dequantization staging) with a bf16 attention
+  output. This roughly matches bf16 accuracy while improving decode throughput
+  and roughly doubling KV cache capacity at the same memory.
 - Added MXFP4 quantization support for MiniMax-M2.
 - Added tensor-parallel attention + expert-parallel MoE (TP+EP) support for
   MiniMax-M2. Set `data_parallel_degree: 1` with `runtime.ep_size > 1` to
@@ -34,6 +40,21 @@ This version is still a work in progress.
 ## MAX framework
 
 ### Inference server
+
+- Chat completion responses now emit reasoning under both `reasoning` and
+  `reasoning_content`. Reasoning models previously exposed their
+  chain-of-thought only under `reasoning`; adding the `reasoning_content`
+  alias (the field used by vLLM, SGLang, and the DeepSeek API, in both
+  streaming deltas and the final message) lets a wider range of
+  OpenAI-compatible clients surface it. The two fields always hold the same
+  text.
+
+- `response_format` JSON schemas with a non-object root are now accepted when
+  the root `type` is missing (any) or a type union that includes `object`
+  (for example `{"type": ["object", "array", "string"]}`); these are valid
+  JSON Schema and compile to a constraining grammar. A root pinned to a single
+  non-object type (for example `{"type": "string"}`) is still rejected,
+  matching OpenAI's structured-outputs contract.
 
 - Added a `maxserve.startup_time` Prometheus histogram (seconds) that
   records model-worker startup time, previously only available in the
@@ -88,6 +109,15 @@ This version is still a work in progress.
   `response_format=json_schema` request returned prose instead of
   schema-conformant JSON). The tokenizer now derives enforcement state from the
   response format, matching the text tokenizers.
+
+- Fixed an intermittent constrained-decoding correctness bug under EAGLE
+  speculative decoding. On the first decode step after a prefill (and after any
+  batch that did not verify draft tokens), the speculative token bitmask was
+  built from placeholder draft tokens instead of the real drafts being
+  verified, leaving the bonus and later speculative slots unconstrained. A
+  grammar-illegal token could then be sampled and committed, producing
+  occasional JSON `response_format` or tool-call grammar violations. The bitmask
+  is now built from the realized drafts.
 
 - MAX Serve now accepts `role: "developer"` on `/v1/chat/completions`,
   normalizing it to `system` at the OpenAI-compat route layer. The OpenAI
@@ -244,6 +274,10 @@ This version is still a work in progress.
   `max-batch-input-tokens=16384` needs 640 MiB in bf16). This adds ~512 MiB
   of per-GPU memory use for any multi-GPU model.
 
+- Added `max.experimental.functional.ceil`, an element-wise unary op that
+  rounds each element of a floating-point tensor up toward positive infinity.
+  Complements the existing `floor`, `round`, and `trunc` ops.
+
 - `max.experimental.functional.while_loop` now passes `Tensor` (not
   `TensorValue`) into its `predicate` and `body` callbacks. Callbacks can
   use ordinary `Tensor` operations directly, without wrapping arguments
@@ -331,6 +365,12 @@ This version is still a work in progress.
   most for shorter sequences (measured ~1.05x–1.5x faster on B200, bf16,
   head_dim=128 across seq lengths 128–2048). On by default; disable with
   `-D MHA_PDL=false`.
+- Added a simdgroup-tiled matmul kernel for the Apple M5 GPU, bringing
+  neural-accelerator-backed matmul to the MAX framework. In-range MAX matmuls
+  (`m >= 64`, `n >= 64`, `k >= 16`; ragged K supported) now use it: fp16/bf16
+  always, and fp32 a/b by default (accepting the simdgroup MMA's fp19
+  truncation). Set `MODULAR_APPLE_M5_ALLOW_LOSSY_F32_MATMUL=0` for the precise
+  naive fp32 path.
 
 ## Breaking changes
 
@@ -366,6 +406,16 @@ This version is still a work in progress.
   has been removed.
 
 ## Fixes
+
+- Fixed structured output (`response_format: json_schema` and grammar-guided
+  tool calling) intermittently emitting raw control characters inside JSON
+  string values on models that use a byte-level BPE (TikToken) tokenizer,
+  producing invalid JSON. The constrained-decoding adapter fed llguidance the
+  tokens' byte->unicode *surface* bytes (e.g. a raw newline rendered as `Ċ`)
+  instead of their true bytes, so the grammar mask admitted control-char
+  tokens as legal string content. Token bytes are now recovered via the
+  tokenizer's `byte_decoder`, so raw control characters are correctly
+  excluded. Fast-tokenizer checkpoints were unaffected.
 
 - Fixed an expert-parallelism dispatch assertion (`Cannot dispatch EP
   kernel with N input tokens when the maximum tokens per rank is N-1`)

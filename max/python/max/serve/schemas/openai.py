@@ -27,29 +27,29 @@ to match OpenAI's behavior on unknown request fields - misspelled or
 unsupported fields surface as 4xx errors instead of being silently dropped.
 """
 
+# ruff: noqa: F401 disable unused-import, we re-export on purpose
+
 from __future__ import annotations
 
 from typing import (
     Any,
     Literal,
-    Optional,
     get_type_hints,
 )
 
-from typing_extensions import NotRequired, TypedDict
-
+# isort: off
 from openai.types import (
-    CompletionUsage as CompletionUsage,
-    CreateEmbeddingResponse as CreateEmbeddingResponse,
-    Embedding as Embedding,
-    Model as Model,
+    CompletionUsage,
+    CreateEmbeddingResponse,
+    Embedding,
+    Model,
 )
 from openai.types.chat import (
     ChatCompletion as _OpenAIChatCompletion,
     ChatCompletionChunk as _OpenAIChatCompletionChunk,
     ChatCompletionMessage as _OpenAIChatCompletionMessage,
     ChatCompletionMessageFunctionToolCall as ChatCompletionMessageToolCall,
-    ChatCompletionTokenLogprob as ChatCompletionTokenLogprob,
+    ChatCompletionTokenLogprob,
 )
 from openai.types.chat.chat_completion import (
     Choice as _OpenAIChatCompletionChoice,
@@ -62,9 +62,7 @@ from openai.types.chat.chat_completion_chunk import (
 from openai.types.chat.chat_completion_message_function_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
-from openai.types.chat.chat_completion_token_logprob import (
-    TopLogprob as TopLogprob,
-)
+from openai.types.chat.chat_completion_token_logprob import TopLogprob
 from openai.types.chat.completion_create_params import (
     CompletionCreateParamsBase as _OpenAIChatCompletionParams,
 )
@@ -77,12 +75,16 @@ from openai.types.completion_create_params import (
     CompletionCreateParamsBase as _OpenAITextCompletionParams,
 )
 from openai.types.completion_usage import (
-    PromptTokensDetails as PromptTokensDetails,
+    CompletionTokensDetails,
+    PromptTokensDetails,
 )
 from openai.types.embedding_create_params import (
     EmbeddingCreateParams as _OpenAIEmbeddingParams,
 )
+
+# isort: on
 from pydantic import BaseModel, ConfigDict, Field, create_model
+from typing_extensions import NotRequired, TypedDict
 
 # ---------------------------------------------------------------------------
 # Response models.
@@ -98,15 +100,27 @@ from pydantic import BaseModel, ConfigDict, Field, create_model
 
 
 class ChatCompletionResponseMessage(_OpenAIChatCompletionMessage):
-    """OpenAI assistant message extended with MAX ``reasoning`` text."""
+    """OpenAI assistant message extended with MAX reasoning text.
+
+    Reasoning is emitted under both ``reasoning`` (OpenAI Responses API
+    naming) and ``reasoning_content`` (the naming used by vLLM, SGLang, and
+    the DeepSeek API). Carrying both lets either family of clients surface a
+    thinking model's chain-of-thought; the two always hold the same text.
+    """
 
     reasoning: str | None = None
+    reasoning_content: str | None = None
 
 
 class ChatCompletionStreamResponseDelta(_OpenAIChoiceDelta):
-    """OpenAI stream delta extended with MAX ``reasoning`` text."""
+    """OpenAI stream delta extended with MAX reasoning text.
+
+    Mirrors :class:`ChatCompletionResponseMessage`: each delta carries the
+    reasoning fragment under both ``reasoning`` and ``reasoning_content``.
+    """
 
     reasoning: str | None = None
+    reasoning_content: str | None = None
 
 
 class ChatCompletionResponseChoice(_OpenAIChatCompletionChoice):
@@ -140,9 +154,15 @@ class CreateChatCompletionStreamResponse(_OpenAIChatCompletionChunk):
 # ---------------------------------------------------------------------------
 
 
+class MaxModel(Model):
+    """OpenAI model card extended with MAX-specific fields."""
+
+    max_model_len: int | None = None
+
+
 class ListModelsResponse(BaseModel):
     object: Literal["list"]
-    data: list[Model]
+    data: list[MaxModel]
 
 
 class Error(BaseModel):
@@ -246,7 +266,7 @@ def _model_from_typeddict(name: str, td: type) -> type[BaseModel]:
     # top-level pydantic field is declared with a ``None`` default
     # regardless.
     for field_name, annotation in get_type_hints(td).items():
-        fields[field_name] = (Optional[annotation], None)
+        fields[field_name] = (annotation | None, None)
     return create_model(name, __config__=_FORBID_EXTRA, **fields)
 
 
@@ -295,7 +315,8 @@ _EmbeddingParamsBase = _model_from_typeddict(
 
 
 class CreateChatCompletionRequest(
-    _MaxRequestExtensions, _ChatCompletionParamsBase  # type: ignore[misc,valid-type]
+    _MaxRequestExtensions,
+    _ChatCompletionParamsBase,  # type: ignore[misc,valid-type]
 ):
     """OpenAI chat completion request, extended with MAX fields.
 
@@ -328,7 +349,8 @@ class CreateChatCompletionRequest(
 
 
 class CreateCompletionRequest(
-    _MaxRequestExtensions, _TextCompletionParamsBase  # type: ignore[misc,valid-type]
+    _MaxRequestExtensions,
+    _TextCompletionParamsBase,  # type: ignore[misc,valid-type]
 ):
     """OpenAI legacy text completion request, extended with MAX fields."""
 

@@ -30,16 +30,18 @@ from max.pipelines import (
     TextAndVisionTokenizer,
     TextTokenizer,
 )
+from max.pipelines.context import (
+    LogitsProcessor,
+    ProcessorInputs,
+    SamplingParams,
+    TextContext,
+)
 from max.pipelines.modeling.types import (
     ImageContentPart,
-    LogitsProcessor,
     Pipeline,
     PipelineTokenizer,
-    ProcessorInputs,
     RequestID,
-    SamplingParams,
     TextContentPart,
-    TextGenerationContext,
     TextGenerationRequest,
     TextGenerationRequestMessage,
 )
@@ -67,9 +69,7 @@ class TrackMetrics:
 
 async def stream_text_to_console(
     pipeline: Pipeline[Any, Any],
-    tokenizer: PipelineTokenizer[
-        TextGenerationContext, Any, TextGenerationRequest
-    ],
+    tokenizer: PipelineTokenizer[TextContext, Any, TextGenerationRequest],
     prompt: str,
     images: list[bytes],
     sampling_params: SamplingParams,

@@ -15,10 +15,11 @@ from max.graph.weights import WeightsFormat
 from max.pipelines.architectures.deepseekV3.tool_parser import (
     resolve_deepseekv3_tool_parser,
 )
-from max.pipelines.core import TextContext
+from max.pipelines.context import TextContext
 from max.pipelines.lib import SupportedArchitecture, TextTokenizer
 from max.pipelines.modeling.types import PipelineTask
 
+from ..deepseekV3.memory_planner import DeepseekV3MemoryPlanner
 from . import weight_adapters
 from .model import DeepseekV3Model
 from .model_config import DeepseekV3Config
@@ -45,4 +46,5 @@ deepseekV3_modulev3_arch = SupportedArchitecture(
     requires_max_batch_context_length=True,
     config=DeepseekV3Config,
     tool_parser=resolve_deepseekv3_tool_parser,
+    memory_planner=DeepseekV3MemoryPlanner,
 )

@@ -24,6 +24,7 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType
 from max.nn import Signals
 from max.nn.kv_cache import KVCacheParams, KVConnectorType
+from max.pipelines.context import TextContext
 from max.pipelines.kv_cache import (
     IncrementCacheLengthsProcessor,
     PagedKVCacheManager,
@@ -33,7 +34,6 @@ from max.pipelines.kv_cache.connectors.tiered_connector import TieredConnector
 from max.pipelines.kv_cache.paged_kv_cache.increment_cache_lengths import (
     increment_cache_lengths_from_counts,
 )
-from max.pipelines.modeling.types import TextGenerationContext
 from test_common.context_utils import create_text_context
 
 
@@ -108,7 +108,7 @@ def test_step() -> None:
     # Create text contexts and externally claim each using their request_id
     prompt_lens = [3, 4, 7]
     batch = []
-    batches_by_replica: list[list[TextGenerationContext]] = [
+    batches_by_replica: list[list[TextContext]] = [
         [] for _ in range(data_parallel_degree)
     ]
     for i, prompt_len in enumerate(prompt_lens):
@@ -179,7 +179,7 @@ def test_increment_cache_lengths() -> None:
     prompt_lens = [3, 4, 7]
     replica_idxs = [0, 0, 1]
     batch = []
-    batches_by_replica: list[list[TextGenerationContext]] = [
+    batches_by_replica: list[list[TextContext]] = [
         [] for _ in range(data_parallel_degree)
     ]
     for prompt_len, replica_idx in zip(prompt_lens, replica_idxs, strict=True):

@@ -13,11 +13,12 @@
 
 from max.graph.weights import WeightsFormat
 from max.pipelines.architectures.pixtral.tokenizer import PixtralTokenizer
-from max.pipelines.core import TextAndVisionContext
-from max.pipelines.core.context_validators import (
+from max.pipelines.context import TextAndVisionContext
+from max.pipelines.context.context_validators import (
     validate_only_one_image,
     validate_requires_vision_context,
 )
+from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.pipelines.lib import SupportedArchitecture
 from max.pipelines.modeling.types import InputModality, PipelineTask
 
@@ -48,4 +49,5 @@ pixtral_modulev3_arch = SupportedArchitecture(
         validate_only_one_image,
     ],
     config=PixtralConfig,
+    memory_planner=PagedMemoryPlanner,
 )

@@ -10,6 +10,27 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- Added an `@unavailable` decorator that marks a function or method as
+  intentionally unavailable. Unlike `@deprecated` (which emits a warning),
+  referencing an `@unavailable` declaration is an error. Like `@deprecated`,
+  it accepts either a reason message (positional or as `reason=`) or a
+  `use=symbol` replacement. When `use=symbol` is given, the error includes a
+  fix-it that renames the call to `symbol`.
+
+  ```mojo
+  struct Foo:
+      @unavailable("message here...")
+      def foo(self) -> Int:
+          ...
+
+  @unavailable(use=new_api)
+  def old_api():
+      ...
+
+  def new_api():
+      pass
+  ```
+
 - Types can parameterize the `out` argument modifier when they want to be
   bindable to alternate address spaces, e.g.:
 
@@ -101,6 +122,14 @@ This version is still a work in progress.
   @export("new")
   def new() abi("C"): pass
   ```
+
+- Functions marked `@export` must now be given an explicit `abi` effect, rather
+  than relying implicitly on the default (equivalent to `abi("Mojo")`). The
+  compiler will produce a warning on missing `abi` effects, which will become
+  an error in a future release.
+
+- A bug preventing `from . import module` with a spurious recursive-reference
+  error has been fixed.
 
 ## Library changes
 
@@ -365,6 +394,15 @@ This version is still a work in progress.
   through this trait must now spell it out explicitly, for example
   `T: Indexer & ImplicitlyDestructible`.
 
+- Added the `UntrackedOrigin` and `UnsafeAnyOrigin` origin aliases (and their
+  `Mut`/`Immut` variants) as the new names for `ExternalOrigin` and
+  `AnyOrigin`, respectively. `UntrackedOrigin` is the empty origin: it aliases
+  nothing, so the lifetime checker has nothing to track, and it remains a
+  supported tool for interfacing with memory from outside the Mojo program.
+  `UnsafeAnyOrigin` is the universal origin: it might alias anything, defeating
+  lifetime extension and exclusivity checking, so its `Unsafe` prefix marks it
+  as an escape hatch slated for deprecation and removal.
+
 ## Tooling changes
 
 - Importing a Mojo module from Python no longer fails when the module lives in a
@@ -603,6 +641,17 @@ This version is still a work in progress.
   `String("👨‍🚀🧑‍🌾क्षि")[grapheme=1]` returns `"🧑‍🌾"`.
 
 ## Fixed
+
+- Fixed a GPU reduction correctness bug that produced wrong results for a
+  contiguous last-axis reduction (for example `mean` over the last axis) once
+  the number of rows reached `256 * sm_count` (37888 rows on a 148-SM GPU).
+  An N-D reduction is normalized to a rank-3 `(outer, reduce, inner)` shape, so
+  a last-axis reduction has a trailing `inner == 1` dimension; the kernel
+  launcher treated that as a non-contiguous reduction and, once the device was
+  thread-saturated, dispatched a kernel whose cross-row SIMD packing is only
+  valid when a real inner dimension supplies the adjacent rows. Contiguity is
+  now derived from the layout (the reduce dimension is innermost whenever every
+  dimension after it is unit-sized).
 
 - Reduced the virtual address space reserved by every `mojo` invocation by
   ~1 GiB. The JIT memory mapper's reservation granularity was 1 GiB, so each

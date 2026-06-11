@@ -29,7 +29,7 @@ from max.nn.kv_cache import (
     MultiKVCacheParams,
 )
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
-from max.pipelines.core import TextContext
+from max.pipelines.context import TextContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
@@ -41,7 +41,6 @@ from max.pipelines.lib import (
 from max.pipelines.lib.interfaces import PipelineModelWithKVCache
 from max.pipelines.lib.utils import parse_state_dict_from_weights
 from transformers import AutoConfig
-from typing_extensions import override
 
 from ..gemma4.model_config import Gemma4ForConditionalGenerationConfig
 from ..gemma4_assistant.gemma4_assistant import Gemma4Assistant
@@ -114,9 +113,6 @@ class UnifiedMTPGemma4Inputs(ModelInputs):
         return buffers
 
 
-_GRAPH_CAPTURE_HEADROOM_BYTES = 2 * 1024**3  # 2 GiB
-
-
 class UnifiedMTPGemma4Model(
     AlwaysSignalBuffersMixin, PipelineModelWithKVCache[TextContext]
 ):
@@ -125,17 +121,6 @@ class UnifiedMTPGemma4Model(
     model_config_cls: ClassVar[type[Any]] = Gemma4ForConditionalGenerationConfig
 
     model: Model
-
-    @classmethod
-    @override
-    def estimate_activation_memory(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        del huggingface_config
-        base = 15 * 1024**3  # 15 GiB (same as base Gemma4 for vision headroom)
-        if pipeline_config.runtime.device_graph_capture:
-            base += _GRAPH_CAPTURE_HEADROOM_BYTES
-        return base
 
     def __init__(
         self,
@@ -434,13 +419,6 @@ class UnifiedMTPGemma4Model(
             draft_tokens=draft_tokens,
             draft_kv_blocks=draft_kv_cache_buffers,
         )
-
-    def prepare_next_token_inputs(
-        self,
-        next_tokens: Buffer,
-        prev_model_inputs: ModelInputs,
-    ) -> UnifiedMTPGemma4Inputs:
-        raise NotImplementedError("MTP does not support Multistep execution")
 
     @classmethod
     def calculate_max_seq_len(

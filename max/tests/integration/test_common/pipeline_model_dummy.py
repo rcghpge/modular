@@ -35,9 +35,12 @@ from max.pipelines import (
     ModelOutputs,
     PipelineConfig,
     SupportedArchitecture,
-    TextContext,
     TextTokenizer,
     upper_bounded_default,
+)
+from max.pipelines.context import (
+    TextContext,
+    TokenBuffer,
 )
 from max.pipelines.lib import PipelineModelWithKVCache
 from max.pipelines.lib.interfaces import (
@@ -47,9 +50,7 @@ from max.pipelines.lib.interfaces import (
 from max.pipelines.modeling.types import (
     PipelineTask,
     PipelineTokenizer,
-    TextGenerationContext,
     TextGenerationRequest,
-    TokenBuffer,
 )
 from transformers import AutoConfig
 
@@ -84,7 +85,7 @@ class DummyPipelineModel(PipelineModelWithKVCache):  # type: ignore[type-arg]
 
     def prepare_initial_token_inputs(
         self,
-        replica_batches: Sequence[Sequence[TextGenerationContext]],
+        replica_batches: Sequence[Sequence[TextContext]],
         kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None,
         return_n_logits: int = 1,
     ) -> DummyModelInputs:

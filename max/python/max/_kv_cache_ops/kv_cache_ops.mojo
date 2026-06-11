@@ -28,7 +28,7 @@ from nn.attention.gpu.nvidia.sm100.mla_decode_dispatch import (
 
 
 @export
-def PyInit_kv_cache_ops() -> PythonObject:
+def PyInit_kv_cache_ops() abi("C") -> PythonObject:
     """Creates a Python module with KV-cache helper bindings."""
     try:
         var b = PythonModuleBuilder("kv_cache_ops")
@@ -45,7 +45,7 @@ def PyInit_kv_cache_ops() -> PythonObject:
         abort(t"failed to create kv cache op bindings module: {e}")
 
 
-def _make_int_list(values: InlineArray[Int, 4]) -> PythonObject:
+def _make_int_list(values: InlineArray[Int, 3]) -> PythonObject:
     ref cpython = Python().cpython()
     var result_py_list = cpython.PyList_New(len(values))
     for i in range(len(values)):
@@ -64,7 +64,6 @@ def _get_ctx(
     return OpaquePointer[MutExternalOrigin](unsafe_from_address=addr)
 
 
-@export
 def mha_decode_num_partitions(
     batch_size_obj: PythonObject,
     max_cache_valid_length_obj: PythonObject,
@@ -97,7 +96,6 @@ def mha_decode_num_partitions(
     return PythonObject(from_owned=cpython.PyLong_FromSsize_t(num_partitions))
 
 
-@export
 def mla_dispatch_args_scalar(
     batch_size_obj: PythonObject,
     max_cache_valid_length_obj: PythonObject,
@@ -133,9 +131,8 @@ def mla_dispatch_args_scalar(
         is_fp8_kv,
         device_ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
     )
-    var result = InlineArray[Int, 4](uninitialized=True)
+    var result = InlineArray[Int, 3](uninitialized=True)
     result[0] = scalars[0]
     result[1] = scalars[1]
     result[2] = scalars[2]
-    result[3] = scalars[3]
     return _make_int_list(result)

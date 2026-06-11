@@ -35,7 +35,7 @@ from max.graph.buffer_utils import cast_dlpack_to
 from max.graph.weights import Weights, WeightsAdapter
 from max.nn.kv_cache import KVCacheInputs
 from max.nn.transformer import ReturnLogits
-from max.pipelines.core import TextAndVisionContext
+from max.pipelines.context import TextAndVisionContext
 from max.pipelines.lib import (
     KVCacheConfig,
     ModelInputs,
@@ -143,13 +143,6 @@ class Gemma3MultiModalModelV3(
 
         self._stacker = _VisionStacker()
         self.vision_model, self.language_model = self._load_models()
-
-    @classmethod
-    def estimate_activation_memory(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        del pipeline_config, huggingface_config
-        return 15 * 1024 * 1024 * 1024  # 15 GiB
 
     @classmethod
     def get_num_layers(cls, huggingface_config: AutoConfig) -> int:

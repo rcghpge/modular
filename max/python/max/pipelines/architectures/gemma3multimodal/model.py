@@ -31,7 +31,7 @@ from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.nn.comm import Signals
 from max.nn.kv_cache import KVCacheInputs
 from max.nn.transformer import ReturnLogits
-from max.pipelines.core import TextAndVisionContext
+from max.pipelines.context import TextAndVisionContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
@@ -233,17 +233,6 @@ class Gemma3_MultiModalModel(
 
         self._stacker = _VisionStacker()
         self.vision_model, self.language_model = self.load_model(session)
-
-    @classmethod
-    def estimate_activation_memory(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        del pipeline_config, huggingface_config  # Unused.
-
-        # FIXME: We arbitrarily set some memory for activation memory to leave headroom
-        # for vision processing. We should determine this in a more principled way.
-        # Update: Bumped to 15 GiB after #80736 removed MemoryManager fallthrough.
-        return 15 * 1024 * 1024 * 1024  # 15 GiB
 
     @classmethod
     def get_num_layers(cls, huggingface_config: AutoConfig) -> int:
