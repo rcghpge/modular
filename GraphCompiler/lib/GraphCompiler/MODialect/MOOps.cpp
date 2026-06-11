@@ -3545,13 +3545,14 @@ void EPDispatchFP8Op::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
-// EPDispatchNVFP4Op
+// EPDispatchBlockScaledNVOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult EPDispatchNVFP4Op::verify() {
+LogicalResult EPDispatchBlockScaledNVOp::verify() {
   auto inputTokens = getInputTokens();
   if (inputTokens.empty())
-    return emitError("ep.dispatch.nvfp4 requires at least one device");
+    return emitError(
+        "ep.dispatch.block.scaled.nv requires at least one device");
 
   size_t numDevices = inputTokens.size();
 
@@ -3586,7 +3587,7 @@ LogicalResult EPDispatchNVFP4Op::verify() {
   return success();
 }
 
-void EPDispatchNVFP4Op::getEffects(
+void EPDispatchBlockScaledNVOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   MutableOperandRange atomicCounters = getAtomicCountersMutable();
 

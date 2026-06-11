@@ -5694,16 +5694,16 @@ def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
   }];
 }
 
-def MO_EPDispatchNVFP4Op : MO_DistributedOp<"distributed.ep.dispatch.nvfp4", [
+def MO_EPDispatchBlockScaledNVOp : MO_DistributedOp<"distributed.ep.dispatch.block.scaled.nv", [
   MO_MultiDeviceFrom<"inputTokens">,
 ]> {
-  let summary = "Multi-device Expert Parallelism NVFP4 dispatch.";
+  let summary = "Multi-device Expert Parallelism NVFP4/MXFP4/MXFP8 dispatch.";
   let description = [{
     Dispatches input tokens to expert devices across N GPUs using the Expert
-    Parallelism protocol with NVFP4 quantized output format. Each device
-    routes its tokens based on top-k expert IDs, quantizes them to NVFP4,
-    and sends them to the appropriate peer via shared-memory or NVSHMEM
-    pointers.
+    Parallelism protocol with NVIDIA block-scaled quantized output format.
+    Each device routes its tokens based on top-k expert IDs, quantizes them to
+    NVFP4, MXFP4 or MXFP8, and sends them to the appropriate peer via
+    shared-memory or NVSHMEM pointers.
 
     All variadic operands and results have the same size (one per device).
     The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer

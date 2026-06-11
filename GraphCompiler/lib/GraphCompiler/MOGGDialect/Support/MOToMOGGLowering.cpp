@@ -166,7 +166,7 @@ MOGGKernelBuilder::MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint,
       isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
       isa<MO::DistributedBroadcastOp>(op) ||
       isa<MO::DistributedScatterOp>(op) || isa<MO::EPDispatchOp>(op) ||
-      isa<MO::EPDispatchFP8Op>(op) || isa<MO::EPDispatchNVFP4Op>(op) ||
+      isa<MO::EPDispatchFP8Op>(op) || isa<MO::EPDispatchBlockScaledNVOp>(op) ||
       isa<MO::EPDispatchMXFP4Op>(op) || isa<MO::EPCombineOp>(op);
   isAsync = !isSyncRequired;
 
