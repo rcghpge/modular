@@ -26,6 +26,7 @@
 #include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
 #include "Support/ML/CommonAttributes.h"
+#include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
@@ -109,8 +110,10 @@ struct IndexLowering {
 class MOGraphLowering {
 public:
   MOGraphLowering(MO::GraphOp graph, llvm::StringRef compiledFrameworkLabel,
-                  size_t minimumCpuAlignment)
-      : loweringState(graph, compiledFrameworkLabel, minimumCpuAlignment) {}
+                  size_t minimumCpuAlignment,
+                  mlir::SymbolTable &moduleSymbolTable)
+      : loweringState(graph, compiledFrameworkLabel, minimumCpuAlignment,
+                      moduleSymbolTable) {}
 
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
@@ -398,6 +401,17 @@ LogicalResult MOGraphLowering::createModelOp() {
       /*extraAttrs=*/extraAttrs);
 
   loweringState.setModelOp(modelOp);
+
+  // Maintain the cached module symbol table: the new `mgp.model` supersedes the
+  // `mo.graph` under the same symbol name. Drop the graph's now-stale entry
+  // before registering the model so the name stays free; the graph itself stays
+  // in the IR (its body is lowered into the model below) until it is erased at
+  // the end of `run()`. Without this, the cached `SymbolTableAnalysis` -- never
+  // invalidated by the pass manager -- would keep a dangling entry for the
+  // erased graph and omit the model.
+  mlir::SymbolTable &moduleSymbolTable = loweringState.getModuleSymbolTable();
+  moduleSymbolTable.remove(graph);
+  moduleSymbolTable.insert(modelOp);
 
   // Initialize the init state.
   loweringState.getInitOpBuilder().setInsertionPointToEnd(
@@ -2195,6 +2209,15 @@ void MOGGToMGPPass::getDependentDialects(DialectRegistry &registry) const {
 void MOGGToMGPPass::runOnOperation() {
   ModuleOp theModule = getOperation();
 
+  // Kernel stubs are created at module scope during lowering. Register them
+  // through the module's `SymbolTableAnalysis` so the cached table stays
+  // consistent for later passes -- the analysis is never invalidated by the
+  // pass manager, so symbols added via a raw builder would otherwise be
+  // invisible to consumers that read the cached table. We keep it up to date
+  // here, hence we can mark it preserved.
+  SymbolTable &moduleSymbolTable =
+      getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
+
   std::deque<MO::GraphOp> worklist;
 
   DenseSet<StringAttr> completedGraphs;
@@ -2241,7 +2264,8 @@ void MOGGToMGPPass::runOnOperation() {
     // All dependencies are processed, so we can convert this graph
     // Convert each mo.graph into a mgp.model using MOGraphLowering
     if (failed(MOGraphLowering(graph, compiledFrameworkLabel.getValue(),
-                               minimumCpuAlignment.getValue())
+                               minimumCpuAlignment.getValue(),
+                               moduleSymbolTable)
                    .run()))
       return signalPassFailure();
 

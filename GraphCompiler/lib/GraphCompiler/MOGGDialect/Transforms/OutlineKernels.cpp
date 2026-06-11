@@ -9,6 +9,8 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "mlir/Analysis/SymbolTableAnalysis.h"
+#include "mlir/IR/SymbolTable.h"
 
 using namespace M;
 
@@ -31,6 +33,14 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
     OpBuilder builder(moduleOp->getContext());
     builder.setInsertionPointToStart(moduleOp.getBody(0));
     auto ctx = moduleOp->getContext();
+
+    // Register newly outlined kernel stubs through the module's cached
+    // `SymbolTableAnalysis` so it stays consistent for any downstream consumer.
+    // The analysis is never invalidated by the pass manager, so a stub added
+    // only via the builder would be invisible to passes that read the cached
+    // table. We keep it up to date here, hence we can mark it preserved.
+    SymbolTable &symtab =
+        getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
     uint64_t stubNumber = 0;
     moduleOp.walk<mlir::WalkOrder::PreOrder>(
@@ -64,6 +74,11 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
           stubOp.getBody().takeBody(kernelOp.getBody());
           DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
           stubOp.setDeviceRef(device);
+
+          // Register the stub in the cached symbol table. `create` already
+          // linked it into the module, so this only updates the table's name
+          // map; reuse the returned name for the call site in case of uniquing.
+          stubName = symtab.insert(stubOp);
 
           builder.setInsertionPoint(kernelOp);
           auto callOp = MOGG::ExecuteCompiledOp::create(

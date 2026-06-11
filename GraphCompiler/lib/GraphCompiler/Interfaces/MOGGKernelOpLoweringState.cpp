@@ -214,7 +214,7 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
 
   // Create the stub outside of the model op to ensure it is properly registered
   // into the SymbolTable of the ModuleOp.
-  auto insertionPoint = builder.saveInsertionPoint();
+  OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
 
   // First, we create a () -> () function type because we don't yet set the
@@ -243,7 +243,14 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
 
   kernelStub.setDeviceRef(device);
 
-  builder.restoreInsertionPoint(insertionPoint);
+  // Register the stub through the module's symbol table so the cached
+  // `SymbolTableAnalysis` stays consistent -- it is never invalidated by the
+  // pass manager, so a stub added only via the builder would be invisible to
+  // downstream passes that read the cached table. `create` above linked the
+  // stub at module-block start; re-insert it through the table to update the
+  // table's name map (the name is unique, so it is preserved).
+  mlir::SymbolTable &moduleSymbolTable = loweringState.getModuleSymbolTable();
+  stubName = moduleSymbolTable.insert(kernelStub);
 
   return KernelStubInfo{kernelStub, stubName, numKernelInputs,
                         outputPlaceholdersOp, scratchPlaceholdersOp};

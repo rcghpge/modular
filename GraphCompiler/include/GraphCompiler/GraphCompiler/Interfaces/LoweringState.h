@@ -25,6 +25,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectInterface.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
 
@@ -42,9 +43,11 @@ class MOGraphLoweringState {
 public:
   MOGraphLoweringState(M::MO::GraphOp graph,
                        llvm::StringRef compiledFrameworkLabel,
-                       size_t minimumCpuAlignment)
+                       size_t minimumCpuAlignment,
+                       mlir::SymbolTable &moduleSymbolTable)
       : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
-        init(graph.getContext()), execute(graph.getContext()) {
+        init(graph.getContext()), execute(graph.getContext()),
+        moduleSymbolTable(moduleSymbolTable) {
     builderContext.hostDevice = M::getHostDevice(graph);
 
     // Add converters for MO native types.
@@ -208,6 +211,13 @@ public:
 
   /// Return the top-level mgp.model operation.
   MGP::ModelOp getModelOp() { return common.modelOp; }
+
+  /// Return the cached module-level symbol table that newly created
+  /// module-scope symbols (e.g. kernel stubs) must be registered into. Keeping
+  /// this up to date matters because `SymbolTableAnalysis` is never invalidated
+  /// by the pass manager, so symbols created during lowering must be inserted
+  /// through it to remain visible to downstream passes.
+  mlir::SymbolTable &getModuleSymbolTable() { return moduleSymbolTable; }
 
   /// Set the top-level mgp.model operation.
   void setModelOp(MGP::ModelOp modelOp) { common.modelOp = modelOp; }
@@ -505,6 +515,11 @@ private:
   CommonState common;
   InitState init;
   ExecuteState execute;
+
+  /// Cached module-level symbol table (owned by the pass's
+  /// `SymbolTableAnalysis`) that newly created module-scope symbols are
+  /// registered into.
+  mlir::SymbolTable &moduleSymbolTable;
 
   // Arbitrary client state.
   std::unique_ptr<ClientState> clientState;
