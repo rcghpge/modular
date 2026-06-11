@@ -39,6 +39,14 @@ public:
     void add(Desc *desc);
     Desc *remove(void *ptr);
 
+    // Rewrite `allocatedBy_` on every live descriptor whose current value is
+    // `from`, replacing it with `to`. Used when a `MemoryManagerFreeList` is
+    // about to be destroyed to redirect descriptors it allocated but does not
+    // yet hold (still in use elsewhere) to a longer-lived parent freelist, so
+    // a later `free()` does not dispatch through a dangling pointer.
+    void redirectAllocatedBy(MemoryManagerFreeList *from,
+                             MemoryManagerFreeList *to);
+
   private:
     static uint32_t hash(void *ptr);
 
@@ -213,9 +221,6 @@ public:
                         bool disableFlush = false, std::string label = "");
   ~MemoryManagerFreeList();
 
-  // Release blocks owned by this free list to the parent if available.
-  void flushToParent();
-
   // Allocate and free memory by using the `MemoryManager`. If the allocation
   // cannot be serviced by the `MemoryManager` due to allocation size or cache
   // capacity, then the allocation request gets transparently forwarded to the
@@ -249,6 +254,12 @@ private:
   static constexpr int kNumFreeBufferLists = 2;
   static_assert(llvm::isPowerOf2_64(kNumFreeBufferLists),
                 "Must be a non-zero power of two.");
+
+  // Release cached free buffers to the parent freelist and reattribute any
+  // still-in-use descriptors allocated through this freelist to the parent,
+  // so a later `free()` does not dispatch through `desc->allocatedBy_` after
+  // this freelist is destroyed. Called only from the destructor.
+  void flushToParent();
 
   void selfCheck() const;
   bool contains(MemoryManager::Desc *desc) const;

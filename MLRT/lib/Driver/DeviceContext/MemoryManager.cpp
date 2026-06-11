@@ -201,6 +201,16 @@ MemoryManager::Desc *MemoryManager::DescMap::remove(void *ptr) {
   return result;
 }
 
+void MemoryManager::DescMap::redirectAllocatedBy(MemoryManagerFreeList *from,
+                                                 MemoryManagerFreeList *to) {
+  for (size_t i = 0; i < bucketCount_; ++i) {
+    for (Desc *desc = buckets_[i]; desc != nullptr; desc = desc->nextMap_) {
+      if (desc->allocatedBy_ == from)
+        desc->allocatedBy_ = to;
+    }
+  }
+}
+
 MemoryManager::Chunk::Chunk(MemoryManager &cache, void *base, size_t size)
     : cache_(cache), base_(base), size_(size) {
   descs_ = cache.popDesc();
@@ -481,6 +491,16 @@ void MemoryManagerFreeList::flushToParent() {
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     flushFreeBuffersToParent(i);
   }
+  // Reassign the parent freelist as the allocator-of-record for any descriptor
+  // still in use that was originally allocated through this freelist. Without
+  // this, `desc->allocatedBy_` becomes a dangling pointer once this freelist
+  // is destroyed: a later `MemoryManagerFreeList::free` call on a sibling
+  // freelist dispatches to `desc->allocatedBy_->freeAllocatedDesc(...)` and
+  // dereferences freed memory. This is reachable today when a `DeviceBuffer`
+  // is reassigned across `DeviceContext`s and its allocating context is torn
+  // down before the buffer is freed (DRIV-193).
+  if (parent_ != nullptr)
+    memoryManager_.allocatedMap_.redirectAllocatedBy(this, parent_);
 }
 
 void MemoryManagerFreeList::flushFreeBuffersToParent(int id) {

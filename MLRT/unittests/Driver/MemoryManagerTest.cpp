@@ -981,6 +981,37 @@ TEST_F(MemoryManagerTest, FreeListHierarchy) {
   // This exercises the hierarchical flush behavior
 }
 
+// DRIV-193: when a child freelist is destroyed while one of its descriptors is
+// still in use, the descriptor's `allocatedBy_` must be redirected to the
+// parent. Without the redirect, freeing the descriptor through any sibling
+// freelist dereferences the destroyed child via `desc->allocatedBy_`
+// (intentional cross-freelist dispatch documented in
+// `MemoryManagerFreeList::free`).
+TEST_F(MemoryManagerTest, FreeListTeardownRedirectsAllocatedBy) {
+  CpuDeviceRef device = createTestDevice();
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+  MemoryManager &memMgr = device->memoryManager();
+  MemoryManagerFreeList &rootFreeList = *memMgr.freeList();
+
+  void *ptr = nullptr;
+  {
+    MemoryManagerFreeList childFreeList(ctx.getPointer(), memMgr, &rootFreeList,
+                                        /*disableFlush=*/false,
+                                        /*label=*/"test_child");
+    ASSIGN_NO_ERR(void *, allocated,
+                  childFreeList.allocate(256, Device::AllocMode::SYNC));
+    EXPECT_NE(allocated, nullptr);
+    ptr = allocated;
+    // `childFreeList` is destroyed here while `ptr` is still in use; the
+    // redirect in `~MemoryManagerFreeList` reattributes the descriptor's
+    // `allocatedBy_` to `rootFreeList`.
+  }
+
+  // Freeing through the (still-live) parent must dispatch through the
+  // redirected `allocatedBy_` without touching the destroyed child.
+  EXPECT_NO_ERR(rootFreeList.free(ptr));
+}
+
 TEST_F(MemoryManagerTest, MemoryPressure) {
   CpuDeviceRef device = createTestDevice();
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
