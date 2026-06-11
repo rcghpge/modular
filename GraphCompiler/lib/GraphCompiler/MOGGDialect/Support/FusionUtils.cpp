@@ -80,9 +80,10 @@ static MO::ConstantOp tryGetConstantOp(Value val) {
 
 /// Check whether the `index`-th operand of `kernel` is a fusable constant op.
 static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
-  // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-  // Don't fuse constant unless on the host. TEMPORARY until constant
-  // lowering fixed.
+  // Don't fuse constants into non-host (device) kernels: device constant
+  // lowering is still incorrect (removing this guard crashes real GPU kernels
+  // with illegal memory accesses). See
+  // https://linear.app/modularml/issue/GEX-3839.
   if (!MO::isOnHost(kernel))
     return false;
 

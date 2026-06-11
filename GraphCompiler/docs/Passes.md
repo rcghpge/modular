@@ -1966,7 +1966,7 @@ small constant (all supported `mogg` types and small dense arrays) inputs into
 the kernel body (cloning `mo.constant`). The fusion only works for host kernels
 
 - an artifact of nvptx bringup (see
-<https://github.com/modularml/modular/issues/22959>). Unfused constants go
+<https://linear.app/modularml/issue/GEX-3839>). Unfused constants go
 through EICM and land into init if possible (TODO: check). Fused ones are added
 to the constant resources attribute during kernel-stub lowering and are
 materialized as `MGP::BufferConstantOp`
