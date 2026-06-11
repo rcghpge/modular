@@ -75,18 +75,28 @@ struct IndexLowering {
     return opLoweringState.create<mlir::index::DivSOp>(indexTy, a, b);
   }
 
+  // `pop.select` takes a `!kgen.scalar<bool>` condition, but `index.cmp`
+  // produces an `i1`. Convert the builtin `i1` to `!kgen.scalar<bool>`.
+  auto asScalarBool(Value i1Cond) -> Value {
+    auto boolTy = KGEN::SIMDType::get(opLoweringState.builder.getContext(), 1,
+                                      KGEN::KGENDType::kBool);
+    return opLoweringState.create<KGEN::POP::CastFromBuiltinOp>(boolTy, i1Cond);
+  }
+
   auto ifPositive(Value check, Value yes, Value no) -> Value {
     auto indexTy = opLoweringState.builder.getIndexType();
     auto cond = opLoweringState.create<mlir::index::CmpOp>(
         mlir::index::IndexCmpPredicate::SLT, check, constant(0));
-    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, no, yes);
+    return opLoweringState.create<KGEN::POP::SelectOp>(
+        indexTy, asScalarBool(cond), no, yes);
   }
 
   auto ifZero(Value check, Value yes, Value no) -> Value {
     auto indexTy = opLoweringState.builder.getIndexType();
     auto cond = opLoweringState.create<mlir::index::CmpOp>(
         mlir::index::IndexCmpPredicate::EQ, check, constant(0));
-    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, yes, no);
+    return opLoweringState.create<KGEN::POP::SelectOp>(
+        indexTy, asScalarBool(cond), yes, no);
   }
 };
 

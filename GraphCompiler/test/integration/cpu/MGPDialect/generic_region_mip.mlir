@@ -223,7 +223,7 @@ mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch0 = grt.chain.create ()
   %zero = index.constant 0
   %one = index.constant 1
-  %cond = index.bool.constant true
+  %cond = kgen.param.constant: scalar<bool> = <true>
   %res1 = pop.select %cond, %one, %zero : index
   %fact = index.constant 1
   %cond1 = index.cmp eq(%res1, %fact)

@@ -238,7 +238,7 @@ mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch0 = grt.chain.create ()
   %zero = index.constant 0
   %one = index.constant 1
-  %cond = index.bool.constant true
+  %cond = kgen.param.constant: scalar<bool> = <true>
   %res1 = pop.select %cond, %one, %zero : index
   %ch1 = "test.sink"(%res1) : (index) -> !mef.chain
   mef.output %ch1: !mef.chain
