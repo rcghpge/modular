@@ -1257,6 +1257,26 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) {
   return success();
 }
 
+ErrorOrSuccess HIPDeviceContext::registerHostMemory(void *ptr,
+                                                    size_t byteSize) {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::registerHostMemory",
+                       TRACY_COLOR_PURPLE);
+  HIP_WITH_CTX_ERR(*this);
+  // hipHostRegisterPortable (0x1): the registration is visible from every
+  // device in the process, matching the hipHostMalloc host-alloc path.
+  constexpr unsigned int kFlags = 0x1;
+  HIP_CHECK_ERR(driver_.hipHostRegister(ptr, byteSize, kFlags));
+  return success();
+}
+
+ErrorOrSuccess HIPDeviceContext::unregisterHostMemory(void *ptr) {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::unregisterHostMemory",
+                       TRACY_COLOR_PURPLE);
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(driver_.hipHostUnregister(ptr));
+  return success();
+}
+
 void *HIPDeviceContext::driverContext() const {
   return hipDeviceToPtr(hipDevice());
 }

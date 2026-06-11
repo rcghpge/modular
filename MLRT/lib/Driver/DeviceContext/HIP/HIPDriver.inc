@@ -74,6 +74,8 @@ HIP_FUNC(hipGraphDebugDotPrint, Result, hipGraph_t, const char *, unsigned int)
 
 HIP_FUNC(hipHostMalloc, Result, void **, size_t, unsigned int)
 HIP_FUNC(hipHostFree, Result, void *)
+HIP_FUNC(hipHostRegister, Result, void *, size_t, unsigned int)
+HIP_FUNC(hipHostUnregister, Result, void *)
 HIP_FUNC(hipMallocAsync, Result, hipDeviceptr_t *, size_t, hipStream_t)
 HIP_FUNC(hipFreeAsync, Result, hipDeviceptr_t, hipStream_t)
 HIP_FUNC(hipMalloc, Result, hipDeviceptr_t *, size_t)
