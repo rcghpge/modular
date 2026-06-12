@@ -220,9 +220,10 @@ struct Foo:
 
         foreach[func](z, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("imposter_add")
+def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time
@@ -260,9 +261,10 @@ struct FooWithStructParam[flip: Bool]:
 
         foreach[func](z, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("imposter_add_struct_param")
+def imposter_add_struct_param_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 def _matmul[
@@ -309,14 +311,15 @@ struct ImposterMatmul:
     ) raises:
         _matmul(c, a, b)
 
-    @staticmethod
-    def shape(
-        a: InputTensor,
-        b: InputTensor,
-    ) -> IndexList[2]:
-        var shape = a.shape()
-        shape[1] = b.dim_size[1]()
-        return rebind[IndexList[2]](shape)
+
+@compiler.register_shape_function("imposter_matmul")
+def imposter_matmul_shape(
+    a: InputTensor,
+    b: InputTensor,
+) -> IndexList[2]:
+    var shape = a.shape()
+    shape[1] = b.dim_size[1]()
+    return rebind[IndexList[2]](shape)
 
 
 @compiler.register("print_tensor_spec")
@@ -337,9 +340,10 @@ struct PrintTensorSpecOp:
 
         foreach[func](outp, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("print_tensor_spec")
+def print_tensor_spec_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 @compiler.register("print_tensor")
@@ -386,9 +390,10 @@ struct PrintTensorSpecViewOp:
 
         foreach[func](outp, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("print_tensor_spec_view")
+def print_tensor_spec_view_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 @compiler.register("print_tensor_spec_fused")
@@ -413,9 +418,10 @@ struct PrintTensorSpecFusedOp:
 
         foreach[func](outp, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("print_tensor_spec_fused")
+def print_tensor_spec_fused_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 @compiler.register("print_output_shape_strides_fused")
@@ -443,9 +449,10 @@ struct PrintOutputShapeStridesFusedOp:
 
         foreach[func](output, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("print_output_shape_strides_fused")
+def print_output_shape_strides_fused_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 @compiler.register("imposter_add_elementwise")
@@ -548,14 +555,15 @@ struct MatmulFuseOut:
 
         _matmul[elementwise_lambda_fn=out_func](c, a, b)
 
-    @staticmethod
-    def shape(
-        a: InputTensor,
-        b: InputTensor,
-    ) -> IndexList[2]:
-        var shape = a.shape()
-        shape[1] = b.dim_size[1]()
-        return rebind[IndexList[2]](shape)
+
+@compiler.register_shape_function("matmul_fuse_out")
+def matmul_fuse_out_shape(
+    a: InputTensor,
+    b: InputTensor,
+) -> IndexList[2]:
+    var shape = a.shape()
+    shape[1] = b.dim_size[1]()
+    return rebind[IndexList[2]](shape)
 
 
 # Simple, expects variadics to have the same size, and simply copies the first
@@ -723,9 +731,10 @@ struct ElementwisePrintShape:
 
         foreach[func](z, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) -> IndexList[x.rank]:
-        return x.shape()
+
+@compiler.register_shape_function("print_shape_fused")
+def print_shape_fused_shape(x: InputTensor) -> IndexList[x.rank]:
+    return x.shape()
 
 
 # Raises if input shape is 10
@@ -745,13 +754,14 @@ struct CustomOpThatRaises:
 
         foreach[func](z, ctx)
 
-    @staticmethod
-    def shape(x: InputTensor) raises -> IndexList[x.rank]:
-        print("Hello")
-        var out_shape = x.shape()
-        if out_shape[0] == 20:
-            raise ("data.get_shape()[0] == 20")
-        return out_shape
+
+@compiler.register_shape_function("custom_op_that_raises")
+def custom_op_that_raises_shape(x: InputTensor) raises -> IndexList[x.rank]:
+    print("Hello")
+    var out_shape = x.shape()
+    if out_shape[0] == 20:
+        raise ("data.get_shape()[0] == 20")
+    return out_shape
 
 
 @compiler.register("mo.test.failing_constraint")
@@ -1122,12 +1132,12 @@ struct CustomOpWithCustomParameterShapeFunc:
     ](y: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         raise "This should not run!"
 
-    @always_inline
-    @staticmethod
-    def shape[
-        test_flag: Int
-    ](input_tensor: InputTensor,) -> IndexList[input_tensor.rank]:
-        return input_tensor.shape()
+
+@compiler.register_shape_function("custom_op_with_custom_parameter_shape_func")
+def custom_op_with_custom_parameter_shape_func_shape[
+    test_flag: Int
+](input_tensor: InputTensor,) -> IndexList[input_tensor.rank]:
+    return input_tensor.shape()
 
 
 @compiler.register("custom_op_with_static_string_params")
@@ -1293,9 +1303,12 @@ struct ParameterizedOpaqueType:
         output.store(IndexList[1](0), x.x)
         output.store(IndexList[1](P0), x.y)
 
-    @staticmethod
-    def shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
-        return IndexList[1](x.S0 + x.S1)
+
+@compiler.register_shape_function("kernel_with_parameterized_opaque")
+def kernel_with_parameterized_opaque_shape[
+    P0: Int
+](x: SIMDPair[P0, _]) -> IndexList[1]:
+    return IndexList[1](x.S0 + x.S1)
 
 
 @compiler.register("kernel_with_default_parameter")
@@ -1346,11 +1359,12 @@ struct ShapeFuncWithMutable:
         x[0, 0] = 2.0
         output[0, 0] = 1.0
 
-    @staticmethod
-    def shape(
-        x: InputTensor[rank=2, ...],
-    ) -> IndexList[2]:
-        return x.shape()
+
+@compiler.register_shape_function("shape_func_with_mutable")
+def shape_func_with_mutable_shape(
+    x: InputTensor[rank=2, ...],
+) -> IndexList[2]:
+    return x.shape()
 
 
 @compiler.register("elemwise_add_with_param")
