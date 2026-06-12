@@ -93,8 +93,6 @@ CUDA_FUNC(cuMemAllocHost_v2, Result, void **, size_t)
 CUDA_FUNC(cuMemHostAlloc, Result, void **, size_t, unsigned int)
 CUDA_FUNC(cuMemHostGetDevicePointer_v2, Result, CUdeviceptr *, void *,
           unsigned int)
-CUDA_FUNC(cuMemHostRegister_v2, Result, void *, size_t, unsigned int)
-CUDA_FUNC(cuMemHostUnregister, Result, void *)
 CUDA_FUNC(cuMemFreeHost, Result, void *)
 CUDA_FUNC(cuMemAllocAsync, Result, CUdeviceptr *, size_t, CUstream)
 CUDA_FUNC(cuMemFreeAsync, Result, CUdeviceptr, CUstream)

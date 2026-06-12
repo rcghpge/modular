@@ -1587,26 +1587,6 @@ ErrorOrSuccess CUDADeviceContext::freeCompletionFlag(void *hostPtr) {
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::registerHostMemory(void *ptr,
-                                                     size_t byteSize) {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::registerHostMemory",
-                       TRACY_COLOR_PURPLE);
-  CUDA_WITH_CTX_ERR(*this);
-  // CU_MEMHOSTREGISTER_PORTABLE (0x1): the registration is visible from every
-  // context in the process
-  constexpr unsigned int kFlags = 0x1;
-  CUDA_CHECK_ERR(driver_.cuMemHostRegister_v2(ptr, byteSize, kFlags));
-  return success();
-}
-
-ErrorOrSuccess CUDADeviceContext::unregisterHostMemory(void *ptr) {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::unregisterHostMemory",
-                       TRACY_COLOR_PURPLE);
-  CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.cuMemHostUnregister(ptr));
-  return success();
-}
-
 ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 

@@ -852,28 +852,6 @@ public:
     return Error("freeCompletionFlag is not supported on this device");
   }
 
-  /// Page-locks (pins) an existing host range of `byteSize` bytes at `ptr` so
-  /// it is DMA-capable for transfers against this device, registering it with
-  /// the underlying driver (CUDA: `cuMemHostRegister`; HIP: `hipHostRegister`).
-  /// Unlike `createHostBuffer`, the caller owns the host allocation: the range
-  /// must remain mapped and stay registered until `unregisterHostMemory` is
-  /// called on the same base pointer.
-  ///
-  /// Only implemented for GPU backends with a host-register primitive (CUDA,
-  /// HIP). Other backends return an error.
-  virtual ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) {
-    return Error("registerHostMemory is not supported on this device");
-  }
-
-  /// Unregisters a host range previously pinned by `registerHostMemory`.
-  /// `ptr` must be a base pointer that was passed to `registerHostMemory`.
-  ///
-  /// Only implemented for GPU backends with a host-register primitive (CUDA,
-  /// HIP). Other backends return an error.
-  virtual ErrorOrSuccess unregisterHostMemory(void *ptr) {
-    return Error("unregisterHostMemory is not supported on this device");
-  }
-
   // TODO: Remove the V1 compatibility.
   DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize, bool owning);
   DeviceBufferRef createHostBufferOwning(void *ptr, size_t byteSize,

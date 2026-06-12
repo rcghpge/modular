@@ -332,9 +332,6 @@ public:
 
   bool isGraphCapturing() const override;
 
-  ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) override;
-  ErrorOrSuccess unregisterHostMemory(void *ptr) override;
-
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
   hipStream_t hipStream() const;

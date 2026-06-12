@@ -437,9 +437,6 @@ public:
   ErrorOr<CompletionFlagRef> allocateCompletionFlag() override;
   ErrorOrSuccess freeCompletionFlag(void *hostPtr) override;
 
-  ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) override;
-  ErrorOrSuccess unregisterHostMemory(void *ptr) override;
-
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;
   CUstream cudaStream() const;
