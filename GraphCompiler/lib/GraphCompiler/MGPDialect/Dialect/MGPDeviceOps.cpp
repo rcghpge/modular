@@ -895,3 +895,23 @@ LogicalResult SyncOp::emitMojo(MOGG::EmitMojoState &state) {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// DeviceWaitOp
+//===----------------------------------------------------------------------===//
+
+bool DeviceWaitOp::isThrows() { return true; }
+
+LogicalResult DeviceWaitOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
+
+  // Drops the in-chain operand; passes (theContext, waitingDeviceContext,
+  // signalingDeviceContext) to the primitive.
+  state.builder.call(function, {},
+                     state.getMojoValuesFor(getOperands().drop_front()));
+
+  return success();
+}

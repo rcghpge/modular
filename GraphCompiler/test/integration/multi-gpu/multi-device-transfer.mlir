@@ -31,7 +31,9 @@ mo.graph @add_dev1(%a : !mo.tensor<[4], f32>, %b : !mo.tensor<[4], f32>) -> !mo.
 // CHECK-IR: [[H2D_CHAIN:%[0-9]+]] = mgp.buffer.host_to_device
 // CHECK-IR: [[SYNC_CHAIN:%[0-9]+]] = mgp.sync({{.*}}[[H2D_CHAIN]]
 // CHECK-IR: [[CH_CREATE:%[0-9]+]] = grt.chain.create {{.*}}[[H2D_CHAIN]]
-// CHECK-IR: [[D2D_CHAIN:%[0-9]+]] = mgp.buffer.device_to_device {{.*}}[[CH_CREATE]]{{.*}}: !mgp.buffer<<"gpu", 0>> -> !mgp.buffer<<"gpu", 1>>
+// CHECK-IR: [[BEFORE_WAIT:%[0-9]+]] = mgp.device_wait({{.*}}[[CH_CREATE]]{{.*}}) {bDevice = #M.device_ref<"gpu", 1>}
+// CHECK-IR: [[D2D_CHAIN:%[0-9]+]] = mgp.buffer.device_to_device {{.*}}[[BEFORE_WAIT]]{{.*}}: !mgp.buffer<<"gpu", 0>> -> !mgp.buffer<<"gpu", 1>>
+// CHECK-IR: mgp.device_wait({{.*}}[[D2D_CHAIN]]{{.*}}) {bDevice = #M.device_ref<"gpu", 0>}
 mo.graph @transfer_dev01(%a : !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %ch0 = mo.chain.create()
   %da1, %ch1 = rmo.mo.transfer[%ch0] %a: !mo.tensor<[4], f32> to <"gpu", 0>
@@ -45,7 +47,9 @@ mo.graph @transfer_dev01(%a : !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-IR-LABEL: mgp.model @add_dev01
 // CHECK-IR: [[CH_KERNEL:%[0-9]+]] = mogg.generic.compiled.region
 // CHECK-IR: [[CH_CREATE:%[0-9]+]] = grt.chain.create {{.*}}[[CH_KERNEL]]
-// CHECK-IR: [[D2D_CHAIN:%[0-9]+]] = mgp.buffer.device_to_device {{.*}}[[CH_CREATE]]{{.*}}: !mgp.buffer<<"gpu", 0>> -> !mgp.buffer<<"gpu", 1>>
+// CHECK-IR: [[BEFORE_WAIT:%[0-9]+]] = mgp.device_wait({{.*}}[[CH_CREATE]]{{.*}}) {bDevice = #M.device_ref<"gpu", 1>}
+// CHECK-IR: [[D2D_CHAIN:%[0-9]+]] = mgp.buffer.device_to_device {{.*}}[[BEFORE_WAIT]]{{.*}}: !mgp.buffer<<"gpu", 0>> -> !mgp.buffer<<"gpu", 1>>
+// CHECK-IR: mgp.device_wait({{.*}}[[D2D_CHAIN]]{{.*}}) {bDevice = #M.device_ref<"gpu", 0>}
 mo.graph @add_dev01(%a : !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %ch0 = mo.chain.create()
   %da0, %ch1 = rmo.mo.transfer[%ch0] %a: !mo.tensor<[4], f32> to <"gpu", 0>

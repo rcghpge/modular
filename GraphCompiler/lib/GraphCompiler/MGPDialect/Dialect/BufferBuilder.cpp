@@ -231,15 +231,53 @@ Value MGPBufferBuilder::bufferTransferDevice(
     Value inChain, Value srcBuffer, BufferBuilder *dstBufferBuilder,
     Value dstBuffer, Value srcDeviceContext, Value dstDeviceContext) {
   auto dstMGPBufferBuilder = static_cast<MGPBufferBuilder *>(dstBufferBuilder);
-  return BufferDeviceToDeviceOp::create(
-      builder, loc,
-      /*inChain=*/inChain,
-      /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
-      /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-      /*deviceContext*/ cast<TypedValue<DeviceContextType>>(srcDeviceContext),
-      /*deviceContext*/ cast<TypedValue<DeviceContextType>>(dstDeviceContext),
-      /*cSrcDevice=*/device,
-      /*dDstDevice=*/dstMGPBufferBuilder->device);
+  DeviceRefAttr srcDevice = device;
+  DeviceRefAttr dstDevice = dstMGPBufferBuilder->device;
+
+  // When the source and destination live on different (virtual) devices they
+  // use different streams, so the copy (which runs on the destination stream)
+  // must be explicitly synchronized with the source stream. This duplex
+  // synchronization used to be hidden inside the driver's memCopyDtoD; we now
+  // make it explicit in the graph via mgp.device_wait ops. Same-device
+  // transfers run on a single stream and need no cross-stream sync.
+  bool needsCrossStreamSync = srcDevice != dstDevice;
+
+  Value copyInChain = inChain;
+  if (needsCrossStreamSync) {
+    // Before the copy: the destination stream waits for the source stream so
+    // the source data is ready before the copy reads it.
+    copyInChain =
+        MGP::DeviceWaitOp::create(builder, loc, /*inChain=*/inChain, context,
+                                  /*waitingDeviceContext=*/dstDeviceContext,
+                                  /*signalingDeviceContext=*/srcDeviceContext,
+                                  /*bDevice=*/dstDevice)
+            .getResult();
+  }
+
+  Value copyChain =
+      BufferDeviceToDeviceOp::create(
+          builder, loc,
+          /*inChain=*/copyInChain,
+          /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
+          /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+          /*deviceContext*/
+          cast<TypedValue<DeviceContextType>>(srcDeviceContext),
+          /*deviceContext*/
+          cast<TypedValue<DeviceContextType>>(dstDeviceContext),
+          /*cSrcDevice=*/srcDevice,
+          /*dDstDevice=*/dstDevice)
+          .getResult();
+
+  if (!needsCrossStreamSync)
+    return copyChain;
+
+  // After the copy: the source stream waits for the destination stream so the
+  // source buffer is not overwritten or freed until the copy completes.
+  return MGP::DeviceWaitOp::create(builder, loc, /*inChain=*/copyChain, context,
+                                   /*waitingDeviceContext=*/srcDeviceContext,
+                                   /*signalingDeviceContext=*/dstDeviceContext,
+                                   /*bDevice=*/srcDevice)
+      .getResult();
 }
 
 Value MGPBufferBuilder::bufferGetSize(OpBuilder &builder, Location loc,

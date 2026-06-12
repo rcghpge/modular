@@ -2065,4 +2065,47 @@ def MGP_SyncOp : MGP_DeviceOp<"sync", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// DeviceWaitOp
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceWaitOp : MGP_DeviceOp<"device_wait", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  Pure,
+]> {
+  let summary = "Enqueues a one-directional cross-stream wait";
+  let description = [{
+    Makes the waiting device context's stream wait for the work already
+    enqueued on the signaling device context's stream. It records an event on
+    the signaling stream and enqueues a wait for that event on the waiting
+    stream.
+
+    Unlike `mgp.sync`, this does not block the host; it only enqueues a
+    cross-stream dependency. It is used to make the synchronization required by
+    cross-device buffer transfers explicit in the graph instead of hidden
+    inside the driver's device-to-device copy implementation.
+
+    The `bDevice` attribute is the waiting device (the device whose stream
+    receives the wait). It must be an accelerator for the op to be meaningful
+    and is used for the op's device dispatch.
+  }];
+
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_ContextType:$theContext,
+    MGP_DeviceContextType:$waitingDeviceContext,
+    MGP_DeviceContextType:$signalingDeviceContext,
+    M_DeviceRefAttr:$bDevice
+  );
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+
+  let extraClassDefinition = [{
+    M::DeviceRefAttr DeviceWaitOp::getDevice() { return getBDevice(); }
+  }];
+}
+
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD
