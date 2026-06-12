@@ -573,6 +573,13 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
             buildMoggPipeline(p, moggOpts);
             if (opts.nanCheck)
               p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
+            // Python tracebacks live in OpaqueLocs, which cannot be
+            // printed; convert them to FusedLocs so the dump carries the
+            // call sites. Limit to dumpIntermediates because the conversion
+            // strips the OpaqueLocs that the assert handling in
+            // buildMgpPipeline reads.
+            if (moduleOp && dumpIntermediates)
+              p.addPass(MGP::createAttachPythonStackTraces());
           },
           "mogg-pre-mgp")))
     return failure();

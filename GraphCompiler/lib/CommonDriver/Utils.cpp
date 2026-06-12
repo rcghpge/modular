@@ -68,11 +68,14 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
   auto writeFile = [&](const CommonOptions *opt) {
     std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
         opt->getIntermediateFile(filePath, ext);
+    mlir::OpPrintingFlags flags;
     if (opt->printTempsLocalScope)
-      module->print(intermediateFile->os(),
-                    mlir::OpPrintingFlags().useLocalScope());
-    else
-      module->print(intermediateFile->os());
+      flags.useLocalScope();
+    // Print each op's source location (the printer omits loc attributes
+    // by default), so dump consumers can trace ops back to the code that
+    // built them.
+    flags.enableDebugInfo(true);
+    module->print(intermediateFile->os(), flags);
     intermediateFile->keep();
   };
 
