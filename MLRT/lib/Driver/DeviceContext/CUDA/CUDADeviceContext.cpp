@@ -522,6 +522,15 @@ static CUmemAllocationProp cudaVmmAllocProp(CUdevice cudaDevice) {
   return memProp;
 }
 
+bool CUDADevice::vmmSupported() const {
+  // VMM is usable iff the device accepts the granularity query for a pinned
+  // device allocation. Probe once and cache, so this reflects actual support
+  // (rather than merely "the backend is CUDA") and is cheap to call.
+  std::call_once(vmmSupportedOnce_,
+                 [&]() { vmmSupportedCached_ = !vmmGranularity().isError(); });
+  return vmmSupportedCached_;
+}
+
 ErrorOr<size_t> CUDADevice::vmmGranularity() const {
   CUDA_WITH_DEV_ERR(*this);
   CUmemAllocationProp memProp = cudaVmmAllocProp(cudaDevice_);

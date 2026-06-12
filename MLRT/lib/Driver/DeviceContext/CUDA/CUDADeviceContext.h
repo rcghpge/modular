@@ -86,7 +86,10 @@ public:
   ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
   // CUDA Virtual Memory Management (VMM) for the defragmenting allocator.
-  bool vmmSupported() const override { return true; }
+  // Probes the VMM allocation-granularity query once and caches whether it
+  // succeeds, so this reflects whether VMM is actually usable (not just that
+  // the backend is CUDA).
+  bool vmmSupported() const override;
   ErrorOr<size_t> vmmGranularity() const override;
   ErrorOr<void *> vmmAddressReserve(size_t byteSize) override;
   ErrorOrSuccess vmmAddressFree(void *va, size_t byteSize) override;
@@ -158,6 +161,11 @@ private:
   // vmmAccessDescs()).
   mutable std::once_flag vmmAccessOnce_;
   mutable std::vector<CUmemAccessDesc> vmmAccessDescs_;
+
+  // Lazily-computed, cached result of whether VMM is usable on this device (see
+  // vmmSupported()).
+  mutable std::once_flag vmmSupportedOnce_;
+  mutable bool vmmSupportedCached_ = false;
   // Device context to be shared across all `CUDADeviceContext` objects. We
   // initialize this with the primary device context for the device to be able
   // to share resources with libraries using the CUDA Runtime API.

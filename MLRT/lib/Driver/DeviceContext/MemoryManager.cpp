@@ -1350,8 +1350,8 @@ MemoryManager::defragForRequest(size_t size, MemoryManagerFreeList *freeList) {
   cacheSize_ += allocSize;
   ++chunkCount_;
 
-  LOG_ERR("defrag_alloc(" + TWINE_PTR(va) + " ; " + TWINE(allocSize) + ")", 0,
-          0);
+  // The success is logged by the caller via LOG_MSG (this is a MemoryManager
+  // method, where LOG_MSG is not available).
   return va;
 }
 
@@ -1642,9 +1642,13 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       }
       // Still nothing: the free memory may be stranded in *sibling* streams'
       // per-stream free buffers. Poll every child context to flush their
-      // completed frees to the root, then retry. (Same safety/lock argument as
-      // above; see flushSiblingFreeLists.)
+      // completed frees to the root, then retry. Flushing polls pending events,
+      // which is a synchronizing operation; we always do it here (so behavior
+      // is unchanged), but when logging is enabled we record that it happened
+      // so we can gauge whether it is a performance problem.
       if (desc == nullptr) {
+        LOG_MSG("alloc miss: flushing sibling free-lists (size " +
+                TWINE(wrappedSize) + ")");
         memoryManager_.flushSiblingFreeLists(ctx_);
         if (wrappedSize <= memoryManager_.chunkSize_) {
           std::lock_guard<std::mutex> lock(memoryManager_.mu_);
@@ -1669,6 +1673,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       ErrorOr<void *> defragPtr =
           memoryManager_.defragForRequest(wrappedSize, this);
       if (!defragPtr.isError()) {
+        LOG_MSG("defrag_alloc(" + TWINE_PTR(*defragPtr) + " ; " +
+                TWINE(wrappedSize) + ")");
         if (redzoneEnable_) {
           return redzoneFillAndWrap(*defragPtr, size);
         }
@@ -2114,22 +2120,17 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
                     device.vmmSupported();
   size_t vmmPageSize = 0;
   if (vmmEnabled) {
+    // vmmSupported() has already verified the granularity query succeeds, so
+    // this does not error.
     ErrorOr<size_t> granularity = device.vmmGranularity();
-    if (granularity.isError()) {
-      // Cannot determine granularity: disable VMM and fall back to plain
-      // chunks.
-      llvm::errs() << "DeviceContext.MemoryManager: VMM requested but "
-                      "granularity query failed ("
-                   << granularity.getError() << "); disabling VMM.\n";
-      vmmEnabled = false;
-    } else {
-      size_t pageMb = static_cast<size_t>(std::max<int64_t>(
-          1, DeviceContext::configAsInt("memory_manager_vmm_page_mb", 256)));
-      vmmPageSize = llvm::alignTo(pageMb * 1024 * KB, *granularity);
-      // Round pool/chunk sizes to whole granules.
-      maxCacheSize = llvm::alignTo(maxCacheSize, vmmPageSize);
-      chunkSize = std::min(maxCacheSize, llvm::alignTo(chunkSize, vmmPageSize));
-    }
+    assert(!granularity.isError() &&
+           "vmmSupported() implies vmmGranularity() succeeds");
+    size_t pageMb = static_cast<size_t>(std::max<int64_t>(
+        1, DeviceContext::configAsInt("memory_manager_vmm_page_mb", 256)));
+    vmmPageSize = llvm::alignTo(pageMb * 1024 * KB, *granularity);
+    // Round pool/chunk sizes to whole granules.
+    maxCacheSize = llvm::alignTo(maxCacheSize, vmmPageSize);
+    chunkSize = std::min(maxCacheSize, llvm::alignTo(chunkSize, vmmPageSize));
   }
 
   auto result = new MemoryManager(
