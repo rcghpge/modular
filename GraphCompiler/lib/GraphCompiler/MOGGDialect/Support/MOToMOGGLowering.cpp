@@ -15,6 +15,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENPogUtils.h"
@@ -732,8 +733,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             "op.",
             customOp.getSymbol(), customParamDecl.getName()));
       }
-    } else if (typeName && (typeName == MOGG::kMojoInternalDpsIntTypeName ||
-                            typeName == MOGG::kMojoInternalDpsUintTypeName)) {
+    } else if (typeName && (typeName == MOGG::kMojoInternalDpsSimdTypeName)) {
       auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
       if (asInt == nullptr) {
         return Error(llvm::formatv(
