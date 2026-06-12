@@ -31,7 +31,6 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
 #include <optional>
 #include <sstream>
@@ -318,10 +317,9 @@ struct ScannedPrimitiveFunction {
   KGEN::LIT::FnOp func;
 };
 
-/// One shape method found inside a registered kernel struct during scanning.
-/// Emitted as a separate mogg.shape_func.decl, keyed by registration.
-/// `funcSymName` is the fully-computed sym_name for the emitted decl
-/// (i.e. "{kernelMojoName}.shape").
+/// One standalone shape function found during scanning, decorated with
+/// @compiler.register_shape_function. `funcSymName` is the FQN of the
+/// function itself, used as the sym_name of the emitted ShapeFunctionDeclOp.
 struct ScannedShapeFunction {
   mlir::StringAttr registration;
   mlir::StringAttr funcSymName; // ready-to-use sym_name for ShapeFunctionDeclOp
@@ -330,7 +328,8 @@ struct ScannedShapeFunction {
 
 /// Walk `mod` for struct declarations decorated with @compiler.register
 /// (kernels), standalone functions decorated with @register_internal
-/// (primitives), and struct-internal shape methods (shapeFunctions).
+/// (primitives), and standalone functions decorated with
+/// @compiler.register_shape_function (shapeFunctions).
 static mlir::LogicalResult scanForKernelDecls(
     mlir::ModuleOp mod, llvm::SmallVectorImpl<ScannedKernel> &kernels,
     llvm::SmallVectorImpl<ScannedPrimitiveFunction> &primitives,
@@ -369,16 +368,12 @@ static mlir::LogicalResult scanForKernelDecls(
       if (srcName == kMoggExecuteFuncName)
         kernel.executeFn = func;
       else if (srcName == kMoggShapeFuncName) {
-        mlir::MLIRContext *ctx = mod.getContext();
-        ScannedShapeFunction sf;
-        sf.registration = info.registrationName;
-        sf.funcSymName = mlir::StringAttr::get(
-            ctx, llvm::formatv("{}.{}",
-                               getFullyResolvedMojoName(structDeclOp).strref(),
-                               kMoggShapeFuncName)
-                     .str());
-        sf.func = func;
-        shapeFunctions.push_back(sf);
+        func.emitError()
+            << "shape functions defined as methods of a kernel struct are no "
+               "longer supported; use @compiler.register_shape_function "
+               "instead";
+        result = mlir::failure();
+        return mlir::WalkResult::interrupt();
       } else if (srcName == kMoggElementwiseFuncName) {
         // Route to SIMD or TileTensor slot based on return type leaf name.
         // Unwrap LIT::RefType sugar first, matching the pattern used in

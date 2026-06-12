@@ -3823,23 +3823,9 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   };
   ShapeFunctionDeclOp shapeDecl =
       state.registry.lookupShapeFunctionBySymName(getKernelSymName());
-  const std::string inStructSuffix =
-      llvm::formatv(".{}", kMoggShapeFuncName).str();
 
-  auto maybeParams = [&]() -> ErrorOr<EmitMojoState::InferredParameters> {
-    // TODO(GEX-3825): We need to access the parent struct to find parameters
-    // defined at the struct-level. This is temporary, and will be removed once
-    // shape functions are all moved out of the kernel struct.
-    if (getKernelSymName().ends_with(inStructSuffix)) {
-      KernelDeclOp kernelDecl =
-          state.registry.getResolvedKernel(shapeDecl.getRegistration());
-      KernelDeclFunctionAdaptor shapeFnAdaptor = shapeDecl;
-      KernelDeclAdaptor adaptor(kernelDecl);
-      return EmitMojoState::inferKernelParameters(shapeFnAdaptor, adaptor,
-                                                  inferParam);
-    }
-    return EmitMojoState::inferKernelParameters(shapeDecl, inferParam);
-  }();
+  auto maybeParams =
+      EmitMojoState::inferKernelParameters(shapeDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();

@@ -726,27 +726,6 @@ ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
 }
 
 ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
-    KernelDeclFunctionAdaptor &fnAdaptor,
-    KernelDeclAdaptor &parentStructAdaptor,
-    std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
-  ArrayRef<mlir::Attribute> fnParams;
-  if (fnAdaptor.attr.getParams())
-    fnParams = fnAdaptor.attr.getParams().getValue();
-
-  ArrayRef<mlir::Attribute> structParams;
-  if (parentStructAdaptor.structParams)
-    structParams = parentStructAdaptor.structParams.getValue();
-
-  mlir::DictionaryAttr defaultParams =
-      computeDefaultParamsDict(parentStructAdaptor.executeFunction
-                                   ? &*parentStructAdaptor.executeFunction
-                                   : nullptr);
-  return inferParameters(fnParams, structParams, fnAdaptor.attr.getArgParams(),
-                         defaultParams, fnAdaptor.attr.getSignature(),
-                         inferCallback);
-}
-
-ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
     PrimitiveDeclOp primDecl,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
   // Primitives have no struct-level params. arg-param mappings let
