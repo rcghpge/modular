@@ -727,4 +727,28 @@ def StageDeviceGraphsPass :
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ComputeDeviceGraphDependenciesPass
+//===----------------------------------------------------------------------===//
+
+def ComputeDeviceGraphDependenciesPass :
+    Pass<"mgp-compute-device-graph-dependencies", "MGP::ModelOp"> {
+  let summary = "Convert the staged compiled regions of an `isDeviceGraph` "
+                "model into `mgp.device_graph.dependencies` ops.";
+  let description = [{
+    Part of device-graph synthesis; runs after `mgp-stage-device-graphs`. For
+    each `mgp.model` marked `isDeviceGraph`, converts every
+    `mogg.generic.compiled.region` inside the model's `mgp.device_graph.staging`
+    op into a `mgp.device_graph.dependencies` op: the region body moves in and
+    references enclosing SSA directly (the dataflow boundary dissolves, with
+    `mogg.async.pack` / `mogg.async.unpack` inserted to keep the verbatim body's
+    types consistent), and the dependency edges are derived from the region's
+    chain and tensor inputs. The conversion is 1:1 and local; the edge set is
+    complete at this point (no later stage adds an edge). See
+    `device_graph_synthesis_design.md`.
+
+    For models without `isDeviceGraph`, the pass is a no-op.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
