@@ -145,7 +145,7 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
 }
 
 // CHECK-LABEL: mgp.model @remove_redundant_chains
-// CHECK:         %[[OUT:[^ ]*]] = mogg.generic.compiled.region ({{.*}}) -> !mef.chain{
+// CHECK:         %[[OUT:[^ ]*]] = mogg.generic.compiled.region ({{.*}}) -> !mef.chain {
 // CHECK:           mogg.output %{{[^ ]*}} : !mef.chain
 // CHECK:         "test.sink"(%[[OUT]], %[[OUT]])
 

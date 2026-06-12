@@ -23,13 +23,13 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK-LABEL: mgp.model @basic
 
 // In emit-mojo mode, index.constant is lowered to a buffer constant loaded at runtime
-// CHECK: mogg.generic.compiled.region () : () -> index{
+// CHECK: mogg.generic.compiled.region () : () -> index {
 // CHECK: mgp.buffer.constant
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
 
-// CHECK: mogg.generic.compiled.region () : () -> index{
+// CHECK: mogg.generic.compiled.region () : () -> index {
 // CHECK: mgp.buffer.constant
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack

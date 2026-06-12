@@ -4315,6 +4315,7 @@ static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
   if (!resultTypes.empty()) {
     p << ' ';
     p.printArrowTypeList(resultTypes);
+    p << ' ';
   }
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
