@@ -1324,7 +1324,8 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess HIPDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                              DeviceBuffer &src,
                                              size_t srcByteOffset,
-                                             size_t srcByteSize) {
+                                             size_t srcByteSize,
+                                             bool crossStreamSync) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   CHECK_IS_HIP_ERR(src.context().device());
@@ -1349,21 +1350,29 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   size_t dstByteSize = dst.byteSize();
   assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dstByteSize);
-  if (srcCtx.hipStream() != dstCtx.hipStream()) {
+  // A copy whose source and destination are on different streams requires
+  // cross-stream synchronization. Unless the caller opted out (because it
+  // manages this synchronization itself, e.g. the graph compiler emits
+  // explicit synchronization ops), bracket the copy with events so the
+  // destination stream waits for the source before the copy and the source
+  // stream waits for the copy to complete afterward.
+  const bool needsSync =
+      crossStreamSync && srcCtx.hipStream() != dstCtx.hipStream();
+
+  if (needsSync) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
     RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
+  }
 
-    HIP_CHECK_ERR(
-        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+  HIP_CHECK_ERR(
+      driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
 
+  if (needsSync) {
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
     RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
-  } else {
-    HIP_CHECK_ERR(
-        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
   auto &registry = launchTraceRegistry();
   if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {

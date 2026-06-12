@@ -898,13 +898,23 @@ public:
     return enqueueCopyFromDevice(dst, src.ptr(), src.byteSize());
   }
 
+  // If `crossStreamSync` is true (the default) and the source and destination
+  // are on different streams, the driver inserts the cross-stream
+  // synchronization required for a correct device-to-device copy: the
+  // destination stream waits for the source stream before the copy, and the
+  // source stream waits for the copy to complete afterward. Callers that
+  // manage this synchronization themselves (e.g. the graph compiler, which
+  // emits explicit synchronization ops) can pass false to skip it.
   inline ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst,
-                                                  DeviceBuffer &src) {
-    return enqueueCopyDeviceToDevice(dst, src, 0, src.byteSize());
+                                                  DeviceBuffer &src,
+                                                  bool crossStreamSync = true) {
+    return enqueueCopyDeviceToDevice(dst, src, 0, src.byteSize(),
+                                     crossStreamSync);
   }
   ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
                                            size_t srcByteOffset,
-                                           size_t srcByteSize);
+                                           size_t srcByteSize,
+                                           bool crossStreamSync = true);
 
   virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
                                           uint64_t val, size_t valSize) = 0;
@@ -1061,10 +1071,12 @@ protected:
                                   Device::AllocMode mode) = 0;
   virtual ErrorOrSuccess memFree(void *ptr, bool isHost) = 0;
 
-  // Low-level copies.
+  // Low-level copies. When `crossStreamSync` is true, implementations insert
+  // the cross-stream synchronization needed when source and destination are on
+  // different streams (see `enqueueCopyDeviceToDevice`).
   virtual ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
-                                     size_t srcByteOffset,
-                                     size_t srcByteSize) = 0;
+                                     size_t srcByteOffset, size_t srcByteSize,
+                                     bool crossStreamSync) = 0;
 
   using MMapFileImplResult =
       ErrorOr<std::tuple<void *, size_t,

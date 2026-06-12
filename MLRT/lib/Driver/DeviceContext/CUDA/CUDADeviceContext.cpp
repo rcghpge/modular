@@ -1683,7 +1683,8 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess CUDADeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                               DeviceBuffer &src,
                                               size_t srcByteOffset,
-                                              size_t srcByteSize) {
+                                              size_t srcByteSize,
+                                              bool crossStreamSync) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   CHECK_IS_CUDA_ERR(src.context().device());
@@ -1702,27 +1703,35 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(DeviceBuffer &dst,
   size_t dstByteSize = dst.byteSize();
   assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dstByteSize);
-  if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
+  // A copy whose source and destination are on different streams requires
+  // cross-stream synchronization. Unless the caller opted out (because it
+  // manages this synchronization itself, e.g. the graph compiler emits
+  // explicit synchronization ops), bracket the copy with events so the
+  // destination stream waits for the source before the copy and the source
+  // stream waits for the copy to complete afterward.
+  const bool needsSync =
+      crossStreamSync && srcCtx.cudaStream() != dstCtx.cudaStream();
+
+  if (needsSync) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
     RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
+  }
 
-    if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
-      CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
-                                               srcCtx.context_, dstByteSize,
-                                               stream_));
-    } else {
-      CUDA_CHECK_ERR(
-          driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
-    }
+  if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
+    CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
+                                             srcCtx.context_, dstByteSize,
+                                             stream_));
+  } else {
+    CUDA_CHECK_ERR(
+        driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
+  }
 
+  if (needsSync) {
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
     RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
-  } else {
-    CUDA_CHECK_ERR(
-        driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
   }
   auto &registry = launchTraceRegistry();
   if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {

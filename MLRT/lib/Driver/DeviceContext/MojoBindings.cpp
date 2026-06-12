@@ -396,6 +396,20 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_DtoD_async(DeviceContext *ctx,
   return checkSuccess(ctx->enqueueCopyDeviceToDevice(*dst, *src));
 }
 
+// Same as AsyncRT_DeviceContext_DtoD_async, but the driver does not insert the
+// cross-stream synchronization for the copy. The caller is responsible for
+// synchronizing the source and destination streams (e.g. the graph compiler
+// emits explicit synchronization ops around the copy).
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_DtoD_async_no_cross_stream_sync(DeviceContext *ctx,
+                                                      DeviceBuffer *dst,
+                                                      DeviceBuffer *src) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_DtoD_async_no_cross_stream_sync",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(
+      ctx->enqueueCopyDeviceToDevice(*dst, *src, /*crossStreamSync=*/false));
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_async(DeviceContext *ctx, DeviceBuffer *dst,
                                       uint64_t val, size_t valSize) {

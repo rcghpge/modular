@@ -200,7 +200,8 @@ ErrorOrSuccess VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess VirtualDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                  DeviceBuffer &src,
                                                  size_t srcByteOffset,
-                                                 size_t srcByteSize) {
+                                                 size_t srcByteSize,
+                                                 bool /*crossStreamSync*/) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memCopyDtoD not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");

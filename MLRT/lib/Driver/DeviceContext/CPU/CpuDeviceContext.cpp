@@ -297,7 +297,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess CpuDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                              DeviceBuffer &src,
                                              size_t srcByteOffset,
-                                             size_t srcByteSize) {
+                                             size_t srcByteSize,
+                                             bool /*crossStreamSync*/) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());

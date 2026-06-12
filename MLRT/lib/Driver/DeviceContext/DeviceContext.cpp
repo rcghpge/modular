@@ -1391,7 +1391,7 @@ ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
-    size_t srcByteSize) {
+    size_t srcByteSize, bool crossStreamSync) {
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
   if ((srcByteOffset + srcByteSize) < dst.byteSize())
@@ -1414,7 +1414,8 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     return src.context().enqueueCopyFromDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (srcApi == dstApi) {
-    return this->memCopyDtoD(dst, src, srcByteOffset, srcByteSize);
+    return this->memCopyDtoD(dst, src, srcByteOffset, srcByteSize,
+                             crossStreamSync);
   }
   return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
                dstApi + "\"");

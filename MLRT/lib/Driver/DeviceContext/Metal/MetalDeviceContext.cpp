@@ -643,8 +643,12 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                DeviceBuffer &src,
                                                size_t srcByteOffset,
-                                               size_t srcByteSize) {
+                                               size_t srcByteSize,
+                                               bool /*crossStreamSync*/) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
+
+  // Note: We assume no synchronization between the devices holding dst and src
+  // is required, thus the crossStreamSync argument can be ignored.
 
   // 1) Basic validation
   if (src.byteSize() == 0 || dst.byteSize() == 0)

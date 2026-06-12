@@ -391,7 +391,8 @@ public:
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
                                        size_t byteSize) override;
   ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
-                             size_t srcByteOffset, size_t srcByteSize) override;
+                             size_t srcByteOffset, size_t srcByteSize,
+                             bool crossStreamSync) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;
