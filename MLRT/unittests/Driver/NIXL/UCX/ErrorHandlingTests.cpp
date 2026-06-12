@@ -6,6 +6,9 @@
 
 #include "MLRT/unittests/Driver/NIXL/TestCommon.h"
 
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/unittests/Driver/TestUtils.h"
+#include "Support/ErrorOr.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -18,7 +21,10 @@
 #include <thread>
 #include <vector>
 
-using namespace NixlTest;
+using namespace M;
+using namespace M::Driver;
+using namespace M::MLRT;
+using namespace M::MLRT::Test;
 
 TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
   // Test remote disconnection error handling

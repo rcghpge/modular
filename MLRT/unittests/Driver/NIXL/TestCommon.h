@@ -7,26 +7,21 @@
 #ifndef MLRT_UNITTESTS_DRIVER_NIXL_TESTCOMMON_H
 #define MLRT_UNITTESTS_DRIVER_NIXL_TESTCOMMON_H
 
-#include "nixl.h"
+#include "MLRT/Driver/NIXL/nixl.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "gtest/gtest.h"
 #include <chrono>
 #include <cstdint>
-#include <filesystem>
 #include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
 
+namespace M::MLRT {
 std::ostream &operator<<(std::ostream &os, nixl_status_t status);
-
-/// Sets NIXL_PLUGIN_DIR from the Bazel runfiles tree so the upstream plugin
-/// manager can find libplugin_UCX.so / libplugin_LIBFABRIC.so. Call once
-/// from a GTest environment or from main() before constructing any nixlAgent.
-/// No-op if NIXL_PLUGIN_DIR is already set in the environment.
-void configureNixlPluginDir();
+}
 
 #define ASSERT_SUCCESS(EXPR)                                                   \
   do {                                                                         \
@@ -34,7 +29,7 @@ void configureNixlPluginDir();
     ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS) << #EXPR;                   \
   } while (false)
 
-namespace NixlTest {
+namespace M::MLRT::Test {
 
 template <class T>
 nixlBlobDesc blobDescfromVector(const std::vector<T> &vec, uint64_t devId,
@@ -81,11 +76,8 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
                              nixl_xfer_dlist_t &dstDescs,
                              nixl_status_t expectedStatus);
 
-class NixlUcxIntegrationTest : public ::testing::Test {
-protected:
-  static void SetUpTestSuite() { configureNixlPluginDir(); }
-};
+class NixlUcxIntegrationTest : public ::testing::Test {};
 
-} // namespace NixlTest
+} // namespace M::MLRT::Test
 
 #endif // MLRT_UNITTESTS_DRIVER_NIXL_TESTCOMMON_H

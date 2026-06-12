@@ -34,26 +34,16 @@ We depend on **unmodified** upstream NIXL. If you must carry a local change
 (for example, a fix that has not landed in a tagged release yet), apply it as a
 patch rather than forking:
 
-1. Drop the patch file at `oss/modular/bazel/public-patches/nixl-<name>.patch`
-   (the `nixl-` prefix matches the convention for other vendored patches). This
-   directory is OSS-visible and resolves in both the internal build and the
-   standalone OSS-mirror build; do NOT put it in `bazel/third-party/` (that
-   directory is internal-only and the label would not resolve in the OSS build).
+1. Drop the patch file at `bazel/third-party/nixl-<name>.patch` (the `nixl-`
+   prefix matches the LLVM convention).
 2. Add it to the `patches = [...]` list of the `nixl_upstream` `http_archive` in
-   `oss/modular/bazel/common.MODULE.bazel`. The archive already sets
-   `patch_args = ["-p1"]`. Use the label form
-   `"//bazel/public-patches:nixl-<name>.patch"`.
-3. The `update-nixl` script (`utils/update_nixl.py`) **carries the existing
-   patches list through** when rewriting the generated block on a version bump —
-   it does not reset `patches = []`. After bumping, verify that each carried
-   patch still applies against the new tarball. Remove the patch entry and file
-   when the fix lands upstream.
+   `MODULE.bazel`. The archive already sets `patch_args = ["-p1"]`.
 
 > [!NOTE]
-> Every patch should include a `TODO` comment referencing the upstream tracking
-> issue or PR (e.g. `TODO(GEX-NNNN): drop once fix is upstreamed`) so it is
-> clear when the patch can be removed. The point of patching is to unblock
-> quickly, not to maintain a fork.
+> Every patch should include a URL to the upstream tracking issue or PR that,
+> once merged, lets us delete the patch. The point of patching is to unblock
+> quickly, not to maintain a fork. Remove the patch entry (and the file) when
+> the fix lands upstream and the pin is bumped to a version that includes it.
 
 ## Testing after an update
 
@@ -63,8 +53,8 @@ disaggregated-inference stack, and EFA. See the
 for the full procedure and test list.
 
 The quickest path is the one-click GitHub Actions workflow, which runs the
-NIXL unit tests (Core/UCX on a B200) and the disaggregated `benchmarkMammoth`
-quick-tests:
+NIXL unit tests (Core/UCX/Libfabric on a B200), the EFA `LibfabricVramSmoke`,
+and the disaggregated `benchmarkMammoth` quick-tests:
 
 ```bash
 gh workflow run validateNIXLSync.yaml \

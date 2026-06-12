@@ -9,108 +9,19 @@
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
-#include <dlfcn.h>
-#include <filesystem>
 #include <netinet/in.h>
 #include <random>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 
+namespace M::MLRT {
 std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
-  return os << nixlEnumStrings::statusStr(status);
+  return os << NixlEnumStrings::statusStr(status);
 }
+} // namespace M::MLRT
 
-void configureNixlPluginDir() {
-  // If the caller already set NIXL_PLUGIN_DIR, respect it.
-  if (std::getenv("NIXL_PLUGIN_DIR"))
-    return;
-
-  // Pre-load CUDA/NVML/UCX driver libraries with RTLD_LAZY|RTLD_GLOBAL so
-  // their symbols are visible when nixlPluginManager calls
-  //   dlopen(libplugin_UCX.so, RTLD_NOW)
-  // libplugin_UCX.so (cuda variant) is built with -Wl,-z,undefs — it has
-  // unresolved references to CUDA driver (libcuda.so) and NVML
-  // (libnvidia-ml.so) symbols. RTLD_NOW at dlopen time requires ALL symbols
-  // to be resolvable from currently loaded libraries. Pre-loading these with
-  // RTLD_GLOBAL makes them available. Failures are non-fatal: on CPU-only
-  // or non-NVIDIA machines the plugin simply won't load.
-  const char *gpuLibs[] = {
-      "libcuda.so.1",
-      "libcuda.so",
-      "libnvidia-ml.so.1",
-      "libnvidia-ml.so",
-  };
-  for (const char *lib : gpuLibs) {
-    dlopen(lib, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE);
-  }
-
-  // The upstream nixl plugin manager looks for libplugin_UCX.so and
-  // libplugin_LIBFABRIC.so in NIXL_PLUGIN_DIR. Under Bazel tests the plugins
-  // are runfiles at <runfiles_root>/+http_archive+nixl_upstream/.
-  //
-  // Strategy 1: Bazel sets TEST_SRCDIR to the runfiles root. Use it directly.
-  if (const char *testSrcDir = std::getenv("TEST_SRCDIR")) {
-    std::string candidate =
-        std::string(testSrcDir) + "/+http_archive+nixl_upstream";
-    if (std::filesystem::exists(candidate)) {
-      setenv("NIXL_PLUGIN_DIR", candidate.c_str(), /*overwrite=*/0);
-      return;
-    }
-  }
-
-  // Strategy 2: Walk up the directory tree from the binary looking for the
-  // "+http_archive+nixl_upstream" directory (handles remote build environments
-  // where the binary lives inside .runfiles/_main/...).
-  std::error_code ec;
-  auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
-  if (ec)
-    return;
-
-  auto path = exe.parent_path();
-  while (!path.empty() && path != path.parent_path()) {
-    auto candidate = path / "+http_archive+nixl_upstream";
-    if (std::filesystem::exists(candidate)) {
-      setenv("NIXL_PLUGIN_DIR", candidate.c_str(), /*overwrite=*/0);
-      return;
-    }
-    path = path.parent_path();
-  }
-
-  // Strategy 3: classic <binary>.runfiles layout (non-test-wrapper use).
-  auto runfilesDir = exe.string() + ".runfiles/+http_archive+nixl_upstream";
-  if (std::filesystem::exists(runfilesDir)) {
-    setenv("NIXL_PLUGIN_DIR", runfilesDir.c_str(), /*overwrite=*/0);
-  }
-}
-
-namespace {
-// GTest global environment: calls configureNixlPluginDir() in SetUp(), which
-// runs before any test suite fixture and therefore before any nixlAgent
-// constructor (which triggers the nixlPluginManager Meyers-singleton). GTest's
-// global environment SetUp() is the earliest reliable hook available in the
-// LLVM TestMain.cpp test harness.
-class NixlPluginDirEnv : public ::testing::Environment {
-public:
-  void SetUp() override { configureNixlPluginDir(); }
-};
-
-// Registered here so every translation unit that links TestCommon gets the
-// environment. ::testing::AddGlobalTestEnvironment takes ownership.
-// NOLINTNEXTLINE: global constructor is intentional — we need to register
-// before main() runs (actually before GTest's Run() — GTest environments are
-// invoked in registration order before any test suite).
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wglobal-constructors"
-const bool kNixlPluginDirEnvRegistered = [] {
-  ::testing::AddGlobalTestEnvironment(new NixlPluginDirEnv);
-  return true;
-}();
-#pragma clang diagnostic pop
-} // namespace
-
-namespace NixlTest {
+namespace M::MLRT::Test {
 
 void NixlAgentWithUCXBackend::registerMemory(nixl_mem_t memType,
                                              nixlBlobDesc desc) {
@@ -134,23 +45,16 @@ void NixlAgentWithUCXBackend::create(NixlAgentWithUCXBackend &self,
                                  /*port=*/port));
   std::vector<nixl_backend_t> plugins;
   ASSERT_SUCCESS(self.agent->getAvailPlugins(plugins));
-  // Upstream plugin names are uppercase (UCX, LIBFABRIC). Do a
-  // case-insensitive match so callers can pass either form, and capture the
-  // canonical name (uppercase) returned by the plugin manager to use in
-  // subsequent getPluginParams / createBackend calls.
-  nixl_backend_t canonicalName;
-  auto it = std::find_if(plugins.begin(), plugins.end(),
-                         [&](const nixl_backend_t &p) {
-                           return llvm::StringRef(p).lower() ==
-                                  llvm::StringRef(backendName).lower();
-                         });
-  ASSERT_NE(it, plugins.end()) << "Plugin not found: " << backendName;
-  canonicalName = *it;
+  auto ucxFound =
+      0 < std::count_if(plugins.begin(), plugins.end(),
+                        [&](const nixl_backend_t &p) {
+                          return llvm::StringRef(p).lower() == backendName;
+                        });
+  ASSERT_TRUE(ucxFound) << "Plugin not found: " << backendName;
 
   nixl_b_params_t backendParams;
   nixl_mem_list_t mems;
-  ASSERT_SUCCESS(
-      self.agent->getPluginParams(canonicalName, mems, backendParams));
+  ASSERT_SUCCESS(self.agent->getPluginParams(backendName, mems, backendParams));
 
   if (gpuDeviceId != -1) {
     backendParams["gpu_device_id"] = std::to_string(gpuDeviceId);
@@ -166,7 +70,7 @@ void NixlAgentWithUCXBackend::create(NixlAgentWithUCXBackend &self,
   }
 
   ASSERT_SUCCESS(
-      self.agent->createBackend(canonicalName, backendParams, self.backend));
+      self.agent->createBackend(backendName, backendParams, self.backend));
   ASSERT_NE(self.backend, nullptr) << "Backend handle is null";
 }
 
@@ -220,12 +124,10 @@ void exchangeMetadata(NixlAgentWithUCXBackend &nixl1,
   ASSERT_FALSE(meta1.empty()) << "Agent 1 metadata is empty";
   ASSERT_FALSE(meta2.empty()) << "Agent 2 metadata is empty";
 
-  ASSERT_SUCCESS(
-      nixl1.agent->loadRemoteMD(nixl_blob_t{meta2}, loadedAgentName2));
+  ASSERT_SUCCESS(nixl1.agent->loadRemoteMD(blob_ref{meta2}, loadedAgentName2));
   ASSERT_EQ(loadedAgentName2, nixl2.agentName);
 
-  ASSERT_SUCCESS(
-      nixl2.agent->loadRemoteMD(nixl_blob_t{meta1}, loadedAgentName1));
+  ASSERT_SUCCESS(nixl2.agent->loadRemoteMD(blob_ref{meta1}, loadedAgentName1));
   ASSERT_EQ(loadedAgentName1, nixl1.agentName);
 }
 
@@ -233,7 +135,7 @@ void transferData(NixlAgentWithUCXBackend &nixl1,
                   NixlAgentWithUCXBackend &nixl2, nixl_xfer_dlist_t &srcDescs,
                   nixl_xfer_dlist_t &dstDescs, nixl_xfer_op_t op) {
   nixlXferReqH *reqHandle = nullptr;
-  nixl_opt_args_t xferArgs;
+  nixlAgentOptionalArgs xferArgs;
   xferArgs.notifMsg = "notification";
   xferArgs.hasNotif = true;
   ASSERT_SUCCESS(nixl1.agent->createXferReq(
@@ -243,7 +145,7 @@ void transferData(NixlAgentWithUCXBackend &nixl1,
   nixl_status_t xferStatus = nixl1.agent->postXferReq(reqHandle);
   if (xferStatus != nixl_status_t::NIXL_SUCCESS &&
       xferStatus != nixl_status_t::NIXL_IN_PROG) {
-    FAIL() << "postXferReq failed: " << nixlEnumStrings::statusStr(xferStatus);
+    FAIL() << "postXferReq failed: " << NixlEnumStrings::statusStr(xferStatus);
   }
 
   nixl_notifs_t notifMap;
@@ -285,7 +187,7 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
                              nixl_xfer_dlist_t &dstDescs,
                              nixl_status_t expectedStatus) {
   nixlXferReqH *reqHandle = nullptr;
-  nixl_opt_args_t xferArgs;
+  nixlAgentOptionalArgs xferArgs;
   xferArgs.notifMsg = "notification";
   xferArgs.hasNotif = true;
   ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
@@ -297,7 +199,7 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
   if (xferStatus != expectedStatus &&
       xferStatus != nixl_status_t::NIXL_IN_PROG) {
     FAIL() << "postXferReq returned unexpected status: "
-           << nixlEnumStrings::statusStr(xferStatus);
+           << NixlEnumStrings::statusStr(xferStatus);
   }
 
   nixl_status_t checkStatus = xferStatus;
@@ -312,10 +214,10 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
 
   ASSERT_EQ(checkStatus, expectedStatus)
       << "Transfer did not complete with expected status. Got: "
-      << nixlEnumStrings::statusStr(checkStatus)
-      << ", Expected: " << nixlEnumStrings::statusStr(expectedStatus);
+      << NixlEnumStrings::statusStr(checkStatus)
+      << ", Expected: " << NixlEnumStrings::statusStr(expectedStatus);
 
   nixl1.agent->releaseXferReq(reqHandle);
 }
 
-} // namespace NixlTest
+} // namespace M::MLRT::Test

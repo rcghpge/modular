@@ -18,6 +18,5 @@ modular_cc_library(
         "//MLRT:Driver/NIXL",
         "@llvm-project//llvm:Support",
         "@llvm-project//third-party/unittest:gtest",
-        "@nixl_upstream//:nixl_api_headers",
     ],
 )

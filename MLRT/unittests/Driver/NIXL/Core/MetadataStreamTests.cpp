@@ -4,11 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "stream/metadata_stream.h"
+#include "MLRT/Driver/NIXL/utils/stream/metadata_stream.h"
 #include "gtest/gtest.h"
 
 #include <cerrno>
 #include <sys/socket.h>
+
+using namespace M::MLRT;
 
 // Regression test for macOS compatibility
 TEST(MetadataStreamTest, ListenerSocketIsNonBlocking) {

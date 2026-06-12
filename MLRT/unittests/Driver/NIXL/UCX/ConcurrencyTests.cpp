@@ -6,6 +6,9 @@
 
 #include "MLRT/unittests/Driver/NIXL/TestCommon.h"
 
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/unittests/Driver/TestUtils.h"
+#include "Support/ErrorOr.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -18,7 +21,10 @@
 #include <thread>
 #include <vector>
 
-using namespace NixlTest;
+using namespace M;
+using namespace M::Driver;
+using namespace M::MLRT;
+using namespace M::MLRT::Test;
 
 TEST_F(NixlUcxIntegrationTest, UcxThreadpoolSmoke) {
   setenv("UCX_LOG_LEVEL", "warn", 1);
@@ -176,7 +182,7 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
 
       // Create and execute transfer
       nixlXferReqH *reqHandle = nullptr;
-      nixl_opt_args_t xferArgs;
+      nixlAgentOptionalArgs xferArgs;
       xferArgs.notifMsg = "notification_thread_" + std::to_string(i);
       xferArgs.hasNotif = true;
 
@@ -312,17 +318,15 @@ TEST_F(NixlUcxIntegrationTest, ConcurrentNotifications) {
   nixl_mem_list_t mems;
   std::vector<nixl_backend_t> plugins;
   ASSERT_SUCCESS(nixl1.agent->getAvailPlugins(plugins));
-  // Upstream plugin names are uppercase; use case-insensitive check for
-  // defence-in-depth, but pass the canonical uppercase name to the API.
   bool ucxFound =
       std::find_if(plugins.begin(), plugins.end(), [](const nixl_backend_t &p) {
-        return llvm::StringRef(p).lower() == "ucx";
+        return StringRef(p).lower() == "ucx";
       }) != plugins.end();
   ASSERT_TRUE(ucxFound) << "UCX plugin not found";
 
-  ASSERT_SUCCESS(nixl1.agent->getPluginParams("UCX", mems, backendParams));
+  ASSERT_SUCCESS(nixl1.agent->getPluginParams("ucx", mems, backendParams));
   ASSERT_SUCCESS(
-      nixl1.agent->createBackend("UCX", backendParams, nixl1.backend));
+      nixl1.agent->createBackend("ucx", backendParams, nixl1.backend));
 
   // Register memory.
   std::vector<char> dramBuffer1(1024);
@@ -338,9 +342,9 @@ TEST_F(NixlUcxIntegrationTest, ConcurrentNotifications) {
                       /*port=*/available_port(),
                       /*sync_mode=*/nixl_thread_sync_t::NIXL_THREAD_SYNC_RW));
 
-  ASSERT_SUCCESS(nixl2.agent->getPluginParams("UCX", mems, backendParams));
+  ASSERT_SUCCESS(nixl2.agent->getPluginParams("ucx", mems, backendParams));
   ASSERT_SUCCESS(
-      nixl2.agent->createBackend("UCX", backendParams, nixl2.backend));
+      nixl2.agent->createBackend("ucx", backendParams, nixl2.backend));
 
   std::vector<char> dramBuffer2(1024);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
