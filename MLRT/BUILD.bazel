@@ -708,7 +708,6 @@ modular_cc_library(
     visibility = [
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
-        "//max/python/max/_core/internal:__subpackages__",
         "@plugin//:__pkg__",
     ],
     deps = [
