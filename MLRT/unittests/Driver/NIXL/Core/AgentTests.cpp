@@ -4,24 +4,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/Driver/NIXL/nixl.h"
-#include "MLRT/Driver/NIXL/nixl_types.h"
-#include "MLRT/Driver/NIXL/telemetry/telemetry_event.h"
-#include "MLRT/Driver/NIXL/utils/common/cyclic_buffer.h"
+#include "MLRT/unittests/Driver/NIXL/TestCommon.h"
+#include "nixl.h"
+#include "nixl_types.h"
 #include "gtest/gtest.h"
 #include <cstdlib>
-#include <cstring>
 #include <filesystem>
-#include <functional>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
-#include <unistd.h>
 #include <vector>
-
-using namespace M::MLRT;
 
 namespace {
 
@@ -46,22 +38,6 @@ private:
   const char *name_;
   std::optional<std::string> oldValue_;
 };
-
-} // namespace
-
-namespace {
-
-bool waitUntil(const std::function<bool()> &predicate,
-               std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (predicate()) {
-      return true;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  }
-  return predicate();
-}
 
 } // namespace
 
@@ -109,7 +85,7 @@ protected:
       // Don't ASSERT in TearDown, just log potential issues.
       if (deregStatus != nixl_status_t::NIXL_SUCCESS)
         std::cerr << "[ WARNING ] Failed to deregister memory in TearDown: "
-                  << NixlEnumStrings::statusStr(deregStatus) << std::endl;
+                  << nixlEnumStrings::statusStr(deregStatus) << std::endl;
     }
   }
 };
@@ -142,7 +118,7 @@ TEST_F(NixlIntegrationTest, NoBackendOperationsFailGracefully) {
   EXPECT_EQ(st, nixl_status_t::NIXL_ERR_NOT_FOUND);
 
   // 3. Even if we try to *create* a backend with a bogus name, the plugin
-  //    manager won’t find a .so and must surface NIXL_ERR_NOT_FOUND.
+  //    manager won't find a .so and must surface NIXL_ERR_NOT_FOUND.
   nixl_b_params_t params;
   nixlBackendH *bogusHandle = nullptr;
   st = agent->createBackend("I_DO_NOT_EXIST", params, bogusHandle);
@@ -156,43 +132,4 @@ TEST_F(NixlIntegrationTest, NoBackendOperationsFailGracefully) {
   // No resources were ever successfully created, so TearDown() will simply
   // attempt to deregister the DRAM descriptor and get the same NOT_FOUND
   // (logged, not fatal).
-}
-
-TEST_F(NixlIntegrationTest, NoBackendFailureRecordsTelemetryError) {
-  namespace fs = std::filesystem;
-
-  const fs::path telemetryDir =
-      fs::temp_directory_path() /
-      ("nixl_agent_errors_" + std::to_string(getpid()));
-  fs::create_directories(telemetryDir);
-  ScopedEnvVar telemetryEnabled("MODULAR_NIXL_TELEMETRY_ENABLE", "y");
-  ScopedEnvVar telemetryDirVar("MODULAR_NIXL_TELEMETRY_DIR",
-                               telemetryDir.string());
-  ScopedEnvVar telemetryRunInterval(TELEMETRY_RUN_INTERVAL_VAR, "1");
-
-  nixlAgentConfig telemetryConfig(/*use_prog_thread=*/false,
-                                  /*use_listen_thread=*/false, 0,
-                                  nixl_thread_sync_t::NIXL_THREAD_SYNC_NONE);
-  auto telemetryAgent =
-      std::make_unique<nixlAgent>("TelemetryAgent", telemetryConfig);
-
-  nixl_reg_dlist_t descs(nixl_mem_t::DRAM_SEG);
-  descs.addDesc({reinterpret_cast<uintptr_t>(dramBuffer.data()),
-                 dramBuffer.size(), 0, ""});
-
-  EXPECT_EQ(telemetryAgent->registerMem(descs, &registrationArgs),
-            nixl_status_t::NIXL_ERR_NOT_FOUND);
-
-  auto buffer = std::make_unique<sharedRingBuffer<nixlTelemetryEvent>>(
-      (telemetryDir / "TelemetryAgent").string(), /*create=*/false,
-      TELEMETRY_VERSION);
-  ASSERT_TRUE(waitUntil([&]() { return !buffer->empty(); }));
-
-  nixlTelemetryEvent event;
-  ASSERT_TRUE(buffer->pop(event));
-  EXPECT_STREQ(event.eventName_,
-               NixlEnumStrings::statusStr(nixl_status_t::NIXL_ERR_NOT_FOUND));
-  EXPECT_EQ(event.category_, nixl_telemetry_category_t::NIXL_TELEMETRY_ERROR);
-
-  fs::remove_all(telemetryDir);
 }

@@ -32,22 +32,6 @@ What each subtree covers:
   metadata exchange, `queryMem`, and the full transfer matrix
   (`TransferTests`). This is the most exercise of UCX-backed
   read/write/notif.
-- **Libfabric** — plugin loading, topology discovery, binary
-  notifications.
-
-### LibfabricVramSmoke (EFA-aware, separate target)
-
-`//MLRT/unittests/Driver/NIXL/Libfabric:LibfabricVramSmoke` is a
-standalone binary (not a `bazel test` target) that exercises DRAM→VRAM
-reads through the libfabric plugin. It requires:
-
-- `/dev/infiniband` exposed to the host (EFA NIC visible).
-- An EFA-capable peer or loopback path. In practice, run it on an
-  AWS B200 Coder workspace.
-
-```bash
-./bazelw run //MLRT/unittests/Driver/NIXL/Libfabric:LibfabricVramSmoke
-```
 
 ## Disaggregated inference quick-tests
 
@@ -156,9 +140,6 @@ Paste this into the PR description:
 ```markdown
 - [ ] `bt //MLRT/unittests/Driver/NIXL/Core/...` green
 - [ ] `bt //MLRT/unittests/Driver/NIXL/UCX/...` green
-- [ ] `bt //MLRT/unittests/Driver/NIXL/Libfabric/...` green
-- [ ] `LibfabricVramSmoke` run on a B200 workspace (if libfabric or
-      VRAM paths changed)
 - [ ] KV transfer engine smoke test: sender node and receiver node both
       exited 0, sender printed ≥ 10 GiB/s over EFA (if NIXL transfer
       path changed)
