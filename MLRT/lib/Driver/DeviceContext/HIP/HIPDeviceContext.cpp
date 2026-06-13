@@ -619,8 +619,8 @@ ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize, bool isHost) {
   assert(byteSize != 0);
   HIP_WITH_DEV_ERR(*this);
   if (isHost) {
-    HIP_CHECK_ERR(
-        driver_.hipHostMalloc(ptr, byteSize, /* hipHostMallocPortable */ 0x1));
+    HIP_CHECK_ERR(driver_.hipHostMalloc(
+        ptr, byteSize, hipHostMallocFlags::hipHostMallocPortable));
   } else {
     HIP_CHECK_ERR(driver_.hipMalloc(ptr, byteSize));
   }
@@ -943,6 +943,27 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess HIPDeviceStream::enqueueHostFunc(void (*fn)(void *),
+                                                void *userData) const {
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipLaunchHostFunc(stream_, fn, userData));
+  return success();
+}
+
+ErrorOrSuccess
+HIPDeviceStream::enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                        uint64_t value) const {
+  const auto &hipDevice = HIPDevice::cast(this->device());
+
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitValue64(
+      stream_, reinterpret_cast<hipDeviceptr_t>(flag.devicePtr()), value,
+      hipStreamWaitValueFlags::hipStreamWaitValueEq,
+      /*mask*/ static_cast<uint64_t>(-1)));
+  return success();
+}
+
 ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   const auto &hipDevice = HIPDevice::cast(this->device());
@@ -1230,8 +1251,8 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
   case Device::AllocMode::HOST: {
     // We must poll here since hipHostMalloc is synchronous.
     POLL_PENDING_EVENTS(*this);
-    HIP_CHECK_ERR(
-        driver_.hipHostMalloc(ptr, byteSize, /* hipHostMallocPortable */ 0x1));
+    HIP_CHECK_ERR(driver_.hipHostMalloc(
+        ptr, byteSize, hipHostMallocFlags::hipHostMallocPortable));
     break;
   }
   case Device::AllocMode::SYNC: {
@@ -1254,6 +1275,41 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) {
     HIP_CHECK_ERR(driver_.hipFree(ptr)); // We only support sync allocations.
     MAYBE_SYNC(*this);
   }
+  return success();
+}
+
+ErrorOr<CompletionFlagRef> HIPDeviceContext::allocateCompletionFlag() {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::allocateCompletionFlag",
+                       TRACY_COLOR_PURPLE);
+  HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
+  void *hostPtr = nullptr;
+  HIP_CHECK_ERR(
+      driver_.hipHostMalloc(&hostPtr, sizeof(uint64_t),
+                            hipHostMallocFlags::hipHostMallocPortable |
+                                hipHostMallocFlags::hipHostMallocMapped));
+  hipDeviceptr_t devPtr = nullptr;
+  HIPDriver::Result r = driver_.hipHostGetDevicePointer(&devPtr, hostPtr, 0);
+  if (r != HIPDriver::SUCCESS) {
+    (void)driver_.hipHostFree(hostPtr);
+    const char *errName = nullptr;
+    (void)driver_.hipDrvGetErrorName(r, &errName);
+    return Error(
+        std::string("hipHostGetDevicePointer failed for CompletionFlag: ")
+            .append(errName ? errName : "(unknown)"));
+  }
+  // Initialize the flag to zero so the first wait observes a clean state.
+  *static_cast<uint64_t *>(hostPtr) = 0;
+  return CompletionFlagRef::take(
+      new CompletionFlag(*this, hostPtr, reinterpret_cast<uint64_t>(devPtr)));
+}
+
+ErrorOrSuccess HIPDeviceContext::freeCompletionFlag(void *hostPtr) {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::freeCompletionFlag",
+                       TRACY_COLOR_PURPLE);
+  HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
+  HIP_CHECK_ERR(driver_.hipHostFree(hostPtr));
   return success();
 }
 

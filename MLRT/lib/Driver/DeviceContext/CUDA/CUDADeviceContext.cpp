@@ -1548,6 +1548,38 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
+
+  CUDA_WITH_CTX_ERR(*this);
+  if (isHost) {
+    POLL_PENDING_EVENTS(*this);
+    CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
+  } else {
+    // Defer cuMemFree_v2 until after GPU stream work completes. This prevents
+    // a use-after-free when a kernel (e.g. allreduce reduce-scatter) is still
+    // reading memory via P2P on another GPU while the CPU drops its reference.
+    // During CUDA graph capture the stream records ops but does not execute
+    // them, so no P2P race is possible; free immediately to keep the memory
+    // pool available for subsequent capture allocations.
+    if (isStreamCapturing(driver_, stream_)) {
+      CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr));
+    } else {
+      RETURN_IF_ERROR(enqueueEventHandler(
+          [contextRef = DeviceContextRef::copy(this), ptr = ptr]() {
+            auto &cudaCtx = static_cast<CUDADeviceContext &>(*contextRef);
+            CUDA_WITH_CTX(cudaCtx);
+            CUDADriver::Result result = cudaCtx.driver_.cuMemFree_v2(ptr);
+            if (result != CUDADriver::SUCCESS) {
+              cudaCtx.setPendingError(
+                  formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result));
+            }
+          }));
+    }
+  }
+  return success();
+}
+
 ErrorOr<CompletionFlagRef> CUDADeviceContext::allocateCompletionFlag() {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::allocateCompletionFlag",
                        TRACY_COLOR_PURPLE);
@@ -1584,38 +1616,6 @@ ErrorOrSuccess CUDADeviceContext::freeCompletionFlag(void *hostPtr) {
   CUDA_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuMemFreeHost(hostPtr));
-  return success();
-}
-
-ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
-
-  CUDA_WITH_CTX_ERR(*this);
-  if (isHost) {
-    POLL_PENDING_EVENTS(*this);
-    CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
-  } else {
-    // Defer cuMemFree_v2 until after GPU stream work completes. This prevents
-    // a use-after-free when a kernel (e.g. allreduce reduce-scatter) is still
-    // reading memory via P2P on another GPU while the CPU drops its reference.
-    // During CUDA graph capture the stream records ops but does not execute
-    // them, so no P2P race is possible; free immediately to keep the memory
-    // pool available for subsequent capture allocations.
-    if (isStreamCapturing(driver_, stream_)) {
-      CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr));
-    } else {
-      RETURN_IF_ERROR(enqueueEventHandler(
-          [contextRef = DeviceContextRef::copy(this), ptr = ptr]() {
-            auto &cudaCtx = static_cast<CUDADeviceContext &>(*contextRef);
-            CUDA_WITH_CTX(cudaCtx);
-            CUDADriver::Result result = cudaCtx.driver_.cuMemFree_v2(ptr);
-            if (result != CUDADriver::SUCCESS) {
-              cudaCtx.setPendingError(
-                  formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result));
-            }
-          }));
-    }
-  }
   return success();
 }
 

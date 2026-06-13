@@ -9,6 +9,7 @@
 
 #include "gtest/gtest.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -746,6 +747,147 @@ TEST_F(GPUDeviceContextTest, GetPciBusId) {
   } else {
     // Check that an error is returned.
     EXPECT_ERR(dev->getPciBusId());
+  }
+}
+
+static void bumpAtomicCounter(void *userData) {
+  auto *counter = reinterpret_cast<std::atomic<int> *>(userData);
+  counter->fetch_add(1, std::memory_order_relaxed);
+}
+
+TEST_F(GPUDeviceContextTest, EnqueueHostFuncRunsCallback) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  if (ctx->device().api() == Device::cudaAPI ||
+      ctx->device().api() == Device::hipAPI) {
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    std::atomic<int> counter{0};
+    constexpr int kCount = 8;
+    for (int i = 0; i < kCount; ++i)
+      EXPECT_NO_ERR(stream->enqueueHostFunc(&bumpAtomicCounter, &counter));
+
+    EXPECT_NO_ERR(stream->synchronize());
+    EXPECT_EQ(counter.load(std::memory_order_relaxed), kCount);
+  }
+}
+
+TEST_F(GPUDeviceContextTest, EnqueueHostFuncUnsupportedOnCpu) {
+  ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
+                DeviceContext::create(Device::cpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, cpuStream, cpuCtx->stream());
+
+  std::atomic<int> counter{0};
+  EXPECT_ERR(cpuStream->enqueueHostFunc(&bumpAtomicCounter, &counter));
+  EXPECT_EQ(counter.load(std::memory_order_relaxed), 0);
+}
+
+TEST_F(GPUDeviceContextTest, CompletionFlagAllocResetSignalLoad) {
+  // Round-trip the host-side API in isolation: allocation initializes
+  // to zero, signal() stores the value, reset() goes back to zero.
+  // No GPU stream involved -- this just exercises the device-mapped
+  // pinned buffer and the atomic accessors on M::Driver::CompletionFlag.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  if (ctx->device().api() == Device::cudaAPI ||
+      ctx->device().api() == Device::hipAPI) {
+    ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+    EXPECT_EQ(flag->load(), 0u) << "fresh allocation should be zero";
+
+    flag->signal(42);
+    EXPECT_EQ(flag->load(), 42u);
+
+    flag->signal(0xdeadbeef);
+    EXPECT_EQ(flag->load(), 0xdeadbeefu);
+
+    flag->reset();
+    EXPECT_EQ(flag->load(), 0u) << "reset should clear back to zero";
+  } else {
+    ErrorOr<CompletionFlagRef> flagOr = ctx->allocateCompletionFlag();
+    ASSERT_TRUE(flagOr.isError());
+    EXPECT_THAT(std::string(flagOr.getError()),
+                testing::HasSubstr("not supported"));
+  }
+}
+
+TEST_F(GPUDeviceContextTest,
+       EnqueueWaitOnHostValuePreSignaledReturnsImmediately) {
+  // If the flag already holds the awaited value when the wait is
+  // enqueued, the wait should be a no-op and stream sync should complete.
+  // Avoids timing-flakiness while still exercising the wait path end-to-end.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  if (ctx->device().api() == Device::cudaAPI ||
+      ctx->device().api() == Device::hipAPI) {
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+    ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+    flag->signal(1);
+    EXPECT_NO_ERR(stream->enqueueWaitOnHostValue(*flag, 1));
+    EXPECT_NO_ERR(stream->synchronize());
+  }
+}
+
+TEST_F(GPUDeviceContextTest, EnqueueWaitOnHostValueGatesUntilHostSignals) {
+  // Enqueue the wait first, then signal from a background thread after
+  // a short delay. The stream's synchronize() must not return until
+  // signal() lands and the GPU front-end observes value == 1. We don't
+  // assert on timing (flaky) -- only that the sequence completes without
+  // hang and the worker thread ran before sync returned.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  if (ctx->device().api() == Device::cudaAPI ||
+      ctx->device().api() == Device::hipAPI) {
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+    ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+    EXPECT_NO_ERR(stream->enqueueWaitOnHostValue(*flag, 1));
+
+    std::atomic<bool> workerDidRun{false};
+    std::thread signaller([&] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      workerDidRun.store(true, std::memory_order_release);
+      flag->signal(1);
+    });
+
+    EXPECT_NO_ERR(stream->synchronize());
+    signaller.join();
+
+    EXPECT_TRUE(workerDidRun.load(std::memory_order_acquire))
+        << "stream sync should not have returned before the signal thread "
+           "stored the workerDidRun flag";
+    EXPECT_EQ(flag->load(), 1u);
+  }
+}
+
+TEST_F(GPUDeviceContextTest, AllocateCompletionFlagUnsupportedOnCpu) {
+  // Sanity: the default `DeviceContext::allocateCompletionFlag` returns
+  // an error; only CUDA overrides it. Matches the
+  // EnqueueHostFuncUnsupportedOnCpu pattern above.
+  ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
+                DeviceContext::create(Device::cpuAPI));
+  ErrorOr<CompletionFlagRef> flagOr = cpuCtx->allocateCompletionFlag();
+  ASSERT_TRUE(flagOr.isError());
+  EXPECT_THAT(std::string(flagOr.getError()),
+              testing::HasSubstr("not supported"));
+}
+
+TEST_F(GPUDeviceContextTest, EnqueueWaitOnHostValueUnsupportedOnCpu) {
+  // Allocate the flag against the CUDA context (the only backend that
+  // can produce one), then attempt the wait on the CPU stream. The
+  // stream itself must reject the call without dereferencing the flag.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  if (ctx->device().api() == Device::cudaAPI ||
+      ctx->device().api() == Device::hipAPI) {
+    ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+    ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
+                  DeviceContext::create(Device::cpuAPI));
+    ASSIGN_NO_ERR(DeviceStreamRef, cpuStream, cpuCtx->stream());
+    EXPECT_ERR_MSG(cpuStream->enqueueWaitOnHostValue(*flag, /*value=*/1),
+                   "not supported");
   }
 }
 

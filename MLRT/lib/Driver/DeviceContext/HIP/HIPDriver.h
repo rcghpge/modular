@@ -33,6 +33,7 @@ using hipMemPool_t = struct ihipMemPoolHandle_t *;
 using hipGraph_t = struct ihipGraph_t *;
 using hipGraphExec_t = struct hipGraphExec *;
 using hipGraphNode_t = struct hipGraphNode *;
+using hipHostFn_t = void(void *);
 
 // COPIED FROM hip_runtime_api.h
 
@@ -130,6 +131,19 @@ enum class hipMemcpyKind {
   hipMemcpyDefault = 4,
 };
 
+/// Allocation flags for hipHostMalloc.
+enum class hipHostMallocFlags : unsigned int {
+  hipHostMallocDefault = 0,
+  hipHostMallocPortable = 0x1,
+  hipHostMallocMapped = 0x2,
+  hipHostMallocWriteCombined = 0x4,
+};
+
+inline hipHostMallocFlags operator|(hipHostMallocFlags a, hipHostMallocFlags b)
+{
+    return static_cast<hipHostMallocFlags>(static_cast<unsigned int>(a) | static_cast<unsigned int>(b));
+}
+
 /// Memset node parameters for hipGraphAddMemsetNode.
 /// Layout matches hipMemsetParams from hip_runtime_api.h.
 using hipMemsetParams = struct hipMemsetParams_t {
@@ -139,6 +153,14 @@ using hipMemsetParams = struct hipMemsetParams_t {
   size_t pitch;
   unsigned int value;
   size_t width;
+};
+
+/// Flags for hipStreamWaitValue.
+enum class hipStreamWaitValueFlags : unsigned int {
+  hipStreamWaitValueGte = 0,
+  hipStreamWaitValueEq = 1,
+  hipStreamWaitValueAnd = 2,
+  hipStreamWaitValueNor = 3,
 };
 
 // HSA Runtime types (for getting device architecture info).

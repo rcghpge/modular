@@ -48,6 +48,8 @@ HIP_FUNC(hipDeviceGetStreamPriorityRange, Result, int *, int *)
 HIP_FUNC(hipStreamDestroy, Result, hipStream_t)
 HIP_FUNC(hipStreamSynchronize, Result, hipStream_t)
 HIP_FUNC(hipStreamWaitEvent, Result, hipStream_t, hipEvent_t, unsigned int)
+HIP_FUNC(hipStreamWaitValue64, Result, hipStream_t, hipDeviceptr_t,
+          unsigned long long, hipStreamWaitValueFlags, unsigned long long)
 HIP_FUNC(hipStreamBeginCapture, Result, hipStream_t, hipStreamCaptureMode)
 HIP_FUNC(hipStreamEndCapture, Result, hipStream_t, hipGraph_t *)
 HIP_FUNC(hipStreamIsCapturing, Result, hipStream_t, hipStreamCaptureStatus *)
@@ -72,12 +74,14 @@ HIP_FUNC(hipGraphExecDestroy, Result, hipGraphExec_t)
 HIP_FUNC(hipGraphLaunch, Result, hipGraphExec_t, hipStream_t)
 HIP_FUNC(hipGraphDebugDotPrint, Result, hipGraph_t, const char *, unsigned int)
 
-HIP_FUNC(hipHostMalloc, Result, void **, size_t, unsigned int)
+HIP_FUNC(hipHostMalloc, Result, void **, size_t, hipHostMallocFlags)
 HIP_FUNC(hipHostFree, Result, void *)
 HIP_FUNC(hipMallocAsync, Result, hipDeviceptr_t *, size_t, hipStream_t)
 HIP_FUNC(hipFreeAsync, Result, hipDeviceptr_t, hipStream_t)
 HIP_FUNC(hipMalloc, Result, hipDeviceptr_t *, size_t)
 HIP_FUNC(hipFree, Result, hipDeviceptr_t)
+HIP_FUNC(hipHostGetDevicePointer, Result, hipDeviceptr_t *, void *,
+          unsigned int)
 
 HIP_FUNC(hipDeviceGetDefaultMemPool, Result, hipMemPool_t *, int)
 HIP_FUNC(hipMemPoolSetAccess, Result, hipMemPool_t, const hipMemAccessDesc *,
@@ -122,6 +126,8 @@ HIP_FUNC(hipFuncGetAttribute, Result, int *, hipFunction_attribute,
 HIP_FUNC(hipModuleLaunchKernel, Result, hipFunction_t, unsigned int,
          unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
          unsigned int, hipStream_t, void **, void **)
+
+HIP_FUNC(hipLaunchHostFunc, Result, hipStream_t, hipHostFn_t, void *)
 
 HIP_FUNC(hipEventCreateWithFlags, Result, hipEvent_t *, unsigned int)
 HIP_FUNC(hipEventDestroy, Result, hipEvent_t)

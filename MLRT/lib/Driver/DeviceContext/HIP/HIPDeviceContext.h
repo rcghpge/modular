@@ -176,6 +176,12 @@ public:
 
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
+  ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
+                                 void *userData) const override;
+
+  ErrorOrSuccess enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                        uint64_t value) const override;
+
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
@@ -331,6 +337,9 @@ public:
       size_t dynamicSharedMemSize) override;
 
   bool isGraphCapturing() const override;
+
+  ErrorOr<CompletionFlagRef> allocateCompletionFlag() override;
+  ErrorOrSuccess freeCompletionFlag(void *hostPtr) override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
