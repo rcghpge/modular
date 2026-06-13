@@ -40,8 +40,7 @@ KGEN::CompilationOptions M::MOGG::createCompilationOptions(
   compilationOptions.targetTriple = target.getTripleStr();
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
-  compilationOptions.targetAccelerator =
-      M::Driver::Device::getAcceleratorArchOrEmpty();
+  compilationOptions.targetAccelerator = target.getAcceleratorArch();
   compilationOptions.enableLLVMPerFunctionSplitting = false;
 
   if (kernelBuildType == KernelBuildType::kDebug)
@@ -56,11 +55,7 @@ KGEN::CompilationOptions M::MOGG::createCompilationOptions(
   return compilationOptions;
 }
 
-ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
-                                              MLIRContext *ctx,
-                                              KernelBuildType buildType,
-                                              bool debug,
-                                              llvm::StringRef saveTempsPrefix) {
+ErrorOr<TargetInfoAttr> M::MOGG::getHostTargetInfoAttr(MLIRContext *ctx) {
   ASSERT_STREAM(ctx != nullptr, "context must be non-null");
 
   // Full target information for the host, including target accelerators.
@@ -68,16 +63,17 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
 
   ctx->loadDialect<M::MDialect>();
 
-  ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
+  return getTargetInfoFor(
       ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
       getHostCPUFeatures(), /*tuneCpu=*/"",
       /*acceleratorArch=*/M::Driver::Device::getAcceleratorArchOrEmpty());
+}
 
-  if (targetOr.isError())
-    return targetOr.takeError();
-
-  TargetInfoAttr target = targetOr.takeValue();
-
+ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
+                                              TargetInfoAttr target,
+                                              KernelBuildType buildType,
+                                              bool debug,
+                                              llvm::StringRef saveTempsPrefix) {
   // Compilation target information
   createCompilationOptions(target, buildType, debug, saveTempsPrefix)
       .print(keyBuf);
@@ -89,8 +85,13 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
 }
 
 void M::MOGG::GraphCompilerCacheKey::print(llvm::raw_ostream &os) {
-  [[maybe_unused]] auto result = graphCompilerCacheKey(
-      os, ctx, this->buildType, this->debug, this->saveTempsPrefix);
+  auto targetOr = getHostTargetInfoAttr(ctx);
+  ASSERT_STREAM(!targetOr.isError(), << "unable to extract host information: "
+                                     << targetOr.takeError());
+
+  [[maybe_unused]] auto result =
+      graphCompilerCacheKey(os, targetOr.takeValue(), this->buildType,
+                            this->debug, this->saveTempsPrefix);
 
   ASSERT_STREAM(!result.isError(), << "unable to extract host information: "
                                    << result.takeError());

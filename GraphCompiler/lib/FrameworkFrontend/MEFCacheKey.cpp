@@ -88,8 +88,12 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   if (auto *compilationCtx = maxContext->get<KGEN::CompilationContext>())
     compilationCtx->print(os);
 
-  // Graph compiler version, pipeline, config
-  if (auto err = M::MOGG::graphCompilerCacheKey(os, &mlirCtx))
+  // Graph compiler version, pipeline, config. The host target is resolved
+  // here, outside the key computation itself.
+  auto hostTargetOr = MOGG::getHostTargetInfoAttr(&mlirCtx);
+  if (hostTargetOr.isError())
+    return hostTargetOr.takeError();
+  if (auto err = M::MOGG::graphCompilerCacheKey(os, hostTargetOr.takeValue()))
     return err.takeError();
 
   // User-provided kernel library files (ref MOCO-1570)

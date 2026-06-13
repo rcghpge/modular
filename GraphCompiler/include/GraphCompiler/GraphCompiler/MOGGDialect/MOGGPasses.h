@@ -66,17 +66,24 @@ inline std::string buildTypeString(KernelBuildType bt) {
 /// Provide one-time initialization of LLVM in a thread safe manner.
 void initLLVM();
 
+/// Probe the host (target triple, CPU, features, accelerator arch) and build
+/// the `TargetInfoAttr` that feeds the cache key. Callers pass the result
+/// explicitly so key computation performs no hardware probing of its own and
+/// one resolution can be reused across key computations.
+ErrorOr<TargetInfoAttr> getHostTargetInfoAttr(mlir::MLIRContext *ctx);
+
 KGEN::CompilationOptions
 createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,
                          bool debugKGENStubs, StringRef saveTempsPrefix);
 
 /// Write all compiler configuration information used by the graph compiler to
-/// the ostream to be used as a cache key.
+/// the ostream to be used as a cache key. `target` is typically the host
+/// (see `getHostTargetInfoAttr`).
 ///
 /// This includes information like the host CPU, the target accelerators,
 /// the optimization level, and versioning information for the graph compiler.
 ErrorOrSuccess
-graphCompilerCacheKey(llvm::raw_ostream &keyBuf, mlir::MLIRContext *ctx,
+graphCompilerCacheKey(llvm::raw_ostream &keyBuf, TargetInfoAttr target,
                       KernelBuildType buildType = KernelBuildType::kRelease,
                       bool debug = false, llvm::StringRef saveTempsPrefix = "");
 

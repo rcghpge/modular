@@ -176,8 +176,11 @@ struct JitCompileKernels
     auto envAttr = KGEN::getModuleEnvAttr(kgenModuleOp);
     envAttr.printStripped(*keyBufRef);
 
+    auto hostTargetOr = MOGG::getHostTargetInfoAttr(ctx);
+    if (hostTargetOr.isError())
+      return kgenModuleOp->emitError() << hostTargetOr.takeError();
     if (auto error = MOGG::graphCompilerCacheKey(
-            *keyBufRef, ctx,
+            *keyBufRef, hostTargetOr.takeValue(),
             KernelBuildType::kRelease, // TODO: Support the other types.
             debugKGENStubs,
             "" // TODO: Consider removing this option.
