@@ -45,13 +45,6 @@ struct KernelStubHashEntry {
 struct KernelStubOpEquivalenceInfo
     : public llvm::DenseMapInfo<KernelStubHashEntry> {
 
-  // This scheme breaks all of LLVM/MLIR if a virtual address has a value of 1
-  // or 2.
-  static inline KernelStubHashEntry getEmptyKey() {
-    return {MOGG::KernelStubOp::getFromOpaquePointer(
-                DenseMapInfo<void *>::getEmptyKey()),
-            0};
-  }
   // We first compute the hash of a node and store it with the entry in the
   // dense set. This is an optimization where subsequent insertions of the same
   // op will not rehash. We will be comparing two entries when the hash collides
@@ -63,9 +56,6 @@ struct KernelStubOpEquivalenceInfo
   static bool isEqual(KernelStubHashEntry lhs, KernelStubHashEntry rhs) {
     if (lhs.op == rhs.op)
       return true;
-
-    if (lhs == getEmptyKey() || rhs == getEmptyKey())
-      return false;
 
     // Check if properties are equivalent modulo sym_name and fusionInfo
     // attributes.

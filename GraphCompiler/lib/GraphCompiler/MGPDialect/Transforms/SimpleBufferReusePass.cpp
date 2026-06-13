@@ -38,12 +38,6 @@ template <>
 struct DenseMapInfo<M::MGP::ReuseKey> {
   using KeyTy = M::MGP::ReuseKey;
 
-  static inline KeyTy getEmptyKey() {
-    return {mlir::TypedValue<mlir::IndexType>(),
-            DenseMapInfo<Attribute>::getEmptyKey(),
-            DenseMapInfo<uint64_t>::getEmptyKey()};
-  }
-
   static unsigned getHashValue(const KeyTy &k) {
     return hash_combine(DenseMapInfo<mlir::Value>::getHashValue(k.size),
                         DenseMapInfo<Attribute>::getHashValue(k.device),
