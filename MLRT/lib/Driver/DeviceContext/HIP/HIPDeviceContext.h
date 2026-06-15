@@ -340,6 +340,8 @@ public:
 
   ErrorOr<CompletionFlagRef> allocateCompletionFlag() override;
   ErrorOrSuccess freeCompletionFlag(void *hostPtr) override;
+  ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) override;
+  ErrorOrSuccess unregisterHostMemory(void *ptr) override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
