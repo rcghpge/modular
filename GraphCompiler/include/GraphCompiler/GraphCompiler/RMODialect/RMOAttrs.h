@@ -14,6 +14,10 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 
+namespace mlir {
+class Operation;
+} // namespace mlir
+
 namespace M::RMO {
 
 struct PythonFrame {
@@ -36,7 +40,7 @@ public:
   ~PythonFrameAttrStorage() {
     frame.decref(frame.ptr);
     if (frame.cached_output)
-      delete frame.cached_output;
+      delete[] frame.cached_output;
   }
 
   char *stack_trace() {
@@ -104,6 +108,13 @@ public:
 
   char *stack_trace() { return getImpl()->stack_trace(); }
 };
+
+/// Walks root and its descendants, replacing every OpaqueLoc that wraps a
+/// PythonFrameAttr with a serializable FusedLoc carrying the stack-trace
+/// string. Locations without a PythonFrameAttr collapse to their fallback.
+/// OpaqueLoc does not serialize to text or bytecode, so this is what makes
+/// Python source provenance survive printing. Mutates locations in place.
+void materializePythonFrameLocations(mlir::Operation *root);
 
 } // namespace M::RMO
 

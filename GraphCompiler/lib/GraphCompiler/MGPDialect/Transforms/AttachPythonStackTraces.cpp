@@ -51,20 +51,7 @@ struct AttachPythonStackTraces
   void runOnOperation() override {
     mlir::MLIRContext *ctx = &getContext();
 
-    // Recursively strip OpaqueLocs from a location tree, converting each to
-    // its fallback location or a FusedLoc carrying the Python stack trace.
-    mlir::AttrTypeReplacer replacer;
-    replacer.addReplacement(
-        [&](mlir::OpaqueLoc opaqueLoc) -> mlir::LocationAttr {
-          Location fallback = opaqueLoc.getFallbackLocation();
-          llvm::StringRef stackTrace = extractStackTrace(opaqueLoc);
-          if (!stackTrace.empty())
-            return mlir::FusedLoc::get(ctx, {fallback},
-                                       StringAttr::get(ctx, stackTrace));
-          return fallback;
-        });
-
-    getOperation()->walk([&ctx, &replacer](Operation *op) {
+    getOperation()->walk([&ctx](Operation *op) {
       Location loc = op->getLoc();
 
       // Embed the trace into the assert message for better diagnostics.
@@ -86,10 +73,11 @@ struct AttachPythonStackTraces
           }
         }
       }
-
-      replacer.replaceElementsIn(op, /*replaceAttrs=*/false,
-                                 /*replaceLocs=*/true, /*replaceTypes=*/false);
     });
+
+    // Convert OpaqueLocs wrapping PythonFrameAttr into serializable FusedLocs
+    // so the traces survive downstream lowering and bytecode.
+    RMO::materializePythonFrameLocations(getOperation());
   }
 };
 
