@@ -182,6 +182,12 @@ def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
     Option<"dumpDotGraph", "dump-dot-graph",
            "bool", /*default=*/"false",
            "Prints the connected elementwise graph we traverse to find fusions.">,
+    Option<"largeTensorElementThreshold", "large-tensor-element-threshold",
+           "int64_t", /*default=*/"4096",
+           "Tensor operands with more static elements than this (or with an "
+           "unknown element count) are considered large; kernels with more "
+           "than one large tensor operand are not duplicated into multiple "
+           "consumer subgraphs.">,
   ];
   let statistics = [
     Statistic<"numberOfFusedKernels", "# of fused kernels", "Number of fused kernels">

@@ -101,8 +101,53 @@ static inline bool isAnElementwiseKernel(Operation *op) {
   return false;
 }
 
-static inline bool canDuplicateIfOnNotOnHost(Operation *op) {
-  return !MO::isOnHost(op);
+/// A tensor operand is considered "large" if reading it again is expensive.
+/// This is true when its static element count is unknown (any parametric or
+/// dynamic dimension) or when it exceeds `largeTensorElementThreshold`.
+/// Scalars, 0/1-D weights, and small static tensors are not "large".
+static bool isLargeTensorOperand(Type type,
+                                 int64_t largeTensorElementThreshold) {
+  // Only tensor operands carry the re-read cost we care about. Chains, device
+  // contexts, indices, scalars, and opaque handles are not data reads.
+  auto tensorType = dyn_cast<MO::TensorType>(type);
+  if (!tensorType)
+    return false;
+
+  assert(tensorType.hasRank() && "MO tensors are always ranked");
+
+  // Parametric or dynamic dimensions: element count is unknown, so the read
+  // could be arbitrarily large. Treat as large conservatively.
+  std::optional<int64_t> numElements = tensorType.getNumElements();
+  if (!numElements.has_value())
+    return true;
+
+  // Small static tensors (scalars, 1-D weights/biases, small broadcasts) are
+  // cheap to re-read, so duplicating an op that reads them remains a win.
+  return *numElements > largeTensorElementThreshold;
+}
+
+/// Duplicating a device elementwise kernel into an extra consumer re-reads ALL
+/// of its tensor inputs once more; materializing it instead costs one result
+/// write plus one read per consumer. Duplication is therefore only a win when
+/// the kernel has at most ONE large tensor operand (e.g. a cast, activation,
+/// scale-by-weight, or 1-D bias-add). A binary op over two large tensors (e.g.
+/// a residual `mo.add`) re-reads more bytes than it would cost to materialize,
+/// and in residual chains the duplicated reads compound quadratically. See
+/// JSC-30 / MSTDL-2759.
+static bool isCheapToDuplicate(Operation *op,
+                               int64_t largeTensorElementThreshold) {
+  // Eligibility (`isAnElementwiseKernel`) guarantees every candidate is a
+  // kernel op.
+  auto kernelOp = cast<MOGG::KernelOp>(op);
+
+  int numLargeOperands = 0;
+  for (Value input : kernelOp.getInputs()) {
+    if (isLargeTensorOperand(input.getType(), largeTensorElementThreshold)) {
+      if (++numLargeOperands > 1)
+        return false;
+    }
+  }
+  return true;
 }
 
 //-------------------------------------------------
@@ -267,11 +312,23 @@ struct FuseElementwisePass
     MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
     MOGG::CompatibilityFunction compatibilityCheck = expKernelsAreCompatible;
 
+    // Permits duplication of a kernel into multiple consumer subgraphs only
+    // when it is a device-side kernel (host ops never duplicate) AND
+    // duplicating it is not a net memory-traffic loss (see
+    // `isCheapToDuplicate`). Note this callback is consulted only when
+    // deciding whether to ABSORB a parent that has users outside the current
+    // subgraph; the single-subgraph fusion path
+    // (`curSubgraph.contains(user)`) does not consult it and is unaffected.
+    int64_t threshold = largeTensorElementThreshold;
+    auto canDuplicate = [threshold](Operation *op) {
+      return !MO::isOnHost(op) && isCheapToDuplicate(op, threshold);
+    };
+
     /// TODO: MOCO-1469 Remove this limit.
     static constexpr uint64_t kMaximumFusionSetSize = 64;
     auto subgraphs = sourceDestinationSequenceFusionAnalysis(
         graphOp.getBody(), topologyAnalysis, isAnElementwiseKernel,
-        compatibilityCheck, canDuplicateIfOnNotOnHost, kMaximumFusionSetSize);
+        compatibilityCheck, canDuplicate, kMaximumFusionSetSize);
 
     for (auto &subgraph : subgraphs)
       topologyAnalysis.computeTopologicalSorting(subgraph);
