@@ -6,9 +6,12 @@
 
 #include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "mlir/IR/AttrTypeSubElements.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace M::MOGG {
 
@@ -28,14 +31,46 @@ struct RewriteOpaqueTypesPass
     // free to run this pass on a module that has no opaque-type references.
     auto mappingAttr =
         module->getAttrOfType<mlir::DictionaryAttr>(kOpaqueTypeMappingAttrName);
+    // Safety net for the kernel-struct exclusion in `buildOpaqueTypeMapping`:
+    // collect the leaf name of every kernel/primitive decl in the module so an
+    // `!mo.opaque<"Foo">` that names an (excluded) registered kernel struct
+    // fails loudly here instead of silently passing through unqualified and
+    // surfacing as a confusing far-from-the-cause failure during later
+    // lowering. The decls are already materialized in the module at this
+    // stage, so this needs no package rescan and no extra attribute.
+    llvm::StringSet<> kernelLeafNames;
+    auto leafOf = [](llvm::StringRef name) -> llvm::StringRef {
+      return name.rsplit('.').second.empty() ? name : name.rsplit('.').second;
+    };
+    for (auto decl : module.getOps<KernelDeclOp>())
+      kernelLeafNames.insert(leafOf(decl.getSymName()));
+    for (auto decl : module.getOps<PrimitiveDeclOp>())
+      kernelLeafNames.insert(leafOf(decl.getSymName()));
+
+    bool sawKernelStructMisuse = false;
     if (mappingAttr && !mappingAttr.empty()) {
       mlir::AttrTypeReplacer replacer;
       replacer.addReplacement(
           [&](MO::OpaqueType opaqueTy) -> std::optional<mlir::Type> {
-            auto qualified =
-                mappingAttr.getNamed(opaqueTy.getSymbol().getValue());
-            if (!qualified)
+            llvm::StringRef symbol = opaqueTy.getSymbol().getValue();
+            auto qualified = mappingAttr.getNamed(symbol);
+            if (!qualified) {
+              // An unqualified opaque type that names a registered kernel
+              // struct is a misuse: kernel structs are implementations
+              // resolved by registration, not opaque data types. Already-
+              // qualified or genuinely-external opaque types carry dotted
+              // names whose leaves never collide here, so this fires only on
+              // the precise misuse.
+              if (kernelLeafNames.contains(symbol)) {
+                module.emitError()
+                    << "opaque type '" << symbol
+                    << "' refers to a registered kernel struct; kernel "
+                       "structs are implementations resolved by registration, "
+                       "not opaque data types";
+                sawKernelStructMisuse = true;
+              }
               return std::nullopt;
+            }
             auto qualifiedStr =
                 mlir::dyn_cast<mlir::StringAttr>(qualified->getValue());
             if (!qualifiedStr)
@@ -45,6 +80,8 @@ struct RewriteOpaqueTypesPass
       replacer.recursivelyReplaceElementsIn(module, /*replaceAttrs=*/true,
                                             /*replaceLocs=*/false,
                                             /*replaceTypes=*/true);
+      if (sawKernelStructMisuse)
+        return signalPassFailure();
     }
 
     // The mapping has been applied (or there was nothing to apply);

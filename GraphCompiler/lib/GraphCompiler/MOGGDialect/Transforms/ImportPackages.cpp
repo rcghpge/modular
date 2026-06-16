@@ -524,6 +524,20 @@ static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
   // don't care about.
   pkg->walk<mlir::WalkOrder::PreOrder>([&](KGEN::LIT::StructDeclOp structOp)
                                            -> mlir::WalkResult {
+    // Skip @compiler.register kernel structs. They are implementations
+    // resolved by registration string through MojoRegistry and never flow as
+    // !mo.opaque<…> data values, so they don't belong in the opaque-type
+    // resolution table; including them is dead weight and a simple-name
+    // collision hazard against genuine opaque data types. This reuses the
+    // exact predicate scanForKernelDecls uses to decide which structs become
+    // mogg.kernel.decl ops. (scanForKernelDecls runs just before this and
+    // already validated these structs, so the error path is unreachable in
+    // practice; be conservative and exclude on error too.)
+    ExtensibilityAPIStructInfo info;
+    ErrorOr<bool> isKernel = isExtensibilityAPIStruct(structOp, info);
+    if (isKernel.isError() || isKernel.takeValue())
+      return mlir::WalkResult::skip();
+
     // Walk all ancestor FileModuleOp / StructDeclOp ops to collect the full
     // path. parentNames is filled innermost-first and then reversed below.
     llvm::SmallVector<llvm::StringRef> parentNames;
