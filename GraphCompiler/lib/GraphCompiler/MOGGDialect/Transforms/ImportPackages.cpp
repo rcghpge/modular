@@ -75,9 +75,9 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
   static constexpr llvm::StringLiteral kIndexListParams[] = {
       kParameterSize, kParameterElementType};
   static constexpr llvm::StringLiteral kTileTensorParams[] = {
-      kParameterMut,         kParameterDType,        kParameterLayoutType,
-      kParameterOrigin,      kParameterAddressSpace, kParameterLinearIdxType,
-      kParameterElementSize, "origin_mut",
+      kParameterMut,           kParameterDType,       kParameterLayoutType,
+      kParameterOrigin,        kParameterStorage,     kParameterAddressSpace,
+      kParameterLinearIdxType, kParameterElementSize, "origin_mut",
   };
   auto leaf = symbol.getLeafReference().strref();
   if (leaf == kLeafSIMD)

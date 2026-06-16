@@ -409,6 +409,7 @@ constexpr llvm::StringLiteral kParameterLayoutType = "LayoutType";
 constexpr llvm::StringLiteral kParameterOrigin = "origin";
 constexpr llvm::StringLiteral kParameterAddressSpace = "address_space";
 constexpr llvm::StringLiteral kParameterLinearIdxType = "linear_idx_type";
+constexpr llvm::StringLiteral kParameterStorage = "Storage";
 constexpr llvm::StringLiteral kParameterTaskId = "task_id";
 constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
