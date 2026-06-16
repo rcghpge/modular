@@ -146,6 +146,9 @@ struct Device : M::ReferenceCounted<Device> {
   // Gets the architecture name of the device.
   ErrorOr<std::string> getArchName();
 
+  // Gets the model name of the device (e.g. "NVIDIA B200", "AMD MI300X").
+  ErrorOr<std::string> getModelName();
+
   /// Returns whether or not the device is compatible with MAX.
   ErrorOrSuccess isCompatible() const;
 
