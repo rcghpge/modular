@@ -487,6 +487,201 @@ declVerifyTileElementwiseFunction(KernelDeclOp decl,
 }
 
 //===----------------------------------------------------------------------===//
+// Cross-kernel verifiers (consistency across multiple registrations of the
+// same op name)
+//===----------------------------------------------------------------------===//
+
+enum class KernelTypeTag { Execute, Elementwise, View };
+
+static KernelTypeTag getKernelType(const KernelDeclAdaptor &adaptor) {
+  if (adaptor.isViewKernel())
+    return KernelTypeTag::View;
+  if (adaptor.isElementwise() || adaptor.isTileElementwise())
+    return KernelTypeTag::Elementwise;
+  if (adaptor.executeFunction.has_value())
+    return KernelTypeTag::Execute;
+  llvm_unreachable("kernel has no recognised entry point; "
+                   "declVerifyHasEntryPoint should have caught this");
+}
+
+static llvm::StringRef kernelTypeName(KernelTypeTag t) {
+  switch (t) {
+  case KernelTypeTag::Execute:
+    return "execute";
+  case KernelTypeTag::Elementwise:
+    return "elementwise";
+  case KernelTypeTag::View:
+    return "view";
+  }
+  llvm_unreachable("unknown KernelTypeTag");
+}
+
+static llvm::SmallVector<KernelDeclOperandAdaptor>
+getNonLaunchInputs(const KernelDeclFunctionAdaptor &fn) {
+  llvm::SmallVector<KernelDeclOperandAdaptor> result;
+  for (const KernelDeclOperandAdaptor &arg : fn.inputArguments)
+    if (!arg.isLaunchArgument())
+      result.push_back(arg);
+  return result;
+}
+
+// Return the semantic result of a kernel function, or nullopt if the function
+// uses `raises` (in which case outputResult is a raises ABI artifact, not a
+// real return value).
+static std::optional<KernelDeclOperandAdaptor>
+getSemanticResult(const KernelDeclFunctionAdaptor &fn) {
+  if (fn.attr.getSignature().isThrows())
+    return std::nullopt;
+  return fn.outputResult;
+}
+
+/// Verify cross-kernel consistency for every op name with multiple
+/// registrations. For each group, decls[0] is the reference (ImportPackages
+/// inserts built-ins first, so it is the built-in when one exists).
+///
+/// Per registration, checks in order:
+///   1. Kernel type must match (execute / elementwise / view).
+///   2. If execute: output count, non-launch input count, and per-operand
+///      types must all match (fusion variants are treated as equivalent).
+LogicalResult crossVerifyKernels(ModuleOp moduleOp) {
+  llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<KernelDeclOp>> byReg;
+  for (KernelDeclOp decl : moduleOp.getOps<KernelDeclOp>())
+    byReg[decl.getRegistrationAttr()].push_back(decl);
+
+  bool failed = false;
+  for (auto &[regName, decls] : byReg) {
+    if (decls.size() < 2)
+      continue;
+
+    KernelDeclAdaptor refAdaptor(decls[0]);
+    KernelTypeTag refTag = getKernelType(refAdaptor);
+    bool refIsBuiltin = !decls[0].getIsUserDefined();
+
+    // Pre-compute reference signature (used when refTag == Execute or
+    // Elementwise).
+    const llvm::SmallVector<KernelDeclOperandAdaptor> *refOutputs = nullptr;
+    llvm::SmallVector<KernelDeclOperandAdaptor> refInputs;
+    std::optional<KernelDeclOperandAdaptor> refOutputResult;
+    if (refTag == KernelTypeTag::Execute) {
+      refOutputs = &refAdaptor.executeFunction->outputArguments;
+      refInputs = getNonLaunchInputs(*refAdaptor.executeFunction);
+      refOutputResult = getSemanticResult(*refAdaptor.executeFunction);
+    } else if (refTag == KernelTypeTag::Elementwise) {
+      refOutputs = &refAdaptor.elementwiseFunction->outputArguments;
+      refInputs = getNonLaunchInputs(*refAdaptor.elementwiseFunction);
+      refOutputResult = getSemanticResult(*refAdaptor.elementwiseFunction);
+    }
+
+    for (size_t i = 1; i < decls.size(); ++i) {
+      KernelDeclAdaptor adaptor(decls[i]);
+
+      // 1. Kernel type check.
+      KernelTypeTag tag = getKernelType(adaptor);
+      if (tag != refTag) {
+        if (refIsBuiltin) {
+          decls[i]->emitError()
+              << "Kernel \"" << regName.getValue()
+              << "\" type mismatch: built-in uses " << kernelTypeName(refTag)
+              << ", but this registration uses " << kernelTypeName(tag) << "; "
+              << kernelTypeName(refTag) << " method expected";
+        } else {
+          decls[i]->emitError()
+              << "Kernel \"" << regName.getValue()
+              << "\" type mismatch: this registration uses "
+              << kernelTypeName(tag) << " but a previous registration uses "
+              << kernelTypeName(refTag) << "; " << kernelTypeName(refTag)
+              << " method expected";
+        }
+        failed = true;
+        continue;
+      }
+
+      // 2. Signature check (execute and elementwise; skip view / build-graph).
+      if (refTag != KernelTypeTag::Execute &&
+          refTag != KernelTypeTag::Elementwise)
+        continue;
+
+      llvm::StringRef sigKind;
+      const llvm::SmallVector<KernelDeclOperandAdaptor> *outputs = nullptr;
+      llvm::SmallVector<KernelDeclOperandAdaptor> inputs;
+      std::optional<KernelDeclOperandAdaptor> outputResult;
+      if (refTag == KernelTypeTag::Execute) {
+        sigKind = "Execute";
+        outputs = &adaptor.executeFunction->outputArguments;
+        inputs = getNonLaunchInputs(*adaptor.executeFunction);
+        outputResult = getSemanticResult(*adaptor.executeFunction);
+      } else {
+        sigKind = "Elementwise";
+        outputs = &adaptor.elementwiseFunction->outputArguments;
+        inputs = getNonLaunchInputs(*adaptor.elementwiseFunction);
+        outputResult = getSemanticResult(*adaptor.elementwiseFunction);
+      }
+
+      // Count mismatch.
+      if (outputs->size() != refOutputs->size() ||
+          inputs.size() != refInputs.size() ||
+          outputResult.has_value() != refOutputResult.has_value()) {
+        if (refIsBuiltin) {
+          decls[i]->emitError()
+              << sigKind << " signature mismatch for \"" << regName.getValue()
+              << "\": " << regName.getValue() << " expects "
+              << refOutputs->size() << " output(s), " << refInputs.size()
+              << " input(s), and " << (refOutputResult.has_value() ? 1 : 0)
+              << " result(s), but this registration has " << outputs->size()
+              << " output(s), " << inputs.size() << " input(s), and "
+              << (outputResult.has_value() ? 1 : 0) << " result(s)";
+        } else {
+          decls[i]->emitError()
+              << sigKind << " signature mismatch for \"" << regName.getValue()
+              << "\": previous registration has " << refOutputs->size()
+              << " output(s), " << refInputs.size() << " input(s), and "
+              << (refOutputResult.has_value() ? 1 : 0)
+              << " result(s), but this registration has " << outputs->size()
+              << " output(s), " << inputs.size() << " input(s), and "
+              << (outputResult.has_value() ? 1 : 0) << " result(s)";
+        }
+        failed = true;
+        continue;
+      }
+
+      // Per-operand type check.
+      auto emitOperandError = [&](size_t pos, llvm::StringRef kind,
+                                  const KernelDeclOperandAdaptor &refOp,
+                                  const KernelDeclOperandAdaptor &op) {
+        std::string refStr, str;
+        llvm::raw_string_ostream(refStr) << refOp;
+        llvm::raw_string_ostream(str) << op;
+        if (refIsBuiltin) {
+          decls[i]->emitError()
+              << sigKind << " signature mismatch for \"" << regName.getValue()
+              << "\": " << kind << " " << pos
+              << " type differs: " << regName.getValue() << " expects "
+              << refStr << ", but this registration has " << str;
+        } else {
+          decls[i]->emitError()
+              << sigKind << " signature mismatch for \"" << regName.getValue()
+              << "\": " << kind << " " << pos
+              << " type differs: previous registration has " << refStr
+              << ", but this registration has " << str;
+        }
+        failed = true;
+      };
+
+      for (size_t j = 0; j < refOutputs->size(); ++j)
+        if ((*refOutputs)[j] != (*outputs)[j])
+          emitOperandError(j, "output", (*refOutputs)[j], (*outputs)[j]);
+      for (size_t j = 0; j < refInputs.size(); ++j)
+        if (refInputs[j] != inputs[j])
+          emitOperandError(j, "input", refInputs[j], inputs[j]);
+      if (refOutputResult.has_value() && outputResult.has_value() &&
+          *refOutputResult != *outputResult)
+        emitOperandError(0, "result", *refOutputResult, *outputResult);
+    }
+  }
+  return failed ? failure() : success();
+}
+
+//===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
 
@@ -574,6 +769,9 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
               .failed())
         continue;
     }
+
+    // Cross-kernel consistency checks.
+    (void)setFlagIfFailed(failed, crossVerifyKernels, moduleOp);
 
     if (failed)
       signalPassFailure();

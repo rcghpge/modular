@@ -854,9 +854,8 @@ struct ImportPackagesPass
     }
 
     // Load built-in packages unless we're in append mode (already in the
-    // module) or only lit-mlir-paths is provided.
-    bool loadBuiltIns =
-        !append && (!mojoPkgPaths.empty() || litMlirPaths.empty());
+    // module).
+    bool loadBuiltIns = !append;
     if (loadBuiltIns) {
       auto builtInPathsOr = getBuiltInKernelPackagePaths(ctx);
       if (builtInPathsOr.isError()) {
@@ -900,9 +899,9 @@ struct ImportPackagesPass
         signalPassFailure();
         return;
       }
-      emitDecls(builder, module, *litModule, seenBuiltinRegistrations,
+      emitDecls(builder, module, *litModule, seenUserRegistrations,
                 seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
-                /*isUserDefined=*/false);
+                /*isUserDefined=*/true);
     }
 
     persistOpaqueTypeMapping(module, opaqueTypeMapping);
