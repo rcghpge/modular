@@ -117,6 +117,25 @@ MODULAR_CXX_EXPORT std::string getVirtualDeviceTargetArch() {
   return getVirtualDeviceTargetArchImpl();
 }
 
+static std::string &getVirtualCpuTargetImpl() {
+  static std::string cpu;
+  return cpu;
+}
+static std::mutex &getVirtualCpuTargetMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+MODULAR_CXX_EXPORT void setVirtualCpuTarget(StringRef cpu) {
+  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
+  getVirtualCpuTargetImpl() = cpu.str();
+}
+
+MODULAR_CXX_EXPORT std::string getVirtualCpuTarget() {
+  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
+  return getVirtualCpuTargetImpl();
+}
+
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
     : prevCtx_(nullptr), err_(success()) {
   Device &dev = ctx.device();

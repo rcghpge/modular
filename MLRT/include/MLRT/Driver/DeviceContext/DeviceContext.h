@@ -210,6 +210,11 @@ std::string getVirtualDeviceAPI();
 void setVirtualDeviceTargetArch(StringRef arch);
 std::string getVirtualDeviceTargetArch();
 
+// Empty = host CPU. Accepts an LLVM CPU name (or "generic"); must be set
+// before compiling CPU kernels. Thread-safe.
+void setVirtualCpuTarget(StringRef cpu);
+std::string getVirtualCpuTarget();
+
 class DriverVersion {
 public:
   explicit DriverVersion(std::string version);

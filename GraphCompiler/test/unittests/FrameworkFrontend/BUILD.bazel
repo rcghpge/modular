@@ -11,6 +11,7 @@ modular_cc_test(
         "//GraphCompiler:MODialect",
         "//GraphCompiler:MOGGDialect",
         "//GraphCompiler:Support",
+        "//MLRT:Driver/DeviceContextAPI",
         "//Support:Context",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

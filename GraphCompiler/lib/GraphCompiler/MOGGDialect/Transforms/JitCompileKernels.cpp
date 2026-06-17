@@ -414,6 +414,15 @@ struct JitCompileKernels
   setupCompilationOptions(TargetInfoAttr targetInfo,
                           ArrayRef<std::string> kernelLibraryPaths) {
     KGEN::CompilationOptions opts;
+    // opts (not the module target-info stamp) drives the ObjectCompiler, so the
+    // virtual-CPU override must reach it too or the cache key and codegen
+    // desync. Gated: propagating the host target unconditionally would churn
+    // every JIT cache key (resolved features != raw host CPUID delta).
+    if (!M::Driver::getVirtualCpuTarget().empty()) {
+      opts.targetTriple = targetInfo.getTripleStr();
+      opts.targetCpu = targetInfo.getArch();
+      opts.targetFeatures = targetInfo.getFeatures();
+    }
     opts.targetAccelerator = targetInfo.getAcceleratorArch();
     for (const auto &libraryPath : kernelLibraryPaths) {
       opts.extraSearchPaths.push_back(

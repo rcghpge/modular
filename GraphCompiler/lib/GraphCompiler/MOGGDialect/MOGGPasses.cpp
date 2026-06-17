@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GraphCompiler/GraphCompiler/Version.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -58,15 +59,13 @@ KGEN::CompilationOptions M::MOGG::createCompilationOptions(
 ErrorOr<TargetInfoAttr> M::MOGG::getHostTargetInfoAttr(MLIRContext *ctx) {
   ASSERT_STREAM(ctx != nullptr, "context must be non-null");
 
-  // Full target information for the host, including target accelerators.
+  // Resolve through getTargetInfo (the same chokepoint codegen uses) so the
+  // key can never disagree with codegen about the target.
   initLLVM();
 
   ctx->loadDialect<M::MDialect>();
 
-  return getTargetInfoFor(
-      ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
-      getHostCPUFeatures(), /*tuneCpu=*/"",
-      /*acceleratorArch=*/M::Driver::Device::getAcceleratorArchOrEmpty());
+  return getTargetInfo(ctx);
 }
 
 ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
@@ -74,6 +73,13 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
                                               KernelBuildType buildType,
                                               bool debug,
                                               llvm::StringRef saveTempsPrefix) {
+  // CompilationOptions::print() emits targetAccelerator but not the CPU
+  // triple/cpu/features, so fold them in explicitly; else a host-warmed cache
+  // falsely hits under a different CPU target (e.g. an x86-64-v3 artifact on a
+  // v2 host, giving an illegal instruction).
+  keyBuf << "target(" << target.getTripleStr() << ';' << target.getArch() << ';'
+         << target.getFeatures() << ')';
+
   // Compilation target information
   createCompilationOptions(target, buildType, debug, saveTempsPrefix)
       .print(keyBuf);

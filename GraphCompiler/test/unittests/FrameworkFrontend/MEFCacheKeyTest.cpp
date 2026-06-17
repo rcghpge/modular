@@ -9,6 +9,7 @@
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/GraphCompiler/Passes.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Context.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -200,6 +201,58 @@ TEST_F(MEFCacheKeyTest, NanCheckInvalidatesKey) {
   ASSERT_FALSE(plainKey.isError());
   ASSERT_FALSE(nanKey.isError());
   EXPECT_NE(plainKey.takeValue(), nanKey.takeValue());
+}
+
+TEST_F(MEFCacheKeyTest, VirtualCpuTargetInvalidatesKey) {
+  // The target reaches codegen, so it must reach the key too; else a
+  // host-warmed cache falsely hits under a different CPU target (up to
+  // executing instructions the running CPU lacks).
+  llvm::scope_exit restore{[prev = M::Driver::getVirtualCpuTarget()] {
+    M::Driver::setVirtualCpuTarget(prev);
+  }};
+
+  M::Driver::setVirtualCpuTarget(""); // host
+  auto host = tryBuild();
+  if (!host)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  M::Driver::setVirtualCpuTarget("generic"); // portable baseline, != host CPU
+  auto generic = tryBuild();
+  if (!generic)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto hostKey = host->keyForModule(*mod);
+  auto genericKey = generic->keyForModule(*mod);
+  ASSERT_FALSE(hostKey.isError());
+  ASSERT_FALSE(genericKey.isError());
+  EXPECT_NE(hostKey.takeValue(), genericKey.takeValue());
+}
+
+TEST_F(MEFCacheKeyTest, VirtualCpuTargetDescriptorReachesKey) {
+  // Two distinct descriptors must produce distinct keys. Both pin an x86_64
+  // triple so the test is host-independent.
+  llvm::scope_exit restore{[prev = M::Driver::getVirtualCpuTarget()] {
+    M::Driver::setVirtualCpuTarget(prev);
+  }};
+
+  M::Driver::setVirtualCpuTarget("triple=x86_64-unknown-linux-gnu;cpu=x86-64");
+  auto baseline = tryBuild();
+  if (!baseline)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  M::Driver::setVirtualCpuTarget(
+      "triple=x86_64-unknown-linux-gnu;cpu=znver4;features=+avx512f");
+  auto znver4 = tryBuild();
+  if (!znver4)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto baselineKey = baseline->keyForModule(*mod);
+  auto znver4Key = znver4->keyForModule(*mod);
+  ASSERT_FALSE(baselineKey.isError());
+  ASSERT_FALSE(znver4Key.isError());
+  EXPECT_NE(baselineKey.takeValue(), znver4Key.takeValue());
 }
 
 TEST_F(MEFCacheKeyTest, ConvenienceMatchesIncremental) {
