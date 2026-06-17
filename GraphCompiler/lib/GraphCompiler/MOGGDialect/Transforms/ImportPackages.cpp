@@ -713,8 +713,13 @@ struct ImportPackagesPass
     for (auto kernel : kernels) {
       auto [_, inserted] = seenRegistrations.insert(
           {kernel.registration.strref(), kernel.deviceInfo});
-      if (!inserted)
-        continue;
+      if (!inserted) {
+        kernel.structDeclOp.emitError()
+            << "kernel '" << kernel.registration.strref()
+            << "' is registered multiple times with the same device infos";
+        signalPassFailure();
+        return;
+      }
 
       // Always attach the struct decl loc; verification of missing entry
       // points (no execute / elementwise) blames the struct itself.

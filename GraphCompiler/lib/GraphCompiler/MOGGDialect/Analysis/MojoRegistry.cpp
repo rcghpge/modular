@@ -99,24 +99,20 @@ bool MojoRegistry::containsShapeFunction(llvm::StringRef name) const {
   return shapeFuncByName.contains(name);
 }
 
-static bool deviceInfoMatches(DeviceInfoAttr kernelDeviceInfo,
-                              DeviceInfoAttr targetDeviceInfo) {
+static bool deviceInfoMatches(DeviceInfoAttr kernelInfo,
+                              DeviceInfoAttr deviceInfo) {
   auto matches = [](llvm::StringRef kernelField, llvm::StringRef runtimeField) {
     return kernelField.empty() || kernelField == runtimeField;
   };
-  return matches(kernelDeviceInfo.getLabel(), targetDeviceInfo.getLabel()) &&
-         matches(kernelDeviceInfo.getApi(), targetDeviceInfo.getApi()) &&
-         matches(kernelDeviceInfo.getArch(), targetDeviceInfo.getArch()) &&
-         matches(kernelDeviceInfo.getModel(), targetDeviceInfo.getModel());
+  return matches(kernelInfo.getLabel(), deviceInfo.getLabel()) &&
+         matches(kernelInfo.getApi(), deviceInfo.getApi()) &&
+         matches(kernelInfo.getArch(), deviceInfo.getArch()) &&
+         matches(kernelInfo.getModel(), deviceInfo.getModel());
 }
 
 static int deviceInfoSpecificity(DeviceInfoAttr infos) {
-  // Each field outweighs all less-specific fields combined, so that e.g.
-  // arch-only (4) beats label+api (1+2=3). Order: label < api < arch < model.
-  return (!infos.getLabel().empty() ? 1 : 0) +
-         (!infos.getApi().empty() ? 2 : 0) +
-         (!infos.getArch().empty() ? 4 : 0) +
-         (!infos.getModel().empty() ? 8 : 0);
+  return !infos.getLabel().empty() + !infos.getApi().empty() +
+         !infos.getArch().empty() + !infos.getModel().empty();
 }
 
 ErrorOr<KernelDeclOp>
@@ -141,11 +137,23 @@ MojoRegistry::getResolvedKernel(llvm::StringRef name,
       if (specificity > bestUserSpecificity) {
         bestUser = decl;
         bestUserSpecificity = specificity;
+      } else if (specificity == bestUserSpecificity && bestUser) {
+        ASSERT_STREAM(false, "ambiguous kernel resolution for '"
+                                 << name
+                                 << "': multiple user-defined registrations "
+                                    "match the runtime device with equal "
+                                    "specificity");
       }
     } else {
       if (specificity > bestBuiltinSpecificity) {
         bestBuiltin = decl;
         bestBuiltinSpecificity = specificity;
+      } else if (specificity == bestBuiltinSpecificity && bestBuiltin) {
+        ASSERT_STREAM(false, "ambiguous kernel resolution for '"
+                                 << name
+                                 << "': multiple built-in registrations "
+                                    "match the runtime device with equal "
+                                    "specificity");
       }
     }
   }
