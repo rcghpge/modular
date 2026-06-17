@@ -3773,7 +3773,12 @@ struct ReduceRMSNormRoPEPattern
 
 struct MatmulAddPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
-  MatmulAddPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
+  MatmulAddPattern(MLIRContext *ctx, MO::DeviceInfoMapping deviceInfoMapping)
+      : DeviceAwareRewritePattern(ctx, 2),
+        _deviceInfoMapping(std::move(deviceInfoMapping)) {}
+
+private:
+  MO::DeviceInfoMapping _deviceInfoMapping;
 
   static MO::MatmulOp matchMatmulOp(Value val,
                                     MO::Static::ReshapeOp &reshapeOp) {
@@ -3858,6 +3863,13 @@ struct MatmulAddPattern
     if (!device || device.getLabel() != M::kGPULabel) {
       return rewriter.notifyMatchFailure(addOp,
                                          "matmul+add fusion only on GPU");
+    }
+
+    // Only apply for SM100 devices.
+    DeviceInfoAttr deviceInfo = _deviceInfoMapping.get(device);
+    if (deviceInfo.getArch() != "sm_100a") {
+      return rewriter.notifyMatchFailure(
+          addOp, "matmul+add fusion only applies to NVIDIA sm_100a");
     }
 
     if (wouldBlockEpilogueFusion(addOp.getResult())) {
@@ -4226,8 +4238,9 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
   }
 }
 
-void populateFusionMatmulAddPatterns(mlir::RewritePatternSet &patterns) {
-  patterns.add<MatmulAddPattern>(patterns.getContext());
+void populateFusionMatmulAddPatterns(const DeviceInfoMapping &deviceInfoMapping,
+                                     mlir::RewritePatternSet &patterns) {
+  patterns.add<MatmulAddPattern>(patterns.getContext(), deviceInfoMapping);
 }
 
 } // namespace M::MO

@@ -11,6 +11,8 @@
 
 namespace M::MO {
 
+class DeviceInfoMapping;
+
 /// Cache keyed on `(inputType, kgenParams)` that maps to the packed-weight
 /// output `TensorType` produced by a matmul packing shape function. Shared
 /// across `MatmulConstBPattern` instances within a single pass run so the
@@ -58,6 +60,7 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
 
 /// Adds `MatmulAddPattern`. Gated separately because it is only enabled on
 /// SM100-class GPUs by the driver pass.
-void populateFusionMatmulAddPatterns(mlir::RewritePatternSet &patterns);
+void populateFusionMatmulAddPatterns(const DeviceInfoMapping &deviceInfoMapping,
+                                     mlir::RewritePatternSet &patterns);
 
 } // namespace M::MO

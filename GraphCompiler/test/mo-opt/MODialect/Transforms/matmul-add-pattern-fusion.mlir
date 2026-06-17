@@ -1,4 +1,7 @@
-// RUN: mo-opt %s --mo-pattern-fusion=mock-arch-name=sm_100 | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
+
+
+module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_100a", "">}} {
 
 // Negative: a full 2D residual is not fused; it stays a separate mo.add.
 // CHECK-LABEL: mo.graph @matmul_add_2d
@@ -92,4 +95,5 @@ mo.graph @neg_downstream_elementwise(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:
   %1 = mo.add(%0, %arg2) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   %2 = mo.relu(%1) : !mo.tensor<[65536, 1536], bf16, gpu:0>
   mo.output %2 : !mo.tensor<[65536, 1536], bf16, gpu:0>
+}
 }

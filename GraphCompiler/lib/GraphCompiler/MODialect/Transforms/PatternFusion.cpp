@@ -92,38 +92,12 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     // Phase 3: Lower any splits that survived fusion back to slices.
     {
-      // TODO(GEX-3695): Properly query the target info in the Graph Compiler.
-      // Determine the effective arch name for the physical device. Or use
-      // mockArchName if set (for testing only).
-      StringRef effectiveArch = mockArchName.getValue();
-      std::string queriedArch;
-      if (effectiveArch.empty()) {
-        // On macOS, Metal API requires main-thread access. MLIR runs passes
-        // over multiple GraphOps in parallel (worker threads), so guard the
-        // Metal device query with a main-thread check to prevent crashes. On
-        // other platforms (e.g. Linux+CUDA), thread-safety is not an issue.
-        bool canQueryDevice = true;
-#if defined(__APPLE__)
-        canQueryDevice = pthread_main_np() != 0;
-#endif
-        if (canQueryDevice) {
-          auto gpuDevice = M::Driver::Device::create("gpu", 0);
-          if (!gpuDevice.isError()) {
-            auto archName = gpuDevice.get()->getArchName();
-            if (!archName.isError()) {
-              queriedArch = archName.get();
-              effectiveArch = queriedArch;
-            }
-          }
-        }
-      }
-
+      MO::DeviceInfoMapping deviceInfoMapping(
+          graphOp->getParentOfType<mlir::ModuleOp>());
       RewritePatternSet splitToSlicePatterns{ctx};
       splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
-      // MatmulAddPattern produces mo.composite.matmul_add which is only lowered
-      // on SM100 (B200). Match any SM100 variant (e.g. sm_100a).
-      if (effectiveArch.starts_with("sm_100"))
-        MO::populateFusionMatmulAddPatterns(splitToSlicePatterns);
+      MO::populateFusionMatmulAddPatterns(deviceInfoMapping,
+                                          splitToSlicePatterns);
       if (failed(
               applyPatternsGreedily(graphOp, std::move(splitToSlicePatterns))))
         return signalPassFailure();
