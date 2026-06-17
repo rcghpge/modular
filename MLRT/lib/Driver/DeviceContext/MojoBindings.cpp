@@ -430,6 +430,19 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
                                             optimizationLevel));
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
+    DeviceFunction **result, DeviceContext *ctx, const char *moduleName,
+    const char *functionName, const char *data, size_t dataLen,
+    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t optimizationLevel, const char *debugName) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_loadFunctionWithDebugName",
+                       TRACY_COLOR_GRAY);
+  return checkRef(result, ctx->loadFunctionWithDebugName(
+                              moduleName, functionName,
+                              StringRef(data, dataLen), maxDynamicSharedBytes,
+                              debugLevel, optimizationLevel, debugName));
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(DeviceFunction *func) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceFunction_retain", TRACY_COLOR_GRAY);
   // Increment the low-level reference count.

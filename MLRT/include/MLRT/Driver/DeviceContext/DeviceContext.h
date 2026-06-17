@@ -940,6 +940,20 @@ public:
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes = -1, StringRef debugLevel = "",
                int32_t optimizationLevel = -1) = 0;
+
+  /// loadFunction with a user-facing debug name to the loaded
+  /// function.
+  /// The default implementation drops the name and forwards to
+  /// `loadFunction`. Override version can decide what to do with
+  /// the debugName.
+  virtual ErrorOr<DeviceFunctionRef>
+  loadFunctionWithDebugName(StringRef moduleName, StringRef functionName,
+                            StringRef code, int32_t maxDynamicSharedBytes,
+                            StringRef debugLevel, int32_t optimizationLevel,
+                            StringRef debugName) {
+    return loadFunction(moduleName, functionName, code, maxDynamicSharedBytes,
+                        debugLevel, optimizationLevel);
+  }
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
