@@ -335,6 +335,26 @@ struct DeviceAwareRewritePattern
                                        OpT>::DeviceAwarePatternShim;
 };
 
+//===----------------------------------------------------------------------===//
+// DeviceInfoMapping
+//===----------------------------------------------------------------------===//
+
+/// Reads the `mo.device_info_mapping` DictionaryAttr from a ModuleOp and
+/// provides lookup from DeviceRefAttr to DeviceInfoAttr.
+class DeviceInfoMapping {
+public:
+  static constexpr llvm::StringLiteral kAttrName = "mo.device_info_mapping";
+
+  explicit DeviceInfoMapping(mlir::ModuleOp moduleOp);
+
+  /// Returns the DeviceInfoAttr for the given device, or a null attribute if
+  /// the device has no entry in the mapping.
+  DeviceInfoAttr get(DeviceRefAttr device) const;
+
+private:
+  llvm::StringMap<DeviceInfoAttr> _mapping;
+};
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MODEVICES_H

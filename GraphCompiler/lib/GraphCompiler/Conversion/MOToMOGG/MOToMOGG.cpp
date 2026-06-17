@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
@@ -260,6 +261,10 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
     bool moggLoweringSuccess = lowerMOOpsToMOGG();
     if (!moggLoweringSuccess)
       return signalPassFailure();
+
+    // The device-infos mapping is only needed during MO-level passes.
+    // Remove it so it doesn't surface in downstream formats (e.g. MEF).
+    getOperation()->removeAttr(MO::DeviceInfoMapping::kAttrName);
   }
 };
 

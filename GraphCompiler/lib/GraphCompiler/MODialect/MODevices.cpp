@@ -131,3 +131,24 @@ bool DeviceAnnots::isConsistentWith(DeviceRefAttr thatDevice) const {
 bool DeviceAnnots::isConsistentWith(const DeviceAnnots &that) const {
   return isConsistentWith(that.device);
 }
+
+//===----------------------------------------------------------------------===//
+// DeviceInfoMapping
+//===----------------------------------------------------------------------===//
+
+MO::DeviceInfoMapping::DeviceInfoMapping(mlir::ModuleOp moduleOp) {
+  auto dict = moduleOp->getAttrOfType<DictionaryAttr>(kAttrName);
+  if (!dict)
+    return;
+  for (auto entry : dict)
+    if (auto infos = dyn_cast<DeviceInfoAttr>(entry.getValue()))
+      _mapping[entry.getName().getValue()] = infos;
+}
+
+DeviceInfoAttr MO::DeviceInfoMapping::get(DeviceRefAttr device) const {
+  auto it = _mapping.find(device.getLabel());
+  if (it != _mapping.end())
+    return it->second;
+  return DeviceInfoAttr::get(device.getContext(), device.getLabel(), "unknown",
+                             "unknown", "unknown");
+}
