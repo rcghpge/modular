@@ -440,6 +440,8 @@ public:
   ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) override;
   ErrorOrSuccess unregisterHostMemory(void *ptr) override;
 
+  bool ownsDeviceAddress(const void *ptr) const override;
+
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;
   CUstream cudaStream() const;

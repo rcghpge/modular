@@ -879,6 +879,13 @@ public:
   DeviceBufferRef createHostBufferOwning(void *ptr, size_t byteSize,
                                          bool owning);
 
+  /// Returns true if `ptr` is device-resident memory addressable by *this*
+  /// context, so a caller-provided pointer can be borrowed zero-copy rather
+  /// than staged via a host->device copy. Defaults to false (residency
+  /// unknown — caller should stage). Backends that can cheaply query pointer
+  /// residency (e.g. CUDA) override this.
+  virtual bool ownsDeviceAddress(const void *ptr) const { return false; }
+
   // DeviceBuffer copies.
   virtual ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
                                              size_t byteSize) = 0;

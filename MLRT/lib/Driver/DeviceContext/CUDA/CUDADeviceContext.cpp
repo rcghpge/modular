@@ -1639,6 +1639,30 @@ ErrorOrSuccess CUDADeviceContext::unregisterHostMemory(void *ptr) {
   return success();
 }
 
+bool CUDADeviceContext::ownsDeviceAddress(const void *ptr) const {
+  if (ptr == nullptr)
+    return false;
+  // Query whether `ptr` is device-resident and, if so, which device it lives
+  // on. cuPointerGetAttributes returns an error (not merely MEMORYTYPE_HOST)
+  // for ordinary host pointers that were never allocated or registered through
+  // CUDA, so any failure here means "not a device pointer we can borrow".
+  CUmemorytype memType = CU_MEMORYTYPE_HOST;
+  int ordinal = -1;
+  CUpointer_attribute attrs[2] = {CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
+                                  CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL};
+  void *data[2] = {&memType, &ordinal};
+  if (driver_.cuPointerGetAttributes(
+          2, attrs, data,
+          reinterpret_cast<CUdeviceptr>(const_cast<void *>(ptr))) !=
+      CUDADriver::Result::SUCCESS)
+    return false;
+  // Only borrow memory that already lives on *this* device; a pointer on a
+  // different GPU must still be staged. `device().id()` is the CUDA ordinal
+  // (see CUDADevice::get -> cuDeviceGet), so it compares directly against
+  // CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL.
+  return memType == CU_MEMORYTYPE_DEVICE && ordinal == device().id();
+}
+
 void *CUDADeviceContext::driverContext() const { return cudaContext(); }
 
 ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,

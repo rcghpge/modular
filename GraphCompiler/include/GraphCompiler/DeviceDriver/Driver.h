@@ -125,6 +125,13 @@ struct Device : M::ReferenceCounted<Device> {
     return ctx->device().canAccess(peer.ctx->device());
   }
 
+  /// Returns true if `ptr` is memory already resident on this device, so it
+  /// can be borrowed in place (zero-copy) instead of staged via a
+  /// host->device copy. Used by the C API tensor-borrow path; see DRIV-220.
+  bool ownsDeviceAddress(const void *ptr) const {
+    return ctx->ownsDeviceAddress(ptr);
+  }
+
   /// Blocks until any pending async work on the device completes.
   ErrorOrSuccess synchronize() { return ctx->synchronize(); }
 
