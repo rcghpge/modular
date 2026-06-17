@@ -345,38 +345,9 @@ MGP_RT_CreateAsync_bool(bool data, AsyncRTWrapper<AnyAsyncValueRef> async) {
   }
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncDeviceBufferRef(void *data, size_t size,
-                                  AsyncRTWrapper<AnyAsyncValueRef> async,
-                                  Driver::DeviceContext *devCtx) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &value = unwrap(async);
-
-  // Wrap the raw pointer in an owning DeviceBuffer.
-  // This will be freed by the DeviceContext when the refcount drops to 0.
-  auto buf = devCtx->createBufferOwning(data, size,
-                                        /*owning=*/true);
-  // Wrap the DeviceBuffer in an AsyncValue.
-  auto asyncDeviceBufferRef =
-      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(cpuDevice,
-                                                             std::move(buf));
-
-  // Finally, wrap the pointer and the AsyncValue wrapper in a TensorBufferRef.
-  auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
-      data, size, std::move(asyncDeviceBufferRef));
-
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<TensorBufferRef>(cpuDevice,
-                                               std::move(tensorBufferRef));
-  }
-}
-
-/// Like MGP_RT_CreateAsyncDeviceBufferRef, but TAKES an already-owning
-/// DeviceBuffer handle the producer surrendered instead of minting a fresh
-/// owner with createBufferOwning. Used by mgp.buffer.alloc: the Mojo side hands
+/// TAKES an already-owning DeviceBuffer handle the producer surrendered instead
+/// of minting a fresh owner with createBufferOwning. Used by mgp.buffer.alloc:
+/// the Mojo side hands
 /// over the live DeviceBuffer from enqueue_create_buffer via
 /// DeviceBuffer.take_handle() (deinit self, which suppresses __del__/release),
 /// and this entrypoint adopts that single reference net-zero.
