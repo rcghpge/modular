@@ -67,8 +67,11 @@ ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
         llvm::formatv("no kernel registered for '{}'", info.operationName)
             .str());
   }
-  KernelDeclOp kernelDecl = registry.getResolvedKernel(info.operationName);
-  KernelDeclAdaptor adaptor(kernelDecl);
+  DeviceRefAttr device = MojoRegistry::getDeviceRefForOp(op);
+  auto declOpOr = registry.getResolvedKernel(info.operationName, device);
+  if (declOpOr.isError())
+    return declOpOr.takeError();
+  KernelDeclAdaptor adaptor(*declOpOr);
 
   if (!adaptor.executeFunction.has_value() &&
       !adaptor.elementwiseFunction.has_value()) {

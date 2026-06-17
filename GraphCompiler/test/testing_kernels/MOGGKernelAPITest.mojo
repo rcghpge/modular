@@ -8,6 +8,7 @@ from std.collections.string import StaticString
 from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
+import std.algorithm
 import extensibility as compiler
 from layout import IntTuple
 from layout import TileTensor, CoordLike, Coord
@@ -1416,3 +1417,50 @@ struct BuildGraphCapable:
         builder: DeviceGraphBuilder,
     ):
         pass
+
+
+@compiler.register("add_one", type="cpu")
+struct AddOneCPU:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
+        print("AddOne CPU kernel")
+
+        @parameter
+        @always_inline
+        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+            var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
+            outp._fused_store[element_alignment=alignment](idx, val)
+
+        std.algorithm.functional.elementwise[func, 1, target="cpu"](
+            outp.shape_coord(), ctx
+        )
+
+
+@compiler.register("gpu_only_kernel", type="gpu")
+struct GpuOnlyKernel:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
+        pass
+
+
+@compiler.register("add_one", type="gpu")
+struct AddOneGPU:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
+        print("AddOne GPU kernel")
+
+        @parameter
+        @always_inline
+        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+            var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
+            outp._fused_store[element_alignment=alignment](idx, val)
+
+        std.algorithm.functional.elementwise[func, 1, target="gpu"](
+            outp.shape_coord(), ctx
+        )

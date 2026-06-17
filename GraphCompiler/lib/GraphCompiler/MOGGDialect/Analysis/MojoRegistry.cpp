@@ -21,7 +21,7 @@
 using namespace M;
 using namespace M::MOGG;
 
-MojoRegistry::MojoRegistry(mlir::ModuleOp module) {
+MojoRegistry::MojoRegistry(mlir::ModuleOp module) : deviceInfoMapping(module) {
   for (auto decl : module.getOps<KernelDeclOp>()) {
     kernelByName[decl.getRegistration()].push_back(decl);
     kernelBySymName[decl.getSymName()] = decl;
@@ -99,27 +99,78 @@ bool MojoRegistry::containsShapeFunction(llvm::StringRef name) const {
   return shapeFuncByName.contains(name);
 }
 
-KernelDeclOp MojoRegistry::getResolvedKernel(llvm::StringRef name) const {
+static bool deviceInfoMatches(DeviceInfoAttr kernelDeviceInfo,
+                              DeviceInfoAttr targetDeviceInfo) {
+  auto matches = [](llvm::StringRef kernelField, llvm::StringRef runtimeField) {
+    return kernelField.empty() || kernelField == runtimeField;
+  };
+  return matches(kernelDeviceInfo.getLabel(), targetDeviceInfo.getLabel()) &&
+         matches(kernelDeviceInfo.getApi(), targetDeviceInfo.getApi()) &&
+         matches(kernelDeviceInfo.getArch(), targetDeviceInfo.getArch()) &&
+         matches(kernelDeviceInfo.getModel(), targetDeviceInfo.getModel());
+}
+
+static int deviceInfoSpecificity(DeviceInfoAttr infos) {
+  // Each field outweighs all less-specific fields combined, so that e.g.
+  // arch-only (4) beats label+api (1+2=3). Order: label < api < arch < model.
+  return (!infos.getLabel().empty() ? 1 : 0) +
+         (!infos.getApi().empty() ? 2 : 0) +
+         (!infos.getArch().empty() ? 4 : 0) +
+         (!infos.getModel().empty() ? 8 : 0);
+}
+
+ErrorOr<KernelDeclOp>
+MojoRegistry::getResolvedKernel(llvm::StringRef name,
+                                DeviceRefAttr device) const {
+  DeviceInfoAttr deviceInfo = deviceInfoMapping.get(device);
   auto it = kernelByName.find(name);
   ASSERT_STREAM(it != kernelByName.end(),
                 "no kernel registered for '" << name << "'");
 
-  KernelDeclOp firstBuiltin;
-  KernelDeclOp userDecl;
+  KernelDeclOp bestBuiltin;
+  KernelDeclOp bestUser;
+  int bestBuiltinSpecificity = -1;
+  int bestUserSpecificity = -1;
+
   for (KernelDeclOp decl : it->second) {
+    DeviceInfoAttr kernelInfo = decl.getRegistrationDeviceInfo();
+    if (!deviceInfoMatches(kernelInfo, deviceInfo))
+      continue;
+    int specificity = deviceInfoSpecificity(kernelInfo);
     if (decl.getIsUserDefined()) {
-      ASSERT_STREAM(!userDecl,
-                    "kernel '" << name
-                               << "' is registered in multiple user packages; "
-                                  "ImportPackages dedup should have caught "
-                                  "this before the registry was built");
-      userDecl = decl;
-    } else if (!firstBuiltin) {
-      firstBuiltin = decl;
+      if (specificity > bestUserSpecificity) {
+        bestUser = decl;
+        bestUserSpecificity = specificity;
+      }
+    } else {
+      if (specificity > bestBuiltinSpecificity) {
+        bestBuiltin = decl;
+        bestBuiltinSpecificity = specificity;
+      }
     }
   }
 
-  return userDecl ? userDecl : firstBuiltin;
+  auto best = bestUser ? bestUser : bestBuiltin;
+  if (!best) {
+    std::string msg;
+    llvm::raw_string_ostream os(msg);
+    os << "no kernel matching device info for '" << name << "' on device "
+       << mlir::Attribute(deviceInfo) << "; candidates:";
+    for (KernelDeclOp decl : it->second)
+      os << "\n  - " << mlir::Attribute(decl.getRegistrationDeviceInfo())
+         << " (" << decl.getSymName() << ")";
+    return Error(os.str());
+  }
+  return best;
+}
+
+DeviceRefAttr MojoRegistry::getDeviceRefForOp(mlir::Operation *op) {
+  if (auto hasDevice = mlir::dyn_cast<MO::MOHasDeviceInterface>(op)) {
+    auto devices = hasDevice.getExecutionDevices();
+    if (!devices.empty())
+      return devices[0];
+  }
+  return getHostDevice(op->getContext());
 }
 
 void M::MOGG::copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst) {
@@ -207,7 +258,11 @@ ErrorOrSuccess M::MOGG::verifyCustomOp(const MojoRegistry &registry,
   // Decode the kernel signature and check that operand types line up. This
   // catches mismatches between MO operand types and the kernel's argument
   // types before lowering attempts to emit Mojo.
-  KernelDeclAdaptor adaptor(registry.getResolvedKernel(info.operationName));
+  DeviceRefAttr device = MojoRegistry::getDeviceRefForOp(op);
+  auto declOpOr = registry.getResolvedKernel(info.operationName, device);
+  if (declOpOr.isError())
+    return declOpOr.takeError();
+  KernelDeclAdaptor adaptor(*declOpOr);
   if (!adaptor.executeFunction)
     return Error(
         llvm::formatv("kernel '{}' has no execute function", info.operationName)

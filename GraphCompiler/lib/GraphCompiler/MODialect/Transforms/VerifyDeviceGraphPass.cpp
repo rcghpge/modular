@@ -86,7 +86,14 @@ struct VerifyDeviceGraphPass final
           if (!registry.containsKernel(registration))
             return;
 
-          MOGG::KernelDeclOp kernel = registry.getResolvedKernel(registration);
+          DeviceRefAttr device = MOGG::MojoRegistry::getDeviceRefForOp(op);
+          auto kernelOr = registry.getResolvedKernel(registration, device);
+          if (kernelOr.isError()) {
+            op->emitError(kernelOr.getError());
+            signalPassFailure();
+            return;
+          }
+          MOGG::KernelDeclOp kernel = *kernelOr;
           if (!kernel.getBuildGraph()) {
             op->emitError()
                 << "op '" << op->getName().getStringRef()

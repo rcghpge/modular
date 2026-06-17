@@ -595,7 +595,11 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
         llvm::formatv("no kernel registered for '{}'", customOp.getSymbol())
             .str());
   }
-  KernelDeclOp declOp = registry.getResolvedKernel(customOp.getSymbol());
+  auto declOpOr =
+      registry.getResolvedKernel(customOp.getSymbol(), customOp.getDevice());
+  if (declOpOr.isError())
+    return declOpOr.takeError();
+  KernelDeclOp declOp = *declOpOr;
   // The user-supplied `parameters` dict on `mo.custom` can target struct-level
   // compile-time params (e.g. `[interleaved: Bool]`) or any fn-level params
   // declared on the registered functions. Collect struct params first to
@@ -802,7 +806,11 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
     // dictionary (S0=4, S1=8 -> P0=4, P1=8) using the stored value-param
     // mappings and input parameter declarations from the kernel decl op.
     if (registry.containsKernel(custom.getSymbol())) {
-      KernelDeclOp declOp = registry.getResolvedKernel(custom.getSymbol());
+      auto declOpOr =
+          registry.getResolvedKernel(custom.getSymbol(), custom.getDevice());
+      if (declOpOr.isError())
+        return declOpOr.takeError();
+      KernelDeclOp declOp = *declOpOr;
       KernelDeclAdaptor adaptor(declOp);
       if (adaptor.executeFunction) {
         mlir::ArrayAttr executeParams = declOp.getExecute()

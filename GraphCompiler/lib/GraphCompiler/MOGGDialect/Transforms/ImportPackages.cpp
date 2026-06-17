@@ -9,6 +9,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/LITDialect/LITInterfaces.h"
 #include "KGEN/LITDialect/LITOps.h"
@@ -19,6 +20,7 @@
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Support/ErrorOr.h"
 #include "Support/Filesystem/Paths.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/AttrTypeSubElements.h"
 #include "mlir/IR/Builders.h"
@@ -275,22 +277,34 @@ getRegisterDecoratorStringValue(mlir::TypedAttr decorator,
 struct ExtensibilityAPIStructInfo {
   bool isElementwiseKernel = false;
   mlir::StringAttr registrationName{};
+  DeviceInfoAttr deviceInfo{};
 };
 
 static ErrorOr<bool>
 isExtensibilityAPIStruct(KGEN::LIT::StructDeclOp structDeclOp,
                          ExtensibilityAPIStructInfo &info) {
   for (mlir::TypedAttr decorator : structDeclOp.getDecorators()) {
-    auto registerOperand =
-        getDecoratorLambdaArgument(decorator, llvm::SmallVector<size_t>{1});
-    if (!registerOperand)
+    auto operands = getDecoratorLambdaArgument(decorator, {1, 2, 3, 4, 5});
+    if (!operands)
       continue;
 
-    auto name =
-        getStringAttrFromStaticStringDecorator(registerOperand->front());
+    auto name = getStringAttrFromStaticStringDecorator(
+        (*operands)[kRegisterDecoratorArgName]);
+    auto type = getStringAttrFromStaticStringDecorator(
+        (*operands)[kRegisterDecoratorArgType]);
+    auto api = getStringAttrFromStaticStringDecorator(
+        (*operands)[kRegisterDecoratorArgApi]);
+    auto arch = getStringAttrFromStaticStringDecorator(
+        (*operands)[kRegisterDecoratorArgArch]);
+    auto model = getStringAttrFromStaticStringDecorator(
+        (*operands)[kRegisterDecoratorArgModel]);
+
     if (info.registrationName)
       return Error("Only one op can be registered per kernel");
     info.registrationName = name;
+    info.deviceInfo =
+        DeviceInfoAttr::get(structDeclOp.getContext(), type.strref(),
+                            api.strref(), arch.strref(), model.strref());
   }
 
   return info.registrationName != nullptr;
@@ -302,6 +316,7 @@ struct ScannedKernel {
   KGEN::LIT::StructDeclOp structDeclOp;
   mlir::StringAttr registration;
   mlir::StringAttr mojoName;
+  DeviceInfoAttr deviceInfo;
   KGEN::LIT::FnOp executeFn;
   KGEN::LIT::FnOp elementwiseFn;     // SIMD overload, may be null
   KGEN::LIT::FnOp tileElementwiseFn; // TileTensor overload, may be null
@@ -354,6 +369,7 @@ static mlir::LogicalResult scanForKernelDecls(
     ScannedKernel kernel;
     kernel.structDeclOp = structDeclOp;
     kernel.registration = info.registrationName;
+    kernel.deviceInfo = info.deviceInfo;
     kernel.mojoName = getFullyResolvedMojoName(structDeclOp);
 
     for (auto &op : structDeclOp.getFields().front()) {
@@ -617,8 +633,9 @@ struct ImportPackagesPass
   // name entries discovered in `pkg`. `isUserDefined` sets the is_user_defined
   // attribute on emitted KernelDeclOps; MojoRegistry::getResolvedKernel uses
   // this flag to apply override semantics.
+  using RegistrationKey = std::pair<llvm::StringRef, DeviceInfoAttr>;
   void emitDecls(OpBuilder &builder, ModuleOp module, ModuleOp pkg,
-                 llvm::StringSet<> &seenRegistrations,
+                 llvm::DenseSet<RegistrationKey> &seenRegistrations,
                  llvm::StringSet<> &seenPrimitives,
                  llvm::StringSet<> &seenShapeFunctions,
                  llvm::StringMap<std::string> &opaqueTypeMapping,
@@ -694,8 +711,8 @@ struct ImportPackagesPass
     };
 
     for (auto kernel : kernels) {
-      auto [_, inserted] =
-          seenRegistrations.insert(kernel.registration.strref());
+      auto [_, inserted] = seenRegistrations.insert(
+          {kernel.registration.strref(), kernel.deviceInfo});
       if (!inserted)
         continue;
 
@@ -762,9 +779,10 @@ struct ImportPackagesPass
       }
 
       KernelDeclOp::create(builder, mlir::FusedLoc::get(ctx, fnLocs),
-                           kernel.mojoName, kernel.registration, *executeAttr,
-                           *elementwiseAttr, *tileElementwiseAttr,
-                           *updateViewAttr, *buildGraphAttr, structParams,
+                           kernel.mojoName, kernel.registration,
+                           kernel.deviceInfo, *executeAttr, *elementwiseAttr,
+                           *tileElementwiseAttr, *updateViewAttr,
+                           *buildGraphAttr, structParams,
                            mlir::BoolAttr::get(ctx, isUserDefined));
     }
 
@@ -828,8 +846,8 @@ struct ImportPackagesPass
     // Separate deduplication sets let user packages override built-ins;
     // MojoRegistry::getResolvedKernel applies override semantics at lookup
     // time.
-    llvm::StringSet<> seenBuiltinRegistrations;
-    llvm::StringSet<> seenUserRegistrations;
+    llvm::DenseSet<RegistrationKey> seenBuiltinRegistrations;
+    llvm::DenseSet<RegistrationKey> seenUserRegistrations;
     llvm::StringSet<> seenPrimitives;
     llvm::StringSet<> seenShapeFunctions;
     // Mapping from simple struct names to fully-qualified Mojo names, built
@@ -845,7 +863,7 @@ struct ImportPackagesPass
       for (auto decl : module.getOps<KernelDeclOp>()) {
         auto &set = decl.getIsUserDefined() ? seenUserRegistrations
                                             : seenBuiltinRegistrations;
-        set.insert(decl.getRegistration());
+        set.insert({decl.getRegistration(), decl.getRegistrationDeviceInfo()});
       }
       for (auto decl : module.getOps<PrimitiveDeclOp>())
         seenPrimitives.insert(decl.getRegistration());

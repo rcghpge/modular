@@ -1684,6 +1684,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
   let arguments = (ins
     SymbolNameAttr:$sym_name,
     StrAttr:$registration,
+    M_DeviceInfoAttr:$registration_device_info,
     OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
@@ -1695,6 +1696,7 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
 
   let assemblyFormat = [{
     $sym_name `registration` `=` $registration
+    `device_info` `=` $registration_device_info
     (`execute` `=` $execute^)?
     (`elementwise` `=` $elementwise^)?
     (`tile_elementwise` `=` $tile_elementwise^)?

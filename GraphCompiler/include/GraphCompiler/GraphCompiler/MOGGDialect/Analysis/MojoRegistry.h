@@ -9,6 +9,7 @@
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/ErrorOr.h"
+#include "Support/MDialect/MAttrs.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -61,14 +62,19 @@ public:
   /// Returns true if a `mogg.shape_func.decl` op exists for `name`.
   bool containsShapeFunction(llvm::StringRef name) const;
 
-  /// Resolves the kernel to use for `name`, applying user-over-builtin override
-  /// semantics. Asserts that the kernel exists; use `containsKernel` for an
-  /// existence check. Also asserts that at most one user-defined decl claims
-  /// the registration (the `ImportPackages` import-time dedup keeps the
-  /// invariant).
-  KernelDeclOp getResolvedKernel(llvm::StringRef name) const;
+  /// Resolves the best-matching kernel for `name` and `device`. Among
+  /// candidates whose non-empty device-info fields all match the runtime
+  /// device, picks the most specific one (most non-empty fields).
+  /// User-defined beats built-in at equal specificity. Returns an error if no
+  /// registered candidate matches the runtime device.
+  ErrorOr<KernelDeclOp> getResolvedKernel(llvm::StringRef name,
+                                          DeviceRefAttr device) const;
+
+  /// Returns the first execution device of `op`, or the host device if none.
+  static DeviceRefAttr getDeviceRefForOp(mlir::Operation *op);
 
 private:
+  MO::DeviceInfoMapping deviceInfoMapping;
   llvm::StringMap<llvm::SmallVector<KernelDeclOp>> kernelByName;
   llvm::StringMap<KernelDeclOp> kernelBySymName;
   llvm::StringMap<PrimitiveDeclOp> primitiveByName;

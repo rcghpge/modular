@@ -89,6 +89,14 @@ constexpr llvm::StringLiteral kMoggElementwiseFuncName = "elementwise";
 constexpr llvm::StringLiteral kMoggUpdateViewFuncName = "update_input_view";
 constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
 
+/// Argument indices into the vector returned by `getDecoratorLambdaArgument`
+/// for the `@compiler.register` decorator (name, type, api, arch, model).
+constexpr size_t kRegisterDecoratorArgName = 0;
+constexpr size_t kRegisterDecoratorArgType = 1;
+constexpr size_t kRegisterDecoratorArgApi = 2;
+constexpr size_t kRegisterDecoratorArgArch = 3;
+constexpr size_t kRegisterDecoratorArgModel = 4;
+
 constexpr llvm::StringLiteral kMoggTargetParameterName = "target";
 
 /// The name of the output_rank parameter which we support lowering specially.
