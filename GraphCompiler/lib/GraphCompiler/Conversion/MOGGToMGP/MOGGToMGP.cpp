@@ -1876,12 +1876,6 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   size_t numLaunches = parallelOp.getNumLaunches();
   size_t numBundleGroups = parallelOp.getInputs().size();
 
-  // The parallel op has explicit chain threading (inChain/outChain).
-  // Do NOT call setCurrentExecuteChain here -- doing so would pollute
-  // unrelated ops lowered after the parallel (like RoPE frequency kernels)
-  // with the embedding/allreduce chain dependency, preventing
-  // ExecInvariantCodeMotionPass from hoisting them to init.
-
   // Resolve per-launch MO-level values from each bundle input via the
   // lowering state (populated by lower(TensorBundleOp)).  The optional buffer
   // group comes directly from the parallel op's buffers() operand list.
@@ -1933,6 +1927,11 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   // lookupExecuteLoweredValue needs the clone result SSA values.
   DenseMap<Value, SmallVector<Value>> perLaunchCloneResults;
   SmallVector<Operation *> allClones;
+
+  // Holds output chains for compiled regions lowered from kernel ops that use
+  // the parallel's buffer operands. See note below about chain handling in
+  // mo.parallel.
+  SmallVector<Value> bufferGroupChains;
 
   // Resolve mo.bundled.expand ops: each result maps to the per-launch element
   // of the input's source bundle.  The expand op is a no-op placeholder that
@@ -2033,6 +2032,19 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     MOGG::GenericCompiledRegionOp fusedRegion =
         fuseAndConvertToAsync(ctx, loc, groupRegions);
     Value fusedChain = fusedRegion.getResult(0);
+    // A group participates in the explicit out-chain only if it is
+    // side-effecting on the parallel's buffers (a collective referencing the
+    // signal buffers). Tensor-only groups are ordered by guard chains and must
+    // NOT be folded into the out-chain (that would needlessly serialize
+    // independent compute).
+    bool touchesBuffers = false;
+    kernelOp->walk([&](Operation *op) {
+      for (Value operand : op->getOperands())
+        if (llvm::is_contained(parallelOp.getBuffers(), operand))
+          touchesBuffers = true;
+    });
+    if (touchesBuffers)
+      bufferGroupChains.push_back(fusedChain);
 
     // lowerKernelOp registered chain guards against individual compiled region
     // chains, which fuseAndConvertToAsync just erased. Repoint them to the
@@ -2063,10 +2075,46 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
                                         SmallVector<Value>(cloneResults));
   }
 
-  // Register the outChain result (when present) mapped to the final fused
-  // region chain.
+  // The parallel op has explicit chain inputs and outputs (inChain/outChain)
+  // when the buffers() clause is present. Ops within the block that use buffer
+  // operands should thread these chains through the body. In practice, this
+  // only applies to bundled collectives that use signal buffers on each peer
+  // GPU for synchronization. All other MGP chain dependencies for buffers
+  // lowered from mo.tensor are automatically handled when we call
+  // lowerKernelOp().
+  //
+  // HACK:
+  // The IR for mo.parallel does not make the chain handling semantics clear.
+  // Currently the input chain must be captured from graph scope, and the
+  // connection between the bundled collective's output chain and the parallel
+  // op's out-chain is only introduced by this lowering pass. We should make the
+  // input chain available to ops within the body as a block argument, and yield
+  // the final chain as a result to connect it with the parallel op's out-chain.
+  // See GEX-3859 for more details.
+  //
+  // WARNING:
+  // Do NOT use the graph's current execute chain here. i.e.
+  // (loweringState.{get,set}CurrentExecuteChain()). Improper use can cause
+  // problems in seemingly unrelated parts of the graph, such as blocking
+  // hoisting of invariant code to init.
   if (parallelOp.hasChain()) {
-    Value finalChain = loweringState.getCurrentExecuteChain();
+    Value inChain =
+        loweringState.lookupExecuteLoweredValue(parallelOp.getInChain());
+    assert(inChain && "parallel in-chain not lowered before the parallel op");
+
+    // Make the output chain depend on all the ops that touch the parallel's
+    // buffer operands. GEX-3859: We shoould just yield the chain to make this
+    // dependency explicit.
+    Value finalChain = inChain;
+    if (!bufferGroupChains.empty()) {
+      SmallVector<Value> joinInputs;
+      joinInputs.push_back(inChain);
+      joinInputs.append(bufferGroupChains.begin(), bufferGroupChains.end());
+      finalChain = GRT::ChainCreateOp::create(
+                       loweringState.getExecuteOpBuilder(), loc, joinInputs)
+                       .getResult();
+    }
+
     loweringState.emplaceExecuteLoweredValue(parallelOp.getOutChain(),
                                              finalChain);
   }
