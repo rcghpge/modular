@@ -208,17 +208,6 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "AsyncRT/cppzmq",
-    hdrs = glob(["include/MLRT/AsyncRT/ZeroMQ/*.hpp"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//Support:Base",
-        "@libzmq",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
 modular_nanobind_library(
     name = "AsyncRT/Nanobind",
     srcs = glob(["lib/AsyncRT/Nanobind/*.cpp"]),
