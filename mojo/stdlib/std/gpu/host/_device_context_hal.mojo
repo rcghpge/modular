@@ -19,7 +19,14 @@ from std.builtin.rebind import downcast
 from std.collections.optional import OptionalReg
 from std.compile import CompiledFunctionInfo
 from std.math import align_up
-from std.memory import alloc, ArcPointer, free, Layout, UnsafePointer
+from std.memory import (
+    alloc,
+    dealloc,
+    ThinAllocation,
+    ArcPointer,
+    Layout,
+    UnsafePointer,
+)
 from std.memory import stack_allocation
 from std.os import getenv
 from std.reflection import call_location, reflect, SourceLocation
@@ -106,7 +113,7 @@ struct _DeviceFunctionInner[
     var _compiled: Tuple[
         RuntimeBundle,
         CompiledFunctionInfo[
-            Self.func_type, Self.func, get_device_spec[0]().target.value
+            Self.func_type, Self.func, get_device_spec[0]()._mlir_target()
         ],
     ]
     var _context: ArcPointer[Context[get_device_spec[0]()]]
@@ -145,18 +152,17 @@ struct DeviceContext(
         ctx.synchronize()
     ```
 
-    A custom operation receives an opaque `DeviceContextPtr`, which provides
-    a `get_device_context()` method to retrieve the device context:
+    A custom operation receives the `DeviceContext` for the target device
+    directly as an argument to its `execute` method:
 
     ```text
-    from std.runtime.asyncrt import DeviceContextPtr
+    from std.gpu.host import DeviceContext
     from compiler import register
 
     @register("custom_op")
     struct CustomOp:
         @staticmethod
-        def execute(ctx_ptr: DeviceContextPtr) raises:
-            var ctx = ctx_ptr.get_device_context()
+        def execute(ctx: DeviceContext) raises:
             ctx.enqueue_function[kernel, kernel](grid_dim=1, block_dim=(2, 2, 2))
             ctx.synchronize()
     ```
@@ -165,7 +171,7 @@ struct DeviceContext(
     comptime device_spec = get_device_spec[0]()
 
     comptime default_device_info = GPUInfo.from_target[
-        Self.device_spec.target.value
+        Self.device_spec._mlir_target()
     ]()
 
     var _driver: ArcPointer[Driver]
@@ -312,7 +318,7 @@ struct DeviceContext(
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) thin -> None,
-    ](self) raises -> DeviceFunction[func, declared_arg_types.values]:
+    ](self) raises -> DeviceFunction[func, declared_arg_types]:
         """Compiles the provided function for execution on this device.
 
         Parameters:
@@ -325,7 +331,7 @@ struct DeviceContext(
         Raises:
             If the operation fails.
         """
-        return DeviceFunction[func, declared_arg_types.values](self)
+        return DeviceFunction[func, declared_arg_types](self)
 
     @parameter
     @always_inline
@@ -461,7 +467,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]().values
+            FuncType.__call__, TypeList.of[Trait=AnyType]()
         ](self)
         gpu_kernel._call_with_pack(
             self,
@@ -1047,7 +1053,7 @@ struct DeviceFunction[
     func_type: TrivialRegisterPassable,
     //,
     func: func_type,
-    declared_arg_types: TypeList.of[Trait=AnyType]()._mlir_type,
+    declared_arg_types: TypeList[Trait=AnyType, ...],
 ](ImplicitlyCopyable, Movable):
     """Represents a compiled device function ready for execution on a GPU.
 
@@ -1113,7 +1119,7 @@ struct DeviceFunction[
         *Ts: DevicePassable,
         num_args: Int,
     ]() -> Tuple[Int, InlineArray[Int, num_args]]:
-        comptime declared_num_args = TypeList[Self.declared_arg_types].size
+        comptime declared_num_args = Self.declared_arg_types.size
 
         comptime assert (
             declared_num_args == num_args
@@ -1129,7 +1135,7 @@ struct DeviceFunction[
         var num_translated_args = 0
 
         comptime for i in range(num_args):
-            comptime declared_arg_type = TypeList[Self.declared_arg_types]()[i]
+            comptime declared_arg_type = Self.declared_arg_types[i]
             comptime actual_arg_type = Ts[i]
 
             def declared_arg_type_name() -> String:
@@ -1252,10 +1258,10 @@ struct DeviceFunction[
                 Layout[OpaquePointer[MutAnyOrigin]](
                     count=num_captures + num_passed_args
                 )
-            )
+            ).unsafe_leak()
             dense_args_sizes = alloc(
                 Layout[UInt64](count=num_captures + num_passed_args)
-            )
+            ).unsafe_leak()
             for i in range(num_captures + num_passed_args):
                 dense_args_sizes[i] = 0
         else:
@@ -1327,8 +1333,16 @@ struct DeviceFunction[
         )
 
         if num_captures > num_captures_static:
-            free(dense_args_addrs, {count = num_captures + num_passed_args})
-            free(dense_args_sizes, {count = num_captures + num_passed_args})
+            dealloc(
+                ThinAllocation(
+                    unsafe_assume_ownership=dense_args_addrs
+                ).unsafe_with_layout({count = num_captures + num_passed_args})
+            )
+            dealloc(
+                ThinAllocation(
+                    unsafe_assume_ownership=dense_args_sizes
+                ).unsafe_with_layout({count = num_captures + num_passed_args})
+            )
 
     @always_inline
     @parameter
@@ -1378,10 +1392,10 @@ struct DeviceFunction[
                 Layout[OpaquePointer[MutAnyOrigin]](
                     count=num_captures + num_args
                 )
-            )
+            ).unsafe_leak()
             dense_args_sizes = alloc(
                 Layout[UInt64](count=num_captures + num_args)
-            )
+            ).unsafe_leak()
             for i in range(num_captures + num_args):
                 dense_args_sizes[i] = 0
         else:
@@ -1399,6 +1413,7 @@ struct DeviceFunction[
                 UnsafePointer(to=args[i])
                 .bitcast[NoneType]()
                 .unsafe_mut_cast[True]()
+                .as_unsafe_any_origin()
             )
 
         @parameter
@@ -1412,7 +1427,9 @@ struct DeviceFunction[
             for i in range(num_captures):
                 dense_args_sizes[num_args + i] = func_info.capture_sizes[i]
             var capture_args_start = dense_args_addrs + num_args
-            populate(capture_args_start.bitcast[NoneType]())
+            populate(
+                capture_args_start.bitcast[NoneType]().as_unsafe_any_origin()
+            )
 
         ctx._hal_stream()[].execute(
             self._inner[]._func_handle,
@@ -1437,8 +1454,16 @@ struct DeviceFunction[
         )
 
         if num_captures > num_captures_static:
-            free(dense_args_addrs, {count = num_captures + num_args})
-            free(dense_args_sizes, {count = num_captures + num_args})
+            dealloc(
+                ThinAllocation(
+                    unsafe_assume_ownership=dense_args_addrs
+                ).unsafe_with_layout({count = num_captures + num_args})
+            )
+            dealloc(
+                ThinAllocation(
+                    unsafe_assume_ownership=dense_args_sizes
+                ).unsafe_with_layout({count = num_captures + num_args})
+            )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1544,6 +1569,7 @@ struct DeviceExternalFunction(ImplicitlyCopyable, Movable):
                 UnsafePointer(to=args[i])
                 .bitcast[NoneType]()
                 .unsafe_mut_cast[True]()
+                .as_unsafe_any_origin()
             )
 
         @parameter
@@ -1826,7 +1852,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
             block_dim, location=call_location()
         )
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]().values
+            FuncType.__call__, TypeList.of[Trait=AnyType]()
         ](self._ctx)
         gpu_kernel._call_with_pack(
             self,

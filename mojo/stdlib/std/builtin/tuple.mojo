@@ -56,9 +56,9 @@ struct Tuple[*element_types: Movable](
     ImplicitlyCopyable where (
         AllImplicitlyCopyable[*element_types] and AllCopyable[*element_types]
     ),
-    # ImplicitlyDestructible and Movable are listed explicitly because
+    # ImplicitlyDeletable and Movable are listed explicitly because
     # conditional conformances require all conformances to be stated.
-    ImplicitlyDestructible,
+    ImplicitlyDeletable,
     Movable,
     RegisterPassable where AllRegisterPassable[*element_types],
     Sized,
@@ -139,13 +139,13 @@ struct Tuple[*element_types: Movable](
         comptime for i in range(Self.__len__()):
             comptime TUnknown = Self.element_types[i]
             _constrained_conforms_to[
-                conforms_to(TUnknown, ImplicitlyDestructible),
+                conforms_to(TUnknown, ImplicitlyDeletable),
                 Parent=Self,
                 Element=TUnknown,
-                ParentConformsTo="ImplicitlyDestructible",
+                ParentConformsTo="ImplicitlyDeletable",
             ]()
             UnsafePointer(
-                to=trait_downcast[ImplicitlyDestructible](self[i])
+                to=trait_downcast[ImplicitlyDeletable](self[i])
             ).destroy_pointee()
 
     @always_inline("nodebug")
@@ -224,7 +224,7 @@ struct Tuple[*element_types: Movable](
 
         # KGenPointer to the element.
         var elt_kgen_ptr = __mlir_op.`kgen.struct.gep`[
-            index=idx._int_mlir_index(),
+            index=idx.__mlir_index__(),
             _type=UnsafePointer[Self.element_types[idx]]._mlir_type,
         ](storage_kgen_ptr)
         return UnsafePointer[_, origin_of(self)](elt_kgen_ptr)[]

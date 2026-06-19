@@ -31,6 +31,7 @@ from linalg.fp4_utils import (
     compute_mxfp4_even_scale,
     set_scale_factor,
 )
+from linalg.matmul.gpu.amd import Shuffler
 
 import std.gpu.primitives.warp as warp
 from std.collections import OptionalReg
@@ -293,7 +294,7 @@ def get_device_alignment() -> Int:
     return gpu_alignment
 
 
-trait TokenFormat(DevicePassable, ImplicitlyDestructible):
+trait TokenFormat(DevicePassable, ImplicitlyDeletable):
     comptime hid_dim: Int
     comptime top_k: Int
     comptime alignment: Int
@@ -372,8 +373,16 @@ trait TokenFormat(DevicePassable, ImplicitlyDestructible):
         self,
         buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
         token_index: Int,
+        expert_slot: Int = 0,
+        expert_start: Int = 0,
     ) -> None:
-        "Copy the message to the output tensor. This function needs to be called by all threads in a warp."
+        """Copy the message to the output tensor. This function needs to be called by all threads in a warp.
+
+        `expert_slot` (= `expert_id + shared_expert_offset`) and `expert_start`
+        (the expert's first output row) are supplied by the tile loop and used
+        only by formats that fold the grouped-matmul scale preshuffle into this
+        copy (MXFP4 KS224); other formats ignore them.
+        """
         ...
 
     @always_inline
@@ -409,7 +418,15 @@ trait TokenFormat(DevicePassable, ImplicitlyDestructible):
         for tok_id_in_tile in range(w, tile_end - tile_start, n_warps):
             var msg_ptr = recv_buf_ptr_functor(tok_id_in_tile)
             var output_pos = expert_start_pos + tile_start + tok_id_in_tile
-            self.copy_msg_to_output_tensor(msg_ptr, output_pos)
+            # `expert_slot` / `expert_start` let scale-preshuffle-folding
+            # formats (MXFP4 KS224) re-base `output_pos` to the per-expert
+            # `scale_4d` slot. Other formats ignore them.
+            self.copy_msg_to_output_tensor(
+                msg_ptr,
+                output_pos,
+                expert_id + shared_expert_offset,
+                expert_start_pos,
+            )
 
             if umod(tile_id, n_k_tiles) == 0:
                 extract_topk_info_functor(msg_ptr, output_pos)
@@ -503,6 +520,8 @@ struct BF16TokenFormat[
         self,
         buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
         token_index: Int,
+        expert_slot: Int = 0,
+        expert_start: Int = 0,
     ) -> None:
         comptime assert (
             Self.TensorType.flat_rank >= 2
@@ -715,6 +734,8 @@ struct BlockwiseFP8TokenFormat[
         self,
         buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
         token_index: Int,
+        expert_slot: Int = 0,
+        expert_start: Int = 0,
     ) -> None:
         comptime assert (
             Self.TensorType.flat_rank >= 2
@@ -756,8 +777,8 @@ struct BlockwiseFP8TokenFormat[
 
 
 @align(64)
-struct NVFP4TokenFormat[
-    fp4_dtype: DType,
+struct NVBlockScaledTokenFormat[
+    quant_dtype: DType,
     scales_dtype: DType,
     output_layout: TensorLayout,
     scales_offset_layout: TensorLayout,
@@ -769,33 +790,58 @@ struct NVFP4TokenFormat[
     comptime hid_dim = Self._hid_dim
     comptime top_k = Self._top_k
     comptime alignment = Self._alignment or get_device_alignment()
-    comptime group_size = NVFP4_SF_VECTOR_SIZE
+    comptime is_mxfp8 = (
+        Self.scales_dtype == DType.float8_e8m0fnu
+        and Self.quant_dtype == DType.float8_e4m3fn
+    )
+    comptime is_mxfp4 = (
+        Self.scales_dtype == DType.float8_e8m0fnu
+        and Self.quant_dtype == DType.uint8
+    )
+    comptime is_nvfp4 = (
+        Self.scales_dtype == DType.float8_e4m3fn
+        and Self.quant_dtype == DType.uint8
+    )
 
     comptime dispatch_wait_tile_shape = (128, 2)
 
     comptime TensorType = TileTensor[
-        Self.fp4_dtype, Self.output_layout, MutUntrackedOrigin
+        Self.quant_dtype, Self.output_layout, MutUntrackedOrigin
     ]
     comptime ScalesOffsetTensorType = TileTensor[
         DType.uint32, Self.scales_offset_layout, MutUntrackedOrigin
     ]
 
+    @staticmethod
+    def get_group_size() -> Int:
+        comptime if Self.is_nvfp4:
+            return NVFP4_SF_VECTOR_SIZE
+        elif Self.is_mxfp4:
+            return MXFP4_SF_VECTOR_SIZE
+        elif Self.is_mxfp8:
+            return MXFP8_SF_VECTOR_SIZE
+        else:
+            # Unsupported combination of scales dtype and fp4 dtype
+            return -1
+
+    comptime group_size = Self.get_group_size()
+
     comptime _n_k_tiles = Self.dispatch_wait_tile_shape[1]
     comptime _n_warps = 32  # Always use 32 warps per block on Nvidia GPUs.
     comptime tma_tile_shape = Index(
         1,
-        Self._hid_dim // NVFP4_SF_VECTOR_SIZE // SF_ATOM_K // Self._n_k_tiles,
+        Self._hid_dim // Self.group_size // SF_ATOM_K // Self._n_k_tiles,
         1,
         SF_ATOM_K * SF_ATOM_M[1],
     )
     comptime _scales_smem_per_warp = align_up(
         Int(Coord(Self.tma_tile_shape).product()), 128
     ) * size_of[Self.scales_dtype]()
-    comptime _fp4_smem_per_warp = align_up(
-        Self._hid_dim // 2 // Self._n_k_tiles, 16
+    comptime _quant_smem_per_warp = align_up(
+        Self.quant_size() // Self._n_k_tiles, 16
     )
     comptime _mbar_smem_offset = Self._n_warps * (
-        Self._scales_smem_per_warp + Self._fp4_smem_per_warp
+        Self._scales_smem_per_warp + Self._quant_smem_per_warp
     )
     comptime _mbar_smem_size = align_up(
         Self._n_warps * size_of[SharedMemBarrier](), 8
@@ -834,8 +880,8 @@ struct NVFP4TokenFormat[
     @staticmethod
     def get_type_name() -> String:
         return String(
-            "NVFP4TokenFormat[fp4_dtype = ",
-            String(Self.fp4_dtype),
+            "NVBlockScaledTokenFormat[quant_dtype = ",
+            String(Self.quant_dtype),
             ", scales_dtype = ",
             String(Self.scales_dtype),
             ", hid_dim = ",
@@ -850,7 +896,7 @@ struct NVFP4TokenFormat[
     @always_inline
     def __init__(
         out self,
-        output_tokens: TileTensor[Self.fp4_dtype, Self.output_layout, ...],
+        output_tokens: TileTensor[Self.quant_dtype, Self.output_layout, ...],
         output_scales: TileTensor[Self.scales_dtype, ...],
         output_scales_offset: TileTensor[
             DType.uint32, Self.scales_offset_layout, ...
@@ -858,7 +904,7 @@ struct NVFP4TokenFormat[
         ctx: DeviceContext,
     ):
         self.output_tokens = {
-            UnsafePointer[Scalar[Self.fp4_dtype], MutUntrackedOrigin](
+            UnsafePointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_tokens.ptr)
             ),
             output_tokens.layout,
@@ -878,7 +924,7 @@ struct NVFP4TokenFormat[
             row_major(
                 (
                     Int(output_scales.dim(0)),
-                    Idx[Self._hid_dim // NVFP4_SF_VECTOR_SIZE // SF_ATOM_K],
+                    Idx[Self._hid_dim // Self.group_size // SF_ATOM_K],
                     Idx[SF_ATOM_M[0]],
                     Idx[SF_ATOM_K * SF_ATOM_M[1]],
                 ),
@@ -894,8 +940,13 @@ struct NVFP4TokenFormat[
 
     @always_inline
     @staticmethod
-    def fp4_quant_size() -> Int:
-        return align_up(Self.hid_dim // 2, Self.alignment)
+    def quant_size() -> Int:
+        comptime payload_size = (
+            Self.hid_dim
+            // 2 if Self.is_nvfp4 else Self.hid_dim
+            * size_of[Self.quant_dtype]()
+        )
+        return align_up(payload_size, Self.alignment)
 
     @always_inline
     @staticmethod
@@ -911,12 +962,12 @@ struct NVFP4TokenFormat[
     @always_inline
     @staticmethod
     def token_size() -> Int:
-        return Self.fp4_quant_size() + Self.scales_size()
+        return Self.quant_size() + Self.scales_size()
 
     @always_inline
     @staticmethod
     def scales_offset() -> Int:
-        return Self.fp4_quant_size()
+        return Self.quant_size()
 
     @always_inline
     def pad_expert_offsets[
@@ -988,7 +1039,7 @@ struct NVFP4TokenFormat[
     ) -> None:
         comptime src_width = 8
         comptime byte_width = src_width // 2
-        comptime NUM_THREADS_PER_SF = NVFP4_SF_VECTOR_SIZE // src_width
+        comptime NUM_THREADS_PER_SF = Self.group_size // src_width
 
         for i in range(thread_idx.x, Self.hid_dim // src_width, block_size):
             var loaded_vec = src_p.load[
@@ -1002,17 +1053,26 @@ struct NVFP4TokenFormat[
                 thread_max
             )
 
-            # get the scale factor for these 16 elements by dividing it by the maximum value of fp4-e2m1
-            var scale_factor = input_scale * (group_max * recip(Float32(6.0)))
+            var scale_factor: Float32
+            comptime if Self.is_mxfp8:
+                scale_factor = group_max * recip(Float32(448.0))
+            elif Self.is_nvfp4:
+                scale_factor = input_scale * (group_max * recip(Float32(6.0)))
+            else:
+                scale_factor = group_max * recip(Float32(6.0))
 
             # NOTE: NVFP4 uses FP8-UE4M3 format for the scale factor but we know that scale_factor is always positive, so we can use E4M3 instead of UE4M3.
             var fp8_scale_factor = scale_factor.cast[Self.scales_dtype]()
 
             var output_scale = Float32(0.0)
             if group_max != 0:
-                output_scale = recip(
-                    fp8_scale_factor.cast[DType.float32]() * recip(input_scale)
-                )
+                comptime if Self.is_nvfp4:
+                    output_scale = recip(
+                        fp8_scale_factor.cast[DType.float32]()
+                        * recip(input_scale)
+                    )
+                else:
+                    output_scale = recip(fp8_scale_factor.cast[DType.float32]())
 
             # write back the scale factor
             comptime scale_bytes = size_of[Self.scales_dtype]()
@@ -1024,13 +1084,20 @@ struct NVFP4TokenFormat[
                 )
 
             var input_f32 = loaded_vec.cast[DType.float32]() * output_scale
-            var output_vector = bitcast[Self.fp4_dtype, byte_width](
-                cast_fp32_to_fp4e2m1(input_f32)
-            )
-            buf_p.store[alignment=byte_width](
-                i * byte_width,
-                bitcast[DType.uint8, byte_width](output_vector),
-            )
+            comptime if Self.is_mxfp8:
+                var output_vector = input_f32.cast[Self.quant_dtype]()
+                buf_p.store[alignment=src_width](
+                    i * src_width,
+                    bitcast[DType.uint8, src_width](output_vector),
+                )
+            else:
+                var output_vector = bitcast[Self.quant_dtype, byte_width](
+                    cast_fp32_to_fp4e2m1(input_f32)
+                )
+                buf_p.store[alignment=byte_width](
+                    i * byte_width,
+                    bitcast[DType.uint8, byte_width](output_vector),
+                )
 
     @always_inline
     def copy_msg_to_output_tensor[
@@ -1039,6 +1106,8 @@ struct NVFP4TokenFormat[
         self,
         buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
         token_index: Int,
+        expert_slot: Int = 0,
+        expert_start: Int = 0,
     ) -> None:
         "NVFP4 format directly uses tile based copy."
         pass
@@ -1105,7 +1174,7 @@ struct NVFP4TokenFormat[
         var oob = scales_tok >= tile_token_count
 
         comptime n_scales_per_token = (
-            Self.hid_dim // NVFP4_SF_VECTOR_SIZE // Self._n_k_tiles
+            Self.hid_dim // Self.group_size // Self._n_k_tiles
         )
         comptime n_scales_simd_per_token = n_scales_per_token // SF_ATOM_K
 
@@ -1166,15 +1235,15 @@ struct NVFP4TokenFormat[
 
             self.scales_tma_op.commit_group()
 
-        # --- FP4 values: 1D TMA g2s then s2g per warp ---
-        comptime fp4_bytes_per_ktile = Self.hid_dim // 2 // Self._n_k_tiles
-        var k_byte_offset = k_tile_idx * fp4_bytes_per_ktile
+        # --- Quant values: 1D TMA g2s then s2g per warp ---
+        comptime quant_bytes_per_ktile = Self.quant_size() // Self._n_k_tiles
+        var k_byte_offset = k_tile_idx * quant_bytes_per_ktile
 
         var smem_base = smem_ptr.bitcast[UInt8]()
-        var warp_fp4_smem = (
+        var warp_quant_smem = (
             smem_base
             + 32 * Self._scales_smem_per_warp
-            + w * Self._fp4_smem_per_warp
+            + w * Self._quant_smem_per_warp
         )
         var mbar_base = (smem_base + Self._mbar_smem_offset).bitcast[
             SharedMemBarrier
@@ -1189,26 +1258,26 @@ struct NVFP4TokenFormat[
             var output_pos = expert_start_pos + tile_start + tok_local
 
             if is_warp_leader:
-                # g2s: load FP4 bytes from recv_buf to SMEM via 1D TMA.
+                # g2s: load quant bytes from recv_buf to SMEM via 1D TMA.
                 var mbar = mbar_base + w
-                mbar[].expect_bytes(Int32(fp4_bytes_per_ktile))
+                mbar[].expect_bytes(Int32(quant_bytes_per_ktile))
                 cp_async_bulk_shared_cluster_global(
-                    warp_fp4_smem,
+                    warp_quant_smem,
                     token_ptr + k_byte_offset,
-                    Int32(fp4_bytes_per_ktile),
+                    Int32(quant_bytes_per_ktile),
                     mbar[].unsafe_ptr(),
                 )
                 mbar[].wait(phase=phase)
                 phase ^= 1
 
-                # s2g: write FP4 bytes from SMEM to output_tokens via 1D TMA.
+                # s2g: write quant bytes from SMEM to output_tokens via 1D TMA.
                 fence_async_view_proxy()
                 cp_async_bulk_global_shared_cta(
                     output_tokens_base
-                    + output_pos * (Self.hid_dim // 2)
+                    + output_pos * Self.quant_size()
                     + k_byte_offset,
-                    warp_fp4_smem,
-                    Int32(fp4_bytes_per_ktile),
+                    warp_quant_smem,
+                    Int32(quant_bytes_per_ktile),
                 )
                 cp_async_bulk_commit_group()
                 cp_async_bulk_wait_group[0]()
@@ -1236,6 +1305,8 @@ struct MXFP4TokenFormat[
     _hid_dim: Int,
     _top_k: Int,
     _alignment: Int = 0,
+    *,
+    fuse_a_scale_preshuffle: Bool = False,
 ](TokenFormat, TrivialRegisterPassable):
     comptime hid_dim = Self._hid_dim
     comptime top_k = Self._top_k
@@ -1253,6 +1324,9 @@ struct MXFP4TokenFormat[
     ]
     var output_tokens: Self.TensorType
     var output_scales: Self.ScalesTensorType
+    # Per-expert `scale_4d` slot stride in rows (= `align_up(max, 32)`); only
+    # used when `fuse_a_scale_preshuffle` (KS224 up-proj fusion).
+    var max_padded_M: Int
 
     comptime device_type: AnyType = Self
 
@@ -1281,6 +1355,8 @@ struct MXFP4TokenFormat[
             String(Self.top_k),
             ", alignment = ",
             String(Self.alignment),
+            ", fuse_a_scale_preshuffle = ",
+            String(Self.fuse_a_scale_preshuffle),
             "]",
         )
 
@@ -1289,6 +1365,7 @@ struct MXFP4TokenFormat[
         out self,
         output_tokens: TileTensor[Self.fp4_dtype, Self.output_layout, ...],
         output_scales: TileTensor[Self.scales_dtype, Self.scales_layout, ...],
+        max_padded_M: Int = 0,
     ):
         self.output_tokens = {
             UnsafePointer[Scalar[Self.fp4_dtype], MutUntrackedOrigin](
@@ -1302,6 +1379,7 @@ struct MXFP4TokenFormat[
             ),
             output_scales.layout,
         }
+        self.max_padded_M = max_padded_M
 
     @always_inline
     @staticmethod
@@ -1389,6 +1467,8 @@ struct MXFP4TokenFormat[
         self,
         buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
         token_index: Int,
+        expert_slot: Int = 0,
+        expert_start: Int = 0,
     ) -> None:
         comptime assert (
             Self.TensorType.flat_rank >= 2
@@ -1418,19 +1498,77 @@ struct MXFP4TokenFormat[
             Self.ScalesTensorType.flat_rank >= 2
         ), "output_scales expects rank >= 2"
         comptime scale_bytes = size_of[Self.scales_dtype]()
-        for i in range(lane_id(), Self.hid_dim // Self.group_size, WARP_SIZE):
-            self.output_scales.store(
-                (token_index, i),
-                bitcast[Self.scales_dtype, 1](
-                    buf_p.load[
-                        width=scale_bytes,
-                        invariant=True,
-                        alignment=scale_bytes,
-                    ](
-                        Self.scales_offset() + i * scale_bytes,
-                    )
+
+        comptime if Self.fuse_a_scale_preshuffle:
+            # KS224 up/gate proj (AMD CDNA4 only — `scale_4d_slot_byte_off` is
+            # the MI355 MFMA-16x128 `Shuffler` layout): write the E8M0
+            # activation scale straight into the up-proj grouped matmul's
+            # per-expert fixed-stride `scale_4d` slot layout, dropping the
+            # standalone `preshuffle_grouped_scale_4d_gpu` from the decode
+            # critical path. Unlike the KS64 (`fused_silu`) fold, `ep_wait`
+            # already knows `(expert_slot, local_row)` from the tile loop — no
+            # `row_offsets` scan needed, which is why `scale_4d_slot_byte_off`
+            # takes them directly.
+            #
+            # The stores are intentionally scattered single E8M0 bytes:
+            # `scale_4d` is column-major-in-atoms (adjacent lanes land ~16 bytes
+            # apart), so this gives up the coalesced row-major vector store the
+            # non-fused path issues. Still a net win — it deletes a serial
+            # kernel + a full HBM round-trip of the scale buffer. Do NOT
+            # "optimize" it back into a vector store.
+            #
+            # Race-free: a single E8M0 byte store. The `scale_4d` i32 cell packs
+            # 2 tokens (rows `mn`, `mn+16`) x 2 k-positions; rows `r` and `r+16`
+            # may land on different warps/SMs, but each is an independent byte
+            # store (no read-modify-write), and different experts never share a
+            # cell (separated by `expert_slot * max_padded_M * K_SCALES`).
+            comptime assert scale_bytes == 1, (
+                "fused scale_4d store assumes a 1-byte E8M0 scale: the byte"
+                " offset is used directly as a scales_dtype element index"
+            )
+            comptime K_SCALES = Self.hid_dim // Self.group_size
+            var local_row = token_index - expert_start
+            debug_assert(
+                self.max_padded_M > 0,
+                "KS224 fused scale store requires max_padded_M > 0",
+            )
+            debug_assert(
+                local_row < self.max_padded_M,
+                (
+                    "KS224 fused scale store: local_row exceeds the per-expert"
+                    " slot capacity (max_padded_M)"
                 ),
             )
+            for i in range(
+                lane_id(), Self.hid_dim // Self.group_size, WARP_SIZE
+            ):
+                var byte = buf_p.load[
+                    width=scale_bytes,
+                    invariant=True,
+                    alignment=scale_bytes,
+                ](Self.scales_offset() + i * scale_bytes)
+                var dst_off = Shuffler[1].scale_4d_slot_byte_off[
+                    K_SCALES=K_SCALES
+                ](expert_slot, local_row, i, self.max_padded_M)
+                self.output_scales.ptr[dst_off] = bitcast[Self.scales_dtype, 1](
+                    byte
+                )
+        else:
+            for i in range(
+                lane_id(), Self.hid_dim // Self.group_size, WARP_SIZE
+            ):
+                self.output_scales.store(
+                    (token_index, i),
+                    bitcast[Self.scales_dtype, 1](
+                        buf_p.load[
+                            width=scale_bytes,
+                            invariant=True,
+                            alignment=scale_bytes,
+                        ](
+                            Self.scales_offset() + i * scale_bytes,
+                        )
+                    ),
+                )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -2562,8 +2700,12 @@ def dispatch_async_kernel[
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
 @__llvm_arg_metadata(format_handler, `nvvm.grid_constant`)
+# `token_fmt_type.get_type_name()` carries `fuse_a_scale_preshuffle = <bool>` for
+# MXFP4 (KS224 up-proj fold), so fused and non-fused instantiations get distinct
+# symbol names and never alias in the kernel cache. It also disambiguates the
+# token format itself (BF16/FP8/NVFP4/MXFP4), which the scalar-only name did not.
 @__name(
-    t"ep_wait_{num_threads}_{n_sms}_{n_experts}_{n_ranks}_{max_tokens_per_rank}",
+    t"ep_wait_{num_threads}_{n_sms}_{n_experts}_{n_ranks}_{max_tokens_per_rank}_{token_fmt_type.get_type_name()}"
 )
 def dispatch_wait_kernel[
     num_threads: Int,
@@ -4456,7 +4598,9 @@ def fused_silu_nvfp4_interleaved_kernel[
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
-@__name(t"fused_silu_mxfp4_{input_dtype}_{fp4_dtype}")
+@__name(
+    t"fused_silu_mxfp4_{input_dtype}_{fp4_dtype}_fuse_a_scale_preshuffle_{fuse_a_scale_preshuffle}"
+)
 def fused_silu_mxfp4_kernel[
     fp4_dtype: DType,
     scales_dtype: DType,
@@ -4467,11 +4611,14 @@ def fused_silu_mxfp4_kernel[
     offsets_layout: TensorLayout,
     num_threads: Int,
     num_sms: Int,
+    *,
+    fuse_a_scale_preshuffle: Bool = False,
 ](
     output_tensor: TileTensor[fp4_dtype, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
     input_tensor: TileTensor[input_dtype, input_layout, ImmutUntrackedOrigin],
     row_offsets: TileTensor[DType.uint32, offsets_layout, ImmutUntrackedOrigin],
+    max_padded_M: Int = 0,
 ):
     """
     This kernel performs the SILU operation for all the MLPs in the EP MoE
@@ -4523,6 +4670,14 @@ def fused_silu_mxfp4_kernel[
         var num_tokens = row_offsets[row_offsets.static_shape[0] - 1]
         var num_elem = num_tokens * UInt32(output_dim) * 2
 
+        # Persistent expert-slot tracker for the fused (fuse_a_scale_preshuffle)
+        # scale store. `m` is monotonic non-decreasing in `i` (m = i*src_width
+        # // hidden_size) and each thread walks strictly-increasing `i`, so the
+        # tracker only ever advances forward — amortized O(1) per store instead
+        # of the O(n_experts) rescan-from-0. Unused on the non-fused path (the
+        # comptime branch below is elided).
+        var expert_slot = 0
+
         for i in range(
             gid,
             Int(num_elem // UInt32(src_width)),
@@ -4555,9 +4710,54 @@ def fused_silu_mxfp4_kernel[
 
             # The first thread in each group stores the scale factor.
             if i % NUM_THREADS_PER_SF == 0:
-                scales_tensor.store(
-                    (m, k // MXFP4_SF_VECTOR_SIZE), fp8_scale_factor
-                )
+                var k_scale = k // MXFP4_SF_VECTOR_SIZE
+
+                comptime if fuse_a_scale_preshuffle:
+                    # KS64 down proj (AMD CDNA4 only — `scale_4d_slot_byte_off`
+                    # is the MI355 MFMA-16x128 `Shuffler` layout): write the
+                    # E8M0 scale straight into the grouped matmul's per-expert
+                    # fixed-stride `scale_4d` slot layout, dropping the
+                    # standalone `preshuffle_grouped_scale_4d_gpu` from the
+                    # critical path. Race-free: a single E8M0 byte store; the
+                    # i32 cell packs 2 tokens x 2 k-positions but byte stores
+                    # never collide, whichever thread/warp owns the row.
+                    # Byte-equivalence:
+                    # test/gpu/shmem/test_mxfp4_fused_silu_scale_fusion.mojo.
+                    comptime assert size_of[scales_dtype]() == 1, (
+                        "fused scale_4d store assumes a 1-byte E8M0 scale: the"
+                        " byte offset is used directly as a scales_dtype"
+                        " element index"
+                    )
+                    comptime K_SCALES = hidden_size // MXFP4_SF_VECTOR_SIZE
+
+                    # Advance the tracker to the slot owning row `m`
+                    # (`row_offsets` = per-expert prefix sum, len
+                    # n_local_experts + 1).
+                    comptime n_active = row_offsets.static_shape[0] - 1
+                    while expert_slot < n_active - 1 and Int(
+                        row_offsets[Coord(expert_slot + 1)]
+                    ) <= Int(m):
+                        expert_slot += 1
+
+                    var token_start = Int(row_offsets[Coord(expert_slot)])
+                    var local_row = Int(m) - token_start
+                    debug_assert(
+                        max_padded_M > 0,
+                        "KS64 fused scale store requires max_padded_M > 0",
+                    )
+                    debug_assert(
+                        local_row < max_padded_M,
+                        (
+                            "KS64 fused scale store: local_row exceeds the"
+                            " per-expert slot capacity (max_padded_M)"
+                        ),
+                    )
+                    var dst_off = Shuffler[1].scale_4d_slot_byte_off[
+                        K_SCALES=K_SCALES
+                    ](expert_slot, local_row, k_scale, max_padded_M)
+                    scales_tensor.ptr[dst_off] = fp8_scale_factor
+                else:
+                    scales_tensor.store((m, k_scale), fp8_scale_factor)
 
             var output_vector = bitcast[fp4_dtype, byte_width](
                 cast_float_to_fp4e2m1_amd(output_val, scale_f32)

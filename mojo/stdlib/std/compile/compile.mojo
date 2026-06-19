@@ -269,7 +269,7 @@ def compile_info[
 
     var offload = __mlir_op.`kgen.compile_offload`[
         target_type=target,
-        emission_kind=_get_emission_kind_id[emission_kind]()._int_mlir_index(),
+        emission_kind=_get_emission_kind_id[emission_kind]().__mlir_index__(),
         emission_option=_get_kgen_string[compile_options](),
         emission_link_option=_get_kgen_string[link_options](),
         func=func,
@@ -280,7 +280,7 @@ def compile_info[
         asm=StaticString(offload.asm),
         function_name=get_linkage_name[func, target=target](),
         module_name=StaticString(offload.module_name),
-        num_captures=Int(mlir_value=offload.num_captures),
+        num_captures=Int(SIMDSize(mlir_value=offload.num_captures)),
         capture_sizes=offload.capture_sizes,
         emission_kind=emission_kind,
     )
