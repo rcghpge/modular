@@ -256,18 +256,18 @@ constexpr llvm::StringLiteral kStructScalar = "Scalar";
 constexpr llvm::StringLiteral kStructVariadic = "Variadic";
 constexpr llvm::StringLiteral kStructParameterList = "ParameterList";
 constexpr llvm::StringLiteral kStructStaticTensorSpec =
-    "extensibility.managed_tensor_slice.StaticTensorSpec";
+    "managed_tensor_slice.StaticTensorSpec";
 constexpr llvm::StringLiteral kStructStaticTensorSpecList =
     "extensibility.StaticTensorSpecList";
 constexpr llvm::StringLiteral kStructVariadicTensors =
     "extensibility.VariadicTensors";
 constexpr llvm::StringLiteral kStructStaticString = "StaticString";
 constexpr llvm::StringLiteral kStructMsFusionPack =
-    "extensibility.managed_tensor_slice._FusionPack";
+    "managed_tensor_slice._FusionPack";
 constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
-    "extensibility.managed_tensor_slice._FusedInputVariadicTensors";
+    "managed_tensor_slice._FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
-    "extensibility.managed_tensor_slice._FusedOutputVariadicTensors";
+    "managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "std.runtime.tracing.Trace";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
@@ -275,7 +275,7 @@ constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";
 constexpr llvm::StringLiteral kFnRowMajor = "layout.row_major";
 
 constexpr llvm::StringLiteral kAliasIndexListToTileLayout =
-    "extensibility.managed_tensor_slice._IndexListToTileLayout";
+    "managed_tensor_slice._IndexListToTileLayout";
 
 //===----------------------------------------------------------------------===//
 // Mojo enum values
@@ -304,13 +304,13 @@ constexpr llvm::StringLiteral kFnNumericsInf = "std.utils.numerics.inf";
 constexpr llvm::StringLiteral kFnToManagedTensorSlice =
     "builtin_primitives.primitives.to_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromManagedTensorSlice =
-    "extensibility.managed_tensor_slice.simd_load_from_managed_tensor_slice";
+    "managed_tensor_slice.simd_load_from_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromTensorPointer =
-    "extensibility.managed_tensor_slice.simd_load_from_tensor_pointer";
+    "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnSimdStoreIntoManagedTensorSlice =
-    "extensibility.managed_tensor_slice.simd_store_into_managed_tensor_slice";
+    "managed_tensor_slice.simd_store_into_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdStoreIntoTensorPointer =
-    "extensibility.managed_tensor_slice.simd_store_into_tensor_pointer";
+    "managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr llvm::StringLiteral kFnUnpackTensorSpec =
     "builtin_primitives.primitives.unpack_tensor_spec";
 constexpr llvm::StringLiteral kFnGetSimdWidthForDtypes =
@@ -330,9 +330,9 @@ constexpr llvm::StringLiteral kFnMoggAsyncPackBorrow =
 constexpr llvm::StringLiteral kFnGetBufferMemStorageHandle =
     "builtin_primitives.primitives.get_buffer_mem_storage_handle";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
-    "extensibility.managed_tensor_slice.simd_load_from_tensor_pointer";
+    "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
-    "extensibility.managed_tensor_slice.simd_store_into_tensor_pointer";
+    "managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
 constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
 
@@ -360,15 +360,15 @@ constexpr llvm::StringLiteral kFnPrint = "print";
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kTraitInputFusion =
-    "extensibility.managed_tensor_slice.InputFusion";
+    "managed_tensor_slice.InputFusion";
 constexpr llvm::StringLiteral kTraitOutputFusion =
-    "extensibility.managed_tensor_slice.OutputFusion";
+    "managed_tensor_slice.OutputFusion";
 constexpr llvm::StringLiteral kTraitComputeOutputFusion =
-    "extensibility.managed_tensor_slice.ComputeOutputFusion";
+    "managed_tensor_slice.ComputeOutputFusion";
 constexpr llvm::StringLiteral kTraitComputeOutputFusionTile =
-    "extensibility.managed_tensor_slice.ComputeOutputFusionTile";
+    "managed_tensor_slice.ComputeOutputFusionTile";
 constexpr llvm::StringLiteral kTraitElementwiseFusion =
-    "extensibility.managed_tensor_slice.ElementwiseFusion";
+    "managed_tensor_slice.ElementwiseFusion";
 
 //===----------------------------------------------------------------------===//
 // Decorator strings
@@ -387,7 +387,7 @@ constexpr llvm::StringLiteral kComptimeInputTensor =
 constexpr llvm::StringLiteral kComptimeOutputTensor =
     "extensibility.OutputTensor";
 constexpr llvm::StringLiteral kComptimeMutableInputTensor =
-    "extensibility.managed_tensor_slice._MutableInputTensor";
+    "managed_tensor_slice._MutableInputTensor";
 constexpr llvm::StringLiteral kComptimeUInt8 = "UInt8";
 constexpr llvm::StringLiteral kComptimeMutAnyOrigin = "MutAnyOrigin";
 constexpr llvm::StringLiteral kComptimeMutUntrackedOrigin =
@@ -449,9 +449,11 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"builtin_kernels", "builtin_kernels"},
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
+        {"std.gpu.host.device_context", ""},
         {"std.utils", ""},
         {"std.utils.numerics", ""},
         {"std.runtime", ""},
+        {"std.runtime.asyncrt", ""},
         {"std.runtime.tracing", ""},
         {"std.memory", ""},
         {"std.collections", ""},
@@ -463,7 +465,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
 inline bool isMojoIOSpecTypeName(llvm::ArrayRef<mlir::FlatSymbolRefAttr> refs) {
   // After the extensibility fuse, `IOSpec` lives in
   // `extensibility/managed_tensor_slice.mojo` and the Mojo compiler emits
-  // it under the dotted path `extensibility.managed_tensor_slice.IOSpec`.
+  // it under the dotted path `managed_tensor_slice.IOSpec`.
   constexpr llvm::StringLiteral mojoTypeName = "IOSpec";
   if (refs.empty())
     return false;

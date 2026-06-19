@@ -6,7 +6,7 @@
 // CHECK: var {{.*}} = std.utils.StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
 // CHECK: var {{.*}} = std.utils.StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
 // CHECK: comptime {{.*}} = ParameterList.of[{{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals()]()
-// CHECK: var {{.*}} = extensibility.managed_tensor_slice._FusedInputVariadicTensors[{{.*}}, static_specs = {{.*}}]({{.*}}, {{.*}}, {{.*}})
+// CHECK: var {{.*}} = managed_tensor_slice._FusedInputVariadicTensors[{{.*}}, static_specs = {{.*}}]({{.*}}, {{.*}}, {{.*}})
 // CHECK: builtin_kernels.gather_scatter.Concat.execute[target = "cpu", axis = 0]({{.*}}, {{.*}}, {{.*}})
 
 mo.graph @concat(%arg0: !mo.tensor<[2], si32>, %arg1: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[4], si32>) -> !mo.tensor<[9], si32> {

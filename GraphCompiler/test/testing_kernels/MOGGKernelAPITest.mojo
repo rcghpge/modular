@@ -8,7 +8,7 @@ from std.collections.string import StaticString
 from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
-import std.algorithm
+import std.algorithm.functional
 import extensibility as compiler
 from layout import IntTuple
 from layout import TileTensor, CoordLike, Coord
