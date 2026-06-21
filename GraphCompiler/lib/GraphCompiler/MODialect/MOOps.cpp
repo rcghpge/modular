@@ -807,7 +807,7 @@ void IfOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.emplace_back(mlir::RegionSuccessor::parent());
+    regions.emplace_back(mlir::RegionSuccessor(getOperation()));
     return;
   }
 
@@ -816,7 +816,7 @@ void IfOp::getSuccessorRegions(
 }
 
 ValueRange IfOp::getSuccessorInputs(mlir::RegionSuccessor successor) {
-  return successor.isParent() ? getOperation()->getResults() : ValueRange();
+  return successor.isOperation() ? getOperation()->getResults() : ValueRange();
 }
 
 void IfOp::getEntrySuccessorRegions(
@@ -895,12 +895,12 @@ void WhileOp::getSuccessorRegions(
     return;
   }
 
-  regions.emplace_back(mlir::RegionSuccessor::parent());
+  regions.emplace_back(mlir::RegionSuccessor(getOperation()));
   regions.emplace_back(&getBodyRegion());
 }
 
 ValueRange WhileOp::getSuccessorInputs(mlir::RegionSuccessor successor) {
-  if (successor.isParent())
+  if (successor.isOperation())
     return getOperation()->getResults();
   if (successor == &getCondRegion())
     return getCondRegion().getArguments();
@@ -989,12 +989,12 @@ void WhileConditionOp::getSuccessorRegions(
   // Condition can either lead to the after region or back to the parent op
   // depending on whether the condition is true or not.
   regions.emplace_back(&whileOp.getBodyRegion());
-  regions.emplace_back(mlir::RegionSuccessor::parent());
+  regions.emplace_back(mlir::RegionSuccessor(whileOp.getOperation()));
 }
 
 MutableOperandRange
 WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
-  assert((successor.isParent() ||
+  assert((successor.isOperation() ||
           successor.getSuccessor() == &getParentOp().getBodyRegion()) &&
          "condition op can only exit the loop or branch to the after"
          "region");

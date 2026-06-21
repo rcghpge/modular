@@ -111,7 +111,7 @@ mo.graph @constant_dtype_bool() -> !mo.tensor<[], bool> {
 
 mo.graph @if_op_missing_yield(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
   // expected-note@+2 {{region branch point}}
-  // expected-error@+1 {{'mo.if' op along control flow edge from Operation mo.yield to parent: region branch point has 0 operands, but region successor needs 1 inputs}}
+  // expected-error@+1 {{'mo.if' op along control flow edge from Operation mo.yield to Operation mo.if: region branch point has 0 operands, but region successor needs 1 inputs}}
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
@@ -134,7 +134,7 @@ mo.graph @if_op_cond_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 // -----
 
 mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[3, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // expected-error@+1 {{'mo.if' op along control flow edge from Operation mo.yield to parent: successor operand type #0 '!mo.tensor<[3, ?, 1], f32>' should match successor input type #0 '!mo.tensor<[2, ?, 1], f32>'}}
+  // expected-error@+1 {{'mo.if' op along control flow edge from Operation mo.yield to Operation mo.if: successor operand type #0 '!mo.tensor<[3, ?, 1], f32>' should match successor input type #0 '!mo.tensor<[2, ?, 1], f32>'}}
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
@@ -192,7 +192,7 @@ mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 
 mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
-    // expected-error@+1 {{'mo.while' op along control flow edge from Operation mo.while.condition to parent: region branch point has 1 operands, but region successor needs 2 inputs}}
+    // expected-error@+1 {{'mo.while' op along control flow edge from Operation mo.while.condition to Operation mo.while: region branch point has 1 operands, but region successor needs 2 inputs}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     // expected-note@+1 {{region branch point}}
     mo.while.condition(%condi) %argi0 : !mo.tensor<[2], f32>
@@ -206,7 +206,7 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 
 mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
-  // expected-error@+1 {{'mo.while' op along control flow edge from Operation mo.while.condition to parent: successor operand type #0 '!mo.tensor<[], bool>' should match successor input type #0 '!mo.tensor<[2], f32>'}}
+  // expected-error@+1 {{'mo.while' op along control flow edge from Operation mo.while.condition to Operation mo.while: successor operand type #0 '!mo.tensor<[], bool>' should match successor input type #0 '!mo.tensor<[2], f32>'}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     // expected-note@+1 {{region branch point}}
     mo.while.condition(%condi) %condi, %argi0 : !mo.tensor<[], bool>, !mo.tensor<[2], f32>
