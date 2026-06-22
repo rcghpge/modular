@@ -1,14 +1,21 @@
-# Validating NIXL after an upstream sync
+# Validating NIXL after bumping the upstream pin
 
-After backporting from upstream NIXL (`ai-dynamo/nixl`) into
-`MLRT/Driver/NIXL`, run the checks below before landing the sync. The
-goal is to catch regressions in three layers: the in-tree libraries
-(plugin shared objects, agent, transfer paths), the disaggregated
-inference (DI) stack that depends on them, and the EFA / cross-node
-behavior that only shows up under real network load.
+NIXL is vendored as an unmodified http_archive snapshot of
+`ai-dynamo/nixl` (see `MODULE.bazel` for the current pin). To upgrade
+to a new release, bump the `version` and `sha256` in `MODULE.bazel` and
+update the overlay in `bazel/third-party/nixl_upstream.BUILD` if the
+upstream source layout changed. The old backport workflow (copying
+upstream commits into `MLRT/Driver/NIXL`) is retired; that fork has
+been deleted.
+
+Run the checks below before landing a pin bump. The goal is to catch
+regressions in three layers: the vendored library (plugin shared
+objects, agent, transfer paths), the disaggregated inference (DI) stack
+that depends on them, and the EFA / cross-node behavior that only shows
+up under real network load.
 
 The tests are listed cheapest first. Run everything in
-[In-tree unit tests](#in-tree-unit-tests) on every sync; escalate to
+[In-tree unit tests](#in-tree-unit-tests) on every bump; escalate to
 the workflow runs when the diff touches a transfer path, plugin
 loading, or telemetry.
 
@@ -133,7 +140,7 @@ are open items to add targeted coverage:
   nightly so the KV transfer smoke test runs automatically on every
   NIXL change.
 
-## Suggested checklist for a sync PR
+## Suggested checklist for a pin-bump PR
 
 Paste this into the PR description:
 

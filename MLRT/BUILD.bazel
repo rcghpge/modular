@@ -750,17 +750,9 @@ modular_cc_library(
 
 # ---------------------------------------------------------------------------
 # NIXL — sourced from upstream v1.1.0 via @nixl_upstream (Bazel http_archive).
-# The fork sources under MLRT/{lib,include}/Driver/NIXL are kept on disk but
-# are no longer compiled; they will be removed in a follow-up cleanup PR.
-#
-# PR3 CLEAN-CUT: all consumers point directly at @nixl_upstream//:… targets.
-# No aliases from old MLRT target names are kept here.
+# All consumers point directly at @nixl_upstream//:… targets.
+# The fork sources under MLRT/{lib,include}/Driver/NIXL have been deleted.
 # ---------------------------------------------------------------------------
-
-_NIXL_LINUX_X86 = [
-    "@platforms//cpu:x86_64",
-    "@platforms//os:linux",
-]
 
 # Main entry point: API headers + upstream library + plugin runfiles.
 # On non-Linux platforms only the public headers are available — the library
@@ -787,66 +779,6 @@ modular_cc_library(
             "@nixl_upstream//:nixl_stream",
         ],
         "//conditions:default": [],
-    }),
-)
-
-# Library-only (no plugin data deps). Visible to unittests so they can build
-# without dragging plugin runfiles into every test action.
-modular_cc_library(
-    name = "Driver/NIXLLibOnly",
-    tags = ["no-clang-tidy"],
-    target_compatible_with = _NIXL_LINUX_X86,
-    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
-    deps = [
-        "@nixl_upstream//:nixl",
-        "@nixl_upstream//:nixl_api_headers",
-        "@nixl_upstream//:nixl_common",
-        "@nixl_upstream//:nixl_infra",
-        "@nixl_upstream//:nixl_serdes",
-        "@nixl_upstream//:nixl_stream",
-    ],
-)
-
-# Telemetry API headers only — used by tests that want event/exporter headers
-# without pulling in the full NIXL implementation.
-alias(
-    name = "Driver/NIXLTelemetryApiOnly",
-    actual = "@nixl_upstream//:nixl_api_headers",
-    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
-)
-
-# Libfabric utility library (rail manager, topology, etc.) for unittests.
-alias(
-    name = "Driver/NIXLLibfabricUtils",
-    actual = "@nixl_upstream//:libfabric_plugin_lib",
-    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
-)
-
-# Prebuilt libfabric/hwloc/numa kept for targets that referenced them directly.
-alias(
-    name = "Driver/NIXLHwlocPrebuilt",
-    actual = select({
-        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:hwloc",
-        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:hwloc",
-        "//conditions:default": "@efa_libfabric_prebuilt//:hwloc",
-    }),
-)
-
-alias(
-    name = "Driver/NIXLLibfabricPrebuilt",
-    actual = select({
-        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:libfabric",
-        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:libfabric",
-        "//conditions:default": "@efa_libfabric_prebuilt//:libfabric",
-    }),
-)
-
-alias(
-    name = "Driver/NIXLNumaPrebuilt",
-    actual = select({
-        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:numa",
-        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:numa",
-        "//conditions:default": "@efa_libfabric_prebuilt//:numa",
     }),
 )
 
