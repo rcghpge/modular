@@ -123,6 +123,28 @@ def coder_ssh(
     return run(["coder", "ssh", workspace, "--", remote_command], check=check)
 
 
+def get_coder_owner() -> str:
+    """Return the logged-in Coder username, or a placeholder on failure.
+
+    Runs ``coder whoami --output json`` and extracts the ``username`` field.
+    Falls back to the literal string ``<your-coder-username>`` if the command
+    fails or the field is not found.
+    """
+    stdout, _, rc = run(["coder", "whoami", "--output", "json"], check=False)
+    if rc != 0:
+        return "<your-coder-username>"
+    try:
+        data = json.loads(stdout)
+        # coder whoami -o json returns a list with one entry
+        if isinstance(data, list) and data:
+            return data[0].get("username", "<your-coder-username>")
+        if isinstance(data, dict):
+            return data.get("username", "<your-coder-username>")
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return "<your-coder-username>"
+
+
 def coder_status(workspace: str) -> str | None:
     """Return the latest-build status of a workspace, or ``None`` if not found."""
     stdout, _, _ = run(["coder", "list", "-o", "json"])
@@ -495,6 +517,22 @@ def main() -> None:
         """
     ).strip()
     for line in snippet.splitlines():
+        print("    " + style(line, C.GREEN))
+    print()
+    coder_owner = get_coder_owner()
+    print(
+        style(
+            "  To sync your worktree to the prefill node, paste this on your local machine:",
+            C.BOLD,
+        )
+    )
+    print()
+    rsync_snippet = textwrap.dedent(
+        f"""
+            ./utils/rsync_coder_hosts.sh --smart --delete main.{args.prefill}.{coder_owner}.coder
+        """
+    ).strip()
+    for line in rsync_snippet.splitlines():
         print("    " + style(line, C.GREEN))
     print()
     print(

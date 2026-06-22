@@ -49,6 +49,21 @@ fresh pair of workspaces before following this guide.
   git submodule update --init --recursive
   ```
 
+  **Working from a local worktree (WIP / unpushed changes)?** Skip the
+  git checkout above. Instead, use the rsync command printed by
+  `setup_di_workspaces.py` at the end of setup to continuously sync
+  your local worktree to the prefill node:
+
+  ```bash
+  # Run on your local machine, from the root of your worktree
+  ./utils/rsync_coder_hosts.sh --smart --delete main.<prefill-ws>.<owner>.coder
+  ```
+
+  `--smart` re-syncs automatically on every file change (inotify on
+  Linux, fswatch on macOS); `--delete` keeps the remote an exact mirror.
+  The exact command with your workspace name filled in is printed by
+  `setup_di_workspaces.py` at the end of its run.
+
 ## 1 · Sanity-check both workspaces have free GPU memory
 
 On both workspaces:
