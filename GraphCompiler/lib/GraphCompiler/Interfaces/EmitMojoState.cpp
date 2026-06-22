@@ -799,13 +799,6 @@ static MojoValue getHasPrologueFusionValue(mlir::Operation *callOp) {
   return !mlir::isa<FusionLeafAttr>(fusionInfo.getRoot());
 }
 
-// `lambdas_have_fusion` is the disjunction of the two: the kernel has any
-// fusion at all, i.e. a fused elementwise lambda OR a fused input producer.
-static MojoValue getHasLambdaFusionValue(mlir::Operation *callOp) {
-  return getHasEpilogueFusionValue(callOp).bitwise_logical_or(
-      getHasPrologueFusionValue(callOp));
-}
-
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
@@ -867,8 +860,6 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     return getHasEpilogueFusionValue(callOp);
   if (paramName == MOGG::kMoggHasPrologueFusionParameterName)
     return getHasPrologueFusionValue(callOp);
-  if (paramName == MOGG::kMoggLambdasHaveFusionParameterName)
-    return getHasLambdaFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
 }

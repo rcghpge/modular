@@ -114,11 +114,6 @@ constexpr llvm::StringLiteral kMoggHasEpilogueFusionParameterName =
 constexpr llvm::StringLiteral kMoggHasPrologueFusionParameterName =
     "has_prologue_fusion";
 
-/// `lambdas_have_fusion` parameter: true iff the kernel has any fusion at all,
-/// i.e. `has_epilogue_fusion || has_prologue_fusion`.
-constexpr llvm::StringLiteral kMoggLambdasHaveFusionParameterName =
-    "lambdas_have_fusion";
-
 constexpr llvm::StringLiteral kMoggTraceNameParameterName = "_trace_name";
 
 /// Roots of Mojo packages that hold the MAX compiler's internal-only

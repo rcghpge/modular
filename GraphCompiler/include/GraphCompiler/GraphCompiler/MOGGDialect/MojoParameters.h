@@ -11,9 +11,6 @@
 
 namespace M::MOGG {
 
-static constexpr llvm::StringLiteral PARAMETER_LAMBDAS_HAVE_FUSION =
-    "lambdas_have_fusion";
-
 /// Matmul and BatchMatmul op
 static constexpr llvm::StringLiteral PARAMETER_MATMUL_TRANSPOSED_WEIGHTS =
     "transpose_b";
