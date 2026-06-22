@@ -71,6 +71,11 @@ public:
   // Check if the memory manager is enabled (has non-zero capacity)
   bool isEnabled() const;
 
+  // Whether the VMM defragmenting allocator is active on this manager. Reflects
+  // both the `memory_manager_vmm` config request and the device's
+  // vmmSupported() result, as resolved by onDevice().
+  bool isVmmEnabled() const;
+
   // Factory methods configure the memory manager based on defaults or the
   // environment.
   // `memInfo` contains the total and free memory of the device.

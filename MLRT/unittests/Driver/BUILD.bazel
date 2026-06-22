@@ -126,6 +126,62 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "MemoryManagerVMMDeviceCreateTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMDeviceCreateTest.cpp",
+    ],
+    env = {
+        # Request the VMM defragmenting allocator process-wide (config is parsed
+        # once per process). This target is the positive case: a device built via
+        # Device::create() must actually enable VMM, which is the path GEX-3860
+        # silently disabled.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "256",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "MemoryManagerVMMDeviceCreateNegativeTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMDeviceCreateTest.cpp",
+    ],
+    env = {
+        # Negative control: with VMM explicitly disabled, the same Device::create()
+        # path must leave the device's MemoryManager with VMM off. This pins the
+        # behavior to the config so a future change that hardcodes VMM on would be
+        # caught rather than passing the positive target by accident.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "False",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "256",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "MemoryManagerVMMControlTest",
     size = "medium",
     srcs = [

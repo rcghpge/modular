@@ -213,8 +213,8 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 //
 Device::Device(API api, std::string name, int id, MemInfo memInfo,
                size_t allocAlignment)
-    : name_(std::move(name)), id_(id), api_(api),
-      memoryManager_(MemoryManager::onDevice(*this, memInfo, allocAlignment)),
+    : name_(std::move(name)), id_(id), api_(api), memInfo_(memInfo),
+      allocAlignment_(allocAlignment),
       hostMemoryManager_(MemoryManager::onHost(*this, allocAlignment)) {}
 
 Device::~Device() {
@@ -318,7 +318,7 @@ ErrorOrSuccess Device::vmmUnmap(void *, size_t) {
 }
 
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
-  return memoryManager_->allocationAlignment();
+  return memoryManager().allocationAlignment();
 }
 
 MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
@@ -1600,8 +1600,29 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
 }
 
 MemoryManager &Device::memoryManager() const {
-  assert(memoryManager_ != nullptr);
+  // Built lazily on first access rather than in the constructor so onDevice()
+  // sees the fully-constructed derived Device when it queries the virtual
+  // vmmSupported(). First access must therefore occur while the derived Device
+  // is alive: an access during or after subclass destruction queries the base
+  // vmmSupported() (always false) and silently builds a non-VMM manager.
+  std::call_once(memoryManagerOnce_, [&] {
+    memoryManager_.reset(MemoryManager::onDevice(const_cast<Device &>(*this),
+                                                 memInfo_, allocAlignment_));
+  });
   return *memoryManager_;
+}
+
+void Device::clearMemoryManager() {
+  // Tear the device MemoryManager down here, while the derived Device is still
+  // alive, so the virtual VMM unmap/release calls in clear() dispatch to the
+  // derived overrides. The base ~Device runs after the derived subobject is
+  // gone, so subclass destructors must call this. Resetting the pointer ensures
+  // the manager is destroyed cleared (its ~MemoryManager asserts no live
+  // chunks) and is not destroyed a second time by the base ~Device.
+  if (memoryManager_) {
+    memoryManager_->clear();
+    memoryManager_.reset();
+  }
 }
 
 MemoryManager &Device::hostMemoryManager() const {

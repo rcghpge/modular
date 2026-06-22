@@ -245,7 +245,7 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id,
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
   clearFunctionCache();
-  memoryManager().clear();
+  clearMemoryManager();
   if (context_ != nullptr)
     // We ignore the result here as there is not much we can do if it fails
     // since in most cases the CUDA driver is in the process of shutting down.

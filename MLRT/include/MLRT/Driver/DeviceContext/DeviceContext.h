@@ -411,12 +411,28 @@ protected:
   // Enable peer access between devices.
   virtual ErrorOrSuccess enablePeerAccessImpl(const Device &peer);
 
+  // Releases the device MemoryManager's cached allocations if it has been
+  // constructed. Intended for subclass destructors: unlike memoryManager(),
+  // it never lazily constructs the manager during teardown.
+  void clearMemoryManager();
+
 private:
   std::string name_;
   int id_;
   API api_;
 
-  std::unique_ptr<MemoryManager> memoryManager_;
+  // The device MemoryManager is constructed lazily on first memoryManager()
+  // call rather than in this constructor. Whether the VMM defragmenting
+  // allocator is usable depends on the derived Device's vmmSupported()
+  // override, which is not yet dispatchable while the base Device constructor
+  // runs (the derived vtable is not installed until the subclass constructor
+  // completes). Deferring construction to first access guarantees the fully-
+  // constructed derived object is in place. memInfo_/allocAlignment_ retain
+  // the inputs that deferred construction needs.
+  MemInfo memInfo_;
+  size_t allocAlignment_;
+  mutable std::once_flag memoryManagerOnce_;
+  mutable std::unique_ptr<MemoryManager> memoryManager_;
   std::unique_ptr<MemoryManager> hostMemoryManager_;
 
   // Mutex to protect mutable data.

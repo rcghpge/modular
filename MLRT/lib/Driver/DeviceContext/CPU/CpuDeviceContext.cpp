@@ -49,7 +49,7 @@ namespace M::Driver {
 CpuDevice::CpuDevice(Device::MemInfo memInfo)
     : Device(api, "cpu", 0, memInfo, M::kPreferredMemoryAlignment) {}
 
-CpuDevice::~CpuDevice() { memoryManager().clear(); }
+CpuDevice::~CpuDevice() { clearMemoryManager(); }
 
 ErrorOr<int> CpuDevice::getApiVersion() const { return 0; }
 

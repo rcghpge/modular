@@ -244,7 +244,7 @@ HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
 HIPDevice::~HIPDevice() {
   // Destroy the function map before destroying other device structures.
   clearFunctionCache();
-  memoryManager().clear();
+  clearMemoryManager();
 }
 
 const HIPDriver &HIPDevice::hipDriver() const { return driver_; }

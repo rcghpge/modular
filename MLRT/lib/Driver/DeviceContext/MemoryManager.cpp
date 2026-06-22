@@ -782,6 +782,8 @@ Device::MemInfo MemoryManager::getMemoryInfo() const {
 
 bool MemoryManager::isEnabled() const { return maxCacheSize_ > 0; }
 
+bool MemoryManager::isVmmEnabled() const { return vmmEnabled_; }
+
 Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
                                          size_t wrappedSize) const {
   size_t availableCacheSize = 0;
