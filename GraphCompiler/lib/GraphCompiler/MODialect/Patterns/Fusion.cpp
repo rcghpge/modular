@@ -26,6 +26,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <limits>
 #include <numeric>
 #if defined(__APPLE__)
 #include <pthread.h>
@@ -203,6 +204,108 @@ struct GatherSumPattern
     rewriter.replaceOpWithNewOp<MO::GatherSumOp>(
         op, op->getResultTypes(), SmallVector<Value>{input, indices});
 
+    return mlir::success();
+  }
+};
+
+// Decomposes `reduce.add(input, axis)` over a small, static-extent axis (the
+// other dims may be dynamic) into a sum of
+struct DecomposeSmallReduceAddPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ReduceAddOp> {
+  // Only decompose reductions whose extent is in (1, kMaxDecomposeExtent];
+  // larger extents would bloat the IR and can overflow the elementwise fusion
+  // set, so they stay as a dedicated reduce kernel.
+  static constexpr int64_t kMaxDecomposeExtent = 8;
+
+  // Lower benefit than GatherSumPattern so the more specific gather+reduce
+  // fusion wins when both could match.
+  DecomposeSmallReduceAddPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+
+  static bool feedsRmsNorm(Value v) {
+    while (v.hasOneUse()) {
+      Operation *user = *v.getUsers().begin();
+      if (isa<MO::ReduceRMSNormOp>(user))
+        return true;
+      if (isa<MO::CastOp, MO::RebindOp>(user)) {
+        v = user->getResult(0);
+        continue;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ReduceAddOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    Value input = op.getInput();
+
+    // Leave gather + reduce.add to GatherSumPattern.
+    if (input.getDefiningOp<MO::GatherOp>())
+      return rewriter.notifyMatchFailure(
+          op, "gather + reduce handled by GatherSumPattern");
+
+    // Only decompose when the result feeds an rms_norm; otherwise the slices +
+    // adds have nothing to fuse into.
+    if (!feedsRmsNorm(op.getResult()))
+      return rewriter.notifyMatchFailure(
+          op, "reduce.add result does not feed an rms_norm");
+
+    auto inputType = dyn_cast<MO::TensorType>(input.getType());
+    if (!inputType || !inputType.hasRank())
+      return rewriter.notifyMatchFailure(op,
+                                         "reduce input not statically ranked");
+
+    int64_t rank = inputType.getRank();
+    int64_t axis = normalizeAxis(op.getAxisAttr().getInt(), rank);
+    if (axis < 0 || axis >= rank)
+      return rewriter.notifyMatchFailure(op, "reduce axis out of range");
+
+    // Only the *reduced* axis needs a static extent
+    int64_t extent = inputType.getIntDim(axis);
+    if (mlir::ShapedType::isDynamic(extent))
+      return rewriter.notifyMatchFailure(op, "reduce axis extent not static");
+    if (extent <= 1 || extent > kMaxDecomposeExtent)
+      return rewriter.notifyMatchFailure(
+          op, "reduce extent not in (1, kMaxDecomposeExtent]");
+
+    Location loc = op.getLoc();
+    // Every per-index slice and every partial sum has the reduce.add result
+    // type (the input shape with `axis` collapsed to 1).
+    Type sliceType = op.getResult().getType();
+
+    SmallVector<int64_t> step(rank, 1);
+    Value stepVal = rewriter.createHostConstant(loc, step);
+
+    Value acc;
+    for (int64_t k = 0; k < extent; ++k) {
+      SmallVector<int64_t> start(rank, 0);
+      SmallVector<int64_t> stop;
+      stop.reserve(rank);
+      // Non-reduced dims span their full extent. A dynamic dim uses INT64_MAX,
+      // which slice's numpy semantics clamp to the runtime size; static dims
+      // keep their exact size so the all-static path stays byte-identical.
+      for (int64_t i = 0; i < rank; ++i) {
+        int64_t dim = inputType.getIntDim(i);
+        stop.push_back(mlir::ShapedType::isDynamic(dim)
+                           ? std::numeric_limits<int64_t>::max()
+                           : dim);
+      }
+      start[axis] = k;
+      stop[axis] = k + 1;
+      Value startVal = rewriter.createHostConstant(loc, start);
+      Value stopVal = rewriter.createHostConstant(loc, stop);
+      Value slice = rewriter
+                        .create<MO::SliceOp>(loc, sliceType, input, startVal,
+                                             stopVal, stepVal)
+                        .getResult();
+      acc = k == 0 ? slice
+                   : rewriter.create<MO::AddOp>(loc, sliceType, acc, slice)
+                         .getResult();
+    }
+
+    rewriter.replaceOp(op, acc);
     return mlir::success();
   }
 };
@@ -4221,7 +4324,8 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
   patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
   patterns.add<ConvConstFilterPattern>(ctx, targetDeviceRef);
 
-  patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
+  patterns.add<GatherSumPattern, DecomposeSmallReduceAddPattern,
+               MatmulTranspBPattern, ConcatZeroAxisPattern,
                ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                LayerNormPattern, RMSNormFusedResidualAddPattern,
                ReduceRMSNormRoPEPattern, ConcatSlicePattern,
