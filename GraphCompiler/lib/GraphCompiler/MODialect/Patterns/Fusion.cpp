@@ -3617,11 +3617,44 @@ struct ReduceRMSNormRoPEPattern
           rmsNormOp, "rms_norm last dimension must be a known even number");
     }
 
+    // ---- 0. Step over a narrowing downcast between rms_norm and RoPE -------
+    // Model code commonly computes RMSNorm "in float32" and casts back to the
+    // activation dtype *before* RoPE:
+    //
+    //   normed_hi = reduce.rms_norm(cast(x_lo, f32), w, ...)   // f32
+    //   normed_lo = cast(normed_hi, lo)                         // bf16/fp16
+    //   x1, x2 = split(normed_lo, -1); ...
+    //
+    // The split/mul then consume `normed_lo`, not the rms_norm result, so the
+    // RoPE ops below must be matched against the cast result. The resulting
+    // composite is f32-in / lo-out (the kernel decouples output dtype), keeping
+    // weight/epsilon in f32. The input upcast is left in place for downstream
+    // prologue (FusedInput) fusion to absorb. RMSNorm accumulates in f32
+    // regardless of I/O dtype, so for an f32 norm the internal pre-cast is a
+    // no-op and the up/down-cast idiom is exactly `multiply_before_cast =
+    // true`.
+    Value ropeRoot = normed;
+    MO::CastOp rmsDowncast = nullptr;
+    bool forceMultiplyBeforeCast = false;
+    if (normed.hasOneUse()) {
+      if (auto castOp = dyn_cast<MO::CastOp>(*normed.getUsers().begin())) {
+        auto castTy = cast<MO::TensorType>(castOp.getResult().getType());
+        auto from = normedTy.getDtype();
+        auto to = castTy.getDtype();
+        if (from.isFloat() && to.isFloat() &&
+            to.getSizeInBytes() < from.getSizeInBytes()) {
+          ropeRoot = castOp.getResult();
+          rmsDowncast = castOp;
+          forceMultiplyBeforeCast = true;
+        }
+      }
+    }
+
     // ---- 1. Find x1/x2 as a SplitOp on the last axis ----------------------
     MO::SplitOp normSplit = nullptr;
     Value x1, x2;
 
-    for (Operation *user : normed.getUsers()) {
+    for (Operation *user : ropeRoot.getUsers()) {
       auto splitOp = dyn_cast<MO::SplitOp>(user);
       if (!splitOp || splitOp.getNumResults() != 2)
         continue;
@@ -3711,12 +3744,12 @@ struct ReduceRMSNormRoPEPattern
     MO::CastOp normedCastOp = nullptr;
     Value cosVals;
     SmallVector<Operation *> normedToMulChain;
-    for (Operation *user : normed.getUsers()) {
+    for (Operation *user : ropeRoot.getUsers()) {
       if (user == normSplit)
         continue;
       if (auto mulOp = dyn_cast<MO::MulOp>(user)) {
-        cosVals = (mulOp.getOperand(0) == normed) ? mulOp.getOperand(1)
-                                                  : mulOp.getOperand(0);
+        cosVals = (mulOp.getOperand(0) == ropeRoot) ? mulOp.getOperand(1)
+                                                    : mulOp.getOperand(0);
         mulNormedOp = mulOp;
         break;
       }
@@ -3808,6 +3841,10 @@ struct ReduceRMSNormRoPEPattern
     *rewriter.pushOp() = addOp;
     if (downcastOp)
       *rewriter.pushOp() = downcastOp;
+    // The downcast we fused through (rms_norm result -> RoPE input) is a GPU
+    // op.
+    if (rmsDowncast)
+      *rewriter.pushOp() = rmsDowncast;
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "matched ops have inconsistent devices");
@@ -3817,11 +3854,18 @@ struct ReduceRMSNormRoPEPattern
     auto outputTy = downcastOp ? downcastOp.getResult().getType()
                                : cast<MO::TensorType>(addResult.getType());
 
+    // When we fused through an f32->lo downcast, the rms_norm's internal cast
+    // to its (f32) result dtype was a no-op, so the up/down-cast idiom is
+    // exactly `multiply_before_cast = true` regardless of the original flag.
+    bool multiplyBeforeCast =
+        forceMultiplyBeforeCast
+            ? true
+            : rmsNormOp.getMultiplyBeforeCastAttr().getValue();
+
     auto fusedOp = rewriter.create<MO::Composite::ReduceRMSNormRoPEOp>(
         rmsNormOp.getLoc(), outputTy, rmsNormOp.getInput(),
         rmsNormOp.getWeight(), rmsNormOp.getEpsilon(),
-        rmsNormOp.getWeightOffset(), cosVals, sinVals,
-        rmsNormOp.getMultiplyBeforeCastAttr().getValue(),
+        rmsNormOp.getWeightOffset(), cosVals, sinVals, multiplyBeforeCast,
         rmsNormOp.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(finalResult, fusedOp.getResult());
@@ -3850,6 +3894,11 @@ struct ReduceRMSNormRoPEPattern
     rewriter.eraseOp(concatOp);
     rewriter.eraseOp(negOp);
     rewriter.eraseOp(normSplit);
+    // The downcast we fused through is now dead (its only uses were the RoPE
+    // ops just erased); remove it before the rms_norm that feeds it. The input
+    // upcast is intentionally left for downstream prologue fusion.
+    if (rmsDowncast)
+      rewriter.eraseOp(rmsDowncast);
     rewriter.eraseOp(rmsNormOp);
 
     return mlir::success();

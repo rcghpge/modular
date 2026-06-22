@@ -96,6 +96,46 @@ mo.graph @rope_multiply_before_cast<seq_len>(
   mo.output %result : !mo.tensor<[seq_len, 4], f32, gpu:0>
 }
 
+// "float32 RMSNorm sandwich": the bf16 activation is upcast to f32, normalized
+// in f32, and downcast back to bf16 before RoPE (the idiom torch.compile fuses,
+// e.g. JSC-32). The intervening f32->bf16 downcast would otherwise block the
+// RoPE match; the pattern steps over it and emits an f32-in / bf16-out
+// composite (the kernel decouples its output dtype), keeping weight/epsilon in
+// f32 and forcing multiply_before_cast=true. The input upcast is intentionally
+// left in place for downstream prologue (FusedInput) fusion to absorb.
+// CHECK-LABEL: mo.graph @rope_f32_rmsnorm_sandwich
+// CHECK:       mo.cast({{.*}}) : (!mo.tensor<[seq_len, 4], bf16, gpu:0>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+// CHECK-NOT:   mo.reduce.rms_norm
+// CHECK:       mo.composite.rms_norm_rope
+// CHECK-SAME:  {multiply_before_cast = true}
+mo.graph @rope_f32_rmsnorm_sandwich<seq_len>(
+  %input:    !mo.tensor<[seq_len, 4], bf16, gpu:0>,
+  %weight:   !mo.tensor<[4], f32, gpu:0>,
+  %epsilon:  !mo.tensor<[], f32>,
+  %offset:   !mo.tensor<[], f32>,
+  %cos_vals: !mo.tensor<[seq_len, 4], bf16, gpu:0>,
+  %sin_vals: !mo.tensor<[seq_len, 4], bf16, gpu:0>
+) -> !mo.tensor<[seq_len, 4], bf16, gpu:0> {
+  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %input_f32 = mo.cast(%input) : (!mo.tensor<[seq_len, 4], bf16, gpu:0>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %normed_f32 = mo.reduce.rms_norm(%input_f32, %weight, %epsilon, %offset)
+    {multiply_before_cast = false} :
+    (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
+     !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
+  %normed = mo.cast(%normed_f32) : (!mo.tensor<[seq_len, 4], f32, gpu:0>) -> !mo.tensor<[seq_len, 4], bf16, gpu:0>
+  %x1, %x2 = mo.split(%normed, %split_sizes) {axis = 1 : index} :
+    (!mo.tensor<[seq_len, 4], bf16, gpu:0>, !mo.tensor<[2], si64>)
+    -> (!mo.tensor<[seq_len, 2], bf16, gpu:0>, !mo.tensor<[seq_len, 2], bf16, gpu:0>)
+  %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], bf16, gpu:0>
+  %rotated = mo.concat[1](%neg_x2, %x1) :
+    (!mo.tensor<[seq_len, 2], bf16, gpu:0>, !mo.tensor<[seq_len, 2], bf16, gpu:0>)
+    -> !mo.tensor<[seq_len, 4], bf16, gpu:0>
+  %normed_cos  = mo.mul(%normed, %cos_vals) : !mo.tensor<[seq_len, 4], bf16, gpu:0>
+  %rotated_sin = mo.mul(%rotated, %sin_vals) : !mo.tensor<[seq_len, 4], bf16, gpu:0>
+  %result = mo.add(%normed_cos, %rotated_sin) : !mo.tensor<[seq_len, 4], bf16, gpu:0>
+  mo.output %result : !mo.tensor<[seq_len, 4], bf16, gpu:0>
+}
+
 // ============================================================
 // Negative tests — pattern should NOT fire
 // ============================================================
