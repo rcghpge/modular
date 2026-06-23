@@ -119,8 +119,8 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             uint64_t value_size);
 
 typedef M_driver_status_t (*M_driver_queue_set_memory_func_ptr_t)(
-    M_driver_queue_t queue, void *dst, uint64_t size, uint64_t value,
-    uint64_t value_size);
+    M_driver_queue_t queue, M_driver_memory_t dst, uint64_t size,
+    uint64_t value, uint64_t value_size);
 
 /**
  * Struct representing a three dimensional launch configuration.
