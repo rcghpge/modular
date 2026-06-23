@@ -400,7 +400,21 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
-  pm.addPass(MOGG::createSequenceFusion());
+  // Experimental device-graph synthesis path, off by default. When enabled,
+  // lower each `isDeviceGraph` model's compiled regions toward a device graph
+  // instead of running sequence fusion; otherwise use the existing pipeline.
+  if (opts.synthesizeDeviceGraphs) {
+    // Stage 1: move the compiled regions into a transient staging op.
+    pm.addPass(MGP::createStageDeviceGraphsPass());
+    // Stage 2: convert each region into a `mgp.device_graph.dependencies` op,
+    // capturing the dependency DAG explicitly.
+    pm.addPass(MGP::createComputeDeviceGraphDependenciesPass());
+    // Stage 3: fold the redundant `mogg.async` pack/unpack round-trips the
+    // boundary dissolution leaves behind.
+    pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+  } else {
+    pm.addPass(MOGG::createSequenceFusion());
+  }
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
@@ -513,6 +527,7 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
   mgpOpts.enableComputeLambdas = opts.enableComputeLambdas;
   mgpOpts.moggDebugDumpFusedTensorSpecs = opts.moggDebugDumpFusedTensorSpecs;
   mgpOpts.dumpMojoText = opts.dumpMojoText;
+  mgpOpts.synthesizeDeviceGraphs = opts.synthesizeDeviceGraphs;
 
   // --- jit options ---
   MOGG::JitCompileKernelsOptions jitOpts;

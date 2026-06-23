@@ -236,6 +236,15 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
                      "in the lambdas of Mojo code "
                      "to easily debug / test kernel fusion."),
       llvm::cl::init(false)};
+  Option<bool> synthesizeDeviceGraphs{
+      *this, "synthesize-device-graphs",
+      llvm::cl::desc(
+          "Enable the (experimental, WIP) device-graph synthesis path. When "
+          "set, each `isDeviceGraph` model's compiled regions are staged into "
+          "a "
+          "device graph (via mgp-stage-device-graphs) instead of running "
+          "sequence fusion. Off by default; the existing pipeline is used."),
+      llvm::cl::init(false)};
 };
 
 /// Registers all graph-compiler pipelines and sub-pipelines for use by testing
@@ -429,6 +438,15 @@ struct MgpPipelineOptions
   Option<bool> dumpMojoText{
       *this, "dump-mojo-text",
       llvm::cl::desc("Dump generated mojo code of the kernels as text"),
+      llvm::cl::init(false)};
+  Option<bool> synthesizeDeviceGraphs{
+      *this, "synthesize-device-graphs",
+      llvm::cl::desc(
+          "Enable the (experimental, WIP) device-graph synthesis path. When "
+          "set, each `isDeviceGraph` model's compiled regions are staged into "
+          "a "
+          "device graph (via mgp-stage-device-graphs) instead of running "
+          "sequence fusion. Off by default; the existing pipeline is used."),
       llvm::cl::init(false)};
 };
 
