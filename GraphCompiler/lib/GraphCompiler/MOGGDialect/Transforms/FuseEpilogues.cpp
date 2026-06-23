@@ -46,6 +46,8 @@ static bool containsDistributedOp(MOGG::KernelOp kernel) {
 
   return (opName.contains(MO::AllGatherOp::getOperationName()) ||
           opName.contains(MO::AllReduceSumOp::getOperationName()) ||
+          opName.contains(MO::Composite::DistributedMatmulReduceScatterSumOp::
+                              getOperationName()) ||
           opName.contains(MO::ReduceScatterSumOp::getOperationName()) ||
           opName.contains(MO::DistributedBroadcastOp::getOperationName()) ||
           opName.contains(MO::EPDispatchOp::getOperationName()) ||

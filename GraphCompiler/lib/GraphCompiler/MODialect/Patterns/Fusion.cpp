@@ -4348,6 +4348,156 @@ private:
   }
 };
 
+// Fuse matmuls -> reduce_scatter pattern (with optional residual_add) into a
+// single mo.composite.distributed.matmul_reduce_scatter.sum op.
+//
+// At most one input to the reduce_scatter may carry a residual add (the
+// asymmetric DeepseekV3/KimiK2.5 TP+EP pattern). The fused kernel
+// hardcodes `transpose_b=true` for the matmul and expects each B in [N, K].
+//
+// GPU-only: the fused kernel currently exists only for SM100 (B200). For now,
+// we only refuse to fuse on non-GPU targets, but ideally we would filter by
+// arch.
+struct FuseMatmulReduceScatterPattern
+    : public OpRewritePattern<MO::ReduceScatterSumOp> {
+  DeviceRefAttr targetDevice;
+  FuseMatmulReduceScatterPattern(MLIRContext *ctx, DeviceRefAttr targetDevice)
+      // This could inherit from DeviceAwareRewritePattern but it trips a
+      // single-device assert
+      : OpRewritePattern(ctx, 2), targetDevice(targetDevice) {}
+
+  LogicalResult matchAndRewrite(MO::ReduceScatterSumOp rsOp,
+                                PatternRewriter &rewriter) const override {
+    // Check we're building for GPU
+    DeviceRefAttr device;
+    if (!rsOp.getInputs().empty())
+      device = cast<TensorValue>(rsOp.getInputs()[0]).getType().getDeviceRef();
+    if (!device)
+      device = targetDevice;
+    if (!device || device.getLabel() != M::kGPULabel)
+      return rewriter.notifyMatchFailure(rsOp, "fused op requires GPU");
+
+    unsigned numDevices = rsOp.getInputs().size();
+    if (numDevices == 0)
+      return rewriter.notifyMatchFailure(rsOp, "no inputs");
+    if (rsOp.getAxis() != 0)
+      return rewriter.notifyMatchFailure(rsOp, "axis != 0");
+
+    // Match each input to the reduce_scatter. Each must come from either a
+    // bare matmul or an add(residual, matmul). At most one input may have
+    // a residual add.
+    llvm::DenseMap<Value, MO::MatmulOp> matmulOps;
+    Value residualValue;
+    // Index of the input (and thus device) carrying the residual add. Only
+    // meaningful when residualValue is set; defaults to 0 otherwise.
+    int64_t residualPeer = 0;
+    for (auto [idx, in] : llvm::enumerate(rsOp.getInputs())) {
+      auto tv = cast<TensorValue>(in);
+      if (matchMatmulInput(tv, matmulOps))
+        continue;
+      // matchAddMatmulInput allows at most one residual
+      // across all inputs (it returns false once one is claimed), so a second
+      // residual-bearing input fails to match here and we bail out of fusion.
+      if (!matchAddMatmulInput(tv, matmulOps, residualValue))
+        return rewriter.notifyMatchFailure(rsOp, "input not matchable");
+      // Reached only on the single input that carries the residual.
+      residualPeer = static_cast<int64_t>(idx);
+    }
+    if (matmulOps.size() != numDevices)
+      return rewriter.notifyMatchFailure(rsOp, "not all inputs matched");
+
+    llvm::SmallVector<Value> inputsA;
+    llvm::SmallVector<Value> inputsB;
+    llvm::SmallVector<Type> outputTypes;
+    inputsA.reserve(numDevices);
+    inputsB.reserve(numDevices);
+    outputTypes.reserve(numDevices);
+    for (Value in : rsOp.getInputs()) {
+      MO::MatmulOp matmul = matmulOps.at(in);
+      inputsA.push_back(matmul.getInputA());
+      inputsB.push_back(matmul.getInputB());
+    }
+    for (Value out : rsOp.getOutputs())
+      outputTypes.push_back(out.getType());
+
+    // Single residual tensor: the real residual if matched, otherwise a
+    // dummy (first matmul result). has_residual indicates whether to use it.
+    bool hasResidual = residualValue != nullptr;
+    Value residual = hasResidual
+                         ? residualValue
+                         : matmulOps.at(rsOp.getInputs()[0]).getResult();
+
+    auto fusedOp = MO::Composite::DistributedMatmulReduceScatterSumOp::create(
+        rewriter, rsOp.getLoc(),
+        /*outputs=*/outputTypes,
+        /*outChain=*/rsOp.getOutChain().getType(),
+        /*inputsA=*/inputsA,
+        /*inputsB=*/inputsB,
+        /*residual=*/residual,
+        /*has_residual=*/rewriter.getBoolAttr(hasResidual),
+        /*residual_peer=*/rewriter.getI64IntegerAttr(residualPeer),
+        /*signalBuffers=*/rsOp.getSignalBuffers(),
+        /*inChain=*/rsOp.getInChain());
+
+    SmallVector<Value> replacements(fusedOp.getOutputs().begin(),
+                                    fusedOp.getOutputs().end());
+    replacements.push_back(fusedOp.getOutChain());
+    rewriter.replaceOp(rsOp, replacements);
+    return mlir::success();
+  }
+
+private:
+  static bool isValidMatmul(MO::MatmulOp matmul) {
+    if (matmul.getPackedB())
+      return false;
+    if (matmul.getTransposeB())
+      return true;
+    // MatmulOp::canonicalize doesn't run between rewriter iterations,
+    // so transpose_b won't be set. Check NK layout instead, set by
+    // MatmulTranspBPattern
+    auto bLayout = matmul.getInputB().getType().getLayoutAttr();
+    return bLayout && bLayout.getFormat() == "NK";
+  }
+
+  static bool matchMatmulInput(TensorValue reduceScatterIn,
+                               llvm::DenseMap<Value, MO::MatmulOp> &out) {
+    auto matmul = reduceScatterIn.getDefiningOp<MO::MatmulOp>();
+    if (!matmul || !isValidMatmul(matmul))
+      return false;
+    // Single-use: fusing would drop a use otherwise.
+    if (!reduceScatterIn.hasOneUse())
+      return false;
+    out[reduceScatterIn] = matmul;
+    return true;
+  }
+
+  // Match add(residual, matmul) or add(matmul, residual) feeding the RS.
+  static bool matchAddMatmulInput(TensorValue reduceScatterIn,
+                                  llvm::DenseMap<Value, MO::MatmulOp> &out,
+                                  Value &residualValue) {
+    if (residualValue)
+      return false; // already claimed.
+    auto addOp = reduceScatterIn.getDefiningOp<MO::AddOp>();
+    if (!addOp)
+      return false;
+    if (!reduceScatterIn.hasOneUse())
+      return false;
+    for (auto [matmulCandidate, residualCandidate] :
+         {std::pair{addOp.getLhsInput(), addOp.getRhsInput()},
+          std::pair{addOp.getRhsInput(), addOp.getLhsInput()}}) {
+      auto matmul = matmulCandidate.getDefiningOp<MO::MatmulOp>();
+      if (!matmul || !isValidMatmul(matmul))
+        continue;
+      if (!matmulCandidate.hasOneUse())
+        continue;
+      out[reduceScatterIn] = matmul;
+      residualValue = residualCandidate;
+      return true;
+    }
+    return false;
+  }
+};
+
 } // namespace
 
 void applyFuseAllReduceAddRMSNormQuantFP8(MO::AllReduceSumOp allReduceOp,
@@ -4381,8 +4531,8 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
                MatmulFusedPartialRMSNormPattern>(ctx);
 
   patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
-               RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
-                                                            targetDeviceRef);
+               RMSNormFusedQuantizeDynamicScaledFP8Pattern,
+               FuseMatmulReduceScatterPattern>(ctx, targetDeviceRef);
 
   if (mhaOpts.enable) {
     patterns.add<MultiHeadAttentionPattern>(ctx, mhaOpts.allowUnsafeBCast,
