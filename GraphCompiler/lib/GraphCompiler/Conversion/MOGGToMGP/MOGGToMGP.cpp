@@ -2103,7 +2103,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     assert(inChain && "parallel in-chain not lowered before the parallel op");
 
     // Make the output chain depend on all the ops that touch the parallel's
-    // buffer operands. GEX-3859: We shoould just yield the chain to make this
+    // buffer operands. GEX-3859: We should just yield the chain to make this
     // dependency explicit.
     Value finalChain = inChain;
     if (!bufferGroupChains.empty()) {
