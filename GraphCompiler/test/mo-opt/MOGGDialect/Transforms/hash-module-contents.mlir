@@ -215,14 +215,14 @@ kgen.generator @main_2() {
 // CHECK-LABEL: @trait_check_a
 // CHECK: semantic_hash = "[[TRAIT_HASH_A:.*]]"
 kgen.generator @trait_check_a<T: type>(%arg0: si32) -> si32 {
-  "test_op"() {check = #kgen.type_conforms_to_trait<#kgen.param.decl.ref<"T"> : !kgen.type, [@TraitA]>} : () -> ()
+  "test_op"() {check = #kgen.type_conforms_to_trait<T, #kgen.type<typevalue<#kgen.trait_ref<@TraitA>>, type> : !kgen.type>} : () -> ()
   kgen.return %arg0 : si32
 }
 
 // CHECK-LABEL: @trait_check_b
 // CHECK-NOT: semantic_hash = "[[TRAIT_HASH_A]]"
 kgen.generator @trait_check_b<T: type>(%arg0: si32) -> si32 {
-  "test_op"() {check = #kgen.type_conforms_to_trait<#kgen.param.decl.ref<"T"> : !kgen.type, [@TraitB]>} : () -> ()
+  "test_op"() {check = #kgen.type_conforms_to_trait<T, #kgen.type<typevalue<#kgen.trait_ref<@TraitB>>, type> : !kgen.type>} : () -> ()
   kgen.return %arg0 : si32
 }
 
