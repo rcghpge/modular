@@ -21,7 +21,7 @@ mo.graph @wrap_unary_relu(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -30,11 +30,11 @@ mo.graph @wrap_unary_relu(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
@@ -78,7 +78,7 @@ mo.graph @wrap_binary_add(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -87,11 +87,11 @@ mo.graph @wrap_binary_add(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
@@ -133,7 +133,7 @@ mo.graph @wrap_chain_two_relu(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -142,11 +142,11 @@ mo.graph @wrap_chain_two_relu(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
@@ -195,14 +195,14 @@ mo.graph @reject_shared_binary_consumer(
   %ch = mo.chain.create()
   // Body has a real op (relu) so the allreduce parallel survives
   // canonicalization and anchors the CHECK below.
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>]>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:0>)
       chain(%ch)
       -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>]>) {
     %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %r : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %r, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>]>)
@@ -245,7 +245,7 @@ mo.graph @reject_shared_outer_scalar(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -254,11 +254,11 @@ mo.graph @reject_shared_outer_scalar(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
@@ -305,7 +305,7 @@ mo.graph @reject_fork_unbundle(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -314,11 +314,11 @@ mo.graph @reject_fork_unbundle(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)
@@ -366,7 +366,7 @@ mo.graph @reject_commutative_swap(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %ar:2 = mo.parallel (%arg) in (%b
+  %ar:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
@@ -375,11 +375,11 @@ mo.graph @reject_commutative_swap(
     %p:2 = mo.bundled.expand(%arg)
         : <[3], f32, gpu:0>
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%p#0, %p#1, %sig0, %sig1, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
            !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %u:2 = mo.tensor.unbundle(%ar#0)
       : (!mo.bundle<[3], f32, gpu:0-1>)

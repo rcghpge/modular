@@ -42,7 +42,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
            !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>)
        -> (!mo.bundle<[total_seq_len, 16384], bf16, gpu:0-3>)
 
-    %allred_bundle, %out_chain = mo.parallel (%arg)
+    %allred_bundle, %out_chain = mo.parallel (%arg, %bch)
         in (%input_bundle : !mo.bundle<[total_seq_len, 16384], bf16, gpu:0-3>)
         buffers(%sign_buff0 : !mo.buffer<[537919488], ui8, gpu:0>,
                 %sign_buff1 : !mo.buffer<[537919488], ui8, gpu:1>,
@@ -57,7 +57,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>)
       %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %peer2, %peer3,
-                                                %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %c)
+                                                %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %bch)
           : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>,
@@ -67,7 +67,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
              !mo.buffer<[537919488], ui8, gpu:2>,
              !mo.buffer<[537919488], ui8, gpu:3>, !mo.chain)
          -> (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.chain)
-      mo.yield %out : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
+      mo.yield %out, %ch_out : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.chain
     }
 
     %allred0, %allred1, %allred2, %allred3 = mo.tensor.unbundle(%allred_bundle)
@@ -162,7 +162,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
            !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>)
        -> (!mo.bundle<[total_seq_len, 16384], bf16, gpu:0-3>)
 
-    %allred_bundle, %out_chain = mo.parallel (%arg)
+    %allred_bundle, %out_chain = mo.parallel (%arg, %bch)
         in (%input_bundle : !mo.bundle<[total_seq_len, 16384], bf16, gpu:0-3>)
         buffers(%sign_buff0 : !mo.buffer<[537919488], ui8, gpu:0>,
                 %sign_buff1 : !mo.buffer<[537919488], ui8, gpu:1>,
@@ -177,7 +177,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>)
       %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %peer2, %peer3,
-                                                %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %c)
+                                                %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %bch)
           : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>,
              !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>,
@@ -187,7 +187,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
              !mo.buffer<[537919488], ui8, gpu:2>,
              !mo.buffer<[537919488], ui8, gpu:3>, !mo.chain)
          -> (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.chain)
-      mo.yield %out : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
+      mo.yield %out, %ch_out : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.chain
     }
 
     %allred0, %allred1, %allred2, %allred3 = mo.tensor.unbundle(%allred_bundle)

@@ -1131,12 +1131,18 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(inputs.size()),
                                     static_cast<int32_t>(buffers.size()),
                                     static_cast<int32_t>(inChain ? 1 : 0)}));
-  // Block argument types are the first element type of each bundle input.
+  // Block argument types are the first element type of each bundle input,
+  // followed by a trailing !mo.chain block argument when the parallel is
+  // chained. The in-chain enters the body through that block argument (it is
+  // not captured), and the body threads it through its buffer-argument ops and
+  // yields the resulting chain.
   Block &block = state.addRegion()->emplaceBlock();
   SmallVector<Type> argTypes;
   for (Value input : inputs)
     argTypes.push_back(
         cast<BundleType>(input.getType()).getElementTypes().front());
+  if (inChain)
+    argTypes.push_back(ChainType::get(builder.getContext()));
   SmallVector<Location> locs(argTypes.size(), state.location);
   block.addArguments(argTypes, locs);
 }
@@ -1235,10 +1241,13 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                            static_cast<int32_t>(bufferOps.size()),
                            static_cast<int32_t>(hasChain ? 1 : 0)}));
 
-  // Block args: one per bundle input.
-  if (blockArgs.size() != bundleOps.size())
+  // Block args: one per bundle input, plus a trailing !mo.chain arg when
+  // chained (the in-chain enters the body through it).
+  size_t expectedBlockArgs = bundleOps.size() + (hasChain ? 1 : 0);
+  if (blockArgs.size() != expectedBlockArgs)
     return parser.emitError(parser.getCurrentLocation(), "expected ")
-           << bundleOps.size() << " block args (one per bundle input), got "
+           << expectedBlockArgs << " block args (one per bundle input"
+           << (hasChain ? " plus a trailing chain arg" : "") << "), got "
            << blockArgs.size();
 
   // Set block arg types from the first element of each bundle type.
@@ -1249,6 +1258,8 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                               "expected non-empty mo.bundle type");
     blockArgs[group].type = bundleTy.getElementTypes()[0];
   }
+  if (hasChain)
+    blockArgs.back().type = ChainType::get(parser.getContext());
 
   // Parse result types.
   SmallVector<Type> resultTypes;
@@ -1415,11 +1426,11 @@ void ParallelOp::getEffects(
       } else {
         effects.emplace_back(effect.getEffect(), &getInputsMutable()[argIdx]);
       }
-    } else if (hasBuffers() && argIdx == numBundleArgs) {
-      // Buffer block arg: fan out the effect to each per-launch buffer.
-      for (auto &operand : getBuffersMutable())
-        effects.emplace_back(effect.getEffect(), &operand);
     } else {
+      // The trailing block arg (when chained) is the in-chain, not a memory
+      // resource, so it carries no buffer effect to remap. Buffers are captured
+      // operands (not block args), so their effects are already keyed on the
+      // captured SSA values and pass through via the branch above.
       effects.push_back(effect);
     }
   }
@@ -1455,10 +1466,34 @@ LogicalResult ParallelOp::verify() {
   }
 
   Block &body = getBodyRegion().front();
-  if (body.getNumArguments() != inputs.size())
+  size_t expectedArgs = inputs.size() + (hasChain() ? 1 : 0);
+  if (body.getNumArguments() != expectedArgs)
     return emitOpError("body must have ")
-           << inputs.size() << " block argument(s) (one per bundle input), got "
+           << expectedArgs << " block argument(s) (one per bundle input"
+           << (hasChain() ? " plus a trailing chain arg" : "") << "), got "
            << body.getNumArguments();
+
+  // Chain threading contract: a chained parallel takes its in-chain through a
+  // trailing !mo.chain block argument and yields the threaded out-chain as the
+  // terminator's last operand. A chainless parallel does neither. This makes
+  // the chain's path through the region explicit in the IR rather than
+  // something the lowering must reconstruct.
+  auto yield = cast<YieldOp>(body.getTerminator());
+  if (hasChain()) {
+    if (!isa<ChainType>(body.getArguments().back().getType()))
+      return emitOpError(
+          "trailing body block argument must be !mo.chain when the parallel "
+          "is chained");
+    if (yield.getNumOperands() == 0 ||
+        !isa<ChainType>(yield.getOperands().back().getType()))
+      return emitOpError(
+          "mo.yield must produce a trailing !mo.chain when the parallel is "
+          "chained");
+  } else {
+    for (Value operand : yield.getOperands())
+      if (isa<ChainType>(operand.getType()))
+        return emitOpError("chainless parallel must not yield a chain");
+  }
 
   // Phase 1 (GEX-3701) restricts the body to kernels (or ops that will become
   // kernels), `mo.bundled.expand`, and a small whitelist of view/chain ops we
@@ -1484,15 +1519,19 @@ LogicalResult ParallelOp::verify() {
 
   auto yieldOp = cast<YieldOp>(body.getTerminator());
   size_t numYields = yieldOp.getNumOperands();
-  if (numYields < 1)
-    return emitOpError("yield must have at least one operand");
+  // The yielded chain (when chained) is the trailing operand and maps to the
+  // op's trailing chain result, not a bundle result; exclude it from the
+  // bundle-result accounting.
+  size_t numBundleYields = numYields - (hasChain() ? 1 : 0);
+  if (numBundleYields < 1)
+    return emitOpError("yield must produce at least one bundle result");
 
-  size_t expectedResults = numYields + (hasChain() ? 1 : 0);
+  size_t expectedResults = numBundleYields + (hasChain() ? 1 : 0);
   if (getNumResults() != expectedResults)
     return emitOpError("expected ")
            << expectedResults << " results, got " << getNumResults();
 
-  for (size_t yieldIdx = 0; yieldIdx < numYields; ++yieldIdx) {
+  for (size_t yieldIdx = 0; yieldIdx < numBundleYields; ++yieldIdx) {
     auto resultType = dyn_cast<BundleType>(getResult(yieldIdx).getType());
     if (!resultType)
       return emitOpError("result #")

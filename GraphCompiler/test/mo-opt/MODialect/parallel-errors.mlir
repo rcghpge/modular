@@ -55,3 +55,38 @@ mo.graph @extra_input_bundle_mismatch(
   %r0, %r1 = mo.tensor.unbundle(%res) : (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)
   mo.output %r0, %r1 : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }
+
+// -----
+
+// A chained parallel (buffers + chain) must yield its threaded out-chain as
+// the terminator's last operand. Here the body drops it.
+mo.graph @chained_yield_missing_chain(%sig0: !mo.buffer<[1], ui8, gpu:0>)
+    -> (!mo.tensor<[3], f32, gpu:0>) {
+  %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
+  %dt = mo.tensor.bundle(%in) : (!mo.tensor<[3], f32, gpu:0>) -> (!mo.bundle<[3], f32, gpu:0>)
+  %ch = mo.chain.create()
+  // expected-error @below {{'mo.parallel' op mo.yield must produce a trailing !mo.chain when the parallel is chained}}
+  %res, %out_ch = mo.parallel (%arg, %bch) in (%dt : !mo.bundle<[3], f32, gpu:0>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>)
+      chain(%ch) -> (!mo.bundle<[3], f32, gpu:0>) {
+    mo.yield %arg : !mo.tensor<[3], f32, gpu:0>
+  }
+  %r0 = mo.tensor.unbundle(%res) : (!mo.bundle<[3], f32, gpu:0>) -> (!mo.tensor<[3], f32, gpu:0>)
+  mo.output %r0 : !mo.tensor<[3], f32, gpu:0>
+}
+
+// -----
+
+// A chainless parallel must not yield a chain.
+mo.graph @chainless_yields_chain() -> (!mo.tensor<[3], f32, gpu:0>) {
+  %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
+  %dt = mo.tensor.bundle(%in) : (!mo.tensor<[3], f32, gpu:0>) -> (!mo.bundle<[3], f32, gpu:0>)
+  %ch = mo.chain.create()
+  // expected-error @below {{'mo.parallel' op chainless parallel must not yield a chain}}
+  %res = mo.parallel (%arg) in (%dt : !mo.bundle<[3], f32, gpu:0>)
+      -> (!mo.bundle<[3], f32, gpu:0>) {
+    mo.yield %arg, %ch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
+  }
+  %r0 = mo.tensor.unbundle(%res) : (!mo.bundle<[3], f32, gpu:0>) -> (!mo.tensor<[3], f32, gpu:0>)
+  mo.output %r0 : !mo.tensor<[3], f32, gpu:0>
+}

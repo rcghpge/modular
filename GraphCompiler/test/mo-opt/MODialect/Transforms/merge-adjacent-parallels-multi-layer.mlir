@@ -117,19 +117,19 @@ mo.graph @multi_layer_allreduce_chain(
   %ch = mo.chain.create()
 
   // --- Layer 1 ---
-  %L1a:2 = mo.parallel (%arg) in (%dt_a : !mo.bundle<[4], f32, gpu:0-1>)
+  %L1a:2 = mo.parallel (%arg, %bch) in (%dt_a : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
-  %L1b:2 = mo.parallel (%arg) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
+  %L1b:2 = mo.parallel (%arg, %bch) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
   %L1add = mo.parallel (%arg_a, %arg_b) in (
       %L1a#0 : !mo.bundle<[4], f32, gpu:0-1>,
@@ -140,19 +140,19 @@ mo.graph @multi_layer_allreduce_chain(
   }
 
   // --- Layer 2 ---
-  %L2a:2 = mo.parallel (%arg) in (%dt_c : !mo.bundle<[4], f32, gpu:0-1>)
+  %L2a:2 = mo.parallel (%arg, %bch) in (%dt_c : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
-  %L2b:2 = mo.parallel (%arg) in (%dt_d : !mo.bundle<[4], f32, gpu:0-1>)
+  %L2b:2 = mo.parallel (%arg, %bch) in (%dt_d : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L2a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
   %L2add = mo.parallel (%arg_a, %arg_b) in (
       %L2a#0 : !mo.bundle<[4], f32, gpu:0-1>,
@@ -163,19 +163,19 @@ mo.graph @multi_layer_allreduce_chain(
   }
 
   // --- Layer 3 ---
-  %L3a:2 = mo.parallel (%arg) in (%dt_e : !mo.bundle<[4], f32, gpu:0-1>)
+  %L3a:2 = mo.parallel (%arg, %bch) in (%dt_e : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L2b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
-  %L3b:2 = mo.parallel (%arg) in (%dt_f : !mo.bundle<[4], f32, gpu:0-1>)
+  %L3b:2 = mo.parallel (%arg, %bch) in (%dt_f : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L3a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
   %L3add = mo.parallel (%arg_a, %arg_b) in (
       %L3a#0 : !mo.bundle<[4], f32, gpu:0-1>,
@@ -238,19 +238,19 @@ mo.graph @cross_layer_cascade(
   %ch = mo.chain.create()
 
   // Layer 1: allreduce pair + add
-  %L1a:2 = mo.parallel (%arg) in (%dt_a : !mo.bundle<[4], f32, gpu:0-1>)
+  %L1a:2 = mo.parallel (%arg, %bch) in (%dt_a : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
-  %L1b:2 = mo.parallel (%arg) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
+  %L1b:2 = mo.parallel (%arg, %bch) in (%dt_b : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
   %L1add = mo.parallel (%arg_a, %arg_b) in (
       %L1a#0 : !mo.bundle<[4], f32, gpu:0-1>,
@@ -263,12 +263,12 @@ mo.graph @cross_layer_cascade(
   // Layer 2: a single allreduce that takes layer 1's add output as
   // input, followed by a per-device relu.  This creates a direct
   // SSA chain: L1add result -> L2a input -> L2relu input.
-  %L2a:2 = mo.parallel (%arg) in (%L1add : !mo.bundle<[4], f32, gpu:0-1>)
+  %L2a:2 = mo.parallel (%arg, %bch) in (%L1add : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L1b#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
   %L2relu = mo.parallel (%arg) in (
       %L2a#0 : !mo.bundle<[4], f32, gpu:0-1>)
@@ -278,12 +278,12 @@ mo.graph @cross_layer_cascade(
   }
 
   // Layer 3: another allreduce consuming the relu from layer 2.
-  %L3a:2 = mo.parallel (%arg) in (%L2relu : !mo.bundle<[4], f32, gpu:0-1>)
+  %L3a:2 = mo.parallel (%arg, %bch) in (%L2relu : !mo.bundle<[4], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%L2a#1) -> (!mo.bundle<[4], f32, gpu:0-1>) {
     %x = mo.negative(%arg) : !mo.tensor<[4], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[4], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[4], f32, gpu:0>, !mo.chain
   }
 
   // With cross-layer SSA dependencies, the fixed-point merge should

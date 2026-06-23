@@ -28,26 +28,26 @@ mo.graph @bundled_allreduce_residual_add(
   %ch = mo.chain.create()
 
   // First allreduce.
-  %a_bundle, %a_chain = mo.parallel (%arg) in (%dt_a : !mo.bundle<[3], f32, gpu:0-1>)
+  %a_bundle, %a_chain = mo.parallel (%arg, %bch_a) in (%dt_a : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %peer0, %peer1 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %bch_a)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
 
   // Second allreduce, sharing signal buffers with the first and taking
   // a chain dependency on the first's out-chain.
-  %b_bundle, %b_chain = mo.parallel (%arg) in (%dt_b : !mo.bundle<[3], f32, gpu:0-1>)
+  %b_bundle, %b_chain = mo.parallel (%arg, %bch_b) in (%dt_b : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%a_chain) -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %peer0, %peer1 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %a_chain)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %bch_b)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
 
   // Per-device residual add, already wrapped in its own chainless

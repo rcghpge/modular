@@ -312,7 +312,11 @@ static MergePlan planMerge(const MergeCandidate &candidate,
   // rewrite.
   plan.consumerSharedYieldOperand.assign(consumer.getInputs().size(), Value{});
   plan.consumerAppendedArgIdx.assign(consumer.getInputs().size(), 0);
-  size_t appendedIdx = producerBody.getNumArguments();
+  // Non-shared consumer inputs occupy the merged block args right after the
+  // producer's bundle args, BEFORE the trailing chain arg -- so index from the
+  // producer's bundle-input count, not producerBody.getNumArguments() (which
+  // now includes the producer's chain block arg).
+  size_t appendedIdx = producer.getInputs().size();
   for (auto [bi, input] : llvm::enumerate(consumer.getInputs())) {
     if (candidate.sharedInputs[bi].has_value()) {
       plan.consumerSharedYieldOperand[bi] =
@@ -359,11 +363,26 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
   auto producerYield = cast<YieldOp>(producerBody.getTerminator());
   auto consumerYield = cast<YieldOp>(consumerBody.getTerminator());
 
+  size_t producerNumInputs = producer.getInputs().size();
+  size_t consumerNumInputs = consumer.getInputs().size();
+  size_t producerNumBundles = numBundleResults(producer);
+  size_t consumerNumBundles = numBundleResults(consumer);
+
+  // The merged block's trailing arg (when chained) carries the merged
+  // in-chain. Body args are laid out as
+  //   [producer bundle args..., consumer non-shared bundle args..., chain?]
+  // so the chain arg must be mapped explicitly (last->last) rather than by a
+  // positional zip, which would misalign it with the appended consumer args.
+  Value mergedChainArg =
+      merged.hasChain() ? mergedBlock->getArguments().back() : Value{};
+
   // Clone the producer's body into the merged parallel op.
   IRMapping mapping;
-  for (auto [oldArg, newArg] :
-       llvm::zip(producerBody.getArguments(), mergedBlock->getArguments()))
-    mapping.map(oldArg, newArg);
+  for (size_t i = 0; i < producerNumInputs; ++i)
+    mapping.map(producerBody.getArgument(i), mergedBlock->getArgument(i));
+  // The producer's collective threads from the merged in-chain.
+  if (producer.hasChain())
+    mapping.map(producerBody.getArguments().back(), mergedChainArg);
 
   OpBuilder bodyBuilder(merged.getContext());
   bodyBuilder.setInsertionPointToEnd(mergedBlock);
@@ -373,8 +392,10 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
   // With the producer's body cloned, the consumer's shared-input block
   // args map to the *cloned* producer yield operand (via
   // `mapping.lookupOrDefault`).  Non-shared consumer args map to merged
-  // block args at positions precomputed in the plan.
-  for (auto [bi, consumerArg] : llvm::enumerate(consumerBody.getArguments())) {
+  // block args at positions precomputed in the plan.  Only the bundle args
+  // are remapped here; the chain arg is handled separately below.
+  for (size_t bi = 0; bi < consumerNumInputs; ++bi) {
+    Value consumerArg = consumerBody.getArgument(bi);
     if (candidate.sharedInputs[bi].has_value())
       mapping.map(consumerArg,
                   mapping.lookupOrDefault(plan.consumerSharedYieldOperand[bi]));
@@ -382,15 +403,39 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
       mapping.map(consumerArg,
                   mergedBlock->getArgument(plan.consumerAppendedArgIdx[bi]));
   }
+  // The consumer's collective threads from the producer collective's out-chain
+  // when both are chained (consumer.getInChain() == producer.getOutChain(),
+  // enforced in resolveBufferChain), which after cloning is the producer's
+  // yielded chain.  When only the consumer is chained, it threads from the
+  // merged in-chain.
+  if (consumer.hasChain()) {
+    Value consumerChainArg = consumerBody.getArguments().back();
+    if (producer.hasChain())
+      mapping.map(consumerChainArg,
+                  mapping.lookupOrDefault(producerYield.getOperands().back()));
+    else
+      mapping.map(consumerChainArg, mergedChainArg);
+  }
   for (Operation &op : consumerBody.without_terminator())
     bodyBuilder.clone(op, mapping);
 
+  // Build the merged yield: surviving producer bundle yields, then consumer
+  // bundle yields, then the merged out-chain.  The out-chain is the downstream
+  // side's yielded chain (the consumer's when chained, else the producer's);
+  // the producer's yielded chain in the both-chained case is an internal edge
+  // consumed by the consumer's collective and is not re-yielded.
   SmallVector<Value> yieldValues;
-  for (auto [i, v] : llvm::enumerate(producerYield.getOperands()))
+  for (size_t i = 0; i < producerNumBundles; ++i)
     if (!plan.dropProducerYield[i])
-      yieldValues.push_back(mapping.lookupOrDefault(v));
-  for (Value v : consumerYield.getOperands())
-    yieldValues.push_back(mapping.lookupOrDefault(v));
+      yieldValues.push_back(
+          mapping.lookupOrDefault(producerYield.getOperand(i)));
+  for (size_t i = 0; i < consumerNumBundles; ++i)
+    yieldValues.push_back(mapping.lookupOrDefault(consumerYield.getOperand(i)));
+  if (merged.hasChain()) {
+    YieldOp chainSource = consumer.hasChain() ? consumerYield : producerYield;
+    yieldValues.push_back(
+        mapping.lookupOrDefault(chainSource.getOperands().back()));
+  }
   YieldOp::create(bodyBuilder, merged.getLoc(), yieldValues);
 }
 

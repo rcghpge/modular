@@ -3430,12 +3430,18 @@ private:
     Block &oldBody = parallelOp.getBodyRegion().front();
     Block &newBody = newParallel.getBodyRegion().front();
     IRMapping mapping;
-    for (auto [oldArg, newArg] : llvm::zip(
-             oldBody.getArguments(),
-             newBody.getArguments().take_front(oldBody.getNumArguments())))
-      mapping.map(oldArg, newArg);
-    Value residualArg = newBody.getArgument(oldBody.getNumArguments());
-    Value gammaArg = newBody.getArgument(oldBody.getNumArguments() + 1);
+    // Map the per-bundle block args 1:1 (same leading positions in both
+    // bodies). The new body appends residual+gamma args before the trailing
+    // !mo.chain block arg, so map the chain arg explicitly (old last -> new
+    // last) rather than via a contiguous take_front, which would misalign the
+    // chain arg with residual/gamma.
+    size_t numOrigInputs = parallelOp.getInputs().size();
+    for (size_t i = 0; i < numOrigInputs; ++i)
+      mapping.map(oldBody.getArgument(i), newBody.getArgument(i));
+    Value residualArg = newBody.getArgument(numOrigInputs);
+    Value gammaArg = newBody.getArgument(numOrigInputs + 1);
+    if (parallelOp.hasChain())
+      mapping.map(oldBody.getArguments().back(), newBody.getArguments().back());
 
     OpBuilder bodyBuilder(ctx);
     bodyBuilder.setInsertionPointToEnd(&newBody);
@@ -3473,6 +3479,12 @@ private:
         /*weightOffset=*/weightOffsetValue,
         /*scaleUb=*/scaleUbValue,
         /*inChain=*/fusedChain);
+
+    // The body yields the seed collective's out-chain (chained parallels).
+    // The fused op subsumes the seed, so route the yielded chain to it; the
+    // rebuilt yield below then threads the correct completion chain.
+    if (parallelOp.hasChain())
+      mapping.map(allReduceOp.getOutChain(), fusedOp.getOutChain());
 
     // Build the new yield: keep all old yield operands, but in the slot
     // for the seed substitute the fused op's three tensor outputs.

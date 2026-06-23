@@ -112,14 +112,14 @@ mo.graph @bundled_all_reduce_folds(
   // CHECK-NOT: mo.parallel
   // CHECK-NOT: mo.bundled.expand
   // CHECK-NOT: mo.bundled.allreduce.sum
-  %res, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[3], f32, gpu:0>)
+  %res, %out_ch = mo.parallel (%arg, %bch) in (%dt : !mo.bundle<[3], f32, gpu:0>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>)
       chain(%ch) -> (!mo.bundle<[3], f32, gpu:0>) {
     %peer0 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>)
-    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %sig0, %ch)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %sig0, %bch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %out, %ch_out : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %unb = mo.tensor.unbundle(%res) : (!mo.bundle<[3], f32, gpu:0>) -> (!mo.tensor<[3], f32, gpu:0>)
   // CHECK: mo.output %[[IN]], %[[CH]]

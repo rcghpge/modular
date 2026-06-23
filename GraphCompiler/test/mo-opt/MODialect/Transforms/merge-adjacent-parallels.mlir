@@ -102,23 +102,23 @@ mo.graph @merge_chain_both(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %a:2 = mo.parallel (%arg) in (%b
+  %a:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
-  %c:2 = mo.parallel (%arg) in (%a#0
+  %c:2 = mo.parallel (%arg, %bch) in (%a#0
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%a#1)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %n : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %n, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
 
   // One merged parallel that keeps A's buffers + inChain; outChain is a
@@ -150,23 +150,23 @@ mo.graph @no_merge_buffer_mismatch(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %a:2 = mo.parallel (%arg) in (%b
+  %a:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sigA0 : !mo.buffer<[1], ui8, gpu:0>,
               %sigA1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
-  %c:2 = mo.parallel (%arg) in (%a#0
+  %c:2 = mo.parallel (%arg, %bch) in (%a#0
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sigB0 : !mo.buffer<[1], ui8, gpu:0>,
               %sigB1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%a#1)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %n : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %n, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
 
   // Different buffers on each side — the merge must bail; both parallels
@@ -193,14 +193,14 @@ mo.graph @merge_chain_producer_only(
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
      -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
-  %a:2 = mo.parallel (%arg) in (%b
+  %a:2 = mo.parallel (%arg, %bch) in (%b
         : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
       -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
-    mo.yield %x : !mo.tensor<[3], f32, gpu:0>
+    mo.yield %x, %bch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
   }
   %c = mo.parallel (%arg) in (%a#0
         : !mo.bundle<[3], f32, gpu:0-1>)
