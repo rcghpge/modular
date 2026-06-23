@@ -225,3 +225,87 @@ kgen.generator @trait_check_b<T: type>(%arg0: si32) -> si32 {
   "test_op"() {check = #kgen.type_conforms_to_trait<#kgen.param.decl.ref<"T"> : !kgen.type, [@TraitB]>} : () -> ()
   kgen.return %arg0 : si32
 }
+
+// -----
+
+// COM: @region reaches @store only through @FusionStruct's conformance witness
+// COM: (a genref in a type attr); the struct generator is not a callgraph node,
+// COM: so @region never names @store directly. These two split modules differ
+// COM: only in @store's baked-in constant, so their @region hashes must differ;
+// COM: otherwise one model is served the other's cached kernel (the rope_theta
+// COM: cross-model cache-poisoning bug).
+
+// CHECK-LABEL: @store
+// CHECK: semantic_hash = "[[STORE_FIRST:.*]]"
+kgen.generator @store() -> !kgen.simd<1, f64> {
+  %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<250000|1>>>
+  kgen.return %c : !kgen.simd<1, f64>
+}
+
+kgen.struct.generator @FusionStruct<n: i32> =
+    struct_inst<"FusionStruct"[n]<:i32 n>(field0: index)>
+{
+  kgen.conformance @OutputFusion {
+    kgen.witness "store" : () -> !kgen.simd<1, f64> = @store
+  }
+}
+
+// CHECK-LABEL: @region
+// CHECK: semantic_hash = "[[REGION_FIRST:.*]]"
+kgen.generator @region() {
+  "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
+  kgen.return
+}
+
+// -----
+
+// CHECK-LABEL: @store
+// CHECK-NOT: semantic_hash = "[[STORE_FIRST]]"
+kgen.generator @store() -> !kgen.simd<1, f64> {
+  %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<500000|1>>>
+  kgen.return %c : !kgen.simd<1, f64>
+}
+
+kgen.struct.generator @FusionStruct<n: i32> =
+    struct_inst<"FusionStruct"[n]<:i32 n>(field0: index)>
+{
+  kgen.conformance @OutputFusion {
+    kgen.witness "store" : () -> !kgen.simd<1, f64> = @store
+  }
+}
+
+// CHECK-LABEL: @region
+// CHECK-NOT: semantic_hash = "[[REGION_FIRST]]"
+kgen.generator @region() {
+  "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
+  kgen.return
+}
+
+// -----
+
+// COM: Positive case: a third module byte-identical to the first (same @store
+// COM: constant) must reproduce the first module's @store and @region hashes,
+// COM: confirming equivalent fused kernels still dedup through the
+// COM: struct-generator path rather than over-separating.
+
+// CHECK-LABEL: @store
+// CHECK: semantic_hash = "[[STORE_FIRST]]"
+kgen.generator @store() -> !kgen.simd<1, f64> {
+  %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<250000|1>>>
+  kgen.return %c : !kgen.simd<1, f64>
+}
+
+kgen.struct.generator @FusionStruct<n: i32> =
+    struct_inst<"FusionStruct"[n]<:i32 n>(field0: index)>
+{
+  kgen.conformance @OutputFusion {
+    kgen.witness "store" : () -> !kgen.simd<1, f64> = @store
+  }
+}
+
+// CHECK-LABEL: @region
+// CHECK: semantic_hash = "[[REGION_FIRST]]"
+kgen.generator @region() {
+  "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
+  kgen.return
+}

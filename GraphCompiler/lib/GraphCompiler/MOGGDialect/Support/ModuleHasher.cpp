@@ -39,12 +39,13 @@ State nextState(State state) {
 
 bool isAfter(State lhs, State rhs) { return (int)lhs > (int)rhs; }
 
-struct Node : public KGEN::SCCNode<Node, KGEN::GeneratorOp, KGEN::CallOp> {
-  using Base = KGEN::SCCNode<Node, KGEN::GeneratorOp, KGEN::CallOp>;
+struct Node
+    : public KGEN::SCCNode<Node, KGEN::GeneratorOpInterface, KGEN::CallOp> {
+  using Base = KGEN::SCCNode<Node, KGEN::GeneratorOpInterface, KGEN::CallOp>;
 
   using Base::Base;
-  Node(KGEN::GeneratorOp func)
-      : Base(func), functionName(func ? func.getSymNameAttr() : nullptr) {}
+  Node(KGEN::GeneratorOpInterface func)
+      : Base(func), functionName(func ? func.getNameAttr() : nullptr) {}
 
   template <typename T>
   void addHash(T &&value) {
@@ -99,16 +100,16 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
   // The end result of this algorithm is a callgraph that is a superset of the
   // callgraph normally built by CallGraphBase::build.
 
-  // Create a callgraph node for each GeneratorOp in the module.
+  // Create a callgraph node for each GeneratorOpInterface in the module.
   // This logic is the same as in the parent class' build method.
   for (auto func : module.getOps<FuncOpT>())
     nodes.try_emplace(func, Node(func));
 
   // Populate the callers and callees lists for each node in the graph.
   for (auto &[caller, callerNode] : nodes) {
-    // Rather than creating edges for each GeneratorOp, we scan each Operation
-    // for any FlatSymbolRefAttr that points to a GeneratorOp and create edges
-    // for those attributes.
+    // Rather than creating edges for each GeneratorOpInterface, we scan each
+    // Operation for any FlatSymbolRefAttr that points to a GeneratorOpInterface
+    // and create edges for those attributes.
     caller.walk([&](Operation *op) {
       // Walker to collect all FlatSymbolRefAttrs and add an edge to the graph.
       mlir::AttrTypeWalker walker;
@@ -175,12 +176,12 @@ bool Graph::setGeneratorHash(Node *node) {
     // Replace SCC member references with stable indices.
     if (auto mapped = attrMap.lookup(symbol))
       return mapped;
-    // Replace external GeneratorOp references with empty string — their
-    // hash is incorporated via setInputsHash. Non-GeneratorOp refs (e.g.,
-    // trait symbol refs from TypeConformsToTraitAttr) must be preserved so
-    // they contribute to the bytecode hash.
+    // Replace external GeneratorOpInterface references with empty string —
+    // their hash is incorporated via setInputsHash. Non-GeneratorOpInterface
+    // refs (e.g., trait symbol refs from TypeConformsToTraitAttr) must be
+    // preserved so they contribute to the bytecode hash.
     if (auto *op = symtab.lookup(symbol.getAttr()))
-      if (isa<KGEN::GeneratorOp>(op))
+      if (isa<KGEN::GeneratorOpInterface>(op))
         return emptyString;
     return symbol;
   });
@@ -189,7 +190,7 @@ bool Graph::setGeneratorHash(Node *node) {
 
   // Set the function name so we do not incorporate the function name into
   // the bytecode hash.
-  OwningOpRef<KGEN::GeneratorOp> clone = node->func.clone();
+  OwningOpRef<KGEN::GeneratorOpInterface> clone = node->func.clone();
   clone->setName("");
 
   replacer.recursivelyReplaceElementsIn(*clone,
