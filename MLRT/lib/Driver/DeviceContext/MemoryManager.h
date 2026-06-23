@@ -238,6 +238,13 @@ public:
   // Enable out-of-bounds access checks
   void enableRedzones();
 
+  // Enable poisoning: fill each allocation body with a NaN-ish pattern on
+  // alloc, so uninitialized device reads propagate NaN/garbage into outputs and
+  // are caught by existing differential tests (a complement to initcheck that
+  // does not suffer its device->host-copy false positives). Piggybacks on the
+  // redzone wrap path, so it also enables out-of-bounds checks.
+  void enablePoison();
+
   void logLargestBlocksInfo(size_t wrappedSize, std::string missReason) const;
 
   // Dump a detailed snapshot of this free list (and its parents) plus the
@@ -292,7 +299,9 @@ private:
     size_t size_;
   };
 
-  ErrorOr<void *> redzoneFillAndWrap(void *unwrappedPtr, size_t size);
+  // Apply redzone wrapping (if enabled) and/or body poisoning (if enabled) to a
+  // freshly-allocated block; returns the pointer handed to the caller.
+  ErrorOr<void *> finalizeDebugAlloc(void *unwrappedPtr, size_t size);
   ErrorOrSuccess validateRedzones(void *wrappedPtr, const RedzoneInfo &size);
   void printRedzone(const uint8_t *dataPtr, const uint8_t *displayPtr);
 
@@ -311,6 +320,10 @@ private:
   size_t redzoneSize_ = 0;
   uint8_t redzonePattern_ = 0;
   DenseMap<void *, RedzoneInfo> redzoneDeviceAllocSizeMap_;
+
+  // Poison mode: fill the allocation body with `poisonPattern_` on alloc.
+  bool poisonEnable_ = false;
+  uint8_t poisonPattern_ = 0;
 
   std::string label_;
 };

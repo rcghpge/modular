@@ -425,6 +425,21 @@ MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
     }
   }
 
+  // `poison-all` is the allocator-layer counterpart to the graph-driver's
+  // type-aware `uninitialized-poison` (see Device::createDeviceMemory): it has
+  // no dtype information, so it fills *every* allocation body with a raw byte
+  // pattern rather than a type-specific sentinel. See the MemoryManagerOverview
+  // doc (`MODULAR_DEBUG_DEVICE_ALLOCATOR`) for how the two tiers relate.
+  if (ctx_ && ctx_->isDebugAllocatorEnabled("poison-all")) {
+    if (context == nullptr) {
+      memoryManager_.logErr("[" + label_ +
+                            "] poison fill disabled due to "
+                            "null context in MemoryManagerFreeList");
+    } else {
+      enablePoison();
+    }
+  }
+
   // Register per-stream (child) free-lists so a VMM allocation miss can flush
   // sibling streams' completed frees to the root (see flushSiblingFreeLists).
   if (ctx_ != nullptr && parent_ != nullptr)
@@ -1516,43 +1531,83 @@ void MemoryManagerFreeList::enableRedzones() {
   LOG_MSG("redzone checks enabled");
 }
 
-ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
+void MemoryManagerFreeList::enablePoison() {
+  poisonEnable_ = true;
+  // Default 0xFF: as fp32/bf16 this is a (negative) NaN, so an uninitialized
+  // read propagates NaN into the output and trips the differential test. This
+  // is the opposite choice from the graph-driver's `uninitialized-poison`,
+  // which deliberately uses a *non-NaN* sentinel to avoid conflicting with the
+  // nan-check pass; the cost here is that the NaN can also surface on
+  // legitimately-uninitialized allocation padding, so `poison-all` is a manual,
+  // opt-in aid rather than a CI default.
+  poisonPattern_ = static_cast<uint8_t>(
+      DeviceContext::configAsInt("memory_manager_poison_pattern", 0xFF));
+  // Poison is independent of redzones: it only fills the allocation body on
+  // alloc, with no padding and no per-free validation (cheap). Combine with the
+  // `out-of-bounds` mode (`debug.device_allocator=poison-all,out-of-bounds`) to
+  // also get OOB-write detection.
+  LOG_MSG("poison fill enabled (pattern 0x" + Twine::utohexstr(poisonPattern_) +
+          ")");
+}
+
+ErrorOr<void *> MemoryManagerFreeList::finalizeDebugAlloc(void *unwrappedPtr,
                                                           size_t size) {
-  uint8_t *underflowRedzone = static_cast<uint8_t *>(unwrappedPtr);
-  uint8_t *wrappedPtr = underflowRedzone + redzoneSize_;
+  // With redzones the block is [underflow | body | overflow] and the body
+  // starts `redzoneSize_` in; without redzones the body starts at the base.
+  // Redzones and poison are independent and compose.
+  uint8_t *base = static_cast<uint8_t *>(unwrappedPtr);
+  uint8_t *wrappedPtr = base + (redzoneEnable_ ? redzoneSize_ : 0);
   uint8_t *overflowRedzone = wrappedPtr + size;
 
-  LOG_MSG("redzone(address 0x" + Twine::utohexstr((uintptr_t)wrappedPtr) +
-          " ; size: " + Twine(redzoneSize_) +
-          " ; pattern: " + Twine::utohexstr(redzonePattern_) +
-          " ; underflow: 0x" + Twine::utohexstr((uintptr_t)underflowRedzone) +
-          " ; overflow: 0x" + Twine::utohexstr((uintptr_t)overflowRedzone));
+  if (redzoneEnable_)
+    LOG_MSG("redzone(address 0x" + Twine::utohexstr((uintptr_t)wrappedPtr) +
+            " ; size: " + Twine(redzoneSize_) +
+            " ; pattern: " + Twine::utohexstr(redzonePattern_) +
+            " ; underflow: 0x" + Twine::utohexstr((uintptr_t)base) +
+            " ; overflow: 0x" + Twine::utohexstr((uintptr_t)overflowRedzone));
 
   if (memoryManager_.isHost()) {
-    std::memset(underflowRedzone, redzonePattern_, redzoneSize_);
-    std::memset(overflowRedzone, redzonePattern_, redzoneSize_);
+    if (redzoneEnable_) {
+      std::memset(base, redzonePattern_, redzoneSize_);
+      std::memset(overflowRedzone, redzonePattern_, redzoneSize_);
+    }
+    // Poison the body so uninitialized reads surface as NaN downstream.
+    if (poisonEnable_)
+      std::memset(wrappedPtr, poisonPattern_, size);
   } else {
-    if (auto result = ctx_->enqueueSetMemory(underflowRedzone, redzoneSize_,
-                                             redzonePattern_, 1);
-        result.isError())
-      return Error("failed writing underflow redzone pattern: " +
-                   Twine(result.getError()));
-    if (auto result = ctx_->enqueueSetMemory(overflowRedzone, redzoneSize_,
-                                             redzonePattern_, 1);
-        result.isError())
-      return Error("failed writing overflow redzone pattern: " +
-                   Twine(result.getError()));
+    if (redzoneEnable_) {
+      if (auto result =
+              ctx_->enqueueSetMemory(base, redzoneSize_, redzonePattern_, 1);
+          result.isError())
+        return Error("failed writing underflow redzone pattern: " +
+                     Twine(result.getError()));
+      if (auto result = ctx_->enqueueSetMemory(overflowRedzone, redzoneSize_,
+                                               redzonePattern_, 1);
+          result.isError())
+        return Error("failed writing overflow redzone pattern: " +
+                     Twine(result.getError()));
+    }
+    // Poison the body so uninitialized reads surface as NaN downstream.
+    if (poisonEnable_)
+      if (auto result =
+              ctx_->enqueueSetMemory(wrappedPtr, size, poisonPattern_, 1);
+          result.isError())
+        return Error("failed writing poison pattern: " +
+                     Twine(result.getError()));
 
     if (auto result = ctx_->synchronize(); result.isError())
-      return Error("failed writing redzone pattern: " +
+      return Error("failed writing debug-allocator pattern: " +
                    Twine(result.getError()));
   }
 
-  // Store stack trace to print when an out-of-bounds access is detected
-  std::string stackTrace;
-  llvm::raw_string_ostream os(stackTrace);
-  llvm::sys::PrintStackTrace(os);
-  redzoneDeviceAllocSizeMap_[wrappedPtr] = {std::move(stackTrace), size};
+  // Only redzones are validated at free, so only track redzoned allocations.
+  if (redzoneEnable_) {
+    // Store stack trace to print when an out-of-bounds access is detected.
+    std::string stackTrace;
+    llvm::raw_string_ostream os(stackTrace);
+    llvm::sys::PrintStackTrace(os);
+    redzoneDeviceAllocSizeMap_[wrappedPtr] = {std::move(stackTrace), size};
+  }
 
   return wrappedPtr;
 }
@@ -1621,8 +1676,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     }
     if (desc != nullptr) {
       // Allocation from memory manager was successful, return the value.
-      if (redzoneEnable_) {
-        return redzoneFillAndWrap(desc->ptr_, size);
+      if (redzoneEnable_ || poisonEnable_) {
+        return finalizeDebugAlloc(desc->ptr_, size);
       }
       return desc->ptr_;
     }
@@ -1658,8 +1713,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         }
       }
       if (desc != nullptr) {
-        if (redzoneEnable_) {
-          return redzoneFillAndWrap(desc->ptr_, size);
+        if (redzoneEnable_ || poisonEnable_) {
+          return finalizeDebugAlloc(desc->ptr_, size);
         }
         return desc->ptr_;
       }
@@ -1677,8 +1732,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       if (!defragPtr.isError()) {
         LOG_MSG("defrag_alloc(" + TWINE_PTR(*defragPtr) + " ; " +
                 TWINE(wrappedSize) + ")");
-        if (redzoneEnable_) {
-          return redzoneFillAndWrap(*defragPtr, size);
+        if (redzoneEnable_ || poisonEnable_) {
+          return finalizeDebugAlloc(*defragPtr, size);
         }
         return *defragPtr;
       }
@@ -1745,9 +1800,9 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
   LOG_MSG("allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0,
           0);
   assert(ptr != nullptr);
-  if (redzoneEnable_) {
-    // Returns pointer to immediately after the end of the underflow redzone
-    return redzoneFillAndWrap(ptr, size);
+  if (redzoneEnable_ || poisonEnable_) {
+    // body starts immediately after the underflow redzone (if redzones are on)
+    return finalizeDebugAlloc(ptr, size);
   }
   return ptr;
 }
@@ -1940,7 +1995,8 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
 
   uint8_t *unwrappedPtr = static_cast<uint8_t *>(ptr);
   if (redzoneEnable_) {
-    // Unwrap redzone padding applied in allocate() by redzoneFillAndWrap()
+    // Unwrap redzone padding applied in allocate() by finalizeDebugAlloc().
+    // (Poison-only allocations have no padding, so there is nothing to unwrap.)
     unwrappedPtr -= redzoneSize_;
   }
 

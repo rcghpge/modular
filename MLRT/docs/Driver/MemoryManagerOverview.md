@@ -305,11 +305,29 @@ succeeds. This eliminates the "plenty free but no contiguous block" OOM.
   disabled. Also ignored by the host (pinned) memory manager (i.e. this is
   applicable to accelerator memory only).
 - **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
-  debugging features from the following:
-  - `uninitialized-poison`: enable filling buffers with type-aware poison
-    values to aid detection of uninitialized data, qNaN for floating-point
-    buffers (or `0xFF` if LLVM unaware of the FP type) and `0xCD` for other
-    buffer types
+  debugging features from the following. The two poison modes are complementary
+  tiers and may be combined; see "Poison modes" below.
+  - `uninitialized-poison`: fill *graph-tensor* buffers (those allocated via the
+    graph driver's `createDeviceMemory`, where the element dtype is known) with
+    a **type-aware, non-NaN** sentinel to detect reads of uninitialized data.
+    Floating-point buffers get the bit pattern of the largest finite value
+    (e.g. `FLT_MAX`) — deliberately non-NaN/non-Inf so it does not conflict with
+    the `nan-check` pass when kernels leave allocation padding un-overwritten;
+    integer buffers get `0xCD`. Sub-byte floats and all fp8 formats are skipped.
+    Detection is via an opt-in Mojo stdlib load check (built with
+    `-D MOJO_STDLIB_SIMD_UNINIT_CHECK=true`) that aborts with the offending
+    load's source location, dtype, and SIMD lane.
+  - `poison-all`: fill the body of *every* memory-manager allocation (not just
+    graph tensors — also internal scratch/workspace and other non-tensor
+    buffers) with a single repeated byte on alloc. The allocator layer has no
+    dtype information, so this is a **type-agnostic** raw-byte fill; the default
+    `0xFF` is a NaN bit pattern for fp32/bf16, so an uninitialized read
+    propagates NaN into the output and trips the *existing* differential/
+    accuracy tests with no kernel instrumentation required. Because that NaN can
+    also surface on legitimately-uninitialized allocation padding, `poison-all`
+    can produce `nan-check` false positives and is intended as a manual, opt-in
+    debugging aid rather than a CI default. Composes with `out-of-bounds`
+    (`poison-all,out-of-bounds`).
   - `out-of-bounds`: enable redzone out-of-bounds write checks see below for
     additional configuration options
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_SIZE`**: specify the size in
@@ -318,6 +336,32 @@ succeeds. This eliminates the "plenty free but no contiguous block" OOM.
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_PATTERN`**: specify the byte
   pattern used to fill the redzones when
   `MODULAR_DEBUG_DEVICE_ALLOCATOR=out-of-bounds` is enabled
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_POISON_PATTERN`**: specify the byte
+  pattern used to fill allocation bodies when
+  `MODULAR_DEBUG_DEVICE_ALLOCATOR=poison-all` is enabled (default: `0xFF`, a
+  NaN pattern for fp32/bf16)
+
+#### Poison modes
+
+`uninitialized-poison` and `poison-all` both detect reads of uninitialized
+device memory, but at different layers and with opposite trade-offs:
+
+|                        | `uninitialized-poison`                       | `poison-all`                                      |
+|------------------------|----------------------------------------------|---------------------------------------------------|
+| Layer                  | Graph driver (`createDeviceMemory`)          | Memory allocator (`allocate`)                     |
+| Coverage               | Graph tensors only                           | **Every** allocation (incl. scratch)              |
+| Sentinel               | Type-aware, **non-NaN** (`FLT_MAX` / `0xCD`) | Raw byte, **NaN** (`0xFF` default)                |
+| Detection              | Instrumented Mojo load check → precise abort | NaN propagates into outputs → existing tests fail |
+| vs `nan-check`         | Compatible by design                         | May false-positive on un-overwritten padding      |
+| Kernel instrumentation | Required (`MOJO_STDLIB_SIMD_UNINIT_CHECK`)   | None                                              |
+
+Use `uninitialized-poison` to pinpoint *which load* read uninitialized tensor
+memory. Use `poison-all` as a broad backstop when an uninitialized *internal*
+(non-tensor) buffer is corrupting outputs and the tensor-level check does not
+cover it. When both are enabled, the allocator fills each block with `0xFF`
+first and the graph driver then overwrites graph-tensor bodies with the
+type-aware sentinel, so `poison-all` effectively covers the non-tensor
+allocations that `uninitialized-poison` cannot see.
 
 ### Configuration Examples
 
