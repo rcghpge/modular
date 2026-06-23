@@ -1996,25 +1996,19 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       // For launches on other devices, update the clone's device attribute
       // and result types so that lowerKernelOp uses the correct device
       // context and allocates output buffers on the right device.
-      // Device is read from the BundleType element types (MO-level metadata),
-      // not from the lowered SSA value types.
-      auto firstBundleTy =
-          cast<MO::BundleType>(parallelOp.getInputs()[0].getType());
-      DeviceRefAttr launchDevice;
-      if (auto inputTy = dyn_cast<MO::TensorType>(
-              firstBundleTy.getElementTypes()[launch])) {
-        launchDevice = inputTy.getDeviceRef();
-        if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
-          clonedKernel.setDeviceRef(launchDevice);
-          clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
-            placeholder.setDeviceAttr(launchDevice);
-          });
-        }
-        for (OpResult result : clonedKernel->getResults()) {
-          if (auto resTy = dyn_cast<MO::TensorType>(result.getType()))
-            if (resTy.getDeviceRef() != launchDevice)
-              result.setType(resTy.cloneWith(launchDevice));
-        }
+      // Per-launch device comes from the `launchDevices` attribute on
+      // `mo.parallel`.
+      DeviceRefAttr launchDevice = parallelOp.getLaunchDeviceList()[launch];
+      if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
+        clonedKernel.setDeviceRef(launchDevice);
+        clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
+          placeholder.setDeviceAttr(launchDevice);
+        });
+      }
+      for (OpResult result : clonedKernel->getResults()) {
+        if (auto resTy = dyn_cast<MO::TensorType>(result.getType()))
+          if (resTy.getDeviceRef() != launchDevice)
+            result.setType(resTy.cloneWith(launchDevice));
       }
 
       MGP::MOGGKernelOpLoweringState perLaunchState(clonedKernel,

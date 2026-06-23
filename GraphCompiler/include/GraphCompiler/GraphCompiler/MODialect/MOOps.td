@@ -700,7 +700,15 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
 
     The yield may return one or more values.  Each yield operand produces one
     `!mo.bundle` result whose elements are derived from the yield type with
-    per-launch devices taken from the first input bundle.
+    per-launch devices taken from the `launchDevices` attribute.
+
+    The `launchDevices` attribute is the source of truth for the per-launch
+    device list.  In the printed form it appears as a `devices(...)` clause.
+    When the list matches the elements of `inputs[0]` the clause may be
+    omitted, and the parser/printer recover it from the bundle.  When
+    `inputs` is empty the clause is required because there is nothing to
+    derive from.  The verifier requires every input and result bundle to
+    agree with `launchDevices` element-by-element.
 
     An optional `buffers(...)` clause declares per-launch signal buffers for
     collective operations (e.g. allreduce).  The number of buffers must equal
@@ -721,6 +729,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     Example with one bundle input (no buffers, no chain):
     ```mlir
     %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
+    // devices(...) elided; auto-derived from %dt.
     %res = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
         -> (!mo.bundle<[...]>) {
       %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
@@ -743,12 +752,23 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
       mo.yield %out, %ch1 : !mo.tensor<[3], f32, gpu:0>, !mo.chain
     }
     ```
+
+    Example with no bundle inputs (clause required, body captures a value
+    from the enclosing scope):
+    ```mlir
+    %res = mo.parallel () in () devices(gpu:0-1)
+        -> (!mo.bundle<[...]>) {
+      %1 = mo.relu(%a) : !mo.tensor<[3], f32, gpu:0>
+      mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
+    }
+    ```
   }];
 
   let arguments = (ins
     Variadic<MO_Bundle>:$inputs,
     Variadic<MO_Buffer>:$buffers,
-    Optional<MO_Chain>:$inChain
+    Optional<MO_Chain>:$inChain,
+    M_DeviceRefArrayAttr:$launchDevices
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Bundle, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
@@ -756,7 +776,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   let builders = [
     /// Build a chainless ParallelOp with an empty body region.  One block
     /// argument is added per bundle input, typed as the bundle's first
-    /// element type.
+    /// element type.  `launchDevices` is auto-derived from `inputs.front()`.
     OpBuilder<(ins
       "ValueRange":$inputs,
       "TypeRange":$resultTypes
@@ -764,11 +784,23 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     /// Build a ParallelOp with an empty body region.  One block argument is
     /// added per bundle input, typed as the bundle's first element type.
     /// `buffers` and `inChain` must be both present or both absent.
+    /// `launchDevices` is auto-derived from `inputs.front()`.
     OpBuilder<(ins
       "ValueRange":$inputs,
       "ValueRange":$buffers,
       "Value":$inChain,
       "TypeRange":$resultTypes
+    )>,
+    /// Build a ParallelOp with explicit `launchDevices`.  Used by callers
+    /// that know the per-launch device list directly (e.g. transforms that
+    /// construct a parallel from non-bundle sources, or future uses where
+    /// `inputs` may be empty).
+    OpBuilder<(ins
+      "ValueRange":$inputs,
+      "ValueRange":$buffers,
+      "Value":$inChain,
+      "TypeRange":$resultTypes,
+      "ArrayRef<DeviceRefAttr>":$launchDevices
     )>,
   ];
 
@@ -778,11 +810,15 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
 
-    /// Returns the number of launches (elements per bundle).
+    /// Returns the per-launch devices as a typed list.  The raw
+    /// `ArrayAttr` is available via the ODS-generated `getLaunchDevices()`.
+    SmallVector<DeviceRefAttr> getLaunchDeviceList() {
+      return llvm::to_vector(getLaunchDevices().getAsRange<DeviceRefAttr>());
+    }
+
+    /// Returns the number of launches.
     size_t getNumLaunches() {
-      auto inputs = getInputs();
-      if (inputs.empty()) return 0;
-      return cast<BundleType>(inputs.front().getType()).getNumElements();
+      return getLaunchDevices().size();
     }
 
     /// Whether this parallel op has per-launch signal buffers.

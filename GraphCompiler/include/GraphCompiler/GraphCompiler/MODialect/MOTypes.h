@@ -86,6 +86,25 @@ TensorType castFromTensorLike(Type ty);
 llvm::SmallVector<int64_t> getStridesForTensor(MO::TensorType tensor,
                                                bool unknown);
 
+/// Print a list of device refs using the same compact `label:first[-last]`
+/// syntax as `mo.bundle`'s compact form when the list is homogeneous and
+/// contiguous, otherwise as a comma-separated list of `label:id` pairs.
+///
+/// Examples:
+///   {gpu:0}             -> `gpu:0`
+///   {gpu:0, gpu:1}      -> `gpu:0-1`
+///   {gpu:0, cpu:0}      -> `gpu:0, cpu:0`
+///   {gpu:0, gpu:2}      -> `gpu:0, gpu:2`
+void printDeviceList(mlir::AsmPrinter &printer,
+                     llvm::ArrayRef<DeviceRefAttr> devices);
+
+/// Parse a list of device refs printed by `printDeviceList`.  Accepts both
+/// the compact `label:first[-last]` form and a comma-separated list of
+/// `label:id` pairs.
+mlir::ParseResult
+parseDeviceList(mlir::AsmParser &parser,
+                llvm::SmallVectorImpl<DeviceRefAttr> &devices);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

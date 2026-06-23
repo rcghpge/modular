@@ -1116,9 +1116,32 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
         resultTypes);
 }
 
+/// Derive the per-launch device list from a bundle by reading each element
+/// tensor's deviceRef.  Shared by the auto-derive builder, parser, and
+/// printer.  `BundleType::verify` guarantees every element is a TensorType,
+/// so the cast is safe.
+static SmallVector<DeviceRefAttr>
+deriveLaunchDevicesFromBundle(BundleType bundle) {
+  return llvm::map_to_vector(bundle.getElementTypes(), [](Type t) {
+    return cast<TensorType>(t).getDeviceRef();
+  });
+}
+
 void ParallelOp::build(OpBuilder &builder, OperationState &state,
                        ValueRange inputs, ValueRange buffers, Value inChain,
                        TypeRange resultTypes) {
+  assert(!inputs.empty() &&
+         "auto-derived ParallelOp::build requires at least one input bundle; "
+         "use the explicit-launchDevices overload for bundle-less parallels");
+  build(builder, state, inputs, buffers, inChain, resultTypes,
+        deriveLaunchDevicesFromBundle(
+            cast<BundleType>(inputs.front().getType())));
+}
+
+void ParallelOp::build(OpBuilder &builder, OperationState &state,
+                       ValueRange inputs, ValueRange buffers, Value inChain,
+                       TypeRange resultTypes,
+                       ArrayRef<DeviceRefAttr> launchDevices) {
   assert(buffers.empty() == !inChain &&
          "buffers and inChain must be both present or both absent");
   state.addOperands(inputs);
@@ -1131,6 +1154,10 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(inputs.size()),
                                     static_cast<int32_t>(buffers.size()),
                                     static_cast<int32_t>(inChain ? 1 : 0)}));
+  state.addAttribute(
+      ParallelOp::getLaunchDevicesAttrName(state.name),
+      builder.getArrayAttr(llvm::map_to_vector(
+          launchDevices, [](DeviceRefAttr d) -> Attribute { return d; })));
   // Block argument types are the first element type of each bundle input,
   // followed by a trailing !mo.chain block argument when the parallel is
   // chained. The in-chain enters the body through that block argument (it is
@@ -1147,12 +1174,14 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
   block.addArguments(argTypes, locs);
 }
 
-/// Parse block arguments: `(%arg0)` or `(%arg0, %arg1, ...)`.
+/// Parse block arguments: `()`, `(%arg0)`, or `(%arg0, %arg1, ...)`.
 static ParseResult
 parseBlockArgs(OpAsmParser &parser,
                SmallVectorImpl<OpAsmParser::Argument> &blockArgs) {
   if (parser.parseLParen())
     return failure();
+  if (succeeded(parser.parseOptionalRParen()))
+    return success();
   do {
     OpAsmParser::Argument arg;
     if (parser.parseArgument(arg, /*allowType=*/false))
@@ -1171,24 +1200,28 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   if (failed(parseBlockArgs(parser, blockArgs)))
     return failure();
 
-  // Parse `in (%bundle0 : type0, %bundle1 : type1, ...)`.
+  // Parse `in (%bundle0 : type0, %bundle1 : type1, ...)`.  The list may be
+  // empty (`in ()`) when the parallel has no input bundles, in which case
+  // the `devices(...)` clause must be present (see below).
   if (parser.parseKeyword("in") || parser.parseLParen())
     return failure();
 
   SmallVector<OpAsmParser::UnresolvedOperand> bundleOps;
   SmallVector<Type> bundleTypes;
-  do {
-    OpAsmParser::UnresolvedOperand op;
-    Type type;
-    if (parser.parseOperand(op) || parser.parseColon() ||
-        parser.parseType(type))
-      return failure();
-    bundleOps.push_back(op);
-    bundleTypes.push_back(type);
-  } while (succeeded(parser.parseOptionalComma()));
+  if (failed(parser.parseOptionalRParen())) {
+    do {
+      OpAsmParser::UnresolvedOperand op;
+      Type type;
+      if (parser.parseOperand(op) || parser.parseColon() ||
+          parser.parseType(type))
+        return failure();
+      bundleOps.push_back(op);
+      bundleTypes.push_back(type);
+    } while (succeeded(parser.parseOptionalComma()));
 
-  if (parser.parseRParen())
-    return failure();
+    if (parser.parseRParen())
+      return failure();
+  }
 
   // Resolve bundle operands.
   for (auto [op, type] : llvm::zip(bundleOps, bundleTypes))
@@ -1234,6 +1267,32 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                               result.operands))
       return failure();
   }
+
+  // Parse optional `devices(label:firstId[-lastId][, ...])` clause.  When
+  // absent, the device list is derived from `inputs.front()`'s element types
+  // (mirrors the auto-derive behavior of the C++ builders).  When there are
+  // no input bundles, the clause is required because there's nothing to
+  // derive from.
+  SmallVector<DeviceRefAttr> launchDevices;
+  if (succeeded(parser.parseOptionalKeyword("devices"))) {
+    if (parser.parseLParen() || parseDeviceList(parser, launchDevices) ||
+        parser.parseRParen())
+      return failure();
+  } else if (!bundleTypes.empty()) {
+    auto firstBundle = dyn_cast<BundleType>(bundleTypes.front());
+    if (!firstBundle)
+      return parser.emitError(parser.getCurrentLocation(),
+                              "expected non-empty mo.bundle type");
+    launchDevices = deriveLaunchDevicesFromBundle(firstBundle);
+  } else {
+    return parser.emitError(
+        parser.getCurrentLocation(),
+        "devices(...) clause is required when there are no input bundles");
+  }
+  result.addAttribute(
+      ParallelOp::getLaunchDevicesAttrName(result.name),
+      parser.getBuilder().getArrayAttr(llvm::map_to_vector(
+          launchDevices, [](DeviceRefAttr d) -> Attribute { return d; })));
 
   result.addAttribute("operandSegmentSizes",
                       parser.getBuilder().getDenseI32ArrayAttr(
@@ -1322,6 +1381,21 @@ void ParallelOp::print(OpAsmPrinter &p) {
     p << ')';
   }
 
+  // Elide `devices(...)` when the attribute is exactly what the parser
+  // would auto-derive from `inputs.front()`.  This keeps printed IR
+  // uncluttered for the common case where the device list is redundant
+  // with the bundle types.  When `inputs` is empty, the clause must be
+  // printed because there's nothing to derive from on re-parse.
+  SmallVector<DeviceRefAttr> launchDevices = getLaunchDeviceList();
+  bool elide = !inputs.empty() &&
+               launchDevices == deriveLaunchDevicesFromBundle(
+                                    cast<BundleType>(inputs.front().getType()));
+  if (!elide) {
+    p << " devices(";
+    printDeviceList(p, launchDevices);
+    p << ')';
+  }
+
   SmallVector<Type> nonChainResultTypes;
   for (auto result : getResults())
     if (!isa<ChainType>(result.getType()))
@@ -1333,8 +1407,9 @@ void ParallelOp::print(OpAsmPrinter &p) {
     p << ')';
   }
 
-  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
-                                     /*elidedAttrs=*/{"operandSegmentSizes"});
+  p.printOptionalAttrDictWithKeyword(
+      getOperation()->getAttrs(),
+      /*elidedAttrs=*/{"operandSegmentSizes", "launchDevices"});
   p << ' ';
   p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
@@ -1438,20 +1513,33 @@ void ParallelOp::getEffects(
 
 LogicalResult ParallelOp::verify() {
   auto inputs = getInputs();
-  if (inputs.empty())
-    return emitOpError("requires at least one bundle input");
+  SmallVector<DeviceRefAttr> launchDevices = getLaunchDeviceList();
 
-  auto firstBundle = cast<BundleType>(inputs.front().getType());
-  size_t numLaunches = firstBundle.getNumElements();
+  // Launch count comes from launchDevices (the source of truth).  When
+  // input bundles are present they must agree on width.
+  size_t numLaunches = launchDevices.size();
   if (numLaunches == 0)
-    return emitOpError("bundle inputs must have at least one element");
+    return emitOpError("launchDevices must have at least one entry");
 
+  // Each input bundle's elements must match launchDevices: same length and
+  // same per-launch device.
   for (auto [idx, input] : llvm::enumerate(inputs)) {
     auto bType = cast<BundleType>(input.getType());
     if (bType.getNumElements() != numLaunches)
       return emitOpError("bundle input #")
              << idx << " has " << bType.getNumElements()
              << " elements, expected " << numLaunches;
+    for (auto [i, elemType] : llvm::enumerate(bType.getElementTypes())) {
+      auto tensorTy = dyn_cast<TensorType>(elemType);
+      if (!tensorTy)
+        continue;
+      DeviceRefAttr bundleDevice = tensorTy.getDeviceRef();
+      if (bundleDevice != launchDevices[i])
+        return emitOpError("bundle input #")
+               << idx << " element #" << i << "'s device " << bundleDevice
+               << " does not match launchDevices[" << i
+               << "] = " << launchDevices[i];
+    }
   }
 
   // Buffers and chain must be both present or both absent.
@@ -1540,6 +1628,17 @@ LogicalResult ParallelOp::verify() {
       return emitOpError("result bundle #")
              << yieldIdx << " has " << resultType.getNumElements()
              << " elements, expected " << numLaunches;
+    for (auto [i, elemType] : llvm::enumerate(resultType.getElementTypes())) {
+      auto tensorTy = dyn_cast<TensorType>(elemType);
+      if (!tensorTy)
+        continue;
+      DeviceRefAttr bundleDevice = tensorTy.getDeviceRef();
+      if (bundleDevice != launchDevices[i])
+        return emitOpError("result bundle #")
+               << yieldIdx << " element #" << i << "'s device " << bundleDevice
+               << " does not match launchDevices[" << i
+               << "] = " << launchDevices[i];
+    }
   }
 
   return success();
@@ -3327,7 +3426,7 @@ LogicalResult BundledExpandOp::verify() {
            << numLaunches << " results (one per launch), got "
            << getNumResults();
 
-  auto firstBundle = cast<BundleType>(parallelOp.getInputs().front().getType());
+  SmallVector<DeviceRefAttr> launchDevices = parallelOp.getLaunchDeviceList();
   for (auto [i, resultType] : llvm::enumerate(getResultTypes())) {
     if (!typesMatchIgnoringDeviceId(resultType, getInput().getType()))
       return emitOpError("result #")
@@ -3335,8 +3434,7 @@ LogicalResult BundledExpandOp::verify() {
              << " does not match input type (ignoring device) "
              << getInput().getType();
 
-    auto expectedDevice =
-        cast<TensorType>(firstBundle.getElementTypes()[i]).getDeviceRef();
+    auto expectedDevice = launchDevices[i];
     auto actualDevice = cast<TensorType>(resultType).getDeviceRef();
     if (actualDevice != expectedDevice)
       return emitOpError("result #")

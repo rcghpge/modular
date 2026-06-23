@@ -944,6 +944,90 @@ LogicalResult BundleType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// Device list printing / parsing
+//===----------------------------------------------------------------------===//
+
+namespace M::MO {
+
+void printDeviceList(AsmPrinter &printer, ArrayRef<DeviceRefAttr> devices) {
+  if (devices.empty())
+    return;
+
+  // Try the compact `label:first[-last]` form when all devices share a label
+  // and have consecutive IDs starting at firstId.
+  StringRef label = devices.front().getLabel();
+  DeviceId firstId = devices.front().getId();
+  bool isContiguous = true;
+  for (auto [i, d] : llvm::enumerate(devices)) {
+    if (d.getLabel() != label ||
+        d.getId() != firstId + static_cast<DeviceId>(i)) {
+      isContiguous = false;
+      break;
+    }
+  }
+  if (isContiguous) {
+    printer << label << ':' << firstId;
+    if (devices.size() > 1)
+      printer << '-' << (firstId + devices.size() - 1);
+    return;
+  }
+
+  // Fallback: comma-separated `label:id` pairs.
+  llvm::interleaveComma(devices, printer, [&](DeviceRefAttr d) {
+    printer << d.getLabel() << ':' << d.getId();
+  });
+}
+
+ParseResult parseDeviceList(AsmParser &parser,
+                            SmallVectorImpl<DeviceRefAttr> &devices) {
+  MLIRContext *ctx = parser.getContext();
+
+  // Parse one entry: `label:id[-lastId]` (compact range) or just `label:id`.
+  // We accept a comma-separated list of these.  The first entry may be a
+  // range, e.g. `gpu:0-3, cpu:0` -- ranges and single entries can mix.
+  auto parseOneEntry = [&]() -> ParseResult {
+    StringRef label;
+    if (parser.parseKeyword(&label))
+      return failure();
+    DeviceId firstId = 0;
+    if (parser.parseColon() || parser.parseInteger(firstId))
+      return failure();
+    DeviceId lastId = firstId;
+
+    // Lookahead for `-<lastId>` as a signed integer literal (lexer
+    // tokenizes `-1` as a single signed integer).
+    int64_t rangeEnd = 0;
+    OptionalParseResult rangeRes = parser.parseOptionalInteger(rangeEnd);
+    if (rangeRes.has_value()) {
+      if (failed(*rangeRes))
+        return failure();
+      if (rangeEnd >= 0)
+        return parser.emitError(parser.getCurrentLocation(),
+                                "expected '-' before compact device range end");
+      lastId = static_cast<DeviceId>(-rangeEnd);
+      if (lastId < firstId)
+        return parser.emitError(
+            parser.getCurrentLocation(),
+            "compact device range must be ordered (firstId <= lastId)");
+    }
+
+    for (DeviceId id = firstId; id <= lastId; ++id)
+      devices.push_back(DeviceRefAttr::get(ctx, label, id));
+    return success();
+  };
+
+  if (parseOneEntry())
+    return failure();
+  while (succeeded(parser.parseOptionalComma())) {
+    if (parseOneEntry())
+      return failure();
+  }
+  return success();
+}
+
+} // namespace M::MO
+
+//===----------------------------------------------------------------------===//
 // ScalarType
 //===----------------------------------------------------------------------===//
 
