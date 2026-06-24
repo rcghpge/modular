@@ -13,6 +13,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Support/CommonCLOptions.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
@@ -222,6 +223,23 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     for (const auto &kernelLibraryPath : kernelLibraryPaths) {
       auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
       state.builder.import(moduleName.string());
+    }
+
+    // Each emitted kernel call uses the kernel's fully-qualified path
+    // (`<module>.<Struct>.<method>`). The library imports above only bind the
+    // top-level package, not the submodule the kernel lives in, so under
+    // submodule-visibility gating that path isn't navigable. Import each
+    // kernel's module explicitly. A `KernelDeclOp`'s `sym_name` is the struct's
+    // fully-resolved name (`<module>.<Struct>`), so the module is everything
+    // before the final segment.
+    llvm::StringSet<> importedKernelModules;
+    for (auto kernelDecl : moduleOp.getOps<MOGG::KernelDeclOp>()) {
+      auto [moduleName, structName] =
+          llvm::StringRef(kernelDecl.getSymName()).rsplit('.');
+      if (structName.empty())
+        continue;
+      if (importedKernelModules.insert(moduleName).second)
+        state.builder.import(moduleName.str());
     }
 
     state.builder.newline();
