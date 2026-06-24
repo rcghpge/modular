@@ -298,14 +298,21 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
         blocks: InputTensor[dtype, 6],
         cache_lengths: InputTensor[DType.uint32, 1],
         lookup_table: InputTensor[DType.uint32, 1],
-        max_lengths: InputTensor[DType.uint32, 2],
+        max_prompt_length: InputTensor[DType.uint32, 1],
+        max_cache_length: InputTensor[DType.uint32, 1],
     **) -> ContinuousBatchingKVCacheCollection[
         dtype,
         kv_params_h8_d128_bshd,
     ]:**
         return generic_get_continuous_cache_kernel_api[
             kv_params=kv_params_h8_d128_bshd
-        ](blocks, cache_lengths, lookup_table, max_lengths)
+        ](
+            blocks,
+            cache_lengths,
+            lookup_table,
+            max_prompt_length,
+            max_cache_length,
+        )
 
 @compiler.register("returning_transpose")
 @compiler.view_kernel
