@@ -19,14 +19,14 @@
 // CHECK: %[[NODEA:.*]], %[[A:.*]] = mgp.device_graph.dependencies dependencies() {
 // CHECK: mogg.async.pack(%[[INU]])
 // CHECK: mgp.device_graph.dependencies.yield %{{.*}} : !mgp.buffer<<"gpu", 0>>
-// CHECK: } : () -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+// CHECK: } : !mgp.buffer<<"gpu", 0>>
 
 // Region B: depends on A -> `dependencies(%[[NODEA]])`. Its body references A's
 // new body result directly (boundary dissolved).
 // CHECK: %[[NODEB:.*]], %[[B:.*]] = mgp.device_graph.dependencies dependencies(%[[NODEA]]) {
 // CHECK: mogg.async.pack(%[[A]])
 // CHECK: mgp.device_graph.dependencies.yield %{{.*}} : !mgp.tensor<2x3xf32, <"gpu", 0>>
-// CHECK: } : (!mgp.device_graph.node) -> (!mgp.device_graph.node, !mgp.tensor<2x3xf32, <"gpu", 0>>)
+// CHECK: } : !mgp.tensor<2x3xf32, <"gpu", 0>>
 
 // The staging yield packs B's body result; the op result is the plain tensor.
 // CHECK: mogg.async.pack(%[[B]])
@@ -109,13 +109,13 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>]
 // yields the tensor.
 // CHECK: mgp.device_graph.dependencies dependencies(%{{[a-zA-Z0-9_]+}}) {
 // CHECK: mgp.device_graph.dependencies.yield %{{.*}} : !mgp.tensor<2x3xf32, <"gpu", 0>>
-// CHECK: } : (!mgp.device_graph.node) -> (!mgp.device_graph.node, !mgp.tensor<2x3xf32, <"gpu", 0>>)
+// CHECK: } : !mgp.tensor<2x3xf32, <"gpu", 0>>
 // The producer is emitted second with no dependencies; its body packs the
 // staging-unpacked input and yields the buffer.
 // CHECK: %[[NODEA:.*]], %[[A:.*]] = mgp.device_graph.dependencies dependencies() {
 // CHECK: mogg.async.pack(%[[INU]])
 // CHECK: mgp.device_graph.dependencies.yield %{{.*}} : !mgp.buffer<<"gpu", 0>>
-// CHECK: } : () -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+// CHECK: } : !mgp.buffer<<"gpu", 0>>
 // CHECK-NOT: mogg.generic.compiled.region
 
 mgp.model @dg_reversed : mof devices [#M.device_ref<"gpu", 0>]

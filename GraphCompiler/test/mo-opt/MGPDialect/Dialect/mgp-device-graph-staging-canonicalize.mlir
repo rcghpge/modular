@@ -101,14 +101,12 @@ func.func @deduplicate_dependencies() {
   // CHECK: %[[A:.+]] = "test.work"
   // CHECK: %[[B:.+]] = "test.work2"
   // CHECK: mgp.device_graph.dependencies dependencies(%[[A]], %[[B]]) {
-  // CHECK: } : (!mgp.device_graph.node, !mgp.device_graph.node) ->
   %a = "test.work"() : () -> !mgp.device_graph.node
   %b = "test.work2"() : () -> !mgp.device_graph.node
   %node, %r = mgp.device_graph.dependencies dependencies(%a, %b, %a) {
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
-  } : (!mgp.device_graph.node, !mgp.device_graph.node, !mgp.device_graph.node)
-    -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  } : !mgp.buffer<<"gpu", 0>>
   return
 }
 
@@ -118,13 +116,11 @@ func.func @deduplicate_dependencies() {
 // CHECK-LABEL: func.func @no_change_dependencies
 func.func @no_change_dependencies() {
   // CHECK: mgp.device_graph.dependencies dependencies(%{{.+}}, %{{.+}}) {
-  // CHECK: } : (!mgp.device_graph.node, !mgp.device_graph.node) ->
   %a = "test.work"() : () -> !mgp.device_graph.node
   %b = "test.work2"() : () -> !mgp.device_graph.node
   %node, %r = mgp.device_graph.dependencies dependencies(%a, %b) {
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
-  } : (!mgp.device_graph.node, !mgp.device_graph.node)
-    -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  } : !mgp.buffer<<"gpu", 0>>
   return
 }

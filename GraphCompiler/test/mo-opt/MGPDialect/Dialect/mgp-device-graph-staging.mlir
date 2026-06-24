@@ -13,20 +13,20 @@ func.func @dependencies_round_trip(%in: !mgp.buffer<<"gpu", 0>>)
   // CHECK: %[[N0:.+]], %[[R0:.+]] = mgp.device_graph.dependencies dependencies() {
   // CHECK: %[[V:.+]] = "test.work"(%{{.+}})
   // CHECK: mgp.device_graph.dependencies.yield %[[V]] : !mgp.buffer<<"gpu", 0>>
-  // CHECK: } : () -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>
   %n0, %r0 = mgp.device_graph.dependencies dependencies() {
     %v = "test.work"(%in) : (!mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
-  } : () -> (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>)
+  } : !mgp.buffer<<"gpu", 0>>
 
   // A real dependency edge on %n0, and no body results (the operandless yield
   // is elided on print).
   // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies dependencies(%[[N0]]) {
-  // CHECK: } : (!mgp.device_graph.node) -> !mgp.device_graph.node
+  // CHECK: }
   %n1 = mgp.device_graph.dependencies dependencies(%n0) {
     "test.work2"(%r0) : (!mgp.buffer<<"gpu", 0>>) -> ()
     mgp.device_graph.dependencies.yield
-  } : (!mgp.device_graph.node) -> !mgp.device_graph.node
+  }
 
   return %n1 : !mgp.device_graph.node
 }
@@ -48,7 +48,7 @@ func.func @staging_round_trip(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>)
     %in_u = mogg.async.unpack(%in_a) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
     %n, %t = mgp.device_graph.dependencies dependencies() {
       mgp.device_graph.dependencies.yield %in_u : !mgp.tensor<2x3xf32, <"gpu", 0>>
-    } : () -> (!mgp.device_graph.node, !mgp.tensor<2x3xf32, <"gpu", 0>>)
+    } : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
     mgp.device_graph.staging.yield %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
   } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -71,10 +71,10 @@ func.func @forward_reference() {
   ^bb0(%builder: !mgp.device_graph.builder):
     %nb = mgp.device_graph.dependencies dependencies(%na) {
       mgp.device_graph.dependencies.yield
-    } : (!mgp.device_graph.node) -> !mgp.device_graph.node
+    }
     %na = mgp.device_graph.dependencies dependencies() {
       mgp.device_graph.dependencies.yield
-    } : () -> !mgp.device_graph.node
+    }
     mgp.device_graph.staging.yield
   }
   return

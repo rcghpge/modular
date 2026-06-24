@@ -272,8 +272,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
   ];
 
   let assemblyFormat = [{
-    `dependencies` `(` ($dependencies^)? `)` $body attr-dict
-    `:` functional-type($dependencies, results)
+    `dependencies` `(` ($dependencies^)? `)` $body attr-dict (`:` type($bodyResults)^)?
   }];
 
   let extraClassDeclaration = [{
