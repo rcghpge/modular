@@ -132,7 +132,7 @@ In the same second session:
 ```bash
 cd ~/code/modular
 
-./bazelw run --config=disable-mypy //max/python/max/entrypoints:pipelines -- benchmark \
+./bazelw run --config=disable-mypy //max/python/max/_entrypoints:pipelines -- benchmark \
   --backend modular \
   --model nvidia/DeepSeek-V3.1-NVFP4 \
   --endpoint /v1/chat/completions \
@@ -236,7 +236,7 @@ In a second session on the prefill workspace:
 ```bash
 cd ~/code/modular
 ./bazelw run --config=disable-mypy \
-  //max/python/max/entrypoints:pipelines -- benchmark \
+  //max/python/max/_entrypoints:pipelines -- benchmark \
   --backend modular \
   --model nvidia/Kimi-K2.5-NVFP4 \
   --endpoint /v1/chat/completions \
