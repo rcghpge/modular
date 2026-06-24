@@ -7,9 +7,8 @@ package(default_visibility = ["//SDK:consumers"])
 package_group(
     name = "consumers",
     packages = [
-        "//SDK/...",
-        "//docs/...",
-        "//utils/...",
+        "//MLRT/...",
+        "//Target/...",
     ],
 )
 
@@ -24,7 +23,4 @@ modular_cc_library(
     # HAL headers define a pure C interface; run clang-tidy as C so C++-only
     # constructs (e.g. <cstddef>, enum class) are caught.
     tags = ["clang-tidy-is-c-tu"],
-    visibility = [
-        "//visibility:public",
-    ],
 )
