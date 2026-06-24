@@ -412,6 +412,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     // Stage 3: fold the redundant `mogg.async` pack/unpack round-trips the
     // boundary dissolution leaves behind.
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+    // Stage 4: generate `@stub_N_build_graph` recording stubs and retarget the
+    // staged kernel-stub calls to them.
+    pm.addPass(MGP::createGenerateBuildGraphStubsPass());
   } else {
     pm.addPass(MOGG::createSequenceFusion());
   }

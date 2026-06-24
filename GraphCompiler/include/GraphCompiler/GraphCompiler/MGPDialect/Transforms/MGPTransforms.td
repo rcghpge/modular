@@ -751,4 +751,33 @@ def ComputeDeviceGraphDependenciesPass :
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// GenerateBuildGraphStubsPass
+//===----------------------------------------------------------------------===//
+
+def GenerateBuildGraphStubsPass :
+    Pass<"mgp-generate-build-graph-stubs", "mlir::ModuleOp"> {
+  let summary = "Generate `@stub_N_build_graph` recording stubs and retarget the "
+                "staged kernel-stub calls of `isDeviceGraph` models to them.";
+  let description = [{
+    Part of device-graph synthesis (stage 4); runs after
+    `mgp-compute-device-graph-dependencies`. Operates on the module so it can
+    add the new module-scope recording stubs. For each `mgp.model` marked
+    `isDeviceGraph`, finds every `mogg.call.stub @stub_N` inside the
+    `mgp.device_graph.staging` op of the model's execute block and, for each
+    distinct callee, generates a sibling recording stub `@stub_N_build_graph`.
+    The sibling is an ordinary `mogg.kernel.stub` whose producer dispatch records
+    into a `!mgp.device_graph.builder` (via `mogg.call.build_graph`) instead of
+    dispatching (`mogg.call.execute`), and which yields an
+    `!mgp.device_graph.node` handle. The staged call is then retargeted to invoke
+    the sibling stub.
+
+    Scope is limited to the staged execute body: stub calls elsewhere in the
+    model (e.g. weight-prepack stubs that EICM lifts into the `init` block) are
+    left as direct dispatches.
+
+    For models without `isDeviceGraph`, the pass is a no-op.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
