@@ -165,7 +165,6 @@ MOGGKernelBuilder::MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint,
       forceSync || isa<MO::TransposeOp>(op) ||
       (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
       isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
-      isa<MO::Composite::DistributedMatmulReduceScatterSumOp>(op) ||
       isa<MO::DistributedBroadcastOp>(op) ||
       isa<MO::DistributedScatterOp>(op) || isa<MO::EPDispatchOp>(op) ||
       isa<MO::EPDispatchFP8Op>(op) || isa<MO::EPDispatchBlockScaledNVOp>(op) ||
