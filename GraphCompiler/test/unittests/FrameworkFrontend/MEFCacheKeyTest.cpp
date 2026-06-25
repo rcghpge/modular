@@ -180,6 +180,110 @@ TEST_F(MEFCacheKeyTest, KernelLibraryPathInvalidatesKey) {
   EXPECT_NE(plainKey.takeValue(), extraKey.takeValue());
 }
 
+TEST_F(MEFCacheKeyTest, KernelLibraryPathIsRelocatable) {
+  // MOCO-4152: keying on contents not path lets a CI-warmed cache hit under a
+  // different install location.
+  auto writeLib = [](llvm::SmallVectorImpl<char> &outPath) {
+    int fd = -1;
+    auto ec = llvm::sys::fs::createTemporaryFile("mef-reloc-test", "dat", fd,
+                                                 outPath);
+    EXPECT_FALSE(ec) << "failed to create temp file: " << ec.message();
+    {
+      std::ofstream out(outPath.data(), std::ios::binary);
+      // Identical bytes in both libraries — only the path differs.
+      out << "identical synthetic kernel library bytes";
+    }
+    llvm::sys::fs::closeFile(fd);
+  };
+
+  llvm::SmallString<128> pathA, pathB;
+  writeLib(pathA);
+  writeLib(pathB);
+  llvm::scope_exit cleanup{[&] {
+    llvm::sys::fs::remove(pathA);
+    llvm::sys::fs::remove(pathB);
+  }};
+  ASSERT_NE(pathA.str(), pathB.str()) << "temp paths must differ";
+
+  std::string pathAStr(pathA.str()), pathBStr(pathB.str());
+  auto hasherA = tryBuild(
+      [&](MO::GCPipelineOptions &gc) { gc.kernelLibraryPaths = {pathAStr}; });
+  auto hasherB = tryBuild(
+      [&](MO::GCPipelineOptions &gc) { gc.kernelLibraryPaths = {pathBStr}; });
+  if (!hasherA || !hasherB)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto keyA = hasherA->keyForModule(*mod);
+  auto keyB = hasherB->keyForModule(*mod);
+  ASSERT_FALSE(keyA.isError());
+  ASSERT_FALSE(keyB.isError());
+  EXPECT_EQ(keyA.takeValue(), keyB.takeValue())
+      << "key must not depend on the kernel library's absolute path";
+}
+
+TEST_F(MEFCacheKeyTest, CasEnabledInvalidatesKey) {
+  // MOCO-4152: cache-dir's path is stripped, but set-vs-unset toggles CAS
+  // outlining, which changes the artifact — so the folded-in `cas-enabled` bit
+  // must still move the key.
+  auto plain = tryBuild();
+  if (!plain)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto withCas = tryBuild(
+      [](MO::GCPipelineOptions &gc) { gc.cacheDir = "/some/cas/store/path"; });
+  if (!withCas)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto plainKey = plain->keyForModule(*mod);
+  auto casKey = withCas->keyForModule(*mod);
+  ASSERT_FALSE(plainKey.isError());
+  ASSERT_FALSE(casKey.isError());
+  EXPECT_NE(plainKey.takeValue(), casKey.takeValue())
+      << "enabling CAS must change the key even though the path is stripped";
+}
+
+TEST_F(MEFCacheKeyTest, CacheDirPathIsRelocatable) {
+  // MOCO-4152: CAS-on is captured, but the store location is not — so two
+  // CAS-enabled hashers differing only by cache-dir path must match.
+  auto hasherA = tryBuild(
+      [](MO::GCPipelineOptions &gc) { gc.cacheDir = "/install/a/cas"; });
+  auto hasherB = tryBuild(
+      [](MO::GCPipelineOptions &gc) { gc.cacheDir = "/install/b/cas"; });
+  if (!hasherA || !hasherB)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto keyA = hasherA->keyForModule(*mod);
+  auto keyB = hasherB->keyForModule(*mod);
+  ASSERT_FALSE(keyA.isError());
+  ASSERT_FALSE(keyB.isError());
+  EXPECT_EQ(keyA.takeValue(), keyB.takeValue())
+      << "key must not depend on the CAS store's absolute path";
+}
+
+TEST_F(MEFCacheKeyTest, MlirTimingOutDirIsRelocatable) {
+  // MOCO-4152: mlir-timing-out-dir is a pure diagnostic output folder with no
+  // effect on the artifact, so it must not perturb the key.
+  auto hasherA = tryBuild([](MO::GCPipelineOptions &gc) {
+    gc.mlirTimingOutDir = "/install/a/timing";
+  });
+  auto hasherB = tryBuild([](MO::GCPipelineOptions &gc) {
+    gc.mlirTimingOutDir = "/install/b/timing";
+  });
+  if (!hasherA || !hasherB)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto keyA = hasherA->keyForModule(*mod);
+  auto keyB = hasherB->keyForModule(*mod);
+  ASSERT_FALSE(keyA.isError());
+  ASSERT_FALSE(keyB.isError());
+  EXPECT_EQ(keyA.takeValue(), keyB.takeValue())
+      << "key must not depend on the MLIR timing output directory's path";
+}
+
 TEST_F(MEFCacheKeyTest, NanCheckInvalidatesKey) {
   // `nan-check` is a `GCPipelineOptions` field (it gates `NanCheckPass`), so it
   // is captured structurally via `gcPipelineOptions.print()` + the textual

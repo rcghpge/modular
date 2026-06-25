@@ -44,6 +44,27 @@ private:
   uint64_t pos = 0;
 };
 
+// Clears the absolute-path-valued options on `options` in place, so the cache
+// key derived from it does not depend on the install location (MOCO-4152).
+// These paths leak into the key via `print` (which emits every option) and the
+// textual pipeline string, but they are not relevant to the compiled result
+// *as paths*:
+//   - kernel-library-paths: their file *contents* are hashed separately (see
+//     `feedFile` in `build`), so the path strings are redundant for
+//     correctness.
+//   - save-temp-prefix / mlir-timing-out-dir: pure diagnostic output locations
+//     (debug temp-saving and pass-timing JSON); no effect on the artifact.
+//   - cache-dir: set-vs-unset DOES change the artifact (it toggles CAS
+//     dense-attribute outlining), but the path value only selects where the CAS
+//     store lives. So we strip the path here and instead fold a boolean
+//     "CAS enabled" into the key in `build`.
+void stripInstallPaths(MO::GCPipelineOptions &options) {
+  options.cacheDir = "";
+  options.kernelLibraryPaths = {};
+  options.saveTempPrefix = "";
+  options.mlirTimingOutDir = "";
+}
+
 void feedMOToMGPPipelineKey(llvm::BLAKE3 &hasher, mlir::MLIRContext *ctx,
                             const MO::GCPipelineOptions &options) {
   auto gcPipelinePasses = mlir::PassManager::on<mlir::ModuleOp>(
@@ -80,9 +101,19 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   llvm::BLAKE3 &b3 = hasher.prefixHasher;
   BLAKE3Stream os(b3);
 
-  // Pipeline options + textual pipeline
-  gcPipelineOptions.print(os);
-  feedMOToMGPPipelineKey(b3, &mlirCtx, gcPipelineOptions);
+  // Pipeline options + textual pipeline. `stripInstallPaths` removes the
+  // path options so the key is relocatable (MOCO-4152); since it also strips
+  // cache-dir, fold in a "CAS enabled" bit separately (set-vs-unset changes
+  // the artifact even though the path does not). `GCPipelineOptions` is
+  // non-copyable, hence the local + `copyOptionValuesFrom`.
+  MO::GCPipelineOptions keyOptions;
+  keyOptions.copyOptionValuesFrom(gcPipelineOptions);
+  stripInstallPaths(keyOptions);
+  keyOptions.print(os);
+  os << "cas-enabled="
+     << (gcPipelineOptions.cacheDir.hasValue() &&
+         !gcPipelineOptions.cacheDir.getValue().empty());
+  feedMOToMGPPipelineKey(b3, &mlirCtx, keyOptions);
 
   // KGEN compilation context (Mojo compile-time defines)
   if (auto *compilationCtx = maxContext->get<KGEN::CompilationContext>())
