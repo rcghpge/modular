@@ -5650,7 +5650,8 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
     Variadic<MO_Tensor>:$outputs,

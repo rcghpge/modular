@@ -3850,11 +3850,21 @@ LogicalResult AllGatherOp::verify() {
                       "Expected {0} signal buffers but got {1}",
                       inputs.size(), signalBuffers.size()));
 
-  if (outputs.size() != inputs.size() * inputs.size())
+  int64_t numInputs = inputs.size();
+  int64_t groupSize = getGroupSize();
+  if (groupSize < 1)
+    return emitError("group_size must be at least 1");
+  if (numInputs % groupSize != 0)
     return emitError(llvm::formatv(
-        "number of outputs should be num_inputs * num_inputs for all-gather. "
-        "Expected {0} outputs but got {1} (num_inputs={2})",
-        inputs.size() * inputs.size(), outputs.size(), inputs.size()));
+        "group_size must evenly divide the number of inputs ({0}), but got {1}",
+        numInputs, groupSize));
+
+  int64_t expectedOutputs = numInputs * groupSize;
+  if (static_cast<int64_t>(outputs.size()) != expectedOutputs)
+    return emitError(llvm::formatv(
+        "number of outputs must be num_inputs * group_size for all-gather; "
+        "expected {0} outputs, found {1} (num_inputs={2}, group_size={3})",
+        expectedOutputs, outputs.size(), inputs.size(), groupSize));
   return success();
 }
 

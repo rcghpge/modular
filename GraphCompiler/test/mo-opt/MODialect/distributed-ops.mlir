@@ -16,6 +16,15 @@ mo.graph @all_reduce_sum_dynamic(%in0: !mo.tensor<[2, ?], f32, gpu:0>, %in1: !mo
   mo.output %out#0, %out#1, %out#2 : !mo.tensor<[2, ?], f32, gpu:0>, !mo.tensor<[2, ?], f32, gpu:1>, !mo.tensor<[2, ?], f32, gpu:2>
 }
 
+// CHECK-LABEL: mo.graph @allgather_grouped
+// CHECK: mo.distributed.allgather
+// CHECK-SAME: group_size = 2 : i64
+mo.graph @allgather_grouped(%in0: !mo.tensor<[5, 8], f32, gpu:0>, %in1: !mo.tensor<[4, 8], f32, gpu:1>, %in2: !mo.tensor<[3, 8], f32, gpu:2>, %in3: !mo.tensor<[2, 8], f32, gpu:3>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>, %sig2: !mo.buffer<[1], ui8, gpu:2>, %sig3: !mo.buffer<[1], ui8, gpu:3>) -> (!mo.tensor<[5, 8], f32, gpu:0>, !mo.tensor<[4, 8], f32, gpu:0>, !mo.tensor<[5, 8], f32, gpu:1>, !mo.tensor<[4, 8], f32, gpu:1>, !mo.tensor<[3, 8], f32, gpu:2>, !mo.tensor<[2, 8], f32, gpu:2>, !mo.tensor<[3, 8], f32, gpu:3>, !mo.tensor<[2, 8], f32, gpu:3>) {
+  %ch = mo.chain.create()
+  %out:8, %outChain = "mo.distributed.allgather"(%in0, %in1, %in2, %in3, %sig0, %sig1, %sig2, %sig3, %ch) {group_size = 2 : i64} : (!mo.tensor<[5, 8], f32, gpu:0>, !mo.tensor<[4, 8], f32, gpu:1>, !mo.tensor<[3, 8], f32, gpu:2>, !mo.tensor<[2, 8], f32, gpu:3>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.buffer<[1], ui8, gpu:2>, !mo.buffer<[1], ui8, gpu:3>, !mo.chain) -> (!mo.tensor<[5, 8], f32, gpu:0>, !mo.tensor<[4, 8], f32, gpu:0>, !mo.tensor<[5, 8], f32, gpu:1>, !mo.tensor<[4, 8], f32, gpu:1>, !mo.tensor<[3, 8], f32, gpu:2>, !mo.tensor<[2, 8], f32, gpu:2>, !mo.tensor<[3, 8], f32, gpu:3>, !mo.tensor<[2, 8], f32, gpu:3>, !mo.chain)
+  mo.output %out#0, %out#1, %out#2, %out#3, %out#4, %out#5, %out#6, %out#7 : !mo.tensor<[5, 8], f32, gpu:0>, !mo.tensor<[4, 8], f32, gpu:0>, !mo.tensor<[5, 8], f32, gpu:1>, !mo.tensor<[4, 8], f32, gpu:1>, !mo.tensor<[3, 8], f32, gpu:2>, !mo.tensor<[2, 8], f32, gpu:2>, !mo.tensor<[3, 8], f32, gpu:3>, !mo.tensor<[2, 8], f32, gpu:3>
+}
+
 // CHECK-LABEL: mo.graph @all_reduce_folds
 // CHECK: (%[[IN0:.*]]: !mo.tensor<[2, 17], f32, gpu:0>, %[[SIG0:.*]]: !mo.buffer<[1], ui8, gpu:0>, %[[CH:.*]]: !mo.chain)
 mo.graph @all_reduce_folds(%in0: !mo.tensor<[2, 17], f32, gpu:0>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %ch: !mo.chain) -> (!mo.tensor<[2, 17], f32, gpu:0>, !mo.chain) {
