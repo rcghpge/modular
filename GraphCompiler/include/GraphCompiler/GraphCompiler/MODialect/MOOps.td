@@ -5594,7 +5594,8 @@ def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     MO_Chain:$inChain,
-    DefaultValuedAttr<I64Attr, "-1">:$axis
+    DefaultValuedAttr<I64Attr, "-1">:$axis,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
     Variadic<MO_Tensor>:$outputs,

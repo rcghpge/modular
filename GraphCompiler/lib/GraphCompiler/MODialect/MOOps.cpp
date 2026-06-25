@@ -3514,17 +3514,16 @@ LogicalResult ReduceScatterSumOp::verify() {
   if (inputs.empty())
     return emitError("reducescatter requires at least one input");
 
-  // Verify that all inputs have the same shape and element type.
-  // Inputs intentionally differ in device (one per GPU), so we can't use
-  // AllTypesMatch here. Output shape validation and signal buffer count
-  // are handled below.
+  // Verify input ranks and element types. Shapes are checked per
+  // reduce-scatter group below.
   auto firstInputType = getInputTensor(0).getType();
+  int64_t rank = firstInputType.getRank();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
-    if (inputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
-      return emitError("all inputs must have the same shape");
     if (inputType.getElementType() != firstInputType.getElementType())
       return emitError("all inputs must have the same element type");
+    if (inputType.getRank() != firstInputType.getRank())
+      return emitError("all inputs must have the same rank");
   }
 
   // Verify output count matches input count.
@@ -3536,9 +3535,15 @@ LogicalResult ReduceScatterSumOp::verify() {
   if (getSignalBuffers().size() != inputs.size())
     return emitError("number of signal buffers must match number of inputs");
 
-  // Verify each output's shape is correct for reducescatter.
+  // Verify group size.
   int64_t ngpus = inputs.size();
-  int64_t rank = firstInputType.getRank();
+  int64_t groupSize = getGroupSizeAttr().getInt();
+  if (groupSize < 1)
+    return emitError("group_size must be at least 1");
+  if (ngpus % groupSize != 0)
+    return emitError(llvm::formatv(
+        "group_size must evenly divide the number of inputs ({0}), but got {1}",
+        ngpus, groupSize));
 
   // Resolve scatter axis (negative indexing supported).
   int64_t axis = normalizeAxis(getAxis(), rank);
@@ -3547,8 +3552,20 @@ LogicalResult ReduceScatterSumOp::verify() {
     return emitError(
         llvm::formatv("axis {0} out of bounds for rank {1}", getAxis(), rank));
 
+  // Inputs in a group reduce together and therefore must have matching shapes.
+  for (int64_t groupStart = 0; groupStart < ngpus; groupStart += groupSize) {
+    auto groupInputType = getInputTensor(groupStart).getType();
+    for (int64_t i = groupStart + 1, e = groupStart + groupSize; i < e; ++i) {
+      auto inputType = getInputTensor(i).getType();
+      if (inputType.getTypedShapeAttr() != groupInputType.getTypedShapeAttr())
+        return emitError(
+            "all inputs in each reduce-scatter group must have the same shape");
+    }
+  }
+
   for (int64_t devIdx = 0, e = outputs.size(); devIdx < e; ++devIdx) {
     auto outputType = getOutputTensor(devIdx).getType();
+    auto inputType = getInputTensor(devIdx).getType();
 
     if (outputType.getElementType() != firstInputType.getElementType())
       return emitError("output element type must match input element type");
@@ -3557,7 +3574,7 @@ LogicalResult ReduceScatterSumOp::verify() {
       return emitError("output rank must match input rank");
 
     for (int64_t i = 0; i < rank; ++i) {
-      int64_t inputDim = firstInputType.getIntDim(i);
+      int64_t inputDim = inputType.getIntDim(i);
       int64_t outputDim = outputType.getIntDim(i);
 
       // Skip dynamic dimensions
@@ -3567,15 +3584,16 @@ LogicalResult ReduceScatterSumOp::verify() {
 
       if (i == axis) {
         // Scatter axis: verify partitioned size
-        int64_t base = inputDim / ngpus;
-        int64_t remainder = inputDim % ngpus;
-        int64_t expectedSize = base + (devIdx < remainder ? 1 : 0);
+        int64_t base = inputDim / groupSize;
+        int64_t remainder = inputDim % groupSize;
+        int64_t localRank = devIdx % groupSize;
+        int64_t expectedSize = base + (localRank < remainder ? 1 : 0);
 
         if (outputDim != expectedSize)
           return emitError(llvm::formatv(
               "output dimension {0} should be {1} for device {2} "
-              "(input dim {3} / {4} GPUs), but got {5}",
-              i, expectedSize, devIdx, inputDim, ngpus, outputDim));
+              "(input dim {3} / group_size {4}), but got {5}",
+              i, expectedSize, devIdx, inputDim, groupSize, outputDim));
       } else {
         // Non-scatter axes: must match exactly
         if (outputDim != inputDim)

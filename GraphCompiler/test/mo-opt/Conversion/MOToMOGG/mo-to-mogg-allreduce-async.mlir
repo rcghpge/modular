@@ -18,6 +18,6 @@ mo.graph @sync_allreduce(%in0: !mo.tensor<[2], f32, gpu:0>, %in1: !mo.tensor<[2]
 // CHECK: isAsync = false
 mo.graph @sync_reducescatter(%in0: !mo.tensor<[2, 4], f32, gpu:0>, %in1: !mo.tensor<[2, 4], f32, gpu:1>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
   %chain = mo.chain.create()
-  %out:2, %outChain = mo.distributed.reducescatter.sum(%in0, %in1, %sig0, %sig1, %chain) : (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>, !mo.chain)
+  %out:2, %outChain = mo.distributed.reducescatter.sum(%in0, %in1, %sig0, %sig1, %chain) {group_size = 2 : i64} : (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>, !mo.chain)
   mo.output %out#0, %out#1 : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>
 }
