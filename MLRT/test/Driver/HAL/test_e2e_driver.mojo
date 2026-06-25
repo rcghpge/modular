@@ -4,10 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 from std.os import getenv
-from std.sys._hal import Driver, Context
-from std.sys._hal.device import Device, DeviceSpec, get_device_spec
-from std.sys._hal.status import HALError
-from std.sys._hal.plugin import MemoryHandle
+from _hal import Driver, Context
+from _hal.device import Device, DeviceSpec, get_device_spec
+from _hal.status import HALError
+from _hal.plugin import MemoryHandle
 from std.gpu import global_idx
 from std.memory import alloc, ArcPointer, OpaquePointer, UnsafePointer
 from std.sys import size_of

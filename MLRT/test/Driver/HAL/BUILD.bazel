@@ -39,6 +39,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//max:_hal",
         "@mojo//:std",
         "@mojo//:test_utils",
     ],
@@ -76,6 +77,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//max:_hal",
         "@mojo//:std",
         "@mojo//:test_utils",
     ],
@@ -183,6 +185,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//max:_hal",
         "@mojo//:std",
     ],
 )

@@ -12,12 +12,12 @@ handling paths.
 """
 
 from std.os import getenv
-from std.sys._hal import Driver
-from std.sys._hal.context import Context
-from std.sys._hal.queue import Queue
-from std.sys._hal.stream import Stream
-from std.sys._hal.event import Event, EVENT_FLAG_CPU_VISIBLE
-from std.sys._hal.status import (
+from _hal import Driver
+from _hal.context import Context
+from _hal.queue import Queue
+from _hal.stream import Stream
+from _hal.event import Event, EVENT_FLAG_CPU_VISIBLE
+from _hal.status import (
     STATUS_SUCCESS,
     STATUS_INCOMPATIBLE_VERSION,
     STATUS_UNKNOWN_ERROR,
