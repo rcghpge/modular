@@ -186,6 +186,131 @@ void DeviceGraphDependenciesOp::build(
   result.addTypes(yieldOp.getOperands().getTypes());
 }
 
+namespace {
+
+/// Rebuilds an `mgp.device_graph.dependencies` op with a new set of body
+/// results (and matching `dependencies.yield` operands), preserving the
+/// synthesized `node` result and the dependency edges. `newBodyResultTypes`
+/// describes the surviving body results; `newYieldOperands` are the values the
+/// moved yield should carry. `bodyResultReplacement(i)` returns, for each
+/// original body result index `i`, the position of its replacement among the
+/// new body results.
+DeviceGraphDependenciesOp
+rebuildWithBodyResults(PatternRewriter &rewriter, DeviceGraphDependenciesOp op,
+                       TypeRange newBodyResultTypes,
+                       ValueRange newYieldOperands,
+                       ArrayRef<unsigned> bodyResultRemap) {
+  // The `node` result is synthesized (not yielded); it stays first, followed by
+  // the surviving body results.
+  SmallVector<Type> newResultTypes;
+  newResultTypes.push_back(op.getNode().getType());
+  llvm::append_range(newResultTypes, newBodyResultTypes);
+
+  auto newOp = DeviceGraphDependenciesOp::create(
+      rewriter, op.getLoc(), TypeRange(newResultTypes), op.getDependencies());
+  newOp.getBody().takeBody(op.getBody());
+  DeviceGraphDependenciesYieldOp newYield = newOp.getYieldOp();
+  rewriter.modifyOpInPlace(newYield, [&]() {
+    newYield.getOperandsMutable().assign(newYieldOperands);
+  });
+
+  // Map results back onto the original positions: the node, then each original
+  // body result onto its surviving counterpart (offset by one for the node).
+  SmallVector<Value> replacements(op.getNumResults());
+  replacements[0] = newOp.getNode();
+  for (auto [idx, result] : llvm::enumerate(op.getBodyResults())) {
+    if (result.use_empty())
+      continue;
+    replacements[idx + 1] = newOp.getResult(bodyResultRemap[idx] + 1);
+  }
+  rewriter.replaceOp(op, replacements);
+  return newOp;
+}
+
+/// Drops body results of an `mgp.device_graph.dependencies` op that have no
+/// uses, along with the matching operands of the body's `dependencies.yield`.
+/// The synthesized `node` result is always kept (it carries the ordering edge,
+/// not dataflow).
+struct RemoveUnusedDependenciesResults
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
+                                PatternRewriter &rewriter) const override {
+    // Collect the indices/types of the body results that are actually used.
+    SmallVector<unsigned> usedResultIndices;
+    SmallVector<Type> usedResultTypes;
+    for (auto [idx, result] : llvm::enumerate(op.getBodyResults())) {
+      if (!result.use_empty()) {
+        usedResultIndices.push_back(idx);
+        usedResultTypes.push_back(result.getType());
+      }
+    }
+
+    // Nothing to do if every body result is used.
+    if (usedResultIndices.size() == op.getBodyResults().size())
+      return failure();
+
+    // Snapshot the surviving yield operands before moving the body.
+    DeviceGraphDependenciesYieldOp oldYield = op.getYieldOp();
+    auto newYieldOperands =
+        llvm::map_to_vector(usedResultIndices, [&](unsigned idx) -> Value {
+          return oldYield.getOperand(idx);
+        });
+
+    // Each used body result maps onto its slot in the compacted list.
+    SmallVector<unsigned> remap(op.getBodyResults().size());
+    for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices))
+      remap[oldIdx] = newIdx;
+
+    rebuildWithBodyResults(rewriter, op, TypeRange(usedResultTypes),
+                           newYieldOperands, remap);
+    return success();
+  }
+};
+
+/// De-duplicates body results of an `mgp.device_graph.dependencies` op whose
+/// `dependencies.yield` carries the same value more than once: the yield keeps
+/// one copy and every duplicate result is rewritten to the surviving one.
+struct DeduplicateDependenciesResults
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
+                                PatternRewriter &rewriter) const override {
+    DeviceGraphDependenciesYieldOp oldYield = op.getYieldOp();
+
+    unsigned numElements = oldYield.getNumOperands();
+
+    llvm::SmallDenseMap<Value, unsigned> firstOccurrence(numElements);
+    SmallVector<unsigned> resultRemap(op.getBodyResults().size());
+
+    for (auto [idx, operand] : llvm::enumerate(oldYield.getOperands())) {
+      auto [it, _] =
+          firstOccurrence.try_emplace(operand, firstOccurrence.size());
+      resultRemap[idx] = it->second;
+    }
+
+    // Nothing to do if there are no duplicated yield operands.
+    if (firstOccurrence.size() == op.getBodyResults().size())
+      return failure();
+
+    auto dedupedOperands = llvm::to_vector(firstOccurrence.keys());
+
+    rebuildWithBodyResults(rewriter, op, TypeRange(dedupedOperands),
+                           dedupedOperands, resultRemap);
+    return success();
+  }
+};
+
+} // namespace
+
+void DeviceGraphDependenciesOp::getCanonicalizationPatterns(
+    RewritePatternSet &patterns, MLIRContext *ctx) {
+  patterns.add<RemoveUnusedDependenciesResults, DeduplicateDependenciesResults>(
+      ctx);
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesYieldOp
 //===----------------------------------------------------------------------===//

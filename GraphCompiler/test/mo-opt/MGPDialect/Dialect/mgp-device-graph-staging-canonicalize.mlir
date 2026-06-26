@@ -97,7 +97,7 @@ func.func @no_change() {
 // redundant (listing a predecessor twice does not change ordering), so the
 // repeats are dropped, keeping the first occurrence of each.
 // CHECK-LABEL: func.func @deduplicate_dependencies
-func.func @deduplicate_dependencies() {
+func.func @deduplicate_dependencies() -> !mgp.buffer<<"gpu", 0>> {
   // CHECK: %[[A:.+]] = "test.work"
   // CHECK: %[[B:.+]] = "test.work2"
   // CHECK: mgp.device_graph.dependencies dependencies(%[[A]], %[[B]]) {
@@ -107,14 +107,14 @@ func.func @deduplicate_dependencies() {
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
-  return
+  return %r : !mgp.buffer<<"gpu", 0>>
 }
 
 // -----
 
 // Negative case: all dependency edges already distinct -- left unchanged.
 // CHECK-LABEL: func.func @no_change_dependencies
-func.func @no_change_dependencies() {
+func.func @no_change_dependencies() -> !mgp.buffer<<"gpu", 0>> {
   // CHECK: mgp.device_graph.dependencies dependencies(%{{.+}}, %{{.+}}) {
   %a = "test.work"() : () -> !mgp.device_graph.node
   %b = "test.work2"() : () -> !mgp.device_graph.node
@@ -122,5 +122,85 @@ func.func @no_change_dependencies() {
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
+  return %r : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+// An unused `dependencies` body result is removed (along with the matching
+// `dependencies.yield` operand); the synthesized `node` result is always kept.
+// CHECK-LABEL: func.func @remove_unused_dependency_result
+func.func @remove_unused_dependency_result() -> !mgp.buffer<<"gpu", 0>> {
+  // CHECK: %[[A:.+]] = "test.dep"
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies(%[[A]]) {
+  // CHECK: %[[USED:.+]] = "test.work"
+  // CHECK: %[[DEAD:.+]] = "test.dead"
+  // CHECK: mgp.device_graph.dependencies.yield %[[USED]] : !mgp.buffer<<"gpu", 0>>
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>
+  // CHECK: return %[[OUT]]
+  %a = "test.dep"() : () -> !mgp.device_graph.node
+  %node, %used, %unused = mgp.device_graph.dependencies dependencies(%a) {
+    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  return %used : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+// The same value yielded twice collapses to a single body result; both uses
+// point at it. The `node` result is preserved.
+// CHECK-LABEL: func.func @deduplicate_dependency_results
+func.func @deduplicate_dependency_results() {
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[V:.+]] = "test.work"
+  // CHECK: mgp.device_graph.dependencies.yield %[[V]] : !mgp.buffer<<"gpu", 0>>
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>
+  // CHECK: "test.use"(%[[OUT]], %[[OUT]])
+  %node, %first, %second = mgp.device_graph.dependencies dependencies() {
+    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %x, %x : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  "test.use"(%first, %second) : (!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
+  return
+}
+
+// -----
+
+// Both patterns compose: a duplicated-and-unused body-result set reduces to the
+// one distinct used value, keeping the `node` result.
+// CHECK-LABEL: func.func @dedup_and_remove_unused_dependency_results
+func.func @dedup_and_remove_unused_dependency_results() -> !mgp.buffer<<"gpu", 0>> {
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[USED:.+]] = "test.work"
+  // CHECK: mgp.device_graph.dependencies.yield %[[USED]] : !mgp.buffer<<"gpu", 0>>
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>
+  // CHECK: return %[[OUT]]
+  %node, %a0, %a1, %dead = mgp.device_graph.dependencies dependencies() {
+    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %x, %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  return %a0 : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+// Negative case: all body results used and distinct -- left unchanged.
+// CHECK-LABEL: func.func @no_change_dependency_results
+func.func @no_change_dependency_results() {
+  // CHECK: %[[NODE:.+]], %[[R:.+]]:2 = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[X:.+]] = "test.work"
+  // CHECK: %[[Y:.+]] = "test.work2"
+  // CHECK: mgp.device_graph.dependencies.yield %[[X]], %[[Y]] : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  // CHECK: "test.use"(%[[NODE]], %[[R]]#0, %[[R]]#1)
+  %node, %x, %y = mgp.device_graph.dependencies dependencies() {
+    %a = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    %b = "test.work2"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %a, %b : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  "test.use"(%node, %x, %y) : (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
   return
 }
