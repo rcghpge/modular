@@ -12,10 +12,14 @@
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 namespace llvm {
@@ -125,6 +129,41 @@ private:
   ErrorOr<void *> defragForRequest(size_t size,
                                    MemoryManagerFreeList *freeList);
 
+  // ---- Partial-chunk harvest (within-a-chunk defragmentation) ----
+  //
+  // Physical granules can be reclaimed not only from wholly-free chunks but
+  // also from free regions *inside* a partially-used chunk. A harvested granule
+  // is unmapped (its VA hole stays reserved) and reused to satisfy a large
+  // request; the hole is re-backed on a later allocation (ensureDescBacked).
+  // These help defrag succeed even with a single (chunk_percent=100) chunk.
+  //
+  // Sets a bit in `out` for each granule slot of `c` that is currently backed
+  // AND entirely covered by root-owned free descs (i.e. physically
+  // reclaimable). Returns the count of reclaimable slots. Caller holds `mu_`.
+  size_t computeHarvestableSlots(Chunk *c, llvm::BitVector &out) const;
+  // Unmap reclaimable granules from partially-used chunks, appending their
+  // handles to `out` until it reaches `needed` (or no more are reclaimable).
+  // `cache` holds the per-chunk reclaimable-slot sets already computed by the
+  // feasibility pass (partially-used chunks are unmodified between that pass
+  // and here, so the sets are still valid); a live chunk missing from `cache`
+  // is recomputed defensively. Returns the number harvested. Caller holds
+  // `mu_`.
+  size_t harvestPartialChunkGranules(
+      std::vector<uint64_t> &out, size_t needed,
+      llvm::ArrayRef<std::pair<Chunk *, llvm::BitVector>> cache);
+  // Inclusive [first, last] granule-slot index range spanned by `desc` within
+  // its (VMM-backed) chunk. Caller holds `mu_`.
+  std::pair<size_t, size_t> descSlotRange(const Desc *desc) const;
+  // True if any granule slot spanned by `desc` is currently unbacked
+  // (harvested).
+  bool descHasUnbackedSlot(const Desc *desc) const;
+  // Re-map physical granules under any unbacked slots spanned by `desc` (from
+  // the free-granule pool first, else vmmCreate). Returns an Error if a granule
+  // could not be created/mapped (leaving already-mapped slots backed). Caller
+  // holds `mu_`; must NOT be called during graph capture (VMM map is
+  // capture-illegal).
+  ErrorOrSuccess ensureDescBacked(Desc *desc);
+
   // Registry of per-stream (child) free-lists, so a VMM allocation miss can
   // flush sibling streams' completed frees to the root free-list (a freed block
   // sits in its per-stream buffer until that stream polls events).
@@ -176,6 +215,13 @@ private:
   // Pool of physical granule handles that are currently unmapped and available
   // for reuse (fed by retiring wholly-free VMM chunks).
   std::vector<uint64_t> freeGranulePool_;
+
+  // Bytes of VA that are currently reserved but physically unbacked because
+  // their granules were harvested from inside partially-used chunks (see
+  // harvestPartialChunkGranules). Incremented on harvest, decremented when a
+  // hole is re-backed (ensureDescBacked) or its chunk is torn down. When zero,
+  // the allocation fast path skips all re-backing/skip logic (no holes exist).
+  size_t harvestedBytes_ = 0;
 
   // Registered per-stream (child) free-lists and a lock guarding the list.
   // Used by flushSiblingFreeLists() on an allocation miss.

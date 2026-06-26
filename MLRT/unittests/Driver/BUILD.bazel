@@ -126,6 +126,70 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "MemoryManagerVMMPartialHarvestTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMPartialHarvestTest.cpp",
+    ],
+    env = {
+        # Enable the VMM defragmenting allocator process-wide. chunk_percent=100
+        # makes the whole 4 GiB test pool a SINGLE chunk, so the only way a large
+        # request can be satisfied from internal fragmentation is partial-chunk
+        # harvest (reclaiming whole free granules from inside the live chunk).
+        # 256 MiB granules => 16 granules; only-mode removes the driver backdoor.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "256",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "100",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "MemoryManagerVMMMultiChunkHarvestTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerVMMMultiChunkHarvestTest.cpp",
+    ],
+    env = {
+        # Like MemoryManagerVMMPartialHarvestTest, but chunk_percent=25 carves
+        # the 4 GiB pool into four 1 GiB chunks (four 256 MiB granules each), so
+        # a 1 GiB (4-granule) request can only be met by harvesting free granules
+        # from across multiple partially-used chunks. only-mode removes the
+        # driver backdoor.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "256",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "MemoryManagerVMMDeviceCreateTest",
     size = "medium",
     srcs = [
