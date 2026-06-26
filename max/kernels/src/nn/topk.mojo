@@ -65,6 +65,19 @@ from .normalization import (
 )
 
 
+# `_APPLE_STATIC_SHMEM_MAX_COUNT` fills the whole 32K of Apple's static
+# threadgroup memory; using it for the main buffer leaves no room for the small
+# auxiliary allocations (the per-warp `s_sum`/counters) the compiler sums into
+# the same kernel -- which pushed `fused_token_sampling` to 32800 B, 32 over
+# Metal's 32768 limit. Reserve headroom so main buffer + auxiliaries stay under
+# 32K. The main buffers here are vastly over-allocated (sized to the 32K bound
+# but indexed only up to `block_size`), so shrinking them is free.
+comptime _APPLE_STATIC_SHMEM_RESERVE_BYTES = 2 * 1024
+comptime _APPLE_STATIC_SHMEM_USABLE_COUNT[T: AnyType] = (
+    _APPLE_STATIC_SHMEM_MAX_BYTES - _APPLE_STATIC_SHMEM_RESERVE_BYTES
+) // size_of[T]()
+
+
 @always_inline
 def top_k_shape_impl[
     dtype: DType
@@ -954,7 +967,7 @@ def _topk_stage1_old[
 
     # Allocate shared memory for the values and indices
     var topk_sram = stack_allocation[
-        _APPLE_STATIC_SHMEM_MAX_COUNT[TopK_2[T]],
+        _APPLE_STATIC_SHMEM_USABLE_COUNT[TopK_2[T]],
         TopK_2[T, largest],
         address_space=AddressSpace.SHARED,
     ]() if comptime (is_apple_gpu()) else external_memory[
@@ -1236,7 +1249,7 @@ def _topk_stage2[
     var num_e_rounded = ceildiv(num_elem_reduced, WARP_SIZE) * WARP_SIZE
     var vals_smem_size = num_e_rounded
     var vals_sram = stack_allocation[
-        _APPLE_STATIC_SHMEM_MAX_COUNT[TopK_2[T]],
+        _APPLE_STATIC_SHMEM_USABLE_COUNT[TopK_2[T]],
         Scalar[T],
         address_space=AddressSpace.SHARED,
     ]() if comptime (is_apple_gpu()) else external_memory[
@@ -1304,6 +1317,17 @@ def _topk_stage2[
                             batch_i_topk_idxs[remaining_k] = Scalar[
                                 out_idx_type
                             ](-1)
+                else:
+                    if tid == 0:
+                        for remaining_k in range(k, max_k):
+                            batch_i_topk_vals[remaining_k] = _topk_dead_val[
+                                T, largest
+                            ]()
+                        # Skip-token sentinel: use 0, not -1. This index is the
+                        # sampled token returned downstream and is used as an
+                        # array index (gather_nd / embedding lookup), where a
+                        # negative index would read out of bounds.
+                        batch_i_topk_idxs[0] = Scalar[out_idx_type](0)
                 break
 
             # Re-initialize partial for each thread
@@ -1864,6 +1888,34 @@ def topk_gpu[
             ceildiv(N, block_size_), 8
         ) if not num_blocks_per_input else num_blocks_per_input.value()
 
+        # Bound stage-2 shared memory: `_topk_stage2` reduces
+        # `num_blocks_per_input * max_k` candidates inside a SINGLE block's
+        # dynamic shared memory. For large `max_k` (e.g. the MLA indexer's
+        # top_k=2048) the default of 8 blocks makes that request exceed the
+        # device per-block shared-memory limit, so the launch fails with
+        # CUDA_ERROR_INVALID_VALUE. Reduce `num_blocks_per_input` until the
+        # stage-2 request fits a conservative device budget. This runs BEFORE
+        # the cache buffers are sized below, so the buffers, the stage-1 grid
+        # and the stage-2 shared memory all stay consistent. It is a no-op for
+        # the common small-`max_k` case (8 blocks already fit).
+        var _topk_val_idx_bytes = (
+            size_of[Scalar[dtype]]() + size_of[DType.int]()
+        )
+        var _topk_cache_bytes = (
+            size_of[Scalar[dtype]]() + 2 * size_of[DType.int]()
+        )
+        var _topk_smem_budget = (
+            Int(ctx.default_device_info.shared_memory_per_multiprocessor) - 8192
+        )
+        if bound_max_k > 0 and num_blocks_per_input_ > 1:
+            var _topk_max_nb = (
+                _topk_smem_budget - bound_max_k * _topk_cache_bytes
+            ) // (bound_max_k * _topk_val_idx_bytes)
+            if _topk_max_nb < 1:
+                _topk_max_nb = 1
+            if num_blocks_per_input_ > _topk_max_nb:
+                num_blocks_per_input_ = _topk_max_nb
+
         # Define shape for the kernel's internal cache buffers
         var internal_cache_shape = IndexList[2](
             internal_bs, num_blocks_per_input_ * bound_max_k
@@ -2166,6 +2218,7 @@ def apply_gumbel_noise_kernel[
 ):
     comptime EPS = Float32(1e-20)
     comptime LOG2 = Float32(0.6931471806)
+    comptime MIN_TEMP = Float32(1e-6)
 
     comptime simd_width = simd_width_of[dtype]()
     var N = Int(input.dim(1))
@@ -2193,6 +2246,7 @@ def apply_gumbel_noise_kernel[
             var temp_val = Float32(1.0)
             if temperature:
                 temp_val = temperature.unsafe_value()[tok_idx]
+                temp_val = max(temp_val, MIN_TEMP)
 
             var seed_val = UInt64(0)
             if seed:

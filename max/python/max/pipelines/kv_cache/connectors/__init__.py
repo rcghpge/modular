@@ -23,19 +23,23 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from max.driver import Device
 from max.nn.kv_cache.cache_params import (
     KVCacheBufferInterface,
     KVCacheMemory,
     KVConnectorType,
+    KVHashAlgo,
 )
-from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.kv_connector import KVConnector
 
 from .local_connector import LocalConnector
 from .null_connector import NullConnector
 from .tiered_connector import TieredConnector
+
+if TYPE_CHECKING:
+    from max.pipelines.kv_cache.config import KVConnectorConfig
 
 logger = logging.getLogger("max.pipelines")
 
@@ -46,6 +50,7 @@ def create_connector(
     devices: Sequence[Device],
     kv_buffers: KVCacheBufferInterface,
     total_num_host_blocks: int,
+    kv_hash_algo: KVHashAlgo,
 ) -> KVConnector:
     """Create a KV cache connector instance based on ``kv_connector``.
 
@@ -56,6 +61,9 @@ def create_connector(
         kv_buffers: The replica's KV buffer (a single leaf or a tree of
             leaves) describing all caches to offload.
         total_num_host_blocks: Total number of host blocks for swapping.
+        kv_hash_algo: KV-cache hash algorithm; forwarded to connectors that
+            persist hash-keyed state on disk so they can refuse to start
+            against a directory locked to a different algorithm.
 
     Returns:
         A connector instance implementing the KVConnector protocol.
@@ -104,6 +112,7 @@ def create_connector(
             total_num_host_blocks=total_num_host_blocks,
             disk_cache_dir=cfg.disk_offload_dir,
             max_disk_size_gb=cfg.disk_offload_max_gb,
+            kv_hash_algo=kv_hash_algo,
             use_direct_io=cfg.disk_offload_direct_io,
         )
 

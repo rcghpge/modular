@@ -70,10 +70,6 @@ def test_mla_index_fp8_paged_variable_lengths[
         max_seq_len = max(max_seq_len, seq_lens[i])
         max_cache_len = max(max_cache_len, cache_lens[i])
 
-    # max_num_keys uses static max values to match kernel's calculation
-    # (kernel uses k_cache.max_context_length() + max_prompt_length())
-    var max_num_keys = max_cache_len + max_seq_len
-
     print(
         "test_mla_index_fp8_paged_variable_lengths with params:",
         "num_heads:",
@@ -214,7 +210,11 @@ def test_mla_index_fp8_paged_variable_lengths[
         ks_shape
     )
     var k_collection = PagedKVCacheCollection[
-        DType.float8_e4m3fn, kv_params, page_size, DType.float32, 128
+        DType.float8_e4m3fn,
+        kv_params,
+        page_size,
+        scale_dtype_=DType.float32,
+        quantization_granularity_=128,
     ](
         LayoutTensor[DType.float8_e4m3fn, k_block_layout](
             k_block_device,
@@ -424,6 +424,60 @@ def main() raises:
         ](
             seq_lens=[4, 8, 2],
             cache_lens=[4, 8, 2],
+            ctx=ctx,
+        )
+
+        # ===== Regression: large top_k (2048) + long context =====
+        # These cover two bugs that only appear at production scale:
+        #   (A) topk_gpu stage-2 dynamic shared memory exceeded the device
+        #       per-block limit once max_k = min(top_k, ctx) reached ~2000,
+        #       crashing the launch with CUDA_ERROR_INVALID_VALUE.
+        #   (B) fill_invalid_topk_kernel only covered the first 1024 output
+        #       columns, leaving columns [1024, top_k) as garbage when
+        #       top_k > 1024.
+        # Each case mixes a long sequence (drives max_num_keys past the old
+        # smem cliff -> exercises A) with a short sequence whose token needs
+        # -1 padding spanning columns >1024 (-> exercises B).
+        print("\n--- regression: top_k=2048, long context ---")
+
+        # Decode, causal: long seq (cache 2100) + short seq (cache 50, so its
+        # token needs -1 across columns [51, 2048), including the >1024 range).
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=128,
+            depth=128,
+            page_size=64,
+            top_k=2048,
+            mask_name=MaskName.CAUSAL.name,
+        ](
+            seq_lens=[1, 1, 1, 1],
+            cache_lens=[2100, 1990, 1500, 50],
+            ctx=ctx,
+        )
+
+        # Decode, NULL mask: long + short seq.
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=128,
+            depth=128,
+            page_size=64,
+            top_k=2048,
+            mask_name=MaskName.NULL.name,
+        ](
+            seq_lens=[1, 1],
+            cache_lens=[2100, 100],
+            ctx=ctx,
+        )
+
+        # Prefill, causal: 200 new tokens over a 1900-token cache
+        # (max_num_keys=2100, past the old cliff; early tokens need -1 padding).
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=128,
+            depth=128,
+            page_size=64,
+            top_k=2048,
+            mask_name=MaskName.CAUSAL.name,
+        ](
+            seq_lens=[200],
+            cache_lens=[1900],
             ctx=ctx,
         )
 

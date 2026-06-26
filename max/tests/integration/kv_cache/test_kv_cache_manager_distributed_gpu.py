@@ -24,8 +24,9 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef
 from max.nn.kv_cache import (
     KVCacheInputs,
-    KVCacheParams,
     KVConnectorType,
+    MHAKVCacheParams,
+    MLAKVCacheParams,
     MultiKVCacheInputs,
     MultiKVCacheParams,
 )
@@ -33,6 +34,7 @@ from max.pipelines.context import TextContext
 from max.pipelines.kv_cache import PagedKVCacheManager
 from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.connectors.tiered_connector import TieredConnector
+from max.pipelines.kv_cache.kv_connector import to_block_hash_bytes
 from test_common.context_utils import create_text_context
 
 
@@ -50,7 +52,7 @@ def _create_kv_manager(
     batch_size = 2 * num_devices if batch_size is None else batch_size
 
     devices = [Accelerator(id=i) for i in range(num_devices)]
-    params = KVCacheParams(
+    params = MHAKVCacheParams(
         dtype=DType.float32,
         n_kv_heads=8,
         head_dim=32,
@@ -171,7 +173,7 @@ def test_get_metrics_aggregated_h2d_d2h() -> None:
     data_parallel_degree = 2
 
     devices = [Accelerator(id=i) for i in range(num_devices)]
-    params = KVCacheParams(
+    params = MHAKVCacheParams(
         dtype=DType.float32,
         n_kv_heads=4,
         head_dim=32,
@@ -195,7 +197,10 @@ def test_get_metrics_aggregated_h2d_d2h() -> None:
     # Use distinct hashes per replica so they don't collide.
     for replica_idx in range(data_parallel_degree):
         connector = manager._replica[replica_idx].connector
-        hashes = [100 + replica_idx * 100, 200 + replica_idx * 100]
+        hashes = [
+            to_block_hash_bytes(100 + replica_idx * 100),
+            to_block_hash_bytes(200 + replica_idx * 100),
+        ]
         connector.offload([0, 1], hashes)
         connector.wait_for_offloads()
 
@@ -206,7 +211,10 @@ def test_get_metrics_aggregated_h2d_d2h() -> None:
     # Load the same blocks back → triggers H2D copies on each connector.
     for replica_idx in range(data_parallel_degree):
         connector = manager._replica[replica_idx].connector
-        hashes = [100 + replica_idx * 100, 200 + replica_idx * 100]
+        hashes = [
+            to_block_hash_bytes(100 + replica_idx * 100),
+            to_block_hash_bytes(200 + replica_idx * 100),
+        ]
         connector.load([0, 1], hashes)
 
     metrics = manager.get_metrics_aggregated()
@@ -230,7 +238,7 @@ def test_get_metrics_aggregated_disk_ops() -> None:
 
     with tempfile.TemporaryDirectory(prefix="kv_metrics_disk_") as disk_dir:
         devices = [Accelerator(id=i) for i in range(num_devices)]
-        params = KVCacheParams(
+        params = MHAKVCacheParams(
             dtype=DType.float32,
             n_kv_heads=4,
             head_dim=32,
@@ -261,7 +269,10 @@ def test_get_metrics_aggregated_disk_ops() -> None:
         for replica_idx in range(data_parallel_degree):
             connector = manager._replica[replica_idx].connector
             assert isinstance(connector, TieredConnector)
-            hashes = [100 + replica_idx * 100, 200 + replica_idx * 100]
+            hashes = [
+                to_block_hash_bytes(100 + replica_idx * 100),
+                to_block_hash_bytes(200 + replica_idx * 100),
+            ]
             connector.offload([0, 1], hashes)
             connector.wait_for_offloads()
             connector._disk_tier.wait_for_writes()
@@ -276,7 +287,10 @@ def test_get_metrics_aggregated_disk_ops() -> None:
         for replica_idx in range(data_parallel_degree):
             connector = manager._replica[replica_idx].connector
             assert isinstance(connector, TieredConnector)
-            new_hashes = [300 + replica_idx * 100, 400 + replica_idx * 100]
+            new_hashes = [
+                to_block_hash_bytes(300 + replica_idx * 100),
+                to_block_hash_bytes(400 + replica_idx * 100),
+            ]
             connector.offload([2, 3], new_hashes)
             connector.wait_for_offloads()
             connector._disk_tier.wait_for_writes()
@@ -285,7 +299,10 @@ def test_get_metrics_aggregated_disk_ops() -> None:
         # Load the first pair back → must be promoted from disk (not in host).
         for replica_idx in range(data_parallel_degree):
             connector = manager._replica[replica_idx].connector
-            hashes = [100 + replica_idx * 100, 200 + replica_idx * 100]
+            hashes = [
+                to_block_hash_bytes(100 + replica_idx * 100),
+                to_block_hash_bytes(200 + replica_idx * 100),
+            ]
             connector.load([4, 5], hashes)
 
         metrics = manager.get_metrics_aggregated()
@@ -312,7 +329,7 @@ def test_runtime_inputs_mha_primary_mla_secondary_matches_graph() -> None:
     device_refs = [DeviceRef.GPU(i) for i in range(num_devices)]
 
     # Primary: non-MLA GQA cache (mirrors M3 main attention).
-    main_params = KVCacheParams(
+    main_params = MHAKVCacheParams(
         dtype=DType.bfloat16,
         n_kv_heads=8,
         head_dim=128,
@@ -323,14 +340,12 @@ def test_runtime_inputs_mha_primary_mla_secondary_matches_graph() -> None:
     # Secondary: is_mla index-K cache (1 KV head, replicated K), mirrors M3's
     # indexer cache and DeepSeek-V3.2's order *reversed* (there the MLA cache is
     # primary, so this asymmetry is exercised only by M3).
-    indexer_params = KVCacheParams(
+    indexer_params = MLAKVCacheParams(
         dtype=DType.bfloat16,
-        n_kv_heads=1,
         head_dim=128,
         num_layers=4,
         devices=device_refs,
         page_size=128,
-        is_mla=True,
         num_q_heads=64,
     )
     params = MultiKVCacheParams.from_params(

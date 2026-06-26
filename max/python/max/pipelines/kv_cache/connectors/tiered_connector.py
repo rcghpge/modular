@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 from max.driver import Device, DevicePinnedBuffer
 from max.dtype import DType
-from max.nn.kv_cache.cache_params import KVCacheMemory
+from max.nn.kv_cache.cache_params import KVCacheMemory, KVHashAlgo
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.kv_cache.memory_tier import MemoryTier
 from max.profiler import Tracer, traced
@@ -52,7 +52,7 @@ GiB = 1024**3
 
 @dataclass
 class _CacheHit:
-    block_hash: int
+    block_hash: bytes
     host_block: KVCacheBlock
     device_block_id: int
     future: Future[None] | None = None
@@ -79,6 +79,7 @@ class TieredConnector:
         total_num_host_blocks: int,
         disk_cache_dir: str,
         max_disk_size_gb: float,
+        kv_hash_algo: KVHashAlgo = "ahash64",
         use_direct_io: bool = False,
         synchronous_d2h_copy_mode: bool = False,
     ) -> None:
@@ -114,6 +115,7 @@ class TieredConnector:
             cache_dir=disk_cache_dir,
             block_nbytes=self._block_disk_bytes,
             max_disk_size_bytes=int(max_disk_size_gb * GiB),
+            kv_hash_algo=kv_hash_algo,
             use_direct_io=use_direct_io,
         )
 
@@ -175,7 +177,7 @@ class TieredConnector:
     def load(
         self,
         device_block_ids: list[int],
-        block_hashes: list[int],
+        block_hashes: Sequence[bytes],
     ) -> int:
         """Load data from host or disk cache into device blocks.
 
@@ -228,13 +230,24 @@ class TieredConnector:
         for hit in hits:
             self._host_block_pool.free_block(hit.host_block)
 
-        # Process hits in FIFO order: wait on each disk read individually,
-        # then immediately enqueue H2D + broadcast.  Disk reads complete in
-        # submission order, so this pipelines GPU DMA with remaining I/O.
+        # Process hits in FIFO order accumulating (dst, src) pairs into a batch.
+        # When a disk read is NOT YET complete, flush the current batch first so
+        # its H2D runs concurrently with the disk wait; then block on the future.
+        # If the future is already done, skip the flush and treat it like a CPU
+        # hit — no point paying a memcpy_h2d call for a 1-block batch.
         num_loaded = 0
+        dsts: list[int] = []
+        srcs: list[int] = []
         with Tracer(f"{disk_reads} disk reads + H2D"):
             for i, hit in enumerate(hits):
-                if hit.future is not None:
+                if hit.future is not None and not hit.future.done():
+                    # Flush accumulated ready blocks so their H2D overlaps with
+                    # the disk wait below.
+                    self._block_copy_engine.memcpy_h2d(dsts, srcs)
+                    self._h2d_blocks_copied += len(dsts)
+                    dsts = []
+                    srcs = []
+
                     try:
                         with Tracer(f"Sync on disk read {i}"):
                             hit.future.result()
@@ -246,16 +259,31 @@ class TieredConnector:
                         )
                         break  # prefix chain broken
 
+                elif hit.future is not None:
+                    # Future already done — collect the result without blocking
+                    # so we can batch this hit with the surrounding CPU hits.
+                    try:
+                        hit.future.result()
+                    except Exception as exc:
+                        logger.error(
+                            "Disk read failed for hash %s: %s",
+                            hit.block_hash,
+                            exc,
+                        )
+                        break  # prefix chain broken
+
+                if hit.future is not None:
                     if hit.block_hash not in self._host_block_pool.prefix_cache:
                         self._host_block_pool.commit_into_prefix_cache(
                             hit.block_hash, hit.host_block
                         )
 
-                self._block_copy_engine.memcpy_h2d(
-                    hit.device_block_id, hit.host_block.bid
-                )
-                self._h2d_blocks_copied += 1
+                dsts.append(hit.device_block_id)
+                srcs.append(hit.host_block.bid)
                 num_loaded += 1
+
+            self._block_copy_engine.memcpy_h2d(dsts, srcs)
+            self._h2d_blocks_copied += len(dsts)
 
         # Wait for in-flight disk reads on unprocessed hits so their
         # worker threads finish writing into the host buffer before we return.
@@ -328,8 +356,8 @@ class TieredConnector:
     def offload(
         self,
         block_ids: list[int],
-        block_hashes: list[int],
-        parent_seq_hash: int = 0,
+        block_hashes: Sequence[bytes],
+        parent_seq_hash: bytes | None = None,
     ) -> None:
         """Offload the device blocks to the external cache.
 
@@ -342,14 +370,19 @@ class TieredConnector:
         the copies against the forward pass and destroy the overlap.
         """
         host_blocks: list[KVCacheBlock] = []
+        dsts: list[int] = []
+        srcs: list[int] = []
         for device_block_id, block_hash in zip(
             block_ids, block_hashes, strict=True
         ):
-            host_block = self._maybe_offload_to_host(
-                device_block_id, block_hash
-            )
+            host_block = self._maybe_offload_to_host(block_hash)
             if host_block is not None:
                 host_blocks.append(host_block)
+                dsts.append(host_block.bid)
+                srcs.append(device_block_id)
+
+        self._block_copy_engine.memcpy_d2h(dsts, srcs)
+        self._d2h_blocks_copied += len(dsts)
 
         if host_blocks:
             pending_disk_write = _PendingDiskWrite(
@@ -415,19 +448,17 @@ class TieredConnector:
             inflight_disk_ops=self._disk_tier.inflight_disk_ops,
         )
 
-    @traced
-    def _maybe_offload_to_host(
-        self, device_block_id: int, block_hash: int
-    ) -> KVCacheBlock | None:
-        """Offload a device block to host memory if not already cached.
+    def _maybe_offload_to_host(self, block_hash: bytes) -> KVCacheBlock | None:
+        """Reserve a host slot for device_block_id if not already cached.
 
-        Returns the host block if a new D2H copy was initiated, None
-        otherwise.  The returned block stays at ref_cnt=1 so it can't be
-        evicted while an async disk write reads from its memory.  The
+        Returns the host block (ref_cnt=1) so the caller can batch the D2H
+        copy, or ``None`` if the block is already in the host cache or no free
+        slots are available.  The returned block stays at ref_cnt=1 so it
+        can't be evicted while an async disk write reads from its memory.  The
         caller is responsible for calling ``free_block()`` when the write
         completes (via ``_drain_completed_writes()``).
         """
-        # Skip if already in host cache
+        # Skip if already in host cache.
         if block_hash in self._host_block_pool.prefix_cache:
             return None
 
@@ -437,14 +468,9 @@ class TieredConnector:
             return None
 
         host_block, _ = self._host_block_pool.alloc_block()  # ref_cnt=1
-
-        self._block_copy_engine.memcpy_d2h(host_block.bid, device_block_id)
-        self._d2h_blocks_copied += 1
-
         self._host_block_pool.commit_into_prefix_cache(block_hash, host_block)
         # Do NOT call free_block() — keep ref_cnt=1 so the block can't be
         # evicted while the disk write thread reads from its memory.
-
         return host_block
 
     @traced
@@ -456,7 +482,9 @@ class TieredConnector:
             bumped the ref_cnt by 1 prior to calling this method.
         """
         block_hash = host_block.block_hash
-        assert block_hash is not None
+        assert isinstance(block_hash, bytes), (
+            "host_block.block_hash should be bytes here"
+        )
         # Zero-copy NumPy view of the block's row; aliases the pinned memory.
         src = self._host_buffer[host_block.bid, :].to_numpy()
         future = self._disk_tier.write_block_async(block_hash, src)
@@ -466,3 +494,7 @@ class TieredConnector:
         else:
             # write_block_async returned None (already on disk / pending)
             self._host_block_pool.free_block(host_block)
+
+    @property
+    def supported_hash_algos(self) -> frozenset[KVHashAlgo]:
+        return frozenset({"ahash64", "sha256", "sha256_64"})

@@ -17,6 +17,7 @@ by comparing against numpy reference implementations.
 """
 
 from collections.abc import Generator, Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -8863,3 +8864,225 @@ class TestDistributedReducescatterSumSimulated:
         total = data_a + data_b
         np.testing.assert_allclose(result.local_shards[0].to_numpy(), total[:2])
         np.testing.assert_allclose(result.local_shards[1].to_numpy(), total[2:])
+
+
+class TestLazyGCModelCompilation:
+    """Direct tests for the per-(op, device, dtype) GC model caches.
+
+    Covers behavior the dispatch handlers rely on but don't assert: compile-once
+    reuse, unsupported unary targets raising, and ``MAX_EAGER_OP_PRECOMPILE``
+    selecting lazy (default) vs the opt-in precompile sweep.
+    """
+
+    def test_matmul_model_compiles_once_and_reuses(self) -> None:
+        """A second call for the same (device, dtype) returns the cached model."""
+        from max._interpreter_ops import matmul_gc
+
+        cpu = CPU()
+        first = matmul_gc.matmul_model(cpu, DType.float32)
+        second = matmul_gc.matmul_model(cpu, DType.float32)
+        assert first is second
+
+    def test_unary_model_compiles_once_and_reuses(self) -> None:
+        """A second call for the same unary target returns the cached model."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import unary_elementwise_gc
+
+        cpu = CPU()
+        first = unary_elementwise_gc.unary_model(mo.ExpOp, cpu, DType.float32)
+        second = unary_elementwise_gc.unary_model(mo.ExpOp, cpu, DType.float32)
+        assert first is second
+
+    def test_unary_model_unsupported_dtype_raises(self) -> None:
+        """A transcendental op on an int dtype is outside the supported set."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import unary_elementwise_gc
+
+        # Exp only sweeps float dtypes; int32 is unsupported and must not be
+        # handed to load_all as an uncompilable graph.
+        with pytest.raises(KeyError, match="Unsupported unary op/device/dtype"):
+            unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.int32)
+
+    def test_matmul_model_precompile_raises_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With MAX_EAGER_OP_PRECOMPILE=1, a cache miss is a hard error."""
+        from max._interpreter_ops import gc_compile, matmul_gc
+
+        # Opt into precompile mode and simulate a target the sweep did not cover.
+        monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
+        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
+        with pytest.raises(KeyError, match="No pre-compiled matmul model"):
+            matmul_gc.matmul_model(CPU(), DType.float32)
+
+    def test_matmul_model_lazy_default_compiles_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """By default (env var unset) a miss compiles the target lazily."""
+        from max._interpreter_ops import gc_compile, matmul_gc
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
+        model = matmul_gc.matmul_model(CPU(), DType.float32)
+        assert model is not None
+
+    def test_unary_model_precompile_raises_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With =1, a supported-but-unswept target is a hard error."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import gc_compile, unary_elementwise_gc
+
+        monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
+        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", {})
+        # float32 Exp is supported (passes the _is_supported guard), so the miss
+        # falls through to the precompile-mode hard error, not "Unsupported".
+        with pytest.raises(KeyError, match="No pre-compiled unary model"):
+            unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.float32)
+
+    def test_unary_model_lazy_default_compiles_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """By default (env var unset) a supported miss compiles lazily."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import gc_compile, unary_elementwise_gc
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", {})
+        model = unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.float32)
+        assert model is not None
+
+    def test_warm_stamp_roundtrip(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """write_warm_stamp then warm_stamp_matches for the same context."""
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
+        assert not gc_compile.warm_stamp_matches()
+        gc_compile.write_warm_stamp()
+        assert gc_compile.warm_stamp_matches()
+
+    def test_matmul_model_adopts_warm_stamp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A lazy miss with a matching stamp adopts via one batched sweep."""
+        from max._interpreter_ops import gc_compile, matmul_gc
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
+        gc_compile.write_warm_stamp()
+
+        cache: dict[str, object] = {}
+        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", cache)
+        monkeypatch.setattr(matmul_gc, "_swept", False)
+        key = matmul_gc.CompilationTarget(
+            matmul_gc._GRAPH_BASE_NAME, CPU(), DType.float32
+        ).graph_name
+        calls: list[str] = []
+
+        def fake_sweep() -> None:
+            calls.append("sweep")
+            cache[key] = object()
+
+        monkeypatch.setattr(matmul_gc, "compile_matmul_sweep", fake_sweep)
+        monkeypatch.setattr(
+            matmul_gc,
+            "_compile_matmul_target",
+            lambda target: calls.append("per_target"),
+        )
+        matmul_gc.matmul_model(CPU(), DType.float32)
+        # Adopted the batched warm; did not fall back to per-target compile.
+        assert calls == ["sweep"]
+
+    def test_matmul_model_no_stamp_compiles_per_target(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Without a stamp, a lazy miss compiles the single target."""
+        from max._interpreter_ops import gc_compile, matmul_gc
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        # Fresh cache dir with no stamp written.
+        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
+        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
+        monkeypatch.setattr(matmul_gc, "_swept", False)
+        calls: list[str] = []
+
+        def fake_per_target(target: object) -> object:
+            calls.append("per_target")
+            return object()
+
+        monkeypatch.setattr(
+            matmul_gc, "compile_matmul_sweep", lambda: calls.append("sweep")
+        )
+        monkeypatch.setattr(
+            matmul_gc, "_compile_matmul_target", fake_per_target
+        )
+        matmul_gc.matmul_model(CPU(), DType.float32)
+        assert calls == ["per_target"]
+
+    def test_unary_model_adopts_warm_stamp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A lazy unary miss with a matching stamp adopts via batched sweep."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import gc_compile, unary_elementwise_gc
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
+        gc_compile.write_warm_stamp()
+
+        cache: dict[str, object] = {}
+        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", cache)
+        monkeypatch.setattr(unary_elementwise_gc, "_swept", False)
+        key = unary_elementwise_gc._graph_name(mo.ExpOp, CPU(), DType.float32)
+        calls: list[str] = []
+
+        def fake_sweep() -> None:
+            calls.append("sweep")
+            cache[key] = object()
+
+        monkeypatch.setattr(
+            unary_elementwise_gc, "compile_unary_sweep", fake_sweep
+        )
+        monkeypatch.setattr(
+            unary_elementwise_gc,
+            "_compile_unary_target",
+            lambda op, dev, dt: calls.append("per_target"),
+        )
+        unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.float32)
+        assert calls == ["sweep"]
+
+    def test_cache_dir_from_derived_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The stamp dir is MODULAR_DERIVED_PATH/cache/.max_cache, else None."""
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        assert gc_compile._cache_dir() == tmp_path / "cache" / ".max_cache"
+
+        monkeypatch.delenv("MODULAR_DERIVED_PATH")
+        assert gc_compile._cache_dir() is None
+
+    def test_context_signature_stable(self) -> None:
+        """The signature is stable and pins count + host/accelerator arch.
+
+        Also a regression guard: it must not raise on a CPU-only host
+        (accelerator_architecture_name raises for a CPU device).
+        """
+        from max._interpreter_ops import gc_compile
+
+        sig = gc_compile._context_signature()
+        assert sig == gc_compile._context_signature()
+        assert "accelerators=" in sig and "cpu=" in sig

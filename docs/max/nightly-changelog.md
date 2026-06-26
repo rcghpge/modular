@@ -10,6 +10,18 @@ This version is still a work in progress.
 
 ## MAX models
 
+- Added Laguna (`LagunaForCausalLM`), poolside's decoder-only sparse-MoE
+  language model. It uses sigmoid expert routing with a per-expert
+  score-correction bias, a per-element softplus attention-output gate, and
+  per-head QK-RMSNorm. Verified on `poolside/Laguna-M.1-NVFP4` (131B,
+  compressed-tensors NVFP4 experts) on a single B200, including chat-template
+  serving and tool calling. On GSM8K (0-shot) it scores ~0.81 with light
+  sampling (`temperature=0.3` plus a frequency penalty); greedy decoding
+  (`temperature=0`) is **not** recommended for this NVFP4 checkpoint, since it
+  falls into repetition loops on a sizable fraction of prompts (dropping GSM8K
+  to ~0.59). An experimental, not-yet-accuracy-validated FP8 KV cache (unscaled
+  cast) is available behind `--kv-cache-format float8_e4m3fn`; the default bf16
+  KV cache is the validated configuration.
 - Added DiffusionGemma (`DiffusionGemmaForBlockDiffusion`), an
   encoder/decoder block-diffusion text model that generates 256-token
   blocks per step via an inner denoising loop. Supports NVFP4 and bfloat16
@@ -26,8 +38,47 @@ This version is still a work in progress.
 
 ## MAX framework
 
+- The graph compiler now fuses query/key RMSNorm followed by rotate-half RoPE
+  into a single `rms_norm_rope` GPU kernel even when the RMSNorm is written "in
+  float32" — that is, when a `bfloat16`/`float16` activation is upcast to
+  `float32`, normalized, and cast back before RoPE. Previously the intervening
+  `float32`-to-`bfloat16` downcast blocked the fusion and the idiom compiled to
+  several separate elementwise kernels. The fused kernel now decouples its
+  output dtype from its input dtype, so the reduction and weight/epsilon scaling
+  stay in `float32` and only the result is produced in the activation dtype; the
+  input upcast is absorbed by ordinary prologue fusion. Numerics match the
+  unfused graph (the normalized value is rounded to the output dtype before
+  RoPE).
+- Added a `poison-all` mode to the `MODULAR_DEBUG_DEVICE_ALLOCATOR` environment
+  variable for debugging uninitialized device-memory reads. Unlike the existing
+  `uninitialized-poison` (which fills graph tensors with a type-aware, non-NaN
+  sentinel and is detected by an instrumented load check), `poison-all` fills
+  *every* memory-manager allocation — including internal scratch and other
+  non-tensor buffers — with a raw byte (default `0xFF`, a NaN pattern for
+  `float32`/`bfloat16`), so an uninitialized read propagates NaN into the output
+  and trips existing differential tests without any kernel instrumentation. The
+  fill byte is configurable via
+  `MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_POISON_PATTERN`, and the mode composes
+  with `out-of-bounds` redzone checks. Because the NaN can also surface on
+  legitimately-uninitialized allocation padding, it is a manual debugging aid
+  rather than a default.
+
 ### Inference server
 
+- Reduced per-iteration latency for structured-output (constrained decoding)
+  requests on speculative-decode models. The overlap pipeline now enqueues the
+  asynchronous FSM-advance and bitmask compute once the next iteration's batch
+  order is known, so the bitmask is written directly in the consuming batch's
+  row order. This removes both the host-synchronization point that previously
+  stalled the GPU-feeding thread when the batch composition changed between
+  iterations and the device-side gather that earlier reconciled the order. The
+  improvement applies across all six supported speculative-decode architectures
+  (Kimi K2.5 MLA and MHA, DeepseekV3 MTP and Eagle3, Gemma 4 MTP,
+  and EAGLE Llama 3).
+- Constrained decoding (structured output) now unpacks the grammar bitmask on
+  the GPU. The packed `int32` bitmask is transferred to device as-is and
+  unpacked and applied to the logits in a single fused kernel
+  (`apply_packed_bitmask`), instead of unpacking to a `bool` tensor on the CPU.
 - Fixed image requests failing with a 400 or 500 across all vision models. Two
   bugs in the shared image-resolution layer: `data:` URIs with unpadded or
   URL-safe base64 (sent routinely by clients and relays) were rejected by the
@@ -73,8 +124,48 @@ This version is still a work in progress.
 - Added `maxserve.cache.disk_blocks_read` and
   `maxserve.cache.disk_blocks_written` counters, reporting KV blocks read from
   and written to the disk cache tier when tiered (disk) KV caching is enabled.
+- Added opt-in SHA-256 KV-cache block hashing. A new `kv_cache_hash_algo`
+  field on `KVCacheConfig` (default `ahash64`; opt-in `sha256` and
+  `sha256_64`) threads through the pipeline and serve config, selecting a
+  Mojo `block_hasher_sha256` and the matching `hash_request_tokens` SHA-256
+  path. Chat-completion requests also accept an optional `cache_salt` field
+  that scopes prefix-cache reuse to a single per-request KV chain. Default
+  behavior is the same as the existing `ahash64` path.
+- Added opt-in SHA-256 KV-cache block hashes through host-tier KV
+  connectors. `NullConnector`, `LocalConnector`, and `TieredConnector` now
+  accept 32-byte SHA-256 digests alongside 64-bit `ahash64` hashes. The
+  `KVConnector` Protocol's `load` and `offload` take `Sequence[bytes]`
+  block hashes and a `bytes | None` parent-sequence hash; the block
+  manager coerces legacy `ahash64` int hashes to bytes (8-byte
+  big-endian, signed) at the boundary, so a connector implementation only
+  ever sees one hash shape. Connectors advertise what they accept via a
+  new `supported_hash_algos: frozenset[KVHashAlgo]` property (default
+  `frozenset({"ahash64"})`), which the block manager validates against
+  the configured `kv_hash_algo` at startup so a mismatch fails fast with
+  a clear remediation message. The disk tier names files `<hex>.bin` (16
+  hex chars for 64-bit hashes, 64 hex chars for SHA-256 digests) and pins
+  the algo in a `kv-disk-cache.meta.json` sidecar to refuse cross-algo
+  reuse of a cache directory. `KVHashAlgo` is re-exported from
+  `max.nn.kv_cache` for downstream consumers. Default behavior is
+  unchanged.
+- Extended SHA-256 KV-cache block hashes to the dKV (`DKVConnector`)
+  external tier. `DKVConnector.supported_hash_algos` now advertises
+  `frozenset({"ahash64", "sha256", "sha256_64"})`, and `load`/`offload`
+  accept both 8-byte (`ahash64` / `sha256_64`) and 32-byte (full
+  `sha256`) block hashes; 32-byte digests are truncated to their first
+  8 bytes at the boundary into the unchanged `dkv_connector` Rust
+  client, which continues to carry a `uint64 seq_hash` on the wire.
+  Truncation is byte-identical to the existing `sha256_64` algorithm,
+  so configuring MAX with `sha256` or `sha256_64` produces the same
+  dKV key for the same logical block — no change to the dkv wire
+  format, stored block identity, or `DKVExternalBlockMetadata`
+  orchestrator hint shape. Default behavior is unchanged.
 
 ### `max` CLI
+
+- The entrypoint for the CLI, formerly `max.entrypoints`, has been marked as
+  private and moved to `max._entrypoints`. The CLI is still a public facing API,
+  but the code within it is not.
 
 ### Python API
 
@@ -113,9 +204,40 @@ This version is still a work in progress.
   `EagerRealizationContext(use_interpreter=...)` argument is deprecated in
   favor of `EagerRealizationContext(executor=...)`.
 
+- The eager interpreter now compiles its matmul and unary-elementwise
+  graph-compiler models lazily, per target on first dispatch, by default —
+  bounding compile cost to the targets a program uses instead of JIT-compiling
+  the full kernel library at import. Set `MAX_EAGER_OP_PRECOMPILE=1` to
+  precompile the full matrix at import instead.
+
+- Added a `max warm-interpreter-cache` command that batch-compiles the full
+  eager interpreter model matrix into the on-disk cache for the current
+  machine's devices and drops a stamp. A later lazy eager process on the same
+  device set adopts the warm — one batched cache load instead of compiling each
+  target on first use — so later programs start warm. Run it as a provisioning
+  step (for example a Dockerfile `RUN`) on the target hardware. Pure
+  optimization: if skipped, or on a different device set, dispatch compiles each
+  target lazily.
+
+- Added `max.experimental.nn.subgraphable` for `Module` subgraph compilation: a
+  repeated block (via the `@subgraphable` class decorator, or the
+  `subgraphable(layer)(x)` call form) lowers to one shared subgraph reused per
+  call. Opt out per compile with `Module.compile(..., allow_subgraphs=False)`.
+
 - `max.nn.hooks.PrintHook` now supports `max.experimental.nn.Module`.
 
 - Added `F.print`, which supports both single-device and multi-device tensors.
+
+- Added `max.graph.default_custom_extensions()` and the
+  `default_custom_extensions_scope()` context manager. Paths registered as
+  defaults are merged into the `custom_extensions` of every new `Graph`, so a
+  backend can make its custom-op kernel library reachable from graphs built
+  without an explicit `custom_extensions=` — including the eager-realization
+  graph that backs `max.experimental` tensors. Empty by default.
+
+- Moved the `max.entrypoints` package to be private. In doing so, we
+  deprecated the `max.entrypoints.LLM` API and we'll introduce a new API
+  for offline inference in a future release.
 
 ### C API
 
@@ -131,6 +253,11 @@ This version is still a work in progress.
 
 ## MAX kernels
 
+- Apple silicon GPU support for running MAX models has been extended to M1 and
+  M2 systems. Previously, the optimized matrix multiplication kernels for Apple
+  silicon GPUs only returned correct results on M3 and newer systems. That has
+  now been fixed for M1 and M2 systems, allowing many common MAX models to run
+  correctly on them.
 - The split-K decode attention kernel for Apple GPUs is now the default for
   token-generation attention, covering paged-KV-cache MHA and GQA decode for
   head dims that are a multiple of 32. It was previously opt-in;

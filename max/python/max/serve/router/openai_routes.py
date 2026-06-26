@@ -701,6 +701,24 @@ class OpenAIChatResponseGenerator(
             if self.parse_tool_calls:
                 try:
                     parsed = self.parser.parse_complete(response_message)
+                    # Schema-aware argument coercion (parsers that opt in, e.g.
+                    # MiniMax-M3, whose bare-text XML loses scalar types).
+                    # No-op for parsers without `coerce_arguments`.
+                    coerce_args = getattr(self.parser, "coerce_arguments", None)
+                    if coerce_args is not None and self._tool_schemas:
+                        for tc in parsed.tool_calls:
+                            tc_schema = self._tool_schemas.get(tc.name)
+                            if not tc_schema:
+                                continue
+                            try:
+                                tc_args = json.loads(tc.arguments)
+                            except (JSONDecodeError, ValueError):
+                                continue
+                            if isinstance(tc_args, dict):
+                                tc.arguments = json.dumps(
+                                    coerce_args(tc_args, tc_schema),
+                                    ensure_ascii=False,
+                                )
                     if parsed.tool_calls:
                         if self._tool_schemas:
                             log_tool_call_conformance(
@@ -941,12 +959,23 @@ class _ParsedChatRequest(NamedTuple):
     decoded_images: list[Image.Image]
 
 
-def _coerce_long_side_pixel(value: Any) -> int | None:
-    """Coerces a ``max_long_side_pixel`` hint to a positive int, else ``None``."""
+def _coerce_positive_int(value: Any) -> int | None:
+    """Coerces a value to a positive int, else ``None``."""
     if isinstance(value, bool) or value is None:
         return None
     try:
         coerced = int(value)
+    except (TypeError, ValueError):
+        return None
+    return coerced if coerced > 0 else None
+
+
+def _coerce_positive_float(value: Any) -> float | None:
+    """Coerces a value to a positive float, else ``None``."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        coerced = float(value)
     except (TypeError, ValueError):
         return None
     return coerced if coerced > 0 else None
@@ -1097,7 +1126,7 @@ async def openai_parse_chat_completion_request(
                         # Carry the optional sizing hint onto the placeholder.
                         message_content.append(
                             ImageContentPart(
-                                max_long_side_pixel=_coerce_long_side_pixel(
+                                max_long_side_pixel=_coerce_positive_int(
                                     image_url.get("max_long_side_pixel")
                                 )
                             )
@@ -1105,9 +1134,24 @@ async def openai_parse_chat_completion_request(
                     else:
                         message_content.append(dict(content_part))
                 elif part_type == "video_url":
-                    video_refs.append(AnyUrl(content_part["video_url"]["url"]))
+                    video_url = content_part["video_url"]
+                    video_refs.append(AnyUrl(video_url["url"]))
                     if wrap_content:
-                        message_content.append(VideoContentPart())
+                        # Carry the optional sampling/sizing hints onto the
+                        # placeholder.
+                        message_content.append(
+                            VideoContentPart(
+                                fps=_coerce_positive_float(
+                                    video_url.get("fps")
+                                ),
+                                max_frames=_coerce_positive_int(
+                                    video_url.get("max_frames")
+                                ),
+                                max_long_side_pixel=_coerce_positive_int(
+                                    video_url.get("max_long_side_pixel")
+                                ),
+                            )
+                        )
                     else:
                         message_content.append(dict(content_part))
                 elif part_type == "text":
@@ -1405,6 +1449,8 @@ async def openai_create_chat_completion(
                         response_format_schema=response_format_schema,
                         tools=grammar_tools,
                         tokenizer=pipeline.tokenizer,
+                        backend=pipeline_config.sampling.structured_output_backend,
+                        tool_choice=completion_request.tool_choice,
                     )
                 # Create the response format.
                 # Note:
@@ -1554,6 +1600,7 @@ async def openai_create_chat_completion(
                 request, completion_request.target_endpoint
             ),
             dkv_cache_hint=completion_request.dkv_cache_hint,
+            cache_salt=completion_request.cache_salt,
             chat_template_options=chat_template_options,
         )
 
@@ -2392,6 +2439,7 @@ async def openai_create_completion(
                     request, completion_request.target_endpoint
                 ),
                 dkv_cache_hint=completion_request.dkv_cache_hint,
+                cache_salt=completion_request.cache_salt,
             )
             token_requests.append(tgr)
 
