@@ -1882,10 +1882,13 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                 StringRef debugLevel,
                                 int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::loadFunction", TRACY_COLOR_PURPLE);
-  DeviceFunctionCacheEntryRef entry =
-      device().findInFunctionCache(Device::FunctionCacheKey(
-          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
-          optimizationLevel, maxDynamicSharedBytes));
+  Device::FunctionCacheKey key{
+      /*name=*/Device::FunctionCacheKey::moduleCacheName(moduleName, code),
+      /*functionName=*/functionName.str(),
+      /*debugLevel=*/debugLevel.str(),
+      /*maxDynamicSharedBytes=*/maxDynamicSharedBytes,
+      /*optimizationLevel=*/optimizationLevel};
+  DeviceFunctionCacheEntryRef entry = device().findInFunctionCache(key);
   if (entry.getPointer() != nullptr) {
     CUDAModuleFunctionRef moduleFunc =
         CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
@@ -1933,11 +1936,7 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
   auto moduleFunc = CUDAModuleFunctionRef::create(
       std::string(functionName), this->cudaDriver(), module, function);
   CUDADeviceFunctionRef result;
-  entry = device().insertInFunctionCache(
-      Device::FunctionCacheKey(
-          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
-          optimizationLevel, maxDynamicSharedBytes),
-      *moduleFunc);
+  entry = device().insertInFunctionCache(key, *moduleFunc);
   result = CUDADeviceFunctionRef::create(
       *this,
       CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release())));

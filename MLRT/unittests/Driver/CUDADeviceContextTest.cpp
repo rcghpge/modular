@@ -18,6 +18,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace M::Driver;
 using M::ErrorOr;
@@ -110,6 +111,75 @@ static const char *vecAddPtx = R"PTX(
 	shr.u32 	%r27, %r24, 8;
 	st.u8 	[%rd1+1], %r27;
 $L__BB0_2:
+	ret;
+}
+)PTX";
+
+// One PTX module exposing two distinct entry points. `kernel_a` writes 1.0 to
+// every element; `kernel_b` writes 2.0. Generated with `nvcc -arch=sm_75 -ptx`
+// from two trivial kernels.
+static const char *twoKernelPtx = R"PTX(
+.version 8.8
+.target sm_75
+.address_size 64
+
+.visible .entry kernel_a(
+	.param .u64 kernel_a_param_0,
+	.param .u64 kernel_a_param_1
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<5>;
+	.reg .b64 	%rd<9>;
+
+	ld.param.u64 	%rd2, [kernel_a_param_0];
+	ld.param.u64 	%rd3, [kernel_a_param_1];
+	mov.u32 	%r1, %ctaid.x;
+	mov.u32 	%r2, %ntid.x;
+	mul.wide.u32 	%rd4, %r1, %r2;
+	mov.u32 	%r3, %tid.x;
+	cvt.u64.u32 	%rd5, %r3;
+	add.s64 	%rd1, %rd4, %rd5;
+	setp.ge.s64 	%p1, %rd1, %rd3;
+	@%p1 bra 	$L__BB0_2;
+
+	cvta.to.global.u64 	%rd6, %rd2;
+	shl.b64 	%rd7, %rd1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	mov.u32 	%r4, 1065353216;
+	st.global.u32 	[%rd8], %r4;
+
+$L__BB0_2:
+	ret;
+}
+
+.visible .entry kernel_b(
+	.param .u64 kernel_b_param_0,
+	.param .u64 kernel_b_param_1
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<5>;
+	.reg .b64 	%rd<9>;
+
+	ld.param.u64 	%rd2, [kernel_b_param_0];
+	ld.param.u64 	%rd3, [kernel_b_param_1];
+	mov.u32 	%r1, %ctaid.x;
+	mov.u32 	%r2, %ntid.x;
+	mul.wide.u32 	%rd4, %r1, %r2;
+	mov.u32 	%r3, %tid.x;
+	cvt.u64.u32 	%rd5, %r3;
+	add.s64 	%rd1, %rd4, %rd5;
+	setp.ge.s64 	%p1, %rd1, %rd3;
+	@%p1 bra 	$L__BB1_2;
+
+	cvta.to.global.u64 	%rd6, %rd2;
+	shl.b64 	%rd7, %rd1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	mov.u32 	%r4, 1073741824;
+	st.global.u32 	[%rd8], %r4;
+
+$L__BB1_2:
 	ret;
 }
 )PTX";
@@ -230,6 +300,57 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
   // ensuring that all pending operations have terminated.
   EXPECT_NO_ERR(ctx->synchronize());
   EXPECT_EQ(ctx->getNumReferences(), 1);
+}
+
+// Loading two distinct entry points from the same PTX/cubin blob must return
+// two distinct functions. Before the fix the cache key omitted the function
+// name (and, with no module name, keyed on the blob bytes alone), so the second
+// load collided with the first and silently returned `kernel_a`. The empty
+// module name exercises that blob-keyed path.
+TEST_F(CUDADeviceContextTest, LoadFunctionDistinctEntryPointsSameBlob) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSERT_TRUE(ctx);
+
+  // Load both kernels from the same blob with an empty module name.
+  ASSIGN_NO_ERR(DeviceFunctionRef, funcA,
+                ctx->loadFunction(/*moduleName=*/"", "kernel_a", twoKernelPtx));
+  ASSIGN_NO_ERR(DeviceFunctionRef, funcB,
+                ctx->loadFunction(/*moduleName=*/"", "kernel_b", twoKernelPtx));
+
+  // The two handles must resolve to their requested entry points. Pre-fix,
+  // funcB would alias funcA and report "kernel_a" here.
+  EXPECT_EQ(funcA->name(), "kernel_a");
+  EXPECT_EQ(funcB->name(), "kernel_b");
+
+  // Execute both and confirm they write their distinct constants (1.0 vs 2.0).
+  constexpr int64_t length = 256;
+  constexpr uint32_t blockDim = 32;
+  constexpr size_t bytes = length * sizeof(float);
+
+  auto runAndCheck = [&](DeviceFunctionRef &func, float expected) {
+    ASSIGN_NO_ERR(DeviceBufferRef, outDevice, ctx->enqueueCreateBuffer(bytes));
+    ASSERT_TRUE(outDevice);
+
+    std::vector<float> outHost(length, -1.0f);
+    EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*outDevice, outHost.data()));
+
+    void *outPtr = outDevice->ptr();
+    void *args[] = {&outPtr, (void *)&length};
+    size_t argSizes[] = {sizeof(outPtr), sizeof(length)};
+    EXPECT_NO_ERR(ctx->enqueueFunctionExecDirect(
+        *func, length / blockDim, 1, 1, blockDim, 1, 1, 0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, sizeof(args) / sizeof(void *),
+        argSizes));
+    EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(outHost.data(), *outDevice));
+    EXPECT_NO_ERR(ctx->synchronize());
+
+    for (int64_t i = 0; i < length; ++i)
+      EXPECT_EQ(outHost[i], expected) << "at index " << i;
+  };
+
+  runAndCheck(funcA, 1.0f);
+  runAndCheck(funcB, 2.0f);
 }
 
 TEST_F(CUDADeviceContextTest, WrappedCuMemGetAddressRangeV2Works) {

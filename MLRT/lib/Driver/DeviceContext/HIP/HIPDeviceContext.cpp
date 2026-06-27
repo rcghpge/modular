@@ -1533,10 +1533,13 @@ HIPDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                StringRef debugLevel,
                                int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
-  DeviceFunctionCacheEntryRef entry =
-      device().findInFunctionCache(Device::FunctionCacheKey(
-          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
-          optimizationLevel, maxDynamicSharedBytes));
+  Device::FunctionCacheKey key{
+      /*name=*/Device::FunctionCacheKey::moduleCacheName(moduleName, code),
+      /*functionName=*/functionName.str(),
+      /*debugLevel=*/debugLevel.str(),
+      /*maxDynamicSharedBytes=*/maxDynamicSharedBytes,
+      /*optimizationLevel=*/optimizationLevel};
+  DeviceFunctionCacheEntryRef entry = device().findInFunctionCache(key);
   if (entry.getPointer() != nullptr) {
     HIPModuleFunctionRef moduleFunc =
         HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release()));
@@ -1565,11 +1568,7 @@ HIPDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
   auto moduleFunc = HIPModuleFunctionRef::create(
       std::string(functionName), this->hipDriver(), module, function);
   HIPDeviceFunctionRef result;
-  entry = device().insertInFunctionCache(
-      Device::FunctionCacheKey(
-          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
-          optimizationLevel, maxDynamicSharedBytes),
-      *moduleFunc);
+  entry = device().insertInFunctionCache(key, *moduleFunc);
   result = HIPDeviceFunctionRef::create(
       *this,
       HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release())));

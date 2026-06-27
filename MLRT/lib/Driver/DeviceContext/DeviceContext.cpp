@@ -26,6 +26,7 @@
 #include "Support/AlignedAlloc.h"
 #include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
+#include "Support/HashUtils.h"
 #include "Support/SymbolExport.h"
 #include "Target/DriverPlugin.h"
 #include "Virtual/VirtualDeviceContext.h"
@@ -451,6 +452,19 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
                  "  Metal information: " + metalError);
   }
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
+}
+
+std::string Device::FunctionCacheKey::moduleCacheName(StringRef moduleName,
+                                                      StringRef code) {
+  if (!moduleName.empty())
+    return moduleName.str();
+  // No module name: key on a short stable hash of the code instead of the blob
+  // itself. xxhash is non-cryptographic but the inputs are trusted compiler
+  // output and the rest of the key (function name, debug/opt/shared params)
+  // further disambiguates, so collision risk is negligible.
+  M::raw_xxhash128_stream hasher;
+  hasher << code;
+  return hasher.hashString();
 }
 
 DeviceFunctionCacheEntryRef

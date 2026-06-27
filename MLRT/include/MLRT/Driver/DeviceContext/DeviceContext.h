@@ -373,17 +373,34 @@ public:
 
   /// Function cache key for the function cache. This accounts for how the
   /// function is compiled including debug level and other properties.
+  ///
+  /// `name` identifies the loaded *module* (a caller-supplied module name, or a
+  /// fallback derived from the PTX/cubin blob when none is given).
+  /// `functionName` is the entry point resolved out of that module: it must be
+  /// part of the key so that two loads of the same blob with different
+  /// entry-point names do not collide and silently return the first function.
   struct FunctionCacheKey {
     std::string name;
+    std::string functionName = "";
     std::string debugLevel = "";
     int32_t maxDynamicSharedBytes = -1;
     int32_t optimizationLevel = -1;
 
     bool operator==(const FunctionCacheKey &other) const {
-      return name == other.name && debugLevel == other.debugLevel &&
+      return name == other.name && functionName == other.functionName &&
+             debugLevel == other.debugLevel &&
              maxDynamicSharedBytes == other.maxDynamicSharedBytes &&
              optimizationLevel == other.optimizationLevel;
     }
+
+    /// Derives the `name` field for a load. Returns `moduleName` when the
+    /// caller supplied one; otherwise returns a short stable hash of the
+    /// PTX/cubin blob rather than the blob itself, so the cache neither
+    /// copies/hashes/compares the whole blob on every lookup nor retains a
+    /// duplicate of it for the Device's lifetime. (The Mojo `load_function`
+    /// binding supplies no module name, so without this every call would key on
+    /// the full blob.)
+    static std::string moduleCacheName(StringRef moduleName, StringRef code);
   };
 
   // Internal implementation helpers for DeviceContexts.
@@ -1255,14 +1272,19 @@ private:
 namespace llvm {
 template <>
 struct DenseMapInfo<M::Driver::Device::FunctionCacheKey> {
+  // Empty and tombstone must be distinct from each other and from any real
+  // key. A real key always carries a non-empty `name` — `moduleCacheName`
+  // returns either the caller's module name or a hash of the code, never an
+  // empty string. Both sentinels leave `name` empty (and differ from each other
+  // in `functionName`), so neither can alias a real entry.
   static inline M::Driver::Device::FunctionCacheKey getEmptyKey() {
-    return {""};
+    return {/*name=*/"", /*functionName=*/""};
   }
   static inline M::Driver::Device::FunctionCacheKey getTombstoneKey() {
-    return {""};
+    return {/*name=*/"", /*functionName=*/"\x01__tombstone__"};
   }
   static unsigned getHashValue(const M::Driver::Device::FunctionCacheKey &val) {
-    return llvm::hash_combine(val.name, val.debugLevel,
+    return llvm::hash_combine(val.name, val.functionName, val.debugLevel,
                               val.maxDynamicSharedBytes, val.optimizationLevel);
   }
   static bool isEqual(const M::Driver::Device::FunctionCacheKey &lhs,
