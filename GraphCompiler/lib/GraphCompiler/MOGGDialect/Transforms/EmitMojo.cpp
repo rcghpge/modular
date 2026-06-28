@@ -259,15 +259,19 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     auto mojoText = state.builder.str() + state.structDefsBuilder.str();
 
     // Compute a base file name for the dump from the names of non-subgraph
-    // ModelOps. These correspond to user-visible model names. Falls back to
-    // "temp" when no such models are present.
+    // ModelOps (user-visible model names) joined by "+", or "graph" when there
+    // are none. Mirrors the `<names>.mo.mlir` stem pipeline_to_mo_graph.py
+    // writes, so the .mojo dump lands beside the source graph's stages.
     std::string baseFileName;
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      if (!modelOp.getIsSubgraph())
+      if (!modelOp.getIsSubgraph()) {
+        if (!baseFileName.empty())
+          baseFileName += "+";
         baseFileName += modelOp.getSymName().str();
+      }
     }
     if (baseFileName.empty())
-      baseFileName = "temp";
+      baseFileName = "graph";
 
     // Save the emitted Mojo code to a file if an IR dump directory is set
     // (via `MODULAR_DEBUG=ir-output-dir=<dir>` or the legacy `max.temps_dir`).

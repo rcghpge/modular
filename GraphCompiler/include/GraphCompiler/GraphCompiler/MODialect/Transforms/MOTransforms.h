@@ -43,6 +43,14 @@ namespace M::MO {
 /// The default of 20 matches the `max-debug.nan-check-stride` knob.
 std::unique_ptr<Pass> createNanCheckPass(uint64_t stride = 20);
 
+/// Creates the DumpStagePass, which writes the current IR as a stage dump named
+/// `<baseName>.<suffix>.mlir` from inside the pipeline. `baseName` is shared
+/// across the stages of one pipeline run: the first dump fills it from the
+/// non-subgraph GraphOp names while those ops still exist, and later dumps
+/// reuse it since lowering to MGP removes the GraphOps the stem derives from.
+std::unique_ptr<Pass>
+createDumpStagePass(std::string suffix, std::shared_ptr<std::string> baseName);
+
 } // namespace M::MO
 //
 

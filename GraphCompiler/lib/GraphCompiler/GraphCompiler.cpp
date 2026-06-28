@@ -70,11 +70,19 @@ void M::MO::buildJitPipeline(mlir::OpPassManager &pm) {
   pm.addPass(MGP::createOutlineModelsToCallables());
 }
 
+namespace {
+static void gcPipelineImpl(mlir::OpPassManager &pm,
+                           const GCPipelineOptions &opts, bool skipJit,
+                           bool dumpIntermediates = false);
+} // namespace
+
 void M::MO::registerGCPipeline() {
   mlir::PassPipelineRegistration<GCPipelineOptions>(
       "gc-pipeline", "Full graph-compiler pipeline (MO → MGP → JIT).",
       [](mlir::OpPassManager &pm, const GCPipelineOptions &opts) {
-        buildGCPipeline(pm, opts);
+        // Enable dumps here so buildGCPipeline stays dump-free for cache keys.
+        gcPipelineImpl(pm, opts, /*skipJit=*/false,
+                       /*dumpIntermediates=*/!getMaxIRDumpDir().empty());
       });
 }
 
@@ -83,7 +91,8 @@ void M::MO::registerGCPipelineThroughEmitMojo() {
       "gc-pipeline-pre-jit",
       "Graph compiler through emit-mojo (MO → MGP → emit-mojo; no JIT).",
       [](mlir::OpPassManager &pm, const GCPipelineOptions &opts) {
-        buildGCPipelineThroughEmitMojo(pm, opts);
+        gcPipelineImpl(pm, opts, /*skipJit=*/true,
+                       /*dumpIntermediates=*/!getMaxIRDumpDir().empty());
       });
 }
 
@@ -444,46 +453,25 @@ namespace {
 
 /// Unified gc-pipeline implementation.
 ///
-/// Builds all stage option structs from `opts` once. Each stage is driven by
-/// `buildOrRunStage`: when `dumpIntermediates` is true and `moduleOp` is set,
-/// it creates a fresh PassManager per stage, runs it against `moduleOp`, and
-/// writes intermediate IR identified by `dumpSuffix`; otherwise it appends
-/// passes directly to `pm`.
-///
-/// Callers:
-///   - buildGCPipeline / buildGCPipelineThroughEmitMojo: pass a null
-///     `moduleOp`; `pm` is populated without being run.
-///   - runGCPipeline: passes a non-null `moduleOp`; `pm` is populated and
-///     then run by the caller (or left empty when `dumpIntermediates` is true
-///     and each stage already ran internally).
-static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
-                                    const GCPipelineOptions &opts, bool skipJit,
-                                    ModuleOp moduleOp = {},
-                                    bool dumpIntermediates = false) {
+/// Builds all stage option structs from `opts` once, then appends every stage's
+/// passes to `pm`. When `dumpIntermediates` is set, a DumpStagePass is
+/// interleaved before the first stage and after each one, so running `pm`
+/// writes the per-stage IR. `pm` is only populated here; the caller runs it.
+static void gcPipelineImpl(mlir::OpPassManager &pm,
+                           const GCPipelineOptions &opts, bool skipJit,
+                           bool dumpIntermediates) {
 
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
-  // Compute a base file name for intermediate dumps from the names of
-  // non-subgraph GraphOps. These correspond to user-visible model names.
-  // Falls back to "temp" when no such graphs are present.
-  std::string baseFileName;
-  if (moduleOp) {
-    for (Operation &op : moduleOp.getOps()) {
-      if (auto graphOp = dyn_cast<GraphOp>(op)) {
-        if (!graphOp.getIsSubgraph())
-          baseFileName += graphOp.getSymName().str();
-      }
-    }
-  }
-  if (baseFileName.empty())
-    baseFileName = "temp";
+  // Shared stem for intermediate dumps. The first DumpStagePass (the "mo" front
+  // dump below) fills it from the user-visible (non-subgraph) model names while
+  // the GraphOps still exist; later stage dumps reuse it.
+  auto dumpBaseName = std::make_shared<std::string>();
 
   // Dump the MO input before any pipeline stages run.
-  if (moduleOp && dumpIntermediates) {
-    M::writeIntermediateFileIfRequested("mo", moduleOp, /*options=*/nullptr,
-                                        BufferRef(), baseFileName);
-  }
+  if (dumpIntermediates)
+    pm.addPass(MO::createDumpStagePass("mo", dumpBaseName));
 
   // --- mo-pipeline options ---
   MoPipelineOptions moOpts;
@@ -543,85 +531,58 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
     jitOpts.debugKGENStubs = opts.debugKGENStubs;
   }
 
-  // Invokes `build` to populate a pass manager for one pipeline stage.
-  // When dumping: creates a fresh PM, runs it against `moduleOp`, then writes
-  // intermediate IR tagged with `dumpSuffix` (skipped when empty).
-  // Otherwise: appends passes directly to the shared `pm`.
-  auto buildOrRunStage = [&](auto &&build,
-                             const std::string &dumpSuffix) -> LogicalResult {
-    if (!moduleOp || !dumpIntermediates) {
-      build(pm);
-      return success();
-    }
-
-    auto stagePM = mlir::PassManager::on<ModuleOp>(
-        moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
-    build(stagePM);
-    if (failed(stagePM.run(moduleOp)))
-      return failure();
-
-    if (!dumpSuffix.empty()) {
-      M::writeIntermediateFileIfRequested(dumpSuffix, moduleOp,
-                                          /*options=*/nullptr, BufferRef(),
-                                          baseFileName);
-    }
-
-    return success();
+  // Appends one pipeline stage's passes to `pm`, then (when dumping) a
+  // DumpStagePass that writes the stage's IR under `dumpSuffix`.
+  auto buildStage = [&](auto &&build, const std::string &dumpSuffix) {
+    build(pm);
+    if (dumpIntermediates && !dumpSuffix.empty())
+      pm.addPass(MO::createDumpStagePass(dumpSuffix, dumpBaseName));
   };
 
   // --- mo-pipeline ---
-  if (failed(buildOrRunStage([&](auto &p) { buildMoPipeline(p, moOpts); },
-                             "mo-pre-mogg")))
-    return failure();
+  buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-mogg");
 
   // --- mo-to-mogg ---
-  if (failed(buildOrRunStage(
-          [&](auto &p) {
-            p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
-          },
-          "mogg")))
-    return failure();
+  buildStage(
+      [&](auto &p) {
+        p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
+      },
+      "mogg");
 
   // --- mogg-pipeline (+ optional nan-check) ---
   // Insert NaN/Inf checks at compiled region boundaries. Runs after all fusion
   // passes so checks sit between already-fused compiled regions. The pass
   // creates mo.custom ops and lowers them to MOGG kernels in-place.
-  if (failed(buildOrRunStage(
-          [&](auto &p) {
-            buildMoggPipeline(p, moggOpts);
-            if (opts.nanCheck)
-              p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
-            // Python tracebacks live in OpaqueLocs, which cannot be
-            // printed; convert them to FusedLocs so the dump carries the
-            // call sites. Limit to dumpIntermediates because the conversion
-            // strips the OpaqueLocs that the assert handling in
-            // buildMgpPipeline reads.
-            if (moduleOp && dumpIntermediates)
-              p.addPass(MGP::createAttachPythonStackTraces());
-          },
-          "mogg-pre-mgp")))
-    return failure();
+  buildStage(
+      [&](auto &p) {
+        buildMoggPipeline(p, moggOpts);
+        if (opts.nanCheck)
+          p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
+        // Python tracebacks live in OpaqueLocs, which cannot be
+        // printed; convert them to FusedLocs so the dump carries the
+        // call sites. Limit to dumpIntermediates because the conversion
+        // strips the OpaqueLocs that the assert handling in
+        // buildMgpPipeline reads.
+        if (dumpIntermediates)
+          p.addPass(MGP::createAttachPythonStackTraces());
+      },
+      "mogg-pre-mgp");
 
   // --- mogg-to-mgp ---
-  if (failed(buildOrRunStage(
-          [&](auto &p) { p.addPass(MGP::createMOGGToMGP(moToPrimOpts)); },
-          "mgp-pre-pipeline")))
-    return failure();
+  buildStage([&](auto &p) { p.addPass(MGP::createMOGGToMGP(moToPrimOpts)); },
+             "mgp-pre-pipeline");
 
   // --- mgp-pipeline + jit + jit-pipeline ---
-  if (failed(buildOrRunStage(
-          [&](auto &p) {
-            buildMgpPipeline(p, mgpOpts);
-            if (!skipJit) {
-              p.addPass(MOGG::createJitCompileKernels(jitOpts));
-              p.addPass(MOGG::createStripKernelDecls());
-              buildJitPipeline(p);
-            }
-          },
-          "mgp")))
-    return failure();
-
-  return success();
+  buildStage(
+      [&](auto &p) {
+        buildMgpPipeline(p, mgpOpts);
+        if (!skipJit) {
+          p.addPass(MOGG::createJitCompileKernels(jitOpts));
+          p.addPass(MOGG::createStripKernelDecls());
+          buildJitPipeline(p);
+        }
+      },
+      "mgp");
 }
 
 } // namespace
@@ -634,12 +595,12 @@ static LogicalResult gcPipelineImpl(mlir::OpPassManager &pm,
 
 void M::MO::buildGCPipeline(mlir::OpPassManager &pm,
                             const GCPipelineOptions &opts) {
-  (void)gcPipelineImpl(pm, opts, /*skipJit=*/false);
+  gcPipelineImpl(pm, opts, /*skipJit=*/false);
 }
 
 void M::MO::buildGCPipelineThroughEmitMojo(mlir::OpPassManager &pm,
                                            const GCPipelineOptions &opts) {
-  (void)gcPipelineImpl(pm, opts, /*skipJit=*/true);
+  gcPipelineImpl(pm, opts, /*skipJit=*/true);
 }
 
 LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
@@ -647,12 +608,9 @@ LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
                                    bool dumpIntermediates) {
   auto pm = mlir::PassManager::on<ModuleOp>(
       moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
-  // gcPipelineImpl either runs staged PMs directly (leaving `pm` empty) or
-  // populates `pm` for a single-shot run. Either way, running `pm` after is
-  // correct: it is a no-op when the staged path already executed everything.
-  if (failed(gcPipelineImpl(pm, opts, /*skipJit=*/false, moduleOp,
-                            dumpIntermediates)))
-    return failure();
+  // gcPipelineImpl populates `pm`; when dumping, it interleaves DumpStagePasses
+  // that write each stage's IR as `pm` runs.
+  gcPipelineImpl(pm, opts, /*skipJit=*/false, dumpIntermediates);
   return pm.run(moduleOp);
 }
 
