@@ -2950,6 +2950,11 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
     MojoValue asyncUnpackFunc{kFnUnpackDeviceCtx};
     unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((input))});
 
+  } else if (isa<MGP::ContextType>(inputType)) {
+
+    MojoValue asyncUnpackFunc{kFnUnpackStateCtx};
+    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((input))});
+
   } else {
 
     auto unpackPrimDecl =

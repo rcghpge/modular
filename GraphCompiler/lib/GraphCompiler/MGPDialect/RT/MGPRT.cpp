@@ -31,23 +31,6 @@ using namespace M::MLRT;
 // Helpers
 //===----------------------------------------------------------------------===//
 
-/**
-The following assertion is necessary as long as we are passing StateContext from
-Mojo to C++. Even if we are passing references, certain MGP primitives in Mojo
-currently expect the StateContext to be passed as a const reference. This is
-dangerous because the Mojo code could try to dereference it.
-
-Instead, we should use the aliases that are defined in Mojo. Everything is an
-OpaquePointer which is guaranteed to be safe and not to be dereferenced by the
-Mojo.
-
-TLDR: Mojo and C++ should communicate with only native types like int, bool and
-void*.
- */
-static_assert(
-    sizeof(StateContext) == 16,
-    "Expected StateContext to be 16 bytes wide to match the Mojo equivalent");
-
 /// An opaque wrapper around a pointer to a T.
 template <typename T>
 struct AsyncRTWrapper {
@@ -123,21 +106,15 @@ MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext &stateCtx) {
 
 /// This is the C++ implementation of mgp.int.cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_SetCachedInt(size_t bufferSlot,
-                    AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync,
-                    size_t value) {
-  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
-  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
-  stateCtx.emplaceStateSlot<IntStateSlot>(bufferSlot,
-                                          /*numBuffers=*/0, value);
+MGP_RT_SetCachedInt(size_t bufferSlot, StateContext *stateCtx, size_t value) {
+  stateCtx->emplaceStateSlot<IntStateSlot>(bufferSlot,
+                                           /*numBuffers=*/0, value);
 }
 
 /// This is the C++ implementation of mgp.int.get_cached.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT size_t MGP_RT_GetCachedInt(
-    size_t bufferSlot, AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync) {
-  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
-  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
-  auto &slot = stateCtx.getStateSlot(bufferSlot);
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT size_t
+MGP_RT_GetCachedInt(size_t bufferSlot, StateContext *stateCtx) {
+  auto &slot = stateCtx->getStateSlot(bufferSlot);
   return slot.get<IntStateSlot>().getValue();
 }
 
@@ -174,14 +151,11 @@ MGP_RT_ListPopulate(AsyncRTWrapper<GML::List> asyncList, void **dataPtr,
 /// This is the new C++ implementation of the mgp.buffer.get_cached primitive.
 /// The old one is not prefixed with TMP_.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot,
-                           AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync,
+TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx,
                            size_t *size, void **data) {
-  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
-  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
-
-  auto &stateSlot = stateCtx.getStateSlot(bufferSlot);
+  auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
   ErrorOr<TensorBufferRef &> errOr = stateSlot.getBufferRef(/*bufferIndex=*/0);
+
   /// TODO: Support errors in MGPRT
   if (errOr) {
   }
@@ -194,11 +168,8 @@ TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-TMP_MGP_RT_RemoveCachedBuffer(size_t bufferSlot,
-                              AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync) {
-  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
-  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
-  auto &stateSlot = stateCtx.getStateSlot(bufferSlot);
+TMP_MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
+  auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
   stateSlot.clear();
 }
 
@@ -283,16 +254,8 @@ MGP_RT_BufferUntracked(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetContextPayloadPtr(size_t index, AsyncRTWrapper<StateContext> rawCtx) {
-  StateContext &ctx = unwrap(rawCtx);
-  return ctx.getStateSlot(index).getUnderlyingPointer();
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-KGEN_CompilerRT_GetContextPayloadPtr(size_t index,
-                                     AsyncRTWrapper<StateContext> rawCtx) {
-  StateContext &ctx = unwrap(rawCtx);
-  return ctx.getStateSlot(index).getUnderlyingPointer();
+MGP_RT_GetContextPayloadPtr(size_t index, StateContext *ctx) {
+  return ctx->getStateSlot(index).getUnderlyingPointer();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
@@ -539,6 +502,18 @@ MGP_RT_GetValueFromAsync(AsyncRTWrapper<AnyAsyncValueRef> async) {
     return value.getPointer()->getUnderlyingPtr();
   else
     return value.getPointerToData();
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
+MGP_RT_UnpackStateContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
+  AnyAsyncValueRef &value = unwrap(async);
+  assert(value.isReady() &&
+         "MGP_RT_UnpackStateContext: async value not yet ready");
+  assert(value.isType<MLRT::StateContext>() &&
+         "MGP_RT_UnpackStateContext: async value does not hold a "
+         "StateContext — argument index mismatch or wrong async value");
+  auto &stateContextRef = value.get<StateContext>();
+  return &stateContextRef;
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *

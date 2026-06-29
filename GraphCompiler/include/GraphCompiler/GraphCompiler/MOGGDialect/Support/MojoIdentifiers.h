@@ -316,6 +316,8 @@ constexpr llvm::StringLiteral kFnBufferConstant =
     "builtin_primitives.primitives.mgp_buffer_constant";
 constexpr llvm::StringLiteral kFnUnpackDeviceCtx =
     "builtin_primitives.primitives.unpack_device_ctx";
+constexpr llvm::StringLiteral kFnUnpackStateCtx =
+    "builtin_primitives.primitives.unpack_state_ctx";
 constexpr llvm::StringLiteral kFnUnpackTensor =
     "builtin_primitives.primitives.unpack_tensor";
 constexpr llvm::StringLiteral kFnAllZeros =

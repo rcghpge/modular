@@ -733,7 +733,7 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack", "resultsToPack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   Pure,
 ]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
@@ -781,7 +781,7 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface>,
 ]> {
   let summary = "Removes the buffer stored at the specified state slot.";
@@ -813,7 +813,7 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
 //===----------------------------------------------------------------------===//
 
 def IntCacheOp : MGP_Op<"int.cache", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Stores an integer value into a dedicated state slot.";
   let description = [{
@@ -847,7 +847,7 @@ def IntCacheOp : MGP_Op<"int.cache", [
 //===----------------------------------------------------------------------===//
 
 def IntGetCachedOp : MGP_Op<"int.get_cached", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
 ]> {
   let summary = "Retrieves an integer value from a dedicated state slot.";

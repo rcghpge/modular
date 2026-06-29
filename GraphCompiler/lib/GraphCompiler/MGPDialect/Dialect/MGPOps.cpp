@@ -441,13 +441,6 @@ LogicalResult TensorSpecCreateOp::inferReturnTypes(
 // BufferRemoveCachedOp
 //===----------------------------------------------------------------------===//
 
-llvm::BitVector BufferRemoveCachedOp::operandsToUnpack() {
-  llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context; it is consumed as the raw async
-                  // slot (the type is defined in C++ only).
-  return res;
-}
-
 LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   /// TODO: Add error checking. The Mojo/C++ can return an error that we
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
@@ -540,13 +533,6 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
-llvm::BitVector BufferGetCachedOp::operandsToUnpack() {
-  llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context; it is consumed as the raw async
-                  // slot (the type is defined in C++ only).
-  return res;
-}
-
 llvm::BitVector BufferGetCachedOp::resultsToPack() {
   return llvm::BitVector(2, false);
 }
@@ -584,13 +570,6 @@ LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
 // IntCacheOp
 //===----------------------------------------------------------------------===//
 
-llvm::BitVector IntCacheOp::operandsToUnpack() {
-  llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context; it is consumed as the raw async
-                  // slot (the type is defined in C++ only).
-  return res;
-}
-
 LogicalResult IntCacheOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MOGG::MojoValue function(primitiveMojoName(primDecl));
@@ -604,13 +583,6 @@ LogicalResult IntCacheOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // IntGetCachedOp
 //===----------------------------------------------------------------------===//
-
-llvm::BitVector IntGetCachedOp::operandsToUnpack() {
-  llvm::BitVector res(getNumOperands(), true);
-  res[1] = false; // Do not unpack the context; it is consumed as the raw async
-                  // slot (the type is defined in C++ only).
-  return res;
-}
 
 LogicalResult IntGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
