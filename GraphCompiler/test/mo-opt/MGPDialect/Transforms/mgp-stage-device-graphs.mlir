@@ -3,22 +3,22 @@
 // An `isDeviceGraph` model: every `mogg.generic.compiled.region` in the execute
 // block is moved into a single `IsolatedFromAbove` `mgp.device_graph.staging`
 // op. Free values the regions reference (here the model input) become operands
-// passed in as `!mogg.async<T>` block args; values consumed outside become the
-// op's results (type `T`), yielded as `!mogg.async<T>`.
+// passed in as bare-`T` block args; values consumed outside become the op's
+// results (type `T`), yielded as bare `T`.
 
 // CHECK-LABEL: mgp.model @dg
 // CHECK: execute (%{{.*}}: !mef.chain{{.*}}%[[IN:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>) ->
 // The staging op takes the free value as an operand and exposes it to the body
-// as a `!mogg.async<T>` block arg alongside the device-graph builder.
+// as a bare-`T` block arg alongside the device-graph builder.
 // CHECK: %[[STAGING:.*]] = mgp.device_graph.staging inputs(%[[IN]] : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
-// CHECK-NEXT: ^bb0(%{{.*}}: !mgp.device_graph.builder, %[[INA:[a-zA-Z0-9_]+]]: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
-// The async input is unpacked, then fed to region A; region B consumes A's result.
-// CHECK: %[[INU:.*]] = mogg.async.unpack(%[[INA]])
-// CHECK: %[[A:.*]] = mogg.generic.compiled.region (%[[INU]])
+// CHECK-NEXT: ^bb0(%{{.*}}: !mgp.device_graph.builder, %[[INT:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+// The bare input feeds region A directly; region B consumes A's result. No
+// async pack/unpack is introduced at the staging boundary.
+// CHECK-NOT: mogg.async.unpack
+// CHECK: %[[A:.*]] = mogg.generic.compiled.region (%[[INT]])
 // CHECK: %[[B:.*]] = mogg.generic.compiled.region (%[[A]])
-// The escaping value is packed and yielded as async; the result is the plain `T`.
-// CHECK: %[[P:.*]] = mogg.async.pack(%[[B]])
-// CHECK: mgp.device_graph.staging.yield %[[P]] : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+// The escaping value is yielded directly as bare `T`.
+// CHECK: mgp.device_graph.staging.yield %[[B]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK: } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK: mef.output %{{.*}}, %[[STAGING]] : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 

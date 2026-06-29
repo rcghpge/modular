@@ -381,33 +381,12 @@ DeviceGraphStagingYieldOp DeviceGraphStagingOp::getYieldOp() {
   return cast<DeviceGraphStagingYieldOp>(getBody().front().getTerminator());
 }
 
-namespace {
-/// `got` is an acceptable boundary type for plain value type `want` when it is
-/// either `want` itself or `!mogg.async<want>` -- the staging op wraps its
-/// boundary values into async, like `mogg.generic.compiled.region` (which also
-/// tolerates the unwrapped form for ABI-lowered slots).
-bool isAsyncOrPlain(Type got, Type want) {
-  if (got == want)
-    return true;
-  auto asyncType = llvm::dyn_cast<MOGG::AsyncType>(got);
-  return asyncType && asyncType.getElementType() == want;
-}
-
-/// Unwrap `!mogg.async<T>` to `T`; leave other types unchanged.
-Type unwrapAsync(Type type) {
-  if (auto asyncType = llvm::dyn_cast<MOGG::AsyncType>(type))
-    return asyncType.getElementType();
-  return type;
-}
-} // namespace
-
 LogicalResult DeviceGraphStagingOp::verify() {
   Block &body = getBody().front();
 
-  // Block args are [builder, async<input_0>, ..., async<input_n-1>]: the
-  // builder has no operand; the rest are the `inputs` operands wrapped into
-  // `!mogg.async<T>` (the plain `T` form is also accepted, as in
-  // `mogg.generic.compiled.region`).
+  // Block args are [builder, input_0, ..., input_n-1]: the builder has no
+  // operand; the rest carry the `inputs` operand types verbatim (bare `T`, no
+  // `!mogg.async` wrapping at the staging boundary).
   if (body.getNumArguments() != 1 + getInputs().size())
     return emitOpError("staging body has ")
            << body.getNumArguments() << " block argument(s), expected "
@@ -420,14 +399,14 @@ LogicalResult DeviceGraphStagingOp::verify() {
            << body.getArgument(0).getType();
   for (auto [idx, inputType] : llvm::enumerate(getInputs().getTypes())) {
     Type argType = body.getArgument(idx + 1).getType();
-    if (!isAsyncOrPlain(argType, inputType))
+    if (argType != inputType)
       return emitOpError("staging body argument #")
              << (idx + 1) << " has type " << argType << ", expected "
-             << inputType << " or a `!mogg.async` of it";
+             << inputType;
   }
 
-  // The yield carries the staged results out as `!mogg.async<T>` (or plain `T`)
-  // while the op's results are the unwrapped `T`.
+  // The yield carries the staged results out as bare `T`, matching the op's
+  // results exactly.
   DeviceGraphStagingYieldOp yieldOp = getYieldOp();
   if (yieldOp.getNumOperands() != getNumResults())
     return emitOpError("`mgp.device_graph.staging.yield` has ")
@@ -436,10 +415,10 @@ LogicalResult DeviceGraphStagingOp::verify() {
   for (auto [idx, resultType] :
        llvm::enumerate(getStagedResults().getTypes())) {
     Type operandType = yieldOp.getOperand(idx).getType();
-    if (!isAsyncOrPlain(operandType, resultType))
+    if (operandType != resultType)
       return emitOpError("`mgp.device_graph.staging.yield` operand #")
              << idx << " has type " << operandType << ", expected "
-             << resultType << " or a `!mogg.async` of it";
+             << resultType;
   }
   return success();
 }
@@ -453,31 +432,28 @@ void DeviceGraphStagingOp::build(
   result.addOperands(inputs);
 
   // Create the body with the device-graph-builder block argument followed by
-  // one
-  // `!mogg.async<T>` argument per input, and let the callback populate it (it
-  // is expected to emit the staging.yield carrying the async-wrapped staged
-  // values). createBlock also positions the insertion point.
+  // one bare-`T` argument per input, and let the callback populate it (it is
+  // expected to emit the staging.yield carrying the staged values).
+  // createBlock also positions the insertion point.
   Region *bodyRegion = result.addRegion();
   Block *body = builder.createBlock(bodyRegion);
   Value graphBuilder = body->addArgument(
       DeviceGraphBuilderType::get(builder.getContext()), result.location);
-  SmallVector<Value> asyncInputArgs;
-  asyncInputArgs.reserve(inputs.size());
+  SmallVector<Value> inputArgs;
+  inputArgs.reserve(inputs.size());
   for (Value input : inputs)
-    asyncInputArgs.push_back(body->addArgument(
-        MOGG::AsyncType::get(input.getType()), result.location));
+    inputArgs.push_back(body->addArgument(input.getType(), result.location));
   if (bodyBuilder)
-    bodyBuilder(builder, result.location, graphBuilder, asyncInputArgs);
+    bodyBuilder(builder, result.location, graphBuilder, inputArgs);
 
   // Supply the operandless terminator (zero staged results) if the callback did
   // not emit one.
   if (!body->mightHaveTerminator())
     ensureTerminator(*bodyRegion, builder, result.location);
 
-  // The op's results are the staging.yield operands, unwrapped from async.
+  // The op's results are exactly the staging.yield operand types (bare `T`).
   auto yieldOp = cast<DeviceGraphStagingYieldOp>(body->getTerminator());
-  for (Type operandType : yieldOp.getOperands().getTypes())
-    result.addTypes(unwrapAsync(operandType));
+  result.addTypes(yieldOp.getOperandTypes());
 }
 
 namespace {

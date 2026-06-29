@@ -29,7 +29,7 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
 
   /// Free values: region operands defined outside the staged set. The staging
   /// op is `IsolatedFromAbove`, so these become its `inputs` operands and enter
-  /// the body as `!mogg.async<T>` block arguments. A compiled region is itself
+  /// the body as bare-`T` block arguments. A compiled region is itself
   /// isolated, so it can only reference outer values through its operands --
   /// remapping those is all that is needed.
   llvm::SetVector<Value> freeValues;
@@ -61,39 +61,31 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
   Location newLoc = FusedLoc::get(ctx, locations);
 
   auto buildGraphStagingBody = [&](OpBuilder &builder, Location loc, Value,
-                                   ValueRange asyncInputs) {
-    /// Unpack each async input block arg to its plain type and map the free
-    /// value it represents to the unpacked value.
+                                   ValueRange inputArgs) {
+    /// Map each free value to the bare-`T` block arg representing it. The async
+    /// pack/unpack mediation a dissolved `mogg.generic.compiled.region` needs
+    /// is injected later, by `mgp-compute-device-graph-dependencies`.
     IRMapping freeMap;
-    for (auto [freeValue, asyncArg] : llvm::zip_equal(inputs, asyncInputs))
-      freeMap.map(freeValue, AsyncUnpackOp::create(
-                                 builder, loc, freeValue.getType(), asyncArg)
-                                 .getOutput());
+    freeMap.map(inputs, inputArgs);
 
     /// Move all regions into the body (preserving order).
     for (GenericCompiledRegionOp op : ops)
       op->moveBefore(builder.getBlock(), builder.getBlock()->end());
 
-    /// Rewire each region operand that referenced a free value to the unpacked
-    /// in-body value.
+    /// Rewire each region operand that referenced a free value to the
+    /// corresponding in-body block arg.
     for (GenericCompiledRegionOp op : ops)
       for (OpOperand &operand : op->getOpOperands())
-        if (Value unpacked = freeMap.lookupOrNull(operand.get()))
-          operand.set(unpacked);
+        if (Value mapped = freeMap.lookupOrNull(operand.get()))
+          operand.set(mapped);
 
     builder.setInsertionPointToEnd(builder.getBlock());
 
-    /// Pack each distinct escaping value back into async for the yield (reused
-    /// across repeated uses; duplicates are cleaned by canonicalization).
-    DenseMap<Value, Value> packed;
-    auto yieldValues =
-        llvm::map_to_vector(escapingUses, [&](OpOperand *use) -> Value {
-          Value escaping = use->get();
-          Value &slot = packed[escaping];
-          if (!slot)
-            slot = AsyncPackOp::create(builder, loc, escaping);
-          return slot;
-        });
+    /// Yield the escaping values directly (bare `T`); one operand per escaping
+    /// use, so repeated uses appear multiple times (cleaned by
+    /// canonicalization).
+    auto yieldValues = llvm::map_to_vector(
+        escapingUses, [](OpOperand *use) { return use->get(); });
 
     DeviceGraphStagingYieldOp::create(builder, newLoc, yieldValues);
   };

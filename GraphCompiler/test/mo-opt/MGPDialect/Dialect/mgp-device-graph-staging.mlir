@@ -39,24 +39,20 @@ func.func @dependencies_round_trip(%b: !mgp.device_graph.builder, %in: !mgp.buff
 // CHECK-LABEL: func.func @staging_round_trip
 func.func @staging_round_trip(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>)
     -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
-  // IsolatedFromAbove: the free value enters as an operand and a `!mogg.async<T>`
-  // block arg (unpacked inside); the body yields `!mogg.async<T>` while the op
-  // result is the plain `T`.
+  // IsolatedFromAbove: the free value enters as an operand and a bare-`T` block
+  // arg; the body yields bare `T` and the op result is that same `T`.
   // CHECK: %{{.+}} = mgp.device_graph.staging inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
-  // CHECK: ^bb0(%{{.+}}: !mgp.device_graph.builder, %[[INA:.+]]: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
-  // CHECK: %[[INU:.+]] = mogg.async.unpack(%[[INA]])
-  // CHECK: mgp.device_graph.staging.yield %{{.+}} : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+  // CHECK: ^bb0(%{{.+}}: !mgp.device_graph.builder, %[[INT:.+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+  // CHECK: mgp.device_graph.staging.yield %{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>
   // CHECK: } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
   ^bb0(%builder: !mgp.device_graph.builder,
-       %in_a: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
-    %in_u = mogg.async.unpack(%in_a) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
     %n, %t = mgp.device_graph.dependencies builder(%builder) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
-      mgp.device_graph.dependencies.yield %in_u : !mgp.tensor<2x3xf32, <"gpu", 0>>
+      mgp.device_graph.dependencies.yield %in_t : !mgp.tensor<2x3xf32, <"gpu", 0>>
     } : !mgp.tensor<2x3xf32, <"gpu", 0>>
-    %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    mgp.device_graph.staging.yield %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+    mgp.device_graph.staging.yield %t : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   return %out : !mgp.tensor<2x3xf32, <"gpu", 0>>
 }

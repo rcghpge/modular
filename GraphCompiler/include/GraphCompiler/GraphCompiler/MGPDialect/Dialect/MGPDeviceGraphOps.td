@@ -94,7 +94,6 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
     ```
   }];
 
-  // CAUTION: attribute arguments must be in alphabetical order by name.
   let arguments = (ins
     ChainType:$inChain,
     MGP_ContextType:$theContext,
@@ -357,11 +356,13 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 
     Structurally it mirrors `mogg.generic.compiled.region`: it is
     `IsolatedFromAbove`, so the values its body needs come in as `inputs`
-    operands of type `T` and are passed to the body as block arguments of type
-    `!mogg.async<T>` (the body unpacks them via `mogg.async.unpack`). The body
-    yields `!mogg.async<T>` values and the op's `stagedResults` are the unwrapped
-    `T`. This keeps the sync/async boundary explicit at the op edge rather than
-    relying on implicit conversions inside the body.
+    operands of type `T` and are passed to the body as block arguments of the
+    same bare type `T`. The body yields bare `T` values and the op's
+    `stagedResults` are those same types. The boundary carries no
+    `!mogg.async<T>` -- the verifier requires the block-arg and yield types to
+    match the operand/result types exactly. The async pack/unpack needed to
+    dissolve a `mogg.generic.compiled.region` body is injected locally by
+    `mgp-compute-device-graph-dependencies` when it lowers each region.
 
     The body's first block argument is the `!mgp.device_graph.builder` (it has no
     corresponding operand); the builder the recording calls thread maps onto the
@@ -373,9 +374,9 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
     ```mlir
       %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
       ^bb0(%builder: !mgp.device_graph.builder,
-           %in_a: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
-        // unpack inputs, dependencies ops + async pack/unpack mediation, pack outputs
-        mgp.device_graph.staging.yield %t : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+           %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+        // dependencies ops (each injecting its own async pack/unpack mediation)
+        mgp.device_graph.staging.yield %t : !mgp.tensor<2x3xf32, <"gpu", 0>>
       } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
     ```
   }];

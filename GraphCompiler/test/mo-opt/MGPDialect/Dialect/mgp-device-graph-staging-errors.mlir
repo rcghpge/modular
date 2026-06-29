@@ -80,12 +80,12 @@ func.func @bad_staging_arg_count(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
 // -----
 
 //
-// mgp.device_graph.staging: each input block arg must be `!mogg.async<T>` (or
-// the plain operand type `T`).
+// mgp.device_graph.staging: each input block arg must match the operand type
+// `T` exactly -- bare `T`, no `!mogg.async` wrapping at the boundary.
 //
 
 func.func @bad_staging_input_type(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
-  // expected-error@+1 {{staging body argument #1 has type '!mgp.buffer<<"gpu", 0>>', expected '!mgp.tensor<2x3xf32, <"gpu", 0>>' or a `!mogg.async` of it}}
+  // expected-error@+1 {{staging body argument #1 has type '!mgp.buffer<<"gpu", 0>>', expected '!mgp.tensor<2x3xf32, <"gpu", 0>>'}}
   mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
   ^bb0(%builder: !mgp.device_graph.builder, %bad: !mgp.buffer<<"gpu", 0>>):
     mgp.device_graph.staging.yield
@@ -96,16 +96,51 @@ func.func @bad_staging_input_type(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
 // -----
 
 //
-// mgp.device_graph.staging: each yield operand must be `!mogg.async<T>` (or the
-// plain result type `T`) where `T` is the corresponding result type.
+// mgp.device_graph.staging: an `!mogg.async<T>` input block arg is rejected --
+// the boundary no longer tolerates a sync/async transition.
+//
+
+func.func @bad_staging_async_input(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  // expected-error@+1 {{staging body argument #1 has type '!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>', expected '!mgp.tensor<2x3xf32, <"gpu", 0>>'}}
+  mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  ^bb0(%builder: !mgp.device_graph.builder,
+       %in_a: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
+    mgp.device_graph.staging.yield
+  }
+  return
+}
+
+// -----
+
+//
+// mgp.device_graph.staging: each yield operand must match the result type `T`
+// exactly -- bare `T`, no `!mogg.async` wrapping at the boundary.
 //
 
 func.func @bad_staging_yield(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
-  // expected-error@+1 {{`mgp.device_graph.staging.yield` operand #0 has type '!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>', expected '!mgp.buffer<<"gpu", 0>>' or a `!mogg.async` of it}}
+  // expected-error@+1 {{`mgp.device_graph.staging.yield` operand #0 has type '!mgp.tensor<2x3xf32, <"gpu", 0>>', expected '!mgp.buffer<<"gpu", 0>>'}}
   %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
   ^bb0(%builder: !mgp.device_graph.builder,
-       %in_a: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
-    mgp.device_graph.staging.yield %in_a : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+    mgp.device_graph.staging.yield %in_t : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } -> !mgp.buffer<<"gpu", 0>>
+  return
+}
+
+// -----
+
+//
+// mgp.device_graph.staging: an `!mogg.async<T>` yield operand is rejected even
+// when its element type matches the result type.
+//
+
+func.func @bad_staging_async_yield(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  // expected-error@+1 {{`mgp.device_graph.staging.yield` operand #0 has type '!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>', expected '!mgp.tensor<2x3xf32, <"gpu", 0>>'}}
+  %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  ^bb0(%builder: !mgp.device_graph.builder,
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+    %p = mogg.async.pack(%in_t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+    mgp.device_graph.staging.yield %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+  } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   return
 }
