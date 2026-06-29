@@ -51,16 +51,72 @@ namespace M::Driver {
 // Thread-local pointer to the currently bound device context.
 static thread_local const DeviceContext *currentlyBoundContext = nullptr;
 
+// Global count of virtual devices for device creation.
+// When set to a positive value, Device::create() will return VirtualDevice
+// instead of real hardware devices for GPU APIs, and Device::numberOfDevices()
+// will return this count. Using atomic for thread-safe access.
+static std::atomic<int> g_virtualDeviceCount{0};
+
 // Fast-path flag for allPeerAccessEnabled(). Set to non-zero when all
 // peer access is confirmed enabled, avoiding the need to re-query
 // every device on subsequent calls.
 static std::atomic<bool> g_allPeerAccessEnabled{false};
 
-// NOTE: The virtual-device mode state (setVirtualDeviceCount() and friends)
-// lives in VirtualDeviceGlobals.cpp, built into its own shared library so a
-// process holds exactly one copy of it no matter how many images statically
-// link DeviceContextImpl. Do not add process-wide mutable state to this file;
-// see VirtualDeviceGlobals.h for why.
+MODULAR_CXX_EXPORT void setVirtualDeviceCount(int count) {
+  g_virtualDeviceCount = count;
+}
+
+MODULAR_CXX_EXPORT int getVirtualDeviceCount() { return g_virtualDeviceCount; }
+
+MODULAR_CXX_EXPORT bool isVirtualDeviceMode() {
+  return g_virtualDeviceCount > 0;
+}
+
+// Global API for virtual device compilation.
+// This specifies which API to use (e.g., "cuda", "hip", "metal") for
+// virtual devices created in compile-only mode.
+// Using function-local static for thread-safe lazy initialization.
+static std::string &getVirtualDeviceAPIImpl() {
+  static std::string api;
+  return api;
+}
+static std::mutex &getVirtualDeviceAPIMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+MODULAR_CXX_EXPORT void setVirtualDeviceAPI(StringRef api) {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceAPIMutex());
+  getVirtualDeviceAPIImpl() = api.str();
+}
+
+MODULAR_CXX_EXPORT std::string getVirtualDeviceAPI() {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceAPIMutex());
+  return getVirtualDeviceAPIImpl();
+}
+
+// Global target architecture for virtual device compilation.
+// This specifies the GPU architecture (e.g., "sm_80", "sm_90") for
+// virtual devices created in compile-only mode.
+// Using function-local static for thread-safe lazy initialization.
+static std::string &getVirtualDeviceTargetArchImpl() {
+  static std::string arch;
+  return arch;
+}
+static std::mutex &getVirtualDeviceTargetArchMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+MODULAR_CXX_EXPORT void setVirtualDeviceTargetArch(StringRef arch) {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceTargetArchMutex());
+  getVirtualDeviceTargetArchImpl() = arch.str();
+}
+
+MODULAR_CXX_EXPORT std::string getVirtualDeviceTargetArch() {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceTargetArchMutex());
+  return getVirtualDeviceTargetArchImpl();
+}
 
 static std::string &getVirtualCpuTargetImpl() {
   static std::string cpu;
