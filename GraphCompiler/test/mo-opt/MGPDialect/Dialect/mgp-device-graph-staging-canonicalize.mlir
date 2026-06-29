@@ -222,3 +222,50 @@ func.func @no_change_dependency_results() {
   "test.use"(%node, %x, %y) : (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
   return
 }
+
+// -----
+
+// Forwarding: a body result whose `dependencies.yield` operand is produced
+// OUTSIDE the body (the op is not IsolatedFromAbove) is a pure pass-through.
+// Its uses are rewritten to the outer value directly, then the dead result is
+// dropped, leaving only the synthesized `node`.
+// CHECK-LABEL: func.func @forward_external_result
+func.func @forward_external_result(%b: !mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>> {
+  // CHECK: %[[OUTER:.+]] = "test.outer"
+  // The op keeps only the `node` result; its body has no results, so the
+  // operandless yield is elided on print.
+  // CHECK: %[[NODE:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
+  // CHECK-NEXT: }
+  // CHECK: "test.keep"(%[[NODE]])
+  // CHECK: return %[[OUTER]]
+  %outer = "test.outer"() : () -> !mgp.buffer<<"gpu", 0>>
+  %node, %r = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    mgp.device_graph.dependencies.yield %outer : !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>
+  "test.keep"(%node) : (!mgp.device_graph.node) -> ()
+  return %r : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+// Mixed: only the externally-produced result is forwarded; the result produced
+// inside the body is retained.
+// CHECK-LABEL: func.func @forward_external_result_partial
+func.func @forward_external_result_partial(%b: !mgp.device_graph.builder) -> (!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) {
+  // CHECK: %[[OUTER:.+]] = "test.outer"
+  // CHECK: %[[NODE:.+]], %[[R:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
+  // CHECK: %[[INNER:.+]] = "test.work"
+  // CHECK: mgp.device_graph.dependencies.yield %[[INNER]] : !mgp.buffer<<"gpu", 0>>
+  // CHECK: } : !mgp.buffer<<"gpu", 0>>
+  // CHECK: return %[[OUTER]], %[[R]]
+  %outer = "test.outer"() : () -> !mgp.buffer<<"gpu", 0>>
+  %node, %ext, %inner = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %w = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %outer, %w : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+  return %ext, %inner : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+}

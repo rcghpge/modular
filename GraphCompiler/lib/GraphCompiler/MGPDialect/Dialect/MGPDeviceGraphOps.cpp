@@ -328,12 +328,40 @@ struct DeduplicateDependenciesResults
   }
 };
 
+/// Forwards `mgp.device_graph.dependencies` body results whose
+/// `dependencies.yield` operand is produced *outside* the body region.
+/// Rewriting those uses leaves the result dead for
+/// `RemoveUnusedDependenciesResults` to drop.
+struct ForwardExternalDependenciesResults
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
+                                PatternRewriter &rewriter) const override {
+    Region &body = op.getBody();
+    DeviceGraphDependenciesYieldOp yieldOp = op.getYieldOp();
+
+    bool changed = false;
+    for (auto [result, yielded] :
+         llvm::zip(op.getBodyResults(), yieldOp.getOperands())) {
+      // Keep results whose value originates inside the body (incl. the body's
+      // own block arguments); only forward genuine pass-throughs of outer SSA.
+      if (body.isAncestor(yielded.getParentRegion()))
+        continue;
+
+      rewriter.replaceAllUsesWith(result, yielded);
+      changed = true;
+    }
+    return success(changed);
+  }
+};
+
 } // namespace
 
 void DeviceGraphDependenciesOp::getCanonicalizationPatterns(
     RewritePatternSet &patterns, MLIRContext *ctx) {
-  patterns.add<RemoveUnusedDependenciesResults, DeduplicateDependenciesResults>(
-      ctx);
+  patterns.add<RemoveUnusedDependenciesResults, DeduplicateDependenciesResults,
+               ForwardExternalDependenciesResults>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
