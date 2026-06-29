@@ -588,6 +588,31 @@ modular_cc_library(
 
 # Driver targets
 
+# Process-wide virtual-device mode state (setVirtualDeviceCount() and
+# friends). A shared library so that exactly one copy of the state exists per
+# process: DeviceContextImpl is statically linked into several shared
+# libraries (libmax, AsyncRTMojoBindings, device plugins), and on macOS the
+# Mach-O two-level namespace would otherwise bind the Python setters and the
+# device-creation path to different copies of the globals (DRIV-209). Same
+# pattern as AsyncRT/RuntimeGlobals.
+modular_shared_library(
+    name = "Driver/DeviceContextGlobals",
+    srcs = [
+        "lib/Driver/DeviceContext/VirtualDeviceGlobals.cpp",
+    ],
+    hdrs = [
+        "include/MLRT/Driver/DeviceContext/VirtualDeviceGlobals.h",
+    ],
+    includes = ["include"],
+    output_name = "DeviceContextGlobals",
+    visibility = ["//MLRT:consumers"],
+    deps = [
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 # Header-only target for DeviceContext/CompilationDevice interfaces.
 # Broken out so that //Target:DriverPlugin can depend on these headers
 # without creating a circular dependency with Driver/DeviceContextImpl.
@@ -598,14 +623,21 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
+        # Also exported by Driver/DeviceContextGlobals (which owns the
+        # implementation); listed here so existing dependents that include
+        # DeviceContext.h keep passing the layering check, mirroring how
+        # AsyncRT/Runtime re-exports the AsyncRT/RuntimeGlobals headers.
+        "include/MLRT/Driver/DeviceContext/VirtualDeviceGlobals.h",
     ],
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
         ":AsyncRT/Runtime",
+        ":Driver/DeviceContextGlobals",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Configuration",
+        "//Support:SymbolExport",
         "@dlpack",
         "@llvm-project//llvm:Support",
     ],
@@ -625,6 +657,7 @@ modular_shared_library(
     output_name = "AsyncRTMojoBindings",
     deps = [
         ":AsyncRT/Runtime",
+        ":Driver/DeviceContextGlobals",
         ":Driver/DeviceContextImpl",
         "//Support:Base",
         "//Support:BinaryID",
@@ -666,6 +699,9 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
         "include/MLRT/Driver/DeviceContext/LaunchTraceRegistry.h",
+        # Also exported by Driver/DeviceContextGlobals (which owns the
+        # implementation); see the matching note on Driver/DeviceContextAPI.
+        "include/MLRT/Driver/DeviceContext/VirtualDeviceGlobals.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.h",
         "lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h",
@@ -697,7 +733,6 @@ modular_cc_library(
     visibility = [
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
-        "//max/python/max/_core/internal:__subpackages__",
         "@plugin//:__pkg__",
     ],
     deps = [
@@ -706,6 +741,7 @@ modular_cc_library(
         ":AsyncRT/RuntimeGlobals",
         ":AsyncRT/Support",
         ":Driver/DeviceContextAPI",
+        ":Driver/DeviceContextGlobals",
         "//SDK:HAL",
         "//Support:Base",
         "//Support:Buffer",
