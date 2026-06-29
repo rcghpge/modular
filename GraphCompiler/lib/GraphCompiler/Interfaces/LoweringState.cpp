@@ -718,7 +718,6 @@ static void rewireAsyncConsumersToProjection(Value asyncValue,
 }
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
-                                        const mlir::BitVector &shouldUnpack,
                                         const mlir::BitVector &shouldPack) {
   auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
   OpBuilder builder{&kernel.getBody().front(),
@@ -745,23 +744,9 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     if (isa<MEF::ChainType>(getAsyncElementOrSelf(v.getType())))
       continue;
 
-    if (shouldUnpack.test(v.getArgNumber())) {
-      // Project the `!mogg.async<T>` argument to `T` and rewire consumers.
-      auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
-      rewireAsyncConsumersToProjection(v, unpackOp);
-    } else {
-      // This argument is deliberately not unpacked: the consuming op wants the
-      // raw async slot as a plain `T` value (e.g. the context for
-      // `mgp.buffer.get_cached`). Insert a pass-through reinterpret to a `T`
-      // value (its Mojo value remains the runtime slot) and rewire consumers,
-      // leaving the block argument as `!mogg.async<T>`. Keeping the argument
-      // async lets a single argument feed both a raw-slot consumer (via this
-      // reinterpret) and a consumer that unpacks it, which can happen after
-      // sequence fusion merges regions.
-      auto reinterpret = MOGG::ToMGPFromOpaqueOp::create(
-          builder, loc, getAsyncElementOrSelf(v.getType()), v);
-      rewireAsyncConsumersToProjection(v, reinterpret);
-    }
+    // Project the `!mogg.async<T>` argument to `T` and rewire consumers.
+    auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
+    rewireAsyncConsumersToProjection(v, unpackOp);
   }
 
   builder.setInsertionPoint(terminator);

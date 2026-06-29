@@ -859,9 +859,8 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
 
   // Remove the placeholder ops that we replaced with DPS operands.
 
-  mlir::BitVector unpackItAll(mgpRegionBody->getNumArguments(), true);
   mlir::BitVector packItAll(mgpRegion.getNumResults(), true);
-  loweringState.lowerMOGGABI(mgpRegion, unpackItAll, packItAll);
+  loweringState.lowerMOGGABI(mgpRegion, packItAll);
 
   // We can now safely set the function type because we have added all arguments
   // and attributes.

@@ -469,7 +469,6 @@ public:
   /// is a Operation* because including MOGG ops in this header will lead to a
   /// circular dependency.
   static void lowerMOGGABI(Operation *kernelOp,
-                           const mlir::BitVector &shouldUnpack,
                            const mlir::BitVector &shouldPack);
 
 private:
