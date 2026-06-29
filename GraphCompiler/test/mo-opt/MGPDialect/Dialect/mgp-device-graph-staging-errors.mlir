@@ -5,12 +5,44 @@
 // body result types.
 //
 
-func.func @bad_dependencies_yield(%in: !mgp.buffer<<"gpu", 0>>)
+func.func @bad_dependencies_yield(%b: !mgp.device_graph.builder, %in: !mgp.buffer<<"gpu", 0>>)
     -> !mgp.device_graph.node {
   // expected-error@+1 {{operand types must match the op's body result types}}
-  %n, %r = mgp.device_graph.dependencies dependencies() {
+  %n, %r = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
     mgp.device_graph.dependencies.yield %in : !mgp.buffer<<"gpu", 0>>
   } : () -> (!mgp.device_graph.node, !mgp.tensor<2x3xf32, <"gpu", 0>>)
+  return %n : !mgp.device_graph.node
+}
+
+// -----
+
+//
+// mgp.device_graph.dependencies: the sole body block argument must be the
+// !mgp.device_graph.builder.
+//
+
+func.func @bad_dependencies_builder_type(%b: !mgp.device_graph.builder) -> !mgp.device_graph.node {
+  // expected-error@+1 {{body argument #0 must be a `!mgp.device_graph.builder`}}
+  %n = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%not_a_builder: !mgp.buffer<<"gpu", 0>>):
+    mgp.device_graph.dependencies.yield
+  }
+  return %n : !mgp.device_graph.node
+}
+
+// -----
+
+//
+// mgp.device_graph.dependencies: the body must have exactly one block argument
+// (the builder).
+//
+
+func.func @bad_dependencies_arg_count(%b: !mgp.device_graph.builder) -> !mgp.device_graph.node {
+  // expected-error@+1 {{body has 0 block argument(s), expected exactly 1}}
+  %n = mgp.device_graph.dependencies builder(%b) dependencies() {
+    mgp.device_graph.dependencies.yield
+  }
   return %n : !mgp.device_graph.node
 }
 

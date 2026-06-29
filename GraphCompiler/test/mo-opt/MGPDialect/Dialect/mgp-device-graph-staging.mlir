@@ -6,24 +6,29 @@
 // (+ .yield).
 
 // CHECK-LABEL: func.func @dependencies_round_trip
-func.func @dependencies_round_trip(%in: !mgp.buffer<<"gpu", 0>>)
+func.func @dependencies_round_trip(%b: !mgp.device_graph.builder, %in: !mgp.buffer<<"gpu", 0>>)
     -> !mgp.device_graph.node {
-  // No predecessors, one body result; the body references the func arg
-  // directly -- the op is not IsolatedFromAbove.
-  // CHECK: %[[N0:.+]], %[[R0:.+]] = mgp.device_graph.dependencies dependencies() {
+  // The builder operand is required; no predecessors, one body result; the body
+  // references the func arg directly -- the op is not IsolatedFromAbove. The
+  // sole block arg is the `!mgp.device_graph.builder`.
+  // CHECK: %[[N0:.+]], %[[R0:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: %[[V:.+]] = "test.work"(%{{.+}})
   // CHECK: mgp.device_graph.dependencies.yield %[[V]] : !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.buffer<<"gpu", 0>>
-  %n0, %r0 = mgp.device_graph.dependencies dependencies() {
+  %n0, %r0 = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %v = "test.work"(%in) : (!mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
 
   // A real dependency edge on %n0, and no body results (the operandless yield
   // is elided on print).
-  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies dependencies(%[[N0]]) {
+  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[N0]]) {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: }
-  %n1 = mgp.device_graph.dependencies dependencies(%n0) {
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
     "test.work2"(%r0) : (!mgp.buffer<<"gpu", 0>>) -> ()
     mgp.device_graph.dependencies.yield
   }
@@ -46,7 +51,8 @@ func.func @staging_round_trip(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>)
   ^bb0(%builder: !mgp.device_graph.builder,
        %in_a: !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>):
     %in_u = mogg.async.unpack(%in_a) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
-    %n, %t = mgp.device_graph.dependencies dependencies() {
+    %n, %t = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
       mgp.device_graph.dependencies.yield %in_u : !mgp.tensor<2x3xf32, <"gpu", 0>>
     } : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
@@ -65,14 +71,16 @@ func.func @forward_reference() {
   // CHECK: mgp.device_graph.staging inputs() {
   // CHECK: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // The consumer references %[[NA]], which is only defined by the next op.
-  // CHECK: mgp.device_graph.dependencies dependencies(%[[NA:.+]]) {
-  // CHECK: %[[NA]] = mgp.device_graph.dependencies dependencies() {
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[NA:.+]]) {
+  // CHECK: %[[NA]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
   mgp.device_graph.staging inputs() {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %nb = mgp.device_graph.dependencies dependencies(%na) {
+    %nb = mgp.device_graph.dependencies builder(%builder) dependencies(%na) {
+    ^bb0(%nb_builder: !mgp.device_graph.builder):
       mgp.device_graph.dependencies.yield
     }
-    %na = mgp.device_graph.dependencies dependencies() {
+    %na = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%na_builder: !mgp.device_graph.builder):
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.staging.yield

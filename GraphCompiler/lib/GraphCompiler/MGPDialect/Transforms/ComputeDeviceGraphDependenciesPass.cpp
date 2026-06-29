@@ -7,7 +7,9 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace M::MGP;
@@ -48,18 +50,29 @@ Value reconcileAcrossBoundary(OpBuilder &builder, Location loc, Value value,
 }
 
 /// Populate the body of a `mgp.device_graph.dependencies` op (via its callback
-/// builder, so `builder` is already positioned in the empty body block) from
-/// the verbatim contents of `region`, dissolving the compiled region's dataflow
-/// boundary: the region's block args are remapped to the actual outer values
-/// (`oldValueToNew` redirects values produced by already-converted sibling
-/// regions to their new `bodyResults`), and `mogg.async` pack/unpack ops are
-/// inserted at the seam so the body still type-checks. Emits the
+/// builder, so `builder` is already positioned in the empty body block, which
+/// already carries the `graphBuilder` block arg) from the verbatim contents of
+/// `region`, dissolving the compiled region's dataflow boundary: the region's
+/// block args are remapped to the actual outer values (`oldValueToNew`
+/// redirects values produced by already-converted sibling regions to their new
+/// `bodyResults`), and `mogg.async` pack/unpack ops are inserted at the seam so
+/// the body still type-checks. Device-context block args are special-cased:
+/// they are re-sourced from `graphBuilder` via a
+/// `builtin.unrealized_conversion_cast` so the body is tied to the device graph
+/// under construction rather than the outer device context. Emits the
 /// `dependencies.yield`. Returns failure if a boundary type cannot be
 /// reconciled.
 LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
+                                    Value graphBuilder,
                                     GenericCompiledRegionOp region,
                                     const IRMapping &oldValueToNew) {
   Block &srcBlock = region.getBody().front();
+
+  // The builder -> device context bridges, created lazily (one per context
+  // type) so context-free bodies emit no cast. They are unrealized for now and
+  // resolved later, when the recording stub is rewritten to accept a
+  // `!mgp.device_graph.builder` directly.
+  llvm::SmallDenseMap<Type, Value> deviceContextCast;
 
   // Entry mediation: map each region block arg to the (reconciled) outer value
   // it was passed. Values produced by already-converted siblings are redirected
@@ -68,6 +81,28 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
   IRMapping mapper;
   for (auto [blockArg, operand] :
        llvm::zip(srcBlock.getArguments(), region.getOperands())) {
+    // A device-context block arg (the launch context) -- which the region's
+    // ABI wraps as `!mogg.async<!mgp.device_context>` -- is re-sourced from the
+    // builder block arg rather than the outer device context, so the body is
+    // self-contained. The cast is reconciled across the boundary exactly like
+    // any other value (re-packed to async here, the body's verbatim
+    // `mogg.async.unpack` then folds the round-trip away in Stage 3).
+    Type elementType = blockArg.getType();
+    if (auto async = llvm::dyn_cast<AsyncType>(elementType))
+      elementType = async.getElementType();
+    if (llvm::isa<DeviceContextType>(elementType)) {
+      Value &cast = deviceContextCast[elementType];
+      if (!cast)
+        cast = UnrealizedConversionCastOp::create(builder, loc, elementType,
+                                                  graphBuilder)
+                   .getResult(0);
+      Value mapped = reconcileAcrossBoundary(builder, loc, cast,
+                                             blockArg.getType(), region);
+      if (!mapped)
+        return failure();
+      mapper.map(blockArg, mapped);
+      continue;
+    }
     Value src = oldValueToNew.lookupOrDefault(operand);
     Value mapped =
         reconcileAcrossBoundary(builder, loc, src, blockArg.getType(), region);
@@ -111,6 +146,11 @@ LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
   IRMapping oldValueToNew;
 
   Block &body = stagingOp.getBodyBlock();
+  // The staging op's first block arg is the device-graph builder; each
+  // `dependencies` op takes it as its `graphBuilder` operand, making the
+  // builder dependency explicit while the op's body uses its own (bound)
+  // builder block arg.
+  Value stagingBuilder = body.getArgument(0);
   // Convert each region in block order. The staging body is a graph region, so
   // block order need not be topological: a consumer may be visited before its
   // producer. That is fine -- when a producer is not yet in `oldValueToNew` its
@@ -125,10 +165,11 @@ LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
     // its `bodyResults` from the yield.
     LogicalResult bodyResult = success();
     auto depsOp = DeviceGraphDependenciesOp::create(
-        builder, region.getLoc(), /*dependencies=*/ValueRange{},
-        [&](OpBuilder &bodyBuilder, Location loc) {
-          bodyResult =
-              buildDependenciesBody(bodyBuilder, loc, region, oldValueToNew);
+        builder, region.getLoc(), /*graphBuilder=*/stagingBuilder,
+        /*dependencies=*/ValueRange{},
+        [&](OpBuilder &bodyBuilder, Location loc, Value graphBuilder) {
+          bodyResult = buildDependenciesBody(bodyBuilder, loc, graphBuilder,
+                                             region, oldValueToNew);
         });
 
     if (failed(bodyResult))

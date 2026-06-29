@@ -100,10 +100,13 @@ func.func @no_change() {
 func.func @deduplicate_dependencies() -> !mgp.buffer<<"gpu", 0>> {
   // CHECK: %[[A:.+]] = "test.work"
   // CHECK: %[[B:.+]] = "test.work2"
-  // CHECK: mgp.device_graph.dependencies dependencies(%[[A]], %[[B]]) {
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[A]], %[[B]]) {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %a = "test.work"() : () -> !mgp.device_graph.node
   %b = "test.work2"() : () -> !mgp.device_graph.node
-  %node, %r = mgp.device_graph.dependencies dependencies(%a, %b, %a) {
+  %node, %r = mgp.device_graph.dependencies builder(%bldr) dependencies(%a, %b, %a) {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
@@ -115,10 +118,13 @@ func.func @deduplicate_dependencies() -> !mgp.buffer<<"gpu", 0>> {
 // Negative case: all dependency edges already distinct -- left unchanged.
 // CHECK-LABEL: func.func @no_change_dependencies
 func.func @no_change_dependencies() -> !mgp.buffer<<"gpu", 0>> {
-  // CHECK: mgp.device_graph.dependencies dependencies(%{{.+}}, %{{.+}}) {
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%{{.+}}, %{{.+}}) {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %a = "test.work"() : () -> !mgp.device_graph.node
   %b = "test.work2"() : () -> !mgp.device_graph.node
-  %node, %r = mgp.device_graph.dependencies dependencies(%a, %b) {
+  %node, %r = mgp.device_graph.dependencies builder(%bldr) dependencies(%a, %b) {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
@@ -132,14 +138,17 @@ func.func @no_change_dependencies() -> !mgp.buffer<<"gpu", 0>> {
 // CHECK-LABEL: func.func @remove_unused_dependency_result
 func.func @remove_unused_dependency_result() -> !mgp.buffer<<"gpu", 0>> {
   // CHECK: %[[A:.+]] = "test.dep"
-  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies(%[[A]]) {
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[A]]) {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: %[[USED:.+]] = "test.work"
   // CHECK: %[[DEAD:.+]] = "test.dead"
   // CHECK: mgp.device_graph.dependencies.yield %[[USED]] : !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.buffer<<"gpu", 0>>
   // CHECK: return %[[OUT]]
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %a = "test.dep"() : () -> !mgp.device_graph.node
-  %node, %used, %unused = mgp.device_graph.dependencies dependencies(%a) {
+  %node, %used, %unused = mgp.device_graph.dependencies builder(%bldr) dependencies(%a) {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
     %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
@@ -153,12 +162,15 @@ func.func @remove_unused_dependency_result() -> !mgp.buffer<<"gpu", 0>> {
 // point at it. The `node` result is preserved.
 // CHECK-LABEL: func.func @deduplicate_dependency_results
 func.func @deduplicate_dependency_results() {
-  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: %[[V:.+]] = "test.work"
   // CHECK: mgp.device_graph.dependencies.yield %[[V]] : !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.buffer<<"gpu", 0>>
   // CHECK: "test.use"(%[[OUT]], %[[OUT]])
-  %node, %first, %second = mgp.device_graph.dependencies dependencies() {
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
+  %node, %first, %second = mgp.device_graph.dependencies builder(%bldr) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %x : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
@@ -172,12 +184,15 @@ func.func @deduplicate_dependency_results() {
 // one distinct used value, keeping the `node` result.
 // CHECK-LABEL: func.func @dedup_and_remove_unused_dependency_results
 func.func @dedup_and_remove_unused_dependency_results() -> !mgp.buffer<<"gpu", 0>> {
-  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[NODE:.+]], %[[OUT:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: %[[USED:.+]] = "test.work"
   // CHECK: mgp.device_graph.dependencies.yield %[[USED]] : !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.buffer<<"gpu", 0>>
   // CHECK: return %[[OUT]]
-  %node, %a0, %a1, %dead = mgp.device_graph.dependencies dependencies() {
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
+  %node, %a0, %a1, %dead = mgp.device_graph.dependencies builder(%bldr) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
     %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
@@ -190,13 +205,16 @@ func.func @dedup_and_remove_unused_dependency_results() -> !mgp.buffer<<"gpu", 0
 // Negative case: all body results used and distinct -- left unchanged.
 // CHECK-LABEL: func.func @no_change_dependency_results
 func.func @no_change_dependency_results() {
-  // CHECK: %[[NODE:.+]], %[[R:.+]]:2 = mgp.device_graph.dependencies dependencies() {
+  // CHECK: %[[NODE:.+]], %[[R:.+]]:2 = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder):
   // CHECK: %[[X:.+]] = "test.work"
   // CHECK: %[[Y:.+]] = "test.work2"
   // CHECK: mgp.device_graph.dependencies.yield %[[X]], %[[Y]] : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   // CHECK: "test.use"(%[[NODE]], %[[R]]#0, %[[R]]#1)
-  %node, %x, %y = mgp.device_graph.dependencies dependencies() {
+  %bldr = "test.builder"() : () -> !mgp.device_graph.builder
+  %node, %x, %y = mgp.device_graph.dependencies builder(%bldr) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
     %a = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
     %b = "test.work2"() : () -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %a, %b : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>

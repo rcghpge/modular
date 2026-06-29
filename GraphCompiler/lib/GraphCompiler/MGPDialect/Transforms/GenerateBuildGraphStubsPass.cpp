@@ -8,6 +8,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 
 using namespace M::MGP;
@@ -114,24 +115,31 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
 }
 
 /// Retarget a staged `mogg.call.stub @stub_N` to its sibling
-/// `@stub_N_build_graph`: swap the launch operand (a `!mgp.device_context`) for
-/// the staging op's `!mgp.device_graph.builder`, and surface the recording
-/// node as an added result. The node flows out unused for now; Stage 5 wires
-/// the inter-stub ordering from it.
-LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName,
-                                Value graphBuilder) {
+/// `@stub_N_build_graph`, surfacing the recording node as an added result.
+///
+/// The sibling takes a `!mgp.device_graph.builder` where the original took a
+/// launch context, so the call's launch operand is bridged to a builder with a
+/// local `builtin.unrealized_conversion_cast`.
+LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
   MLIRContext *ctx = call.getContext();
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
   if (operands.empty() ||
       !isa<DeviceContextType, M::MOGG::ContextType>(operands.back().getType()))
     return call.emitError("device-graph recording stub call: expected the last "
                           "operand to be the launch context");
-  operands.back() = graphBuilder;
+
+  auto builderType = DeviceGraphBuilderType::get(ctx);
+
+  IRRewriter rewriter(call);
+  operands.back() =
+      UnrealizedConversionCastOp::create(rewriter, call.getLoc(),
+                                         /*resultTypes=*/builderType,
+                                         /*operands=*/operands.back())
+          .getResult(0);
 
   SmallVector<Type> resultTypes = llvm::to_vector(call.getResultTypes());
   resultTypes.push_back(DeviceGraphNodeType::get(ctx));
 
-  IRRewriter rewriter(call);
   auto newCall =
       CallStubOp::create(rewriter, call.getLoc(), resultTypes, siblingName,
                          operands, call.getAffinityDeviceIdAttr());
@@ -146,12 +154,6 @@ LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName,
 /// For each `mogg.call.stub @stub_N` inside `staging` (the staged execute
 /// body), generate a sibling recording stub `@stub_N_build_graph` (inserted at
 /// module scope alongside `@stub_N` via `symtab`) and retarget the call to it.
-///
-/// Scope is deliberately limited to the staging op: only kernel-stub calls in
-/// the staged device-graph body are recorded into the device graph. Stub calls
-/// elsewhere in the model -- notably the `init` block, where EICM lifts
-/// weight-prepack stubs (e.g. a `@stub_0` transpose) -- are left as direct
-/// dispatches and never visited here.
 LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
                                       DeviceGraphStagingOp staging) {
   // TODO: We may need to expand this to support `CallStubAsyncOp` in the
@@ -162,27 +164,26 @@ LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
   if (calls.empty())
     return success();
 
-  // The builder the recording calls thread is the staging body's first block
-  // arg. The `dependencies` ops holding the calls are not `IsolatedFromAbove`,
-  // so referencing it from within them is legal.
-  Value graphBuilder = staging.getBodyBlock().getArgument(0);
-
   // One sibling per distinct callee; all calls to it are retargeted.
   llvm::DenseMap<StringAttr, StringAttr> calleeToSibling;
   for (CallStubOp call : calls) {
     StringAttr callee = call.getNameAttr().getRootReference();
-    auto it = calleeToSibling.find(callee);
-    if (it == calleeToSibling.end()) {
+
+    StringAttr &sibling = calleeToSibling[callee];
+    if (!sibling) {
       auto original = symtab.lookup<KernelStubOp>(callee.getValue());
       if (!original)
         return call.emitError("device-graph recording stub call: '")
                << callee.getValue() << "' does not name a kernel stub";
+
       FailureOr<StringAttr> siblingName = createRecordingStub(symtab, original);
       if (failed(siblingName))
         return failure();
-      it = calleeToSibling.insert({callee, *siblingName}).first;
+
+      sibling = *siblingName;
     }
-    if (failed(rewriteStagedCall(call, it->second, graphBuilder)))
+
+    if (failed(rewriteStagedCall(call, sibling)))
       return failure();
   }
   return success();

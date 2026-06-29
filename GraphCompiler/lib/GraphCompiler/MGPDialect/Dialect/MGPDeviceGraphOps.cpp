@@ -131,7 +131,25 @@ DeviceGraphDependenciesYieldOp DeviceGraphDependenciesOp::getYieldOp() {
       getBody().front().getTerminator());
 }
 
+BlockArgument DeviceGraphDependenciesOp::getBuilderBlockArgument() {
+  return getBody().front().getArgument(0);
+}
+
 LogicalResult DeviceGraphDependenciesOp::verify() {
+  // The body has exactly one block argument: the `!mgp.device_graph.builder`
+  // (arg #0) the unit's device-context uses are re-sourced from. It maps onto
+  // the enclosing staging/create builder.
+  Block &body = getBody().front();
+  if (body.getNumArguments() != 1)
+    return emitOpError("body has ")
+           << body.getNumArguments()
+           << " block argument(s), expected exactly 1 (the "
+              "`!mgp.device_graph.builder`)";
+  if (!llvm::isa<DeviceGraphBuilderType>(body.getArgument(0).getType()))
+    return emitOpError("body argument #0 must be a "
+                       "`!mgp.device_graph.builder`, but is ")
+           << body.getArgument(0).getType();
+
   // SingleBlockImplicitTerminator guarantees a single block terminated by a
   // DeviceGraphDependenciesYieldOp; the yield's operands carry the former
   // region's results out, so their types must match this op's `bodyResults`.
@@ -158,23 +176,30 @@ LogicalResult DeviceGraphDependenciesOp::fold(FoldAdaptor,
 }
 
 void DeviceGraphDependenciesOp::build(
-    OpBuilder &builder, OperationState &result, ValueRange dependencies,
-    llvm::function_ref<void(OpBuilder &, Location)> bodyBuilder) {
+    OpBuilder &builder, OperationState &result, Value graphBuilder,
+    ValueRange dependencies,
+    llvm::function_ref<void(OpBuilder &, Location, Value)> bodyBuilder) {
   OpBuilder::InsertionGuard guard(builder);
 
+  // Operand order mirrors `arguments`: the builder, then the dependency edges.
+  result.addOperands(graphBuilder);
   result.addOperands(dependencies);
 
   // The synthesized node is always the first result.
   result.addTypes(DeviceGraphNodeType::get(builder.getContext()));
 
-  // Create the body (no block arguments -- it references enclosing SSA
-  // directly) and let the callback populate it (it is expected to emit the
-  // dependencies.yield carrying the former region's results). createBlock also
-  // positions the insertion point.
+  // Create the body with its sole block argument -- the
+  // `!mgp.device_graph.builder` (bound to the `graphBuilder` operand) the
+  // body's device-context uses are re-sourced from -- and let the callback
+  // populate it (it is expected to emit the dependencies.yield carrying the
+  // former region's results). The body otherwise references enclosing SSA
+  // directly. createBlock also positions the insertion point.
   Region *bodyRegion = result.addRegion();
   Block *body = builder.createBlock(bodyRegion);
+  Value builderArg = body->addArgument(
+      DeviceGraphBuilderType::get(builder.getContext()), result.location);
   if (bodyBuilder)
-    bodyBuilder(builder, result.location);
+    bodyBuilder(builder, result.location, builderArg);
 
   // Supply the operandless terminator (no body results) if the callback did not
   // emit one.
@@ -207,7 +232,8 @@ rebuildWithBodyResults(PatternRewriter &rewriter, DeviceGraphDependenciesOp op,
   llvm::append_range(newResultTypes, newBodyResultTypes);
 
   auto newOp = DeviceGraphDependenciesOp::create(
-      rewriter, op.getLoc(), TypeRange(newResultTypes), op.getDependencies());
+      rewriter, op.getLoc(), TypeRange(newResultTypes), op.getGraphBuilder(),
+      op.getDependencies());
   newOp.getBody().takeBody(op.getBody());
   DeviceGraphDependenciesYieldOp newYield = newOp.getYieldOp();
   rewriter.modifyOpInPlace(newYield, [&]() {
@@ -296,7 +322,6 @@ struct DeduplicateDependenciesResults
       return failure();
 
     auto dedupedOperands = llvm::to_vector(firstOccurrence.keys());
-
     rebuildWithBodyResults(rewriter, op, TypeRange(dedupedOperands),
                            dedupedOperands, resultRemap);
     return success();

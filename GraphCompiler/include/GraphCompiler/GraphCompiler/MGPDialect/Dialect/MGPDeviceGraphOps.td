@@ -232,12 +232,21 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
 
     - It is **not** `IsolatedFromAbove`: the body's operations
       reference enclosing SSA values directly (the region's dataflow boundary is
-      dissolved at conversion time rather than re-threaded through operands). The
-      body has no block arguments. Execution order dependencies are encoded purely
-      through the `dependencies` operands.
-    - Its **operands are the dependency edges** -- `!mgp.device_graph.node`
-      values produced by the units this one must run after. The operand list is
-      *only* those edges, not dataflow.
+      dissolved at conversion time rather than re-threaded through operands).
+      Execution order dependencies are encoded purely through the `dependencies`
+      operands.
+    - It takes the **device-graph builder as the `graphBuilder` operand** -- the
+      enclosing builder recording into the graph under construction (it maps onto
+      the `mgp.device_graph.staging` / `mgp.device_graph.create` builder). The
+      operand makes the builder dependency explicit in the def-use graph.
+    - Its body has exactly **one block argument**, a `!mgp.device_graph.builder`
+      (arg #0), bound to the `graphBuilder` operand. The body's device-context
+      uses are re-sourced from this block-arg builder via a
+      `builtin.unrealized_conversion_cast` rather than referencing the outer
+      device context, so the body is self-contained (local lowering).
+    - Its remaining **operands are the dependency edges** --
+      `!mgp.device_graph.node` values produced by the units this one must run
+      after. That operand list is *only* those edges, not dataflow.
     - It **produces a `!mgp.device_graph.node`** representing this unit's
       contribution (successors depend on it), plus the values the former region
       yielded (so existing users are untouched). The node is synthesized by the
@@ -248,7 +257,9 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
 
     Example:
     ```mlir
-      %node, %r = mgp.device_graph.dependencies dependencies(%depA, %depB) {
+      %node, %r = mgp.device_graph.dependencies builder(%b)
+          dependencies(%depA, %depB) {
+      ^bb0(%builder: !mgp.device_graph.builder):
         // ops copied from the former mogg.generic.compiled.region, referencing
         // enclosing SSA directly
         mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
@@ -257,27 +268,40 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
     ```
   }];
 
-  let arguments = (ins Variadic<MGP_DeviceGraphNodeType>:$dependencies);
+  let arguments = (ins
+    MGP_DeviceGraphBuilderType:$graphBuilder,
+    Variadic<MGP_DeviceGraphNodeType>:$dependencies
+  );
+
   let results = (outs
     MGP_DeviceGraphNodeType:$node,
     Variadic<AnyType>:$bodyResults
   );
+
   let regions = (region SizedRegion<1>:$body);
 
   let builders = [
     OpBuilder<(ins
+      "Value":$graphBuilder,
       "ValueRange":$dependencies,
-      CArg<"function_ref<void(OpBuilder &, Location)>",
+      CArg<"function_ref<void(OpBuilder &, Location, Value)>",
            "nullptr">:$bodyBuilder)>
   ];
 
   let assemblyFormat = [{
-    `dependencies` `(` ($dependencies^)? `)` $body attr-dict (`:` type($bodyResults)^)?
+    `builder` `(` $graphBuilder `)`
+    `dependencies` `(` ($dependencies^)? `)`
+    $body attr-dict (`:` type($bodyResults)^)?
   }];
 
   let extraClassDeclaration = [{
     /// Returns the `mgp.device_graph.dependencies.yield` terminating the body.
     DeviceGraphDependenciesYieldOp getYieldOp();
+
+    /// Returns the body's `!mgp.device_graph.builder` block argument (bound to
+    /// the `graphBuilder` operand) -- the builder the body's recording work
+    /// uses.
+    BlockArgument getBuilderBlockArgument();
   }];
 
   let hasCanonicalizer = 1;
