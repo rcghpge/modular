@@ -560,22 +560,16 @@ LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
                                  state.getMojoValueFor(getBBufferSlot())}));
   state.setMojoValueFor(getResult(0), res[0]);
 
-  if (!getOptionalMemStorageHandle().empty())
-    state.setMojoValueFor(getMemStorageHandle(), res[1]);
+  if (auto memStorageHandle = getOptionalMemStorageHandle())
+    state.setMojoValueFor(memStorageHandle, res[1]);
 
-  return success();
-}
-
-LogicalResult BufferGetCachedOp::verify() {
-  if (getOptionalMemStorageHandle().size() > 1)
-    return emitOpError("Unexpected mem storage handle result");
   return success();
 }
 
 LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
                                               PatternRewriter &rewriter) {
-  if (op.getOptionalMemStorageHandle().size() == 1 &&
-      op.getMemStorageHandle().use_empty()) {
+  auto memStorageHandle = op.getOptionalMemStorageHandle();
+  if (memStorageHandle && memStorageHandle.use_empty()) {
     auto cachedBufferOp = BufferGetCachedOp::create(
         rewriter, op->getLoc(), op.getOutBuffer().getType(), op->getOperands(),
         op->getAttrs());

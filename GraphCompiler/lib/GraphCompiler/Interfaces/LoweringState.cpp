@@ -790,7 +790,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
           MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
     } else if (auto bufferGetCachedOp =
                    value.getDefiningOp<MGP::BufferGetCachedOp>()) {
-      if (bufferGetCachedOp.getOptionalMemStorageHandle().empty()) {
+      if (!bufferGetCachedOp.getOptionalMemStorageHandle()) {
         auto memStorageType = KGEN::PointerType::get(
             KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext())));
         auto oldBufferGetCachedOp = bufferGetCachedOp;
@@ -803,7 +803,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       }
       newValue = MOGG::AsyncPackBorrowOp::create(
           builder, loc, bufferGetCachedOp.getOutBuffer(),
-          bufferGetCachedOp.getMemStorageHandle());
+          bufferGetCachedOp.getOptionalMemStorageHandle());
     } else if (auto tensorExtractBufferOp =
                    value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
       newValue = createAsyncPackBorrowWithUnpack(

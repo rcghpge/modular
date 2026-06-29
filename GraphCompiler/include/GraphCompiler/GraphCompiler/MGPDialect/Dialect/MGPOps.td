@@ -762,22 +762,17 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
     MGP_ContextType:$theContext,
     Index:$bBufferSlot  // 1
   );
+
   let results = (outs
     MGP_DeviceBufferType:$outBuffer,
-    Variadic<PointerOf<PointerOf<KGEN_NoneType>>>:$optional_memStorageHandle
+    Optional<PointerOf<PointerOf<KGEN_NoneType>>>:$optional_memStorageHandle
   );
+
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` attr-dict
     `:` qualified(type($outBuffer)) (`,` qualified(type($optional_memStorageHandle))^)?
   }];
 
-  let extraClassDeclaration = [{
-      ::mlir::Value getMemStorageHandle() {
-          assert(!getOptionalMemStorageHandle().empty() && "memStorageHandle result not present");
-          return getOptionalMemStorageHandle()[0];
-        }
-    }];
-  let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
 
