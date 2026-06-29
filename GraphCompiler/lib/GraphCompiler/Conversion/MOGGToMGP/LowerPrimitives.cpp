@@ -199,7 +199,6 @@ void LowerPrimitivesPass::runOnOperation() {
 
     if (implementsEmitsMojoInterface) {
       resultsToPack = implementsEmitsMojoInterface.resultsToPack();
-      operandsToUnpack = implementsEmitsMojoInterface.operandsToUnpack();
     }
 
     MOGraphLoweringState::lowerMOGGABI(*newKernel, operandsToUnpack,

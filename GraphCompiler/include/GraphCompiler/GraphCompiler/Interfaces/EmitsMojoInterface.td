@@ -22,10 +22,6 @@ def EmitsMojoInterface : OpInterface<"EmitsMojoInterface"> {
       "mlir::LogicalResult", "emitMojo", (ins "M::MOGG::EmitMojoState&":$state)
     >,
     InterfaceMethod<
-      "Return a set of operand indices that should be unpacked when lowering to a generic compiled region.",
-      "mlir::BitVector", "operandsToUnpack", (ins), [{}], [{ return mlir::BitVector($_op->getNumOperands(), true); }]
-    >,
-    InterfaceMethod<
       "Return a set of result indices that should be packed when lowering to a generic compiled region.",
       "mlir::BitVector", "resultsToPack", (ins), [{}], [{ return mlir::BitVector($_op->getNumResults(), true); }]
     >,
