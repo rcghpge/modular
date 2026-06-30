@@ -191,6 +191,12 @@ def MGP_DeviceGraphType : MGP_Type<"DeviceGraph", "device_graph",
 
   let parameters = (ins "FunctionType":$signature);
   let assemblyFormat = "`<` $signature `>`";
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "mlir::FunctionType":$signature)>,
+    TypeBuilder<(ins "mlir::TypeRange":$inputs, "mlir::TypeRange":$results)>,
+    TypeBuilder<(ins "mlir::ValueRange":$inputs, "mlir::ValueRange":$results)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

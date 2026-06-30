@@ -179,14 +179,15 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
 
     Replay produces the graph's outputs internally and surfaces them as the op's
     `outputs` results (value-returning, not destination-passing): one result per
-    graph output, whose types match `graph`'s signature results. The op has no
-    chain result -- the output values carry the downstream data dependency, and
-    the `inChain` operand orders the replay after the graph is built.
+    graph output, whose types match `graph`'s signature results. The op neither
+    consumes nor produces a chain -- the `graph` operand orders the replay after
+    the graph is built, and the output values carry the downstream data
+    dependency.
 
     Example:
     ```mlir
       %out = mgp.device_graph.execute
-          %ch0, %graph, %gpu_ctx
+          %graph, %gpu_ctx
           inputs(%in, %bias
               : !mgp.tensor<2x4xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>>)
           : !mgp.device_graph<...>, !mgp.device_context<<"gpu", 0>>
@@ -195,7 +196,6 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
   }];
 
   let arguments = (ins
-    ChainType:$inChain,
     MGP_DeviceGraphType:$graph,
     MGP_DeviceContextType:$deviceContext,
     Variadic<AnyType>:$inputs
@@ -203,7 +203,7 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
   let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    $inChain `,` $graph `,` $deviceContext
+    $graph `,` $deviceContext
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
     attr-dict
     `:` qualified(type($graph)) `,` qualified(type($deviceContext))
@@ -389,7 +389,15 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
+  let arguments = (ins
+    Variadic<AnyType>:$inputs,
+    // As mogg.generic.compiled.region ops are inlined away, we will need a
+    // place to store the constant resource attributes.
+    // This operation is eventually synthesized back into a
+    // mogg.generic.compiled.region, so it is the natural place.
+    DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
+  );
+
   let results = (outs Variadic<AnyType>:$stagedResults);
   let regions = (region SizedRegion<1>:$body);
 
@@ -419,6 +427,11 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 
     Block &getBodyBlock() {
       return getBody().front();
+    }
+
+    TypedValue<DeviceGraphBuilderType> getBodyBuilder() {
+      return cast<TypedValue<DeviceGraphBuilderType>>(
+        getBodyBlock().getArgument(0));
     }
   }];
 

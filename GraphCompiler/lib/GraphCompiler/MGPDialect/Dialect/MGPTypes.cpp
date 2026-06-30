@@ -135,10 +135,22 @@ void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
 }
 
 //===----------------------------------------------------------------------===//
-// ContextType
+// DeviceGraphType
 //===----------------------------------------------------------------------===//
 
-// Nothing to implement.
+DeviceGraphType DeviceGraphType::get(FunctionType signature) {
+  return DeviceGraphType::get(signature.getContext(), signature);
+}
+
+DeviceGraphType DeviceGraphType::get(MLIRContext *ctx, TypeRange inputs,
+                                     TypeRange results) {
+  return DeviceGraphType::get(FunctionType::get(ctx, inputs, results));
+}
+
+DeviceGraphType DeviceGraphType::get(MLIRContext *ctx, ValueRange inputs,
+                                     ValueRange results) {
+  return DeviceGraphType::get(ctx, TypeRange(inputs), TypeRange(results));
+}
 
 //===----------------------------------------------------------------------===//
 // DTypeType

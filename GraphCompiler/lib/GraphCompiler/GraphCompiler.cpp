@@ -424,6 +424,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     // Stage 4: generate `@stub_N_build_graph` recording stubs and retarget the
     // staged kernel-stub calls to them.
     pm.addPass(MGP::createGenerateBuildGraphStubsPass());
+    // Stage 6: lift the staging op into `mgp.device_graph.create` /
+    // `mgp.device_graph.execute`, rewiring `mef.output`.
+    pm.addPass(MGP::createFinalizeDeviceGraphsPass());
   } else {
     pm.addPass(MOGG::createSequenceFusion());
   }

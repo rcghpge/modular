@@ -528,7 +528,9 @@ struct RemoveUnusedStagingResults
     // move the body into it, then update the moved yield to carry only the used
     // values.
     auto newOp = DeviceGraphStagingOp::create(
-        rewriter, op.getLoc(), TypeRange(usedResultTypes), op.getInputs());
+        rewriter, op.getLoc(), TypeRange(usedResultTypes), op.getInputs(),
+        op.getConstantResources());
+
     newOp.getBody().takeBody(op.getBody());
     DeviceGraphStagingYieldOp newYield = newOp.getYieldOp();
     rewriter.modifyOpInPlace(newYield, [&]() {
@@ -579,7 +581,9 @@ struct DeduplicateStagingResults
     // args) and move the body into it, then update the moved yield to carry
     // only the surviving values.
     auto newOp = DeviceGraphStagingOp::create(
-        rewriter, op.getLoc(), TypeRange(dedupedTypes), op.getInputs());
+        rewriter, op.getLoc(), TypeRange(dedupedTypes), op.getInputs(),
+        op.getConstantResources());
+
     newOp.getBody().takeBody(op.getBody());
     DeviceGraphStagingYieldOp newYield = newOp.getYieldOp();
     rewriter.modifyOpInPlace(newYield, [&]() {

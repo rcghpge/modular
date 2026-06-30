@@ -32,9 +32,9 @@ func.func @device_graph_round_trip(
   // Value-returning: replay surfaces the graph output as its sole result; there
   // is no chain result (the output carries the data dependency) and no
   // destination `outputs` operand.
-  // CHECK: %{{.+}} = mgp.device_graph.execute %{{.+}}, %[[GRAPH]], %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mgp.buffer<<"gpu", 0>>
+  // CHECK: %{{.+}} = mgp.device_graph.execute %[[GRAPH]], %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mgp.buffer<<"gpu", 0>>
   %res = mgp.device_graph.execute
-      %ch, %graph, %dctx
+      %graph, %dctx
       inputs(%in, %wt : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
@@ -64,10 +64,10 @@ func.func @device_graph_empty_groups(
 
   // Empty `inputs()` and no graph outputs: the op has zero results and the
   // `-> ` result-type clause is omitted on print.
-  // CHECK: mgp.device_graph.execute %{{.+}}, %{{.+}}, %{{.+}} inputs() : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>>
+  // CHECK: mgp.device_graph.execute %{{.+}}, %{{.+}} inputs() : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>>
   // CHECK-NOT: ->
   mgp.device_graph.execute
-      %ch, %graph, %dctx
+      %graph, %dctx
       inputs()
       : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>>
 

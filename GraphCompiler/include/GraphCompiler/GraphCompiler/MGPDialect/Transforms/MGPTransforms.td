@@ -780,4 +780,42 @@ def GenerateBuildGraphStubsPass :
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// FinalizeDeviceGraphsPass
+//===----------------------------------------------------------------------===//
+
+def FinalizeDeviceGraphsPass :
+    Pass<"mgp-finalize-device-graphs", "MGP::ModelOp"> {
+  let summary = "Lower the `mgp.device_graph.staging` op of an `isDeviceGraph` "
+                "model into `mgp.device_graph.create` / `mgp.device_graph.execute`.";
+  let description = [{
+    Final stage of device-graph synthesis; runs after
+    `mgp-generate-build-graph-stubs`. For each `mgp.model` marked `isDeviceGraph`,
+    lifts the (cleaned) `mgp.device_graph.staging` op in the execute block into
+    the device-graph surface:
+
+    - the staged body becomes the build body of a `mgp.device_graph.create` --
+      its `!mgp.device_graph.builder` and bare-`T` input block args carry over,
+      and the `staging.yield`'s escaping values become the
+      `mgp.device_graph.yield`'s operands (defining the result graph signature's
+      results);
+    - a `mgp.device_graph.execute` replays the graph against the same inputs and
+      surfaces its outputs as results.
+
+    `mef.output` is rewired to the execute op's chain and output results, and the
+    staging op is erased. The create op draws its chain / context / device
+    context from the execute block (`mef.output`'s chain operand, the model
+    context, the model device context).
+
+    First cut: single device per model, no caching (a reserved slot 0).
+
+    For models without `isDeviceGraph`, the pass is a no-op.
+  }];
+
+  // The pass wraps `mgp.device_graph.create` in a `mogg.generic.compiled.region`
+  // (MOGG ops/attrs) carrying a `KGEN::ParamDeclArrayAttr`, so those dialects
+  // must be loaded even for inputs that don't already reference them.
+  let dependentDialects = ["M::MOGG::MOGGDialect", "M::KGEN::KGENDialect"];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

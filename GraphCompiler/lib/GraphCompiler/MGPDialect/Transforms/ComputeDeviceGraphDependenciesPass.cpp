@@ -90,7 +90,8 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
     Type elementType = blockArg.getType();
     if (auto async = llvm::dyn_cast<AsyncType>(elementType))
       elementType = async.getElementType();
-    if (llvm::isa<DeviceContextType>(elementType)) {
+
+    if (isa<DeviceContextType>(elementType)) {
       Value &cast = deviceContextCast[elementType];
       if (!cast)
         cast = UnrealizedConversionCastOp::create(builder, loc, elementType,
@@ -150,15 +151,14 @@ LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
   // `dependencies` op takes it as its `graphBuilder` operand, making the
   // builder dependency explicit while the op's body uses its own (bound)
   // builder block arg.
-  Value stagingBuilder = body.getArgument(0);
+  Value stagingBuilder = stagingOp.getBodyBuilder();
   // Convert each region in block order. The staging body is a graph region, so
   // block order need not be topological: a consumer may be visited before its
   // producer. That is fine -- when a producer is not yet in `oldValueToNew` its
   // consumer's body references the producer's *old* result, which the final
   // rewire below redirects to the new value. The forward node edges and forward
   // body references this leaves are legal in the enclosing graph region.
-  for (GenericCompiledRegionOp region :
-       body.getOps<GenericCompiledRegionOp>()) {
+  for (auto region : body.getOps<GenericCompiledRegionOp>()) {
     OpBuilder builder(region);
     // Edges are derived in a second pass (they may be forward), so start with
     // no dependency operands; the callback builds the body and the op infers
@@ -205,8 +205,19 @@ LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
       oldResult.replaceAllUsesWith(newResult);
   }
 
-  for (auto [region, dependencies] : oldToNew)
+  // Aggregate the new dense resources before deleting the original
+  // GenericCompiledRegionOps.
+  SetVector<Attribute> constantResources;
+  for (auto region : oldToNew.keys()) {
+    if (auto resources = region.getConstantResources())
+      constantResources.insert_range(resources);
+
     region.erase();
+  }
+
+  Builder builder(stagingOp->getContext());
+  auto newAttr = builder.getArrayAttr(constantResources.getArrayRef());
+  stagingOp.setConstantResourcesAttr(newAttr);
 
   return success();
 }

@@ -158,7 +158,7 @@ func.func @execute_bad_inputs(
     %bad_in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
   // expected-error@+1 {{'mgp.device_graph.execute' op `inputs` operand types do not match the graph's signature inputs}}
   %out = mgp.device_graph.execute
-      %ch, %graph, %dctx
+      %graph, %dctx
       inputs(%bad_in : !mgp.buffer<<"cpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
@@ -180,7 +180,7 @@ func.func @execute_bad_outputs(
     %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
   // expected-error@+1 {{'mgp.device_graph.execute' op `outputs` result types do not match the graph's signature results}}
   %bad_out = mgp.device_graph.execute
-      %ch, %graph, %dctx
+      %graph, %dctx
       inputs(%in : !mgp.buffer<<"gpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
