@@ -1,26 +1,23 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
 //
-// mgp.device_graph.create: block arg count must equal
-//   1 (builder) + |inputs| + |outputs|.
+// mgp.device_graph.create: block arg count must equal 1 (builder) + |inputs|.
 //
 
 func.func @bad_block_arg_count(
     %ch: !mef.chain,
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>,
-    %in: !mgp.buffer<<"gpu", 0>>,
-    %out: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.create' op build body has 1 block argument(s), expected 3}}
-  %ch1, %graph = mgp.device_graph.create
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op build body has 1 block argument(s), expected 2}}
+  %graph = mgp.device_graph.create
       %ch, %ctx[3], %dctx
-      inputs(%in : !mgp.buffer<<"gpu", 0>>)
-      outputs(%out : !mgp.buffer<<"gpu", 0>>) {
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
     ^bb0(%builder: !mgp.device_graph.builder):
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>
-  return %ch1 : !mef.chain
+  return %ch : !mef.chain
 }
 
 // -----
@@ -33,20 +30,41 @@ func.func @bad_block_arg_type(
     %ch: !mef.chain,
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>,
-    %in: !mgp.buffer<<"gpu", 0>>,
-    %out: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.create' op build body argument #1 has type '!mgp.buffer<<"gpu", 1>>', expected '!mgp.buffer<<"gpu", 0>>' or a `!mogg.async` of it}}
-  %ch1, %graph = mgp.device_graph.create
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op build body argument #1 has type '!mgp.buffer<<"gpu", 1>>', expected '!mgp.buffer<<"gpu", 0>>'}}
+  %graph = mgp.device_graph.create
       %ch, %ctx[3], %dctx
-      inputs(%in : !mgp.buffer<<"gpu", 0>>)
-      outputs(%out : !mgp.buffer<<"gpu", 0>>) {
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
     ^bb0(%builder: !mgp.device_graph.builder,
-         %in_b: !mgp.buffer<<"gpu", 1>>,
-         %out_b: !mgp.buffer<<"gpu", 0>>):
+         %in_b: !mgp.buffer<<"gpu", 1>>):
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>
-  return %ch1 : !mef.chain
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.create: an `!mogg.async<T>` input block arg is rejected --
+// the build-body boundary carries bare `T`, no sync/async transition.
+//
+
+func.func @bad_async_block_arg(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op build body argument #1 has type '!mogg.async<!mgp.buffer<<"gpu", 0>>>', expected '!mgp.buffer<<"gpu", 0>>'}}
+  %graph = mgp.device_graph.create
+      %ch, %ctx[3], %dctx
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %in_b: !mogg.async<!mgp.buffer<<"gpu", 0>>>):
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>
+  return %ch : !mef.chain
 }
 
 // -----
@@ -60,20 +78,41 @@ func.func @bad_signature_inputs(
     %ch: !mef.chain,
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>,
-    %in: !mgp.buffer<<"gpu", 0>>,
-    %out: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
   // expected-error@+1 {{'mgp.device_graph.create' op result `!mgp.device_graph` signature inputs do not match the op's `inputs` operand types}}
-  %ch1, %graph = mgp.device_graph.create
+  %graph = mgp.device_graph.create
       %ch, %ctx[3], %dctx
-      inputs(%in : !mgp.buffer<<"gpu", 0>>)
-      outputs(%out : !mgp.buffer<<"gpu", 0>>) {
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
     ^bb0(%builder: !mgp.device_graph.builder,
-         %in_b: !mgp.buffer<<"gpu", 0>>,
-         %out_b: !mgp.buffer<<"gpu", 0>>):
+         %in_b: !mgp.buffer<<"gpu", 0>>):
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<() -> (!mgp.buffer<<"gpu", 0>>)>
-  return %ch1 : !mef.chain
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.create: outGraph signature results must match the build
+//   body's yielded value types.
+//
+
+func.func @bad_signature_results(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op result `!mgp.device_graph` signature results do not match the build body's yielded value types}}
+  %graph = mgp.device_graph.create
+      %ch, %ctx[3], %dctx
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %in_b: !mgp.buffer<<"gpu", 0>>):
+      mgp.device_graph.yield %in_b : !mgp.buffer<<"gpu", 0>>
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"cpu", 0>>)>
+  return %ch : !mef.chain
 }
 
 // -----
@@ -87,22 +126,21 @@ func.func @execute_bad_inputs(
     %ch: !mef.chain,
     %graph: !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
     %dctx: !mgp.device_context<<"gpu", 0>>,
-    %bad_in: !mgp.buffer<<"cpu", 0>>,
-    %out: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+    %bad_in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
   // expected-error@+1 {{'mgp.device_graph.execute' op `inputs` operand types do not match the graph's signature inputs}}
-  %ch1 = mgp.device_graph.execute
+  %out = mgp.device_graph.execute
       %ch, %graph, %dctx
       inputs(%bad_in : !mgp.buffer<<"cpu", 0>>)
-      outputs(%out : !mgp.buffer<<"gpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
-  return %ch1 : !mef.chain
+        -> !mgp.buffer<<"gpu", 0>>
+  return %ch : !mef.chain
 }
 
 // -----
 
 //
-// mgp.device_graph.execute: outputs operand types must match graph signature
+// mgp.device_graph.execute: output result types must match graph signature
 //   results.
 //
 
@@ -110,14 +148,13 @@ func.func @execute_bad_outputs(
     %ch: !mef.chain,
     %graph: !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
     %dctx: !mgp.device_context<<"gpu", 0>>,
-    %in: !mgp.buffer<<"gpu", 0>>,
-    %bad_out: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.execute' op `outputs` operand types do not match the graph's signature results}}
-  %ch1 = mgp.device_graph.execute
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.execute' op `outputs` result types do not match the graph's signature results}}
+  %bad_out = mgp.device_graph.execute
       %ch, %graph, %dctx
       inputs(%in : !mgp.buffer<<"gpu", 0>>)
-      outputs(%bad_out : !mgp.buffer<<"cpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
-  return %ch1 : !mef.chain
+        -> !mgp.buffer<<"cpu", 0>>
+  return %ch : !mef.chain
 }

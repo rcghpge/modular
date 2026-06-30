@@ -37,8 +37,6 @@ class MGP_DeviceGraphOp<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
-  AttrSizedOperandSegments,
-  InferTypeOpAdaptor,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
 ]> {
@@ -46,50 +44,47 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
   let description = [{
     Returns an `!mgp.device_graph`, either by invoking the build body and
     storing the result in the given state slot, or by retrieving a previously
-    cached value from that slot.
+    cached value from that slot. The op has no chain result -- the `inChain`
+    operand orders the build, and the produced graph value carries the
+    downstream dependency (`mgp.device_graph.execute` consumes it).
 
-    Operands are split into two groups, mirroring the eventual replay-time
-    signature recorded on the result `!mgp.device_graph`:
-    - `inputs`: read-only buffers/tensors that the graph will treat as
-      frozen inputs at replay time.
-    - `outputs`: caller-allocated buffers/tensors that the graph will write
-      through at replay time.
+    The `inputs` operands are the read-only buffers/tensors the graph will treat
+    as frozen inputs at replay time; they form the input half of the result
+    `!mgp.device_graph` signature. The graph's outputs are produced inside the
+    graph (value-returning, not destination-passing), so they have no operand --
+    the build body yields them via `mgp.device_graph.yield`, and their types form
+    the output half of the signature.
 
     The op owns the device-graph builder lifecycle. It creates a
     `!mgp.device_graph.builder` from its `deviceContext` operand and passes that
     builder to the build body as the body's first block argument; after the body
     returns, the op instantiates the recorded builder into its result
-    `!mgp.device_graph`. The build body therefore only records nodes -- it does
-    not create the builder or produce the graph.
+    `!mgp.device_graph`. The build body records nodes into that builder and
+    yields the graph's output values; it does not create the builder or produce
+    the graph object itself.
 
     The body's block arguments are, in order: the `!mgp.device_graph.builder`,
-    then the `inputs`, then the `outputs`. As in `mogg.generic.compiled.region`,
-    the input/output arguments arrive as `!mogg.async<T>` wrappers around the
-    corresponding operand type `T` -- the region boundary wraps the
-    buffers/tensors into async values on entry and the body unpacks them via
-    `mogg.async.unpack` (a body that consumes an argument directly as the plain
-    `T` is also accepted). On a cache miss the body runs and must terminate with
-    an operandless `mgp.device_graph.yield`. On a cache hit the body is not
-    invoked.
+    then the `inputs`, carrying the input operand types verbatim (bare `T`, no
+    `!mogg.async` wrapping at the boundary). On a cache miss the body runs and
+    must terminate with a `mgp.device_graph.yield` whose operand types match the
+    result graph signature's results. On a cache hit the body is not invoked.
 
     Note: in the initial implementation every call is a cache miss -- the
     slot operand is reserved for the caching machinery added in Phase 2.
 
     Example:
     ```mlir
-      %ch1, %graph = mgp.device_graph.create
+      %graph = mgp.device_graph.create
           %ch0, %ctx[3], %gpu_ctx
           inputs(%in, %bias, %wt
               : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>,
-                !mgp.buffer<<"gpu", 0>>)
-          outputs(%out : !mgp.buffer<<"gpu", 0>>) ({
+                !mgp.buffer<<"gpu", 0>>) ({
         ^bb0(%builder: !mgp.device_graph.builder,
-             %in_b: !mogg.async<!mgp.buffer<<"gpu", 0>>>,
-             %bias_b: !mogg.async<!mgp.buffer<<"gpu", 0>>>,
-             %wt_b: !mogg.async<!mgp.buffer<<"gpu", 0>>>,
-             %out_b: !mogg.async<!mgp.buffer<<"gpu", 0>>>):
-          // ... unpack args, record nodes into %builder ...
-          mgp.device_graph.yield
+             %in_b: !mgp.buffer<<"gpu", 0>>,
+             %bias_b: !mgp.buffer<<"gpu", 0>>,
+             %wt_b: !mgp.buffer<<"gpu", 0>>):
+          // ... record nodes into %builder, produce %out ...
+          mgp.device_graph.yield %out : !mgp.buffer<<"gpu", 0>>
       }) : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<...>
     ```
   }];
@@ -99,22 +94,37 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
     MGP_ContextType:$theContext,
     MGP_DeviceContextType:$deviceContext,
     Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs,
     UI64Attr:$bGraphSlot
   );
-  let results = (outs
-    ChainType:$outChain,
-    MGP_DeviceGraphType:$outGraph
-  );
+  let results = (outs MGP_DeviceGraphType:$outGraph);
   let regions = (region SizedRegion<1>:$buildBody);
 
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bGraphSlot `]` `,` $deviceContext
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
-    `outputs` `(` ( $outputs^ `:` qualified(type($outputs)) )? `)`
     $buildBody attr-dict
     `:` qualified(type($deviceContext)) `->` qualified(type($outGraph))
   }];
+
+  let builders = [
+    // Builds the op and its build body in one shot. Creates the body block with
+    // its `!mgp.device_graph.builder` block argument followed by one bare-`T`
+    // argument per input, and invokes `bodyBuilder` with the builder arg and the
+    // input args. The callback is expected to record nodes into the builder and
+    // emit the `mgp.device_graph.yield` carrying the graph's output values; the
+    // result `!mgp.device_graph`'s signature is then inferred as
+    // `(type(inputs)) -> (type(yielded outputs))`. If `bodyBuilder` is null or
+    // leaves the body unterminated, an operandless `mgp.device_graph.yield`
+    // (no graph outputs) is supplied.
+    OpBuilder<(ins
+      "Value":$inChain,
+      "Value":$theContext,
+      "Value":$deviceContext,
+      "ValueRange":$inputs,
+      "uint64_t":$bGraphSlot,
+      CArg<"function_ref<void(OpBuilder &, Location, Value, ValueRange)>",
+           "nullptr">:$bodyBuilder)>
+  ];
 
   let extraClassDeclaration = [{
     Block *getBodyBuilderBlock() {
@@ -138,50 +148,52 @@ def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
   let summary = "Terminator for a `mgp.device_graph.create` build body.";
   let description = [{
     Marks the end of the recording build body of an enclosing
-    `mgp.device_graph.create`. It takes no operands: the build body only
-    records nodes into the builder the parent op supplies, and the parent op
-    instantiates that builder into its result `!mgp.device_graph` after the body
-    returns -- the body does not produce the graph itself.
+    `mgp.device_graph.create`, yielding the graph's output values. The operand
+    types form the result `!mgp.device_graph` signature's results; the parent op
+    instantiates the recorded builder into that graph after the body returns. A
+    body with no graph outputs yields nothing (the operand list is empty).
 
     Example:
     ```mlir
-      mgp.device_graph.yield
+      mgp.device_graph.yield %out : !mgp.buffer<<"gpu", 0>>
     ```
   }];
 
-  let assemblyFormat = "attr-dict";
+  let arguments = (ins Variadic<AnyType>:$outputs);
+  let assemblyFormat = "attr-dict ($outputs^ `:` type($outputs))?";
+
+  // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
+  // (operands are populated after insertion); see DeviceGraphStagingYieldOp.
+  let builders = [OpBuilder<(ins)>];
 }
 
 //===----------------------------------------------------------------------===//
 // DeviceGraphExecuteOp
 //===----------------------------------------------------------------------===//
 
-def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", [
-  AttrSizedOperandSegments,
-]> {
+def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
   let summary = "Replays a constructed device graph.";
   let description = [{
     Triggers replay of the given `!mgp.device_graph` on `deviceContext`.
 
-    Operands are split into two groups:
-    - `inputs`: read-only buffers/tensors whose contents are copied into the
-      graph's frozen-input addresses at replay time. Types must match
-      `graph`'s signature inputs.
-    - `outputs`: caller-allocated buffers/tensors the graph writes through
-      in-place. Types must match `graph`'s signature results.
+    - `inputs`: read-only buffers/tensors whose contents are fed to the graph's
+      frozen-input addresses at replay time. Types must match `graph`'s
+      signature inputs.
 
-    The op returns only a chain; result values are observable through the
-    caller-supplied output buffers.
+    Replay produces the graph's outputs internally and surfaces them as the op's
+    `outputs` results (value-returning, not destination-passing): one result per
+    graph output, whose types match `graph`'s signature results. The op has no
+    chain result -- the output values carry the downstream data dependency, and
+    the `inChain` operand orders the replay after the graph is built.
 
     Example:
     ```mlir
-      %ch1 = mgp.device_graph.execute
+      %out = mgp.device_graph.execute
           %ch0, %graph, %gpu_ctx
-          inputs(%in, %bias, %wt
-              : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>,
-                !mgp.buffer<<"gpu", 0>>)
-          outputs(%out : !mgp.buffer<<"gpu", 0>>)
+          inputs(%in, %bias
+              : !mgp.tensor<2x4xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>>)
           : !mgp.device_graph<...>, !mgp.device_context<<"gpu", 0>>
+            -> !mgp.tensor<2x3xf32, <"gpu", 0>>
     ```
   }];
 
@@ -189,17 +201,16 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", [
     ChainType:$inChain,
     MGP_DeviceGraphType:$graph,
     MGP_DeviceContextType:$deviceContext,
-    Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs
+    Variadic<AnyType>:$inputs
   );
-  let results = (outs ChainType:$outChain);
+  let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
     $inChain `,` $graph `,` $deviceContext
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
-    `outputs` `(` ( $outputs^ `:` qualified(type($outputs)) )? `)`
     attr-dict
     `:` qualified(type($graph)) `,` qualified(type($deviceContext))
+    ( `->` qualified(type($outputs))^ )?
   }];
 
   let hasVerifier = 1;

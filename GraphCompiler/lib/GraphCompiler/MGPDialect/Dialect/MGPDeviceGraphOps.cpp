@@ -16,8 +16,6 @@
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
-#include "MLRT/GraphRT/MEFDialect/MEFTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -41,67 +39,98 @@ LogicalResult DeviceGraphCreateOp::verify() {
     return emitOpError(
         "build body must terminate with `mgp.device_graph.yield`");
 
-  // Block argument types are [builder, inputs..., outputs...]. The op creates
-  // the builder from its `deviceContext` operand and passes it in as the first
-  // block arg; it instantiates the recorded builder into `outGraph` itself, so
-  // the body neither creates the builder nor yields the graph.
+  // Block argument types are [builder, inputs...]. The op creates the builder
+  // from its `deviceContext` operand and passes it in as the first block arg;
+  // it instantiates the recorded builder into `outGraph` itself, so the body
+  // neither creates the builder nor yields the graph. The graph's outputs are
+  // produced inside the body (value-returning), so they have no operand and no
+  // block arg.
   //
-  // Like `mogg.generic.compiled.region`, the input/output arguments arrive as
-  // `!mogg.async<T>` wrappers around the corresponding operand type `T`: the
-  // region boundary wraps the buffers/tensors into async values on entry and
-  // the body unpacks them via `mogg.async.unpack`. An argument consumed
-  // directly as the plain operand type `T` is also accepted (mirroring the
-  // region's ABI-lowering flexibility).
-  size_t numValueArgs = getInputs().size() + getOutputs().size();
-  if (body.getNumArguments() != 1 + numValueArgs)
+  // The input arguments carry the `inputs` operand types verbatim (bare `T`, no
+  // `!mogg.async` wrapping at the boundary): by the time a build body is
+  // assembled the async pack/unpack mediation has been folded away.
+  if (body.getNumArguments() != 1 + getInputs().size())
     return emitOpError("build body has ")
            << body.getNumArguments() << " block argument(s), expected "
-           << (1 + numValueArgs);
+           << (1 + getInputs().size());
 
   if (!llvm::isa<DeviceGraphBuilderType>(body.getArgument(0).getType()))
     return emitOpError("build body argument #0 must be a "
                        "`!mgp.device_graph.builder`, but is ")
            << body.getArgument(0).getType();
 
-  // inputs then outputs, matched against the body args after the builder.
-  SmallVector<Type> valueOperandTypes(getInputs().getTypes());
-  llvm::append_range(valueOperandTypes, getOutputs().getTypes());
-  for (auto [idx, operandType] : llvm::enumerate(valueOperandTypes)) {
+  // `inputs` matched against the body args after the builder.
+  for (auto [idx, operandType] : llvm::enumerate(getInputs().getTypes())) {
     Type argType = body.getArgument(idx + 1).getType();
-    if (argType == operandType)
-      continue;
-    auto asyncType = llvm::dyn_cast<MOGG::AsyncType>(argType);
-    if (!asyncType || asyncType.getElementType() != operandType)
+    if (argType != operandType)
       return emitOpError("build body argument #")
              << (idx + 1) << " has type " << argType << ", expected "
-             << operandType << " or a `!mogg.async` of it";
+             << operandType;
   }
 
-  // The result device_graph's signature must agree with the op-level operand
-  // grouping: signature.inputs == inputs, signature.results == outputs.
+  // The result device_graph's signature must agree with the op: the signature
+  // inputs match the `inputs` operands, and the signature results are the
+  // graph's (value-returning) outputs, which the build body yields -- so they
+  // match the `mgp.device_graph.yield` operand types.
   FunctionType sig = getOutGraph().getType().getSignature();
   if (!llvm::equal(sig.getInputs(), getInputs().getTypes()))
     return emitOpError("result `!mgp.device_graph` signature inputs do not "
                        "match the op's `inputs` operand types");
-  if (!llvm::equal(sig.getResults(), getOutputs().getTypes()))
+
+  auto yieldOp = cast<DeviceGraphYieldOp>(body.back());
+  if (!llvm::equal(sig.getResults(), yieldOp.getOutputs().getTypes()))
     return emitOpError("result `!mgp.device_graph` signature results do not "
-                       "match the op's `outputs` operand types");
+                       "match the build body's yielded value types");
 
   return success();
 }
 
-LogicalResult DeviceGraphCreateOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  // The device graph's signature mirrors the op's operand grouping:
-  // function inputs == `inputs`, function results == `outputs`.
-  auto signature = FunctionType::get(context, adaptor.getInputs().getTypes(),
-                                     adaptor.getOutputs().getTypes());
+void DeviceGraphCreateOp::build(
+    OpBuilder &builder, OperationState &result, Value inChain, Value theContext,
+    Value deviceContext, ValueRange inputs, uint64_t bGraphSlot,
+    llvm::function_ref<void(OpBuilder &, Location, Value, ValueRange)>
+        bodyBuilder) {
+  OpBuilder::InsertionGuard guard(builder);
 
-  // Results are (outChain, outGraph) in declaration order.
-  inferredReturnTypes.push_back(MEF::ChainType::get(context));
-  inferredReturnTypes.push_back(DeviceGraphType::get(context, signature));
-  return success();
+  // Operand order mirrors `arguments`: chain, context, device context, inputs.
+  result.addOperands({inChain, theContext, deviceContext});
+  result.addOperands(inputs);
+  result.addAttribute(
+      getBGraphSlotAttrName(result.name),
+      IntegerAttr::get(builder.getIntegerType(64, /*isSigned=*/false),
+                       llvm::APInt(64, bGraphSlot)));
+
+  // Create the body with the device-graph-builder block argument followed by
+  // one bare-`T` argument per input, and let the callback record nodes into the
+  // builder and yield the graph's output values. createBlock also positions the
+  // insertion point.
+  Region *bodyRegion = result.addRegion();
+  Block *body = builder.createBlock(bodyRegion);
+  Value graphBuilder = body->addArgument(
+      DeviceGraphBuilderType::get(builder.getContext()), result.location);
+  SmallVector<Value> inputArgs;
+  inputArgs.reserve(inputs.size());
+  for (Value input : inputs)
+    inputArgs.push_back(body->addArgument(input.getType(), result.location));
+  if (bodyBuilder)
+    bodyBuilder(builder, result.location, graphBuilder, inputArgs);
+
+  // Supply the operandless `mgp.device_graph.yield` terminator (no graph
+  // outputs) if the callback did not emit one.
+  if (!body->mightHaveTerminator())
+    ensureTerminator(*bodyRegion, builder, result.location);
+
+  // The sole result is the device graph, whose signature is
+  // `(type(inputs)) -> (type(yielded outputs))`.
+  auto yieldOp = cast<DeviceGraphYieldOp>(body->getTerminator());
+  auto signature = FunctionType::get(builder.getContext(), inputs.getTypes(),
+                                     yieldOp.getOutputs().getTypes());
+  result.addTypes(DeviceGraphType::get(builder.getContext(), signature));
+}
+
+void DeviceGraphYieldOp::build(OpBuilder &, OperationState &) {
+  // No-operand stub for the parent's `SingleBlockImplicitTerminator`; operands
+  // are populated after insertion.
 }
 
 //===----------------------------------------------------------------------===//
@@ -116,7 +145,7 @@ LogicalResult DeviceGraphExecuteOp::verify() {
                        "signature inputs");
 
   if (!llvm::equal(getOutputs().getTypes(), sig.getResults()))
-    return emitOpError("`outputs` operand types do not match the graph's "
+    return emitOpError("`outputs` result types do not match the graph's "
                        "signature results");
 
   return success();
