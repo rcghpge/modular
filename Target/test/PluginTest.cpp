@@ -211,12 +211,14 @@ TEST_F(DriverPluginContextTest, QueueCopySync) {
     ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
     ASSERT_NE(memory, nullptr);
 
-    ASSERT_SUCCESS(queue_copy_to_device(queue, memory, src.data(), size));
+    M_driver_memory_view toView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView, src.data()));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> dst;
     dst.fill(0);
-    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), memory, size));
+    M_driver_memory_view fromView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), &fromView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     EXPECT_EQ(src, dst);
@@ -244,12 +246,14 @@ TEST_F(DriverPluginContextTest, QueueAsyncAllocSync) {
     ASSERT_NE(memory, nullptr);
     ASSERT_SUCCESS(queue_synchronize(queue));
 
-    ASSERT_SUCCESS(queue_copy_to_device(queue, memory, src.data(), size));
+    M_driver_memory_view toView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView, src.data()));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> dst;
     dst.fill(0);
-    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), memory, size));
+    M_driver_memory_view fromView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), &fromView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     EXPECT_EQ(src, dst);
@@ -285,7 +289,8 @@ TEST_F(DriverPluginContextTest, EventRecordWait) {
     M_driver_memory_t memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_sync(ctx, byteSize, &memory));
 
-    ASSERT_SUCCESS(queue_copy_to_device(queueA, memory, src.data(), byteSize));
+    M_driver_memory_view toView{memory, /*offset=*/0, byteSize};
+    ASSERT_SUCCESS(queue_copy_to_device(queueA, &toView, src.data()));
     M_driver_event_t event = nullptr;
     ASSERT_SUCCESS(event_create(ctx, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &event));
     ASSERT_SUCCESS(queue_record_event(queueA, event));
@@ -293,8 +298,8 @@ TEST_F(DriverPluginContextTest, EventRecordWait) {
     ASSERT_SUCCESS(queue_wait_for_events(queueB, &event, 1));
     std::array<unsigned int, numElems> dst;
     dst.fill(0);
-    ASSERT_SUCCESS(
-        queue_copy_from_device(queueB, dst.data(), memory, byteSize));
+    M_driver_memory_view fromView{memory, /*offset=*/0, byteSize};
+    ASSERT_SUCCESS(queue_copy_from_device(queueB, dst.data(), &fromView));
     ASSERT_SUCCESS(queue_synchronize(queueB));
 
     EXPECT_EQ(src, dst);
@@ -324,14 +329,16 @@ TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
     ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
     auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
 
-    ASSERT_SUCCESS(queue_copy_to_device(queue, /*dst=*/memory,
-                                        /*src=*/content.data(), size));
+    M_driver_memory_view dstView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, /*dst=*/&dstView,
+                                        /*src=*/content.data()));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;
     result.fill(0);
+    M_driver_memory_view srcView{memory, /*offset=*/0, size};
     ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
-                                          /*src=*/memory, size));
+                                          /*src=*/&srcView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     ASSERT_EQ(content, result);
@@ -348,13 +355,15 @@ TEST_F(DriverPluginQueueTest, SetMemory) {
     ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
     auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
 
-    ASSERT_SUCCESS(queue_set_memory(queue, /*dst=*/memory, /*size=*/size,
-                                    uint8_t(42), sizeof(uint8_t)));
+    M_driver_memory_view setView{memory, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_set_memory(queue, /*dst=*/&setView, uint8_t(42),
+                                    sizeof(uint8_t)));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;
+    M_driver_memory_view srcView{memory, /*offset=*/0, size};
     ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
-                                          /*src=*/memory, size));
+                                          /*src=*/&srcView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> expected;
@@ -385,15 +394,20 @@ TEST_F(DriverPluginQueueTest, CopyIntraDevice) {
 
     // Sync between each pair so the test is correct regardless of whether
     // the plugin's raw queue is a stream.
-    ASSERT_SUCCESS(queue_copy_to_device(queue, srcMem, content.data(), size));
+    M_driver_memory_view toView{srcMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView, content.data()));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
-    ASSERT_SUCCESS(queue_copy_intra_device(queue, dstMem, srcMem, size));
+    M_driver_memory_view intraDstView{dstMem, /*offset=*/0, size};
+    M_driver_memory_view intraSrcView{srcMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(
+        queue_copy_intra_device(queue, &intraDstView, &intraSrcView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;
     result.fill(0);
-    ASSERT_SUCCESS(queue_copy_from_device(queue, result.data(), dstMem, size));
+    M_driver_memory_view fromView{dstMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, result.data(), &fromView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     ASSERT_EQ(content, result);

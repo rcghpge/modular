@@ -49,78 +49,75 @@ typedef M_driver_status_t (*M_driver_queue_destroy_func_ptr_t)(
  * Copy data from host memory to device memory.
  *
  * @param[in] queue The queue to use for the copy operation.
- * @param[in] dst Pointer to the destination device memory.
+ * @param[in] dst Destination device-memory view; `dst->size` bytes are copied
+ *            starting at `dst->offset` into `dst->memory`.
  * @param[in] src Pointer to the source host memory.
- * @param[in] size The number of bytes to copy.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
-                                                M_driver_memory_t dst,
-                                                const void *src, uint64_t size);
+                                                M_driver_memory_view_t dst,
+                                                const void *src);
 
 typedef M_driver_status_t (*M_driver_queue_copy_to_device_func_ptr_t)(
-    M_driver_queue_t queue, M_driver_memory_t dst, const void *src,
-    uint64_t size);
+    M_driver_queue_t queue, M_driver_memory_view_t dst, const void *src);
 
 /**
  * Copy data from device memory to host memory.
  *
  * @param[in] queue The queue to use for the copy operation.
  * @param[in] dst Pointer to the destination host memory.
- * @param[in] src Pointer to the source device memory.
- * @param[in] size The number of bytes to copy.
+ * @param[in] src Source device-memory view; `src->size` bytes are copied
+ *            starting at `src->offset` into `src->memory`.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   void *dst,
-                                                  M_driver_memory_t src,
-                                                  uint64_t size);
+                                                  M_driver_memory_view_t src);
 
 typedef M_driver_status_t (*M_driver_queue_copy_from_device_func_ptr_t)(
-    M_driver_queue_t queue, void *dst, M_driver_memory_t src, uint64_t size);
+    M_driver_queue_t queue, void *dst, M_driver_memory_view_t src);
 
 /**
  * Copy data between two memory regions on the same device.
  *
  * Both @p dst and @p src must reside on the device backing @p queue.
+ * `dst->size` bytes are copied; @p src must be at least that large.
  *
  * @param[in] queue The queue to use for the copy operation.
- * @param[in] dst Pointer to the destination device memory.
- * @param[in] src Pointer to the source device memory.
- * @param[in] size The number of bytes to copy.
+ * @param[in] dst Destination device-memory view.
+ * @param[in] src Source device-memory view.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
-                                                   M_driver_memory_t dst,
-                                                   M_driver_memory_t src,
-                                                   uint64_t size);
+                                                   M_driver_memory_view_t dst,
+                                                   M_driver_memory_view_t src);
 
 typedef M_driver_status_t (*M_driver_queue_copy_intra_device_func_ptr_t)(
-    M_driver_queue_t queue, M_driver_memory_t dst, M_driver_memory_t src,
-    uint64_t size);
+    M_driver_queue_t queue, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src);
 
 /**
  * Fill device memory with a repeated value.
  *
  * @param[in] queue The queue to use for the set operation.
- * @param[in] dst Pointer to the destination device memory.
- * @param[in] size The number of bytes to fill.
+ * @param[in] dst Destination device-memory view; `dst->size` bytes starting at
+ *            `dst->offset` into `dst->memory` are filled.
  * @param[in] value The value to fill with.
  * @param[in] value_size The size of the value in bytes.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
-                                            M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            M_driver_memory_view_t dst,
+                                            uint64_t value,
                                             uint64_t value_size);
 
 typedef M_driver_status_t (*M_driver_queue_set_memory_func_ptr_t)(
-    M_driver_queue_t queue, M_driver_memory_t dst, uint64_t size,
-    uint64_t value, uint64_t value_size);
+    M_driver_queue_t queue, M_driver_memory_view_t dst, uint64_t value,
+    uint64_t value_size);
 
 /**
  * Struct representing a three dimensional launch configuration.

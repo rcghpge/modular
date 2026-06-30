@@ -72,12 +72,14 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
 }
 
 M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
+                                               uint64_t dstOffset,
                                                const void *src, uint64_t size) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   if (CUresult r = cuda.cuMemcpyHtoDAsync(
-          reinterpret_cast<CUdeviceptr>(dst->ptr), src, size, stream);
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset, src, size,
+          stream);
       r != CUDA_SUCCESS)
     return cudaErrorStatus(&context.device.driver, r, "cuMemcpyHtoDAsync");
   return M_DRIVER_STATUS_SUCCESS;
@@ -85,38 +87,43 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
 
 M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
                                                  M_driver_memory_t src,
+                                                 uint64_t srcOffset,
                                                  uint64_t size) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   if (CUresult r = cuda.cuMemcpyDtoHAsync(
-          dst, reinterpret_cast<CUdeviceptr>(src->ptr), size, stream);
+          dst, reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset, size,
+          stream);
       r != CUDA_SUCCESS)
     return cudaErrorStatus(&context.device.driver, r, "cuMemcpyDtoHAsync");
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
                                                   M_driver_memory_t src,
+                                                  uint64_t srcOffset,
                                                   uint64_t size) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   if (CUresult r = cuda.cuMemcpyDtoDAsync(
-          reinterpret_cast<CUdeviceptr>(dst->ptr),
-          reinterpret_cast<CUdeviceptr>(src->ptr), size, stream);
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset,
+          reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset, size, stream);
       r != CUDA_SUCCESS)
     return cudaErrorStatus(&context.device.driver, r, "cuMemcpyDtoDAsync");
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            uint64_t dstOffset, uint64_t size,
+                                            uint64_t value,
                                             uint64_t valueSize) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
-  CUdeviceptr dstPtr = reinterpret_cast<CUdeviceptr>(dst->ptr);
+  CUdeviceptr dstPtr = reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset;
   switch (valueSize) {
   case 1:
     if (CUresult r = cuda.cuMemsetD8Async(dstPtr, static_cast<uint8_t>(value),

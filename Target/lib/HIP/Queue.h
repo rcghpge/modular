@@ -24,14 +24,16 @@ struct M_driver_queue {
 
   static M_driver_status_t destroy(M_driver_queue_t queue);
 
-  M_driver_status_t copyToDevice(M_driver_memory_t dst, const void *src,
-                                 uint64_t size);
+  M_driver_status_t copyToDevice(M_driver_memory_t dst, uint64_t dstOffset,
+                                 const void *src, uint64_t size);
   M_driver_status_t copyFromDevice(void *dst, M_driver_memory_t src,
-                                   uint64_t size);
-  M_driver_status_t copyIntraDevice(M_driver_memory_t dst,
-                                    M_driver_memory_t src, uint64_t size);
-  M_driver_status_t setMemory(M_driver_memory_t dst, uint64_t size,
-                              uint64_t value, uint64_t valueSize);
+                                   uint64_t srcOffset, uint64_t size);
+  M_driver_status_t copyIntraDevice(M_driver_memory_t dst, uint64_t dstOffset,
+                                    M_driver_memory_t src, uint64_t srcOffset,
+                                    uint64_t size);
+  M_driver_status_t setMemory(M_driver_memory_t dst, uint64_t dstOffset,
+                              uint64_t size, uint64_t value,
+                              uint64_t valueSize);
 
   M_driver_status_t recordEvent(M_driver_event_t event);
   M_driver_status_t waitForEvents(M_driver_event_t *events,

@@ -34,36 +34,41 @@ ErrorOr<BufferRef> Queue::allocBufferAsync(size_t byteSize) {
 }
 
 ErrorOrSuccess Queue::copyToDevice(BufferRef dst, void *src, size_t byteSize) {
+  M_driver_memory_view dstView{dst->handle, /*offset=*/0, byteSize};
   if (M_driver_status_t status =
-          context->device->driver->plugin.queue_copy_to_device(
-              handle, dst->handle, src, byteSize))
+          context->device->driver->plugin.queue_copy_to_device(handle, &dstView,
+                                                               src))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
 }
 
 ErrorOrSuccess Queue::copyFromDevice(void *dst, BufferRef src,
                                      size_t byteSize) {
+  M_driver_memory_view srcView{src->handle, /*offset=*/0, byteSize};
   if (M_driver_status_t status =
-          context->device->driver->plugin.queue_copy_from_device(
-              handle, dst, src->handle, byteSize))
+          context->device->driver->plugin.queue_copy_from_device(handle, dst,
+                                                                 &srcView))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
 }
 
 ErrorOrSuccess Queue::copyIntraDevice(BufferRef dst, BufferRef src,
                                       size_t byteSize) {
+  M_driver_memory_view dstView{dst->handle, /*offset=*/0, byteSize};
+  M_driver_memory_view srcView{src->handle, /*offset=*/0, byteSize};
   if (M_driver_status_t status =
           context->device->driver->plugin.queue_copy_intra_device(
-              handle, dst->handle, src->handle, byteSize))
+              handle, &dstView, &srcView))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
 }
 
 ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
                                 size_t valueSize) {
+  M_driver_memory_view dstView{dst->handle, /*offset=*/0, dst->byteSize};
   if (M_driver_status_t status =
-          context->device->driver->plugin.queue_set_memory(
-              handle, dst->handle, dst->byteSize, value, valueSize))
+          context->device->driver->plugin.queue_set_memory(handle, &dstView,
+                                                           value, valueSize))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
 }

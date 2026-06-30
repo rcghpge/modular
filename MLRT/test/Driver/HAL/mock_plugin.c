@@ -317,49 +317,47 @@ M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
-                                                M_driver_memory_t dst,
-                                                const void *src,
-                                                uint64_t size) {
+                                                M_driver_memory_view_t dst,
+                                                const void *src) {
   (void)queue;
-  if (dst && src && size > 0)
-    memcpy((void *)dst, src, (size_t)size);
+  if (dst && dst->memory && src && dst->size > 0)
+    memcpy((char *)dst->memory + dst->offset, src, (size_t)dst->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   void *dst,
-                                                  M_driver_memory_t src,
-                                                  uint64_t size) {
+                                                  M_driver_memory_view_t src) {
   (void)queue;
-  if (dst && src && size > 0)
-    memcpy(dst, (void *)src, (size_t)size);
+  if (dst && src && src->memory && src->size > 0)
+    memcpy(dst, (char *)src->memory + src->offset, (size_t)src->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
-                                                   M_driver_memory_t dst,
-                                                   M_driver_memory_t src,
-                                                   uint64_t size) {
+                                                   M_driver_memory_view_t dst,
+                                                   M_driver_memory_view_t src) {
   (void)queue;
-  if (dst && src && size > 0)
-    memcpy((void *)dst, (void *)src, (size_t)size);
+  if (dst && dst->memory && src && src->memory && dst->size > 0)
+    memcpy((char *)dst->memory + dst->offset, (char *)src->memory + src->offset,
+           (size_t)dst->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
-                                            M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            M_driver_memory_view_t dst,
+                                            uint64_t value,
                                             uint64_t value_size) {
   (void)queue;
-  if (!dst || size == 0)
+  if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
-  char *p = (char *)dst;
-  for (uint64_t i = 0; i < size; i += value_size) {
-    uint64_t remaining = size - i;
+  char *p = (char *)dst->memory + dst->offset;
+  for (uint64_t i = 0; i < dst->size; i += value_size) {
+    uint64_t remaining = dst->size - i;
     uint64_t n = remaining < value_size ? remaining : value_size;
     memcpy(p + i, &value, (size_t)n);
   }

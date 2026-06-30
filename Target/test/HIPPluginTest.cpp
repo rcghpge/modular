@@ -308,10 +308,10 @@ TEST_F(DriverPluginQueueTest, VecAdd) {
     memory_free_sync(contexts[0], inDevA);
   });
 
-  ASSERT_SUCCESS(
-      queue_copy_to_device(queues[0], inDevA, inHostA.data(), bufSize));
-  ASSERT_SUCCESS(
-      queue_copy_to_device(queues[0], inDevB, inHostB.data(), bufSize));
+  M_driver_memory_view toViewA{inDevA, /*offset=*/0, bufSize};
+  ASSERT_SUCCESS(queue_copy_to_device(queues[0], &toViewA, inHostA.data()));
+  M_driver_memory_view toViewB{inDevB, /*offset=*/0, bufSize};
+  ASSERT_SUCCESS(queue_copy_to_device(queues[0], &toViewB, inHostB.data()));
 
   void *outPtr = nullptr;
   void *inPtrA = nullptr;
@@ -337,8 +337,8 @@ TEST_F(DriverPluginQueueTest, VecAdd) {
                        .num_attributes = 0};
   ASSERT_SUCCESS(queue_execute(queues[0], func, &config, args, argSizes, 4));
 
-  ASSERT_SUCCESS(
-      queue_copy_from_device(queues[0], outHost.data(), outDev, bufSize));
+  M_driver_memory_view fromView{outDev, /*offset=*/0, bufSize};
+  ASSERT_SUCCESS(queue_copy_from_device(queues[0], outHost.data(), &fromView));
   ASSERT_SUCCESS(queue_synchronize(queues[0]));
 
   for (size_t i = 0; i < length; i++)

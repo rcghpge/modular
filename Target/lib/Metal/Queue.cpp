@@ -63,6 +63,7 @@ void M_driver_queue::encodePendingWaits(MTL::CommandBuffer *cb) {
 }
 
 M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
+                                               uint64_t dstOffset,
                                                const void *src, uint64_t size) {
   // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
   //                      TRACY_COLOR_PURPLE);
@@ -81,7 +82,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
         "Metal buffer length is 0 - buffer may be invalid");
 
   // Check that copy fits within the buffer from the offset
-  if (dst->offset + size > bufferLength)
+  if (dstOffset + size > bufferLength)
     return context->device->driver->status.create(
         "Copy size exceeds Metal buffer length");
 
@@ -92,7 +93,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
         "Failed to create MTL::SharedEvent for copyToDevice");
 
   __block size_t capturedByteSize = size;
-  __block size_t capturedOffset = dst->offset;
+  __block size_t capturedOffset = dstOffset;
   MTL::Buffer *dstBuf = dst->mBuffer.get();
 
   std::lock_guard<std::mutex> lock(mMutex);
@@ -123,6 +124,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
 
 M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
                                                  M_driver_memory_t src,
+                                                 uint64_t srcOffset,
                                                  uint64_t size) {
   // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
   //                      TRACY_COLOR_PURPLE);
@@ -141,7 +143,11 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
     return context->device->driver->status.create(
         "Failed to create MTL::SharedEvent for copyFromDevice");
 
-  __block size_t capturedOffset = src->offset;
+  if (srcOffset + size > src->mBuffer->length())
+    return context->device->driver->status.create(
+        "Copy size exceeds Metal source buffer length");
+
+  __block size_t capturedOffset = srcOffset;
   MTL::Buffer *srcBuf = src->mBuffer.get();
 
   std::lock_guard<std::mutex> lock(mMutex);
@@ -171,7 +177,9 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
 }
 
 M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
                                                   M_driver_memory_t src,
+                                                  uint64_t srcOffset,
                                                   uint64_t size) {
   if (size == 0)
     return M_DRIVER_STATUS_SUCCESS;
@@ -179,10 +187,10 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-  if (dst->offset + size > dst->mBuffer->length())
+  if (dstOffset + size > dst->mBuffer->length())
     return context->device->driver->status.create(
         "Copy size exceeds Metal destination buffer length");
-  if (src->offset + size > src->mBuffer->length())
+  if (srcOffset + size > src->mBuffer->length())
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
 
@@ -205,8 +213,8 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   if (encoder == nullptr)
     return context->device->driver->status.create(
         "Failed to create blit command encoder");
-  encoder->copyFromBuffer(src->mBuffer.get(), src->offset, dst->mBuffer.get(),
-                          dst->offset, size);
+  encoder->copyFromBuffer(src->mBuffer.get(), srcOffset, dst->mBuffer.get(),
+                          dstOffset, size);
   encoder->endEncoding();
 
   cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
@@ -217,7 +225,8 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
 }
 
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            uint64_t dstOffset, uint64_t size,
+                                            uint64_t value,
                                             uint64_t valueSize) {
   // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
   //                      TRACY_COLOR_PURPLE);
@@ -228,13 +237,17 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   if (size == 0)
     return M_DRIVER_STATUS_SUCCESS; // no-op
 
+  if (dstOffset + size > dst->mBuffer->length())
+    return context->device->driver->status.create(
+        "Set size exceeds Metal buffer length");
+
   void *dstContents = dst->mBuffer->contents();
   if (dstContents == nullptr)
     return context->device->driver->status.create(
         "Shared buffer contents() returned null");
 
   // Apply offset to get actual destination pointer
-  void *dstPtr = static_cast<char *>(dstContents) + dst->offset;
+  void *dstPtr = static_cast<char *>(dstContents) + dstOffset;
 
   size_t count = size / valueSize;
   if (reinterpret_cast<uintptr_t>(dstPtr) % valueSize != 0)
@@ -482,49 +495,48 @@ M_driver_queue_destroy([[maybe_unused]] M_driver_context_t context,
 }
 
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
-                                                M_driver_memory_t dst,
-                                                const void *src,
-                                                uint64_t size) {
+                                                M_driver_memory_view_t dst,
+                                                const void *src) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (dst == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
   if (src == nullptr)
     return M_DRIVER_STATUS_INVALID_ARG;
-  return queue->copyToDevice(dst, src, size);
+  return queue->copyToDevice(dst->memory, dst->offset, src, dst->size);
 }
 
 M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   void *dst,
-                                                  M_driver_memory_t src,
-                                                  uint64_t size) {
+                                                  M_driver_memory_view_t src) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (src == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
-  return queue->copyFromDevice(dst, src, size);
+  return queue->copyFromDevice(dst, src->memory, src->offset, src->size);
 }
 
 M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
-                                                   M_driver_memory_t dst,
-                                                   M_driver_memory_t src,
-                                                   uint64_t size) {
+                                                   M_driver_memory_view_t dst,
+                                                   M_driver_memory_view_t src) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (dst == nullptr || src == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
-  return queue->copyIntraDevice(dst, src, size);
+  return queue->copyIntraDevice(dst->memory, dst->offset, src->memory,
+                                src->offset, dst->size);
 }
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
-                                            M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            M_driver_memory_view_t dst,
+                                            uint64_t value,
                                             uint64_t value_size) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (dst == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
-  return queue->setMemory(dst, size, value, value_size);
+  return queue->setMemory(dst->memory, dst->offset, dst->size, value,
+                          value_size);
 }
 
 M_driver_status_t

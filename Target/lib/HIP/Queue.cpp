@@ -51,14 +51,16 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
 }
 
 M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
+                                               uint64_t dstOffset,
                                                const void *src, uint64_t size) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  if (hipError_t r = hip.hipMemcpyAsync(dst->ptr, src, size,
-                                        hipMemcpyHostToDevice, stream);
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
+  if (hipError_t r =
+          hip.hipMemcpyAsync(dstPtr, src, size, hipMemcpyHostToDevice, stream);
       r != hipSuccess)
     return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync HtoD");
 
@@ -67,14 +69,16 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
 
 M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
                                                  M_driver_memory_t src,
+                                                 uint64_t srcOffset,
                                                  uint64_t size) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  if (hipError_t r = hip.hipMemcpyAsync(dst, src->ptr, size,
-                                        hipMemcpyDeviceToHost, stream);
+  void *srcPtr = static_cast<char *>(src->ptr) + srcOffset;
+  if (hipError_t r =
+          hip.hipMemcpyAsync(dst, srcPtr, size, hipMemcpyDeviceToHost, stream);
       r != hipSuccess)
     return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync DtoH");
 
@@ -82,14 +86,18 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
 }
 
 M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
                                                   M_driver_memory_t src,
+                                                  uint64_t srcOffset,
                                                   uint64_t size) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  if (hipError_t r = hip.hipMemcpyAsync(dst->ptr, src->ptr, size,
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
+  void *srcPtr = static_cast<char *>(src->ptr) + srcOffset;
+  if (hipError_t r = hip.hipMemcpyAsync(dstPtr, srcPtr, size,
                                         hipMemcpyDeviceToDevice, stream);
       r != hipSuccess)
     return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyAsync DtoD");
@@ -98,14 +106,15 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
 }
 
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
-                                            uint64_t size, uint64_t value,
+                                            uint64_t dstOffset, uint64_t size,
+                                            uint64_t value,
                                             uint64_t valueSize) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  void *dstPtr = dst->ptr;
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
 
   switch (valueSize) {
   case 1: {

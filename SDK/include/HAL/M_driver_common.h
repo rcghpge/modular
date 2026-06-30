@@ -71,6 +71,22 @@ typedef struct M_driver_event *M_driver_event_t;
 typedef struct M_driver_function *M_driver_function_t;
 
 /**
+ * A view over a device memory allocation.
+ *
+ * Bundles the owning allocation handle with a byte offset and byte length,
+ * describing the span a queue copy/set op should act on. Passed by pointer to
+ * those ops. A view is non-owning: it does not free `memory`.
+ *
+ */
+struct M_driver_memory_view {
+  M_driver_memory_t memory; ///< The owning allocation handle.
+  uint64_t offset;          ///< Byte offset of the view into the allocation.
+  uint64_t size;            ///< Byte length of the view.
+};
+
+typedef struct M_driver_memory_view *M_driver_memory_view_t;
+
+/**
  * Returned status-codes from all API functions.
  *
  * Implementations are encouraged to use the predefined set below where

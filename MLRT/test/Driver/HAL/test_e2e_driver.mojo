@@ -60,14 +60,12 @@ def do_execute[
         out_host[i] = Float32(0.0)
 
     queue[].copy_to_device(
-        in0_dev,
+        in0_dev.view(),
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](in0_host),
-        UInt64(buf_size),
     )
     queue[].copy_to_device(
-        in1_dev,
+        in1_dev.view(),
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](in1_host),
-        UInt64(buf_size),
     )
     queue[].synchronize()
 
@@ -116,8 +114,7 @@ def do_execute[
     # Copy results back.
     queue[].copy_from_device(
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host),
-        out_dev,
-        UInt64(buf_size),
+        out_dev.view(),
     )
     queue[].synchronize()
 
@@ -133,12 +130,11 @@ def do_execute[
     for i in range(length):
         out_host_copy[i] = Float32(0.0)
 
-    queue[].copy_intra_device(out_dev_copy, out_dev, UInt64(buf_size))
+    queue[].copy_intra_device(out_dev_copy.view(), out_dev.view())
     queue[].synchronize()
     queue[].copy_from_device(
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host_copy),
-        out_dev_copy,
-        UInt64(buf_size),
+        out_dev_copy.view(),
     )
     queue[].synchronize()
 
@@ -157,6 +153,45 @@ def do_execute[
     ctx.free_sync(out_dev^)
     ctx.free_sync(in1_dev^)
     ctx.free_sync(in0_dev^)
+
+
+def do_offset_copy_test[
+    device_spec: DeviceSpec,
+](mut ctx: Context[device_spec]) raises:
+    """Copies into the upper half of a buffer through an offset `BufferView`
+    and reads the whole buffer back."""
+    comptime n = 256
+    comptime half = n // 2
+
+    var stream = ctx.create_stream()
+    var device_buffer = ctx.alloc_sync(UInt64(n))
+
+    var src = alloc[UInt8](half)
+    for i in range(half):
+        src[i] = UInt8(0xAB)
+
+    # Fill the lower half, then write the upper half at byte offset `half`.
+    stream[].set_memory(
+        device_buffer.view(byte_offset=UInt64(0), byte_size=UInt64(half)),
+        value=UInt64(0xCD),
+        value_size=UInt64(1),
+    )
+    stream[].copy_to_device(
+        device_buffer.view(byte_offset=UInt64(half), byte_size=UInt64(half)),
+        rebind[UnsafePointer[UInt8, MutAnyOrigin]](src),
+    )
+
+    var host = alloc[UInt8](n)
+    stream[].copy_from_device(
+        rebind[UnsafePointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+    )
+    stream[].synchronize()
+    for i in range(n):
+        assert_equal(host[i], UInt8(0xCD) if i < half else UInt8(0xAB))
+
+    src.free()
+    host.free()
+    ctx.free_sync(device_buffer^)
 
 
 def main() raises:
@@ -187,3 +222,4 @@ def main() raises:
     print("Context created")
 
     do_execute(ctx[])
+    do_offset_copy_test(ctx[])

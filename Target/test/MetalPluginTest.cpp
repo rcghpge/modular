@@ -159,10 +159,10 @@ TEST_F(DriverMetalPluginFunctionTest, QueueExecute) {
     }
 
     // Copy data to device
-    ASSERT_SUCCESS(
-        queue_copy_to_device(queue, in0Memory, in0Host.data(), memorySize));
-    ASSERT_SUCCESS(
-        queue_copy_to_device(queue, in1Memory, in1Host.data(), memorySize));
+    M_driver_memory_view toView0{in0Memory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView0, in0Host.data()));
+    M_driver_memory_view toView1{in1Memory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView1, in1Host.data()));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     constexpr uint32_t blockDim = 256;
@@ -193,8 +193,8 @@ TEST_F(DriverMetalPluginFunctionTest, QueueExecute) {
     ASSERT_SUCCESS(queue_execute(queue, function, &config, args, argSizes, 4));
 
     // Copy results back
-    ASSERT_SUCCESS(
-        queue_copy_from_device(queue, outHost.data(), outMemory, memorySize));
+    M_driver_memory_view fromView{outMemory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, outHost.data(), &fromView));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     // Verify results
