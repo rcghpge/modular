@@ -12,14 +12,11 @@
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
 #include <mutex>
-#include <utility>
 #include <vector>
 
 namespace llvm {
@@ -80,6 +77,17 @@ public:
   // vmmSupported() result, as resolved by onDevice().
   bool isVmmEnabled() const;
 
+  // Single-arena VMM: physically back the free portion of the budget before a
+  // CUDA graph capture begins. VMM map/unmap is illegal during capture, so any
+  // allocation made inside the capture window must hit already-backed granules;
+  // this maps the free working region up to the budget so ensureRegionBacked is
+  // a no-op during capture. No-op when VMM is disabled or the arena does not
+  // exist yet. Idempotent (subsequent calls map only newly-freed granules).
+  // The over-mapped slack stays reclaimable (reported free; remapped on demand
+  // by later eager allocations), so the steady-state footprint matches an eager
+  // full-budget allocation. Must NOT be called while already capturing.
+  ErrorOrSuccess preBackForCapture();
+
   // Factory methods configure the memory manager based on defaults or the
   // environment.
   // `memInfo` contains the total and free memory of the device.
@@ -109,6 +117,15 @@ private:
 
   // ---- VMM (defragmenting allocator) ----
   //
+  // Single-arena VMM specialization of allocateChunk(): reserve one oversized
+  // contiguous VA region (no eager physical backing). Returns false on failure
+  // or if the arena already exists. Caller holds `mu_`.
+  bool allocateVmmArena();
+  // Single-arena VMM specialization of getMemoryInfo()'s free calculation:
+  // physically allocatable bytes = budget minus physical committed under in-use
+  // allocations (the rest is uncommitted or mapped-but-reclaimable). Caller
+  // holds `mu_`.
+  size_t vmmAllocatableBytes() const;
   // Acquire physical+virtual backing for a chunk of `allocSize` bytes. When
   // `vmmEnabled_`, reserves VA + creates/maps/sets-access granules (reusing the
   // free-granule pool first) and fills `handles`; otherwise calls chunkAlloc.
@@ -120,49 +137,48 @@ private:
   // free-granule pool (or release if `releaseToDriver`), and free the VA.
   // Caller holds `mu_`.
   void releaseChunkBacking(Chunk *chunk, bool releaseToDriver);
-  // Defragment to satisfy a request larger than any contiguous free block:
-  // reserve fresh contiguous VA, recycle granules from the free-granule pool
-  // and from wholly-free VMM chunks, map them into the new VA, and materialize
-  // the result as a new in-use chunk owned by `freeList`. Returns the buffer
-  // pointer, or an Error if not enough physical memory is reclaimable. Caller
-  // must NOT hold `mu_` (this acquires it).
-  ErrorOr<void *> defragForRequest(size_t size,
-                                   MemoryManagerFreeList *freeList);
-
-  // ---- Partial-chunk harvest (within-a-chunk defragmentation) ----
+  // Single-arena VMM: ensure every granule spanned by `desc` is physically
+  // backed before the block is handed out, mapping unbacked granules on demand
+  // (free-granule pool first, else reclaim mapped-but-free granules elsewhere
+  // via reclaimMappedGranules, else vmmCreate within the physical budget). The
+  // VA arena is larger than the physical budget, so an unbacked granule does
+  // NOT imply free budget; when the budget is fully mapped this reclaims
+  // physical from free regions and remaps it here. Fails on a driver error
+  // (rolled back) or a genuine out-of-physical-budget condition. Callers should
+  // gate on descHasUnbackedRegion() (this returns success() when there is
+  // nothing to map). Mapping during graph capture is illegal; rather than
+  // pre-checking we let the driver vmmMap call fail with its native error.
+  // Caller holds `mu_`.
+  ErrorOrSuccess ensureRegionBacked(Desc *desc);
+  // True if any granule spanned by `desc` is currently unbacked
+  // (lazy/unmapped).
+  bool descHasUnbackedRegion(const Desc *desc) const;
+  // NOTE: the single VMM arena is still represented by one Chunk (chunks_),
+  // which owns the per-page VMM state (base_, pageSize_, vmmHandles_,
+  // granuleBacked_). These helpers take it explicitly for now; folding the
+  // arena state directly into MemoryManager and removing Chunk on the VMM path
+  // is a follow-up.
   //
-  // Physical granules can be reclaimed not only from wholly-free chunks but
-  // also from free regions *inside* a partially-used chunk. A harvested granule
-  // is unmapped (its VA hole stays reserved) and reused to satisfy a large
-  // request; the hole is re-backed on a later allocation (ensureDescBacked).
-  // These help defrag succeed even with a single (chunk_percent=100) chunk.
-  //
-  // Sets a bit in `out` for each granule slot of `c` that is currently backed
-  // AND entirely covered by root-owned free descs (i.e. physically
-  // reclaimable). Returns the count of reclaimable slots. Caller holds `mu_`.
-  size_t computeHarvestableSlots(Chunk *c, llvm::BitVector &out) const;
-  // Unmap reclaimable granules from partially-used chunks, appending their
-  // handles to `out` until it reaches `needed` (or no more are reclaimable).
-  // `cache` holds the per-chunk reclaimable-slot sets already computed by the
-  // feasibility pass (partially-used chunks are unmodified between that pass
-  // and here, so the sets are still valid); a live chunk missing from `cache`
-  // is recomputed defensively. Returns the number harvested. Caller holds
-  // `mu_`.
-  size_t harvestPartialChunkGranules(
-      std::vector<uint64_t> &out, size_t needed,
-      llvm::ArrayRef<std::pair<Chunk *, llvm::BitVector>> cache);
-  // Inclusive [first, last] granule-slot index range spanned by `desc` within
-  // its (VMM-backed) chunk. Caller holds `mu_`.
-  std::pair<size_t, size_t> descSlotRange(const Desc *desc) const;
-  // True if any granule slot spanned by `desc` is currently unbacked
-  // (harvested).
-  bool descHasUnbackedSlot(const Desc *desc) const;
-  // Re-map physical granules under any unbacked slots spanned by `desc` (from
-  // the free-granule pool first, else vmmCreate). Returns an Error if a granule
-  // could not be created/mapped (leaving already-mapped slots backed). Caller
-  // holds `mu_`; must NOT be called during graph capture (VMM map is
-  // capture-illegal).
-  ErrorOrSuccess ensureDescBacked(Desc *desc);
+  // Mark, in `out` (sized to the arena's granule count), every granule
+  // overlapped by an in-use desc. Used for free-memory accounting
+  // (inUsePhysicalBytes); NOT a safe reclaim mask -- see
+  // computeUnreclaimableGranules. Caller holds `mu_`.
+  void computeInUseGranules(const Chunk *c, llvm::BitVector &out) const;
+  // Mark, in `out`, every granule that is NOT safe to unmap/reclaim: any
+  // granule overlapped by a desc that is in-use OR free-but-owned-by-a-
+  // non-root (per-stream) free-list. A per-stream free only migrates to the
+  // root free-list after its stream events fire, so its memory may still be
+  // referenced by in-flight GPU work; unmapping it could fault a live kernel.
+  // Caller holds `mu_`.
+  void computeUnreclaimableGranules(const Chunk *c, llvm::BitVector &out) const;
+  // Single-arena VMM (Stage 2): unmap up to `count` mapped granules that are
+  // safe to reclaim (see computeUnreclaimableGranules), returning their handles
+  // to the free-granule pool for remapping elsewhere. Returns the number
+  // reclaimed. Caller holds `mu_`.
+  size_t reclaimMappedGranules(Chunk *c, size_t count);
+  // Physical bytes currently committed under in-use allocations in the single
+  // VMM arena (the unreclaimable portion of the budget). Caller holds `mu_`.
+  size_t inUsePhysicalBytes() const;
 
   // Registry of per-stream (child) free-lists, so a VMM allocation miss can
   // flush sibling streams' completed frees to the root free-list (a freed block
@@ -215,13 +231,6 @@ private:
   // Pool of physical granule handles that are currently unmapped and available
   // for reuse (fed by retiring wholly-free VMM chunks).
   std::vector<uint64_t> freeGranulePool_;
-
-  // Bytes of VA that are currently reserved but physically unbacked because
-  // their granules were harvested from inside partially-used chunks (see
-  // harvestPartialChunkGranules). Incremented on harvest, decremented when a
-  // hole is re-backed (ensureDescBacked) or its chunk is torn down. When zero,
-  // the allocation fast path skips all re-backing/skip logic (no holes exist).
-  size_t harvestedBytes_ = 0;
 
   // Registered per-stream (child) free-lists and a lock guarding the list.
   // Used by flushSiblingFreeLists() on an allocation miss.

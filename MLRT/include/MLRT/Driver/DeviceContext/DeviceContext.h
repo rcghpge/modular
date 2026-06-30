@@ -323,10 +323,11 @@ public:
 
   // ---- CUDA Virtual Memory Management (VMM) support ----
   //
-  // These back the MemoryManager's defragmenting allocator: a large contiguous
-  // *virtual* allocation can be assembled from physically-scattered free
-  // granules by reserving fresh VA and mapping arbitrary physical handles into
-  // it (see MemoryManager::defragForRequest). They are only used when
+  // These back the MemoryManager's single-arena defragmenting allocator: a
+  // large contiguous *virtual* allocation can be assembled from physically-
+  // scattered free granules by reserving fresh VA and mapping arbitrary
+  // physical handles into it (see MemoryManager::ensureRegionBacked /
+  // reclaimMappedGranules). They are only used when
   // `vmmSupported()` is true; backends without VMM (HIP/CPU/Metal) keep the
   // plain chunkAlloc/chunkFree path. Handles are opaque
   // (CUmemGenericAllocationHandle) carried as uint64_t; VA is carried as void*.

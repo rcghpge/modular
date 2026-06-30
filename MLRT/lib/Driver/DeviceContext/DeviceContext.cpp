@@ -956,6 +956,17 @@ beginCaptureAndExecute(ArrayRef<DeviceStreamRef> streams,
                        SmallVectorImpl<DeviceGraphCaptureContext> &captures) {
   captures.reserve(streams.size());
 
+  // Single-arena VMM: physically back the free budget BEFORE capture begins.
+  // VMM map/unmap is illegal during capture, so allocations made inside the
+  // capture window must hit already-mapped granules. This is a no-op for
+  // non-VMM managers and idempotent across capture sessions; the over-mapped
+  // slack is reclaimed on demand by later eager allocations.
+  for (const DeviceStreamRef &stream : streams) {
+    if (ErrorOrSuccess err =
+            stream->device().memoryManager().preBackForCapture())
+      return err.takeError();
+  }
+
   for (const DeviceStreamRef &stream : streams) {
     auto capture = DeviceGraphCaptureContext::beginCapture(stream);
     if (capture.isError())

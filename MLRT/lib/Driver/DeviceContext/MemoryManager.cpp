@@ -12,7 +12,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Profiling/Tracy.h"
 #include "Support/StringExtras.h"
-#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -75,11 +75,10 @@ private:
   bool vmmBacked_ = false;
   size_t pageSize_ = 0;
   std::vector<uint64_t> vmmHandles_;
-  // Per-granule physical backing state, parallel to `vmmHandles_` (same size
-  // for VMM chunks; empty otherwise). A bit is clear when its physical granule
-  // has been harvested (unmapped and reused elsewhere by defragForRequest): the
-  // VA stays reserved but unbacked until a later allocation re-maps it
-  // (ensureDescBacked). `vmmHandles_[i]` is only valid when
+  // Single-arena lazy backing: one bit per granule slice of [base_,
+  // base_+size_) (same length as vmmHandles_ for VMM chunks; empty otherwise).
+  // A bit is clear when that granule has not yet been physically backed (lazy)
+  // or has been unmapped; `vmmHandles_[i]` is only valid when
   // `granuleBacked_[i]`.
   llvm::BitVector granuleBacked_;
 };
@@ -796,19 +795,24 @@ Device::MemInfo MemoryManager::getMemoryInfo() const {
   std::lock_guard<std::mutex> lock(mu_);
 
   info.total = maxCacheSize_;
-  // `freeSize_` counts every free desc, including those sitting over harvested
-  // (unbacked) granule holes. Those holes have no physical backing, so they can
-  // only be handed out after re-backing, which consumes uncommitted physical
-  // (the `maxCacheSize_ - cacheSize_` term). Counting both would double-count
-  // `harvestedBytes_`, so subtract it from the free-pool term. `cacheSize_`
-  // already excludes harvested physical (it tracks mapped physical only).
-  size_t backedFree =
-      freeSize_ >= harvestedBytes_ ? freeSize_ - harvestedBytes_ : 0;
-  info.free = maxCacheSize_ >= cacheSize_
-                  ? (maxCacheSize_ - cacheSize_) + backedFree
-                  : backedFree;
+  if (vmmEnabled_) {
+    info.free = vmmAllocatableBytes();
+  } else {
+    info.free = maxCacheSize_ >= cacheSize_
+                    ? (maxCacheSize_ - cacheSize_) + freeSize_
+                    : freeSize_;
+  }
 
   return info;
+}
+
+size_t MemoryManager::vmmAllocatableBytes() const {
+  // The reserved VA exceeds the physical budget, so the amount still
+  // allocatable is bounded by physical, not by free VA: the budget minus the
+  // physical committed under in-use allocations. The rest of the budget is
+  // either uncommitted or mapped-but-reclaimable (remappable on demand).
+  const size_t inUse = inUsePhysicalBytes();
+  return maxCacheSize_ >= inUse ? maxCacheSize_ - inUse : 0;
 }
 
 bool MemoryManager::isEnabled() const { return maxCacheSize_ > 0; }
@@ -925,7 +929,6 @@ void MemoryManagerFreeList::dumpFragmentationDiagnostic(
        << " cache_used=" << humanMemorySize(memoryManager_.cacheSize_)
        << " free=" << humanMemorySize(memoryManager_.freeSize_)
        << " free_blocks=" << memoryManager_.freeCount_
-       << " harvested=" << humanMemorySize(memoryManager_.harvestedBytes_)
        << " chunk_size=" << humanMemorySize(memoryManager_.chunkSize_)
        << " chunks=" << memoryManager_.chunkCount_;
     logLine(os.str());
@@ -1049,7 +1052,62 @@ void MemoryManagerFreeList::dumpFragmentationDiagnostic(
   logLine("oom log ===== end =====");
 }
 
+bool MemoryManager::allocateVmmArena() {
+  // Single lazily-backed VMM arena: reserve one contiguous VA range on first
+  // use and map physical granules on demand (ensureRegionBacked). The VA
+  // reservation is deliberately LARGER than the physical budget so a large
+  // allocation that does not fit an existing free hole can always carve fresh
+  // contiguous address space at the frontier; the physical it needs is
+  // reclaimed from free-but-mapped granules elsewhere and remapped here (the
+  // expandable-segments model). Physical stays capped at maxCacheSize_. Never
+  // create a second arena.
+  if (chunks_ != nullptr)
+    return false;
+  assert(pageSize_ != 0 && "VMM requires a non-zero granule size");
+  const size_t budget = (maxCacheSize_ / pageSize_) * pageSize_;
+  if (budget == 0)
+    return false;
+  const int64_t vaFactor = std::max<int64_t>(
+      1, DeviceContext::configAsInt("memory_manager_vmm_va_factor", 4));
+  size_t vaSize = budget * static_cast<size_t>(vaFactor);
+  ErrorOr<void *> vaOr = device().vmmAddressReserve(vaSize);
+  if (vaOr.isError()) {
+    // Oversized reservation failed (e.g. VA exhaustion); fall back to a
+    // budget-sized arena (loses frontier headroom but still functions).
+    LOG_ERR(llvm::Twine("vmmAddressReserve(") + humanMemorySize(vaSize) +
+            ") failed, retrying at budget size: " + vaOr.getError());
+    vaSize = budget;
+    vaOr = device().vmmAddressReserve(vaSize);
+    if (vaOr.isError()) {
+      lastChunkAllocFailureDetail_ = "vmmAddressReserve(" +
+                                     humanMemorySize(vaSize) +
+                                     ") failed with " + vaOr.getError();
+      return false;
+    }
+  }
+  const size_t numGranules = vaSize / pageSize_;
+  auto chunk = std::make_unique<Chunk>(*this, *vaOr, vaSize);
+  chunk->vmmBacked_ = true;
+  chunk->pageSize_ = pageSize_;
+  chunk->vmmHandles_.assign(numGranules, 0);
+  chunk->granuleBacked_.resize(numGranules, false);
+  chunk->next_ = std::move(chunks_);
+  chunks_ = std::move(chunk);
+  ++chunkCount_;
+  // cacheSize_ tracks mapped physical, which is zero until granules are
+  // mapped lazily; the VA reservation itself consumes no physical memory.
+  LOG_ERR("vmm_arena_reserve(" + TWINE_PTR(*vaOr) + " ; va=" + TWINE(vaSize) +
+              " ; budget=" + TWINE(budget) + ")",
+          0, 0);
+  return true;
+}
+
 bool MemoryManager::allocateChunk() {
+  // VMM uses a single oversized arena with lazy physical backing, an entirely
+  // separate implementation from the chunked allocator below.
+  if (vmmEnabled_)
+    return allocateVmmArena();
+
   if (shouldUseMaxSize()) {
     // Ensure that we have grown chunkSize_ to the maximum.
     growChunkSizeTo(maxCacheSize_);
@@ -1073,11 +1131,6 @@ bool MemoryManager::allocateChunk() {
   }
 
   size_t allocSize = std::min(chunkSize_, remainingBudget);
-  if (vmmEnabled_ && pageSize_ != 0) {
-    // VMM reservations/mappings must be whole granules; round down to fit
-    // within the remaining budget.
-    allocSize = (allocSize / pageSize_) * pageSize_;
-  }
 
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
@@ -1099,12 +1152,6 @@ bool MemoryManager::allocateChunk() {
     return false;
   }
   auto chunk = std::make_unique<Chunk>(*this, ptr, allocSize);
-  if (vmmEnabled_) {
-    chunk->vmmBacked_ = true;
-    chunk->pageSize_ = chunkPageSize;
-    chunk->vmmHandles_ = std::move(handles);
-    chunk->granuleBacked_.resize(chunk->vmmHandles_.size(), true);
-  }
   chunk->next_ = std::move(chunks_);
   chunks_ = std::move(chunk);
 
@@ -1215,14 +1262,10 @@ void MemoryManager::releaseChunkBacking(Chunk *chunk, bool releaseToDriver) {
   }
   const size_t ps = chunk->pageSize_;
   for (size_t i = 0; i < chunk->vmmHandles_.size(); ++i) {
-    if (i < chunk->granuleBacked_.size() && !chunk->granuleBacked_[i]) {
-      // Harvested slot: VA already unmapped and the handle already reused
-      // elsewhere. Drop our accounting for the (now-vanishing) hole; there is
-      // nothing to unmap or release here.
-      assert(harvestedBytes_ >= ps && "harvestedBytes_ accounting underflow");
-      harvestedBytes_ -= ps;
+    // Lazily-unbacked granule (single-arena VMM): no physical mapped, nothing
+    // to unmap or release.
+    if (i < chunk->granuleBacked_.size() && !chunk->granuleBacked_[i])
       continue;
-    }
     void *pageVa = static_cast<char *>(chunk->base_) + i * ps;
     ErrorOrSuccess e = device().vmmUnmap(pageVa, ps);
     if (e.isError())
@@ -1242,324 +1285,246 @@ void MemoryManager::releaseChunkBacking(Chunk *chunk, bool releaseToDriver) {
     LOG_ERR(llvm::Twine("vmmAddressFree failed: ") + e.getError());
 }
 
-ErrorOr<void *>
-MemoryManager::defragForRequest(size_t size, MemoryManagerFreeList *freeList) {
-  assert(vmmEnabled_ && pageSize_ != 0);
-  std::lock_guard<std::mutex> lock(mu_);
-
-  // Round the request up to whole granules.
-  const size_t allocSize = ((size + pageSize_ - 1) / pageSize_) * pageSize_;
-  const size_t pagesNeeded = allocSize / pageSize_;
-
-  // A chunk is reclaimable iff it is VMM-backed and *every* desc in it is free
-  // and owned by the ROOT free-list. Root ownership is the post-stream-flush
-  // "no live device reference remains" signal (per-stream free-lists may still
-  // be referenced by in-flight work). Note a wholly-free chunk can hold more
-  // than one free desc: coalescing only merges adjacent same-owner blocks, so a
-  // chunk filled by allocations from different streams (e.g. EP ranks) leaves
-  // several free descs even once fully released. We must accept those, not just
-  // the single-spanning-desc case.
-  auto chunkIsReclaimable = [&](Chunk *c) -> bool {
-    if (!c->vmmBacked_ || c->descs_ == nullptr)
-      return false;
-    for (Desc *d = c->descs_; d != nullptr; d = d->next_) {
-      if (!d->isFree() || d->owner() != freeList_.get())
-        return false;
-    }
-    return true;
-  };
-
-  // Feasibility: free-granule pool + reclaimable granules (whole free granules
-  // anywhere, including inside partially-used chunks) + uncommitted budget must
-  // cover the request, else this is an honest aggregate OOM. Cache each chunk's
-  // reclaimable-slot set here and reuse it in harvestPartialChunkGranules: only
-  // wholly-free chunks are retired between now and harvest, and those are not
-  // queried there, so the cached sets for surviving (partially-used) chunks
-  // stay valid.
-  llvm::SmallVector<std::pair<Chunk *, llvm::BitVector>, 8> harvestable;
-  size_t reclaimablePages = freeGranulePool_.size();
-  for (Chunk *c = chunks_.get(); c != nullptr; c = c->next_.get()) {
-    llvm::BitVector slots;
-    reclaimablePages += computeHarvestableSlots(c, slots);
-    harvestable.emplace_back(c, std::move(slots));
-  }
-  size_t budgetPages = 0;
-  {
-    size_t remainingBudget =
-        maxCacheSize_ - std::min(maxCacheSize_, cacheSize_);
-    ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
-    if (!memInfo.isError())
-      remainingBudget = std::min((*memInfo).free, remainingBudget);
-    budgetPages = remainingBudget / pageSize_;
-  }
-  if (reclaimablePages + budgetPages < pagesNeeded) {
-    return Error("defrag: insufficient reclaimable memory (need " +
-                 humanMemorySize(allocSize) + ", reclaimable " +
-                 humanMemorySize(reclaimablePages * pageSize_) + ", budget " +
-                 humanMemorySize(budgetPages * pageSize_) + ")");
-  }
-
-  // Reserve fresh contiguous VA for the whole request.
-  ErrorOr<void *> vaOr = device().vmmAddressReserve(allocSize);
-  if (vaOr.isError())
-    return Error(std::string("defrag: vmmAddressReserve failed: ") +
-                 vaOr.getError());
-  void *va = *vaOr;
-
-  // Gather `pagesNeeded` physical granules: pool first, then retire wholly-free
-  // chunks into the pool, then create new physical for any remainder.
-  std::vector<uint64_t> granules;
-  granules.reserve(pagesNeeded);
-  auto drainPool = [&]() {
-    while (granules.size() < pagesNeeded && !freeGranulePool_.empty()) {
-      granules.push_back(freeGranulePool_.back());
-      freeGranulePool_.pop_back();
-    }
-  };
-  drainPool();
-
-  // Retire reclaimable chunks (splice out of the singly-linked unique_ptr chain
-  // of `chunks_`), recycling their granules into the pool.
-  std::unique_ptr<Chunk> *slot = &chunks_;
-  while (*slot != nullptr && granules.size() < pagesNeeded) {
-    Chunk *c = slot->get();
-    if (chunkIsReclaimable(c)) {
-      // Remove every (free, root-owned) desc of this chunk from the free-list
-      // and recycle the desc objects.
-      Desc *d = c->descs_;
-      while (d != nullptr) {
-        Desc *nextD = d->next_;
-        freeList_->removeFromFreeList(d);
-        pushDesc(d);
-        d = nextD;
-      }
-      c->descs_ = nullptr;
-      // Only the currently-backed granules are mapped physical (cacheSize_); a
-      // chunk that was partially harvested earlier has fewer than size_/ps.
-      // Count before releaseChunkBacking clears granuleBacked_.
-      size_t backedBytes = c->granuleBacked_.count() * c->pageSize_;
-      releaseChunkBacking(c, /*releaseToDriver=*/false); // granules -> pool
-      cacheSize_ -= backedBytes;
-      --chunkCount_;
-      *slot = std::move(c->next_); // unlink; *slot now points to the next chunk
-      drainPool();
-    } else {
-      slot = &((*slot)->next_);
-    }
-  }
-
-  // Roll back: return gathered granules to the pool (valid, unmapped) and free
-  // the VA reservation. The retired chunks' memory is preserved in the pool.
-  auto rollback = [&](const std::string &why) -> Error {
-    for (uint64_t h : granules)
-      freeGranulePool_.push_back(h);
-    granules.clear();
-    ErrorOrSuccess fe = device().vmmAddressFree(va, allocSize);
-    if (fe.isError())
-      LOG_ERR(llvm::Twine("defrag rollback vmmAddressFree failed: ") +
-              fe.getError());
-    return Error(why);
-  };
-
-  // Partial-chunk harvest: reclaim whole free granules from inside still-live
-  // (partially-used) chunks. Each harvested granule is unmapped; its VA hole
-  // stays reserved and is re-backed on a later allocation (ensureDescBacked).
-  // This is what lets defrag succeed with a single (chunk_percent=100) chunk.
-  if (granules.size() < pagesNeeded)
-    harvestPartialChunkGranules(granules, pagesNeeded, harvestable);
-
-  // Create new physical granules for any remaining shortfall.
-  while (granules.size() < pagesNeeded) {
-    ErrorOr<uint64_t> h = device().vmmCreate(pageSize_);
-    if (h.isError())
-      return rollback(std::string("defrag: vmmCreate failed: ") + h.getError());
-    granules.push_back(*h);
-  }
-
-  // Map the granules into the fresh VA. Two-phase: nothing is published until
-  // every page is mapped; on failure, unmap what we mapped and roll back.
-  for (size_t mapped = 0; mapped < pagesNeeded; ++mapped) {
-    void *pageVa = static_cast<char *>(va) + mapped * pageSize_;
-    ErrorOrSuccess me =
-        device().vmmMapAndSetAccess(pageVa, pageSize_, granules[mapped]);
-    if (me.isError()) {
-      for (size_t j = 0; j < mapped; ++j) {
-        void *pj = static_cast<char *>(va) + j * pageSize_;
-        ErrorOrSuccess ue = device().vmmUnmap(pj, pageSize_);
-        if (ue.isError())
-          LOG_ERR(llvm::Twine("defrag rollback vmmUnmap failed: ") +
-                  ue.getError());
-      }
-      return rollback(std::string("defrag: vmmMapAndSetAccess failed: ") +
-                      me.getError());
-    }
-  }
-
-  // Materialize the new VA as a fully-backed in-use chunk owned by `freeList`.
-  // The Chunk ctor places a single free desc spanning the chunk on the root
-  // free-list; claim it as in-use exactly like allocateDesc's exact-fit branch.
-  auto chunk = std::make_unique<Chunk>(*this, va, allocSize);
-  chunk->vmmBacked_ = true;
-  chunk->pageSize_ = pageSize_;
-  chunk->vmmHandles_ = std::move(granules);
-  chunk->granuleBacked_.resize(chunk->vmmHandles_.size(), true);
-  Desc *desc = chunk->descs_;
-  freeList_->removeFromFreeList(desc);
-  allocatedMap_.add(desc);
-  desc->allocatedBy_ = freeList;
-
-  chunk->next_ = std::move(chunks_);
-  chunks_ = std::move(chunk);
-  cacheSize_ += allocSize;
-  ++chunkCount_;
-
-  // The success is logged by the caller via LOG_MSG (this is a MemoryManager
-  // method, where LOG_MSG is not available).
-  return va;
-}
-
-size_t MemoryManager::computeHarvestableSlots(Chunk *c,
-                                              llvm::BitVector &out) const {
-  if (!c->vmmBacked_) {
-    out.clear();
-    return 0;
-  }
-  const size_t n = c->vmmHandles_.size();
-  assert(c->granuleBacked_.size() == n);
-  // Start from the currently-backed slots, then clear any slot touched by a
-  // desc that is in-use or owned by a non-root free-list (its memory may still
-  // be referenced by in-flight work, so it is not safe to reclaim).
-  out = c->granuleBacked_;
-  for (Desc *d = c->descs_; d != nullptr; d = d->next_) {
-    if (d->isFree() && d->owner() == freeList_.get())
-      continue; // root-owned free desc: its slots stay reclaimable
-    auto [first, last] = descSlotRange(d);
-    const size_t end = std::min<size_t>(last + 1, n);
-    if (first < end)
-      out.reset(first, end);
-  }
-  return out.count();
-}
-
-size_t MemoryManager::harvestPartialChunkGranules(
-    std::vector<uint64_t> &out, size_t needed,
-    llvm::ArrayRef<std::pair<Chunk *, llvm::BitVector>> cache) {
-  // Iterate only LIVE chunks: wholly-free chunks present when `cache` was built
-  // may since have been retired (freed) by the caller, so cache entries are
-  // matched by pointer value but never dereferenced. Visit chunks back-to-front
-  // and harvest each chunk's reclaimable granules from the high-address end
-  // downward, biasing holes toward the tail of the pool and preserving the
-  // low-address contiguous free runs that future large allocations need most.
-  std::vector<Chunk *> live;
-  for (Chunk *c = chunks_.get(); c != nullptr; c = c->next_.get())
-    live.push_back(c);
-
-  size_t harvested = 0;
-  for (auto it = live.rbegin(); it != live.rend() && out.size() < needed;
-       ++it) {
-    Chunk *c = *it;
-    if (!c->vmmBacked_)
-      continue;
-    // Reuse the feasibility pass's slot set; recompute only if absent.
-    llvm::BitVector recomputed;
-    const llvm::BitVector *slotsPtr = nullptr;
-    for (const auto &entry : cache) {
-      if (entry.first == c) {
-        slotsPtr = &entry.second;
-        break;
-      }
-    }
-    if (slotsPtr == nullptr) {
-      computeHarvestableSlots(c, recomputed);
-      slotsPtr = &recomputed;
-    }
-    const llvm::BitVector &slots = *slotsPtr;
-    const size_t ps = c->pageSize_;
-    char *base = static_cast<char *>(c->base_);
-    // Walk the reclaimable (set) slots from the high-address end downward.
-    for (int i = slots.find_last(); i != -1 && out.size() < needed;
-         i = slots.find_prev(i)) {
-      void *pageVa = base + static_cast<size_t>(i) * ps;
-      ErrorOrSuccess e = device().vmmUnmap(pageVa, ps);
-      if (e.isError()) {
-        LOG_ERR(llvm::Twine("harvest vmmUnmap failed: ") + e.getError());
-        continue; // leave this slot backed; try the next
-      }
-      out.push_back(c->vmmHandles_[i]);
-      c->vmmHandles_[i] = 0;
-      c->granuleBacked_.reset(i);
-      // The granule's physical is being moved to the defrag chunk: it is no
-      // longer mapped here (cacheSize_ tracks mapped physical) but its VA hole
-      // stays reserved (harvestedBytes_) until re-backed.
-      cacheSize_ -= ps;
-      harvestedBytes_ += ps;
-      ++harvested;
-    }
-  }
-  return harvested;
-}
-
-std::pair<size_t, size_t> MemoryManager::descSlotRange(const Desc *desc) const {
+bool MemoryManager::descHasUnbackedRegion(const Desc *desc) const {
   const Chunk *c = desc->chunk_;
-  const char *base = static_cast<char *>(c->base_);
-  const char *ptr = static_cast<char *>(desc->ptr_);
-  const size_t ps = c->pageSize_;
-  return {static_cast<size_t>(ptr - base) / ps,
-          static_cast<size_t>(ptr + desc->size_ - 1 - base) / ps};
-}
-
-bool MemoryManager::descHasUnbackedSlot(const Desc *desc) const {
-  Chunk *c = desc->chunk_;
   if (!c->vmmBacked_ || c->granuleBacked_.empty())
     return false;
-  auto [first, last] = descSlotRange(desc);
+  // Map the desc's byte range to the inclusive granule index range it spans,
+  // then ask the bitset whether any granule in [first, end) is still unmapped.
+  const char *base = static_cast<char *>(c->base_);
+  const size_t ps = c->pageSize_;
+  const size_t first = (static_cast<char *>(desc->ptr_) - base) / ps;
+  const size_t last =
+      (static_cast<char *>(desc->ptr_) + desc->size_ - 1 - base) / ps;
   const size_t end = std::min<size_t>(last + 1, c->granuleBacked_.size());
   if (first >= end)
     return false;
   return c->granuleBacked_.find_first_unset_in(first, end) != -1;
 }
 
-ErrorOrSuccess MemoryManager::ensureDescBacked(Desc *desc) {
+void MemoryManager::computeInUseGranules(const Chunk *c,
+                                         llvm::BitVector &out) const {
+  const size_t n = c->vmmBacked_ ? c->vmmHandles_.size() : 0;
+  out.clear();
+  out.resize(n, false);
+  if (n == 0)
+    return;
+  const char *base = static_cast<char *>(c->base_);
+  const size_t ps = c->pageSize_;
+  for (const Desc *d = c->descs_; d != nullptr; d = d->next_) {
+    if (d->isFree())
+      continue;
+    const size_t first = (static_cast<char *>(d->ptr_) - base) / ps;
+    const size_t last =
+        (static_cast<char *>(d->ptr_) + d->size_ - 1 - base) / ps;
+    const size_t end = std::min(last + 1, n);
+    if (first < end)
+      out.set(first, end);
+  }
+}
+
+void MemoryManager::computeUnreclaimableGranules(const Chunk *c,
+                                                 llvm::BitVector &out) const {
+  const size_t n = c->vmmBacked_ ? c->vmmHandles_.size() : 0;
+  out.clear();
+  out.resize(n, false);
+  if (n == 0)
+    return;
+  const char *base = static_cast<char *>(c->base_);
+  const size_t ps = c->pageSize_;
+  for (const Desc *d = c->descs_; d != nullptr; d = d->next_) {
+    // A granule is safe to reclaim only when every desc covering it is a
+    // root-owned free desc. A desc that is in-use, or free but still owned by a
+    // per-stream (child) free-list, may have in-flight GPU work referencing its
+    // memory (a per-stream free only migrates to the root free-list once its
+    // stream events fire), so unmapping it could fault a live kernel.
+    if (d->isFree() && d->owner() == freeList_.get())
+      continue;
+    const size_t first = (static_cast<char *>(d->ptr_) - base) / ps;
+    const size_t last =
+        (static_cast<char *>(d->ptr_) + d->size_ - 1 - base) / ps;
+    const size_t end = std::min(last + 1, n);
+    if (first < end)
+      out.set(first, end);
+  }
+}
+
+size_t MemoryManager::inUsePhysicalBytes() const {
+  if (chunks_ == nullptr || !chunks_->vmmBacked_)
+    return 0;
+  llvm::BitVector inUse;
+  computeInUseGranules(chunks_.get(), inUse);
+  return inUse.count() * chunks_->pageSize_;
+}
+
+size_t MemoryManager::reclaimMappedGranules(Chunk *c, size_t count) {
+  if (count == 0 || !c->vmmBacked_)
+    return 0;
+  llvm::BitVector unreclaimable;
+  computeUnreclaimableGranules(c, unreclaimable);
+  const size_t ps = c->pageSize_;
+  char *base = static_cast<char *>(c->base_);
+  size_t reclaimed = 0;
+  for (size_t i = 0; i < c->granuleBacked_.size() && reclaimed < count; ++i) {
+    // Reclaim only granules that are physically mapped AND safe to unmap (not
+    // overlapped by an in-use desc or a non-root-owned free desc whose memory
+    // may still be referenced by in-flight GPU work).
+    if (!c->granuleBacked_[i] || unreclaimable[i])
+      continue;
+    void *pageVa = base + i * ps;
+    ErrorOrSuccess e = device().vmmUnmap(pageVa, ps);
+    if (e.isError()) {
+      LOG_ERR(llvm::Twine("reclaimMappedGranules vmmUnmap failed: ") +
+              e.getError());
+      continue;
+    }
+    freeGranulePool_.push_back(c->vmmHandles_[i]);
+    c->vmmHandles_[i] = 0;
+    c->granuleBacked_.reset(i);
+    cacheSize_ -= ps;
+    ++reclaimed;
+  }
+  return reclaimed;
+}
+
+ErrorOrSuccess MemoryManager::ensureRegionBacked(Desc *desc) {
   Chunk *c = desc->chunk_;
   if (!c->vmmBacked_ || c->granuleBacked_.empty())
     return success();
   char *base = static_cast<char *>(c->base_);
   const size_t ps = c->pageSize_;
-  auto [first, last] = descSlotRange(desc);
+  const size_t first = (static_cast<char *>(desc->ptr_) - base) / ps;
+  const size_t last =
+      (static_cast<char *>(desc->ptr_) + desc->size_ - 1 - base) / ps;
+
+  // Count granules in this region that still need physical backing. Callers
+  // gate on descHasUnbackedRegion(), so this is normally non-zero; the early
+  // return just keeps the function safe if called directly. (Mapping during
+  // graph capture is illegal and will fail below with the driver's native
+  // vmmMap error -- no explicit capture check is needed.)
+  size_t needMap = 0;
+  for (size_t i = first; i <= last && i < c->granuleBacked_.size(); ++i)
+    if (!c->granuleBacked_[i])
+      ++needMap;
+  if (needMap == 0)
+    return success();
+
+  // The VA arena is larger than the physical budget, so backing these granules
+  // may require reclaiming physical from free-but-mapped granules elsewhere.
+  // The desc is already in use, so computeUnreclaimableGranules excludes this
+  // region (reclaim never touches the granules we are about to back).
+  const size_t poolAvail = freeGranulePool_.size();
+  // Physical already created (mapped granules + pooled unmapped handles) counts
+  // against the budget; new physical may only be created up to the remainder.
+  const size_t createdPhysical = cacheSize_ + poolAvail * ps;
+  const size_t canCreate = maxCacheSize_ > createdPhysical
+                               ? (maxCacheSize_ - createdPhysical) / ps
+                               : 0;
+  if (needMap > poolAvail + canCreate) {
+    const size_t toReclaim = needMap - poolAvail - canCreate;
+    const size_t got = reclaimMappedGranules(c, toReclaim);
+    if (got < toReclaim)
+      return Error("ensureRegionBacked: out of physical budget (need " +
+                   humanMemorySize(needMap * ps) + ", reclaimed " +
+                   humanMemorySize(got * ps) + ")");
+  }
+
+  // Granules mapped in this call, for rollback on a later partial failure.
+  llvm::SmallVector<size_t, 8> mappedNow;
+  auto rollback = [&]() {
+    for (size_t idx : mappedNow) {
+      void *pageVa = base + idx * ps;
+      ErrorOrSuccess ue = device().vmmUnmap(pageVa, ps);
+      if (ue.isError())
+        LOG_ERR(llvm::Twine("ensureRegionBacked rollback vmmUnmap failed: ") +
+                ue.getError());
+      freeGranulePool_.push_back(c->vmmHandles_[idx]);
+      c->vmmHandles_[idx] = 0;
+      c->granuleBacked_.reset(idx);
+      cacheSize_ -= ps;
+    }
+  };
+
   for (size_t i = first; i <= last && i < c->granuleBacked_.size(); ++i) {
     if (c->granuleBacked_[i])
       continue;
-    // Re-mapping a hole grows total mapped physical (`cacheSize_`) by one
-    // granule. Only allowed if it stays within the pool budget; otherwise this
-    // hole cannot be re-backed now and the caller falls back to
-    // defrag/backdoor. (A pooled granule implies cacheSize_ < maxCacheSize_, so
-    // this passes.)
-    if (cacheSize_ + ps > maxCacheSize_)
-      return Error("ensureDescBacked: re-backing would exceed cache budget");
+    // Physical is guaranteed available now: pool (incl. just-reclaimed handles)
+    // first, else create within the remaining budget.
     uint64_t handle = 0;
     if (!freeGranulePool_.empty()) {
       handle = freeGranulePool_.back();
       freeGranulePool_.pop_back();
     } else {
       ErrorOr<uint64_t> h = device().vmmCreate(ps);
+      if (h.isError()) {
+        rollback();
+        return Error(std::string("ensureRegionBacked: vmmCreate failed: ") +
+                     h.getError());
+      }
+      handle = *h;
+    }
+    void *pageVa = base + i * ps;
+    ErrorOrSuccess me = device().vmmMapAndSetAccess(pageVa, ps, handle);
+    if (me.isError()) {
+      freeGranulePool_.push_back(handle); // valid handle, just unmapped
+      rollback();
+      return Error(
+          std::string("ensureRegionBacked: vmmMapAndSetAccess failed: ") +
+          me.getError());
+    }
+    c->vmmHandles_[i] = handle;
+    c->granuleBacked_.set(i);
+    cacheSize_ += ps;
+    mappedNow.push_back(i);
+  }
+  return success();
+}
+
+ErrorOrSuccess MemoryManager::preBackForCapture() {
+  if (!vmmEnabled_)
+    return success();
+  std::lock_guard<std::mutex> lock(mu_);
+  if (chunks_ == nullptr || !chunks_->vmmBacked_)
+    return success();
+  Chunk *c = chunks_.get();
+  const size_t ps = c->pageSize_;
+  char *base = static_cast<char *>(c->base_);
+  // Map free-but-unbacked granules (low address first, where allocations land)
+  // until the physical budget is fully committed. In-use granules are already
+  // backed (skipped). Running out of budget to commit is a normal stop, but a
+  // genuine driver failure (create/map) is propagated so capture setup fails
+  // fast with the real cause, rather than proceeding into a guaranteed -- and
+  // more cryptic -- mid-capture mapping failure.
+  for (size_t i = 0; i < c->granuleBacked_.size(); ++i) {
+    if (cacheSize_ >= maxCacheSize_)
+      break;
+    if (c->granuleBacked_[i])
+      continue;
+    uint64_t handle = 0;
+    if (!freeGranulePool_.empty()) {
+      handle = freeGranulePool_.back();
+      freeGranulePool_.pop_back();
+    } else {
+      // Respect the budget: created physical == mapped + pooled handles.
+      if (cacheSize_ + freeGranulePool_.size() * ps + ps > maxCacheSize_)
+        break;
+      ErrorOr<uint64_t> h = device().vmmCreate(ps);
       if (h.isError())
-        return Error(std::string("ensureDescBacked: vmmCreate failed: ") +
+        return Error(std::string("preBackForCapture vmmCreate failed: ") +
                      h.getError());
       handle = *h;
     }
     void *pageVa = base + i * ps;
     ErrorOrSuccess me = device().vmmMapAndSetAccess(pageVa, ps, handle);
     if (me.isError()) {
-      freeGranulePool_.push_back(handle); // handle is valid, just unmapped
+      freeGranulePool_.push_back(handle);
       return Error(
-          std::string("ensureDescBacked: vmmMapAndSetAccess failed: ") +
+          std::string("preBackForCapture vmmMapAndSetAccess failed: ") +
           me.getError());
     }
-    cacheSize_ += ps; // a hole became mapped physical again
     c->vmmHandles_[i] = handle;
     c->granuleBacked_.set(i);
-    assert(harvestedBytes_ >= ps && "harvestedBytes_ accounting underflow");
-    harvestedBytes_ -= ps;
+    cacheSize_ += ps;
   }
   return success();
 }
@@ -1571,21 +1536,38 @@ void MemoryManager::selfCheck() const {
     return;
   }
 
+  size_t mappedBytes = 0;
   Chunk *curChunk = chunks_.get();
-  size_t unbackedBytes = 0;
   while (curChunk != nullptr) {
     curChunk->selfCheck();
     if (curChunk->vmmBacked_) {
-      const size_t unbacked =
-          curChunk->granuleBacked_.size() - curChunk->granuleBacked_.count();
-      unbackedBytes += unbacked * curChunk->pageSize_;
+      // Single-arena VMM accounting: every slot's mapped state must agree with
+      // its handle (a mapped slot holds a non-zero physical handle; an unmapped
+      // slot holds 0), and the running mapped-physical counter `cacheSize_`
+      // must equal the number of backed slots times the granule size. Catches
+      // any path that updates granuleBacked_/vmmHandles_/cacheSize_
+      // inconsistently.
+      const size_t ps = curChunk->pageSize_;
+      size_t backed = 0;
+      for (size_t i = 0; i < curChunk->granuleBacked_.size(); ++i) {
+        const bool isBacked = curChunk->granuleBacked_[i];
+        const bool hasHandle = curChunk->vmmHandles_[i] != 0;
+        if (isBacked != hasHandle) {
+          logErr("selfCheck failed: VMM slot " + TWINE(i) +
+                 " backed-bit/handle mismatch (handle=" +
+                 TWINE(curChunk->vmmHandles_[i]) + ")");
+          abort();
+        }
+        if (isBacked)
+          ++backed;
+      }
+      mappedBytes += backed * ps;
     }
     curChunk = curChunk->next_.get();
   }
-  if (unbackedBytes != harvestedBytes_) {
-    logErr("selfCheck failed: harvestedBytes_ (" + TWINE(harvestedBytes_) +
-           ") does not match the sum of unbacked granules (" +
-           TWINE(unbackedBytes) + ")");
+  if (vmmEnabled_ && mappedBytes != cacheSize_) {
+    logErr("selfCheck failed: cacheSize_ (" + TWINE(cacheSize_) +
+           ") does not match mapped VMM physical (" + TWINE(mappedBytes) + ")");
     abort();
   }
 
@@ -1693,6 +1675,10 @@ void MemoryManager::clear() {
     chunk = std::move(nextChunk);
   }
   chunks_ = nullptr;
+  // All physical backing has been released; reset mapped-physical accounting so
+  // a reused manager (re-creating the arena) starts from a clean state.
+  cacheSize_ = 0;
+  chunkCount_ = 0;
 
   // Release any granules sitting in the free-granule pool back to the driver.
   for (uint64_t handle : freeGranulePool_) {
@@ -1835,10 +1821,10 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     MemoryManager::Desc *desc = nullptr;
     {
       std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-      // Under VMM we deliberately do NOT grow the chunk to max: keeping chunks
-      // bounded lets freed buffers form wholly-free chunks that defrag can
-      // recycle, and requests larger than a chunk fall through to
-      // defragForRequest (which reserves fresh VA of exactly the request size).
+      // The chunk-growth heuristic below is for the non-VMM allocator only.
+      // The single-arena VMM path reserves one oversized arena up front
+      // (allocateVmmArena) with lazily-backed pages, so there is no per-chunk
+      // growth to manage and large requests are served from the arena frontier.
       if (wrappedSize > memoryManager_.chunkSize_ &&
           !memoryManager_.vmmEnabled_) {
         // Check heuristics if chunk size should be updated.
@@ -1891,9 +1877,10 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // the root free-list when its enqueued event handler fires. Poll pending
     // events to fire those handlers -- safe because pollPendingEvents only runs
     // handlers whose device work has completed -- then retry. This both lets a
-    // plain retry succeed and gives defragForRequest more root-owned memory to
-    // reclaim. Must run OUTSIDE the memory-manager lock (the flush handlers
-    // take it). Gated on VMM so the default allocator path is unchanged.
+    // plain retry succeed and, by moving frees to the root free-list, gives the
+    // arena's reclaim path more root-owned (safe-to-remap) memory. Must run
+    // OUTSIDE the memory-manager lock (the flush handlers take it). Gated on
+    // VMM so the default allocator path is unchanged.
     if (memoryManager_.vmmEnabled_ && ctx_ != nullptr &&
         !ctx_->isGraphCapturing()) {
       ErrorOrSuccess polled = ctx_->pollPendingEvents();
@@ -1922,27 +1909,6 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         }
         return desc->ptr_;
       }
-    }
-
-    // VMM defrag: the free-list could not satisfy a (typically large) request
-    // because no single contiguous block is big enough, even though enough
-    // memory is free in aggregate. Reserve fresh contiguous VA and remap
-    // physically-scattered free granules into it. Skipped during graph capture
-    // (VMM map/unmap is capture-illegal); falls through to the existing
-    // error/backdoor path on failure.
-    if (memoryManager_.vmmEnabled_ && !(ctx_ && ctx_->isGraphCapturing())) {
-      ErrorOr<void *> defragPtr =
-          memoryManager_.defragForRequest(wrappedSize, this);
-      if (!defragPtr.isError()) {
-        LOG_MSG("defrag_alloc(" + TWINE_PTR(*defragPtr) + " ; " +
-                TWINE(wrappedSize) + ")");
-        if (redzoneEnable_ || poisonEnable_) {
-          return finalizeDebugAlloc(*defragPtr, size);
-        }
-        return *defragPtr;
-      }
-      LOG_MSG("defragForRequest(" + TWINE(wrappedSize) +
-              ") failed: " + defragPtr.getError());
     }
 
     if (memoryManager_.useOnlyMemoryManagerMode_)
@@ -2018,32 +1984,18 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
   LOG_MSG("In allocateDesc with size " + TWINE(size) +
           " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
   int iterations = 0;
-  // Partial-chunk harvest bookkeeping. When `harvestedBytes_` is zero there are
-  // no unbacked holes anywhere, so the fast path below is unchanged. A free
-  // desc that overlaps an unbacked hole can only be handed out after re-mapping
-  // its granules (ensureDescBacked). `skipUnbacked` starts true during graph
-  // capture (VMM map is capture-illegal) and is also latched on once a re-back
-  // fails this call (no physical is reclaimable right now), so such descs are
-  // skipped and the request falls through to defrag / a fresh chunk / the
-  // backdoor.
-  const bool mayHaveHoles = memoryManager_.harvestedBytes_ > 0;
-  bool skipUnbacked =
-      mayHaveHoles && ctx_ != nullptr && ctx_->isGraphCapturing();
   // Try allocating from all free buffer lists in this MemoryManagerFreeList,
   // starting with the primary free buffer list.
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     int freeListIdToUse = (primaryFreeBuffers_ + i) % kNumFreeBufferLists;
     // Find a fit in the free list.
     MemoryManager::Desc *desc = freeBuffers_[freeListIdToUse];
-    while (desc != nullptr) {
-      if ((desc->size_ < size) ||
-          (skipUnbacked && memoryManager_.descHasUnbackedSlot(desc))) {
-        desc = desc->nextFree_;
-        ++iterations;
-        continue;
-      }
-
-      // Claim the candidate (exact fit or split).
+    while ((desc != nullptr) && (desc->size_ < size)) {
+      desc = desc->nextFree_;
+      ++iterations;
+    }
+    if (desc != nullptr) {
+      assert(desc->isFree());
       if (desc->size_ == size) {
         removeFromFreeList(desc);
       } else {
@@ -2053,29 +2005,19 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
       assert(desc->prevFree_ == nullptr);
       assert(desc->isInUse());
 
-      // Re-back any harvested holes spanned by this desc before handing it out.
-      // We re-back AFTER claiming (split) so only the `size`-sized claimed
-      // granules are re-backed, not every hole in a (possibly multi-GB) free
-      // block. On failure, return the block to the free list, latch
-      // `skipUnbacked` so we do not re-pick an un-re-backable hole, and rescan
-      // from the head.
-      //
-      // Returning the claimed-but-not-yet-registered desc via `freeDesc` is
-      // safe: `freeDesc` only coalesces/re-inserts into the free-list
-      // (mergeFreeBlockDesc) and never consults `allocatedMap_`, which is
-      // touched solely by the free(ptr) path. A partial re-back (some granules
-      // mapped before a later granule failed) is also consistent: those slots
-      // are simply backed now, and the desc is skipped via descHasUnbackedSlot
-      // until its remaining holes can be re-backed.
-      if (mayHaveHoles && desc->chunk_->vmmBacked_ &&
-          memoryManager_.descHasUnbackedSlot(desc)) {
-        ErrorOrSuccess rb = memoryManager_.ensureDescBacked(desc);
+      // Single-arena VMM: physically back the chosen region before handing it
+      // out (lazy mapping) if any granule it spans is still unmapped. On
+      // failure (driver error -- including an illegal map attempted during
+      // graph capture) return the block to the free list and report a miss so
+      // the caller can fall through to its recovery/error path.
+      if (memoryManager_.vmmEnabled_ &&
+          memoryManager_.descHasUnbackedRegion(desc)) {
+        ErrorOrSuccess rb = memoryManager_.ensureRegionBacked(desc);
         if (rb.isError()) {
-          LOG_MSG(llvm::Twine("allocateDesc re-back failed: ") + rb.getError());
+          LOG_MSG(llvm::Twine("allocateDesc ensureRegionBacked failed: ") +
+                  rb.getError());
           freeDesc(desc);
-          skipUnbacked = true;
-          desc = freeBuffers_[freeListIdToUse];
-          continue;
+          return nullptr;
         }
       }
 
@@ -2413,14 +2355,12 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
   // VMM (CUDA Virtual Memory Management) defragmenting allocator. Disabled by
   // default for now; set `memory_manager_vmm=1` to opt in on CUDA devices that
   // support VMM (it auto-disables where vmmSupported() is false). When enabled
-  // we back chunks with remappable physical granules so a large contiguous
-  // allocation can be assembled from physically-scattered free memory
-  // (MemoryManager::defragForRequest). Granule (page) size is rounded up from
+  // we serve from a single oversized VA arena backed by remappable physical
+  // granules, so a large contiguous allocation can be assembled from
+  // physically-scattered free memory (ensureRegionBacked / reclaimMapped
+  // Granules). Granule (page) size is rounded up from
   // `memory_manager_vmm_page_mb` (default 256 MiB) to the device VMM
-  // granularity, and all VMM sizes are rounded to it. A smaller granule lets
-  // harvest reclaim physical from finer free fragments (a sub-granule free
-  // region yields no whole harvestable granule), at the cost of more
-  // map/unmap calls.
+  // granularity, and all VMM sizes are rounded to it.
   bool vmmEnabled = DeviceContext::configAsBool("memory_manager_vmm", false) &&
                     device.vmmSupported();
   size_t vmmPageSize = 0;
@@ -2433,9 +2373,11 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
     size_t pageMb = static_cast<size_t>(std::max<int64_t>(
         1, DeviceContext::configAsInt("memory_manager_vmm_page_mb", 256)));
     vmmPageSize = llvm::alignTo(pageMb * 1024 * KB, *granularity);
-    // Round pool/chunk sizes to whole granules.
+    // Round the budget to whole granules.
     maxCacheSize = llvm::alignTo(maxCacheSize, vmmPageSize);
-    chunkSize = std::min(maxCacheSize, llvm::alignTo(chunkSize, vmmPageSize));
+    // Single-arena VMM: the whole budget is one lazily-backed VA arena, so
+    // `memory_manager_chunk_percent` is ignored (no incremental chunking).
+    chunkSize = maxCacheSize;
   }
 
   auto result = new MemoryManager(
