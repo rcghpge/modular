@@ -40,7 +40,11 @@ public:
   ErrorOrSuccess copyToDevice(BufferRef dst, void *src, size_t byteSize);
   ErrorOrSuccess copyFromDevice(void *dst, BufferRef src, size_t byteSize);
   ErrorOrSuccess copyIntraDevice(BufferRef dst, BufferRef src, size_t byteSize);
-  ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
+  /// Set every byte of \p dst to \p value.
+  ErrorOrSuccess setMemory(BufferRef dst, uint8_t value);
+  /// Fill \p dst with a repeated \p valueSize-byte \p value. \p valueSize must
+  /// be one of 1, 2, 4, or 8; a \p valueSize of 1 is equivalent to setMemory.
+  ErrorOrSuccess fillMemory(BufferRef dst, uint64_t value, size_t valueSize);
   /// Record a new event on this queue. The returned event will be signaled
   /// once all operations enqueued before this call have completed.
   ///

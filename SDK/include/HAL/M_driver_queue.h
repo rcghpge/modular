@@ -100,22 +100,42 @@ typedef M_driver_status_t (*M_driver_queue_copy_intra_device_func_ptr_t)(
     M_driver_memory_view_t src);
 
 /**
- * Fill device memory with a repeated value.
+ * Set device memory to a repeated single byte.
  *
  * @param[in] queue The queue to use for the set operation.
  * @param[in] dst Destination device-memory view; `dst->size` bytes starting at
- *            `dst->offset` into `dst->memory` are filled.
- * @param[in] value The value to fill with.
- * @param[in] value_size The size of the value in bytes.
+ *            `dst->offset` into `dst->memory` are set.
+ * @param[in] value The byte value to set.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
-                                            uint64_t value,
-                                            uint64_t value_size);
+                                            uint8_t value);
 
 typedef M_driver_status_t (*M_driver_queue_set_memory_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_memory_view_t dst, uint8_t value);
+
+/**
+ * Fill device memory with a repeated `value_size`-byte value.
+ *
+ * @param[in] queue The queue to use for the fill operation.
+ * @param[in] dst Destination device-memory view; `dst->size` bytes starting at
+ *            `dst->offset` into `dst->memory` are filled. `dst->size` must be a
+ *            multiple of `value_size`.
+ * @param[in] value The value to fill with; the low `value_size` bytes are used.
+ * @param[in] value_size The size of the value in bytes. Must be one of 1, 2, 4,
+ *            or 8. A `value_size` of 1 is equivalent to
+ *            M_driver_queue_set_memory.
+ * @return Standard Status Protocol, or M_DRIVER_STATUS_INVALID_ARG if
+ *         `value_size` is unsupported or `dst->size` is not a multiple of it.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
+                                      M_driver_memory_view_t dst,
+                                      uint64_t value, uint64_t value_size);
+
+typedef M_driver_status_t (*M_driver_queue_fill_func_ptr_t)(
     M_driver_queue_t queue, M_driver_memory_view_t dst, uint64_t value,
     uint64_t value_size);
 

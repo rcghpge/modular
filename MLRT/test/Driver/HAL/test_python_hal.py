@@ -123,6 +123,42 @@ def test_queue_copy_intra_device() -> None:
 
 
 # ----------------------------------------------------------------------
+# Memory set / fill via Queue
+# ----------------------------------------------------------------------
+
+
+def test_queue_set_memory() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    queue.set_memory(dev, 0x5A, n)
+    queue.copy_from_device(dst_addr, dev, n)
+    queue.synchronize()
+
+    assert _bytes_of(dst) == bytes([0x5A]) * n
+
+
+def test_queue_fill() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    # 32-bit pattern, little-endian repeating across the buffer.
+    queue.fill(dev, 0xDEADBEEF, 4, n)
+    queue.copy_from_device(dst_addr, dev, n)
+    queue.synchronize()
+
+    assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
+
+
+# ----------------------------------------------------------------------
 # Memory copies via Stream
 # ----------------------------------------------------------------------
 
@@ -161,6 +197,36 @@ def test_stream_copy_intra_device() -> None:
     stream.synchronize()
 
     assert _bytes_of(dst) == src_data
+
+
+def test_stream_set_memory() -> None:
+    ctx = Driver().get_device(0).get_context()
+    stream = ctx.create_stream()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    stream.set_memory(dev, 0x5A, n)
+    stream.copy_from_device(dst_addr, dev, n)
+    stream.synchronize()
+
+    assert _bytes_of(dst) == bytes([0x5A]) * n
+
+
+def test_stream_fill() -> None:
+    ctx = Driver().get_device(0).get_context()
+    stream = ctx.create_stream()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    stream.fill(dev, 0xDEADBEEF, 4, n)
+    stream.copy_from_device(dst_addr, dev, n)
+    stream.synchronize()
+
+    assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
 
 
 # ----------------------------------------------------------------------

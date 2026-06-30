@@ -349,8 +349,19 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
-                                            uint64_t value,
-                                            uint64_t value_size) {
+                                            uint8_t value) {
+  (void)queue;
+  if (!dst || !dst->memory || dst->size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+
+  memset((char *)dst->memory + dst->offset, value, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
+                                      M_driver_memory_view_t dst,
+                                      uint64_t value, uint64_t value_size) {
   (void)queue;
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;

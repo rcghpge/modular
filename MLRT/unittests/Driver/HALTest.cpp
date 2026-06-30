@@ -272,8 +272,7 @@ TEST_F(DriverHALQueueTest, SetMemory) {
     QueueRef queue = queues[i];
 
     ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(size));
-    M::ErrorOrSuccess errorOr =
-        queue->setMemory(buffer, uint8_t(42), sizeof(uint8_t));
+    M::ErrorOrSuccess errorOr = queue->setMemory(buffer, uint8_t(42));
     ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
 
     std::array<uint8_t, size> result;
@@ -284,6 +283,28 @@ TEST_F(DriverHALQueueTest, SetMemory) {
     std::array<uint8_t, size> expected;
     expected.fill(42);
     ASSERT_EQ(expected, result);
+  }
+}
+
+TEST_F(DriverHALQueueTest, Fill) {
+  constexpr size_t size = 128;
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    ContextRef context = contexts[i];
+    QueueRef queue = queues[i];
+
+    ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(size));
+    M::ErrorOrSuccess errorOr =
+        queue->fillMemory(buffer, uint32_t(0xDEADBEEF), sizeof(uint32_t));
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+
+    std::array<uint32_t, size / sizeof(uint32_t)> result;
+    result.fill(0);
+    errorOr = queue->copyFromDevice(result.data(), buffer, size);
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+    EXPECT_NO_ERR(queue->synchronize());
+    for (uint32_t v : result)
+      ASSERT_EQ(v, uint32_t(0xDEADBEEF));
   }
 }
 

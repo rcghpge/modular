@@ -226,8 +226,7 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
 
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t dstOffset, uint64_t size,
-                                            uint64_t value,
-                                            uint64_t valueSize) {
+                                            uint8_t value) {
   // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
   //                      TRACY_COLOR_PURPLE);
 
@@ -249,11 +248,6 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   // Apply offset to get actual destination pointer
   void *dstPtr = static_cast<char *>(dstContents) + dstOffset;
 
-  size_t count = size / valueSize;
-  if (reinterpret_cast<uintptr_t>(dstPtr) % valueSize != 0)
-    return context->device->driver->status.create(
-        "destination buffer not properly aligned");
-
   NS::SharedPtr<MTL::SharedEvent> doneEvent =
       NS::TransferPtr(context->device->mDevice->newSharedEvent());
   if (!doneEvent)
@@ -270,10 +264,68 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   encodePendingWaits(cmdBuffer);
 
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
+    std::memset(dstPtr, value, size);
+    doneEvent->setSignaledValue(1);
+  });
+  cmdBuffer->commit();
+  mPending.push_back(doneEvent);
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
+                                             uint64_t dstOffset, uint64_t size,
+                                             uint64_t value,
+                                             uint64_t valueSize) {
+  if (valueSize == 1)
+    return setMemory(dst, dstOffset, size, static_cast<uint8_t>(value));
+
+  if (valueSize != 2 && valueSize != 4 && valueSize != 8)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (size == 0)
+    return M_DRIVER_STATUS_SUCCESS; // no-op
+
+  if ((size % valueSize) != 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  if (dstOffset + size > dst->mBuffer->length())
+    return context->device->driver->status.create(
+        "Fill size exceeds Metal buffer length");
+
+  void *dstContents = dst->mBuffer->contents();
+  if (dstContents == nullptr)
+    return context->device->driver->status.create(
+        "Shared buffer contents() returned null");
+
+  // Apply offset to get actual destination pointer
+  void *dstPtr = static_cast<char *>(dstContents) + dstOffset;
+
+  size_t count = size / valueSize;
+  if (reinterpret_cast<uintptr_t>(dstPtr) % valueSize != 0)
+    return context->device->driver->status.create(
+        "destination buffer not properly aligned");
+
+  NS::SharedPtr<MTL::SharedEvent> doneEvent =
+      NS::TransferPtr(context->device->mDevice->newSharedEvent());
+  if (!doneEvent)
+    return context->device->driver->status.create(
+        "Failed to create MTL::SharedEvent for fillMemory");
+
+  std::lock_guard<std::mutex> lock(mMutex);
+
+  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
+  if (cmdBuffer == nullptr)
+    return context->device->driver->status.create(
+        "Failed to create command buffer");
+
+  encodePendingWaits(cmdBuffer);
+
+  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
     switch (valueSize) {
-    case 1:
-      std::memset(dstPtr, static_cast<uint8_t>(value), size);
-      break;
     case 2: {
       uint16_t v16 = static_cast<uint16_t>(value);
       uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
@@ -546,14 +598,23 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
-                                            uint64_t value,
-                                            uint64_t value_size) {
+                                            uint8_t value) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (dst == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
-  return queue->setMemory(dst->memory, dst->offset, dst->size, value,
-                          value_size);
+  return queue->setMemory(dst->memory, dst->offset, dst->size, value);
+}
+
+M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
+                                      M_driver_memory_view_t dst,
+                                      uint64_t value, uint64_t value_size) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return queue->fillMemory(dst->memory, dst->offset, dst->size, value,
+                           value_size);
 }
 
 M_driver_status_t

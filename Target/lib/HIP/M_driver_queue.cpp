@@ -60,12 +60,23 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
-                                            uint64_t value,
-                                            uint64_t value_size) {
+                                            uint8_t value) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
-  return queue->setMemory(dst->memory, dst->offset, dst->size, value,
-                          value_size);
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return queue->setMemory(dst->memory, dst->offset, dst->size, value);
+}
+
+M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
+                                      M_driver_memory_view_t dst,
+                                      uint64_t value, uint64_t value_size) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return queue->fillMemory(dst->memory, dst->offset, dst->size, value,
+                           value_size);
 }
 
 M_driver_status_t

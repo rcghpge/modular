@@ -173,8 +173,7 @@ def do_offset_copy_test[
     # Fill the lower half, then write the upper half at byte offset `half`.
     stream[].set_memory(
         device_buffer.view(byte_offset=UInt64(0), byte_size=UInt64(half)),
-        value=UInt64(0xCD),
-        value_size=UInt64(1),
+        value=UInt8(0xCD),
     )
     stream[].copy_to_device(
         device_buffer.view(byte_offset=UInt64(half), byte_size=UInt64(half)),
@@ -190,6 +189,37 @@ def do_offset_copy_test[
         assert_equal(host[i], UInt8(0xCD) if i < half else UInt8(0xAB))
 
     src.free()
+    host.free()
+    ctx.free_sync(device_buffer^)
+
+
+def do_fill_test[
+    device_spec: DeviceSpec,
+](mut ctx: Context[device_spec]) raises:
+    """Fills a buffer with a repeated 32-bit pattern and reads it back."""
+    comptime n = 256
+    var pattern = 0xDEADBEEF
+
+    var stream = ctx.create_stream()
+    var device_buffer = ctx.alloc_sync(UInt64(n))
+
+    stream[].fill(
+        device_buffer.view(),
+        value=UInt64(pattern),
+        value_size=UInt64(4),
+    )
+
+    var host = alloc[UInt8](n)
+    stream[].copy_from_device(
+        rebind[UnsafePointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+    )
+    stream[].synchronize()
+
+    # 0xDEADBEEF stored little-endian repeats bytes EF BE AD DE.
+    for i in range(n):
+        var expected_byte = UInt8((pattern >> (8 * (i % 4))) & 0xFF)
+        assert_equal(host[i], expected_byte)
+
     host.free()
     ctx.free_sync(device_buffer^)
 
@@ -223,3 +253,4 @@ def main() raises:
 
     do_execute(ctx[])
     do_offset_copy_test(ctx[])
+    do_fill_test(ctx[])
