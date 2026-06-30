@@ -14,14 +14,15 @@ func.func @device_graph_round_trip(
   // The body's input block args carry the input operand types verbatim (bare
   // `T`, no `!mogg.async` wrapping). The graph's output is value-returning: the
   // body yields it, and its type forms the signature's results.
-  // CHECK: %[[GRAPH:[a-zA-Z0-9_]+]] = mgp.device_graph.create %{{.+}}, %{{.+}}[3], %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) {
-  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder, %[[INB:[a-zA-Z0-9_]+]]: !mgp.buffer<<"gpu", 0>>, %{{.+}}: !mgp.buffer<<"gpu", 0>>):
+  // CHECK: %[[GRAPH:[a-zA-Z0-9_]+]] = mgp.device_graph.create %{{.+}}, %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) {
+  // CHECK-NEXT: ^bb0(%{{.+}}: !mgp.device_graph.builder, %{{.+}}: !mgp.context, %[[INB:[a-zA-Z0-9_]+]]: !mgp.buffer<<"gpu", 0>>, %{{.+}}: !mgp.buffer<<"gpu", 0>>):
   // CHECK: mgp.device_graph.yield %[[INB]] : !mgp.buffer<<"gpu", 0>>
   // CHECK: } : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>>
   %graph = mgp.device_graph.create
-      %ch, %ctx[3], %dctx
+      %ctx, %dctx
       inputs(%in, %wt : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) {
     ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
          %in_b: !mgp.buffer<<"gpu", 0>>,
          %wt_b: !mgp.buffer<<"gpu", 0>>):
       mgp.device_graph.yield %in_b : !mgp.buffer<<"gpu", 0>>
@@ -52,12 +53,12 @@ func.func @device_graph_empty_groups(
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>) -> !mef.chain {
 
-  // CHECK: mgp.device_graph.create %{{.+}}, %{{.+}}[7], %{{.+}} inputs() {
+  // CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} inputs() {
   // CHECK: } : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<() -> ()>
   %graph = mgp.device_graph.create
-      %ch, %ctx[7], %dctx
+      %ctx, %dctx
       inputs() {
-    ^bb0(%builder: !mgp.device_graph.builder):
+    ^bb0(%builder: !mgp.device_graph.builder, %ctx_b: !mgp.context):
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<() -> ()>
 
@@ -83,12 +84,13 @@ func.func @device_graph_plain_args_ok(
     %dctx: !mgp.device_context<<"gpu", 0>>,
     %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
 
-  // CHECK: ^bb0(%{{.+}}: !mgp.device_graph.builder, %[[INB:[a-zA-Z0-9_]+]]: !mgp.buffer<<"gpu", 0>>):
+  // CHECK: ^bb0(%{{.+}}: !mgp.device_graph.builder, %{{.+}}: !mgp.context, %[[INB:[a-zA-Z0-9_]+]]: !mgp.buffer<<"gpu", 0>>):
   // CHECK: mgp.device_graph.yield %[[INB]] : !mgp.buffer<<"gpu", 0>>
   %graph = mgp.device_graph.create
-      %ch, %ctx[1], %dctx
+      %ctx, %dctx
       inputs(%in : !mgp.buffer<<"gpu", 0>>) {
     ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
          %in_b: !mgp.buffer<<"gpu", 0>>):
       mgp.device_graph.yield %in_b : !mgp.buffer<<"gpu", 0>>
   } : !mgp.device_context<<"gpu", 0>>

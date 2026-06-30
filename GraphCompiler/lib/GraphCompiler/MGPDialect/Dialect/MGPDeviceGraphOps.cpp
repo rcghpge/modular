@@ -39,32 +39,43 @@ LogicalResult DeviceGraphCreateOp::verify() {
     return emitOpError(
         "build body must terminate with `mgp.device_graph.yield`");
 
-  // Block argument types are [builder, inputs...]. The op creates the builder
-  // from its `deviceContext` operand and passes it in as the first block arg;
-  // it instantiates the recorded builder into `outGraph` itself, so the body
-  // neither creates the builder nor yields the graph. The graph's outputs are
-  // produced inside the body (value-returning), so they have no operand and no
-  // block arg.
+  // Block argument types are [builder, context, inputs...]. The op creates the
+  // builder from its `deviceContext` operand and passes it in as the first
+  // block arg; it instantiates the recorded builder into `outGraph` itself, so
+  // the body neither creates the builder nor yields the graph. The
+  // `!mgp.context` block arg (passed through from the `theContext` operand) is
+  // build-time only
+  // -- it feeds in-body `mgp.buffer.get_cached` reads and is not part of the
+  // signature. The graph's outputs are produced inside the body
+  // (value-returning), so they have no operand and no block arg.
   //
   // The input arguments carry the `inputs` operand types verbatim (bare `T`, no
   // `!mogg.async` wrapping at the boundary): by the time a build body is
   // assembled the async pack/unpack mediation has been folded away.
-  if (body.getNumArguments() != 1 + getInputs().size())
+  if (body.getNumArguments() != 2 + getInputs().size())
     return emitOpError("build body has ")
            << body.getNumArguments() << " block argument(s), expected "
-           << (1 + getInputs().size());
+           << (2 + getInputs().size())
+           << " (the builder, the context, and one per input)";
 
   if (!llvm::isa<DeviceGraphBuilderType>(body.getArgument(0).getType()))
     return emitOpError("build body argument #0 must be a "
                        "`!mgp.device_graph.builder`, but is ")
            << body.getArgument(0).getType();
 
-  // `inputs` matched against the body args after the builder.
+  if (body.getArgument(1).getType() != getTheContext().getType())
+    return emitOpError(
+               "build body argument #1 must be the `theContext` operand "
+               "type ")
+           << getTheContext().getType() << ", but is "
+           << body.getArgument(1).getType();
+
+  // `inputs` matched against the body args after the builder and context.
   for (auto [idx, operandType] : llvm::enumerate(getInputs().getTypes())) {
-    Type argType = body.getArgument(idx + 1).getType();
+    Type argType = body.getArgument(idx + 2).getType();
     if (argType != operandType)
       return emitOpError("build body argument #")
-             << (idx + 1) << " has type " << argType << ", expected "
+             << (idx + 2) << " has type " << argType << ", expected "
              << operandType;
   }
 
@@ -86,34 +97,31 @@ LogicalResult DeviceGraphCreateOp::verify() {
 }
 
 void DeviceGraphCreateOp::build(
-    OpBuilder &builder, OperationState &result, Value inChain, Value theContext,
-    Value deviceContext, ValueRange inputs, uint64_t bGraphSlot,
-    llvm::function_ref<void(OpBuilder &, Location, Value, ValueRange)>
+    OpBuilder &builder, OperationState &result, Value theContext,
+    Value deviceContext, ValueRange inputs,
+    llvm::function_ref<void(OpBuilder &, Location, Value, Value, ValueRange)>
         bodyBuilder) {
   OpBuilder::InsertionGuard guard(builder);
 
-  // Operand order mirrors `arguments`: chain, context, device context, inputs.
-  result.addOperands({inChain, theContext, deviceContext});
+  // Operand order mirrors `arguments`: context, device context, inputs.
+  result.addOperands({theContext, deviceContext});
   result.addOperands(inputs);
-  result.addAttribute(
-      getBGraphSlotAttrName(result.name),
-      IntegerAttr::get(builder.getIntegerType(64, /*isSigned=*/false),
-                       llvm::APInt(64, bGraphSlot)));
 
-  // Create the body with the device-graph-builder block argument followed by
-  // one bare-`T` argument per input, and let the callback record nodes into the
-  // builder and yield the graph's output values. createBlock also positions the
-  // insertion point.
+  // Create the body with the device-graph-builder block argument, then the
+  // `!mgp.context` block argument, then one bare-`T` argument per input, and
+  // let the callback record nodes into the builder and yield the graph's output
+  // values. createBlock also positions the insertion point.
   Region *bodyRegion = result.addRegion();
   Block *body = builder.createBlock(bodyRegion);
   Value graphBuilder = body->addArgument(
       DeviceGraphBuilderType::get(builder.getContext()), result.location);
+  Value contextArg = body->addArgument(theContext.getType(), result.location);
   SmallVector<Value> inputArgs;
   inputArgs.reserve(inputs.size());
   for (Value input : inputs)
     inputArgs.push_back(body->addArgument(input.getType(), result.location));
   if (bodyBuilder)
-    bodyBuilder(builder, result.location, graphBuilder, inputArgs);
+    bodyBuilder(builder, result.location, graphBuilder, contextArg, inputArgs);
 
   // Supply the operandless `mgp.device_graph.yield` terminator (no graph
   // outputs) if the callback did not emit one.

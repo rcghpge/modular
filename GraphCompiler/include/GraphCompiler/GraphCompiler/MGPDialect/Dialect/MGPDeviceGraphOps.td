@@ -40,20 +40,21 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
 ]> {
-  let summary = "Builds or retrieves a cached device graph.";
+  let summary = "Builds a device graph by recording into a builder.";
   let description = [{
-    Returns an `!mgp.device_graph`, either by invoking the build body and
-    storing the result in the given state slot, or by retrieving a previously
-    cached value from that slot. The op has no chain result -- the `inChain`
-    operand orders the build, and the produced graph value carries the
-    downstream dependency (`mgp.device_graph.execute` consumes it).
+    Returns an `!mgp.device_graph` built by invoking the build body. The op is
+    stateless: it does no caching, takes no chain, and has no chain result -- the
+    produced graph value carries the downstream dependency
+    (`mgp.device_graph.execute` consumes it). (Caching is future work.)
 
-    The `inputs` operands are the read-only buffers/tensors the graph will treat
-    as frozen inputs at replay time; they form the input half of the result
+    The `inputs` operands are the read-only buffers/tensors the graph treats as
+    frozen inputs at replay time; they form the input half of the result
     `!mgp.device_graph` signature. The graph's outputs are produced inside the
     graph (value-returning, not destination-passing), so they have no operand --
     the build body yields them via `mgp.device_graph.yield`, and their types form
-    the output half of the signature.
+    the output half of the signature. The `!mgp.context` operand is build-time
+    only (it feeds in-body `mgp.buffer.get_cached` reads) and is deliberately not
+    part of the signature.
 
     The op owns the device-graph builder lifecycle. It creates a
     `!mgp.device_graph.builder` from its `deviceContext` operand and passes that
@@ -64,22 +65,20 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
     the graph object itself.
 
     The body's block arguments are, in order: the `!mgp.device_graph.builder`,
-    then the `inputs`, carrying the input operand types verbatim (bare `T`, no
-    `!mogg.async` wrapping at the boundary). On a cache miss the body runs and
-    must terminate with a `mgp.device_graph.yield` whose operand types match the
-    result graph signature's results. On a cache hit the body is not invoked.
-
-    Note: in the initial implementation every call is a cache miss -- the
-    slot operand is reserved for the caching machinery added in Phase 2.
+    the `!mgp.context`, then the `inputs` (carrying the input operand types
+    verbatim -- bare `T`, no `!mogg.async` wrapping). The body must terminate with
+    a `mgp.device_graph.yield` whose operand types match the result graph
+    signature's results.
 
     Example:
     ```mlir
       %graph = mgp.device_graph.create
-          %ch0, %ctx[3], %gpu_ctx
+          %ctx, %gpu_ctx
           inputs(%in, %bias, %wt
               : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>,
                 !mgp.buffer<<"gpu", 0>>) ({
         ^bb0(%builder: !mgp.device_graph.builder,
+             %ctx_b: !mgp.context,
              %in_b: !mgp.buffer<<"gpu", 0>>,
              %bias_b: !mgp.buffer<<"gpu", 0>>,
              %wt_b: !mgp.buffer<<"gpu", 0>>):
@@ -90,17 +89,15 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
   }];
 
   let arguments = (ins
-    ChainType:$inChain,
     MGP_ContextType:$theContext,
     MGP_DeviceContextType:$deviceContext,
-    Variadic<AnyType>:$inputs,
-    UI64Attr:$bGraphSlot
+    Variadic<AnyType>:$inputs
   );
   let results = (outs MGP_DeviceGraphType:$outGraph);
   let regions = (region SizedRegion<1>:$buildBody);
 
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $bGraphSlot `]` `,` $deviceContext
+    $theContext `,` $deviceContext
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
     $buildBody attr-dict
     `:` qualified(type($deviceContext)) `->` qualified(type($outGraph))
@@ -108,21 +105,21 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
 
   let builders = [
     // Builds the op and its build body in one shot. Creates the body block with
-    // its `!mgp.device_graph.builder` block argument followed by one bare-`T`
-    // argument per input, and invokes `bodyBuilder` with the builder arg and the
-    // input args. The callback is expected to record nodes into the builder and
-    // emit the `mgp.device_graph.yield` carrying the graph's output values; the
-    // result `!mgp.device_graph`'s signature is then inferred as
-    // `(type(inputs)) -> (type(yielded outputs))`. If `bodyBuilder` is null or
-    // leaves the body unterminated, an operandless `mgp.device_graph.yield`
-    // (no graph outputs) is supplied.
+    // its `!mgp.device_graph.builder` block argument, then the `!mgp.context`
+    // block arg, then one bare-`T` argument per input, and invokes `bodyBuilder`
+    // with the builder arg, the context arg, and the input args. The callback is
+    // expected to record nodes into the builder and emit the
+    // `mgp.device_graph.yield` carrying the graph's output values; the result
+    // `!mgp.device_graph`'s signature is then inferred as
+    // `(type(inputs)) -> (type(yielded outputs))` (the context is build-time and
+    // is not part of the signature). If `bodyBuilder` is null or leaves the body
+    // unterminated, an operandless `mgp.device_graph.yield` (no graph outputs) is
+    // supplied.
     OpBuilder<(ins
-      "Value":$inChain,
       "Value":$theContext,
       "Value":$deviceContext,
       "ValueRange":$inputs,
-      "uint64_t":$bGraphSlot,
-      CArg<"function_ref<void(OpBuilder &, Location, Value, ValueRange)>",
+      CArg<"function_ref<void(OpBuilder &, Location, Value, Value, ValueRange)>",
            "nullptr">:$bodyBuilder)>
   ];
 
