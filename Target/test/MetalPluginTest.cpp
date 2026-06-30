@@ -206,3 +206,45 @@ TEST_F(DriverMetalPluginFunctionTest, QueueExecute) {
     }
   }
 }
+
+// Regression test: an invalid argument (null pointer or zero size) must be
+// rejected with an error *before* a compute encoder is opened. The zero-size
+// path previously returned mid-encode, leaving the encoder open; Metal asserts
+// when a command buffer is dropped with an open encoder, aborting the process.
+TEST_F(DriverMetalPluginFunctionTest, QueueExecuteRejectsInvalidArgs) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_queue_t queue = queues[i];
+    M_driver_function_t function = functions[i];
+
+    M_driver_queue_execute_config_t config = {
+        .mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU,
+        .config = {.gpu = {
+                       .grid = {1, 1, 1},
+                       .block = {1, 1, 1},
+                       .shared_mem_bytes = 0,
+                       .attributes = nullptr,
+                       .num_attributes = 0,
+                   }}};
+
+    // Four non-null argument pointers matching the kernel's argument count.
+    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+
+    // A zero-sized argument is rejected — this is the path that used to leak an
+    // open encoder.
+    void *args[] = {&a0, &a1, &a2, &a3};
+    uint64_t zeroSizeArgSizes[] = {sizeof(a0), 0, sizeof(a2), sizeof(a3)};
+    EXPECT_NE(
+        M_DRIVER_STATUS_SUCCESS,
+        queue_execute(queue, function, &config, args, zeroSizeArgSizes, 4));
+
+    // A null argument is rejected.
+    void *nullArgs[] = {&a0, nullptr, &a2, &a3};
+    uint64_t argSizes[] = {sizeof(a0), sizeof(a1), sizeof(a2), sizeof(a3)};
+    EXPECT_NE(M_DRIVER_STATUS_SUCCESS,
+              queue_execute(queue, function, &config, nullArgs, argSizes, 4));
+
+    // The queue must still be usable afterwards: no encoder was leaked and no
+    // command buffer was dropped with work pending.
+    EXPECT_SUCCESS(queue_synchronize(queue));
+  }
+}

@@ -307,6 +307,18 @@ M_driver_queue::execute(M_driver_function_t function,
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
+  // Validate every argument before opening an encoder. Metal asserts when a
+  // command buffer is dropped with an open encoder, so it is not safe to bail
+  // out partway through encoding — check all arguments up front.
+  for (uint32_t i = 0; i < function->argumentCount; ++i) {
+    if (args[i] == nullptr)
+      return context->device->driver->status.create("Null argument at index " +
+                                                    std::to_string(i));
+    if (argSizes[i] == 0)
+      return context->device->driver->status.create(
+          "Unknown argument size at index " + std::to_string(i));
+  }
+
   NS::SharedPtr<MTL::Event> doneEvent =
       NS::TransferPtr(context->device->mDevice->newEvent());
   if (!doneEvent)
@@ -328,24 +340,14 @@ M_driver_queue::execute(M_driver_function_t function,
         "Failed to create compute command encoder");
   encoder->setComputePipelineState(function->pipelineState.get());
 
-  // Bind all buffer arguments
+  // Bind all buffer arguments. Arguments were validated above, before the
+  // encoder was opened.
   for (uint32_t i = 0; i < function->argumentCount; ++i) {
-    if (args[i] == nullptr) {
-      encoder->endEncoding();
-      return context->device->driver->status.create("Null argument at index " +
-                                                    std::to_string(i));
-    }
-
-    const size_t argSize = argSizes[i];
-    if (argSize == 0)
-      return context->device->driver->status.create(
-          "Unknown argument size at index " + std::to_string(i));
-
     // We have more complex argument, such as pointer to a struct. Allocate
     // new MTLBuffer and set it.
     NS::SharedPtr<MTL::Buffer> buf =
         NS::TransferPtr(context->device->mDevice->newBuffer(
-            args[i], argSize,
+            args[i], argSizes[i],
             MTL::ResourceOptions(MTL::StorageModeShared) |
                 MTL::ResourceOptions(MTL::CPUCacheModeWriteCombined)));
     encoder->setBuffer(buf.get(), 0, i);
