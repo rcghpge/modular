@@ -332,6 +332,19 @@ M_driver_queue::execute(M_driver_function_t function,
           "Unknown argument size at index " + std::to_string(i));
   }
 
+  // Validate the dynamic threadgroup (shared) memory request against the device
+  // limit before opening an encoder — Metal asserts if a command buffer is
+  // dropped with an open encoder, so reject early.
+  const uint32_t sharedMemBytes = config->config.gpu.shared_mem_bytes;
+  if (sharedMemBytes > 0) {
+    NS::UInteger maxSharedMemBytes =
+        context->device->mDevice->maxThreadgroupMemoryLength();
+    if (sharedMemBytes > maxSharedMemBytes)
+      return context->device->driver->status.create(
+          "Shared memory byte count " + std::to_string(sharedMemBytes) +
+          " exceeds device limit of " + std::to_string(maxSharedMemBytes));
+  }
+
   NS::SharedPtr<MTL::Event> doneEvent =
       NS::TransferPtr(context->device->mDevice->newEvent());
   if (!doneEvent)
@@ -370,6 +383,10 @@ M_driver_queue::execute(M_driver_function_t function,
   // FIXME: only set resources that are used by the kernel
   for (const auto &it : context->allocations)
     encoder->useResource(it.second, MTL::ResourceUsageWrite);
+
+  // Bind dynamic threadgroup (shared) memory if the kernel requested it.
+  if (sharedMemBytes > 0)
+    encoder->setThreadgroupMemoryLength(sharedMemBytes, /*index=*/0);
 
   // Dispatch
   MTL::Size gridSize = toSize(config->config.gpu.grid);

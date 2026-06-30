@@ -248,3 +248,135 @@ TEST_F(DriverMetalPluginFunctionTest, QueueExecuteRejectsInvalidArgs) {
     EXPECT_SUCCESS(queue_synchronize(queue));
   }
 }
+
+// Requesting more dynamic threadgroup (shared) memory than the device supports
+// must be rejected. Prior to wiring up `shared_mem_bytes`, the field was
+// silently ignored, so an absurd request would "succeed" and the kernel would
+// run as if no shared memory had been asked for.
+TEST_F(DriverMetalPluginFunctionTest, QueueExecuteOversizedSharedMemFails) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+    M_driver_function_t function = functions[i];
+
+    constexpr size_t length = 1024;
+    constexpr size_t memorySize = length * sizeof(float);
+
+    std::vector<M_driver_memory_t> memories;
+    auto defer = llvm::scope_exit([&]() {
+      for (M_driver_memory_t memory : memories)
+        memory_free_sync(context, memory);
+    });
+
+    M_driver_memory_t in0Memory, in1Memory, outMemory;
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in0Memory));
+    memories.push_back(in0Memory);
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in1Memory));
+    memories.push_back(in1Memory);
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &outMemory));
+    memories.push_back(outMemory);
+
+    void *outPtr = nullptr, *in0Ptr = nullptr, *in1Ptr = nullptr;
+    ASSERT_SUCCESS(memory_property(outMemory, "address", &outPtr));
+    ASSERT_SUCCESS(memory_property(in0Memory, "address", &in0Ptr));
+    ASSERT_SUCCESS(memory_property(in1Memory, "address", &in1Ptr));
+    uint32_t lengthValue = static_cast<uint32_t>(length);
+    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+    uint64_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                           sizeof(lengthValue)};
+
+    constexpr uint32_t blockDim = 256;
+    // Far larger than any Apple GPU threadgroup memory limit (32 KiB today).
+    constexpr uint32_t oversizedSharedMem = 1u << 30; // 1 GiB
+    M_driver_queue_execute_config_t config = {
+        .mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU,
+        .config = {.gpu = {
+                       .grid = {length / blockDim, 1, 1},
+                       .block = {blockDim, 1, 1},
+                       .shared_mem_bytes = oversizedSharedMem,
+                       .attributes = nullptr,
+                       .num_attributes = 0,
+                   }}};
+
+    M_driver_status_t status =
+        queue_execute(queue, function, &config, args, argSizes, 4);
+    EXPECT_NE(M_DRIVER_STATUS_SUCCESS, status)
+        << "execute() must reject shared_mem_bytes that exceeds the device "
+           "threadgroup memory limit";
+  }
+}
+
+// A valid, in-limit, non-zero `shared_mem_bytes` request must still be accepted
+// and produce correct results. This guards against the validation rejecting
+// legitimate requests and exercises the setThreadgroupMemoryLength() binding
+// path on a regular kernel.
+TEST_F(DriverMetalPluginFunctionTest, QueueExecuteValidSharedMem) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+    M_driver_function_t function = functions[i];
+
+    constexpr size_t length = 1024;
+    constexpr size_t memorySize = length * sizeof(float);
+
+    std::vector<M_driver_memory_t> memories;
+    auto defer = llvm::scope_exit([&]() {
+      for (M_driver_memory_t memory : memories)
+        memory_free_sync(context, memory);
+    });
+
+    M_driver_memory_t in0Memory, in1Memory, outMemory;
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in0Memory));
+    memories.push_back(in0Memory);
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in1Memory));
+    memories.push_back(in1Memory);
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &outMemory));
+    memories.push_back(outMemory);
+
+    std::vector<float> in0Host(length), in1Host(length), outHost(length, 0.0f);
+    for (size_t j = 0; j < length; ++j) {
+      in0Host[j] = static_cast<float>(j);
+      in1Host[j] = 2.0f;
+    }
+
+    M_driver_memory_view toView0{in0Memory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView0, in0Host.data()));
+    M_driver_memory_view toView1{in1Memory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &toView1, in1Host.data()));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    void *outPtr = nullptr, *in0Ptr = nullptr, *in1Ptr = nullptr;
+    ASSERT_SUCCESS(memory_property(outMemory, "address", &outPtr));
+    ASSERT_SUCCESS(memory_property(in0Memory, "address", &in0Ptr));
+    ASSERT_SUCCESS(memory_property(in1Memory, "address", &in1Ptr));
+    uint32_t lengthValue = static_cast<uint32_t>(length);
+    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+    uint64_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                           sizeof(lengthValue)};
+
+    constexpr uint32_t blockDim = 256;
+    // Modest, comfortably within the Apple GPU threadgroup memory limit.
+    constexpr uint32_t validSharedMem = blockDim * sizeof(float); // 1 KiB
+    M_driver_queue_execute_config_t config = {
+        .mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU,
+        .config = {.gpu = {
+                       .grid = {length / blockDim, 1, 1},
+                       .block = {blockDim, 1, 1},
+                       .shared_mem_bytes = validSharedMem,
+                       .attributes = nullptr,
+                       .num_attributes = 0,
+                   }}};
+
+    ASSERT_SUCCESS(queue_execute(queue, function, &config, args, argSizes, 4));
+    M_driver_memory_view fromView{outMemory, /*offset=*/0, memorySize};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, outHost.data(), &fromView));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    for (size_t j = 0; j < length; ++j) {
+      float expected = static_cast<float>(j) + 2.0f;
+      EXPECT_FLOAT_EQ(outHost[j], expected)
+          << "Mismatch at index " << j << ": expected " << expected << ", got "
+          << outHost[j];
+    }
+  }
+}
