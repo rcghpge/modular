@@ -3833,6 +3833,118 @@ void EPCombineOp::getEffects(
     effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
 }
 
+// Composite::DistributedMatmulReduceScatterSumOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
+  auto inputsA = getInputsA();
+  auto inputsB = getInputsB();
+  auto outputs = getOutputs();
+  auto signalBuffers = getSignalBuffers();
+
+  if (inputsA.empty())
+    return emitError("matmul_reduce_scatter requires at least one device");
+
+  if (inputsB.size() != inputsA.size())
+    return emitError(llvm::formatv(
+        "number of B inputs ({0}) must match number of A inputs ({1})",
+        inputsB.size(), inputsA.size()));
+
+  if (outputs.size() != inputsA.size())
+    return emitError(llvm::formatv(
+        "number of outputs ({0}) must match number of inputs ({1})",
+        outputs.size(), inputsA.size()));
+
+  if (signalBuffers.size() != inputsA.size())
+    return emitError(llvm::formatv(
+        "number of signal buffers ({0}) must match number of inputs ({1})",
+        signalBuffers.size(), inputsA.size()));
+
+  // Verify all A inputs have the same shape and element type.
+  auto firstAType = cast<TensorType>(inputsA[0].getType());
+  if (!firstAType.hasRank() || firstAType.getRank() != 2)
+    return emitError("A inputs must be rank-2 tensors");
+
+  for (size_t i = 1; i < inputsA.size(); ++i) {
+    auto aType = cast<TensorType>(inputsA[i].getType());
+    if (aType.getTypedShapeAttr() != firstAType.getTypedShapeAttr())
+      return emitError("all A inputs must have the same shape");
+    if (aType.getElementType() != firstAType.getElementType())
+      return emitError("all A inputs must have the same element type");
+  }
+
+  // Verify all B inputs have the same shape and element type.
+  auto firstBType = cast<TensorType>(inputsB[0].getType());
+  if (!firstBType.hasRank() || firstBType.getRank() != 2)
+    return emitError("B inputs must be rank-2 tensors");
+
+  for (size_t i = 1; i < inputsB.size(); ++i) {
+    auto bType = cast<TensorType>(inputsB[i].getType());
+    if (bType.getTypedShapeAttr() != firstBType.getTypedShapeAttr())
+      return emitError("all B inputs must have the same shape");
+    if (bType.getElementType() != firstBType.getElementType())
+      return emitError("all B inputs must have the same element type");
+  }
+
+  // Verify matmul shape compatibility: A is [M, K], B is [N, K] (transposed).
+  int64_t aK = firstAType.getIntDim(1);
+  int64_t bK = firstBType.getIntDim(1);
+  if (!mlir::ShapedType::isDynamic(aK) && !mlir::ShapedType::isDynamic(bK) &&
+      aK != bK)
+    return emitError(llvm::formatv(
+        "matmul K dimension mismatch: A has K={0}, B has K={1}", aK, bK));
+
+  // When has_residual is set, validate the residual tensor shape.
+  if (getHasResidual()) {
+    int64_t residualPeer = getResidualPeer();
+    if (residualPeer < 0 ||
+        residualPeer >= static_cast<int64_t>(inputsA.size()))
+      return emitError(
+          llvm::formatv("residual_peer ({0}) must be in range [0, {1})",
+                        residualPeer, inputsA.size()));
+
+    auto residualType = cast<TensorType>(getResidual().getType());
+    if (!residualType.hasRank() || residualType.getRank() != 2)
+      return emitError("residual must be a rank-2 tensor");
+
+    // The residual must live on the same device as the peer that applies it,
+    // since that peer's kernel reads the residual tensor directly.
+    auto residualDevice = residualType.getDeviceRef();
+    auto peerDevice =
+        cast<TensorType>(inputsA[residualPeer].getType()).getDeviceRef();
+    if (residualDevice && peerDevice && residualDevice != peerDevice)
+      return emitError(llvm::formatv(
+          "residual device must match the device of input {0}", residualPeer));
+
+    // Residual shape must match matmul output: [M, N].
+    int64_t aM = firstAType.getIntDim(0);
+    int64_t bN = firstBType.getIntDim(0);
+    int64_t rM = residualType.getIntDim(0);
+    int64_t rN = residualType.getIntDim(1);
+    if (!mlir::ShapedType::isDynamic(aM) && !mlir::ShapedType::isDynamic(rM) &&
+        aM != rM)
+      return emitError(llvm::formatv(
+          "residual M dimension ({0}) must match A M dimension ({1})", rM, aM));
+    if (!mlir::ShapedType::isDynamic(bN) && !mlir::ShapedType::isDynamic(rN) &&
+        bN != rN)
+      return emitError(llvm::formatv(
+          "residual N dimension ({0}) must match B N dimension ({1})", rN, bN));
+
+    if (residualType.getElementType() != firstAType.getElementType())
+      return emitError("residual element type must match A element type");
+  }
+
+  return success();
+}
+
+void Composite::DistributedMatmulReduceScatterSumOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
 //===----------------------------------------------------------------------===//
 // AllGatherOp
 //===----------------------------------------------------------------------===//
