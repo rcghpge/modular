@@ -246,6 +246,10 @@ CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
   clearFunctionCache();
   clearMemoryManager();
+  // Release the recycled event handles before releasing the primary context.
+  // The cached events belong to that context, so they must be destroyed while
+  // it is still alive.
+  eventCacheClear();
   if (context_ != nullptr)
     // We ignore the result here as there is not much we can do if it fails
     // since in most cases the CUDA driver is in the process of shutting down.
@@ -816,6 +820,7 @@ void CUDADevice::eventCacheClear() const {
     // Ignore errors during destruction of device object.
     cudaDriver().cuEventDestroy(event);
   }
+  eventCache_.clear();
 }
 
 ErrorOr<CUevent> CUDADevice::eventCachePop(bool useCache) const {
