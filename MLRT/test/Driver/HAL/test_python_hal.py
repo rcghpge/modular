@@ -14,7 +14,14 @@ from __future__ import annotations
 import ctypes
 
 import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
-from max.sys._hal import Buffer, Bundle, Context, Driver, Event, Function
+from max.sys._hal import (
+    Buffer,
+    Bundle,
+    Context,
+    Driver,
+    Event,
+    Function,
+)
 from vec_add import vec_add  # type: ignore[import-not-found]
 
 # ----------------------------------------------------------------------
@@ -96,8 +103,8 @@ def test_queue_host_to_device_to_host_roundtrip() -> None:
     dst, dst_addr = _make_empty_host_buf(n)
     dev = ctx.alloc_sync(n)
 
-    queue.copy_to_device(dev, src_addr, n)
-    queue.copy_from_device(dst_addr, dev, n)
+    queue.copy_to_device(dev.view(), src_addr)
+    queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
     assert _bytes_of(dst) == src_data
@@ -114,9 +121,9 @@ def test_queue_copy_intra_device() -> None:
     dev_a = ctx.alloc_sync(n)
     dev_b = ctx.alloc_sync(n)
 
-    queue.copy_to_device(dev_a, src_addr, n)
-    queue.copy_intra_device(dev_b, dev_a, n)
-    queue.copy_from_device(dst_addr, dev_b, n)
+    queue.copy_to_device(dev_a.view(), src_addr)
+    queue.copy_intra_device(dev_b.view(), dev_a.view())
+    queue.copy_from_device(dst_addr, dev_b.view())
     queue.synchronize()
 
     assert _bytes_of(dst) == src_data
@@ -136,7 +143,7 @@ def test_queue_set_memory() -> None:
     dev = ctx.alloc_sync(n)
 
     queue.set_memory(dev, 0x5A, n)
-    queue.copy_from_device(dst_addr, dev, n)
+    queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
     assert _bytes_of(dst) == bytes([0x5A]) * n
@@ -152,7 +159,7 @@ def test_queue_fill() -> None:
 
     # 32-bit pattern, little-endian repeating across the buffer.
     queue.fill(dev, 0xDEADBEEF, 4, n)
-    queue.copy_from_device(dst_addr, dev, n)
+    queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
     assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
@@ -173,8 +180,8 @@ def test_stream_host_to_device_to_host_roundtrip() -> None:
     dst, dst_addr = _make_empty_host_buf(n)
     dev = ctx.alloc_sync(n)
 
-    stream.copy_to_device(dev, src_addr, n)
-    stream.copy_from_device(dst_addr, dev, n)
+    stream.copy_to_device(dev.view(), src_addr)
+    stream.copy_from_device(dst_addr, dev.view())
     stream.synchronize()
 
     assert _bytes_of(dst) == src_data
@@ -191,9 +198,9 @@ def test_stream_copy_intra_device() -> None:
     dev_a = ctx.alloc_sync(n)
     dev_b = ctx.alloc_sync(n)
 
-    stream.copy_to_device(dev_a, src_addr, n)
-    stream.copy_intra_device(dev_b, dev_a, n)
-    stream.copy_from_device(dst_addr, dev_b, n)
+    stream.copy_to_device(dev_a.view(), src_addr)
+    stream.copy_intra_device(dev_b.view(), dev_a.view())
+    stream.copy_from_device(dst_addr, dev_b.view())
     stream.synchronize()
 
     assert _bytes_of(dst) == src_data
@@ -208,7 +215,7 @@ def test_stream_set_memory() -> None:
     dev = ctx.alloc_sync(n)
 
     stream.set_memory(dev, 0x5A, n)
-    stream.copy_from_device(dst_addr, dev, n)
+    stream.copy_from_device(dst_addr, dev.view())
     stream.synchronize()
 
     assert _bytes_of(dst) == bytes([0x5A]) * n
@@ -223,10 +230,56 @@ def test_stream_fill() -> None:
     dev = ctx.alloc_sync(n)
 
     stream.fill(dev, 0xDEADBEEF, 4, n)
-    stream.copy_from_device(dst_addr, dev, n)
+    stream.copy_from_device(dst_addr, dev.view())
     stream.synchronize()
 
     assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
+
+
+# ----------------------------------------------------------------------
+# BufferView — accessors and sub-range copies
+# ----------------------------------------------------------------------
+
+
+def test_queue_partial_copy_roundtrip() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 256
+    src_data = bytes(range(n))
+    _src, src_addr = _make_host_buf(src_data)
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    # Upload the whole buffer, then read back only the middle [64, 192).
+    queue.copy_to_device(dev.view(), src_addr)
+    mid = dev.view(byte_offset=64, byte_size=128)
+    queue.copy_from_device(dst_addr + 64, mid)
+    queue.synchronize()
+
+    assert _bytes_of(dst)[64:192] == src_data[64:192]
+    assert _bytes_of(dst)[:64] == bytes(64)
+    assert _bytes_of(dst)[192:] == bytes(64)
+
+
+def test_stream_partial_copy_roundtrip() -> None:
+    ctx = Driver().get_device(0).get_context()
+    stream = ctx.create_stream()
+
+    n = 256
+    src_data = bytes(range(n))
+    _src, src_addr = _make_host_buf(src_data)
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    stream.copy_to_device(dev.view(), src_addr)
+    mid = dev.view(byte_offset=64, byte_size=128)
+    stream.copy_from_device(dst_addr + 64, mid)
+    stream.synchronize()
+
+    assert _bytes_of(dst)[64:192] == src_data[64:192]
+    assert _bytes_of(dst)[:64] == bytes(64)
+    assert _bytes_of(dst)[192:] == bytes(64)
 
 
 # ----------------------------------------------------------------------
@@ -336,13 +389,13 @@ def test_queue_execute_vec_add() -> None:
     queue = ctx.create_queue()
 
     length = 1024
-    a_dev, b_dev, out_dev, a_host, b_host, buf_size = _prepare_vec_add_inputs(
+    a_dev, b_dev, out_dev, a_host, b_host, _buf_size = _prepare_vec_add_inputs(
         ctx, length
     )
     out_host = (ctypes.c_float * length)()
 
-    queue.copy_to_device(a_dev, ctypes.addressof(a_host), buf_size)
-    queue.copy_to_device(b_dev, ctypes.addressof(b_host), buf_size)
+    queue.copy_to_device(a_dev.view(), ctypes.addressof(a_host))
+    queue.copy_to_device(b_dev.view(), ctypes.addressof(b_host))
     queue.synchronize()
 
     args, arg_sizes, _keepalive = _vec_add_kernel_args(
@@ -360,7 +413,7 @@ def test_queue_execute_vec_add() -> None:
     )
     queue.synchronize()
 
-    queue.copy_from_device(ctypes.addressof(out_host), out_dev, buf_size)
+    queue.copy_from_device(ctypes.addressof(out_host), out_dev.view())
     queue.synchronize()
 
     for i in range(length):
@@ -376,13 +429,13 @@ def test_stream_execute_vec_add() -> None:
     stream = ctx.create_stream()
 
     length = 1024
-    a_dev, b_dev, out_dev, a_host, b_host, buf_size = _prepare_vec_add_inputs(
+    a_dev, b_dev, out_dev, a_host, b_host, _buf_size = _prepare_vec_add_inputs(
         ctx, length
     )
     out_host = (ctypes.c_float * length)()
 
-    stream.copy_to_device(a_dev, ctypes.addressof(a_host), buf_size)
-    stream.copy_to_device(b_dev, ctypes.addressof(b_host), buf_size)
+    stream.copy_to_device(a_dev.view(), ctypes.addressof(a_host))
+    stream.copy_to_device(b_dev.view(), ctypes.addressof(b_host))
 
     args, arg_sizes, _keepalive = _vec_add_kernel_args(
         ctx, a_dev, b_dev, out_dev, length
@@ -398,7 +451,7 @@ def test_stream_execute_vec_add() -> None:
         arg_sizes=arg_sizes,
     )
 
-    stream.copy_from_device(ctypes.addressof(out_host), out_dev, buf_size)
+    stream.copy_from_device(ctypes.addressof(out_host), out_dev.view())
     stream.synchronize()
 
     for i in range(length):
