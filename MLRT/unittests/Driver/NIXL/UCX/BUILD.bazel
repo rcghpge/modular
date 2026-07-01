@@ -9,11 +9,11 @@ package(
 )
 
 UCX_TEST_DEPS = [
-    "//MLRT:Driver/NIXL",
     "//MLRT/unittests/Driver/NIXL:TestCommon",
     "//Support:Base",
     "@llvm-project//llvm:Support",
     "@nixl_upstream//:nixl_api_headers",
+    "@nixl_upstream//:nixl_runtime",
 ]
 
 # Enable verbose NIXL logging to debug plugin load issues in CI. INFO level

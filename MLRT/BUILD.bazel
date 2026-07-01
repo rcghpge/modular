@@ -754,42 +754,10 @@ modular_cc_library(
 # The fork sources under MLRT/{lib,include}/Driver/NIXL have been deleted.
 # ---------------------------------------------------------------------------
 
-# Main entry point: API headers + upstream library + plugin runfiles.
-# On non-Linux platforms only the public headers are available — the library
-# and plugins are gated by select() so consumers like //max/internal:max can
-# transitively depend on Driver/NIXL when building on macOS.
-modular_cc_library(
-    name = "Driver/NIXL",
-    data = select({
-        "//:linux_x86_64": [
-            "@nixl_upstream//:libplugin_LIBFABRIC.so",
-            "@nixl_upstream//:libplugin_UCX.so",
-        ],
-        "//conditions:default": [],
-    }),
-    tags = ["no-clang-tidy"],
-    # Link NIXL dynamically: depend on the libnixl.so shared object (`:nixl_shared`)
-    # rather than folding the `:nixl*` object-code libraries into every consumer.
-    # libnixl.so already folds the full transitive symbol set (core + infra +
-    # common + serdes + stream), so this one import resolves everything the five
-    # object libraries used to provide, and consumers (libmax, libmixl) record a
-    # DT_NEEDED on libnixl.so instead of carrying their own copy of the NIXL core.
-    # This keeps a single copy of the process-global plugin-manager/telemetry
-    # state shared with dkv-connector, which also links the same libnixl.so.
-    deps = [
-        "@nixl_upstream//:nixl_api_headers",
-    ] + select({
-        "//:linux_x86_64": [
-            "@nixl_upstream//:nixl_shared",
-        ],
-        "//conditions:default": [],
-    }),
-)
-
 # Minimal shared library that folds and re-exports the full NIXL symbol set for
 # dkv / disagg consumers that link against `libmixl.so` directly (e.g. the dkv
 # smoke test). Unlike libmax — which links libnixl.so dynamically via
-# Driver/NIXL — libmixl statically folds the `:nixl*` alwayslink object libraries
+# @nixl_upstream//:nixl_runtime — libmixl statically folds the `:nixl*` alwayslink object libraries
 # so the symbols are exported from libmixl.so itself, preserving the existing dkv
 # link contract. This is the legacy consumption path; the production
 # dkv-connector links libnixl.so directly. Migrating dkv off libmixl onto

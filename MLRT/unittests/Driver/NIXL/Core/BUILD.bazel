@@ -15,9 +15,9 @@ modular_cc_test(
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
-        "//MLRT:Driver/NIXL",
         "//MLRT/unittests/Driver/NIXL:TestCommon",
         "@nixl_upstream//:nixl_api_headers",
+        "@nixl_upstream//:nixl_runtime",
     ],
 )
 
