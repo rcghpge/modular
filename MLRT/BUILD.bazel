@@ -768,6 +768,45 @@ modular_cc_library(
         "//conditions:default": [],
     }),
     tags = ["no-clang-tidy"],
+    # Link NIXL dynamically: depend on the libnixl.so shared object (`:nixl_shared`)
+    # rather than folding the `:nixl*` object-code libraries into every consumer.
+    # libnixl.so already folds the full transitive symbol set (core + infra +
+    # common + serdes + stream), so this one import resolves everything the five
+    # object libraries used to provide, and consumers (libmax, libmixl) record a
+    # DT_NEEDED on libnixl.so instead of carrying their own copy of the NIXL core.
+    # This keeps a single copy of the process-global plugin-manager/telemetry
+    # state shared with dkv-connector, which also links the same libnixl.so.
+    deps = [
+        "@nixl_upstream//:nixl_api_headers",
+    ] + select({
+        "//:linux_x86_64": [
+            "@nixl_upstream//:nixl_shared",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Minimal shared library that folds and re-exports the full NIXL symbol set for
+# dkv / disagg consumers that link against `libmixl.so` directly (e.g. the dkv
+# smoke test). Unlike libmax — which links libnixl.so dynamically via
+# Driver/NIXL — libmixl statically folds the `:nixl*` alwayslink object libraries
+# so the symbols are exported from libmixl.so itself, preserving the existing dkv
+# link contract. This is the legacy consumption path; the production
+# dkv-connector links libnixl.so directly. Migrating dkv off libmixl onto
+# libnixl.so is tracked as a GEX-3826 follow-up.
+#
+# The transport plugins are not carried as runfiles here (modular_shared_library
+# takes no `data`); consumers build the `@nixl_upstream//:libplugin_*.so` targets
+# alongside libmixl (see dkv/tools/smoke-test/Dockerfile).
+modular_shared_library(
+    name = "libmixl",
+    srcs = [],
+    output_name = "mixl",
+    tags = [
+        "maybe-unused",
+        "no-clang-tidy",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         "@nixl_upstream//:nixl_api_headers",
     ] + select({
@@ -780,19 +819,4 @@ modular_cc_library(
         ],
         "//conditions:default": [],
     }),
-)
-
-# Minimal shared library exporting NIXL symbols for dkv / disagg consumers.
-# The upstream plugin shared objects are carried as data runfiles via
-# Driver/NIXL so dkv can dlopen them at runtime.
-modular_shared_library(
-    name = "libmixl",
-    srcs = [],
-    output_name = "mixl",
-    tags = [
-        "maybe-unused",
-        "no-clang-tidy",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [":Driver/NIXL"],
 )
