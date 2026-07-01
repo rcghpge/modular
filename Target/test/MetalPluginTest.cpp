@@ -76,6 +76,31 @@ TEST_F(DriverPluginContextTest, FunctionLoad) {
   }
 }
 
+// Allocating a buffer at or above the device's maxBufferLength must be
+// rejected with a descriptive error rather than an opaque out-of-memory
+// result. Before the maxBufferLength guard was ported from the device context,
+// an oversized request fell through to newBuffer(), which returns null and
+// yields a generic out-of-memory status with no indication that the request
+// simply exceeded the per-buffer size limit.
+TEST_F(DriverPluginContextTest, AllocRejectsOversizedBuffer) {
+  for (M_driver_context_t context : contexts) {
+    // Far larger than maxBufferLength on any Apple GPU (and beyond any
+    // physical memory), so the allocation cannot possibly succeed.
+    constexpr uint64_t oversized = 1ULL << 50; // 1 PiB
+
+    M_driver_memory_t memory = nullptr;
+    M_driver_status_t status = memory_alloc_sync(context, oversized, &memory);
+    ASSERT_NE(M_DRIVER_STATUS_SUCCESS, status)
+        << "Oversized allocation must not succeed";
+
+    // The error must explain that the request exceeded the per-buffer limit,
+    // not merely report a generic out-of-memory condition.
+    std::string message = getStatusMessage(status);
+    EXPECT_NE(message.find("larger than allowed"), std::string::npos)
+        << "Expected a maxBufferLength guard message, got: " << message;
+  }
+}
+
 struct DriverMetalPluginFunctionTest : DriverPluginQueueTest {
   void SetUp() override {
     DriverPluginQueueTest::SetUp();

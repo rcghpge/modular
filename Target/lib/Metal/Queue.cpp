@@ -375,6 +375,8 @@ M_driver_queue::execute(M_driver_function_t function,
   // Validate every argument before opening an encoder. Metal asserts when a
   // command buffer is dropped with an open encoder, so it is not safe to bail
   // out partway through encoding — check all arguments up front.
+  const NS::UInteger maxBufferLength =
+      context->device->mDevice->maxBufferLength();
   for (uint32_t i = 0; i < function->argumentCount; ++i) {
     if (args[i] == nullptr)
       return context->device->driver->status.create("Null argument at index " +
@@ -382,6 +384,15 @@ M_driver_queue::execute(M_driver_function_t function,
     if (argSizes[i] == 0)
       return context->device->driver->status.create(
           "Unknown argument size at index " + std::to_string(i));
+    // Reject per-argument buffers at or above the device's per-buffer size
+    // limit, mirroring the guard on context allocations. Checked here, before
+    // the encoder is opened, so the per-arg newBuffer() below cannot return
+    // null mid-encode.
+    if (argSizes[i] >= maxBufferLength)
+      return context->device->driver->status.create(
+          "Failed to allocate MTL Buffer of a size " +
+          std::to_string(argSizes[i]) + " bytes which is larger than allowed " +
+          std::to_string(maxBufferLength) + " bytes");
   }
 
   // Validate the dynamic threadgroup (shared) memory request against the device

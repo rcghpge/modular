@@ -6,10 +6,12 @@
 
 #include "Context.h"
 #include "Device.h"
+#include "Driver.h"
 #include "HAL/M_driver_context.h"
 #include "Memory.h"
 
 #include <cassert>
+#include <string>
 
 M_driver_context_t M_driver_context::create(M_driver_device_t device) {
   return new M_driver_context(device);
@@ -19,6 +21,17 @@ void M_driver_context::destroy(M_driver_context_t context) { delete context; }
 
 DriverResult<M_driver_memory_t> M_driver_context::alloc(uint64_t size) {
   auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  // Reject allocations at or above the device's per-buffer size limit with a
+  // descriptive error. Otherwise newBuffer() returns null and the caller sees
+  // only an opaque out-of-memory result with no hint that the request simply
+  // exceeded maxBufferLength.
+  size_t maxBufferLength = device->mDevice->maxBufferLength();
+  if (size >= maxBufferLength)
+    return tl::unexpected(device->driver->status.create(
+        "Failed to allocate MTL Buffer of a size " + std::to_string(size) +
+        " bytes which is larger than allowed " +
+        std::to_string(maxBufferLength) + " bytes"));
 
   MTL::ResourceOptions options =
       MTL::ResourceStorageModeShared | MTL::ResourceCPUCacheModeWriteCombined;
