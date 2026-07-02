@@ -1147,20 +1147,9 @@ ErrorOrSuccess CUDADeviceGraph::replay() const {
 }
 
 // ===== CUDADeviceStream ===== //
-CUDADeviceStream::CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream,
-                                   bool isOwner)
-    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
+CUDADeviceStream::CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream)
+    : DeviceStream(ctx), stream_(stream) {
   logGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
-}
-
-CUDADeviceStream::~CUDADeviceStream() {
-  if (!isOwner_) {
-    return;
-  }
-  CUDA_WITH_CTX(CUDADeviceContext::cast(context_()));
-  const auto &cudaDevice = CUDADevice::cast(this->device());
-  CUDA_CHECK(cudaDevice.cudaDriver().cuStreamDestroy(stream_));
-  isOwner_ = false;
 }
 
 ErrorOrSuccess CUDADeviceStream::synchronize() {
@@ -1500,10 +1489,46 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
   return static_cast<const CUDADeviceTimer &>(timer);
 }
 
+// ===== CUDAStreamPool ===== //
+CUDAStreamPool::CUDAStreamPool(const CUDADriver &driver, CUcontext context,
+                               CUstream base)
+    : driver_(driver), context_(context) {
+  streams_.push_back(base);
+}
+
+CUDAStreamPool::~CUDAStreamPool() {
+  // Bind the owning CUcontext while we synchronize and destroy the streams.
+  CUDAContextScope withCtx(context_, driver_);
+  for (CUstream stream : streams_) {
+    // Synchronize to ensure all enqueued work (and chunk frees) complete.
+    CUDA_CHECK(driver_.cuStreamSynchronize(stream));
+    CUDA_CHECK(driver_.cuStreamDestroy(stream));
+  }
+}
+
+CUstream CUDAStreamPool::get(unsigned i) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  assert(i < streams_.size() && "stream index out of range");
+  return streams_[i];
+}
+
+unsigned CUDAStreamPool::size() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return static_cast<unsigned>(streams_.size());
+}
+
+unsigned CUDAStreamPool::emplace_back(CUstream stream) {
+  std::lock_guard<std::mutex> lock(mu_);
+  streams_.emplace_back(stream);
+  return static_cast<unsigned>(streams_.size()) - 1;
+}
+
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
                                      CUstream stream)
     : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+      streamPool_(
+          CUDAStreamPoolRef::create(device.cudaDriver(), context, stream)),
       stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
   logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
@@ -1512,15 +1537,7 @@ CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
   M::initTracyCuda();
 }
 
-CUDADeviceContext::~CUDADeviceContext() {
-  // Make sure we have the correct context setup for the cleanup operations.
-  // We will exit the CUDAContextScope before we force a push of the context
-  // to be destroyed.
-  CUDA_WITH_CTX(*this);
-  // Synchronize to ensure that all of the chunks have been freed.
-  CUDA_CHECK(driver_.cuStreamSynchronize(stream_));
-  CUDA_CHECK(driver_.cuStreamDestroy(stream_));
-}
+CUDADeviceContext::~CUDADeviceContext() {}
 
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
                                            Device::AllocMode mode) {
@@ -1976,8 +1993,7 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
   // `this` is non-const downstream so cast in order to provide
   // mutable reference to the new stream object.
   return CUDADeviceStreamRef::create(const_cast<CUDADeviceContext &>(*this),
-                                     reinterpret_cast<CUstream>(stream_),
-                                     /*isOwner=*/false);
+                                     reinterpret_cast<CUstream>(stream_));
 }
 
 ErrorOrSuccess CUDADeviceContext::streamPriorityRange(int *leastPriority,
@@ -2004,15 +2020,19 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {
   CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreateWithPriority(
       &stream, kNonBlocking, priority));
 
-  return CUDADeviceStreamRef::create(*this, stream,
-                                     /*isOwner=*/true);
+  // The pool takes ownership of the stream; the pool destroys the stream when
+  // the context is released.
+  streamPool_->emplace_back(stream);
+
+  return CUDADeviceStreamRef::create(*this, stream);
 }
+
+unsigned CUDADeviceContext::numStreams() const { return streamPool_->size(); }
 
 ErrorOr<DeviceStreamRef>
 CUDADeviceContext::createExternalStream(void *externalStream) {
-  return CUDADeviceStreamRef::create(*this,
-                                     reinterpret_cast<CUstream>(externalStream),
-                                     /*isOwner=*/false);
+  return CUDADeviceStreamRef::create(
+      *this, reinterpret_cast<CUstream>(externalStream));
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() {

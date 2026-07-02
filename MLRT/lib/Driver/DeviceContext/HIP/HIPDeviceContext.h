@@ -16,6 +16,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "Support/RCRef.h"
+#include "Support/ReferenceCounted.h"
 #include "llvm/ADT/StringMap.h"
 
 #include <chrono>
@@ -28,6 +29,7 @@ namespace M::Driver {
 
 class HIPDevice;
 class HIPDeviceContext;
+class HIPStreamPool;
 class HIPDeviceEvent;
 class HIPDeviceFunction;
 class HIPDeviceFunctionArguments;
@@ -38,6 +40,7 @@ class HIPModuleFunction;
 
 using HIPDeviceRef = RCRef<HIPDevice>;
 using HIPDeviceContextRef = RCRef<HIPDeviceContext>;
+using HIPStreamPoolRef = RCRef<HIPStreamPool>;
 using HIPDeviceEventRef = RCRef<HIPDeviceEvent>;
 using HIPDeviceFunctionRef = RCRef<HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
@@ -162,9 +165,7 @@ private:
 
 class HIPDeviceStream : public DeviceStream {
 public:
-  HIPDeviceStream(HIPDeviceContext &ctx, hipStream_t stream,
-                  bool isOwner = true);
-  ~HIPDeviceStream() override;
+  HIPDeviceStream(HIPDeviceContext &ctx, hipStream_t stream);
 
   ErrorOrSuccess synchronize() override;
 
@@ -206,7 +207,6 @@ private:
   hipStreamCaptureStatus getCaptureStatus() const;
 
   hipStream_t stream_;
-  bool isOwner_;
 
   StringRef logGraphCapture_ = {};
 };
@@ -280,6 +280,35 @@ private:
   hipEvent_t stop_;
 };
 
+/// A reference-counted set of HIP streams owned by a `HIPDeviceContext`.
+/// Stream 0 is the base/default stream the context was constructed with;
+/// additional streams are appended on demand via `createStream`. The pool owns
+/// every stream it holds and synchronizes + destroys them when the last
+/// co-owner is released.
+class HIPStreamPool : public ReferenceCounted<HIPStreamPool> {
+public:
+  HIPStreamPool(const HIPDriver &driver, hipDevice_t device, hipStream_t base);
+  ~HIPStreamPool();
+
+  /// Returns the stream at index `i`. REQUIRES: i < size().
+  hipStream_t get(unsigned i) const;
+
+  /// Number of streams currently in the pool.
+  unsigned size() const;
+
+  /// Appends a stream to the pool, returning the index of the new stream. The
+  /// pool takes ownership of the stream. Thread-safe.
+  unsigned emplace_back(hipStream_t stream);
+
+private:
+  const HIPDriver &driver_;
+  // The device the streams belong to; needed to bind the device while
+  // synchronizing/destroying the streams.
+  hipDevice_t device_;
+  mutable std::mutex mu_;
+  std::vector<hipStream_t> streams_;
+};
+
 class HIPDeviceContext : public DeviceContext {
 public:
   HIPDeviceContext(HIPDevice &device, hipStream_t stream);
@@ -312,6 +341,7 @@ public:
   // Synchronize asynchronous operations.
   std::optional<intptr_t> getDLPackStream() const override;
   ErrorOr<DeviceStreamRef> stream() const override;
+  unsigned numStreams() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
@@ -357,10 +387,13 @@ private:
   const HIPDriver &driver_;
   hipDevice_t device_;
 
-  // We could have made this a HIPDeviceStreamRef, but that would hold a
-  // reference to this DeviceContext object making the initial refcount 2
-  // instead of 1. We are going to move Streams out of Contexts soon so
-  // using a raw handle for now.
+  // The set of streams owned by this context. Stream 0 is the base stream this
+  // context submits to; `createStream` appends additional streams. The pool
+  // owns the streams and destroys them when the context is released.
+  HIPStreamPoolRef streamPool_;
+
+  // Cached handle of the base stream (streamPool_->get(0)). All enqueue/sync/
+  // alloc operations submit to this stream.
   hipStream_t stream_;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,

@@ -1023,11 +1023,21 @@ public:
     return std::nullopt;
   }
 
+  /// Returns the active stream for this context.
+  /// This stream is used for the "enqueue" family of method calls.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
+  /// Returns the number of streams in this context's internal pool.
+  /// Backends without a multi-stream model report a single stream.
+  virtual unsigned numStreams() const;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                              int *greatestPriority) = 0;
+  // Create a stream associated with this context. The stream is owned by the
+  // context and is counted in numStreams().
   virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0) = 0;
 
+  // Convert a device-specific stream handle to a DeviceStreamRef.
+  // Note: streams created in this manner are NOT counted in numStreams(),
+  // which only counts internally-managed streams.
   virtual ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) = 0;
 

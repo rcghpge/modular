@@ -28,6 +28,7 @@ namespace M::Driver {
 
 class CUDADevice;
 class CUDADeviceContext;
+class CUDAStreamPool;
 class CUDADeviceEvent;
 class CUDADeviceGraph;
 class CUDAModuleFunction;
@@ -39,6 +40,7 @@ class CUDADeviceTimer;
 
 using CUDADeviceRef = RCRef<CUDADevice>;
 using CUDADeviceContextRef = RCRef<CUDADeviceContext>;
+using CUDAStreamPoolRef = RCRef<CUDAStreamPool>;
 using CUDADeviceEventRef = RCRef<CUDADeviceEvent>;
 using CUDADeviceGraphRef = RCRef<CUDADeviceGraph>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
@@ -260,9 +262,7 @@ private:
 
 class CUDADeviceStream : public DeviceStream {
 public:
-  CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream,
-                   bool isOwner = true);
-  ~CUDADeviceStream();
+  CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream);
 
   ErrorOrSuccess synchronize() override;
 
@@ -303,7 +303,6 @@ private:
   CUstreamCaptureStatus getCaptureStatus() const;
 
   CUstream stream_;
-  bool isOwner_;
 
   StringRef logGraphCapture_ = {};
 };
@@ -380,6 +379,35 @@ private:
   CUevent stop_;
 };
 
+/// A reference-counted set of CUDA streams owned by a `CUDADeviceContext`.
+/// Stream 0 is the base/default stream the context was constructed with;
+/// additional streams are appended on demand via `createStream`. The pool owns
+/// every stream it holds and synchronizes + destroys them when the last
+/// co-owner is released.
+class CUDAStreamPool : public ReferenceCounted<CUDAStreamPool> {
+public:
+  CUDAStreamPool(const CUDADriver &driver, CUcontext context, CUstream base);
+  ~CUDAStreamPool();
+
+  /// Returns the stream at index `i`. REQUIRES: i < size().
+  CUstream get(unsigned i) const;
+
+  /// Number of streams currently in the pool.
+  unsigned size() const;
+
+  /// Appends a stream to the pool, returning the index of the new stream. The
+  /// pool takes ownership of the stream. Thread-safe.
+  unsigned emplace_back(CUstream stream);
+
+private:
+  const CUDADriver &driver_;
+  // The CUcontext the streams belong to; needed to bind the context while
+  // synchronizing/destroying the streams.
+  CUcontext context_;
+  mutable std::mutex mu_;
+  std::vector<CUstream> streams_;
+};
+
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(CUDADevice &device, CUcontext context, CUstream stream);
@@ -412,6 +440,7 @@ public:
   // Synchronize asynchronous operations.
   std::optional<intptr_t> getDLPackStream() const override;
   ErrorOr<DeviceStreamRef> stream() const override;
+  unsigned numStreams() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
@@ -478,10 +507,13 @@ private:
   const CUDADriver &driver_;
   const CUcontext context_;
 
-  // We could have made this a CUDADeviceStreamRef, but that would hold a
-  // reference to this DeviceContext object making the initial refcount 2
-  // instead of 1. We are going to move Streams out of Contexts soon so
-  // using a raw handle for now.
+  // The set of streams owned by this context. Stream 0 is the base stream this
+  // context submits to; `createStream` appends additional streams. The pool
+  // owns the streams and destroys them when the context is released.
+  CUDAStreamPoolRef streamPool_;
+
+  // Cached handle of the base stream (streamPool_->get(0)). All enqueue/sync/
+  // alloc operations submit to this stream.
   CUstream stream_;
 
   bool logLoadFunction_ = false;

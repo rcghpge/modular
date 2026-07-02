@@ -1568,6 +1568,8 @@ DeviceContext::operator!=(const DeviceContext &other) const {
   return !(*this == other);
 }
 
+unsigned DeviceContext::numStreams() const { return 1; }
+
 MemoryManagerFreeList &DeviceContext::freeList() const { return *freeList_; }
 MemoryManagerFreeList &DeviceContext::hostFreeList() const {
   return *hostFreeList_;

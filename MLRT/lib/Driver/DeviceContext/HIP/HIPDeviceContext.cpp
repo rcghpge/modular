@@ -896,19 +896,9 @@ ErrorOrSuccess HIPDeviceGraph::replay() const {
 }
 
 // ===== HIPDeviceStream ===== //
-HIPDeviceStream::HIPDeviceStream(HIPDeviceContext &ctx, hipStream_t stream,
-                                 bool isOwner)
-    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
+HIPDeviceStream::HIPDeviceStream(HIPDeviceContext &ctx, hipStream_t stream)
+    : DeviceStream(ctx), stream_(stream) {
   logGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
-}
-
-HIPDeviceStream::~HIPDeviceStream() {
-  if (isOwner_) {
-    HIP_WITH_CTX(HIPDeviceContext::cast(context_()));
-    const auto &hipDevice = HIPDevice::cast(this->device());
-    HIP_CHECK(hipDevice.hipDriver().hipStreamDestroy(stream_));
-    isOwner_ = false;
-  }
 }
 
 ErrorOrSuccess HIPDeviceStream::synchronize() {
@@ -1218,19 +1208,54 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
   return static_cast<const HIPDeviceTimer &>(timer);
 }
 
+// ===== HIPStreamPool ===== //
+HIPStreamPool::HIPStreamPool(const HIPDriver &driver, hipDevice_t device,
+                             hipStream_t base)
+    : driver_(driver), device_(device) {
+  streams_.push_back(base);
+}
+
+HIPStreamPool::~HIPStreamPool() {
+  // Bind the owning device while we synchronize and destroy the streams.
+  HIPDeviceScope withDev(device_, driver_);
+  for (hipStream_t stream : streams_) {
+    // Synchronize to ensure all enqueued work (and chunk frees) complete.
+    HIP_CHECK(driver_.hipStreamSynchronize(stream));
+    HIP_CHECK(driver_.hipStreamDestroy(stream));
+  }
+}
+
+hipStream_t HIPStreamPool::get(unsigned i) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  assert(i < streams_.size() && "stream index out of range");
+  return streams_[i];
+}
+
+unsigned HIPStreamPool::size() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return static_cast<unsigned>(streams_.size());
+}
+
+unsigned HIPStreamPool::emplace_back(hipStream_t stream) {
+  std::lock_guard<std::mutex> lock(mu_);
+  streams_.emplace_back(stream);
+  return static_cast<unsigned>(streams_.size()) - 1;
+}
+
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(HIPDevice &device, hipStream_t stream)
     : DeviceContext(device), driver_(device.hipDriver()),
-      device_(device.hipDevice()), stream_(stream) {
+      device_(device.hipDevice()),
+      streamPool_(HIPStreamPoolRef::create(device.hipDriver(),
+                                           device.hipDevice(), stream)),
+      stream_(stream) {
   // Initialize Tracy ROCm profiling context if not already initialized.
   M::initTracyRocm();
 }
 
-HIPDeviceContext::~HIPDeviceContext() {
-  HIP_WITH_CTX(*this);
-  HIP_CHECK(driver_.hipStreamSynchronize(stream_));
-  HIP_CHECK(driver_.hipStreamDestroy(stream_));
-}
+// Stream cleanup (synchronize + destroy) is owned by `streamPool_`, whose
+// destructor runs when the last co-owner is released.
+HIPDeviceContext::~HIPDeviceContext() {}
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
@@ -1613,8 +1638,7 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
   // `this` is non-const downstream so cast in order to provide
   // mutable reference to the new stream object.
   return HIPDeviceStreamRef::create(const_cast<HIPDeviceContext &>(*this),
-                                    reinterpret_cast<hipStream_t>(stream_),
-                                    /*isOwner=*/false);
+                                    reinterpret_cast<hipStream_t>(stream_));
 }
 
 ErrorOrSuccess HIPDeviceContext::streamPriorityRange(int *leastPriority,
@@ -1641,15 +1665,21 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) {
   hipStream_t stream;
   HIP_CHECK_ERR(this->hipDriver().hipStreamCreateWithPriority(
       &stream, kNonBlocking, priority));
-  return HIPDeviceStreamRef::create(*this, stream, /*isOwner=*/true);
+
+  // The pool takes ownership of the stream; the pool destroys the stream when
+  // the context is released.
+  streamPool_->emplace_back(stream);
+
+  return HIPDeviceStreamRef::create(*this, stream);
 }
+
+unsigned HIPDeviceContext::numStreams() const { return streamPool_->size(); }
 
 ErrorOr<DeviceStreamRef>
 HIPDeviceContext::createExternalStream(void *externalStream) {
   HIP_WITH_DEV_ERR(*this);
   return HIPDeviceStreamRef::create(
-      *this, reinterpret_cast<hipStream_t>(externalStream),
-      /*isOwner=*/false);
+      *this, reinterpret_cast<hipStream_t>(externalStream));
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() {
