@@ -489,9 +489,8 @@ MODULAR_EXPORT const char *AsyncRT_DeviceStream_enqueueFunctionDirect(
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceStream_enqueueFunctionDirect",
                        TRACY_COLOR_GRAY);
   return checkSuccess(stream->enqueueFunctionExecDirect(
-      *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, argCount,
-      argSizes));
+      *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes, attrs,
+      numAttrs, args, argCount, argSizes));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueHostFunction(
