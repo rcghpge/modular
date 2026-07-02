@@ -168,8 +168,10 @@ DeviceGraphDependenciesYieldOp DeviceGraphDependenciesOp::getYieldOp() {
       getBody().front().getTerminator());
 }
 
-BlockArgument DeviceGraphDependenciesOp::getBuilderBlockArgument() {
-  return getBody().front().getArgument(0);
+TypedValue<DeviceGraphBuilderType>
+DeviceGraphDependenciesOp::getBuilderBlockArgument() {
+  return cast<TypedValue<DeviceGraphBuilderType>>(
+      getBody().front().getArgument(0));
 }
 
 LogicalResult DeviceGraphDependenciesOp::verify() {
@@ -246,6 +248,10 @@ void DeviceGraphDependenciesOp::build(
   // The remaining results are exactly the dependencies.yield operands.
   auto yieldOp = cast<DeviceGraphDependenciesYieldOp>(body->getTerminator());
   result.addTypes(yieldOp.getOperands().getTypes());
+}
+
+bool DeviceGraphDependenciesOp::producesNewNodes() {
+  return !getBuilderBlockArgument().use_empty();
 }
 
 namespace {
@@ -345,7 +351,9 @@ struct DeduplicateDependenciesResults
 
     unsigned numElements = oldYield.getNumOperands();
 
-    llvm::SmallDenseMap<Value, unsigned> firstOccurrence(numElements);
+    llvm::SmallMapVector<Value, unsigned, 8> firstOccurrence;
+    firstOccurrence.reserve(numElements);
+
     SmallVector<unsigned> resultRemap(op.getBodyResults().size());
 
     for (auto [idx, operand] : llvm::enumerate(oldYield.getOperands())) {
@@ -381,6 +389,12 @@ struct ForwardExternalDependenciesResults
     bool changed = false;
     for (auto [result, yielded] :
          llvm::zip(op.getBodyResults(), yieldOp.getOperands())) {
+      // Already-dead results have nothing to forward; skipping them keeps the
+      // pattern idempotent (otherwise it reports a no-op rewrite as `success`
+      // forever and the greedy driver never converges).
+      if (result.use_empty())
+        continue;
+
       // Keep results whose value originates inside the body (incl. the body's
       // own block arguments); only forward genuine pass-throughs of outer SSA.
       if (body.isAncestor(yielded.getParentRegion()))
@@ -393,12 +407,109 @@ struct ForwardExternalDependenciesResults
   }
 };
 
+/// Hoists body-invariant ops out of an `mgp.device_graph.dependencies` op. Any
+/// non-terminator body op whose operands are all defined *outside* the body
+/// (i.e. it depends on neither the builder block arg nor another in-body value)
+/// is moved in front of the op, so the emitted `region` `work` closure captures
+/// it once instead of recomputing it on every graph build. The lift is
+/// transitive: once an invariant op moves out, an in-body consumer of its
+/// result becomes hoistable on the same sweep. Builder-dependent ops (the
+/// recording dispatch) stay in the body.
+struct HoistOperations final
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp dependenciesOp,
+                                PatternRewriter &rewriter) const override {
+    Region &body = dependenciesOp.getBody();
+
+    auto isRegionCapture = [&body](Value operand) {
+      return body.isAncestor(operand.getParentRegion());
+    };
+
+    bool changed = false;
+    for (Operation &op : llvm::make_early_inc_range(body.getOps())) {
+      if (op.hasTrait<OpTrait::IsTerminator>())
+        continue;
+
+      WalkResult result = op.walk([&](Operation *inner) -> WalkResult {
+        bool canHoist = llvm::none_of(inner->getOperands(), isRegionCapture);
+
+        if (!canHoist)
+          return WalkResult::interrupt();
+        return WalkResult::advance();
+      });
+
+      if (!result.wasInterrupted()) {
+        rewriter.moveOpBefore(&op, dependenciesOp);
+        changed = true;
+      }
+    }
+
+    return success(changed);
+  }
+};
+
+/// Bypasses empty (node-less) `mgp.device_graph.dependencies` producers: a
+/// dependency edge pointing at a producer that records no nodes is replaced by
+/// that producer's own dependency edges, preserving the transitive ordering the
+/// empty op stood in for. Applied to a fixpoint this splices past chains of
+/// empty producers; the bypassed ops are left for DCE once their `node` result
+/// is unused, and any duplicate edges introduced are folded away by the op's
+/// edge-dedup folder.
+struct BypassEmptyDependencies final
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using Base::Base;
+
+  /// Get the forwarded transitive dependencies for a dependency node which
+  /// corresponds to an empty region.
+  static std::optional<ValueRange> getTransitiveDependencies(Value dependency) {
+    if (auto producer = dependency.getDefiningOp<DeviceGraphDependenciesOp>())
+      if (!producer.producesNewNodes())
+        return producer.getDependencies();
+
+    return {};
+  }
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp dependenciesOp,
+                                PatternRewriter &rewriter) const override {
+    llvm::SmallVector<Value> newDependencies;
+
+    bool changed = false;
+    for (auto dependency : dependenciesOp.getDependencies()) {
+      if (auto transitiveDeps = getTransitiveDependencies(dependency)) {
+        llvm::append_range(newDependencies, *transitiveDeps);
+        changed = true;
+      } else {
+        newDependencies.push_back(dependency);
+      }
+    }
+
+    if (!changed)
+      return rewriter.notifyMatchFailure(dependenciesOp,
+                                         "no dependencies to remove");
+
+    rewriter.modifyOpInPlace(dependenciesOp, [&] {
+      dependenciesOp.getDependenciesMutable().assign(newDependencies);
+    });
+
+    return success();
+  }
+};
+
 } // namespace
 
 void DeviceGraphDependenciesOp::getCanonicalizationPatterns(
     RewritePatternSet &patterns, MLIRContext *ctx) {
-  patterns.add<RemoveUnusedDependenciesResults, DeduplicateDependenciesResults,
-               ForwardExternalDependenciesResults>(ctx);
+  // clang-format off
+  patterns.add<
+    BypassEmptyDependencies,
+    DeduplicateDependenciesResults,
+    ForwardExternalDependenciesResults,
+    HoistOperations,
+    RemoveUnusedDependenciesResults
+  >(ctx);
+  // clang-format on
 }
 
 //===----------------------------------------------------------------------===//

@@ -308,7 +308,12 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
     /// Returns the body's `!mgp.device_graph.builder` block argument (bound to
     /// the `graphBuilder` operand) -- the builder the body's recording work
     /// uses.
-    BlockArgument getBuilderBlockArgument();
+    TypedValue<MGP::DeviceGraphBuilderType> getBuilderBlockArgument();
+
+    /// Returns true if the body region _may_ enqueue new device graph nodes,
+    /// otherwise returns false. This is best effort based on the uses of the
+    /// body region's builder operand.
+    bool producesNewNodes();
   }];
 
   let hasCanonicalizer = 1;

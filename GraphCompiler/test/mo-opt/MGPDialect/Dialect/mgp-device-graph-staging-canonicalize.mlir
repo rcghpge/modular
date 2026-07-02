@@ -107,7 +107,7 @@ func.func @deduplicate_dependencies() -> !mgp.buffer<<"gpu", 0>> {
   %b = "test.work2"() : () -> !mgp.device_graph.node
   %node, %r = mgp.device_graph.dependencies builder(%bldr) dependencies(%a, %b, %a) {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
+    %v = "test.body"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
   return %r : !mgp.buffer<<"gpu", 0>>
@@ -125,7 +125,7 @@ func.func @no_change_dependencies() -> !mgp.buffer<<"gpu", 0>> {
   %b = "test.work2"() : () -> !mgp.device_graph.node
   %node, %r = mgp.device_graph.dependencies builder(%bldr) dependencies(%a, %b) {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %v = "test.body"() : () -> !mgp.buffer<<"gpu", 0>>
+    %v = "test.body"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>
   return %r : !mgp.buffer<<"gpu", 0>>
@@ -149,8 +149,8 @@ func.func @remove_unused_dependency_result() -> !mgp.buffer<<"gpu", 0>> {
   %a = "test.dep"() : () -> !mgp.device_graph.node
   %node, %used, %unused = mgp.device_graph.dependencies builder(%bldr) dependencies(%a) {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
-    %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
+    %x = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
+    %y = "test.dead"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   return %used : !mgp.buffer<<"gpu", 0>>
@@ -171,7 +171,7 @@ func.func @deduplicate_dependency_results() {
   %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %node, %first, %second = mgp.device_graph.dependencies builder(%bldr) dependencies() {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    %x = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %x : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   "test.use"(%first, %second) : (!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
@@ -193,8 +193,8 @@ func.func @dedup_and_remove_unused_dependency_results() -> !mgp.buffer<<"gpu", 0
   %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %node, %a0, %a1, %dead = mgp.device_graph.dependencies builder(%bldr) dependencies() {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %x = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
-    %y = "test.dead"() : () -> !mgp.buffer<<"gpu", 0>>
+    %x = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
+    %y = "test.dead"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %x, %x, %y : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   return %a0 : !mgp.buffer<<"gpu", 0>>
@@ -215,8 +215,8 @@ func.func @no_change_dependency_results() {
   %bldr = "test.builder"() : () -> !mgp.device_graph.builder
   %node, %x, %y = mgp.device_graph.dependencies builder(%bldr) dependencies() {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %a = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
-    %b = "test.work2"() : () -> !mgp.buffer<<"gpu", 0>>
+    %a = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
+    %b = "test.work2"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %a, %b : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   "test.use"(%node, %x, %y) : (!mgp.device_graph.node, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
@@ -264,8 +264,112 @@ func.func @forward_external_result_partial(%b: !mgp.device_graph.builder) -> (!m
   %outer = "test.outer"() : () -> !mgp.buffer<<"gpu", 0>>
   %node, %ext, %inner = mgp.device_graph.dependencies builder(%b) dependencies() {
   ^bb0(%builder: !mgp.device_graph.builder):
-    %w = "test.work"() : () -> !mgp.buffer<<"gpu", 0>>
+    %w = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
     mgp.device_graph.dependencies.yield %outer, %w : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   } : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
   return %ext, %inner : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+// Hoisting: body ops that depend on neither the builder block arg nor any other
+// in-body value are body-invariant -- they would recompute on every graph build
+// -- so they are lifted out in front of the op (where the emitted `region`
+// closure captures them). The lift is transitive: a consumer of an already
+// hoisted value becomes hoistable too. Builder-dependent ops stay in the body.
+// CHECK-LABEL: func.func @hoist_body_invariant_ops
+func.func @hoist_body_invariant_ops(%b: !mgp.device_graph.builder) {
+  // The invariant op and its transitive consumer are hoisted before the op...
+  // CHECK: %[[INV:.+]] = "test.invariant"() : () -> !mgp.buffer<<"gpu", 0>>
+  // CHECK: %[[DERIVED:.+]] = "test.derived"(%[[INV]])
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%[[BB:.+]]: !mgp.device_graph.builder):
+  // ...while the builder-dependent op remains in the body.
+  // CHECK-NEXT: "test.record"(%[[BB]], %[[DERIVED]])
+  // CHECK-NEXT: }
+  %node = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %inv = "test.invariant"() : () -> !mgp.buffer<<"gpu", 0>>
+    %derived = "test.derived"(%inv) : (!mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>
+    "test.record"(%builder, %derived) : (!mgp.device_graph.builder, !mgp.buffer<<"gpu", 0>>) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  return
+}
+
+// -----
+
+// Negative case: every body op transitively depends on the builder block arg,
+// so nothing is body-invariant and the body is left unchanged.
+// CHECK-LABEL: func.func @hoist_no_op
+func.func @hoist_no_op(%b: !mgp.device_graph.builder) {
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%[[BB:.+]]: !mgp.device_graph.builder):
+  // CHECK-NEXT: %[[V:.+]] = "test.work"(%[[BB]])
+  // CHECK-NEXT: "test.record"(%[[BB]], %[[V]])
+  %node = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %v = "test.work"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
+    "test.record"(%builder, %v) : (!mgp.device_graph.builder, !mgp.buffer<<"gpu", 0>>) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  return
+}
+
+// -----
+
+// `BypassEmptyDependencies`: an edge to an empty (node-less) producer is
+// replaced by that producer's own dependency edges, preserving the transitive
+// ordering. Here %nc depends on the empty %nb, which depends on the
+// node-producing %na; %nc is rewired straight to %na and the now-dead empty op
+// is DCE'd. The empty op's body has no `test.record`, so the second matched op
+// below can only be the rewired %nc (not a surviving empty op).
+// CHECK-LABEL: func.func @bypass_empty_dependency
+func.func @bypass_empty_dependency(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[A:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%[[BA:.+]]: !mgp.device_graph.builder):
+  // CHECK-NEXT: "test.record"(%[[BA]])
+  // CHECK: %[[C:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[A]]) {
+  // CHECK-NEXT: ^bb0(%[[BC:.+]]: !mgp.device_graph.builder):
+  // CHECK-NEXT: "test.record"(%[[BC]])
+  // CHECK: "test.keep"(%[[C]])
+  // CHECK-NOT: mgp.device_graph.dependencies
+  %na = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  %nb = mgp.device_graph.dependencies builder(%b) dependencies(%na) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    mgp.device_graph.dependencies.yield
+  }
+  %nc = mgp.device_graph.dependencies builder(%b) dependencies(%nb) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  "test.keep"(%nc) : (!mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// Negative case: an edge to a node-producing (non-empty) dependency is left
+// untouched -- %nc keeps its edge to %na and nothing is spliced or removed.
+// CHECK-LABEL: func.func @bypass_no_op
+func.func @bypass_no_op(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[A:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK: mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[A]]) {
+  %na = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  %nc = mgp.device_graph.dependencies builder(%b) dependencies(%na) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  "test.keep"(%nc) : (!mgp.device_graph.node) -> ()
+  return
 }
