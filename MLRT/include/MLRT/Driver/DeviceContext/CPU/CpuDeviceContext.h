@@ -167,9 +167,6 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority) override;
-  ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) override;
 
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
@@ -180,9 +177,6 @@ public:
   ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
   ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
   ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
-  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) override;
 
   ErrorOr<DeviceTimerRef> startTimer() override;
   ErrorOr<std::chrono::nanoseconds>

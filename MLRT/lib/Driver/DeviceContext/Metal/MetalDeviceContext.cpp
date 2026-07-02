@@ -402,22 +402,6 @@ ErrorOr<DeviceContextRef> MetalDevice::createContext() {
   return MetalDeviceContextRef::create(*this, commandQueue);
 }
 
-ErrorOr<DeviceStreamRef> MetalDeviceContext::createStream(int priority) {
-  RETURN_ERROR("Unimplemented for Metal devices");
-}
-
-ErrorOrSuccess MetalDeviceContext::streamPriorityRange(int *leastPriority,
-                                                       int *greatestPriority) {
-  *leastPriority = 0;
-  *greatestPriority = 0;
-  return success();
-}
-
-ErrorOr<DeviceStreamRef>
-MetalDeviceContext::createExternalStream(void *externalStream) {
-  RETURN_ERROR("Metal not supported");
-}
-
 const MetalDevice &MetalDevice::cast(const Device &device) {
   return static_cast<const MetalDevice &>(device);
 }
@@ -984,11 +968,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueEvent(const DeviceEvent &event) {
   RETURN_ERROR("Unimplemented for Metal devices");
 }
 
-ErrorOr<DeviceEventRef> MetalDeviceContext::eventCreate(bool enableTiming) {
-  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented for Metal devices");
-}
-
 ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
                        TRACY_COLOR_PURPLE);
@@ -1026,12 +1005,6 @@ MetalDeviceContext::stopTimer(const DeviceTimer &timer) {
 
 ErrorOr<Device::MemInfo> MetalDeviceContext::getDeviceMemoryInfo() const {
   return device().getMemoryInfo();
-}
-
-ErrorOrSuccess MetalDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) {
-  RETURN_ERROR("Unimplemented for Metal devices");
 }
 
 ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,

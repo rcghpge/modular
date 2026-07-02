@@ -470,17 +470,6 @@ ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
   return CpuDeviceStreamRef::create(const_cast<CpuDeviceContext &>(*this));
 }
 
-ErrorOr<DeviceStreamRef> CpuDeviceContext::createStream(int priority) {
-  RETURN_ERROR("Unimplemented");
-}
-
-ErrorOrSuccess CpuDeviceContext::streamPriorityRange(int *leastPriority,
-                                                     int *greatestPriority) {
-  *leastPriority = 0;
-  *greatestPriority = 0;
-  return success();
-}
-
 ErrorOr<DeviceStreamRef>
 CpuDeviceContext::createExternalStream(void *externalStream) {
   return CpuDeviceStreamRef::create(*this);
@@ -555,12 +544,6 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
       });
   streamChain = std::move(eventChain);
   return success();
-}
-
-ErrorOrSuccess CpuDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) {
-  RETURN_ERROR("Unimplemented");
 }
 
 ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() {

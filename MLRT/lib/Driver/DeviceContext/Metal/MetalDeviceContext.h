@@ -174,17 +174,12 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
-  ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) override;
-  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
   ErrorOrSuccess synchronize() override;
 
   // Event management
   ErrorOr<DeviceEventRef> enqueueEvent() override;
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
   ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
   ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
@@ -195,10 +190,6 @@ public:
 
   // Memory info
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
-
-  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) override;
 
   // File mapping
   ErrorOr<std::tuple<void *, size_t,

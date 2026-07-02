@@ -253,23 +253,6 @@ ErrorOr<DeviceStreamRef> VirtualDeviceContext::createStream(int priority) {
   return VirtualDeviceStreamRef::create(*this);
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::streamPriorityRange(int *leastPriority,
-                                          int *greatestPriority) {
-  // Virtual devices support a single priority level
-  if (leastPriority)
-    *leastPriority = 0;
-  if (greatestPriority)
-    *greatestPriority = 0;
-  return success();
-}
-
-ErrorOr<DeviceStreamRef>
-VirtualDeviceContext::createExternalStream(void *externalStream) {
-  assert(false && "VirtualDeviceContext::createExternalStream not implemented");
-  RETURN_ERROR("VirtualDevice does not support external streams");
-}
-
 ErrorOrSuccess VirtualDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   // No-op for virtual devices
@@ -281,10 +264,6 @@ ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() {
 }
 
 ErrorOrSuccess VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) {
-  RETURN_ERROR("VirtualDevice does not support events");
-}
-
-ErrorOr<DeviceEventRef> VirtualDeviceContext::eventCreate(bool enableTiming) {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
@@ -307,15 +286,6 @@ VirtualDeviceContext::stopTimer(const DeviceTimer &timer) {
 
 ErrorOr<Device::MemInfo> VirtualDeviceContext::getDeviceMemoryInfo() const {
   return VirtualDevice::cast(device()).getMemoryInfo();
-}
-
-ErrorOrSuccess VirtualDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) {
-  assert(false &&
-         "VirtualDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor "
-         "not implemented");
-  RETURN_ERROR("VirtualDevice does not support occupancy queries");
 }
 
 const VirtualDeviceContext &

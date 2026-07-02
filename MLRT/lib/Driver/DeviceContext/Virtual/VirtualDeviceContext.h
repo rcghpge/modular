@@ -158,15 +158,11 @@ public:
   // Synchronize asynchronous operations - no-ops
   ErrorOr<DeviceStreamRef> stream() const override;
   ErrorOr<DeviceStreamRef> createStream(int priority) override;
-  ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) override;
-  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
   ErrorOrSuccess synchronize() override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() override;
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
   ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
   ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
@@ -175,10 +171,6 @@ public:
   stopTimer(const DeviceTimer &timer) override;
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
-
-  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) override;
 
   static const VirtualDeviceContext &cast(const DeviceContext &ctx);
   static const VirtualDeviceContext *verified_cast(const DeviceContext *ctx);

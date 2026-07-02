@@ -1673,6 +1673,36 @@ ErrorOr<DeviceGraphBuilderRef> DeviceContext::createGraphBuilder() {
   RETURN_ERROR("createGraphBuilder() not supported on this device context");
 }
 
+ErrorOrSuccess DeviceContext::streamPriorityRange(int *leastPriority,
+                                                  int *greatestPriority) {
+  if (leastPriority)
+    *leastPriority = 0;
+  if (greatestPriority)
+    *greatestPriority = 0;
+  return success();
+}
+
+ErrorOr<DeviceStreamRef> DeviceContext::createStream(int priority) {
+  RETURN_ERROR("createStream is not supported on this device");
+}
+
+ErrorOr<DeviceStreamRef>
+DeviceContext::createExternalStream(void *externalStream) {
+  RETURN_ERROR("createExternalStream is not supported on this device");
+}
+
+ErrorOr<DeviceEventRef> DeviceContext::eventCreate(bool enableTiming) {
+  RETURN_ERROR("eventCreate is not supported on this device");
+}
+
+ErrorOrSuccess DeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) {
+  RETURN_ERROR(
+      "occupancyMaxActiveBlocksPerMultiprocessor is not supported on this "
+      "device");
+}
+
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue,
                                  bool *isDefault) {
   std::lock_guard<std::mutex> lock(getGlobalMutex());

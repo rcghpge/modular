@@ -1029,17 +1029,18 @@ public:
   /// Returns the number of streams in this context's internal pool.
   /// Backends without a multi-stream model report a single stream.
   virtual unsigned numStreams() const;
+  /// Reports the range of stream priorities supported by this context via the
+  /// out-parameters. Defaults to a single priority level (0, 0); backends with
+  /// real stream priorities (e.g. CUDA, HIP) override this.
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                             int *greatestPriority) = 0;
+                                             int *greatestPriority);
   // Create a stream associated with this context. The stream is owned by the
   // context and is counted in numStreams().
-  virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0) = 0;
-
+  virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0);
   // Convert a device-specific stream handle to a DeviceStreamRef.
   // Note: streams created in this manner are NOT counted in numStreams(),
   // which only counts internally-managed streams.
-  virtual ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) = 0;
+  virtual ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream);
 
   virtual ErrorOr<DeviceGraphBuilderRef> createGraphBuilder();
 
@@ -1047,7 +1048,10 @@ public:
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() = 0;
   virtual ErrorOrSuccess enqueueEvent(const DeviceEvent &event) = 0;
-  virtual ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) = 0;
+
+  /// Creates a device event. Defaults to a not-supported error; backends with
+  /// an event model override this.
+  virtual ErrorOr<DeviceEventRef> eventCreate(bool enableTiming);
   virtual ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) = 0;
   virtual ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) = 0;
   ErrorOrSuccess enqueueWaitForEvent(DeviceEvent &event) {
@@ -1069,10 +1073,13 @@ public:
   };
   virtual ErrorOr<int> getAttribute(Attribute attr) const;
 
+  /// Queries the maximum number of active blocks per multiprocessor for a
+  /// function. Defaults to a not-supported error; backends with an occupancy
+  /// model (e.g. CUDA, HIP) override this.
   virtual ErrorOrSuccess
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks,
                                             DeviceFunction &func, int blockSize,
-                                            size_t dynamicSharedMemSize) = 0;
+                                            size_t dynamicSharedMemSize);
 
   // Is the current execution stream for the device running in graph capture
   // mode?
