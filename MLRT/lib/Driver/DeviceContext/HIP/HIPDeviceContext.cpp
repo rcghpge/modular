@@ -637,6 +637,124 @@ ErrorOrSuccess HIPDevice::chunkFree(void *ptr, bool isHost) {
   return success();
 }
 
+// ---- HIP Virtual Memory Management (VMM) ----
+//
+// Builds the hipMemAllocationProp describing a pinned device granule on this
+// device.
+static hipMemAllocationProp hipVmmAllocProp(hipDevice_t hipDevice) {
+  hipMemAllocationProp memProp = {};
+  memProp.type = hipMemAllocationType::hipMemAllocationTypePinned;
+  memProp.location.type = hipMemLocationType::hipMemLocationTypeDevice;
+  memProp.location.id = hipDevice;
+  return memProp;
+}
+
+bool HIPDevice::vmmSupported() const {
+  // VMM is usable iff the device accepts the granularity query for a pinned
+  // device allocation. Probe once and cache, so this reflects actual support
+  // (rather than merely "the backend is HIP") and is cheap to call.
+  std::call_once(vmmSupportedOnce_,
+                 [&]() { vmmSupportedCached_ = !vmmGranularity().isError(); });
+  return vmmSupportedCached_;
+}
+
+ErrorOr<size_t> HIPDevice::vmmGranularity() const {
+  HIP_WITH_DEV_ERR(*this);
+  hipMemAllocationProp memProp = hipVmmAllocProp(device_);
+  size_t granularity = 0;
+  HIP_CHECK_ERR(driver_.hipMemGetAllocationGranularity(
+      &granularity, &memProp,
+      hipMemAllocationGranularity_flags::hipMemAllocationGranularityMinimum));
+  return granularity;
+}
+
+ErrorOr<void *> HIPDevice::vmmAddressReserve(size_t byteSize) {
+  HIP_WITH_DEV_ERR(*this);
+  void *va = nullptr;
+  HIP_CHECK_ERR(driver_.hipMemAddressReserve(&va, byteSize, 0, nullptr, 0));
+  return va;
+}
+
+ErrorOrSuccess HIPDevice::vmmAddressFree(void *va, size_t byteSize) {
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.hipMemAddressFree(va, byteSize));
+  return success();
+}
+
+ErrorOr<uint64_t> HIPDevice::vmmCreate(size_t byteSize) {
+  HIP_WITH_DEV_ERR(*this);
+  hipMemAllocationProp memProp = hipVmmAllocProp(device_);
+  hipMemGenericAllocationHandle_t handle = nullptr;
+  HIP_CHECK_ERR(driver_.hipMemCreate(&handle, byteSize, &memProp, 0));
+  return reinterpret_cast<uint64_t>(handle);
+}
+
+ErrorOrSuccess HIPDevice::vmmRelease(uint64_t handle) {
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.hipMemRelease(
+      reinterpret_cast<hipMemGenericAllocationHandle_t>(handle)));
+  return success();
+}
+
+const std::vector<hipMemAccessDesc> &HIPDevice::vmmAccessDescs() const {
+  std::call_once(vmmAccessOnce_, [&]() {
+    auto pushDesc = [&](hipDevice_t dev) {
+      hipMemAccessDesc d = {};
+      d.location.type = hipMemLocationType::hipMemLocationTypeDevice;
+      d.location.id = dev;
+      d.flags = hipMemAccessFlags::hipMemAccessFlagsProtReadWrite;
+      vmmAccessDescs_.push_back(d);
+    };
+    // The owning device always has access.
+    pushDesc(device_);
+
+    // Grant access to every other GPU that can peer-access memory physically
+    // resident on this device. Mirrors canAccess(): HIP exposes P2P capability
+    // via hipDeviceCanAccessPeer, evaluated over raw ordinals so we do not
+    // eagerly initialize peer device contexts.
+    int count = 0;
+    if (driver_.hipGetDeviceCount(&count) != HIPDriver::SUCCESS)
+      return;
+    for (int ord = 0; ord < count; ++ord) {
+      if (ord == device_)
+        continue;
+      int canAccessPeer = 0;
+      if (driver_.hipDeviceCanAccessPeer(&canAccessPeer, ord, device_) !=
+              HIPDriver::SUCCESS ||
+          !canAccessPeer)
+        continue;
+      pushDesc(ord);
+    }
+  });
+  return vmmAccessDescs_;
+}
+
+ErrorOrSuccess HIPDevice::vmmMapAndSetAccess(void *va, size_t byteSize,
+                                             uint64_t handle) {
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.hipMemMap(
+      va, byteSize, 0,
+      reinterpret_cast<hipMemGenericAllocationHandle_t>(handle), 0));
+  // Grant read/write access to the owning device and every P2P-capable peer so
+  // multi-GPU (expert-parallel) kernels and collectives can read VMM-backed
+  // buffers. VMM access does not inherit from hipDeviceEnablePeerAccess.
+  //
+  // NOTE: `byteSize` is always a whole VMM granule -- the MemoryManager maps
+  // and sets access in uniform pageSize_ granules. Do NOT call hipMemSetAccess
+  // on a sub-granule / heterogeneous size within one VA reservation: that path
+  // fails with hipErrorInvalidValue on ROCm 7.x (ROCm/rocm-systems#2516).
+  const std::vector<hipMemAccessDesc> &descs = vmmAccessDescs();
+  HIP_CHECK_ERR(
+      driver_.hipMemSetAccess(va, byteSize, descs.data(), descs.size()));
+  return success();
+}
+
+ErrorOrSuccess HIPDevice::vmmUnmap(void *va, size_t byteSize) {
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.hipMemUnmap(va, byteSize));
+  return success();
+}
+
 ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
   Device::MemInfo memInfo;
   HIP_WITH_DEV_ERR(*this);

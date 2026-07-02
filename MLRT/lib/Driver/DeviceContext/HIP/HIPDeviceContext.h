@@ -85,6 +85,20 @@ public:
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
   ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
+  // HIP Virtual Memory Management (VMM) for the defragmenting allocator.
+  // Probes the VMM allocation-granularity query once and caches whether it
+  // succeeds, so this reflects whether VMM is actually usable (not just that
+  // the backend is HIP).
+  bool vmmSupported() const override;
+  ErrorOr<size_t> vmmGranularity() const override;
+  ErrorOr<void *> vmmAddressReserve(size_t byteSize) override;
+  ErrorOrSuccess vmmAddressFree(void *va, size_t byteSize) override;
+  ErrorOr<uint64_t> vmmCreate(size_t byteSize) override;
+  ErrorOrSuccess vmmRelease(uint64_t handle) override;
+  ErrorOrSuccess vmmMapAndSetAccess(void *va, size_t byteSize,
+                                    uint64_t handle) override;
+  ErrorOrSuccess vmmUnmap(void *va, size_t byteSize) override;
+
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   ErrorOr<void *> getCurrentDriverContext() const override;
@@ -105,6 +119,13 @@ public:
   }
 
 private:
+  // hipMemAccessDesc list (owning device + every P2P-capable peer) used to
+  // grant access to VMM mappings. VMM access does NOT inherit from
+  // hipDeviceEnablePeerAccess, so each mapping must be made accessible to every
+  // device that may read it (e.g. multi-GPU expert-parallel collectives).
+  // Computed once and cached.
+  const std::vector<hipMemAccessDesc> &vmmAccessDescs() const;
+
   // We only support HIP architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;
 
@@ -116,6 +137,16 @@ private:
   const std::string arch_;
   const HIPDriver &driver_;
   hipDevice_t device_;
+
+  // Lazily-computed, cached VMM peer-access descriptor list (see
+  // vmmAccessDescs()).
+  mutable std::once_flag vmmAccessOnce_;
+  mutable std::vector<hipMemAccessDesc> vmmAccessDescs_;
+
+  // Lazily-computed, cached result of whether VMM is usable on this device (see
+  // vmmSupported()).
+  mutable std::once_flag vmmSupportedOnce_;
+  mutable bool vmmSupportedCached_ = false;
 };
 
 class HIPDeviceEvent : public DeviceEvent {

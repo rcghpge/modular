@@ -102,6 +102,42 @@ using hipMemAccessDesc = struct hipMemAccessDesc_st {
   hipMemAccessFlags flags;
 };
 
+// Virtual Memory Management types (mirroring CUDA's CUmem* VMM types). Used by
+// the defragmenting allocator; see
+// MLRT/lib/Driver/DeviceContext/MemoryManager.h. Layouts must match
+// hip_runtime_api.h exactly since the driver is loaded via dlsym.
+using hipMemGenericAllocationHandle_t = struct ihipMemGenericAllocationHandle *;
+
+enum class hipMemAllocationType {
+  hipMemAllocationTypeInvalid = 0x0,
+  hipMemAllocationTypePinned = 0x1,
+  hipMemAllocationTypeMax = 0x7FFFFFFF,
+};
+
+enum class hipMemAllocationHandleType {
+  hipMemHandleTypeNone = 0x0,
+  hipMemHandleTypePosixFileDescriptor = 0x1,
+  hipMemHandleTypeWin32 = 0x2,
+  hipMemHandleTypeWin32Kmt = 0x4,
+};
+
+enum class hipMemAllocationGranularity_flags {
+  hipMemAllocationGranularityMinimum = 0x0,
+  hipMemAllocationGranularityRecommended = 0x1,
+};
+
+using hipMemAllocationProp = struct hipMemAllocationProp_st {
+  hipMemAllocationType type;
+  hipMemAllocationHandleType requestedHandleType;
+  hipMemLocation location;
+  void *win32HandleMetaData;
+  struct {
+    unsigned char compressionType;
+    unsigned char gpuDirectRDMACapable;
+    unsigned short usage;
+  } allocFlags;
+};
+
 /// Minimal dim3 definition for graph node parameter structs.
 /// Matches the layout of the HIP/CUDA runtime dim3 type.
 struct hipDim3 {

@@ -89,6 +89,21 @@ HIP_FUNC(hipDeviceGetDefaultMemPool, Result, hipMemPool_t *, int)
 HIP_FUNC(hipMemPoolSetAccess, Result, hipMemPool_t, const hipMemAccessDesc *,
          size_t)
 
+// Virtual Memory Management (VMM) for the defragmenting allocator.
+HIP_FUNC(hipMemGetAllocationGranularity, Result, size_t *,
+         const hipMemAllocationProp *, hipMemAllocationGranularity_flags)
+HIP_FUNC(hipMemCreate, Result, hipMemGenericAllocationHandle_t *, size_t,
+         const hipMemAllocationProp *, unsigned long long)
+HIP_FUNC(hipMemRelease, Result, hipMemGenericAllocationHandle_t)
+HIP_FUNC(hipMemAddressReserve, Result, void **, size_t, size_t, void *,
+         unsigned long long)
+HIP_FUNC(hipMemAddressFree, Result, void *, size_t)
+HIP_FUNC(hipMemMap, Result, void *, size_t, size_t,
+         hipMemGenericAllocationHandle_t, unsigned long long)
+HIP_FUNC(hipMemUnmap, Result, void *, size_t)
+HIP_FUNC(hipMemSetAccess, Result, void *, size_t, const hipMemAccessDesc *,
+         size_t)
+
 HIP_FUNC(hipMemcpyHtoDAsync, Result, hipDeviceptr_t, const void *, size_t,
          hipStream_t)
 HIP_FUNC(hipMemcpyDtoHAsync, Result, void *, hipDeviceptr_t, size_t,
