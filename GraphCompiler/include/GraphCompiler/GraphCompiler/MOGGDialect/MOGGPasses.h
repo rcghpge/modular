@@ -70,7 +70,16 @@ void initLLVM();
 /// the `TargetInfoAttr` that feeds the cache key. Callers pass the result
 /// explicitly so key computation performs no hardware probing of its own and
 /// one resolution can be reused across key computations.
-ErrorOr<TargetInfoAttr> getHostTargetInfoAttr(mlir::MLIRContext *ctx);
+///
+/// When `acceleratorArchOverride`/`acceleratorTripleOverride` describe a GPU
+/// target, the accelerator arch is taken from them instead of probing the host
+/// GPU. The cache key and codegen must resolve the target the same way, so any
+/// caller that overrides the codegen target must pass the identical override
+/// here.
+ErrorOr<TargetInfoAttr>
+getHostTargetInfoAttr(mlir::MLIRContext *ctx,
+                      llvm::StringRef acceleratorArchOverride = "",
+                      llvm::StringRef acceleratorTripleOverride = "");
 
 KGEN::CompilationOptions
 createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,

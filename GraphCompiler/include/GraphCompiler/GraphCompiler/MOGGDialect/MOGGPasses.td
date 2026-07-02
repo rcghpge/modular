@@ -54,7 +54,18 @@ def JitCompileKernels: Pass<"jit", "ModuleOp"> {
      "Run the pass but don't actually compile.">,
     Option<"debugKGENStubs", "debug-kgen-stubs", "bool",
       /*default=*/"false",
-      "Create debuginfo for kgen stubs such that the debugger will give linenumbers for the stubs">
+      "Create debuginfo for kgen stubs such that the debugger will give linenumbers for the stubs">,
+    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string",
+      /*default=*/"",
+      "Together with default-device-target-triple, overrides the accelerator "
+      "arch (e.g. sm_100a) instead of probing the host GPU. Enables "
+      "cross-compilation for a target GPU on a machine that lacks it (or has no "
+      "GPU at all).">,
+    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string",
+      /*default=*/"",
+      "Target triple (e.g. nvptx64-nvidia-cuda) identifying the accelerator "
+      "vendor for default-device-target-arch. The override applies only when "
+      "this triple names a GPU target.">
   ];
 }
 

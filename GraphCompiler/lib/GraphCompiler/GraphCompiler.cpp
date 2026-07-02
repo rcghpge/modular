@@ -532,6 +532,11 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
     jitOpts.kernelLibraryPaths = kernelLibraryPaths;
     jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
     jitOpts.debugKGENStubs = opts.debugKGENStubs;
+    // Carry the explicit accelerator arch/triple through to kernel codegen so
+    // it cross-compiles for the requested GPU instead of probing the host.
+    // These are the same options fed to ValidateDevicesPass above.
+    jitOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
+    jitOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
   }
 
   // Appends one pipeline stage's passes to `pm`, then (when dumping) a

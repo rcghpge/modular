@@ -23,7 +23,16 @@ DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
 
 /// Get the resolved target info: the current host by default, or the
 /// `set_virtual_cpu_target` override (bare arch or descriptor) when set.
-ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx);
+///
+/// When `acceleratorArchOverride`/`acceleratorTripleOverride` describe a GPU
+/// target (per the triple), the accelerator arch is taken from them instead of
+/// probing the host GPU. This enables cross-compilation for a target GPU (e.g.
+/// `sm_100a` / `nvptx64-nvidia-cuda`) on a machine that lacks that GPU, or has
+/// no GPU at all. A non-GPU override falls back to host detection. The host CPU
+/// triple/CPU/features are unaffected.
+ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
+                                      StringRef acceleratorArchOverride = "",
+                                      StringRef acceleratorTripleOverride = "");
 
 /// A resolved (de-sugared, validated) virtual-CPU-target request, letting a
 /// host-warmed cache target a different CPU or even architecture.

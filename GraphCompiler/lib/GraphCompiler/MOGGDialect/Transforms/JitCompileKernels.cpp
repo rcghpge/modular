@@ -176,7 +176,11 @@ struct JitCompileKernels
     auto envAttr = KGEN::getModuleEnvAttr(kgenModuleOp);
     envAttr.printStripped(*keyBufRef);
 
-    auto hostTargetOr = MOGG::getHostTargetInfoAttr(ctx);
+    // Resolve the key's target the same way codegen does (honoring an explicit
+    // accelerator override); otherwise a host-warmed artifact would falsely hit
+    // for a cross-compiled target.
+    auto hostTargetOr = MOGG::getHostTargetInfoAttr(
+        ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple);
     if (hostTargetOr.isError())
       return kgenModuleOp->emitError() << hostTargetOr.takeError();
     if (auto error = MOGG::graphCompilerCacheKey(
@@ -561,7 +565,8 @@ struct JitCompileKernels
   compileMojoToBinary(ModuleOp module,
                       ArrayRef<std::string> kernelLibraryPaths) {
     auto ctx = module.getContext();
-    auto targetInfoAttr = getTargetInfo(ctx);
+    auto targetInfoAttr =
+        getTargetInfo(ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple);
     if (targetInfoAttr.isError()) {
       return module->emitError("Could not retrieve target info: ")
              << targetInfoAttr.getError();

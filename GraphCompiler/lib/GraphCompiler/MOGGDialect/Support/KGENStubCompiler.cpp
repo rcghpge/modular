@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/ToolCommon/CompilationOptions.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -15,6 +16,34 @@
 #include "llvm/TargetParser/Triple.h"
 
 namespace M::MOGG {
+
+// Builds the canonical vendor-prefixed accelerator string ("nvidia:sm_90a",
+// "amdgpu:gfx942") from an explicit {arch, triple} override, or empty if the
+// override does not describe a GPU target. The override carries the graph's
+// default-device arch/triple, which may describe a *CPU* (e.g. "graniterapids"
+// on an x86_64 host when the default device is the host) — that must not be
+// used as an accelerator, so a non-GPU triple maps to empty and the caller
+// falls back to probing the host GPU. GPU classification and the vendor prefix
+// come from the triple (authoritative), not from guessing the arch mnemonic.
+// The prefix matches what downstream consumers (e.g. the NVPTX backend's ptxas
+// invocation) parse by splitting on ':'.
+static std::string overrideAcceleratorArch(StringRef arch,
+                                           StringRef tripleStr) {
+  if (arch.empty() || tripleStr.empty())
+    return "";
+  llvm::Triple triple(tripleStr);
+  if (!KGEN::isGPUTriple(triple))
+    return ""; // non-GPU target (e.g. a CPU default device)
+  if (arch.contains(':'))
+    return arch.str(); // already vendor-qualified (e.g. Metal's "metal:3")
+  if (triple.isNVPTX())
+    return ("nvidia:" + arch).str();
+  if (triple.isAMDGCN())
+    return ("amdgpu:" + arch).str();
+  if (KGEN::isMetalTriple(triple))
+    return ("metal:" + arch).str();
+  return arch.str(); // GPU triple, unrecognized vendor: pass the arch through
+}
 
 static ErrorOr<std::string> resolveVirtualCpuArch(StringRef requested,
                                                   StringRef triple) {
@@ -83,10 +112,26 @@ ErrorOr<VirtualCpuTargetSpec> parseVirtualCpuTarget(StringRef knob,
   return spec;
 }
 
-ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
+ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
+                                      StringRef acceleratorArchOverride,
+                                      StringRef acceleratorTripleOverride) {
   std::string triple = llvm::sys::getDefaultTargetTriple();
   std::string cpu = llvm::sys::getHostCPUName().str();
   std::string features = getHostCPUFeatures();
+
+  // Cross-compilation: when the override describes a GPU target, honor it
+  // instead of probing the host GPU, so a target GPU can be selected on a
+  // machine that lacks it (or has no GPU at all). A non-GPU override (e.g. a
+  // CPU default device) falls back to host detection so GPU kernels still
+  // target the real GPU. Only the accelerator is overridden; the host CPU
+  // triple/CPU/features still describe the machine running codegen.
+  auto acceleratorArch = [&]() -> std::string {
+    if (std::string gpu = overrideAcceleratorArch(acceleratorArchOverride,
+                                                  acceleratorTripleOverride);
+        !gpu.empty())
+      return gpu;
+    return M::Driver::Device::getAcceleratorArchOrEmpty();
+  };
 
   std::string virtualCpu = M::Driver::getVirtualCpuTarget();
   if (!virtualCpu.empty()) {
@@ -103,9 +148,9 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
     features = spec.hasExplicitFeatures ? spec.features : "";
   }
 
-  ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
-      ctx, triple, cpu, features, /*tuneCpu=*/"",
-      /*acceleratorArch=*/M::Driver::Device::getAcceleratorArchOrEmpty());
+  ErrorOr<TargetInfoAttr> targetOr =
+      getTargetInfoFor(ctx, triple, cpu, features, /*tuneCpu=*/"",
+                       /*acceleratorArch=*/acceleratorArch());
   if (targetOr.isError())
     return targetOr;
 
@@ -115,7 +160,7 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   // additional fields derived from the 'core' fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
       ctx, target.getTripleStr(), target.getArch(), target.getFeatures(),
-      target.getTuneCpu(), M::Driver::Device::getAcceleratorArchOrEmpty());
+      target.getTuneCpu(), acceleratorArch());
   return targetInfoOr;
 }
 
