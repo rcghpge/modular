@@ -2009,6 +2009,9 @@ ErrorOr<DeviceGraphBuilderRef> CUDADeviceContext::createGraphBuilder() {
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {
+  // Ensure stream is created for this context.
+  CUDA_WITH_CTX_ERR(*this);
+
   // Default priority is 0 (lowest); compatible with CUDA specs.
 
   // CUDA blocking streams are a legacy feature; interpretation of "blocking"

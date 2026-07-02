@@ -1654,6 +1654,8 @@ ErrorOr<DeviceGraphBuilderRef> HIPDeviceContext::createGraphBuilder() {
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) {
+  // Ensure stream is created for this context.
+  HIP_WITH_CTX_ERR(*this);
   // Default priority is 0 (lowest); compatible with CUDA specs.
   // HIP specs don't explicitly call this out but we know they mirror CUDA.
 
