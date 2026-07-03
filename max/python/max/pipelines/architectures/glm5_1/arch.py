@@ -12,6 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.graph.weights import WeightsFormat
+from max.pipelines.architectures.deepseekV3.batch_processor import (
+    DeepseekV3BatchProcessor,
+)
 from max.pipelines.architectures.deepseekV3_2 import weight_adapters
 from max.pipelines.context import TextContext
 from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
@@ -27,6 +30,8 @@ glm5_1_arch = SupportedArchitecture(
     example_repo_ids=[
         "zai-org/GLM-5.1",
         "zai-org/GLM-5.1-FP8",
+        "zai-org/GLM-5.2",
+        "zai-org/GLM-5.2-FP8",
         "zai-org/GLM-5",
     ],
     default_encoding="float8_e4m3fn",
@@ -37,6 +42,7 @@ glm5_1_arch = SupportedArchitecture(
     },
     multi_gpu_supported=True,
     pipeline_model=Glm5_1Model,
+    batching=DeepseekV3BatchProcessor,
     tokenizer=TextTokenizer,
     context_type=TextContext,
     default_weights_format=WeightsFormat.safetensors,
@@ -47,4 +53,6 @@ glm5_1_arch = SupportedArchitecture(
     requires_max_batch_context_length=True,
     config=Glm5_1Config,
     memory_planner=PagedMemoryPlanner,
+    supports_overlap_scheduler=False,
+    supports_device_graph_capture=False,
 )

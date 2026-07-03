@@ -162,6 +162,9 @@ def test_conv2d_fused_apple_dynamic_round(
         ctx,
     )
     if not handled:
+        if ctx.compute_capability() < 5:
+            print("  SKIP: fused conv requires M5+")
+            return
         raise Error("dynamic-shape fused conv unexpectedly declined")
 
     ctx.synchronize()
@@ -522,8 +525,7 @@ def test_conv2d_fused_apple[
         )
 
     if not handled:
-        # Fused path declines only on 1x1 / K<16 (no N gate, unlike materialise).
-        print("  SKIP: fused dispatcher declined this shape (1x1 / K<16)")
+        print("  SKIP: fused dispatcher declined (1x1 / K<16, or not Apple M5)")
         _ = input_dev^
         _ = filter_dev^
         _ = output_dev^
@@ -913,6 +915,21 @@ def main() raises:
             IndexList[2](1, 1),
             with_epilogue=True,
         ](ctx, "bf16 3x3 s1 same-pad C128->8 @64x64")
+
+        # One shape that drives every otherwise-untested width-8 edge at once,
+        # chosen so the params aren't arbitrary: C_in=20 (not a multiple of 8,
+        # < BK=32) hits the channel-straddle slow path AND the multi-iteration
+        # K-state carry; K=R*S*C_in=180 (not a multiple of 32) hits the partial-K
+        # tail; M=17²=289 and N=96 (neither a multiple of 64) make it a ragged-M
+        # and ragged-N edge tile.
+        test_conv2d_fused_apple[
+            Layout.row_major(1, 17, 17, 20),
+            Layout.row_major(3, 3, 20, 96),
+            DType.bfloat16,
+            IndexList[2](1, 1),
+            IndexList[2](1, 1),
+            with_epilogue=True,
+        ](ctx, "bf16 3x3 s1 C20->96 @17x17 (straddle+multicarry+tail+ragged)")
 
         # ---- Dynamic-shape conv with a `round` epilogue (FLUX VAE unblock) ----
         # The exact device-codegen crash repro: DYNAMIC M/N/K + a `round`-bearing

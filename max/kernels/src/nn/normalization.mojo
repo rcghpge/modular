@@ -54,7 +54,8 @@ from layout import (
 )
 from layout.coord import DynamicCoord
 from layout.tile_layout import Layout
-from std.memory import stack_allocation
+from std.memory import ThinAllocation, dealloc, stack_allocation
+from std.memory.alloc import Layout as AllocLayout
 from std.runtime.asyncrt import parallelism_level
 from std.runtime.tracing import Trace, TraceLevel, trace_arg
 
@@ -1696,6 +1697,10 @@ def rms_norm_gpu[
     var warp_per_row_region = (
         ceildiv(rows, warp_per_row_rows_per_block) >= warp_per_row_min_grid
     )
+    # Conservative floor: below one block per SM, chunking can't raise
+    # occupancy and only reassociates the mean-of-squares reduction (the real
+    # crossover is higher and width-dependent; this sits safely below it).
+    var enough_rows_to_chunk = rows >= sm_count
 
     var grid_dim = rows
     var block_dim = min(
@@ -1919,6 +1924,8 @@ def rms_norm_gpu[
             var enough_rows = rows >= 8 * sm_count
             if widen_ok and enough_rows and cols % sw_wide == 0:
                 _launch_warp_tiling[sw_wide, 1]()
+            elif not enough_rows_to_chunk:
+                _launch_warp_tiling[simd_width, 1]()
             else:
                 # Narrow rows: a single full-width pass keeps the block small;
                 # split into independent chunks (ILP + smaller block_reduce)
@@ -1933,8 +1940,11 @@ def rms_norm_gpu[
             cols <= (WARP_SIZE * (simd_width * 2) * max_warps_per_block)
             and cols % (simd_width * 2) == 0
         ):
-            # Wider rows: double the vector width and split into chunks.
-            if cols <= (WARP_SIZE * simd_width * 2 * 2):
+            # Wider rows: double the vector width and, for high-row launches,
+            # split into chunks.
+            if not enough_rows_to_chunk:
+                _launch_warp_tiling[simd_width * 2, 1]()
+            elif cols <= (WARP_SIZE * simd_width * 2 * 2):
                 _launch_warp_tiling[simd_width * 2, 2]()
             else:
                 _launch_warp_tiling[simd_width * 2, 4]()
@@ -2705,9 +2715,11 @@ def rms_norm_fused_residual_add_cpu[
     comptime assert gamma1.rank == 1, "gamma1 must have rank 1"
     comptime assert gamma2.rank == 1, "gamma2 must have rank 1"
 
-    var intermediate_buffer_ptr = alloc[Scalar[dtype]](shape.flattened_length())
+    var intermediate_buffer_alloc = alloc(
+        AllocLayout[Scalar[dtype]](count=shape.flattened_length())
+    )
     var intermediate_buffer = TileTensor(
-        intermediate_buffer_ptr,
+        intermediate_buffer_alloc.unsafe_ptr(),
         row_major(Coord(shape)),
     )
 
@@ -2747,7 +2759,7 @@ def rms_norm_fused_residual_add_cpu[
         multiply_before_cast=multiply_before_cast,
     ](shape, gamma2, epsilon2, weight_offset2)
 
-    intermediate_buffer_ptr.free()
+    dealloc(intermediate_buffer_alloc^)
 
 
 # ===-----------------------------------------------------------------------===#

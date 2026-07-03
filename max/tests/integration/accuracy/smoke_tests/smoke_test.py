@@ -39,6 +39,7 @@ import sys
 from functools import cache
 from pathlib import Path
 from pprint import pformat
+from typing import NamedTuple
 
 import click
 import yaml
@@ -95,6 +96,7 @@ MODEL_RECIPES = CaseInsensitiveDict({
     "google/gemma-4-31B-it__tieredkv": "max/pipelines/architectures/gemma4/recipes/gemma4_31b_tieredkv.yaml",
     "google/gemma-4-31B-it__tp2": "max/pipelines/architectures/gemma4/recipes/gemma4_31b_tp2.yaml",
     "nvidia/Gemma-4-26B-A4B-NVFP4__no_dgc": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_nvfp4_no_dgc.yaml",
+    "nvidia/Gemma-4-26B-A4B-NVFP4__fp8kv": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_nvfp4_fp8kv.yaml",
     "nvidia/Gemma-4-26B-A4B-NVFP4__localkv": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_nvfp4_localkv.yaml",
     "nvidia/Gemma-4-26B-A4B-NVFP4__tieredkv": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_nvfp4_tieredkv.yaml",
     "nvidia/Gemma-4-31B-IT-NVFP4__localkv": "max/pipelines/architectures/gemma4/recipes/gemma4_31b_nvfp4_localkv.yaml",
@@ -183,6 +185,11 @@ class RecipeConfig(BaseModel):
     speculative: Speculative | None = None
 
 
+class ServerCommand(NamedTuple):
+    cmd: list[str]
+    env: dict[str, str]
+
+
 # TODO Refactor this to a model list/matrix specifying type of model
 def is_vision_model(model: str) -> bool:
     """Check if the model supports vision tasks."""
@@ -259,6 +266,22 @@ def _load_recipe(recipe_path: str) -> RecipeConfig:
     with open(_resolve_recipe_path(recipe_path), encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return RecipeConfig.model_validate(data)
+
+
+def resolve_model_path(
+    model: str, recipe_path: str | None = None
+) -> tuple[str, str | None]:
+    """Resolve a model alias to a canonical HF repo id and its recipe path."""
+    if recipe_path is None:
+        recipe_path = MODEL_RECIPES.get(model)
+    if recipe_path:
+        recipe_model_path = _load_recipe(recipe_path).model.model_path
+        if recipe_model_path is None:
+            raise ValueError("Recipe model section must contain model_path.")
+        hf_model_path = recipe_model_path
+    else:
+        hf_model_path = model
+    return resolve_canonical_repo_id(hf_model_path), recipe_path
 
 
 def hf_repos_for_model(model: str) -> list[tuple[str, str | None]]:
@@ -396,8 +419,9 @@ def get_server_cmd(
     recipe_path: str | None = None,
     autoscale_devices: bool = True,
     gpu_spec: tuple[str, int],
-) -> list[str]:
+) -> ServerCommand:
     gpu_model, gpu_count = gpu_spec
+    env: dict[str, str] = {}
     if recipe_path is None:
         recipe_path = MODEL_RECIPES.get(model)
     recipe = _load_recipe(recipe_path) if recipe_path else None
@@ -460,7 +484,7 @@ def get_server_cmd(
 
             # Remove once vLLM >= 0.17 (which includes vllm-project/vllm#34673).
             if "minimax-m2" in model.casefold():
-                os.environ["VLLM_USE_FLASHINFER_MOE_FP8"] = "0"
+                env["VLLM_USE_FLASHINFER_MOE_FP8"] = "0"
                 VLLM += ["--attention-backend", "FLASH_ATTN"]
 
         else:  # gpu_count > 1 and recipe is None
@@ -480,7 +504,7 @@ def get_server_cmd(
             and recipe.model.kv_cache.kv_connector is not None
         )
     ):
-        os.environ["MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE"] = "1"
+        env["MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE"] = "1"
 
     if _inside_bazel():
         assert framework == "max-ci", "bazel invocation only supports max-ci"
@@ -519,7 +543,7 @@ def get_server_cmd(
             logger.warning(
                 "Ignoring --serve-extra-args for framework %s", framework
             )
-    return cmd
+    return ServerCommand(cmd, env)
 
 
 # Verified stock lm-eval tasks runnable unmodified (qa4+ intentionally excluded).
@@ -674,18 +698,8 @@ def smoke_test(
         output_path = Path(build_workspace) / output_path
 
     model = hf_model_path.strip()
-    # --recipe-path overrides the matrix lookup.
-    if recipe_path is None:
-        recipe_path = MODEL_RECIPES.get(model)
-    if recipe_path:
-        recipe_model_path = _load_recipe(recipe_path).model.model_path
-        if recipe_model_path is None:
-            raise ValueError("Recipe model section must contain model_path.")
-        hf_model_path = recipe_model_path
-    else:
-        hf_model_path = model
-    hf_model_path = resolve_canonical_repo_id(hf_model_path)
-    cmd = get_server_cmd(
+    hf_model_path, recipe_path = resolve_model_path(model, recipe_path)
+    cmd, server_env = get_server_cmd(
         framework,
         hf_model_path,
         serve_extra_args=serve_extra_args,
@@ -711,7 +725,7 @@ def smoke_test(
         timeout = 2700
 
     metrics_url = _metrics_url(framework)
-    with start_server(cmd, timeout) as server:
+    with start_server(cmd, timeout, env_overrides=server_env) as server:
         logger.info(f"Server started in {server.startup_time:.2f} seconds")
         write_github_output("startup_time", f"{server.startup_time:.2f}")
 

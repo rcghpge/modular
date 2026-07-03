@@ -10,6 +10,34 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- `coord` is now a comptime expression, and `coord[DType]()` has been renamed
+  to `dyn_coord[DType]()`.
+  Now one can just write:
+
+   ```mojo
+   var my_coord = coord[1, 2, 3]
+   ```
+
+   to create a `Coord[ComptimeInt[1], ComptimeInt[2], ComptimeInt[3]]`
+
+- Mojo now support `==` and `!=` for type equality check, and `_type_is_eq` is
+  removed.
+
+- Mojo now infers `Trait` for `TypeList.of` such that
+
+  ```mojo
+  comptime TL = TypeList.of[Int, Bool]
+  # works without
+  comptime TL = TypeList.of[Trait = AnyType, Int, Bool]
+  ```
+
+- Mojo now warns about redundant trait composition
+
+  ```mojo
+  # Warning: Redundant trait composition: 'Copyable' already implies 'AnyType'
+  comptime T : AnyType & Copyable = xxx
+  ```
+
 - Keyword variadic arguments can now be forwarded to another function that takes
   keyword variadics, using Python style `**` syntax:
 
@@ -19,8 +47,23 @@ This version is still a work in progress.
     takes_them(**kwargs^)
   ```
 
+- Dynamic function pointers with unbound type parameters can now be called
+  directly. The compiler infers parameters from the call arguments and
+  specializes the callee before the indirect call. This capability only works
+  with a limited set of parameters - those which are specialized to a single
+  value. This notably enables origin parameters on runtime function calls,
+  which can also be implicit from variadics:
+
+  ```mojo
+  var fp1: def(*Int) thin -> None
+  var fp2: def[a: ImmutOrigin](ref [a] x: Int) thin -> None
+  ...
+  fp1(1, 2)
+  fp2(42)
+  ```
+
 - Struct fields are no longer allowed to hide `UnsafeAnyOrigin` within a
-  struct, e.g. this is no longer accepted:
+  struct. For example, this is no longer accepted:
 
   ```mojo
   struct Example:
@@ -55,6 +98,19 @@ This version is still a work in progress.
 
   Previously the behavior was unspecified and would pick whichever matching
   name it found in the directory first.
+
+- Added support for checking variadic type-list operands with `conforms_to()`.
+  For example, a variadic parameter list can pass its type-list value directly:
+
+  ```mojo
+  def copy_variadic_elements[*Ts: AnyType](
+      *args: *Ts
+  ) where conforms_to(Ts.values, Copyable):
+      pass
+  ```
+
+  To check several distinct standalone types against a trait, conjoin scalar
+  checks, for example `conforms_to(T, Trait) and conforms_to(U, Trait)`.
 
 ## Language changes
 
@@ -106,6 +162,38 @@ This version is still a work in progress.
   import pkg.submodule
 
   pkg.submodule.foo()
+  ```
+
+- Intra-package accesses without explicit `import`s are now deprecated and will
+  be removed in a future release:
+
+  ```mojo
+  package/
+      __init__.mojo:
+        # Exported or re-exported symbols
+        def foo(): pass
+
+      module1.mojo:
+        # Module-defined symbol
+        def bar(): pass
+
+      module2.mojo:
+        # Previously able to implicitly use either of the above symbols, e.g.,
+        foo()
+        module1.bar()
+  ```
+
+  With this change, `module2.mojo` above must explicitly import symbols from
+  elsewhere in the package:
+
+  ```mojo
+  # module2.mojo
+
+  from . import foo
+  from . import module1
+
+  foo()
+  module1.bar()
   ```
 
 - `where` clauses inside a parameter list (for example,
@@ -186,14 +274,35 @@ This version is still a work in progress.
       a non-conforming element type at the bound rather than failing later
       inside `__iter__()`. For deletable element types (the common case) this is
       transparent.
+  - `Dict[KeyType, ValueType, HasherType]`
+    - Element-destroying and key/value-copying operations (`__setitem__`,
+      `setdefault`, `fromkeys`, `update`, `__or__`, `__ior__`, `pop`, `clear`)
+      still require the `K` key and `V` value types to be `ImplicitlyDeletable`,
+      so a `Dict` with non-`ImplicitlyDeletable` keys or values can currently be
+      constructed and torn down with `destroy_with()` but not populated or
+      mutated. For deletable key/value types (the common case) this is
+      transparent.
+    - Consuming iteration (`for entry in dict^`) is likewise conditional,
+      requiring `ValueType` to be `ImplicitlyDeletable`.
 
-- The `IterableOwned` conformance on `List` and `InlineArray` (consuming
-  iteration via `for x in collection^`) is now conditional, requiring the
-  element type to be `Movable & ImplicitlyDeletable`. Consuming iteration moves
-  elements out of the collection rather than copying them, so it no longer
-  requires `Copyable`. Generic code bounded on `IterableOwned` now rejects a
-  collection of non-conforming elements at the bound, rather than failing later
-  inside `__iter__()`.
+- Is is now possible to iterate over owned elements in
+  `List`, `Dict`, `InlineArray`, `LinkedList`, and `Set`
+  when the element type is not `Copyable`:
+
+  ```mojo
+  def iterate[T: Movable](var list: List[T]):
+    # Consume elements
+    for var x in list^:
+        pass
+  ```
+
+  The `IterableOwned` conformance on several collections is now conditional
+  on the element type conforming to `Movable & ImplicitlyDeletable`, dropping
+  `Copyable`.
+
+  Additionally, generic code bounded on `IterableOwned` now rejects a collection
+  of non-conforming elements at the bound, rather than failing later inside
+  `__iter__()`.
 
 - The implicit conversion constructors that cast an `UnsafePointer` to
   `MutUnsafeAnyOrigin` or `ImmutUnsafeAnyOrigin` are now deprecated and emit a
@@ -203,18 +312,75 @@ This version is still a work in progress.
   if you must discard it, make the cast explicit with the
   `as_unsafe_any_origin()` method.
 
+- Added `reflect[T].field_at[idx]` to the reflection API, the by-index dual
+  of `reflect[T].field[name]`. It returns the reflection handle for the
+  type of the field at `idx`, so a field's concrete type can be recovered while
+  iterating fields by index (where the name is not available as a literal):
+
+  ```mojo
+  comptime y_type = reflect[Point].field_at[1]
+  var v: y_type.T = 3.14  # y_type.T is the concrete field type
+  ```
+
+- Removed the implicit constructors that converted an `UnsafePointer` into an
+  `Optional[UnsafePointer[..., UnsafeAnyOrigin]]`. Constructing an
+  `Optional[UnsafePointer]` now preserves the pointer's real origin instead of
+  silently widening it to `UnsafeAnyOrigin`. Two call-site updates may be
+  needed:
+
+  - Passing a concrete pointer where the parameter's origin is a genuinely
+    fixed `MutAnyOrigin`/`ImmutAnyOrigin` (typically C-FFI signatures) now
+    requires an explicit `as_unsafe_any_origin()`.
+
+  - Because origins are now preserved, exclusivity checking applies to
+    `memcpy()` (and similar) calls whose `dest` and `src` derive from the same
+    buffer. An intra-buffer copy that previously compiled now errors with
+    "argument of 'memcpy' call allows writing a memory location previously
+    writable through another aliased argument". Opt out by making one argument
+    an unsafe any-origin (the non-overlap of `dest` and `src` is already a
+    `memcpy()` precondition):
+
+    ```mojo
+    memcpy(
+        dest=buf + dst_off,
+        src=(buf + src_off).as_unsafe_any_origin(),
+        count=n,
+    )
+    ```
+
 - The traits `ImplicitlyDeletable`, `Movable`, `Copyable`, and
   `ImplicitlyCopyable` are now stable.
+
+- Removed `trait_downcast_var()`. Improvements to type refinement based on
+  `where conforms_to(..)` and `comptime assert conforms_to(..)` make explicit
+  value trait downcasting no longer necessary.
 
 - Added `raise_python_exception()` to `std.python.bindings`, which translates a
   Mojo `Error` into a Python exception via `PyErr_SetString` and returns a null
   `PyObjectPtr`.
+
+- Iterating over a `String`, `StringSlice`, or `StringLiteral` now yields
+  grapheme clusters by default. Their `__iter__()` and `__reversed__()` methods
+  return a `GraphemeSliceIter`, so `for c in my_string:` produces what a user
+  perceives as a single "character" on screen. The lower-level views remain
+  available when you want them: `codepoints()` or `codepoint_slices()` for
+  Unicode scalars, and `bytes()` for raw UTF-8 bytes.
 
 ## Tooling changes
 
 - Added a `--lld-path` CLI flag. This overrides the LLD path that Mojo uses.
 
 ## GPU programming
+
+- `DeviceContext.load_function` now keys its runtime cache on the requested
+  entry-point name as well as the blob. Loading two different entry points
+  (for example `kernel_a` and `kernel_b`) from a single PTX/cubin blob no
+  longer collides — previously the second load silently returned the function
+  resolved by the first. The cache also no longer keys on the entire blob
+  when no module name is supplied: it keys on a short hash of the blob instead,
+  so each call avoids copying, hashing, and byte-comparing the whole blob (and
+  retaining a duplicate of it). The win scales with blob size and matters most
+  for large multi-entry blobs loaded on the per-execution path.
 
 - The `DeviceStream` type is now included in the API reference documentation.
   Returned by `DeviceContext.create_stream()` and
@@ -283,6 +449,8 @@ This version is still a work in progress.
   where they exist. A name that no backend defines remains a compile-time
   error.
 
+- Added support for the Steam Deck's RDNA2 Van Gogh APU.
+
 ## Removed
 
 - Removed the `store_volatile()` and `load_volatile()` intrinsics from
@@ -294,3 +462,15 @@ This version is still a work in progress.
   `AddressSpace` directly.
 
 ## Fixed
+
+- A `comptime` member with a trailing `where` clause is now accepted as a
+  witness for a conditional trait conformance when the conformance constraint
+  implies the member's constraint, for example:
+
+  ```mojo
+  trait StaticSize:
+      comptime SIZE: Int
+
+  struct Foo[size: Int = -1](StaticSize where size >= 0):
+      comptime SIZE: Int where Self.size >= 0 = Self.size
+  ```

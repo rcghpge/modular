@@ -19,6 +19,15 @@ which represents a single stream of execution on a given accelerator. You can
 use this struct to allocate accelerator memory, copy data to and from the
 accelerator, and compile and execute functions on the accelerator."""
 
+from . import (
+    Dim,
+    Attribute,
+    FuncAttribute,
+    LaunchAttribute,
+    ConstantMemoryMapping,
+    DeviceAttribute,
+)
+
 from std.collections.optional import OptionalReg
 from std.math import align_up
 from std.os import abort
@@ -48,7 +57,6 @@ from std.sys.info import (
     _TargetType,
     is_triple,
 )
-from std.sys.intrinsics import _type_is_eq
 from std.sys.defines import _is_bool_like
 
 from std.reflection import call_location, SourceLocation
@@ -3149,9 +3157,7 @@ struct DeviceFunction[
 
             def declared_arg_type_name() -> String:
                 comptime if conforms_to(declared_arg_type, DevicePassable):
-                    return downcast[
-                        declared_arg_type, DevicePassable
-                    ].get_type_name()
+                    return declared_arg_type.get_type_name()
                 else:
                     return reflect[declared_arg_type].name()
 
@@ -3165,9 +3171,7 @@ struct DeviceFunction[
                 declared_arg_type
             ]()
 
-            comptime if _type_is_eq[
-                actual_arg_type, actual_arg_type.device_type
-            ]():
+            comptime if actual_arg_type == actual_arg_type.device_type:
                 # Now check if they handed in the *correct* device dtype.
                 comptime assert is_convertible, String(
                     "argument #",

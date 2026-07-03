@@ -238,7 +238,7 @@ modular_py_binary(
     name = "check_logit_verification_eligibility",
     testonly = True,
     srcs = ["check_logit_verification_eligibility.py"],
-    data = ["logit_verification_ignore_list.yaml"],
+    data = ["logit_verification_required_list.yaml"],
     imports = ["."],
     deps = [
         requirement("click"),
@@ -288,7 +288,7 @@ modular_py_test(
     size = "medium",
     srcs = ["test_generate_llm_logits_gpu.py"],
     exec_properties = {
-        "test.resources:gpu-memory": "23",
+        "test.resources:gpu-memory": "22",
     },
     gpu_constraints = ["//:has_gpu"],
     tags = [
@@ -456,6 +456,11 @@ modular_py_binary(
         ["llm_fuzz/**/*.py"],
         exclude = ["llm_fuzz/.venv/**"],
     ),
+    data = glob(["llm_fuzz/data/**"]),
+    ignore_unresolved_imports = [
+        "referencing",  # Provided transitively by jsonschema
+        "referencing.jsonschema",
+    ],
     imports = ["llm_fuzz"],
     main = "llm_fuzz/fuzz.py",
     visibility = ["//max_private:__subpackages__"],

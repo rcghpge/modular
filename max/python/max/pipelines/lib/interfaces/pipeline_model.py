@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Generic
 from max.driver import (
     Buffer,
     Device,
-    enable_all_peer_access,
     is_virtual_device_mode,
 )
 from max.dtype import DType
@@ -89,28 +88,11 @@ class AlwaysSignalBuffersMixin:
         if is_virtual_device_mode():
             return []
 
-        # Enable P2P access between all GPUs before any collective operations.
-        # This must happen before the first allreduce/broadcast/etc. executes.
-        if len(self.devices) > 1:
-            try:
-                enable_all_peer_access()
-            except RuntimeError:
-                logger.warning(
-                    "Failed to enable peer-to-peer GPU access. "
-                    "Collective operations will fall back to slower paths."
-                )
-
         # Import here to avoid circular dependency
         from max.nn.comm import Signals
 
-        return [
-            Buffer.zeros(
-                shape=(Signals.NUM_BYTES,),
-                dtype=DType.uint8,
-                device=dev,
-            )
-            for dev in self.devices
-        ]
+        # Signals.allocate initializes the signal buffers and enables p2p access
+        return Signals.allocate(self.devices)
 
 
 @dataclass
@@ -324,8 +306,10 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         adapter: WeightsAdapter | None,
         return_logits: ReturnLogits,
         return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
+        max_batch_size: int = 1,
     ) -> None:
         self.pipeline_config = pipeline_config
+        self.max_batch_size = max_batch_size
         self.devices = devices
         self.device_refs = [DeviceRef.from_device(d) for d in devices]
         self.kv_cache_config = kv_cache_config
@@ -347,8 +331,7 @@ class PipelineModel(ABC, Generic[BaseContextType]):
                 self.huggingface_config.num_attention_heads,
                 self.huggingface_config.num_key_value_heads,
                 self.huggingface_config.head_dim,
-                self.max_seq_len
-                * (pipeline_config.runtime.max_batch_size or 1),
+                self.max_seq_len * max_batch_size,
             )
             if pipeline_config.lora
             else None
@@ -377,7 +360,7 @@ class PipelineModel(ABC, Generic[BaseContextType]):
                     signal_buffers=self.signal_buffers,
                     lora_manager=self._lora_manager,
                     pad_token_id=pad_token_id or 0,
-                    max_batch_size=pipeline_config.runtime.max_batch_size,
+                    max_batch_size=self.max_batch_size,
                 ),
             )
 
@@ -434,27 +417,11 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         if len(self.devices) <= 1:
             return []
 
-        # Enable P2P access between all GPUs before any collective operations.
-        # This must happen before the first allreduce/broadcast/etc. executes.
-        try:
-            enable_all_peer_access()
-        except RuntimeError:
-            logger.warning(
-                "Failed to enable peer-to-peer GPU access. "
-                "Collective operations will fall back to slower paths."
-            )
-
         # Import here to avoid circular dependency
         from max.nn.comm import Signals
 
-        return [
-            Buffer.zeros(
-                shape=(Signals.NUM_BYTES,),
-                dtype=DType.uint8,
-                device=dev,
-            )
-            for dev in self.devices
-        ]
+        # Signals.allocate initializes the signal buffers and enables p2p access
+        return Signals.allocate(self.devices)
 
     @property
     def dtype(self) -> DType:
@@ -609,6 +576,7 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
         adapter: WeightsAdapter | None,
         return_logits: ReturnLogits,
         return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
+        max_batch_size: int = 1,
     ) -> None:
         super().__init__(
             pipeline_config=pipeline_config,
@@ -619,6 +587,7 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
             adapter=adapter,
             return_logits=return_logits,
             return_hidden_states=return_hidden_states,
+            max_batch_size=max_batch_size,
         )
         self.kv_params = type(self).get_kv_params(
             huggingface_config=self.huggingface_config,

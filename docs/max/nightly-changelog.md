@@ -10,6 +10,16 @@ This version is still a work in progress.
 
 ## MAX models
 
+- Added GLM-5.2 (`GlmMoeDsaForCausalLM`) support, extending the existing
+  GLM-5.1 sparse-attention architecture with cross-layer index sharing.
+- Added multi-token prediction (MTP) speculative decoding for GLM-5.2
+  (`UnifiedMTPGlm5_2ForCausalLM`). The baked-in NextN layer is served as a
+  single-layer sparse-MLA draft (its own lightning indexer plus a paired
+  `{mla, indexer}` KV cache); per `index_share_for_mtp_iteration`, the draft
+  computes its top-k selection on the first MTP step and reuses it on the
+  rest. Enabled automatically for GLM checkpoints that ship a NextN layer when
+  speculative decoding is requested with no separate draft model. Validated on
+  `zai-org/GLM-5.2-FP8` across 8 B200s (`--speculative-method mtp`).
 - Added Laguna (`LagunaForCausalLM`), poolside's decoder-only sparse-MoE
   language model. It uses sigmoid expert routing with a per-expert
   score-correction bias, a per-element softplus attention-output gate, and
@@ -26,6 +36,14 @@ This version is still a work in progress.
   encoder/decoder block-diffusion text model that generates 256-token
   blocks per step via an inner denoising loop. Supports NVFP4 and bfloat16
   weights; text-only for now.
+- Added Nemotron-H (`NemotronHForCausalLM`), NVIDIA's hybrid Mamba-2 +
+  attention + relu-squared-MLP decoder, with modelopt per-tensor FP8. Adds a
+  new Mamba-2 SSD chunked-scan varlen prefill kernel (also used for decode as
+  length-1 sequences). Verified on `nvidia/NVIDIA-Nemotron-3-Nano-4B-FP8` on a
+  single B200: random-weight logit-verify cosine 0.9999 vs HuggingFace, GSM8K
+  strict-match ~0.70. Decode is optimized with an in-place SSM state-pool
+  read-modify-write that writes only the active slots (+52% output tok/s at
+  concurrency 32).
 - Added tool-calling and reasoning support to Qwen 3.5 / 3.6.
 - Added support for the Ideogram 4 (`Ideogram4Pipeline`) text-to-image
   flow-matching diffusion transformer. The pipeline pairs a Qwen3-VL text
@@ -35,9 +53,28 @@ This version is still a work in progress.
   (`float8_e4m3fn`) checkpoint weights are dequantized to `bfloat16` at load.
   Serve via `/v1/responses`; benchmark with
   `--benchmark-task text-to-image`.
+- Added the `reasoning_split` chat-completion request field for MiniMax M3.
+  It defaults to `true`, which keeps the existing behavior of returning the
+  model's thinking in a separate `reasoning` field. Setting it to `false` folds
+  the thinking back into the `content` field wrapped in `<think>...</think>`
+  tags, matching the official MiniMax M3 endpoint. The field is a no-op for
+  every other model.
 
 ## MAX framework
 
+- Added `MAX_SERVE_GRACEFUL_SHUTDOWN_TIMEOUT_S` to control how long the server
+  waits for in-flight requests to finish after receiving `SIGTERM` before
+  exiting (default 5 seconds). Raise it so long-running requests are drained
+  rather than dropped during a rolling restart.
+- Data-parallel (DP) serving now shares the prefix cache across replicas, so a
+  multi-turn conversation gets cache hits even when a later turn is scheduled on
+  a different replica than the previous one. GPU prefix-cache hits are served by
+  a cheap device-to-device copy of the cached pages onto the assigned replica,
+  and the CPU/disk offload tiers are now a single pool shared by every replica
+  (a block offloaded by one replica can be loaded by another). As a result,
+  `host_kvcache_swap_space_gb` now sizes one shared host pool of that size for
+  the whole deployment, rather than allocating a separate pool of that size per
+  replica.
 - The graph compiler now fuses query/key RMSNorm followed by rotate-half RoPE
   into a single `rms_norm_rope` GPU kernel even when the RMSNorm is written "in
   float32" — that is, when a `bfloat16`/`float16` activation is upcast to
@@ -65,6 +102,20 @@ This version is still a work in progress.
 
 ### Inference server
 
+- Added an opt-in `emit_reasoning_content` server config. When enabled, chat
+  completion responses emit a reasoning model's chain-of-thought under
+  `reasoning_content` instead of `reasoning` (the two are never emitted
+  together). This restores the `reasoning_content` field for clients that
+  require it; it remains off by default, so responses emit `reasoning` only.
+- Improved time-to-first-token for multimodal requests by making the image and
+  video preprocessor reject and decode media more efficiently. Oversized media
+  is now rejected before its bytes are fully materialized: an `http(s)` download
+  is aborted as soon as the advertised `Content-Length` (or the streamed total)
+  crosses the per-item cap, and a `data:` URI is rejected from its base64 length
+  before it is decoded. Large `data:` base64 decoding now runs on a worker
+  thread instead of blocking the server event loop, so one big payload no longer
+  stalls other in-flight requests. Per-request video count and per-video byte
+  limits are also enforced up front (mirroring the existing image limits).
 - Reduced per-iteration latency for structured-output (constrained decoding)
   requests on speculative-decode models. The overlap pipeline now enqueues the
   asynchronous FSM-advance and bitmask compute once the next iteration's batch
@@ -79,6 +130,15 @@ This version is still a work in progress.
   the GPU. The packed `int32` bitmask is transferred to device as-is and
   unpacked and applied to the logits in a single fused kernel
   (`apply_packed_bitmask`), instead of unpacking to a `bool` tensor on the CPU.
+- Made numpy array transport across the API-server-to-model-worker request
+  queue zero-copy. Large arrays (notably multi-image or high-resolution vision
+  `pixel_values`) now ride out-of-band as their own ZMQ frame instead of being
+  copied into the message body and then again through the socket, and the
+  receiver decodes them as views with no copy. This is faster than both the
+  previous copy and shared-memory transports at every payload size (for example
+  ~5x faster than the copy path and ~2x faster than shared memory at 24-32 MiB
+  in the transport microbenchmark), and removes the per-request shared-memory
+  segment (and its sizing, leak, and page-fault costs) from this path entirely.
 - Fixed image requests failing with a 400 or 500 across all vision models. Two
   bugs in the shared image-resolution layer: `data:` URIs with unpadded or
   URL-safe base64 (sent routinely by clients and relays) were rejected by the
@@ -253,6 +313,13 @@ This version is still a work in progress.
 
 ## MAX kernels
 
+- The `TileTensor` layout type no longer takes an `element_size` parameter. A
+  tensor's logical element width is now carried by its `Storage` parameter via
+  `PointerStorage[element_width]` (default `PointerStorage[1]`), and
+  `element_size` remains available as a derived comptime member. Code that
+  passed `element_size=N` should now pass
+  `Storage=PointerStorage[element_width=N]`, or use `TileTensor.vectorize()` to
+  build the vectorized view.
 - Apple silicon GPU support for running MAX models has been extended to M1 and
   M2 systems. Previously, the optimized matrix multiplication kernels for Apple
   silicon GPUs only returned correct results on M3 and newer systems. That has
@@ -279,11 +346,26 @@ This version is still a work in progress.
   invalid operand. The kernels now read the tensor-memory base once after it
   is published and carry it in a register, so there is no in-loop re-read to
   race.
+- Enabled the low-latency (Lamport) all-reduce on B200 for small messages
+  (up to 1 MiB at 2, 4, and 8 GPUs), where it beats the one-stage path by
+  roughly 1.1-1.68x. The barrier-free protocol marks unwritten slots with a
+  negative-zero sentinel, so its communication region is now initialized when
+  pipeline signal buffers are allocated; without that the region read as
+  already-written and produced non-deterministic results.
 
 ## Breaking changes
 
 ## Fixes
 
+- Fixed MAX Serve crashing the model worker on the first host KV-cache
+  offload/reload when run with `--kv-connector dkv`. The dKV connector had
+  drifted out of sync with its client and no longer passed the required
+  attention group on the load/offload path; it now supplies it, so the
+  same-host prefix-cache path completes instead of raising.
+- Fixed inflated `maxserve.cache.h2d_blocks_copied` and
+  `maxserve.cache.d2h_blocks_copied` telemetry on tiered and local KV cache
+  deployments. The scheduler now resets connector transfer counters after each
+  batch metrics sample so OpenTelemetry counters report per-batch deltas.
 - Fixed `max.nn.WeightNormConvTranspose1d` raising `AttributeError` when
   constructed with its default `has_bias=False`. The constructor
   unconditionally deleted the wrapped conv's `bias` attribute, which is only
@@ -305,5 +387,18 @@ This version is still a work in progress.
   matcher across certain tool-call structural tags (e.g.
   `<|tool_call_begin|>`). The walk now runs on a deep copy of the matcher,
   leaving the real matcher untouched.
+
+- Fixed slicing and `view()` on a `max.driver.DevicePinnedBuffer` silently
+  returning a plain `Buffer`. The decayed type lost the pinned buffer's
+  no-synchronization behavior, so a later `to_numpy()` on the slice triggered
+  an unexpected device synchronization. Slices and views now preserve the
+  `DevicePinnedBuffer` type.
+
+- Fixed DeepSeek-V3.1-NVFP4 multi-token prediction (MTP) failing to load with
+  `dispatch_quant_config must be specified when dispatch_dtype is not
+  bfloat16` when expert parallelism was enabled. When a quantized model has no
+  resolvable quantization config for its draft (BF16 NextN) weights, the draft
+  config is now built with a bfloat16 dispatch dtype instead of constructing an
+  invalid `EPConfig`.
 
 ## Mojo language
