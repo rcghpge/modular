@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
@@ -17,6 +18,7 @@
 #include "MLRT/lib/Driver/DeviceContext/HIP/HIPDriver.h"
 #include "MLRT/lib/Driver/DeviceContext/Metal/MetalDeviceContext.h"
 #include "Support/BinaryID.h"
+#include "Support/RCRef.h"
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
@@ -209,6 +211,21 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(DeviceBuffer *buffer) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceBuffer_release", TRACY_COLOR_GRAY);
   // Decrement the low-level reference count.
   DeviceBufferRef::lowLevelDropRef(buffer);
+}
+
+// Reference counting for a bare `AsyncValue *` handle, backing the limited Mojo
+// `AnyAsyncValueRef` wrapper (mirrors the DeviceBuffer retain/release above). A
+// null handle is the empty/non-tracked reference, so both are no-ops on null.
+MODULAR_EXPORT void AsyncRT_AsyncValue_retain(MLRT::AsyncValue *value) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retain", TRACY_COLOR_GRAY);
+  if (value)
+    RCRef<MLRT::AsyncValue>::lowLevelAddRef(value);
+}
+
+MODULAR_EXPORT void AsyncRT_AsyncValue_release(MLRT::AsyncValue *value) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_release", TRACY_COLOR_GRAY);
+  if (value)
+    RCRef<MLRT::AsyncValue>::lowLevelDropRef(value);
 }
 
 MODULAR_EXPORT const DeviceContext *

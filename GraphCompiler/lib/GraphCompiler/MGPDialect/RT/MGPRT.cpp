@@ -348,6 +348,53 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   }
 }
 
+/// Wraps an already-owning DeviceBuffer handle (surrendered net-zero by the
+/// Mojo side via DeviceBuffer.take_handle()) in an AsyncValue<DeviceBufferRef>
+/// and returns the owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef
+/// to adopt. This is the "storage handle" half of the old
+/// MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle: the matching
+/// TensorBufferRef is built later at the pack site via
+/// MGP_RT_CreateAsyncBufferRefFromStorage.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateDeviceBufferRefAsyncValue(Driver::DeviceBuffer *handle) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  // TAKE the reference net-zero (no addRef): take_handle is `deinit self`, so
+  // adopting via takeRCRef transfers the single live reference without an extra
+  // ref (copyRCRef would leak +1, a fresh owner would double-free).
+  Driver::DeviceBufferRef buf = M::takeRCRef(handle);
+  AnyAsyncValueRef storage =
+      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(cpuDevice,
+                                                             std::move(buf));
+  // Hand the owning AsyncValue* (refcount 1) to the Mojo caller; releasePointer
+  // resets `storage` to null so its destructor does not drop the reference.
+  return storage.releasePointer();
+}
+
+/// Builds a TensorBufferRef from a data view (ptr + size) and an owning storage
+/// handle (an AsyncValue* the Mojo side surrendered net-zero), writing it into
+/// the async slot. Generalizes MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle:
+/// the storage may wrap a DeviceBufferRef, or (once producers are unified) be
+/// non-tracked or borrowed.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
+                                       size_t size,
+                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef &value = unwrap(async);
+  // Adopt the surrendered reference net-zero, then move it into the
+  // TensorBufferRef's storage.
+  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
+  auto tensorBufferRef =
+      TensorBufferRef::create(data, size, std::move(storageRef));
+  if (value.getPointer() && value.getPointer()->isIndirect()) {
+    value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
+  } else {
+    assert(!value.isReady());
+    value = value.createReady<TensorBufferRef>(cpuDevice,
+                                               std::move(tensorBufferRef));
+  }
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncNonTrackedBufferRef(void *data, size_t size,
                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
@@ -574,11 +621,10 @@ MGP_RT_GetContextAndSizeFromAsync(size_t *size,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_DestructAsyncRefs(size_t size, void **storageRefPtr, bool directRef) {
+MGP_RT_DestructAsyncRefs(size_t size, void **storageRefPtr) {
   for (size_t i = 0; i < size; ++i) {
     AnyAsyncValueRef *refAddr =
-        directRef ? reinterpret_cast<AnyAsyncValueRef *>(&storageRefPtr[i])
-                  : reinterpret_cast<AnyAsyncValueRef *>(storageRefPtr[i]);
+        reinterpret_cast<AnyAsyncValueRef *>(storageRefPtr[i]);
     // The refAddr could be nullptr here since compiled model tries to destruct
     // all async values upon failure and some of them might not have been
     // initialized.
