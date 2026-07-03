@@ -1,0 +1,122 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements memory management for the CPU HAL plugin. Allocations
+// go through the AsyncRT CPUDevice allocator, mirroring
+// CpuDeviceContext::memAlloc / memFree.
+//
+//===----------------------------------------------------------------------===//
+
+#include "Memory.h"
+#include "Common.h"
+#include "Context.h"
+#include "HAL/M_driver_memory.h"
+#include "MLRT/AsyncRT/Runtime/Allocator.h"
+#include "Queue.h"
+
+#include <new>
+
+M_driver_status_t M_driver_memory::getProperty(llvm::StringRef name,
+                                               void *value) const {
+  if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS) {
+    // On CPU the device address is simply the host pointer.
+    *static_cast<uint64_t *>(value) = reinterpret_cast<uint64_t>(ptr);
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+namespace {
+
+// Shared allocation/free helpers used by the pinned and sync entry points;
+// on CPU both kinds of memory are plain host allocations.
+M_driver_status_t allocImpl(M_driver_context_t context, uint64_t size,
+                            M_driver_memory_t *memory) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (size == 0) {
+    *memory = nullptr;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
+  // Match CpuDeviceContext::memAlloc: alignment of 1 (the allocator applies
+  // its own minimum alignment).
+  void *ptr = context->allocator()->allocateBytes(size, /*alignment=*/1);
+  if (ptr == nullptr)
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+
+  M_driver_memory_t result = new (std::nothrow) M_driver_memory{ptr, size};
+  if (result == nullptr) {
+    context->allocator()->deallocateBytes(ptr, size);
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  }
+  *memory = result;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t freeImpl(M_driver_context_t context,
+                           M_driver_memory_t memory) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (memory == nullptr)
+    return M_DRIVER_STATUS_SUCCESS;
+  context->allocator()->deallocateBytes(memory->ptr, memory->size);
+  delete memory;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+} // namespace
+
+M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
+                                               uint64_t size,
+                                               M_driver_memory_t *memory) {
+  return allocImpl(context, size, memory);
+}
+
+M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
+                                             uint64_t size,
+                                             M_driver_memory_t *memory) {
+  return allocImpl(context, size, memory);
+}
+
+M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
+                                              M_driver_memory_t memory) {
+  return freeImpl(context, memory);
+}
+
+M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
+                                            M_driver_memory_t memory) {
+  return freeImpl(context, memory);
+}
+
+M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
+                                              uint64_t size,
+                                              M_driver_memory_t *memory) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  // CPU allocation is synchronous; only the free is stream-ordered. This
+  // matches CpuDeviceContext behavior.
+  return allocImpl(queue->context, size, memory);
+}
+
+M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
+                                             M_driver_memory_t memory) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->freeAsync(memory);
+}
+
+M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
+                                           const char *property_name,
+                                           void *value) {
+  if (memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return memory->getProperty(property_name, value);
+}
