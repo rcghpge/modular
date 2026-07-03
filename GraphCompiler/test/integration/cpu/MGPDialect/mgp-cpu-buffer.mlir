@@ -71,7 +71,7 @@ mgp.model @cache : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   %buf0 = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
   %ch1 = mgp.buffer.cache %ch0, %ctx[2], %buf0 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %idx = index.constant 2
-  %buf1, %mem1 = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer, !kgen.pointer<!kgen.pointer<none>>
+  %buf1 = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<4xui8>
   %tensor = mgp.tensor.create %ch1, %buf1, %spec : !mgp.tensor<4xui8>
   mef.output %ch1, %tensor : !mef.chain, !mgp.tensor<4xui8>
@@ -93,11 +93,11 @@ mgp.model @remove_cache : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %buf1 = mgp.buffer.constant #M.dense_array<1, 2, 3, 4, 5, 6> : !M.array<6xui8>
   %ch1 = mgp.buffer.cache %ch0, %ctx[2], %buf0 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %idx = index.constant 2
-  %buf0_fromcache, %mem0 = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer, !kgen.pointer<!kgen.pointer<none>>
+  %buf0_fromcache = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer
   %ch2 = grt.chain.create (%buf0_fromcache : !mgp.buffer)
   %ch3 = mgp.buffer.remove_cached %ch2, %ctx[%idx]
   %ch4 = mgp.buffer.cache %ch3, %ctx[2], %buf1 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
-  %buf1_fromcache, %mem1 = mgp.buffer.get_cached %ch4, %ctx[%idx] : !mgp.buffer, !kgen.pointer<!kgen.pointer<none>>
+  %buf1_fromcache = mgp.buffer.get_cached %ch4, %ctx[%idx] : !mgp.buffer
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<6xui8>
   %tensor = mgp.tensor.create %ch1, %buf1_fromcache, %spec : !mgp.tensor<6xui8>
   mef.output %ch1, %tensor : !mef.chain, !mgp.tensor<6xui8>
@@ -281,7 +281,7 @@ mgp.model @buffer_cache_slice : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %buf1 = mgp.buffer.constant #M.dense_array<1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0, 6, 0, 0, 0> : !M.array<24xui8>
   %ch1 = mgp.buffer.cache %ch0, %ctx[0], %buf1 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %idx = index.constant 0
-  %buf, %mem = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer, !kgen.pointer<!kgen.pointer<none>>
+  %buf = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer
   %sliced = mgp.buffer.slice %buf, %idx0, %idx1 : !mgp.buffer
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<3xsi32>
   %tensor = mgp.tensor.create %ch0, %sliced, %spec : !mgp.tensor<3xsi32>

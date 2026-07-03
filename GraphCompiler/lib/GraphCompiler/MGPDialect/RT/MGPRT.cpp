@@ -46,12 +46,6 @@ AsyncRTWrapper<T> wrap(T *ptr) {
   return AsyncRTWrapper<T>{ptr};
 }
 
-enum BorroweeType : size_t {
-  kHandle = 0,
-  kBuffer = 1,
-  kTensor = 2,
-};
-
 //===----------------------------------------------------------------------===//
 // Functions visible from Mojo
 //===----------------------------------------------------------------------===//
@@ -171,69 +165,6 @@ COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 TMP_MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
   auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
   stateSlot.clear();
-}
-
-/// This is the implementation of the mgp.buffer.borrow primitive.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,
-                    TensorBufferRef *borrowee) {
-  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
-  TensorBufferRef buf = ::M::MLRT::TensorBufferRef::create(
-      borrowee->getBuffer(), borrowee->getSize(),
-      borrowee->getMemStorageHandle());
-  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
-    borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
-  } else {
-    CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-    borrowerValue =
-        borrowerValue.createReady<TensorBufferRef>(cpuDevice, std::move(buf));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_TensorBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
-                      size_t byteCount, size_t rank, size_t *dims, int8_t type,
-                      AnyAsyncValueRef *mem) {
-  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
-
-  TensorBufferRef buf =
-      mem ? ::M::MLRT::TensorBufferRef::create(data, byteCount, mem->copy())
-          : ::TensorBufferRef::createWithNonTrackedMemory(data, byteCount);
-
-  // Pack buffer and spec into tensor.
-  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
-  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect())
-    borrowerValue.copy().emplaceIndirect<Tensor>(std::move(buf),
-                                                 std::move(spec));
-  else {
-    CPUDevice &rt = *CPUDevice::getCurrentCPUDeviceOrNull();
-    borrowerValue =
-        borrowerValue.createReady<Tensor>(rt, std::move(buf), std::move(spec));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
-                      size_t size, AnyAsyncValueRef *mem) {
-  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
-  TensorBufferRef buf =
-      mem ? ::M::MLRT::TensorBufferRef::create(data, size, mem->copy())
-          : ::TensorBufferRef::createWithNonTrackedMemory(data, size);
-  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
-    borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
-  } else {
-    CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-    borrowerValue =
-        borrowerValue.createReady<TensorBufferRef>(cpuDevice, std::move(buf));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_BufferBorrowForTensorRef(AsyncRTWrapper<AnyAsyncValueRef> borrower,
-                                TensorBufferRef *borrowee,
-                                AnyAsyncValueRef *mem) {
-  return MGP_RT_BufferBorrowV2(borrower, borrowee->getBuffer(),
-                               borrowee->getSize(), mem);
 }
 
 /// Assigns to the borrower a tensor buffer that isn't owned by the cpuDevice
@@ -395,6 +326,59 @@ MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
   }
 }
 
+/// Builds a Tensor (TensorBufferRef + spec) from a data view (ptr + size +
+/// shape/dtype) and an owning storage handle (an AsyncValue* the Mojo side
+/// surrendered net-zero), writing it into the async slot. The tensor
+/// counterpart of MGP_RT_CreateAsyncBufferRefFromStorage.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
+                                       size_t size, size_t rank, size_t *dims,
+                                       int8_t type,
+                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef &value = unwrap(async);
+  // Adopt the surrendered reference net-zero, then move it into the tensor's
+  // TensorBufferRef storage.
+  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
+  TensorBufferRef buf =
+      TensorBufferRef::create(data, size, std::move(storageRef));
+  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
+  if (value.getPointer() && value.getPointer()->isIndirect()) {
+    value.copy().emplaceIndirect<Tensor>(std::move(buf), std::move(spec));
+  } else {
+    assert(!value.isReady());
+    value =
+        value.createReady<Tensor>(cpuDevice, std::move(buf), std::move(spec));
+  }
+}
+
+/// Retains the AsyncValue behind an existing `AnyAsyncValueRef` storage handle
+/// (e.g. a cached buffer's memory handle from TMP_MGP_RT_GetCachedBuffer) and
+/// hands the owning AsyncValue* (refcount +1) to a Mojo `AnyAsyncValueRef`. A
+/// null handle (or non-tracked storage) yields null.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_RetainAsyncValueHandle(AnyAsyncValueRef *handle) {
+  if (!handle)
+    return nullptr;
+  return handle->copy().releasePointer();
+}
+
+/// Retains the backing storage handle of a packed buffer/tensor async slot and
+/// hands the owning AsyncValue* (refcount +1) to a Mojo `AnyAsyncValueRef`.
+/// Used by unpack so an unpacked value (or a derivative) keeps its backing
+/// memory alive when it is re-packed as an output. Non-tracked storage yields
+/// null.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_RetainBufferStorage(AsyncRTWrapper<AnyAsyncValueRef> async) {
+  AnyAsyncValueRef &value = unwrap(async);
+  AnyAsyncValueRef handle;
+  if (value.isType<TensorBufferRef>())
+    handle = value.get<TensorBufferRef>().getMemStorageHandle();
+  else if (value.isType<Tensor>())
+    handle = value.get<Tensor>().getBufferRef().getMemStorageHandle();
+  return handle.releasePointer();
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncNonTrackedBufferRef(void *data, size_t size,
                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
@@ -432,34 +416,6 @@ MGP_RT_CreateAsyncNonTrackedTensor(void *data, size_t byteCount, size_t rank,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncBufferWithBorrow(
-    void *data, size_t size, AsyncRTWrapper<AnyAsyncValueRef> toBorrowFrom,
-    size_t borroweeType, AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &outVal = unwrap(async);
-  AnyAsyncValueRef &handleOrTensor = unwrap(toBorrowFrom);
-  AnyAsyncValueRef handle;
-  if (borroweeType == kHandle) {
-    handle = std::move(handleOrTensor);
-  } else if (borroweeType == kBuffer) {
-    // Use the lifetime of the other tensor by sharing the same storage handle.
-    handle = handleOrTensor.get<TensorBufferRef>().getMemStorageHandle();
-  } else {
-    assert(borroweeType == kTensor);
-    handle = handleOrTensor.get<Tensor>().getBufferRef().getMemStorageHandle();
-  }
-  TensorBufferRef buf =
-      ::M::MLRT::TensorBufferRef::create(data, size, std::move(handle));
-
-  // Emplace into the async value.
-  if (outVal.getPointer() && outVal.getPointer()->isIndirect()) {
-    outVal.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
-  } else {
-    outVal = outVal.createReady<TensorBufferRef>(cpuDevice, std::move(buf));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
                               AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
@@ -477,36 +433,6 @@ MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
   }
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncTensorWithBorrow(
-    void *data, size_t byteCount, size_t rank, size_t *dims, int8_t type,
-    AsyncRTWrapper<AnyAsyncValueRef> toBorrowFrom, size_t borroweeType,
-    AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &rt = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &outVal = unwrap(async);
-
-  // Create a borrowed buffer ref.
-  AnyAsyncValueRef &handleOrTensor = unwrap(toBorrowFrom);
-  AnyAsyncValueRef handle;
-  if (borroweeType == kHandle) {
-    handle = std::move(handleOrTensor);
-  } else if (borroweeType == kBuffer) {
-    // Use the lifetime of the other tensor by sharing the same storage handle.
-    handle = handleOrTensor.get<TensorBufferRef>().getMemStorageHandle();
-  } else {
-    assert(borroweeType == kTensor);
-    handle = handleOrTensor.get<Tensor>().getBufferRef().getMemStorageHandle();
-  }
-  TensorBufferRef buf =
-      ::M::MLRT::TensorBufferRef::create(data, byteCount, std::move(handle));
-
-  // Pack buffer and spec into tensor.
-  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
-  if (outVal.getPointer() && outVal.getPointer()->isIndirect())
-    outVal.copy().emplaceIndirect<Tensor>(std::move(buf), std::move(spec));
-  else
-    outVal = outVal.createReady<Tensor>(rt, std::move(buf), std::move(spec));
-}
 static void
 createAsyncMojoValue(void *data, void (*destructorFn)(void *),
                      AsyncRTWrapper<AnyAsyncValueRef> async,
@@ -681,20 +607,4 @@ MGP_RT_AsyncRT_CreateAsync_Error(AsyncRTWrapper<AnyAsyncValueRef> async,
     value.copy().setToError(std::move(diagnostic));
   else
     value = value.createError(cpuDevice, std::move(diagnostic));
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_GetBufferMemStorageHandle(AsyncRTWrapper<AnyAsyncValueRef> buffer,
-                                 size_t type,
-                                 AnyAsyncValueRef **memStorageHandle) {
-  AnyAsyncValueRef &unwrappedBuffer = unwrap(buffer);
-  if (type == kBuffer) {
-    *memStorageHandle =
-        unwrappedBuffer.get<TensorBufferRef>().getMemStorageHandleRef();
-  } else if (type == kTensor) {
-    *memStorageHandle =
-        unwrappedBuffer.get<Tensor>().getBufferRef().getMemStorageHandleRef();
-  } else {
-    llvm_unreachable("Unexpected buffer type");
-  }
 }

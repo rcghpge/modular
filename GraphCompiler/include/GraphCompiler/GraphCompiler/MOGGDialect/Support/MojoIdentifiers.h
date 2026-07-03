@@ -322,10 +322,8 @@ constexpr llvm::StringLiteral kFnUnpackTensor =
     "builtin_primitives.primitives.unpack_tensor";
 constexpr llvm::StringLiteral kFnAllZeros =
     "builtin_primitives.primitives.all_zeros";
-constexpr llvm::StringLiteral kFnMoggAsyncPackBorrow =
-    "builtin_primitives.primitives.mogg_async_pack_borrow";
-constexpr llvm::StringLiteral kFnGetBufferMemStorageHandle =
-    "builtin_primitives.primitives.get_buffer_mem_storage_handle";
+constexpr llvm::StringLiteral kFnMoggAsyncPackOwnedTensor =
+    "builtin_primitives.primitives.mogg_async_pack_owned_tensor";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
@@ -393,6 +391,10 @@ constexpr llvm::StringLiteral kComptimeNone = "None";
 constexpr llvm::StringLiteral kComptimeOptionalErrorEmpty = "Optional[Error]()";
 constexpr llvm::StringLiteral kComptimeMutByteBuffer =
     "builtin_primitives.primitives.MutByteBuffer";
+constexpr llvm::StringLiteral kStructOwnedByteBuffer =
+    "builtin_primitives.primitives.OwnedByteBuffer";
+constexpr llvm::StringLiteral kStructOwnedTensor =
+    "builtin_primitives.primitives.OwnedTensor";
 constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 
 //===----------------------------------------------------------------------===//
@@ -602,6 +604,42 @@ public:
   /// `get_internals()` returns a `StaticTensorSpecInternal` carrying the
   /// runtime `alignment` / `address_space`.
   MojoValue getInternals() const { return value.get(kGetInternals)(); }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `OwnedByteBuffer` value: the storage-carrying
+/// composite every `!mgp.buffer` value lowers to (a non-owning `MutByteBuffer`
+/// view plus an `AnyAsyncValueRef` storage handle, mirroring the C++
+/// `TensorBufferRef`). Consumers unwrap `.view` before handing the value to a
+/// kernel stub or a register-passable container.
+class OwnedByteBufferRef {
+public:
+  explicit OwnedByteBufferRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo field symbol name on `OwnedByteBuffer`.
+  static constexpr llvm::StringLiteral kView = "view";
+
+  /// `val.view` — the non-owning `MutByteBuffer` view over the memory.
+  MojoValue view() const { return value.get(kView); }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `OwnedTensor` value: the storage-carrying composite
+/// every `!mgp.tensor` value lowers to (a non-owning `DynamicTensor` view plus
+/// an `AnyAsyncValueRef` storage handle, the tensor-typed analogue of
+/// `OwnedByteBuffer`). Consumers unwrap `.tensor` before handing the value to a
+/// kernel stub.
+class OwnedTensorRef {
+public:
+  explicit OwnedTensorRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo field symbol name on `OwnedTensor`.
+  static constexpr llvm::StringLiteral kTensor = "tensor";
+
+  /// `val.tensor` — the non-owning `DynamicTensor` view over the memory.
+  MojoValue tensor() const { return value.get(kTensor); }
 
   MojoValue value;
 };

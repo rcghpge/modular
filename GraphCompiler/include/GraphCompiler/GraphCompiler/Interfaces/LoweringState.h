@@ -29,6 +29,10 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
 
+namespace M::MOGG {
+class GenericCompiledRegionOp;
+}
+
 namespace M::MGP {
 
 //===----------------------------------------------------------------------===//
@@ -468,8 +472,7 @@ public:
   /// Packs outputs and unpacks inputs of a MOGG::GenericCompiledRegionOp. Input
   /// is a Operation* because including MOGG ops in this header will lead to a
   /// circular dependency.
-  static void lowerMOGGABI(Operation *kernelOp,
-                           const mlir::BitVector &shouldPack);
+  static void lowerMOGGABI(MOGG::GenericCompiledRegionOp kernelOp);
 
 private:
   //===-----------------------------------------------------------------===//

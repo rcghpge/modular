@@ -1210,48 +1210,6 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 }
 
 
-def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
-  InferTypeOpAdaptor,
-  Pure,
-]> {
-  let arguments = (ins
-    AnyType:$input,
-    AnyType:$mem
-  );
-  let results = (outs MOGG_Async:$output);
-  let summary = "Borrows the input tensor ref value";
-  let description = [{
-    When another operation returns an async value, we add this borrow to keep
-    track of the fact that the returned async value needs to be borrowed by the
-    output of the kernel.
-
-    For example, for an op like `mgp.buffer.get_cached`, the returned value will
-    be an AnyAsyncValueRef. If that value is immediately used by an output op,
-    at some point during the Mojo emission, we will have to grab the output from
-    the implicit void** (array of inputs and outputs) and assign to it this
-    value. This is effectively a borrow. The reason we don't do this in the op
-    that returns the async value is because this is re-usable. If a user of this
-    operation is not an output op, it should just use the input. This is done as
-    a canonicalization step. Also, if this operation has no user, it will be
-    folded. This is why it isn't pure at this time.
-
-    Note that this operation is effectively a symptom of an incomplete type
-    system in generic compiled regions. In reality, we should explicitly model
-    the void** input/output array and mark types as mogg.async<T>. This way, the
-    signature of this borrow op would instead be two inputs (borrow and
-    borrowee) and there would be no output op in a kernel.
-
-    Another similar op has this issue: mogg.async.ready. It does not create a
-    chain but rather gets the kernel chain from the void** and sets it to ready.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
 def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
@@ -1555,53 +1513,6 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
   let assemblyFormat = [{
     `(` $dynamic_dims `)` attr-dict `:` functional-type(operands, results)
   }];
-}
-
-def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyncValueRef", [
-  Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-]> {
-  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
-  let summary = "Returns an empty MLRT::AnyAsyncValueRef";
-  let description = [{
-    Required to serve as the borrowee for mogg.async.pack.borrow when the value
-    is coming from a mgp.buffer.constant. The content of the placeholder is
-    initialized to be nullptr.
-  }];
-
-  let assemblyFormat = [{attr-dict}];
-}
-
-def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "Returns the memory storage handle of a tensor or buffer.";
-  let description = [{
-    For a given MGP device buffer or tensor (or its `!mogg.async<T>` wrapper),
-    returns the AnyAsyncValueRef that represents the memory storage. This is
-    required as the borrowee to mogg.async.pack.borrow. The result is always an
-    AnyAsyncValueRef handle, independent of the input type.
-  }];
-
-  let arguments = (ins MOGG_AsyncOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$value);
-  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
-
-  let builders = [
-    // The result is always an AnyAsyncValueRef handle (`!kgen.pointer<pointer<
-    // none>>`), so callers need only supply the source value.
-    OpBuilder<(ins "::mlir::Value":$value), [{
-      build($_builder, $_state,
-            ::M::KGEN::PointerType::get(::M::KGEN::PointerType::get(
-                ::M::KGEN::NoneType::get($_builder.getContext()))),
-            value);
-    }]>,
-  ];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-  let hasCanonicalizeMethod = 1;
 }
 
 def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [
