@@ -107,6 +107,21 @@ def test_invalid_device_error_message() raises:
         _ = driver[].get_device[Int64(99)]()
 
 
+def test_memory_wrap_unwrap() raises:
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var buf = ctx[].alloc_sync(64)
+    var addr = ctx[].memory_get_address(buf)
+    var wrapped = ctx[].wrap_memory(addr, 64)
+    assert_equal(ctx[].memory_get_address(wrapped), addr)
+    assert_equal(ctx[].unwrap_memory(wrapped), addr)
+    # `wrapped` is non-owning; dropping it frees nothing, and `buf` still
+    # owns the allocation.
+    _ = wrapped^
+    assert_equal(ctx[].memory_get_address(buf), addr)
+
+
 # ===-----------------------------------------------------------------------===#
 # Queue tests
 # ===-----------------------------------------------------------------------===#
@@ -227,6 +242,7 @@ def main() raises:
     test_invalid_device_id()
     test_context_create()
     test_invalid_device_error_message()
+    test_memory_wrap_unwrap()
     test_queue_create_and_sync()
     test_queue_record_event()
     test_queue_wait_for_events()

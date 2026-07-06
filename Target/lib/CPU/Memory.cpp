@@ -65,8 +65,14 @@ M_driver_status_t freeImpl(M_driver_context_t context,
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
-  context->allocator()->deallocateBytes(memory->ptr, memory->size);
+  bool owning = memory->owning;
+  void *ptr = memory->ptr;
+  uint64_t size = memory->size;
   delete memory;
+  // A non-owning handle wraps memory this plugin did not allocate, so it frees
+  // only the handle above and leaves the region alone.
+  if (owning)
+    context->allocator()->deallocateBytes(ptr, size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -92,6 +98,41 @@ M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
 M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
                                             M_driver_memory_t memory) {
   return freeImpl(context, memory);
+}
+
+M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
+                                       uint64_t address, uint64_t size,
+                                       bool owning, M_driver_memory_t *memory) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (address == 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  // On CPU the device address is the host pointer, so wrapping is just
+  // recording it. `owning=true` is only valid for an address from this
+  // plugin's own allocator (e.g. one released with unwrap), so freeing it
+  // routes back through the allocator with the retained size.
+  M_driver_memory_t result = new (std::nothrow)
+      M_driver_memory{reinterpret_cast<void *>(address), size, owning};
+  if (result == nullptr)
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  *memory = result;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
+                                         M_driver_memory_t memory,
+                                         uint64_t *address) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (memory == nullptr || address == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+
+  memory->owning = false;
+  *address = reinterpret_cast<uint64_t>(memory->ptr);
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,

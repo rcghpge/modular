@@ -70,6 +70,18 @@ DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
   return memory;
 }
 
+DriverResult<M_driver_memory_t>
+M_driver_context::wrapSync(uint64_t address, uint64_t size, bool owning) {
+  (void)size;
+  if (address == 0)
+    return tl::unexpected(M_DRIVER_STATUS_INVALID_ARG);
+  M_driver_memory_t memory = new (std::nothrow)
+      M_driver_memory{reinterpret_cast<void *>(address), owning};
+  if (!memory)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  return memory;
+}
+
 M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
@@ -77,7 +89,10 @@ M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &driver = device.driver.rawCuda;
   void *ptr = memory->ptr;
+  bool owning = memory->owning;
   delete memory;
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
   if (CUresult r = driver.cuMemFreeHost(ptr); r != CUDA_SUCCESS)
     return cudaErrorStatus(&device.driver, r, "cuMemFreeHost");
   return M_DRIVER_STATUS_SUCCESS;
@@ -90,7 +105,10 @@ M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &driver = device.driver.rawCuda;
   CUdeviceptr devicePtr = reinterpret_cast<CUdeviceptr>(memory->ptr);
+  bool owning = memory->owning;
   delete memory;
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
   if (CUresult r = driver.cuMemFree(devicePtr); r != CUDA_SUCCESS)
     return cudaErrorStatus(&device.driver, r, "cuMemFree");
   return M_DRIVER_STATUS_SUCCESS;

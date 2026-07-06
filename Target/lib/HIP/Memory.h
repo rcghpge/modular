@@ -13,6 +13,9 @@
 
 struct M_driver_memory {
   void *ptr;
+  // False for wrapped (externally-owned) memory: freeing the handle must
+  // not free the underlying region.
+  bool owning = true;
 
   M_driver_status_t getProperty(llvm::StringRef name, void *value) {
     if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS)

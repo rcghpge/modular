@@ -31,6 +31,8 @@ struct M_driver_context {
 
   DriverResult<M_driver_memory_t> allocPinned(uint64_t size);
   DriverResult<M_driver_memory_t> allocSync(uint64_t size);
+  DriverResult<M_driver_memory_t> wrapSync(uint64_t address, uint64_t size,
+                                           bool owning);
   M_driver_status_t freePinned(M_driver_memory_t memory);
   M_driver_status_t freeSync(M_driver_memory_t memory);
 };

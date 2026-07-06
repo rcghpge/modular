@@ -218,16 +218,43 @@ M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
 
 // ---------------------------------------------------------------------------
 // Memory
+//
+// A handle is a small heap struct holding the allocation pointer and whether
+// the mock owns it. `owning` is true for alloc'd blocks and owning wraps, and
+// false for non-owning wraps and any handle after unwrap; freeing a
+// non-owning handle reclaims only the struct, never the underlying pointer.
 // ---------------------------------------------------------------------------
+struct M_driver_memory {
+  void *ptr;
+  bool owning;
+};
+
 static M_driver_status_t mock_alloc(uint64_t size, M_driver_memory_t *memory) {
   if (!memory)
     return M_DRIVER_STATUS_INVALID_ARG;
   if (size == 0)
     return M_DRIVER_STATUS_INVALID_ARG;
-  void *p = malloc((size_t)size);
-  if (!p)
+  void *ptr = malloc((size_t)size);
+  if (!ptr)
     return M_DRIVER_STATUS_OUT_OF_MEMORY;
-  *memory = (M_driver_memory_t)p;
+  M_driver_memory_t m = malloc(sizeof(*m));
+  if (!m) {
+    free(ptr);
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  }
+  m->ptr = ptr;
+  m->owning = true;
+  *memory = m;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Frees the handle, reclaiming the underlying allocation only when owned.
+static M_driver_status_t mock_free(M_driver_memory_t memory) {
+  if (!memory)
+    return M_DRIVER_STATUS_SUCCESS;
+  if (memory->owning)
+    free(memory->ptr);
+  free(memory);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -243,8 +270,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
                                               M_driver_memory_t memory) {
   (void)context;
-  free((void *)memory);
-  return M_DRIVER_STATUS_SUCCESS;
+  return mock_free(memory);
 }
 
 M_DRIVER_API_EXPORT
@@ -259,7 +285,35 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
                                             M_driver_memory_t memory) {
   (void)context;
-  free((void *)memory);
+  return mock_free(memory);
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
+                                       uint64_t address, uint64_t size,
+                                       bool owning, M_driver_memory_t *memory) {
+  (void)context;
+  (void)size;
+  if (!memory || address == 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_memory_t m = malloc(sizeof(*m));
+  if (!m)
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  m->ptr = (void *)(uintptr_t)address;
+  m->owning = owning;
+  *memory = m;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
+                                         M_driver_memory_t memory,
+                                         uint64_t *address) {
+  (void)context;
+  if (!memory || !address)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  memory->owning = false;
+  *address = (uint64_t)(uintptr_t)memory->ptr;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -275,8 +329,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
                                              M_driver_memory_t memory) {
   (void)queue;
-  free((void *)memory);
-  return M_DRIVER_STATUS_SUCCESS;
+  return mock_free(memory);
 }
 
 M_DRIVER_API_EXPORT
@@ -287,7 +340,7 @@ M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
     return M_DRIVER_STATUS_INVALID_ARG;
 
   if (strcmp(property_name, M_DRIVER_MEMORY_PROPERTY_ADDRESS) == 0) {
-    *(void **)value = (void *)memory;
+    *(void **)value = memory->ptr;
     return M_DRIVER_STATUS_SUCCESS;
   }
 
@@ -321,7 +374,7 @@ M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 const void *src) {
   (void)queue;
   if (dst && dst->memory && src && dst->size > 0)
-    memcpy((char *)dst->memory + dst->offset, src, (size_t)dst->size);
+    memcpy((char *)dst->memory->ptr + dst->offset, src, (size_t)dst->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -331,7 +384,7 @@ M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   M_driver_memory_view_t src) {
   (void)queue;
   if (dst && src && src->memory && src->size > 0)
-    memcpy(dst, (char *)src->memory + src->offset, (size_t)src->size);
+    memcpy(dst, (char *)src->memory->ptr + src->offset, (size_t)src->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -341,8 +394,8 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
                                                    M_driver_memory_view_t src) {
   (void)queue;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
-    memcpy((char *)dst->memory + dst->offset, (char *)src->memory + src->offset,
-           (size_t)dst->size);
+    memcpy((char *)dst->memory->ptr + dst->offset,
+           (char *)src->memory->ptr + src->offset, (size_t)dst->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -354,7 +407,7 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
-  memset((char *)dst->memory + dst->offset, value, (size_t)dst->size);
+  memset((char *)dst->memory->ptr + dst->offset, value, (size_t)dst->size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -366,7 +419,7 @@ M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
-  char *p = (char *)dst->memory + dst->offset;
+  char *p = (char *)dst->memory->ptr + dst->offset;
   for (uint64_t i = 0; i < dst->size; i += value_size) {
     uint64_t remaining = dst->size - i;
     uint64_t n = remaining < value_size ? remaining : value_size;

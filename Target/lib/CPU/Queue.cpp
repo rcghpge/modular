@@ -145,7 +145,12 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
   auto *allocator = context->allocator();
   void *ptr = memory->ptr;
   uint64_t size = memory->size;
+  bool owning = memory->owning;
   delete memory;
+  // A non-owning handle wraps memory this plugin did not allocate; drop the
+  // handle without touching the region.
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
   return enqueueWork(
       [allocator, ptr, size]() { allocator->deallocateBytes(ptr, size); });
 }

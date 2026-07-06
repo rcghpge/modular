@@ -71,6 +71,23 @@ M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
   return context->free(memory);
 }
 
+M_driver_status_t M_driver_memory_wrap(
+    [[maybe_unused]] M_driver_context_t context,
+    [[maybe_unused]] uint64_t address, [[maybe_unused]] uint64_t size,
+    [[maybe_unused]] bool owning, [[maybe_unused]] M_driver_memory_t *memory) {
+  // A raw GPU address cannot be wrapped back into an MTLBuffer.
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t
+M_driver_memory_unwrap([[maybe_unused]] M_driver_context_t context,
+                       [[maybe_unused]] M_driver_memory_t memory,
+                       [[maybe_unused]] uint64_t *address) {
+  // The SharedPtr<MTL::Buffer> is the allocation; a non-owning Metal
+  // handle cannot exist.
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
 M_driver_status_t
 M_driver_memory_alloc_async([[maybe_unused]] M_driver_queue_t queue,
                             [[maybe_unused]] uint64_t size,

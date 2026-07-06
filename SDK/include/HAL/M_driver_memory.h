@@ -7,6 +7,8 @@
 #ifndef M_DRIVER_MEMORY_H
 #define M_DRIVER_MEMORY_H
 
+#include <stdbool.h>
+
 #include "M_driver_common.h"
 
 #ifdef __cplusplus
@@ -78,6 +80,66 @@ M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
 
 typedef M_driver_status_t (*M_driver_memory_free_sync_func_ptr_t)(
     M_driver_context_t context, M_driver_memory_t memory);
+
+/**
+ * Wrap an existing memory region in a memory handle, without allocating.
+ *
+ * When @p owning is false the region is treated as externally owned
+ * (e.g. another library's allocation on the same device): the plugin
+ * never frees it, freeing the handle releases only the plugin's
+ * bookkeeping, and the caller must keep the region alive for the
+ * handle's lifetime. When @p owning is true, freeing the handle frees
+ * the region through the plugin's normal path — this is only valid for
+ * an address that originated from this plugin's own allocator (e.g. one
+ * previously released with M_driver_memory_unwrap). Only device
+ * allocations round-trip this way: a wrapped handle always frees through
+ * the device path, never the pinned-host path.
+ *
+ * @param[in] context The context the region belongs to.
+ * @param[in] address Base address of the region, in the address space the
+ *            plugin uses for device memory. Must be non-zero; a zero
+ *            address is rejected with M_DRIVER_STATUS_INVALID_ARG.
+ * @param[in] size Size in bytes of the region.
+ * @param[in] owning Whether freeing the handle should free the region.
+ * @param[out] memory Pointer to the handle wrapping the region.
+ * @return Standard Status Protocol, M_DRIVER_STATUS_UNIMPLEMENTED if the
+ *         plugin cannot represent wrapped allocations, or
+ *         M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
+                                       uint64_t address, uint64_t size,
+                                       bool owning, M_driver_memory_t *memory);
+
+typedef M_driver_status_t (*M_driver_memory_wrap_func_ptr_t)(
+    M_driver_context_t context, uint64_t address, uint64_t size, bool owning,
+    M_driver_memory_t *memory);
+
+/**
+ * Release ownership of the underlying region from a memory handle and
+ * return its address.
+ *
+ * The inverse of M_driver_memory_wrap: after this call the handle is
+ * non-owning — freeing it releases only the plugin's bookkeeping — and
+ * the caller becomes responsible for the region at the returned
+ * address. The handle itself stays valid until freed. Calling this on
+ * an already non-owning handle only returns the address.
+ *
+ * @param[in] context The context the handle belongs to.
+ * @param[in] memory The handle to release ownership from.
+ * @param[out] address Base address of the underlying region.
+ * @return Standard Status Protocol, M_DRIVER_STATUS_UNIMPLEMENTED if the
+ *         plugin cannot represent non-owning handles,
+ *         M_DRIVER_STATUS_BAD_MEMORY if the handle is not valid, or
+ *         M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
+                                         M_driver_memory_t memory,
+                                         uint64_t *address);
+
+typedef M_driver_status_t (*M_driver_memory_unwrap_func_ptr_t)(
+    M_driver_context_t context, M_driver_memory_t memory, uint64_t *address);
 
 /**
  * Asynchronously allocate memory on the given queue.

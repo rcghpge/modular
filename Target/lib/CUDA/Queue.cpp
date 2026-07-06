@@ -65,7 +65,10 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
   auto &cuda = context.device.driver.rawCuda;
 
   CUdeviceptr devicePtr = reinterpret_cast<CUdeviceptr>(memory->ptr);
+  bool owning = memory->owning;
   delete memory;
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
   if (CUresult r = cuda.cuMemFreeAsync(devicePtr, stream); r != CUDA_SUCCESS)
     return cudaErrorStatus(&context.device.driver, r, "cuMemFreeAsync");
   return M_DRIVER_STATUS_SUCCESS;

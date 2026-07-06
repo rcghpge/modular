@@ -14,6 +14,7 @@ from __future__ import annotations
 import ctypes
 
 import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
+import pytest
 from max.sys._hal import (
     Buffer,
     Bundle,
@@ -86,6 +87,39 @@ def test_context_alloc_host_pinned_returns_buffer() -> None:
     buf = ctx.alloc_host_pinned(64)
     assert isinstance(buf, Buffer)
     assert buf.byte_size == 64
+
+
+def test_context_wrap_unwrap() -> None:
+    driver = Driver()
+    # Metal can't wrap a raw GPU address back into an MTLBuffer, so the whole
+    # wrap/unwrap surface is unimplemented there.
+    if driver.name == "Metal":
+        pytest.skip("wrap/unwrap unsupported on Metal")
+    ctx = driver.get_device(0).get_context()
+
+    # A zero address is rejected by every plugin rather than minting a
+    # handle that would segfault on first use.
+    with pytest.raises(Exception):
+        ctx.wrap_memory(0, 64)
+
+    # A pinned buffer cannot round-trip — a wrapped handle always frees
+    # through the device path — so unwrap rejects it up front.
+    with pytest.raises(Exception, match="pinned"):
+        ctx.unwrap_memory(ctx.alloc_host_pinned(32))
+
+    orig = ctx.alloc_sync(64)
+    addr = ctx.memory_get_address(orig)
+    wrapped = ctx.wrap_memory(addr, 64)
+    assert ctx.memory_get_address(wrapped) == addr
+    del wrapped
+    assert ctx.memory_get_address(orig) == addr
+
+    victim = ctx.alloc_sync(64)
+    victim_addr = ctx.memory_get_address(victim)
+    assert ctx.unwrap_memory(victim) == victim_addr
+    adopted = ctx.wrap_memory(victim_addr, 64, owning=True)
+    del victim
+    del adopted
 
 
 # ----------------------------------------------------------------------

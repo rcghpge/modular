@@ -64,6 +64,18 @@ DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
   return memory;
 }
 
+DriverResult<M_driver_memory_t>
+M_driver_context::wrapSync(uint64_t address, uint64_t size, bool owning) {
+  (void)size;
+  if (address == 0)
+    return tl::unexpected(M_DRIVER_STATUS_INVALID_ARG);
+  auto *memory = new (std::nothrow)
+      M_driver_memory{reinterpret_cast<void *>(address), owning};
+  if (!memory)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  return memory;
+}
+
 M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
@@ -73,7 +85,10 @@ M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
     return preamble.error();
 
   void *ptr = memory->ptr;
+  bool owning = memory->owning;
   delete memory;
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
 
   HIPApi &hip = dev.getDriver().hip();
   if (hipError_t r = hip.hipHostFree(ptr); r != hipSuccess)
@@ -91,7 +106,10 @@ M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
     return preamble.error();
 
   void *ptr = memory->ptr;
+  bool owning = memory->owning;
   delete memory;
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
 
   HIPApi &hip = dev.getDriver().hip();
   if (hipError_t r = hip.hipFree(ptr); r != hipSuccess)
