@@ -377,6 +377,7 @@ public:
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
+  ErrorOr<DeviceContextRef> selectStream(unsigned streamId) override;
   ErrorOr<DeviceGraphBuilderRef> createGraphBuilder() override;
 
   ErrorOrSuccess synchronize() override;
@@ -414,6 +415,12 @@ public:
 
 private:
   friend class HIPDeviceBuffer;
+
+  // Private constructor for `selectStream` views: shares an existing stream
+  // pool (and therefore the base context's streams + device) and only differs
+  // in which pooled stream is active.
+  HIPDeviceContext(HIPDevice &device, HIPStreamPoolRef streamPool,
+                   unsigned activeStreamId);
 
   const HIPDriver &driver_;
   hipDevice_t device_;

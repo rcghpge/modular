@@ -2103,4 +2103,46 @@ def MGP_DeviceWaitOp : MGP_DeviceOp<"device_wait", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// DeviceContextSelectStreamOp
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceContextSelectStreamOp : MGP_Op<"device_context.select_stream", [
+  AllTypesMatch<["deviceContext", "view"]>,
+  Pure,
+]> {
+  let summary = "Returns a device-context view bound to a given stream.";
+  let description = [{
+    Returns a "retain-all" view of the input device context whose current
+    stream is `streamId`. The view shares the input context's full stream set,
+    driver context, and device memory pool; only the current-stream selector
+    differs.
+
+    This is the value-level handle used to bind a stream-tagged subgraph call to
+    a side stream without threading per-stream device contexts through the model
+    as extra block arguments: the base device context is already an implicit
+    argument of every model, so the view is derived locally at the call site.
+    Because the view keeps the full stream set, nested selections compose.
+
+    Backends without a multi-stream model return a view equivalent to the input
+    context, so all work runs on its single stream.
+
+    This op is executed directly by the MGP runtime (a runtime primitive
+    registered in `registerMGPPrimitives`, like `mgp.runtime.create`), not
+    lowered into a compiled kernel region: it implements no `EmitsMojoInterface`,
+    so `mgp-lower-primitives` leaves it intact and the executor dispatches it by
+    name to its C++ primitive, which produces the view `DeviceContextRef`.
+  }];
+
+  let arguments = (ins
+    MGP_DeviceContextType:$deviceContext,
+    UI64Attr:$streamId
+  );
+  let results = (outs MGP_DeviceContextType:$view);
+  let assemblyFormat = [{
+    `[` $streamId `]` $deviceContext attr-dict `:`
+        qualified(type($deviceContext))
+  }];
+}
+
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD

@@ -1375,6 +1375,18 @@ HIPDeviceContext::HIPDeviceContext(HIPDevice &device, hipStream_t stream)
 // destructor runs when the last co-owner is released.
 HIPDeviceContext::~HIPDeviceContext() {}
 
+// Constructor for `selectStream` views: shares an existing stream pool (and
+// therefore the base context's streams + device) and only differs in which
+// pooled stream is active. `stream_` caches `streamPool_->get(activeStreamId)`.
+HIPDeviceContext::HIPDeviceContext(HIPDevice &device,
+                                   HIPStreamPoolRef streamPool,
+                                   unsigned activeStreamId)
+    : DeviceContext(device), driver_(device.hipDriver()),
+      device_(device.hipDevice()), streamPool_(std::move(streamPool)),
+      stream_(streamPool_->get(activeStreamId)) {
+  M::initTracyRocm();
+}
+
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
@@ -1794,6 +1806,23 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) {
 }
 
 unsigned HIPDeviceContext::numStreams() const { return streamPool_->size(); }
+
+ErrorOr<DeviceContextRef> HIPDeviceContext::selectStream(unsigned streamId) {
+  // Streams are created once at model setup (see ensureStreamCountForDevices in
+  // MEFModel); a stream id past the end of the pool is a programming error.
+  if (streamId >= streamPool_->size())
+    return Error("invalid stream id: " + llvm::Twine(streamId));
+
+  // Selecting the already-active stream is a no-op: hand back this context.
+  if (streamPool_->get(streamId) == stream_)
+    return DeviceContextRef::copy(this);
+
+  // Return a retain-all view: a new context co-owning the same stream pool and
+  // device (and therefore the same device memory pool), differing only in which
+  // pooled stream is active.
+  return DeviceContextRef::take(
+      new HIPDeviceContext(HIPDevice::cast(device()), streamPool_, streamId));
+}
 
 ErrorOr<DeviceStreamRef>
 HIPDeviceContext::createExternalStream(void *externalStream) {

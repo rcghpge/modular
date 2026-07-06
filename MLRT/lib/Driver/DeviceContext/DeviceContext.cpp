@@ -1509,6 +1509,14 @@ DeviceContext::operator!=(const DeviceContext &other) const {
 
 unsigned DeviceContext::numStreams() const { return 1; }
 
+ErrorOr<DeviceContextRef> DeviceContext::selectStream(unsigned streamId) {
+  // No multi-stream model: only the single default stream (id 0) exists, so any
+  // other stream id is a programming error. Stream 0 resolves to this context.
+  if (streamId != 0)
+    return Error("invalid stream id: " + llvm::Twine(streamId));
+  return DeviceContextRef::copy(this);
+}
+
 MemoryManagerFreeList &DeviceContext::freeList() const { return *freeList_; }
 MemoryManagerFreeList &DeviceContext::hostFreeList() const {
   return *hostFreeList_;

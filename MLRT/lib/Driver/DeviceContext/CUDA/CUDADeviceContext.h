@@ -445,6 +445,7 @@ public:
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
+  ErrorOr<DeviceContextRef> selectStream(unsigned streamId) override;
   ErrorOr<DeviceGraphBuilderRef> createGraphBuilder() override;
 
   ErrorOrSuccess synchronize() override;
@@ -504,16 +505,25 @@ public:
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 
 private:
+  // Private constructor for `selectStream` views: shares an existing stream
+  // pool (and therefore the base context's streams + CUcontext) and only
+  // differs in which pooled stream is active.
+  CUDADeviceContext(CUDADevice &device, CUcontext context,
+                    CUDAStreamPoolRef streamPool, unsigned activeStreamId);
+
   const CUDADriver &driver_;
   const CUcontext context_;
 
-  // The set of streams owned by this context. Stream 0 is the base stream this
-  // context submits to; `createStream` appends additional streams. The pool
-  // owns the streams and destroys them when the context is released.
+  // The set of streams owned by this context. Stream 0 is the base stream; a
+  // `selectStream` view co-owns the same pool and selects another index.
+  // `createStream` appends additional streams. The pool owns the streams and
+  // destroys them when the last co-owner is released.
   CUDAStreamPoolRef streamPool_;
 
-  // Cached handle of the base stream (streamPool_->get(0)). All enqueue/sync/
-  // alloc operations submit to this stream.
+  // Cached copy of `streamPool_->get(activeStreamId)`: the currently selected
+  // stream this context submits to. The base context selects stream 0; a
+  // `selectStream` view selects another index into the shared pool. All
+  // enqueue/sync/alloc operations submit to this stream.
   CUstream stream_;
 
   bool logLoadFunction_ = false;

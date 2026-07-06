@@ -1539,6 +1539,20 @@ CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
 
 CUDADeviceContext::~CUDADeviceContext() {}
 
+// Constructor for `selectStream` views: shares an existing stream pool (and
+// therefore the base context's streams + CUcontext) and only differs in which
+// pooled stream is active. `stream_` caches `streamPool_->get(activeStreamId)`.
+CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
+                                     CUDAStreamPoolRef streamPool,
+                                     unsigned activeStreamId)
+    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+      streamPool_(std::move(streamPool)),
+      stream_(streamPool_->get(activeStreamId)) {
+  logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
+  logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
+  M::initTracyCuda();
+}
+
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
                                            Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memAlloc", TRACY_COLOR_PURPLE);
@@ -2031,6 +2045,23 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {
 }
 
 unsigned CUDADeviceContext::numStreams() const { return streamPool_->size(); }
+
+ErrorOr<DeviceContextRef> CUDADeviceContext::selectStream(unsigned streamId) {
+  // Streams are created once at model setup (see ensureStreamCountForDevices in
+  // MEFModel); a stream id past the end of the pool is a programming error.
+  if (streamId >= streamPool_->size())
+    return Error("invalid stream id: " + llvm::Twine(streamId));
+
+  // Selecting the already-active stream is a no-op: hand back this context.
+  if (streamPool_->get(streamId) == stream_)
+    return DeviceContextRef::copy(this);
+
+  // Return a retain-all view: a new context co-owning the same stream pool and
+  // CUcontext (and therefore the same device memory pool), differing only in
+  // which pooled stream is active.
+  return DeviceContextRef::take(new CUDADeviceContext(
+      CUDADevice::cast(device()), context_, streamPool_, streamId));
+}
 
 ErrorOr<DeviceStreamRef>
 CUDADeviceContext::createExternalStream(void *externalStream) {

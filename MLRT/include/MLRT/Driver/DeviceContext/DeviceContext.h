@@ -1018,6 +1018,13 @@ public:
   // which only counts internally-managed streams.
   virtual ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream);
 
+  // Returns a view of this context whose current stream is `streamId`. The view
+  // shares this context's full stream set, driver context, and device memory
+  // pool; only the current-stream selector differs. Backends without a
+  // multi-stream model return this context, so all work runs on its single
+  // stream.
+  virtual ErrorOr<DeviceContextRef> selectStream(unsigned streamId);
+
   virtual ErrorOr<DeviceGraphBuilderRef> createGraphBuilder();
 
   virtual ErrorOrSuccess synchronize() = 0;

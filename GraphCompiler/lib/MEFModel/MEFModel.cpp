@@ -147,6 +147,32 @@ Model::Model(std::string name, SmallVector<DeviceRef> devices,
   initializeSignature(inputSpecs, outputSpecs, inputNames, outputNames);
 }
 
+static ErrorOrSuccess
+ensureStreamCountForDevices(ArrayRef<AnyAsyncValueRef> deviceContextArgs,
+                            int64_t streamCount) {
+  if (streamCount <= 1)
+    return success();
+
+  for (const AnyAsyncValueRef &deviceContextArg : deviceContextArgs) {
+    // Cast AsyncValueRef to DeviceContextRef
+    auto *ctxRefPtr = dyn_cast<Driver::DeviceContextRef>(deviceContextArg);
+    if (!ctxRefPtr || !ctxRefPtr->getPointer())
+      return Error("DeviceContextRef is null");
+    Driver::DeviceContextRef ctxRef = *ctxRefPtr;
+    // Only CUDA/HIP device contexts support multi-stream.
+    Driver::Device::API api = ctxRef->device().api();
+    if (api != Driver::Device::cudaAPI && api != Driver::Device::hipAPI)
+      continue;
+    // Grow the context's stream pool until it holds `streamCount` streams.
+    for (unsigned i = ctxRef->numStreams(); i < streamCount; ++i) {
+      if (auto errorOrStream = ctxRef->createStream())
+        return errorOrStream.takeError();
+    }
+  }
+
+  return success();
+}
+
 MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
              const M::GraphCompiler::Driver::DeviceMap &deviceMap) const {
@@ -171,6 +197,19 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
         location.copy());
   initArgs.append(std::make_move_iterator(deviceContextsOr->begin()),
                   std::make_move_iterator(deviceContextsOr->end()));
+
+  // Pre-create the side streams each device's context may use, before any
+  // capture begins. The count defaults to 2 (base + one side stream) and is
+  // overridable via the device-context.stream-count config key.
+  const int64_t streamCount =
+      Driver::DeviceContext::configAsInt("stream-count", 2);
+  ErrorOrSuccess streamError = ensureStreamCountForDevices(
+      llvm::ArrayRef(initArgs).take_back(getDevices().size()), streamCount);
+  if (streamError.isError())
+    return MLRT::EncodedDiagnostic(
+        Twine("setup for model ") + getName() +
+            " failed to create device streams: " + streamError.getError(),
+        location.copy());
 
   // Run the init block.
   auto results = initFn->invoke(initArgs, cpuDevice);

@@ -573,6 +573,17 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.device_context.select_stream
+//===----------------------------------------------------------------------===//
+
+static ErrorOr<M::Driver::DeviceContextRef>
+mgp_device_context_select_stream(M::Driver::DeviceContextRef &deviceContext,
+                                 MEFAttr<uint64_t> streamId) {
+  TRACY_ZONE_SCOPED_NC("mgp_device_context_select_stream", TRACY_COLOR_TEAL);
+  return deviceContext->selectStream(static_cast<unsigned>(*streamId));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.buffer.cache
 //===----------------------------------------------------------------------===//
 
@@ -602,6 +613,8 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create", mgp_runtime_create);
+  ADD_PRIMITIVE(registry, "mgp.device_context.select_stream",
+                mgp_device_context_select_stream);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
