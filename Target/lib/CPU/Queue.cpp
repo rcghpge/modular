@@ -108,29 +108,32 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
 
   void *dstPtr = static_cast<uint8_t *>(dst->ptr) + offset;
   return enqueueWork([=]() {
-    size_t count = size / valueSize;
+    // `dstPtr` (dst->ptr + offset) is not guaranteed to be aligned to
+    // `valueSize` -- the fill contract only constrains `size`, not `offset`.
+    // Store via memcpy rather than casting to uintN_t* and dereferencing, which
+    // would be undefined behavior on a misaligned pointer (and trips
+    // -fsanitize=alignment). This mirrors the alignment-safe M::fillHomogeneous
+    // path used by CpuDeviceContext.
+    auto *bytes = static_cast<uint8_t *>(dstPtr);
     switch (valueSize) {
     case 1:
-      memset(dstPtr, static_cast<uint8_t>(value), size);
+      memset(bytes, static_cast<uint8_t>(value), size);
       break;
     case 2: {
       uint16_t v16 = static_cast<uint16_t>(value);
-      uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p16[i] = v16;
+      for (size_t i = 0; i < size; i += sizeof(v16))
+        memcpy(bytes + i, &v16, sizeof(v16));
       break;
     }
     case 4: {
       uint32_t v32 = static_cast<uint32_t>(value);
-      uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p32[i] = v32;
+      for (size_t i = 0; i < size; i += sizeof(v32))
+        memcpy(bytes + i, &v32, sizeof(v32));
       break;
     }
     case 8: {
-      uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p64[i] = value;
+      for (size_t i = 0; i < size; i += sizeof(value))
+        memcpy(bytes + i, &value, sizeof(value));
       break;
     }
     }

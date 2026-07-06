@@ -8,6 +8,11 @@
 #include "Fixture.h"
 #include "HAL/M_driver_api.h"
 
+#include "llvm/ADT/ScopeExit.h"
+
+#include <array>
+#include <cstdint>
+
 // CPU-plugin-specific cases beyond the shared ones in PluginTest.cpp.
 
 TEST_F(DriverPluginTest, CustomStatusMessage) {
@@ -25,5 +30,56 @@ TEST_F(DriverPluginQueueTest, QueueIsStream) {
     bool isStream = false;
     ASSERT_SUCCESS(queue_is_stream(queue, &isStream));
     EXPECT_TRUE(isStream);
+  }
+}
+
+// Regression test for filling at a destination offset that is not aligned to
+// value_size. The fill contract only requires dst->size to be a multiple of
+// value_size, not that dst->offset is aligned to it, so the CPU plugin must
+// handle a misaligned destination. This is CPU-specific: GPU backends' fills
+// (e.g. cuMemsetD32) require aligned device pointers, so an unaligned offset is
+// only meaningful here.
+TEST_F(DriverPluginQueueTest, FillUnalignedOffset) {
+  constexpr size_t size = 64;
+  constexpr uint64_t fillBytes = 16; // A multiple of every value_size used.
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
+
+    struct Case {
+      uint64_t offset; // Deliberately not aligned to value_size.
+      uint64_t value;
+      uint64_t valueSize;
+    };
+    const Case cases[] = {
+        {/*offset=*/1, /*value=*/0xABCDu, /*valueSize=*/2},
+        {/*offset=*/2, /*value=*/0xDEADBEEFu, /*valueSize=*/4},
+        {/*offset=*/3, /*value=*/0x0123456789ABCDEFull, /*valueSize=*/8},
+    };
+
+    for (const Case &c : cases) {
+      M_driver_memory_view fillView{memory, c.offset, fillBytes};
+      ASSERT_SUCCESS(queue_fill(queue, &fillView, c.value, c.valueSize));
+      ASSERT_SUCCESS(queue_synchronize(queue));
+
+      std::array<uint8_t, fillBytes> result;
+      M_driver_memory_view srcView{memory, c.offset, fillBytes};
+      ASSERT_SUCCESS(queue_copy_from_device(queue, result.data(), &srcView));
+      ASSERT_SUCCESS(queue_synchronize(queue));
+
+      // The region must hold the value's low `valueSize` bytes (little-endian)
+      // repeated, byte for byte.
+      for (uint64_t b = 0; b < fillBytes; ++b) {
+        auto expected =
+            static_cast<uint8_t>(c.value >> (8 * (b % c.valueSize)));
+        ASSERT_EQ(result[b], expected)
+            << "value_size=" << c.valueSize << " offset=" << c.offset
+            << " byte=" << b;
+      }
+    }
   }
 }
