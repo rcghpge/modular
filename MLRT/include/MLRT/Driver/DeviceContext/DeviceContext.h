@@ -15,6 +15,7 @@
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -184,31 +185,6 @@ using DeviceStreamRef = RCRef<DeviceStream>;
 using DeviceTimerRef = RCRef<DeviceTimer>;
 
 size_t getPreferredAlignment(std::string label);
-
-// Virtual device mode control functions.
-// When virtual device mode is enabled (count > 0), Device::create() will return
-// VirtualDevice instances instead of real hardware devices, and
-// Device::numberOfDevices() will return the virtual count. This allows creating
-// devices for GPU configurations that don't match the current hardware.
-// These functions are thread-safe and the count applies globally to all
-// threads.
-void setVirtualDeviceCount(int count);
-int getVirtualDeviceCount();
-bool isVirtualDeviceMode();
-
-// Virtual device API control functions.
-// These functions set and get the API (e.g., "cuda", "hip", "metal") for
-// virtual devices created in compile-only mode. The API must be set before
-// creating virtual devices. Thread-safe.
-void setVirtualDeviceAPI(StringRef api);
-std::string getVirtualDeviceAPI();
-
-// Virtual device target architecture control functions.
-// These functions set and get the target GPU architecture (e.g., "sm_80",
-// "sm_90") for virtual devices created in compile-only mode. The architecture
-// must be set before creating virtual devices. Thread-safe.
-void setVirtualDeviceTargetArch(StringRef arch);
-std::string getVirtualDeviceTargetArch();
 
 // Empty = host CPU. Accepts an LLVM CPU name (or "generic"); must be set
 // before compiling CPU kernels. Thread-safe.

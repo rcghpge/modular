@@ -20,6 +20,7 @@
 #include <string>
 
 using namespace M::Driver;
+using namespace M::MLRT;
 using M::ErrorOr;
 
 namespace {
