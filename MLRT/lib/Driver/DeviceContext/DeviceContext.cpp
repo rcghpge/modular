@@ -27,6 +27,7 @@
 #include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
 #include "Support/HashUtils.h"
+#include "Support/Profiling/Tracy.h"
 #include "Support/SymbolExport.h"
 #include "Target/DriverPlugin.h"
 #include "Virtual/VirtualDeviceContext.h"

@@ -630,6 +630,7 @@ modular_shared_library(
         "//Support:BinaryID",
         "//Support:Buffer",
         "//Support:Configuration",
+        "//Support:Profiling",
         "//Support:SymbolExport",
         "@dlpack",
         "@llvm-project//llvm:Support",
