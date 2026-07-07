@@ -79,6 +79,10 @@ modular_cc_test(
         # Set up consistent memory manager environment for testing
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+        # This test exercises the classic freelist allocator (chunk sizing,
+        # alignment); pin VMM off so the NVIDIA default-on does not reroute it
+        # through the single-arena VMM path (which ignores chunk_percent).
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "False",
     },
     gpu_constraints = select({
         "//:apple_gpu": ["@platforms//:incompatible"],
@@ -225,6 +229,10 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "false",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+        # The fallthrough-to-driver path only exists in the classic allocator
+        # (`if (!vmmEnabled_)`); the VMM arena has no fallthrough. Pin VMM off so
+        # the NVIDIA default-on does not bypass the path this test covers.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "False",
     },
     gpu_constraints = select({
         "//:apple_gpu": ["@platforms//:incompatible"],
@@ -251,6 +259,10 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "true",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+        # This test pins a small (16 MiB) chunked pool; VMM ignores chunk_percent
+        # and rounds up to a 256 MiB granule, so pin VMM off to keep the classic
+        # chunk sizing this test asserts against.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "False",
     },
     gpu_constraints = select({
         "//:apple_gpu": ["@platforms//:incompatible"],

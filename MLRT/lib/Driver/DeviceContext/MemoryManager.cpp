@@ -2352,17 +2352,20 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
 
-  // VMM (CUDA Virtual Memory Management) defragmenting allocator. Disabled by
-  // default for now; set `memory_manager_vmm=1` to opt in on CUDA devices that
-  // support VMM (it auto-disables where vmmSupported() is false). When enabled
-  // we serve from a single oversized VA arena backed by remappable physical
-  // granules, so a large contiguous allocation can be assembled from
-  // physically-scattered free memory (ensureRegionBacked / reclaimMapped
-  // Granules). Granule (page) size is rounded up from
-  // `memory_manager_vmm_page_mb` (default 256 MiB) to the device VMM
-  // granularity, and all VMM sizes are rounded to it.
-  bool vmmEnabled = DeviceContext::configAsBool("memory_manager_vmm", false) &&
-                    device.vmmSupported();
+  // VMM (CUDA Virtual Memory Management) defragmenting allocator. The default
+  // is per-backend (device.vmmEnabledByDefault()); set
+  // `memory_manager_vmm=0`/`1` to override, and it auto-disables where
+  // vmmSupported() is false. When enabled we serve from a single oversized VA
+  // arena backed by remappable physical granules, so a large contiguous
+  // allocation can be assembled from physically-scattered free memory
+  // (ensureRegionBacked / reclaimMappedGranules). Granule (page) size is
+  // rounded up from `memory_manager_vmm_page_mb` (default 256 MiB) to the
+  // device VMM granularity, and all VMM sizes are rounded to it.
+  // Check vmmSupported() first so we skip the config lookup on backends that
+  // cannot use VMM at all.
+  bool vmmEnabled = device.vmmSupported() &&
+                    DeviceContext::configAsBool("memory_manager_vmm",
+                                                device.vmmEnabledByDefault());
   size_t vmmPageSize = 0;
   if (vmmEnabled) {
     // vmmSupported() has already verified the granularity query succeeds, so

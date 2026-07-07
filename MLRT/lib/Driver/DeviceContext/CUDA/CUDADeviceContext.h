@@ -92,6 +92,8 @@ public:
   // succeeds, so this reflects whether VMM is actually usable (not just that
   // the backend is CUDA).
   bool vmmSupported() const override;
+  // VMM is enabled by default on NVIDIA GPUs (see base class).
+  bool vmmEnabledByDefault() const override { return true; }
   ErrorOr<size_t> vmmGranularity() const override;
   ErrorOr<void *> vmmAddressReserve(size_t byteSize) override;
   ErrorOrSuccess vmmAddressFree(void *va, size_t byteSize) override;

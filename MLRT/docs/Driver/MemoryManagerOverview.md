@@ -266,11 +266,13 @@ range and maps physically-scattered free granules into it, so the request
 succeeds. This eliminates the "plenty free but no contiguous block" OOM.
 
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM`**: Enable the VMM-backed
-  defragmenting allocator. **Default: false** (opt-in for now). Set to
-  `1`/`true` to enable it on CUDA devices that support VMM (it auto-disables on
-  devices that do not, and on non-CUDA backends); the legacy `cuMemAlloc` chunk
-  path is used otherwise. Cross-GPU access is granted automatically to every
-  P2P-capable peer (VMM mappings do not inherit `cuCtxEnablePeerAccess`).
+  defragmenting allocator. **Default: true on NVIDIA GPUs, false elsewhere**
+  (HIP/CPU/Metal remain opt-in until they gain production experience). Set to
+  `0`/`false` to force the legacy `cuMemAlloc` chunk path, or `1`/`true` to opt
+  in on a backend where it is off by default. It auto-disables on devices that
+  do not support VMM regardless of this setting. Cross-GPU access is granted
+  automatically to every P2P-capable peer (VMM mappings do not inherit
+  `cuCtxEnablePeerAccess`).
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB`**: Physical granule
   (page) size in MiB (default: 256). Rounded up to the device VMM allocation
   granularity; all VMM reservations and the pool/chunk sizes are rounded to a

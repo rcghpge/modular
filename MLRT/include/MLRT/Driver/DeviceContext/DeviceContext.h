@@ -310,6 +310,11 @@ public:
   //
   // All sizes passed here must be multiples of `vmmGranularity()`.
   virtual bool vmmSupported() const { return false; }
+  // Whether the VMM defragmenting allocator is enabled by default on this
+  // backend (i.e. when `memory_manager_vmm` is unset). Backends opt in by
+  // overriding this; the base default is off. Only takes effect where
+  // `vmmSupported()` is also true.
+  virtual bool vmmEnabledByDefault() const { return false; }
   // Physical allocation granularity in bytes (e.g. 2 MiB on B200).
   virtual ErrorOr<size_t> vmmGranularity() const;
   // Reserve / free a contiguous virtual address range (no physical backing).
