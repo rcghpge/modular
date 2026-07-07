@@ -61,7 +61,8 @@ bool isTriviallyComputable(Value v, DenseMap<Operation *, bool> &trivial) {
   };
 
   // If the producing op isn't trivial, this isn't a trivial value
-  bool isTrivialOp = isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
+  bool isTrivialOp = producer->hasTrait<OpTrait::ConstantLike>() ||
+                     isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
                      isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
                      isa<TensorExtractTensorSpecOp, TensorSpecCreateOp,
                          BufferAllocOp, TensorSpecGetDimOp>(*producer);
