@@ -2987,17 +2987,6 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 // AsyncPackOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-AsyncPackOp::inferReturnTypes(MLIRContext *context,
-                              std::optional<Location> location, Adaptor adaptor,
-                              SmallVectorImpl<Type> &inferredReturnTypes) {
-  // The packed value is the `input` operand; the optional `deviceCtx` operand
-  // does not affect the result. The result is an `!mogg.async<T>` of the input.
-  inferredReturnTypes.push_back(
-      AsyncType::get(context, adaptor.getInput().getType()));
-  return success();
-}
-
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
@@ -3041,14 +3030,6 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   operands.push_back(state.mojoReturnValues[*resultIndexOr]);
   state.builder.call(moggAsyncPackFunc, {},
                      asyncPackHelperStruct({}, operands));
-  return success();
-}
-
-LogicalResult AsyncPackOp::verify() {
-  auto asyncType = dyn_cast<AsyncType>(getResult().getType());
-  if (!asyncType || asyncType.getElementType() != getInput().getType())
-    return emitError(
-        "async.pack result must be a mogg.async of the input type");
   return success();
 }
 

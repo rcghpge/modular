@@ -1188,8 +1188,10 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
-  InferTypeOpAdaptor,
   Pure,
+  TypesMatchWith<"result is the async wrapper of the input",
+                 /*lhs=*/"input", /*rhs=*/"output",
+                 "::M::MOGG::AsyncType::get($_self)">,
 ]> {
   let arguments = (ins
     AnyType:$input,
@@ -1205,8 +1207,6 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-
-  let hasVerifier = 1;
 }
 
 
