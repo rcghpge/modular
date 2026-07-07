@@ -284,11 +284,18 @@ public:
     return execute.mgpContext;
   }
 
-  /// Get the device context for a device ref in init.
+  /// Get the device context for a device ref in execute.
   TypedValue<DeviceContextType> getExecuteDevice(DeviceRefAttr dev) {
     // If a null device was asked for, provide the default device.
     if (!dev)
       dev = DeviceRefAttr::getDefault(execute.builder.getContext());
+
+    // Scoped override: while lowering an `mo.sequence` body onto a side stream,
+    // `dev` is mapped to a `mgp.device_context.select_stream` view so every op
+    // lowered through this single chokepoint (kernels, buffer allocs/transfers,
+    // syncs) picks up the side-stream context. Empty in the common case.
+    if (auto it = execDevices.find(dev); it != execDevices.end())
+      return it->second;
 
     for (auto [deviceRefAttr, deviceContext] : llvm::zip(
              common.modelOp.getDevices(), common.modelOp.getExecuteDevices())) {
@@ -297,6 +304,21 @@ public:
     }
     llvm_unreachable("Could not find device in model args");
   }
+
+  /// Install a scoped override so `getExecuteDevice(dev)` returns `ctx` (e.g. a
+  /// side-stream view) until cleared. Single-level only: nested overrides for
+  /// the same device are unsupported and asserted against (the MO verifier also
+  /// forbids nested `mo.sequence`, the only producer of these overrides).
+  void setExecuteDeviceOverride(DeviceRefAttr dev,
+                                TypedValue<DeviceContextType> ctx) {
+    assert(!execDevices.count(dev) &&
+           "nested execute-device override for the same device");
+    execDevices[dev] = ctx;
+  }
+
+  /// Remove a scoped override previously installed via
+  /// setExecuteDeviceOverride.
+  void clearExecuteDeviceOverride(DeviceRefAttr dev) { execDevices.erase(dev); }
 
   /// Return the weights registry appropriate for the 'execute' block.
   TypedValue<MGP::OpaqueType> getExecuteWeightsRegistry() {

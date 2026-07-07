@@ -558,7 +558,7 @@ def WhileOp : MO_ControlOp<"while", [
 
 def MO_YieldOp : MO_ControlOp<"yield", [
   DeclareOpInterfaceMethods<ParamOpInterface>,
-  ParentOneOf<["IfOp", "WhileOp", "ParallelOp"]>,
+  ParentOneOf<["IfOp", "WhileOp", "ParallelOp", "SequenceOp"]>,
   Pure,
   ReturnLike,
   Terminator,
@@ -837,6 +837,65 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
 
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// SequenceOp
+//===----------------------------------------------------------------------===//
+
+def MO_SequenceOp : MO_TensorOp<"sequence", [
+  DeclInterface,
+  HasOnlyGraphRegion,
+  MO_ExecutesOnHost,
+  MO_PreservedDuringKernelLowering,
+  RegionKindInterface,
+  SingleBlock,
+  SingleBlockImplicitTerminator<"MO::YieldOp">,
+]> {
+  let summary = "`sequence` region bound to a device stream";
+  let description = [{
+    The `mo.sequence` operation wraps a region of ops that should be bound to a
+    single device stream selected by `streamId` (0 is the default stream). It
+    exists for two reasons: (1) the region is a fusion boundary -- ops inside it
+    are not fused with ops outside it -- and (2) it marks which ops should be
+    enqueued on the side stream, so the MOGG->MGP lowering can bind the body's
+    device context to a `mgp.device_context.select_stream` view.
+
+    Operands are a plain variadic list (tensors / chains) mapped 1:1 into the 
+    body's block arguments, and `mo.yield` maps 1:1 to the op's results.
+    The body is a graph region (unordered); chains encode any mutable ordering
+    exactly as in the enclosing graph.
+
+    Example:
+    ```mlir
+    %out = mo.sequence[1] (%a) : (!mo.tensor<[3], f32, gpu:0>)
+        -> (!mo.tensor<[3], f32, gpu:0>) {
+    ^bb0(%arg: !mo.tensor<[3], f32, gpu:0>):
+      %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
+      mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    Variadic<AnyType>:$inputs,
+    DefaultValuedAttr<UI64Attr, "0">:$streamId
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$bodyRegion);
+
+  let assemblyFormat = [{
+    `[` $streamId `]` `(` $inputs `)` attr-dict `:`
+        functional-type($inputs, $results) $bodyRegion
+  }];
+
+  let extraClassDeclaration = [{
+    /// DeclInterface: this op declares no parameters of its own.
+    ArrayRef<ParamDeclAttr> getInputParams();
+    SmallVector<ParamDeclAttr> getAllParams();
+  }];
+
   let hasVerifier = 1;
 }
 

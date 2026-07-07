@@ -181,6 +181,7 @@ public:
   LogicalResult lower(MO::BufferTransferOp op);
   LogicalResult lower(MO::CallOp op);
   LogicalResult lower(MO::ParallelOp op);
+  LogicalResult lower(MO::SequenceOp op);
   LogicalResult lower(MO::TensorBundleOp op);
   LogicalResult lower(MO::TensorUnbundleOp op);
 
@@ -1733,10 +1734,10 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::ConstantExternalOp, MO::ConstantScalarOp, MO::DebugPrintOp,
             MO::DebugTensorPrintOp, MO::TransferOp, MO::OutputOp, MO::IfOp,
             MO::WhileOp, MO::TensorBundleOp, MO::TensorUnbundleOp,
-            MO::ParallelOp, MO::YieldOp, MO::WhileConditionOp, MO::GuardOp,
-            MO::ChainCreateOp, MO::MutableStoreOp, MO::MutableLoadOp,
-            MO::BufferCreateOp, MO::BufferTransferOp, MO::CallOp>(
-          [this](auto op) { return lower(op); })
+            MO::ParallelOp, MO::SequenceOp, MO::YieldOp, MO::WhileConditionOp,
+            MO::GuardOp, MO::ChainCreateOp, MO::MutableStoreOp,
+            MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
+            MO::CallOp>([this](auto op) { return lower(op); })
       // Interface-based lowering for externally-defined ops.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })
@@ -1756,6 +1757,84 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     if (failed(lowerOp(op, block->getParent())))
       return failure();
   }
+  return success();
+}
+
+LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
+  // Lower mo.sequence by inlining its body into the execute block, bound to a
+  // side-stream view of the device context. The region was a fusion boundary
+  // (enforced at the MOGG stage) and a marker for which ops get the side
+  // stream; here we (1) map block args to operands, (2) bind the device
+  // context to a select_stream view for the duration of the body, bracketed by
+  // fork/join device_wait, and (3) map the yield operands to the op's results.
+  OpBuilder &b = loweringState.getExecuteOpBuilder();
+  Location loc = seq.getLoc();
+  Block &body = seq.getBodyRegion().front();
+
+  // Map body block arguments to the lowered sequence operands (1:1).
+  for (auto [arg, operand] : llvm::zip(body.getArguments(), seq.getInputs()))
+    loweringState.emplaceExecuteLoweredValue(
+        arg, loweringState.lookupExecuteLoweredValue(operand));
+
+  // Pick the device to bind. The minimal slice supports a single-device body;
+  // take the device from the first result (or input) tensor.
+  uint64_t streamId = seq.getStreamId();
+  DeviceRefAttr dev;
+  if (seq.getNumResults() > 0)
+    dev = MO::getDeviceOrDefaultAny(seq.getResult(0).getType());
+  else if (!seq.getInputs().empty())
+    dev = MO::getDeviceOrDefaultAny(seq.getInputs().front().getType());
+  const bool bindStream = streamId != 0 && dev && dev.getLabel() != "cpu";
+
+  TypedValue<MGP::DeviceContextType> base, view;
+  Value execContext;
+  if (bindStream) {
+    base = loweringState.getExecuteDevice(dev);
+    view = cast<TypedValue<MGP::DeviceContextType>>(
+        MGP::DeviceContextSelectStreamOp::create(b, loc, base.getType(), base,
+                                                 streamId)
+            .getResult());
+    execContext = loweringState.getExecuteMgpContext();
+    // Fork: the side stream waits for the base stream (where inputs are
+    // produced) before the body runs.
+    Value forkChain = MGP::DeviceWaitOp::create(
+                          b, loc,
+                          /*inChain=*/loweringState.getCurrentExecuteChain(),
+                          execContext, /*waitingDeviceContext=*/view,
+                          /*signalingDeviceContext=*/base,
+                          /*bDevice=*/dev)
+                          .getResult();
+    loweringState.setCurrentExecuteChain(forkChain);
+    loweringState.setExecuteDeviceOverride(dev, view);
+  }
+
+  // Lower the body ops (excluding the yield terminator) in place; with the
+  // override installed, getExecuteDevice routes them onto the side stream.
+  if (failed(levelwiseTopologicalSort(&body)))
+    return failure();
+  for (Operation &op : body.without_terminator())
+    if (failed(lowerOp(op, &seq.getBodyRegion())))
+      return failure();
+
+  if (bindStream) {
+    loweringState.clearExecuteDeviceOverride(dev);
+    // Join: the base stream waits for the side stream before consuming outputs.
+    Value joinChain = MGP::DeviceWaitOp::create(
+                          b, loc,
+                          /*inChain=*/loweringState.getCurrentExecuteChain(),
+                          execContext, /*waitingDeviceContext=*/base,
+                          /*signalingDeviceContext=*/view,
+                          /*bDevice=*/dev)
+                          .getResult();
+    loweringState.setCurrentExecuteChain(joinChain);
+  }
+
+  // Map results to the lowered yield operands (1:1).
+  auto yieldOp = cast<MO::YieldOp>(body.getTerminator());
+  for (auto [res, yielded] : llvm::zip(seq.getResults(), yieldOp.getOperands()))
+    loweringState.emplaceExecuteLoweredValue(
+        res, loweringState.lookupExecuteLoweredValue(yielded));
+
   return success();
 }
 

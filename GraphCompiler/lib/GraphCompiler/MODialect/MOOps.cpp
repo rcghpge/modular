@@ -1645,6 +1645,49 @@ LogicalResult ParallelOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// SequenceOp
+//===----------------------------------------------------------------------===//
+
+ArrayRef<ParamDeclAttr> SequenceOp::getInputParams() { return {}; }
+SmallVector<ParamDeclAttr> SequenceOp::getAllParams() { return {}; }
+
+LogicalResult SequenceOp::verify() {
+  Block &body = getBodyRegion().front();
+
+  // Inputs map 1:1 to block arguments (plain variadic list, no bundles).
+  if (body.getNumArguments() != getInputs().size())
+    return emitOpError("body must have ")
+           << getInputs().size() << " block argument(s) (one per input), got "
+           << body.getNumArguments();
+  for (auto [idx, input] : llvm::enumerate(getInputs())) {
+    if (body.getArgument(idx).getType() != input.getType())
+      return emitOpError("input #") << idx << " type " << input.getType()
+                                    << " does not match block argument type "
+                                    << body.getArgument(idx).getType();
+  }
+
+  // Yield operands map 1:1 to results.
+  auto yieldOp = cast<YieldOp>(body.getTerminator());
+  if (yieldOp.getNumOperands() != getNumResults())
+    return emitOpError("yield has ")
+           << yieldOp.getNumOperands() << " operand(s) but op has "
+           << getNumResults() << " result(s)";
+  for (auto [idx, yielded] : llvm::enumerate(yieldOp.getOperands())) {
+    if (yielded.getType() != getResult(idx).getType())
+      return emitOpError("yield operand #")
+             << idx << " type " << yielded.getType()
+             << " does not match result type " << getResult(idx).getType();
+  }
+
+  // Nested `mo.sequence` is unsupported: the side-stream device-context
+  // override installed during MOGG->MGP lowering is single-level per device.
+  if (getOperation()->getParentOfType<MO::SequenceOp>())
+    return emitOpError("nested `mo.sequence` is unsupported");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastShapeOp
 //===----------------------------------------------------------------------===//
 
