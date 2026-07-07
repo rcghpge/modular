@@ -364,6 +364,8 @@ constexpr llvm::StringLiteral kTraitComputeOutputFusionTile =
     "managed_tensor_slice.ComputeOutputFusionTile";
 constexpr llvm::StringLiteral kTraitElementwiseFusion =
     "managed_tensor_slice.ElementwiseFusion";
+constexpr llvm::StringLiteral kTraitElementwiseFusionTile =
+    "managed_tensor_slice.ElementwiseFusionTile";
 
 //===----------------------------------------------------------------------===//
 // Decorator strings
@@ -427,11 +429,14 @@ constexpr llvm::StringLiteral kParameterTo = "to";
 constexpr llvm::StringLiteral kParameterForeachTensor = "tensor";
 constexpr llvm::StringLiteral kParameterForeachElem = "elem";
 constexpr llvm::StringLiteral kParameterForeachCtx = "ctx";
+constexpr llvm::StringLiteral kMoggForeachTileRegistration =
+    "mogg.call.foreach_tile";
 /// Argument names used in trait-conforming fusion struct methods
 /// (`load`/`store`/`compute`).
 constexpr llvm::StringLiteral kParameterSelf = "self";
 constexpr llvm::StringLiteral kParameterIdx = "idx";
 constexpr llvm::StringLiteral kParameterVal = "val";
+constexpr llvm::StringLiteral kParameterDst = "dst";
 constexpr llvm::StringLiteral kParameterTileCoords = "tile_coords";
 constexpr llvm::StringLiteral kParameterCopier = "copier";
 

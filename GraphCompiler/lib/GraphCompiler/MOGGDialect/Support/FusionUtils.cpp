@@ -286,4 +286,11 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
   return KernelOutputFusionLambdaType::Compute;
 }
 
+bool isTileCodegenForOp(mlir::Operation *op, mlir::ModuleOp moduleOp) {
+  auto kernelStubOp = op->getParentOfType<MOGG::KernelStubOp>();
+  auto deviceRef = kernelStubOp ? MO::getDeviceOrDefaultAny(kernelStubOp)
+                                : MO::getDeviceOrDefaultAny(op);
+  return MO::DeviceInfoMapping(moduleOp).get(deviceRef).getTileBasedFusion();
+}
+
 } // namespace M::MOGG

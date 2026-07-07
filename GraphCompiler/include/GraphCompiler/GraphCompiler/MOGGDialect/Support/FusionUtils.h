@@ -136,6 +136,14 @@ enum class KernelOutputFusionLambdaType {
                // _FusedComputeOutputTensor).
   ComputeTile, // Tile-based compute fusion lambda with a TileTensor return
                // (kernel operand is _FusedComputeOutputTileTensor).
+  // TODO(GEX-3912): unlike SIMD (which reuses `Compute` for both standalone and
+  // epilogue fusion, distinguishing them by bind kind), tile needs a separate
+  // `ElementwiseTile` only because the standalone path manufactures into `dst`
+  // while the epilogue transforms `val`. Unifying the tile compute interface
+  // (GEX-3912, inout `dst`) would let this collapse into the tile compute value
+  // and restore the SIMD symmetry.
+  ElementwiseTile, // Tile-based pure elementwise fusion (ElementwiseFusionTile,
+                   // manufactures its result via the `dst` destination tile).
 };
 
 // Returns the FusedTensor kind to be emitted by the Graph Compiler for
@@ -144,6 +152,12 @@ enum class KernelOutputFusionLambdaType {
 ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
     MojoRegistry &registry, MOGG::TensorFusedOp fusedOp,
     bool enableComputeLambdas, mlir::ModuleOp moduleOp);
+
+// Returns true if the device `op` runs on is configured for tile codegen, i.e.
+// its `#M.device_info` entry in `moduleOp`'s `mo.device_info_mapping` has
+// `tile_based_fusion = true`. The device is taken from the enclosing kernel
+// stub when present, else from `op` directly.
+bool isTileCodegenForOp(mlir::Operation *op, mlir::ModuleOp moduleOp);
 
 } // namespace M::MOGG
 

@@ -794,6 +794,53 @@ static LogicalResult verifyBindLambdaBodyOpsForMojoEmission(BindLambdaOp bindOp,
   return success();
 }
 
+/// Emit a `copier.copy` of the captured tensor `captureIdx`'s tile (at the
+/// current `tile_coords`) into a freshly stack-allocated,
+/// destination-layout-shaped local `TileTensor`, and return that local tile.
+///
+/// `layoutSourceName` is the method argument that carries the destination
+/// fragment layout: `val` for the compute-output (epilogue) path,
+/// `dst` for the pure elementwise path. Used both by the epilogue
+/// `LoadTensorOp` handler (extra captures) and by the standalone elementwise
+/// block-argument seeding (which has no `LoadTensorOp`s -- the fusible inputs
+/// are the block args used directly).
+static MojoValue emitTileCopierLoad(MojoBuilder &sdb, unsigned captureIdx,
+                                    unsigned loadRank,
+                                    llvm::StringRef layoutSourceName) {
+  auto captureN = std::to_string(captureIdx);
+  TileTensorRef val(MojoValue(layoutSourceName.str()));
+
+  // Local storage for the destination tile. `cache=false`: each captured input
+  // needs its own distinct stack allocation. The allocation (and the tile that
+  // wraps it) render to identical text across inputs, so the builder's CSE
+  // cache would otherwise alias every input onto a single staging tile.
+  auto storageVar = sdb.var(TileTensorRef::makeStorage(), /*cache=*/false);
+
+  // Dest TileTensor backed by local storage with the destination layout.
+  auto dstVar = sdb.var(TileTensorRef::fromMutStorage(storageVar, val.layout()),
+                        /*cache=*/false);
+
+  // Tile-offset pointer into the captured tensor.
+  MojoValue tileOffset("0");
+  for (unsigned d = 0; d < loadRank; ++d) {
+    MojoValue coord = MojoValue(kParameterTileCoords)[d];
+    MojoValue stride = MojoValue(std::string("self.strides_") + captureN)[d];
+    MojoValue term = coord * val.dim(d) * stride;
+    tileOffset = (d == 0) ? term : tileOffset + term;
+  }
+  auto tileOffsetVar = sdb.var(tileOffset);
+
+  // Src TileTensor for captured data in global memory at the tile position.
+  MojoValue capturePtr =
+      MojoValue(std::string("self.ptr_") + captureN) + tileOffsetVar;
+  auto srcVar =
+      sdb.var(TileTensorRef::fromExternalPtr(capturePtr, val.layout()));
+
+  // Copy captured tile from global memory into local dst.
+  sdb.call(MojoValue(kParameterCopier).get("copy"), {}, {dstVar, srcVar});
+  return dstVar;
+}
+
 /// Walk an elementwise lambda body, emitting one Mojo statement per op and
 /// updating `valueMap`. Shared by the fusion-struct and register_passable
 /// paths; `renderer` supplies the load expression and SIMD-width name.
@@ -838,39 +885,17 @@ static void emitElementwiseLambdaBodyOps(
                 .str();
       }
 
-      if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
-        auto captureN = std::to_string(captureIdx);
-        TileTensorRef val("val");
-
-        // Local storage for the destination tile.
-        auto storageVar = sdb.var(TileTensorRef::makeStorage());
-
-        // Dest TileTensor backed by local storage with val's layout.
-        auto dstVar =
-            sdb.var(TileTensorRef::fromMutStorage(storageVar, val.layout()));
-
-        // Tile-offset pointer into the captured tensor.
-        MojoValue tileOffset("0");
-        for (unsigned d = 0; d < loadRank; ++d) {
-          MojoValue coord = MojoValue(kParameterTileCoords)[d];
-          MojoValue stride =
-              MojoValue(std::string("self.strides_") + captureN)[d];
-          MojoValue term = coord * val.dim(d) * stride;
-          tileOffset = (d == 0) ? term : tileOffset + term;
-        }
-        auto tileOffsetVar = sdb.var(tileOffset);
-
-        // Src TileTensor for captured data in global memory at the tile
-        // position.
-        MojoValue capturePtr =
-            MojoValue(std::string("self.ptr_") + captureN) + tileOffsetVar;
-        auto srcVar =
-            sdb.var(TileTensorRef::fromExternalPtr(capturePtr, val.layout()));
-
-        // Copy captured tile from global memory into local dst.
-        sdb.verbatim(
-            MojoValue(kParameterCopier).get("copy")({}, {dstVar, srcVar}));
-        valueMap[loadOp.getOutputs()] = dstVar;
+      if (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+          lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
+        // The layout/dim source is the method's destination-tile argument:
+        // `val` for the compute-output (epilogue) path, `dst` for the pure
+        // elementwise path (which has no primary `val` output operand).
+        llvm::StringRef layoutSrc =
+            lambdaType == KernelOutputFusionLambdaType::ElementwiseTile
+                ? kParameterDst
+                : kParameterVal;
+        valueMap[loadOp.getOutputs()] =
+            emitTileCopierLoad(sdb, captureIdx, loadRank, layoutSrc);
       } else {
         auto loadExpr = renderer.buildLoadExpr(captureIdx, indicesExpr);
         valueMap[loadOp.getOutputs()] = sdb.var(MojoValue(loadExpr));
@@ -884,7 +909,8 @@ static void emitElementwiseLambdaBodyOps(
       KernelDeclAdaptor elemAdaptor(elemKernelDecl);
 
       bool useTileElementwise =
-          lambdaType == KernelOutputFusionLambdaType::ComputeTile &&
+          (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+           lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) &&
           elemAdaptor.isTileElementwise();
 
       SmallVector<MojoValue> inputs;
@@ -1014,8 +1040,10 @@ emitFusionStructReturnOrStore(EmitMojoState &state, MojoBuilder &sdb,
                 << "missing output value in struct body map");
   MojoValue resultValue = resultIt->second;
 
-  // Tile-based compute fusion: return the result TileTensor directly.
-  if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+  // Tile-based compute / elementwise fusion: return the result TileTensor
+  // directly.
+  if (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+      lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
     sdb.returnsValue(resultValue);
     return;
   }
@@ -1087,9 +1115,10 @@ static void emitFusionStructMethodBody(
       },
       valueMap, scalarCaptureValues);
 
-  // For tile compute fusion, the position parameter is tile_coords; for
-  // SIMD compute/output fusion it is idx.
-  bool isTile = lambdaType == KernelOutputFusionLambdaType::ComputeTile;
+  // For tile compute/elementwise fusion, the position parameter is tile_coords;
+  // for SIMD compute/output fusion it is idx.
+  bool isTile = lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+                lambdaType == KernelOutputFusionLambdaType::ElementwiseTile;
   valueMap[lambdaBody->getArguments().back()] =
       MojoValue(isTile ? kParameterTileCoords : kParameterIdx);
 
@@ -1101,9 +1130,17 @@ static void emitFusionStructMethodBody(
     }
 
     if (isTile) {
-      // Tile captures are resolved lazily by the LoadTensorOp handler in
-      // emitElementwiseLambdaBodyOps, which looks up each capture via
-      // extraTensorCaptures and emits copier.copy into a local dst TileTensor.
+      // Standalone tile elementwise (ElementwiseTile) has no LoadTensorOps --
+      // the fusible inputs are the block args used directly by the elementwise
+      // op. Seed each with a copier.copy into a `dst.layout`-shaped local tile.
+      // The compute-output tile (ComputeTile) path instead resolves its extra
+      // captures lazily via the LoadTensorOp handler in
+      // emitElementwiseLambdaBodyOps.
+      if (lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
+        auto tensorTy = captureTensorTypes[i];
+        auto rank = tensorTy.getRankNonZero();
+        valueMap[blockArg] = emitTileCopierLoad(sdb, i, rank, kParameterDst);
+      }
       continue;
     }
 
@@ -1141,7 +1178,9 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   StringRef methodName;
   bool methodReturnsValue = false;
   if (bindOp.getBindKind() == BindLambdaKind::ElemwiseLambda) {
-    traitName = kTraitElementwiseFusion;
+    traitName = lambdaType == KernelOutputFusionLambdaType::ElementwiseTile
+                    ? kTraitElementwiseFusionTile
+                    : kTraitElementwiseFusion;
     methodName = "compute";
     methodReturnsValue = true;
   } else if (bindOp.getBindKind() == BindLambdaKind::InputLambda) {
@@ -1190,9 +1229,19 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         SmallVector<NamedMojoDef> methodArgs;
         std::optional<MojoValue> returnType;
 
-        if (lambdaType == KernelOutputFusionLambdaType::ComputeTile) {
+        if (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+            lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
           MojoValue tileTensorType = MojoValue(kStructTileTensor)[{
               kParameterDType, kParameterLayoutType, kComptimeMutAnyOrigin}];
+          // The tile-signature is identical for the compute-output and pure
+          // elementwise paths; only the third method argument differs. The
+          // compute-output (epilogue) path binds the primary output tile as
+          // `val`; the pure elementwise path receives the destination fragment
+          // as `dst` (all inputs flow through the copier).
+          StringRef thirdArgName =
+              lambdaType == KernelOutputFusionLambdaType::ElementwiseTile
+                  ? kParameterDst
+                  : kParameterVal;
           methodParameters = {
               NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
               NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
@@ -1206,7 +1255,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(kParameterCopier, kParameterCopier));
           methodArgs.push_back(
-              NamedMojoDef::asVerbatim(kParameterVal, tileTensorType));
+              NamedMojoDef::asVerbatim(thirdArgName, tileTensorType));
           returnType = tileTensorType;
         } else {
           // SIMD-based fusion paths.
@@ -1323,6 +1372,18 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
   // Default to Compute (return-based) so that non-output lambdas (InputLambda)
   // emit a return rather than a store in emitFusionStructReturnOrStore.
   auto lambdaType = KernelOutputFusionLambdaType::Compute;
+  // TODO(GEX-3912): the tile and SIMD lowering paths are interleaved here (and
+  // in emitFusionStruct / emitElementwiseLambdaBodyOps), which makes the
+  // lowering hard to follow. Unifying the tile compute interface (GEX-3912)
+  // should let the tile and SIMD paths converge.
+  //
+  // When the op's device is configured for tile codegen, a standalone
+  // elementwise lambda lowers to the tile-based `ElementwiseFusionTile` path
+  // (manufactures its result via the `dst` destination tile and is driven by
+  // `foreach_fusion_tile`).
+  if (getBindKind() == BindLambdaKind::ElemwiseLambda &&
+      isTileCodegenForOp(getOperation(), state.moduleOp))
+    lambdaType = KernelOutputFusionLambdaType::ElementwiseTile;
   if (isOutputLambda) {
     // Determine whether this is a store, compute, or tile-compute lambda.
     if (!getResult().hasOneUse())
@@ -1402,6 +1463,50 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   const MojoValue &contextValue = state.getMojoValueFor(contextInputs.front());
   MojoValue mojoOutput = state.getMojoValueFor(getOutput());
 
+  // Get the target device from the kernel stub that contains this operation.
+  auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
+  MojoValue targetDeviceLabel =
+      MojoValue(kernelStubOp
+                    ? MO::getDeviceOrDefaultAny(kernelStubOp).getLabel()
+                    : MO::getDeviceOrDefaultAny(*this).getLabel())
+          .quote();
+
+  // Get the trace name from the fusion info tree.
+  auto traceNameOr =
+      state.inferDefaultKernelParamValue(*this, kMoggTraceNameParameterName);
+  MojoValue traceNameExpr = traceNameOr.isError()
+                                ? MojoValue(getOperationName()).quote()
+                                : *traceNameOr;
+
+  // When the op's device is configured for tile codegen, drive the fusion with
+  // the tile driver
+  // `foreach_fusion_tile` (kwargs `tensor`/`elem`/`ctx`, no `simd_width` -- it
+  // defaults `tile_shape` internally) instead of the SIMD `foreach_fusion`.
+  MojoValue elemValue = lowering.instance;
+  if (isTileCodegenForOp(getOperation(), state.moduleOp)) {
+    // Resolve the tile driver symbol. Prefer the registered
+    // `mogg.call.foreach_tile` primitive when its Mojo is present; otherwise
+    // derive the name from the SIMD foreach symbol (`...foreach_fusion` ->
+    // `...foreach_fusion_tile`) so text emission is self-contained on branches
+    // where the driver Mojo isn't loaded.
+    MojoValue tileDriverName =
+        state.registry.containsPrimitive(kMoggForeachTileRegistration)
+            ? MojoValue(
+                  state.registry.lookupPrimitive(kMoggForeachTileRegistration)
+                      .getSymNameAttr()
+                      .strref())
+            : MojoValue((getKernelSymName() + "_tile").str());
+    state.builder.call(
+        tileDriverName,
+        {MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
+         MojoValue(kMoggTraceNameParameterName).equal(traceNameExpr)},
+        {MojoValue(kParameterForeachTensor).equal(mojoOutput),
+         MojoValue(kParameterForeachElem).equal(elemValue),
+         MojoValue(kParameterForeachCtx).equal(contextValue)});
+    state.genAllKeepAliveStatements();
+    return success();
+  }
+
   // Figure out the simd_width of the foreach kernel (depending on the tensor
   // dtypes). First collect all dtypes used in the kernel.
   llvm::SmallSetVector<DType, 4> allTensorDtypes;
@@ -1423,27 +1528,11 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
       kStructDType, MojoValue(int64_t(allDtypeMojoParams.size()))}](
       {}, allDtypeMojoParams);
 
-  // Get the target device from the kernel stub that contains this operation.
-  auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
-  MojoValue targetDeviceLabel =
-      MojoValue(kernelStubOp
-                    ? MO::getDeviceOrDefaultAny(kernelStubOp).getLabel()
-                    : MO::getDeviceOrDefaultAny(*this).getLabel())
-          .quote();
-
   MojoValue simdWidthExpr = MojoValue(kFnGetSimdWidthForDtypes)(
       {paramsDtypesTuple, targetDeviceLabel});
 
-  // Get the trace name from the fusion info tree.
-  auto traceNameOr =
-      state.inferDefaultKernelParamValue(*this, kMoggTraceNameParameterName);
-  MojoValue traceNameExpr = traceNameOr.isError()
-                                ? MojoValue(getOperationName()).quote()
-                                : *traceNameOr;
-
   // `foreach_fusion` (`getKernelSymName()`, kwargs `tensor`/`elem`/`ctx`) takes
   // the `ElementwiseFusion` fusion-struct instance as `elem`.
-  MojoValue elemValue = lowering.instance;
   state.builder.verbatim(MojoValue(getKernelSymName())(
       {MojoValue(kMoggTargetParameterName).equal(targetDeviceLabel),
        MojoValue(kParameterSimdWidth).equal(simdWidthExpr),
