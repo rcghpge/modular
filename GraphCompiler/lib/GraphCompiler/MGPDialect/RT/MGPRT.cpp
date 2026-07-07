@@ -62,42 +62,6 @@ COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void MGP_RT_TEST() {
 // Actual functions called from Mojo
 //===----------------------------------------------------------------------===//
 
-/// This is the C++ implementation of mogg.async.unpack.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_AsyncUnpack(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect())
-    return value.getPointer()->getUnderlyingPtr();
-  else
-    return value.getPointerToData();
-}
-
-/// This is the old C++ implementation of mgp.buffer.get_cached. The new one
-/// starts with TMP_.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext &stateCtx, size_t *size,
-                       void *storageRefPtr) {
-  assert(storageRefPtr != nullptr);
-
-  auto &stateSlot = stateCtx.getStateSlotPayload<TensorStateSlot>(bufferSlot);
-  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer();
-  if (errOr)
-    return nullptr;
-
-  TensorBufferRef ref = errOr.takeValue();
-  // Emplace construction using the storage_ref of the TensorBufferRef.
-  new (storageRefPtr) AnyAsyncValueRef(ref.getMemStorageHandle());
-  *size = ref.getSize();
-  return ref.getBuffer();
-}
-
-/// This is the C++ implementation of mgp.buffer.remove_cached.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext &stateCtx) {
-  auto &stateSlot = stateCtx.getStateSlot(bufferSlot);
-  stateSlot.clear();
-}
-
 /// This is the C++ implementation of mgp.int.cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_SetCachedInt(size_t bufferSlot, StateContext *stateCtx, size_t value) {
@@ -111,41 +75,11 @@ MGP_RT_GetCachedInt(size_t bufferSlot, StateContext *stateCtx) {
   return slot.getValue();
 }
 
-/// Returns the size of a C++ list.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT int64_t
-MGP_RT_ListSize(AsyncRTWrapper<GML::List> asyncList) {
-  return unwrap(asyncList).getElements().size();
-}
-
-/// Gets the data and shape of a given ptr.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_ListPopulate(AsyncRTWrapper<GML::List> asyncList, void **dataPtr,
-                    int64_t *shapePtr) {
-  GML::List &list = unwrap(asyncList);
-
-  int64_t tensorId = 0;
-  for (GML::Variant &ref : list.getElements()) {
-    if (ref.getValue().isType<Tensor>()) {
-      auto &runtimeTensor = ref.getValue().get<Tensor>();
-      const TensorShape &shape = runtimeTensor.getShape();
-      dataPtr[tensorId] = const_cast<void *>(runtimeTensor.getBuffer());
-
-      for (size_t i = 0; i < shape.getRank(); ++i)
-        shapePtr[tensorId * shape.getRank() + i] = shape[i];
-
-      // Promote scalar tensors to 1D.
-      if (shape.getRank() == 0)
-        shapePtr[tensorId] = 1;
-      ++tensorId;
-    }
-  }
-}
-
 /// This is the new C++ implementation of the mgp.buffer.get_cached primitive.
 /// The old one is not prefixed with TMP_.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx,
-                           size_t *size, void **data) {
+MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
+                       void **data) {
   auto &stateSlot = stateCtx->getStateSlotPayload<TensorStateSlot>(bufferSlot);
   ErrorOr<TensorBufferRef &> errOr = stateSlot.getBufferRef();
 
@@ -161,31 +95,9 @@ TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-TMP_MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
+MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
   auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
   stateSlot.clear();
-}
-
-/// Assigns to the borrower a tensor buffer that isn't owned by the cpuDevice
-/// (used for constants).
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_BufferUntracked(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
-                       size_t size) {
-  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
-  TensorBufferRef buf =
-      ::M::MLRT::TensorBufferRef::createWithNonTrackedMemory(data, size);
-  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
-    borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
-  } else {
-    CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-    borrowerValue =
-        borrowerValue.createReady<TensorBufferRef>(cpuDevice, std::move(buf));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetContextPayloadPtr(size_t index, StateContext *ctx) {
-  return ctx->getStateSlot(index).getUnderlyingPointer();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
@@ -533,16 +445,6 @@ MGP_RT_GetTensorShapeFromAsync(ssize_t *data, ssize_t rank,
   auto &shape = value.get<TensorShape>();
   for (int i = 0; i < rank; ++i)
     data[i] = shape[i];
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetContextAndSizeFromAsync(size_t *size,
-                                  AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  assert(value.isReady());
-  auto &ctx = value.get<StateContext>();
-  *size = ctx.getNumStateSlots();
-  return reinterpret_cast<void *>(&ctx);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
