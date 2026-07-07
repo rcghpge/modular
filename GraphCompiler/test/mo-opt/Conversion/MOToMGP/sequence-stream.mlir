@@ -25,3 +25,18 @@ mo.graph @seq(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gp
   %out = mo.add(%main, %s) : !mo.tensor<[2, 2], f32, gpu:0>
   mo.output %out : !mo.tensor<[2, 2], f32, gpu:0>
 }
+
+// A replicated (multi-device) body binds one select_stream view per device.
+
+// CHECK-LABEL: mgp.model @seq2dev
+// CHECK-DAG: mgp.device_context.select_stream[1] %{{.*}} : !mgp.device_context<<"gpu", 0>>
+// CHECK-DAG: mgp.device_context.select_stream[1] %{{.*}} : !mgp.device_context<<"gpu", 1>>
+mo.graph @seq2dev(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:1>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
+  %r:2 = mo.sequence[1] (%a, %b) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
+  ^bb0(%x: !mo.tensor<[2, 2], f32, gpu:0>, %y: !mo.tensor<[2, 2], f32, gpu:1>):
+    %rx = mo.relu(%x) : !mo.tensor<[2, 2], f32, gpu:0>
+    %ry = mo.relu(%y) : !mo.tensor<[2, 2], f32, gpu:1>
+    mo.yield %rx, %ry : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>
+  }
+  mo.output %r#0, %r#1 : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>
+}

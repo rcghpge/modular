@@ -14,6 +14,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -32,6 +33,7 @@
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringMap.h"
@@ -1762,78 +1764,161 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
 LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
   // Lower mo.sequence by inlining its body into the execute block, bound to a
-  // side-stream view of the device context. The region was a fusion boundary
-  // (enforced at the MOGG stage) and a marker for which ops get the side
-  // stream; here we (1) map block args to operands, (2) bind the device
-  // context to a select_stream view for the duration of the body, bracketed by
-  // fork/join device_wait, and (3) map the yield operands to the op's results.
+  // per-device side-stream view of the device context. The region was a fusion
+  // boundary (enforced at the MOGG stage) and a marker for which ops get the
+  // side stream. Cross-stream ordering is expressed purely through buffer/
+  // tensor guard chains -- never the running execute chain: the fork gates on
+  // the guard chains of the body's inputs *and* its captured values, and the
+  // body's outputs are re-guarded on the join chain so downstream consumers
+  // wait for the side stream.
   OpBuilder &b = loweringState.getExecuteOpBuilder();
   Location loc = seq.getLoc();
   Block &body = seq.getBodyRegion().front();
+  Value execContext = loweringState.getExecuteMgpContext();
+  Value rootChain = loweringState.getExecuteChain();
 
-  // Map body block arguments to the lowered sequence operands (1:1).
-  for (auto [arg, operand] : llvm::zip(body.getArguments(), seq.getInputs()))
+  // Combine guard chains (dropping nulls); the root chain stands in for "ready
+  // immediately" when there are no producers (e.g. model inputs).
+  auto combineChains = [&](ArrayRef<Value> chains) -> Value {
+    SmallVector<Value> nonNull;
+    for (Value c : chains)
+      if (c)
+        nonNull.push_back(c);
+    if (nonNull.empty())
+      return rootChain;
+    if (nonNull.size() == 1)
+      return nonNull.front();
+    return GRT::ChainCreateOp::create(b, loc, nonNull).getResult();
+  };
+  // Device of a value, or null for non-tensor (e.g. chain) values: those carry
+  // no device and must not fabricate a default one.
+  auto deviceOf = [](Value v) -> DeviceRefAttr {
+    if (auto devTy = dyn_cast<MO::MOHasDeviceTypeInterface>(v.getType()))
+      return MO::getDeviceOrDefault(devTy);
+    return {};
+  };
+  // Guard-chain lookup mirroring the canonical pattern (see
+  // lower(MO::TensorUnbundleOp)): a value may be guarded under its MO key or
+  // its lowered key. Try the MO value first, then its lowered value.
+  auto guardOf = [&](Value moVal) -> Value {
+    if (Value g = loweringState.getChainGuardingValueOrNull(moVal))
+      return g;
+    if (Value lowered = loweringState.lookupExecuteLoweredValue(moVal))
+      return loweringState.getChainGuardingValueOrNull(lowered);
+    return {};
+  };
+
+  // Collect the unique accelerator devices the body touches. A replicated body
+  // (e.g. the EP shared expert) spans every device, one side-stream view each.
+  // streamId 0 (default stream) or a host-only body adds no binding.
+  uint64_t streamId = seq.getStreamId();
+  SmallVector<DeviceRefAttr> devices;
+  auto addDevice = [&](Value v) {
+    DeviceRefAttr dev = deviceOf(v);
+    if (dev && !MO::isOnHost(v.getType()) && !llvm::is_contained(devices, dev))
+      devices.push_back(dev);
+  };
+  for (Value in : seq.getInputs())
+    addDevice(in);
+  for (Value res : seq.getResults())
+    addDevice(res);
+  const bool bindStream = streamId != 0 && !devices.empty();
+
+  // Values the body reads from the enclosing scope (everything that is NOT a
+  // block argument). mo.sequence is intentionally not IsolatedFromAbove -- the
+  // body may capture immutable weights/constants directly -- so to keep the
+  // cross-stream sync complete we also gate the fork on the producer chains of
+  // these captures. A read-only constant/weight has no guard chain (no-op); a
+  // capture produced on the main stream contributes its chain, so the side
+  // stream correctly waits for it.
+  llvm::SetVector<Value> captured;
+  mlir::getUsedValuesDefinedAbove(seq.getBodyRegion(), captured);
+
+  // Fork: per device, create the side-stream view and a device_wait that makes
+  // the side stream wait for the base-stream producers of that device's inputs
+  // and captures.
+  llvm::SmallDenseMap<DeviceRefAttr, TypedValue<MGP::DeviceContextType>>
+      viewFor;
+  llvm::SmallDenseMap<DeviceRefAttr, Value> forkChainFor;
+  if (bindStream) {
+    for (DeviceRefAttr dev : devices) {
+      TypedValue<MGP::DeviceContextType> base =
+          loweringState.getExecuteDevice(dev);
+      auto view =
+          MGP::DeviceContextSelectStreamOp::create(b, loc, base, streamId);
+      viewFor[dev] = view;
+      SmallVector<Value> inGuards;
+      for (Value in : seq.getInputs())
+        if (deviceOf(in) == dev)
+          inGuards.push_back(guardOf(in));
+      for (Value cap : captured)
+        if (deviceOf(cap) == dev)
+          inGuards.push_back(guardOf(cap));
+      forkChainFor[dev] =
+          MGP::DeviceWaitOp::create(b, loc, /*inChain=*/combineChains(inGuards),
+                                    execContext, /*waitingDeviceContext=*/view,
+                                    /*signalingDeviceContext=*/base,
+                                    /*bDevice=*/dev)
+              .getResult();
+      loweringState.setExecuteDeviceOverride(dev, view);
+    }
+  }
+
+  // Map each body block argument to its lowered input and guard the (region-
+  // local) block argument on the device's fork chain, so the body's ops wait
+  // for the fork. We guard the block argument -- not the shared input value --
+  // so unrelated main-stream consumers of the same input are not serialized.
+  for (auto [arg, operand] : llvm::zip(body.getArguments(), seq.getInputs())) {
     loweringState.emplaceExecuteLoweredValue(
         arg, loweringState.lookupExecuteLoweredValue(operand));
-
-  // Pick the device to bind. The minimal slice supports a single-device body;
-  // take the device from the first result (or input) tensor.
-  uint64_t streamId = seq.getStreamId();
-  DeviceRefAttr dev;
-  if (seq.getNumResults() > 0)
-    dev = MO::getDeviceOrDefaultAny(seq.getResult(0).getType());
-  else if (!seq.getInputs().empty())
-    dev = MO::getDeviceOrDefaultAny(seq.getInputs().front().getType());
-  const bool bindStream = streamId != 0 && dev && dev.getLabel() != "cpu";
-
-  TypedValue<MGP::DeviceContextType> base, view;
-  Value execContext;
-  if (bindStream) {
-    base = loweringState.getExecuteDevice(dev);
-    view = cast<TypedValue<MGP::DeviceContextType>>(
-        MGP::DeviceContextSelectStreamOp::create(b, loc, base.getType(), base,
-                                                 streamId)
-            .getResult());
-    execContext = loweringState.getExecuteMgpContext();
-    // Fork: the side stream waits for the base stream (where inputs are
-    // produced) before the body runs.
-    Value forkChain = MGP::DeviceWaitOp::create(
-                          b, loc,
-                          /*inChain=*/loweringState.getCurrentExecuteChain(),
-                          execContext, /*waitingDeviceContext=*/view,
-                          /*signalingDeviceContext=*/base,
-                          /*bDevice=*/dev)
-                          .getResult();
-    loweringState.setCurrentExecuteChain(forkChain);
-    loweringState.setExecuteDeviceOverride(dev, view);
+    Value guard =
+        bindStream ? forkChainFor.lookup(deviceOf(operand)) : guardOf(operand);
+    if (guard)
+      loweringState.replaceChainGuard(arg, guard);
   }
 
   // Lower the body ops (excluding the yield terminator) in place; with the
-  // override installed, getExecuteDevice routes them onto the side stream.
+  // overrides installed, getExecuteDevice routes them onto the side streams.
   if (failed(levelwiseTopologicalSort(&body)))
     return failure();
   for (Operation &op : body.without_terminator())
     if (failed(lowerOp(op, &seq.getBodyRegion())))
       return failure();
 
+  // Join: per device, a device_wait that makes the base stream wait for the
+  // side stream, gated on the guard chains of that device's body outputs.
+  auto yieldOp = cast<MO::YieldOp>(body.getTerminator());
+  llvm::SmallDenseMap<DeviceRefAttr, Value> joinChainFor;
   if (bindStream) {
-    loweringState.clearExecuteDeviceOverride(dev);
-    // Join: the base stream waits for the side stream before consuming outputs.
-    Value joinChain = MGP::DeviceWaitOp::create(
-                          b, loc,
-                          /*inChain=*/loweringState.getCurrentExecuteChain(),
-                          execContext, /*waitingDeviceContext=*/base,
-                          /*signalingDeviceContext=*/view,
-                          /*bDevice=*/dev)
-                          .getResult();
-    loweringState.setCurrentExecuteChain(joinChain);
+    for (DeviceRefAttr dev : devices)
+      loweringState.clearExecuteDeviceOverride(dev);
+    for (DeviceRefAttr dev : devices) {
+      TypedValue<MGP::DeviceContextType> base =
+          loweringState.getExecuteDevice(dev);
+      SmallVector<Value> outGuards;
+      for (Value out : yieldOp.getOperands())
+        if (deviceOf(out) == dev)
+          outGuards.push_back(guardOf(out));
+      joinChainFor[dev] = MGP::DeviceWaitOp::create(
+                              b, loc, /*inChain=*/combineChains(outGuards),
+                              execContext, /*waitingDeviceContext=*/base,
+                              /*signalingDeviceContext=*/viewFor[dev],
+                              /*bDevice=*/dev)
+                              .getResult();
+    }
   }
 
-  // Map results to the lowered yield operands (1:1).
-  auto yieldOp = cast<MO::YieldOp>(body.getTerminator());
-  for (auto [res, yielded] : llvm::zip(seq.getResults(), yieldOp.getOperands()))
+  // Map each result to its lowered yield value and guard the result on the
+  // device's join chain, so downstream consumers wait for the side stream.
+  for (auto [res, yielded] :
+       llvm::zip_equal(seq.getResults(), yieldOp.getOperands())) {
     loweringState.emplaceExecuteLoweredValue(
         res, loweringState.lookupExecuteLoweredValue(yielded));
+    Value guard =
+        bindStream ? joinChainFor.lookup(deviceOf(res)) : guardOf(yielded);
+    if (guard)
+      loweringState.replaceChainGuard(res, guard);
+  }
 
   return success();
 }
