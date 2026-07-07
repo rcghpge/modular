@@ -890,6 +890,17 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
         functional-type($inputs, $results) $bodyRegion
   }];
 
+  let builders = [
+    /// Build a SequenceOp whose body block has one argument per input (typed
+    /// 1:1 from `inputs`). The body is otherwise empty; callers populate it and
+    /// terminate it with `mo.yield`.
+    OpBuilder<(ins
+      "ValueRange":$inputs,
+      "TypeRange":$resultTypes,
+      "uint64_t":$streamId
+    )>,
+  ];
+
   let extraClassDeclaration = [{
     /// DeclInterface: this op declares no parameters of its own.
     ArrayRef<ParamDeclAttr> getInputParams();

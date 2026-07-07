@@ -1651,6 +1651,22 @@ LogicalResult ParallelOp::verify() {
 ArrayRef<ParamDeclAttr> SequenceOp::getInputParams() { return {}; }
 SmallVector<ParamDeclAttr> SequenceOp::getAllParams() { return {}; }
 
+void SequenceOp::build(OpBuilder &builder, OperationState &state,
+                       ValueRange inputs, TypeRange resultTypes,
+                       uint64_t streamId) {
+  state.addOperands(inputs);
+  state.addTypes(resultTypes);
+  state.addAttribute(
+      SequenceOp::getStreamIdAttrName(state.name),
+      builder.getIntegerAttr(builder.getIntegerType(64, /*isSigned=*/false),
+                             streamId));
+  // One block argument per input, typed 1:1.
+  Block &block = state.addRegion()->emplaceBlock();
+  SmallVector<Type> argTypes(inputs.getTypes());
+  SmallVector<Location> locs(argTypes.size(), state.location);
+  block.addArguments(argTypes, locs);
+}
+
 LogicalResult SequenceOp::verify() {
   Block &body = getBodyRegion().front();
 
