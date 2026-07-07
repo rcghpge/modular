@@ -566,8 +566,7 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
     return std::move(outChain).setToError(engineOr.takeError());
 
   theContext.emplaceStateSlot<KernelExecutionState>(
-      static_cast<size_t>(*aRuntimeSlot),
-      /*numBuffers=*/0, *engineOr);
+      static_cast<size_t>(*aRuntimeSlot), *engineOr);
 
   std::move(outChain).emplace();
 }
@@ -594,13 +593,11 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
                              CPUDevice &cpuDevice) {
   TRACY_ZONE_SCOPED_NC("mgp_buffer_cache", TRACY_COLOR_TEAL);
 
-  theContext.emplaceStateSlot<DefaultStateSlot>(
-      static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
-  auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
+  auto &tensorStateSlot = theContext.emplaceStateSlot<TensorStateSlot>(
+      static_cast<size_t>(*bBufferSlot));
 
   // Always borrow the buffer.
-  ErrorOrSuccess errOr = defaultStateSlot.setBuffer(
-      /*bufferIndex=*/0, buffer.get().borrow());
+  ErrorOrSuccess errOr = tensorStateSlot.setBuffer(buffer.get().borrow());
 
   if (errOr.isError())
     return std::move(outChain).setToError(errOr.takeError());

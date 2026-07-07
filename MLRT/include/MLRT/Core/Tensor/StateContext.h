@@ -9,6 +9,8 @@
 
 #include "MLRT/Core/Tensor/StateSlot.h"
 
+#include <vector>
+
 namespace M::MLRT {
 
 /// A state context holds a number of 'state slots'. The number of state slots
@@ -36,9 +38,7 @@ namespace M::MLRT {
 class StateContext {
 public:
   /// Constructs a new state context with numSlots uninitialized state slots.
-  explicit StateContext(size_t numSlots)
-      : numSlots(numSlots),
-        stateSlots(std::make_unique<StateSlot[]>(numSlots)) {}
+  explicit StateContext(size_t numSlots) : stateSlots(numSlots) {}
 
   /// Destroys all state slots in the state context. Slots are destroyed in
   /// reverse order since later slots may hold implicit references to earlier
@@ -46,11 +46,11 @@ public:
   ~StateContext() = default;
 
   /// Returns the number of state slots in the state context.
-  size_t getNumStateSlots() const { return numSlots; }
+  size_t getNumStateSlots() const { return stateSlots.size(); }
 
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
-    assert(slotIndex < numSlots &&
+    assert(slotIndex < stateSlots.size() &&
            "slotIndex must be within bounds when accessing state context");
     return stateSlots[slotIndex];
   }
@@ -61,37 +61,33 @@ public:
 
   /// Moves an already constructed reference to T into the state slot
   /// at slotIndex. The state slot must not have been already set or emplaced.
-  /// The state slot will also hold space for numBuffers cached buffer
-  /// allocations, which will all initially be null.
   template <typename T>
-  T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
-    assert(slotIndex < numSlots &&
+  T &setStateSlot(size_t slotIndex, RCRef<T> payload) {
+    assert(slotIndex < stateSlots.size() &&
            "slotIndex must be within bounds when accessing state context");
     assert(!stateSlots[slotIndex] &&
            "slotIndex has already been set or emplaced");
-    stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
+    stateSlots[slotIndex].reset<T>(std::move(payload));
     return stateSlots[slotIndex].get<T>();
   }
 
   /// Constructs a T in-place within the state slot at slotIndex. The state
-  /// slot must not have already been set or emplaced. The state slot will also
-  /// hold space for numBuffers cached buffer allocations, which will all
-  /// initially be null.
+  /// slot must not have already been set or emplaced.
   template <typename T, typename... Args>
-  T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
-    assert(slotIndex < numSlots &&
+  T &emplaceStateSlot(size_t slotIndex, Args &&...args) {
+    assert(slotIndex < stateSlots.size() &&
            "slotIndex must be within bounds when accessing state context");
     assert(!stateSlots[slotIndex] &&
            "slotIndex has already been set or emplaced");
     stateSlots[slotIndex].reset<T>(
-        RCRef<T>::create(std::forward<Args>(args)...), numBuffers);
+        RCRef<T>::create(std::forward<Args>(args)...));
     return stateSlots[slotIndex].get<T>();
   }
 
   /// Returns the state slot at slotIndex. The state slot must have already
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
-    assert(slotIndex < numSlots &&
+    assert(slotIndex < stateSlots.size() &&
            "slotIndex must be within bounds when accessing state context");
     assert(stateSlots[slotIndex] && "slotIndex has not been set or emplaced");
     return stateSlots[slotIndex];
@@ -105,8 +101,7 @@ public:
   }
 
 private:
-  size_t numSlots;
-  std::unique_ptr<StateSlot[]> stateSlots;
+  std::vector<StateSlot> stateSlots;
 };
 
 } // namespace M::MLRT

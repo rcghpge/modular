@@ -35,7 +35,7 @@ static MLRT::CPUDeviceRef getCPUDevice() {
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
   StateContext ctx(/*numSlots=*/1);
-  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
+  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, 43);
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
                             "mismatch between actual and expected type ids");
 }
@@ -43,9 +43,8 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 
 TEST(ContextTest, StateSlotTest) {
   StateContext ctx(/*numSlots=*/2);
-  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-  ctx.setStateSlot(/*slotIndex=*/1, RCRef<PayloadB>::create('a'),
-                   /*numBuffers=*/1);
+  ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, 43);
+  ctx.setStateSlot(/*slotIndex=*/1, RCRef<PayloadB>::create('a'));
 
   EXPECT_EQ(ctx.getStateSlotPayload<PayloadA>(/*slotIndex=*/0).i, 43);
 
@@ -57,25 +56,23 @@ TEST(ContextTest, getOrCreateBufferTest) {
   {
     // Add scope to make sure that the allocator outlives the context.
     StateContext ctx(/*numSlots=*/1);
-    ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
-
-    auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
+    auto &tensorSlot = ctx.emplaceStateSlot<TensorStateSlot>(/*slotIndex=*/0);
     {
-      auto buffer = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, *cpuDevice, /*size=*/1, /*alignment=*/{});
+      auto buffer = tensorSlot.getOrCreateBuffer(*cpuDevice, /*size=*/1,
+                                                 /*alignment=*/{});
 
       // getOrCreateBuffer call with the same slot and the same size returns a
       // cached buffer.
-      auto buffer2 = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, *cpuDevice, /*size=*/1, /*alignment=*/{});
+      auto buffer2 = tensorSlot.getOrCreateBuffer(*cpuDevice, /*size=*/1,
+                                                  /*alignment=*/{});
       EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
 
       // We're done with the above buffers, so safe to reallocate.
     }
 
     // Call with a different size will allocate a new buffer.
-    auto buffer3 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, *cpuDevice, /*size=*/2, /*alignment=*/{});
+    auto buffer3 = tensorSlot.getOrCreateBuffer(*cpuDevice, /*size=*/2,
+                                                /*alignment=*/{});
     EXPECT_NE(buffer3.getSize(), 1UL);
   }
 }

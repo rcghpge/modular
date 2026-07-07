@@ -79,8 +79,8 @@ MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext &stateCtx, size_t *size,
                        void *storageRefPtr) {
   assert(storageRefPtr != nullptr);
 
-  auto &stateSlot = stateCtx.getStateSlot(bufferSlot);
-  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
+  auto &stateSlot = stateCtx.getStateSlotPayload<TensorStateSlot>(bufferSlot);
+  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer();
   if (errOr)
     return nullptr;
 
@@ -101,15 +101,14 @@ MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext &stateCtx) {
 /// This is the C++ implementation of mgp.int.cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_SetCachedInt(size_t bufferSlot, StateContext *stateCtx, size_t value) {
-  stateCtx->emplaceStateSlot<IntStateSlot>(bufferSlot,
-                                           /*numBuffers=*/0, value);
+  stateCtx->emplaceStateSlot<IntStateSlot>(bufferSlot, value);
 }
 
 /// This is the C++ implementation of mgp.int.get_cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT size_t
 MGP_RT_GetCachedInt(size_t bufferSlot, StateContext *stateCtx) {
-  auto &slot = stateCtx->getStateSlot(bufferSlot);
-  return slot.get<IntStateSlot>().getValue();
+  auto &slot = stateCtx->getStateSlotPayload<IntStateSlot>(bufferSlot);
+  return slot.getValue();
 }
 
 /// Returns the size of a C++ list.
@@ -147,8 +146,8 @@ MGP_RT_ListPopulate(AsyncRTWrapper<GML::List> asyncList, void **dataPtr,
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx,
                            size_t *size, void **data) {
-  auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
-  ErrorOr<TensorBufferRef &> errOr = stateSlot.getBufferRef(/*bufferIndex=*/0);
+  auto &stateSlot = stateCtx->getStateSlotPayload<TensorStateSlot>(bufferSlot);
+  ErrorOr<TensorBufferRef &> errOr = stateSlot.getBufferRef();
 
   /// TODO: Support errors in MGPRT
   if (errOr) {

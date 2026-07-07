@@ -11,56 +11,43 @@
 using namespace M;
 using namespace M::MLRT;
 
-TensorBufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                             CompactCPUDevicePtr cpuDevice,
-                                             size_t size,
-                                             std::optional<size_t> alignment) {
-  assert(bufferIndex < bufferCache.size() &&
-         "buffer index out of bounds in StateSlot");
-  auto &entry = bufferCache[bufferIndex];
-  updateCacheIfNeeded(entry, cpuDevice, size, alignment);
+TensorBufferRef
+TensorStateSlot::getOrCreateBuffer(CompactCPUDevicePtr cpuDevice, size_t size,
+                                   std::optional<size_t> alignment) {
+  updateCacheIfNeeded(bufferCache, cpuDevice, size, alignment);
   // Return a borrowed reference to the cached buffer.
-  return entry->borrow();
+  return bufferCache.borrow();
 }
 
-ErrorOr<TensorBufferRef> StateSlot::getBuffer(size_t bufferIndex) {
-  assert(bufferIndex < bufferCache.size() &&
-         "buffer index out of bounds in StateSlot");
-  auto &entry = bufferCache[bufferIndex];
-  if (!entry)
-    return Error("no buffer has been cached at the given index");
+ErrorOr<TensorBufferRef> TensorStateSlot::getBuffer() {
+  if (!bufferCache.getBuffer())
+    return Error("no buffer has been cached");
   // Return a borrowed reference to the cached buffer. Since it's in the
   // cache, and the compiler follows the 'one shot' rules for reallocating
   // buffers, we can give the borrow 'execute' lifetime.
-  return entry->borrow();
+  return bufferCache.borrow();
 }
 
-ErrorOr<TensorBufferRef &> StateSlot::getBufferRef(size_t bufferIndex) {
-  assert(bufferIndex < bufferCache.size() &&
-         "buffer index out of bounds in StateSlot");
-  auto &entry = bufferCache[bufferIndex];
-  if (!entry)
-    return Error("no buffer has been cached at the given index");
-  return *entry;
+ErrorOr<TensorBufferRef &> TensorStateSlot::getBufferRef() {
+  if (!bufferCache.getBuffer())
+    return Error("no buffer has been cached");
+  return bufferCache;
 }
 
-ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
-                                    TensorBufferRef bufferRef) {
-  assert(bufferIndex < bufferCache.size() &&
-         "buffer index out of bounds in StateSlot");
-  auto &entry = bufferCache[bufferIndex];
-  if (entry)
-    return Error("buffer has already been cached at the given index");
-  entry = std::move(bufferRef);
+ErrorOrSuccess TensorStateSlot::setBuffer(TensorBufferRef bufferRef) {
+  if (bufferCache.getBuffer())
+    return Error("buffer has already been cached");
+  bufferCache = std::move(bufferRef);
   return success();
 }
 
-void StateSlot::updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                    CompactCPUDevicePtr cpuDevice, size_t size,
-                                    std::optional<size_t> alignment) {
+void TensorStateSlot::updateCacheIfNeeded(TensorBufferRef &entry,
+                                          CompactCPUDevicePtr cpuDevice,
+                                          size_t size,
+                                          std::optional<size_t> alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is
   // uninitialized, thus forcing an allocation.
-  if (entry && entry->getSize() == size)
+  if (entry.getSize() == size)
     return;
 
   // Free the existing buffer if exists and create a new one.
