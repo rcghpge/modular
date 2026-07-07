@@ -46,6 +46,17 @@ AsyncRTWrapper<T> wrap(T *ptr) {
   return AsyncRTWrapper<T>{ptr};
 }
 
+template <typename T, typename... Args>
+void fulfillReady(AnyAsyncValueRef &value, CPUDevice &cpu, Args &&...args) {
+  if (value.getPointer() && value.getPointer()->isIndirect()) {
+    value.copy().emplaceIndirect<T>(std::forward<Args>(args)...);
+  } else {
+    CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+    value = AnyAsyncValueRef::createReady<T>(cpuDevice,
+                                             std::forward<Args>(args)...);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Functions visible from Mojo
 //===----------------------------------------------------------------------===//
@@ -105,12 +116,7 @@ MGP_RT_CreateAsync_ssizet(ssize_t data,
                           AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<size_t>(data);
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<size_t>(cpuDevice, data);
-  }
+  fulfillReady<ssize_t>(value, cpuDevice, data);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
@@ -118,36 +124,21 @@ MGP_RT_CreateAsync_int64t(int64_t data,
                           AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<int64_t>(data);
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<int64_t>(cpuDevice, data);
-  }
+  fulfillReady<int64_t>(value, cpuDevice, data);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_chain(AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<Chain>();
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<Chain>(cpuDevice);
-  }
+  fulfillReady<Chain>(value, cpuDevice);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_bool(bool data, AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<bool>(data);
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<bool>(cpuDevice, data);
-  }
+  fulfillReady<bool>(value, cpuDevice, data);
 }
 
 /// TAKES an already-owning DeviceBuffer handle the producer surrendered instead
@@ -181,13 +172,7 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
       data, size, std::move(asyncDeviceBufferRef));
 
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<TensorBufferRef>(cpuDevice,
-                                               std::move(tensorBufferRef));
-  }
+  fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
 }
 
 /// Wraps an already-owning DeviceBuffer handle (surrendered net-zero by the
@@ -228,13 +213,8 @@ MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
   AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
   auto tensorBufferRef =
       TensorBufferRef::create(data, size, std::move(storageRef));
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<TensorBufferRef>(cpuDevice,
-                                               std::move(tensorBufferRef));
-  }
+
+  fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
 }
 
 /// Builds a Tensor (TensorBufferRef + spec) from a data view (ptr + size +
@@ -254,13 +234,8 @@ MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
   TensorBufferRef buf =
       TensorBufferRef::create(data, size, std::move(storageRef));
   TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<Tensor>(std::move(buf), std::move(spec));
-  } else {
-    assert(!value.isReady());
-    value =
-        value.createReady<Tensor>(cpuDevice, std::move(buf), std::move(spec));
-  }
+
+  fulfillReady<Tensor>(value, cpuDevice, std::move(buf), std::move(spec));
 }
 
 /// Retains the AsyncValue behind an existing `AnyAsyncValueRef` storage handle
@@ -291,57 +266,13 @@ MGP_RT_RetainBufferStorage(AsyncRTWrapper<AnyAsyncValueRef> async) {
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncNonTrackedBufferRef(void *data, size_t size,
-                                      AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<TensorBufferRef>(
-        TensorBufferRef::createWithNonTrackedMemory(
-            data, size, /*alignment=*/std::nullopt));
-  } else {
-    assert(!value.isReady());
-    value = value.createReady<TensorBufferRef>(
-        cpuDevice, TensorBufferRef::createWithNonTrackedMemory(
-                       data, size, /*alignment=*/std::nullopt));
-  }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncNonTrackedTensor(void *data, size_t byteCount, size_t rank,
-                                   size_t *dims, int8_t type,
-                                   AsyncRTWrapper<AnyAsyncValueRef> async) {
-
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &value = unwrap(async);
-
-  // Pack buffer and spec into tensor.
-  TensorBufferRef buf = ::M::MLRT::TensorBufferRef::createWithNonTrackedMemory(
-      data, byteCount, /*alignment=*/std::nullopt);
-  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
-  if (value.getPointer() && value.getPointer()->isIndirect())
-    value.copy().emplaceIndirect<Tensor>(std::move(buf), std::move(spec));
-  else
-    value =
-        value.createReady<Tensor>(cpuDevice, std::move(buf), std::move(spec));
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
                               AsyncRTWrapper<AnyAsyncValueRef> async) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  llvm::SmallVector<ssize_t> dims;
-  for (int i = 0; i < rank; ++i)
-    dims.push_back(data[i]);
 
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<TensorShape>(dims);
-  } else {
-    assert(!value.isReady() &&
-           "Value needs to not be ready so we can construct it.");
-    value = AnyAsyncValueRef::createReady<TensorShape>(cpuDevice, dims);
-  }
+  ArrayRef<ssize_t> dims(data, data + rank);
+  fulfillReady<TensorShape>(value, cpuDevice, dims);
 }
 
 static void
@@ -350,14 +281,10 @@ createAsyncMojoValue(void *data, void (*destructorFn)(void *),
                      MojoValue::Tag tag = MojoValue::Tag::kDefault) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect()) {
-    value.copy().emplaceIndirect<MojoValue>(data, destructorFn, tag);
-  } else {
-    assert(!value.isReady());
-    value = AnyAsyncValueRef::createReady<MojoValue>(cpuDevice, data,
-                                                     destructorFn, tag);
-  }
+
+  fulfillReady<MojoValue>(value, cpuDevice, data, destructorFn, tag);
 }
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateOwnedAsyncMojoValue(void *data, void (*destructorFn)(void *),
                                  AsyncRTWrapper<AnyAsyncValueRef> async) {
