@@ -6,6 +6,7 @@
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOAttrs.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
@@ -187,10 +188,9 @@ bool valueDependsTransitivelyOn(Value start, mlir::Operation *target) {
   return valueDependsTransitivelyOnImpl(start, nullptr, target);
 }
 
-ErrorOr<KernelOutputFusionLambdaType>
-getKernelOutputFusionLambdaType(MojoRegistry &registry,
-                                MOGG::TensorFusedOp fusedOp,
-                                bool enableComputeLambdas) {
+ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
+    MojoRegistry &registry, MOGG::TensorFusedOp fusedOp,
+    bool enableComputeLambdas, mlir::ModuleOp moduleOp) {
   MOGG::BindLambdaOp lambdaOp = fusedOp.getBindLambdaOp();
   if (lambdaOp.getBindKind() != MOGG::BindLambdaKind::OutputLambda)
     return Error("BindLambdaOp kind must be a OutputLambda");
@@ -232,9 +232,40 @@ getKernelOutputFusionLambdaType(MojoRegistry &registry,
   if (!tensorArg)
     return KernelOutputFusionLambdaType::Output;
 
-  // Tile-based compute fusion: kernel operand is _FusedComputeOutputTileTensor.
-  if (tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTileTensor)
-    return KernelOutputFusionLambdaType::ComputeTile;
+  // The tile-based programming model is selected per-device via the
+  // `tile_based_fusion` attribute on the device's `#M.device_info` entry
+  // (surfaced to the user through the `tile_codegen` graph-API compile option).
+  // When it is set for the device this kernel runs on, the graph compiler uses
+  // tile-based kernels and asserts the primary kernel declares the tile-based
+  // fused-output IOSpec (_FusedComputeOutputTileTensor); when unset, a
+  // tile-based IOSpec is rejected. The device the kernel runs on is carried by
+  // the fused output tensor's type (the call op itself defaults to the host
+  // device).
+  auto deviceRef = MO::getDeviceOrDefaultAny(fusedTensor.getType());
+  bool tileBasedFusion =
+      MO::DeviceInfoMapping(moduleOp).get(deviceRef).getTileBasedFusion();
+  bool kernelIsTile =
+      tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTileTensor;
+  bool kernelIsSimdCompute =
+      tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTensor;
+  if (tileBasedFusion) {
+    if (kernelIsSimdCompute)
+      return Error(
+          "device '" + deviceRef.getLabel().str() +
+          "' is configured for tile codegen (tile_based_fusion) but kernel '" +
+          executeOp.getKernelSymName().str() +
+          "' declares a SIMD compute output (_FusedComputeOutputTensor); a "
+          "tile kernel (_FusedComputeOutputTileTensor) is required");
+    if (kernelIsTile)
+      return KernelOutputFusionLambdaType::ComputeTile;
+  } else if (kernelIsTile) {
+    return Error(
+        "kernel '" + executeOp.getKernelSymName().str() +
+        "' declares a tile-based fused output (_FusedComputeOutputTileTensor) "
+        "but device '" +
+        deviceRef.getLabel().str() +
+        "' is not configured for tile codegen (tile_based_fusion)");
+  }
 
   if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor)
     return KernelOutputFusionLambdaType::Output;

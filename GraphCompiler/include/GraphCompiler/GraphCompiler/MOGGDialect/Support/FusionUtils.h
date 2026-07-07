@@ -141,10 +141,9 @@ enum class KernelOutputFusionLambdaType {
 // Returns the FusedTensor kind to be emitted by the Graph Compiler for
 // `fusedOp`. Or returns an error if the kernel is not found / the op is
 // invalid.
-ErrorOr<KernelOutputFusionLambdaType>
-getKernelOutputFusionLambdaType(MojoRegistry &registry,
-                                MOGG::TensorFusedOp fusedOp,
-                                bool enableComputeLambdas);
+ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
+    MojoRegistry &registry, MOGG::TensorFusedOp fusedOp,
+    bool enableComputeLambdas, mlir::ModuleOp moduleOp);
 
 } // namespace M::MOGG
 

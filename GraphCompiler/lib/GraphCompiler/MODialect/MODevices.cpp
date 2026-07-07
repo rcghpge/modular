@@ -150,5 +150,5 @@ DeviceInfoAttr MO::DeviceInfoMapping::get(DeviceRefAttr device) const {
   if (it != _mapping.end())
     return it->second;
   return DeviceInfoAttr::get(device.getContext(), device.getLabel(), "unknown",
-                             "unknown", "unknown");
+                             "unknown", "unknown", /*tile_based_fusion=*/false);
 }

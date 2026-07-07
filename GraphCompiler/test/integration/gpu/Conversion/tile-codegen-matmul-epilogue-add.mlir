@@ -1,9 +1,15 @@
-// Verify that a matmul kernel declaring _FusedComputeOutputTileTensor as its
-// output causes the GC to select the ComputeTile epilogue path and emit a
-// FusionStruct conforming to ComputeOutputFusionTile.
+// Verify that compiling with tile-codegen selects the ComputeTile
+// epilogue path and emits a FusionStruct conforming to ComputeOutputFusionTile.
+// The primary kernel's tile IOSpec is asserted to agree with the graph-wide
+// option.
 //
-// The stub matmul in testing_kernels/MOGGTileKernelAPITest.mojo overrides the
-// built-in mo.matmul via kernel-library-paths, signalling the tile IOSpec.
+// The stub matmul in testing_kernels/tile_stubs/MOGGTileKernelAPITest.mojo
+// overrides the built-in mo.matmul via kernel-library-paths and declares the
+// tile IOSpec that the assert checks against.
+//
+// Tile codegen is selected per-device via the `tile_based_fusion` attribute on the
+// device's `#M.device_info` entry (the module's `mo.device_info_mapping`), which
+// the graph API sets from the `tile_codegen` compile option.
 //
 // RUN: mo-opt --gc-pipeline-pre-jit="default-device-label=gpu dump-mojo-text constant-fold=false kernel-library-paths=%tile_kernel_api_test_lib" %s 2>&1 | FileCheck %s
 
@@ -34,6 +40,7 @@
 // CHECK: Add.elementwise(val,
 // CHECK: return
 
+module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_100a", "NVIDIA B200", tile_based_fusion = true>}} {
 mo.graph @matmul_add_tile_gpu(
     %A: !mo.tensor<[256, 256], f32>,
     %B: !mo.tensor<[256, 256], f32>,
@@ -48,4 +55,5 @@ mo.graph @matmul_add_tile_gpu(
     %result = mo.add(%mm, %bcast_bias) { device = #M.device_ref<"gpu", 0> } : !mo.tensor<[256, 256], f32, gpu:0>
     %result_cpu, %ch4 = mo.transfer[%ch3] %result : !mo.tensor<[256, 256], f32, gpu:0> to <"cpu", 0>
     mo.output %result_cpu : !mo.tensor<[256, 256], f32>
+}
 }

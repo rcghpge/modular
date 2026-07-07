@@ -1295,7 +1295,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     auto fusedOp =
         dyn_cast<MOGG::TensorFusedOp>(*bindOp.getResult().getUsers().begin());
     auto outputLambdaType = getKernelOutputFusionLambdaType(
-        state.registry, fusedOp, state.enableComputeLambdas);
+        state.registry, fusedOp, state.enableComputeLambdas, state.moduleOp);
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::Output) {
       return ManagedTensorSliceRef::kBindToFusedOutput;
@@ -1332,7 +1332,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
     if (!fusedOp)
       return emitError("BindLamdbdaOp user should be a FusedTensorOp");
     auto outputLambdaTypeOr = getKernelOutputFusionLambdaType(
-        state.registry, fusedOp, state.enableComputeLambdas);
+        state.registry, fusedOp, state.enableComputeLambdas, state.moduleOp);
     if (outputLambdaTypeOr.isError())
       return emitError(outputLambdaTypeOr.getError());
     lambdaType = *outputLambdaTypeOr;

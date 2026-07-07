@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -210,6 +211,7 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     MOGG::EmitMojoState state(registry, enableOpTraceComments,
                               enableComputeLambdas,
                               moggDebugDumpFusedTensorSpecs);
+    state.moduleOp = moduleOp;
 
     // Import mojo stdlib packages and compiler directives.
     for (auto [package, as] : MOGG::kPackagesToImport) {
@@ -332,6 +334,11 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
              moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
       kernelStub->erase();
     }
+
+    // The device-info mapping is only needed through Mojo emission (e.g. to
+    // resolve per-device `tile_based_fusion`); strip it now so it doesn't
+    // surface in downstream formats (e.g. MEF).
+    moduleOp->removeAttr(MO::DeviceInfoMapping::kAttrName);
   }
 
   // This pass emits Mojo text. [optional] phases exist strictly as compilation

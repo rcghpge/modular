@@ -261,10 +261,6 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
     bool moggLoweringSuccess = lowerMOOpsToMOGG();
     if (!moggLoweringSuccess)
       return signalPassFailure();
-
-    // The device-infos mapping is only needed during MO-level passes.
-    // Remove it so it doesn't surface in downstream formats (e.g. MEF).
-    getOperation()->removeAttr(MO::DeviceInfoMapping::kAttrName);
   }
 };
 

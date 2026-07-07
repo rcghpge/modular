@@ -76,6 +76,11 @@ struct EmitMojoState {
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 
+  /// The top-level module being lowered. Used to resolve the per-device
+  /// `mo.device_info_mapping` (e.g. the `tile_based_fusion` tile-codegen
+  /// attribute).
+  mlir::ModuleOp moduleOp;
+
   /// Name of the entry point of the current kernel
   std::string currentKernelName;
 

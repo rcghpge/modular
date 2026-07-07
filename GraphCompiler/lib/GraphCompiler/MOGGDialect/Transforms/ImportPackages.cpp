@@ -304,7 +304,8 @@ isExtensibilityAPIStruct(KGEN::LIT::StructDeclOp structDeclOp,
     info.registrationName = name;
     info.deviceInfo =
         DeviceInfoAttr::get(structDeclOp.getContext(), type.strref(),
-                            api.strref(), arch.strref(), model.strref());
+                            api.strref(), arch.strref(), model.strref(),
+                            /*tile_based_fusion=*/false);
   }
 
   return info.registrationName != nullptr;
