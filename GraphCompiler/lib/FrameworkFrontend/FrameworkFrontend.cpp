@@ -15,6 +15,7 @@
 #include "GraphCompiler/CompileDriver/CompileToBinary.h"
 #include "GraphCompiler/ExecutionDriver/DriverCLOptions.h"
 #include "GraphCompiler/GraphCompiler/GraphCompilerCLOptions.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
@@ -35,6 +36,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/FileSystemExtras.h"
 #include "Support/Filesystem/Paths.h"
+#include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "max/MOF/Driver/DriverImpl.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -63,6 +65,7 @@ struct MOFConfig {
   std::optional<std::string> defaultDeviceLabel;
   std::optional<size_t> deviceID;
   std::optional<DeviceSpec> deviceSpec;
+  bool tileBasedFusion = false;
 
   void overrideLoweringOptions(MO::GCPipelineOptions &gcPipelineOptions) const {
     gcPipelineOptions.compiledFrameworkLabel =
@@ -169,6 +172,9 @@ MOFContext::setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
       mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
       mofConfig->deviceID = deviceConfig->getDeviceID();
       mofConfig->deviceSpec = deviceConfig->deviceSpec;
+    } else if (auto tileBasedFusionConfig =
+                   dyn_cast<TileBasedFusionDriverConfig>(driverConfig.get())) {
+      mofConfig->tileBasedFusion = tileBasedFusionConfig->getTileBasedFusion();
     }
   }
   return success();
@@ -329,6 +335,42 @@ private:
   }
 };
 
+/// Opts every device into tile-based fusion by stamping `tile_based_fusion =
+/// true` onto every entry of the module's `mo.device_info_mapping`. This is the
+/// sink for the `tile_based_fusion` compile option; the graph compiler reads
+/// the per-device flag per-op when deciding whether to emit tile-based kernels.
+/// The flag is applied uniformly, including to CPU: while the CPU alternative
+/// to tile-based fusion is SIMD today, keeping the flag device-general leaves
+/// room for SIMD to become a subset of TileTensor.
+static void enableTileBasedFusion(ModuleOp moduleOp) {
+  MLIRContext *ctx = moduleOp.getContext();
+  auto dict =
+      moduleOp->getAttrOfType<DictionaryAttr>(MO::DeviceInfoMapping::kAttrName);
+  if (!dict)
+    return;
+
+  SmallVector<NamedAttribute> entries;
+  entries.reserve(dict.size());
+  bool changed = false;
+  for (NamedAttribute entry : dict) {
+    auto info = dyn_cast<DeviceInfoAttr>(entry.getValue());
+    if (info && !info.getTileBasedFusion()) {
+      entries.emplace_back(entry.getName(),
+                           DeviceInfoAttr::get(ctx, info.getLabel(),
+                                               info.getApi(), info.getArch(),
+                                               info.getModel(),
+                                               /*tile_based_fusion=*/true));
+      changed = true;
+    } else {
+      entries.push_back(entry);
+    }
+  }
+
+  if (changed)
+    moduleOp->setAttr(MO::DeviceInfoMapping::kAttrName,
+                      DictionaryAttr::get(ctx, entries));
+}
+
 /// Lowers a module op to MGP then exports to MEF.
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          const MO::GCPipelineOptions &options,
@@ -383,6 +425,12 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   // attribute serves as the canonical marker: present iff decls are too.
   if ((*moduleOp)->hasAttr(MOGG::kOpaqueTypeMappingAttrName))
     gcPipelineOptions.kernelDeclsPrePopulated = true;
+
+  // Opt every device into tile-based fusion when the `tile_based_fusion`
+  // compile option was set (via `TileBasedFusionDriverConfig`). Done before the
+  // MEF cache key is computed below so tile / non-tile compiles never collide.
+  if (impl->mofConfig && impl->mofConfig->tileBasedFusion)
+    enableTileBasedFusion(*moduleOp);
 
   bool enableMEFMetadata = impl->getEnableMEFMetadata();
 

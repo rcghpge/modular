@@ -234,7 +234,8 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
 
   // The tile-based programming model is selected per-device via the
   // `tile_based_fusion` attribute on the device's `#M.device_info` entry
-  // (surfaced to the user through the `tile_codegen` graph-API compile option).
+  // (surfaced to the user through the `tile_based_fusion` graph-API compile
+  // option).
   // When it is set for the device this kernel runs on, the graph compiler uses
   // tile-based kernels and asserts the primary kernel declares the tile-based
   // fused-output IOSpec (_FusedComputeOutputTileTensor); when unset, a

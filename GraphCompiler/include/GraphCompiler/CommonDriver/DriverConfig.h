@@ -16,7 +16,14 @@
 namespace M {
 class DriverConfig {
 public:
-  enum OptionKind { kTF, kTorch, kMOF, kKernelLibrary, kDevice };
+  enum OptionKind {
+    kTF,
+    kTorch,
+    kMOF,
+    kKernelLibrary,
+    kDevice,
+    kTileBasedFusion
+  };
 
   DriverConfig(OptionKind kind, llvm::StringLiteral name)
       : Kind(kind), configName(name) {}
@@ -81,6 +88,26 @@ public:
 private:
   std::string deviceLabel;
   size_t deviceID;
+};
+
+class TileBasedFusionDriverConfig : public DriverConfig {
+public:
+  TileBasedFusionDriverConfig(bool tileBasedFusion)
+      : DriverConfig(OptionKind::kTileBasedFusion, "tile-based-fusion"),
+        tileBasedFusion(tileBasedFusion) {}
+
+  static bool classof(const DriverConfig *config) {
+    return config->getKind() == OptionKind::kTileBasedFusion;
+  }
+
+  bool getTileBasedFusion() const { return tileBasedFusion; }
+
+  std::unique_ptr<DriverConfig> clone() override {
+    return std::make_unique<TileBasedFusionDriverConfig>(*this);
+  }
+
+private:
+  bool tileBasedFusion;
 };
 
 } // namespace M
