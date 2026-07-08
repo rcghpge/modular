@@ -405,13 +405,8 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
 
   MojoValue inputBuffers = state.builder.var(MojoValue(
       kStructStaticTuple)[{kComptimeMutByteBuffer, getInBuffers().size()}]());
-  // The StaticTuple holds register-passable `MutByteBuffer` views; unwrap each
-  // input buffer composite's `.view` (an `OwnedByteBuffer` cannot live in a
-  // register-passable container).
   for (auto &&[i, buffer] : llvm::enumerate(getInBuffers()))
-    state.builder.assign(
-        inputBuffers[i],
-        OwnedByteBufferRef(state.getMojoValueFor(buffer)).view());
+    state.builder.assign(inputBuffers[i], state.getMojoValueFor(buffer));
 
   state.builder.call(function, bDevice.quote(), {output, inputBuffers, ctx});
 
@@ -421,6 +416,10 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // BufferSliceOp
 //===----------------------------------------------------------------------===//
+mlir::BitVector BufferSliceOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
 LogicalResult BufferSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -452,6 +451,10 @@ bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 // BufferBulkSliceOp
 //===----------------------------------------------------------------------===//
+
+mlir::BitVector BufferBulkSliceOp::resultsToPack() {
+  return mlir::BitVector{getNumResults(), false};
+}
 
 LogicalResult BufferBulkSliceOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,

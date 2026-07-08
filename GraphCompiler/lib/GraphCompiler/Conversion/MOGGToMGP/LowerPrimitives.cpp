@@ -194,7 +194,12 @@ void LowerPrimitivesPass::runOnOperation() {
       return mlir::WalkResult::interrupt();
     }
 
-    MOGraphLoweringState::lowerMOGGABI(*newKernel);
+    mlir::BitVector resultsToPack(op->getNumResults(), true);
+
+    if (implementsEmitsMojoInterface)
+      resultsToPack = implementsEmitsMojoInterface.resultsToPack();
+
+    MOGraphLoweringState::lowerMOGGABI(*newKernel, resultsToPack);
 
     // If the op to lower is an index constant op, we should replace it with a
     // mgp.buffer.constant and a resource attribute. This improves compilation

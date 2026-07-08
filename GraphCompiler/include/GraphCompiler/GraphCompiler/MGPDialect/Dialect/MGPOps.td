@@ -65,7 +65,7 @@ def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
 }
 
 def BufferConstantOp : MGP_Op<"buffer.constant", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
   DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
     "getLiftableAttributes",
@@ -149,7 +149,7 @@ def ContextCreateOp : MGP_Op<"context.create"> {
 //===----------------------------------------------------------------------===//
 
 def TensorCreateOp : MGP_Op<"tensor.create", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
@@ -194,7 +194,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
 //===----------------------------------------------------------------------===//
 
 def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   InferTypeOpAdaptor,
@@ -263,7 +263,7 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 //===----------------------------------------------------------------------===//
 
 def TensorSliceOp : MGP_Op<"tensor.slice", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
@@ -733,7 +733,7 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   Pure,
 ]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
@@ -1769,7 +1769,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 //===----------------------------------------------------------------------===//
 
 def BufferSliceOp : MGP_Op<"buffer.slice", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
   InferTypeOpAdaptor,
@@ -1817,7 +1817,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 
 def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
   AttrSizedOperandSegments,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   InferTypeOpAdaptor,
   Pure,

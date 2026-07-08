@@ -309,6 +309,10 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
   p << value;
 }
 
+llvm::BitVector BufferConstantOp::resultsToPack() {
+  return llvm::BitVector(1, false);
+}
+
 LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MOGG::MojoValue function(primitiveMojoName(primDecl));
@@ -529,6 +533,10 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
+llvm::BitVector BufferGetCachedOp::resultsToPack() {
+  return llvm::BitVector(2, false);
+}
+
 LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
@@ -536,8 +544,10 @@ LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   auto res = state.builder.var(
       mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
                                  state.getMojoValueFor(getBBufferSlot())}));
-  // The primitive returns a single storage-carrying `OwnedByteBuffer`.
-  state.setMojoValueFor(getResult(0), res);
+  state.setMojoValueFor(getResult(0), res[0]);
+
+  if (auto memStorageHandle = getOptionalMemStorageHandle())
+    state.setMojoValueFor(memStorageHandle, res[1]);
 
   return success();
 }
@@ -637,6 +647,10 @@ LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
 //===----------------------------------------------------------------------===//
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
+mlir::BitVector TensorExtractBufferOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
 LogicalResult TensorExtractBufferOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -769,6 +783,10 @@ bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
+mlir::BitVector TensorCreateOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
 LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -797,6 +815,10 @@ bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 // TensorSliceOp
 //===----------------------------------------------------------------------===//
+
+mlir::BitVector TensorSliceOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
 
 LogicalResult TensorSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;

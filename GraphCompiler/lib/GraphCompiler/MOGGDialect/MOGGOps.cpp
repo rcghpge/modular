@@ -3034,6 +3034,11 @@ LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
     return success();
   }
 
+  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackBorrowOp>()) {
+    rewriter.replaceOp(unpackOp, packOp.getInput());
+    return success();
+  }
+
   return failure();
 }
 
@@ -3123,26 +3128,6 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-
-  // A `!mgp.tensor` value is a parametric `OwnedTensor[dtype, rank]`; its
-  // MoggAsyncPackHelper constructor would lose overload resolution to the
-  // generic `Some[Movable & ImplicitlyDeletable]` ctor (mis-packing it as an
-  // opaque Mojo value). Call the dedicated pack function directly instead,
-  // passing the true spec rank so a scalar (rank 0) is not packed as the
-  // promoted rank-1 buffer view.
-  if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(getInput().getType())) {
-    MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
-    if (!tensorSpec.hasRank())
-      return emitError() << "Expected Tensor output to have known rank";
-    MojoValue specRankParam(static_cast<uint64_t>(tensorSpec.getRank()));
-    MojoValue tensorPackFunc(kFnMoggAsyncPackOwnedTensor);
-
-    state.builder.call(tensorPackFunc, {specRankParam},
-                       {state.getMojoValueFor(getInput()),
-                        state.mojoReturnValues[*resultIndexOr]});
-    return success();
-  }
-
   MojoValue asyncPackHelperStruct = kStructMoggAsyncPackHelper;
   auto packPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
   ASSERT_STREAM(packPrimDecl,
@@ -3151,11 +3136,13 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> operands;
   for (auto [idx, operand] : llvm::enumerate(getOperands())) {
     MojoValue mojoVal = state.getMojoValueFor(operand);
-    // The first operand (input) is consumed for move-only opaque types, so
-    // transfer (^ move) those. Buffer/tensor composites are NOT transferred:
-    // their pack copies (retains) the storage handle, so they may be borrowed
-    // (e.g. an InlineArray element from bulk_slice, which cannot be moved out).
-    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType>(operand.getType()))
+    // The first operand (input) is consumed, so transfer (^ move) it for
+    // move-only opaque types and for buffer types: mgp.buffer.alloc yields a
+    // move-only OwnedByteBuffer that must be transferred into the pack helper;
+    // other buffer producers yield a trivial MutByteBuffer, for which the move
+    // is a no-op.
+    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType, MGP::DeviceBufferType>(
+                        operand.getType()))
       mojoVal = mojoVal.transfer();
     operands.push_back(mojoVal);
   }
@@ -3289,34 +3276,15 @@ bool CallStubOp::isThrows() {
   return callee && callee.isThrows();
 }
 
-// Projects a stub-call operand to the bare view the kernel consumes: a
-// `!mgp.buffer` / `!mgp.tensor` value is a storage-carrying composite
-// (`OwnedByteBuffer` / `OwnedTensor`), so unwrap its `.view` / `.tensor` before
-// passing it to the kernel stub.
-static SmallVector<MojoValue>
-getStubCallOperands(EmitMojoState &state, Operation::operand_range ops) {
-  SmallVector<MojoValue> operands;
-  operands.reserve(llvm::range_size(ops));
-  for (Value operand : ops) {
-    MojoValue mojoVal = state.getMojoValueFor(operand);
-    if (isa<MGP::DeviceBufferType>(operand.getType()))
-      mojoVal = OwnedByteBufferRef(mojoVal).view();
-    else if (isa<MGP::DeviceTensorType>(operand.getType()))
-      mojoVal = OwnedTensorRef(mojoVal).tensor();
-    operands.push_back(mojoVal);
-  }
-  return operands;
-}
-
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
   MojoValue func(getName());
   if (getNumResults()) {
     state.setMojoValueFor(
         getResult(0),
-        state.builder.var(func({}, getStubCallOperands(state, getOperands()))));
+        state.builder.var(func({}, state.getMojoValuesFor(getOperands()))));
   } else {
-    state.builder.call(func, {}, getStubCallOperands(state, getOperands()));
+    state.builder.call(func, {}, state.getMojoValuesFor(getOperands()));
   }
   state.builder.newline();
 
@@ -3346,7 +3314,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
                                          /*cache=*/false);
 
   // 2. Create async wrapper closure that calls the stub
-  SmallVector<MojoValue> stubArgs = getStubCallOperands(state, getOperands());
+  SmallVector<MojoValue> stubArgs = state.getMojoValuesFor(getOperands());
   MojoValue stubFunc(getCallee().getSymNameAttr().str());
 
   MojoValue wrapper = state.builder.lambda(
@@ -3490,6 +3458,85 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
   }
 
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncPackBorrowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncPackBorrowOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Like async.pack, the borrowed result is an `!mogg.async<T>` of the input.
+  inferredReturnTypes.push_back(
+      AsyncType::get(context, adaptor.getInput().getType()));
+  return success();
+}
+
+LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
+  MojoValue moggAsyncPackBorrowFunc{kFnMoggAsyncPackBorrow};
+  MojoValue specRankParam;
+  MojoValue isTensorParam;
+  if (isa<MGP::DeviceBufferType>(getInput().getType())) {
+    specRankParam = 1;
+    isTensorParam = false;
+  } else if (auto tensorType =
+                 dyn_cast<MGP::DeviceTensorType>(getInput().getType())) {
+    specRankParam = tensorType.getRank();
+    isTensorParam = true;
+  }
+
+  state.builder.call(moggAsyncPackBorrowFunc, {specRankParam, isTensorParam},
+                     {/* borrower */ state.mojoReturnValues[*resultIndexOr],
+                      /* borrowee */ state.getMojoValueFor(getInput()),
+                      state.getMojoValueFor(getMem())});
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncUnpackAnyAsyncValueRefOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncUnpackAnyAsyncValueRefOp::canonicalize(
+    AsyncUnpackAnyAsyncValueRefOp unpackOp, mlir::PatternRewriter &rewriter) {
+  if (auto packOp = unpackOp.getValue().getDefiningOp<AsyncPackBorrowOp>()) {
+    rewriter.replaceOp(unpackOp, packOp.getMem());
+    return success();
+  }
+
+  return failure();
+}
+
+enum class MGPRT_BorroweeType : size_t {
+  kHandle = 0,
+  kBuffer = 1,
+  kTensor = 2,
+};
+
+LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
+  MojoValue getBufferMemStorageHandleFn = kFnGetBufferMemStorageHandle;
+  MojoValue inputVar = state.getMojoValueFor(getValue());
+  // The value is a `!mogg.async<T>` (a runtime slot); dispatch on the wrapped
+  // element type.
+  Type valueType = getValue().getType().getElementType();
+  MojoValue typeVar = isa<MGP::DeviceBufferType>(valueType)
+                          ? (size_t)MGPRT_BorroweeType::kBuffer
+                          : (size_t)MGPRT_BorroweeType::kTensor;
+  auto opaquePtr = state.builder.var(MojoValue{kComptimeOpaquePointer}.get(
+      OpaquePointerRef::kUnsafeDangling)());
+  auto opaquePtrPtr = state.builder.var(
+      OpaquePointerRef(MojoValue{kStructUnsafePointer}(
+                           {}, MojoValue(kParameterTo).equal(opaquePtr)))
+          .bitcast(MojoValue(kComptimeDTypeNoneType))());
+
+  state.builder.call(getBufferMemStorageHandleFn, {},
+                     {inputVar, typeVar, opaquePtrPtr});
+  state.setMojoValueFor(getResult(), opaquePtr);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -4300,6 +4347,17 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
       state.builder.var(reshapeFunc(
           {MojoValue(StaticTensorSpecRef::kStaticLayout).equal(layoutParam)},
           {tensorValue, shapeValue})));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncPlaceholderAnyAsyncValueRefOp
+//===----------------------------------------------------------------------===//
+LogicalResult
+AsyncPlaceholderAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
+  MojoValue result = state.builder.var(
+      MojoValue{kStructOptional}[{MojoValue{kComptimeOpaquePointer}}]());
+  state.setMojoValueFor(getResult(), result);
   return success();
 }
 

@@ -146,11 +146,7 @@ public:
   /// For parameterized opaque types, this returns LegacyOpaquePointer.
   /// Use mlirOpaqueTypeToMojoType for the full parameterized type string.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
-    if (isa<MGP::DeviceBufferType>(mlirType)) {
-      // Every `!mgp.buffer` value lowers to the storage-carrying composite;
-      // producers build it and consumers unwrap its `.view` internally.
-      return kStructOwnedByteBuffer;
-    } else if (isa<MEF::ChainType>(mlirType)) {
+    if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
       return kComptimeOpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return kStructDeviceContext;

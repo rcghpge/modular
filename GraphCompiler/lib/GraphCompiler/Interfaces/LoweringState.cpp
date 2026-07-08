@@ -675,6 +675,23 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
   return newOp->getResult(0);
 }
 
+/// Helper function to create AsyncPackBorrowOp with an async unpack from a
+/// source value. This is used for operations that need to borrow a
+/// buffer/tensor and track its async reference.
+static Value createAsyncPackBorrowWithUnpack(OpBuilder &builder, Location loc,
+                                             Value value, Value sourceValue) {
+  // The async value ref must be extracted from the async-backed value (the
+  // `!mogg.async<T>` runtime slot), not its unpacked `T` projection. If the
+  // source is a `mogg.async.unpack`, look through it to the async operand.
+  if (auto unpackOp = sourceValue.getDefiningOp<MOGG::AsyncUnpackOp>())
+    sourceValue = unpackOp.getInput();
+  // The result type (an AnyAsyncValueRef handle) is supplied by the op builder.
+  auto asyncUnpackAnyAsyncValueRefOp =
+      MOGG::AsyncUnpackAnyAsyncValueRefOp::create(builder, loc, sourceValue);
+  return MOGG::AsyncPackBorrowOp::create(builder, loc, value,
+                                         asyncUnpackAnyAsyncValueRefOp);
+}
+
 /// Returns the element type of a `!mogg.async<T>`, or the type itself if it is
 /// not an async type. Region body arguments are async-wrapped, so checks on the
 /// underlying value type (e.g. chain detection) must unwrap first.
@@ -687,25 +704,30 @@ static Type getAsyncElementOrSelf(Type type) {
 /// Rewires the consumers of an async value `asyncValue` to its synchronous
 /// `projection` (an unpack or a pass-through reinterpret). The projection op's
 /// own use of `asyncValue` is left untouched, as are the async-consuming ops
-/// (`mogg.async.unpack`) that must keep operating on the async value directly.
+/// (`mogg.async.unpack[.AnyAsyncValueRef]`) that must keep operating on the
+/// async value directly.
 static void rewireAsyncConsumersToProjection(Value asyncValue,
                                              Value projection) {
   Operation *projectionOp = projection.getDefiningOp();
   asyncValue.replaceUsesWithIf(projection, [&](mlir::OpOperand &operand) {
     Operation *owner = operand.getOwner();
-    return owner != projectionOp && !isa<MOGG::AsyncUnpackOp>(owner);
+    return owner != projectionOp &&
+           !isa<MOGG::AsyncUnpackOp, MOGG::AsyncUnpackAnyAsyncValueRefOp>(
+               owner);
   });
 }
 
-void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
-  auto builder = OpBuilder::atBlockBegin(&kernel.getBodyBlock());
-
+void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
+                                        const mlir::BitVector &shouldPack) {
+  auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
+  OpBuilder builder{&kernel.getBody().front(),
+                    kernel.getBody().front().begin()};
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
 
   // Chain inputs should never be used by any ops. Replace them with a dummy
   // chain. Block arguments are `!mogg.async<T>`, so unwrap before checking.
-  for (BlockArgument arg : kernel.getBodyBlock().getArguments()) {
+  for (auto &&arg : kernel.getBody().front().getArguments()) {
     if (isa<MEF::ChainType>(getAsyncElementOrSelf(arg.getType()))) {
       arg.replaceAllUsesWith(
           MOGG::ChainDummyOp::create(builder, loc).getResult());
@@ -732,32 +754,77 @@ void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
   // This ensures downstream consumers don't start before all outputs are ready.
   SmallVector<std::pair<size_t, Value>> deferredChainOps;
 
-  for (auto [i, value] : llvm::enumerate(terminator->getOperands())) {
+  for (auto &&[i, value] : llvm::enumerate(terminator->getOperands())) {
+    Value newValue;
     if (isa<MEF::ChainType>(value.getType())) {
-      deferredChainOps.emplace_back(i, value);
+      if (shouldPack[i])
+        deferredChainOps.emplace_back(i, value);
       continue;
+    } else if (shouldPack.test(i)) {
+      SmallVector<Value, 2> packOperands{value};
+      if (isa<MGP::DeviceBufferType>(value.getType())) {
+        if (auto mgpBufferAllocOp = mlir::dyn_cast_or_null<MGP::BufferAllocOp>(
+                value.getDefiningOp()))
+          packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
+      }
+      newValue = MOGG::AsyncPackOp::create(
+          builder, loc, MOGG::AsyncType::get(value.getType()), packOperands);
+    } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
+      newValue = MOGG::AsyncPackBorrowOp::create(
+          builder, loc, value,
+          MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
+    } else if (auto bufferGetCachedOp =
+                   value.getDefiningOp<MGP::BufferGetCachedOp>()) {
+      if (!bufferGetCachedOp.getOptionalMemStorageHandle()) {
+        auto memStorageType = KGEN::PointerType::get(
+            KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext())));
+        auto oldBufferGetCachedOp = bufferGetCachedOp;
+        bufferGetCachedOp = MGP::BufferGetCachedOp::create(
+            builder, loc, {value.getType(), memStorageType},
+            bufferGetCachedOp->getOperands(), bufferGetCachedOp->getAttrs());
+        value.replaceAllUsesWith(bufferGetCachedOp.getOutBuffer());
+        value = bufferGetCachedOp.getOutBuffer();
+        oldBufferGetCachedOp->erase();
+      }
+      newValue = MOGG::AsyncPackBorrowOp::create(
+          builder, loc, bufferGetCachedOp.getOutBuffer(),
+          bufferGetCachedOp.getOptionalMemStorageHandle());
+    } else if (auto tensorExtractBufferOp =
+                   value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(
+          builder, loc, value, tensorExtractBufferOp.getTensor());
+    } else if (auto tensorCreateOp =
+                   value.getDefiningOp<MGP::TensorCreateOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 tensorCreateOp.getBuffer());
+    } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 bufferSliceOp.getInBuffer());
+    } else if (auto bulkSliceOp =
+                   value.getDefiningOp<MGP::BufferBulkSliceOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 bulkSliceOp.getBaseBuffer());
+    } else if (auto tensorSliceOp = value.getDefiningOp<MGP::TensorSliceOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 tensorSliceOp.getInput());
     }
 
-    // Every non-chain output carries its own storage handle (an
-    // `OwnedByteBuffer` / `OwnedTensor` composite), so it is packed uniformly
-    // through the owned pack path -- no borrow/lifetime-extension plumbing
-    // and no separate device context.
-    Value newValue = MOGG::AsyncPackOp::create(
-        builder, loc, MOGG::AsyncType::get(value.getType()), value);
+    if (newValue) {
+      value.replaceUsesWithIf(newValue, [&](OpOperand &use) {
+        return use.getOwner() == terminator;
+      });
 
-    value.replaceUsesWithIf(
-        newValue, [&](OpOperand &use) { return use.getOwner() == terminator; });
-
-    // If the value being replaced is a chain, be sure to drop it in a
-    // ChainSinkOp to avoid it being DCE-ed if it's the only output.
-    if (isa<MEF::ChainType>(value.getType()) &&
-        !isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
-      MOGG::ChainSinkOp::create(builder, loc, value);
+      // If the value being replaced is a chain, be sure to drop it in a
+      // ChainSinkOp to avoid it being DCE-ed if it's the only output.
+      if (isa<MEF::ChainType>(value.getType()) &&
+          !isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
+        MOGG::ChainSinkOp::create(builder, loc, value);
+    }
   }
 
   // Create AsyncReadyOp for chain outputs AFTER all other pack ops.
   // This ensures downstream consumers don't start until all outputs are packed.
-  for (auto [i, value] : deferredChainOps) {
+  for (auto &&[i, value] : deferredChainOps) {
     Value newValue = MOGG::AsyncReadyOp::create(builder, loc);
     value.replaceUsesWithIf(
         newValue, [&](OpOperand &use) { return use.getOwner() == terminator; });
