@@ -242,6 +242,14 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
   // tile-based IOSpec is rejected. The device the kernel runs on is carried by
   // the fused output tensor's type (the call op itself defaults to the host
   // device).
+  //
+  // NOTE: the PRIMARY gate for tile-vs-SIMD kernel selection is now the
+  // `tile_based_fusion` pre-filter in `MojoRegistry::getResolvedKernel`, which
+  // discounts tile-output candidates on non-tile devices so a SIMD registration
+  // is selected instead. The checks below are a defense-in-depth backstop for a
+  // kernel that reaches lowering with an IOSpec inconsistent with the device
+  // flag (e.g. an op registered only as a tile kernel with no SIMD fallback).
+  // Keep the two consistent (transitional; see GEX-3941 / GEX-3919).
   auto deviceRef = MO::getDeviceOrDefaultAny(fusedTensor.getType());
   bool tileBasedFusion =
       MO::DeviceInfoMapping(moduleOp).get(deviceRef).getTileBasedFusion();

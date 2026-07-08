@@ -2,15 +2,18 @@
 // for tile codegen but the resolved primary kernel is not a tile kernel, the
 // compiler must emit a clear error rather than binding a tile fusion struct to a
 // SIMD kernel. Here the built-in mo.matmul (a SIMD compute-output kernel) runs
-// on a device whose `#M.device_info` has `tile_based_fusion = true`, with no tile
-// kernel library, so the assert fires.
+// on a device whose `#M.device_info` has `tile_based_fusion = true`, and whose
+// arch (sm_90a) has no built-in tile mo.matmul registration, so the assert
+// fires. (The transitional tile mo.matmul is registered only for sm_100a; see
+// GEX-3941 / GEX-3919. On sm_100a the selection filter would instead pick that
+// tile kernel and no mismatch would occur.)
 //
 // RUN: not mo-opt --gc-pipeline-pre-jit="default-device-label=gpu dump-mojo-text constant-fold=false" %s 2>&1 | FileCheck %s
 
 // CHECK: device 'gpu' is configured for tile codegen (tile_based_fusion) but kernel
 // CHECK-SAME: declares a SIMD compute output (_FusedComputeOutputTensor)
 
-module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_100a", "NVIDIA B200", tile_based_fusion = true>}} {
+module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_90a", "NVIDIA H100", tile_based_fusion = true>}} {
 mo.graph @matmul_tile_mismatch_gpu(
     %A: !mo.tensor<[256, 256], f32>,
     %B: !mo.tensor<[256, 256], f32>

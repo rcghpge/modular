@@ -115,6 +115,24 @@ static int deviceInfoSpecificity(DeviceInfoAttr infos) {
          !infos.getArch().empty() + !infos.getModel().empty();
 }
 
+// Transitional tile-codegen gate (remove per GEX-3941): returns true when the
+// kernel's `execute` declares a tile-based fused output
+// (_FusedComputeOutputTileTensor). Such a kernel is only lowerable on a device
+// configured for tile codegen (tile_based_fusion), so `getResolvedKernel`
+// discounts it as a candidate on non-tile devices.
+static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
+  KernelDeclAdaptor adaptor(decl);
+  if (!adaptor.executeFunction.has_value())
+    return false;
+  for (const auto &arg : adaptor.executeFunction->outputArguments) {
+    const auto *tensorArg =
+        std::get_if<KernelDeclTensorAdaptor>(&arg.underlyingType);
+    if (tensorArg && tensorArg->ioSpec == IOSpec::FusedComputeOutputTileTensor)
+      return true;
+  }
+  return false;
+}
+
 ErrorOr<KernelDeclOp>
 MojoRegistry::getResolvedKernel(llvm::StringRef name,
                                 DeviceRefAttr device) const {
@@ -131,6 +149,12 @@ MojoRegistry::getResolvedKernel(llvm::StringRef name,
   for (KernelDeclOp decl : it->second) {
     DeviceInfoAttr kernelInfo = decl.getRegistrationDeviceInfo();
     if (!deviceInfoMatches(kernelInfo, deviceInfo))
+      continue;
+    // TODO(GEX-3941): transitional — discount any candidate whose fused output
+    // is tile-based on a device not configured for tile_based_fusion, so the
+    // generic (SIMD) registration is selected instead. Remove once the
+    // tile-codegen transition completes.
+    if (!deviceInfo.getTileBasedFusion() && kernelDeclaresTileOutput(decl))
       continue;
     int specificity = deviceInfoSpecificity(kernelInfo);
     if (decl.getIsUserDefined()) {
