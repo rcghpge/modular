@@ -15,8 +15,7 @@
 // Join: a second device_wait brackets the body on the way out.
 // CHECK: mgp.device_wait
 mo.graph @seq(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0> {
-  %s = mo.sequence[1] (%a) : (!mo.tensor<[2, 2], f32, gpu:0>) -> (!mo.tensor<[2, 2], f32, gpu:0>) {
-  ^bb0(%arg: !mo.tensor<[2, 2], f32, gpu:0>):
+  %s = mo.sequence[1] (%a : !mo.tensor<[2, 2], f32, gpu:0>) (%arg) -> (!mo.tensor<[2, 2], f32, gpu:0>) {
     %r = mo.relu(%arg) : !mo.tensor<[2, 2], f32, gpu:0>
     %r2 = mo.relu(%r) : !mo.tensor<[2, 2], f32, gpu:0>
     mo.yield %r2 : !mo.tensor<[2, 2], f32, gpu:0>
@@ -32,8 +31,7 @@ mo.graph @seq(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gp
 // CHECK-DAG: mgp.device_context.select_stream[1] %{{.*}} : !mgp.device_context<<"gpu", 0>>
 // CHECK-DAG: mgp.device_context.select_stream[1] %{{.*}} : !mgp.device_context<<"gpu", 1>>
 mo.graph @seq2dev(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:1>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
-  %r:2 = mo.sequence[1] (%a, %b) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
-  ^bb0(%x: !mo.tensor<[2, 2], f32, gpu:0>, %y: !mo.tensor<[2, 2], f32, gpu:1>):
+  %r:2 = mo.sequence[1] (%a, %b : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) (%x, %y) -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>) {
     %rx = mo.relu(%x) : !mo.tensor<[2, 2], f32, gpu:0>
     %ry = mo.relu(%y) : !mo.tensor<[2, 2], f32, gpu:1>
     mo.yield %rx, %ry : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>

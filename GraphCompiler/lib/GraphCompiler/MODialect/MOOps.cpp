@@ -129,6 +129,59 @@ void printTransferResult(AsmPrinter &p, Operation *op, TensorType inputType,
   deviceRef.print(p);
 }
 
+/// Parse the body region of `mo.sequence`: `(%arg0, %arg1) -> (t0, t1) {...}`.
+/// Block-argument types are omitted in the syntax; they are 1:1 with, and
+/// identically typed to, the operands, whose types arrive via `inputTypes`.
+/// The optional `-> (...)` clause populates the op's result types.
+ParseResult parseSequenceRegion(OpAsmParser &p, Region &region,
+                                TypeRange inputTypes,
+                                SmallVectorImpl<Type> &resultTypes) {
+  SmallVector<OpAsmParser::Argument> args;
+  if (p.parseArgumentList(args, OpAsmParser::Delimiter::Paren,
+                          /*allowType=*/false))
+    return failure();
+  if (args.size() != inputTypes.size())
+    return p.emitError(p.getCurrentLocation(), "expected ")
+           << inputTypes.size() << " block argument(s) (one per input), got "
+           << args.size();
+  for (auto [arg, type] : llvm::zip(args, inputTypes))
+    arg.type = type;
+
+  if (succeeded(p.parseOptionalArrow()))
+    if (p.parseCommaSeparatedList(AsmParser::Delimiter::Paren,
+                                  [&]() -> ParseResult {
+                                    Type type;
+                                    if (p.parseType(type))
+                                      return failure();
+                                    resultTypes.push_back(type);
+                                    return success();
+                                  }))
+      return failure();
+
+  return p.parseRegion(region, args, /*enableNameShadowing=*/false);
+}
+
+/// Print the body region of `mo.sequence`. Block-argument names are printed
+/// without types (they mirror the operands), followed by the optional result
+/// type list and the region body without its entry-block header.
+void printSequenceRegion(OpAsmPrinter &p, Operation *op, Region &region,
+                         TypeRange inputTypes, TypeRange resultTypes) {
+  Block &body = region.front();
+  p << '(';
+  llvm::interleaveComma(body.getArguments(), p, [&](BlockArgument arg) {
+    p.printRegionArgument(arg, /*argAttrs=*/{}, /*omitType=*/true);
+  });
+  p << ')';
+  if (!resultTypes.empty()) {
+    p << " -> (";
+    llvm::interleaveComma(resultTypes, p,
+                          [&](Type type) { p.printType(type); });
+    p << ')';
+  }
+  p << ' ';
+  p.printRegion(region, /*printEntryBlockArgs=*/false);
+}
+
 } // namespace M::MO
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,

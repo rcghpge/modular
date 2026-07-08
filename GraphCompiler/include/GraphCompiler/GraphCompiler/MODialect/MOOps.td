@@ -869,9 +869,8 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
 
     Example:
     ```mlir
-    %out = mo.sequence[1] (%a) : (!mo.tensor<[3], f32, gpu:0>)
+    %out = mo.sequence[1] (%a : !mo.tensor<[3], f32, gpu:0>) (%arg)
         -> (!mo.tensor<[3], f32, gpu:0>) {
-    ^bb0(%arg: !mo.tensor<[3], f32, gpu:0>):
       %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
@@ -884,11 +883,6 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
-
-  let assemblyFormat = [{
-    `[` $streamId `]` `(` $inputs `)` attr-dict `:`
-        functional-type($inputs, $results) $bodyRegion
-  }];
 
   let builders = [
     /// Build a SequenceOp whose body block has one argument per input (typed
@@ -905,6 +899,11 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
     /// DeclInterface: this op declares no parameters of its own.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
+  }];
+
+  let assemblyFormat = [{
+    `[` $streamId `]` `(` $inputs `:` type($inputs) `)` attr-dict
+        custom<SequenceRegion>($bodyRegion, ref(type($inputs)), type($results))
   }];
 
   let hasVerifier = 1;
