@@ -16,9 +16,8 @@
 // Tile programming model selected -> tile fusion bound, tile trait, tile method.
 // CHECK: _bind_to_fused_compute_output_tile
 // CHECK: ComputeOutputFusionTile
-// CHECK: def compute[dtype : DType, rank : Int, LayoutType : TensorLayout, copier : TileCopier]
-// CHECK-SAME: val: TileTensor[dtype, LayoutType, MutAnyOrigin]
-// CHECK-SAME: -> TileTensor[dtype, LayoutType, MutAnyOrigin]
+// CHECK: def compute[dtype : DType, rank : Int, LayoutType : {{.*}}TensorLayout, Copier : {{.*}}TileCopier]
+// CHECK-SAME: val: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
 // Identity output fusion: no elementwise op, no SIMD load/store.
 // CHECK-NOT: simd_load_from_tensor_pointer

@@ -820,25 +820,60 @@ static MojoValue emitTileCopierLoad(MojoBuilder &sdb, unsigned captureIdx,
   auto dstVar = sdb.var(TileTensorRef::fromMutStorage(storageVar, val.layout()),
                         /*cache=*/false);
 
-  // Tile-offset pointer into the captured tensor.
-  MojoValue tileOffset("0");
-  for (unsigned d = 0; d < loadRank; ++d) {
-    MojoValue coord = MojoValue(kParameterTileCoords)[d];
-    MojoValue stride = MojoValue(std::string("self.strides_") + captureN)[d];
-    MojoValue term = coord * val.dim(d) * stride;
-    tileOffset = (d == 0) ? term : tileOffset + term;
-  }
-  auto tileOffsetVar = sdb.var(tileOffset);
+  // Reconstruct the full captured input tensor from its raw components and
+  // extract the `tile_shape`-sized tile at `tile_coords`. This mirrors the
+  // Phase 2 reference (`self.a.tile[TM, TN](tc)`) and the driver's own output
+  // path (`self.tensor.to_tile_tensor().tile[...](tc)`): the load copier
+  // (`GenericToLocalTileCopier[thread_layout=tile_shape]`) `distribute`s this
+  // *full* tile across the thread block so each thread stages its own fragment
+  // into the per-thread local `dst`. Building a per-thread
+  // (`dst.layout`-shaped) src instead leaves the copier's `copy_from` element
+  // counts mismatched.
+  //
+  // The tile shape must equal the driver's `thread_layout`, i.e. the
+  // `get_kernel_tile_shape[dtype, "gpu"]()` default the emitter relies on for
+  // the `foreach_fusion_tile` call. The tile path is GPU-only (the driver
+  // asserts as much), so the target is fixed to "gpu" here.
+  MojoValue tileShape = sdb.comptime(MojoValue(kFnGetKernelTileShape)[{
+      MojoValue(kParameterDType), MojoValue("gpu").quote()}]());
 
-  // Src TileTensor for captured data in global memory at the tile position.
-  MojoValue capturePtr =
-      MojoValue(std::string("self.ptr_") + captureN) + tileOffsetVar;
+  // `Coord(Int(tile_coords[0]), ...)` for the tile position.
+  SmallVector<MojoValue> coordArgs;
+  for (unsigned d = 0; d < loadRank; ++d)
+    coordArgs.push_back(
+        MojoValue(kStructInt)({}, {MojoValue(kParameterTileCoords)[d]}));
+  MojoValue tileCoord = MojoValue(kStructCoord)({}, coordArgs);
+
+  // `InputTensor[static_spec = Self.spec_N](self.ptr_N, self.shape_N,
+  //  self.strides_N).to_tile_tensor().tile[tile_shape[0], ...](tc)`.
+  MojoValue inputTensor = MojoValue(kComptimeInputTensor)(
+      {MojoValue(kParameterStaticSpec)
+           .equal(MojoValue(std::string("Self.spec_") + captureN))},
+      {MojoValue(std::string("self.ptr_") + captureN),
+       MojoValue(std::string("self.shape_") + captureN),
+       MojoValue(std::string("self.strides_") + captureN)});
+  SmallVector<MojoValue> tileDims;
+  for (unsigned d = 0; d < loadRank; ++d)
+    tileDims.push_back(tileShape[d]);
+  MojoValue fullTile = inputTensor.get("to_tile_tensor")();
   auto srcVar =
-      sdb.var(TileTensorRef::fromExternalPtr(capturePtr, val.layout()));
+      sdb.var(fullTile.get("tile")[tileDims]({}, {tileCoord}), /*cache=*/false);
 
-  // Copy captured tile from global memory into local dst.
-  sdb.call(MojoValue(kParameterCopier).get("copy"), {}, {dstVar, srcVar});
-  return dstVar;
+  // Copy captured tile from global memory into local dst. The staging `dstVar`
+  // is already allocated in `Copier.dst_address_space` (via `makeStorage`), so
+  // it matches `Copier.copy`'s `dst` parameter directly; the global-memory src
+  // tile must be cast into `Copier.src_address_space` to satisfy the abstract
+  // `Copier.copy` signature.
+  MojoValue srcCast = TileTensorRef(srcVar).castToSrcAddressSpace();
+  sdb.call(MojoValue(kParameterCopier).get("copy"), {}, {dstVar, srcCast});
+
+  // The copier stages into `Copier.dst_address_space`, but the tile
+  // `*.elementwise` overload consumes GENERIC / `MutAnyOrigin` tiles. Return a
+  // GENERIC view aliasing the *same* staging storage (mirroring the Phase 2
+  // reference's `rhs` / `rhs_g` split), so downstream `*.elementwise` operands
+  // read the copied data with the layout's default `linear_idx_type`.
+  return sdb.var(TileTensorRef::fromGenericStorage(storageVar, val.layout()),
+                 /*cache=*/false);
 }
 
 /// Walk an elementwise lambda body, emitting one Mojo statement per op and
@@ -917,6 +952,11 @@ static void emitElementwiseLambdaBodyOps(
       for (auto input : elemOp.getInputs()) {
         if (useTileElementwise) {
           // Tile path: pass TileTensor values directly without SIMD rebind.
+          // Staged input tiles were seeded via `emitTileCopierLoad` as GENERIC
+          // views over the copier's staging storage, so they already match the
+          // tile `*.elementwise(TileTensor[dtype, LayoutType, MutAnyOrigin])`
+          // overload; intermediate `*.elementwise` results are likewise
+          // GENERIC.
           auto it = valueMap.find(input);
           ASSERT_STREAM(it != valueMap.end(),
                         << "missing tile value in body map");
@@ -1247,13 +1287,16 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
               NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
               NamedMojoDef::asVerbatim(kParameterLayoutType,
                                        kStructTensorLayout),
-              NamedMojoDef::asVerbatim(kParameterCopier, kStructTileCopier),
+              // Comptime copier *type* param named `Copier`; the runtime arg
+              // below is `copier: Copier`. The two names must differ or the
+              // emitted method redefines `copier`.
+              NamedMojoDef::asVerbatim(kParameterCopierType, kStructTileCopier),
           };
           methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(kParameterTileCoords, idxType));
           methodArgs.push_back(
-              NamedMojoDef::asVerbatim(kParameterCopier, kParameterCopier));
+              NamedMojoDef::asVerbatim(kParameterCopier, kParameterCopierType));
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(thirdArgName, tileTensorType));
           returnType = tileTensorType;

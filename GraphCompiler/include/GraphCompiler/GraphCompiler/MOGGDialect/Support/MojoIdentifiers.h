@@ -237,9 +237,14 @@ constexpr llvm::StringLiteral kStructBool = "Bool";
 constexpr llvm::StringLiteral kStructAddressSpace = "std.memory.AddressSpace";
 constexpr llvm::StringLiteral kStructDType = "DType";
 constexpr llvm::StringLiteral kStructSIMD = "SIMD";
-constexpr llvm::StringLiteral kStructTileTensor = "TileTensor";
-constexpr llvm::StringLiteral kStructTensorLayout = "TensorLayout";
-constexpr llvm::StringLiteral kStructTileCopier = "TileCopier";
+// Qualified so the emitted tile `compute` signature/body is import-resolvable:
+// the generated Mojo module imports packages qualified (`import layout`, etc.),
+// so bare `TileTensor`/`TensorLayout`/`TileCopier` don't bind when the tile
+// path is actually compiled. `TileTensor`/`TensorLayout` are re-exported from
+// `layout`; `TileCopier` lives in `layout.tile_io` (imported below).
+constexpr llvm::StringLiteral kStructTileTensor = "layout.TileTensor";
+constexpr llvm::StringLiteral kStructTensorLayout = "layout.TensorLayout";
+constexpr llvm::StringLiteral kStructTileCopier = "layout.tile_io.TileCopier";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
@@ -290,7 +295,10 @@ constexpr llvm::StringLiteral kEnumDTypeInt = "int";
 // Mojo free-function names (emitted into Mojo source)
 //===----------------------------------------------------------------------===//
 
-constexpr llvm::StringLiteral kFnStackAllocation = "stack_allocation";
+// Qualified (std.memory is imported qualified) so the tile `compute` body's
+// staging allocation binds when the tile path is compiled.
+constexpr llvm::StringLiteral kFnStackAllocation =
+    "std.memory.stack_allocation";
 /// `std.utils.numerics.nan[dtype]()` / `inf[dtype]()`: dtype-parameterized
 /// constructors for the special float values that have no Mojo literal
 /// spelling.
@@ -328,6 +336,10 @@ constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
+/// Comptime hook returning the `(rows, cols)` tile shape a tile-programming
+/// kernel operates on, matching the driver's `foreach_fusion_tile` default.
+constexpr llvm::StringLiteral kFnGetKernelTileShape =
+    "managed_tensor_slice.get_kernel_tile_shape";
 constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
 constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
 
@@ -439,6 +451,10 @@ constexpr llvm::StringLiteral kParameterVal = "val";
 constexpr llvm::StringLiteral kParameterDst = "dst";
 constexpr llvm::StringLiteral kParameterTileCoords = "tile_coords";
 constexpr llvm::StringLiteral kParameterCopier = "copier";
+/// The comptime copier-*type* parameter in the tile `compute` signature. It
+/// must differ from the runtime arg name (`kParameterCopier`), or the emitted
+/// method redefines `copier`. Mirrors the trait's `Copier`/`copier` split.
+constexpr llvm::StringLiteral kParameterCopierType = "Copier";
 
 //===----------------------------------------------------------------------===//
 // Stdlib package names
@@ -462,6 +478,9 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"std.memory", ""},
         {"std.collections", ""},
         {"layout", ""},
+        // Makes `layout.tile_io.TileCopier` resolvable in the tile `compute`
+        // signature when the tile path is compiled.
+        {"layout.tile_io", ""},
 };
 
 /// TODO(GEX-2488): Find another way to detect that a type is an `IOSpec`
@@ -714,14 +733,51 @@ public:
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";
   static constexpr llvm::StringLiteral kDstAddressSpace = "dst_address_space";
+  static constexpr llvm::StringLiteral kSrcAddressSpace = "src_address_space";
   static constexpr llvm::StringLiteral kAddressSpace = "address_space";
+  static constexpr llvm::StringLiteral kAddressSpaceCast = "address_space_cast";
   static constexpr llvm::StringLiteral kStaticProduct = "static_product";
 
   /// `val.layout` — the runtime tile layout.
   MojoValue layout() const { return value.get(kLayout); }
 
-  /// `val.dim[d]()` — compile-time dimension query.
-  MojoValue dim(unsigned d) const { return value.get("dim")[d](); }
+  /// `value.address_space_cast[Copier.src_address_space]()` — casts a tile into
+  /// the copier's source address space so it matches the abstract
+  /// `Copier.copy` signature, whose `src` parameter requires
+  /// `address_space = Copier.src_address_space`. The staging destination tile
+  /// is already allocated in `Copier.dst_address_space` (see `makeStorage`), so
+  /// only the source (global-memory) tile needs this cast.
+  MojoValue castToSrcAddressSpace() const {
+    MojoValue space = MojoValue(kParameterCopierType).get(kSrcAddressSpace);
+    return value.get(kAddressSpaceCast)[space]();
+  }
+
+  /// Constructs a GENERIC-address-space `TileTensor` over stack-allocated
+  /// staging storage (which lives in `Copier.dst_address_space`). The copier
+  /// stages a tile into this storage in `Copier.dst_address_space`, but the
+  /// tile `*.elementwise(TileTensor[dtype, LayoutType, MutAnyOrigin])` overload
+  /// reads it through a GENERIC / `MutAnyOrigin` view. The pointer is cast to
+  /// GENERIC *before* wrapping so the resulting tile's `linear_idx_type` is
+  /// recomputed for the GENERIC address space (a whole-tile
+  /// `address_space_cast` would instead preserve the dst-space
+  /// `linear_idx_type` and fail to match):
+  ///   `TileTensor(storage.address_space_cast[AddressSpace.GENERIC]()
+  ///               .unsafe_origin_cast[MutAnyOrigin](), layout)`
+  static MojoValue fromGenericStorage(const MojoValue &storage,
+                                      const MojoValue &layout) {
+    MojoValue genericSpace =
+        MojoValue(kStructAddressSpace).get(kEnumAddressSpaceGeneric);
+    MojoValue ptr = storage.get(kAddressSpaceCast)[genericSpace]().get(
+        kUnsafeOriginCast)[kComptimeMutAnyOrigin]();
+    return MojoValue(kStructTileTensor)({}, {ptr, layout});
+  }
+
+  /// `Int(val.dim[d]())` — compile-time dimension query. Wrapped in `Int`
+  /// because `TileTensor.dim()` returns a layout index-type `Scalar`, but the
+  /// tile-offset arithmetic mixes it with `Int` (`tile_coords`, strides).
+  MojoValue dim(unsigned d) const {
+    return MojoValue(kStructInt)({}, {value.get("dim")[d]()});
+  }
 
   /// Emits the backing stack-allocated storage pointer for a local tile, in
   /// the address space the copier stages into:
@@ -730,9 +786,12 @@ public:
   static MojoValue makeStorage() {
     MojoValue layoutProduct =
         MojoValue(kParameterLayoutType).get(kStaticProduct);
+    // `dst_address_space` is a comptime field of `TileCopier`, so it must be
+    // read from the comptime type parameter (`Copier`), not the runtime arg
+    // (`copier`).
     MojoValue addressSpace =
         MojoValue(kAddressSpace)
-            .equal(MojoValue(kParameterCopier).get(kDstAddressSpace));
+            .equal(MojoValue(kParameterCopierType).get(kDstAddressSpace));
     return MojoValue(kFnStackAllocation)[{
         layoutProduct, MojoValue(kParameterDType), addressSpace}]();
   }

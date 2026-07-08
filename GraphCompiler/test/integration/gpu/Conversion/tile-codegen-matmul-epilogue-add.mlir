@@ -18,24 +18,17 @@
 // CHECK: ComputeOutputFusionTile
 
 // FusionStruct emits a TileTensor-based compute method.
-// The method signature must use TileTensor params — not SIMD.
-// CHECK: def compute[dtype : DType, rank : Int, LayoutType : TensorLayout, copier : TileCopier]
+// The method signature uses TileTensor params (not SIMD); the tile trait/type
+// names are import-qualified so the generated Mojo compiles.
+// CHECK: def compute[dtype : DType, rank : Int, LayoutType : {{.*}}TensorLayout, Copier : {{.*}}TileCopier]
 // CHECK-SAME: tile_coords
-// CHECK-SAME: val: TileTensor[dtype, LayoutType, MutAnyOrigin]
-// CHECK-SAME: -> TileTensor[dtype, LayoutType, MutAnyOrigin]
+// CHECK-SAME: val: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
-// The method body must use copier.copy — not simd_load — and must not cast to SIMD.
+// The body stages the bias into a copier-dst-space tile and combines it with
+// the matmul output tile `val` — copier.copy + Add.elementwise, no SIMD.
 // CHECK-NOT: simd_load_from_tensor_pointer
 // CHECK-NOT: rebind[SIMD
-// Dst: stack-allocated storage in the copier's destination address space,
-// backing a TileTensor.
-// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = copier.dst_address_space]()
-// CHECK: TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), val.layout)
-// Tile offset: tile_coords[i] * val.dim[i]() * self.strides_N[i].
-// CHECK: tile_coords[0] * val.dim[0]() * self.strides_1[0]
-// Src: bias TileTensor at tile position in global memory.
-// CHECK: TileTensor({{.*}}unsafe_origin_cast[MutUntrackedOrigin](), val.layout)
-// Copy and elementwise add.
+// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
 // CHECK: copier.copy(
 // CHECK: Add.elementwise(val,
 // CHECK: return

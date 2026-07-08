@@ -29,25 +29,29 @@
 // CHECK: struct FusionStruct{{.*}}(managed_tensor_slice.ElementwiseFusionTile)
 
 // The compute method uses TileTensor params (not SIMD) with a `dst` dest tile.
-// CHECK: def compute[dtype : DType, rank : Int, LayoutType : TensorLayout, copier : TileCopier]
+// CHECK: def compute[dtype : DType, rank : Int, LayoutType : {{.*}}TensorLayout, Copier : {{.*}}TileCopier]
 // CHECK-SAME: tile_coords
-// CHECK-SAME: dst: TileTensor[dtype, LayoutType, MutAnyOrigin]
-// CHECK-SAME: -> TileTensor[dtype, LayoutType, MutAnyOrigin]
+// CHECK-SAME: dst: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
+// CHECK-SAME: -> {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin]
 
-// Each input is copier.copy'd into its OWN dst.layout-shaped staging tile:
-// two distinct stack allocations / dest tiles, offset by tile_coords and the
-// per-input strides. The Add then combines the two DISTINCT tiles (a + b, not
-// a + a -- guards against the CSE-aliasing bug where both inputs collapse onto
-// one staging tile).
-// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = copier.dst_address_space]()
-// CHECK: [[DST0:var[_0-9]+]] = TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: tile_coords[0] * dst.dim[0]() * self.strides_0[0]
-// CHECK: copier.copy([[DST0]],
-// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = copier.dst_address_space]()
-// CHECK: [[DST1:var[_0-9]+]] = TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: tile_coords[0] * dst.dim[0]() * self.strides_1[0]
-// CHECK: copier.copy([[DST1]],
-// CHECK: Add.elementwise([[DST0]], [[DST1]])
+// Each input is reconstructed as its OWN full input tile (via `InputTensor` +
+// `to_tile_tensor().tile[...]`, distinct `spec`/`ptr` per input) and copier.copy'd
+// into its own per-thread `dst.layout`-shaped staging tile in the copier's dst
+// address space. The staged tiles are then re-viewed as GENERIC / `MutAnyOrigin`
+// tiles for `Add.elementwise`, which combines the two DISTINCT inputs (a + b,
+// not a + a -- guards against the CSE-aliasing bug where both inputs collapse
+// onto one staging tile).
+// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
+// CHECK: [[STG0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: [[SRC0:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_0]({{.*}}self.ptr_0{{.*}}).to_tile_tensor().tile[{{.*}}](
+// CHECK: copier.copy([[STG0]], [[SRC0]].address_space_cast[Copier.src_address_space]())
+// CHECK: [[GEN0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}address_space_cast[{{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
+// CHECK: [[STG1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: [[SRC1:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_1]({{.*}}self.ptr_1{{.*}}).to_tile_tensor().tile[{{.*}}](
+// CHECK: copier.copy([[STG1]], [[SRC1]].address_space_cast[Copier.src_address_space]())
+// CHECK: [[GEN1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}address_space_cast[{{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: Add.elementwise([[GEN0]], [[GEN1]])
 // CHECK: return
 
 module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_100a", "NVIDIA B200", tile_based_fusion = true>}} {

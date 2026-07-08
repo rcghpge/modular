@@ -26,16 +26,21 @@
 
 // One fusion struct conforming to the tile elementwise trait.
 // CHECK: struct FusionStruct{{.*}}(managed_tensor_slice.ElementwiseFusionTile)
-// CHECK: def compute[dtype : DType, rank : Int, LayoutType : TensorLayout, copier : TileCopier]
-// CHECK-SAME: dst: TileTensor[dtype, LayoutType, MutAnyOrigin]
+// CHECK: def compute[dtype : DType, rank : Int, LayoutType : {{.*}}TensorLayout, Copier : {{.*}}TileCopier]
+// CHECK-SAME: dst: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
-// Three DISTINCT input staging tiles, each copier.copy'd from its own input.
-// CHECK: [[T0:var[_0-9]+]] = TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: copier.copy([[T0]],
-// CHECK: [[T1:var[_0-9]+]] = TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: copier.copy([[T1]],
-// CHECK: [[T2:var[_0-9]+]] = TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: copier.copy([[T2]],
+// Three DISTINCT inputs: each reconstructed as its own full input tile (distinct
+// `spec`/`ptr`), copier.copy'd into its own staging tile, then re-viewed as a
+// GENERIC / `MutAnyOrigin` tile for the elementwise chain.
+// CHECK: [[SRC0:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_0]({{.*}}self.ptr_0{{.*}}).to_tile_tensor().tile[
+// CHECK: copier.copy({{.*}}, [[SRC0]].address_space_cast[Copier.src_address_space]())
+// CHECK: [[T0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: [[SRC1:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_1]({{.*}}self.ptr_1{{.*}}).to_tile_tensor().tile[
+// CHECK: copier.copy({{.*}}, [[SRC1]].address_space_cast[Copier.src_address_space]())
+// CHECK: [[T1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
+// CHECK: [[SRC2:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_2]({{.*}}self.ptr_2{{.*}}).to_tile_tensor().tile[
+// CHECK: copier.copy({{.*}}, [[SRC2]].address_space_cast[Copier.src_address_space]())
+// CHECK: [[T2:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 
 // The chain: Add combines the first two tiles; Mul consumes the Add RESULT
 // (a tile) and the third tile -- proving the intermediate is passed as a tile,
