@@ -61,6 +61,15 @@ public:
   // Returns the total number of operands (including MGP / Stub arguments).
   size_t getNumOperands() const { return operands.size(); }
 
+  // Returns the kernel-stub block-argument index for the operand at global
+  // index `operandIdx` (the slot in the stub signature), or nullopt if the
+  // operand is not a kernel-stub argument. Used to map a trait tensor operand
+  // back to the stub argument it feeds, so emit can give that argument a
+  // generic (T-inferred) type instead of `ManagedTensorSlice`.
+  std::optional<unsigned> getKernelStubArgIndex(unsigned operandIdx) const {
+    return operands[operandIdx].kernelOperandIdx;
+  }
+
   // Add a new kernel operand with value `operandValue`.
   // `isMGPRegionOperand` indicates the operand is an argument of the
   // mgp.compiled.region op. `isKernelStubOperand` indicates the operand is an

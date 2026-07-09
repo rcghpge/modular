@@ -2069,9 +2069,36 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
     return state.mlirTypeToMojoType(type);
   };
 
+  // Trait lane (D9): trait tensor arguments must be generic so the constructed
+  // `_MoggDenseTensorArg` flows in and the kernel's `execute` infers its `T`.
+  // For each arg with a non-empty bound in `mogg.trait_stub_arg_bounds`, emit a
+  // fresh generic type parameter `__trait_arg_type_<i>: <bound>` and type the
+  // argument as it, instead of spelling the (vestigial) `ManagedTensorSlice`
+  // type. The bound (`<role> & DenseTensor & TileTensorable`) is conformed-to
+  // by the constructed value and implies the kernel's `execute` bound, so the
+  // forward call type-checks.
+  ArrayAttr traitBounds =
+      (*this)->getAttrOfType<ArrayAttr>(MOGG::kTraitStubArgBoundsAttrName);
+  auto traitBoundFor = [&](size_t i) -> StringRef {
+    if (!traitBounds || i >= traitBounds.size())
+      return {};
+    return cast<StringAttr>(traitBounds[i]).getValue();
+  };
+
+  SmallVector<MOGG::NamedMojoDef> stubParams;
   SmallVector<MOGG::NamedMojoDef> inputTypes;
-  for (auto arg : getBody().getArguments())
-    inputTypes.push_back(MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
+  for (auto [i, arg] : llvm::enumerate(getBody().getArguments())) {
+    StringRef bound = traitBoundFor(i);
+    if (!bound.empty()) {
+      std::string paramName = llvm::formatv("__trait_arg_type_{}", i).str();
+      stubParams.push_back(
+          MOGG::NamedMojoDef::asVerbatim(paramName, MojoValue(bound)));
+      inputTypes.push_back(MOGG::NamedMojoDef("arg", MojoValue(paramName)));
+    } else {
+      inputTypes.push_back(
+          MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
+    }
+  }
 
   // Determine the Mojo return type from the stub's return type.
   std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
@@ -2081,7 +2108,7 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
 
   bool errOccurred = false;
   state.builder.def(
-      getSymNameAttr().str(), {}, inputTypes,
+      getSymNameAttr().str(), stubParams, inputTypes,
       /*returnType=*/mojoReturnType, /*exported=*/false,
       /*raises=*/isThrows(), /*isAlwaysInline=*/false,
       [&](const MOGG::FunctionBody &functionBody) {
@@ -3212,16 +3239,163 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // TensorArgInitOp
 //===----------------------------------------------------------------------===//
 
+// Inline Mojo definitions for the dense trait tensor-argument struct.
+//
+// For the initial dense CPU path we do not land a committed library type;
+// instead we emit a minimal struct definition directly into the generated Mojo
+// module (D9 "DenseTensorArg only inside the emitted mojo"). It carries only
+// the host-side conformances a dense non-fused kernel needs -- `DenseTensor`
+// (dtype/shape/rank/layout/alignment), the `Input`/`Output` role markers, and
+// the `TileTensorable` executable projection -- and is parameterized by the
+// distilled contract `role` via `_MoggTensorIO`. The device-passable / GPU
+// machinery (a `DeviceContext`-driven ctor, `_to_device_type`) is added when
+// the GPU path lands. Emitted once per module, guarded by
+// `EmitMojoState::emittedDenseTensorArgDefs`.
+static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
+from layout import Coord, TensorLayout, TileTensor
+from extensibility import DenseTensor, Input, Output, TileTensorable
+
+
+@fieldwise_init("implicit")
+struct _MoggTensorIO(Equatable, ImplicitlyCopyable, TrivialRegisterPassable):
+    var value: Int
+
+    comptime INPUT = _MoggTensorIO(0)
+    comptime OUTPUT = _MoggTensorIO(1)
+    comptime MUTABLE_INPUT = _MoggTensorIO(2)
+
+    @always_inline("builtin")
+    def __eq__(self, other: Self) -> Bool:
+        return self.value == other.value
+
+    @always_inline("builtin")
+    def __ne__(self, other: Self) -> Bool:
+        return self.value != other.value
+
+    @always_inline("builtin")
+    def is_input(self) -> Bool:
+        return self == _MoggTensorIO.INPUT or self == _MoggTensorIO.MUTABLE_INPUT
+
+    @always_inline("builtin")
+    def is_mut(self) -> Bool:
+        return self == _MoggTensorIO.OUTPUT or self == _MoggTensorIO.MUTABLE_INPUT
+
+
+struct _MoggDenseTensorArg[
+    _dtype: DType,
+    _LayoutType: TensorLayout,
+    _alignment: Int,
+    _io: _MoggTensorIO,
+](
+    DenseTensor,
+    Input where _io.is_input(),
+    Output where _io == _MoggTensorIO.OUTPUT,
+    TileTensorable,
+):
+    comptime mut = Self._io.is_mut()
+    comptime dtype = Self._dtype
+    comptime LayoutType = Self._LayoutType
+    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime rank = Self.LayoutType.rank
+    comptime alignment = Self._alignment
+    var handle: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+    var _layout: Self.LayoutType
+
+    @always_inline
+    def __init__(
+        out self,
+        ptr: UnsafePointer[NoneType, MutAnyOrigin],
+        layout: Self.LayoutType,
+    ):
+        self.handle = ptr.bitcast[Scalar[Self.dtype]]().mut_cast[
+            Self.mut
+        ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
+        self._layout = layout
+
+    @always_inline
+    def shape(self) -> Self.ShapeType:
+        return rebind[Self.ShapeType](self.layout().shape_coord())
+
+    @always_inline
+    def layout(self) -> Self.LayoutType:
+        return self._layout
+
+    @always_inline
+    def to_tile_tensor(
+        self,
+    ) -> TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = UntrackedOrigin[mut = Self.mut],
+    ]:
+        return TileTensor[
+            dtype = Self.dtype,
+            LayoutType = Self.LayoutType,
+            origin = UntrackedOrigin[mut = Self.mut],
+        ](ptr=self.handle, layout=self.layout())
+)mojo";
+
 LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
-  // The real emit -- constructing the composable `TensorArg` struct from the
-  // contract and letting Mojo infer the kernel's generic `T` -- is Slice 3
-  // (Phase 4 of the execution plan). This op is created during MO->MOGG
-  // lowering and must survive the pipeline up to (but not through) emit-mojo;
-  // reaching emit means the dense trait emit path was exercised before it
-  // landed. Fail loudly rather than silently mis-lowering.
-  return emitOpError(
-      "mogg.tensor_arg.__init__ emit is implemented in Slice 3 (the dense "
-      "trait emit path); this op should not reach emit-mojo yet");
+  auto tensorTy = MO::dynCastFromTensorLike(getType());
+  if (!tensorTy)
+    return emitOpError("expected a tensor-like result type");
+
+  // The GPU path needs the `DeviceContext`-driven ctor (the device-passable
+  // storage flavor), which lands in a later slice. Until then, only the dense
+  // CPU path is wired; fail loudly rather than mis-lower a device arg.
+  if (!MO::isOnHost(tensorTy))
+    return emitOpError(
+        "mogg.tensor_arg.__init__ GPU emit is not implemented yet (only the "
+        "dense CPU path); device tensor-trait args land in a later slice");
+
+  // Emit the inline struct definitions once per module.
+  if (!state.emittedDenseTensorArgDefs) {
+    state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
+    state.emittedDenseTensorArgDefs = true;
+  }
+
+  // dtype / shape -> Coord -> row-major layout / alignment, exactly mirroring
+  // `TensorInitOp::emitMojo`.
+  MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
+  MojoValue alignmentParam(
+      static_cast<uint64_t>(M::Driver::getPreferredAlignment(
+          MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
+  auto shapeVar = state.builder.var(
+      state.getShapeAsCoordMojoValue(tensorTy.getTypedShapeAttr(), getDims()));
+  auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
+
+  // `io` comes from the distilled contract role (the trait-lane single source
+  // of truth -- D4; never re-derived from the result type's vestigial io/mut).
+  MojoValue ioParam = [&] {
+    MojoValue ioStruct("_MoggTensorIO");
+    switch (getContract().getRole()) {
+    case MOGG::TensorArgRoleKind::input:
+      return ioStruct.get("INPUT");
+    case MOGG::TensorArgRoleKind::output:
+      return ioStruct.get("OUTPUT");
+    case MOGG::TensorArgRoleKind::mutable_input:
+      return ioStruct.get("MUTABLE_INPUT");
+    }
+    llvm_unreachable("unhandled TensorArgRoleKind");
+  }();
+
+  // The opaque buffer pointer, identical to the `mogg.tensor.__init__` funnel
+  // input; the struct ctor bitcasts it to `Scalar[dtype]` internally.
+  MojoValue ptr =
+      OpaquePointerRef(
+          ManagedTensorSliceRef(state.getMojoValueFor(getBuffer())).unsafePtr())
+          .bitcast(MojoValue(kComptimeDTypeNoneType))();
+
+  // Construct `_MoggDenseTensorArg[dtype, type_of(layout), alignment, io](ptr,
+  // layout)`. The kernel arg is generic `T`; Mojo infers it from this value.
+  MojoValue layoutType = MojoValue("type_of")({}, {layoutVar});
+  MojoValue structName("_MoggDenseTensorArg");
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(structName(
+                            {dTypeParam, layoutType, alignmentParam, ioParam},
+                            {ptr, layoutVar})));
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

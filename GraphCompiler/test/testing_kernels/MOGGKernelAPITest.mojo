@@ -44,6 +44,13 @@ from extensibility import (
 from extensibility import (
     _MutableInputTensor as MutableInputTensor,
 )
+from extensibility import (
+    DenseTensor,
+    Input,
+    Output,
+    TileTensorable,
+    to_tile_tensor,
+)
 
 from std.utils import IndexList, StaticTuple
 from std.utils.coord import Coord, coord_to_index_list
@@ -225,6 +232,36 @@ struct Foo:
 @compiler.register_shape_function("imposter_add")
 def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
     return x.shape()
+
+
+# Trait-lane dense unary kernel (Slice 3 / Phase 4 e2e proof). Uses the
+# composable tensor-argument traits instead of `ManagedTensorSlice`: the graph
+# compiler emits an inline `_MoggDenseTensorArg` for each arg and infers the
+# generic `T` from it. Computes `z[i] = -x[i]` over the flat element range,
+# accessing data through the `TileTensorable` projection.
+@compiler.register("trait_negate")
+struct TraitNegate:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        # Keep the host-entry bound to the role + metadata traits; the dense CPU
+        # path additionally needs a `TileTensorable` projection, asserted here
+        # (mirrors `DenseElementwiseKernel`). `to_tile_tensor(z)` picks the Output
+        # (mutable) projection; `x` gets the default immutable one. `x` and `z`
+        # are independent generic types, so rebind the loaded element to the
+        # output dtype before negating.
+        comptime assert conforms_to(type_of(z), TileTensorable)
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        var zt = to_tile_tensor(z)
+        var xt = to_tile_tensor(x)
+        var n = Int(x.shape().product())
+        for i in range(n):
+            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-xt.raw_load(i)))
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time
@@ -1464,3 +1501,53 @@ struct AddOneGPU:
         std.algorithm.functional.elementwise[func, 1, target="gpu"](
             outp.shape_coord(), ctx
         )
+
+
+# Mixed-lane e2e proof: a trait-bound dense output alongside two legacy
+# `InputTensor` operands in the same `execute` signature, computing
+# `z[i] = x[i] + y[i]`. Confirms the trait-lane and legacy-lane capture
+# assembly compose in the same `CallExecuteOp::emitMojo` call.
+@compiler.register("trait_mixed_legacy_add")
+struct TraitMixedLegacyAdd:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: InputTensor,
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), TileTensorable)
+        var zt = to_tile_tensor(z)
+        var n = x.size()
+        for i in range(n):
+            var xv = x[i]
+            var yv = rebind[Scalar[type_of(x).dtype]](y[i])
+            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](xv + yv))
+
+
+# Mirror of `trait_mixed_legacy_add` with the lanes swapped: a legacy
+# `OutputTensor` alongside two trait-bound dense inputs, so the legacy write
+# path (`OutputTensor.__setitem__`) and the trait read path
+# (`to_tile_tensor(...).raw_load`) both fire in the same emitted kernel.
+@compiler.register("trait_mixed_legacy_out_add")
+struct TraitMixedLegacyOutAdd:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: OutputTensor,
+        x: Some[Input & DenseTensor],
+        y: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        comptime assert conforms_to(type_of(y), TileTensorable)
+        var xt = to_tile_tensor(x)
+        var yt = to_tile_tensor(y)
+        var n = Int(x.shape().product())
+        for i in range(n):
+            var xv = xt.raw_load(i)
+            var yv = rebind[SIMD[type_of(xt).dtype, 1]](yt.raw_load(i))
+            z[i] = rebind[Scalar[z.dtype]](xv + yv)

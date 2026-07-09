@@ -117,6 +117,20 @@ constexpr llvm::StringLiteral kInputTensorArgContractsAttrName =
 constexpr llvm::StringLiteral kOutputTensorArgContractsAttrName =
     "mogg.output_tensor_arg_contracts";
 
+/// Per-stub-argument trait-bound strings stamped on the MOGG-ABI
+/// `mogg.kernel.stub`: entry `i` is the Mojo trait-bound expression for stub
+/// argument `i` (e.g. `Output & DenseTensor & TileTensorable`) when it is a
+/// trait tensor argument, or an empty string otherwise. Emit
+/// (`emitMojoMOGGABI`) gives each such argument a fresh generic parameter typed
+/// `__trait_arg_type_i: <bound>` instead of spelling the (vestigial)
+/// `ManagedTensorSlice` type, so the constructed `_MoggDenseTensorArg` flows in
+/// and the kernel's `execute` infers its `T`. The bound must be conformed-to by
+/// `_MoggDenseTensorArg` and imply the kernel's written bound; for the dense
+/// slice that is `<role> & DenseTensor & TileTensorable`. Absent for pure
+/// legacy kernels (their lowering/printing is unchanged).
+constexpr llvm::StringLiteral kTraitStubArgBoundsAttrName =
+    "mogg.trait_stub_arg_bounds";
+
 /// `has_epilogue_fusion` parameter on accumulation-style fused kernels.
 constexpr llvm::StringLiteral kMoggHasEpilogueFusionParameterName =
     "has_epilogue_fusion";

@@ -46,6 +46,14 @@ struct EmitMojoState {
   /// which is mid-function at that point. The output is concatenated after the
   /// main builder's output; Mojo allows file-scope declarations in any order.
   MojoBuilder structDefsBuilder;
+
+  /// True once the trait-lane dense tensor-argument helper definitions
+  /// (`_MoggTensorIO` + `_MoggDenseTensorArg`) have been emitted into
+  /// `structDefsBuilder`. `TensorArgInitOp::emitMojo` emits them inline on
+  /// first use and references them thereafter, so they live only inside the
+  /// emitted Mojo module (no committed library type yet). Guards against
+  /// re-emitting the definitions for every trait tensor argument.
+  bool emittedDenseTensorArgDefs = false;
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;

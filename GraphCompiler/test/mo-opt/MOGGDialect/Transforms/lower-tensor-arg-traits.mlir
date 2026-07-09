@@ -81,13 +81,30 @@
 
 // === LOWERING (dense-only): mogg.tensor_arg.__init__ + the legacy lane ===== //
 
-// Emit-stub guard (Slice 3 boundary): the `mogg.tensor_arg.__init__` op MUST
-// NOT silently emit Mojo before Slice 3. Running the full emit pipeline on a
-// trait kernel must fail loudly with the Slice-3 `emitOpError`. We pin that the
-// error fires positively (rather than relying on the default pipeline stopping
-// before emit). `not` expects a non-zero exit; FileCheck matches the message.
-// RUN: not mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo 2>&1 | FileCheck %s --check-prefix=EMIT-ERR
-// EMIT-ERR: mogg.tensor_arg.__init__ emit is implemented in Slice 3
+// Dense CPU emit (Slice 3 / Phase 4): a trait tensor argument emits an inline
+// `_MoggDenseTensorArg[...]` value constructed from the distilled contract; the
+// kernel's generic `T` is inferred from it. The helper struct defs are emitted
+// once into the module (so `DenseTensorArg` lives only inside the emitted Mojo,
+// not as a committed library type). `--mgp-dump-mojo` prints the emitted text.
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mgp-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
+//
+// The helper definitions are emitted once into the module: the role enum and
+// the dense struct conforming to DenseTensor + Input/Output + TileTensorable.
+// EMIT-DAG: struct _MoggTensorIO
+// EMIT-DAG: struct _MoggDenseTensorArg[
+// EMIT-DAG: TileTensorable,
+//
+// Each trait tensor arg constructs `_MoggDenseTensorArg[dtype, type_of(layout),
+// alignment, _MoggTensorIO.<role>](<opaque ptr>, layout)`, with the role read
+// off the distilled contract (output / input / mutable_input all exercised by
+// the graphs below). The kernel's generic `T` is inferred from the value.
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.OUTPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.INPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.MUTABLE_INPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+//
+// The trait kernel's `execute` is called with the constructed value (legacy
+// `mogg.tensor.__init__` still emits for the legacy lane in mixed kernels).
+// EMIT-DAG: TraitAddSome.execute[target = "cpu"]
 
 // Slice 2 (Phase 3): a trait kernel's tensor arguments lower to
 // `mogg.tensor_arg.__init__` carrying the distilled `#mogg.tensor_arg`

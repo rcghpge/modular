@@ -821,6 +821,50 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   assert(stubCallOperands.size() ==
          (kernelStub.getBodyBlock().getNumArguments()));
 
+  // Trait lane (D9): record, per stub argument, the Mojo trait-bound expression
+  // emit should give it (so it becomes a generic, T-inferred parameter instead
+  // of `ManagedTensorSlice`). Indexed in stub-argument order; a trait operand
+  // maps to its stub-arg slot via `getKernelStubArgIndex`. Non-trait args get
+  // an empty string. For the dense slice the bound is `<role> & DenseTensor &
+  // TileTensorable` -- conformed-to by the emitted `_MoggDenseTensorArg` and a
+  // superset of any dense kernel's written bound. Pure legacy kernels carry no
+  // trait operand, so the attribute is never set for them.
+  {
+    size_t numStubArgs = kernelStub.getBodyBlock().getNumArguments();
+    SmallVector<std::string> bounds(numStubArgs);
+    bool anyTrait = false;
+    for (const auto &tensorInfos : tensorOperandInfos) {
+      if (!tensorInfos.traitContract)
+        continue;
+      std::optional<unsigned> stubArgIdx =
+          operandsMapping.getKernelStubArgIndex(tensorInfos.operandIdx);
+      if (!stubArgIdx || *stubArgIdx >= numStubArgs)
+        continue;
+      StringRef roleTrait;
+      switch (tensorInfos.traitContract.getRole()) {
+      case MOGG::TensorArgRoleKind::input:
+        roleTrait = "Input";
+        break;
+      case MOGG::TensorArgRoleKind::output:
+        roleTrait = "Output";
+        break;
+      case MOGG::TensorArgRoleKind::mutable_input:
+        roleTrait = "MutableInput";
+        break;
+      }
+      bounds[*stubArgIdx] =
+          (roleTrait + " & DenseTensor & TileTensorable").str();
+      anyTrait = true;
+    }
+    if (anyTrait) {
+      SmallVector<Attribute> boundAttrs;
+      for (const std::string &b : bounds)
+        boundAttrs.push_back(builder.getStringAttr(b));
+      kernelStub->setAttr(MOGG::kTraitStubArgBoundsAttrName,
+                          builder.getArrayAttr(boundAttrs));
+    }
+  }
+
   // Create the call to the outlined kernel stub and use whatever return value
   // (if any) in the output op of the new kernel.
   callStubOp = MOGG::CallStubOp::create(
