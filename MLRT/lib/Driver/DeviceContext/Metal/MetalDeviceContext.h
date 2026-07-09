@@ -206,16 +206,31 @@ public:
   MetalDevice::BufferLookupResult
   getMetalBufferWithOffset(const void *ptr) const;
 
+  // Metal GPU frame capture to a .gputrace for offline replay in Xcode.
+  // Reached from Mojo via the AsyncRT_DeviceContext_*MetalTraceCapture
+  // bindings, which verified_cast a generic DeviceContext to this type.
+  ErrorOrSuccess startMetalTraceCapture(const char *path);
+  ErrorOrSuccess stopMetalTraceCapture();
+  // Enable or disable Metal GPU print (os_log). Must be disabled for
+  // replayable captures (captured buffers cannot carry a log state).
+  ErrorOrSuccess setMetalPrintEnabled(bool enabled);
+
   static const MetalDeviceContext *verified_cast(const DeviceContext *ctx);
+  static MetalDeviceContext *verified_cast(DeviceContext *ctx);
   MTL::Device *metalDevice() const {
     return MetalDevice::cast(device()).metalDevice();
   }
 
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
-  // Log state for capturing GPU shader print output.
   NS::SharedPtr<MTL::LogState> logState_;
   MTL::LogState *getOrCreateLogState(bool enable = true);
+  // When true, skip MTL::LogState on command buffers (no GPU print).
+  // Set by setMetalPrintEnabled() or MODULAR_DISABLE_METAL_GPU_PRINT.
+  bool printDisabled_ = false;
+  // True between startMetalTraceCapture and stopMetalTraceCapture; suppresses
+  // MTL::LogState so captured command buffers are replayable.
+  bool captureActive_ = false;
   // Memory allocation
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;

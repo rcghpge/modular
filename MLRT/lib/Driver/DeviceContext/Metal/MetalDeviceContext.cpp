@@ -506,7 +506,13 @@ MetalDevice::getTrackedBuffers() const {
 
 MetalDeviceContext::MetalDeviceContext(
     MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {}
+    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {
+  // Seed printDisabled_ from env so callers that can't call
+  // setMetalPrintEnabled (e.g. launched subprocesses) can disable GPU print
+  // process-wide.
+  if (const char *env = std::getenv("MODULAR_DISABLE_METAL_GPU_PRINT"))
+    printDisabled_ = (env[0] != '\0' && env[0] != '0');
+}
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                                                        const void *src,
@@ -884,10 +890,12 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     argBufs.emplace_back(NS::TransferPtr(tmpBuf));
   }
 
-  // 3) Create command buffer (with log state for GPU print capture).
+  // Attach MTL::LogState only when GPU print is wanted; an active capture
+  // suppresses it so captured command buffers stay replayable.
   MTL::CommandBuffer *cmdBuffer = nullptr;
-  if (MTL::LogState *ls =
-          getOrCreateLogState(isLoggingEnabled(attrs, numAttrs))) {
+  bool wantLog =
+      isLoggingEnabled(attrs, numAttrs) && !printDisabled_ && !captureActive_;
+  if (MTL::LogState *ls = getOrCreateLogState(wantLog)) {
     NS::SharedPtr<MTL::CommandBufferDescriptor> desc =
         NS::TransferPtr(MTL::CommandBufferDescriptor::alloc()->init());
     desc->setLogState(ls);
@@ -1171,6 +1179,12 @@ MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
   return static_cast<const MetalDeviceContext *>(ctx);
 }
 
+MetalDeviceContext *MetalDeviceContext::verified_cast(DeviceContext *ctx) {
+  if (ctx->device().api() != MetalDevice::api)
+    return nullptr;
+  return static_cast<MetalDeviceContext *>(ctx);
+}
+
 /// Returns true if the installed SDK supports the indicated Major.Minor
 /// revision of the Metal Shading Language.
 /// Parses the SDK header once on first call and caches all discovered
@@ -1253,6 +1267,73 @@ ErrorOr<const char *> MetalDevice::getArchName() const {
     arch_ = std::move(computed);
   }
   return arch_.c_str();
+}
+
+ErrorOrSuccess MetalDeviceContext::startMetalTraceCapture(const char *path) {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::startMetalTraceCapture",
+                       TRACY_COLOR_PURPLE);
+  if (captureActive_)
+    RETURN_ERROR("a Metal capture is already in progress");
+
+  // Local autorelease pool rather than the thread-local one: the thread-local
+  // pool drains at process exit, after Metal state has been torn down, which
+  // causes a SEGV when the autoreleased descriptor/URL objects dealloc.
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  MTL::CaptureManager *mgr = MTL::CaptureManager::sharedCaptureManager();
+  if (!mgr->supportsDestination(MTL::CaptureDestinationGPUTraceDocument))
+    RETURN_ERROR("Metal GPU trace capture is unavailable; set "
+                 "MTL_CAPTURE_ENABLED=1 before launching the process");
+
+  // Work committed before the window must not straddle the capture boundary;
+  // Metal only captures command buffers created after startCapture.
+  RETURN_IF_ERROR(synchronize());
+
+  NS::SharedPtr<MTL::CaptureDescriptor> desc =
+      NS::TransferPtr(MTL::CaptureDescriptor::alloc()->init());
+  desc->setCaptureObject(metalDevice());
+  desc->setDestination(MTL::CaptureDestinationGPUTraceDocument);
+  // NS::String::string() and NS::URL::fileURLWithPath() are autoreleased
+  // convenience constructors — use as raw pointers within the pool scope.
+  // Wrapping in NS::TransferPtr would double-free when the pool drains.
+  NS::String *nsPath = NS::String::string(path, NS::UTF8StringEncoding);
+  NS::URL *url = NS::URL::fileURLWithPath(nsPath);
+  desc->setOutputURL(url);
+
+  NS::Error *error = nullptr;
+  if (!mgr->startCapture(desc.get(), &error)) {
+    std::string msg = "failed to start Metal capture";
+    if (error && error->localizedDescription()) {
+      if (const char *c =
+              error->localizedDescription()->cString(NS::UTF8StringEncoding))
+        msg += std::string(": ") + c;
+    }
+    RETURN_ERROR(msg);
+  }
+  captureActive_ = true;
+  return success();
+}
+
+ErrorOrSuccess MetalDeviceContext::stopMetalTraceCapture() {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::stopMetalTraceCapture",
+                       TRACY_COLOR_PURPLE);
+  if (!captureActive_)
+    RETURN_ERROR("no Metal capture is in progress");
+  // Committed command buffers are async; drain them before stopping or the
+  // trace is truncated.
+  RETURN_IF_ERROR(synchronize());
+  // Call stopCapture outside any local autorelease pool: on some macOS
+  // versions CaptureManager autoreleases internal objects that become
+  // invalid if drained while still referenced by the framework.
+  MTL::CaptureManager::sharedCaptureManager()->stopCapture();
+  captureActive_ = false;
+  return success();
+}
+
+ErrorOrSuccess MetalDeviceContext::setMetalPrintEnabled(bool enabled) {
+  printDisabled_ = !enabled;
+  return success();
 }
 
 MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {

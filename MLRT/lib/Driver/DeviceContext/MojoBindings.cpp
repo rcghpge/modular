@@ -565,6 +565,49 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_stopTimer(int64_t *result,
   return errMsg;
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_startMetalTraceCapture(DeviceContext *ctx,
+                                             const char *path) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_startMetalTraceCapture",
+                       TRACY_COLOR_GRAY);
+#if MODULAR_MACOS
+  MetalDeviceContext *verifiedCtx = MetalDeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr)
+    return raiseError("Not a MetalContext");
+  return checkSuccess(verifiedCtx->startMetalTraceCapture(path));
+#else
+  return raiseError("Not a MetalContext");
+#endif
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_stopMetalTraceCapture(DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_stopMetalTraceCapture",
+                       TRACY_COLOR_GRAY);
+#if MODULAR_MACOS
+  MetalDeviceContext *verifiedCtx = MetalDeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr)
+    return raiseError("Not a MetalContext");
+  return checkSuccess(verifiedCtx->stopMetalTraceCapture());
+#else
+  return raiseError("Not a MetalContext");
+#endif
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_setMetalPrintEnabled(DeviceContext *ctx, bool enabled) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_setMetalPrintEnabled",
+                       TRACY_COLOR_GRAY);
+#if MODULAR_MACOS
+  MetalDeviceContext *verifiedCtx = MetalDeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr)
+    return raiseError("Not a MetalContext");
+  return checkSuccess(verifiedCtx->setMetalPrintEnabled(enabled));
+#else
+  return raiseError("Not a MetalContext");
+#endif
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceTimer_retain(DeviceTimer *timer) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceTimer_retain", TRACY_COLOR_GRAY);
   // Increment the low-level reference count.
