@@ -141,6 +141,11 @@ private:
   // Computed once and cached.
   const std::vector<CUmemAccessDesc> &vmmAccessDescs() const;
 
+  // Allocation properties for VMM physical chunks on this device, including
+  // the GPUDirect-RDMA-capable flag when the platform supports it. Computed
+  // once and cached.
+  const CUmemAllocationProp &vmmAllocProp() const;
+
   // CUDA 13 only supports Turing (sm_75) architectures and later.
   static constexpr int MIN_COMPUTE_CAPABILITY = 75;
 
@@ -165,6 +170,10 @@ private:
   // vmmAccessDescs()).
   mutable std::once_flag vmmAccessOnce_;
   mutable std::vector<CUmemAccessDesc> vmmAccessDescs_;
+
+  // Lazily-computed, cached VMM allocation properties (see vmmAllocProp()).
+  mutable std::once_flag vmmAllocPropOnce_;
+  mutable CUmemAllocationProp vmmAllocProp_ = {};
 
   // Lazily-computed, cached result of whether VMM is usable on this device (see
   // vmmSupported()).

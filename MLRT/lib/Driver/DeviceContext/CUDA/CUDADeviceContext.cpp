@@ -518,12 +518,27 @@ ErrorOrSuccess CUDADevice::chunkFree(void *ptr, bool isHost) {
 //
 // Builds the CUmemAllocationProp describing a pinned device granule on this
 // device. Mirrors the multicast path in createMulticastBuffer.
-static CUmemAllocationProp cudaVmmAllocProp(CUdevice cudaDevice) {
-  CUmemAllocationProp memProp = {};
-  memProp.type = CUmemAllocationType::PINNED;
-  memProp.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
-  memProp.location.id = cudaDevice;
-  return memProp;
+const CUmemAllocationProp &CUDADevice::vmmAllocProp() const {
+  std::call_once(vmmAllocPropOnce_, [&]() {
+    vmmAllocProp_.type = CUmemAllocationType::PINNED;
+    vmmAllocProp_.location.type =
+        CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
+    vmmAllocProp_.location.id = cudaDevice_;
+    // Mark chunks GPUDirect-RDMA capable where the platform supports it.
+    // NICs registering VMM-backed buffers through the legacy peer-memory path
+    // (`nvidia_p2p_get_pages`, used by e.g. mlx5 on hosts without dmabuf
+    // support) require cuMemCreate allocations to carry this flag; dmabuf
+    // registration does not need it. Per NVIDIA guidance the flag is a no-op
+    // otherwise, so set it whenever the device reports support.
+    int rdmaWithVmm = 0;
+    if (driver_.cuDeviceGetAttribute(
+            &rdmaWithVmm,
+            CUdevice_attribute::GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED,
+            cudaDevice_) == CUDADriver::SUCCESS &&
+        rdmaWithVmm)
+      vmmAllocProp_.allocFlags.gpuDirectRDMACapable = 1;
+  });
+  return vmmAllocProp_;
 }
 
 bool CUDADevice::vmmSupported() const {
@@ -537,7 +552,7 @@ bool CUDADevice::vmmSupported() const {
 
 ErrorOr<size_t> CUDADevice::vmmGranularity() const {
   CUDA_WITH_DEV_ERR(*this);
-  CUmemAllocationProp memProp = cudaVmmAllocProp(cudaDevice_);
+  const CUmemAllocationProp &memProp = vmmAllocProp();
   size_t granularity = 0;
   CUDA_CHECK_ERR(driver_.cuMemGetAllocationGranularity(
       &granularity, &memProp,
@@ -561,7 +576,7 @@ ErrorOrSuccess CUDADevice::vmmAddressFree(void *va, size_t byteSize) {
 
 ErrorOr<uint64_t> CUDADevice::vmmCreate(size_t byteSize) {
   CUDA_WITH_DEV_ERR(*this);
-  CUmemAllocationProp memProp = cudaVmmAllocProp(cudaDevice_);
+  const CUmemAllocationProp &memProp = vmmAllocProp();
   CUmemGenericAllocationHandle handle = 0;
   CUDA_CHECK_ERR(driver_.cuMemCreate(&handle, byteSize, &memProp, 0));
   return static_cast<uint64_t>(handle);
