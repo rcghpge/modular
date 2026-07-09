@@ -381,7 +381,15 @@ struct KernelDeclFunctionAdaptor {
   /// (e.g. `max.kernels.AddOp.execute`). Null for synthesized adaptors.
   mlir::StringAttr fullyResolvedName;
 
-  explicit KernelDeclFunctionAdaptor(KGEN::LIT::FnTypeGeneratorType sig);
+  /// Build a function adaptor from a stored LIT signature. `tensorArgContracts`
+  /// is the import-baked `KernelFunctionAttr.tensor_arg_contracts` array (in
+  /// signature-arg order) and is the single source of truth for the trait lane
+  /// (Option A / D1/D7); pass it whenever it is available (the attr-bearing
+  /// ctors do). When omitted/empty -- primitives and synthesized adaptors,
+  /// which carry no trait args -- classification re-distills the written
+  /// composition as a behavior-preserving fallback.
+  explicit KernelDeclFunctionAdaptor(KGEN::LIT::FnTypeGeneratorType sig,
+                                     mlir::ArrayAttr tensorArgContracts = {});
 
   KernelDeclFunctionAdaptor(KernelFunctionAttr attr,
                             StringAttr fullyResolvedName);

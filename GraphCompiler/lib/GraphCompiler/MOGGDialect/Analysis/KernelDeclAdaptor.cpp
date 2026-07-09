@@ -190,13 +190,14 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
 /// because import already validated and reported any malformed composition).
 /// Returns nullopt for a non-trait arg or an unresolvable composition.
 ///
-/// INVARIANT: this lowering-time re-distillation MUST agree with the contract
-/// baked at import time onto `KernelFunctionAttr.tensor_arg_contracts` (read
-/// back via `dictToTensorArgContract`). Both go through the single shared
-/// `distillTensorArgContract`, so they agree today. If the distillation logic
-/// or import validation ever diverges, the trait lane could route on a
-/// different contract than was baked (or silently fall back to the legacy lane
-/// on a composition import accepted) -- keep the two computations in lockstep.
+/// This is the *fallback* contract source, used only for function-like decls
+/// that carry no import-baked `tensor_arg_contracts` array -- primitives
+/// (`distillTraitArgs == false` at import) and synthesized adaptors. For those
+/// there is no baked dict to read, so re-distilling here is the single source
+/// of truth (no drift hazard). When a baked array *is* present (every
+/// `KernelDeclOp` execute / update_view / build_graph function), Option A makes
+/// the baked dict authoritative and this fallback is not taken -- see
+/// `resolveTraitContract`.
 static std::optional<TensorArgContract>
 recoverTraitArgContract(mlir::Type argType) {
   KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
@@ -237,20 +238,47 @@ traitContractToTensorAdaptor(const TensorArgContract &contract) {
   return adaptor;
 }
 
+/// Resolve a trait-bound tensor argument's contract (Option A / D1/D7).
+///
+/// The import-baked `KernelFunctionAttr.tensor_arg_contracts` dict is the
+/// single source of truth: when a baked array is available (`hasBakedArray`),
+/// decode the per-arg entry via `dictToTensorArgContract` -- a `UnitAttr`
+/// placeholder (non-trait arg) decodes to nullopt, a dict to its contract. When
+/// no array is baked (primitives / synthesized adaptors, which never carry
+/// trait args in the current scope), fall back to re-distilling the written
+/// composition so behavior is unchanged. This is the only caller that decides
+/// between the baked dict and the re-distill fallback; the two are never mixed
+/// for a single function, so there is no dual-distill drift hazard.
+static std::optional<TensorArgContract>
+resolveTraitContract(mlir::Type argType, mlir::Attribute bakedEntry,
+                     bool hasBakedArray) {
+  if (hasBakedArray)
+    return dictToTensorArgContract(bakedEntry);
+  return recoverTraitArgContract(argType);
+}
+
 /// Classify a single argument type into a KernelDeclOperandVariant by
 /// introspecting the LIT StructType symbol and parameter values.
+///
+/// `bakedEntry` is this argument's import-baked `tensor_arg_contracts` entry
+/// (or null), and `hasBakedArray` says whether the owning function carried a
+/// baked array at all; together they drive `resolveTraitContract` for the trait
+/// lane.
 static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
                                                 mlir::Type argType,
-                                                bool promoteSIMDToFusedTensor) {
+                                                bool promoteSIMDToFusedTensor,
+                                                mlir::Attribute bakedEntry,
+                                                bool hasBakedArray) {
   KGEN::LIT::StructType structType = getAsStructType(argType);
   if (!structType) {
     // Trait lane: a trait-bound tensor argument is non-struct
     // (getAsStructType null). Classify it as a tensor adaptor carrying the
-    // role/mut from its distilled contract, so it participates in operand
-    // mapping and the DPS-output split like the equivalent legacy IOSpec arg.
-    // Non-trait non-struct args remain unsupported, exactly as before.
+    // role/mut from its contract (the import-baked dict, Option A), so it
+    // participates in operand mapping and the DPS-output split like the
+    // equivalent legacy IOSpec arg. Non-trait non-struct args remain
+    // unsupported, exactly as before.
     if (std::optional<TensorArgContract> contract =
-            recoverTraitArgContract(argType))
+            resolveTraitContract(argType, bakedEntry, hasBakedArray))
       return traitContractToTensorAdaptor(*contract);
     return KernelDeclUnsupportedAdaptor{};
   }
@@ -311,7 +339,14 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
 
 /// Count the number of leading DPS output arguments (output-IOSpec tensors
 /// that come before any input or non-tensor argument).
-static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig) {
+///
+/// `tensorArgContracts` is the owning function's import-baked
+/// `tensor_arg_contracts` array (in signature-arg order), or null/empty when
+/// the function carried none (primitives / synthesized); it drives the trait
+/// lane's role via `resolveTraitContract`.
+static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig,
+                              mlir::ArrayAttr tensorArgContracts) {
+  bool hasBakedArray = tensorArgContracts && !tensorArgContracts.empty();
   size_t count = 0;
   for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
     if (sig.getArgConvention(i) == KGEN::ArgConvention::ByRefResult)
@@ -320,12 +355,16 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig) {
     KGEN::LIT::StructType structType = getAsStructType(argType);
     if (!structType) {
       // Trait lane: a trait-bound tensor argument is non-struct. Recover its
-      // role from the distilled contract; an `output` role continues the
-      // leading-output count, anything else (input/mutable_input) or a
-      // non-trait non-struct arg stops it -- preserving the legacy
-      // "break at the first non-output" semantics.
+      // role from the contract (the import-baked dict, Option A); an `output`
+      // role continues the leading-output count, anything else
+      // (input/mutable_input) or a non-trait non-struct arg stops it --
+      // preserving the legacy "break at the first non-output" semantics.
+      mlir::Attribute bakedEntry =
+          (hasBakedArray && i < tensorArgContracts.size())
+              ? tensorArgContracts[i]
+              : mlir::Attribute();
       std::optional<TensorArgContract> contract =
-          recoverTraitArgContract(argType);
+          resolveTraitContract(argType, bakedEntry, hasBakedArray);
       if (!contract || contract->role != TensorArgRole::output)
         break;
       ++count;
@@ -546,9 +585,22 @@ static const VocabEntry *classifyVocabTrait(mlir::SymbolRefAttr sym) {
 //===----------------------------------------------------------------------===//
 
 KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
-    KGEN::LIT::FnTypeGeneratorType sig) {
+    KGEN::LIT::FnTypeGeneratorType sig, mlir::ArrayAttr tensorArgContracts) {
   mlir::MLIRContext *ctx = sig.getContext();
   size_t numArgs = sig.getNumArguments();
+
+  // Trait lane (Option A / D1/D7): the import-baked `tensor_arg_contracts`
+  // array (signature-arg order) is the single source of truth. `bakedEntryFor`
+  // returns this arg's per-arg entry (or null); `hasBakedArray` says whether
+  // the function carried a baked array at all. Together they drive
+  // `resolveTraitContract` (via classifyArgType / countDPSOutputs), so the
+  // contract is read off the bake rather than re-distilled here.
+  bool hasBakedArray = tensorArgContracts && !tensorArgContracts.empty();
+  auto bakedEntryFor = [&](size_t i) -> mlir::Attribute {
+    if (hasBakedArray && i < tensorArgContracts.size())
+      return tensorArgContracts[i];
+    return mlir::Attribute();
+  };
 
   // Detect whether the result is passed as a trailing by-ref argument.
   bool resultAsArgument = false;
@@ -561,7 +613,7 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
   bool isThrow = sig.isThrows();
   size_t numByRefArgs = isThrow ? 2 : (resultAsArgument ? 1 : 0);
   size_t endOfInputArgs = numArgs - numByRefArgs;
-  size_t numDPSOutputs = countDPSOutputs(sig);
+  size_t numDPSOutputs = countDPSOutputs(sig, tensorArgContracts);
 
   // Output (DPS) arguments come first.
   for (size_t i = 0; i < numDPSOutputs; ++i) {
@@ -569,7 +621,8 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
     op.sourceDescriptor = KernelDeclOperandAdaptor::SourceDescriptor{
         sig.getArgName(i), i, /*isByRefResult=*/false};
     op.underlyingType =
-        classifyArgType(ctx, sig.getArgument(i), /*promoteSIMD=*/false);
+        classifyArgType(ctx, sig.getArgument(i), /*promoteSIMD=*/false,
+                        bakedEntryFor(i), hasBakedArray);
     outputArguments.push_back(std::move(op));
   }
 
@@ -579,7 +632,8 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
     op.sourceDescriptor = KernelDeclOperandAdaptor::SourceDescriptor{
         sig.getArgName(i), i, /*isByRefResult=*/false};
     op.underlyingType =
-        classifyArgType(ctx, sig.getArgument(i), /*promoteSIMD=*/false);
+        classifyArgType(ctx, sig.getArgument(i), /*promoteSIMD=*/false,
+                        bakedEntryFor(i), hasBakedArray);
     inputArguments.push_back(std::move(op));
   }
 
@@ -590,14 +644,20 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
     op.sourceDescriptor = KernelDeclOperandAdaptor::SourceDescriptor{
         sig.getArgName(byrefIdx), byrefIdx, /*isByRefResult=*/true};
     op.underlyingType =
-        classifyArgType(ctx, sig.getArgument(byrefIdx), /*promoteSIMD=*/false);
+        classifyArgType(ctx, sig.getArgument(byrefIdx), /*promoteSIMD=*/false,
+                        bakedEntryFor(byrefIdx), hasBakedArray);
     outputResult = std::move(op);
   } else if (!resultAsArgument) {
     mlir::Type resultType = sig.getResultType();
     if (!KGEN::sugarIsa<KGEN::NoneType>(resultType)) {
       KernelDeclOperandAdaptor op;
+      // A value result is not a signature argument, so the baked array (which
+      // spans `fn.getArgumentTypes()` only) does not cover it; classify it
+      // through the re-distill fallback, exactly as before Option A.
       op.underlyingType =
-          classifyArgType(ctx, resultType, /*promoteSIMD=*/false);
+          classifyArgType(ctx, resultType, /*promoteSIMD=*/false,
+                          /*bakedEntry=*/mlir::Attribute(),
+                          /*hasBakedArray=*/false);
       outputResult = std::move(op);
     }
   }
@@ -605,7 +665,8 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
 
 KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
     KernelFunctionAttr attr, StringAttr fullyResolvedName)
-    : KernelDeclFunctionAdaptor(attr.getSignature()) {
+    : KernelDeclFunctionAdaptor(attr.getSignature(),
+                                attr.getTensorArgContracts()) {
   this->attr = attr;
   this->fullyResolvedName = fullyResolvedName;
 }
@@ -655,8 +716,14 @@ KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
     KernelDeclOperandAdaptor op;
     op.sourceDescriptor = KernelDeclOperandAdaptor::SourceDescriptor{
         sig.getArgName(i), i, /*isByRefResult=*/false};
+    // The synthetic elementwise->execute signature carries no baked
+    // `tensor_arg_contracts` (its args are SIMD-promoted-to-fused tensors and a
+    // synthesized fused output, none trait-bound), so classify through the
+    // re-distill fallback.
     op.underlyingType =
-        classifyArgType(ctx, argType, /*promoteSIMDToFusedTensor=*/true);
+        classifyArgType(ctx, argType, /*promoteSIMDToFusedTensor=*/true,
+                        /*bakedEntry=*/mlir::Attribute(),
+                        /*hasBakedArray=*/false);
     result.inputArguments.push_back(std::move(op));
   }
 
@@ -687,7 +754,8 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
           StringRef methodName) -> std::optional<KernelDeclFunctionAdaptor> {
     if (!fnAttr)
       return std::nullopt;
-    KernelDeclFunctionAdaptor f(fnAttr->getSignature());
+    KernelDeclFunctionAdaptor f(fnAttr->getSignature(),
+                                fnAttr->getTensorArgContracts());
     f.attr = *fnAttr;
     f.fullyResolvedName = mlir::StringAttr::get(
         ctx, llvm::formatv("{}.{}", fullyResolvedName, methodName).str());
