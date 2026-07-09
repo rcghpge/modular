@@ -3209,6 +3209,22 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// TensorArgInitOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
+  // The real emit -- constructing the composable `TensorArg` struct from the
+  // contract and letting Mojo infer the kernel's generic `T` -- is Slice 3
+  // (Phase 4 of the execution plan). This op is created during MO->MOGG
+  // lowering and must survive the pipeline up to (but not through) emit-mojo;
+  // reaching emit means the dense trait emit path was exercised before it
+  // landed. Fail loudly rather than silently mis-lowering.
+  return emitOpError(
+      "mogg.tensor_arg.__init__ emit is implemented in Slice 3 (the dense "
+      "trait emit path); this op should not reach emit-mojo yet");
+}
+
+//===----------------------------------------------------------------------===//
 // Shared verification for CallStubOp / CallStubAsyncOp
 //===----------------------------------------------------------------------===//
 

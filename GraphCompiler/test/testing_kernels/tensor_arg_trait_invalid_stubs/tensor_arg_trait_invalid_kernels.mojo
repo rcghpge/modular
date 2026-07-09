@@ -21,8 +21,13 @@ from extensibility import (
     DenseTensor,
     Fused,
     Input,
+    LoadAccess,
+    Loadable,
+    MutableInput,
     Output,
+    StoreAccess,
     Storable,
+    Transformable,
 )
 
 
@@ -76,6 +81,80 @@ struct TraitStoreOnInput:
     def execute[
         target: StaticString,
     ](z: Some[Input & Fused & Storable], ctx: DeviceContext) raises:
+        pass
+
+
+# Two role traits, specifically the `Input & MutableInput` pair (exact-leaf
+# matching means `MutableInput` does not subsume `Input`; both roles count).
+@compiler.register("trait_input_and_mutable_input")
+struct TraitInputAndMutableInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        Z: Input & MutableInput & DenseTensor,
+    ](z: Z, ctx: DeviceContext) raises:
+        pass
+
+
+# More than one access form: a fused MutableInput carrying BOTH `Loadable` and
+# `Storable` capability leaves.
+@compiler.register("trait_multi_access_forms")
+struct TraitMultiAccessForms:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[MutableInput & Fused & Loadable & Storable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# More than one access form via bare MARKERS on a NON-fused input
+# (`LoadAccess & StoreAccess`): the multi-access check fires regardless of the
+# `Fused` marker.
+@compiler.register("trait_multi_access_markers_nonfused")
+struct TraitMultiAccessMarkersNonFused:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Input & LoadAccess & StoreAccess], ctx: DeviceContext,) raises:
+        pass
+
+
+# Load access on an Output: `Output & Fused & Loadable` -- load is not valid on
+# an output.
+@compiler.register("trait_load_on_output")
+struct TraitLoadOnOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & Loadable], ctx: DeviceContext) raises:
+        pass
+
+
+# Transform access on a read-only Input: `Input & Fused & Transformable` --
+# transform requires an Output.
+@compiler.register("trait_transform_on_input")
+struct TraitTransformOnInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Input & Fused & Transformable], ctx: DeviceContext) raises:
+        pass
+
+
+# Transform access on a MutableInput: `MutableInput & Fused & Transformable` --
+# transform requires an Output, so a mutable input is also rejected.
+@compiler.register("trait_transform_on_mutable_input")
+struct TraitTransformOnMutableInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[MutableInput & Fused & Transformable],
+        ctx: DeviceContext,
+    ) raises:
         pass
 
 

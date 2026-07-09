@@ -159,6 +159,12 @@ public:
     Value stubValue;   // Tensor value inside the KernelStub
     size_t operandIdx; // Argument index for the OperandsMapping.
     bool isOutput;
+    // Trait lane (D1/D5): the distilled `#mogg.tensor_arg` contract for a
+    // trait-bound argument, or null for a legacy `ManagedTensorSlice`
+    // argument. When set, `buildMojoIOTensorObject` builds
+    // `mogg.tensor_arg.__init__` carrying this contract instead of the legacy
+    // `mogg.tensor.__init__`.
+    MOGG::TensorArgContractAttr traitContract = nullptr;
   };
 
 protected:

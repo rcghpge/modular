@@ -12,12 +12,69 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGATTRS_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
 include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.td"
 include "KGEN/LITDialect/LITTypes.td"
 
 class MOGGAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MOGGDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
+}
+
+//===----------------------------------------------------------------------===//
+// TensorArgContractAttr -- the trait-lane tensor-argument contract
+//===----------------------------------------------------------------------===//
+
+def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
+  let summary = "Distilled trait contract for a trait-bound tensor argument";
+  let description = [{
+    The single source of truth carried by the trait lane for one trait-bound
+    tensor argument (`#mogg.tensor_arg<{role, fused, access, has_capability}>`).
+    It mirrors the per-argument `DictionaryAttr` baked onto
+    `KernelFunctionAttr.tensor_arg_contracts` at import
+    (`tensorArgContractToDict` / `dictToTensorArgContract` in
+    `KernelDeclAdaptor.cpp`), and rides on the `mogg.tensor_arg.__init__` op in
+    place of the legacy `{io, mut}` carried by `mogg.tensor.__init__`.
+
+      - `role`           : `input` / `output` / `mutable_input`. `mut` is not
+                           stored separately -- an argument is mutable iff its
+                           role is not `input` (D2).
+      - `fused`          : whether the argument is a fused (functor-backed)
+                           operand. Only `false` is exercised in the dense
+                           slice.
+      - `access`         : the element-access form (`none` / `load` / `store` /
+                           `transform`). Only `none` is exercised in the dense
+                           slice; the closed enum is defined for the fused
+                           paths (D3).
+      - `has_capability` : whether the callable capability leaf (e.g.
+                           `Loadable`) was required, rather than only the access
+                           marker (e.g. `LoadAccess`).
+
+    Per D4, this contract is the only home for the role/access information: it
+    is not stamped onto the result `!mo.tensor` type, and no `MO_IOKind` case is
+    added.
+  }];
+
+  let parameters = (ins
+    EnumParameter<MOGG_TensorArgRole>:$role,
+    "bool":$fused,
+    EnumParameter<MOGG_TensorArgAccess>:$access,
+    "bool":$has_capability
+  );
+
+  let assemblyFormat = [{
+    `<` `{` `role` `=` $role `,` `fused` `=` $fused `,` `access` `=` $access
+        `,` `has_capability` `=` $has_capability `}` `>`
+  }];
+
+  let extraClassDeclaration = [{
+    /// `mut` is derived, never stored: an argument is mutable iff its role is
+    /// not `input` (mirrors `TensorArgContract::isMutable`).
+    bool isMutable() const {
+      return getRole() != ::M::MOGG::TensorArgRoleKind::input;
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//

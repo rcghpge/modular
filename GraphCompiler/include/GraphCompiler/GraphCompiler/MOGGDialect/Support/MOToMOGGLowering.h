@@ -103,6 +103,12 @@ private:
   buildKernelOpImpl(KernelDeclAdaptor &adaptor,
                     const KernelDeclOperandMapping &operandMapping);
 
+  /// Stamp the per-argument tensor-trait contracts (trait lane, D1/D5) onto
+  /// `kernelOp` as discardable attributes (`kInputTensorArgContractsAttrName` /
+  /// `kOutputTensorArgContractsAttrName`). No-op for pure legacy kernels.
+  void stampTensorArgContracts(KernelOp kernelOp,
+                               const KernelDeclOperandMapping &operandMapping);
+
   ErrorOr<DictionaryAttr> forwardParameters();
 
   /// The original MO operation we are lowering.

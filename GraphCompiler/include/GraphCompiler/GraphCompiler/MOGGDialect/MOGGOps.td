@@ -1106,6 +1106,45 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   }];
 }
 
+def MOGG_TensorArgInitOp : MOGG_Op<"tensor_arg.__init__", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  AttrSizedOperandSegments,
+  Pure,
+]> {
+  let summary = "Construct a trait-lane tensor argument from its contract";
+  let description = [{
+    The trait-lane counterpart of `mogg.tensor.__init__`. Where the legacy op
+    builds a `ManagedTensorSlice` parameterized by `{io, mut}`, this op carries
+    the distilled `#mogg.tensor_arg` contract and (in a later slice) builds the
+    composable `TensorArg` struct that satisfies the kernel's trait bound. The
+    two ops run side by side; the legacy op is unchanged (D5).
+
+    Dense-slice operands: a device buffer `$buffer` and the dynamic dimensions
+    `$dims`, exactly as `mogg.tensor.__init__`. The optional `$device_context`
+    operand is defined for the Slice-3 GPU emit path (ctor 2 in D11) but is left
+    unpopulated in this slice -- the unconditional context wiring in
+    `findExtraKernelArguments` is Slice 3. The fused storage arm (a `mogg.bind`
+    lambda in place of `$buffer`) and the `access`-driven fusion work are later
+    slices; here `contract.fused` is always false and `contract.access` is
+    always `none`.
+
+    The contract is the single source of truth (D1): `role`/`access` are read
+    off the attribute, never re-stamped onto the result `!mo.tensor` type (D4).
+  }];
+
+  let arguments = (ins
+    MGP_DeviceBufferType:$buffer,
+    Variadic<SI64Scalar>:$dims,
+    Optional<MOGG_Context>:$device_context,
+    MOGG_TensorArgContractAttr:$contract
+  );
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,

@@ -115,6 +115,15 @@ llvm::StringRef toString(TensorArgAccess access);
 mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
                                              const TensorArgContract &contract);
 
+/// Build the `#mogg.tensor_arg<{role, fused, access, has_capability}>`
+/// attribute (`MOGG::TensorArgContractAttr`) carried by
+/// `mogg.tensor_arg.__init__` from a distilled contract. The op-borne attribute
+/// is the single source of truth in the trait lane (D1); this is the bridge
+/// from the C++ contract struct to the IR attribute.
+MOGG::TensorArgContractAttr
+tensorArgContractToAttr(mlir::MLIRContext *ctx,
+                        const TensorArgContract &contract);
+
 /// Decode a per-argument entry of `KernelFunctionAttr.tensor_arg_contracts`
 /// back into a `TensorArgContract` -- the inverse of `tensorArgContractToDict`.
 ///
@@ -161,6 +170,13 @@ struct KernelDeclTensorAdaptor {
   bool mut = false;
   bool fused = false;
   IOSpec ioSpec = {};
+  /// Present only for a trait-lane argument: its distilled contract. The legacy
+  /// `ManagedTensorSlice` lane leaves this empty and is unaffected. Carried so
+  /// downstream lowering can route a trait arg to `mogg.tensor_arg.__init__`
+  /// instead of `mogg.tensor.__init__` (D1/D5); the `ioSpec`/`mut`/`fused`
+  /// fields above mirror the equivalent legacy values so the existing
+  /// predicates behave identically for both lanes.
+  std::optional<TensorArgContract> traitContract;
   KernelDeclTensorAdaptor() = default;
   explicit KernelDeclTensorAdaptor(IOSpec ioSpec)
       : mut(isMutableIOSpec(ioSpec)), fused(isFusableIOSpec(ioSpec)),
@@ -270,6 +286,17 @@ struct KernelDeclOperandAdaptor {
       return t->fused;
     return false;
   }
+
+  /// The distilled trait contract for a trait-lane tensor argument, or nullopt
+  /// for a legacy `ManagedTensorSlice` argument (or any non-tensor argument).
+  /// Used by lowering to route trait args to `mogg.tensor_arg.__init__`.
+  std::optional<TensorArgContract> getTraitContract() const {
+    if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
+      return t->traitContract;
+    return std::nullopt;
+  }
+
+  bool isTraitTensorType() const { return getTraitContract().has_value(); }
 
   bool isScalarType() const {
     return std::holds_alternative<KernelDeclScalarAdaptor>(underlyingType);

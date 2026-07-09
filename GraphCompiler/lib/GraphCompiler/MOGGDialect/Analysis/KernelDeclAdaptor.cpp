@@ -189,6 +189,14 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
 /// `distillTensorArgContract` exercises at import; errors are swallowed here
 /// because import already validated and reported any malformed composition).
 /// Returns nullopt for a non-trait arg or an unresolvable composition.
+///
+/// INVARIANT: this lowering-time re-distillation MUST agree with the contract
+/// baked at import time onto `KernelFunctionAttr.tensor_arg_contracts` (read
+/// back via `dictToTensorArgContract`). Both go through the single shared
+/// `distillTensorArgContract`, so they agree today. If the distillation logic
+/// or import validation ever diverges, the trait lane could route on a
+/// different contract than was baked (or silently fall back to the legacy lane
+/// on a composition import accepted) -- keep the two computations in lockstep.
 static std::optional<TensorArgContract>
 recoverTraitArgContract(mlir::Type argType) {
   KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
@@ -210,15 +218,23 @@ recoverTraitArgContract(mlir::Type argType) {
 /// adaptor for trait args in this slice (dense-only); `fused` stays false.
 static KernelDeclTensorAdaptor
 traitContractToTensorAdaptor(const TensorArgContract &contract) {
+  KernelDeclTensorAdaptor adaptor;
   switch (contract.role) {
   case TensorArgRole::output:
-    return KernelDeclTensorAdaptor{IOSpec::OutputTensor};
+    adaptor = KernelDeclTensorAdaptor{IOSpec::OutputTensor};
+    break;
   case TensorArgRole::mutableInput:
-    return KernelDeclTensorAdaptor{IOSpec::MutableInputTensor};
+    adaptor = KernelDeclTensorAdaptor{IOSpec::MutableInputTensor};
+    break;
   case TensorArgRole::input:
-    return KernelDeclTensorAdaptor{IOSpec::InputTensor};
+    adaptor = KernelDeclTensorAdaptor{IOSpec::InputTensor};
+    break;
   }
-  llvm_unreachable("unhandled TensorArgRole");
+  // Carry the full distilled contract so lowering can route this arg to
+  // `mogg.tensor_arg.__init__` (the trait lane), distinguishing it from a
+  // legacy `ManagedTensorSlice` arg that produced the same `ioSpec`.
+  adaptor.traitContract = contract;
+  return adaptor;
 }
 
 /// Classify a single argument type into a KernelDeclOperandVariant by
@@ -1006,6 +1022,45 @@ tensorArgContractToDict(mlir::MLIRContext *ctx,
        b.getNamedAttr("access", b.getStringAttr(toString(contract.access))),
        b.getNamedAttr("has_capability",
                       b.getBoolAttr(contract.hasCapability))});
+}
+
+MOGG::TensorArgContractAttr
+tensorArgContractToAttr(mlir::MLIRContext *ctx,
+                        const TensorArgContract &contract) {
+  // Map the C++ contract enums to the IR enums. The two enums are kept in
+  // lockstep (same case names) -- see MOGGEnums.td.
+  TensorArgRole role = contract.role;
+  MOGG::TensorArgRoleKind irRole;
+  switch (role) {
+  case TensorArgRole::input:
+    irRole = MOGG::TensorArgRoleKind::input;
+    break;
+  case TensorArgRole::output:
+    irRole = MOGG::TensorArgRoleKind::output;
+    break;
+  case TensorArgRole::mutableInput:
+    irRole = MOGG::TensorArgRoleKind::mutable_input;
+    break;
+  }
+
+  MOGG::TensorArgAccessKind irAccess;
+  switch (contract.access) {
+  case TensorArgAccess::none:
+    irAccess = MOGG::TensorArgAccessKind::none;
+    break;
+  case TensorArgAccess::load:
+    irAccess = MOGG::TensorArgAccessKind::load;
+    break;
+  case TensorArgAccess::store:
+    irAccess = MOGG::TensorArgAccessKind::store;
+    break;
+  case TensorArgAccess::transform:
+    irAccess = MOGG::TensorArgAccessKind::transform;
+    break;
+  }
+
+  return MOGG::TensorArgContractAttr::get(ctx, irRole, contract.fused, irAccess,
+                                          contract.hasCapability);
 }
 
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {

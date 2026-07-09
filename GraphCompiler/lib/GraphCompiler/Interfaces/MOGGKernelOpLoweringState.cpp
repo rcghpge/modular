@@ -265,18 +265,42 @@ void MOGGKernelOpLoweringState::setupInputOperandsMapping(
                              /*sig=*/InOutSignatureAttr::kIn);
 
   // 2. Add the inputs with the input or mutable input signature.
+  //
+  // The per-input trait contracts (trait lane, D1/D5) are stamped on the
+  // KernelOp in exec-body-argument order by `stampTensorArgContracts`; that is
+  // exactly the order this loop zips its inputs in, so we index the array by
+  // the running input position.
+  ArrayAttr inputContracts =
+      moggOp->getAttrOfType<ArrayAttr>(MOGG::kInputTensorArgContractsAttrName);
+  // The stamp side (`stampTensorArgContracts`) sizes the array by the KernelOp
+  // exec-body argument count, which is exactly the body whose arguments this
+  // loop walks. If a future change ever reorders or filters exec-body args vs
+  // the stamped array, this assert fires before a misaligned contract can be
+  // silently applied to the wrong arg.
+  assert((!inputContracts ||
+          inputContracts.size() == kernelStub.getBody().getNumArguments()) &&
+         "input trait-contract array must align with the kernel-stub body "
+         "argument list");
+  size_t inputIdx = 0;
   for (auto &&[origOperand, loweredInputOperand] : llvm::zip_first(
            kernelStub.getBody().getArguments(), loweredInputOperands)) {
+    size_t thisInputIdx = inputIdx++;
     auto sig = isa<MO::BufferType>(origOperand.getType())
                    ? InOutSignatureAttr::kMut
                    : InOutSignatureAttr::kIn;
     operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
                                /*isKernelStubOperand=*/true, sig);
-    if (MO::dynCastFromTensorLike(origOperand.getType()))
+    if (MO::dynCastFromTensorLike(origOperand.getType())) {
+      MOGG::TensorArgContractAttr contract;
+      if (inputContracts && thisInputIdx < inputContracts.size())
+        contract =
+            dyn_cast<MOGG::TensorArgContractAttr>(inputContracts[thisInputIdx]);
       tensorOperandInfos.push_back(
           TensorOperandInfos{.stubValue = origOperand,
                              .operandIdx = operandsMapping.getNumOperands() - 1,
-                             .isOutput = false});
+                             .isOutput = false,
+                             .traitContract = contract});
+    }
   }
 }
 
@@ -298,7 +322,24 @@ Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
   auto mutAttr = BoolAttr::get(ctx, mut);
   MO::TensorType newTensorTy = asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr);
 
-  // Build the tensor object.
+  // Trait lane (D1/D4/D5): a trait-bound argument carries an
+  // `#mogg.tensor_arg` contract. Build `mogg.tensor_arg.__init__` carrying that
+  // contract instead of the legacy `mogg.tensor.__init__`. Per D4 the contract
+  // is the trait-lane single source of truth for the role: nothing downstream
+  // re-derives the role from the result tensor type's `{io, mut}`. The result
+  // type is still the same io/mut-cloned `newTensorTy` as the legacy lane
+  // (identical SSA type for both lanes); the `{io, mut}` carried on the trait
+  // result type is vestigial -- do not read it back as the role. The
+  // `$device_context` operand is left unpopulated this slice (Slice 3 / Phase 4
+  // wires it for the GPU emit path).
+  if (tensorInfos.traitContract) {
+    return MOGG::TensorArgInitOp::create(
+               builder, loc, newTensorTy, bufferValue, dynamicDimensions,
+               /*device_context=*/Value(), tensorInfos.traitContract)
+        .getResult();
+  }
+
+  // Legacy `ManagedTensorSlice` lane -- unchanged.
   return MOGG::TensorInitOp::create(builder, loc, newTensorTy, bufferValue,
                                     dynamicDimensions, mutAttr, ioAttr)
       .getResult();
@@ -375,17 +416,29 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
     if (failed(loweredOutputsStorageOr))
       return failure();
     loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
+    // Per-output trait contracts (trait lane, D1/D5) are stamped on the
+    // KernelOp in DPS-output order, matching the output-placeholder order this
+    // loop iterates.
+    ArrayAttr outputContracts = moggOp->getAttrOfType<ArrayAttr>(
+        MOGG::kOutputTensorArgContractsAttrName);
+    size_t outputIdx = 0;
     for (auto [outputStorage, value] :
          llvm::zip(loweredOutputsStorage, outputPlaceholdersOp.getResults())) {
+      size_t thisOutputIdx = outputIdx++;
       // Add the kernel operand for the output buffer.
       operandsMapping.addOperand(outputStorage.buffer,
                                  /*isMGPRegionOperand=*/true,
                                  /*isKernelStubOperand=*/true,
                                  InOutSignatureAttr::kOut, /*keyValue=*/value);
+      MOGG::TensorArgContractAttr contract;
+      if (outputContracts && thisOutputIdx < outputContracts.size())
+        contract = dyn_cast<MOGG::TensorArgContractAttr>(
+            outputContracts[thisOutputIdx]);
       tensorOperandInfos.push_back(
           TensorOperandInfos{.stubValue = value,
                              .operandIdx = operandsMapping.getNumOperands() - 1,
-                             .isOutput = true});
+                             .isOutput = true,
+                             .traitContract = contract});
     }
   }
 

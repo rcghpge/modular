@@ -19,10 +19,17 @@ from extensibility import (
     Fused,
     Input,
     InputTensor,
+    LoadAccess,
     Loadable,
     MutableInput,
     Output,
     OutputTensor,
+    StoreAccess,
+    Storable,
+    Tensor,
+    TileTensorable,
+    TransformAccess,
+    Transformable,
     _MutableInputTensor as MutableInputTensor,
 )
 
@@ -327,4 +334,128 @@ struct LegacyOnlyControl:
         w: MutableInputTensor,
         ctx: DeviceContext,
     ) raises:
+        pass
+
+
+# ===----------------------------------------------------------------------=== #
+# Distillation matrix (IMPORT-only): one kernel per remaining valid
+# `{role, fused, access, has_capability}` contract the distiller produces. These
+# back the `IMPORT-DAG` baked-contract assertions in lower-tensor-arg-traits.mlir
+# and replace the deleted gtest distill cases. The fused-store / fused-transform
+# / mutable-input-fused kernels import (distill) cleanly even though dense-only
+# lowering does not yet handle them, so they appear ONLY on the IMPORT run line,
+# never as graph cases.
+# ===----------------------------------------------------------------------=== #
+
+
+# Plain `Tensor` metadata (no `DenseTensor`): an `Input` bound with only the base
+# `Tensor` trait still distills to input/none -- the dense-vs-plain distinction
+# is invisible to the contract.
+@compiler.register("trait_plain_tensor_input")
+struct TraitPlainTensorInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[Input & Tensor], ctx: DeviceContext) raises:
+        pass
+
+
+# `TileTensorable` has no contract effect: an `Output & DenseTensor &
+# TileTensorable` distills identically to a plain dense output (output/none).
+@compiler.register("trait_tile_tensorable_output")
+struct TraitTileTensorableOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & TileTensorable], ctx: DeviceContext) raises:
+        pass
+
+
+# Fused load via the bare `LoadAccess` MARKER (no `Loadable` capability leaf):
+# distills to input/load/fused with has_capability = false -- distinct from the
+# `trait_fused_load` capability case.
+@compiler.register("trait_fused_load_marker")
+struct TraitFusedLoadMarker:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[Input & Fused & LoadAccess], ctx: DeviceContext) raises:
+        pass
+
+
+# Fused store via the bare `StoreAccess` MARKER on an Output: output/store/fused,
+# has_capability = false.
+@compiler.register("trait_fused_store_marker")
+struct TraitFusedStoreMarker:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & StoreAccess], ctx: DeviceContext) raises:
+        pass
+
+
+# Fused store via the `Storable` CAPABILITY leaf on an Output:
+# output/store/fused, has_capability = true.
+@compiler.register("trait_fused_store_capability")
+struct TraitFusedStoreCapability:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & Storable], ctx: DeviceContext) raises:
+        pass
+
+
+# Fused transform via the bare `TransformAccess` MARKER on an Output:
+# output/transform/fused, has_capability = false.
+@compiler.register("trait_fused_transform_marker")
+struct TraitFusedTransformMarker:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & TransformAccess], ctx: DeviceContext) raises:
+        pass
+
+
+# Fused transform via the `Transformable` CAPABILITY leaf on an Output:
+# output/transform/fused, has_capability = true.
+@compiler.register("trait_fused_transform_capability")
+struct TraitFusedTransformCapability:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & Transformable], ctx: DeviceContext) raises:
+        pass
+
+
+# MutableInput can store (one access form at a time): MutableInput & Fused &
+# Storable distills to mutable_input/store/fused/capability.
+@compiler.register("trait_mutable_fused_store")
+struct TraitMutableFusedStore:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[MutableInput & Fused & Storable], ctx: DeviceContext) raises:
+        pass
+
+
+# MutableInput can also load: MutableInput & Fused & Loadable distills to
+# mutable_input/load/fused/capability.
+@compiler.register("trait_mutable_fused_load")
+struct TraitMutableFusedLoad:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[MutableInput & Fused & Loadable], ctx: DeviceContext) raises:
+        pass
+
+
+# Non-fused dense input that still advertises a load access form: Input &
+# DenseTensor & Loadable distills to input/load with has_capability = true but
+# fused = false (the access form is independent of the fusion marker).
+@compiler.register("trait_nonfused_load_capability")
+struct TraitNonFusedLoadCapability:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[Input & DenseTensor & Loadable], ctx: DeviceContext) raises:
         pass
