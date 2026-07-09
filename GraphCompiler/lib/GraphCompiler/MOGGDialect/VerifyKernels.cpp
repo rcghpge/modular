@@ -342,6 +342,85 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
   return success();
 }
 
+// Trait-bound tensor arguments (the trait lane) carry their role and
+// mutability in the distilled contract, not in the calling convention, so they
+// must use the borrowed (`read`/`read_mem`) convention -- mirroring the legacy
+// tensor rule in `declVerifyOpaqueArgumentsArePassedByReference`, which gates
+// on the legacy `isTensorType()` predicate that trait args do not satisfy.
+LogicalResult declVerifyTensorArgsAreBorrowed(
+    KernelDeclOp decl, KernelDeclAdaptor &adaptor,
+    std::optional<KernelDeclFunctionAdaptor> shapeFunction) {
+  auto borrowed =
+      [&decl](std::optional<KernelDeclFunctionAdaptor> &func) -> LogicalResult {
+    if (!func.has_value())
+      return success();
+    // Copy sig to call the non-const getArgConvention.
+    auto sig = func->attr.getSignature();
+    for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
+      if (!getTensorArgTraitType(sig.getArgument(i)))
+        continue;
+      auto convention = sig.getArgConvention(i);
+      if (convention != KGEN::ArgConvention::ReadMem &&
+          convention != KGEN::ArgConvention::ReadReg) {
+        decl->emitError()
+            << "Only the borrowed argument (read) convention is supported for "
+               "trait-bound tensor arguments (argument at position "
+            << i << " uses '" << KGEN::stringifyArgConvention(convention)
+            << "')";
+        return failure();
+      }
+    }
+    return success();
+  };
+
+  if (borrowed(adaptor.executeFunction).failed() ||
+      borrowed(shapeFunction).failed() ||
+      borrowed(adaptor.updateViewFunction).failed() ||
+      borrowed(adaptor.buildGraphFunction).failed())
+    return failure();
+  return success();
+}
+
+// Per-function-kind policy for trait-bound tensor arguments on the
+// KernelDeclOp-hosted entry points. Today only `execute` accepts them; the
+// others reject them. As each kind grows its own contract this is where the
+// rules live -- e.g. build_graph will forbid `TileTensorable`, and
+// update_input_view will require a `ViewUpdatable`. (Shape functions and
+// primitives are separate decl ops and are checked at import, as is universal
+// well-formedness. This is the kind-specific layer for execute /
+// update_input_view / build_graph / elementwise.)
+LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
+                                              KernelDeclAdaptor &adaptor) {
+  auto rejectTraitArgs = [&decl](std::optional<KernelDeclFunctionAdaptor> &func,
+                                 StringRef kind) -> LogicalResult {
+    if (!func.has_value())
+      return success();
+    auto sig = func->attr.getSignature();
+    bool ok = true;
+    for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
+      if (getTensorArgTraitType(sig.getArgument(i))) {
+        decl->emitError()
+            << "trait-bound tensor arguments are not supported on " << kind
+            << " functions yet (only `execute`)";
+        ok = false;
+      }
+    }
+    return ok ? success() : failure();
+  };
+
+  bool ok = true;
+  if (rejectTraitArgs(adaptor.updateViewFunction, "update_input_view").failed())
+    ok = false;
+  if (rejectTraitArgs(adaptor.buildGraphFunction, "build_graph").failed())
+    ok = false;
+  if (rejectTraitArgs(adaptor.elementwiseFunction, "elementwise").failed())
+    ok = false;
+  if (rejectTraitArgs(adaptor.tileElementwiseFunction, "tile_elementwise")
+          .failed())
+    ok = false;
+  return ok ? success() : failure();
+}
+
 LogicalResult declVerifyAtMostOneVariadicInputAndOutput(
     KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
     const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
@@ -752,6 +831,16 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
 
       if (setFlagIfFailed(failed, declVerifyOpaqueArgumentsArePassedByReference,
                           decl, adaptor, shapeFnAdaptor)
+              .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, declVerifyTensorArgsAreBorrowed, decl,
+                          adaptor, shapeFnAdaptor)
+              .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, declVerifyTraitArgFunctionKinds, decl,
+                          adaptor)
               .failed())
         continue;
 

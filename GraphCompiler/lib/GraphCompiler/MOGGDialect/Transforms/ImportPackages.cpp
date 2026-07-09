@@ -688,7 +688,7 @@ struct ImportPackagesPass
     // yields a null attr that the caller stores in the corresponding
     // optional slot.
     auto buildFunctionAttr = [&](KGEN::LIT::FnOp fn, bool computeResultParams,
-                                 bool strictResultParams)
+                                 bool strictResultParams, bool distillTraitArgs)
         -> mlir::FailureOr<MOGG::KernelFunctionAttr> {
       if (!fn)
         return MOGG::KernelFunctionAttr{};
@@ -706,9 +706,74 @@ struct ImportPackagesPass
         if (!resultParams)
           return mlir::failure();
       }
+
+      // Trait lane: distill a per-argument contract for any trait-bound tensor
+      // argument. Non-trait args get a UnitAttr placeholder; a function with no
+      // trait args at all keeps an empty array, so ManagedTensorSlice-lane
+      // kernels are unaffected. Skipped (`distillTraitArgs == false`) for
+      // primitives -- built-in op implementations that accept any arguments and
+      // are not subject to the tensor-argument contract.
+      llvm::SmallVector<mlir::Attribute> contractAttrs;
+      bool anyTraitArg = false;
+      bool contractFailed = false;
+      if (distillTraitArgs) {
+        for (mlir::Type argType : fn.getArgumentTypes()) {
+          KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
+          if (!traitType) {
+            contractAttrs.push_back(mlir::UnitAttr::get(ctx));
+            continue;
+          }
+          anyTraitArg = true;
+          mlir::FailureOr<TensorArgContract> contract =
+              distillTensorArgContract(traitType.getSymbols(),
+                                       [&](const llvm::Twine &msg) {
+                                         mlir::emitError(fn.getLoc()) << msg;
+                                       });
+          if (mlir::failed(contract)) {
+            // Diagnostic already emitted; keep scanning so every invalid
+            // argument is reported, then fail the function below.
+            contractFailed = true;
+            contractAttrs.push_back(mlir::UnitAttr::get(ctx));
+            continue;
+          }
+          contractAttrs.push_back(tensorArgContractToDict(ctx, *contract));
+        }
+      }
+      if (contractFailed)
+        return mlir::failure();
+      mlir::ArrayAttr tensorArgContracts =
+          anyTraitArg ? mlir::ArrayAttr::get(ctx, contractAttrs) : emptyArray;
+
       return MOGG::KernelFunctionAttr::get(
           ctx, fn.getFullSignature(), mlir::ArrayAttr::get(ctx, paramAttrs),
-          argParams, resultParams);
+          argParams, resultParams, tensorArgContracts);
+    };
+
+    bool sawFailure = false;
+
+    // Reject trait-bound tensor arguments on shape functions: they compute
+    // output shapes from metadata, not the tensor-argument contract. Shape
+    // functions are a separate decl op (not on a KernelDeclOp) processed in
+    // their own loop below, so this is enforced here at import -- where every
+    // shape function is seen, paired with a kernel or not. (Primitives are
+    // built-in op *implementations* -- the `execute` analogue -- so they accept
+    // trait args and are not rejected. The KernelDeclOp-hosted kinds, execute /
+    // update_input_view / build_graph / elementwise, are checked in
+    // VerifyKernels.)
+    auto rejectTraitArgsOnNonExecute = [&](KGEN::LIT::FnOp fn,
+                                           StringRef kind) -> bool {
+      if (!fn)
+        return false;
+      bool found = false;
+      for (mlir::Type argType : fn.getArgumentTypes()) {
+        if (getTensorArgTraitType(argType)) {
+          mlir::emitError(fn.getLoc())
+              << "trait-bound tensor arguments are not supported on " << kind
+              << " functions yet (only `execute`)";
+          found = true;
+        }
+      }
+      return found;
     };
 
     for (auto kernel : kernels) {
@@ -743,26 +808,28 @@ struct ImportPackagesPass
       // soft mode so that other result types (tensors, none, ...) fall back
       // to UnitAttr. elementwise returns stdlib `SIMD`; strict mode catches
       // misuse.
-      auto executeAttr =
-          buildFunctionAttr(kernel.executeFn, /*computeResultParams=*/true,
-                            /*strictResultParams=*/false);
-      auto elementwiseAttr =
-          buildFunctionAttr(kernel.elementwiseFn, /*computeResultParams=*/true,
-                            /*strictResultParams=*/true);
-      auto tileElementwiseAttr = buildFunctionAttr(kernel.tileElementwiseFn,
-                                                   /*computeResultParams=*/true,
-                                                   /*strictResultParams=*/true);
-      auto updateViewAttr =
-          buildFunctionAttr(kernel.updateViewFn, /*computeResultParams=*/true,
-                            /*strictResultParams=*/false);
-      auto buildGraphAttr =
-          buildFunctionAttr(kernel.buildGraphFn, /*computeResultParams=*/true,
-                            /*strictResultParams=*/false);
+      auto executeAttr = buildFunctionAttr(
+          kernel.executeFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/true);
+      auto elementwiseAttr = buildFunctionAttr(
+          kernel.elementwiseFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/true, /*distillTraitArgs=*/true);
+      auto tileElementwiseAttr = buildFunctionAttr(
+          kernel.tileElementwiseFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/true, /*distillTraitArgs=*/true);
+      auto updateViewAttr = buildFunctionAttr(
+          kernel.updateViewFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/true);
+      auto buildGraphAttr = buildFunctionAttr(
+          kernel.buildGraphFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/true);
       if (failed(executeAttr) || failed(elementwiseAttr) ||
           failed(tileElementwiseAttr) || failed(updateViewAttr) ||
           failed(buildGraphAttr)) {
-        signalPassFailure();
-        return;
+        // Diagnostics already emitted; keep going so every kernel is reported
+        // rather than aborting on the first invalid one.
+        sawFailure = true;
+        continue;
       }
 
       // Collect struct-level ParamDeclAttrs (shared across all functions).
@@ -799,15 +866,19 @@ struct ImportPackagesPass
         sf.func.emitError() << "op '" << sf.registration.strref()
                             << "' has multiple shape functions registered; "
                                "only one is allowed per registration";
-        signalPassFailure();
-        return;
+        sawFailure = true;
+        continue;
       }
-      auto sfFunctionAttr =
-          buildFunctionAttr(sf.func, /*computeResultParams=*/true,
-                            /*strictResultParams=*/true);
+      if (rejectTraitArgsOnNonExecute(sf.func, "shape")) {
+        sawFailure = true;
+        continue;
+      }
+      auto sfFunctionAttr = buildFunctionAttr(
+          sf.func, /*computeResultParams=*/true,
+          /*strictResultParams=*/true, /*distillTraitArgs=*/true);
       if (failed(sfFunctionAttr)) {
-        signalPassFailure();
-        return;
+        sawFailure = true;
+        continue;
       }
       ShapeFunctionDeclOp::create(builder, sf.func.getLoc(), sf.funcSymName,
                                   sf.registration, *sfFunctionAttr);
@@ -829,17 +900,22 @@ struct ImportPackagesPass
       // names by name. Skip the slot-name mapping (which would fail for
       // wrapper tensor structs like ManagedTensorSlice that primitives
       // commonly return).
-      auto primFunctionAttr =
-          buildFunctionAttr(prim.func, /*computeResultParams=*/false,
-                            /*strictResultParams=*/false);
+      // Primitives are built-in op implementations and accept any arguments, so
+      // they are exempt from the tensor-argument trait contract entirely.
+      auto primFunctionAttr = buildFunctionAttr(
+          prim.func, /*computeResultParams=*/false,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/false);
       if (failed(primFunctionAttr)) {
-        signalPassFailure();
-        return;
+        sawFailure = true;
+        continue;
       }
       PrimitiveDeclOp::create(builder, prim.func.getLoc(), symName,
                               mlir::StringAttr::get(ctx, registration),
                               *primFunctionAttr);
     }
+
+    if (sawFailure)
+      signalPassFailure();
   }
 
   void runOnOperation() override {

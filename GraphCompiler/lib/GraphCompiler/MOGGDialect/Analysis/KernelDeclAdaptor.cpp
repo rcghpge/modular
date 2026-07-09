@@ -552,7 +552,8 @@ KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
   // (no real fn-level decls or slot mappings to project).
   result.attr = KernelFunctionAttr::get(ctx, sig, /*params=*/{},
                                         /*arg_params=*/{},
-                                        /*result_params=*/{});
+                                        /*result_params=*/{},
+                                        /*tensor_arg_contracts=*/{});
 
   size_t numArgs = sig.getNumArguments();
   bool resultAsArgument = false;

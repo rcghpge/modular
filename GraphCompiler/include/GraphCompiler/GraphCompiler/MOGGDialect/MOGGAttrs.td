@@ -48,6 +48,15 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
                           non-parameterised, in the loaded package, or in
                           the hardcoded stdlib table — otherwise the import
                           pass errors out.
+      - `tensor_arg_contracts` : per-argument tensor-trait contract for
+                          trait-bound tensor arguments (the trait lane). Each
+                          entry is a `DictionaryAttr`
+                          `{role, fused, access, has_capability}` for a
+                          trait-bound argument, or a `UnitAttr` for a
+                          non-trait argument. Empty when the function has no
+                          trait-bound arguments (so `ManagedTensorSlice`-lane
+                          kernels are unaffected). Distilled by
+                          `distillTensorArgContract`.
 
     `arg_params` powers opaque-parameter inference in `MOToMOGGLowering`:
     given an `MO::OpaqueType` operand carrying `{S0 = 4, S1 = 8}` and a
@@ -69,11 +78,16 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
     "::M::KGEN::LIT::FnTypeGeneratorType":$signature,
     "::mlir::ArrayAttr":$params,
     "::mlir::ArrayAttr":$arg_params,
-    "::mlir::ArrayAttr":$result_params
+    "::mlir::ArrayAttr":$result_params,
+    DefaultValuedParameter<"::mlir::ArrayAttr",
+                           "::mlir::ArrayAttr::get($_ctxt, {})">:
+        $tensor_arg_contracts
   );
 
   let assemblyFormat = [{
-    `<` $signature `,` $params `,` $arg_params `,` $result_params `>`
+    `<` $signature `,` $params `,` $arg_params `,` $result_params
+        (`,` $tensor_arg_contracts^)?
+    `>`
   }];
 }
 

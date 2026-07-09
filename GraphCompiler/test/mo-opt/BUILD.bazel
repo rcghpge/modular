@@ -17,9 +17,13 @@ lit_tests(
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
         "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
+        "%tensor_arg_trait_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels/tensor_arg_trait_stubs:TensorArgTraitStubs)",
+        "%tensor_arg_trait_invalid_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs)",
     },
     data = [
         "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
+        "//GraphCompiler/test/testing_kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
+        "//GraphCompiler/test/testing_kernels/tensor_arg_trait_stubs:TensorArgTraitStubs",
     ],
     mojo_deps = [
         "//max:builtin_kernels",
@@ -41,9 +45,13 @@ lit_tests(
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
         "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
+        "%tensor_arg_trait_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels/tensor_arg_trait_stubs:TensorArgTraitStubs)",
+        "%tensor_arg_trait_invalid_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs)",
     },
     data = [
         "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
+        "//GraphCompiler/test/testing_kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
+        "//GraphCompiler/test/testing_kernels/tensor_arg_trait_stubs:TensorArgTraitStubs",
     ],
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
