@@ -115,6 +115,16 @@ llvm::StringRef toString(TensorArgAccess access);
 mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
                                              const TensorArgContract &contract);
 
+/// Decode a per-argument entry of `KernelFunctionAttr.tensor_arg_contracts`
+/// back into a `TensorArgContract` -- the inverse of `tensorArgContractToDict`.
+///
+/// The baked array uses a `UnitAttr` placeholder for a non-trait argument; for
+/// that placeholder (or any null/unexpected attr) this returns `std::nullopt`
+/// (the "no contract" sentinel). A `DictionaryAttr` with the expected
+/// `{role, fused, access, has_capability}` keys decodes to the matching
+/// contract; the `role`/`access` string mappings mirror `toString` exactly.
+std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr);
+
 //===----------------------------------------------------------------------===//
 // Type predicates and IOSpec helpers
 //===----------------------------------------------------------------------===//

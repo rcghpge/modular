@@ -1008,4 +1008,56 @@ tensorArgContractToDict(mlir::MLIRContext *ctx,
                       b.getBoolAttr(contract.hasCapability))});
 }
 
+std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
+  // The "no contract" sentinel: a non-trait argument is baked as a UnitAttr
+  // placeholder (and a null attr is treated the same way).
+  auto dict = mlir::dyn_cast_if_present<mlir::DictionaryAttr>(attr);
+  if (!dict)
+    return std::nullopt;
+
+  auto getStr = [&](StringRef key) -> std::optional<StringRef> {
+    if (auto s = dict.getAs<mlir::StringAttr>(key))
+      return s.strref();
+    return std::nullopt;
+  };
+  auto getBool = [&](StringRef key) -> std::optional<bool> {
+    if (auto b = dict.getAs<mlir::BoolAttr>(key))
+      return b.getValue();
+    return std::nullopt;
+  };
+
+  std::optional<StringRef> roleStr = getStr("role");
+  std::optional<bool> fused = getBool("fused");
+  std::optional<StringRef> accessStr = getStr("access");
+  std::optional<bool> hasCapability = getBool("has_capability");
+  if (!roleStr || !fused || !accessStr || !hasCapability)
+    return std::nullopt;
+
+  // Inverse of `toString(TensorArgRole)`.
+  TensorArgRole role;
+  if (*roleStr == toString(TensorArgRole::input))
+    role = TensorArgRole::input;
+  else if (*roleStr == toString(TensorArgRole::output))
+    role = TensorArgRole::output;
+  else if (*roleStr == toString(TensorArgRole::mutableInput))
+    role = TensorArgRole::mutableInput;
+  else
+    return std::nullopt;
+
+  // Inverse of `toString(TensorArgAccess)`.
+  TensorArgAccess access;
+  if (*accessStr == toString(TensorArgAccess::none))
+    access = TensorArgAccess::none;
+  else if (*accessStr == toString(TensorArgAccess::load))
+    access = TensorArgAccess::load;
+  else if (*accessStr == toString(TensorArgAccess::store))
+    access = TensorArgAccess::store;
+  else if (*accessStr == toString(TensorArgAccess::transform))
+    access = TensorArgAccess::transform;
+  else
+    return std::nullopt;
+
+  return TensorArgContract{role, *fused, access, *hasCapability};
+}
+
 } // namespace M::MOGG
