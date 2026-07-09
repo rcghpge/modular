@@ -322,7 +322,15 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
       // Tensors must be passed by const reference (`read`/`read_mem`):
       // their mutability is encoded in the type itself via IOSpec, not in
       // the calling convention. Reject `mut`, `var`, owned, and `ref`.
-      if (arg.isTensorType() && convention != KGEN::ArgConvention::ReadMem &&
+      // Trait-bound tensor arguments now also classify as `isTensorType()`,
+      // but their borrow rule is owned by the trait lane's
+      // `declVerifyTensorArgsAreBorrowed` (which emits a trait-specific
+      // diagnostic); skip them here so the legacy message stays scoped to the
+      // legacy `ManagedTensorSlice`/`IOSpec` struct lane.
+      if (arg.isTensorType() &&
+          !getTensorArgTraitType(
+              sig.getArgument(arg.sourceDescriptor->position)) &&
+          convention != KGEN::ArgConvention::ReadMem &&
           convention != KGEN::ArgConvention::ReadReg) {
         decl->emitError()
             << "Only the borrowed argument (read) convention is supported "

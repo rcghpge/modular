@@ -184,14 +184,60 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
   return std::nullopt;
 }
 
+/// If `argType` is a trait-bound tensor argument, re-derive its
+/// `TensorArgContract` from the written trait composition (the same path
+/// `distillTensorArgContract` exercises at import; errors are swallowed here
+/// because import already validated and reported any malformed composition).
+/// Returns nullopt for a non-trait arg or an unresolvable composition.
+static std::optional<TensorArgContract>
+recoverTraitArgContract(mlir::Type argType) {
+  KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
+  if (!traitType)
+    return std::nullopt;
+  mlir::FailureOr<TensorArgContract> contract = distillTensorArgContract(
+      traitType.getSymbols(), [](const llvm::Twine &) {});
+  if (mlir::failed(contract))
+    return std::nullopt;
+  return *contract;
+}
+
+/// Build a `KernelDeclTensorAdaptor` carrying the role/mut implied by a trait
+/// arg's contract, so the downstream predicates
+/// (isTensorType/isMutableTensorType/isDpsOutput) behave the same as for the
+/// equivalent legacy `IOSpec`. The mapping mirrors `getParams` /
+/// `isMutableIOSpec`: `output -> OutputTensor`, `mutable_input ->
+/// MutableInputTensor`, `input -> InputTensor`. Fusion is not modeled in the
+/// adaptor for trait args in this slice (dense-only); `fused` stays false.
+static KernelDeclTensorAdaptor
+traitContractToTensorAdaptor(const TensorArgContract &contract) {
+  switch (contract.role) {
+  case TensorArgRole::output:
+    return KernelDeclTensorAdaptor{IOSpec::OutputTensor};
+  case TensorArgRole::mutableInput:
+    return KernelDeclTensorAdaptor{IOSpec::MutableInputTensor};
+  case TensorArgRole::input:
+    return KernelDeclTensorAdaptor{IOSpec::InputTensor};
+  }
+  llvm_unreachable("unhandled TensorArgRole");
+}
+
 /// Classify a single argument type into a KernelDeclOperandVariant by
 /// introspecting the LIT StructType symbol and parameter values.
 static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
                                                 mlir::Type argType,
                                                 bool promoteSIMDToFusedTensor) {
   KGEN::LIT::StructType structType = getAsStructType(argType);
-  if (!structType)
+  if (!structType) {
+    // Trait lane: a trait-bound tensor argument is non-struct
+    // (getAsStructType null). Classify it as a tensor adaptor carrying the
+    // role/mut from its distilled contract, so it participates in operand
+    // mapping and the DPS-output split like the equivalent legacy IOSpec arg.
+    // Non-trait non-struct args remain unsupported, exactly as before.
+    if (std::optional<TensorArgContract> contract =
+            recoverTraitArgContract(argType))
+      return traitContractToTensorAdaptor(*contract);
     return KernelDeclUnsupportedAdaptor{};
+  }
 
   auto sym = structType.getSymbol();
 
@@ -254,9 +300,21 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig) {
   for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
     if (sig.getArgConvention(i) == KGEN::ArgConvention::ByRefResult)
       break;
-    KGEN::LIT::StructType structType = getAsStructType(sig.getArgument(i));
-    if (!structType)
-      break;
+    mlir::Type argType = sig.getArgument(i);
+    KGEN::LIT::StructType structType = getAsStructType(argType);
+    if (!structType) {
+      // Trait lane: a trait-bound tensor argument is non-struct. Recover its
+      // role from the distilled contract; an `output` role continues the
+      // leading-output count, anything else (input/mutable_input) or a
+      // non-trait non-struct arg stops it -- preserving the legacy
+      // "break at the first non-output" semantics.
+      std::optional<TensorArgContract> contract =
+          recoverTraitArgContract(argType);
+      if (!contract || contract->role != TensorArgRole::output)
+        break;
+      ++count;
+      continue;
+    }
     auto ioSpec = getIOSpecFromStructType(structType);
     if (!ioSpec || !isOutputIOSpec(*ioSpec))
       break;
