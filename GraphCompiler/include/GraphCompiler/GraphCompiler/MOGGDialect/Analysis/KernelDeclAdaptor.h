@@ -23,8 +23,13 @@
 #include "KGEN/LITDialect/LITTypes.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include <optional>
 #include <type_traits>
 #include <variant>
@@ -40,6 +45,75 @@ enum class IOSpec {
   FusedComputeOutputTensor,
   FusedComputeOutputTileTensor,
 };
+
+//===----------------------------------------------------------------------===//
+// Tensor-argument trait contract (trait lane)
+//
+// The trait lane classifies a trait-bound tensor argument directly from the
+// *written* trait composition on its `!lit.trait<...>` type, independent of the
+// legacy `IOSpec` / `ManagedTensorSlice` struct-parameter decode. The two lanes
+// coexist; see `distillTensorArgContract`.
+//===----------------------------------------------------------------------===//
+
+/// Role a tensor argument plays in the graph signature. `mut` is not stored: an
+/// argument is mutable iff its role is not `input`.
+enum class TensorArgRole { input, output, mutableInput };
+
+/// Element-access form a tensor argument exposes -- the fusion access kind, or
+/// `none` for a plain dense argument.
+enum class TensorArgAccess { none, load, store, transform };
+
+/// The distilled tensor-argument contract for a trait-bound kernel argument.
+struct TensorArgContract {
+  TensorArgRole role = TensorArgRole::input;
+  bool fused = false;
+  TensorArgAccess access = TensorArgAccess::none;
+  /// True when the callable capability leaf (e.g. `Loadable`) is present,
+  /// rather than only the access marker (e.g. `LoadAccess`). Load-bearing for
+  /// opaque-device targets, where only the marker may be available host-side.
+  bool hasCapability = false;
+
+  /// `mut` is derived, never stored.
+  bool isMutable() const { return role != TensorArgRole::input; }
+
+  bool operator==(const TensorArgContract &o) const {
+    return role == o.role && fused == o.fused && access == o.access &&
+           hasCapability == o.hasCapability;
+  }
+  bool operator!=(const TensorArgContract &o) const { return !(*this == o); }
+};
+
+/// Distill the written trait composition of a trait-bound tensor argument (the
+/// `getSymbols()` of its `!lit.trait<...>` type) into a `TensorArgContract`.
+///
+/// `writtenSymbols` are matched against the tensor-argument trait vocabulary
+/// defined in `extensibility.tensor_arg_traits`. Any symbol from another module
+/// (a foreign trait such as `Copyable`/`DevicePassable`), or any unrecognized
+/// leaf, is rejected via `emitError`. The input may be either the written
+/// composition or its ancestor-inclusive canonical form -- both distill
+/// identically, since the parent traits (`Tensor`, the `*Access` markers) are
+/// themselves in the allowlist and carry no role/access meaning. The universal
+/// `AnyType` ancestor (present in every trait's canonical closure) is also
+/// ignored. Returns failure (after invoking `emitError`) on any validation
+/// failure.
+mlir::FailureOr<TensorArgContract> distillTensorArgContract(
+    llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
+    llvm::function_ref<void(const llvm::Twine &)> emitError);
+
+/// If `argType` is a trait-bound tensor argument -- a `!lit.ref` over a generic
+/// type parameter whose bound is a `!lit.trait<...>` -- return that `TraitType`
+/// (carrying the written trait composition). Otherwise (a `ManagedTensorSlice`
+/// struct, a context type, a scalar, a non-trait-bound param, ...) return null.
+KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType);
+
+llvm::StringRef toString(TensorArgRole role);
+llvm::StringRef toString(TensorArgAccess access);
+
+/// Encode a contract as the per-argument `DictionaryAttr`
+/// `{role, fused, access, has_capability}` baked into
+/// `KernelFunctionAttr.tensor_arg_contracts`.
+mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
+                                             const TensorArgContract &contract);
 
 //===----------------------------------------------------------------------===//
 // Type predicates and IOSpec helpers

@@ -13,7 +13,9 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <iterator>
 
 using namespace M;
 using namespace M::MOGG;
@@ -261,6 +263,206 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig) {
     ++count;
   }
   return count;
+}
+
+//===----------------------------------------------------------------------===//
+// Trait-lane vocabulary classification
+//===----------------------------------------------------------------------===//
+
+// How a vocabulary trait participates in the distilled contract. The
+// distiller's validation logic is written per category, never per trait, so
+// adding a trait to an existing category is a single `kTensorArgVocab` row
+// with no logic changes; only a genuinely new *kind* of trait grows this enum
+// (and with it the distiller's per-category handling).
+enum class TraitCategory {
+  /// An io-role marker (`Input` / `Output` / `MutableInput`); exactly one is
+  /// required. The row's `role` payload names the role it contributes.
+  role,
+  /// The `Fused` fusion marker.
+  fused,
+  /// A metadata-only base trait (`Tensor` / `DenseTensor`); carries no
+  /// contract meaning.
+  metadata,
+  /// A dense data-access capability (`TileTensorable`); carries no contract
+  /// meaning on its own.
+  dataCapability,
+  /// An access-form marker (`LoadAccess` / `StoreAccess` / `TransformAccess`).
+  /// The row's `access` payload names the form it contributes.
+  accessMarker,
+  /// An access-form callable capability (`Loadable` / `Storable` /
+  /// `Transformable`). The row's `access` payload names the form.
+  accessCapability,
+  /// Reserved for the deferred tile-transform fusion traits (Phase 8); always
+  /// rejected until then.
+  deferred,
+};
+
+// One row of the tensor-argument trait vocabulary: the trait's leaf name, its
+// category, and the category's payload (the role a `role` row contributes, or
+// the access form an `accessMarker` / `accessCapability` row contributes).
+struct VocabEntry {
+  StringLiteral leaf;
+  TraitCategory category;
+  /// The io-role, for `role` rows.
+  TensorArgRole role = TensorArgRole::input;
+  /// The access form, for `accessMarker` / `accessCapability` rows.
+  TensorArgAccess access = TensorArgAccess::none;
+
+private:
+  // Deliberately not constexpr. `kTensorArgVocab` is constexpr, so its rows
+  // are built in constant evaluation, where reaching a call to a
+  // non-constexpr function is a compile error that names both the function
+  // (the violated invariant) and the offending row. Unreachable at runtime:
+  // only the constructors call these, and every VocabEntry is a
+  // `kTensorArgVocab` row.
+  static void payloadCategoryNeedsAPayload() {
+    llvm_unreachable("vocab row invariants are compile-time only");
+  }
+  static void onlyRoleRowsCarryARole() {
+    llvm_unreachable("vocab row invariants are compile-time only");
+  }
+  static void onlyAccessRowsCarryAForm() {
+    llvm_unreachable("vocab row invariants are compile-time only");
+  }
+
+public:
+  constexpr VocabEntry(StringLiteral leaf, TraitCategory category)
+      : leaf(leaf), category(category) {
+    if (category == TraitCategory::role ||
+        category == TraitCategory::accessMarker ||
+        category == TraitCategory::accessCapability)
+      payloadCategoryNeedsAPayload();
+  }
+  constexpr VocabEntry(StringLiteral leaf, TraitCategory category,
+                       TensorArgRole role)
+      : leaf(leaf), category(category), role(role) {
+    if (category != TraitCategory::role)
+      onlyRoleRowsCarryARole();
+  }
+  constexpr VocabEntry(StringLiteral leaf, TraitCategory category,
+                       TensorArgAccess access)
+      : leaf(leaf), category(category), access(access) {
+    if (category != TraitCategory::accessMarker &&
+        category != TraitCategory::accessCapability)
+      onlyAccessRowsCarryAForm();
+    if (access == TensorArgAccess::none)
+      onlyAccessRowsCarryAForm();
+  }
+};
+
+// The tensor-argument trait vocabulary defined in
+// `extensibility::tensor_arg_traits`. Keep in sync with tensor_arg_traits.mojo
+// -- except `TileTransformAccess` / `TileTransformable`, reserved ahead of
+// time for the deferred tile-transform fusion traits (Phase 8), which do not
+// exist in the shipped module yet; `classifyVocabTrait` can never match them
+// against a real trait symbol until then, so the `deferred` rejection in the
+// distiller is unreachable in the interim.
+constexpr VocabEntry kTensorArgVocab[] = {
+    {"Input", TraitCategory::role, TensorArgRole::input},
+    {"Output", TraitCategory::role, TensorArgRole::output},
+    {"MutableInput", TraitCategory::role, TensorArgRole::mutableInput},
+    {"Fused", TraitCategory::fused},
+    {"Tensor", TraitCategory::metadata},
+    {"DenseTensor", TraitCategory::metadata},
+    {"LoadAccess", TraitCategory::accessMarker, TensorArgAccess::load},
+    {"Loadable", TraitCategory::accessCapability, TensorArgAccess::load},
+    {"StoreAccess", TraitCategory::accessMarker, TensorArgAccess::store},
+    {"Storable", TraitCategory::accessCapability, TensorArgAccess::store},
+    {"TransformAccess", TraitCategory::accessMarker,
+     TensorArgAccess::transform},
+    {"Transformable", TraitCategory::accessCapability,
+     TensorArgAccess::transform},
+    {"TileTensorable", TraitCategory::dataCapability},
+    {"TileTransformAccess", TraitCategory::deferred},
+    {"TileTransformable", TraitCategory::deferred},
+};
+
+// Whole-table invariants, checked at compile time. The per-row invariants
+// (payload/category coherence) live in the VocabEntry constructors; these
+// cover what no single row can see.
+// `StringRef::operator==` is not constexpr here; compare manually.
+constexpr bool sameLeaf(StringLiteral a, StringLiteral b) {
+  if (a.size() != b.size())
+    return false;
+  for (size_t i = 0; i < a.size(); ++i)
+    if (a.data()[i] != b.data()[i])
+      return false;
+  return true;
+}
+
+constexpr bool leavesAreUnique() {
+  for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
+    for (size_t j = i + 1; j < std::size(kTensorArgVocab); ++j)
+      if (sameLeaf(kTensorArgVocab[i].leaf, kTensorArgVocab[j].leaf))
+        return false;
+  return true;
+}
+
+constexpr bool payloadsAreUnique() {
+  for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
+    for (size_t j = i + 1; j < std::size(kTensorArgVocab); ++j) {
+      const VocabEntry &a = kTensorArgVocab[i];
+      const VocabEntry &b = kTensorArgVocab[j];
+      if (a.category != b.category)
+        continue;
+      if (a.category == TraitCategory::role && a.role == b.role)
+        return false;
+      if ((a.category == TraitCategory::accessMarker ||
+           a.category == TraitCategory::accessCapability) &&
+          a.access == b.access)
+        return false;
+    }
+  return true;
+}
+
+constexpr bool accessFormsArePaired() {
+  // The distiller keys marker and capability rows of one form to each other;
+  // a form must carry both rows.
+  for (const VocabEntry &a : kTensorArgVocab) {
+    if (a.category != TraitCategory::accessMarker &&
+        a.category != TraitCategory::accessCapability)
+      continue;
+    TraitCategory wanted = a.category == TraitCategory::accessMarker
+                               ? TraitCategory::accessCapability
+                               : TraitCategory::accessMarker;
+    bool paired = false;
+    for (const VocabEntry &b : kTensorArgVocab)
+      paired |= b.category == wanted && b.access == a.access;
+    if (!paired)
+      return false;
+  }
+  return true;
+}
+
+static_assert(leavesAreUnique(), "duplicate leaf in kTensorArgVocab");
+static_assert(payloadsAreUnique(),
+              "two kTensorArgVocab rows claim the same (category, payload)");
+static_assert(accessFormsArePaired(),
+              "unpaired access marker/capability row in kTensorArgVocab");
+
+// Classify a trait symbol as a tensor-argument vocabulary trait, returning its
+// vocabulary row, or nullptr if it is foreign (not from
+// `extensibility::tensor_arg_traits`) or its leaf is unrecognized. The module
+// is pinned -- root contains "extensibility" and some qualifier contains
+// "tensor_arg_traits" -- so a same-named trait from another module is
+// rejected. The leaf is matched exactly so that, e.g., `Input` does not
+// spuriously match `MutableInput`.
+static const VocabEntry *classifyVocabTrait(mlir::SymbolRefAttr sym) {
+  if (!sym.getRootReference().strref().contains("extensibility"))
+    return nullptr;
+  bool inModule = false;
+  for (mlir::FlatSymbolRefAttr ref : sym.getNestedReferences()) {
+    if (ref.getValue().contains("tensor_arg_traits")) {
+      inModule = true;
+      break;
+    }
+  }
+  if (!inModule)
+    return nullptr;
+  for (const VocabEntry &entry : kTensorArgVocab)
+    if (sym.getLeafReference() == entry.leaf)
+      return &entry;
+  return nullptr;
 }
 
 } // namespace
@@ -547,5 +749,204 @@ bool isFusableIOSpec(IOSpec spec) {
 }
 
 bool isMutableIOSpec(IOSpec spec) { return spec == IOSpec::MutableInputTensor; }
+
+mlir::FailureOr<TensorArgContract> distillTensorArgContract(
+    llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
+    llvm::function_ref<void(const llvm::Twine &)> emitError) {
+  // Per-row presence over the vocabulary table. Presence is idempotent, so a
+  // trait surfacing more than once (e.g. both as written and as another
+  // trait's ancestor) counts once.
+  bool present[std::size(kTensorArgVocab)] = {};
+  for (mlir::SymbolRefAttr sym : writtenSymbols) {
+    if (const VocabEntry *entry = classifyVocabTrait(sym)) {
+      present[entry - kTensorArgVocab] = true;
+      continue;
+    }
+    // Not a vocabulary trait. Trait-type canonicalization folds a composition
+    // into the ancestor closure of the traits it composes, so `writtenSymbols`
+    // carries the declared traits plus their ancestors. The only non-vocabulary
+    // ancestor a valid composition can surface is the universal `AnyType` root
+    // (every trait conforms to it) -- every other ancestor of a vocabulary
+    // trait is itself a vocabulary trait (`DenseTensor: Tensor`,
+    // `Loadable: LoadAccess`, ...). So accept `AnyType` and reject anything
+    // else as a genuinely foreign trait (which the author had to write
+    // explicitly; it is not implied by the vocabulary).
+    if (sym.getLeafReference() == "AnyType")
+      continue;
+    emitError("trait-bound tensor argument references '" +
+              sym.getLeafReference().getValue() +
+              "', which is not a tensor-argument trait; only traits from "
+              "extensibility.tensor_arg_traits are allowed");
+    return mlir::failure();
+  }
+
+  // Visit the present vocabulary rows of one category, in table order.
+  auto forEachPresent = [&](TraitCategory category,
+                            llvm::function_ref<void(const VocabEntry &)> fn) {
+    for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
+      if (present[i] && kTensorArgVocab[i].category == category)
+        fn(kTensorArgVocab[i]);
+  };
+  auto anyPresent = [&](TraitCategory category) {
+    bool any = false;
+    forEachPresent(category, [&](const VocabEntry &) { any = true; });
+    return any;
+  };
+
+  // Exactly one role trait.
+  int roleCount = 0;
+  TensorArgRole role = TensorArgRole::input;
+  forEachPresent(TraitCategory::role, [&](const VocabEntry &entry) {
+    ++roleCount;
+    role = entry.role;
+  });
+  if (roleCount == 0) {
+    emitError("trait-bound tensor argument has no role trait (expected exactly "
+              "one of Input, Output, MutableInput)");
+    return mlir::failure();
+  }
+  if (roleCount > 1) {
+    emitError("trait-bound tensor argument has more than one role trait "
+              "(expected exactly one of Input, Output, MutableInput)");
+    return mlir::failure();
+  }
+
+  TensorArgContract contract;
+  contract.role = role;
+
+  contract.fused = anyPresent(TraitCategory::fused);
+
+  // Tile-transform fusion is deferred (Phase 8).
+  if (anyPresent(TraitCategory::deferred)) {
+    emitError("tile-transform fusion is not supported yet");
+    return mlir::failure();
+  }
+
+  // Access form: at most one, keyed off either the marker or the capability
+  // leaf. The written composition may carry only the capability (e.g.
+  // `Loadable` without `LoadAccess`), or only the marker (opaque-device host
+  // descriptor); both map to the same access form.
+  int accessCount = 0;
+  for (TensorArgAccess form : {TensorArgAccess::load, TensorArgAccess::store,
+                               TensorArgAccess::transform}) {
+    bool marker = false;
+    forEachPresent(TraitCategory::accessMarker, [&](const VocabEntry &entry) {
+      marker |= entry.access == form;
+    });
+    bool capability = false;
+    forEachPresent(
+        TraitCategory::accessCapability,
+        [&](const VocabEntry &entry) { capability |= entry.access == form; });
+    if (marker || capability) {
+      ++accessCount;
+      contract.access = form;
+      contract.hasCapability = capability;
+    }
+  }
+  if (accessCount > 1) {
+    emitError("trait-bound tensor argument declares more than one access form "
+              "(at most one of load, store, transform)");
+    return mlir::failure();
+  }
+
+  // A fused argument must declare exactly one access form.
+  if (contract.fused && contract.access == TensorArgAccess::none) {
+    emitError("a Fused tensor argument must declare an access form (one of "
+              "LoadAccess/Loadable, StoreAccess/Storable, "
+              "TransformAccess/Transformable)");
+    return mlir::failure();
+  }
+
+  // Role / access compatibility.
+  switch (contract.access) {
+  case TensorArgAccess::load:
+    if (contract.role == TensorArgRole::output) {
+      emitError("load access is not valid on an Output argument");
+      return mlir::failure();
+    }
+    break;
+  case TensorArgAccess::store:
+    if (contract.role == TensorArgRole::input) {
+      emitError("store access is not valid on a read-only Input argument");
+      return mlir::failure();
+    }
+    break;
+  case TensorArgAccess::transform:
+    if (contract.role != TensorArgRole::output) {
+      emitError("transform access requires an Output argument");
+      return mlir::failure();
+    }
+    break;
+  case TensorArgAccess::none:
+    break;
+  }
+
+  return contract;
+}
+
+KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType) {
+  mlir::Type t = argType;
+  // Borrowed tensor args are wrapped in a ref; strip it (mirrors
+  // getAsStructType).
+  if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(t))
+    t = ref.getElementType();
+  // A trait-bound arg `x: T` is a reference to the generic type parameter `T`,
+  // whose metatype is the written `!lit.trait<...>` bound. Mirrors the
+  // type-parameter branch of `simplifyConformsToAgainstTypeValue`.
+  auto paramType = KGEN::sugarDynCast<KGEN::ParamType>(t);
+  if (!paramType)
+    return {};
+  auto traitType = mlir::dyn_cast_if_present<KGEN::LIT::TraitType>(
+      KGEN::getCanonicalType(paramType.getMetaType()));
+  if (!traitType)
+    return {};
+  // Only a *tensor-argument* bound, not just any trait-bound generic parameter:
+  // a generic arg bound purely by stdlib/other traits (e.g. a primitive's
+  // `[T: ImplicitlyCopyable]`) is not a tensor arg. Require at least one
+  // tensor-argument vocabulary trait before distilling.
+  for (mlir::SymbolRefAttr sym : traitType.getSymbols())
+    if (classifyVocabTrait(sym))
+      return traitType;
+  return {};
+}
+
+StringRef toString(TensorArgRole role) {
+  switch (role) {
+  case TensorArgRole::input:
+    return "input";
+  case TensorArgRole::output:
+    return "output";
+  case TensorArgRole::mutableInput:
+    return "mutable_input";
+  }
+  llvm_unreachable("bad TensorArgRole");
+}
+
+StringRef toString(TensorArgAccess access) {
+  switch (access) {
+  case TensorArgAccess::none:
+    return "none";
+  case TensorArgAccess::load:
+    return "load";
+  case TensorArgAccess::store:
+    return "store";
+  case TensorArgAccess::transform:
+    return "transform";
+  }
+  llvm_unreachable("bad TensorArgAccess");
+}
+
+mlir::DictionaryAttr
+tensorArgContractToDict(mlir::MLIRContext *ctx,
+                        const TensorArgContract &contract) {
+  mlir::Builder b(ctx);
+  return mlir::DictionaryAttr::get(
+      ctx,
+      {b.getNamedAttr("role", b.getStringAttr(toString(contract.role))),
+       b.getNamedAttr("fused", b.getBoolAttr(contract.fused)),
+       b.getNamedAttr("access", b.getStringAttr(toString(contract.access))),
+       b.getNamedAttr("has_capability",
+                      b.getBoolAttr(contract.hasCapability))});
+}
 
 } // namespace M::MOGG
