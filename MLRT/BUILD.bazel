@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
 # gazelle:default_visibility //MLRT:consumers
@@ -205,19 +205,6 @@ modular_cc_library(
         "//Support:MArchTargetMinimal",
         "//Support:Threading",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_nanobind_library(
-    name = "AsyncRT/Nanobind",
-    srcs = glob(["lib/AsyncRT/Nanobind/*.cpp"]),
-    hdrs = glob(["include/MLRT/AsyncRT/Nanobind/*.h"]),
-    deps = [
-        ":AsyncRT/Runtime",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//Support:NanobindUtils",
-        "//Support:TypeID",
     ],
 )
 
