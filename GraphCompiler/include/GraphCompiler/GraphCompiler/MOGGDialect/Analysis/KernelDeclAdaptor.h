@@ -279,6 +279,15 @@ struct KernelDeclOperandAdaptor {
   }
 
   bool isFusedTensorType() const {
+    // Trait lane (Phase 5): fusion participation is read straight off the
+    // distilled contract -- the single source of truth -- and never re-encoded
+    // into a legacy fused `IOSpec`. The prologue/epilogue split (input vs
+    // output `BindLambda`) still falls out of operand position in
+    // `lowerToNormalKernel`, and the access form (load/store/transform) is
+    // resolved later at emit; the IR only needs to know *whether* the arg is
+    // fused here.
+    if (std::optional<TensorArgContract> contract = getTraitContract())
+      return contract->fused;
     if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
       return t->fused;
     if (const auto *t =
