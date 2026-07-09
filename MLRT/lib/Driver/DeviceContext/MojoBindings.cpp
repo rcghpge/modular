@@ -8,7 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
+#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
@@ -1110,6 +1113,23 @@ MODULAR_EXPORT void AsyncRT_DeviceGraph_release(DeviceGraph *graph) {
 MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_replay", TRACY_COLOR_GRAY);
   return checkSuccess(graph->replay());
+}
+
+//===----------------------------------------------------------------------===//
+// Device affinity
+//===----------------------------------------------------------------------===//
+
+// Compute the worker task ID for a GPU device. Called from the Mojo standard
+// library via external_call (std.runtime.asyncrt.task_id_for_device). Obtains
+// the thread pool size internally from the current AsyncRT cpuDevice. This is a
+// stdlib runtime-ABI wrapper (not a compiler dependency), so it lives in the
+// DeviceContext bindings library that already ships with the runtime rather
+// than in KGEN CompilerRT, keeping the Mojo compiler free of a build-time
+// dependency on AsyncRT/DeviceAffinity.
+MODULAR_EXPORT int32_t MLRT_TaskIdForDevice(int32_t deviceId) {
+  auto *rt = MLRT::CPUDevice::getCurrentCPUDeviceOrNull();
+  size_t numWorkers = rt->getWorkQueue()->getParallelismLevel();
+  return MLRT::taskIdForDevice(deviceId, numWorkers);
 }
 
 //
