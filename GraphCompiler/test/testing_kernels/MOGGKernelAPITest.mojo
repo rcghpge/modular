@@ -3,14 +3,17 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+from std.builtin.device_passable import DevicePassable
 from std.collections import Optional
 from std.collections.string import StaticString
-from std.math import iota
+from std.gpu import global_idx
+from std.gpu.host.info import is_cpu
+from std.math import ceildiv, iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
 import std.algorithm.functional
 import extensibility as compiler
-from layout import IntTuple
+from layout import IntTuple, TensorLayout
 from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
@@ -234,11 +237,33 @@ def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
+# Device entry for the GPU negate path: one thread per flat element, negating
+# `input` into `output`. The trait arg's device representation is a `TileTensor`
+# (see `_MoggDenseTensorArg.device_type`), so the kernel gets Coord/raw-indexable
+# tiles rather than bare pointers.
+def _gpu_negate_kernel[
+    dtype: DType, LayoutType: TensorLayout
+](
+    output: TileTensor[dtype, LayoutType, MutAnyOrigin],
+    input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    num_elements: Int,
+):
+    var linear_idx = global_idx.x
+    if linear_idx >= num_elements:
+        return
+    output.raw_store(
+        Int(linear_idx),
+        rebind[SIMD[dtype, 1]](-input.raw_load(Int(linear_idx))),
+    )
+
+
 # Trait-lane dense unary kernel (Slice 3 / Phase 4 e2e proof). Uses the
 # composable tensor-argument traits instead of `ManagedTensorSlice`: the graph
 # compiler emits an inline `_MoggDenseTensorArg` for each arg and infers the
-# generic `T` from it. Computes `z[i] = -x[i]` over the flat element range,
-# accessing data through the `TileTensorable` projection.
+# generic `T` from it. Computes `z[i] = -x[i]` over the flat element range.
+# A single struct serves both targets: the CPU path runs the host
+# `TileTensorable` projection; the GPU path crosses the same value as a
+# `DevicePassable` and projects to a device `TileTensor`.
 @compiler.register("trait_negate")
 struct TraitNegate:
     @staticmethod
@@ -249,19 +274,35 @@ struct TraitNegate:
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
-        # Keep the host-entry bound to the role + metadata traits; the dense CPU
-        # path additionally needs a `TileTensorable` projection, asserted here
-        # (mirrors `DenseElementwiseKernel`). `to_tile_tensor(z)` picks the Output
-        # (mutable) projection; `x` gets the default immutable one. `x` and `z`
-        # are independent generic types, so rebind the loaded element to the
-        # output dtype before negating.
-        comptime assert conforms_to(type_of(z), TileTensorable)
-        comptime assert conforms_to(type_of(x), TileTensorable)
-        var zt = to_tile_tensor(z)
-        var xt = to_tile_tensor(x)
-        var n = Int(x.shape().product())
-        for i in range(n):
-            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-xt.raw_load(i)))
+        # The host-entry bound is the role + metadata traits; each target arm
+        # asserts the capability it needs (mirrors `DenseElementwiseKernel`).
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            # `to_tile_tensor(z)` picks the Output (mutable) projection; `x` gets
+            # the default immutable one. `x` and `z` are independent generic
+            # types, so rebind the loaded element to the output dtype.
+            var zt = to_tile_tensor(z)
+            var xt = to_tile_tensor(x)
+            var n = Int(x.shape().product())
+            for i in range(n):
+                zt.raw_store(
+                    i, rebind[SIMD[type_of(zt).dtype, 1]](-xt.raw_load(i))
+                )
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(x.shape().product())
+            ctx.enqueue_function[
+                _gpu_negate_kernel[type_of(z).dtype, type_of(z).LayoutType]
+            ](
+                z,
+                x,
+                n,
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time

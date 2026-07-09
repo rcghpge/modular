@@ -827,9 +827,14 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // maps to its stub-arg slot via `getKernelStubArgIndex`. Non-trait args get
   // an empty string. For the dense slice the bound is `<role> & DenseTensor &
   // TileTensorable` -- conformed-to by the emitted `_MoggDenseTensorArg` and a
-  // superset of any dense kernel's written bound. Pure legacy kernels carry no
-  // trait operand, so the attribute is never set for them.
+  // superset of any dense kernel's written bound. On a device kernel the
+  // constructed arg is also `DevicePassable`, so the bound must include it: the
+  // stub forwards each arg to `execute` as this generic-parameter type, so
+  // anything the kernel asserts about its arg (e.g. `DevicePassable` on the GPU
+  // path) must be implied by the bound. Pure legacy kernels carry no trait
+  // operand, so the attribute is never set for them.
   {
+    bool devicePassable = device != getHostDevice(kernelStub.getContext());
     size_t numStubArgs = kernelStub.getBodyBlock().getNumArguments();
     SmallVector<std::string> bounds(numStubArgs);
     bool anyTrait = false;
@@ -852,8 +857,10 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
         roleTrait = "MutableInput";
         break;
       }
-      bounds[*stubArgIdx] =
-          (roleTrait + " & DenseTensor & TileTensorable").str();
+      std::string bound = (roleTrait + " & DenseTensor & TileTensorable").str();
+      if (devicePassable)
+        bound += " & DevicePassable";
+      bounds[*stubArgIdx] = bound;
       anyTrait = true;
     }
     if (anyTrait) {

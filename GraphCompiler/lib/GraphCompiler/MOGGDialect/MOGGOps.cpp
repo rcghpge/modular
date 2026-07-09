@@ -3241,19 +3241,22 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 
 // Inline Mojo definitions for the dense trait tensor-argument struct.
 //
-// For the initial dense CPU path we do not land a committed library type;
-// instead we emit a minimal struct definition directly into the generated Mojo
-// module (D9 "DenseTensorArg only inside the emitted mojo"). It carries only
-// the host-side conformances a dense non-fused kernel needs -- `DenseTensor`
-// (dtype/shape/rank/layout/alignment), the `Input`/`Output` role markers, and
-// the `TileTensorable` executable projection -- and is parameterized by the
-// distilled contract `role` via `_MoggTensorIO`. The device-passable / GPU
-// machinery (a `DeviceContext`-driven ctor, `_to_device_type`) is added when
-// the GPU path lands. Emitted once per module, guarded by
+// We do not land a committed library type yet; instead we emit a single struct
+// definition directly into the generated Mojo module (D9 "DenseTensorArg only
+// inside the emitted mojo"). ONE struct serves both CPU and GPU (mirroring the
+// shared `EmitMojoDenseTensor` in tensor-trait-mockups/dense_tensor_args.mojo):
+// the storage is always a pointer (`tile_tensorable`), and
+// `_is_device_passable` selects whether the value also crosses to the device.
+// CPU passes `device_passable = False` and runs the host `TileTensorable`
+// projection; GPU passes `device_passable = True`, and `_to_device_type`
+// reinterprets the same pointer into a device-side `TileTensor` (valid on
+// unified memory -- the macOS pass-1 path; a real `DevicePointer` flavor is a
+// later slice). Emitted once per module, guarded by
 // `EmitMojoState::emittedDenseTensorArgDefs`.
 static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import DenseTensor, Input, Output, TileTensorable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
 @fieldwise_init("implicit")
@@ -3286,8 +3289,10 @@ struct _MoggDenseTensorArg[
     _LayoutType: TensorLayout,
     _alignment: Int,
     _io: _MoggTensorIO,
+    _is_device_passable: Bool,
 ](
     DenseTensor,
+    DevicePassable where _is_device_passable,
     Input where _io.is_input(),
     Output where _io == _MoggTensorIO.OUTPUT,
     TileTensorable,
@@ -3311,6 +3316,41 @@ struct _MoggDenseTensorArg[
             Self.mut
         ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
         self._layout = layout
+
+    # The device representation is a `TileTensor` (mirrors the mockup
+    # `EmitMojoDenseTensor`): the device kernel receives a real `TileTensor`
+    # (Coord-indexed load/store), not a bare pointer. `_to_device_type`
+    # TRANSLATES the buffer pointer to its device address first (a bit-copy of a
+    # `TileTensor` over the host handle would NOT translate -- it works only on
+    # unified memory), then builds the device-side `TileTensor` from the
+    # translated pointer and encodes it. The graph must transfer the buffer to
+    # the device (see the GPU e2e tests' `mo.transfer`) so this address is valid.
+    comptime device_type: AnyType = TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = UntrackedOrigin[mut = Self.mut],
+    ]
+
+    @always_inline
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ) where Self._is_device_passable:
+        var device_ptr = UnsafePointer[
+            Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]
+        ].unsafe_dangling()
+        self.handle._to_device_type(
+            encoder, UnsafePointer(to=device_ptr).bitcast[NoneType]()
+        )
+        var device_value = TileTensor[
+            dtype = Self.dtype,
+            LayoutType = Self.LayoutType,
+            origin = UntrackedOrigin[mut = Self.mut],
+        ](ptr=device_ptr, layout=self.layout())
+        encoder.encode(device_value, target)
+
+    @staticmethod
+    def get_type_name() -> String where Self._is_device_passable:
+        return String("_MoggDenseTensorArg")
 
     @always_inline
     def shape(self) -> Self.ShapeType:
@@ -3340,13 +3380,18 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
   if (!tensorTy)
     return emitOpError("expected a tensor-like result type");
 
-  // The GPU path needs the `DeviceContext`-driven ctor (the device-passable
-  // storage flavor), which lands in a later slice. Until then, only the dense
-  // CPU path is wired; fail loudly rather than mis-lower a device arg.
-  if (!MO::isOnHost(tensorTy))
-    return emitOpError(
-        "mogg.tensor_arg.__init__ GPU emit is not implemented yet (only the "
-        "dense CPU path); device tensor-trait args land in a later slice");
+  // A device kernel's tensor arguments additionally cross to the device as
+  // `DevicePassable` values; a host kernel's do not. The same pointer-backed
+  // struct serves both -- `device_passable` only flips on `_to_device_type` /
+  // `DevicePassable` conformance (the macOS unified-memory pass-1 path). Decide
+  // off the enclosing kernel stub's device, NOT the per-argument result type:
+  // the kernel runs on one device and the stub-arg bound stamped at lowering
+  // (`mogg.trait_stub_arg_bounds`) uses the same kernel-device signal, so the
+  // constructed value and the bound must agree. (An input's result tensor type
+  // can read as host even on a device kernel, which would disagree.)
+  bool devicePassable = false;
+  if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
+    devicePassable = !MO::isOnHost(stub.getOperation());
 
   // Emit the inline struct definitions once per module.
   if (!state.emittedDenseTensorArgDefs) {
@@ -3386,14 +3431,17 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
           ManagedTensorSliceRef(state.getMojoValueFor(getBuffer())).unsafePtr())
           .bitcast(MojoValue(kComptimeDTypeNoneType))();
 
-  // Construct `_MoggDenseTensorArg[dtype, type_of(layout), alignment, io](ptr,
-  // layout)`. The kernel arg is generic `T`; Mojo infers it from this value.
+  // Construct `_MoggDenseTensorArg[dtype, type_of(layout), alignment, io,
+  // device_passable](ptr, layout)`. The kernel arg is generic `T`; Mojo infers
+  // it from this value.
   MojoValue layoutType = MojoValue("type_of")({}, {layoutVar});
+  MojoValue devicePassableParam(devicePassable);
   MojoValue structName("_MoggDenseTensorArg");
-  state.setMojoValueFor(getResult(),
-                        state.builder.var(structName(
-                            {dTypeParam, layoutType, alignmentParam, ioParam},
-                            {ptr, layoutVar})));
+  state.setMojoValueFor(
+      getResult(),
+      state.builder.var(structName({dTypeParam, layoutType, alignmentParam,
+                                    ioParam, devicePassableParam},
+                                   {ptr, layoutVar})));
 
   return success();
 }

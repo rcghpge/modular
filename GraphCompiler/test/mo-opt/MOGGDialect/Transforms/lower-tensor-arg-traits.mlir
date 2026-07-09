@@ -95,12 +95,13 @@
 // EMIT-DAG: TileTensorable,
 //
 // Each trait tensor arg constructs `_MoggDenseTensorArg[dtype, type_of(layout),
-// alignment, _MoggTensorIO.<role>](<opaque ptr>, layout)`, with the role read
-// off the distilled contract (output / input / mutable_input all exercised by
-// the graphs below). The kernel's generic `T` is inferred from the value.
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.OUTPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.INPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.MUTABLE_INPUT]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// alignment, _MoggTensorIO.<role>, device_passable](<opaque ptr>, layout)`, with
+// the role read off the distilled contract (output / input / mutable_input all
+// exercised by the graphs below) and `device_passable = False` for these host
+// graphs. The kernel's generic `T` is inferred from the value.
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.OUTPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.INPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.MUTABLE_INPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
 //
 // The trait kernel's `execute` is called with the constructed value (legacy
 // `mogg.tensor.__init__` still emits for the legacy lane in mixed kernels).
