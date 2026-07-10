@@ -177,6 +177,26 @@ public:
   /// Instantiate the currently constructed device graph into its executable
   /// format. Can be subsequently replayed multiple times.
   virtual ErrorOr<DeviceGraphRef> instantiate() = 0;
+
+  /// Add an output to the device graph.
+  void addOutput(AsyncRT::AnyAsyncValueRef output);
+
+  /// Return the number of outputs registered on the device graph.
+  size_t numOutputs() const { return outputs.size(); }
+
+protected:
+  /// Hands the recorded outputs to a subclass `instantiate()` so it can
+  /// transfer their ownership to the instantiated `DeviceGraph`, whose stable
+  /// backing memory must outlive the graph. Consumes the builder's outputs.
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> takeOutputs() {
+    return std::move(outputs);
+  }
+
+private:
+  /// A device graph can produce zero or more outputs whose backing memory needs
+  /// to be tracked so that it can be referenced when executing the device
+  /// graph.
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
 };
 
 } // namespace M::Driver

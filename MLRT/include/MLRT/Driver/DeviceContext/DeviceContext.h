@@ -654,6 +654,18 @@ public:
   /// Set the launch trace recorded for the device graph.
   void setLaunchTrace(std::vector<KernelLaunchMetadata> baselineLaunchTrace);
 
+  /// Take ownership of the graph's output async values so their stable backing
+  /// memory lives as long as the graph that references it. Transferred in by
+  /// `DeviceGraphBuilder::instantiate()`.
+  void setOutputs(SmallVector<AsyncRT::AnyAsyncValueRef> outputs) {
+    outputs_ = std::move(outputs);
+  }
+
+  /// Get the graph's output async values, in graph-signature result order.
+  /// Consumed by the `mgp.device_graph.execute` primitive to surface the
+  /// graph's outputs as its results after replay.
+  ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const { return outputs_; }
+
   /// Get the baseline launch trace for this graph.
   ArrayRef<KernelLaunchMetadata> baselineLaunchTrace() const {
     return baselineLaunchTrace_;
@@ -687,6 +699,10 @@ private:
   DeviceStreamRef captureStream_;
   bool hasBaselineLaunchTrace_ = false;
   std::vector<KernelLaunchMetadata> baselineLaunchTrace_;
+
+  /// Outputs recorded on the builder whose stable backing memory must outlive
+  /// this graph; transferred in by `DeviceGraphBuilder::instantiate()`.
+  SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {

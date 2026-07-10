@@ -14,4 +14,8 @@ namespace M::Driver {
 
 DeviceGraphBuilder::~DeviceGraphBuilder() = default;
 
+void DeviceGraphBuilder::addOutput(AsyncRT::AnyAsyncValueRef output) {
+  outputs.push_back(std::move(output));
+}
+
 } // namespace M::Driver

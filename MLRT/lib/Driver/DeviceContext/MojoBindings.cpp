@@ -1131,6 +1131,23 @@ AsyncRT_DeviceGraphBuilder_addEmpty(DeviceGraphBuilder *builder,
   return nullptr;
 }
 
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphBuilder_addOutput(DeviceGraphBuilder *builder,
+                                     AsyncRT::AsyncValue *output) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addOutput",
+                       TRACY_COLOR_GRAY);
+  // Adopt the reference the Mojo `AnyAsyncValueRef` surrendered net-zero.
+  builder->addOutput(AnyAsyncValueRef::take(output));
+}
+
+// Returns the number of outputs registered on the device graph. Cannot fail.
+MODULAR_EXPORT int64_t
+AsyncRT_DeviceGraphBuilder_numOutputs(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_numOutputs",
+                       TRACY_COLOR_GRAY);
+  return static_cast<int64_t>(builder->numOutputs());
+}
+
 // Returns the id of the most recently added node, or -1 if no nodes have
 // been added yet. Cannot fail. The -1 sentinel mirrors the lower bound of
 // the Mojo-side scope helper which uses (start_id, end_id] to enumerate

@@ -259,5 +259,8 @@ ErrorOr<DeviceGraphRef> HIPDeviceGraphBuilder::instantiate() {
   auto graph =
       HIPDeviceGraphRef::create(hipDevice, rawGraph, std::move(stream));
   RETURN_IF_ERROR(graph->instantiate());
+  // Transfer the recorded outputs to the graph so their backing memory outlives
+  // this builder.
+  graph->setOutputs(takeOutputs());
   return DeviceGraphRef(std::move(graph));
 }

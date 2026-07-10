@@ -217,6 +217,38 @@ MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
   fulfillReady<Tensor>(value, cpuDevice, std::move(buf), std::move(spec));
 }
 
+/// Builds a *new* AsyncValue holding a TensorBufferRef from a data view (ptr +
+/// size) and an owning storage handle (surrendered net-zero), returning the
+/// owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef to adopt. Unlike
+/// MGP_RT_CreateAsyncBufferRefFromStorage, which fills a runtime-provided async
+/// slot, this allocates a fresh AsyncValue -- used to register a graph output.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateBufferRefAsyncValue(AsyncValue *storage, void *data, size_t size) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
+  auto tensorBufferRef =
+      TensorBufferRef::create(data, size, std::move(storageRef));
+  AnyAsyncValueRef value = AnyAsyncValueRef::createReady<TensorBufferRef>(
+      cpuDevice, std::move(tensorBufferRef));
+  return value.releasePointer();
+}
+
+/// Builds a *new* AsyncValue holding a Tensor (TensorBufferRef + spec) from a
+/// data view and an owning storage handle, returning the owning AsyncValue*.
+/// The tensor counterpart of MGP_RT_CreateBufferRefAsyncValue.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateTensorRefAsyncValue(AsyncValue *storage, void *data, size_t size,
+                                 size_t rank, size_t *dims, int8_t type) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
+  TensorBufferRef buf =
+      TensorBufferRef::create(data, size, std::move(storageRef));
+  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
+  AnyAsyncValueRef value = AnyAsyncValueRef::createReady<Tensor>(
+      cpuDevice, std::move(buf), std::move(spec));
+  return value.releasePointer();
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
                               AsyncRTWrapper<AnyAsyncValueRef> async) {
