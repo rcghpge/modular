@@ -11,11 +11,11 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 #define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
 #include "ErrorMacros.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -592,11 +592,11 @@ public:
 
   /// Set the outputs for the device graph collection by taking ownership of
   /// the set of provided async references.
-  void setOutputs(ArrayRef<MLRT::AnyAsyncValueRef> outputs);
+  void setOutputs(ArrayRef<AsyncRT::AnyAsyncValueRef> outputs);
 
   /// Get the output async values for the graph collection. These correspond
   /// to the outputs of the MEF model, not any particular DeviceGraph.
-  ArrayRef<MLRT::AnyAsyncValueRef> getOutputs() const;
+  ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const;
 
   /// Replay the graph collection by launching all graphs.
   ErrorOrSuccess replay() const;
@@ -625,7 +625,7 @@ private:
   ///
   /// Note: these outputs are the outputs of the entire MAX graph, not for any
   /// particular device.
-  SmallVector<MLRT::AnyAsyncValueRef> outputs;
+  SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
 };
 
 /// A captured sequence of GPU operations that can be replayed.
@@ -638,7 +638,7 @@ public:
   /// Stream capture is ended synchronously for all streams, then graph
   /// instantiation is parallelized across AsyncRT's work queue threads.
   static ErrorOr<DeviceGraphCollection>
-  capture(M::MLRT::CPUDevice &cpuDevice, ArrayRef<DeviceStreamRef> streams,
+  capture(M::AsyncRT::CPUDevice &cpuDevice, ArrayRef<DeviceStreamRef> streams,
           llvm::function_ref<ErrorOrSuccess()> execute);
 
   /// Replay the captured operations on the stored capture stream.

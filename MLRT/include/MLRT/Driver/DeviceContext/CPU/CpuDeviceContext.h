@@ -11,8 +11,8 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 #define MLRT_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
@@ -114,18 +114,18 @@ private:
 
 class CpuDeviceEvent : public DeviceEvent {
 public:
-  CpuDeviceEvent(CpuDevice &device, MLRT::CPUDeviceRef cpuDevice,
-                 MLRT::AnyAsyncValueRef value);
+  CpuDeviceEvent(CpuDevice &device, AsyncRT::CPUDeviceRef cpuDevice,
+                 AsyncRT::AnyAsyncValueRef value);
   ~CpuDeviceEvent() override = default;
 
   ErrorOrSuccess synchronize() override;
   ErrorOr<bool> isReady() const override;
 
-  MLRT::AnyAsyncValueRef &asyncValue() { return value; }
+  AsyncRT::AnyAsyncValueRef &asyncValue() { return value; }
 
 private:
-  MLRT::CPUDeviceRef cpuDevice;
-  MLRT::AnyAsyncValueRef value;
+  AsyncRT::CPUDeviceRef cpuDevice;
+  AsyncRT::AnyAsyncValueRef value;
 };
 
 class CpuDeviceContext : public DeviceContext {
@@ -192,7 +192,7 @@ public:
   /// pool. Allows callers (e.g. nanobind code that needs to dispatch
   /// onto an explicit, caller-supplied AsyncRT runtime) to reach the
   /// CPUDevice without going through a global/TLS lookup.
-  const MLRT::CPUDeviceRef &getCPUDevice() const { return cpuDevice; }
+  const AsyncRT::CPUDeviceRef &getCPUDevice() const { return cpuDevice; }
 
 private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
@@ -204,13 +204,13 @@ private:
   MMapFileImplResult
   memmapFileImpl(const std::filesystem::path &filename) const override;
 
-  ErrorOrSuccess enqueueWork(MLRT::TaskFunction &&work);
+  ErrorOrSuccess enqueueWork(AsyncRT::TaskFunction &&work);
 
-  MLRT::CPUDeviceRef cpuDevice;
+  AsyncRT::CPUDeviceRef cpuDevice;
 
   // Contains the chain of the last enqueued operation, which may already have
   // completed
-  MLRT::AnyAsyncValueRef streamChain;
+  AsyncRT::AnyAsyncValueRef streamChain;
   std::mutex streamChainMutex{};
 };
 

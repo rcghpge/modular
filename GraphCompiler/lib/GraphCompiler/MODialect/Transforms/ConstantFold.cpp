@@ -5,6 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MODialect/Transforms/ConstantFold.h"
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
@@ -22,9 +25,6 @@
 #include "GraphCompiler/Support/List.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/Buffer.h"
@@ -43,6 +43,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 using namespace M::MO;
 
 namespace M::MO {
@@ -237,7 +238,7 @@ static bool isMaybeConstantFoldable(Operation *op) {
 /// If the constant op's users are all in this subgraph, then this returns a
 /// tensor that owns the underlying resource blob.
 /// Otherwise the returned tensor's data is borrowed.
-static Tensor denseResourceAsTensor(MLRT::CPUDevice &cpuDevice,
+static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
                                     ConstantOp constant,
                                     DenseResourceElementsAttr denseResource,
                                     const Subgraph &subgraph) {
@@ -315,7 +316,7 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
 
 static RuntimeTensor extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
-    llvm::DenseMap<M::MLRT::AsyncValue *, ElementsAttr> &cachedConstants) {
+    llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> &cachedConstants) {
   if (M::MLRT::Tensor *tensor = dyn_cast<Tensor>(ref)) {
     ElementsAttr constantsArr;
 
@@ -354,10 +355,10 @@ static RuntimeTensor extractRuntimeOutput(
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
 /// from output Value to ElementsAttr containing the constant resulting from
 /// folding.
-static MLRT::ErrorDiagnosticOr<ModelResult>
+static AsyncRT::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
              const SubgraphsInfo &subgraphsInfo) {
-  MLRT::CPUDevice &cpuDevice = *loadContext(ctx)->get<MLRT::CPUDevice>();
+  AsyncRT::CPUDevice &cpuDevice = *loadContext(ctx)->get<AsyncRT::CPUDevice>();
   auto executableModelOr = model->setup(cpuDevice);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
@@ -368,8 +369,8 @@ executeModel(MLIRContext *ctx, const Model *model,
     Error error("Model setup failed, not ready for execution"
                 ".  Modular internal detail: " +
                 Twine(setupErrorOrSuccess.getError()));
-    return MLRT::EncodedDiagnostic(std::move(error),
-                                   model->getLocation().copy());
+    return AsyncRT::EncodedDiagnostic(std::move(error),
+                                      model->getLocation().copy());
   }
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
@@ -387,13 +388,13 @@ executeModel(MLIRContext *ctx, const Model *model,
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
 
   if (results.empty())
-    return MLRT::EncodedDiagnostic("Failed to execute model",
-                                   model->getLocation().copy());
+    return AsyncRT::EncodedDiagnostic("Failed to execute model",
+                                      model->getLocation().copy());
 
-  MLRT::await(results);
+  AsyncRT::await(results);
   for (auto &result : results)
     if (result.isError())
-      return MLRT::EncodedDiagnostic(result.takeDiagnostic());
+      return AsyncRT::EncodedDiagnostic(result.takeDiagnostic());
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
@@ -403,7 +404,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   resultCopy = resultCopy.drop_front();
 
   // Get the constant values.
-  llvm::DenseMap<M::MLRT::AsyncValue *, ElementsAttr> cachedConstants;
+  llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> cachedConstants;
   llvm::DenseMap<Operation *, SmallVector<RuntimeTensor>> opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
@@ -413,7 +414,7 @@ executeModel(MLIRContext *ctx, const Model *model,
       for (size_t i = 0; i < op->getNumResults(); ++i) {
         AnyAsyncValueRef &tensorRef = resultCopy[outIdx];
         if (tensorRef.isError())
-          return MLRT::EncodedDiagnostic(tensorRef.takeDiagnostic());
+          return AsyncRT::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
         // Move output tensor into storage.
         ASSERT_STREAM(tensorRef.isReady(),
@@ -432,7 +433,7 @@ executeModel(MLIRContext *ctx, const Model *model,
     for (auto paramName : subgraph.paramDeclarations()) {
       auto &tensor = resultCopy[outIdx];
       if (tensor.isError())
-        return MLRT::EncodedDiagnostic(tensor.takeDiagnostic());
+        return AsyncRT::EncodedDiagnostic(tensor.takeDiagnostic());
       ASSERT_STREAM(tensor.isReady(),
                     << "We already awaited, tensor should be ready");
       ASSERT_STREAM(tensor.isType<Tensor>(),
@@ -941,10 +942,10 @@ void ConstantFoldPass::runOnOperation() {
                                            subgraphsInfo.constantSubgraphName);
       ASSERT_STREAM(model != nullptr,
                     << "Model should exist, make sure names above match.");
-      MLRT::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
+      AsyncRT::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
           executeModel(ctx, model, subgraphsInfo);
       if (valuesToTensorsOr.isError()) {
-        MLRT::EncodedDiagnostic err = valuesToTensorsOr.takeError();
+        AsyncRT::EncodedDiagnostic err = valuesToTensorsOr.takeError();
         auto decoded = err.decodeLocation();
         auto loc =
             mlir::FileLineColLoc::get(module->getContext(), decoded.filename,

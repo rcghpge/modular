@@ -9,13 +9,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "GraphCompiler/Support/List.h"
 #include "Init/Init.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
@@ -26,6 +26,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 //===----------------------------------------------------------------------===//
 // Helpers

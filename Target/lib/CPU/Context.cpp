@@ -11,9 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "AsyncRT/Runtime/HostSystem.h"
 #include "Device.h"
 #include "HAL/M_driver_context.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 
 #include <cassert>
 
@@ -21,9 +21,9 @@ M_driver_context_t M_driver_context::create(M_driver_device_t device) {
   // Get or create the AsyncRT CPUDevice. Request mainWillDonate=false since
   // the HAL caller drives work from its own thread, but allow reusing an
   // existing CPUDevice's options if one already exists.
-  MLRT::CPUDeviceRef cpuDevice = MLRT::getOrCreateCPUDevice(
-      MLRT::CPUDeviceSource::CPUDeviceContext,
-      MLRT::CPUDeviceOptions().withMainWillNotDonate(),
+  AsyncRT::CPUDeviceRef cpuDevice = AsyncRT::getOrCreateCPUDevice(
+      AsyncRT::CPUDeviceSource::CPUDeviceContext,
+      AsyncRT::CPUDeviceOptions().withMainWillNotDonate(),
       /*allowUsingExistingOptions=*/true);
   return new (std::nothrow) M_driver_context(device, std::move(cpuDevice));
 }

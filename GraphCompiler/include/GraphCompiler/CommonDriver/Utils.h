@@ -7,8 +7,8 @@
 #ifndef GENERICML_COMMONDRIVER_UTILS_H
 #define GENERICML_COMMONDRIVER_UTILS_H
 
+#include "AsyncRT/ForwardDecls.h"
 #include "GraphCompiler/CommonDriver/DriverInputFormat.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
 #include "Support/Buffer.h"
 #include "Support/Context.h"
 #include "Support/ForwardDecls.h"

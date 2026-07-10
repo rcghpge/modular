@@ -7,7 +7,7 @@
 #ifndef MLRT_CORE_TENSOR_TENSOR_H
 #define MLRT_CORE_TENSOR_TENSOR_H
 
-#include "MLRT/AsyncRT/Runtime/CompactCPUDevicePtr.h"
+#include "AsyncRT/Runtime/CompactCPUDevicePtr.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/TensorBase.h"
@@ -39,7 +39,8 @@ public:
   ///
   /// TODO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
-  static Tensor createOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
+  static Tensor createOwned(TensorSpec spec,
+                            AsyncRT::CompactCPUDevicePtr cpuDevice,
                             std::optional<size_t> alignment);
 
   /// Creates an owned tensor whose buffer is from a taken void* pointer -- This
@@ -47,7 +48,8 @@ public:
   /// bufferRef which has control over the lifetime. There is an assumption that
   /// the takeFrom pointer is allocated by caller via cpuDevice->getAllocator().
   /// Lifetime of the allocated memory follows any Owned Tensor (via bufferRef)
-  static Tensor takeOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
+  static Tensor takeOwned(TensorSpec spec,
+                          AsyncRT::CompactCPUDevicePtr cpuDevice,
                           void *takeFrom);
 
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the

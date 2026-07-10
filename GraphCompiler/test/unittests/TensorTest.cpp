@@ -7,25 +7,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Core/Tensor/Tensor.h"
-#include "MLRT/AsyncRT/Runtime/Allocator.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
-#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
+#include "AsyncRT/Runtime/Allocator.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/HostSystem.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
-static MLRT::CPUDeviceRef getCPUDevice() {
-  return MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
-                                    MLRT::CPUDeviceOptions().forDebug());
+static AsyncRT::CPUDeviceRef getCPUDevice() {
+  return AsyncRT::getOrCreateCPUDevice(AsyncRT::CPUDeviceSource::Test,
+                                       AsyncRT::CPUDeviceOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static Tensor makeTensor(MLRT::CPUDevice &cpuDevice) {
+static Tensor makeTensor(AsyncRT::CPUDevice &cpuDevice) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   Tensor result =
       Tensor::createOwned(std::move(spec), cpuDevice, /*alignment=*/{});
@@ -70,7 +71,7 @@ TEST(Tensor, FromBuffer) {
 
 // bitWidthT should be a type of the same bit-width as dtype
 template <typename bitWidthT>
-static void checkPrintTensor(MLRT::CPUDevice &cpuDevice,
+static void checkPrintTensor(AsyncRT::CPUDevice &cpuDevice,
                              std::initializer_list<int64_t> shape,
                              const DType &dtype, SmallVector<bitWidthT> &&data,
                              const std::string &checkString) {

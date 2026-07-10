@@ -11,9 +11,9 @@
 
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
 
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MEFFileImpl.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFReader.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "Support/AssertStream.h"
@@ -279,7 +279,7 @@ public:
     RCRef<ReferenceCounted<MEFExecutor>>::lowLevelDropRef(
         const_cast<MEFExecutor *>(this));
   }
-  MLRT::DecodedLocation decode(const EncodedLocation &loc) const override;
+  AsyncRT::DecodedLocation decode(const EncodedLocation &loc) const override;
 
 private:
   /// Set up registers for input arguments to a invokable.
@@ -312,18 +312,18 @@ private:
 /// This is the core method that implements the `LocationDecoder` abstract base
 /// class.  This turns the data payload in EncodedLocation (which, in our case,
 /// is an offset into the locations section) into a decoded location.
-MLRT::DecodedLocation MEFExecutor::decode(const EncodedLocation &loc) const {
+AsyncRT::DecodedLocation MEFExecutor::decode(const EncodedLocation &loc) const {
   MEFReader reader(mefFile->locationPositions, [&](Error message) {});
 
   size_t filenameOffset, lineNo, colNo;
   if (reader.dropBytes(loc.getData()) || reader.parseVBR(filenameOffset) ||
       reader.parseVBR(lineNo) || reader.parseVBR(colNo))
-    return MLRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
+    return AsyncRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
 
   reader.setContents(mefFile->locationFilenames);
   StringRef filename;
   if (reader.parseNULTerminatedStringAt(filenameOffset, filename))
-    return MLRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
+    return AsyncRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
   return {filename.str(), (int)lineNo, (int)colNo};
 }
 
@@ -781,19 +781,19 @@ void MEFInvokableImpl::dropRef() const {
 /// This is the core method that implements the `LocationDecoder` abstract base
 /// class.  This turns the data payload in EncodedLocation (which, in our case,
 /// is an offset into the locations section) into a decoded location.
-MLRT::DecodedLocation
+AsyncRT::DecodedLocation
 MEFInvokableImpl::decode(const EncodedLocation &loc) const {
   MEFReader reader(owner->locationPositions, [&](Error message) {});
 
   size_t filenameOffset, lineNo, colNo;
   if (reader.dropBytes(loc.getData()) || reader.parseVBR(filenameOffset) ||
       reader.parseVBR(lineNo) || reader.parseVBR(colNo))
-    return MLRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
+    return AsyncRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
 
   reader.setContents(owner->locationFilenames);
   StringRef filename;
   if (reader.parseNULTerminatedStringAt(filenameOffset, filename))
-    return MLRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
+    return AsyncRT::DecodedLocation{"<<MEF file encoding error>>", 0, -1};
   return {filename.str(), (int)lineNo, (int)colNo};
 }
 

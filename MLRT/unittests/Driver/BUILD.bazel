@@ -434,7 +434,7 @@ modular_cc_test(
     deps = [
         ":DeviceGraphTestUtils",
         ":TestUtils",
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@bazel_tools//tools/cpp/runfiles",
@@ -475,7 +475,7 @@ modular_cc_test(
     tags = ["gpu"],
     deps = [
         ":TestUtils",
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//MLRT:Driver/DeviceContextImpl",
         "@llvm-project//llvm:Support",
     ],

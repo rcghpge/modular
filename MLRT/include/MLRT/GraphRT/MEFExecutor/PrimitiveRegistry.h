@@ -7,7 +7,7 @@
 #ifndef MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
 #define MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
 
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "Support/ErrorOr.h"
@@ -193,7 +193,7 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  MLRT::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
+  AsyncRT::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
   copyWithLocation() const {
     return {copy(), copyLocation()};
   }
@@ -227,7 +227,7 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  MLRT::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
+  AsyncRT::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
   copyWithLocation() const {
     return {copy(), copyLocation()};
   }

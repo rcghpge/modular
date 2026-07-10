@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/AsyncRT/DeviceAffinity.h"
-#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
+#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Configuration.h"
 #include "Support/Threading/HWInfo.h"

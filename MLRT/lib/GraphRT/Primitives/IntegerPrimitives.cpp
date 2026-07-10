@@ -11,7 +11,7 @@
 
 #include "MLRT/GraphRT/Primitives.h"
 
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;

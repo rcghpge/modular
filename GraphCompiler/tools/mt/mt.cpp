@@ -4,6 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "Config/Version.h"
 #include "GraphCompiler/CommonDriver/DriverInputFormat.h"
 #include "GraphCompiler/CommonDriver/Utils.h"
@@ -12,8 +14,6 @@
 #include "GraphCompiler/GraphCompiler/Passes.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
 #include "Init/Init.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
@@ -80,10 +80,10 @@ static int setupMLIRAndRun(
     std::function<LogicalResult(CPUDevice &, MLIRContext *)> &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
-            MLRT::CPUDevice *cpuDevice = context->get<CPUDevice>();
+            AsyncRT::CPUDevice *cpuDevice = context->get<CPUDevice>();
             assert(cpuDevice && "caller should have set up cpuDevice for this");
             registerContext(*ctx, context);
-            return MLRT::runWithLeakCheckedRuntime(
+            return AsyncRT::runWithLeakCheckedRuntime(
                 testName, [&]() { return bodyFn(*cpuDevice, ctx); });
           })))
     return EXIT_FAILURE;

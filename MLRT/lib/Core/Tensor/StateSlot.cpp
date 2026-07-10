@@ -10,6 +10,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 TensorBufferRef
 TensorStateSlot::getOrCreateBuffer(CompactCPUDevicePtr cpuDevice, size_t size,

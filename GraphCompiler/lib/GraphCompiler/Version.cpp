@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/Version.h"
+#include "AsyncRT/Runtime/Globals/Globals.h"
 #include "Config/Version.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/RT/BinaryID.h"
 #include "KGEN/CompilerRT/BinaryID.h"
-#include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
 
@@ -26,7 +26,7 @@ std::string M::MO::getGraphCompilerVersionString() {
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MGPRT::getMGPRTBinaryID() + "-" +
          M::Driver::getMojoBindingsBinaryID() + "-" +
-         M::MLRT::getRuntimeGlobalsBinaryID() + "-" +
+         M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
          M::KGEN::getCompilerRTBinaryID() + "-" +
          M::getModularVersion().buildType;
 }

@@ -6,9 +6,9 @@
 
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
 
+#include "AsyncRT/CompilerSupport/Context.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "Support/AssertStream.h"
 #include "Support/HashUtils.h"
 
@@ -289,8 +289,8 @@ void M::MOGG::hashModuleContents(mlir::ModuleOp module) {
 
 void M::MOGG::hashModuleContents(mlir::ModuleOp module,
                                  const mlir::SymbolTable &symtab) {
-  MLRT::CPUDevice &cpuDevice =
-      *loadContext(module.getContext())->get<MLRT::CPUDevice>();
+  AsyncRT::CPUDevice &cpuDevice =
+      *loadContext(module.getContext())->get<AsyncRT::CPUDevice>();
 
   Graph graph;
   graph.build(module, symtab);

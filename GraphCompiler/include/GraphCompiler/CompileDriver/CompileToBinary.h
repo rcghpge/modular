@@ -7,8 +7,8 @@
 #ifndef GENERICML_COMPILEDRIVER_COMPILETOBINARY_H
 #define GENERICML_COMPILEDRIVER_COMPILETOBINARY_H
 
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "Support/Config.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
@@ -49,7 +49,7 @@ struct CompileToBinaryCtx {
 
   uint64_t prevRuntimeProfilingTypeMask;
   M::ContextRef context;
-  MLRT::CPUDevice *cpuDevice;
+  AsyncRT::CPUDevice *cpuDevice;
   mlir::MLIRContext mlirCtx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 

@@ -12,7 +12,7 @@
 #include <limits>
 #if MODULAR_MACOS
 
-#include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
+#include "AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MetalDriver.h"
 #include "Support/AlignedAlloc.h"

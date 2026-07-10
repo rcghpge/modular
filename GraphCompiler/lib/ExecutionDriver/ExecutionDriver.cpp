@@ -5,12 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/ExecutionDriver/ExecutionDriver.h"
+#include "AsyncRT/Runtime/Algorithms.h"
 #include "GraphCompiler/ExecutionDriver/DriverCLOptions.h"
 #include "GraphCompiler/ExecutionDriver/DriverInternals.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
 #include "GraphCompiler/Support/FormatYAML.h"
 #include "GraphCompiler/Support/ResultInfo.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "Support/Error.h"
@@ -33,6 +33,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 using mlir::MLIRContext;
 
 StringLiteral M::stringifyEnum(InputGenerationKind kind) {
@@ -555,7 +556,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult M::runModel(const Model *model, MLRT::CPUDevice &cpuDevice,
+LogicalResult M::runModel(const Model *model, AsyncRT::CPUDevice &cpuDevice,
                           const ExecutorDriverOptions &options) {
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {

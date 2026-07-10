@@ -8,11 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/RuntimeCLOptions.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "Init/Init.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeCLOptions.h"
-#include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/GRTTestcase.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
@@ -25,7 +25,7 @@
 #include "llvm/Support/SourceMgr.h"
 
 using namespace M;
-using namespace M::MLRT;
+using namespace M::AsyncRT;
 using mlir::MLIRContext;
 
 /// This method can be used to print the results of `invokable` in the
@@ -105,7 +105,7 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
            test.getName().data());
     fflush(stdout);
 
-    MLRT::CPUDevice &cpuDevice = *ctx->get<MLRT::CPUDevice>();
+    AsyncRT::CPUDevice &cpuDevice = *ctx->get<AsyncRT::CPUDevice>();
     auto results = test.getBody()->invoke(/*arguments=*/{}, cpuDevice);
 
     // Block until the invokable results are fully resolved.

@@ -6,7 +6,7 @@
 
 #include "MLRT/Core/MojoValue.h"
 
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include <algorithm>
 #include <cstdlib>
 

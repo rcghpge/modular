@@ -195,7 +195,7 @@ print-outs to come out of order.
 
 The solution to this problem is to explicitly serialize side effects by turning
 the implicit dependencies into explicitly ordered dataflow edges. We do this
-with a `M::MLRT::Chain` type, which is threaded through the operations. This
+with a `M::AsyncRT::Chain` type, which is threaded through the operations. This
 is a legal MEF dialect program:
 
 ```mlir
@@ -213,7 +213,7 @@ can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
 If you look at the [definition of the
-`M::MLRT::Chain`](../../include/MLRT/AsyncRT/Support/Chain.h) struct,
+`M::AsyncRT::Chain`](../../../AsyncRT/include/AsyncRT/Support/Chain.h) struct,
 you'll see that it is empty. What is happening here though is that the
 `AsyncValue` containing the chain is only marked as "ready" when the side
 effect for the print is completed. This composes naturally with GraphRT's

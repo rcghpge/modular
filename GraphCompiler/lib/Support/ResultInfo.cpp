@@ -10,6 +10,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 ResultInfo::ResultInfo(std::string name) : name(std::move(name)) {}
 

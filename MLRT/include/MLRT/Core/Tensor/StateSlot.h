@@ -7,7 +7,7 @@
 #ifndef MLRT_CORE_TENSOR_STATESLOT_H
 #define MLRT_CORE_TENSOR_STATESLOT_H
 
-#include "MLRT/AsyncRT/ForwardDecls.h"
+#include "AsyncRT/ForwardDecls.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"
@@ -52,6 +52,39 @@ public:
     return *payload.get<T>();
   }
 
+  /// Returns a buffer reference to a buffer of size with alignment.
+  /// If a buffer with matching size already exists at bufferIndex in this state
+  /// slot then it will be returned. Otherwise, a fresh buffer is allocated
+  /// and returned, and any previously cached buffer is freed.
+  ///
+  /// The result will always be a 'borrow' of the underlying cached buffer.
+  /// This means:
+  ///  - uses of the returned reference must not outlive the overall context
+  ///    holding this state slot.
+  ///  - no other call to this method for the same state slot and buffer index
+  ///    should be made while the returned reference is still in use.
+  TensorBufferRef getOrCreateBuffer(size_t bufferIndex,
+                                    AsyncRT::CompactCPUDevicePtr cpuDevice,
+                                    size_t size,
+                                    std::optional<size_t> alignment);
+
+  /// Returns a reference to the already allocated and cached buffer at
+  /// bufferIndex in this state slot. Returns Error if no buffer is cached at
+  /// given index.
+  ///
+  /// The result will always be a 'borrow' of the underlying cached buffer.
+  /// See getOrCreateBuffer for safety conditions.
+  ErrorOr<TensorBufferRef> getBuffer(size_t bufferIndex);
+  ErrorOr<TensorBufferRef &> getBufferRef(size_t bufferIndex);
+
+  /// Sets the cached buffer at bufferIndex to the given bufferRef. Returns
+  /// error if bufferIndex already contains a buffer.
+  ///
+  /// If bufferRef is owned we simply take over that ownership. However if
+  /// it is borrowed then it must have lifetime of at least 'execute'
+  /// so that similarly 'execute'-scoped borrows may be taken from it.
+  ErrorOrSuccess setBuffer(size_t bufferIndex, TensorBufferRef bufferRef);
+
   /// Returns the type id for the value held by this state slot.
   TypeID getTypeID() const { return payload.getTypeID(); }
 
@@ -73,7 +106,8 @@ public:
   /// If a buffer with matching size already exists in this state slot then it
   /// will be returned. Otherwise, a fresh buffer is allocated and returned, and
   /// any previously cached buffer is freed.
-  TensorBufferRef getOrCreateBuffer(CompactCPUDevicePtr cpuDevice, size_t size,
+  TensorBufferRef getOrCreateBuffer(AsyncRT::CompactCPUDevicePtr cpuDevice,
+                                    size_t size,
                                     std::optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer in this
@@ -89,8 +123,8 @@ private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
   static void updateCacheIfNeeded(TensorBufferRef &entry,
-                                  CompactCPUDevicePtr cpuDevice, size_t size,
-                                  std::optional<size_t> alignment);
+                                  AsyncRT::CompactCPUDevicePtr cpuDevice,
+                                  size_t size, std::optional<size_t> alignment);
 
   /// A place to hold a pre-allocated or cached buffer. A default constructed
   /// (null) reference indicates no buffer has been cached.

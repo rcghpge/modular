@@ -7,15 +7,15 @@
 #ifndef TARGET_LIB_CPU_QUEUE_H
 #define TARGET_LIB_CPU_QUEUE_H
 
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 #include "HAL/M_driver_common.h"
 #include "HAL/M_driver_queue.h"
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 
 #include <cstdint>
 #include <mutex>
 
-namespace MLRT = M::MLRT;
+namespace AsyncRT = M::AsyncRT;
 
 /// A CPU queue is an ordered chain of async work items. Each enqueued
 /// operation is sequenced after the previous one via `streamChain`, exactly
@@ -23,7 +23,7 @@ namespace MLRT = M::MLRT;
 /// the chain is totally ordered, the queue reports itself as a stream.
 struct M_driver_queue {
   explicit M_driver_queue(M_driver_context_t context,
-                          MLRT::AnyAsyncValueRef streamChain)
+                          AsyncRT::AnyAsyncValueRef streamChain)
       : context(context), streamChain(std::move(streamChain)) {}
 
   [[nodiscard]] static M_driver_queue_t create(M_driver_context_t context);
@@ -53,13 +53,13 @@ struct M_driver_queue {
 
   // Chain of the last enqueued operation, which may already have completed.
   // Guarded by `streamChainMutex`.
-  MLRT::AnyAsyncValueRef streamChain;
+  AsyncRT::AnyAsyncValueRef streamChain;
   std::mutex streamChainMutex;
 
 private:
   // Enqueue `work` after the current chain tail, advancing the tail. Mirrors
   // CpuDeviceContext::enqueueWork.
-  M_driver_status_t enqueueWork(MLRT::TaskFunction &&work);
+  M_driver_status_t enqueueWork(AsyncRT::TaskFunction &&work);
 };
 
 #endif // TARGET_LIB_CPU_QUEUE_H

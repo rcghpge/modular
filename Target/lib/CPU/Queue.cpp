@@ -11,12 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "Queue.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Support/Chain.h"
 #include "Context.h"
 #include "Event.h"
 #include "HAL/M_driver_api.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Support/Chain.h"
 #include "Memory.h"
 
 #include <cstring>
@@ -42,8 +42,9 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
 
 // Enqueue work with stream-like semantics: keep a chain to the last enqueued
 // function so the next task awaits it.
-M_driver_status_t M_driver_queue::enqueueWork(MLRT::TaskFunction &&work) {
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(context->cpu());
+M_driver_status_t M_driver_queue::enqueueWork(AsyncRT::TaskFunction &&work) {
+  auto eventChain =
+      AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(context->cpu());
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
   streamChain.andThenAsync(
@@ -174,8 +175,8 @@ M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
   // CpuDeviceContext::enqueueWaitFor.
   for (uint32_t i = 0; i < numEvents; ++i) {
     auto eventChain =
-        MLRT::AsyncValueRef<MLRT::Chain>::allocate(context->cpu());
-    MLRT::andThenAsync(
+        AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(context->cpu());
+    AsyncRT::andThenAsync(
         std::make_tuple(streamChain.copy(), events[i]->value.copy()),
         [eventChain = eventChain.copy()](auto, auto) mutable {
           std::move(eventChain).emplace();
@@ -186,7 +187,7 @@ M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
 }
 
 M_driver_status_t M_driver_queue::synchronize() {
-  MLRT::AnyAsyncValueRef head;
+  AsyncRT::AnyAsyncValueRef head;
   {
     std::lock_guard<std::mutex> streamLock{streamChainMutex};
     head = streamChain.copy();

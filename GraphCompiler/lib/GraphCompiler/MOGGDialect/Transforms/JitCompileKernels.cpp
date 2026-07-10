@@ -15,6 +15,8 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
@@ -26,8 +28,6 @@
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/Support/Constants.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "Support/CacheLog.h"
 #include "Support/HashUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -83,7 +83,7 @@ struct JitCompileKernels
     KGEN::ObjectCompiler *objectCompiler;
     KGEN::KGENCompiler *compiler;
     TargetInfoAttr targetInfo;
-    MLRT::CPUDevice *cpuDevice;
+    AsyncRT::CPUDevice *cpuDevice;
     KGEN::CompilationOptions opts;
     OpBuilder builder;
     RCRef<Cache::TransformCache> mojoCache;
@@ -92,7 +92,8 @@ struct JitCompileKernels
                      OwningOpRef<ModuleOp> kgenModule,
                      KGEN::ObjectCompiler *objectCompiler,
                      KGEN::KGENCompiler *compiler, TargetInfoAttr targetInfo,
-                     MLRT::CPUDevice *cpuDevice, KGEN::CompilationOptions opts)
+                     AsyncRT::CPUDevice *cpuDevice,
+                     KGEN::CompilationOptions opts)
         : ctx(ctx), mgpModule(mgpModule), kgenModule(std::move(kgenModule)),
           objectCompiler(objectCompiler), compiler(compiler),
           targetInfo(targetInfo), cpuDevice(cpuDevice), opts(std::move(opts)),
@@ -573,7 +574,7 @@ struct JitCompileKernels
     }
 
     ContextRef maxContext = loadContext(ctx);
-    auto cpuDevice = maxContext->get<MLRT::CPUDevice>();
+    auto cpuDevice = maxContext->get<AsyncRT::CPUDevice>();
 
     auto targetInfo = targetInfoAttr.takeValue();
     auto opts = setupCompilationOptions(targetInfo, kernelLibraryPaths);

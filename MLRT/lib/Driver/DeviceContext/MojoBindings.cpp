@@ -8,11 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/AsyncRT/DeviceAffinity.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
+#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
@@ -220,16 +220,16 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(DeviceBuffer *buffer) {
 // Reference counting for a bare `AsyncValue *` handle, backing the limited Mojo
 // `AnyAsyncValueRef` wrapper (mirrors the DeviceBuffer retain/release above). A
 // null handle is the empty/non-tracked reference, so both are no-ops on null.
-MODULAR_EXPORT void AsyncRT_AsyncValue_retain(MLRT::AsyncValue *value) {
+MODULAR_EXPORT void AsyncRT_AsyncValue_retain(AsyncRT::AsyncValue *value) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retain", TRACY_COLOR_GRAY);
   if (value)
-    RCRef<MLRT::AsyncValue>::lowLevelAddRef(value);
+    RCRef<AsyncRT::AsyncValue>::lowLevelAddRef(value);
 }
 
-MODULAR_EXPORT void AsyncRT_AsyncValue_release(MLRT::AsyncValue *value) {
+MODULAR_EXPORT void AsyncRT_AsyncValue_release(AsyncRT::AsyncValue *value) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_release", TRACY_COLOR_GRAY);
   if (value)
-    RCRef<MLRT::AsyncValue>::lowLevelDropRef(value);
+    RCRef<AsyncRT::AsyncValue>::lowLevelDropRef(value);
 }
 
 MODULAR_EXPORT const DeviceContext *
@@ -1127,7 +1127,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
 // than in KGEN CompilerRT, keeping the Mojo compiler free of a build-time
 // dependency on AsyncRT/DeviceAffinity.
 MODULAR_EXPORT int32_t MLRT_TaskIdForDevice(int32_t deviceId) {
-  auto *rt = MLRT::CPUDevice::getCurrentCPUDeviceOrNull();
+  auto *rt = AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull();
   size_t numWorkers = rt->getWorkQueue()->getParallelismLevel();
   return MLRT::taskIdForDevice(deviceId, numWorkers);
 }

@@ -9,10 +9,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLRT_ASYNCRT_DEVICEAFFINITY_H
-#define MLRT_ASYNCRT_DEVICEAFFINITY_H
+#ifndef MLRT_DRIVER_DEVICECONTEXT_DEVICEAFFINITY_H
+#define MLRT_DRIVER_DEVICECONTEXT_DEVICEAFFINITY_H
 
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Algorithms.h"
 
 #include <cstddef>
 
@@ -40,15 +40,15 @@ int taskIdForNonDevice(int taskId, size_t numWorkers);
 /// taskIdForDevice to compute the thread assignment from the cpuDevice's work
 /// queue parallelism level.
 template <typename... CaptureTys, typename ElementFn>
-static inline AsyncValueRef<Chain>
-launchDeviceCollective(CPUDevice &cpuDevice, size_t totalCount,
+static inline AsyncRT::AsyncValueRef<AsyncRT::Chain>
+launchDeviceCollective(AsyncRT::CPUDevice &cpuDevice, size_t totalCount,
                        ElementFn &&elementFn, CaptureTys &&...captures) {
-  WorkQueue *workQueue = cpuDevice.getWorkQueue();
+  AsyncRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
   auto taskIdFn = [workQueue](size_t deviceIdx) {
     return taskIdForDevice(static_cast<int>(deviceIdx),
                            workQueue->getParallelismLevel());
   };
-  return parallelForEachNChainWithTaskIds(
+  return AsyncRT::parallelForEachNChainWithTaskIds(
       cpuDevice, totalCount, taskIdFn, std::forward<ElementFn>(elementFn),
       std::forward<CaptureTys>(captures)...);
 }
@@ -58,21 +58,21 @@ launchDeviceCollective(CPUDevice &cpuDevice, size_t totalCount,
 /// with GPU command dispatch workers while still allowing parallel execution
 /// across the remaining pool of worker threads.
 template <typename... CaptureTys, typename ElementFn>
-static inline AsyncValueRef<Chain>
-launchNonDeviceCollective(CPUDevice &cpuDevice, size_t totalCount,
+static inline AsyncRT::AsyncValueRef<AsyncRT::Chain>
+launchNonDeviceCollective(AsyncRT::CPUDevice &cpuDevice, size_t totalCount,
                           ElementFn &&elementFn, size_t start = 0) {
-  WorkQueue *workQueue = cpuDevice.getWorkQueue();
+  AsyncRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
   size_t numWorkers = workQueue->getParallelismLevel();
 
   auto taskIdFn = [numWorkers](size_t i) -> int {
     return taskIdForNonDevice(static_cast<int>(i), numWorkers);
   };
 
-  return parallelForEachNChainWithTaskIds(cpuDevice, totalCount,
-                                          std::move(taskIdFn),
-                                          std::forward<ElementFn>(elementFn));
+  return AsyncRT::parallelForEachNChainWithTaskIds(
+      cpuDevice, totalCount, std::move(taskIdFn),
+      std::forward<ElementFn>(elementFn));
 }
 
 } // namespace M::MLRT
 
-#endif // MLRT_ASYNCRT_DEVICEAFFINITY_H
+#endif // MLRT_DRIVER_DEVICECONTEXT_DEVICEAFFINITY_H

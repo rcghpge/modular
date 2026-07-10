@@ -186,7 +186,7 @@ modular_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":Support",
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//SDK:HAL",
         "//Support:Base",
         "@llvm-project//llvm:Support",

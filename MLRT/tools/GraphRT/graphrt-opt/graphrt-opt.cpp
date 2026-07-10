@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
 #include "Init/Init.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "MLRT/GraphRT/InitAllDialects.h"
 #include "Support/Context.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -33,8 +33,9 @@ int main(int argc, char **argv) {
 
   // Create our context.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
-      "graphrt-opt", Init::Options().withCPUDeviceOptions(
-                         MLRT::CPUDeviceOptions().withLeakCheckedAllocator()));
+      "graphrt-opt",
+      Init::Options().withCPUDeviceOptions(
+          AsyncRT::CPUDeviceOptions().withLeakCheckedAllocator()));
   if (ctxOr.isError()) {
     llvm::errs() << "failed to create context: " << ctxOr.getError() << "\n";
     return 1;

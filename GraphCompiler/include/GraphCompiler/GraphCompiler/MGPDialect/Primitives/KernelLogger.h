@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -58,7 +58,7 @@ template <typename OperandContainer, typename LoggingPolicy>
 class KernelLogger {
 public:
   KernelLogger(llvm::StringRef kernelName, const OperandContainer &operands,
-               llvm::ArrayRef<MLRT::AnyAsyncValueRef> outResults,
+               llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults,
                llvm::raw_ostream &os = llvm::errs());
 
   ~KernelLogger();
@@ -73,7 +73,7 @@ private:
   uint64_t kernelId = 0;
   std::string kernelName;
   std::string deviceInfo;
-  llvm::ArrayRef<MLRT::AnyAsyncValueRef> outResults;
+  llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults;
   llvm::raw_ostream &outputStream;
 };
 

@@ -20,7 +20,7 @@
 #include <string>
 
 using namespace M::Driver;
-using namespace M::MLRT;
+using namespace M::AsyncRT;
 using M::ErrorOr;
 
 namespace {

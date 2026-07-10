@@ -10,6 +10,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 Tensor Tensor::createOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
                            std::optional<size_t> alignment) {

@@ -15,7 +15,7 @@
 
 namespace M::Driver {
 
-using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 // PTX for a simple vec_add kernel, used for compilation tests.
 static const char *vecAddPtx = R"PTX(

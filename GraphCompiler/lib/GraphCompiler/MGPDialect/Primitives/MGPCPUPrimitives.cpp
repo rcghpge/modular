@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/Support/Chain.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.h"
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
-#include "MLRT/AsyncRT/Support/Chain.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/Tensor.h"
@@ -26,6 +26,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 using namespace M::GML;
 using namespace M::MGP;
 

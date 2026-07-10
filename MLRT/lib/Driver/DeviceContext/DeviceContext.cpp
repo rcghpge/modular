@@ -9,10 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/AsyncRT/DeviceAffinity.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
@@ -276,14 +276,14 @@ MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
 MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   // Check if virtual device mode is enabled. If so, create a VirtualDevice
   // instead of a real hardware device.
-  if (MLRT::isVirtualDeviceMode() &&
+  if (AsyncRT::isVirtualDeviceMode() &&
       (api == gpuAPI || api == cudaAPI || api == hipAPI || api == metalAPI)) {
     // In virtual device mode, create a lightweight compilation device
     // that can generate code without requiring physical GPU hardware.
 
     // Get the configured API and target architecture from global config
-    std::string virtualAPI = MLRT::getVirtualDeviceAPI();
-    std::string targetArch = MLRT::getVirtualDeviceTargetArch();
+    std::string virtualAPI = AsyncRT::getVirtualDeviceAPI();
+    std::string targetArch = AsyncRT::getVirtualDeviceTargetArch();
 
     // Validate that both have been set
     if (virtualAPI.empty()) {
@@ -655,18 +655,18 @@ ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
 //
 
 void DeviceGraphCollection::setOutputs(
-    ArrayRef<MLRT::AnyAsyncValueRef> values) {
+    ArrayRef<AsyncRT::AnyAsyncValueRef> values) {
   ASSERT_STREAM(outputs.empty(), "DeviceGraphCollection already has values");
   outputs = llvm::map_to_vector(values, [](auto &ref) { return ref.copy(); });
 }
 
-ArrayRef<MLRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
+ArrayRef<AsyncRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
   return outputs;
 }
 
 ErrorOrSuccess DeviceGraphCollection::replay() const {
   for (const AsyncDeviceGraphRef &graph : graphs) {
-    if (auto err = MLRT::awaitOrError(graph))
+    if (auto err = AsyncRT::awaitOrError(graph))
       return err.takeError();
     if (auto err = (*graph)->replay())
       return err;
@@ -842,7 +842,7 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
   // Step 1: Validate graphs and begin tracing on all streams
   SmallVector<DeviceGraphCaptureContext> traceContexts;
   for (const AsyncDeviceGraphRef &graph : graphs) {
-    if (auto err = MLRT::awaitOrError(graph))
+    if (auto err = AsyncRT::awaitOrError(graph))
       return err.takeError();
     if (!(*graph)->hasCaptureStream())
       RETURN_ERROR("No capture stream stored for graph");
@@ -966,8 +966,8 @@ DeviceGraph::capture(CPUDevice &cpuDevice, ArrayRef<DeviceStreamRef> streams,
        results = std::move(producers)](size_t i) mutable {
         if (ErrorOrSuccess err = graphs[i]->instantiate()) {
           std::move(results[i])
-              .setToError(
-                  MLRT::UnknownLocationDecoder::getDiagnostic(err.takeError()));
+              .setToError(AsyncRT::UnknownLocationDecoder::getDiagnostic(
+                  err.takeError()));
         } else {
           std::move(results[i]).emplace(std::move(graphs[i]));
         }
@@ -1532,7 +1532,7 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   // In virtual device mode, return the virtual device count for GPU APIs.
   // This allows validation checks to pass even when requesting more GPUs
   // than are physically available.
-  int virtualCount = MLRT::getVirtualDeviceCount();
+  int virtualCount = AsyncRT::getVirtualDeviceCount();
   if (virtualCount > 0 && api == gpuAPI) {
     return virtualCount;
   }
@@ -1755,9 +1755,9 @@ MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
     // First check if we're in virtual device mode (cross-compilation).
     // Virtual device config is set at startup and takes precedence over
     // physical hardware detection.
-    std::string virtualTargetArch = MLRT::getVirtualDeviceTargetArch();
+    std::string virtualTargetArch = AsyncRT::getVirtualDeviceTargetArch();
     if (!virtualTargetArch.empty()) {
-      std::string virtualAPI = MLRT::getVirtualDeviceAPI();
+      std::string virtualAPI = AsyncRT::getVirtualDeviceAPI();
       return (llvm::Twine(apiToVendorPrefix(virtualAPI)) + ":" +
               virtualTargetArch)
           .str();

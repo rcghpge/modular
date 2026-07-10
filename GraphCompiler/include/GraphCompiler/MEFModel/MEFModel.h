@@ -11,13 +11,13 @@
 #ifndef GENERICML_MEFMODEL_MEFMODEL_H
 #define GENERICML_MEFMODEL_MEFMODEL_H
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Support/Diagnostic.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "GraphCompiler/DeviceDriver/Driver.h"
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "Kernels/WeightsRegistry.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
-#include "MLRT/AsyncRT/Support/Diagnostic.h"
-#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/DebugPrint.h"
@@ -220,7 +220,7 @@ public:
   /// `deviceMap` maps the `DeviceRef`s used in model compilation (e.g. to
   /// annotate location of Tensors) to cpuDevice Device handles which can be
   /// used to interface with the Device (e.g. to allocate device memory).
-  MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
+  AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
   setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry = {},
         const M::GraphCompiler::Driver::DeviceMap &deviceMap =
             M::GraphCompiler::Driver::DeviceMap()) const;
@@ -291,7 +291,8 @@ private:
   SmallVector<DeviceRef> devices;
   SmallVector<DeviceRef> inputDevices;
   SmallVector<DeviceRef> outputDevices;
-  EncodedLocation location = MLRT::UnknownLocationDecoder::getEncodedLocation();
+  EncodedLocation location =
+      AsyncRT::UnknownLocationDecoder::getEncodedLocation();
 
   /// The model's signature.
   SmallVector<QuantTensorSpec> inputSpecs;

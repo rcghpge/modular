@@ -12,10 +12,10 @@ modular_cc_binary(
     name = "mef-executor",
     srcs = glob(["*.cpp"]),
     deps = [
+        "//AsyncRT:CompilerSupport",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:RuntimeGlobals",
         "//Init",
-        "//MLRT:AsyncRT/CompilerSupport",
-        "//MLRT:AsyncRT/Runtime",
-        "//MLRT:AsyncRT/RuntimeGlobals",
         "//MLRT:GraphRT/GRTRuntime",
         "//MLRT:GraphRT/MEFExecutor",
         "//MLRT:GraphRT/Primitives",

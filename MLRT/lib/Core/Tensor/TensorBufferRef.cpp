@@ -6,12 +6,13 @@
 
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "llvm/Support/Format.h"
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {

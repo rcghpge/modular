@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
-#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/HostSystem.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
@@ -24,19 +24,20 @@ namespace {
 
 class KernelLoggerTest : public ::testing::Test {
 protected:
-  MLRT::CPUDeviceRef cpuDevice;
+  AsyncRT::CPUDeviceRef cpuDevice;
 
   void SetUp() override {
-    cpuDevice = MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
-                                           MLRT::CPUDeviceOptions().forDebug());
+    cpuDevice = AsyncRT::getOrCreateCPUDevice(
+        AsyncRT::CPUDeviceSource::Test, AsyncRT::CPUDeviceOptions().forDebug());
   }
 };
 
 TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
   // Create empty operands and results for basic testing
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
+  results.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -58,9 +59,10 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
 }
 
 TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
+  results.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -83,9 +85,10 @@ TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
 }
 
 TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
+  results.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -108,11 +111,13 @@ TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
 }
 
 TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results1;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results2;
-  results1.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
-  results2.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 43));
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results1;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results2;
+  results1.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  results2.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 43));
 
   // Capture log output
   std::string logOutput;
@@ -151,9 +156,10 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
 }
 
 TEST_F(KernelLoggerTest, LogsCorrectKernelAndDeviceInfo) {
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
+  results.push_back(
+      AsyncRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;

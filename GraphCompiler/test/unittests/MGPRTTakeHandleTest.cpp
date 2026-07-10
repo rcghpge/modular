@@ -16,7 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/unittests/Driver/TestUtils.h"
@@ -27,6 +27,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 namespace {
 

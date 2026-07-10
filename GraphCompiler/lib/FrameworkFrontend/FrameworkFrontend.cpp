@@ -5,6 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/FrameworkFrontend.h"
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "Config/Version.h"
@@ -26,9 +29,6 @@
 #include "GraphCompiler/MEFCacheKey.h"
 #include "GraphCompiler/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/Configuration.h"
 #include "Support/DeviceSpecs.h"
@@ -51,7 +51,7 @@
 #include <utility>
 
 using namespace M;
-using namespace M::MLRT;
+using namespace M::AsyncRT;
 using namespace M::MOF;
 
 namespace {

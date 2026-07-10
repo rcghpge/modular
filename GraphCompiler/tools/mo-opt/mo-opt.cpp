@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphCompiler/GraphCompiler/GraphCompiler.h"
 #include "Init/Init.h"
 #include "KGEN/Support/CompilerProfiling.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/Context.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   // Create our context.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
       "mo-opt", Init::Options().withCPUDeviceOptions(
-                    MLRT::CPUDeviceOptions().withLeakCheckedAllocator()));
+                    AsyncRT::CPUDeviceOptions().withLeakCheckedAllocator()));
   if (ctxOr.isError()) {
     llvm::errs() << "failed to create context: " << ctxOr.getError() << "\n";
     return 1;

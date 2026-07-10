@@ -7,9 +7,9 @@
 #ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER_H
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER_H
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GraphCompiler/DeviceDriver/Utils.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
@@ -190,7 +190,7 @@ inline std::string formatTarget(const DeviceSpec &deviceSpec) {
 /// the DeviceContext in this case. This will be an error in the future once we
 /// can create the DeviceContext from cpp (if it has not been supplied by the
 /// mojo impl of the MAX driver).
-MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<MLRT::AnyAsyncValueRef>>
+MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
 mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                        const DeviceMap &deviceMap, CPUDevice &cpuDevice);
 

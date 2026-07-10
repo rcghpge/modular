@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/HostSystem.h"
 #include "DeviceGraphTestUtils.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
@@ -75,11 +75,11 @@ static bool supportsKernelReflection(const DeviceContext &ctx) {
 class GraphCaptureTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    runtime_ = M::MLRT::getOrCreateCPUDevice(
-        M::MLRT::CPUDeviceSource::Test,
-        M::MLRT::CPUDeviceOptions().withMainWillNotDonate());
+    runtime_ = M::AsyncRT::getOrCreateCPUDevice(
+        M::AsyncRT::CPUDeviceSource::Test,
+        M::AsyncRT::CPUDeviceOptions().withMainWillNotDonate());
   }
-  M::MLRT::CPUDeviceRef runtime_;
+  M::AsyncRT::CPUDeviceRef runtime_;
 };
 
 TEST_F(GraphCaptureTest, BeginAndEndCapture) {

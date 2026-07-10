@@ -7,8 +7,8 @@
 #ifndef MLRT_CORE_TENSOR_TENSORBUFFERREF_H
 #define MLRT_CORE_TENSOR_TENSORBUFFERREF_H
 
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/CompactCPUDevicePtr.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/CompactCPUDevicePtr.h"
 #include "Support/Profiling/TimeProfiler.h"
 
 #include "llvm/Support/Alignment.h"
@@ -22,12 +22,12 @@ namespace M::MLRT {
 struct OwnedMemoryBlock {
   OwnedMemoryBlock() = default;
   OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                   CompactCPUDevicePtr rt, void *takePtr = nullptr);
+                   AsyncRT::CompactCPUDevicePtr rt, void *takePtr = nullptr);
   ~OwnedMemoryBlock();
   void *data;
   size_t size;
 
-  CompactCPUDevicePtr cpuDevice;
+  AsyncRT::CompactCPUDevicePtr cpuDevice;
 };
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
@@ -63,10 +63,10 @@ public:
   /// shared between other buffer refs will last as long as any use is alive.
   /// The storage handle must deallocate `buffer` on its destruction.
   static TensorBufferRef create(void *buffer, size_t size,
-                                AnyAsyncValueRef storageHandle,
+                                AsyncRT::AnyAsyncValueRef storageHandle,
                                 std::optional<size_t> alignment);
   static TensorBufferRef create(void *buffer, size_t size,
-                                AnyAsyncValueRef storageHandle,
+                                AsyncRT::AnyAsyncValueRef storageHandle,
                                 llvm::MaybeAlign alignment = std::nullopt);
 
   /// Create a buffer ref which does not track its memory and will not free the
@@ -77,7 +77,8 @@ public:
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static TensorBufferRef createOwned(CompactCPUDevicePtr cpuDevice, size_t size,
+  static TensorBufferRef createOwned(AsyncRT::CompactCPUDevicePtr cpuDevice,
+                                     size_t size,
                                      std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
@@ -85,8 +86,8 @@ public:
   /// allocated buffer will be freed by TensorBufferRef when the reference is
   /// destroyed. Since the ownership lies with TensorBufferRef, caller should
   /// not free anything that has been taken by TensorBufferRef.
-  static TensorBufferRef take(CompactCPUDevicePtr cpuDevice, size_t size,
-                              void *takeFrom);
+  static TensorBufferRef take(AsyncRT::CompactCPUDevicePtr cpuDevice,
+                              size_t size, void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a TensorBufferRef.
   //===--------------------------------------------------------------------===//
@@ -115,14 +116,14 @@ public:
   size_t getSize() const { return size; }
 
   /// If the buffer is owning return the memory block which owns the memory.
-  AnyAsyncValueRef getMemStorageHandle() {
+  AsyncRT::AnyAsyncValueRef getMemStorageHandle() {
     if (!storageRef)
       return {};
     return storageRef.copy();
   }
 
   /// If the buffer is owning return the memory block which owns the memory.
-  AnyAsyncValueRef *getMemStorageHandleRef() {
+  AsyncRT::AnyAsyncValueRef *getMemStorageHandleRef() {
     if (!storageRef)
       return nullptr;
     return &storageRef;
@@ -133,7 +134,8 @@ public:
 
 private:
   /// Constructs a kOwned or kBorrowed reference.
-  TensorBufferRef(void *buffer, size_t size, AnyAsyncValueRef storageRef,
+  TensorBufferRef(void *buffer, size_t size,
+                  AsyncRT::AnyAsyncValueRef storageRef,
                   llvm::MaybeAlign alignment,
                   BufferRefLifetimeProfilerEntry profilerEntry)
       : data(buffer), size(size), storageRef(std::move(storageRef)),
@@ -154,7 +156,7 @@ private:
   size_t size = 0;
 
   /// Tracks the storage object which preserves the lifetime of data.
-  AnyAsyncValueRef storageRef;
+  AsyncRT::AnyAsyncValueRef storageRef;
 
   BufferRefLifetimeProfilerEntry profilerEntry;
 };

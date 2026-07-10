@@ -34,8 +34,8 @@ modular_cc_test(
     ],
     tags = ["manual"],
     deps = [
-        "//MLRT:AsyncRT/Runtime",
-        "//MLRT:AsyncRT/RuntimeGlobals",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:RuntimeGlobals",
         "//MLRT:GraphRT/GRTRuntime",
         "//MLRT:GraphRT/MEFExecutor",
         "//MLRT:GraphRT/Primitives",

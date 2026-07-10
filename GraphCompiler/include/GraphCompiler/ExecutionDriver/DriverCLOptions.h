@@ -7,9 +7,9 @@
 #ifndef GENERICML_EXECUTIONDRIVER_DRIVERCLOPTIONS_H
 #define GENERICML_EXECUTIONDRIVER_DRIVERCLOPTIONS_H
 
+#include "AsyncRT/Runtime/RuntimeCLOptions.h"
 #include "GraphCompiler/CommonDriver/DriverInputFormat.h"
 #include "GraphCompiler/ExecutionDriver/ExecutionDriver.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeCLOptions.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorSpec.h"
@@ -67,7 +67,7 @@ private:
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverOptions : public MLRT::CPUDeviceOptions,
+class ExecutorDriverOptions : public AsyncRT::CPUDeviceOptions,
                               public CommonOptions {
 
 public:
@@ -116,7 +116,7 @@ public:
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverCLOptions : public MLRT::RuntimeCLOptions,
+class ExecutorDriverCLOptions : public AsyncRT::RuntimeCLOptions,
                                 public CommonCLOptions {
 public:
   ExecutorDriverOptions &options;

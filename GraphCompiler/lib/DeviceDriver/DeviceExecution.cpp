@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/DeviceDriver/DeviceExecution.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Algorithms.h"
 
 using M::AnyAsyncValueRef;
 using M::ErrorOr;
@@ -59,7 +59,7 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
     return memory;
   }
 
-  MLRT::await(storageRef);
+  AsyncRT::await(storageRef);
 
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()]() mutable {

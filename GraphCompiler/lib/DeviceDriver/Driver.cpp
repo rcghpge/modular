@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/DeviceDriver/Driver.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GraphCompiler/DeviceDriver/Utils.h"
-#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/AssertStream.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
@@ -245,7 +245,7 @@ Device::createDeviceMemory(void *data, const TensorSpec &spec,
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
-ErrorOr<llvm::SmallVector<MLRT::AnyAsyncValueRef>>
+ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
 M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     const ArrayRef<DeviceRef> deviceRefs, const DeviceMap &deviceMap,
     CPUDevice &cpuDevice) {
@@ -260,7 +260,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     }
   }
 
-  llvm::SmallVector<MLRT::AnyAsyncValueRef> deviceContexts;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
     // CPU device not explicitly set so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {

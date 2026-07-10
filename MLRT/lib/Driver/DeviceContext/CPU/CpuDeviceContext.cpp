@@ -10,11 +10,11 @@
 
 #include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/Globals/Globals.h"
+#include "AsyncRT/Runtime/HostSystem.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
@@ -84,12 +84,12 @@ int CpuDevice::deviceCount() const {
 
 ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize, bool isHost) {
   assert(byteSize != 0);
-  *ptr = M::MLRT::TCMallocGlobals::tc_new(1, byteSize);
+  *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
   return success();
 }
 
 ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) {
-  M::MLRT::TCMallocGlobals::tc_delete(ptr);
+  M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
   return success();
 }
 
@@ -201,8 +201,9 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== CpuDeviceEvent ===== //
-CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, MLRT::CPUDeviceRef cpuDevice,
-                               MLRT::AnyAsyncValueRef value)
+CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device,
+                               AsyncRT::CPUDeviceRef cpuDevice,
+                               AsyncRT::AnyAsyncValueRef value)
     : DeviceEvent(device), cpuDevice(std::move(cpuDevice)),
       value(std::move(value)) {}
 
@@ -222,9 +223,9 @@ CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
   // are set. This is safe as the other cpuDevice users are guaranteeing they
   // will wait on the main thread to progress work. Otherwise CpuDeviceContext
   // is invariant to the cpuDevice options, so this is safe.
-  cpuDevice = MLRT::getOrCreateCPUDevice(
-      MLRT::CPUDeviceSource::CPUDeviceContext,
-      MLRT::CPUDeviceOptions().withMainWillNotDonate(),
+  cpuDevice = AsyncRT::getOrCreateCPUDevice(
+      AsyncRT::CPUDeviceSource::CPUDeviceContext,
+      AsyncRT::CPUDeviceOptions().withMainWillNotDonate(),
       /*allowUsingExistingOptions=*/true);
 
   streamChain = cpuDevice->getReadyChain().copy();
@@ -264,10 +265,11 @@ void *CpuDeviceContext::driverContext() const { return nullptr; }
 // Enqueue work with stream-like semantics. Keep a chain to the last enqueued
 // function so the next task can await it.
 // Returns any pending error from previously enqueued async work.
-ErrorOrSuccess CpuDeviceContext::enqueueWork(MLRT::TaskFunction &&work) {
+ErrorOrSuccess CpuDeviceContext::enqueueWork(AsyncRT::TaskFunction &&work) {
   RETURN_IF_PENDING_ERROR(*this);
 
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
+  auto eventChain =
+      AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*cpuDevice);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
   streamChain.andThenAsync(
@@ -429,7 +431,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueHostFunctionRange(
     return success();
 
   size_t numWorkers = cpuDevice->getWorkQueue()->getParallelismLevel();
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
+  auto eventChain =
+      AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*cpuDevice);
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
 
   // When the current streamChain is ready, fan out all coroutine handles
@@ -444,7 +447,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueHostFunctionRange(
                                coroHandles,
                                coroHandles + numHandles)]() mutable {
     size_t count = handles.size();
-    auto completionChain = MLRT::parallelForEachNChainWithTaskIds(
+    auto completionChain = AsyncRT::parallelForEachNChainWithTaskIds(
         *cpuDevice, count,
         [numWorkers](size_t i) -> int {
           return static_cast<int>(i % numWorkers);
@@ -478,7 +481,7 @@ CpuDeviceContext::createExternalStream(void *externalStream) {
 ErrorOrSuccess CpuDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   RETURN_IF_PENDING_ERROR(*this);
-  MLRT::AnyAsyncValueRef head;
+  AsyncRT::AnyAsyncValueRef head;
   {
     std::lock_guard<std::mutex> streamLock{streamChainMutex};
     head = streamChain.copy();
@@ -516,10 +519,11 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &cpuEvent = static_cast<CpuDeviceEvent &>(event);
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
+  auto eventChain =
+      AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*cpuDevice);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
-  MLRT::andThenAsync(
+  AsyncRT::andThenAsync(
       std::make_tuple(streamChain.copy(), cpuEvent.asyncValue().copy()),
       [eventChain = eventChain.copy()](auto, auto) mutable {
         std::move(eventChain).emplace();
@@ -533,11 +537,12 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &other = static_cast<CpuDeviceContext &>(ctx);
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
+  auto eventChain =
+      AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*cpuDevice);
 
   std::scoped_lock<std::mutex, std::mutex> lock{streamChainMutex,
                                                 other.streamChainMutex};
-  MLRT::andThenAsync(
+  AsyncRT::andThenAsync(
       std::make_tuple(streamChain.copy(), other.streamChain.copy()),
       [eventChain = eventChain.copy()](auto, auto) mutable {
         std::move(eventChain).emplace();

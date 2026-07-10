@@ -5,6 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MEFModel/MEFModel.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "GraphCompiler/DeviceDriver/DeviceExecution.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.h"
 #include "GraphCompiler/Support/FormatYAML.h"
@@ -13,12 +16,9 @@
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "GraphCompiler/Support/Value.h"
-#include "MLRT/AsyncRT/DeviceAffinity.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/Tensor.h"
+#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
@@ -41,6 +41,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 static SmallVector<QuantTensorSpec>
 getSpecsAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
@@ -67,7 +68,7 @@ getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
 
 Model::Model(const ModelSpec &spec)
     : name(spec.name),
-      location(MLRT::UnknownLocationDecoder::getEncodedLocation()) {
+      location(AsyncRT::UnknownLocationDecoder::getEncodedLocation()) {
   auto inputSpecs = getSpecsAsVector(spec.inputs);
   auto outputSpecs = getSpecsAsVector(spec.outputs);
   auto inputNames = getNamesAsVector(spec.inputs);
@@ -173,7 +174,7 @@ ensureStreamCountForDevices(ArrayRef<AnyAsyncValueRef> deviceContextArgs,
   return success();
 }
 
-MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
+AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
              const M::GraphCompiler::Driver::DeviceMap &deviceMap) const {
   checkUniqueCPUDevice(cpuDevice);
@@ -190,7 +191,7 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
   auto deviceContextsOr = GraphCompiler::Driver::mapDeviceRefsToDevices(
       getDevices(), deviceMap, cpuDevice);
   if (deviceContextsOr.isError())
-    return MLRT::EncodedDiagnostic(
+    return AsyncRT::EncodedDiagnostic(
         Twine("setup for model ") + getName() +
             " failed to map DeviceRefs to Devices: " +
             Twine(deviceContextsOr.getError()),
@@ -206,7 +207,7 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
   ErrorOrSuccess streamError = ensureStreamCountForDevices(
       llvm::ArrayRef(initArgs).take_back(getDevices().size()), streamCount);
   if (streamError.isError())
-    return MLRT::EncodedDiagnostic(
+    return AsyncRT::EncodedDiagnostic(
         Twine("setup for model ") + getName() +
             " failed to create device streams: " + streamError.getError(),
         location.copy());
@@ -217,7 +218,7 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
   for (AnyAsyncValueRef &result : results) {
     if (result.isError()) {
       auto diagnostic = result.takeDiagnostic();
-      return MLRT::EncodedDiagnostic(
+      return AsyncRT::EncodedDiagnostic(
           Twine("setup for model ") + getName() +
               " returned error: " + std::string(diagnostic.getMessage().get()),
           diagnostic.getLocation().copy());
@@ -378,14 +379,14 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
 
   // Set the thread local singleton cpuDevice to the provided cpuDevice. This is
   // referenced internally by some kernels.
-  MLRT::CompactCPUDevicePtr::setCurrentCPUDevice(getCPUDevice());
+  AsyncRT::CompactCPUDevicePtr::setCurrentCPUDevice(getCPUDevice());
 
   return getModel()->getExecuteFn()->invoke(passedArgs, getCPUDevice());
 }
 
 ErrorOrSuccess ExecutableModel::waitForModelSetup() {
-  MLRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
-  MLRT::await(extraArgs);
+  AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
+  AsyncRT::await(extraArgs);
   if (chain.isError())
     return Error(chain.takeDiagnostic().getMessage().get());
   if (mgpContext.isError())
@@ -489,7 +490,7 @@ static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys) {
 // This keeps capture/replay tied to the same cpuDevice devices as execution.
 static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
 captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
-  if (auto err = MLRT::awaitOrError(extraArgs))
+  if (auto err = AsyncRT::awaitOrError(extraArgs))
     return err.takeError();
 
   SmallVector<Driver::DeviceStreamRef> results;
@@ -532,7 +533,7 @@ ExecutableModel::executeWithDeviceMemoryInputs(
   }
 
   SmallVector<AnyAsyncValueRef> results = execute(inputValues);
-  if (auto err = MLRT::awaitOrError(results))
+  if (auto err = AsyncRT::awaitOrError(results))
     return err.takeError();
 
   return results;
@@ -599,7 +600,7 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
   // Await the error, but don't propagate yet.
   // We want to ensure the capture results are materialized before extracting
   // the captured graphs, even if an error was present.
-  ErrorOrSuccess err = MLRT::awaitOrError(graphResults);
+  ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
 
   if (err.isError())
     return err.takeError();
@@ -687,7 +688,7 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
 
     const CapturedPerDeviceGraphEntry &entry = it->second;
 
-    if (ErrorOrSuccess err = MLRT::awaitOrError(entry.graph)) {
+    if (ErrorOrSuccess err = AsyncRT::awaitOrError(entry.graph)) {
       errors[deviceIdx] = err.takeError();
       return;
     }
@@ -704,7 +705,7 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
   } else {
     auto readyChain = MLRT::launchDeviceCollective(
         cpuDevice, normalizedKeys.size(), std::move(launchGraph));
-    MLRT::await(readyChain);
+    AsyncRT::await(readyChain);
   }
 
   for (ErrorOrSuccess &err : errors) {
@@ -784,7 +785,7 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
 ErrorOrSuccess ExecutableModel::awaitDeviceGraphs() {
   for (auto &deviceMap : perDeviceGraphs) {
     for (auto &[key, entry] : deviceMap) {
-      if (ErrorOrSuccess err = MLRT::awaitOrError(entry.graph))
+      if (ErrorOrSuccess err = AsyncRT::awaitOrError(entry.graph))
         return err.takeError();
     }
   }
@@ -841,7 +842,7 @@ ExecutableModel::processResultForBinaryOutput(const AnyAsyncValueRef &result,
 
     results.insertTensor(sanitizedName, tensor);
   } else {
-    ErrorOr<MLRT::AnyAsyncValueRef> outOrError =
+    ErrorOr<AsyncRT::AnyAsyncValueRef> outOrError =
         M::getResultForBinaryOutput(result, results);
     if (outOrError.isError())
       results.insertResultInfo(

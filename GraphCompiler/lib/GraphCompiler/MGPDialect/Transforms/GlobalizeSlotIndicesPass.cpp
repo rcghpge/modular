@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPBufferLifetimeAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "KGEN/TransformUtils/CallGraphUtils.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
-#include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -125,8 +125,8 @@ struct GlobalizeSlotIndicesPass
     if (models.empty() || llvm::hasSingleElement(models))
       return;
 
-    MLRT::CPUDevice &cpuDevice =
-        *loadContext(&getContext())->get<MLRT::CPUDevice>();
+    AsyncRT::CPUDevice &cpuDevice =
+        *loadContext(&getContext())->get<AsyncRT::CPUDevice>();
 
     SymbolTable symtab(moduleOp);
 

@@ -12,7 +12,7 @@
 #ifndef GENERICML_EXECUTIONDRIVER_EXECUTIONDRIVER_H
 #define GENERICML_EXECUTIONDRIVER_EXECUTIONDRIVER_H
 
-#include "MLRT/AsyncRT/ForwardDecls.h"
+#include "AsyncRT/ForwardDecls.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/Profiling/TimeProfiler.h"
@@ -61,7 +61,7 @@ inline bool isSet(TensorGeneratorFlag a, TensorGeneratorFlag b) {
 std::optional<TensorGeneratorFlag> symbolizeTensorGeneratorFlag(StringRef s);
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult runModel(const Model *model, MLRT::CPUDevice &cpuDevice,
+LogicalResult runModel(const Model *model, AsyncRT::CPUDevice &cpuDevice,
                        const ExecutorDriverOptions &options);
 
 } // namespace M

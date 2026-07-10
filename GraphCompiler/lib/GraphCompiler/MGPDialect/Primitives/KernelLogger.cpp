@@ -54,7 +54,7 @@ llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts(const OperandContainer &operands) {
   llvm::SmallVector<M::Driver::DeviceContextRef> deviceContexts;
 
-  for (const M::MLRT::AnyAsyncValueRef &operand : operands) {
+  for (const M::AsyncRT::AnyAsyncValueRef &operand : operands) {
     if (auto deviceCtxRef =
             llvm::dyn_cast<M::Driver::DeviceContextRef>(operand)) {
       deviceContexts.push_back(*deviceCtxRef);
@@ -97,20 +97,20 @@ std::string getDeviceInfoString(const OperandContainer &operands) {
 
 // Explicit template instantiations for common operand container types
 template llvm::SmallVector<M::Driver::DeviceContextRef>
-extractDeviceContexts<llvm::ArrayRef<M::MLRT::AnyAsyncValueRef>>(
-    const llvm::ArrayRef<M::MLRT::AnyAsyncValueRef> &operands);
+extractDeviceContexts<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>>(
+    const llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef> &operands);
 
 template std::string
-getDeviceInfoString<llvm::ArrayRef<M::MLRT::AnyAsyncValueRef>>(
-    const llvm::ArrayRef<M::MLRT::AnyAsyncValueRef> &operands);
+getDeviceInfoString<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>>(
+    const llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef> &operands);
 
 template llvm::SmallVector<M::Driver::DeviceContextRef>
-extractDeviceContexts<llvm::SmallVector<M::MLRT::AnyAsyncValueRef>>(
-    const llvm::SmallVector<M::MLRT::AnyAsyncValueRef> &operands);
+extractDeviceContexts<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>>(
+    const llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef> &operands);
 
 template std::string
-getDeviceInfoString<llvm::SmallVector<M::MLRT::AnyAsyncValueRef>>(
-    const llvm::SmallVector<M::MLRT::AnyAsyncValueRef> &operands);
+getDeviceInfoString<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>>(
+    const llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef> &operands);
 
 template llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts<M::RemainingArguments>(
@@ -123,7 +123,7 @@ template std::string getDeviceInfoString<M::RemainingArguments>(
 template <typename OperandContainer, typename LoggingPolicy>
 KernelLogger<OperandContainer, LoggingPolicy>::KernelLogger(
     llvm::StringRef kernelName, const OperandContainer &operands,
-    llvm::ArrayRef<MLRT::AnyAsyncValueRef> outResults, llvm::raw_ostream &os)
+    llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults, llvm::raw_ostream &os)
     : outResults(outResults), outputStream(os) {
   this->kernelId = generateKernelId();
   this->kernelName = kernelName.str();
@@ -136,7 +136,7 @@ KernelLogger<OperandContainer, LoggingPolicy>::KernelLogger(
 template <typename OperandContainer, typename LoggingPolicy>
 KernelLogger<OperandContainer, LoggingPolicy>::~KernelLogger() {
   double timestampMs = getRelativeTimestampMs();
-  if (llvm::any_of(outResults, [](const MLRT::AnyAsyncValueRef &result) {
+  if (llvm::any_of(outResults, [](const AsyncRT::AnyAsyncValueRef &result) {
         return result.isError();
       })) {
     logKernelEvent(LoggingPolicy::errorEvent(), kernelName, deviceInfo,
@@ -148,13 +148,13 @@ KernelLogger<OperandContainer, LoggingPolicy>::~KernelLogger() {
 }
 
 // Explicit template instantiations for common types
-template class KernelLogger<llvm::ArrayRef<M::MLRT::AnyAsyncValueRef>,
+template class KernelLogger<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>,
                             SyncLoggingPolicy>;
-template class KernelLogger<llvm::ArrayRef<M::MLRT::AnyAsyncValueRef>,
+template class KernelLogger<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>,
                             AsyncLoggingPolicy>;
-template class KernelLogger<llvm::SmallVector<M::MLRT::AnyAsyncValueRef>,
+template class KernelLogger<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>,
                             SyncLoggingPolicy>;
-template class KernelLogger<llvm::SmallVector<M::MLRT::AnyAsyncValueRef>,
+template class KernelLogger<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>,
                             AsyncLoggingPolicy>;
 template class KernelLogger<M::RemainingArguments, SyncLoggingPolicy>;
 template class KernelLogger<M::RemainingArguments, AsyncLoggingPolicy>;

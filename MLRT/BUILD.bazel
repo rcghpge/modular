@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
@@ -30,26 +29,6 @@ pkg_files(
     prefix = "MLRT/GraphRT/docs",
 )
 
-bool_flag(
-    name = "worker_stats",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "worker_stats_setting",
-    flag_values = {":worker_stats": "true"},
-)
-
-bool_flag(
-    name = "alloc_logging",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "alloc_logging_setting",
-    flag_values = {":alloc_logging": "true"},
-)
-
 # Core targets
 
 modular_cc_library(
@@ -57,7 +36,7 @@ modular_cc_library(
     srcs = glob(["lib/Core/*.cpp"]),
     hdrs = glob(["include/MLRT/Core/*.h"]),
     deps = [
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//Support:Base",
     ],
 )
@@ -88,122 +67,12 @@ modular_cc_library(
     srcs = glob(["lib/Core/Tensor/*.cpp"]),
     hdrs = glob(["include/MLRT/Core/Tensor/*.h"]),
     deps = [
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//Support:ADT",
         "//Support:Base",
         "//Support:ML",
         "//Support:Profiling",
         "//Support:TypeID",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-# AsyncRT targets
-
-modular_cc_library(
-    name = "AsyncRT/DeviceAffinity",
-    srcs = ["lib/AsyncRT/DeviceAffinity.cpp"],
-    hdrs = ["include/MLRT/AsyncRT/DeviceAffinity.h"],
-    visibility = ["//MLRT:consumers"],
-    deps = [
-        ":AsyncRT/Runtime",
-        ":Driver/DeviceContextAPI",
-        "//Support:Base",
-        "//Support:Configuration",
-        "//Support:Threading",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/CompilerSupport",
-    srcs = glob(["lib/AsyncRT/CompilerSupport/*.cpp"]),
-    hdrs = glob(["include/MLRT/AsyncRT/CompilerSupport/*.h"]),
-    deps = [
-        ":AsyncRT/Runtime",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//Support:Context",
-        "//Support:MDialect",
-        "//Support:Threading",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/Runtime",
-    srcs = glob(["lib/AsyncRT/Runtime/*.cpp"]),
-    hdrs = glob([
-        "include/MLRT/AsyncRT/Runtime/Globals/*.h",
-        "include/MLRT/AsyncRT/Runtime/*.h",
-    ]) + [
-        "include/MLRT/AsyncRT/ForwardDecls.h",
-    ],
-    local_defines = select({
-        ":worker_stats_setting": ["ASYNCRT_WORKER_STATS=1"],
-        "//conditions:default": ["ASYNCRT_WORKER_STATS=0"],
-    }) + select({
-        ":alloc_logging_setting": ["MODULAR_ALLOC_LOGGING=1"],
-        "//conditions:default": ["MODULAR_ALLOC_LOGGING=0"],
-    }),
-    visibility = ["//MLRT:consumers"],
-    deps = [
-        ":AsyncRT/RuntimeGlobals",
-        ":AsyncRT/Support",
-        "//Support:ADT",
-        "//Support:Base",
-        "//Support:ConcurrentAppendingVector",
-        "//Support:Configuration",
-        "//Support:Log",
-        "//Support:MArchTargetMinimal",
-        "//Support:Profiling",
-        "//Support:SymbolExport",
-        "//Support:Threading",
-        "//Support:TypeID",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_shared_library(
-    name = "AsyncRT/RuntimeGlobals",
-    srcs = glob(["lib/AsyncRT/Runtime/Globals/*.cpp"]),
-    hdrs = glob([
-        "include/MLRT/AsyncRT/Runtime/Globals/*.h",
-        "include/MLRT/AsyncRT/Runtime/*.h",
-    ]) + [
-        "include/MLRT/AsyncRT/ForwardDecls.h",
-    ],
-    output_name = "AsyncRTRuntimeGlobals",
-    visibility = ["//MLRT:consumers"],
-    deps = [
-        ":AsyncRT/Support",
-        "//Support:ADT",
-        "//Support:Base",
-        "//Support:BinaryID",
-        "//Support:ConcurrentAppendingVector",
-        "//Support:Configuration",
-        "//Support:MArchTargetMinimal",
-        "//Support:Profiling",
-        "//Support:SymbolExport",
-        "//Support:Threading",
-        "//Support:TypeID",
-        "//bazel/third-party:tcmalloc_numa_aware",
-        "//bazel/third-party:tcmalloc_want_numa_aware",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/Support",
-    srcs = glob(["lib/AsyncRT/Support/*.cpp"]),
-    hdrs = glob(["include/MLRT/AsyncRT/Support/*.h"]),
-    visibility = ["//MLRT:consumers"],
-    deps = [
-        "//Support:Base",
-        "//Support:MArchTarget",
-        "//Support:MArchTargetMinimal",
-        "//Support:Threading",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -512,8 +381,8 @@ modular_cc_library(
     hdrs = ["include/MLRT/GraphRT/GRTTestcase.h"],
     deps = [
         ":GraphRT/MEFExecutor",
-        "//MLRT:AsyncRT/Runtime",
-        "//MLRT:AsyncRT/Support",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:Support",
         "//Support:Base",
         "//Support:MicroBenchmark",
         "@llvm-project//llvm:Support",
@@ -539,8 +408,8 @@ modular_cc_library(
     textual_hdrs = glob(["lib/GraphRT/MEFExecutor/*.h"]),
     deps = [
         ":GraphRT/MEF",
-        "//MLRT:AsyncRT/Runtime",
-        "//MLRT:AsyncRT/Support",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:Support",
         "//Support:ADT",
         "//Support:Base",
         "//Support:ML",
@@ -555,7 +424,7 @@ modular_cc_library(
     hdrs = ["include/MLRT/GraphRT/Primitives.h"],
     deps = [
         ":GraphRT/MEFExecutor",
-        "//MLRT:AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//Support:ML",
         "//Support:MicroBenchmark",
         "//Support:Threading",
@@ -575,6 +444,26 @@ modular_cc_library(
 
 # Driver targets
 
+# Shared device-to-worker affinity logic used by both the graph compiler
+# (MGPPrimitives) and the Mojo cpuDevice (via CompilerRT). Lives in the Driver
+# layer (rather than AsyncRT) because it depends on Driver/DeviceContextAPI, so
+# that //AsyncRT stays a clean leaf with no edge back into the Driver code.
+modular_cc_library(
+    name = "Driver/DeviceAffinity",
+    srcs = ["lib/Driver/DeviceContext/DeviceAffinity.cpp"],
+    hdrs = ["include/MLRT/Driver/DeviceContext/DeviceAffinity.h"],
+    includes = ["include"],
+    visibility = ["//MLRT:consumers"],
+    deps = [
+        ":Driver/DeviceContextAPI",
+        "//AsyncRT:Runtime",
+        "//Support:Base",
+        "//Support:Configuration",
+        "//Support:Threading",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 # Header-only target for DeviceContext/CompilationDevice interfaces.
 # Broken out so that //Target:DriverPlugin can depend on these headers
 # without creating a circular dependency with Driver/DeviceContextImpl.
@@ -589,7 +478,7 @@ modular_cc_library(
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
-        ":AsyncRT/Runtime",
+        "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Configuration",
@@ -611,9 +500,9 @@ modular_shared_library(
     ],
     output_name = "AsyncRTMojoBindings",
     deps = [
-        ":AsyncRT/DeviceAffinity",
-        ":AsyncRT/Runtime",
+        ":Driver/DeviceAffinity",
         ":Driver/DeviceContextImpl",
+        "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Buffer",
@@ -684,17 +573,18 @@ modular_cc_library(
         "//conditions:default": [],
     }),
     visibility = [
+        "//AsyncRT:__subpackages__",
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
         "//max/python/max/_core/internal:__subpackages__",
         "@plugin//:__pkg__",
     ],
     deps = [
-        ":AsyncRT/DeviceAffinity",
-        ":AsyncRT/Runtime",
-        ":AsyncRT/RuntimeGlobals",
-        ":AsyncRT/Support",
+        ":Driver/DeviceAffinity",
         ":Driver/DeviceContextAPI",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:RuntimeGlobals",
+        "//AsyncRT:Support",
         "//SDK:HAL",
         "//Support:Base",
         "//Support:Buffer",

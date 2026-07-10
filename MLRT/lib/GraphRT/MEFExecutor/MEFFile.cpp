@@ -10,8 +10,8 @@
 
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MEFFileImpl.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/GraphRT/MEF/MEFReader.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/ML/SizeUtils.h"
@@ -191,7 +191,7 @@ bool MEFFileReader::readNextSection() {
 MEFFileImpl::~MEFFileImpl() {
   if constexpr (PrimitiveProfilerEntry::isEnabled()) {
     // Profilers only exist in their owning `Runtime`.
-    if (auto cpuDevice = MLRT::CPUDevice::getCurrentCPUDeviceOrNull()) {
+    if (auto cpuDevice = AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull()) {
       // Make sure any borrowed strings accumulated during profiling are
       // converted to owned strings before the MEFFile they are borrowed from is
       // destroyed.

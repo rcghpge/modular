@@ -5,20 +5,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
 #include "GraphCompiler/Support/List.h"
 #include "Init/Init.h"
 #include "KGEN/Support/Configuration.h"
-#include "MLRT/AsyncRT/DeviceAffinity.h"
-#include "MLRT/AsyncRT/Runtime/Algorithms.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
-#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/StateSlot.h"
 #include "MLRT/Core/Tensor/Tensor.h"
+#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/AssertStream.h"
@@ -64,6 +64,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 using namespace M::GML;
 using namespace M::MGP;
 
@@ -189,7 +190,7 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
   auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
   // Compute taskId for worker affinity via the shared DeviceAffinity logic.
-  MLRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
+  AsyncRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
   int taskId =
       (deviceHint == kNoDevicePreference)
           ? kDefaultTaskId
@@ -247,7 +248,7 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
         };
 
     // Launch the kernel on a new thread with worker affinity.
-    MLRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
+    AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
     workQueue->addTask(std::move(workItem), taskId);
   } else {
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (sync kernel)",
@@ -556,7 +557,7 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
             KGEN::ExecutionEngineOptions options;
             options.registerPerfPlugins =
                 cpuDevice.getProfilerDebuginfo() ==
-                M::MLRT::CPUDeviceOptions::ProfilerDebuginfo::kPerfProfiler;
+                M::AsyncRT::CPUDeviceOptions::ProfilerDebuginfo::kPerfProfiler;
             options.libraryPaths.push_back(cfg.getMGPRTPath());
             return KGEN::ExecutionEngine::createWithStandardLayers(
                 std::move(options), **targetMachineOr);

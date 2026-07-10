@@ -6,20 +6,21 @@
 
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 
-#include "MLRT/AsyncRT/Runtime/Allocator.h"
-#include "MLRT/AsyncRT/Runtime/CPUDevice.h"
-#include "MLRT/AsyncRT/Runtime/HostSystem.h"
-#include "MLRT/AsyncRT/Support/Location.h"
-#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
+#include "AsyncRT/Runtime/Allocator.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/HostSystem.h"
+#include "AsyncRT/Support/Location.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
-static MLRT::CPUDeviceRef getCPUDevice() {
-  return MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
-                                    MLRT::CPUDeviceOptions().forDebug());
+static AsyncRT::CPUDeviceRef getCPUDevice() {
+  return AsyncRT::getOrCreateCPUDevice(AsyncRT::CPUDeviceSource::Test,
+                                       AsyncRT::CPUDeviceOptions().forDebug());
 }
 
 TEST(TensorBufferRef, Default) {

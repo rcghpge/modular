@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/ForwardDecls.h"
 #include "GraphCompiler/ExecutionDriver/DriverCLOptions.h"
 #include "GraphCompiler/ExecutionDriver/DriverInternals.h"
 #include "GraphCompiler/ExecutionDriver/ExecutionDriver.h"
 #include "GraphCompiler/Support/QuantSpec.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/AlignedAlloc.h"
@@ -29,6 +29,7 @@
 
 using namespace M;
 using namespace M::MLRT;
+using namespace M::AsyncRT;
 
 static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                        InputGenerationKind inputGenKind,
