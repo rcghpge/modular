@@ -219,13 +219,19 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
         [outResults = outResults.copyAsVector(),
          takenOperands = operands.takeAsVector(),
          constantResources = std::move(fConstantResources), kernelPtr, dSummary,
-         deviceCtx = std::move(deviceCtx)]() {
+         deviceCtx = std::move(deviceCtx)]() mutable {
           TRACY_ZONE_SCOPED_NCT("runKernelAndExtendLifetimes", TRACY_COLOR_TEAL,
                                 "(Summary: " + dSummary.get().str() + ")");
 
+          // The kernel writes its results into these closure-local slots; they
+          // are published into `outResults` as the task's last action.
+          // This is to ensure no downstream work starts before the full
+          // completion of `kernelPtr`.
+          llvm::SmallVector<AnyAsyncValueRef> localResults(outResults.size());
+
           llvm::SmallVector<void *> kernelInputs =
-              getKernelInputs(takenOperands, outResults, constantResources);
-          MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, outResults);
+              getKernelInputs(takenOperands, localResults, constantResources);
+          MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, localResults);
 
           // Bind the device context to this thread for the duration of kernel
           // execution.
@@ -245,6 +251,20 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
           assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
             return !ref.getPointer();
           }));
+
+          // Release everything context-reachable BEFORE the driver can observe
+          // completion: operand slots (already reset by the kernel) and the
+          // pinned device context reference.
+          takenOperands.clear();
+          deviceCtx = M::Driver::DeviceContextRef();
+
+          // Publish the kernel's results by resolving the pre-allocated
+          // indirect result values.
+          for (const auto &[local, output] :
+               llvm::zip_equal(localResults, outResults)) {
+            assert(local && "compiled kernel did not fulfill a result slot");
+            std::move(output).resolveIndirect(std::move(local));
+          }
         };
 
     // Launch the kernel on a new thread with worker affinity.
