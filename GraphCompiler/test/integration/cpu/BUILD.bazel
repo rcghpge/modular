@@ -50,31 +50,12 @@ _COMMON_DEPS = [
     "//GraphCompiler/test/utils/test-helper:test_vs_numpy",
 ]
 
-# TODO(GEX-3904): These in-place fusion tests crash intermittently (~15-25% of
-# runs) in `mt --execute` teardown on linux-aarch64 opt/ci -- a flaky SIGSEGV
-# and a SIGABRT shutdown assertion (GEX-3908). Excluded from the test suite
-# while the teardown-race fix is investigated; re-enable once it is confirmed.
-_FLAKY_TESTS = [
-    "MODialect/in-place.mlir",
-    "MODialect/in-place2.mlir",
-    "MODialect/in-place-epilogue-fusion.mlir",
-]
-
-# Keep flaky tests referenced so the linter doesn't complain about unreferenced
-# files.
-filegroup(
-    name = "flaky_tests",
-    testonly = True,
-    srcs = _FLAKY_TESTS,
-    tags = ["maybe-unused"],
-)
-
 lit_tests(
     name = "tests",
     size = "enormous",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = ["**/*-gpu.mlir"] + _FLAKY_TESTS,
+        exclude = ["**/*-gpu.mlir"],
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,
