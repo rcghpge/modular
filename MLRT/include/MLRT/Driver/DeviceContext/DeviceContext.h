@@ -1283,13 +1283,6 @@ class DeviceFunctionCacheEntry
 public:
   explicit DeviceFunctionCacheEntry(const std::string name);
 
-  // Must be virtual: `ReferenceCounted::destroy()` deletes through a
-  // `DeviceFunctionCacheEntry *`, so without this the derived destructor
-  // (CUDA/HIP/Metal `ModuleFunction`, which release GPU pipeline/module
-  // handles) would never run -- undefined behavior when a cache entry is
-  // evicted.
-  virtual ~DeviceFunctionCacheEntry() = default;
-
   const std::string &name() const;
 
 private:

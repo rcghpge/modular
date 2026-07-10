@@ -14,9 +14,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
-#include "llvm/ADT/SmallVector.h"
 
-#include <functional>
 #include <map>
 #include <mutex>
 
@@ -29,7 +27,6 @@ class MetalDevice;
 class MetalDeviceContext;
 class MetalDeviceEvent;
 class MetalDeviceTimer;
-class MetalModuleFunction;
 class MetalDeviceFunction;
 class MetalDeviceFunctionArguments;
 
@@ -37,7 +34,6 @@ using MetalDeviceRef = RCRef<MetalDevice>;
 using MetalDeviceContextRef = RCRef<MetalDeviceContext>;
 using MetalDeviceEventRef = RCRef<MetalDeviceEvent>;
 using MetalDeviceTimerRef = RCRef<MetalDeviceTimer>;
-using MetalModuleFunctionRef = RCRef<const MetalModuleFunction>;
 using MetalDeviceFunctionRef = RCRef<MetalDeviceFunction>;
 
 class MetalDevice : public Device {
@@ -107,14 +103,6 @@ public:
   MTL::Buffer *getTrackedBuffer(const void *ptr) const;
   bool isTrackedBuffer(const void *ptr) const;
   std::map<uintptr_t, BufferAllocation> getTrackedBuffers() const;
-  // Invokes `fn` for every tracked buffer, in ascending base-address order,
-  // with `bufferMapMutex_` held for the whole traversal. Equivalent to
-  // iterating `getTrackedBuffers()` but without copying the allocation map --
-  // the residency sweep runs this once per launch, so the per-launch
-  // `std::map` value-copy is measurable (GEX-3761). `fn` must not re-enter the
-  // buffer-tracking methods (they take the same lock).
-  void forEachTrackedBuffer(
-      const std::function<void(const BufferAllocation &)> &fn) const;
   BufferLookupResult findContainingBuffer(const void *ptr) const;
 
 private:
@@ -159,7 +147,6 @@ class MetalDeviceContext : public DeviceContext {
 public:
   MetalDeviceContext(MetalDevice &device,
                      NS::SharedPtr<MTL::CommandQueue> commandQueue);
-  ~MetalDeviceContext() override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
@@ -236,48 +223,6 @@ public:
 
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
-
-  // Coalesced kernel-launch state (DRIV-164). Consecutive kernel launches are
-  // encoded into one shared command buffer + serial compute encoder and
-  // committed in batches instead of one command buffer per launch, collapsing
-  // the per-op commit overhead that dominates dispatch-bound decode on Metal.
-  // Ordering is preserved: a single serial `MTL::ComputeCommandEncoder` runs
-  // its dispatches in submission order with Metal hazard tracking between
-  // them, so in-place read-modify-write chains stay serialized exactly as they
-  // did across separate command buffers. `flushPendingCommandBuffer()` ends
-  // the encoder and commits; every non-kernel queue operation (copies,
-  // set-memory, events, synchronize) flushes first so commit order still
-  // equals program order. All the pending-* fields below are guarded by
-  // `pendingCommandBufferMutex_`.
-  mutable std::mutex pendingCommandBufferMutex_;
-  // Owning (retained) references. `commandBuffer()`/`computeCommandEncoder()`
-  // hand back autoreleased objects, but the pending buffer + encoder must
-  // outlive the launch that opened them: they are committed by a later flush
-  // that may run on a different thread, after the launching thread's
-  // autorelease pool has drained. Holding them by value here retains them and
-  // releases on flush (mirrors `pendingArgBuffers_` and the `MetalDeviceEvent`
-  // command-buffer ownership); a raw pointer would dangle.
-  NS::SharedPtr<MTL::CommandBuffer> pendingCommandBuffer_;
-  NS::SharedPtr<MTL::ComputeCommandEncoder> pendingEncoder_;
-  uint32_t pendingEncodedOps_ = 0;
-  // Whether the open pending command buffer was created with a GPU-print log
-  // state attached. A launch whose logging setting differs from the open
-  // buffer's forces a flush so it starts a correctly-configured buffer (the
-  // log state is fixed at command-buffer creation time).
-  bool pendingHasLogState_ = false;
-  // Backing MTLBuffers for oversized by-value kernel arguments bound into the
-  // pending command buffer via `setBuffer`. They must outlive the deferred
-  // commit, so ownership is parked here and released on flush (once the
-  // command buffer is committed and owns its own reference). The common path
-  // (all args <= 4 KB, bound via `setBytes`) never touches this.
-  llvm::SmallVector<NS::SharedPtr<MTL::Buffer>, 8> pendingArgBuffers_;
-  // Ends the open encoder (if any) and commits the pending command buffer.
-  // Caller must hold `pendingCommandBufferMutex_`.
-  void flushPendingCommandBufferLocked();
-  // Locks `pendingCommandBufferMutex_` and flushes. Safe to call from any
-  // queue entry point that must observe prior kernel launches.
-  void flushPendingCommandBuffer();
-
   NS::SharedPtr<MTL::LogState> logState_;
   MTL::LogState *getOrCreateLogState(bool enable = true);
   // When true, skip MTL::LogState on command buffers (no GPU print).
@@ -325,33 +270,12 @@ private:
   const std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
-// Cacheable half of a loaded Metal function: owns the compiled compute
-// pipeline state (immutable once created, safe to reuse across launches) and
-// the reflected argument count. Lives in the Device function cache. It holds no
-// DeviceContext reference so the cache does not create a reference cycle with
-// the Device (mirrors CUDAModuleFunction / HIPModuleFunction).
-class MetalModuleFunction : public DeviceFunctionCacheEntry {
-public:
-  MetalModuleFunction(std::string name,
-                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
-                      size_t argumentCount);
-
-  MTL::ComputePipelineState *getPipelineState() const {
-    return pipelineState_.get();
-  }
-  size_t argumentCount() const { return argumentCount_; }
-
-  static const MetalModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
-
-private:
-  NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
-  size_t argumentCount_;
-};
-
 class MetalDeviceFunction : public DeviceFunction {
 public:
-  MetalDeviceFunction(MetalDeviceContext &context,
-                      MetalModuleFunctionRef modFunc);
+  MetalDeviceFunction(MetalDeviceContext &context, StringRef moduleName,
+                      StringRef functionName,
+                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
+                      size_t argumentCount);
 
   const std::string &name() const override;
 
@@ -363,16 +287,15 @@ public:
   size_t argumentCount() const override;
 
   MTL::ComputePipelineState *getPipelineState() const {
-    return moduleFunction_->getPipelineState();
+    return pipelineState_.get();
   }
 
   static const MetalDeviceFunction &cast(const DeviceFunction &func);
 
 private:
-  // The moduleFunction_ holds the cacheable pipeline state. This layout breaks
-  // the reference cycle between the Device's function cache and the cached
-  // functions (mirrors CUDADeviceFunction / HIPDeviceFunction).
-  MetalModuleFunctionRef moduleFunction_;
+  std::string name_;
+  NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
+  size_t argumentCount_;
 };
 
 } // namespace M::Driver
