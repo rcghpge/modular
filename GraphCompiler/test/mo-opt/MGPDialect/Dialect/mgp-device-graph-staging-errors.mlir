@@ -139,7 +139,7 @@ func.func @bad_staging_async_yield(%in: !mgp.tensor<2x3xf32, <"gpu", 0>>) {
   %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
   ^bb0(%builder: !mgp.device_graph.builder,
        %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
-    %p = mogg.async.pack(%in_t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+    %p = mogg.async.pack(%in_t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mgp.device_graph.staging.yield %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
   } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   return

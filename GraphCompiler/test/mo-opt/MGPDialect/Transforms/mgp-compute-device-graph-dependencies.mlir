@@ -46,17 +46,17 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>]
   ^bb0(%builder: !mgp.device_graph.builder,
        %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
     %a = mogg.generic.compiled.region (%in_t) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%b) : (!mgp.buffer<<"gpu", 0>>) -> !mogg.async<!mgp.buffer<<"gpu", 0>>>
+      %p = mogg.async.pack(%b) : !mgp.buffer<<"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.buffer<<"gpu", 0>>>
     } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     %b = mogg.generic.compiled.region (%a) : (%arg: !mgp.buffer<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.buffer<<"gpu", 0>>>) -> !mgp.buffer<<"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.buffer<<"gpu", 0>>
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
       %ch = mogg.chain.dummy() : () -> !mef.chain
       %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+      %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
     } fusionInfo = "test.b" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     mgp.device_graph.staging.yield %b : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -100,14 +100,14 @@ mgp.model @dg_ctx : mof devices [#M.device_ref<"gpu", 0>]
        %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>,
        %ctx_t: !mgp.device_context<<"gpu", 0>>):
     %a = mogg.generic.compiled.region (%in_t, %ctx_t) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>, %ctxarg: !mgp.device_context<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
-      %ctx_in = mogg.async.unpack(%ctxarg) : (!mogg.async<!mgp.device_context<<"gpu", 0>>>) -> !mgp.device_context<<"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %ctx_in = mogg.async.unpack(%ctxarg) : !mgp.device_context<<"gpu", 0>>
       %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
       "test.use_ctx"(%ctx_in) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
       %ch = mogg.chain.dummy() : () -> !mef.chain
       %t = mgp.tensor.create %ch, %b, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+      %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
     } fusionInfo = "test.ctx" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     mgp.device_graph.staging.yield %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -133,9 +133,9 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>]
   ^bb0(%builder: !mgp.device_graph.builder,
        %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
     %a = mogg.generic.compiled.region (%in_t) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%b) : (!mgp.buffer<<"gpu", 0>>) -> !mogg.async<!mgp.buffer<<"gpu", 0>>>
+      %p = mogg.async.pack(%b) : !mgp.buffer<<"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.buffer<<"gpu", 0>>>
     } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     mgp.device_graph.staging.yield %a : !mgp.buffer<<"gpu", 0>>
@@ -180,17 +180,17 @@ mgp.model @dg_reversed : mof devices [#M.device_ref<"gpu", 0>]
   ^bb0(%builder: !mgp.device_graph.builder,
        %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
     %b = mogg.generic.compiled.region (%a) : (%arg: !mgp.buffer<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.buffer<<"gpu", 0>>>) -> !mgp.buffer<<"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.buffer<<"gpu", 0>>
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
       %ch = mogg.chain.dummy() : () -> !mef.chain
       %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%t) : (!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+      %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
     } fusionInfo = "test.b" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     %a = mogg.generic.compiled.region (%in_t) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>> {
-      %u = mogg.async.unpack(%arg) : (!mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %bb = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
-      %p = mogg.async.pack(%bb) : (!mgp.buffer<<"gpu", 0>>) -> !mogg.async<!mgp.buffer<<"gpu", 0>>>
+      %p = mogg.async.pack(%bb) : !mgp.buffer<<"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.buffer<<"gpu", 0>>>
     } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
     mgp.device_graph.staging.yield %b : !mgp.tensor<2x3xf32, <"gpu", 0>>

@@ -62,8 +62,8 @@ mo.graph @genericRegionEmptyChain() {
 // argument. The signature drops the corresponding entry.
 mo.graph @genericRegionDedupOperands(%arg0: index, %arg1: index) {
   %0 = mogg.generic.compiled.region (%arg0, %arg1, %arg0) : (%a: index, %b: index, %c: index) -> index {
-    %u = mogg.async.unpack(%c) : (!mogg.async<index>) -> index
-    %p = mogg.async.pack(%u) : (index) -> !mogg.async<index>
+    %u = mogg.async.unpack(%c) : index
+    %p = mogg.async.pack(%u) : index
     mogg.output %p : !mogg.async<index>
   } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"..."> }
 
@@ -101,7 +101,7 @@ mo.graph @genericRegionDedupUnionSemantics(%arg0: index) {
 // block is erased.
 func.func @tryUnusedResult(%arg0: index) -> index {
   %0:2 = mogg.try {
-    %a = mogg.async.pack(%arg0) : (index) -> !mogg.async<index>
+    %a = mogg.async.pack(%arg0) : index
     mogg.yield %a, %a : !mogg.async<index>, !mogg.async<index>
   } except {
   ^bb0(%err: !mogg.error):
@@ -109,7 +109,7 @@ func.func @tryUnusedResult(%arg0: index) -> index {
     %e1 = mogg.async.error %err : !mogg.async<index>
     mogg.yield %e0, %e1 : !mogg.async<index>, !mogg.async<index>
   } : !mogg.async<index>, !mogg.async<index>
-  %u = mogg.async.unpack(%0#0) : (!mogg.async<index>) -> index
+  %u = mogg.async.unpack(%0#0) : index
   return %u : index
 }
 

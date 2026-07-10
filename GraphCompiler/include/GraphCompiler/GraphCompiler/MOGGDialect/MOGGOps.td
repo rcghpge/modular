@@ -1194,6 +1194,9 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   DeclareOpInterfaceMethods<KernelArgumentConsumer>,
   InferTypeOpAdaptor,
   Pure,
+  TypesMatchWith<"input is the async wrapper of the result",
+                 /*lhs=*/"output", /*rhs=*/"input",
+                 "::M::MOGG::AsyncType::get($_self)">,
 ]> {
   let arguments = (ins MOGG_Async:$input);
   let results = (outs AnyType:$output);
@@ -1203,10 +1206,13 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
     This operation projects an `!mogg.async<T>` to its underlying `T`, modeling
     the fact that the async value is really a handle/pointer that must be
     unpacked before use. It is the inverse of `mogg.async.pack`.
+
+    Only the unpacked element type `T` is printed; the `!mogg.async<T>` operand
+    type is inferred from it.
   }];
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` $input `)` attr-dict `:` type($output)
   }];
   let hasCanonicalizeMethod = 1;
 }
@@ -1243,10 +1249,15 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   let description = [{
     This is the opposite of the unpacking operation. It injects a synchronous
     `T` value into an `!mogg.async<T>`.
+
+    Only the input element type `T` is printed; the `!mogg.async<T>` result type
+    is inferred from it. The optional device context operand, when present,
+    prints its own type since it is not derivable from `T`.
   }];
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` $input (`,` $deviceCtx^ `:` type($deviceCtx))? `)` attr-dict
+    `:` type($input)
   }];
 }
 
