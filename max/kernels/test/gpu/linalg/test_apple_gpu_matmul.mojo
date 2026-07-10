@@ -49,7 +49,7 @@ def _launch[
     a_type: DType, transpose_b: Bool, c_type: DType = DType.float32
 ](
     ctx: DeviceContext,
-    d_dev: DeviceBuffer[c_type],
+    mut d_dev: DeviceBuffer[c_type],
     a_dev: DeviceBuffer[a_type],
     b_dev: DeviceBuffer[a_type],
     M: Int,
@@ -157,6 +157,9 @@ def _run_8x8_case[
         type_of(d_tt).LayoutType,
         type_of(a_tt).LayoutType,
         type_of(b_tt).LayoutType,
+        type_of(d_tt).Storage,
+        type_of(a_tt).Storage,
+        type_of(b_tt).Storage,
         transpose_b,
         BLOCK_M=BM,
         BLOCK_N=BN,
@@ -267,6 +270,9 @@ def _run_8x8_bias_case[
         type_of(d_tt).LayoutType,
         type_of(a_tt).LayoutType,
         type_of(b_tt).LayoutType,
+        type_of(d_tt).Storage,
+        type_of(a_tt).Storage,
+        type_of(b_tt).Storage,
         transpose_b,
         elementwise_lambda_fn=Optional[elementwise_epilogue_type](
             bias_epilogue

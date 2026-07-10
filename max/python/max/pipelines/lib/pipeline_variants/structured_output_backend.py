@@ -39,6 +39,12 @@ import numpy.typing as npt
 from llguidance import LLMatcher, LLTokenizer
 from llguidance._tokenizer import TokenizerWrapper
 from max import _xgrammar as xgrammar
+from max._xgrammar.structural_tag import (
+    JSONSchemaFormat,
+    OrFormat,
+    SequenceFormat,
+    StructuralTag,
+)
 from max.pipelines.context import GrammarMatcher
 from max.pipelines.context.exceptions import InputError
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
@@ -317,6 +323,7 @@ def build_xgrammar_tool_grammar(
     tools: list[dict[str, Any]],
     tool_choice: str | dict[str, Any],
     reasoning: bool = False,
+    response_format_schema: dict[str, Any] | None = None,
 ) -> str:
     """Build a serialized xgrammar tool-call grammar (StructuralTag JSON).
 
@@ -325,21 +332,55 @@ def build_xgrammar_tool_grammar(
     arguments to that tool's JSON schema. The returned JSON string is passed
     as a grammar to :meth:`XgrammarBackend.create_matcher`.
 
+    When ``response_format_schema`` is provided, the grammar accepts *either* a
+    tool call *or* a JSON response matching that schema, mirroring the
+    llguidance path's ``start: tool_calls | json_response`` alternation.
+
     Args:
         model_format: xgrammar model-format key (e.g. ``"kimi"``).
         tools: OpenAI-style tool dicts (``{"type": "function", "function": ...}``).
         tool_choice: ``"auto"``, ``"required"``, or a named choice.
         reasoning: Whether the model interleaves reasoning before tool calls.
+        response_format_schema: Optional JSON schema for a ``response_format``
+            json_schema response. When set, the grammar allows a
+            schema-conforming JSON response as an alternative to a tool call.
 
     Returns:
         The StructuralTag serialized as a JSON string.
     """
+    effective_tool_choice = tool_choice
+    if response_format_schema is not None and tool_choice == "auto" and tools:
+        # ``auto`` makes the tool call optional, so free-form text is a valid
+        # output. OR-ing that with the response schema would let arbitrary text
+        # through and defeat the schema. Use the mandatory (``required``) tool
+        # section so the only accepting outputs are a complete tool call or a
+        # schema-conforming JSON. The reasoning prefix is kept,
+        # so the model may still think before a tool call.
+        effective_tool_choice = "required"
     tag = xgrammar.get_builtin_structural_tag(
         model_format,
         tools=tools,
-        tool_choice=tool_choice,
+        tool_choice=effective_tool_choice,
         reasoning=reasoning,
     )
+    if response_format_schema is not None:
+        # Accept a complete tool call or a schema-conforming JSON response, with
+        # an optional reasoning prefix allowed before EITHER. Factor the prefix
+        # out of the alternation -- Sequence([prefix, Or([tool_section, json])]).
+        json_branch = JSONSchemaFormat(json_schema=response_format_schema)
+        fmt = tag.format
+        if isinstance(fmt, SequenceFormat):
+            *prefix_elements, tool_section = fmt.elements
+            tag = StructuralTag(
+                format=SequenceFormat(
+                    elements=[
+                        *prefix_elements,
+                        OrFormat(elements=[tool_section, json_branch]),
+                    ]
+                )
+            )
+        else:
+            tag = StructuralTag(format=OrFormat(elements=[fmt, json_branch]))
     return tag.model_dump_json()
 
 

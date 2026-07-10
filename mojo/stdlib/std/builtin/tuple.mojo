@@ -99,7 +99,7 @@ struct Tuple[*element_types: Movable](
                 "Tuple default-construction requires all element types to"
                 " conform to `Defaultable`"
             )
-            UnsafePointer(to=self[i]).init_pointee_move({})
+            UnsafePointer(to=self[i]).unsafe_write({})
 
     @always_inline("nodebug")
     def __init__(out self, var *args: *Self.element_types):
@@ -116,7 +116,7 @@ struct Tuple[*element_types: Movable](
         # Move each element into the tuple storage.
         @parameter
         def init_elt[idx: Int](var elt: Self.element_types[idx]):
-            UnsafePointer(to=self[idx]).init_pointee_move(elt^)
+            UnsafePointer(to=self[idx]).unsafe_write(elt^)
 
         args^.consume_elements[init_elt]()
 
@@ -152,7 +152,7 @@ struct Tuple[*element_types: Movable](
             comptime assert conforms_to(Self.element_types[i], Copyable)
             # TODO: We should not use self[i] as this returns a reference to
             # uninitialized memory.
-            UnsafePointer(to=self[i]).init_pointee_copy(copy[i])
+            UnsafePointer(to=self[i]).unsafe_write(copy=copy[i])
 
     @always_inline("nodebug")
     def __init__(out self, *, deinit move: Self):
@@ -207,14 +207,16 @@ struct Tuple[*element_types: Movable](
         """
         # Return a reference to an element at the specified index, propagating
         # mutability of self.
-        var storage_kgen_ptr = UnsafePointer(to=self._mlir_value).address
+        var storage_kgen_ptr = UnsafePointer(
+            to=self._mlir_value
+        )._get_kgen_pointer()
 
         # KGenPointer to the element.
         var elt_kgen_ptr = __mlir_op.`kgen.struct.gep`[
             index=idx.__mlir_index__(),
             _type=UnsafePointer[Self.element_types[idx]]._mlir_type,
         ](storage_kgen_ptr)
-        return UnsafePointer[_, origin_of(self)](elt_kgen_ptr)[]
+        return UnsafePointer[_, origin_of(self)](_mlir_value=elt_kgen_ptr)[]
 
     @always_inline("nodebug")
     def __contains__[T: Equatable](self, value: T) -> Bool:

@@ -138,9 +138,8 @@ struct _ListIterOwned[T: Movable & ImplicitlyDeletable](
 
 
 @explicit_destroy(
-    "A `List` of non-`ImplicitlyDeletable` elements must either be"
-    " explicitly destroyed with `destroy_with()`, or have its ownership passed"
-    " along by returning it or moving it into another function."
+    "Use `destroy_with()` to explicitly destroy a `List` of"
+    " non-`ImplicitlyDeletable` elements"
 )
 struct List[T: Movable](
     Boolable,
@@ -431,7 +430,7 @@ struct List[T: Movable](
 
         # Transfer all of the elements into the List.
         def init_elt(idx: Int, var elt: Self.T) {ref}:
-            (self._data + idx).init_pointee_move(elt^)
+            (self._data + idx).unsafe_write(elt^)
 
         values^.consume_elements(init_elt)
 
@@ -517,7 +516,9 @@ struct List[T: Movable](
             # TODO(MOCO-4111): `destroy_func` cannot convert to UnsafePointer.destroy_pointee_with
             # `destroy_func` type since UP is bound on `T: AnyType` but List has `T: Movable`.
             destroy_func(
-                __get_address_as_owned_value((self.unsafe_ptr() + i).address)
+                __get_address_as_owned_value(
+                    (self.unsafe_ptr() + i)._get_kgen_pointer()
+                )
             )
         self^._unsafe_assume_destroyed_and_deallocate()
 
@@ -526,7 +527,9 @@ struct List[T: Movable](
     # ===-------------------------------------------------------------------===#
 
     @always_inline
-    def __eq__(self, other: Self) -> Bool where conforms_to(Self.T, Equatable):
+    def __eq__(
+        self, other: Self, /
+    ) -> Bool where conforms_to(Self.T, Equatable):
         """Checks if two lists are equal.
 
         Args:
@@ -568,7 +571,7 @@ struct List[T: Movable](
             element.__hash__(hasher)
 
     def __contains__(
-        self, value: Self.T
+        self, value: Self.T, /
     ) -> Bool where conforms_to(Self.T, Equatable):
         """Verify if a given value is present in the list.
 
@@ -825,9 +828,10 @@ struct List[T: Movable](
         if self._len >= self.capacity:
             self._realloc(self.capacity * 2 | Int(self.capacity == 0))
         self._annotate_increase()
-        self._unsafe_next_uninit_ptr().init_pointee_move(value^)
+        self._unsafe_next_uninit_ptr().unsafe_write(value^)
         self._len += 1
 
+    @always_inline
     def insert(mut self, i: Int, var value: Self.T):
         """Inserts a value to the list at the given index.
         `a.insert(len(a), value)` is equivalent to `a.append(value)`.
@@ -844,11 +848,12 @@ struct List[T: Movable](
         print(list) # ['one', 'two', 'three']
         ```
         """
-        assert i <= len(self), "insert index out of range"
-
         var normalized_idx = i
         if i < 0:
             normalized_idx = max(len(self) + i, 0)
+        # Bounds-check after normalizing, since `check_bounds` rejects
+        # negatives; the valid range is `[0, len(self)]` (`len(self)` appends).
+        check_bounds(normalized_idx, len(self) + 1)
 
         var earlier_idx = len(self)
         var later_idx = len(self) - 1
@@ -860,7 +865,7 @@ struct List[T: Movable](
 
             var tmp = earlier_ptr.take_pointee()
             earlier_ptr.init_pointee_move_from(later_ptr)
-            later_ptr.init_pointee_move(tmp^)
+            later_ptr.unsafe_write(tmp^)
 
             earlier_idx -= 1
             later_idx -= 1
@@ -1062,18 +1067,18 @@ struct List[T: Movable](
         self._realloc(new_capacity)
 
     def resize(
-        mut self, new_size: Int, value: Self.T
+        mut self, new_length: Int, fill: Self.T
     ) where conforms_to(Self.T, Copyable & ImplicitlyDeletable):
-        """Resizes the list to the given new size.
+        """Resizes the list to the given new length.
 
         Args:
-            new_size: The new size.
-            value: The value to use to populate new elements.
+            new_length: The new length.
+            fill: The value to use to populate new elements.
 
         Notes:
-            If the new size is smaller than the current one, elements at the end
-            are discarded. If the new size is larger than the current one, the
-            list is appended with new values elements up to the requested size.
+            If the new length is smaller than the current one, elements at the end
+            are discarded. If the new length is larger than the current one, the
+            list is appended with new values elements up to the requested length.
 
         Examples:
 
@@ -1085,21 +1090,21 @@ struct List[T: Movable](
         print(list)                  # ['z', 'y', 'x', 'v', 'v', 'v']
         ```
         """
-        if new_size <= self._len:
-            self.shrink(new_size)
+        if new_length <= self._len:
+            self.shrink(new_length)
         else:
-            self._unchecked_grow(new_size, value)
+            self._unchecked_grow(new_length, fill)
 
     def _unchecked_grow(
-        mut self, new_size: Int, value: Self.T
+        mut self, new_length: Int, fill: Self.T
     ) where conforms_to(Self.T, Copyable):
-        assert new_size >= self._len
+        assert new_length >= self._len
 
-        self.reserve(new_size)
-        self._annotate_increase(new_size - self._len)
-        for i in range(self._len, new_size):
-            (self._data + i).init_pointee_copy(value)
-        self._len = new_size
+        self.reserve(new_length)
+        self._annotate_increase(new_length - self._len)
+        for i in range(self._len, new_length):
+            (self._data + i).unsafe_write(copy=fill)
+        self._len = new_length
 
     def resize(
         mut self, *, unsafe_uninit_length: Int
@@ -1132,15 +1137,15 @@ struct List[T: Movable](
             self._len = unsafe_uninit_length
 
     def shrink(
-        mut self, new_size: Int
+        mut self, new_length: Int
     ) where conforms_to(Self.T, ImplicitlyDeletable):
-        """Resizes to the given new size which must be <= the current size.
+        """Resizes to the given new length which must be <= the current size.
 
         Args:
-            new_size: The new size.
+            new_length: The new length.
 
         Notes:
-            With no new value provided, the new size must be smaller than or
+            With no new value provided, the new length must be smaller than or
             equal to the current one. Elements at the end are discarded.
 
         Examples:
@@ -1151,7 +1156,7 @@ struct List[T: Movable](
         # numbers.shrink(8)               # Error: new size is bigger than current
         ```
         """
-        if len(self) < new_size:
+        if len(self) < new_length:
             abort(
                 "You are calling List.shrink with a new_size bigger than the"
                 " current size. If you want to make the List bigger, provide a"
@@ -1159,11 +1164,11 @@ struct List[T: Movable](
                 " size is smaller than the current size."
             )
 
-        destroy_n(self._data + new_size, count=len(self) - new_size)
+        destroy_n(self._data + new_length, count=len(self) - new_length)
 
-        var old_size: Int = self._len
-        self._len = new_size
-        self._annotate_shrink(old_size)
+        var old_length: Int = self._len
+        self._len = new_length
+        self._annotate_shrink(old_length)
 
     def reverse(mut self):
         """Reverses the elements of the list.
@@ -1189,7 +1194,7 @@ struct List[T: Movable](
 
             var tmp = earlier_ptr.take_pointee()
             earlier_ptr.init_pointee_move_from(later_ptr)
-            later_ptr.init_pointee_move(tmp^)
+            later_ptr.unsafe_write(tmp^)
 
             earlier_idx += 1
             later_idx -= 1
@@ -1406,7 +1411,7 @@ struct List[T: Movable](
         """
         check_bounds[cpu_default=False](idx, len(self))
         (self._data + idx).destroy_pointee()
-        (self._data + idx).init_pointee_move(value^)
+        (self._data + idx).unsafe_write(value^)
 
     def count(self, value: Self.T) -> Int where conforms_to(Self.T, Equatable):
         """Counts the number of occurrences of a value in the list.

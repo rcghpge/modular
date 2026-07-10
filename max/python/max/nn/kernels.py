@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 from max._core.dialects import mo
-from max.driver import accelerator_architecture_name
+from max.driver import accelerator_api, accelerator_architecture_name
 from max.dtype import DType
 from max.graph import (
     BufferValue,
@@ -1576,7 +1576,7 @@ def fused_qk_ragged_rms_norm(
             *kv_collection.flatten_without_attention_dispatch_metadata(),
             q_gamma,
             k_gamma,
-            ops.constant(epsilon, input.dtype, device=DeviceRef.CPU()),
+            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.constant(weight_offset, input.dtype, device=DeviceRef.CPU()),
         ],
@@ -1698,7 +1698,7 @@ def fused_qk_rms_norm_rope_ragged(
             q_gamma,
             k_gamma,
             freqs_cis,
-            ops.constant(epsilon, input.dtype, device=DeviceRef.CPU()),
+            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.constant(weight_offset, input.dtype, device=DeviceRef.CPU()),
         ],
@@ -4313,7 +4313,7 @@ def rms_norm_key_cache(
         values=[
             *kv_collection.flatten_without_attention_dispatch_metadata(),
             gamma,
-            ops.constant(epsilon, gamma.dtype, device=DeviceRef.CPU()),
+            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.cast(TensorValue(total_seq_len), DType.uint32),
             input_row_offsets,
@@ -4378,7 +4378,7 @@ def rms_norm_value_cache(
         values=[
             *kv_collection.flatten_without_attention_dispatch_metadata(),
             gamma,
-            ops.constant(epsilon, gamma.dtype, device=DeviceRef.CPU()),
+            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.cast(TensorValue(total_seq_len), DType.uint32),
             input_row_offsets,
@@ -6275,6 +6275,150 @@ def dynamic_block_scaled_matmul(
     return result
 
 
+def _apple_weight_only_block_scaled_matmul(
+    a: TensorValue,
+    b: TensorValue,
+    b_scales: TensorValue,
+    out_type: DType = DType.bfloat16,
+) -> TensorValue:
+    """Apple M5 weight-only NVFP4 (W4A16) matmul: ``out = a @ dequant(b).T``.
+
+    The Apple sibling of :func:`dynamic_block_scaled_matmul`. Unlike the NVIDIA
+    SM100 path, the activation ``a`` stays in ``bfloat16`` (it is *not*
+    dynamically quantized to FP4) and the weight block scales are plain rank-2
+    ``[N, K // 16]`` (not the SM100 rank-5 TCGEN05 interleave). The FP4 weight
+    is dequantized to bf16 in-register at the MMA loader seam; weights stay
+    packed in DRAM.
+
+    The NVFP4 per-tensor ``weight_scale_2`` scalar is *not* an argument here —
+    the caller applies it as a post-matmul graph-level multiply.
+
+    Args:
+        a: The bf16 activation, shape ``[M, K]``.
+        b: The packed FP4 weight, ``uint8`` shape ``[N, K // 2]`` (two ``e2m1``
+            nibbles per byte, low nibble first).
+        b_scales: The FP8-E4M3 block scales, ``float8_e4m3fn`` shape
+            ``[N, K // 16]`` (block size 16 along K).
+        out_type: The output dtype (``bfloat16``, ``float16``, or ``float32``).
+
+    Returns:
+        The matmul result, shape ``[M, N]``.
+    """
+    if a.rank != 2 or b.rank != 2:
+        raise ValueError("Both a and b must be rank 2 tensors")
+    if b_scales.rank != 2:
+        raise ValueError("b_scales must be a rank 2 tensor")
+    if a.dtype != DType.bfloat16:
+        raise ValueError(f"activation a must be bfloat16, got {a.dtype}")
+    if b.dtype != DType.uint8:
+        raise ValueError(
+            f"weight b must be uint8 (fp4-e2m1fnX2), got {b.dtype}"
+        )
+    if b_scales.dtype != DType.float8_e4m3fn:
+        raise ValueError(
+            f"b_scales must be float8_e4m3fn, got {b_scales.dtype}"
+        )
+
+    result = ops.custom(
+        "mo.matmul.weight.only.block.scaled.apple",
+        device=a.device,
+        values=[a, b, b_scales],
+        out_types=[
+            TensorType(
+                dtype=out_type, shape=[a.shape[0], b.shape[0]], device=a.device
+            )
+        ],
+    )[0].tensor
+
+    return result
+
+
+def _apple_int8_w8a8_matmul(
+    a: TensorValue,
+    b: TensorValue,
+    b_scale: TensorValue,
+    bias: TensorValue | None = None,
+    out_type: DType = DType.bfloat16,
+) -> TensorValue:
+    """Apple M5 int8 W8A8 matmul: ``out = dequant(quant(a) @ b^T)``.
+
+    Fused single graph op wrapping ``int8_matmul.mojo``: the bf16 activation
+    ``a`` is dynamically quantized to int8 (symmetric per-token absmax/127)
+    *inside* the op, matmul'd against the pre-quantized int8 weight ``b`` on the
+    int8 widening-MMA datapath (int32 accumulate), then dequantized by the
+    per-token activation scale times the per-output-channel weight scale (with
+    an optional bias added after dequant). Keeping the activation quant inside
+    the op avoids materializing the int8 activation + its scales as separate
+    graph values (and the extra per-Linear dispatches that entails).
+
+    Args:
+        a: The bf16 activation, shape ``[M, K]``.
+        b: The int8 weight, shape ``[N, K]`` (``transpose_b``; RTN-quantized
+            per output channel at load).
+        b_scale: The fp32 per-output-channel weight scale, shape ``[N, 1]`` or
+            ``[N]``.
+        bias: Optional bias in ``out_type``, shape ``[N]``; added after dequant.
+        out_type: The output dtype (``bfloat16``, ``float16``, or ``float32``).
+
+    Returns:
+        The matmul result, shape ``[M, N]``.
+    """
+    if a.rank != 2 or b.rank != 2:
+        raise ValueError("Both a and b must be rank 2 tensors")
+    if a.dtype != DType.bfloat16:
+        raise ValueError(f"activation a must be bfloat16, got {a.dtype}")
+    if b.dtype != DType.int8:
+        raise ValueError(f"weight b must be int8, got {b.dtype}")
+    if a.shape[1] != b.shape[1]:
+        raise ValueError("a and b must share the K dimension (a[M,K], b[N,K])")
+
+    # The kernel narrows the B row stride (K) and the tile-count math (N) to
+    # UInt16 (``MmaOpApple``); K or N > 65535 silently overflows and corrupts
+    # the output. The in-kernel ``debug_assert`` is a release no-op, so gate it
+    # here at graph build (always on). K and N are static for FLUX Linears.
+    n_dim, k_dim = b.shape[0], b.shape[1]
+    if isinstance(k_dim, StaticDim) and int(k_dim) > 65535:
+        raise ValueError(
+            "Apple int8 W8A8 matmul: K (b.shape[1]) must be <= 65535 "
+            f"(UInt16 stride limit), got {int(k_dim)}"
+        )
+    if isinstance(n_dim, StaticDim) and int(n_dim) > 65535:
+        raise ValueError(
+            "Apple int8 W8A8 matmul: N (b.shape[0]) must be <= 65535 "
+            f"(UInt16 stride limit), got {int(n_dim)}"
+        )
+
+    # The kernel reads a flat per-channel scale ``[N]``; accept the rowwise
+    # ``[N, 1]`` weight-scale layout and squeeze it.
+    b_scale = b_scale.to(a.device)
+    if b_scale.rank == 2:
+        b_scale = ops.reshape(b_scale, [b_scale.shape[0]])
+    if b_scale.dtype != DType.float32:
+        b_scale = ops.cast(b_scale, DType.float32)
+
+    # Custom-op input arity is fixed per registration, so the optional bias is
+    # a separate op name (`.bias`), the same idiom as the FP8 fused-QKV op --
+    # not a comptime flag on one op.
+    op_name = "mo.matmul.int8.w8a8.apple"
+    values = [a, b, b_scale]
+    if bias is not None:
+        op_name += ".bias"
+        values.append(ops.cast(bias.to(a.device), out_type))
+
+    result = ops.custom(
+        op_name,
+        device=a.device,
+        values=values,
+        out_types=[
+            TensorType(
+                dtype=out_type, shape=[a.shape[0], b.shape[0]], device=a.device
+            )
+        ],
+    )[0].tensor
+
+    return result
+
+
 def dynamic_block_scaled_matmul_mxfp4(
     a: TensorValue,
     b: TensorValue,
@@ -6404,6 +6548,14 @@ def _is_sm10x_gpu() -> bool:
     """Checks if the current accelerator is NVIDIA SM100+ (Blackwell)."""
     try:
         return accelerator_architecture_name().startswith("sm_10")
+    except Exception:
+        return False
+
+
+def _is_apple_gpu() -> bool:
+    """Checks if the current accelerator is an Apple (Metal) GPU."""
+    try:
+        return accelerator_api() == "metal"
     except Exception:
         return False
 

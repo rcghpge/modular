@@ -22,6 +22,13 @@ _GROUPED_BLOCK_SCALED_GEMM_B200_TESTS = [
 _EXTRA_CONSTRAINTS = {
     "test_amd_matmul_asm.mojo": ["//:amd_gpu"],
     "test_apple_gpu_matmul.mojo": ["//:apple_gpu"],
+    # Apple M5 W4A16 (NVFP4) — covers all three dispatch paths (fused in-register
+    # B-loader, materialize->dense, and the matmul2d 16x32x16 deep-K path). Apple
+    # M5 only (Metal 4 / AIR 2.8); the generic glob loop generates the mojo_test.
+    "test_apple_fp4_matmul.mojo": ["//:apple_gpu"],
+    # Apple M5 int8 W8A8 (widening int8->int32 MMA + per-row/col dequant + the
+    # online activation-quant kernel). Apple M5 only (Metal 4 / AIR 2.8).
+    "test_apple_int8_matmul.mojo": ["//:apple_gpu"],
     "test_async_copy_wgmma.mojo": ["//:h100_gpu"],
     "test_gemm_kernel.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
     "test_gemm_kernel_new.mojo": ["//:nvidia_gpu"],  # Requires 32-thread warps
@@ -198,6 +205,7 @@ _B200_TESTS = [
     "test_matmul_sm100_2sm_fp32.mojo",
     "test_matmul_sm100_1sm_fp32_1d_bias.mojo",
     "test_matmul_sm100_2sm_fp32_1d_bias.mojo",
+    "test_matmul_sm100_fp32_precision.mojo",
     "test_matmul_sm100_2sm_fp8.mojo",
     "test_matmul_sm100_1sm_fp8.mojo",
     "test_matmul_sm100_splitk_2sm_bf16.mojo",
@@ -234,7 +242,14 @@ _B200_TESTS = [
     "test_matmul_sm100_2sm_bf16_ctype_fp8.mojo",
     "test_matmul_sm100_batched_2sm_bf16_ctype_fp8.mojo",
     "test_matmul_sm100_batched_1sm_bf16_ctype_fp8.mojo",
-    "test_matmul_sm100_1sm_bf16_rmsnorm.mojo",
+    "test_matmul_sm100_1sm_bf16_with_weight_prefetch.mojo",
+    "test_matmul_sm100_2sm_bf16_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_nvfp4_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_fp4_1sm_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_fp4_2sm_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_fp4_small_bn_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_fp4_small_bn_2sm_with_weight_prefetch.mojo",
+    "test_matmul_sm100_block_scaled_mxfp8_small_bn_with_weight_prefetch.mojo",
     "test_matmul_sm100_1sm_bf16_bias.mojo",
     "test_matmul_sm100_2sm_bf16_bias.mojo",
     "test_matmul_sm100_fused_bias_residual_dispatch.mojo",
@@ -275,7 +290,11 @@ _GPU_MEMORY = {
     "test_matmul_sm100_1sm_bf16_bias.mojo": "4",
     "test_matmul_sm100_1sm_bf16_ctype_fp8.mojo": "4",
     "test_matmul_sm100_1sm_bf16_normal_epilogue.mojo": "4",
-    "test_matmul_sm100_1sm_bf16_rmsnorm.mojo": "4",
+    "test_matmul_sm100_1sm_bf16_with_weight_prefetch.mojo": "4",
+    "test_matmul_sm100_2sm_bf16_with_weight_prefetch.mojo": "4",
+    "test_matmul_sm100_block_scaled_nvfp4_with_weight_prefetch.mojo": "4",
+    "test_matmul_sm100_block_scaled_fp4_1sm_with_weight_prefetch.mojo": "4",
+    "test_matmul_sm100_block_scaled_fp4_2sm_with_weight_prefetch.mojo": "4",
     "test_matmul_sm100_1sm_fp8.mojo": "1.5",
     "test_matmul_sm100_1sm_fp8_normal_epilogue.mojo": "4",
     "test_matmul_sm100_2sm_bf16.mojo": "1.5",
@@ -300,14 +319,19 @@ _GPU_MEMORY = {
     "test_matmul_sm100_block_scaled_fp4_2sm.mojo": "1.5",
     "test_matmul_sm100_block_scaled_fp4_small_bn.mojo": "4",
     "test_matmul_sm100_block_scaled_fp4_small_bn_2sm.mojo": "4",
+    "test_matmul_sm100_block_scaled_fp4_small_bn_with_weight_prefetch.mojo": "4",
+    "test_matmul_sm100_block_scaled_fp4_small_bn_2sm_with_weight_prefetch.mojo": "4",
     "test_matmul_sm100_block_scaled_mxfp8.mojo": "4",
     "test_matmul_sm100_block_scaled_mxfp8_1sm.mojo": "1.5",
     "test_matmul_sm100_block_scaled_mxfp8_2sm.mojo": "1.5",
     "test_matmul_sm100_block_scaled_mxfp8_small_bn.mojo": "4",
+    "test_matmul_sm100_block_scaled_mxfp8_small_bn_2sm.mojo": "4",
+    "test_matmul_sm100_block_scaled_mxfp8_small_bn_with_weight_prefetch.mojo": "4",
     "test_matmul_sm100_block_scaled_nvfp4_1sm.mojo": "1.5",
     "test_matmul_sm100_blockwise_fp8.mojo": "1.5",
     "test_matmul_sm100_epilogue.mojo": "4",
     "test_matmul_sm100_fallback.mojo": "2",
+    "test_matmul_sm100_fp32_precision.mojo": "1.5",
     "test_matmul_sm100_fp8.mojo": "3",
     "test_matmul_sm100_fused_bias_residual_dispatch.mojo": "4",
     "test_matmul_sm100_partial_n_tile_epilogue.mojo": "2",
@@ -321,9 +345,10 @@ _GPU_MEMORY = {
     "test_matmul_sm90_hilbert.mojo": "1",
     "test_block_scaled_matmul_mxfp8_dispatch.mojo": "4",
     "test_mfma_32x32x64_f8f6f4.mojo": "1",
-    "test_mxfp4_grouped_matmul_amd_kernels.mojo": "2",
+    "test_mxfp4_grouped_matmul_amd_kernels.mojo": "8",
     "test_mxfp4_matmul_amd.mojo": "2",
     "test_mxfp4_moe_matmul_amd_routed.mojo": "8",
+    "test_ping_pong.mojo": "1",
     "test_ping_pong_shapes.mojo": "2",
     "test_pipeline_framework.mojo": "1",
     "test_pipeline_ldg.mojo": "1",
@@ -338,7 +363,6 @@ _GPU_MEMORY = {
     "test_tma_pair_mma_sm100_mxfp8.mojo": "1.5",
     "test_vendor_blas.mojo": "4",
     "test_warp_specialization_gemm_with_cluster.mojo": "2",
-    "test_matmul_sm100_block_scaled_mxfp8_small_bn_2sm.mojo": "4",
 }
 
 [

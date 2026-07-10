@@ -409,10 +409,6 @@ struct TypeList[
         this_element: Self.Trait,
     ] = last_value and predicate[this_element]
 
-    comptime _ConformsToPredicate[
-        T: type_of(AnyType), Type: Self.Trait
-    ]: Bool = conforms_to(Type, T)
-
     @always_inline("builtin")
     @staticmethod
     def all_conforms_to[_trait: type_of(AnyType)]() -> Bool:
@@ -424,7 +420,7 @@ struct TypeList[
         Returns:
             True if all types in this list conform to `Trait`, False otherwise.
         """
-        return Self.all_satisfies[Self._ConformsToPredicate[_trait, _]]()
+        return conforms_to(Self.values, _trait)
 
     @always_inline("builtin")
     @staticmethod
@@ -1254,8 +1250,8 @@ struct VariadicList[
             to=Pointer(_mlir_value=value)[]
         ).unsafe_origin_cast[UntrackedOrigin[mut=False]]()
         var elt_ptr = UnsafePointer[_, UntrackedOrigin[mut=False]](
-            __mlir_op.`pop.array.gep`(
-                array_up.address,
+            _mlir_value=__mlir_op.`pop.array.gep`(
+                array_up._get_kgen_pointer(),
                 Int(0).__mlir_index__(),
             )
         ).bitcast[Self._EltPointerType]()
@@ -1305,7 +1301,9 @@ struct VariadicList[
             var ptr = UnsafePointer(to=self[i])
             # TODO: Cannot use UnsafePointer.take_pointee because it requires
             # the element to be Movable, which is not required here.
-            elt_handler(i, __get_address_as_owned_value(ptr.address))
+            elt_handler(
+                i, __get_address_as_owned_value(ptr._get_kgen_pointer())
+            )
 
     # FIXME: This is a hack to work around a miscompile, do not use.
     def _annihilate(deinit self):
@@ -1571,7 +1569,9 @@ struct VariadicPack[
             var ptr = UnsafePointer(to=self[i])
             # TODO: Cannot use UnsafePointer.take_pointee because it requires
             # the element to be Movable, which is not required here.
-            elt_handler[i](__get_address_as_owned_value(ptr.address))
+            elt_handler[i](
+                __get_address_as_owned_value(ptr._get_kgen_pointer())
+            )
 
     # ===-------------------------------------------------------------------===#
     # Trait implementations

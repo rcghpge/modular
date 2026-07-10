@@ -17,7 +17,11 @@
 # ===-----------------------------------------------------------------------===#
 
 from std.collections import OptionalReg
-from std.sys.info import simd_width_of, _accelerator_arch
+from std.sys.info import (
+    simd_width_of,
+    _accelerator_arch,
+    has_apple_gpu_accelerator,
+)
 import extensibility as compiler
 
 # ===-----------------------------------------------------------------------===#
@@ -25,9 +29,15 @@ import extensibility as compiler
 # ===-----------------------------------------------------------------------===#
 
 from std.gpu.host import DeviceContext
-from layout.tile_tensor import row_major
 from std.gpu.host.info import is_gpu
-from layout import Coord, Idx, IntTuple, TileTensor, UNKNOWN_VALUE, row_major
+from layout import (
+    Coord,
+    Idx,
+    IntTuple,
+    TileTensor,
+    UNKNOWN_VALUE,
+    row_major,
+)
 from linalg.bmm import batched_matmul, batched_matmul_shape
 from linalg.bmm import (
     elementwise_epilogue_type as batched_matmul_elementwise_epilogue_type,
@@ -40,6 +50,11 @@ from linalg.matmul.gpu.amd import (
     mxfp4_grouped_matmul_amd_preb,
 )
 from linalg.mxfp4_matmul_sm90 import mxfp4_matmul_sm90
+from linalg.matmul.gpu.apple.fp4_matmul import enqueue_apple_fp4_matmul
+from linalg.matmul.gpu.apple.int8_matmul import (
+    enqueue_apple_int8_matmul,
+    enqueue_apple_int8_quantize_activation,
+)
 from linalg.grouped_matmul_sm100_blockwise_fp8 import (
     grouped_matmul_dynamic_scaled_fp8,
 )
@@ -108,7 +123,7 @@ struct MatmulFusedPartialRMSNorm:
         input: InputTensor[dtype=dtype, rank=rank, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Scalar[dtype=dtype],
+        epsilon: Float32,
         weight_offset: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) capturing raises:
@@ -146,7 +161,7 @@ def composite_matmul_fused_partial_rms_norm_shape[
     input: InputTensor[dtype=dtype, rank=rank, ...],
     weight: InputTensor[dtype=dtype, rank=2, ...],
     gamma: InputTensor[dtype=dtype, rank=1, ...],
-    epsilon: Scalar[dtype=dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype=dtype],
 ) -> IndexList[rank]:
     # Return the input shape for normed output
@@ -1004,6 +1019,188 @@ struct Struct_matmul_mxfp4_dequant_fp8:
             a.to_tile_tensor[DType.int64](),
             b.to_tile_tensor[DType.int64](),
             b_scales.to_tile_tensor[DType.int64](),
+            context,
+        )
+
+
+@compiler.register("mo.matmul.weight.only.block.scaled.apple")
+struct Struct_matmul_weight_only_block_scaled_apple:
+    """Apple M5 weight-only NVFP4 (W4A16) matmul: `out = a @ dequant(b)^T`.
+
+    Unlike `mo.matmul.dynamic.block.scaled` (the NVIDIA SM100 path), the
+    activation `a` stays in bf16 (NOT dynamically quantized to FP4) and the
+    weight block scales are PLAIN rank-2 `[N, K // 16]` (NOT the SM100 rank-5
+    TCGEN05 interleave). The FP4 weight is dequantized to bf16 in-register at
+    the MMA loader seam (`enqueue_apple_fp4_matmul`); weights stay packed in
+    DRAM. The NVFP4 per-tensor `weight_scale_2` scalar is applied at the graph
+    level by the caller (a post-matmul multiply), so it is NOT an input here.
+    """
+
+    @always_inline
+    @staticmethod
+    def execute[
+        c_type: DType,
+        //,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=c_type, rank=2, ...],
+        a: InputTensor[dtype=DType.bfloat16, rank=2, ...],
+        b: InputTensor[dtype=DType.uint8, rank=2, ...],
+        b_scales: InputTensor[dtype=DType.float8_e4m3fn, rank=2, ...],
+        context: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[
+            target
+        ](), "Apple weight-only block-scaled matmul only supports GPUs"
+        comptime assert has_apple_gpu_accelerator(), (
+            "mo.matmul.weight.only.block.scaled.apple requires an Apple"
+            " (Metal) GPU accelerator"
+        )
+
+        enqueue_apple_fp4_matmul[c_type=c_type](
+            c.to_tile_tensor[DType.int64](),
+            a.to_tile_tensor[DType.int64](),
+            b.to_tile_tensor[DType.int64](),
+            b_scales.to_tile_tensor[DType.int64](),
+            context,
+        )
+
+
+@always_inline
+def _apple_int8_w8a8_dispatch[
+    c_type: DType, has_bias: Bool, target: StaticString
+](
+    c_tt: TileTensor[mut=True, c_type, ...],
+    a_tt: TileTensor[DType.bfloat16, ...],
+    b_tt: TileTensor[DType.int8, ...],
+    bs_tt: TileTensor[DType.float32, ...],
+    bias_tt: TileTensor[c_type, ...],
+    context: DeviceContext,
+) raises:
+    """Fused int8 W8A8: online-quant A -> int8 widening-MMA GEMM -> dequant.
+
+    Shared body for the bias / no-bias op registrations. The bf16 activation is
+    dynamically quantized to int8 (symmetric per-token absmax/127) into KERNEL
+    SCRATCH (not graph values -- fusing avoids the per-Linear dispatch overhead
+    that made the FP4 path slower than bf16 on FLUX.2-Klein), matmul'd against
+    the pre-quantized int8 weight on the M5 int8 widening-MMA datapath (int32
+    accumulate), then dequantized by the per-token activation scale times the
+    per-output-channel weight scale (+ bias iff `has_bias`). Both enqueue fns are
+    tested at the Klein shapes in `test_apple_int8_matmul.mojo`.
+    """
+    comptime assert is_gpu[
+        target
+    ](), "Apple int8 W8A8 matmul only supports GPUs"
+    comptime assert (
+        has_apple_gpu_accelerator()
+    ), "mo.matmul.int8.w8a8.apple requires an Apple (Metal) GPU accelerator"
+
+    var M = Int(a_tt.dim[0]())
+    var K = Int(a_tt.dim[1]())
+
+    # Kernel scratch: int8 quantized activation `[M, K]` + per-row fp32 scale
+    # `[M]`, both dynamic-M/K. Freed at scope exit via the stream-ordered
+    # `DeviceBuffer.__del__`; the `_ = ...^` pins them past the async enqueues
+    # (same lifetime idiom as the FP4 materialize path).
+    var aq_buf = context.enqueue_create_buffer[DType.int8](M * K)
+    var asc_buf = context.enqueue_create_buffer[DType.float32](M)
+    var aq_tt = TileTensor(
+        aq_buf.unsafe_ptr(), row_major(Coord(Int64(M), Int64(K)))
+    )
+    var asc_tt = TileTensor(asc_buf.unsafe_ptr(), row_major(Coord(Int64(M))))
+
+    enqueue_apple_int8_quantize_activation[DType.bfloat16](
+        aq_tt, a_tt.as_immut(), asc_tt, context
+    )
+
+    enqueue_apple_int8_matmul[c_type=c_type, has_bias=has_bias](
+        c_tt,
+        aq_tt.as_immut(),
+        b_tt,
+        asc_tt.as_immut(),
+        bs_tt,
+        bias_tt,
+        context,
+    )
+
+    _ = aq_buf^
+    _ = asc_buf^
+
+
+@compiler.register("mo.matmul.int8.w8a8.apple")
+struct Struct_matmul_int8_w8a8_apple:
+    """Apple M5 int8 W8A8 matmul (no bias): `out = dequant(quant(a) @ b^T)`.
+
+    A single FUSED graph op wrapping `int8_matmul.mojo` (online activation quant
+    + int8 widening-MMA GEMM + dequant, all internal). Inputs (matching
+    `nn/kernels.py::_apple_int8_w8a8_matmul` with `bias=None`): `a` bf16
+    `[M, K]`; `b` int8 `[N, K]` (`transpose_b`); `b_scale` fp32 per-channel `[N]`
+    (the Python squeezes the rowwise `[N, 1]`). Output `c_type` `[M, N]`. The
+    bias variant is the sibling `mo.matmul.int8.w8a8.apple.bias` op (custom-op
+    input arity is fixed per registration, so the optional bias is a separate op
+    name -- the same idiom as `mo.fused_qkv_matmul.ragged.paged{,.bias}`).
+    """
+
+    @always_inline
+    @staticmethod
+    def execute[
+        c_type: DType,
+        //,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=c_type, rank=2, ...],
+        a: InputTensor[dtype=DType.bfloat16, rank=2, ...],
+        b: InputTensor[dtype=DType.int8, rank=2, ...],
+        b_scale: InputTensor[dtype=DType.float32, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        var c_tt = c.to_tile_tensor[DType.int64]()
+        # No bias: a length-1 dummy bias TileTensor (the `has_bias=False` GEMM
+        # path ignores it). Reuse `b_scale` as the dummy source (same dtype is
+        # not required -- it is never read -- but a valid 1-elem view is).
+        var dummy_bias = TileTensor(
+            c_tt.ptr, row_major(Coord(Int64(1)))
+        ).as_immut()
+        _apple_int8_w8a8_dispatch[c_type, has_bias=False, target=target](
+            c_tt,
+            a.to_tile_tensor[DType.int64](),
+            b.to_tile_tensor[DType.int64](),
+            b_scale.to_tile_tensor[DType.int64](),
+            dummy_bias,
+            context,
+        )
+
+
+@compiler.register("mo.matmul.int8.w8a8.apple.bias")
+struct Struct_matmul_int8_w8a8_apple_bias:
+    """Apple M5 int8 W8A8 matmul WITH per-output-channel bias.
+
+    The bias sibling of `mo.matmul.int8.w8a8.apple`: identical fused body plus a
+    `bias` input in `c_type` `[N]` added after dequant. Selected by
+    `nn/kernels.py::_apple_int8_w8a8_matmul` (which appends `.bias` to the op
+    name when a bias is provided, mirroring the FP8 fused-QKV op).
+    """
+
+    @always_inline
+    @staticmethod
+    def execute[
+        c_type: DType,
+        //,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=c_type, rank=2, ...],
+        a: InputTensor[dtype=DType.bfloat16, rank=2, ...],
+        b: InputTensor[dtype=DType.int8, rank=2, ...],
+        b_scale: InputTensor[dtype=DType.float32, rank=1, ...],
+        bias: InputTensor[dtype=c_type, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        _apple_int8_w8a8_dispatch[c_type, has_bias=True, target=target](
+            c.to_tile_tensor[DType.int64](),
+            a.to_tile_tensor[DType.int64](),
+            b.to_tile_tensor[DType.int64](),
+            b_scale.to_tile_tensor[DType.int64](),
+            bias.to_tile_tensor[DType.int64](),
             context,
         )
 

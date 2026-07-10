@@ -10,18 +10,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-
-# RUN: not %mojo-no-debug %s 2>&1 | FileCheck %s
-
-from layout import TileTensor, row_major
+from std.testing import assert_equal
 
 
-def main():
-    var src_data = InlineArray[Int32, 4](fill=0)
-    var dst_data = InlineArray[Int32, 8](fill=0)
+struct Source(Copyable):
+    def __init__(out self):
+        pass
 
-    var src = TileTensor(src_data, row_major[2, 2]())
-    var dst = TileTensor(dst_data, row_major[2, 4]()).vectorize[1, 2]()
 
-    # CHECK: invalid call to 'copy_from': violated constraint
-    dst.copy_from(src)
+struct Target(Copyable, Writable):
+    @implicit
+    def __init__(out self, s: Source):
+        pass
+
+
+def main() raises:
+    # start-implicit-conversion
+    var limit: Optional[Int] = None
+    # end-implicit-conversion
+    assert_equal(limit, None)
+
+    var name1: String = "Sam"
+    var name2 = String("Sam")
+    var name3 = "Sam"
+    assert_equal(name1, name2)
+    assert_equal(name3, "Sam")
+
+    var a = Source()
+    var b: Target = a
+    print(b)
+    _ = b

@@ -20,7 +20,7 @@ from std.format._utils import (
 from std.memory import (
     UnsafeMaybeUninit,
     is_trivially_copyable,
-    is_trivially_destructible,
+    is_trivially_deletable,
     is_trivially_movable,
 )
 from std.hashlib.hasher import Hasher
@@ -33,7 +33,6 @@ from ._nicheable import (
 )
 from std.os import abort
 from std.sys import align_of, size_of
-from std.utils.type_functions import ConditionalType
 
 # ===----------------------------------------------------------------------=== #
 # Variant Storages
@@ -144,12 +143,9 @@ struct _CustomNicheStorage[Storage: UnsafeCustomNicheStorage](
         )
 
 
-comptime _NicheStorageFor[T: AnyType] = ConditionalType[
-    Trait=_NicheStorage,
-    If=conforms_to(T, UnsafeCustomNicheStorage),
-    Then=_CustomNicheStorage[downcast[T, UnsafeCustomNicheStorage]],
-    Else=_DefaultNicheStorage[T],
-]
+comptime _NicheStorageFor[T: AnyType] = _CustomNicheStorage[
+    downcast[T, UnsafeCustomNicheStorage]
+] if conforms_to(T, UnsafeCustomNicheStorage) else _DefaultNicheStorage[T]
 
 
 struct _NichedOptionalStorage[
@@ -270,7 +266,7 @@ struct _DefaultVariantStorage[*Ts: AnyType](
     def __init__[T: Movable](out self, var value: T):
         self = Self(unsafe_uninitialized=())
         self.get_discriminant() = UInt8(_get_type_index[T, *Self.Ts]())
-        self.unsafe_ptr[T]().init_pointee_move(value^)
+        self.unsafe_ptr[T]().unsafe_write(value^)
 
     @always_inline
     def __init__(out self, *, copy: Self):
@@ -282,7 +278,7 @@ struct _DefaultVariantStorage[*Ts: AnyType](
             comptime assert conforms_to(T, Copyable)
 
             if self.get_discriminant() == UInt8(i):
-                self.unsafe_ptr[T]().init_pointee_copy(copy.unsafe_ptr[T]()[])
+                self.unsafe_ptr[T]().unsafe_write(copy=copy.unsafe_ptr[T]()[])
                 return
 
     @always_inline
@@ -314,8 +310,10 @@ struct _DefaultVariantStorage[*Ts: AnyType](
     def get_discriminant(ref self) -> ref[self] UInt8:
         var discr_ptr = __mlir_op.`pop.variant.discr_gep`[
             _type=__mlir_type.`!kgen.pointer<scalar<ui8>>`
-        ](UnsafePointer(to=self._impl).address)
-        return UnsafePointer[_, origin_of(self)](discr_ptr).bitcast[UInt8]()[]
+        ](UnsafePointer(to=self._impl)._get_kgen_pointer())
+        return UnsafePointer[_, origin_of(self)](_mlir_value=discr_ptr).bitcast[
+            UInt8
+        ]()[]
 
     @always_inline("nodebug")
     def isa[T: AnyType](self) -> Bool:
@@ -325,10 +323,12 @@ struct _DefaultVariantStorage[*Ts: AnyType](
     @always_inline("nodebug")
     def unsafe_ptr[T: AnyType](ref self) -> UnsafePointer[T, origin_of(self)]:
         comptime idx = _get_type_index[T, *Self.Ts]()
-        return __mlir_op.`pop.variant.bitcast`[
-            _type=UnsafePointer[T, origin_of(self)]._mlir_type,
-            index=idx.__mlir_index__(),
-        ](UnsafePointer(to=self._impl).address)
+        return {
+            _mlir_value = __mlir_op.`pop.variant.bitcast`[
+                _type=UnsafePointer[T, origin_of(self)]._mlir_type,
+                index=idx.__mlir_index__(),
+            ](UnsafePointer(to=self._impl)._get_kgen_pointer())
+        }
 
 
 # TODO(MOCO-3653): size_of[T]() == 0 does not work correctly in some cases when
@@ -351,27 +351,19 @@ comptime _IsNicheEligible[*Ts: AnyType]: Bool = (Ts.size == 2) and (
 """True if `Ts` qualifies for niche-optimized storage: exactly two types
 where one is `UnsafeNicheable` and the other is an empty type."""
 
-comptime _NichedStorageFor[*Ts: AnyType] = ConditionalType[
-    Trait=_VariantStorage,
-    If=conforms_to(Ts[0], UnsafeNicheable),
-    Then=_NichedOptionalStorage[
-        downcast[Ts[0], UnsafeNicheable],
-        downcast[Ts[1], TrivialRegisterPassable],
-    ],
-    Else=_NichedOptionalStorage[
-        downcast[Ts[1], UnsafeNicheable],
-        downcast[Ts[0], TrivialRegisterPassable],
-    ],
+comptime _NichedStorageFor[*Ts: AnyType] = _NichedOptionalStorage[
+    downcast[Ts[0], UnsafeNicheable],
+    downcast[Ts[1], TrivialRegisterPassable],
+] if conforms_to(Ts[0], UnsafeNicheable) else _NichedOptionalStorage[
+    downcast[Ts[1], UnsafeNicheable],
+    downcast[Ts[0], TrivialRegisterPassable],
 ]
 """Resolves to the concrete `_NichedOptionalStorage[T]` for the eligible type,
 regardless of which position the `UnsafeNicheable` type occupies in `Ts`."""
 
-comptime _VariantStorageFor[*Ts: AnyType] = ConditionalType[
-    Trait=_VariantStorage,
-    If=_IsNicheEligible[*Ts],
-    Then=_NichedStorageFor[*Ts],
-    Else=_DefaultVariantStorage[*Ts],
-]
+comptime _VariantStorageFor[*Ts: AnyType] = _NichedStorageFor[
+    *Ts
+] if _IsNicheEligible[*Ts] else _DefaultVariantStorage[*Ts]
 """Selects the storage strategy for `Variant[*Ts]`: niche-optimized storage
 when eligible, falling back to the general discriminant-tagged storage."""
 
@@ -513,7 +505,7 @@ struct Variant[*Ts: Movable](
 
     comptime _Storage: _VariantStorage = _VariantStorageFor[*Self.Ts]
 
-    comptime __del__is_trivial = is_trivially_destructible[Self._Storage]()
+    comptime __del__is_trivial = is_trivially_deletable[Self._Storage]()
     comptime __copy_ctor_is_trivial = is_trivially_copyable[Self._Storage]()
     comptime __move_ctor_is_trivial = is_trivially_movable[Self._Storage]()
 
@@ -871,9 +863,8 @@ struct Variant[*Ts: Movable](
         """Destroy a value contained in this Variant in-place using a caller
         provided destructor function.
 
-        This method can be used to destroy types marked `@explicit_destroy`
-        in a `Variant` in-place, without requiring that they be
-        `ImplicitlyDeletable`.
+        This method can be used to destroy types that do not conform to
+        `ImplicitlyDeletable` in a `Variant` in-place.
 
         This method will abort if this variant does not current contain an
         element of the specified type `T`.
@@ -900,10 +891,7 @@ struct Variant[*Ts: Movable](
 
 def _all_trivial_del[*Ts: AnyType]() -> Bool:
     comptime for i in range(Ts.size):
-        comptime if conforms_to(Ts[i], ImplicitlyDeletable):
-            if not is_trivially_destructible[Ts[i]]():
-                return False
-        else:
+        if not is_trivially_deletable[Ts[i]]():
             return False
     return True
 

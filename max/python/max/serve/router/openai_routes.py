@@ -174,14 +174,15 @@ def record_request_start() -> None:
 
 @traced
 def record_request_end(
-    status_code: int,
     request_path: str,
     elapsed_ms: float,
     output_tokens: int | None = None,
     input_tokens: int | None = None,
 ) -> None:
+    # The HTTP status code is labeled onto ``maxserve.request_count`` by the
+    # ``register_request`` middleware, which knows the code actually returned to
+    # the client (see ``max/python/max/serve/request.py``).
     METRICS.reqs_running(-1)
-    METRICS.request_count(status_code, request_path)
     METRICS.request_time(elapsed_ms, request_path)
     if output_tokens is not None:
         METRICS.output_tokens(output_tokens)
@@ -257,9 +258,14 @@ class OpenAIResponseGenerator(ABC, Generic[_T]):
     async def stream(
         self, request: TextGenerationRequest
     ) -> AsyncGenerator[str | ErrorResponse | JSONResponse, None]:
-        # This yield is required to make this method an async generator
-        # for proper type checking. It will never be called due to @abstractmethod.
-        yield ""
+        """Submits ``request`` and returns an SSE payload generator.
+
+        Awaiting this coroutine submits the request to the pipeline (which
+        tokenizes and hands it off to the model worker), so a failed
+        submission raises here — before the streaming response headers are
+        sent — and can be mapped to an HTTP error status. Iterating the
+        returned generator yields the SSE payloads.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -391,6 +397,19 @@ class OpenAIChatResponseGenerator(
     async def stream(
         self, request: TextGenerationRequest
     ) -> AsyncGenerator[str | JSONResponse, None]:
+        # Submit the request before returning the response stream. Awaiting
+        # next_token_chunk tokenizes and hands the request off to the model
+        # worker, so a failed submission (e.g. a dead worker) raises here —
+        # before the SSE 200 headers are sent — and the route maps it to an
+        # HTTP error status.
+        token_generator = await self.pipeline.next_token_chunk(request)
+        return self._stream(request, token_generator)
+
+    async def _stream(
+        self,
+        request: TextGenerationRequest,
+        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
+    ) -> AsyncGenerator[str | JSONResponse, None]:
         self.logger.debug("Streaming: Start: %s", request)
         record_request_start()
         request_timer = StopWatch(start_ns=request.timestamp_ns)
@@ -412,7 +431,7 @@ class OpenAIChatResponseGenerator(
         self._think_closed = False
 
         try:
-            async for chunk in self.pipeline.next_token_chunk(request):
+            async for chunk in token_generator:
                 self.logger.debug(
                     "Streaming: %s, TOKENS: %d, %s%s",
                     request.request_id,
@@ -672,7 +691,6 @@ class OpenAIChatResponseGenerator(
             yield error_response.model_dump_json()
         finally:
             record_request_end(
-                status_code,
                 request.request_path,
                 request_timer.elapsed_ms,
                 # TODO: (MODELS-1117) determine whether to break out reasoning tokens into a separate metric
@@ -694,7 +712,6 @@ class OpenAIChatResponseGenerator(
         n_prompt_tokens = 0
         n_cached_prompt_tokens = 0
         request_timer = StopWatch(start_ns=request.timestamp_ns)
-        status_code = 200
 
         try:
             completed_outputs = await self.pipeline.all_tokens(request)
@@ -866,7 +883,6 @@ class OpenAIChatResponseGenerator(
             return response
         finally:
             record_request_end(
-                status_code,
                 request.request_path,
                 request_timer.elapsed_ms,
                 # TODO: (MODELS-1117) determine whether to break out reasoning tokens into a separate metric
@@ -973,7 +989,6 @@ class OpenAIEmbeddingsResponseGenerator:
         record_request_start()
         metrics_req = requests[0]
         request_timer = StopWatch(start_ns=metrics_req.timestamp_ns)
-        status_code = 200
 
         try:
             embedding_outputs = await asyncio.gather(
@@ -1001,7 +1016,6 @@ class OpenAIEmbeddingsResponseGenerator:
             return response
         finally:
             record_request_end(
-                status_code,
                 metrics_req.request_path,
                 request_timer.elapsed_ms,
             )
@@ -1521,9 +1535,14 @@ async def openai_create_chat_completion(
 
         # For architectures with a grammar-based tool parser (e.g., Kimi),
         # generate constrained decoding grammars for tool calls and/or
-        # response_format.
-        has_grammar_parser = parser is not None and hasattr(
-            parser, "generate_tool_call_grammar"
+        # response_format. Skipped when tool-call constrained decode is
+        # disabled: the parser still parses tool calls out of the generated
+        # text (see ``parse_tool_calls`` below), but no decode-time grammar is
+        # produced.
+        has_grammar_parser = (
+            parser is not None
+            and hasattr(parser, "generate_tool_call_grammar")
+            and pipeline_config.sampling.enable_tool_call_constrained_decode
         )
         if has_grammar_parser:
             (
@@ -1726,11 +1745,13 @@ async def openai_create_chat_completion(
         )
 
         if completion_request.stream:
+            # Await the submit so a failed handoff surfaces as an HTTP error
+            # before the SSE headers are sent, rather than as an error chunk
+            # inside an already-200 stream.
+            token_stream = await response_generator.stream(token_request)
             # We set a large timeout for ping otherwise benchmarking scripts
             # such as sglang will fail in parsing the ping message.
-            return EventSourceResponse(
-                response_generator.stream(token_request), ping=100000, sep="\n"
-            )
+            return EventSourceResponse(token_stream, ping=100000, sep="\n")
 
         response = await response_generator.complete([token_request])
         return response
@@ -2188,6 +2209,19 @@ class OpenAICompletionResponseGenerator(
     async def stream(
         self, request: TextGenerationRequest
     ) -> AsyncGenerator[str | ErrorResponse | JSONResponse, None]:
+        # Submit the request before returning the response stream. Awaiting
+        # next_token_chunk tokenizes and hands the request off to the model
+        # worker, so a failed submission (e.g. a dead worker) raises here —
+        # before the SSE 200 headers are sent — and the route maps it to an
+        # HTTP error status.
+        token_generator = await self.pipeline.next_token_chunk(request)
+        return self._stream(request, token_generator)
+
+    async def _stream(
+        self,
+        request: TextGenerationRequest,
+        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
+    ) -> AsyncGenerator[str | ErrorResponse | JSONResponse, None]:
         logger.debug("Streaming: Start: %s", request)
         record_request_start()
         request_timer = StopWatch(start_ns=request.timestamp_ns)
@@ -2195,9 +2229,8 @@ class OpenAICompletionResponseGenerator(
         n_tokens = 0
         n_prompt_tokens = 0
         n_cached_prompt_tokens = 0
-        status_code = 200
         try:
-            async for chunk in self.pipeline.next_token_chunk(request):
+            async for chunk in token_generator:
                 chunk_total_tokens = (
                     chunk.reasoning_token_count or 0
                 ) + chunk.token_count
@@ -2323,7 +2356,6 @@ class OpenAICompletionResponseGenerator(
             )
         finally:
             record_request_end(
-                status_code,
                 request.request_path,
                 request_timer.elapsed_ms,
                 n_reasoning_tokens + n_tokens,
@@ -2341,7 +2373,6 @@ class OpenAICompletionResponseGenerator(
         n_prompt_tokens = 0
         n_cached_prompt_tokens = 0
         request_timer = StopWatch(start_ns=requests[0].timestamp_ns)
-        status_code = 200
 
         try:
             req_output_list = await asyncio.gather(
@@ -2402,12 +2433,8 @@ class OpenAICompletionResponseGenerator(
                 usage=usage,
             )
             return response
-        except:
-            status_code = 500
-            raise
         finally:
             record_request_end(
-                status_code,
                 requests[0].request_path,
                 request_timer.elapsed_ms,
                 n_reasoning_tokens + n_tokens,
@@ -2573,10 +2600,14 @@ async def openai_create_completion(
                 raise NotImplementedError(
                     "Streaming responses for multiple prompts is not supported"
                 )
+            # Await the submit so a failed handoff surfaces as an HTTP error
+            # before the SSE headers are sent, rather than as an error chunk
+            # inside an already-200 stream.
+            token_stream = await response_generator.stream(token_requests[0])
             # We set a large timeout for ping otherwise benchmarking scripts
             # such as sglang will fail in parsing the ping message.
             return EventSourceResponse(
-                response_generator.stream(token_requests[0]),
+                token_stream,
                 ping=100000,
                 sep="\n",
             )

@@ -39,7 +39,10 @@ from max.pipelines.lib.pipeline_runtime_config import (
 )
 from max.pipelines.lora import LoRAConfig
 from max.pipelines.modeling.types.task import PipelineTask
-from max.pipelines.sampling import SamplingConfig
+from max.pipelines.sampling import (
+    DEFAULT_STRUCTURED_OUTPUT_BACKEND,
+    SamplingConfig,
+)
 from max.pipelines.speculative.config import SpeculativeConfig
 from pydantic import (
     BaseModel,
@@ -320,14 +323,20 @@ class PipelineConfig(ConfigFileModel):
         server-generated and gated on having a parser that can both produce
         the grammar and parse the resulting output).
 
+        Tool-call constrained decoding can be turned off independently via
+        ``sampling.enable_tool_call_constrained_decode``: when that is
+        ``False`` the tool parser still parses tool calls out of generated
+        text, but no grammar is generated and the bitmask path is not needed
+        on its account.
+
         Drives whether model / sampler graphs are compiled with a bitmask
         input and whether the D2H pinned buffer is allocated. Distinct from
         ``sampling.enable_structured_output``, which is the user-facing
         flag and only gates honoring user-supplied JSON schemas.
         """
-        return (
-            self.sampling.enable_structured_output
-            or self.runtime.tool_parser is not None
+        return self.sampling.enable_structured_output or (
+            self.runtime.tool_parser is not None
+            and self.sampling.enable_tool_call_constrained_decode
         )
 
     _config_file_section_name: str = PrivateAttr(default="pipeline_config")
@@ -501,27 +510,49 @@ class PipelineConfig(ConfigFileModel):
         # not reconstruct the manifest (which would trigger HF validation).
         if model_kwargs:
             model_kwargs.update(component_overrides.get("main", {}))
-            model_path = model_kwargs.pop("model_path", "")
-            if model_path:
-                revision = model_kwargs.pop("huggingface_model_revision", None)
-                # Strip kwargs that match MAXModelConfig defaults so
-                # from_model_path() doesn't reject them for diffusion
-                # pipelines (which forbid extra kwargs).
-                non_default_kwargs = _strip_default_model_kwargs(model_kwargs)
-                self.models = ModelManifest.from_model_path(
-                    model_path,
-                    revision=revision,
-                    **non_default_kwargs,
-                )
-            elif "main" in self.models:
+            if "main" in self.models:
                 # The main model came from a YAML recipe (or a pre-built
-                # manifest via ``models=``). Still let CLI flags such as
-                # --devices override the recipe so the same YAML can be
-                # reused across different multi-GPU setups.
+                # manifest via ``models=``). Merge CLI overrides -- including
+                # --model-path -- into it via with_override() so the same
+                # recipe can be reused across different multi-GPU setups or
+                # models, instead of rebuilding the manifest from scratch and
+                # losing the recipe's other settings (device_specs, kv_cache,
+                # etc).
+                new_model_path = model_kwargs.get("model_path")
+                if (
+                    new_model_path
+                    and new_model_path != self.models["main"].model_path
+                ):
+                    logger.warning(
+                        "--model-path %r overrides the model_path %r loaded "
+                        "from --config-file. The rest of the config file "
+                        "(device_specs, kv_cache, etc) was tuned for the "
+                        "original model and may not be appropriate for %r.",
+                        new_model_path,
+                        self.models["main"].model_path,
+                        new_model_path,
+                    )
                 non_default_kwargs = _strip_default_model_kwargs(model_kwargs)
                 if non_default_kwargs:
                     self.models = self.models.with_override(
                         "main", **non_default_kwargs
+                    )
+            else:
+                model_path = model_kwargs.pop("model_path", "")
+                if model_path:
+                    revision = model_kwargs.pop(
+                        "huggingface_model_revision", None
+                    )
+                    # Strip kwargs that match MAXModelConfig defaults so
+                    # from_model_path() doesn't reject them for diffusion
+                    # pipelines (which forbid extra kwargs).
+                    non_default_kwargs = _strip_default_model_kwargs(
+                        model_kwargs
+                    )
+                    self.models = ModelManifest.from_model_path(
+                        model_path,
+                        revision=revision,
+                        **non_default_kwargs,
                     )
 
         # Apply KV cache config to main model
@@ -993,9 +1024,20 @@ class PipelineConfig(ConfigFileModel):
             if draft_archs and draft_archs[0] == "Gemma4AssistantForCausalLM":
                 target_archs[0] = "UnifiedMTPGemma4ForCausalLM"
         if target_archs[0] == "MiniMaxM3SparseForConditionalGeneration":
+            draft_archs = (
+                self.draft_model.huggingface_config.architectures
+                if self.draft_model is not None
+                else None
+            )
             if self.speculative.is_mtp() and self.draft_model is None:
                 target_archs[0] = (
                     "UnifiedMTPMiniMaxM3SparseForConditionalGeneration"
+                )
+            elif draft_archs and draft_archs[0] == "LlamaForCausalLMEagle3":
+                # M3 target + MHA (Llama-style) Eagle3 draft. The v0 Eagle3
+                # path forbids block-sparse attention.
+                target_archs[0] = (
+                    "Eagle3MHAMiniMaxM3SparseForConditionalGeneration"
                 )
         if target_archs[0] == "GlmMoeDsaForCausalLM":
             # GLM-5.2 bakes a NextN MTP layer into the target checkpoint, so
@@ -1084,6 +1126,7 @@ class PipelineConfig(ConfigFileModel):
 
         self._resolve_default_reasoning_parser(arch=arch)
         self._resolve_default_tool_parser(arch=arch)
+        self._resolve_default_structured_output_backend(arch=arch)
 
     def _resolve_default_reasoning_parser(self, arch: Any = None) -> None:
         """Apply the architecture's default reasoning parser when unset.
@@ -1154,6 +1197,56 @@ class PipelineConfig(ConfigFileModel):
             "to disable.",
             parser_name,
             arch.name,
+        )
+
+    def _resolve_default_structured_output_backend(
+        self, arch: Any = None
+    ) -> None:
+        """Resolve the structured output backend to a concrete value.
+
+        Resolution order (highest precedence first):
+
+        1. An explicit user choice (``sampling.structured_output_backend`` is
+           not ``None``) always wins -- including an explicit ``"xgrammar"`` on
+           an architecture that pins ``"llguidance"``.
+        2. Otherwise, if the resolved ``SupportedArchitecture`` declares a
+           ``default_structured_output_backend`` (e.g. Gemma 3 / MiniMax-M2 pin
+           ``"llguidance"``), use it.
+        3. Otherwise, fall back to the global default ``"xgrammar"``.
+
+        Runs unconditionally so the field is always a concrete ``str`` after
+        ``resolve()``. The ``None`` sentinel (unset) is what distinguishes an
+        explicit user value from the default -- mirroring the reasoning/tool
+        parser resolvers above.
+        """
+        if self.sampling.structured_output_backend is not None:
+            # Explicit user configuration always wins.
+            return
+
+        if (
+            arch is not None
+            and arch.default_structured_output_backend is not None
+        ):
+            self.sampling.structured_output_backend = (
+                arch.default_structured_output_backend
+            )
+            logger.info(
+                "Defaulting structured output backend to %r for architecture "
+                "%s. Override with --structured-output-backend.",
+                arch.default_structured_output_backend,
+                arch.name,
+            )
+            return
+
+        self.sampling.structured_output_backend = (
+            DEFAULT_STRUCTURED_OUTPUT_BACKEND
+        )
+        logger.info(
+            "Defaulting structured output backend to the global default %r "
+            "(architecture %s declares no default). Override with "
+            "--structured-output-backend.",
+            DEFAULT_STRUCTURED_OUTPUT_BACKEND,
+            arch.name if arch is not None else None,
         )
 
     def _validate_and_resolve_overlap_scheduler(

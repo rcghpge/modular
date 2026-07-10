@@ -31,7 +31,7 @@ from std.memory import (
     memcpy,
     memset,
     pack_bits,
-    is_trivially_destructible,
+    is_trivially_deletable,
 )
 from std.memory.alloc import Layout
 from std.sys.intrinsics import likely
@@ -218,18 +218,15 @@ def _all_trivial_del[*Ts: AnyType]() -> Bool:
     `@explicit_destroy` types) or that has a non-trivial destructor.
     """
     comptime for i in range(Ts.size):
-        comptime if conforms_to(Ts[i], ImplicitlyDeletable):
-            if not is_trivially_destructible[Ts[i]]():
-                return False
-        else:
+        if not is_trivially_deletable[Ts[i]]():
             return False
     return True
 
 
 @fieldwise_init
 @explicit_destroy(
-    "A `SwissTableEntry` with non-`ImplicitlyDeletable` keys or values must be"
-    " explicitly destroyed with `destroy_with()`."
+    "Use `destroy_with()` to explicitly destroy a `SwissTableEntry` with"
+    " non-`ImplicitlyDeletable` keys or values"
 )
 struct SwissTableEntry[
     K: KeyElement,
@@ -334,8 +331,8 @@ struct SwissTableEntry[
 
 
 @explicit_destroy(
-    "A `SwissTable` with non-`ImplicitlyDeletable` keys or values must be"
-    " explicitly destroyed with `destroy_with()`."
+    "Use `destroy_with()` to explicitly destroy a `SwissTable` with"
+    " non-`ImplicitlyDeletable` keys or values"
 )
 struct SwissTable[
     K: KeyElement,
@@ -459,7 +456,7 @@ struct SwissTable[
         ).unsafe_leak()
         for i in range(self._capacity):
             if is_occupied(self._ctrl[i]):
-                (self._slots + i).init_pointee_copy((copy._slots + i)[])
+                (self._slots + i).unsafe_write(copy=(copy._slots + i)[])
 
     def __del__(
         deinit self,
@@ -527,7 +524,7 @@ struct SwissTable[
             Both `K` and `V` must be `ImplicitlyDeletable`, since entries are
             destroyed in place.
         """
-        comptime if not is_trivially_destructible[
+        comptime if not is_trivially_deletable[
             SwissTableEntry[Self.K, Self.V, Self.H]
         ]():
             for i in range(self._capacity):
@@ -786,7 +783,7 @@ struct SwissTable[
                 var h2_val = h2(entry.hash)
                 var new_slot = self.find_empty_slot(entry.hash)
                 self.set_ctrl(new_slot, h2_val)
-                (self._slots + new_slot).init_pointee_move(entry^)
+                (self._slots + new_slot).unsafe_write(entry^)
                 relocations.append((i, new_slot))
 
         if old_capacity > 0:
@@ -849,7 +846,7 @@ struct SwissTable[
             while self._ctrl[target] == CTRL_DELETED:
                 self.set_ctrl(target, h2(entry.hash))
                 var displaced = (self._slots + target).take_pointee()
-                (self._slots + target).init_pointee_move(entry^)
+                (self._slots + target).unsafe_write(entry^)
                 slot_map[source] = Int32(target)
 
                 entry = displaced^
@@ -857,7 +854,7 @@ struct SwissTable[
                 target = self.find_empty_slot(entry.hash)
 
             self.set_ctrl(target, h2(entry.hash))
-            (self._slots + target).init_pointee_move(entry^)
+            (self._slots + target).unsafe_write(entry^)
             slot_map[source] = Int32(target)
 
         # Reset growth_left (all tombstones are now EMPTY).

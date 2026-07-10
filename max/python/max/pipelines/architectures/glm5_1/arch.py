@@ -18,11 +18,14 @@ from max.pipelines.architectures.deepseekV3.batch_processor import (
 from max.pipelines.architectures.deepseekV3_2 import weight_adapters
 from max.pipelines.context import TextContext
 from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
-from max.pipelines.lib import SupportedArchitecture, TextTokenizer
+from max.pipelines.lib import SupportedArchitecture
 from max.pipelines.modeling.types import PipelineTask
 
 from .model import Glm5_1Model
 from .model_config import Glm5_1Config
+from .reasoning import GlmReasoningParser  # noqa: F401  registers "glm45"
+from .tokenizer import GlmTokenizer
+from .tool_parser import GlmToolParser  # noqa: F401  registers "glm45"
 
 glm5_1_arch = SupportedArchitecture(
     name="GlmMoeDsaForCausalLM",
@@ -43,7 +46,7 @@ glm5_1_arch = SupportedArchitecture(
     multi_gpu_supported=True,
     pipeline_model=Glm5_1Model,
     batching=DeepseekV3BatchProcessor,
-    tokenizer=TextTokenizer,
+    tokenizer=GlmTokenizer,
     context_type=TextContext,
     default_weights_format=WeightsFormat.safetensors,
     weight_adapters={
@@ -53,6 +56,11 @@ glm5_1_arch = SupportedArchitecture(
     requires_max_batch_context_length=True,
     config=Glm5_1Config,
     memory_planner=PagedMemoryPlanner,
+    tool_parser="glm45",
+    reasoning_parser="glm45",
+    # The "glm45" tool parser only emits Lark tool-call grammars, which the
+    # xgrammar backend cannot compile. Pin to llguidance (matches gemma4).
+    default_structured_output_backend="llguidance",
     supports_overlap_scheduler=False,
     supports_device_graph_capture=False,
 )

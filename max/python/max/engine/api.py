@@ -668,10 +668,6 @@ class InferenceSession:
                 ) from e
             self.set_mojo_assert_level(assert_level)
 
-        # TODO: Remove this once the new topk kernel is stable.
-        if use_old_top_k_kernel := os.getenv("USE_OLD_TOP_K_KERNEL"):
-            self.use_old_top_k_kernel(use_old_top_k_kernel)
-
         if use_fi_topk := os.getenv("USE_FI_TOPK_KERNEL"):
             self.use_fi_topk_kernel(use_fi_topk)
 
@@ -707,6 +703,7 @@ class InferenceSession:
         *,
         custom_extensions: CustomExtensionsType | None = None,
         weights_registry: Mapping[str, DLPackArray] | None = None,
+        tile_based_fusion: bool = False,
     ) -> Model:
         """Loads a trained model and compiles it for inference.
 
@@ -732,6 +729,11 @@ class InferenceSession:
                 ``weights_registry`` is technically optional, you'll always
                 need to load weights in practice.
 
+            tile_based_fusion: When ``True``, compile the graph under the tile-based
+                programming model. Only applies when ``model`` is a
+                :class:`Graph`; ignored for precompiled ``.mef`` paths.
+                Defaults to ``False``.
+
         Returns:
             The loaded model, compiled and ready to execute.
 
@@ -742,6 +744,7 @@ class InferenceSession:
             model,
             custom_extensions=custom_extensions,
             weights_registry=weights_registry,
+            tile_based_fusion=tile_based_fusion,
         )
         if len(models) != 1:
             raise ValueError(
@@ -756,6 +759,7 @@ class InferenceSession:
         *,
         custom_extensions: CustomExtensionsType | None = None,
         weights_registry: Mapping[str, DLPackArray] | None = None,
+        tile_based_fusion: bool = False,
     ) -> dict[str, Model]:
         """Loads multiple models and compiles them for inference.
 
@@ -789,6 +793,11 @@ class InferenceSession:
                 ``weights_registry`` is technically optional, you'll always
                 need to load weights in practice.
 
+            tile_based_fusion: When ``True``, compile the graph under the tile-based
+                programming model. Only applies when ``model`` is a
+                :class:`Graph` or :class:`max.graph.Module`; ignored for
+                precompiled ``.mef`` paths. Defaults to ``False``.
+
         Returns:
             A mapping from each model's ``sym_name`` to its loaded
             :class:`Model`, ready to execute.
@@ -796,7 +805,11 @@ class InferenceSession:
         Raises:
             RuntimeError: If the path provided is invalid.
         """
-        compiled = self.compile(model, custom_extensions=custom_extensions)
+        compiled = self.compile(
+            model,
+            custom_extensions=custom_extensions,
+            tile_based_fusion=tile_based_fusion,
+        )
         return self.init_all(compiled, weights_registry=weights_registry)
 
     def compile_async(
@@ -804,6 +817,7 @@ class InferenceSession:
         model: str | Path | Module | Graph,
         *,
         custom_extensions: CustomExtensionsType | None = None,
+        tile_based_fusion: bool = False,
     ) -> CompiledModel:
         """Compiles a model without blocking on the compilation finishing.
 
@@ -821,6 +835,13 @@ class InferenceSession:
 
             custom_extensions: The extensions to load for the model.
                 Supports paths to ``.mojopkg`` custom ops.
+
+            tile_based_fusion: When ``True``, compile the graph under the tile-based
+                programming model, in which the graph compiler selects
+                tile-based kernels (operating on ``TileTensor`` values instead
+                of SIMD). Only applies when ``model`` is a :class:`Graph` or
+                :class:`max.graph.Module`; ignored for precompiled ``.mef``
+                paths. Defaults to ``False``.
 
         Returns:
             A :class:`CompiledModel` artifact wrapping the pending compilation.
@@ -862,10 +883,14 @@ class InferenceSession:
             if kernel_library is not None:
                 kernel_library._analysis.seed_kernel_decls(module.mlir_module)
 
-            handle = self._compile_module(module, custom_extensions_final)
+            handle = self._compile_module(
+                module, custom_extensions_final, tile_based_fusion
+            )
         elif isinstance(model, Module):
             module = model
-            handle = self._compile_module(module, custom_extensions_final)
+            handle = self._compile_module(
+                module, custom_extensions_final, tile_based_fusion
+            )
         else:
             raise RuntimeError("The model is not a valid path or module.")
 
@@ -881,6 +906,7 @@ class InferenceSession:
         model: str | Path | Module | Graph,
         *,
         custom_extensions: CustomExtensionsType | None = None,
+        tile_based_fusion: bool = False,
     ) -> CompiledModel:
         """Compiles a model without binding weights or device memory.
 
@@ -902,6 +928,13 @@ class InferenceSession:
             custom_extensions: The extensions to load for the model.
                 Supports paths to ``.mojopkg`` custom ops.
 
+            tile_based_fusion: When ``True``, compile the graph under the tile-based
+                programming model, in which the graph compiler selects
+                tile-based kernels (operating on ``TileTensor`` values instead
+                of SIMD). Only applies when ``model`` is a :class:`Graph` or
+                :class:`max.graph.Module`; ignored for precompiled ``.mef``
+                paths. Defaults to ``False``.
+
         Returns:
             A :class:`CompiledModel` artifact ready to be initialized.
 
@@ -911,7 +944,9 @@ class InferenceSession:
         """
         with _record_phase("compile_seconds"):
             compiled = self.compile_async(
-                model, custom_extensions=custom_extensions
+                model,
+                custom_extensions=custom_extensions,
+                tile_based_fusion=tile_based_fusion,
             )
             # Synchronously complete the compilation and raise errors.
             compiled._compiled.wait()
@@ -1071,6 +1106,7 @@ class InferenceSession:
         self,
         module: Module,
         custom_extensions_final: list[CustomExtensionType],
+        tile_based_fusion: bool = False,
     ) -> _AsyncValue[_CompiledModels]:
         """Compiles an MLIR module under the session's compilation lock.
 
@@ -1084,6 +1120,7 @@ class InferenceSession:
                 module.mlir_module._CAPIPtr,
                 custom_extensions_final,
                 _derive_pipeline_name(module),
+                tile_based_fusion,
             )
         except Exception as e:
             raise RuntimeError(self._compile_failure_message()) from e
@@ -1278,23 +1315,6 @@ class InferenceSession:
             self._set_mojo_define("MODULAR_ENABLE_GPU_PROFILING_DETAILED", 1)
 
         set_gpu_profiling_state(mode)
-
-    def use_old_top_k_kernel(self, mode: str) -> None:
-        """Falls back to the previous top-k kernel implementation.
-
-        By default, the session uses a newer top-k kernel. Use this
-        fallback only if you encounter correctness or performance issues
-        with the default kernel.
-
-        Args:
-            mode: The enable/disable flag. Accepts ``"false"``, ``"off"``,
-                ``"no"``, or ``"0"`` to disable. Any other value enables the
-                old top-k kernel.
-        """
-        if mode.lower() in ("false", "off", "no", "0"):
-            return
-
-        self._set_mojo_define("USE_OLD_TOP_K_KERNEL", 1)
 
     def use_fi_topk_kernel(self, mode: str) -> None:
         """Enables the fused-inference top-k kernel.

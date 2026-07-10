@@ -10,16 +10,6 @@ This version is still a work in progress.
 
 ## Language enhancements
 
-- `coord` is now a comptime expression, and `coord[DType]()` has been renamed
-  to `dyn_coord[DType]()`.
-  Now one can just write:
-
-   ```mojo
-   var my_coord = coord[1, 2, 3]
-   ```
-
-   to create a `Coord[ComptimeInt[1], ComptimeInt[2], ComptimeInt[3]]`
-
 - Mojo now support `==` and `!=` for type equality check, and `_type_is_eq` is
   removed.
 
@@ -112,6 +102,30 @@ This version is still a work in progress.
   To check several distinct standalone types against a trait, conjoin scalar
   checks, for example `conforms_to(T, Trait) and conforms_to(U, Trait)`.
 
+- Mojo has improved its tracking of import locations and is now able to show
+  where a package containing a diagnostic was first introduced into the program:
+
+  ```text
+  Included from /bug.mojo:2:
+  Included from /foo/__init__.mojo:3:
+  Included from /foo/nested_pkg/__init__.mojo:4:
+  /foo/nested_pkg/my_module.mojo:1:5: note: candidate not viable: unexpected argument
+  def bar(): pass
+      ^
+  ```
+
+  Compared to the previous:
+
+  ```text
+  Included from /foo/nested_pkg/__init__.mojo:1:
+  Included from /foo/nested_pkg/__init__.mojo:4:
+  /foo/nested_pkg/my_module.mojo:1:5: note: candidate not viable: unexpected argument
+  def bar(): pass
+      ^
+  ```
+
+  Note that this is only possible for source packages for now
+
 ## Language changes
 
 - Relative imports must now use `from` (`from . import foo`); the `import .foo`
@@ -196,6 +210,50 @@ This version is still a work in progress.
   module1.bar()
   ```
 
+- The `@explicit_destroy` decorator is no longer required on structs that
+  conditionally conform to `ImplicitlyDeletable`.
+
+  By default, all Mojo structs implicitly conform to `ImplicitlyDeletable`.
+  As before, a type author can opt-out of that implicit conformance using the
+  `@explicit_destroy` decorator:
+
+  ```mojo
+  @explicit_destroy
+  struct FileHandle:
+      pass
+
+  comptime assert not conforms_to(FileHandle, ImplicitlyDeletable)
+  ```
+
+  Now, if the type *conditionally* conforms to `ImplicitlyDeletable`, you may
+  omit redundantly writing `@explicit_destroy`. This works both for types
+  that are never `ImplicitlyDeletable` (`where False`) and for types that are
+  non-ImplicitlyDeletable based on a non trivial condition (`where <cond>`):
+
+  ```mojo
+  # no @explicit_destroy necessary
+  struct NeverDeletable(
+      ImplicitlyDeletable where False
+  ):
+      def destroy(deinit self):
+          pass
+
+  # no @explicit_destroy necessary
+  struct Container[T: AnyType](
+      ImplicitlyDeletable where conforms_to(T, ImplicitlyDeletable)
+  ):
+      var value: Self.T
+
+  comptime assert conforms_to(Container[Int], ImplicitlyDeletable)
+  comptime assert not conforms_to(Container[NonDeletable], ImplicitlyDeletable)
+  ```
+
+  `@explicit_destroy("custom error")` can still be used to provide additional
+  instruction to users when an instance cannot be deleted implicitly.
+
+  This simplifies the language by replacing special decorator behavior with
+  generalized struct conformance logic.
+
 - `where` clauses inside a parameter list (for example,
   `[x: Int where x > 0]`) are no longer supported, following a period of
   deprecation. Use a trailing `where` clause after the signature instead:
@@ -209,7 +267,34 @@ This version is still a work in progress.
       pass
   ```
 
+## Library stabilizations
+
+- The traits `ImplicitlyDeletable`, `Movable`, `Copyable`, and
+  `ImplicitlyCopyable` are now stable.
+
 ## Library changes
+
+- `reversed()` now works on typed ranges such as
+  `reversed(range(Int16(1), 10, 2))`. The `ReversibleRange` trait gained an
+  associated `ReversedType` iterator instead of hard-coding its `__reversed__()`
+  return type, so every range flavor (including the typed scalar ranges) can
+  conform and return its own reversed iterator.
+
+- Added `to_numpy_array` and `from_numpy_array` to the new `python.numpy` module
+  for moving flat numeric data between Mojo `Span`/`List` and NumPy arrays
+  without hand-written `ctypes` plumbing:
+
+  ```mojo
+  from std.python.numpy import from_numpy_array, to_numpy_array
+
+  var values: List[Float64] = [1.0, 2.0, 3.0]
+  var array = to_numpy_array(values)                 # NumPy array (copies)
+  var span = from_numpy_array[DType.float64](array)  # borrow array as a Span
+  ```
+
+  Both support the fixed-width numeric dtypes. `to_numpy_array` copies its
+  input into a new, independent array; `from_numpy_array` borrows the array's
+  buffer zero-copy.
 
 - `Int` is now an alias for `Scalar[DType.int]` and integer literals materialize
   to this `Scalar` type. Because of this some conversions have become more
@@ -231,8 +316,71 @@ This version is still a work in progress.
 
   The new `Int` should still be used in all other situations.
 
+- `chdir` has been added to the `std.os` module and an `fchdir` method has been
+  added to `io.FileDescriptor`. These are wrappers for the corresponding POSIX
+  functions.
+
+- `TypeList.all_conforms_to()` is now implemented in terms of `conforms_to()`,
+  which supports parameter-list operands like `Ts.values`. As a result,
+  `all_conforms_to()` constraints preserve the same proof structure as direct
+  `conforms_to(Ts.values, Trait)` constraints, so the compiler can use them in
+  conditional conformance implication checks and type refinement.
+
+  This means conditional conformances can rely on trait hierarchy relationships
+  for an entire type parameter pack. Previously, a type that conditionally
+  conformed to `JsonSerializable` would also need to repeat the inherited
+  `Serializable` condition:
+
+  ```mojo
+  trait Serializable:
+      pass
+
+  trait JsonSerializable(Serializable):
+      pass
+
+  struct Packet[*Ts: Movable](
+      Serializable where Ts.all_conforms_to[Serializable](),
+      JsonSerializable where Ts.all_conforms_to[JsonSerializable](),
+      Movable,
+  ):
+      pass
+  ```
+
+  Now the `JsonSerializable` condition is enough for the compiler to prove the
+  inherited `Serializable` conformance:
+
+  ```diff
+   struct Packet[*Ts: Movable](
+  -    Serializable where Ts.all_conforms_to[Serializable](),
+       JsonSerializable where Ts.all_conforms_to[JsonSerializable](),
+       Movable,
+   ):
+       pass
+  ```
+
+  The same constraints now refine each element of a variadic type parameter
+  pack inside `where`, `comptime assert`, and `comptime if` contexts:
+
+  ```mojo
+  def write_all[*Ts: Movable](mut writer: Some[Writer], *args: *Ts):
+      comptime if Ts.all_conforms_to[Writable]():
+          comptime for i in range(args.__len__()):
+              args[i].write_to(writer)
+  ```
+
 - `ImplicitlyDestructible` has been renamed to `ImplicitlyDeletable`, for better
   name consistency with its required `__del__()` "delete" special method.
+
+- `is_trivially_destructible()` has been renamed to `is_trivially_deletable()`,
+  for consistency with the `ImplicitlyDeletable` rename. It now also accepts any
+  type (`T: AnyType`) instead of requiring `T: ImplicitlyDeletable`, returning
+  `False` for non-`ImplicitlyDeletable` (linear) types.
+
+- `List.resize` and `List.shrink` `new_size` arguments have been renamed to
+  `new_length`.
+
+- The `value` argument of `List.resize` has been renamed to `fill` to match
+  List's constructor.
 
 - The `Reflected.field_type[name]` reflection member has been renamed to
   `Reflected.field[name]`, because it returns a chainable `Reflected` handle
@@ -284,6 +432,17 @@ This version is still a work in progress.
       transparent.
     - Consuming iteration (`for entry in dict^`) is likewise conditional,
       requiring `ValueType` to be `ImplicitlyDeletable`.
+  - `LinkedList[ElementType]`
+    - Unlike `Dict`, a `LinkedList` with non-`ImplicitlyDeletable` elements can
+      be populated (`append`, `prepend`, `insert`, `extend`) and then torn down
+      with `destroy_with()`.
+    - Only `clear` still requires `ElementType` to be `ImplicitlyDeletable`. For
+      deletable element types (the common case) this is transparent.
+    - `LinkedList.insert()` no longer raises on an out-of-range index; like
+      `List.insert()`, it now aborts (checked when asserts are enabled).
+    - Consuming iteration (`for x in list^`, the `IterableOwned` conformance)
+      is likewise conditional, requiring `ElementType` to be
+      `ImplicitlyDeletable`.
 
 - Is is now possible to iterate over owned elements in
   `List`, `Dict`, `InlineArray`, `LinkedList`, and `Set`
@@ -348,12 +507,31 @@ This version is still a work in progress.
     )
     ```
 
-- The traits `ImplicitlyDeletable`, `Movable`, `Copyable`, and
-  `ImplicitlyCopyable` are now stable.
+- `coord` is now a comptime expression, and `coord[DType]()` has been renamed
+  to `dyn_coord[DType]()`.
+  Now one can just write:
+
+   ```mojo
+   var my_coord = coord[1, 2, 3]
+   ```
+
+   to create a `Coord[ComptimeInt[1], ComptimeInt[2], ComptimeInt[3]]`
 
 - Removed `trait_downcast_var()`. Improvements to type refinement based on
   `where conforms_to(..)` and `comptime assert conforms_to(..)` make explicit
   value trait downcasting no longer necessary.
+
+- The `ConditionalType` type function in `std.utils.type_functions` is now
+  deprecated. Use the equivalent ternary expression `T if cond else U`
+  instead:
+
+  ```mojo
+  # Deprecated:
+  comptime Storage = ConditionalType[If=cond, Then=Int, Else=NoneType]
+
+  # Use instead:
+  comptime Storage = Int if cond else NoneType
+  ```
 
 - Added `raise_python_exception()` to `std.python.bindings`, which translates a
   Mojo `Error` into a Python exception via `PyErr_SetString` and returns a null
@@ -366,11 +544,45 @@ This version is still a work in progress.
   available when you want them: `codepoints()` or `codepoint_slices()` for
   Unicode scalars, and `bytes()` for raw UTF-8 bytes.
 
+- The `Equatable` trait now allows for positional-only implementations, and
+  argument on implementers no longer need to match the trait exactly.
+
+- `UnsafePointer.init_pointee_move()` and `UnsafePointer.init_pointee_copy()`
+  are now deprecated in favor of a single `unsafe_write()` method. Moving a
+  value in works the same as before:
+
+  ```mojo
+  ptr.unsafe_write(value^)
+  ```
+
+  To copy a value in instead of moving it, pass it as the `copy` keyword
+  argument:
+
+  ```mojo
+  ptr.unsafe_write(copy=value)
+  ```
+
 ## Tooling changes
 
 - Added a `--lld-path` CLI flag. This overrides the LLD path that Mojo uses.
 
+- `mojo-lsp-server` no longer parses or type-checks code blocks inside
+  docstrings by default. This checking rests on unstable foundations in the
+  LSP server and was prone to failing, producing false-positive diagnostics
+  unrelated to the code being edited, for little value in return. Pass
+  `-check-docstrings` when launching `mojo-lsp-server` from the command line
+  to re-enable the previous behavior. We plan to make this checking more
+  robust and re-enable it by default over time.
+
 ## GPU programming
+
+- Added programmatic Metal GPU frame capture in `std.gpu.host`:
+  `_start_metal_trace_capture(ctx, path)` and `_end_metal_trace_capture(ctx)`
+  bracket GPU work and write a `.gputrace` file for offline replay (requires
+  `MTL_CAPTURE_ENABLED=1`). A `_set_metal_gpu_print_enabled(ctx, enabled)`
+  toggle and the `MODULAR_DISABLE_METAL_GPU_PRINT` environment variable disable
+  Metal `os_log` GPU print; print is also suppressed during a capture, which
+  otherwise cannot be replayed.
 
 - `DeviceContext.load_function` now keys its runtime cache on the requested
   entry-point name as well as the blob. Loading two different entry points
@@ -409,6 +621,12 @@ This version is still a work in progress.
   lane holds the same bits and 0 otherwise. It uses NVIDIA's `match.all.sync`
   instruction, a `readfirstlane` ballot fold on AMD, and a shuffle-based check
   on Apple Silicon GPUs.
+
+- `warp.vote()` now works on Apple Silicon GPUs. Metal's AIR backend exposes no
+  usable ballot intrinsic, so it emulates the ballot with an XOR-butterfly
+  OR-reduction over `simd_shuffle_xor`, returning a 32-bit mask (or a
+  `DType.uint64` mask whose upper 32 bits are always zero); NVIDIA and AMD are
+  unchanged.
 
 - `DeviceGraphBuilder.collect_dependencies` now accepts an optional
   `dependencies` argument. The named predecessor handles are injected as
@@ -463,6 +681,21 @@ This version is still a work in progress.
 
 ## Fixed
 
+- Type refinement from a `conforms_to()` guard now applies inside the branches
+  of a ternary `exp1 if cond else exp2` used in a `comptime` context, matching
+  the existing `comptime if` statement behavior. For example, this now compiles:
+
+  ```mojo
+  trait HasProperty:
+      comptime property: Int
+
+  comptime get_property_or[T: AnyType] =
+      T.property if conforms_to(T, HasProperty) else 0
+  ```
+
+  Previously the true branch failed with `'AnyType' value has no attribute
+  'property'` because `T` was not refined under the guard.
+
 - A `comptime` member with a trailing `where` clause is now accepted as a
   witness for a conditional trait conformance when the conformance constraint
   implies the member's constraint, for example:
@@ -473,4 +706,42 @@ This version is still a work in progress.
 
   struct Foo[size: Int = -1](StaticSize where size >= 0):
       comptime SIZE: Int where Self.size >= 0 = Self.size
+  ```
+
+- The reflection-based default `Equatable` implementation no longer fails to
+  compile for single-element `RegisterPassable` structs. Such a struct is
+  flattened to its sole field's type, which previously caused the reflection
+  `field_ref` to produce an invalid `kgen.struct.gep`. For example, this now
+  compiles and prints `True`:
+
+  ```mojo
+  @fieldwise_init
+  struct Inner(Equatable, RegisterPassable):
+      var x: Int
+      var y: Int
+
+  @fieldwise_init
+  struct Outer(Equatable, RegisterPassable):
+      var inner: Inner
+
+  def main():
+      var o = Outer(Inner(1, 2))
+      print(o == o)
+  ```
+
+- A method whose return type references a constrained `comptime` member (one
+  declared with a trailing `where` clause) is now accepted when the method's
+  own `where` clause discharges that member's constraint.
+
+  ```mojo
+  trait Operation:
+      comptime Output: AnyType
+
+      def operate(self) -> Self.Output: ...
+
+  struct MyList[T: AnyType](Operation where conforms_to(T, Movable)):
+      comptime Output: AnyType where conforms_to(Self.T, Movable) = Int
+
+      def operate(self) -> Self.Output where conforms_to(Self.T, Movable):
+          return Int(123)
   ```

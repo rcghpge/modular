@@ -19,7 +19,8 @@ This version is still a work in progress.
   computes its top-k selection on the first MTP step and reuses it on the
   rest. Enabled automatically for GLM checkpoints that ship a NextN layer when
   speculative decoding is requested with no separate draft model. Validated on
-  `zai-org/GLM-5.2-FP8` across 8 B200s (`--speculative-method mtp`).
+  `zai-org/GLM-5.2-FP8` and `nvidia/GLM-5.2-NVFP4` across 8 B200s
+  (`--speculative-method mtp`).
 - Added Laguna (`LagunaForCausalLM`), poolside's decoder-only sparse-MoE
   language model. It uses sigmoid expert routing with a per-expert
   score-correction bias, a per-element softplus attention-output gate, and
@@ -45,6 +46,16 @@ This version is still a work in progress.
   read-modify-write that writes only the active slots (+52% output tok/s at
   concurrency 32).
 - Added tool-calling and reasoning support to Qwen 3.5 / 3.6.
+- Added tool-calling, reasoning, and structured-output (`response_format`)
+  support to GLM-5.1 / GLM-5.2, enabled with
+  `--tool-parser glm45 --reasoning-parser glm45 --enable-structured-output`.
+  Reasoning uses `<think>`/`</think>`; tool calls use the model's native
+  `<tool_call>…<arg_key>…<arg_value>…</tool_call>` format. With constrained
+  decoding, tool-call arguments are constrained to each tool's JSON schema
+  (declared keys, `required` properties, and per-property types — including
+  nested objects/arrays, enums, numeric bounds, and string patterns), and the
+  call sequence terminates on the model's turn-ender so it can't loop. Validated
+  on `zai-org/GLM-5.2-FP8`.
 - Added support for the Ideogram 4 (`Ideogram4Pipeline`) text-to-image
   flow-matching diffusion transformer. The pipeline pairs a Qwen3-VL text
   encoder (run text-only, emitting concatenated intermediate hidden states)
@@ -59,9 +70,46 @@ This version is still a work in progress.
   the thinking back into the `content` field wrapped in `<think>...</think>`
   tags, matching the official MiniMax M3 endpoint. The field is a no-op for
   every other model.
+- FLUX.2 diffusion pipelines now support both denoising-cache backends to skip
+  redundant transformer passes during generation: `--taylorseer` (Taylor-series
+  step skipping — the recommended default, with `balanced` and `fast` presets)
+  and `--first-block-caching` (first-block-residual reuse — zero-tuning and
+  data-adaptive). The two are mutually exclusive and both off by default. See
+  the [image generation guide](/max/inference/image-generation).
+- Gemma 4 with multi-token prediction (MTP) speculative decoding
+  (`UnifiedMTPGemma4ForCausalLM`) now supports image and video input.
+  Previously this path was served text-only: image tokens were ingested by
+  the tokenizer but the vision encoder output never reached the language
+  model, so image prompts were answered as if the model were blind. The
+  vision encoder now runs during prefill and its projected soft-token
+  embeddings are merged into the target model, matching the non-MTP Gemma 4
+  path.
 
 ## MAX framework
 
+- Added `--no-enable-tool-call-constrained-decode` (config key
+  `sampling.enable_tool_call_constrained_decode`, default enabled) to decouple
+  tool-call parsing from constrained decoding. When disabled, a configured
+  `--tool-parser` still parses tool calls out of the generated text, but no
+  server-generated grammar is produced and the bitmask constrained-decode path
+  is skipped for tool calls. Note that with it disabled, `tool_choice=required`
+  or a named function can no longer force a tool call. This is independent of
+  `--enable-structured-output`, which continues to gate user-supplied
+  `response_format` JSON schemas.
+- Fixed the `code` label on the `maxserve_request_count` metric so it reports
+  the HTTP status code actually returned to the client. The count is now
+  recorded from the HTTP layer, so failures rejected before generation (for
+  example a request with an unreachable image URL) are counted with their real
+  status code instead of being labeled `200` or dropped entirely. Liveness and
+  observability endpoints (`/health`, `/version`, `/ping`, `/metrics`) are not
+  counted.
+- Failed request submissions in the OpenAI-compatible serving endpoints now
+  surface as HTTP error responses instead of a `200 OK` streaming response that
+  carries an error payload. Request tokenization and the handoff to the model
+  worker now complete before the streaming response headers are sent, so a
+  failure at submission time (for example, a dead model worker) maps to an HTTP
+  5xx (or 4xx for input errors). Errors that occur mid-stream, after the first
+  chunk has been sent, are still serialized as an error event within the stream.
 - Added `MAX_SERVE_GRACEFUL_SHUTDOWN_TIMEOUT_S` to control how long the server
   waits for in-flight requests to finish after receiving `SIGTERM` before
   exiting (default 5 seconds). Raise it so long-running requests are drained
@@ -99,6 +147,8 @@ This version is still a work in progress.
   with `out-of-bounds` redzone checks. Because the NaN can also surface on
   legitimately-uninitialized allocation padding, it is a manual debugging aid
   rather than a default.
+- Added a `max-benchmark` conda package for parity with the `max[benchmark]`
+  wheel extra.
 
 ### Inference server
 
@@ -229,6 +279,12 @@ This version is still a work in progress.
 
 ### Python API
 
+- Added `max.graph.ops.floor_div` (and `F.floor_div`), element-wise floor
+  division matching Python `//`. Unlike `ops.div`, integer operands stay in
+  the integer domain instead of being promoted to `float64`, so integer floor
+  division compiles on backends without 64-bit float support (for example,
+  Metal GPUs).
+
 - Added `max.driver.set_virtual_cpu_target()` and `get_virtual_cpu_target()`.
   Set a fixed CPU codegen target (for example `"x86-64-v3"`, `"neoverse-n1"`,
   or `"generic"` for the most-portable baseline of the host arch family) before
@@ -313,6 +369,12 @@ This version is still a work in progress.
 
 ## MAX kernels
 
+- GPU token sampling with `top_k >= 10` is now 2-4x faster. The softmax,
+  temperature scaling, and min-p masking steps are fused into the top-k/top-p
+  rejection-sampling kernel, eliminating an intermediate probability buffer
+  and two kernel launches per sampling call. The dispatch threshold between
+  the two-stage top-k kernel and the rejection-sampling kernel was lowered
+  from `top_k = 32` to `top_k = 10` to match the new performance crossover.
 - The `TileTensor` layout type no longer takes an `element_size` parameter. A
   tensor's logical element width is now carried by its `Storage` parameter via
   `PointerStorage[element_width]` (default `PointerStorage[1]`), and
@@ -355,8 +417,41 @@ This version is still a work in progress.
 
 ## Breaking changes
 
+- Removed `InferenceSession.use_old_top_k_kernel()` and the
+  `USE_OLD_TOP_K_KERNEL` environment variable. The legacy top-k sampling
+  kernel this fallback selected has been deleted; the current two-stage
+  top-k kernel is now used unconditionally.
+- The `Input`, `Output`, `MutableInput`, `FusedInput`, and `FusedOutput`
+  `IOSpec` values used in custom-op signatures (for example,
+  `Tensor[Input, spec]`) are now static members of `IOSpec`
+  (`IOSpec.Input`, `IOSpec.Output`, `IOSpec.MutableInput`,
+  `IOSpec.FusedInput`, `IOSpec.FusedOutput`) instead of module-level aliases.
+  Update custom-op call sites to qualify these names under `IOSpec`, for
+  example `Tensor[IOSpec.Input, spec]`.
+
 ## Fixes
 
+- Fixed MiniMax-M3 tool-call grammar enforcement silently disabling itself
+  when the model emits more than one tool-call section in a single response.
+  Enforcement used to switch off once the first section closed, so a second
+  section's start marker was rejected against the completed matcher
+  (`Matcher rejected N token(s)…`) and the rest of the request ran
+  unconstrained. Enforcement now stays on through the end of the turn: after
+  the single tool-call section closes, only EOS is allowed, matching the
+  model's chat template (all invocations in one section, followed
+  immediately by end of turn).
+- Fixed MiniMax-M3 streaming chat completions aborting with a 500 when the
+  model emits a malformed tool call. The streaming tool parser now fails open
+  like the non-streaming path: the raw tool-call text degrades to assistant
+  content, tool parsing is bypassed for the rest of the request, and the
+  stream terminates normally.
+- Fixed a precision loss in the normalization ops where the `epsilon` value was
+  carried in the input's dtype (for example `bfloat16`) before use. A small
+  epsilon such as `1e-6` is not representable in `bfloat16`, so it was silently
+  rounded. The `epsilon` for `rms_norm`, `layer_norm`, `group_norm`, and the
+  fused residual, FP8-quantized, and distributed all-reduce variants is now
+  carried as `float32` end to end — from the graph op through the graph
+  compiler to the kernel. The Python `epsilon: float` argument is unchanged.
 - Fixed MAX Serve crashing the model worker on the first host KV-cache
   offload/reload when run with `--kv-connector dkv`. The dKV connector had
   drifted out of sync with its client and no longer passed the required
@@ -393,6 +488,14 @@ This version is still a work in progress.
   no-synchronization behavior, so a later `to_numpy()` on the slice triggered
   an unexpected device synchronization. Slices and views now preserve the
   `DevicePinnedBuffer` type.
+
+- Fixed virtual-device mode on macOS. Previously the
+  `max.driver.set_virtual_device_*()` settings had no effect on device
+  creation: `Accelerator()` still took the real-hardware path, so requesting
+  more devices than physically present failed and single-device
+  cross-compilation silently used the real GPU. The virtual-device state now
+  lives in a single shared library, so the setters and device creation always
+  observe the same configuration on every platform.
 
 - Fixed DeepSeek-V3.1-NVFP4 multi-token prediction (MTP) failing to load with
   `dispatch_quant_config must be specified when dispatch_dtype is not

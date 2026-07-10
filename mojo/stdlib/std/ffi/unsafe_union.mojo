@@ -30,7 +30,7 @@ from std.format._utils import FormatStruct, Named, TypeNames
 from std.memory import (
     UnsafePointer,
     is_trivially_copyable,
-    is_trivially_destructible,
+    is_trivially_deletable,
     is_trivially_movable,
 )
 from std.sys import align_of, size_of
@@ -58,10 +58,7 @@ def _all_trivial_del[*Ts: AnyType]() -> Bool:
     """Check if all types have trivial destructors."""
 
     comptime for i in range(Ts.size):
-        comptime if conforms_to(Ts[i], ImplicitlyDeletable):
-            if not is_trivially_destructible[Ts[i]]():
-                return False
-        else:
+        if not is_trivially_deletable[Ts[i]]():
             return False
     return True
 
@@ -231,7 +228,7 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         comptime assert Self._is_element[
             T
         ](), "type is not a union element type"
-        self._get_ptr[T]().init_pointee_move(value^)
+        self._get_ptr[T]().unsafe_write(value^)
 
     def __init__(out self, *, copy: Self):
         """Creates a bitwise copy of the union.
@@ -271,13 +268,13 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         comptime assert Self._is_element[
             T
         ](), "type is not a union element type"
-        var ptr = UnsafePointer(to=self._storage).address
+        var ptr = UnsafePointer(to=self._storage)._get_kgen_pointer()
         var typed_ptr = __mlir_op.`pop.union.bitcast`[
             _type=UnsafePointer[
                 T, origin, address_space=address_space
             ]._mlir_type,
         ](ptr)
-        return typed_ptr
+        return {_mlir_value = typed_ptr}
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -409,7 +406,7 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         comptime assert Self._is_element[
             T
         ](), "type is not a union element type"
-        self._get_ptr[T]().init_pointee_move(value^)
+        self._get_ptr[T]().unsafe_write(value^)
 
     @always_inline("nodebug")
     def unsafe_ptr[

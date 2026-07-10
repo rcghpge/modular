@@ -48,6 +48,7 @@ from layout import (
     CoordLike,
     Idx,
     TensorLayout,
+    TensorStorage,
     TileTensor,
     coord_to_index_list,
     row_major,
@@ -310,6 +311,7 @@ def layer_norm_gpu_warp_tiling[
     LayoutType: TensorLayout,
     origin: Origin[mut=mut],
     dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
@@ -324,8 +326,8 @@ def layer_norm_gpu_warp_tiling[
     ) capturing -> None,
 ](
     shape: IndexList[2],
-    beta: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    beta: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
 ):
     comptime assert beta.rank == 1, "beta must have rank 1"
     comptime align = align_of[SIMD[dtype, simd_width]]()
@@ -391,6 +393,7 @@ def layer_norm_gpu_block[
     LayoutType: TensorLayout,
     origin: Origin[mut=mut],
     dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     input_fn: def[width: Int, alignment: Int](
@@ -404,8 +407,8 @@ def layer_norm_gpu_block[
     ) capturing -> None,
 ](
     shape: IndexList[2],
-    beta: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    beta: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
 ):
     comptime assert beta.rank == 1, "beta must have rank 1"
     comptime align = align_of[SIMD[dtype, simd_width]]()
@@ -511,7 +514,7 @@ def layer_norm_gpu[
 ](
     shape: IndexList[rank, ...],
     beta: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     *,
     ctx: DeviceContext,
 ) raises:
@@ -579,6 +582,7 @@ def layer_norm_gpu[
                 mut=beta.mut,
                 LayoutType=beta.LayoutType,
                 origin=beta.origin,
+                Storage=beta.Storage,
                 simd_width * 2,
                 max_warps_per_block,
                 input_fn_2d,
@@ -598,6 +602,7 @@ def layer_norm_gpu[
                 mut=beta.mut,
                 LayoutType=beta.LayoutType,
                 origin=beta.origin,
+                Storage=beta.Storage,
                 simd_width,
                 max_warps_per_block,
                 input_fn_2d,
@@ -617,6 +622,7 @@ def layer_norm_gpu[
                 mut=beta.mut,
                 LayoutType=beta.LayoutType,
                 origin=beta.origin,
+                Storage=beta.Storage,
                 simd_width,
                 input_fn_2d,
                 gamma_fn,
@@ -635,6 +641,7 @@ def layer_norm_gpu[
             mut=beta.mut,
             LayoutType=beta.LayoutType,
             origin=beta.origin,
+            Storage=beta.Storage,
             1,
             input_fn_2d,
             gamma_fn,
@@ -675,7 +682,7 @@ def layer_norm_cpu[
     num_rows: Int,
     num_cols: Int,
     beta: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
 ) raises:
     """Computes layernorm(elementwise_fn(x)) across the last dimension of x, where layernorm is
     defined as $(x-mean(x))/(sqrt(var(x)+eps)*gamma_fn + beta$.
@@ -733,7 +740,7 @@ def layer_norm_cpu[
         var var_val = variance[dtype, input_gen_wrapper](
             num_cols, mean_val, 0
         )  # use biased estimator
-        var norm_factor = rsqrt(var_val + epsilon)
+        var norm_factor = rsqrt(var_val + epsilon.cast[dtype]())
 
         def _normalize[simd_width: Int](col: Int) {beta, mut}:
             var out_val = input_fn[simd_width, 1](row, col)
@@ -768,7 +775,7 @@ def layer_norm_cpu[
 ](
     shape: IndexList[rank],
     beta: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     ctx: Optional[DeviceContext] = None,
 ):
     comptime assert beta.rank == 1, "beta must have rank 1"
@@ -840,7 +847,7 @@ def layer_norm[
     shape: IndexList[rank],
     gamma_shape: IndexList[1],
     beta: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     ctx: DeviceContext,
 ) raises:
     comptime assert beta.rank == 1, "beta must have rank 1"
@@ -886,7 +893,7 @@ def layer_norm_shape[
     input: TileTensor[mut=False, dtype, ...],
     gamma: TileTensor[mut=False, dtype, ...],
     beta: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
 ) -> IndexList[input.rank]:
     """
     Compute the output shape of a `layer_norm` operation.
@@ -925,7 +932,7 @@ def _rms_norm_warp_tiling_subkernel[
     idx: Int,
     vec_data: SIMD[accum_type, simd_width],
     gamma_val: SIMD[dtype, simd_width],
-    epsilon: Scalar[accum_type],
+    epsilon: Float32,
     weight_offset: Scalar[accum_type],
     num_cols: Int,
 ) -> SIMD[dtype, simd_width]:
@@ -940,7 +947,9 @@ def _rms_norm_warp_tiling_subkernel[
             thread_m2
         )
 
-    var norm_factor = rsqrt((row_m2 / Scalar[accum_type](num_cols)) + epsilon)
+    var norm_factor = rsqrt(
+        (row_m2 / Scalar[accum_type](num_cols)) + epsilon.cast[accum_type]()
+    )
     var norm_val: SIMD[dtype, simd_width] = 0
     if idx < num_cols:
         comptime if multiply_before_cast:
@@ -960,6 +969,7 @@ def rms_norm_gpu_warp_tiling_128[
     LayoutType: TensorLayout,
     origin: Origin[mut=mut],
     dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     warps_per_block: Int,
@@ -971,8 +981,8 @@ def rms_norm_gpu_warp_tiling_128[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    gamma: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     num_rows: Int,
     num_cols: Int,
@@ -983,7 +993,6 @@ def rms_norm_gpu_warp_tiling_128[
     comptime align = align_of[SIMD[dtype, simd_width]]()
     comptime accum_type = get_accum_type[dtype]()
 
-    var eps_accum = epsilon.cast[accum_type]()
     var weight_offset_accum = weight_offset.cast[accum_type]()
 
     var vec_data = SIMD[accum_type, simd_width](0)
@@ -1013,7 +1022,7 @@ def rms_norm_gpu_warp_tiling_128[
             idx,
             vec_data,
             gamma_val,
-            eps_accum,
+            epsilon,
             weight_offset_accum,
             num_cols,
         )
@@ -1041,6 +1050,7 @@ def rms_norm_gpu_warp_per_row[
     LayoutType: TensorLayout,
     origin: Origin[mut=mut],
     dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     rows_per_block: Int,
@@ -1054,8 +1064,8 @@ def rms_norm_gpu_warp_per_row[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    gamma: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     num_rows: Int,
     num_cols: Int,
@@ -1241,6 +1251,7 @@ def rms_norm_gpu_warp_tiling[
     origin: Origin[mut=mut],
     dtype: DType,
     rank: Int,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
@@ -1255,8 +1266,8 @@ def rms_norm_gpu_warp_tiling[
     multiply_before_cast: Bool,
 ](
     shape: IndexList[rank],
-    gamma: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    gamma: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     num_cols: Int,
 ):
@@ -1361,7 +1372,7 @@ def _rms_norm_gpu_block_subkernel[
     multiply_before_cast: Bool,
 ](
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     num_cols: Int,
 ):
@@ -1475,17 +1486,20 @@ def row_mean_of_squares_qk_gpu_block[
     out_mut: Bool,
     out_layout: TensorLayout,
     out_origin: Origin[mut=out_mut],
+    out_storage: TensorStorage,
     q_layout: TensorLayout,
     q_origin: Origin,
+    q_storage: TensorStorage,
     k_layout: TensorLayout,
     k_origin: Origin,
+    k_storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
 ](
-    output: TileTensor[out_dtype, out_layout, out_origin],
-    q: TileTensor[in_dtype, q_layout, q_origin],
-    k: TileTensor[in_dtype, k_layout, k_origin],
+    output: TileTensor[out_dtype, out_layout, out_origin, Storage=out_storage],
+    q: TileTensor[in_dtype, q_layout, q_origin, Storage=q_storage],
+    k: TileTensor[in_dtype, k_layout, k_origin, Storage=k_storage],
     q_cols: Int,
     k_cols: Int,
 ) where out_mut:
@@ -1543,6 +1557,7 @@ def rms_norm_gpu_block[
     LayoutType: TensorLayout,
     origin: Origin[mut=mut],
     dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
@@ -1554,8 +1569,8 @@ def rms_norm_gpu_block[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    gamma: TileTensor[dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     num_cols: Int,
 ):
@@ -1584,7 +1599,7 @@ def rms_norm_gpu[
 ](
     shape: Coord,
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -1786,6 +1801,7 @@ def rms_norm_gpu[
                 mut=gamma.mut,
                 LayoutType=gamma.LayoutType,
                 origin=gamma.origin,
+                Storage=gamma.Storage,
                 eff_simd,
                 max_warps_per_block,
                 chunks,
@@ -1825,6 +1841,7 @@ def rms_norm_gpu[
                 mut=gamma.mut,
                 LayoutType=gamma.LayoutType,
                 origin=gamma.origin,
+                Storage=gamma.Storage,
                 simd_width,
                 warps_per_block,
                 input_fn_2d_static,
@@ -1870,6 +1887,7 @@ def rms_norm_gpu[
                             mut=gamma.mut,
                             LayoutType=gamma.LayoutType,
                             origin=gamma.origin,
+                            Storage=gamma.Storage,
                             simd_width,
                             rows_per_block,
                             True,
@@ -1893,6 +1911,7 @@ def rms_norm_gpu[
                     mut=gamma.mut,
                     LayoutType=gamma.LayoutType,
                     origin=gamma.origin,
+                    Storage=gamma.Storage,
                     simd_width,
                     rows_per_block,
                     False,
@@ -1953,6 +1972,7 @@ def rms_norm_gpu[
                 mut=gamma.mut,
                 LayoutType=gamma.LayoutType,
                 origin=gamma.origin,
+                Storage=gamma.Storage,
                 simd_width,
                 max_warps_per_block,
                 input_fn_2d_static,
@@ -1973,6 +1993,7 @@ def rms_norm_gpu[
             mut=gamma.mut,
             LayoutType=gamma.LayoutType,
             origin=gamma.origin,
+            Storage=gamma.Storage,
             1,
             max_warps_per_block,
             input_fn_2d_static,
@@ -2000,7 +2021,7 @@ def rms_norm_cpu[
     multiply_before_cast: Bool,
 ](
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     out_shape: IndexList[2],
 ):
@@ -2069,7 +2090,7 @@ def rms_norm_cpu[
 ](
     shape: IndexList[rank],
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     ctx: Optional[DeviceContext] = None,
 ):
@@ -2145,7 +2166,7 @@ def _rms_norm_impl[
 ](
     shape: Coord,
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -2223,9 +2244,11 @@ def rms_norm_fused_residual_add_gpu_warp_tiling[
     mut1: Bool,
     LayoutType1: TensorLayout,
     origin1: Origin[mut=mut1],
+    Storage1: TensorStorage,
     mut2: Bool,
     LayoutType2: TensorLayout,
     origin2: Origin[mut=mut2],
+    Storage2: TensorStorage,
     dtype: DType,
     //,
     simd_width: Int,
@@ -2244,11 +2267,11 @@ def rms_norm_fused_residual_add_gpu_warp_tiling[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma1: TileTensor[dtype, LayoutType1, origin1],
-    epsilon1: Scalar[dtype],
+    gamma1: TileTensor[dtype, LayoutType1, origin1, Storage=Storage1],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
-    gamma2: TileTensor[dtype, LayoutType2, origin2],
-    epsilon2: Scalar[dtype],
+    gamma2: TileTensor[dtype, LayoutType2, origin2, Storage=Storage2],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
     num_cols: Int,
 ):
@@ -2262,9 +2285,7 @@ def rms_norm_fused_residual_add_gpu_warp_tiling[
     comptime align = align_of[SIMD[dtype, simd_width]]()
     comptime accum_type = get_accum_type[dtype]()
 
-    var eps_accum1 = epsilon1.cast[accum_type]()
     var weight_offset_accum1 = weight_offset1.cast[accum_type]()
-    var eps_accum2 = epsilon2.cast[accum_type]()
     var weight_offset_accum2 = weight_offset2.cast[accum_type]()
 
     var vec_data = SIMD[dtype, simd_width](0)
@@ -2288,7 +2309,7 @@ def rms_norm_fused_residual_add_gpu_warp_tiling[
             idx,
             vec_data.cast[accum_type](),
             gamma1_val,
-            eps_accum1,
+            epsilon1,
             weight_offset_accum1,
             num_cols,
         )
@@ -2309,7 +2330,7 @@ def rms_norm_fused_residual_add_gpu_warp_tiling[
             idx,
             norm1_val.cast[accum_type](),
             gamma2_val,
-            eps_accum2,
+            epsilon2,
             weight_offset_accum2,
             num_cols,
         )
@@ -2325,9 +2346,11 @@ def rms_norm_fused_residual_add_gpu_block[
     mut1: Bool,
     LayoutType1: TensorLayout,
     origin1: Origin[mut=mut1],
+    Storage1: TensorStorage,
     mut2: Bool,
     LayoutType2: TensorLayout,
     origin2: Origin[mut=mut2],
+    Storage2: TensorStorage,
     dtype: DType,
     //,
     simd_width: Int,
@@ -2346,11 +2369,11 @@ def rms_norm_fused_residual_add_gpu_block[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma1: TileTensor[dtype, LayoutType1, origin1],
-    epsilon1: Scalar[dtype],
+    gamma1: TileTensor[dtype, LayoutType1, origin1, Storage=Storage1],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
-    gamma2: TileTensor[dtype, LayoutType2, origin2],
-    epsilon2: Scalar[dtype],
+    gamma2: TileTensor[dtype, LayoutType2, origin2, Storage=Storage2],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
     num_cols: Int,
 ):
@@ -2507,10 +2530,10 @@ def rms_norm_fused_residual_add_gpu[
 ](
     shape: IndexList[rank, ...],
     gamma1: TileTensor[mut=False, dtype, ...],
-    epsilon1: Scalar[dtype],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
     gamma2: TileTensor[mut=False, dtype, ...],
-    epsilon2: Scalar[dtype],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -2586,9 +2609,11 @@ def rms_norm_fused_residual_add_gpu[
                 mut1=gamma1.mut,
                 LayoutType1=gamma1.LayoutType,
                 origin1=gamma1.origin,
+                Storage1=gamma1.Storage,
                 mut2=gamma2.mut,
                 LayoutType2=gamma2.LayoutType,
                 origin2=gamma2.origin,
+                Storage2=gamma2.Storage,
                 simd_width,
                 max_warps_per_block,
                 input_fn_2d,
@@ -2618,9 +2643,11 @@ def rms_norm_fused_residual_add_gpu[
                 mut1=gamma1.mut,
                 LayoutType1=gamma1.LayoutType,
                 origin1=gamma1.origin,
+                Storage1=gamma1.Storage,
                 mut2=gamma2.mut,
                 LayoutType2=gamma2.LayoutType,
                 origin2=gamma2.origin,
+                Storage2=gamma2.Storage,
                 simd_width,
                 max_warps_per_block,
                 input_fn_2d,
@@ -2653,9 +2680,11 @@ def rms_norm_fused_residual_add_gpu[
             mut1=gamma1.mut,
             LayoutType1=gamma1.LayoutType,
             origin1=gamma1.origin,
+            Storage1=gamma1.Storage,
             mut2=gamma2.mut,
             LayoutType2=gamma2.LayoutType,
             origin2=gamma2.origin,
+            Storage2=gamma2.Storage,
             1,
             max_warps_per_block,
             input_fn_2d,
@@ -2706,10 +2735,10 @@ def rms_norm_fused_residual_add_cpu[
 ](
     shape: IndexList[rank],
     gamma1: TileTensor[mut=False, dtype, ...],
-    epsilon1: Scalar[dtype],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
     gamma2: TileTensor[mut=False, dtype, ...],
-    epsilon2: Scalar[dtype],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
 ) raises:
     comptime assert gamma1.rank == 1, "gamma1 must have rank 1"
@@ -2774,6 +2803,7 @@ def _rms_norm_rope_gpu_warp_tiling[
     input_dtype: DType,
     output_dtype: DType,
     cos_sin_dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
@@ -2791,8 +2821,8 @@ def _rms_norm_rope_gpu_warp_tiling[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[input_dtype, LayoutType, origin],
-    epsilon: Scalar[input_dtype],
+    gamma: TileTensor[input_dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[input_dtype],
     num_cols: Int,
 ):
@@ -2928,6 +2958,7 @@ def _rms_norm_rope_gpu_warp_tiling_128[
     input_dtype: DType,
     output_dtype: DType,
     cos_sin_dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     warps_per_block: Int,
@@ -2945,8 +2976,8 @@ def _rms_norm_rope_gpu_warp_tiling_128[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[input_dtype, LayoutType, origin],
-    epsilon: Scalar[input_dtype],
+    gamma: TileTensor[input_dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[input_dtype],
     num_rows: Int,
     num_cols: Int,
@@ -3116,6 +3147,7 @@ def _rms_norm_rope_gpu_block[
     input_dtype: DType,
     output_dtype: DType,
     cos_sin_dtype: DType,
+    Storage: TensorStorage,
     //,
     simd_width: Int,
     max_warps_per_block: Int,
@@ -3133,8 +3165,8 @@ def _rms_norm_rope_gpu_block[
     ) capturing -> None,
     multiply_before_cast: Bool,
 ](
-    gamma: TileTensor[input_dtype, LayoutType, origin],
-    epsilon: Scalar[input_dtype],
+    gamma: TileTensor[input_dtype, LayoutType, origin, Storage=Storage],
+    epsilon: Float32,
     weight_offset: Scalar[input_dtype],
     num_cols: Int,
 ):
@@ -3271,7 +3303,7 @@ def rms_norm_rope_gpu[
 ](
     shape: IndexList[rank, ...],
     gamma: TileTensor[mut=False, input_dtype, ...],
-    epsilon: Scalar[input_dtype],
+    epsilon: Float32,
     weight_offset: Scalar[input_dtype],
     cos_vals: TileTensor[mut=False, cos_sin_dtype, ...],
     sin_vals: TileTensor[mut=False, cos_sin_dtype, ...],
@@ -3365,6 +3397,7 @@ def rms_norm_rope_gpu[
             mut=gamma.mut,
             LayoutType=gamma.LayoutType,
             origin=gamma.origin,
+            Storage=gamma.Storage,
             simd_width,
             warps_per_block,
             input_fn_2d,
@@ -3396,6 +3429,7 @@ def rms_norm_rope_gpu[
             mut=gamma.mut,
             LayoutType=gamma.LayoutType,
             origin=gamma.origin,
+            Storage=gamma.Storage,
             simd_width,
             max_warps_per_block,
             input_fn_2d,
@@ -3425,6 +3459,7 @@ def rms_norm_rope_gpu[
             mut=gamma.mut,
             LayoutType=gamma.LayoutType,
             origin=gamma.origin,
+            Storage=gamma.Storage,
             simd_width,
             max_warps_per_block,
             input_fn_2d,
@@ -3448,6 +3483,7 @@ def rms_norm_rope_gpu[
             mut=gamma.mut,
             LayoutType=gamma.LayoutType,
             origin=gamma.origin,
+            Storage=gamma.Storage,
             1,
             max_warps_per_block,
             input_fn_2d,
@@ -3481,7 +3517,7 @@ def rms_norm[
 ](
     shape: Coord,
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     weight_offset: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -3714,10 +3750,13 @@ def row_mean_of_squares_qk_gpu[
             out_mut=output.mut,
             out_layout=output.LayoutType,
             out_origin=output.origin,
+            out_storage=output.Storage,
             q_layout=q.LayoutType,
             q_origin=q.origin,
+            q_storage=q.Storage,
             k_layout=k.LayoutType,
             k_origin=k.origin,
+            k_storage=k.Storage,
             simd_width=simd_width,
             max_warps_per_block=max_warps_per_block,
         ]
@@ -3743,10 +3782,13 @@ def row_mean_of_squares_qk_gpu[
             out_mut=output.mut,
             out_layout=output.LayoutType,
             out_origin=output.origin,
+            out_storage=output.Storage,
             q_layout=q.LayoutType,
             q_origin=q.origin,
+            q_storage=q.Storage,
             k_layout=k.LayoutType,
             k_origin=k.origin,
+            k_storage=k.Storage,
             simd_width=1,
             max_warps_per_block=max_warps_per_block,
         ]
@@ -3890,33 +3932,50 @@ def apply_qk_rms_norm_gpu_block[
     q_out_mut: Bool,
     q_out_layout: TensorLayout,
     q_out_origin: Origin[mut=q_out_mut],
+    q_out_storage: TensorStorage,
     k_out_mut: Bool,
     k_out_layout: TensorLayout,
     k_out_origin: Origin[mut=k_out_mut],
+    k_out_storage: TensorStorage,
     gamma_q_mut: Bool,
     gamma_q_layout: TensorLayout,
     gamma_q_origin: Origin[mut=gamma_q_mut],
+    gamma_q_storage: TensorStorage,
     gamma_k_mut: Bool,
     gamma_k_layout: TensorLayout,
     gamma_k_origin: Origin[mut=gamma_k_mut],
+    gamma_k_storage: TensorStorage,
     var_mut: Bool,
     var_layout: TensorLayout,
     var_origin: Origin[mut=var_mut],
+    var_storage: TensorStorage,
     q_layout: TensorLayout,
     q_origin: Origin,
+    q_storage: TensorStorage,
     k_layout: TensorLayout,
     k_origin: Origin,
+    k_storage: TensorStorage,
     //,
     simd_width: Int,
 ](
-    q_out: TileTensor[out_dtype, q_out_layout, q_out_origin],
-    k_out: TileTensor[out_dtype, k_out_layout, k_out_origin],
-    gamma_q: TileTensor[DType.float32, gamma_q_layout, gamma_q_origin],
-    gamma_k: TileTensor[DType.float32, gamma_k_layout, gamma_k_origin],
-    qk_var: TileTensor[DType.float32, var_layout, var_origin],
-    q: TileTensor[in_dtype, q_layout, q_origin],
-    k: TileTensor[in_dtype, k_layout, k_origin],
-    epsilon: Scalar[DType.float32],
+    q_out: TileTensor[
+        out_dtype, q_out_layout, q_out_origin, Storage=q_out_storage
+    ],
+    k_out: TileTensor[
+        out_dtype, k_out_layout, k_out_origin, Storage=k_out_storage
+    ],
+    gamma_q: TileTensor[
+        DType.float32, gamma_q_layout, gamma_q_origin, Storage=gamma_q_storage
+    ],
+    gamma_k: TileTensor[
+        DType.float32, gamma_k_layout, gamma_k_origin, Storage=gamma_k_storage
+    ],
+    qk_var: TileTensor[
+        DType.float32, var_layout, var_origin, Storage=var_storage
+    ],
+    q: TileTensor[in_dtype, q_layout, q_origin, Storage=q_storage],
+    k: TileTensor[in_dtype, k_layout, k_origin, Storage=k_storage],
+    epsilon: Float32,
     q_cols: Int,
     k_cols: Int,
 ) where (q_out_mut and k_out_mut):
@@ -3988,7 +4047,7 @@ def apply_qk_rms_norm_gpu[
     qk_var: TileTensor[mut=False, DType.float32, ...],
     q: TileTensor[mut=False, in_dtype, ...],
     k: TileTensor[mut=False, in_dtype, ...],
-    epsilon: Scalar[DType.float32],
+    epsilon: Float32,
     rows: Int,
     q_cols: Int,
     k_cols: Int,
@@ -4022,22 +4081,29 @@ def apply_qk_rms_norm_gpu[
             q_out_mut=q_out.mut,
             q_out_layout=q_out.LayoutType,
             q_out_origin=q_out.origin,
+            q_out_storage=q_out.Storage,
             k_out_mut=k_out.mut,
             k_out_layout=k_out.LayoutType,
             k_out_origin=k_out.origin,
+            k_out_storage=k_out.Storage,
             gamma_q_mut=gamma_q.mut,
             gamma_q_layout=gamma_q.LayoutType,
             gamma_q_origin=gamma_q.origin,
+            gamma_q_storage=gamma_q.Storage,
             gamma_k_mut=gamma_k.mut,
             gamma_k_layout=gamma_k.LayoutType,
             gamma_k_origin=gamma_k.origin,
+            gamma_k_storage=gamma_k.Storage,
             var_mut=qk_var.mut,
             var_layout=qk_var.LayoutType,
             var_origin=qk_var.origin,
+            var_storage=qk_var.Storage,
             q_layout=q.LayoutType,
             q_origin=q.origin,
+            q_storage=q.Storage,
             k_layout=k.LayoutType,
             k_origin=k.origin,
+            k_storage=k.Storage,
             simd_width=simd_width,
         ]
         ctx.enqueue_function[kernel](
@@ -4067,22 +4133,29 @@ def apply_qk_rms_norm_gpu[
             q_out_mut=q_out.mut,
             q_out_layout=q_out.LayoutType,
             q_out_origin=q_out.origin,
+            q_out_storage=q_out.Storage,
             k_out_mut=k_out.mut,
             k_out_layout=k_out.LayoutType,
             k_out_origin=k_out.origin,
+            k_out_storage=k_out.Storage,
             gamma_q_mut=gamma_q.mut,
             gamma_q_layout=gamma_q.LayoutType,
             gamma_q_origin=gamma_q.origin,
+            gamma_q_storage=gamma_q.Storage,
             gamma_k_mut=gamma_k.mut,
             gamma_k_layout=gamma_k.LayoutType,
             gamma_k_origin=gamma_k.origin,
+            gamma_k_storage=gamma_k.Storage,
             var_mut=qk_var.mut,
             var_layout=qk_var.LayoutType,
             var_origin=qk_var.origin,
+            var_storage=qk_var.Storage,
             q_layout=q.LayoutType,
             q_origin=q.origin,
+            q_storage=q.Storage,
             k_layout=k.LayoutType,
             k_origin=k.origin,
+            k_storage=k.Storage,
             simd_width=1,
         ]
         ctx.enqueue_function[kernel](
@@ -4114,7 +4187,7 @@ def apply_qk_rms_norm_cpu[
     qk_var: TileTensor[mut=False, DType.float32, ...],
     q: TileTensor[mut=False, in_dtype, ...],
     k: TileTensor[mut=False, in_dtype, ...],
-    epsilon: Scalar[DType.float32],
+    epsilon: Float32,
     rows: Int,
     q_cols: Int,
     k_cols: Int,
@@ -4157,7 +4230,7 @@ def apply_qk_rms_norm[
     qk_var: TileTensor[mut=False, DType.float32, ...],
     q: TileTensor[mut=False, in_dtype, ...],
     k: TileTensor[mut=False, in_dtype, ...],
-    epsilon: Scalar[DType.float32],
+    epsilon: Float32,
     rows: Int,
     q_cols: Int,
     k_cols: Int,
@@ -4269,10 +4342,10 @@ def _rms_norm_fused_residual_add_impl[
 ](
     shape: IndexList[rank],
     gamma1: TileTensor[mut=False, dtype, ...],
-    epsilon1: Scalar[dtype],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
     gamma2: TileTensor[mut=False, dtype, ...],
-    epsilon2: Scalar[dtype],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -4360,10 +4433,10 @@ def rms_norm_fused_residual_add[
 ](
     shape: IndexList[rank],
     gamma1: TileTensor[mut=False, dtype, ...],
-    epsilon1: Scalar[dtype],
+    epsilon1: Float32,
     weight_offset1: Scalar[dtype],
     gamma2: TileTensor[mut=False, dtype, ...],
-    epsilon2: Scalar[dtype],
+    epsilon2: Float32,
     weight_offset2: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -4464,7 +4537,7 @@ def group_norm_gpu_warp_tiling[
     beta_fn: def[width: Int](IndexList[1]) capturing -> SIMD[dtype, width],
 ](
     output: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     num_groups: Int,
     channels_per_group: Int,
     spatial: Int,
@@ -4538,7 +4611,7 @@ def group_norm_gpu_block[
     beta_fn: def[width: Int](IndexList[1]) capturing -> SIMD[dtype, width],
 ](
     output: TileTensor[dtype, LayoutType, origin],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     num_groups: Int,
     channels_per_group: Int,
     spatial: Int,
@@ -4707,7 +4780,7 @@ def group_norm_gpu_multi_block_norm[
 ](
     output: TileTensor[dtype, OutputLayoutType, output_origin],
     stats: TileTensor[get_accum_type[dtype](), StatsLayoutType, stats_origin],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     num_groups: Int,
     channels_per_group: Int,
     spatial: Int,
@@ -4813,7 +4886,7 @@ def group_norm_gpu[
     beta_fn: def[width: Int](IndexList[1]) capturing -> SIMD[dtype, width],
 ](
     shape: IndexList[rank, ...],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     output: TileTensor[mut=True, dtype, ...],
     num_groups: Int,
     ctx: DeviceContext,
@@ -5101,7 +5174,7 @@ def group_norm[
     target: StaticString = "gpu",
 ](
     shape: IndexList[rank],
-    epsilon: Scalar[dtype],
+    epsilon: Float32,
     groups: Int32,
     output: TileTensor[mut=True, dtype, ...],
     ctx: DeviceContext,
