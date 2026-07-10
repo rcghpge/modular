@@ -4553,7 +4553,9 @@ static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
   }();
   MojoValue devicePassableParam(devicePassable);
   MojoValue ptrArg = state.builder.var(
-      llvm::formatv("{0}.handle.bitcast[NoneType]()", capName).str());
+      llvm::formatv("{0}.handle.bitcast[NoneType]().as_unsafe_any_origin()",
+                    capName)
+          .str());
   MojoValue layoutArg =
       state.builder.var(llvm::formatv("{0}.layout()", capName).str());
   MojoValue structName("_MoggDenseTensorArg");
