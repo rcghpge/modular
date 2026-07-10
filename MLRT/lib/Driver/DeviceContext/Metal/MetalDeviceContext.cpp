@@ -22,6 +22,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/LineIterator.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Process.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <chrono>
@@ -384,11 +385,13 @@ ErrorOrSuccess MetalDevice::chunkFree(void *ptr, bool isHost) {
 }
 
 ErrorOr<void *> MetalDevice::getCurrentDriverContext() const {
-  RETURN_ERROR("Metal not supported");
+  // Not tracking a driver context for Metal (mirrors CPU).
+  return nullptr;
 }
 
 ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) {
-  RETURN_ERROR("Metal not supported");
+  // Not tracking a driver context for Metal (mirrors CPU).
+  return success();
 }
 
 ErrorOr<DeviceContextRef> MetalDevice::createContext() {
@@ -499,6 +502,17 @@ MetalDevice::getTrackedBuffers() const {
   return allocations_;
 }
 
+void MetalDevice::forEachTrackedBuffer(
+    const std::function<void(const BufferAllocation &)> &fn) const {
+  std::lock_guard<std::mutex> lock(bufferMapMutex_);
+  // Iterate the live allocation map under the lock instead of copying it, so
+  // the per-launch residency sweep (GEX-3761) does not pay a `std::map`
+  // value-copy every launch. Iteration order (ascending base address) and the
+  // set of buffers are identical to `getTrackedBuffers()`.
+  for (const auto &it : allocations_)
+    fn(it.second);
+}
+
 //
 //
 // ===== MetalDeviceContext ===== //
@@ -514,6 +528,13 @@ MetalDeviceContext::MetalDeviceContext(
     printDisabled_ = (env[0] != '\0' && env[0] != '0');
 }
 
+MetalDeviceContext::~MetalDeviceContext() {
+  // End and commit any still-open coalesced command buffer so we never drop a
+  // command buffer with an open encoder (Metal asserts on that) or leak
+  // uncommitted GPU work at teardown.
+  flushPendingCommandBuffer();
+}
+
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                                                        const void *src,
                                                        size_t byteSize) {
@@ -521,6 +542,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                        TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
+
+  // Commit any coalesced kernel launches so this copy runs after them.
+  flushPendingCommandBuffer();
 
   // Validate source
   if (src == nullptr)
@@ -588,6 +612,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 
   ensureThreadlocalAutoreleasePoolExists();
 
+  // Commit any coalesced kernel launches so this read observes their writes.
+  flushPendingCommandBuffer();
+
   if (dst == nullptr)
     RETURN_ERROR("Destination pointer cannot be null");
 
@@ -640,6 +667,9 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   // Note: We assume no synchronization between the devices holding dst and src
   // is required, thus the crossStreamSync argument can be ignored.
 
+  // Commit any coalesced kernel launches so this copy runs after them.
+  flushPendingCommandBuffer();
+
   // 1) Basic validation
   if (src.byteSize() == 0 || dst.byteSize() == 0)
     return success(); // no-op for zero-size
@@ -673,6 +703,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                        TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
+
+  // Commit any coalesced kernel launches so this set-memory runs after them.
+  flushPendingCommandBuffer();
 
   if (byteSize == 0)
     return success(); // no-op
@@ -736,6 +769,25 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                  StringRef debugLevel,
                                  int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
+
+  // Return the cached compute pipeline state if this exact (module, code,
+  // entry point) has already been compiled. Metal pipeline-state creation
+  // recompiles the shader and generates GPU machine code, so without this the
+  // work would repeat on every launch on the critical path (the CUDA/HIP
+  // backends cache the same way).
+  Device::FunctionCacheKey key{
+      /*name=*/Device::FunctionCacheKey::moduleCacheName(moduleName, code),
+      /*functionName=*/functionName.str(),
+      /*debugLevel=*/debugLevel.str(),
+      /*maxDynamicSharedBytes=*/maxDynamicSharedBytes,
+      /*optimizationLevel=*/optimizationLevel};
+  DeviceFunctionCacheEntryRef entry = device().findInFunctionCache(key);
+  if (entry.getPointer() != nullptr) {
+    MetalModuleFunctionRef moduleFunc = MetalModuleFunctionRef::take(
+        MetalModuleFunction::cast(entry.release()));
+    return MetalDeviceFunctionRef::create(*this, std::move(moduleFunc));
+  }
+
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -833,11 +885,65 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
   NS::Array *arguments = reflection->arguments();
   size_t argCount = arguments ? arguments->count() : 0;
 
-  // Create and return a MetalDeviceFunction
-  MetalDeviceFunctionRef func = MetalDeviceFunctionRef::create(
-      *this, moduleName, functionName, pipelineState, argCount);
+  // Allocate the module function outside any lock region (the cache takes its
+  // own lock). If this key was registered concurrently, insertInFunctionCache
+  // returns the existing entry and this ref is released before returning.
+  MetalModuleFunctionRef moduleFunc = MetalModuleFunctionRef::create(
+      std::string(functionName), std::move(pipelineState), argCount);
+  entry = device().insertInFunctionCache(key, *moduleFunc);
+  return MetalDeviceFunctionRef::create(
+      *this,
+      MetalModuleFunctionRef::take(MetalModuleFunction::cast(entry.release())));
+}
 
-  return func;
+// Upper bound on kernel launches encoded into one shared command buffer before
+// a forced commit. A genuine dependency/readback/sync point (copy, set-memory,
+// event, synchronize) flushes earlier via `flushPendingCommandBuffer()`, so
+// this cap only bounds long uninterrupted kernel runs; it keeps a single
+// command buffer from growing without limit (and bounds error-attribution
+// latency, since a launch error surfaces at the next commit).
+//
+// The value is a runtime tunable: smaller command buffers can pipeline better
+// for some workloads (e.g. batch-1 decode), while larger ones amortize per-CB
+// overhead over more launches. Override with the
+// `MODULAR_METAL_MAX_OPS_PER_COMMAND_BUFFER` env var (a positive integer);
+// invalid or unset values keep the default below.
+static constexpr uint32_t kDefaultMaxOpsPerCommandBuffer = 64;
+
+static uint32_t maxOpsPerCommandBuffer() {
+  // Resolved once on first launch and cached; the env var is a process-wide
+  // knob, so re-reading it per launch would only add cost.
+  static const uint32_t value = [] {
+    if (auto env = llvm::sys::Process::GetEnv(
+            "MODULAR_METAL_MAX_OPS_PER_COMMAND_BUFFER")) {
+      uint32_t parsed = 0;
+      if (!llvm::StringRef(*env).getAsInteger(10, parsed) && parsed > 0)
+        return parsed;
+    }
+    return kDefaultMaxOpsPerCommandBuffer;
+  }();
+  return value;
+}
+
+void MetalDeviceContext::flushPendingCommandBufferLocked() {
+  if (pendingEncoder_) {
+    pendingEncoder_->endEncoding();
+    pendingEncoder_.reset();
+  }
+  if (pendingCommandBuffer_) {
+    pendingCommandBuffer_->commit();
+    pendingCommandBuffer_.reset();
+  }
+  // The committed command buffer now owns its bound resources; drop our
+  // references to any oversized-arg backing buffers.
+  pendingArgBuffers_.clear();
+  pendingEncodedOps_ = 0;
+  pendingHasLogState_ = false;
+}
+
+void MetalDeviceContext::flushPendingCommandBuffer() {
+  std::lock_guard<std::mutex> lock(pendingCommandBufferMutex_);
+  flushPendingCommandBufferLocked();
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
@@ -877,58 +983,143 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
           " exceeds device limit of " + std::to_string(maxSharedMemBytes));
   }
 
-  // 2) Allocate per-arg MTLBuffers before opening the encoder so an
-  //    allocation error doesn't leave one open.
+  // 2) Bind small arguments with `setBytes` (below); only oversized args need
+  //    a backing MTLBuffer. Pre-allocate those here, before opening the
+  //    encoder, so an allocation error doesn't leave one open. Every MAX
+  //    kernel argument is either an 8-byte device address (the compiler adds
+  //    an extra indirection for Metal pointer args — see
+  //    KGEN LowerArgConventions) or a small scalar/capture, so this fallback
+  //    path is effectively never taken; it exists to stay correct if a
+  //    by-value argument ever exceeds Metal's 4 KB `setBytes` limit.
+  static constexpr uint32_t kMaxSetBytes = 4096;
   MTL::ResourceOptions argBufOpts =
       getResourceOptions(Device::AllocMode::ASYNC);
   llvm::SmallVector<NS::SharedPtr<MTL::Buffer>, 8> argBufs;
-  argBufs.reserve(argCount);
+  argBufs.resize(argCount);
   for (uint32_t i = 0; i < argCount; ++i) {
+    if (mtlArgs->argSizes[i] <= kMaxSetBytes)
+      continue;
     DEFINE_OR_RETURN_ERROR(MTL::Buffer *, tmpBuf,
                            allocateNewBuffer(mtlDevice, mtlArgs->args[i],
                                              mtlArgs->argSizes[i], argBufOpts));
-    argBufs.emplace_back(NS::TransferPtr(tmpBuf));
+    argBufs[i] = NS::TransferPtr(tmpBuf);
   }
+
+  // 3) Reuse (or lazily open) the shared command buffer + serial compute
+  //    encoder. Consecutive launches encode into one command buffer that is
+  //    committed in batches by `flushPendingCommandBuffer*`, collapsing the
+  //    per-op commit overhead that dominates dispatch-bound decode on Metal.
+  //    GPU-print logging is per-command-buffer (fixed at creation via a
+  //    log-state descriptor), so a run of same-logging launches can share one
+  //    buffer; only a change in the effective logging setting forces a flush
+  //    to reconfigure.
+  std::lock_guard<std::mutex> lock(pendingCommandBufferMutex_);
 
   // Attach MTL::LogState only when GPU print is wanted; an active capture
   // suppresses it so captured command buffers stay replayable.
-  MTL::CommandBuffer *cmdBuffer = nullptr;
-  bool wantLog =
+  const bool wantLog =
       isLoggingEnabled(attrs, numAttrs) && !printDisabled_ && !captureActive_;
-  if (MTL::LogState *ls = getOrCreateLogState(wantLog)) {
-    NS::SharedPtr<MTL::CommandBufferDescriptor> desc =
-        NS::TransferPtr(MTL::CommandBufferDescriptor::alloc()->init());
-    desc->setLogState(ls);
-    cmdBuffer = commandQueue_->commandBuffer(desc.get());
-  } else {
-    cmdBuffer = commandQueue_->commandBuffer();
-  }
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer");
+  MTL::LogState *logState = getOrCreateLogState(wantLog);
+  const bool wantLogState = logState != nullptr;
 
-  // 4) Encode + dispatch + commit. Cross-cmdBuffer ordering is handled by
-  //    Metal hazard tracking on the tracked buffers declared via
-  //    `useResource`.
-  MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
-  if (encoder == nullptr)
-    RETURN_ERROR("Failed to create compute command encoder");
+  // A pending buffer configured for the other logging mode cannot be reused.
+  if (pendingEncoder_ && pendingHasLogState_ != wantLogState)
+    flushPendingCommandBufferLocked();
+
+  if (!pendingEncoder_) {
+    // `commandBuffer()`/`computeCommandEncoder()` return autoreleased objects;
+    // `RetainPtr` retains them so they survive until a later (possibly
+    // cross-thread) flush commits them, rather than dangling once this thread's
+    // autorelease pool drains.
+    if (wantLogState) {
+      NS::SharedPtr<MTL::CommandBufferDescriptor> desc =
+          NS::TransferPtr(MTL::CommandBufferDescriptor::alloc()->init());
+      desc->setLogState(logState);
+      pendingCommandBuffer_ =
+          NS::RetainPtr(commandQueue_->commandBuffer(desc.get()));
+    } else {
+      pendingCommandBuffer_ = NS::RetainPtr(commandQueue_->commandBuffer());
+    }
+    if (!pendingCommandBuffer_)
+      RETURN_ERROR("Failed to create command buffer");
+    pendingEncoder_ =
+        NS::RetainPtr(pendingCommandBuffer_->computeCommandEncoder());
+    if (!pendingEncoder_) {
+      // Drop the just-created command buffer so we don't leak a half-open
+      // one; a later launch/flush will retry.
+      pendingCommandBuffer_.reset();
+      RETURN_ERROR("Failed to create compute command encoder");
+    }
+    pendingHasLogState_ = wantLogState;
+  }
+  MTL::ComputeCommandEncoder *encoder = pendingEncoder_.get();
+
+  // 4) Encode + dispatch. Ordering within the shared serial encoder is Metal's
+  //    in-submission-order guarantee plus hazard tracking on the tracked
+  //    buffers declared via `useResource`, so in-place read-modify-write
+  //    chains stay serialized exactly as they did across separate command
+  //    buffers. This rests on two preconditions: (a) a serial encoder (not
+  //    `MTL::DispatchTypeConcurrent`), and (b) default hazard-tracked, non-heap
+  //    `newBuffer` allocations, so Metal auto-inserts barriers between
+  //    same-resource dispatches. If `getStorageMode`/`getResourceOptions` ever
+  //    makes storage untracked or heap-based (see the TODO there), this
+  //    serialization is voided and explicit barriers/fences become required.
   encoder->setComputePipelineState(pipeline);
-  for (uint32_t i = 0; i < argCount; ++i)
+  // Bind each argument's bytes into the encoder's argument buffer directly via
+  // `setBytes`, avoiding a fresh MTLBuffer allocation + copy per argument on
+  // every launch (the dominant per-launch CPU cost on Metal). Oversized args
+  // fall back to the pre-allocated backing buffer bound with `setBuffer`.
+  for (uint32_t i = 0; i < argCount; ++i) {
+    if (mtlArgs->argSizes[i] <= kMaxSetBytes) {
+      encoder->setBytes(mtlArgs->args[i], mtlArgs->argSizes[i], i);
+      continue;
+    }
     encoder->setBuffer(argBufs[i].get(), 0, i);
+    // `argBufs` goes out of scope before the shared command buffer is
+    // committed, so hand the backing buffer's ownership to the pending state
+    // to keep it alive until flush.
+    pendingArgBuffers_.emplace_back(std::move(argBufs[i]));
+  }
   // Mark the buffers reachable through the kernel's pointer arguments as
   // resident so the GPU may access them.
   for (int32_t i = 0; i < mtlArgs->numBuffers; i++)
     encoder->useResource(getMetalBuffer(mtlArgs->buffers[i]->ptr()),
                          MTL::ResourceUsageWrite);
   // FIXME: GEX-3761 only mark resources actually used by the kernel.
-  for (const auto &it : metalDevice.getTrackedBuffers())
-    encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
+  // NOTE: `mtlArgs->buffers` (the arg-derived resident set above) is NOT a
+  // complete substitute for this all-tracked-buffers loop: dropping this loop
+  // and relying only on the per-arg set produces silently wrong decode output
+  // on paged-KV models (e.g. Llama-3.1-8B emits garbage tokens on Metal),
+  // because some device buffers a kernel reads are reached indirectly (e.g.
+  // through a device-side block/pointer table passed by value) and so are not
+  // enumerated as pointer args. Narrowing residency safely requires the kernel
+  // to declare its full working set; until then this conservative loop stays.
+  // `forEachTrackedBuffer` marks the exact same buffers in the same order as
+  // iterating `getTrackedBuffers()`, but without the per-launch `std::map`
+  // value-copy (GEX-3761): the `useResource(buffer, Write)` calls -- and thus
+  // the cross-command-buffer hazard edges for the indirectly-reached buffers --
+  // are unchanged.
+  //
+  // Lock ordering: we hold `pendingCommandBufferMutex_` here while
+  // `forEachTrackedBuffer` acquires the device's `bufferMapMutex_`. That
+  // nesting is deadlock-free only because `bufferMapMutex_` is a leaf lock --
+  // no buffer-tracking method (track/untrack/lookup) ever takes
+  // `pendingCommandBufferMutex_`. Keep that one-directional ordering.
+  metalDevice.forEachTrackedBuffer([&](const MetalDevice::BufferAllocation &a) {
+    encoder->useResource(a.buffer, MTL::ResourceUsageWrite);
+  });
   if (sharedMemBytes > 0)
     encoder->setThreadgroupMemoryLength(sharedMemBytes, /*index=*/0);
   encoder->dispatchThreadgroups(MTL::Size{gridX, gridY, gridZ},
                                 MTL::Size{blockX, blockY, blockZ});
-  encoder->endEncoding();
-  cmdBuffer->commit(); // async (DRIV-164)
+
+  // 5) Commit policy. The launch stays encoded in the open shared command
+  //    buffer (async, DRIV-164) so the next launch can join it; it is
+  //    committed by `flushPendingCommandBuffer*` at the next
+  //    dependency/readback/sync point, or here once the batch reaches
+  //    the per-command-buffer op cap.
+  if (++pendingEncodedOps_ >= maxOpsPerCommandBuffer())
+    flushPendingCommandBufferLocked();
 
   return success();
 }
@@ -945,6 +1136,9 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
   // Check for any pending errors first, similar to CUDA's behavior
   RETURN_IF_ERROR(checkPendingError());
 
+  // Commit any coalesced kernel launches so the fence below waits on them.
+  flushPendingCommandBuffer();
+
   // Empty cmdBuffer acts as a fence: Metal serializes cmdBuffers in commit
   // order, and waitUntilCompleted blocks until our cmdBuffer (and all prior
   // commits + their completion handlers) finish.
@@ -960,6 +1154,9 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
+
+  // Commit any coalesced kernel launches so the event observes them.
+  flushPendingCommandBuffer();
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (!cmdBuffer)
@@ -1426,19 +1623,32 @@ const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
 
 //
 //
+// ===== MetalModuleFunction ===== //
+MetalModuleFunction::MetalModuleFunction(
+    std::string name, NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
+    size_t argumentCount)
+    : DeviceFunctionCacheEntry(std::move(name)),
+      pipelineState_(std::move(pipelineState)), argumentCount_(argumentCount) {}
+
+const MetalModuleFunction *
+MetalModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
+  return static_cast<const MetalModuleFunction *>(entry);
+}
+
 // ===== MetalDeviceFunction ===== //
 //
 
-MetalDeviceFunction::MetalDeviceFunction(
-    MetalDeviceContext &context, StringRef moduleName, StringRef functionName,
-    NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
-    size_t argumentCount)
-    : DeviceFunction(context), name_(functionName.str()),
-      pipelineState_(pipelineState), argumentCount_(argumentCount) {}
+MetalDeviceFunction::MetalDeviceFunction(MetalDeviceContext &context,
+                                         MetalModuleFunctionRef modFunc)
+    : DeviceFunction(context), moduleFunction_(std::move(modFunc)) {}
 
-size_t MetalDeviceFunction::argumentCount() const { return argumentCount_; }
+size_t MetalDeviceFunction::argumentCount() const {
+  return moduleFunction_->argumentCount();
+}
 
-const std::string &MetalDeviceFunction::name() const { return name_; }
+const std::string &MetalDeviceFunction::name() const {
+  return moduleFunction_->name();
+}
 
 ErrorOrSuccess MetalDeviceFunction::copyToNamedConstant(const char *name,
                                                         const void *data,

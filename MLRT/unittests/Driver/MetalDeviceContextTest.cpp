@@ -108,6 +108,28 @@ protected:
     )";
   }
 
+  // Metal shader that increments every element of a buffer in place. Used to
+  // build a chain of dependent launches (each reads what the previous wrote)
+  // to exercise ordering/serialization of coalesced command buffers.
+  std::string getInplaceIncrementKernelSource() {
+    return R"(
+      #include <metal_stdlib>
+      using namespace metal;
+
+      struct FloatBufPtr { device float* ptr; };
+
+      kernel void inc_in_place(
+          device FloatBufPtr& buf_ref [[buffer(0)]],
+          constant uint&      length  [[buffer(1)]],
+          uint tid [[thread_position_in_grid]])
+      {
+          device float* buf = buf_ref.ptr;
+          if (tid < length)
+              buf[tid] = buf[tid] + 1.0f;
+      }
+    )";
+  }
+
   // Helper function to get Metal shader source code
   std::string getMetalShaderSource() {
     return R"(
@@ -129,6 +151,39 @@ protected:
           device const float* input1 = in1_ref.ptr;
           if (tid < length)
               output[tid] = input0[tid] + input1[tid];
+      }
+    )";
+  }
+
+  // Two distinct entry points in a single MSL blob. Used to check that the
+  // function cache keys on the entry-point name, not just the blob: loading
+  // `fill_one` and `fill_two` from the same source must resolve to distinct
+  // pipelines that write their distinct constants (1.0 vs 2.0), not alias.
+  std::string getTwoKernelShaderSource() {
+    return R"(
+      #include <metal_stdlib>
+      using namespace metal;
+
+      struct FloatBufPtr { device float* ptr; };
+
+      kernel void fill_one(
+          device FloatBufPtr& out_ref [[buffer(0)]],
+          constant uint&      length  [[buffer(1)]],
+          uint tid [[thread_position_in_grid]])
+      {
+          device float* out = out_ref.ptr;
+          if (tid < length)
+              out[tid] = 1.0f;
+      }
+
+      kernel void fill_two(
+          device FloatBufPtr& out_ref [[buffer(0)]],
+          constant uint&      length  [[buffer(1)]],
+          uint tid [[thread_position_in_grid]])
+      {
+          device float* out = out_ref.ptr;
+          if (tid < length)
+              out[tid] = 2.0f;
       }
     )";
   }
@@ -256,6 +311,234 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   delete[] in0Host;
   delete[] in1Host;
   delete[] outHost;
+}
+
+// Loading the same (module, code, entry point) twice must return the same
+// cached compute pipeline state rather than recompiling the shader and creating
+// a fresh pipeline on every launch. Metal previously had no function cache (the
+// CUDA/HIP backends do), so each load rebuilt the pipeline on the critical
+// path. The pipeline-state pointer is the observable cache-hit signal: on a hit
+// both `MetalDeviceFunction`s wrap the one cached pipeline, so the pointers are
+// equal; without the cache they differ.
+TEST_F(MetalDeviceContextTestBase, LoadFunctionCachesPipelineState) {
+  ASSERT_TRUE(ctx_);
+
+  std::string src = getMetalShaderSource();
+
+  ErrorOr<DeviceFunctionRef> firstOr =
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", src);
+  ASSERT_FALSE(firstOr.isError())
+      << "First load failed: " << firstOr.getError();
+  DeviceFunctionRef first = firstOr.takeValue();
+
+  ErrorOr<DeviceFunctionRef> secondOr =
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", src);
+  ASSERT_FALSE(secondOr.isError())
+      << "Second load failed: " << secondOr.getError();
+  DeviceFunctionRef second = secondOr.takeValue();
+
+  MTL::ComputePipelineState *firstPipeline =
+      MetalDeviceFunction::cast(*first).getPipelineState();
+  MTL::ComputePipelineState *secondPipeline =
+      MetalDeviceFunction::cast(*second).getPipelineState();
+  ASSERT_NE(firstPipeline, nullptr);
+  EXPECT_EQ(firstPipeline, secondPipeline)
+      << "Second load did not reuse the cached pipeline state";
+}
+
+// Correctness guard for the cache key: loading two distinct entry points from
+// the same MSL blob must return two distinct functions, not alias the first.
+// The empty module name forces the code-hash keying path (see
+// FunctionCacheKey::moduleCacheName), where a key that omitted the entry-point
+// name would collide and silently return `fill_one` for both. Each kernel
+// writes a distinct constant (1.0 vs 2.0) so a mis-keyed cache is observable as
+// a wrong result, not just a wrong handle. Mirrors the CUDA backend's
+// LoadFunctionDistinctEntryPointsSameBlob.
+TEST_F(MetalDeviceContextTestBase, LoadFunctionDistinctEntryPointsSameBlob) {
+  ASSERT_TRUE(ctx_);
+
+  std::string src = getTwoKernelShaderSource();
+
+  ErrorOr<DeviceFunctionRef> funcOneOr =
+      ctx_->loadFunction(/*moduleName=*/"", "fill_one", src);
+  ASSERT_FALSE(funcOneOr.isError())
+      << "Failed to load fill_one: " << funcOneOr.getError();
+  DeviceFunctionRef funcOne = funcOneOr.takeValue();
+
+  ErrorOr<DeviceFunctionRef> funcTwoOr =
+      ctx_->loadFunction(/*moduleName=*/"", "fill_two", src);
+  ASSERT_FALSE(funcTwoOr.isError())
+      << "Failed to load fill_two: " << funcTwoOr.getError();
+  DeviceFunctionRef funcTwo = funcTwoOr.takeValue();
+
+  // Pre-fix, funcTwo would alias funcOne (same blob key) and report "fill_one".
+  EXPECT_EQ(funcOne->name(), "fill_one");
+  EXPECT_EQ(funcTwo->name(), "fill_two");
+  EXPECT_NE(MetalDeviceFunction::cast(*funcOne).getPipelineState(),
+            MetalDeviceFunction::cast(*funcTwo).getPipelineState());
+
+  const size_t length = 256;
+  const size_t elemSize = sizeof(float);
+  const uint32_t blockDim = 64;
+  const uint32_t gridSize =
+      static_cast<uint32_t>((length + blockDim - 1) / blockDim);
+
+  auto runAndCheck = [&](DeviceFunctionRef &fn, float expected) {
+    ErrorOr<DeviceBufferRef> bufOr =
+        ctx_->enqueueCreateBuffer(length * elemSize);
+    ASSERT_FALSE(bufOr.isError()) << "Failed to create buffer";
+    DeviceBufferRef buf = bufOr.takeValue();
+
+    std::vector<float> host(length, -1.0f);
+    EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*buf, host.data()));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    void *bufPtr = buf->ptr();
+    uint32_t lengthValue = static_cast<uint32_t>(length);
+    void *kernelArgs[] = {&bufPtr, &lengthValue};
+    size_t argSizes[] = {sizeof(bufPtr), sizeof(lengthValue)};
+    bool argIsDevicePtr[] = {true, false};
+    DeviceBuffer *kernelBuffers[] = {buf.getPointer()};
+    MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                          kernelBuffers, 1};
+    void *args[] = {&metalArgs};
+
+    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+        *fn, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
+        sizeof(kernelArgs) / sizeof(void *), argSizes));
+
+    EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(host.data(), *buf));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    for (size_t i = 0; i < std::min(size_t(5), length); ++i)
+      EXPECT_FLOAT_EQ(host[i], expected)
+          << "Mismatch at index " << i << ": expected " << expected << ", got "
+          << host[i];
+  };
+
+  runAndCheck(funcOne, 1.0f);
+  runAndCheck(funcTwo, 2.0f);
+}
+
+// Ordering/serialization guard for coalesced command buffers (DRIV-164).
+// Enqueues a chain of in-place increment kernels back-to-back with NO
+// synchronize between them, so they share one coalesced command buffer. Each
+// launch reads what the previous one wrote (a read-modify-write on the same
+// buffer). If coalescing broke ordering (e.g. ran launches concurrently or
+// reordered them), the final values would not equal initial + numLaunches.
+// This mirrors the in-place SSD/conv state-pool RMW that must stay serialized.
+TEST_F(MetalDeviceContextTestBase, CoalescedLaunchesStaySerialized) {
+  ASSERT_TRUE(ctx_);
+
+  ErrorOr<DeviceFunctionRef> fnOr = ctx_->loadFunction(
+      "inc_module", "inc_in_place", getInplaceIncrementKernelSource());
+  ASSERT_FALSE(fnOr.isError())
+      << "Failed to load increment kernel: " << fnOr.getError();
+  DeviceFunctionRef fn = fnOr.takeValue();
+
+  const size_t length = 4096;
+  const size_t elemSize = sizeof(float);
+  const uint32_t blockDim = 256;
+  const uint32_t gridSize =
+      static_cast<uint32_t>((length + blockDim - 1) / blockDim);
+  // More launches than the default per-command-buffer op cap (64) so the
+  // internal cap-flush path is also exercised mid-chain and must preserve
+  // ordering across it.
+  const int numLaunches = 200;
+
+  ErrorOr<DeviceBufferRef> bufOr = ctx_->enqueueCreateBuffer(length * elemSize);
+  ASSERT_FALSE(bufOr.isError()) << "Failed to create buffer";
+  DeviceBufferRef buf = bufOr.takeValue();
+
+  std::vector<float> host(length, 0.0f);
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*buf, host.data()));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  void *bufPtr = buf->ptr();
+  uint32_t lengthValue = static_cast<uint32_t>(length);
+  void *kernelArgs[] = {&bufPtr, &lengthValue};
+  size_t argSizes[] = {sizeof(bufPtr), sizeof(lengthValue)};
+  bool argIsDevicePtr[] = {true, false};
+  DeviceBuffer *kernelBuffers[] = {buf.getPointer()};
+  MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                        kernelBuffers, 1};
+  void *args[] = {&metalArgs};
+
+  // Enqueue the whole chain WITHOUT syncing in between: these launches
+  // coalesce into shared command buffers.
+  for (int i = 0; i < numLaunches; ++i) {
+    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+        *fn, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
+        sizeof(kernelArgs) / sizeof(void *), argSizes));
+  }
+
+  // Single readback flushes + drains the pending command buffers.
+  EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(host.data(), *buf));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  for (size_t i = 0; i < length; ++i) {
+    EXPECT_FLOAT_EQ(host[i], static_cast<float>(numLaunches))
+        << "Serialization broke at index " << i << ": expected " << numLaunches
+        << ", got " << host[i];
+  }
+}
+
+// Complements the above: a readback in the MIDDLE of a launch chain must flush
+// the coalesced command buffer and observe all prior writes, then further
+// coalesced launches continue correctly. Guards the flush-at-copy path.
+TEST_F(MetalDeviceContextTestBase, MidChainReadbackFlushesCorrectly) {
+  ASSERT_TRUE(ctx_);
+
+  ErrorOr<DeviceFunctionRef> fnOr = ctx_->loadFunction(
+      "inc_module2", "inc_in_place", getInplaceIncrementKernelSource());
+  ASSERT_FALSE(fnOr.isError())
+      << "Failed to load increment kernel: " << fnOr.getError();
+  DeviceFunctionRef fn = fnOr.takeValue();
+
+  const size_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  const uint32_t blockDim = 256;
+  const uint32_t gridSize =
+      static_cast<uint32_t>((length + blockDim - 1) / blockDim);
+
+  ErrorOr<DeviceBufferRef> bufOr = ctx_->enqueueCreateBuffer(length * elemSize);
+  ASSERT_FALSE(bufOr.isError()) << "Failed to create buffer";
+  DeviceBufferRef buf = bufOr.takeValue();
+
+  std::vector<float> host(length, 0.0f);
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*buf, host.data()));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  void *bufPtr = buf->ptr();
+  uint32_t lengthValue = static_cast<uint32_t>(length);
+  void *kernelArgs[] = {&bufPtr, &lengthValue};
+  size_t argSizes[] = {sizeof(bufPtr), sizeof(lengthValue)};
+  bool argIsDevicePtr[] = {true, false};
+  DeviceBuffer *kernelBuffers[] = {buf.getPointer()};
+  MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                        kernelBuffers, 1};
+  void *args[] = {&metalArgs};
+
+  auto launch = [&]() {
+    return ctx_->enqueueFunctionExecDirect(
+        *fn, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 0, args,
+        sizeof(kernelArgs) / sizeof(void *), argSizes);
+  };
+
+  // 3 launches, then a readback (forces a flush), then 2 more, then readback.
+  for (int i = 0; i < 3; ++i)
+    EXPECT_NO_ERR(launch());
+  EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(host.data(), *buf));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  for (size_t i = 0; i < length; ++i)
+    ASSERT_FLOAT_EQ(host[i], 3.0f) << "mid-chain flush lost writes at " << i;
+
+  for (int i = 0; i < 2; ++i)
+    EXPECT_NO_ERR(launch());
+  EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(host.data(), *buf));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  for (size_t i = 0; i < length; ++i)
+    EXPECT_FLOAT_EQ(host[i], 5.0f) << "post-flush launches wrong at " << i;
 }
 
 TEST_F(MetalDeviceContextTestBase, DriverVersion) {
