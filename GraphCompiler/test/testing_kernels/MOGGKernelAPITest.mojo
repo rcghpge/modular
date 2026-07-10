@@ -314,6 +314,26 @@ struct TraitNegate:
             )
 
 
+# Trait-lane in-place mutable kernel: `x` is read and written through the same
+# buffer (`x[i] += 1`). Proves the emitted `_MoggDenseTensorArg[io=MUTABLE_INPUT]`
+# satisfies a `MutableInput & DenseTensor & TileTensorable` stub bound -- i.e.
+# the wrapper conforms to `MutableInput` (gated on the io), not just `Input`.
+@compiler.register("trait_inplace_increment")
+struct TraitInplaceIncrement:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[MutableInput & DenseTensor], ctx: DeviceContext,) raises:
+        comptime assert conforms_to(type_of(x), MutableInput)
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        var xt = to_tile_tensor(x)
+        var n = Int(x.shape().product())
+        for i in range(n):
+            xt.raw_store(
+                i, rebind[SIMD[type_of(xt).dtype, 1]](xt.raw_load(i) + 1)
+            )
+
+
 # ===-----------------------------------------------------------------------===#
 # Trait-lane FUSED kernels (Phase 5): one per fusion access form.
 #
