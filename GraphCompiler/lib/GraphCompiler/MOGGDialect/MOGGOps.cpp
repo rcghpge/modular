@@ -110,9 +110,18 @@ struct FusionStructRenderer final : ElementwiseBodyRenderer {
 struct DenseFusionRenderer final : ElementwiseBodyRenderer {
   std::string buildLoadExpr(unsigned captureIdx,
                             StringRef /*indicesExpr*/) const override {
-    return llvm::formatv("self.src_{0}.load[width=width, "
-                         "alignment=element_alignment]({1})",
-                         std::to_string(captureIdx), kParameterIdx)
+    // The functor captures each source as a bare pointer + layout (NOT a
+    // `TileTensor` -- a `TileTensor` field would not translate to a device
+    // address, since the encoder bit-copies it; a bare `UnsafePointer`
+    // translates through its own `_to_device_type`). Rebuild the dense tile
+    // here and load from it, so the same functor body serves CPU and GPU.
+    auto ci = std::to_string(captureIdx);
+    return llvm::formatv(
+               "TileTensor[dtype=Self.dtype_{0}, LayoutType=Self.LayoutType_{0}"
+               ", origin=UntrackedOrigin[mut=Self.mut_{0}]](ptr=self.ptr_{0}, "
+               "layout=self.layout_{0}).load[width=width, "
+               "alignment=element_alignment]({1})",
+               ci, kParameterIdx)
         .str();
   }
   StringRef simdWidthParamName() const override { return "width"; }
@@ -1472,17 +1481,28 @@ struct _MoggTensorBufferCapture[
 //     functor + a layout and presents the landed `Input & Fused & Loadable`
 //     surface, delegating `load(idx)` straight to the functor's `__call__`. It
 //     is passed directly to `execute` and the kernel infers its generic `T`.
-// (Device projection is the GPU slice; this is the CPU surface.)
+// ONE struct serves both CPU and GPU (mirroring `_MoggDenseTensorArg` and the
+// mockup `EmitMojoInputLoadFusionTensor`): `_device_passable` selects between
+// the host `Loadable` surface (CPU) and the projected-to-device surface (GPU).
+// On the GPU path `_to_device_type` projects the functor field-by-field via the
+// encoder's `encode_fields` -- the functor's captured pointers (bare
+// `UnsafePointer`s) translate to device addresses through their own
+// `_to_device_type`, exactly as `_MoggDenseTensorArg` forwards its handle. (A
+// `TileTensor` field would NOT translate -- the encoder bit-copies it -- which
+// is why the functor captures bare pointers and rebuilds the tile in
+// `__call__`.)
 //
-// NOTE: `kInputLoadFusionDefs` and its sibling `kOutputStoreFusionDefs` below
-// are near-identical raw Mojo-source string literals (same field layout,
-// `_to_device_type`, `shape()`), differing mainly in trait name and the one
-// access method. Being string literals they are hard to single-source today;
-// if a third fused form appears, generate these from a small builder rather
-// than adding a third verbatim block.
+// NOTE: `kInputLoadFusionDefs` and its siblings `kOutputStoreFusionDefs` /
+// `kTransformFusionDefs` below are near-identical raw Mojo-source string
+// literals (same field layout, `_to_device_type`, `shape()`), differing
+// mainly in trait name, the one access method, and the transform variant's
+// extra tile field. Being string literals they are hard to single-source
+// today; if a fourth fused form appears, generate these from a small builder
+// rather than adding a fourth verbatim block.
 static constexpr llvm::StringLiteral kInputLoadFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import Fused, Input, Loadable, Tensor
+from extensibility import Fused, Input, LoadAccess, Loadable, Tensor
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
 trait InputLoadFusion(TrivialRegisterPassable):
@@ -1495,24 +1515,66 @@ trait InputLoadFusion(TrivialRegisterPassable):
         ...
 
 
+# `LoadAccess` (the graph-visible marker) is UNCONDITIONAL so the wrapper
+# satisfies an `Input & Fused & LoadAccess` kernel bound on both host and device;
+# the callable `Loadable` is host-only (`where not _device_passable`). On the
+# device the kernel refines through `downcast[..., Loadable]`.
 struct _MoggInputLoadFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
     _alignment: Int,
     _InFusion: InputLoadFusion,
-](Copyable, Fused, Input, Loadable, Movable, Tensor):
+    _device_passable: Bool,
+](
+    Copyable,
+    DevicePassable where _device_passable,
+    Fused,
+    Input,
+    LoadAccess,
+    Loadable where not _device_passable,
+    Movable,
+    Tensor,
+):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
+    comptime device_passable = Self._device_passable
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     var in_fusion: Self._InFusion
     var _layout: Self.LayoutType
+
+    comptime device_type: AnyType = _MoggInputLoadFusionTensor[
+        Self._dtype, Self._LayoutType, Self._alignment, Self._InFusion, False
+    ]
 
     @always_inline
     def __init__(out self, in_fusion: Self._InFusion, layout: Self.LayoutType):
         self.in_fusion = in_fusion
         self._layout = layout
+
+    @always_inline
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ) where Self._device_passable:
+        comptime in_fusion_offset = reflect[Self.device_type].field_offset[
+            index=0, target=encoder.target()
+        ]()
+        encoder.encode_fields[Self._InFusion](
+            self.in_fusion,
+            (target.bitcast[UInt8]() + in_fusion_offset).bitcast[NoneType](),
+        )
+        comptime layout_offset = reflect[Self.device_type].field_offset[
+            index=1, target=encoder.target()
+        ]()
+        encoder.encode(
+            self._layout,
+            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+        )
+
+    @staticmethod
+    def get_type_name() -> String where Self._device_passable:
+        return String("_MoggInputLoadFusionTensor")
 
     @always_inline
     def shape(self) -> Self.ShapeType:
@@ -1522,7 +1584,9 @@ struct _MoggInputLoadFusionTensor[
     def load[
         width: Int,
         element_alignment: Int = 1,
-    ](self, idx: Coord) -> SIMD[Self.dtype, width]:
+    ](self, idx: Coord) -> SIMD[
+        Self.dtype, width
+    ] where not Self._device_passable:
         return self.in_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx)
@@ -1537,7 +1601,8 @@ struct _MoggInputLoadFusionTensor[
 // to the functor.
 static constexpr llvm::StringLiteral kOutputStoreFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import Fused, Output, Storable, Tensor
+from extensibility import Fused, Output, StoreAccess, Storable, Tensor
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
 trait OutputStoreFusion(TrivialRegisterPassable):
@@ -1550,24 +1615,66 @@ trait OutputStoreFusion(TrivialRegisterPassable):
         ...
 
 
+# `StoreAccess` (the graph-visible marker) is UNCONDITIONAL so the wrapper
+# satisfies an `Output & Fused & StoreAccess` kernel bound on both host and
+# device; the callable `Storable` is host-only (`where not _device_passable`).
+# On the device the kernel refines through `downcast[..., Storable]`.
 struct _MoggOutputStoreFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
     _alignment: Int,
     _OutFusion: OutputStoreFusion,
-](Copyable, Fused, Movable, Output, Storable, Tensor):
+    _device_passable: Bool,
+](
+    Copyable,
+    DevicePassable where _device_passable,
+    Fused,
+    Movable,
+    Output,
+    StoreAccess,
+    Storable where not _device_passable,
+    Tensor,
+):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
+    comptime device_passable = Self._device_passable
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     var out_fusion: Self._OutFusion
     var _layout: Self.LayoutType
+
+    comptime device_type: AnyType = _MoggOutputStoreFusionTensor[
+        Self._dtype, Self._LayoutType, Self._alignment, Self._OutFusion, False
+    ]
 
     @always_inline
     def __init__(out self, out_fusion: Self._OutFusion, layout: Self.LayoutType):
         self.out_fusion = out_fusion
         self._layout = layout
+
+    @always_inline
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ) where Self._device_passable:
+        comptime out_fusion_offset = reflect[Self.device_type].field_offset[
+            index=0, target=encoder.target()
+        ]()
+        encoder.encode_fields[Self._OutFusion](
+            self.out_fusion,
+            (target.bitcast[UInt8]() + out_fusion_offset).bitcast[NoneType](),
+        )
+        comptime layout_offset = reflect[Self.device_type].field_offset[
+            index=1, target=encoder.target()
+        ]()
+        encoder.encode(
+            self._layout,
+            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+        )
+
+    @staticmethod
+    def get_type_name() -> String where Self._device_passable:
+        return String("_MoggOutputStoreFusionTensor")
 
     @always_inline
     def shape(self) -> Self.ShapeType:
@@ -1577,8 +1684,166 @@ struct _MoggOutputStoreFusionTensor[
     def store[
         width: Int,
         element_alignment: Int = 1,
-    ](self, idx: Coord, value: SIMD[Self.dtype, width]):
+    ](
+        self, idx: Coord, value: SIMD[Self.dtype, width]
+    ) where not Self._device_passable:
         self.out_fusion.__call__[
+            Self.dtype, Self.rank, width, element_alignment
+        ](idx, value)
+)mojo";
+
+// Inline definitions for the trait-lane FUSED output-TRANSFORM (compute-output)
+// argument (Phase 5). Element compute-output is ONE output edge that the kernel
+// both transforms and writes, so `_MoggTransformFusionTensor` composes
+// `Transformable` (apply the fused transform, returns the value) and
+// `TileTensorable` (project the real output buffer so the parent stores the
+// result) on a single operand -- NOT two operands. The transform functor is
+// pure value->value (it does NOT write); the parent kernel performs the final
+// store via `to_tile_tensor(z).store(...)`. The graph-visible marker
+// `TransformAccess` is UNCONDITIONAL (so the wrapper satisfies an
+// `Output & Fused & TransformAccess` bound on both host and device); the
+// callable `Transformable` / `TileTensorable` surfaces are gated by
+// `_access_enabled` and the device kernel refines through `downcast[...,
+// Transformable & TileTensorable]`. The output buffer is held as a bare
+// `UnsafePointer` (NOT a `TileTensor`) so it translates to a device address;
+// `to_tile_tensor` rebuilds the tile. Modeled on the mockup
+// `EmitMojoTransformFusionTensor`.
+static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
+from layout import Coord, TensorLayout, TileTensor
+from extensibility import DenseTensor, Fused, Output, TileTensorable, TransformAccess, Transformable
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
+
+
+trait TransformFusion(TrivialRegisterPassable):
+    def __call__[
+        dtype: DType,
+        rank: Int,
+        width: Int,
+        element_alignment: Int = 1,
+    ](self, idx: Coord, value: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        ...
+
+
+# `TransformAccess` is graph-visible and stays present on both the host proxy
+# and the projected device value. `Transformable` and `TileTensorable` are the
+# callable/device-dereference surfaces, so they are gated by `_access_enabled`.
+# CPU/non-device-passable wrappers enable them directly, while accelerator host
+# proxies disable them and project to `device_type` where access is enabled.
+struct _MoggTransformFusionTensor[
+    _dtype: DType,
+    _LayoutType: TensorLayout,
+    _alignment: Int,
+    _mut: Bool,
+    _TransformFusion: TransformFusion,
+    _device_passable: Bool,
+    _access_enabled: Bool,
+](
+    Copyable,
+    DenseTensor,
+    DevicePassable where _device_passable,
+    Fused,
+    Movable,
+    Output,
+    TileTensorable where _access_enabled,
+    TransformAccess,
+    Transformable where _access_enabled,
+    TrivialRegisterPassable,
+):
+    comptime dtype = Self._dtype
+    comptime LayoutType = Self._LayoutType
+    comptime rank = Self.LayoutType.rank
+    comptime alignment = Self._alignment
+    comptime mut = Self._mut
+    comptime device_passable = Self._device_passable
+    comptime access_enabled = Self._access_enabled
+    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    var transform_fusion: Self._TransformFusion
+    var _layout: Self.LayoutType
+    var handle: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+
+    comptime device_type: AnyType = _MoggTransformFusionTensor[
+        Self._dtype,
+        Self._LayoutType,
+        Self._alignment,
+        Self._mut,
+        Self._TransformFusion,
+        False,
+        True,
+    ]
+
+    @always_inline
+    def __init__(
+        out self,
+        transform_fusion: Self._TransformFusion,
+        layout: Self.LayoutType,
+        ptr: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]],
+    ):
+        self.transform_fusion = transform_fusion
+        self._layout = layout
+        self.handle = ptr
+
+    @always_inline
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ) where Self._device_passable:
+        comptime fusion_offset = reflect[Self.device_type].field_offset[
+            index=0, target=encoder.target()
+        ]()
+        encoder.encode_fields[Self._TransformFusion](
+            self.transform_fusion,
+            (target.bitcast[UInt8]() + fusion_offset).bitcast[NoneType](),
+        )
+        comptime layout_offset = reflect[Self.device_type].field_offset[
+            index=1, target=encoder.target()
+        ]()
+        encoder.encode(
+            self._layout,
+            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+        )
+        comptime handle_offset = reflect[Self.device_type].field_offset[
+            index=2, target=encoder.target()
+        ]()
+        self.handle._to_device_type(
+            encoder,
+            (target.bitcast[UInt8]() + handle_offset).bitcast[NoneType](),
+        )
+
+    @staticmethod
+    def get_type_name() -> String where Self._device_passable:
+        return String("_MoggTransformFusionTensor")
+
+    @always_inline
+    def shape(self) -> Self.ShapeType:
+        return rebind[Self.ShapeType](self._layout.shape_coord())
+
+    @always_inline
+    def layout(self) -> Self.LayoutType:
+        return self._layout
+
+    # `TileTensorable`: the parent kernel stores the transformed value through
+    # this projection (rebuilt from the bare output-buffer pointer).
+    @always_inline
+    def to_tile_tensor(
+        self,
+    ) -> TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = UntrackedOrigin[mut = Self.mut],
+    ] where Self._access_enabled:
+        return TileTensor[
+            dtype = Self.dtype,
+            LayoutType = Self.LayoutType,
+            origin = UntrackedOrigin[mut = Self.mut],
+        ](ptr=self.handle, layout=self._layout)
+
+    @always_inline
+    def transform[
+        width: Int,
+        element_alignment: Int = 1,
+    ](self, idx: Coord, value: SIMD[Self.dtype, width]) -> SIMD[
+        Self.dtype, width
+    ] where Self._access_enabled:
+        return self.transform_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx, value)
 )mojo";
@@ -1678,14 +1943,19 @@ emitInputLoadFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
     parameters.push_back(
         {MojoValue("LayoutType_" + ci), MojoValue(kStructTensorLayout)});
     parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
+    // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
+    // `TileTensor` field would not translate to a device address (the encoder
+    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
     fields.push_back(
-        {MojoValue("src_" + ci),
-         MojoValue(
-             llvm::formatv(
-                 "{0}[dtype=Self.dtype_{1}, LayoutType=Self.LayoutType_{1}"
-                 ", origin=UntrackedOrigin[mut=Self.mut_{1}]]",
-                 kStructTileTensor, ci)
-                 .str())});
+        {MojoValue("ptr_" + ci),
+         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+                                 "UntrackedOrigin[mut=Self.mut_{0}]]",
+                                 ci)
+                       .str())});
+    fields.push_back(
+        {MojoValue("layout_" + ci),
+         MojoValue(llvm::formatv("Self.LayoutType_{0}", ci).str())});
   }
   for (auto &[val, fieldName, mojoType] : scalarCaptures)
     fields.push_back({MojoValue(fieldName), MojoValue(mojoType)});
@@ -1787,7 +2057,7 @@ emitInputLoadFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
 /// CallExecuteOp -> output operand index -> kernel-decl output arg` (mirrors
 /// `getKernelOutputFusionLambdaType`); the kernel decl is the source of truth.
 static std::optional<TensorArgContract>
-outputStoreFusionContract(EmitMojoState &state, MOGG::TensorFusedOp fusedOp) {
+outputFusionContract(EmitMojoState &state, MOGG::TensorFusedOp fusedOp) {
   auto bindOp = fusedOp.getBindLambdaOp();
   if (!bindOp || bindOp.getBindKind() != BindLambdaKind::OutputLambda)
     return std::nullopt;
@@ -1858,14 +2128,19 @@ emitOutputStoreFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
     parameters.push_back(
         {MojoValue("LayoutType_" + ci), MojoValue(kStructTensorLayout)});
     parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
+    // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
+    // `TileTensor` field would not translate to a device address (the encoder
+    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
     fields.push_back(
-        {MojoValue("src_" + ci),
-         MojoValue(
-             llvm::formatv(
-                 "{0}[dtype=Self.dtype_{1}, LayoutType=Self.LayoutType_{1}"
-                 ", origin=UntrackedOrigin[mut=Self.mut_{1}]]",
-                 kStructTileTensor, ci)
-                 .str())});
+        {MojoValue("ptr_" + ci),
+         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+                                 "UntrackedOrigin[mut=Self.mut_{0}]]",
+                                 ci)
+                       .str())});
+    fields.push_back(
+        {MojoValue("layout_" + ci),
+         MojoValue(llvm::formatv("Self.LayoutType_{0}", ci).str())});
   }
   for (auto &[val, fieldName, mojoType] : scalarCaptures)
     fields.push_back({MojoValue(fieldName), MojoValue(mojoType)});
@@ -1928,13 +2203,17 @@ emitOutputStoreFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
               sdb.verbatim(MojoValue(
                   "comptime assert Self.mut_0, \"fused store target must be "
                   "mutable\""));
-              // Write through the captured output tile (capture 0).
+              // Rebuild the output tile from the captured bare pointer + layout
+              // (capture 0) and store through it.
               sdb.verbatim(MojoValue(
-                  llvm::formatv("self.src_0.store[width=width, "
-                                "alignment=element_alignment]({0}, "
-                                "rebind[{1}[Self.dtype_0, width]]({2}))",
-                                kParameterIdx, kStructSIMD,
-                                resultIt->second.text)
+                  llvm::formatv(
+                      "TileTensor[dtype=Self.dtype_0, "
+                      "LayoutType=Self.LayoutType_0, "
+                      "origin=UntrackedOrigin[mut=Self.mut_0]](ptr=self.ptr_0, "
+                      "layout=self.layout_0).store[width=width, "
+                      "alignment=element_alignment]({0}, "
+                      "rebind[{1}[Self.dtype_0, width]]({2}))",
+                      kParameterIdx, kStructSIMD, resultIt->second.text)
                       .str()));
             });
       });
@@ -1956,6 +2235,153 @@ emitOutputStoreFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
   };
   for (auto [i, cap] : llvm::enumerate(fusedInputs))
     pushTensorCapture(cap.text, fusibleTensors[i]);
+  for (auto &[tensorVal, captureIdx] : extraTensorCaptures)
+    pushTensorCapture(state.getMojoValueFor(tensorVal).text, tensorVal);
+  for (auto &[val, fieldName, mojoType] : scalarCaptures)
+    instanceArgs.push_back(state.getMojoValueFor(val));
+
+  MojoValue functorInstance =
+      state.builder.var(structNameVal(comptimeArgs, instanceArgs));
+  MojoValue concreteTypeName = structNameVal[comptimeArgs];
+  state.setFusionStructLoweringFor(bindOp.getOutput(), functorInstance,
+                                   /*bindMethod=*/"", concreteTypeName);
+  return success();
+}
+
+/// Emit a trait-lane output-TRANSFORM (compute-output) fusion FUNCTOR for a
+/// trait `mogg.bind` output lambda (Phase 5). Unlike store, the transform
+/// functor is pure value->value: its `__call__(idx, value)` runs the epilogue
+/// and RETURNS the transformed value (the parent kernel performs the store via
+/// the wrapper's `to_tile_tensor`). It does NOT capture the output (capture 0)
+/// -- only the epilogue's extra input tiles.
+static LogicalResult
+emitTransformFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
+                           Block *lambdaBody, OperandRange fusibleTensors,
+                           ArrayRef<MojoValue> fusedInputs) {
+  if (failed(verifyBindLambdaBodyOpsForMojoEmission(bindOp, lambdaBody)))
+    return failure();
+
+  if (!state.emittedTransformFusionArgDefs) {
+    state.structDefsBuilder.verbatim(MojoValue(kTransformFusionDefs.str()));
+    state.emittedTransformFusionArgDefs = true;
+  }
+
+  SmallVector<std::pair<MojoValue, MojoValue>> mtsParams, mtsFields;
+  SmallVector<MO::TensorType> captureTensorTypes;
+  SmallVector<std::pair<Value, unsigned>> extraTensorCaptures;
+  SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
+  SmallVector<std::pair<Value, MojoValue>> inlineConstants;
+  collectFusionCaptures(state, lambdaBody, fusibleTensors,
+                        /*isOutputLambda=*/true, mtsParams, mtsFields,
+                        captureTensorTypes, extraTensorCaptures, scalarCaptures,
+                        inlineConstants);
+
+  // Capture 0 is the output -- NOT captured here (the wrapper holds the output
+  // buffer; the functor only transforms). Captures i>0 are the epilogue's input
+  // tiles (origin mut is a per-capture struct param, as the generic stub arg's
+  // `.mut` is symbolic).
+  SmallVector<std::pair<MojoValue, MojoValue>> parameters;
+  SmallVector<std::pair<MojoValue, MojoValue>> fields;
+  for (unsigned i = 1; i < captureTensorTypes.size(); ++i) {
+    auto ci = std::to_string(i);
+    parameters.push_back({MojoValue("dtype_" + ci), MojoValue(kStructDType)});
+    parameters.push_back(
+        {MojoValue("LayoutType_" + ci), MojoValue(kStructTensorLayout)});
+    parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
+    // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
+    // `TileTensor` field would not translate to a device address (the encoder
+    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
+    fields.push_back(
+        {MojoValue("ptr_" + ci),
+         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+                                 "UntrackedOrigin[mut=Self.mut_{0}]]",
+                                 ci)
+                       .str())});
+    fields.push_back(
+        {MojoValue("layout_" + ci),
+         MojoValue(llvm::formatv("Self.LayoutType_{0}", ci).str())});
+  }
+  for (auto &[val, fieldName, mojoType] : scalarCaptures)
+    fields.push_back({MojoValue(fieldName), MojoValue(mojoType)});
+
+  auto structName = state.structDefsBuilder.getIdentifier("TransformFunctor");
+  MojoValue structNameVal = state.structDefsBuilder.newVar(structName);
+  auto &sdb = state.structDefsBuilder;
+  DenseFusionRenderer renderer;
+  sdb.structDecl(
+      structNameVal, parameters,
+      {MojoValue("TransformFusion"), MojoValue("TrivialRegisterPassable")},
+      fields, [&]() {
+        MojoValue simdType = MojoValue(
+            kStructSIMD)[{MojoValue(kParameterDType), MojoValue("width")}];
+        SmallVector<NamedMojoDef> methodParameters = {
+            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
+            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
+            NamedMojoDef::asVerbatim("width", kStructInt),
+            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
+                                     MojoValue(1)),
+        };
+        SmallVector<NamedMojoDef> methodArgs = {
+            NamedMojoDef::asVerbatim(kParameterSelf),
+            NamedMojoDef::asVerbatim(kParameterIdx, MojoValue(kStructCoord)),
+            NamedMojoDef::asVerbatim("value", simdType),
+        };
+        sdb.def(
+            "__call__", methodParameters, methodArgs, simdType,
+            /*exported=*/false, /*raises=*/false,
+            /*isAlwaysInline=*/true, [&](const MOGG::FunctionBody &) {
+              DenseMap<Value, MojoValue> valueMap;
+              DenseSet<Value> scalarCaptureValues;
+              seedScalarValueMapEntries(
+                  inlineConstants, scalarCaptures,
+                  [](Value, StringRef fieldName) {
+                    return MojoValue("self." + fieldName.str());
+                  },
+                  valueMap, scalarCaptureValues);
+              valueMap[lambdaBody->getArguments().back()] =
+                  MojoValue(kParameterIdx);
+              // Block arg 0 is the value to transform; captures i>0 are
+              // loaded epilogue input tiles.
+              valueMap[lambdaBody->getArgument(0)] = MojoValue("value");
+              for (unsigned i = 1; i < fusedInputs.size(); ++i)
+                valueMap[lambdaBody->getArgument(i)] =
+                    sdb.var(MojoValue(renderer.buildLoadExpr(i, "")));
+              emitElementwiseLambdaBodyOps(
+                  state, sdb, lambdaBody, captureTensorTypes,
+                  extraTensorCaptures, valueMap, scalarCaptureValues, renderer,
+                  KernelOutputFusionLambdaType::Compute);
+              auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
+              auto resultIt = valueMap.find(outputOp.getOperand(0));
+              ASSERT_STREAM(resultIt != valueMap.end(),
+                            << "missing transform value in functor body map");
+              // Pure value -> value: return the transformed value; the
+              // parent stores it through the wrapper's `to_tile_tensor`.
+              sdb.returnsValue(MojoValue(
+                  llvm::formatv("rebind[{0}[{1}, width]]({2})", kStructSIMD,
+                                kParameterDType, resultIt->second.text)
+                      .str()));
+            });
+      });
+
+  // Instantiate: skip the output (capture 0); push the epilogue's input tiles.
+  SmallVector<MojoValue> comptimeArgs;
+  SmallVector<MojoValue> instanceArgs;
+  auto pushTensorCapture = [&](StringRef cap, Value mlirCapture) {
+    comptimeArgs.push_back(
+        MojoValue(llvm::formatv("type_of({0}).dtype", cap).str()));
+    comptimeArgs.push_back(
+        MojoValue(llvm::formatv("type_of({0}).LayoutType", cap).str()));
+    comptimeArgs.push_back(traitCaptureMutComptimeExpr(mlirCapture, cap));
+    // Bare pointer + layout off the source's stored handle (the device
+    // representation that translates), mirroring the dense raw-pointer path.
+    instanceArgs.push_back(
+        state.builder.var(MojoValue(llvm::formatv("{0}.handle", cap).str())));
+    instanceArgs.push_back(
+        state.builder.var(MojoValue(llvm::formatv("{0}.layout()", cap).str())));
+  };
+  for (unsigned i = 1; i < fusedInputs.size(); ++i)
+    pushTensorCapture(fusedInputs[i].text, fusibleTensors[i]);
   for (auto &[tensorVal, captureIdx] : extraTensorCaptures)
     pushTensorCapture(state.getMojoValueFor(tensorVal).text, tensorVal);
   for (auto &[val, fieldName, mojoType] : scalarCaptures)
@@ -2025,16 +2451,20 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         std::optional<TensorArgContract> contract =
             inputLoadFusionContract(state, fusedOp);
         if (contract && contract->fused &&
-            contract->access == TensorArgAccess::load)
+            contract->hasAccess(TensorArgAccess::load))
           return emitInputLoadFusionFunctor(*this, state, lambdaBody,
                                             fusibleTensors, traitFusedInputs);
       } else {
         std::optional<TensorArgContract> contract =
-            outputStoreFusionContract(state, fusedOp);
+            outputFusionContract(state, fusedOp);
         if (contract && contract->fused &&
-            contract->access == TensorArgAccess::store)
+            contract->hasAccess(TensorArgAccess::store))
           return emitOutputStoreFusionFunctor(*this, state, lambdaBody,
                                               fusibleTensors, traitFusedInputs);
+        if (contract && contract->fused &&
+            contract->hasAccess(TensorArgAccess::transform))
+          return emitTransformFusionFunctor(*this, state, lambdaBody,
+                                            fusibleTensors, traitFusedInputs);
       }
     }
   }
@@ -2762,7 +3192,11 @@ from extensibility import DenseTensor
     }
   }
 
-  // Determine the Mojo return type from the stub's return type.
+  // Determine the Mojo return type from the stub's return type. A trait
+  // shape-function stub keeps the concrete `IndexList[N]` return type that
+  // `shape_func_result<N>` renders to (N = the op output rank); the forwarded
+  // shape-fn call's generic `IndexList[T.rank]` result is reconciled to it by a
+  // rebind in `CallShapeOp::emitMojo`.
   std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
   FunctionType functionType = getFunctionType();
   if (functionType.getNumResults())
@@ -3917,7 +4351,13 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // `EmitMojoState::emittedDenseTensorArgDefs`.
 static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import DenseTensor, Input, Output, TileTensorable
+from extensibility import (
+    DenseTensor,
+    Input,
+    MutableInput,
+    Output,
+    TileTensorable,
+)
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -3955,7 +4395,8 @@ struct _MoggDenseTensorArg[
 ](
     DenseTensor,
     DevicePassable where _is_device_passable,
-    Input where _io.is_input(),
+    Input where _io == _MoggTensorIO.INPUT,
+    MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
     Output where _io == _MoggTensorIO.OUTPUT,
     # Host-only projection: a device-passable arg must NOT expose the host
     # `to_tile_tensor()` -- it would build a tile over the untranslated host
@@ -4683,52 +5124,99 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
   const auto &fusionInfo = loweringIt->second;
 
   // Trait lane (Phase 5): a load/store-contract fusion functor (emitted by
-  // `emitInputLoadFusionFunctor` / `emitOutputStoreFusionFunctor`) is wrapped
-  // in
-  // `_MoggInputLoadFusionTensor` / `_MoggOutputStoreFusionTensor` -- conforming
-  // to `Input & Fused & Loadable` / `Output & Fused & Storable` -- and passed
-  // straight to `execute`. NO `_bind_to_fused_*` on a base slice. (Transform is
-  // a later slice and falls through to the legacy path.)
+  // `emitInputLoadFusionFunctor` / `emitOutputStoreFusionFunctor` /
+  // `emitTransformFusionFunctor`) is wrapped in `_MoggInputLoadFusionTensor` /
+  // `_MoggOutputStoreFusionTensor` / `_MoggTransformFusionTensor` -- conforming
+  // to `Input & Fused & Loadable` / `Output & Fused & Storable` /
+  // `Output & Fused & Transformable & TileTensorable` -- and passed straight to
+  // `execute`. NO `_bind_to_fused_*` on a base slice. The transform wrapper
+  // also holds the real output buffer tile (so the parent kernel stores the
+  // transformed value) -- one operand, not two.
   {
     StringRef wrapperName;
+    TensorArgAccess access = TensorArgAccess::none;
     if (std::optional<TensorArgContract> c =
             inputLoadFusionContract(state, *this);
-        c && c->fused && c->access == TensorArgAccess::load)
+        c && c->fused && c->hasAccess(TensorArgAccess::load)) {
       wrapperName = "_MoggInputLoadFusionTensor";
-    else if (std::optional<TensorArgContract> s =
-                 outputStoreFusionContract(state, *this);
-             s && s->fused && s->access == TensorArgAccess::store)
-      wrapperName = "_MoggOutputStoreFusionTensor";
+      access = TensorArgAccess::load;
+    } else if (std::optional<TensorArgContract> o =
+                   outputFusionContract(state, *this)) {
+      // Single walk of `TensorFusedOp -> CallExecuteOp -> output-operand
+      // index -> kernel-decl arg`; dispatch store vs. transform off the same
+      // cached contract.
+      if (o->fused && o->hasAccess(TensorArgAccess::store)) {
+        wrapperName = "_MoggOutputStoreFusionTensor";
+        access = TensorArgAccess::store;
+      } else if (o->fused && o->hasAccess(TensorArgAccess::transform)) {
+        wrapperName = "_MoggTransformFusionTensor";
+        access = TensorArgAccess::transform;
+      }
+    }
     if (!wrapperName.empty()) {
       auto tensorTy = MO::castFromTensorLike(getResult().getType());
       MojoValue alignmentParam(
           static_cast<uint64_t>(M::Driver::getPreferredAlignment(
               MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
       MojoValue functorType = MojoValue("type_of")({}, {fusionInfo.instance});
-      // Load / store: layout metadata comes from the fused buffer capture on
-      // the stub boundary. For store, `wireTraitFusedCapturesToStubArgs`
-      // assigns `getTensor()` to that capture; for load, `getTensor()` stays
-      // the empty companion placeholder and the capture lives on the bind's
-      // fusible operand(s).
-      Value layoutSource = getTensor();
-      if (wrapperName == "_MoggInputLoadFusionTensor") {
-        if (auto bindOp = getBindLambdaOp())
-          if (!bindOp.getFusibleTensors().empty())
-            layoutSource = bindOp.getFusibleTensors().front();
+      SmallVector<MojoValue> comptimeParams;
+      SmallVector<MojoValue> ctorArgs;
+      if (access == TensorArgAccess::transform) {
+        // The transform wrapper composes the transform with the real output
+        // buffer (the parent stores the transformed value through it). All
+        // tile-related params (dtype / layout / mut) come from the output base
+        // arg so the wrapper's `_tile` field unifies with
+        // `base.to_tile_tensor()`
+        // -- the base's dtype/layout/mut are symbolic on the generic stub arg,
+        // so MLIR-derived params would not match.
+        MojoValue base = state.getMojoValueFor(getTensor());
+        auto baseName = base.text;
+        auto layoutArg = state.builder.var(
+            MojoValue(llvm::formatv("{0}.layout()", baseName).str()));
+        // Bare pointer off the output base's stored handle (NOT the tile
+        // itself -- the wrapper rebuilds the tile in `to_tile_tensor()` so it
+        // translates to a device address).
+        auto ptrArg = state.builder.var(
+            MojoValue(llvm::formatv("{0}.handle", baseName).str()));
+        bool devicePassable = false;
+        if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
+          devicePassable = !MO::isOnHost(stub.getOperation());
+        bool accessEnabled = !devicePassable;
+        comptimeParams = {
+            MojoValue(llvm::formatv("type_of({0}).dtype", baseName).str()),
+            MojoValue(llvm::formatv("type_of({0}).LayoutType", baseName).str()),
+            alignmentParam,
+            traitCaptureMutComptimeExpr(getTensor(), baseName),
+            functorType,
+            MojoValue(devicePassable),
+            MojoValue(accessEnabled)};
+        ctorArgs = {fusionInfo.instance, layoutArg, ptrArg};
+      } else {
+        // Load / store: layout metadata comes from the fused buffer capture on
+        // the stub boundary. For store, `wireTraitFusedCapturesToStubArgs`
+        // assigns `getTensor()` to that capture; for load, `getTensor()` stays
+        // the empty companion placeholder and the capture lives on the bind's
+        // fusible operand(s).
+        Value layoutSource = getTensor();
+        if (access == TensorArgAccess::load) {
+          if (auto bindOp = getBindLambdaOp())
+            if (!bindOp.getFusibleTensors().empty())
+              layoutSource = bindOp.getFusibleTensors().front();
+        }
+        MojoValue capture = state.getMojoValueFor(layoutSource);
+        auto captureName = capture.text;
+        auto layoutArg = state.builder.var(
+            MojoValue(llvm::formatv("{0}.layout()", captureName).str()));
+        bool devicePassable = false;
+        if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
+          devicePassable = !MO::isOnHost(stub.getOperation());
+        comptimeParams = {
+            MojoValue(llvm::formatv("type_of({0}).dtype", captureName).str()),
+            MojoValue(
+                llvm::formatv("type_of({0}).LayoutType", captureName).str()),
+            alignmentParam, functorType, MojoValue(devicePassable)};
+        ctorArgs = {fusionInfo.instance, layoutArg};
       }
-      MojoValue capture = state.getMojoValueFor(layoutSource);
-      auto captureName = capture.text;
-      auto layoutArg = state.builder.var(
-          MojoValue(llvm::formatv("{0}.layout()", captureName).str()));
-      bool devicePassable = false;
-      if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
-        devicePassable = !MO::isOnHost(stub.getOperation());
-      SmallVector<MojoValue> comptimeParams = {
-          MojoValue(llvm::formatv("type_of({0}).dtype", captureName).str()),
-          MojoValue(
-              llvm::formatv("type_of({0}).LayoutType", captureName).str()),
-          alignmentParam, functorType, MojoValue(devicePassable)};
-      SmallVector<MojoValue> ctorArgs = {fusionInfo.instance, layoutArg};
       MojoValue structName(wrapperName.str());
       state.setMojoValueFor(
           getResult(), state.builder.var(structName(comptimeParams, ctorArgs)));
@@ -4970,10 +5458,50 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
 
-  // Call the shape function and return its value via the kernel terminator.
+  // A trait-typed shape function takes its tensor arguments as the no-role
+  // `_MoggDenseTensorArg` (constructed by `mogg.tensor_arg.__init__`) instead
+  // of a legacy `InputTensor`. Its operands therefore reach the shape kernel
+  // stub as a *generic* trait parameter (`mogg.trait_stub_arg_bounds`), so the
+  // call result is `IndexList[T.rank]` with `T` generic -- not statically the
+  // op's output rank. The stub's declared result is the concrete
+  // `IndexList[output_rank]`, so we rebind to it.
+  //
+  // The rebind target is the authoritative source: `output_rank` is the op's
+  // declared output rank (the `shape_func_result<N>` rank, set from
+  // `InvokeShapeFuncOp::getOutputParamDecls().size()` in `lowerToShapeKernel`),
+  // and a shape function returns exactly the op's output shape -- so the
+  // runtime value always has that many dims, regardless of arity or how the
+  // shape fn derives its rank from the inputs. (Deriving the rank from an
+  // argument instead would be wrong for multi-input or rank-changing shape
+  // functions: the output rank is a property of the op, not of any one
+  // argument.) This is the same `N` the legacy lane already trusts when it
+  // unpacks `N` dims out of `shape_func_result<N>` via `ShapeResultGetItemOp`.
+  //
+  // Legacy `InputTensor` shape functions already produce a concretely-ranked
+  // `IndexList`, so they skip the rebind (and their emitted text is
+  // byte-for-byte unchanged).
+  bool isTraitTyped = false;
+  if (mlir::ArrayAttr contracts =
+          shapeDecl.getFunction().getTensorArgContracts())
+    for (mlir::Attribute entry : contracts)
+      if (mlir::isa<mlir::DictionaryAttr>(entry)) {
+        isTraitTyped = true;
+        break;
+      }
+
   MojoValue shapeFn(getKernelSymName());
   MojoValue result = state.builder.var(shapeFn[maybeParams->structParameters](
       maybeParams->functionParameters, kernelOperands));
+  if (isTraitTyped) {
+    auto shapeTy =
+        mlir::dyn_cast<MOGG::ShapeFuncResultType>(getRetTypeAttr().getValue());
+    if (!shapeTy)
+      return emitOpError("expected a ShapeFuncResultType return type");
+    result = state.builder.var(
+        MojoValue(llvm::formatv("rebind[{0}[{1}]]({2})", kStructIndexList,
+                                shapeTy.getRank(), result.text)
+                      .str()));
+  }
   state.genAllKeepAliveStatements();
   state.builder.returnsValue(result);
 

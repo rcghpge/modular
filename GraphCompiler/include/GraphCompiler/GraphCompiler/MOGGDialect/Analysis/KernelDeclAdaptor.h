@@ -76,6 +76,10 @@ struct TensorArgContract {
   /// `mut` is derived, never stored.
   bool isMutable() const { return role != TensorArgRole::input; }
 
+  /// Whether the (single) access form is present. Compatibility shim ahead of
+  /// the access-set rework in the next commit.
+  bool hasAccess(TensorArgAccess a) const { return access == a; }
+
   bool operator==(const TensorArgContract &o) const {
     return role == o.role && fused == o.fused && access == o.access &&
            hasCapability == o.hasCapability;

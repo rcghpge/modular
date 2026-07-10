@@ -69,6 +69,11 @@ struct EmitMojoState {
   /// `_MoggOutputStoreFusionTensor` wrapper), emitted by
   /// `emitOutputStoreFusionFunctor` (Phase 5).
   bool emittedOutputStoreFusionArgDefs = false;
+  /// Same one-per-module guard for the trait-lane FUSED output-transform
+  /// (compute-output) definitions (`kTransformFusionDefs`: the
+  /// `TransformFusion` trait + dual-nature `_MoggTransformFusionTensor`
+  /// wrapper), emitted by `emitTransformFusionFunctor` (Phase 5).
+  bool emittedTransformFusionArgDefs = false;
   /// One-per-module import of trait marker traits for shape-function stubs that
   /// still use generic `DenseTensor` stub parameters.
   bool emittedTraitMarkerImports = false;
