@@ -302,6 +302,48 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.device_graph.execute
+//===----------------------------------------------------------------------===//
+
+// Replays a constructed device graph and surfaces its recorded outputs as the
+// op's results. Runtime counterpart of `mgp.device_graph.create` (which builds
+// the graph via the kernel path). Synchronous first cut: replay inline, then
+// forward each stored output `AnyAsyncValueRef` into the result slots.
+static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
+                                     RemainingArguments deviceContextAndInputs,
+                                     RemainingResults outputs,
+                                     EncodedLocation loc) {
+  TRACY_ZONE_SCOPED_NC("mgp_device_graph_execute", TRACY_COLOR_TEAL);
+
+  // `graph` is operand 0 (packed as a `DeviceGraphRef` by the create region's
+  // pack helper). The device context and input operands land in
+  // `deviceContextAndInputs`; they are consumed only for async dependency
+  // ordering. In the stateless first cut the build baked the live input
+  // addresses into the graph, so replay needs no input copy.
+  (void)deviceContextAndInputs;
+
+  if (ErrorOrSuccess errOr = graph->replay(); errOr.isError())
+    return std::move(outputs).setAllToError(errOr.takeError(), loc);
+
+  // The recorded outputs (registered via `add_output` during the build and
+  // transferred into the graph by `instantiate`) become the op's results. Share
+  // the underlying `Tensor`/`TensorBufferRef` via `copy()` -- no deep copy.
+  //
+  // GraphRT hands us pre-allocated (indirect) result async values that
+  // downstream consumers already reference, so we must resolve those in place
+  // to the graph's outputs rather than replacing the slot references (which
+  // would leave the referenced async values unfulfilled). Mirrors the
+  // control-flow primitives and `mgp_generic_execute`.
+  ArrayRef<AnyAsyncValueRef> stored = graph->getOutputs();
+  assert(stored.size() == outputs.size() &&
+         "device graph output count must match execute result count");
+  outputs.allocateIndirectResults();
+
+  for (const auto &[output, value] : llvm::zip_equal(outputs, stored))
+    output.copy().resolveIndirect(value.copy());
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.list.append
 //===----------------------------------------------------------------------===//
 
@@ -636,6 +678,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
+  ADD_PRIMITIVE(registry, "mgp.device_graph.execute", mgp_device_graph_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);
   ADD_PRIMITIVE(registry, "mgp.list.concat", mgp_list_concat);

@@ -176,6 +176,24 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
 }
 
+/// TAKES an already-owning DeviceGraph handle the producer surrendered (via the
+/// Mojo `DeviceGraph.take_handle()`) and wraps it in an
+/// AsyncValue<DeviceGraphRef>, writing it into the async slot. The device-graph
+/// analogue of MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle: it packs the
+/// graph produced by `mgp.device_graph.create` so that
+/// `mgp.device_graph.execute` can consume it as a first-class `DeviceGraphRef`
+/// (rather than an opaque Mojo value). The single live reference is adopted
+/// net-zero, mirroring the take_handle/takeRCRef pairing used for device
+/// buffers.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_CreateAsyncDeviceGraphRefByTakingHandle(
+    Driver::DeviceGraph *handle, AsyncRTWrapper<AnyAsyncValueRef> async) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef &value = unwrap(async);
+  Driver::DeviceGraphRef graph = M::takeRCRef(handle);
+  fulfillReady<Driver::DeviceGraphRef>(value, cpuDevice, std::move(graph));
+}
+
 /// Builds a TensorBufferRef from a data view (ptr + size) and an owning storage
 /// handle (an AsyncValue* the Mojo side surrendered net-zero), writing it into
 /// the async slot. Generalizes MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle:

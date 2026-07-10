@@ -7,10 +7,10 @@ from std.builtin.device_passable import DevicePassable
 from std.builtin.rebind import downcast
 from std.collections import Optional
 from std.collections.string import StaticString
-from std.gpu import global_idx
-from std.gpu.host.info import is_cpu
 from std.math import ceildiv, iota
 from std.ffi import external_call
+from std.gpu import global_idx
+from std.gpu.host.info import is_cpu
 from std.sys.info import simd_width_of
 import std.algorithm.functional
 import extensibility as compiler
@@ -1853,6 +1853,131 @@ struct BuildGraphCapable:
         builder: DeviceGraphBuilder,
     ):
         pass
+
+
+@compiler.register("device_graph_fill")
+struct DeviceGraphFill:
+    """Device-graph test kernel that fills its output with the constant `7`.
+
+    Unlike `imposter_build_graph_capable` (a no-op stub used for emit tests),
+    `build_graph` here records a *real* compiled fill kernel via
+    `DeviceGraphBuilder.add_function`, so a replayed graph produces a
+    deterministic output that an end-to-end execution test can check. `execute`
+    performs the equivalent fill on the direct (non-graph) path.
+    """
+
+    comptime _fill_value = 7
+
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+            output._fused_store[element_alignment=alignment](
+                idx, SIMD[dtype, width](Self._fill_value)
+            )
+
+        std.algorithm.functional.elementwise[func, 1, target="gpu"](
+            output.shape_coord(), ctx
+        )
+
+    @staticmethod
+    def build_graph[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        builder: DeviceGraphBuilder,
+    ) raises:
+        var ptr = output.unsafe_ptr()
+        var length = output.size()
+
+        # Record a real compiled kernel that fills every output element with the
+        # constant. The closure captures the output pointer and length by value;
+        # `add_function` compiles it against the builder's device context and
+        # adds it as a graph node, so replaying the graph re-runs this fill.
+        def fill_kernel() {var}:
+            var tid = global_idx.x
+            if tid >= length:
+                return
+            ptr[tid] = Scalar[dtype](Self._fill_value)
+
+        comptime block_dim = 256
+        _ = builder.add_function(
+            fill_kernel,
+            grid_dim=ceildiv(length, block_dim),
+            block_dim=block_dim,
+        )
+
+
+@compiler.register("device_graph_increment")
+struct DeviceGraphIncrement:
+    """Device-graph test kernel that adds the constant `1` to every element.
+
+    The end-to-end device-graph test chains this after `device_graph_fill`, so
+    replaying the recorded graph computes `fill(7) + 1 == 8` for every element.
+    Like `device_graph_fill`, `build_graph` records a *real* compiled kernel via
+    `DeviceGraphBuilder.add_function` and `execute` performs the equivalent
+    increment on the direct (non-graph) path.
+    """
+
+    comptime _increment = 1
+
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+            var val = rebind[SIMD[dtype, width]](x.load[width](idx)) + (
+                Self._increment
+            )
+            output._fused_store[element_alignment=alignment](idx, val)
+
+        std.algorithm.functional.elementwise[func, 1, target="gpu"](
+            output.shape_coord(), ctx
+        )
+
+    @staticmethod
+    def build_graph[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        builder: DeviceGraphBuilder,
+    ) raises:
+        var in_ptr = x.unsafe_ptr()
+        var out_ptr = output.unsafe_ptr()
+        var length = output.size()
+
+        # Record a real compiled kernel that reads each input element, adds the
+        # constant, and writes it to the output. The closure captures the input
+        # and output pointers and the length by value; `add_function` compiles it
+        # against the builder's device context and adds it as a graph node, so
+        # replaying the graph re-runs this increment.
+        def increment_kernel() {var}:
+            var tid = global_idx.x
+            if tid >= length:
+                return
+            out_ptr[tid] = in_ptr[tid] + Scalar[dtype](Self._increment)
+
+        comptime block_dim = 256
+        _ = builder.add_function(
+            increment_kernel,
+            grid_dim=ceildiv(length, block_dim),
+            block_dim=block_dim,
+        )
 
 
 @compiler.register("add_one", type="cpu")

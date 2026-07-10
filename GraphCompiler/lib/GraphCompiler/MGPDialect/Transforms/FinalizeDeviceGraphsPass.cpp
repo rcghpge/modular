@@ -34,9 +34,38 @@ void finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
   // device context from the execute block.
   SmallVector<Value> inputs(stagingOp.getInputs());
   Value theContext = model.getExecuteContext();
-  // First cut: single device per model.
-  auto deviceContext =
-      cast<DeviceContextValue>(model.getExecuteDevices().front());
+
+  // The device graph runs on the device its buffers/tensors live on. The
+  // model's execute devices list the host (CPU) context first, and the host
+  // context cannot build a device graph (`createGraphBuilder` is unsupported
+  // there), so
+  // `.front()` is wrong for accelerator graphs. Determine the graph's device
+  // from its I/O and select the matching execute device context. (First cut:
+  // a single device per model, so one device covers the whole graph.)
+  DeviceRefAttr graphDevice;
+  auto findGraphDevice = [&](ValueRange values) {
+    for (Value value : values) {
+      if (auto deviceType =
+              dyn_cast<MGPHasDeviceTypeInterface>(value.getType())) {
+        graphDevice = deviceType.getDevice();
+        return;
+      }
+    }
+  };
+  findGraphDevice(graphOutputs);
+  if (!graphDevice)
+    findGraphDevice(inputs);
+
+  DeviceContextValue deviceContext;
+  for (auto [deviceRef, execDevice] :
+       llvm::zip(model.getDevices(), model.getExecuteDevices())) {
+    if (deviceRef == graphDevice) {
+      deviceContext = cast<DeviceContextValue>(execDevice);
+      break;
+    }
+  }
+  assert(deviceContext &&
+         "no execute device context matches the device graph's device");
 
   IRRewriter rewriter(stagingOp);
   Location loc = stagingOp.getLoc();
