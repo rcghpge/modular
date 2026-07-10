@@ -57,7 +57,7 @@ enum class IOSpec {
 
 /// Role a tensor argument plays in the graph signature. `mut` is not stored: an
 /// argument is mutable iff its role is not `input`.
-enum class TensorArgRole { input, output, mutableInput };
+enum class TensorArgRole { input, output, mutableInput, none };
 
 /// Element-access form a tensor argument exposes -- the fusion access kind, or
 /// `none` for a plain dense argument.

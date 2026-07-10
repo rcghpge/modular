@@ -1,5 +1,5 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | FileCheck %s --check-prefix=IMPORT
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
 
 // === Baked tensor-arg contracts (distill matrix) ========================== //
 //
@@ -81,31 +81,33 @@
 
 // === LOWERING (dense-only): mogg.tensor_arg.__init__ + the legacy lane ===== //
 
-// Dense CPU emit (Slice 3 / Phase 4): a trait tensor argument emits an inline
-// `_MoggDenseTensorArg[...]` value constructed from the distilled contract; the
-// kernel's generic `T` is inferred from it. The helper struct defs are emitted
-// once into the module (so `DenseTensorArg` lives only inside the emitted Mojo,
-// not as a committed library type). `--mgp-dump-mojo` prints the emitted text.
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mgp-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
+// Dense CPU emit: region→stub passes `_MoggTensorBufferCapture`; the stub
+// assembles `_MoggDenseTensorArg` before forwarding to `execute`.
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mgp-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
 //
-// The helper definitions are emitted once into the module: the role enum and
-// the dense struct conforming to DenseTensor + Input/Output + TileTensorable.
+// Buffer capture at the region boundary and dense assembly inside the stub.
+// EMIT-DAG: struct _MoggTensorBufferCapture[
 // EMIT-DAG: struct _MoggTensorIO
 // EMIT-DAG: struct _MoggDenseTensorArg[
-// EMIT-DAG: TileTensorable,
+// EMIT-DAG: TileTensorable where not _is_device_passable,
+// EMIT-DAG: ] where not Self._is_device_passable:
 //
-// Each trait tensor arg constructs `_MoggDenseTensorArg[dtype, type_of(layout),
-// alignment, _MoggTensorIO.<role>, device_passable](<opaque ptr>, layout)`, with
-// the role read off the distilled contract (output / input / mutable_input all
-// exercised by the graphs below) and `device_passable = False` for these host
-// graphs. The kernel's generic `T` is inferred from the value.
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.OUTPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.INPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
-// EMIT-DAG: _MoggDenseTensorArg[DType.float32, type_of({{.*}}), {{[0-9]+}}, _MoggTensorIO.MUTABLE_INPUT, False]({{.*}}.unsafe_ptr().bitcast[NoneType](),
+// Region constructs buffer captures (not execute-facing dense args).
+// EMIT-DAG: _MoggTensorBufferCapture[DType.float32, type_of(
+// EMIT-DAG: unsafe_origin_cast[MutUntrackedOrigin]()
 //
-// The trait kernel's `execute` is called with the constructed value (legacy
-// `mogg.tensor.__init__` still emits for the legacy lane in mixed kernels).
+// Stub assembles dense execute args from capture before `execute`.
+// EMIT-DAG: _MoggDenseTensorArg[type_of(arg__
+// EMIT-DAG: _MoggTensorIO.OUTPUT
+// EMIT-DAG: _MoggTensorIO.INPUT
+// EMIT-DAG: _MoggTensorIO.MUTABLE_INPUT
+//
+// The trait kernel's `execute` is called with the assembled dense values.
 // EMIT-DAG: TraitAddSome.execute[target = "cpu"]
+//
+// Fused-store trait kernel (full pipeline): stub builds fusion wrapper from capture.
+// EMIT-DAG: _MoggOutputStoreFusionTensor[
+// EMIT-DAG: TraitFusedStoreDouble.execute[target = "cpu"]
 
 // Slice 2 (Phase 3): a trait kernel's tensor arguments lower to
 // `mogg.tensor_arg.__init__` carrying the distilled `#mogg.tensor_arg`
@@ -222,6 +224,13 @@ mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
 mo.graph @mixed_legacy_fused(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy_fused", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+
+// Fused-store trait arg (`trait_fused_store_double`): validated on the EMIT run
+// (full gc pipeline) below.
+mo.graph @trait_fused_store(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
+  %0 = mo.custom {symbol = "trait_fused_store_double", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  mo.output %0 : !mo.tensor<[4], f32>
 }
 
 // A pure-legacy control kernel (`legacy_only_control`): a legacy `OutputTensor`

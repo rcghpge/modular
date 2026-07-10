@@ -6,8 +6,10 @@
 
 #include "GraphCompiler/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 
+#include "GraphCompiler/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
@@ -23,6 +25,49 @@ static Type getAsyncElementOrSelf(Type type) {
   if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
     return asyncType.getElementType();
   return type;
+}
+
+/// Ordinal of `ti` among fused trait tensor operands with the same io
+/// direction.
+static unsigned fusedTraitOperandOrdinal(
+    ArrayRef<MOGGKernelOpLoweringState::TensorOperandInfos> tensorOperandInfos,
+    const MOGGKernelOpLoweringState::TensorOperandInfos &ti) {
+  unsigned ordinal = 0;
+  for (const auto &other : tensorOperandInfos) {
+    if (&other == &ti)
+      return ordinal;
+    if (!other.traitContract || !other.traitContract.getFused())
+      continue;
+    if (other.isOutput == ti.isOutput)
+      ++ordinal;
+  }
+  llvm_unreachable("tensor operand info not found in fused-trait list");
+}
+
+/// Find the `mogg.tensor.fused` feeding the trait kernel's `execute` call for
+/// the fused trait operand described by `ti`.
+static MOGG::TensorFusedOp findFusedOpForTraitTensor(
+    MOGG::CallExecuteOp executeOp,
+    ArrayRef<MOGGKernelOpLoweringState::TensorOperandInfos> tensorOperandInfos,
+    const MOGGKernelOpLoweringState::TensorOperandInfos &ti) {
+  unsigned want = fusedTraitOperandOrdinal(tensorOperandInfos, ti);
+  unsigned seen = 0;
+  if (ti.isOutput) {
+    for (Value out : executeOp.getOutputs()) {
+      if (auto fused = out.getDefiningOp<MOGG::TensorFusedOp>()) {
+        if (seen++ == want)
+          return fused;
+      }
+    }
+    return nullptr;
+  }
+  for (Value in : executeOp.getInputs()) {
+    if (auto fused = in.getDefiningOp<MOGG::TensorFusedOp>()) {
+      if (seen++ == want)
+        return fused;
+    }
+  }
+  return nullptr;
 }
 
 void KernelOperandsMapping::addOperand(Value operandValue,
@@ -223,7 +268,7 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
   kernelStub = MOGG::KernelStubOp::create(
       builder, loc, stubName, functionType, kernelOp.getFusionInfoAttr(),
       kernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
-      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG));
+      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG), nullptr, nullptr);
   kernelStub.getBody().takeBody(kernelOp.getExecBody());
 
   // Wrap the kernel terminator in a WithTraceOp so that Trace instrumentation
@@ -550,7 +595,11 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   // compared to the transformations above, this scratchpad buffer is explicit
   // in the MOGG IR. We should either have all transformations implicit or all
   // explicit in MOGG IR
-  if (isa<MOGG::TensorFusedOp>(*lambdaVal.getUsers().begin()))
+  for (Operation *user : lambdaVal.getUsers()) {
+    if (isa<MOGG::TensorFusedOp>(user))
+      return;
+  }
+  if (bindOp.getFusibleTensors().empty())
     return;
 
   bool lambdaHasCast = MO::castFromTensorLike(tensorVal.getType()).getDtype() !=
@@ -657,6 +706,44 @@ void MOGGKernelOpLoweringState::lowerKernelOpWithOperandsMapping(
     val.replaceAllUsesWith(newVal);
   }
   op->erase();
+}
+
+void MOGGKernelOpLoweringState::materializeInStubTensorFusedOps() {
+  kernelStub.walk([&](mlir::Operation *op) {
+    if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
+      lowerBindLambdaOp(bindOp);
+  });
+}
+
+void MOGGKernelOpLoweringState::wireTraitFusedCapturesToStubArgs() {
+  MOGG::CallExecuteOp executeOp = nullptr;
+  kernelStub.walk([&](MOGG::CallExecuteOp op) { executeOp = op; });
+  if (!executeOp)
+    return;
+
+  for (const auto &tensorInfos : tensorOperandInfos) {
+    if (!tensorInfos.traitContract || !tensorInfos.traitContract.getFused())
+      continue;
+    MOGG::TensorFusedOp fusedOp =
+        findFusedOpForTraitTensor(executeOp, tensorOperandInfos, tensorInfos);
+    if (!fusedOp)
+      continue;
+    MOGG::BindLambdaOp bindOp = fusedOp.getBindLambdaOp();
+    if (!bindOp)
+      continue;
+
+    Value stubCapture =
+        operandsMapping.get(tensorInfos.operandIdx, /*isInsideStub=*/true);
+
+    if (bindOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda)
+      fusedOp.getTensorMutable().assign(stubCapture);
+
+    for (Value fusible : bindOp.getFusibleTensors()) {
+      fusible.replaceUsesWithIf(stubCapture, [&](OpOperand &use) {
+        return use.getOwner() == bindOp.getOperation();
+      });
+    }
+  }
 }
 
 void MOGGKernelOpLoweringState::lowerKernelStub() {
@@ -794,21 +881,15 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     }
   });
 
-  // Convert all tensor operands
+  // Convert all tensor operands to buffer captures for the stub boundary.
   for (const auto &tensorInfos : tensorOperandInfos) {
-    // Build a ManagedTensorSlice and pass it to the stub.
     Value regionArg =
         operandsMapping.get(tensorInfos.operandIdx, /*isInsideStub=*/false);
 
-    // Build the tensor object and pass it as an operand.
-    ErrorOr<Value> tensorValueOr =
-        buildMojoIOTensorObject(regionArg, tensorInfos);
-    if (tensorValueOr.isError())
-      return moggKernelOp.emitError(tensorValueOr.getError());
-
-    // Remap the kernel operand
+    builder.setInsertionPointToEnd(mgpRegionBody);
+    Value captureValue = buildMojoIOTensorObject(regionArg, tensorInfos);
     operandsMapping.remapKernelStubOperand(tensorInfos.operandIdx,
-                                           *tensorValueOr);
+                                           captureValue);
   }
 
   // Find extra KernelStub only arguments
@@ -816,28 +897,28 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
 
   // Setup the KernelStub region and call.
   operandsMapping.setupKernelStubArgs(&kernelStub.getBody().front());
+  // `lowerBindLambdaOp` may materialize tensors with dynamic dimensions inside
+  // the stub. Do this after stub arguments are finalized so those dimensions
+  // have stub-side mappings.
+  materializeInStubTensorFusedOps();
+  wireTraitFusedCapturesToStubArgs();
+  builder.setInsertionPointToEnd(mgpRegionBody);
   llvm::ArrayRef<Value> stubCallOperands =
       operandsMapping.getKernelStubOperands();
   assert(stubCallOperands.size() ==
          (kernelStub.getBodyBlock().getNumArguments()));
 
-  // Trait lane (D9): record, per stub argument, the Mojo trait-bound expression
-  // emit should give it (so it becomes a generic, T-inferred parameter instead
-  // of `ManagedTensorSlice`). Indexed in stub-argument order; a trait operand
-  // maps to its stub-arg slot via `getKernelStubArgIndex`. Non-trait args get
-  // an empty string. For the dense slice the bound is `<role> & DenseTensor &
-  // TileTensorable` -- conformed-to by the emitted `_MoggDenseTensorArg` and a
-  // superset of any dense kernel's written bound. On a device kernel the
-  // constructed arg is also `DevicePassable`, so the bound must include it: the
-  // stub forwards each arg to `execute` as this generic-parameter type, so
-  // anything the kernel asserts about its arg (e.g. `DevicePassable` on the GPU
-  // path) must be implied by the bound. Pure legacy kernels carry no trait
-  // operand, so the attribute is never set for them.
+  // Trait lane: stamp per-stub-arg buffer-capture comptime metadata for tensor
+  // operands (region passes `_MoggTensorBufferCapture`; execute-facing trait
+  // args are assembled inside the stub). Shape-function no-role args keep the
+  // legacy generic `DenseTensor` stub parameter via
+  // `mogg.trait_stub_arg_bounds`.
   {
-    bool devicePassable = device != getHostDevice(kernelStub.getContext());
     size_t numStubArgs = kernelStub.getBodyBlock().getNumArguments();
-    SmallVector<std::string> bounds(numStubArgs);
-    bool anyTrait = false;
+    SmallVector<Attribute> captureAttrs(numStubArgs, builder.getStringAttr(""));
+    SmallVector<std::string> shapeBounds(numStubArgs);
+    bool anyCapture = false;
+    bool anyShapeBound = false;
     for (const auto &tensorInfos : tensorOperandInfos) {
       if (!tensorInfos.traitContract)
         continue;
@@ -845,30 +926,28 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
           operandsMapping.getKernelStubArgIndex(tensorInfos.operandIdx);
       if (!stubArgIdx || *stubArgIdx >= numStubArgs)
         continue;
-      StringRef roleTrait;
-      switch (tensorInfos.traitContract.getRole()) {
-      case MOGG::TensorArgRoleKind::input:
-        roleTrait = "Input";
-        break;
-      case MOGG::TensorArgRoleKind::output:
-        roleTrait = "Output";
-        break;
-      case MOGG::TensorArgRoleKind::mutable_input:
-        roleTrait = "MutableInput";
-        break;
+      if (tensorInfos.traitContract.getRole() ==
+          MOGG::TensorArgRoleKind::none) {
+        shapeBounds[*stubArgIdx] = "DenseTensor";
+        anyShapeBound = true;
+        continue;
       }
-      std::string bound = (roleTrait + " & DenseTensor & TileTensorable").str();
-      if (devicePassable)
-        bound += " & DevicePassable";
-      bounds[*stubArgIdx] = bound;
-      anyTrait = true;
+      auto asTensor = MO::castFromTensorLike(tensorInfos.stubValue.getType());
+      std::string dtypeExpr =
+          MOGG::EmitMojoState::mlirDTypeToMojoType(asTensor.getDtype()).text;
+      captureAttrs[*stubArgIdx] = builder.getDictionaryAttr({
+          {builder.getStringAttr("dtype"), builder.getStringAttr(dtypeExpr)},
+      });
+      anyCapture = true;
     }
-    if (anyTrait) {
+    if (anyCapture)
+      kernelStub.setTraitStubBufferCaptureAttr(
+          builder.getArrayAttr(captureAttrs));
+    if (anyShapeBound) {
       SmallVector<Attribute> boundAttrs;
-      for (const std::string &b : bounds)
+      for (const std::string &b : shapeBounds)
         boundAttrs.push_back(builder.getStringAttr(b));
-      kernelStub->setAttr(MOGG::kTraitStubArgBoundsAttrName,
-                          builder.getArrayAttr(boundAttrs));
+      kernelStub.setTraitStubArgBoundsAttr(builder.getArrayAttr(boundAttrs));
     }
   }
 
@@ -910,7 +989,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
 
   MOGG::OutputOp::create(builder, loc, outputs);
 
-  // Some operations needs to be lowered to work with EmitMojo.
+  // Lower remaining stub ops (placeholders, constants, etc.) for EmitMojo.
   lowerKernelStub();
 
   // The following is to inform the lowering state of the values we have

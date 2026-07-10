@@ -54,6 +54,24 @@ struct EmitMojoState {
   /// emitted Mojo module (no committed library type yet). Guards against
   /// re-emitting the definitions for every trait tensor argument.
   bool emittedDenseTensorArgDefs = false;
+  /// One-per-module guard for `_MoggTensorBufferCapture` (region→stub
+  /// boundary).
+  bool emittedTensorBufferCaptureDefs = false;
+  /// Same one-per-module guard for the trait-lane FUSED input-load definitions
+  /// (`kInputLoadFusionDefs`: the `InputLoadFusion` trait +
+  /// `_MoggInputLoadFusionTensor` wrapper), emitted by
+  /// `emitInputLoadFusionFunctor` when a bind feeds a trait kernel's fused-load
+  /// operand (Phase 5).
+  bool emittedInputLoadFusionArgDefs = false;
+  /// Same one-per-module guard for the trait-lane FUSED output-store
+  /// definitions
+  /// (`kOutputStoreFusionDefs`: the `OutputStoreFusion` trait +
+  /// `_MoggOutputStoreFusionTensor` wrapper), emitted by
+  /// `emitOutputStoreFusionFunctor` (Phase 5).
+  bool emittedOutputStoreFusionArgDefs = false;
+  /// One-per-module import of trait marker traits for shape-function stubs that
+  /// still use generic `DenseTensor` stub parameters.
+  bool emittedTraitMarkerImports = false;
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;

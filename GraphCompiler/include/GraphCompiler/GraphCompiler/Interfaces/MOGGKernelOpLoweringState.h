@@ -70,6 +70,14 @@ public:
     return operands[operandIdx].kernelOperandIdx;
   }
 
+  // Returns the global operand index for `key`, or nullopt if not mapped.
+  std::optional<unsigned> lookupOperandIdx(Value key) const {
+    auto it = valToOperandsMap.find(key);
+    if (it == valToOperandsMap.end())
+      return std::nullopt;
+    return it->second;
+  }
+
   // Add a new kernel operand with value `operandValue`.
   // `isMGPRegionOperand` indicates the operand is an argument of the
   // mgp.compiled.region op. `isKernelStubOperand` indicates the operand is an
@@ -197,8 +205,13 @@ protected:
 
   void findExtraKernelStubOnlyArguments();
 
-  // Lower all kernel stub ops to be compatible with the MGP region.
-  // This includes device context, bind lambda, constants, etc.
+  /// Materialize `mogg.tensor.fused` from `mogg.bind` ops inside the stub.
+  void materializeInStubTensorFusedOps();
+
+  /// Wire fused bind fusibles / companions to the stub block-arg capture that
+  /// the region passed in (after `setupKernelStubArgs`).
+  void wireTraitFusedCapturesToStubArgs();
+
   void lowerKernelStub();
 
   // Keep track all inputs / output / scratchpad operands;
@@ -216,7 +229,7 @@ private:
   /// Built output KernelStub for the mojo kernel implementation.
   MOGG::KernelStubOp kernelStub;
 
-  /// Lowered output region.
+  // Lowered output region.
   MOGG::GenericCompiledRegionOp mgpRegion;
 
   /// Block of the lowered output region.

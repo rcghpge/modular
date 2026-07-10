@@ -42,6 +42,7 @@ def MOGG_TensorArgRole
         I32EnumAttrCase<"input", 0, "input">,
         I32EnumAttrCase<"output", 1, "output">,
         I32EnumAttrCase<"mutable_input", 2, "mutable_input">,
+        I32EnumAttrCase<"none", 3, "none">,
       ]> {
   let cppNamespace = "::M::MOGG";
 }

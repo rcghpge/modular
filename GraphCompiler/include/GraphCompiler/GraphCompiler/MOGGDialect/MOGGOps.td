@@ -1050,6 +1050,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     MOGG_ABIKind:$abi,
+    OptionalAttr<ArrayAttr>:$trait_stub_buffer_capture,
+    OptionalAttr<ArrayAttr>:$trait_stub_arg_bounds,
     // The following is necessary for -symbol-dce
     DefaultValuedAttr<StrAttr, "\"private\"">:$sym_visibility
   );

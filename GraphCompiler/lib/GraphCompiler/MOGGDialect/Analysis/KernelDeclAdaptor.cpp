@@ -228,6 +228,11 @@ traitContractToTensorAdaptor(const TensorArgContract &contract) {
     adaptor = KernelDeclTensorAdaptor{IOSpec::MutableInputTensor};
     break;
   case TensorArgRole::input:
+  case TensorArgRole::none:
+    // The no-role shape-function flavor is a read-only operand, so it maps to
+    // the same `InputTensor` IOSpec as a plain `input` arg for the downstream
+    // mut/DPS predicates. The full contract (carrying `role == none`) is
+    // attached below so lowering can still distinguish it.
     adaptor = KernelDeclTensorAdaptor{IOSpec::InputTensor};
     break;
   }
@@ -1061,6 +1066,8 @@ StringRef toString(TensorArgRole role) {
     return "output";
   case TensorArgRole::mutableInput:
     return "mutable_input";
+  case TensorArgRole::none:
+    return "none";
   }
   llvm_unreachable("bad TensorArgRole");
 }
@@ -1108,6 +1115,9 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
     break;
   case TensorArgRole::mutableInput:
     irRole = MOGG::TensorArgRoleKind::mutable_input;
+    break;
+  case TensorArgRole::none:
+    irRole = MOGG::TensorArgRoleKind::none;
     break;
   }
 

@@ -70,7 +70,8 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
           auto stubOp = MOGG::KernelStubOp::create(
               builder, loc, stubName, functionType, fusionInfo,
               kernelOp.getIsAsyncAttr(), kernelOp.getConstantResourcesAttr(),
-              MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP));
+              MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP), nullptr,
+              nullptr);
           stubOp.getBody().takeBody(kernelOp.getBody());
           DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
           stubOp.setDeviceRef(device);

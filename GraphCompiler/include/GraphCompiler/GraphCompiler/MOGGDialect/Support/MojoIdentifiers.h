@@ -117,17 +117,19 @@ constexpr llvm::StringLiteral kInputTensorArgContractsAttrName =
 constexpr llvm::StringLiteral kOutputTensorArgContractsAttrName =
     "mogg.output_tensor_arg_contracts";
 
-/// Per-stub-argument trait-bound strings stamped on the MOGG-ABI
-/// `mogg.kernel.stub`: entry `i` is the Mojo trait-bound expression for stub
-/// argument `i` (e.g. `Output & DenseTensor & TileTensorable`) when it is a
-/// trait tensor argument, or an empty string otherwise. Emit
-/// (`emitMojoMOGGABI`) gives each such argument a fresh generic parameter typed
-/// `__trait_arg_type_i: <bound>` instead of spelling the (vestigial)
-/// `ManagedTensorSlice` type, so the constructed `_MoggDenseTensorArg` flows in
-/// and the kernel's `execute` infers its `T`. The bound must be conformed-to by
-/// `_MoggDenseTensorArg` and imply the kernel's written bound; for the dense
-/// slice that is `<role> & DenseTensor & TileTensorable`. Absent for pure
-/// legacy kernels (their lowering/printing is unchanged).
+/// Per-stub-argument buffer-capture comptime metadata stamped on the MOGG-ABI
+/// `mogg.kernel.stub` for trait tensor operands. Entry `i` is a
+/// `DictionaryAttr` `{dtype, layout_type}` (Mojo type expressions as strings)
+/// when stub argument `i` is a `_MoggTensorBufferCapture`, or an empty string
+/// otherwise. Emit types the stub parameter as
+/// `_MoggTensorBufferCapture[dtype, layout_type]`; execute-facing trait args
+/// are assembled inside the stub body from the capture + contract.
+constexpr llvm::StringLiteral kTraitStubBufferCaptureAttrName =
+    "mogg.trait_stub_buffer_capture";
+
+/// Legacy D9 generic trait bounds (superseded by buffer capture for trait
+/// tensor operands). Retained for shape-function stubs that still use generic
+/// `DenseTensor` parameters.
 constexpr llvm::StringLiteral kTraitStubArgBoundsAttrName =
     "mogg.trait_stub_arg_bounds";
 

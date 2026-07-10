@@ -49,9 +49,14 @@ from extensibility import (
 )
 from extensibility import (
     DenseTensor,
+    Fused,
     Input,
+    Loadable,
     Output,
+    Storable,
     TileTensorable,
+    TransformAccess,
+    Transformable,
     to_tile_tensor,
 )
 
@@ -303,6 +308,100 @@ struct TraitNegate:
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
+
+
+# ===-----------------------------------------------------------------------===#
+# Trait-lane FUSED kernels (Phase 5): one per fusion access form.
+#
+# A fused operand carries the `Fused` marker plus one access form:
+#   * `Input & Fused & Loadable`  -- prologue (input-load) fusion: `x.load(idx)`
+#     runs the producer fused into `x`.
+#   * `Output & Fused & Storable` -- epilogue (output-store) fusion:
+#     `z.store(idx, v)` runs the consumer fused onto `z` and writes.
+#   * `Output & Fused & Transformable` -- epilogue (transform / compute-output)
+#     fusion: `z.transform(idx, v)` runs the consumer and returns the value;
+#     the GC output mechanism performs the final dense store.
+# For each, the GC emits an inline `_MoggInput*/Output*FusionArg` wrapper around
+# the existing fusion functor (`InputFusion`/`OutputFusion`/`ComputeOutputFusion`)
+# conforming to the landed access trait; the kernel infers its generic `T`.
+# Element access is `Coord`-based (the trait interface); the wrapper bridges to
+# the functor's `IndexList`-based method.
+# ===-----------------------------------------------------------------------===#
+
+
+# Input-load (prologue) fusion: z[i] = -x.load(i), rank-1. Mirrors
+# `trait_negate` but with a fused input instead of a dense one.
+@compiler.register("trait_fused_load_negate")
+struct TraitFusedLoadNegate:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & Loadable],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), TileTensorable)
+        comptime assert conforms_to(type_of(x), Loadable)
+        var zt = to_tile_tensor(z)
+        var n = Int(z.shape().product())
+        for i in range(n):
+            var v = x.load[1](Coord(i))
+            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+
+
+# Output-store (epilogue) fusion: computes `2 * x[i]` and hands it to the fused
+# store, which runs the consumer epilogue and writes. `x` is a plain dense input.
+@compiler.register("trait_fused_store_double")
+struct TraitFusedStoreDouble:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & Storable],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), Storable)
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        var xt = to_tile_tensor(x)
+        var n = Int(z.shape().product())
+        for i in range(n):
+            var v = rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2
+            z.store[1](Coord(i), v)
+
+
+# Output-transform (compute-output) fusion: the kernel computes `x[i] + 1`,
+# applies the fused transform via `z.transform`, then performs the final dense
+# store itself (per the design, a transform operand transforms a computed value
+# and leaves the parent responsible for the store). `Transformable` is the sole
+# access form; `TileTensorable` adds only the dense projection used for that
+# final store. `x` is a plain dense input.
+@compiler.register("trait_fused_transform_bias")
+struct TraitFusedTransformBias:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        # The output carries ONLY the minimal graph-visible markers `Output &
+        # Fused & TransformAccess`. Everything the body uses -- `Transformable`
+        # (the transform) and `TileTensorable` (the output projection for the
+        # parent store, which refines `DenseTensor` so the layout metadata comes
+        # for free) -- is recovered via type refinement below.
+        z: Some[Output & Fused & TransformAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), Transformable)
+        comptime assert conforms_to(type_of(z), TileTensorable)
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        var zt = to_tile_tensor(z)
+        var xt = to_tile_tensor(x)
+        var n = Int(z.shape().product())
+        for i in range(n):
+            var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
+            var t = z.transform[1](Coord(i), raw)
+            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time
