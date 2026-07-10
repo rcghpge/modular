@@ -100,9 +100,9 @@ struct AddTryExceptBlocks
     // consumers, all cleanup from this kernel has completed.
     //
     // Note: We specifically look for AsyncReadyOp and not AsyncPackOp because
-    // pack operations (especially AsyncPackBorrowOp) may still reference
-    // values derived from arguments (like memory storage handles from cached
-    // buffers). The chain ready is what triggers downstream execution.
+    // pack operations may still reference values derived from arguments (like
+    // memory storage handles from cached buffers). The chain ready is what
+    // triggers downstream execution.
     if (!kernelOp.isThrows()) {
       setDelInsertionPoint(builder, kernelBody, terminator);
       insertAsyncDelOps(builder, loc, argsToDelete);

@@ -65,11 +65,13 @@ mgp.model @buffer_borrow : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 // CHECK-LABEL: mgp.model @buffer_borrow
 
 // In emit-mojo mode, mgp.buffer.slice stays as the op (not converted to mogg.call)
-// and is wrapped with async unpack/pack operations
+// and is wrapped with async unpack/pack operations. Every buffer/tensor value
+// carries its own storage handle, so the output is packed with the uniform
+// owned pack (no borrow/lifetime-extension plumbing).
 // CHECK: mogg.generic.compiled.region
 // CHECK: mogg.async.unpack
 // CHECK: mogg.async.unpack
 // CHECK: mogg.async.unpack
 // CHECK: mgp.buffer.slice
-// CHECK: mogg.async.pack.borrow
+// CHECK: mogg.async.pack
 // CHECK: mogg.output
