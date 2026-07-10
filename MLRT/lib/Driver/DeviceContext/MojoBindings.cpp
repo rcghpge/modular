@@ -8,9 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "AsyncRT/Runtime/WorkQueue.h"
+#include "MLRT/Core/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
@@ -230,6 +233,56 @@ MODULAR_EXPORT void AsyncRT_AsyncValue_release(AsyncRT::AsyncValue *value) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_release", TRACY_COLOR_GRAY);
   if (value)
     RCRef<AsyncRT::AsyncValue>::lowLevelDropRef(value);
+}
+
+// Wraps an already-owning `DeviceBuffer` handle (surrendered net-zero by the
+// Mojo side via `DeviceBuffer.take_handle()`) in an
+// `AsyncValue<DeviceBufferRef>` and returns the owning `AsyncValue*` (refcount
+// 1) for a Mojo `AnyAsyncValueRef` to adopt net-zero.
+MODULAR_EXPORT AsyncRT::AsyncValue *
+AsyncRT_AsyncValue_createFromDeviceBuffer(DeviceBuffer *handle) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_createFromDeviceBuffer",
+                       TRACY_COLOR_GRAY);
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  // TAKE the reference net-zero (no addRef): `take_handle` is `deinit self`, so
+  // adopting via `takeRCRef` transfers the single live reference without an
+  // extra ref (a copy would leak +1, a fresh owner would double-free).
+  DeviceBufferRef buf = takeRCRef(handle);
+  AnyAsyncValueRef storage =
+      AnyAsyncValueRef::createReady<DeviceBufferRef>(cpuDevice, std::move(buf));
+  // Hand the owning `AsyncValue*` (refcount 1) to the Mojo caller;
+  // `releasePointer` resets `storage` to null so its destructor does not drop
+  // the reference.
+  return storage.releasePointer();
+}
+
+// Retains the `AsyncValue` behind an existing `AnyAsyncValueRef` storage handle
+// (e.g. a cached buffer's memory handle) and hands the owning `AsyncValue*`
+// (refcount +1) to a Mojo `AnyAsyncValueRef`. A null handle yields null.
+MODULAR_EXPORT AsyncRT::AsyncValue *
+AsyncRT_AsyncValue_retainHandle(AnyAsyncValueRef *handle) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainHandle", TRACY_COLOR_GRAY);
+  if (!handle)
+    return nullptr;
+  return handle->copy().releasePointer();
+}
+
+// Retains the backing storage handle of a packed buffer/tensor async slot and
+// hands the owning `AsyncValue*` (refcount +1) to a Mojo `AnyAsyncValueRef`.
+// Used by unpack so an unpacked value (or a derivative) keeps its backing
+// memory alive when it is re-packed as an output. Non-tracked storage yields
+// null.
+MODULAR_EXPORT AsyncRT::AsyncValue *
+AsyncRT_AsyncValue_retainBufferStorage(AnyAsyncValueRef *async) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainBufferStorage",
+                       TRACY_COLOR_GRAY);
+  AnyAsyncValueRef &value = *async;
+  AnyAsyncValueRef handle;
+  if (value.isType<MLRT::TensorBufferRef>())
+    handle = value.get<MLRT::TensorBufferRef>().getMemStorageHandle();
+  else if (value.isType<MLRT::Tensor>())
+    handle = value.get<MLRT::Tensor>().getBufferRef().getMemStorageHandle();
+  return handle.releasePointer();
 }
 
 MODULAR_EXPORT const DeviceContext *

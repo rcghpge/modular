@@ -176,28 +176,6 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
 }
 
-/// Wraps an already-owning DeviceBuffer handle (surrendered net-zero by the
-/// Mojo side via DeviceBuffer.take_handle()) in an AsyncValue<DeviceBufferRef>
-/// and returns the owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef
-/// to adopt. This is the "storage handle" half of the old
-/// MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle: the matching
-/// TensorBufferRef is built later at the pack site via
-/// MGP_RT_CreateAsyncBufferRefFromStorage.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
-MGP_RT_CreateDeviceBufferRefAsyncValue(Driver::DeviceBuffer *handle) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  // TAKE the reference net-zero (no addRef): take_handle is `deinit self`, so
-  // adopting via takeRCRef transfers the single live reference without an extra
-  // ref (copyRCRef would leak +1, a fresh owner would double-free).
-  Driver::DeviceBufferRef buf = M::takeRCRef(handle);
-  AnyAsyncValueRef storage =
-      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(cpuDevice,
-                                                             std::move(buf));
-  // Hand the owning AsyncValue* (refcount 1) to the Mojo caller; releasePointer
-  // resets `storage` to null so its destructor does not drop the reference.
-  return storage.releasePointer();
-}
-
 /// Builds a TensorBufferRef from a data view (ptr + size) and an owning storage
 /// handle (an AsyncValue* the Mojo side surrendered net-zero), writing it into
 /// the async slot. Generalizes MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle:
@@ -237,33 +215,6 @@ MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
   TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
 
   fulfillReady<Tensor>(value, cpuDevice, std::move(buf), std::move(spec));
-}
-
-/// Retains the AsyncValue behind an existing `AnyAsyncValueRef` storage handle
-/// (e.g. a cached buffer's memory handle from TMP_MGP_RT_GetCachedBuffer) and
-/// hands the owning AsyncValue* (refcount +1) to a Mojo `AnyAsyncValueRef`. A
-/// null handle (or non-tracked storage) yields null.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
-MGP_RT_RetainAsyncValueHandle(AnyAsyncValueRef *handle) {
-  if (!handle)
-    return nullptr;
-  return handle->copy().releasePointer();
-}
-
-/// Retains the backing storage handle of a packed buffer/tensor async slot and
-/// hands the owning AsyncValue* (refcount +1) to a Mojo `AnyAsyncValueRef`.
-/// Used by unpack so an unpacked value (or a derivative) keeps its backing
-/// memory alive when it is re-packed as an output. Non-tracked storage yields
-/// null.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
-MGP_RT_RetainBufferStorage(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  AnyAsyncValueRef handle;
-  if (value.isType<TensorBufferRef>())
-    handle = value.get<TensorBufferRef>().getMemStorageHandle();
-  else if (value.isType<Tensor>())
-    handle = value.get<Tensor>().getBufferRef().getMemStorageHandle();
-  return handle.releasePointer();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void

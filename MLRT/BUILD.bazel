@@ -500,6 +500,7 @@ modular_shared_library(
     ],
     output_name = "AsyncRTMojoBindings",
     deps = [
+        ":Core/Tensor",
         ":Driver/DeviceAffinity",
         ":Driver/DeviceContextImpl",
         "//AsyncRT:Runtime",
