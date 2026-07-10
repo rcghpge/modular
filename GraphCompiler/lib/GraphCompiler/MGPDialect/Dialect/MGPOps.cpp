@@ -790,6 +790,7 @@ LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
 
   return success();
 }
+
 bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
 }

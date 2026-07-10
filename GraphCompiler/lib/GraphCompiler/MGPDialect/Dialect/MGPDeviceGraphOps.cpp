@@ -14,8 +14,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -136,9 +140,92 @@ void DeviceGraphCreateOp::build(
   result.addTypes(DeviceGraphType::get(builder.getContext(), signature));
 }
 
+// Emits `var graph_N = <deviceContext>.create_device_graph(build_N)`, where
+// `build_N` is a recording closure wrapping the build body. `create` is
+// IsolatedFromAbove with block args `[builder, context, inputs...]`, but the
+// Mojo `create_device_graph(build)` only passes the builder to the closure; the
+// context and inputs are captured lexically from the enclosing kernel-stub
+// function, so we bind those block args to their operands' Mojo values.
+LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  Block &body = *getBodyBuilderBlock();
+  Value builderArg = body.getArgument(0);
+  Value contextArg = body.getArgument(1);
+
+  // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
+  NamedMojoDef builderParam =
+      NamedMojoDef::asVerbatim("builder", MojoValue(kStructDeviceGraphBuilder));
+  builderParam.argConvention = "mut";
+
+  bool errOccurred = false;
+  // The build closure only reads its captured values (the context and inputs);
+  // it records into the builder parameter. Capture convention: `read`.
+  MojoValue buildClosure = state.builder.lambda(
+      "build", /*parameters=*/{}, /*arguments=*/{builderParam},
+      /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
+      /*isAsync=*/false, /*captureConvention=*/"read",
+      [&](const FunctionBody &functionBody) {
+        // Builder block arg -> the closure's parameter.
+        state.setMojoValueFor(builderArg, functionBody.arguments.front());
+        // Context block arg -> the build-time context operand (captured).
+        state.setMojoValueFor(contextArg,
+                              state.getMojoValueFor(getTheContext()));
+        // Input block args -> their operands' values (captured).
+        for (auto [arg, operand] :
+             llvm::zip_equal(body.getArguments().drop_front(2), getInputs()))
+          state.setMojoValueFor(arg, state.getMojoValueFor(operand));
+
+        // Emit the recording body (dependencies ops + hoisted plumbing). The
+        // `mgp.device_graph.yield` terminator emits nothing.
+        for (Operation &op : body.getOperations())
+          if (state.lowerOpToMojo(&op).failed()) {
+            errOccurred = true;
+            return;
+          }
+      });
+  if (errOccurred)
+    return failure();
+
+  // Build the graph via the static `DeviceGraph.create(deviceContext, build)`
+  // factory, which creates a builder, runs the build closure, and instantiates
+  // the recorded graph.
+  MojoValue deviceContext = state.getMojoValueFor(getDeviceContext());
+  MojoValue graph =
+      state.builder.var(MojoValue(kStructDeviceGraph)
+                            .get(kFnDeviceGraphCreate)(
+                                /*parameters=*/{},
+                                /*operands=*/{deviceContext, buildClosure}));
+  state.setMojoValueFor(getOutGraph(), graph);
+  return success();
+}
+
+bool DeviceGraphCreateOp::isThrows() { return true; }
+
 void DeviceGraphYieldOp::build(OpBuilder &, OperationState &) {
   // No-operand stub for the parent's `SingleBlockImplicitTerminator`; operands
   // are populated after insertion.
+}
+
+// Register each yielded value as an output of the device graph. The recording
+// wrote into these buffers/tensors; pack each into a fresh `AsyncValue` (via
+// the composite's `async_pack`) and hand it to the builder's `add_output` so
+// its backing memory outlives the graph that references it.
+LogicalResult DeviceGraphYieldOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  // The builder is the first block argument of the enclosing `create` body.
+  Value builderArg = getOperation()->getBlock()->getArgument(0);
+  MojoValue builder = state.getMojoValueFor(builderArg);
+
+  for (Value output : getOutputs()) {
+    MojoValue outVal = state.getMojoValueFor(output);
+    MojoValue asyncValue =
+        outVal.get(kFnAsyncPack)(/*parameters=*/{}, /*operands=*/{});
+    state.builder.call(builder.get(kFnDeviceGraphBuilderAddOutput),
+                       /*parameters=*/{}, /*operands=*/{asyncValue});
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -158,6 +245,30 @@ LogicalResult DeviceGraphExecuteOp::verify() {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphAllocOp
+//===----------------------------------------------------------------------===//
+
+// Emits `var buf_N = mgp_device_graph_alloc(byteSize, builder)`. Mirrors
+// `BufferAllocOp::emitMojo`, but passes the device-graph builder as the
+// allocation handle instead of a raw device context.
+LogicalResult DeviceGraphAllocOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+  // The primitive's `sym_name` (set by ImportPackages) is the Mojo function to
+  // call; look it up by the op name it registered under.
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primDecl.getSymNameAttr().strref());
+  MojoValue result = state.builder.var(function(
+      /*parameters=*/{},
+      /*operands=*/{state.getMojoValueFor(getRuntimeSize()),
+                    state.getMojoValueFor(getGraphBuilder())}));
+  state.setMojoValueFor(getOutBuffer(), result);
+  return success();
+}
+
+// The `mgp_device_graph_alloc` primitive raises (it allocates a device buffer).
+bool DeviceGraphAllocOp::isThrows() { return true; }
 
 //===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesOp
@@ -253,6 +364,125 @@ void DeviceGraphDependenciesOp::build(
 bool DeviceGraphDependenciesOp::producesNewNodes() {
   return !getBuilderBlockArgument().use_empty();
 }
+
+// Emits `var node_N = <builder>.region(work_N, dependencies=[...])`, where
+// `work_N` is a recording closure wrapping the body. The op is not
+// IsolatedFromAbove, so the body captures enclosing values lexically; only the
+// builder block arg maps to the closure parameter. The `dependencies=` keyword
+// argument injects the predecessor node edges as ambient predecessors of every
+// node the body records (the builder's `_implicit_deps` mechanism).
+//
+// `DeviceGraphBuilder.region` returns only the join node, so a body result
+// produced *inside* the body cannot be returned directly. We surface each such
+// result through a captured outer `Optional[T]` var: declare it (None) before
+// the closure, write it from inside `work` (captured by `mut`), and unwrap it
+// after `region` returns. `Optional` is used because the surfaced type may not
+// be default-constructible (e.g. a non-null buffer pointer), which a `mut`
+// capture requires:
+//
+//   var out = Optional[T](None)
+//   def work(mut builder) raises {mut}:
+//     ...
+//     out = <yielded>
+//   var node = builder.region(work, dependencies=[...])
+//   var resolved = out.value()
+//   // uses of the op's body result now refer to `resolved`
+//
+// A body result whose yielded value is defined *outside* the body is a plain
+// pass-through and is bound directly (no captured var needed).
+LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  Value builderArg = getBuilderBlockArgument();
+  DeviceGraphDependenciesYieldOp yieldOp = getYieldOp();
+
+  // Partition the used body results into those produced inside the body (which
+  // need a captured outer var) and external pass-throughs (bound directly).
+  struct SurfacedResult {
+    Value result;
+    Value yielded;
+    MojoValue outVar;
+  };
+  SmallVector<SurfacedResult> surfaced;
+  SmallVector<std::pair<Value, Value>> passThroughs; // (result, yielded)
+  for (auto [result, yielded] :
+       llvm::zip_equal(getBodyResults(), yieldOp.getOperands())) {
+    if (result.use_empty())
+      continue;
+    if (getBody().isAncestor(yielded.getParentRegion())) {
+      // `region` returns only the join node, and the surfaced type may not be
+      // default-constructible (e.g. a non-null buffer pointer), so it cannot be
+      // a bare uninitialized `var` captured by `mut`. Wrap it in an
+      // `Optional[T]` (None-initialized) that the `work` closure writes, and
+      // unwrap with `.value()` after `region`.
+      MojoValue optionalType = MojoValue(
+          kStructOptional)[EmitMojoState::mlirTypeToMojoType(result.getType())];
+      MojoValue outVar = state.builder.var(
+          optionalType(/*parameters=*/{},
+                       /*operands=*/{MojoValue(kComptimeNone)}),
+          /*cache=*/false);
+      surfaced.push_back({result, yielded, outVar});
+    } else {
+      passThroughs.emplace_back(result, yielded);
+    }
+  }
+
+  // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
+  NamedMojoDef builderParam =
+      NamedMojoDef::asVerbatim("builder", MojoValue(kStructDeviceGraphBuilder));
+  builderParam.argConvention = "mut";
+
+  // A closure that surfaces in-body results writes its captured `Optional`
+  // var(s), so it must capture by `mut`; otherwise it only reads its captures,
+  // so `read`. (A surfacing closure that also *reads* register-passable
+  // captures would need a finer per-capture convention; that does not arise
+  // for the current single-dispatch bodies.)
+  llvm::StringRef workConvention =
+      surfaced.empty() ? llvm::StringRef("read") : llvm::StringRef("mut");
+
+  bool errOccurred = false;
+  MojoValue workClosure = state.builder.lambda(
+      "work", /*parameters=*/{}, /*arguments=*/{builderParam},
+      /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
+      /*isAsync=*/false, /*captureConvention=*/workConvention,
+      [&](const FunctionBody &functionBody) {
+        state.setMojoValueFor(builderArg, functionBody.arguments.front());
+        for (Operation &op : getBody().front().getOperations())
+          if (state.lowerOpToMojo(&op).failed()) {
+            errOccurred = true;
+            return;
+          }
+        // Write each in-body result into its captured `Optional` var (the
+        // value implicitly wraps into the Optional).
+        for (const SurfacedResult &s : surfaced)
+          state.builder.assign(s.outVar, state.getMojoValueFor(s.yielded));
+      });
+  if (errOccurred)
+    return failure();
+
+  // dependencies=[...] from the predecessor node operands.
+  SmallVector<MojoValue> depValues = state.getMojoValuesFor(getDependencies());
+  MojoValue dependenciesList = state.builder.listLiteral(depValues);
+
+  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
+  MojoValue node = state.builder.var(builder.get(kFnDeviceGraphRegion)(
+      /*parameters=*/{},
+      /*operands=*/{
+          workClosure,
+          MojoValue(kParameterDependencies).equal(dependenciesList)}));
+  state.setMojoValueFor(getNode(), node);
+
+  // Bind the op's body results: unwrap each surfaced `Optional` via `.value()`
+  // and external pass-throughs directly to the yielded value.
+  for (const SurfacedResult &s : surfaced)
+    state.setMojoValueFor(s.result, state.builder.var(s.outVar.get("value")(
+                                        /*parameters=*/{}, /*operands=*/{})));
+  for (auto [result, yielded] : passThroughs)
+    state.setMojoValueFor(result, state.getMojoValueFor(yielded));
+  return success();
+}
+
+bool DeviceGraphDependenciesOp::isThrows() { return true; }
 
 namespace {
 
@@ -519,6 +749,12 @@ void DeviceGraphDependenciesOp::getCanonicalizationPatterns(
 void DeviceGraphDependenciesYieldOp::build(OpBuilder &, OperationState &) {
   // No-operand stub for the parent's SingleBlockImplicitTerminator; operands
   // are populated after insertion.
+}
+
+// The body results are surfaced by the parent op's `emitMojo` (region join node
+// plus external pass-throughs), so the yield itself emits nothing.
+LogicalResult DeviceGraphDependenciesYieldOp::emitMojo(MOGG::EmitMojoState &) {
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

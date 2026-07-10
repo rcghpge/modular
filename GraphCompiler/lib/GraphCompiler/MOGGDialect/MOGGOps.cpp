@@ -2924,15 +2924,67 @@ CallBuildGraphOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 bool CallBuildGraphOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
-  // TODO(GEX-3811): Emit the kernel's `build_graph` method against the builder
-  // (mirroring CallExecuteOp::emitMojo, but selecting buildGraphFunction /
-  // kMoggBuildGraphFunctionLabel, appending the builder as the launch arg, and
-  // capturing the returned node handle for the op result). Blocked on the
-  // Mojo-side build_graph ABI -- the DeviceGraphBuilder module path and the
-  // recorded-node return type need mlirTypeToMojoType mappings. This op has no
-  // end-to-end emit path yet (the synthesis pass that generates it does not
-  // emit build_graph stubs), so reaching emit here is a compiler bug.
-  return emitOpError("mogg.call.build_graph emit is not implemented yet");
+  // Mirrors CallExecuteOp::emitMojo, but selects the kernel's `build_graph`
+  // function, appends the device-graph builder as the launch argument (in place
+  // of the device context), and captures the recorded node handle as the op's
+  // result.
+  KernelDeclOp buildGraphKernelDecl =
+      state.registry.lookupKernelBySymName(getKernelSymName());
+  KernelDeclAdaptor buildGraphAdaptor(buildGraphKernelDecl);
+  if (!buildGraphAdaptor.buildGraphFunction)
+    return emitOpError("kernel '")
+           << getKernelSymName() << "' has no 'build_graph' function";
+  const KernelDeclFunctionAdaptor &buildGraphFnAdaptor =
+      *buildGraphAdaptor.buildGraphFunction;
+
+  // Collect kernel I/Os: DPS outputs, then inputs (mirroring `execute`).
+  SmallVector<MojoValue> kernelOperands;
+  for (Value val : getOutputs())
+    kernelOperands.push_back(state.getMojoValueFor(val));
+
+  auto inputs = getInputs();
+  for (unsigned i = 0; i < inputs.size(); ++i) {
+    Value input = inputs[i];
+    MojoValue inputValue = state.getMojoValueFor(input);
+
+    // Transform mutable inputs if the kernel expects an InputTensor.
+    if (isMutableInputTensor(input) &&
+        i < buildGraphFnAdaptor.inputArguments.size()) {
+      const auto *tensorInfo = std::get_if<KernelDeclTensorAdaptor>(
+          &buildGraphFnAdaptor.inputArguments[i].underlyingType);
+      if (tensorInfo && tensorInfo->ioSpec == MOGG::IOSpec::InputTensor)
+        inputValue = generateMutableTensorInit(input, state);
+    }
+
+    kernelOperands.push_back(inputValue);
+  }
+
+  // The launch argument is the device-graph builder (not a context).
+  kernelOperands.push_back(state.getMojoValueFor(getGraphBuilder()));
+
+  // Infer the kernel parameters against the `build_graph` function.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  auto maybeParams = EmitMojoState::inferKernelParameters(
+      buildGraphAdaptor, MOGG::kMoggBuildGraphFunctionLabel, inferParam);
+  if (maybeParams.isError())
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
+
+  auto [prefixSymbolName, buildGraphFunc] = EmitMojoState::splitFunctionName(
+      buildGraphFnAdaptor.fullyResolvedName.strref());
+  MojoValue structType = prefixSymbolName[maybeParams->structParameters];
+  MojoValue fullBuildGraphFunc = structType.get(buildGraphFunc);
+
+  // The `build_graph` method records the dispatch into the builder. The op is
+  // node-free -- ordering is expressed by the enclosing
+  // `mgp.device_graph.dependencies` op's `region` call -- so this is a plain
+  // void call with no result to capture.
+  state.builder.call(fullBuildGraphFunc, maybeParams->functionParameters,
+                     kernelOperands);
+  state.genAllKeepAliveStatements();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -4777,7 +4829,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
       "wrapper", /*parameters=*/{}, /*arguments=*/{},
       /*returnType=*/MojoValue(kComptimeNone),
       /*isInline=*/true, /*isParameter=*/true, /*isAsync=*/true,
-      [&](const FunctionBody &) {
+      /*captureConvention=*/"", [&](const FunctionBody &) {
         state.builder
             .try_([&]() {
               state.builder.call(stubFunc, /*parameters=*/{}, stubArgs);

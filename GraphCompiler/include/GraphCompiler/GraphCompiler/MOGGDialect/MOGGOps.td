@@ -340,22 +340,26 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
 
     The tensor signature (`inputs` / `outputs`) matches the `execute` call the
     op was synthesized from; only the launch argument differs -- a builder in
-    place of a context. The op returns an `!mgp.device_graph.node` handle naming
-    the recorded node.
+    place of a context.
+
+    The op is node-free: it records into the builder but produces no SSA result.
+    Node ordering is expressed entirely by the enclosing
+    `mgp.device_graph.dependencies` op (which lowers to
+    `DeviceGraphBuilder.region(work, dependencies=...)`), so no
+    `!mgp.device_graph.node` is threaded through the kernel-facing ABI.
 
     Unlike `mogg.call.execute`, this is not a kernel terminator and is not
-    wrapped in `mogg.with_trace`: it produces an SSA result (the node handle)
-    that flows to the recording stub's `mogg.output`.
+    wrapped in `mogg.with_trace`.
 
     Example:
     ```mlir
-    %node = mogg.call.build_graph["linalg_kernels.__init__.Matmul"]
+    mogg.call.build_graph["linalg_kernels.__init__.Matmul"]
         inputs(%in, %wt : !mo.tensor<...>, !mo.tensor<...>)
         outputs(%out : !mo.tensor<...>)
-        builder(%builder) -> !mgp.device_graph.node
+        builder(%builder)
 
     // Lowered to
-    var node = Matmul.build_graph[...](out, in, wt, builder)
+    Matmul.build_graph[...](out, in, wt, builder)
     ```
   }];
 
@@ -369,12 +373,10 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     OptionalAttr<DictionaryAttr>:$kernel_param
   );
 
-  let results = (outs MGP_DeviceGraphNodeType:$node);
-
   let assemblyFormat = [{
     `[` $kernelSymName `]` (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
                         (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
-                        `builder` `(` $graphBuilder `)` `->` qualified(type($node)) attr-dict
+                        `builder` `(` $graphBuilder `)` attr-dict
   }];
   let hasVerifier = 1;
 }

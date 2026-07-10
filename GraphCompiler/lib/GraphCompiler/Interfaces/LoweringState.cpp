@@ -701,7 +701,7 @@ void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
   auto builder = OpBuilder::atBlockBegin(&kernel.getBodyBlock());
 
   auto loc = kernel->getLoc();
-  Operation *terminator = kernel.getBody().front().getTerminator();
+  MOGG::OutputOp terminator = kernel.getBodyTerminator();
 
   // Chain inputs should never be used by any ops. Replace them with a dummy
   // chain. Block arguments are `!mogg.async<T>`, so unwrap before checking.

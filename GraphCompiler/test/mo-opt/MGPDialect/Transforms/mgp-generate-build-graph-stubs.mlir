@@ -30,12 +30,13 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.call.execute["k"]
 //
 // The recording sibling is generated immediately after the original stub (so it
-// precedes the model): builder launch arg, node result, producer recorded via
-// `mogg.call.build_graph` (no `mogg.with_trace`), node forwarded out, and the
+// precedes the model): builder launch arg, void result (node-free), producer
+// recorded via `mogg.call.build_graph` (no `mogg.with_trace`), and the
 // producer's `kernel_param` carried over.
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mgp.device_graph.builder) -> !mgp.device_graph.node
-// CHECK: %[[NODE:[a-zA-Z0-9_]+]] = mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%{{.*}}) -> !mgp.device_graph.node {{.*}}kernel_param = {transpose_b = true}
-// CHECK: mogg.output %[[NODE]] : !mgp.device_graph.node
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mgp.device_graph.builder)
+// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%{{.*}}) {{.*}}kernel_param = {transpose_b = true}
+// CHECK-NEXT: mogg.output
+// CHECK-NEXT: }
 mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
@@ -51,7 +52,8 @@ mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DEPB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NOT: unrealized_conversion_cast
-// CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DEPB]] : {{.*}}, !mgp.device_graph.builder -> !mgp.device_graph.node
+// CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DEPB]] : {{.*}}, !mgp.device_graph.builder
+// CHECK-NOT: -> !mgp.device_graph.node
 mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1

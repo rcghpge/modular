@@ -18,6 +18,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPDEVICEGRAPHOPS_TD
 #define GENERICML_MGPDIALECT_MGPDEVICEGRAPHOPS_TD
 
+include "GraphCompiler/GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
 include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
@@ -37,6 +38,7 @@ class MGP_DeviceGraphOp<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
 ]> {
@@ -137,6 +139,7 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   HasParent<"DeviceGraphCreateOp">,
   Pure,
   ReturnLike,
@@ -217,7 +220,9 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
 // DeviceGraphAllocOp
 //===----------------------------------------------------------------------===//
 
-def DeviceGraphAllocOp : MGP_DeviceGraphOp<"alloc", []> {
+def DeviceGraphAllocOp : MGP_DeviceGraphOp<"alloc", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+]> {
   let summary = "Allocates a buffer against a device-graph builder.";
   let description = [{
     The device-graph counterpart of `mgp.buffer.alloc`: allocates an
@@ -256,6 +261,7 @@ def DeviceGraphAllocOp : MGP_DeviceGraphOp<"alloc", []> {
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   HasOnlyGraphRegion,
   RecursiveMemoryEffects,
   RegionKindInterface,
@@ -364,6 +370,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphDependenciesYieldOp : MGP_DeviceGraphOp<"dependencies.yield", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   HasParent<"DeviceGraphDependenciesOp">,
   Pure,
   ReturnLike,

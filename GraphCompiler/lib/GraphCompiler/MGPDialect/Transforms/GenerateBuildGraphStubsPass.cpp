@@ -32,9 +32,10 @@ CallExecuteOp findProducerDispatch(KernelStubOp stub, WithTraceOp &withTrace) {
 /// Build the sibling recording stub `@<original>_build_graph` from `original`
 /// and insert it at module scope via `symtab`. The clone mirrors the original
 /// body, but its producer dispatch (`mogg.call.execute` inside
-/// `mogg.with_trace`) becomes a `mogg.call.build_graph` recording into a
-/// `!mgp.device_graph.builder` (the retyped launch arg), and the recorded
-/// `!mgp.device_graph.node` handle is forwarded out through `mogg.output`.
+/// `mogg.with_trace`) becomes a node-free `mogg.call.build_graph` recording
+/// into a `!mgp.device_graph.builder` (the retyped launch arg). The stub
+/// returns nothing -- node ordering is carried by the enclosing
+/// `mgp.device_graph.dependencies` op, not threaded through the stub.
 /// Returns the sibling's symbol name.
 FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
                                           KernelStubOp original) {
@@ -79,27 +80,26 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   // into the builder. `call.build_graph` is a plain value op (not a kernel
   // terminator), so the wrapping `with_trace` is dropped.
   OpBuilder builder(&insertionPoint);
-  auto buildGraph = CallBuildGraphOp::create(builder,
-                                             /*location=*/execute.getLoc(),
-                                             /*kernelSymName=*/kernelSymName,
-                                             /*moOpName=*/moOpName,
-                                             /*isThrows=*/isThrows,
-                                             /*inputs=*/kernelInputs,
-                                             /*outputs=*/outputs,
-                                             /*graphBuilder=*/launchArg,
-                                             /*kernel_param=*/kernelParams);
+  CallBuildGraphOp::create(builder,
+                           /*location=*/execute.getLoc(),
+                           /*kernelSymName=*/kernelSymName,
+                           /*moOpName=*/moOpName,
+                           /*isThrows=*/isThrows,
+                           /*inputs=*/kernelInputs,
+                           /*outputs=*/outputs,
+                           /*graphBuilder=*/launchArg,
+                           /*kernel_param=*/kernelParams);
 
   if (withTrace)
     withTrace.erase();
 
-  // Forward the recorded node through the stub's `mogg.output` terminator.
-  clone->getBodyTerminator().getOperandsMutable().assign(buildGraph.getNode());
-
-  auto nodeType = DeviceGraphNodeType::get(ctx);
-  // Update the function signature to match: launch arg is now a builder, and
-  // the stub yields the node.
+  // The recording is node-free: ordering is expressed by the enclosing
+  // `mgp.device_graph.dependencies` op (which lowers to
+  // `DeviceGraphBuilder.region`), so no `!mgp.device_graph.node` is threaded
+  // through the stub. Leave the `mogg.output` terminator operand-free and give
+  // the stub a void result; only the launch arg changes (context -> builder).
   clone->setFunctionTypeAttr(
-      TypeAttr::get(FunctionType::get(ctx, body.getArgumentTypes(), nodeType)));
+      TypeAttr::get(FunctionType::get(ctx, body.getArgumentTypes(), {})));
 
   // Name and register the sibling alongside the original (kept for the
   // direct-execution / init path). The name is unique, so `insert` preserves
@@ -115,11 +115,10 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
 }
 
 /// Retarget a staged `mogg.call.stub @stub_N` to its sibling
-/// `@stub_N_build_graph`, surfacing the recording node as an added result.
+/// `@stub_N_build_graph`.
 ///
 /// The sibling takes a `!mgp.device_graph.builder` where the original took a
-/// launch context, so the call's launch operand is bridged to a builder with a
-/// local `builtin.unrealized_conversion_cast`.
+/// launch context.
 LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
   MLIRContext *ctx = call.getContext();
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
@@ -128,27 +127,44 @@ LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
     return call.emitError("device-graph recording stub call: expected the last "
                           "operand to be the launch context");
 
-  auto builderType = DeviceGraphBuilderType::get(ctx);
-
   IRRewriter rewriter(call);
-  operands.back() =
-      UnrealizedConversionCastOp::create(rewriter, call.getLoc(),
-                                         /*resultTypes=*/builderType,
-                                         /*operands=*/operands.back())
-          .getResult(0);
 
-  SmallVector<Type> resultTypes = llvm::to_vector(call.getResultTypes());
-  resultTypes.push_back(DeviceGraphNodeType::get(ctx));
+  Value launch = operands.back();
+  // Fallback: bridge the launch context to a builder.
+  operands.back() = UnrealizedConversionCastOp::create(
+                        rewriter, call.getLoc(),
+                        /*resultTypes=*/DeviceGraphBuilderType::get(ctx),
+                        /*operands=*/launch)
+                        .getResult(0);
 
+  // The sibling stub is node-free (void result), so the retargeted call keeps
+  // the original call's result types unchanged.
   auto newCall =
-      CallStubOp::create(rewriter, call.getLoc(), resultTypes, siblingName,
-                         operands, call.getAffinityDeviceIdAttr());
+      CallStubOp::create(rewriter, call.getLoc(), call.getResultTypes(),
+                         siblingName, operands, call.getAffinityDeviceIdAttr());
 
-  rewriter.replaceAllUsesWith(
-      call.getResults(), newCall.getResults().take_front(call.getNumResults()));
+  rewriter.replaceAllUsesWith(call.getResults(), newCall.getResults());
 
   call.erase();
   return success();
+}
+
+/// Replace each `mgp.buffer.alloc` in `staging` with `mgp.device_graph.alloc`.
+void rewriteBuilderAllocs(DeviceGraphStagingOp staging) {
+  staging.getBody().walk([&](BufferAllocOp alloc) {
+    IRRewriter rewriter(alloc);
+    auto graphBuilderType = rewriter.getType<DeviceGraphBuilderType>();
+    auto cast = UnrealizedConversionCastOp::create(
+        rewriter, alloc.getLoc(), graphBuilderType, alloc.getDeviceContext());
+
+    rewriter.replaceOpWithNewOp<DeviceGraphAllocOp>(
+        alloc,
+        /*outBuffer=*/alloc.getOutBuffer().getType(),
+        /*inChain=*/alloc.getInChain(),
+        /*runtimeSize=*/alloc.getRuntimeSize(),
+        /*graphBuilder=*/cast.getResult(0),
+        /*rawAlign=*/alloc.getRawAlign());
+  });
 }
 
 /// For each `mogg.call.stub @stub_N` inside `staging` (the staged execute
@@ -235,6 +251,11 @@ class GenerateBuildGraphStubsPass final
     for (DeviceGraphStagingOp staging : stagingOps)
       if (failed(generateBuildGraphStubs(symtab, staging)))
         return signalPassFailure();
+
+    // Route in-body allocations through the builder: rewrite
+    // `mgp.buffer.alloc(builder-cast)` to `mgp.device_graph.alloc(builder)`.
+    for (DeviceGraphStagingOp staging : stagingOps)
+      rewriteBuilderAllocs(staging);
   }
 };
 

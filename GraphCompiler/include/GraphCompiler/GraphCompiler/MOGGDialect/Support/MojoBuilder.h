@@ -201,6 +201,11 @@ struct NamedMojoDef {
   /// annotation is emitted if `type` is empty. Used for method signatures
   /// that must match a Mojo trait (e.g. `self`, `idx`, `dtype`, `rank`).
   bool verbatim = false;
+  /// Argument convention emitted before the name (e.g. `mut`, `owned`). The
+  /// convention is NOT part of the value reference, so the `FunctionBody`
+  /// argument the body uses remains the bare name. Empty means the default
+  /// (borrowed/read) convention with no keyword.
+  llvm::StringRef argConvention = "";
 
   NamedMojoDef(UniqueMojoIdentifier name, MojoValue type,
                std::optional<MojoValue> defaultValue = std::nullopt)
@@ -249,10 +254,16 @@ public:
   /// level when it goes out of scope.
   /// Returns the parameter name for the newly defined lambda.
   /// When isAsync is true, emits `async fn` instead of `fn`.
+  /// When `captureConvention` is non-empty (e.g. "read", "mut"), the lambda is
+  /// emitted as a raising runtime closure with that capture convention
+  /// (`... raises {<captureConvention>} ...`), which Mojo requires for runtime
+  /// closures that capture enclosing values. Empty means no convention is
+  /// emitted (e.g. `@parameter` closures, which capture at comptime).
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
                    std::optional<MojoValue> returnType, bool isInline,
                    bool isParameter, bool isAsync,
+                   llvm::StringRef captureConvention,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
 
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);

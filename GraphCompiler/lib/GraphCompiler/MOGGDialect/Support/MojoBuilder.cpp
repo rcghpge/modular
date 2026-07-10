@@ -120,6 +120,8 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                           SmallVectorImpl<MojoValue> &out) {
     MojoValue name =
         def.verbatim ? MojoValue(def.name.prefix) : newVar(def.name);
+    if (!def.argConvention.empty())
+      stream << def.argConvention << " ";
     stream << name;
     if (!(def.verbatim && def.type.text.empty()))
       stream << typeSep << def.type;
@@ -192,6 +194,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     ArrayRef<NamedMojoDef> arguments,
                     std::optional<MojoValue> returnType, bool isInline,
                     bool isParameter, bool isAsync,
+                    llvm::StringRef captureConvention,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
   MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
@@ -200,8 +203,16 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
     statement("@parameter");
   if (isInline)
     statement("@always_inline");
+
+  // A runtime closure that captures enclosing values must declare its capture
+  // convention (`raises {read}` / `raises {mut}`); Mojo cannot otherwise infer
+  // it. Empty convention emits no effects clause (e.g. `@parameter` closures).
+  std::string effects;
+  if (!captureConvention.empty())
+    effects = (llvm::Twine("raises {") + captureConvention + "}").str();
+
   statement(isAsync ? "async def " : "def ", lambdaParam,
-            funcDefBase(parameters, arguments, returnType, body));
+            funcDefBase(parameters, arguments, returnType, effects, body));
 
   MojoBuilderScopeGuard guard(this);
   lambdaBody(body);

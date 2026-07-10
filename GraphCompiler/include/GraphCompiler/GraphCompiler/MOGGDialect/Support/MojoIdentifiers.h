@@ -256,6 +256,20 @@ constexpr llvm::StringLiteral kStructDeviceContext =
     "std.gpu.host.device_context.DeviceContext";
 constexpr llvm::StringLiteral kStructDeviceContextList =
     "std.gpu.host.device_context.DeviceContextList";
+constexpr llvm::StringLiteral kStructDeviceGraph =
+    "std.gpu.host.device_graph.DeviceGraph";
+constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
+    "std.gpu.host.device_graph.DeviceGraphBuilder";
+constexpr llvm::StringLiteral kStructDeviceGraphNode =
+    "std.gpu.host.device_graph.DeviceGraphNode";
+// Device-graph builder methods / keyword args used by EmitMojo for the
+// `mgp.device_graph.create` and `mgp.device_graph.dependencies` ops.
+// `create` is the static `DeviceGraph.create(ctx, build)` factory.
+constexpr llvm::StringLiteral kFnDeviceGraphCreate = "create";
+constexpr llvm::StringLiteral kFnDeviceGraphRegion = "region";
+constexpr llvm::StringLiteral kFnDeviceGraphBuilderContext = "context";
+constexpr llvm::StringLiteral kFnDeviceGraphBuilderAddOutput = "add_output";
+constexpr llvm::StringLiteral kParameterDependencies = "dependencies";
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
@@ -437,6 +451,10 @@ constexpr llvm::StringLiteral kStructOwnedByteBuffer =
     "builtin_primitives.primitives.OwnedByteBuffer";
 constexpr llvm::StringLiteral kStructOwnedTensor =
     "builtin_primitives.primitives.OwnedTensor";
+/// `async_pack()` method on `OwnedByteBuffer` / `OwnedTensor`: builds a fresh
+/// `AsyncValue` over the composite's backing memory, used to register a
+/// device-graph output.
+constexpr llvm::StringLiteral kFnAsyncPack = "async_pack";
 constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 
 //===----------------------------------------------------------------------===//
@@ -498,6 +516,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
         {"std.gpu.host.device_context", ""},
+        {"std.gpu.host.device_graph", ""},
         {"std.utils", ""},
         {"std.utils.numerics", ""},
         {"std.runtime", ""},

@@ -99,8 +99,9 @@ func.func @device_graph_plain_args_ok(
   return %ch : !mef.chain
 }
 
-// The builder-taking `alloc` op round-trips inside a build body. The build body
-// is `IsolatedFromAbove`, so the chain/size come from in-body values.
+// The builder-taking ops (`get_context`, `alloc`) round-trip inside a build
+// body. The build body is `IsolatedFromAbove`, so the chain/size come from
+// in-body values.
 
 // CHECK-LABEL: func.func @device_graph_builder_ops_round_trip
 func.func @device_graph_builder_ops_round_trip(

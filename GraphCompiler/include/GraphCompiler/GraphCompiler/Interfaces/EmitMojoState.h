@@ -185,6 +185,12 @@ public:
       return kComptimeOpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return kStructDeviceContext;
+    } else if (isa<MGP::DeviceGraphType>(mlirType)) {
+      return kStructDeviceGraph;
+    } else if (isa<MGP::DeviceGraphBuilderType>(mlirType)) {
+      return kStructDeviceGraphBuilder;
+    } else if (isa<MGP::DeviceGraphNodeType>(mlirType)) {
+      return kStructDeviceGraphNode;
     } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
       if (integerTy.getWidth() == 1)
         return kStructBool;
