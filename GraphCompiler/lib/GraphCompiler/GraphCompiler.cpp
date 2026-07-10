@@ -27,6 +27,7 @@
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/Conversion/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -158,8 +159,9 @@ void M::MO::registerPasses() {
   RMO::registerLegalizeRMOOpsPass();
 
   mlir::registerCSEPass();
-  mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
+  mlir::registerReconcileUnrealizedCastsPassPass();
+  mlir::registerSCCPPass();
   mlir::registerSymbolDCEPass();
   mlir::registerViewOpGraphPass();
 
@@ -427,6 +429,8 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     // Stage 6: lift the staging op into `mgp.device_graph.create` /
     // `mgp.device_graph.execute`, rewiring `mef.output`.
     pm.addPass(MGP::createFinalizeDeviceGraphsPass());
+    // Sanity check on our handling of unrealized_conversion_cast operations.
+    pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   } else {
     pm.addPass(MOGG::createSequenceFusion());
   }

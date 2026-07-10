@@ -214,6 +214,44 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphAllocOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphAllocOp : MGP_DeviceGraphOp<"alloc", []> {
+  let summary = "Allocates a buffer against a device-graph builder.";
+  let description = [{
+    The device-graph counterpart of `mgp.buffer.alloc`: allocates an
+    uninitialized buffer of `runtimeSize` bytes, but takes the recording
+    `!mgp.device_graph.builder` instead of a `!mgp.device_context`. Keeping
+    allocation a builder operation lets the builder track device-graph
+    allocations (e.g. a device-graph memory pool) in the future; today it lowers
+    to a Mojo primitive that allocates via the builder's device context.
+
+    It appears only inside a `mgp.device_graph.create` build body and is emitted
+    to Mojo (never C++-lowered).
+
+    Example:
+    ```mlir
+      %buf = mgp.device_graph.alloc %ch, %size, %builder, align 256
+          : !mgp.buffer<<"gpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins
+    ChainType:$inChain,
+    Index:$runtimeSize,
+    MGP_DeviceGraphBuilderType:$graphBuilder,
+    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign
+  );
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+
+  let assemblyFormat = [{
+    $inChain `,` $runtimeSize `,` $graphBuilder ( `,` `align` $rawAlign^ )?
+    attr-dict `:` qualified(type($outBuffer))
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesOp
 //===----------------------------------------------------------------------===//
 

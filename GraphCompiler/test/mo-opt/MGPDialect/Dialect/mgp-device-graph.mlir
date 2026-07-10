@@ -98,3 +98,28 @@ func.func @device_graph_plain_args_ok(
 
   return %ch : !mef.chain
 }
+
+// The builder-taking `alloc` op round-trips inside a build body. The build body
+// is `IsolatedFromAbove`, so the chain/size come from in-body values.
+
+// CHECK-LABEL: func.func @device_graph_builder_ops_round_trip
+func.func @device_graph_builder_ops_round_trip(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>) -> !mef.chain {
+
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      inputs() {
+    ^bb0(%builder: !mgp.device_graph.builder, %ctx_b: !mgp.context):
+      %bch = "test.chain"() : () -> !mef.chain
+      %size = "test.size"() : () -> index
+      // CHECK: mgp.device_graph.alloc %{{.+}}, %{{.+}}, %{{.+}}, align 256 : !mgp.buffer<<"gpu", 0>>
+      %buf = mgp.device_graph.alloc %bch, %size, %builder, align 256
+          : !mgp.buffer<<"gpu", 0>>
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<() -> ()>
+
+  return %ch : !mef.chain
+}
