@@ -57,3 +57,21 @@ mo.graph @custom_op_shape_func<D0, D1 -> D2, D3>(
     (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }
+
+// A trait-typed, metadata-only shape function (`trait_metadata_shape_op_shape`,
+// `Some[DenseTensor]` with no io-role). The shape kernel carries the no-role
+// trait contract, so its tensor operand is lowered on the trait lane (emitted
+// as a `_MoggDenseTensorArg` rather than rebound to `InputTensor` -- the emitted
+// Mojo is exercised by the CPU e2e `mogg-kernel-api-e2e-trait-shape-func.mlir`).
+// CHECK-LABEL: mo.graph @trait_metadata_shape_func
+// CHECK: mogg.kernel
+// CHECK:   mogg.call.shape["{{.*}}.trait_metadata_shape_op_shape"]
+// CHECK-SAME: -> !mogg.shape_func_result<2>
+// CHECK: mogg.input_tensor_arg_contracts = [#mogg.tensor_arg<{role = none, fused = false, access = none, capabilities = none}>]
+mo.graph @trait_metadata_shape_func<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+  %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "trait_metadata_shape_op"}(%input) :
+    (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}

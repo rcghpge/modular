@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 from std.builtin.device_passable import DevicePassable
+from std.builtin.rebind import downcast
 from std.collections import Optional
 from std.collections.string import StaticString
 from std.gpu import global_idx
@@ -51,8 +52,11 @@ from extensibility import (
     DenseTensor,
     Fused,
     Input,
+    LoadAccess,
     Loadable,
+    MutableInput,
     Output,
+    StoreAccess,
     Storable,
     TileTensorable,
     TransformAccess,
@@ -313,11 +317,11 @@ struct TraitNegate:
 # ===-----------------------------------------------------------------------===#
 # Trait-lane FUSED kernels (Phase 5): one per fusion access form.
 #
-# A fused operand carries the `Fused` marker plus one access form:
-#   * `Input & Fused & Loadable`  -- prologue (input-load) fusion: `x.load(idx)`
-#     runs the producer fused into `x`.
-#   * `Output & Fused & Storable` -- epilogue (output-store) fusion:
-#     `z.store(idx, v)` runs the consumer fused onto `z` and writes.
+# A fused operand carries the `Fused` marker plus one graph-visible access form:
+#   * `Input & Fused & LoadAccess` -- prologue (input-load) fusion.
+#     The callable `Loadable` view is used only where `x.load(idx)` is valid.
+#   * `Output & Fused & StoreAccess` -- epilogue (output-store) fusion.
+#     The callable `Storable` view is used only where `z.store(idx, v)` is valid.
 #   * `Output & Fused & Transformable` -- epilogue (transform / compute-output)
 #     fusion: `z.transform(idx, v)` runs the consumer and returns the value;
 #     the GC output mechanism performs the final dense store.
@@ -331,6 +335,26 @@ struct TraitNegate:
 
 # Input-load (prologue) fusion: z[i] = -x.load(i), rank-1. Mirrors
 # `trait_negate` but with a fused input instead of a dense one.
+# Device entry for the fused-load negate path: one thread per element negates the
+# producer's fused load into the dense output. `input` is the device-projected
+# fused-load wrapper, bound by ONLY its `Loadable` capability via
+# `downcast[XHost.device_type, Loadable]` (the `XHost: DevicePassable` generic is
+# just the carrier that names the device type).
+def _gpu_fused_load_negate_kernel[
+    XHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    output: TileTensor[dtype, LayoutType, MutAnyOrigin],
+    input: downcast[XHost.device_type, Loadable],
+    n: Int,
+):
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    output.raw_store(i, rebind[SIMD[dtype, 1]](-input.load[1](Coord(i))))
+
+
 @compiler.register("trait_fused_load_negate")
 struct TraitFusedLoadNegate:
     @staticmethod
@@ -338,37 +362,176 @@ struct TraitFusedLoadNegate:
         target: StaticString,
     ](
         z: Some[Output & DenseTensor],
-        x: Some[Input & Fused & Loadable],
+        x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
-        comptime assert conforms_to(type_of(z), TileTensorable)
-        comptime assert conforms_to(type_of(x), Loadable)
-        var zt = to_tile_tensor(z)
-        var n = Int(z.shape().product())
-        for i in range(n):
-            var v = x.load[1](Coord(i))
-            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(x), Loadable)
+            var zt = to_tile_tensor(z)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                var v = x.load[1](Coord(i))
+                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_load_negate_kernel[
+                    type_of(x), type_of(z).dtype, type_of(z).LayoutType
+                ]
+            ](
+                z,
+                x,
+                n,
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
 
 
 # Output-store (epilogue) fusion: computes `2 * x[i]` and hands it to the fused
 # store, which runs the consumer epilogue and writes. `x` is a plain dense input.
+# Device entry for the fused-store double path: one thread per element computes
+# `2 * x` and hands it to the device-projected fused-store wrapper, bound by ONLY
+# its `Storable` capability via `downcast[ZHost.device_type, Storable]`.
+def _gpu_fused_store_double_kernel[
+    ZHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    output: downcast[ZHost.device_type, Storable],
+    input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n: Int,
+):
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    var v = rebind[SIMD[dtype, 1]](input.raw_load(i)) * 2
+    output.store[1](Coord(i), rebind[SIMD[type_of(output).dtype, 1]](v))
+
+
 @compiler.register("trait_fused_store_double")
 struct TraitFusedStoreDouble:
     @staticmethod
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & Fused & Storable],
+        z: Some[Output & Fused & StoreAccess],
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
-        comptime assert conforms_to(type_of(z), Storable)
-        comptime assert conforms_to(type_of(x), TileTensorable)
-        var xt = to_tile_tensor(x)
-        var n = Int(z.shape().product())
-        for i in range(n):
-            var v = rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2
-            z.store[1](Coord(i), v)
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), Storable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var xt = to_tile_tensor(x)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                var v = rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2
+                z.store[1](Coord(i), v)
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_store_double_kernel[
+                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                ]
+            ](
+                z,
+                x,
+                n,
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+def _gpu_fused_store_parameter_closure_kernel[
+    dtype: DType,
+    ZDev: Storable,
+    LayoutType: TensorLayout,
+    store_adapter: def[OutT: Storable, width: Int](
+        OutT, Coord, SIMD[OutT.dtype, width]
+    ) capturing -> None,
+](output: ZDev, input: TileTensor[dtype, LayoutType, ImmutAnyOrigin], n: Int,):
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    store_adapter[ZDev, 1](
+        output,
+        Coord(i),
+        rebind[SIMD[ZDev.dtype, 1]](input.raw_load(i)),
+    )
+
+
+@always_inline
+def _launch_fused_store_parameter_closure[
+    dtype: DType,
+    ZHost: DevicePassable,
+    XHost: DevicePassable,
+    LayoutType: TensorLayout,
+    store_adapter: def[OutT: Storable, width: Int](
+        OutT, Coord, SIMD[OutT.dtype, width]
+    ) capturing -> None,
+](output: ZHost, input: XHost, n: Int, ctx: DeviceContext,) raises:
+    comptime block_size = 64
+    ctx.enqueue_function[
+        _gpu_fused_store_parameter_closure_kernel[
+            dtype,
+            downcast[ZHost.device_type, Storable],
+            LayoutType,
+            store_adapter,
+        ]
+    ](
+        output,
+        input,
+        n,
+        grid_dim=(ceildiv(n, block_size),),
+        block_dim=(block_size,),
+    )
+
+
+@compiler.register("trait_fused_store_parameter_closure")
+struct TraitFusedStoreParameterClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & StoreAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), Storable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var xt = to_tile_tensor(x)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                z.store[1](
+                    Coord(i),
+                    rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)),
+                )
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime dtype = type_of(x).dtype
+
+            @parameter
+            @always_inline
+            def store_adapter[
+                OutT: Storable, width: Int
+            ](output: OutT, coord: Coord, value: SIMD[OutT.dtype, width]):
+                output.store[width](coord, value)
+
+            _launch_fused_store_parameter_closure[
+                dtype,
+                type_of(z),
+                type_of(x),
+                type_of(x).LayoutType,
+                store_adapter,
+            ](z, x, Int(z.shape().product()), ctx)
 
 
 # Output-transform (compute-output) fusion: the kernel computes `x[i] + 1`,
@@ -377,6 +540,34 @@ struct TraitFusedStoreDouble:
 # and leaves the parent responsible for the store). `Transformable` is the sole
 # access form; `TileTensorable` adds only the dense projection used for that
 # final store. `x` is a plain dense input.
+# Device entry for the fused-transform path: one thread per element computes
+# `x[i] + 1`, applies the fused transform via `z.transform`, and stores through
+# the output-buffer projection `z.to_tile_tensor()`. `z` is the device-projected
+# transform wrapper, bound by ONLY `Transformable & TileTensorable` via
+# `downcast[ZHost.device_type, Transformable & TileTensorable]`.
+def _gpu_fused_transform_bias_kernel[
+    ZHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    z: downcast[ZHost.device_type, Transformable & TileTensorable],
+    x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n: Int,
+):
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    var coord = Coord(i)
+    var raw = rebind[SIMD[type_of(z).dtype, 1]](
+        rebind[SIMD[dtype, 1]](x.raw_load(i)) + 1
+    )
+    var t = z.transform[1](coord, raw)
+    var zt = z.to_tile_tensor()
+    # An Output edge is always writable; gives `TileTensor.store` its evidence.
+    comptime assert type_of(z).mut
+    zt.store(coord, rebind[SIMD[type_of(zt).dtype, 1]](t))
+
+
 @compiler.register("trait_fused_transform_bias")
 struct TraitFusedTransformBias:
     @staticmethod
@@ -392,16 +583,33 @@ struct TraitFusedTransformBias:
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
-        comptime assert conforms_to(type_of(z), Transformable)
-        comptime assert conforms_to(type_of(z), TileTensorable)
-        comptime assert conforms_to(type_of(x), TileTensorable)
-        var zt = to_tile_tensor(z)
-        var xt = to_tile_tensor(x)
-        var n = Int(z.shape().product())
-        for i in range(n):
-            var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
-            var t = z.transform[1](Coord(i), raw)
-            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), Transformable)
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var zt = to_tile_tensor(z)
+            var xt = to_tile_tensor(x)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
+                var t = z.transform[1](Coord(i), raw)
+                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_transform_bias_kernel[
+                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                ]
+            ](
+                z,
+                x,
+                n,
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time
@@ -1132,6 +1340,37 @@ def test_custom_op_shape[
 ](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
     print("Hello")
     return input.shape()
+
+
+# A custom op whose shape function is trait-typed: a metadata-only, no-role
+# `Some[DenseTensor]` argument that reads only `.shape()`. This exercises the
+# trait shape-fn emit path (the operand is constructed as a `_MoggDenseTensorArg`
+# instead of a legacy `InputTensor`). The `execute` entry stays on the legacy
+# lane -- the shape-fn migration is independent of how `execute` is written --
+# and copies input to output so the result is verifiable end-to-end.
+@compiler.register("trait_metadata_shape_op")
+struct TraitMetadataShapeOp:
+    @staticmethod
+    def execute[
+        target: StaticString, dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        input: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+            return input.load[width](idx)
+
+        foreach[func](output, ctx)
+
+
+@compiler.register_shape_function("trait_metadata_shape_op")
+def trait_metadata_shape_op_shape[
+    T: DenseTensor
+](input: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
 
 
 @compiler.register("single_device_context")

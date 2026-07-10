@@ -4,9 +4,11 @@
 // === Baked tensor-arg contracts (distill matrix) ========================== //
 //
 // The first RUN line imports the trait_arg_trait_stubs package and asserts the
-// per-argument `{role, fused, access, has_capability}` contract baked onto each
+// per-argument `{role, fused, access, capabilities}` contract baked onto each
 // kernel decl's `execute` KernelFunctionAttr as the trailing
-// `tensor_arg_contracts` array. This is the import-time half of the trait-lane
+// `tensor_arg_contracts` array. `access`/`capabilities` are integer bitmasks
+// of access forms (load = 1, store = 2, transform = 4; the empty set is 0).
+// This is the import-time half of the trait-lane
 // distill matrix; it folds in (and replaces) the former
 // import-tensor-arg-traits.mlir, and together with the rejection cases in
 // import-tensor-arg-traits-invalid.mlir replaces the deleted gtest
@@ -22,62 +24,78 @@
 
 // Input + DenseTensor -> input/none, and Output + DenseTensor -> output/none
 // (the dense add covers both leading-output and trailing-input dense roles).
-// IMPORT-DAG: registration = "trait_add_explicit"{{.*}}[{access = "none", fused = false, has_capability = false, role = "output"}, {access = "none", fused = false, has_capability = false, role = "input"}, {access = "none", fused = false, has_capability = false, role = "input"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_add_explicit"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
 
 // The `Some[...]` spelling distills to a byte-identical contract array (parity
 // with the explicit-generic spelling above).
-// IMPORT-DAG: registration = "trait_add_some"{{.*}}[{access = "none", fused = false, has_capability = false, role = "output"}, {access = "none", fused = false, has_capability = false, role = "input"}, {access = "none", fused = false, has_capability = false, role = "input"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_add_some"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
 
 // MutableInput + DenseTensor -> mutable_input/none (alongside a dense output).
-// IMPORT-DAG: registration = "trait_mutable_input"{{.*}}[{access = "none", fused = false, has_capability = false, role = "output"}, {access = "none", fused = false, has_capability = false, role = "mutable_input"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_mutable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "mutable_input"}, unit, unit, unit]
 
 // Plain `Tensor` metadata (no `DenseTensor`): Input + Tensor -> input/none --
 // the dense-vs-plain distinction is invisible to the distilled contract.
-// IMPORT-DAG: registration = "trait_plain_tensor_input"{{.*}}[{access = "none", fused = false, has_capability = false, role = "input"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_plain_tensor_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
 
 // `TileTensorable` has no contract effect: Output + DenseTensor + TileTensorable
 // -> output/none (identical to a plain dense output).
-// IMPORT-DAG: registration = "trait_tile_tensorable_output"{{.*}}[{access = "none", fused = false, has_capability = false, role = "output"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_tile_tensorable_output"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, unit, unit, unit]
 
 // --- Fused load (marker vs capability) --- //
 
-// Input + Fused + LoadAccess (bare MARKER) -> input/load/fused, capability=false.
-// IMPORT-DAG: registration = "trait_fused_load_marker"{{.*}}[{access = "load", fused = true, has_capability = false, role = "input"}, unit, unit, unit]
+// Input + Fused + LoadAccess (bare MARKER) -> input/load/fused, capability=0.
+// IMPORT-DAG: registration = "trait_fused_load_marker"{{.*}}[{access = 1 : i32, capabilities = 0 : i32, fused = true, role = "input"}, unit, unit, unit]
 
-// Input + Fused + Loadable (CAPABILITY leaf) -> input/load/fused, capability=true.
-// IMPORT-DAG: registration = "trait_fused_load"{{.*}}[{access = "none", fused = false, has_capability = false, role = "output"}, {access = "load", fused = true, has_capability = true, role = "input"}, unit, unit, unit]
+// Input + Fused + Loadable (CAPABILITY leaf) -> input/load/fused, capability=1.
+// IMPORT-DAG: registration = "trait_fused_load"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 1 : i32, capabilities = 1 : i32, fused = true, role = "input"}, unit, unit, unit]
 
 // --- Fused store (marker vs capability) --- //
 
-// Output + Fused + StoreAccess (bare MARKER) -> output/store/fused, cap=false.
-// IMPORT-DAG: registration = "trait_fused_store_marker"{{.*}}[{access = "store", fused = true, has_capability = false, role = "output"}, unit, unit, unit]
+// Output + Fused + StoreAccess (bare MARKER) -> output/store/fused, cap=0.
+// IMPORT-DAG: registration = "trait_fused_store_marker"{{.*}}[{access = 2 : i32, capabilities = 0 : i32, fused = true, role = "output"}, unit, unit, unit]
 
-// Output + Fused + Storable (CAPABILITY leaf) -> output/store/fused, cap=true.
-// IMPORT-DAG: registration = "trait_fused_store_capability"{{.*}}[{access = "store", fused = true, has_capability = true, role = "output"}, unit, unit, unit]
+// Output + Fused + Storable (CAPABILITY leaf) -> output/store/fused, cap=store.
+// IMPORT-DAG: registration = "trait_fused_store_capability"{{.*}}[{access = 2 : i32, capabilities = 2 : i32, fused = true, role = "output"}, unit, unit, unit]
 
 // --- Fused transform (marker vs capability) --- //
 
 // Output + Fused + TransformAccess (bare MARKER) -> output/transform/fused,
-// cap=false.
-// IMPORT-DAG: registration = "trait_fused_transform_marker"{{.*}}[{access = "transform", fused = true, has_capability = false, role = "output"}, unit, unit, unit]
+// cap=0.
+// IMPORT-DAG: registration = "trait_fused_transform_marker"{{.*}}[{access = 4 : i32, capabilities = 0 : i32, fused = true, role = "output"}, unit, unit, unit]
 
 // Output + Fused + Transformable (CAPABILITY leaf) -> output/transform/fused,
-// cap=true.
-// IMPORT-DAG: registration = "trait_fused_transform_capability"{{.*}}[{access = "transform", fused = true, has_capability = true, role = "output"}, unit, unit, unit]
+// cap=transform.
+// IMPORT-DAG: registration = "trait_fused_transform_capability"{{.*}}[{access = 4 : i32, capabilities = 4 : i32, fused = true, role = "output"}, unit, unit, unit]
 
 // --- MutableInput can both load and store (one access form at a time) --- //
 
-// MutableInput + Fused + Storable -> mutable_input/store/fused, capability=true.
-// IMPORT-DAG: registration = "trait_mutable_fused_store"{{.*}}[{access = "store", fused = true, has_capability = true, role = "mutable_input"}, unit, unit, unit]
+// MutableInput + Fused + Storable -> mutable_input/store/fused, capability=store.
+// IMPORT-DAG: registration = "trait_mutable_fused_store"{{.*}}[{access = 2 : i32, capabilities = 2 : i32, fused = true, role = "mutable_input"}, unit, unit, unit]
 
-// MutableInput + Fused + Loadable -> mutable_input/load/fused, capability=true.
-// IMPORT-DAG: registration = "trait_mutable_fused_load"{{.*}}[{access = "load", fused = true, has_capability = true, role = "mutable_input"}, unit, unit, unit]
+// MutableInput + Fused + Loadable -> mutable_input/load/fused, capability=load.
+// IMPORT-DAG: registration = "trait_mutable_fused_load"{{.*}}[{access = 1 : i32, capabilities = 1 : i32, fused = true, role = "mutable_input"}, unit, unit, unit]
 
 // --- Non-fused access form --- //
 
-// Input + DenseTensor + Loadable -> input/load with capability=true but
+// Input + DenseTensor + Loadable -> input/load with capability=load but
 // fused=false: the access form is independent of the `Fused` marker.
-// IMPORT-DAG: registration = "trait_nonfused_load_capability"{{.*}}[{access = "load", fused = false, has_capability = true, role = "input"}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_nonfused_load_capability"{{.*}}[{access = 1 : i32, capabilities = 1 : i32, fused = false, role = "input"}, unit, unit, unit]
+
+// MutableInput + DenseTensor + Loadable + Storable -> mutable_input carrying BOTH
+// access forms at once: access = 3 (load|store) and capabilities = 3. The
+// positive proof that a contract holds the full access SET (multiple forms on
+// one argument); a swapped/dropped form or a single-form fallback would be
+// caught here. Emitting the dense element-access conformances is a later slice.
+// IMPORT-DAG: registration = "trait_nonfused_load_store_capability"{{.*}}[{access = 3 : i32, capabilities = 3 : i32, fused = false, role = "mutable_input"}, unit, unit, unit]
+
+// --- Shape-function no-role flavor --- //
+
+// A trait-typed, metadata-only free shape function (`trait_metadata_shape_fn`):
+// its single `Some[DenseTensor]` argument reads only `.shape()`, so it distills
+// in the shape-fn lane to the no-role contract `{access: none, fused: false,
+// role: "none"}`. The contract is baked onto the `mogg.shape_func.decl`'s
+// kernel-function attribute (a single tensor-arg entry, no DPS / context args).
+// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_metadata_shape_fn"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "none"}]
 
 // === LOWERING (dense-only): mogg.tensor_arg.__init__ + the legacy lane ===== //
 
@@ -128,9 +146,9 @@
 // the `input` contract would be satisfied by just one of the two inputs, so we
 // count the two input contracts explicitly.
 // CHECK-LABEL: mgp.model @trait_dense_add
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-NOT: mogg.tensor.__init__
 mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -144,8 +162,8 @@ mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f3
 // also exercises index alignment with TWO DIFFERENT input/output contracts
 // (output vs mutable_input), so a swapped contract array would be caught.
 // CHECK-LABEL: mgp.model @trait_mutable
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: #mogg.tensor_arg<{role = mutable_input, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: #mogg.tensor_arg<{role = mutable_input, fused = false, access = none, capabilities = none}>
 // CHECK-NOT: mogg.tensor.__init__
 mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.chain.create()
@@ -159,9 +177,9 @@ mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
 // contracts must each lower, plus one `role = input`. A single output-order
 // entry would not catch a >1-output mis-stamp.
 // CHECK-LABEL: mgp.model @trait_multi
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-NOT: mogg.tensor.__init__
 mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>) {
   %a, %b = mo.custom {symbol = "trait_multi_output", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>)
@@ -174,7 +192,7 @@ mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.te
 // lower to `mogg.tensor.__init__`. Both lanes coexist in the same kernel.
 // CHECK-LABEL: mgp.model @mixed_legacy_trait
 // CHECK-DAG: mogg.tensor_arg.__init__
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor.__init__
 mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -188,8 +206,8 @@ mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3],
 // direction (the mirror of `mixed_legacy_trait`).
 // CHECK-LABEL: mgp.model @mixed_legacy_out
 // CHECK-DAG: mogg.tensor.__init__
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-NOT: #mogg.tensor_arg<{role = output
 mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy_out", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -203,7 +221,7 @@ mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f
 // lowers to `mogg.tensor_arg.__init__` with `role = output`.
 // CHECK-LABEL: mgp.model @mixed_legacy_mut
 // CHECK-DAG: mogg.tensor_arg.__init__
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
+// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor.__init__
 mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
   %c = mo.chain.create()
@@ -214,12 +232,12 @@ mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
 // Fused-load trait arg (`trait_mixed_legacy_fused`): a trait dense output, a
 // legacy `InputTensor` (`mogg.tensor.__init__`), and a TRAIT fused/loadable
 // input. The fused trait input's contract must FAITHFULLY carry `fused = true`,
-// `access = load`, `has_capability = true` onto the op -- distinguishing it from
+// `access = load`, `capabilities = load` onto the op -- distinguishing it from
 // the dense `fused = false, access = none` cases and catching any dropped/
 // swapped boolean or mis-mapped access enum in `tensorArgContractToAttr`.
 // CHECK-LABEL: mgp.model @mixed_legacy_fused
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, has_capability = false}>
-// CHECK-DAG: #mogg.tensor_arg<{role = input, fused = true, access = load, has_capability = true}>
+// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: #mogg.tensor_arg<{role = input, fused = true, access = load, capabilities = load}>
 // CHECK-DAG: mogg.tensor.__init__
 mo.graph @mixed_legacy_fused(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy_fused", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>

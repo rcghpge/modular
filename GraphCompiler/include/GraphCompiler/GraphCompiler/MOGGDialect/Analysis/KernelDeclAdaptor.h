@@ -30,6 +30,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/ADT/bit.h"
+#include <cassert>
 #include <optional>
 #include <type_traits>
 #include <variant>
@@ -55,34 +57,92 @@ enum class IOSpec {
 // coexist; see `distillTensorArgContract`.
 //===----------------------------------------------------------------------===//
 
-/// Role a tensor argument plays in the graph signature. `mut` is not stored: an
-/// argument is mutable iff its role is not `input`.
+/// Role a tensor argument plays in the graph signature. `mut` is not stored;
+/// see `TensorArgContract::isMutable`.
+///
+/// `none` is the no-role flavor: a shape-function tensor argument carries no
+/// io-role at all (it reads only metadata, e.g. `.shape()`, and is always
+/// read-only). It is distinct from `input` -- an `input`-roled arg is an
+/// `execute` read operand, whereas `none` records the structural *absence* of a
+/// role. The distiller (`distillTensorArgContract` in shape-function mode)
+/// requires `none` and rejects every io-role marker; an `execute` argument
+/// conversely requires exactly one of `input`/`output`/`mutableInput`.
 enum class TensorArgRole { input, output, mutableInput, none };
 
 /// Element-access form a tensor argument exposes -- the fusion access kind, or
-/// `none` for a plain dense argument.
+/// `none` for a plain dense argument. Used both as a single canonical form
+/// (e.g. for a fused arg, which carries exactly one) and as an index into the
+/// access/capability bitmasks of `TensorArgContract`.
 enum class TensorArgAccess { none, load, store, transform };
 
+/// Single-bit mask for one access form (`none` maps to the empty mask 0).
+inline unsigned bit(TensorArgAccess access) {
+  switch (access) {
+  case TensorArgAccess::none:
+    return 0;
+  case TensorArgAccess::load:
+    return 1u << 0;
+  case TensorArgAccess::store:
+    return 1u << 1;
+  case TensorArgAccess::transform:
+    return 1u << 2;
+  }
+  return 0;
+}
+
 /// The distilled tensor-argument contract for a trait-bound kernel argument.
+///
+/// The access model is a SET of forms, not a single one: a non-fused dense
+/// argument may carry several (e.g. both `load` and `store`, for an in-place
+/// read-modify-write). `accessMask` records which forms are present; the
+/// parallel `capabilityMask` records, per present form, whether the callable
+/// capability leaf (e.g. `Loadable`) is present rather than only the access
+/// marker (e.g. `LoadAccess`). A fused argument is constrained to exactly one
+/// present form (see `distillTensorArgContract`).
 struct TensorArgContract {
   TensorArgRole role = TensorArgRole::input;
   bool fused = false;
-  TensorArgAccess access = TensorArgAccess::none;
-  /// True when the callable capability leaf (e.g. `Loadable`) is present,
-  /// rather than only the access marker (e.g. `LoadAccess`). Load-bearing for
-  /// opaque-device targets, where only the marker may be available host-side.
-  bool hasCapability = false;
+  /// Bitmask of present access forms (`bit(load) | bit(store) | ...`).
+  unsigned accessMask = 0;
+  /// Bitmask of present capability leaves, a subset of `accessMask`. A bit set
+  /// here means the capability (e.g. `Loadable`) was required, not just the
+  /// marker (e.g. `LoadAccess`). Load-bearing for opaque-device targets, where
+  /// only the marker may be available host-side.
+  unsigned capabilityMask = 0;
 
-  /// `mut` is derived, never stored.
-  bool isMutable() const { return role != TensorArgRole::input; }
+  /// `mut` is derived, never stored. Only `output` / `mutableInput` are
+  /// mutable; both `input` and the no-role shape-function flavor (`none`) are
+  /// read-only.
+  bool isMutable() const {
+    return role == TensorArgRole::output || role == TensorArgRole::mutableInput;
+  }
 
-  /// Whether the (single) access form is present. Compatibility shim ahead of
-  /// the access-set rework in the next commit.
-  bool hasAccess(TensorArgAccess a) const { return access == a; }
+  /// Whether the given access form is present in the set.
+  bool hasAccess(TensorArgAccess access) const {
+    return (accessMask & bit(access)) != 0;
+  }
+  /// Whether the given access form's capability leaf is present.
+  bool hasCapability(TensorArgAccess access) const {
+    return (capabilityMask & bit(access)) != 0;
+  }
+  /// Whether any access form is present.
+  bool hasAnyAccess() const { return accessMask != 0; }
+  /// Number of present access forms.
+  int accessCount() const { return llvm::popcount(accessMask); }
+  /// The sole present access form. Only valid when `accessCount() == 1` (a
+  /// fused arg guarantees this); asserts otherwise.
+  TensorArgAccess soleAccess() const {
+    assert(accessCount() == 1 && "soleAccess requires exactly one access form");
+    for (TensorArgAccess a : {TensorArgAccess::load, TensorArgAccess::store,
+                              TensorArgAccess::transform})
+      if (hasAccess(a))
+        return a;
+    return TensorArgAccess::none;
+  }
 
   bool operator==(const TensorArgContract &o) const {
-    return role == o.role && fused == o.fused && access == o.access &&
-           hasCapability == o.hasCapability;
+    return role == o.role && fused == o.fused && accessMask == o.accessMask &&
+           capabilityMask == o.capabilityMask;
   }
   bool operator!=(const TensorArgContract &o) const { return !(*this == o); }
 };
@@ -100,9 +160,20 @@ struct TensorArgContract {
 /// `AnyType` ancestor (present in every trait's canonical closure) is also
 /// ignored. Returns failure (after invoking `emitError`) on any validation
 /// failure.
+///
+/// `isShapeFunc` selects the shape-function lane: a shape-fn tensor argument is
+/// metadata-only (reads `.shape()`), host-executed, and read-only, so it
+/// carries **no role** (distills to `TensorArgRole::none`) and the allowed
+/// vocabulary is `Tensor` / `DenseTensor` only. Any io-role marker
+/// (`Input`/`Output`/`MutableInput`), `Fused`, `TileTensorable`, or any access
+/// capability is a hard error -- data-reading shape functions stay on the
+/// legacy `InputTensor` lane until the data-dependent projection is wired (see
+/// the shape-fn execution plan, Slice 5). When `isShapeFunc` is false (the
+/// `execute` lane) exactly one io-role is required, as before.
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
-    llvm::function_ref<void(const llvm::Twine &)> emitError);
+    llvm::function_ref<void(const llvm::Twine &)> emitError,
+    bool isShapeFunc = false);
 
 /// If `argType` is a trait-bound tensor argument -- a `!lit.ref` over a generic
 /// type parameter whose bound is a `!lit.trait<...>` -- return that `TraitType`
@@ -114,16 +185,18 @@ llvm::StringRef toString(TensorArgRole role);
 llvm::StringRef toString(TensorArgAccess access);
 
 /// Encode a contract as the per-argument `DictionaryAttr`
-/// `{role, fused, access, has_capability}` baked into
-/// `KernelFunctionAttr.tensor_arg_contracts`.
+/// `{role, fused, access, capabilities}` baked into
+/// `KernelFunctionAttr.tensor_arg_contracts`. `access` and `capabilities` are
+/// the integer bitmasks (sets of access forms) of the contract.
 mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
                                              const TensorArgContract &contract);
 
-/// Build the `#mogg.tensor_arg<{role, fused, access, has_capability}>`
+/// Build the `#mogg.tensor_arg<{role, fused, access, capabilities}>`
 /// attribute (`MOGG::TensorArgContractAttr`) carried by
-/// `mogg.tensor_arg.__init__` from a distilled contract. The op-borne attribute
-/// is the single source of truth in the trait lane (D1); this is the bridge
-/// from the C++ contract struct to the IR attribute.
+/// `mogg.tensor_arg.__init__` from a distilled contract. `access` and
+/// `capabilities` are bit-enum sets. The op-borne attribute is the single
+/// source of truth in the trait lane (D1); this is the bridge from the C++
+/// contract struct to the IR attribute.
 MOGG::TensorArgContractAttr
 tensorArgContractToAttr(mlir::MLIRContext *ctx,
                         const TensorArgContract &contract);
@@ -134,8 +207,9 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
 /// The baked array uses a `UnitAttr` placeholder for a non-trait argument; for
 /// that placeholder (or any null/unexpected attr) this returns `std::nullopt`
 /// (the "no contract" sentinel). A `DictionaryAttr` with the expected
-/// `{role, fused, access, has_capability}` keys decodes to the matching
-/// contract; the `role`/`access` string mappings mirror `toString` exactly.
+/// `{role, fused, access, capabilities}` keys decodes to the matching
+/// contract; the `role` string mapping mirrors `toString` exactly, and the
+/// `access`/`capabilities` integer bitmasks round-trip directly.
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr);
 
 //===----------------------------------------------------------------------===//

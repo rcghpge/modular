@@ -6,12 +6,15 @@
 #
 # Trait-bound kernel stubs for testing the tensor-argument trait import path
 # (distilling a written trait composition into a `{role, fused, access,
-# has_capability}` contract). Kept separate from MOGGKernelAPITest, which feeds
+# capabilities}` contract). Kept separate from MOGGKernelAPITest, which feeds
 # the full emit/lowering/execution paths -- these stubs only exercise import and
 # have no-op bodies, so they must not be mixed into the general kernel package.
 #
 from std.collections.string import StaticString
 from std.gpu.host import DeviceContext
+from std.utils import IndexList
+
+from layout import coord_to_index_list
 
 import extensibility as compiler
 from extensibility import (
@@ -339,7 +342,7 @@ struct LegacyOnlyControl:
 
 # ===----------------------------------------------------------------------=== #
 # Distillation matrix (IMPORT-only): one kernel per remaining valid
-# `{role, fused, access, has_capability}` contract the distiller produces. These
+# `{role, fused, access, capabilities}` contract the distiller produces. These
 # back the `IMPORT-DAG` baked-contract assertions in lower-tensor-arg-traits.mlir
 # and replace the deleted gtest distill cases. The fused-store / fused-transform
 # / mutable-input-fused kernels import (distill) cleanly even though dense-only
@@ -372,7 +375,7 @@ struct TraitTileTensorableOutput:
 
 
 # Fused load via the bare `LoadAccess` MARKER (no `Loadable` capability leaf):
-# distills to input/load/fused with has_capability = false -- distinct from the
+# distills to input/load/fused with capabilities = 0 -- distinct from the
 # `trait_fused_load` capability case.
 @compiler.register("trait_fused_load_marker")
 struct TraitFusedLoadMarker:
@@ -384,7 +387,7 @@ struct TraitFusedLoadMarker:
 
 
 # Fused store via the bare `StoreAccess` MARKER on an Output: output/store/fused,
-# has_capability = false.
+# capabilities = 0.
 @compiler.register("trait_fused_store_marker")
 struct TraitFusedStoreMarker:
     @staticmethod
@@ -395,7 +398,7 @@ struct TraitFusedStoreMarker:
 
 
 # Fused store via the `Storable` CAPABILITY leaf on an Output:
-# output/store/fused, has_capability = true.
+# output/store/fused, capabilities = store.
 @compiler.register("trait_fused_store_capability")
 struct TraitFusedStoreCapability:
     @staticmethod
@@ -406,7 +409,7 @@ struct TraitFusedStoreCapability:
 
 
 # Fused transform via the bare `TransformAccess` MARKER on an Output:
-# output/transform/fused, has_capability = false.
+# output/transform/fused, capabilities = 0.
 @compiler.register("trait_fused_transform_marker")
 struct TraitFusedTransformMarker:
     @staticmethod
@@ -417,7 +420,7 @@ struct TraitFusedTransformMarker:
 
 
 # Fused transform via the `Transformable` CAPABILITY leaf on an Output:
-# output/transform/fused, has_capability = true.
+# output/transform/fused, capabilities = transform.
 @compiler.register("trait_fused_transform_capability")
 struct TraitFusedTransformCapability:
     @staticmethod
@@ -450,7 +453,7 @@ struct TraitMutableFusedLoad:
 
 
 # Non-fused dense input that still advertises a load access form: Input &
-# DenseTensor & Loadable distills to input/load with has_capability = true but
+# DenseTensor & Loadable distills to input/load with capabilities = load but
 # fused = false (the access form is independent of the fusion marker).
 @compiler.register("trait_nonfused_load_capability")
 struct TraitNonFusedLoadCapability:
@@ -459,3 +462,33 @@ struct TraitNonFusedLoadCapability:
         target: StaticString,
     ](x: Some[Input & DenseTensor & Loadable], ctx: DeviceContext) raises:
         pass
+
+
+# Non-fused dense MutableInput advertising BOTH access forms at once:
+# MutableInput & DenseTensor & Loadable & Storable distills to mutable_input with
+# access = {load, store} and capabilities = {load, store}. This is the positive
+# proof that a contract carries the full access SET (multiple forms on one
+# argument), independent of any emit -- `load` on a read-only Input or `store` on
+# an Output would be rejected by the per-form role/access compatibility check;
+# MutableInput permits both. Emitting the dense element-access conformances is a
+# later slice; here we only assert the distilled contract.
+@compiler.register("trait_nonfused_load_store_capability")
+struct TraitNonFusedLoadStoreCapability:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        x: Some[MutableInput & DenseTensor & Loadable & Storable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# A trait-typed, metadata-only free shape function. It reads only `.shape()`, so
+# its tensor argument carries no io-role: `Some[DenseTensor]` distills in the
+# shape-fn lane to the no-role contract `{role: none, fused: false,
+# access: none}`. This is the positive counterpart to the shape-fn disallows in
+# tensor_arg_trait_invalid_stubs (io-role / Fused / TileTensorable).
+@compiler.register_shape_function("trait_metadata_shape_fn")
+def trait_metadata_shape_fn[T: DenseTensor](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

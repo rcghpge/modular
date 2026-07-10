@@ -27,6 +27,7 @@ from extensibility import (
     Output,
     StoreAccess,
     Storable,
+    TileTensorable,
     Transformable,
 )
 
@@ -96,8 +97,10 @@ struct TraitInputAndMutableInput:
         pass
 
 
-# More than one access form: a fused MutableInput carrying BOTH `Loadable` and
-# `Storable` capability leaves.
+# A fused arg with more than one access form: a fused MutableInput carrying BOTH
+# `Loadable` and `Storable` capability leaves. Multiple access forms are allowed
+# on a NON-fused arg, but a fused arg must declare exactly one, so this is
+# rejected.
 @compiler.register("trait_multi_access_forms")
 struct TraitMultiAccessForms:
     @staticmethod
@@ -110,9 +113,9 @@ struct TraitMultiAccessForms:
         pass
 
 
-# More than one access form via bare MARKERS on a NON-fused input
-# (`LoadAccess & StoreAccess`): the multi-access check fires regardless of the
-# `Fused` marker.
+# Two access MARKERS on a NON-fused input (`LoadAccess & StoreAccess`).
+# Multiple access forms are now allowed, but `store` is still invalid on a
+# read-only Input, so the per-form role/access check rejects it.
 @compiler.register("trait_multi_access_markers_nonfused")
 struct TraitMultiAccessMarkersNonFused:
     @staticmethod
@@ -158,9 +161,24 @@ struct TraitTransformOnMutableInput:
         pass
 
 
-# A trait-bound argument on a shape function. Trait args are `execute`-only;
-# shape functions are rejected at import (they are a separate decl op, seen in
-# the import shape-function loop regardless of whether a kernel is registered).
-@compiler.register_shape_function("trait_shape_fn")
-def trait_shape_fn[T: Input & DenseTensor](x: T) -> IndexList[T.rank]:
+# A shape-function tensor argument carrying an io-role marker. Shape-fn args are
+# read-only and must carry no role (use `Some[DenseTensor]`), so an `Input`
+# (or any io-role) is rejected in the shape-fn distill lane.
+@compiler.register_shape_function("trait_shape_fn_with_role")
+def trait_shape_fn_with_role[T: Input & DenseTensor](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# A shape-function tensor argument carrying `Fused`. Fusion is an `execute`-only
+# concept; rejected on a shape-fn arg.
+@compiler.register_shape_function("trait_shape_fn_fused")
+def trait_shape_fn_fused[T: Fused & DenseTensor](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# A shape-function tensor argument carrying `TileTensorable` (data access). A
+# data-reading shape function must stay on the legacy `InputTensor` lane until
+# the data-dependent projection is wired (Slice 5); rejected here.
+@compiler.register_shape_function("trait_shape_fn_tiletensorable")
+def trait_shape_fn_tiletensorable[T: TileTensorable](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

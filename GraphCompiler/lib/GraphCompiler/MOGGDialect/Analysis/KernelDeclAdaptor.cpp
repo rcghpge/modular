@@ -900,7 +900,7 @@ bool isMutableIOSpec(IOSpec spec) { return spec == IOSpec::MutableInputTensor; }
 
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
-    llvm::function_ref<void(const llvm::Twine &)> emitError) {
+    llvm::function_ref<void(const llvm::Twine &)> emitError, bool isShapeFunc) {
   // Per-row presence over the vocabulary table. Presence is idempotent, so a
   // trait surfacing more than once (e.g. both as written and as another
   // trait's ancestor) counts once.
@@ -941,6 +941,41 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     return any;
   };
 
+  // Shape-function lane: a metadata-only, host-executed, read-only argument.
+  // The allowed vocabulary is `Tensor` / `DenseTensor` only -- it carries no
+  // io-role (distilling to `TensorArgRole::none`), no `Fused`, and no data
+  // access (`TileTensorable` / any `*Access` marker or capability). These are
+  // hard errors rather than silently-dropped traits: a data-reading shape
+  // function must stay on the legacy `InputTensor` lane until the
+  // data-dependent projection is wired (shape-fn execution plan, Slice 5).
+  if (isShapeFunc) {
+    if (anyPresent(TraitCategory::role)) {
+      emitError("shape-function tensor argument carries an io-role marker "
+                "(Input/Output/MutableInput); shape-function args are "
+                "read-only and must carry no role -- use `Some[DenseTensor]`");
+      return mlir::failure();
+    }
+    if (anyPresent(TraitCategory::fused)) {
+      emitError("Fused is not allowed on a shape-function tensor argument");
+      return mlir::failure();
+    }
+    if (anyPresent(TraitCategory::dataCapability) ||
+        anyPresent(TraitCategory::accessMarker) ||
+        anyPresent(TraitCategory::accessCapability) ||
+        anyPresent(TraitCategory::deferred)) {
+      emitError(
+          "data access (TileTensorable / Loadable / Storable / Transformable / "
+          "an *Access marker) is not allowed on a shape-function tensor "
+          "argument yet; a data-reading shape function must stay on the legacy "
+          "InputTensor lane (shape-function execution plan, Slice 5)");
+      return mlir::failure();
+    }
+    TensorArgContract contract;
+    contract.role = TensorArgRole::none;
+    contract.fused = false;
+    return contract;
+  }
+
   // Exactly one role trait.
   int roleCount = 0;
   TensorArgRole role = TensorArgRole::input;
@@ -970,63 +1005,49 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     return mlir::failure();
   }
 
-  // Access form: at most one, keyed off either the marker or the capability
-  // leaf. The written composition may carry only the capability (e.g.
-  // `Loadable` without `LoadAccess`), or only the marker (opaque-device host
-  // descriptor); both map to the same access form.
-  int accessCount = 0;
-  for (TensorArgAccess form : {TensorArgAccess::load, TensorArgAccess::store,
-                               TensorArgAccess::transform}) {
-    bool marker = false;
-    forEachPresent(TraitCategory::accessMarker, [&](const VocabEntry &entry) {
-      marker |= entry.access == form;
-    });
-    bool capability = false;
-    forEachPresent(
-        TraitCategory::accessCapability,
-        [&](const VocabEntry &entry) { capability |= entry.access == form; });
-    if (marker || capability) {
-      ++accessCount;
-      contract.access = form;
-      contract.hasCapability = capability;
-    }
-  }
-  if (accessCount > 1) {
-    emitError("trait-bound tensor argument declares more than one access form "
-              "(at most one of load, store, transform)");
-    return mlir::failure();
-  }
+  // Access forms: a SET, keyed off either the marker or the capability leaf.
+  // The written composition may carry only the capability (e.g. `Loadable`
+  // without `LoadAccess`), or only the marker (opaque-device host descriptor);
+  // both record the form, and the capability bit additionally tracks whether
+  // the callable leaf was present. Multiple forms may be present at once on a
+  // non-fused argument (e.g. `Loadable & Storable` for in-place read-modify-
+  // write).
+  forEachPresent(TraitCategory::accessMarker, [&](const VocabEntry &entry) {
+    contract.accessMask |= bit(entry.access);
+  });
+  forEachPresent(TraitCategory::accessCapability, [&](const VocabEntry &entry) {
+    contract.accessMask |= bit(entry.access);
+    contract.capabilityMask |= bit(entry.access);
+  });
 
   // A fused argument must declare exactly one access form.
-  if (contract.fused && contract.access == TensorArgAccess::none) {
-    emitError("a Fused tensor argument must declare an access form (one of "
-              "LoadAccess/Loadable, StoreAccess/Storable, "
+  if (contract.fused && contract.accessCount() != 1) {
+    emitError("a Fused tensor argument must declare exactly one access form "
+              "(one of LoadAccess/Loadable, StoreAccess/Storable, "
               "TransformAccess/Transformable)");
     return mlir::failure();
   }
 
-  // Role / access compatibility.
-  switch (contract.access) {
-  case TensorArgAccess::load:
-    if (contract.role == TensorArgRole::output) {
-      emitError("load access is not valid on an Output argument");
-      return mlir::failure();
-    }
-    break;
-  case TensorArgAccess::store:
-    if (contract.role == TensorArgRole::input) {
-      emitError("store access is not valid on a read-only Input argument");
-      return mlir::failure();
-    }
-    break;
-  case TensorArgAccess::transform:
-    if (contract.role != TensorArgRole::output) {
-      emitError("transform access requires an Output argument");
-      return mlir::failure();
-    }
-    break;
-  case TensorArgAccess::none:
-    break;
+  // Role / access compatibility, applied per present form. Multiple forms are
+  // allowed on a non-fused arg, so each is checked independently:
+  //   * `load`      invalid on Output.
+  //   * `store`     invalid on a read-only Input.
+  //   * `transform` requires Output.
+  // (So `load & store` together implies a MutableInput.)
+  if (contract.hasAccess(TensorArgAccess::load) &&
+      contract.role == TensorArgRole::output) {
+    emitError("load access is not valid on an Output argument");
+    return mlir::failure();
+  }
+  if (contract.hasAccess(TensorArgAccess::store) &&
+      contract.role == TensorArgRole::input) {
+    emitError("store access is not valid on a read-only Input argument");
+    return mlir::failure();
+  }
+  if (contract.hasAccess(TensorArgAccess::transform) &&
+      contract.role != TensorArgRole::output) {
+    emitError("transform access requires an Output argument");
+    return mlir::failure();
   }
 
   return contract;
@@ -1090,13 +1111,17 @@ mlir::DictionaryAttr
 tensorArgContractToDict(mlir::MLIRContext *ctx,
                         const TensorArgContract &contract) {
   mlir::Builder b(ctx);
+  // The access/capability SETS are encoded as integer bitmasks (the same bit
+  // layout as `bit(TensorArgAccess)`); `dictToTensorArgContract` round-trips
+  // them directly.
   return mlir::DictionaryAttr::get(
       ctx,
       {b.getNamedAttr("role", b.getStringAttr(toString(contract.role))),
        b.getNamedAttr("fused", b.getBoolAttr(contract.fused)),
-       b.getNamedAttr("access", b.getStringAttr(toString(contract.access))),
-       b.getNamedAttr("has_capability",
-                      b.getBoolAttr(contract.hasCapability))});
+       b.getNamedAttr("access", b.getI32IntegerAttr(
+                                    static_cast<int32_t>(contract.accessMask))),
+       b.getNamedAttr("capabilities", b.getI32IntegerAttr(static_cast<int32_t>(
+                                          contract.capabilityMask)))});
 }
 
 MOGG::TensorArgContractAttr
@@ -1121,24 +1146,14 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
     break;
   }
 
-  MOGG::TensorArgAccessKind irAccess;
-  switch (contract.access) {
-  case TensorArgAccess::none:
-    irAccess = MOGG::TensorArgAccessKind::none;
-    break;
-  case TensorArgAccess::load:
-    irAccess = MOGG::TensorArgAccessKind::load;
-    break;
-  case TensorArgAccess::store:
-    irAccess = MOGG::TensorArgAccessKind::store;
-    break;
-  case TensorArgAccess::transform:
-    irAccess = MOGG::TensorArgAccessKind::transform;
-    break;
-  }
+  // The access/capability bitmasks share the bit layout of the IR bit enum
+  // (`bit(TensorArgAccess)` == `TensorArgAccessKind` bits), so cast directly.
+  auto irAccess = static_cast<MOGG::TensorArgAccessKind>(contract.accessMask);
+  auto irCapabilities =
+      static_cast<MOGG::TensorArgAccessKind>(contract.capabilityMask);
 
   return MOGG::TensorArgContractAttr::get(ctx, irRole, contract.fused, irAccess,
-                                          contract.hasCapability);
+                                          irCapabilities);
 }
 
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
@@ -1158,12 +1173,17 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
       return b.getValue();
     return std::nullopt;
   };
+  auto getMask = [&](StringRef key) -> std::optional<unsigned> {
+    if (auto i = dict.getAs<mlir::IntegerAttr>(key))
+      return static_cast<unsigned>(i.getInt());
+    return std::nullopt;
+  };
 
   std::optional<StringRef> roleStr = getStr("role");
   std::optional<bool> fused = getBool("fused");
-  std::optional<StringRef> accessStr = getStr("access");
-  std::optional<bool> hasCapability = getBool("has_capability");
-  if (!roleStr || !fused || !accessStr || !hasCapability)
+  std::optional<unsigned> accessMask = getMask("access");
+  std::optional<unsigned> capabilityMask = getMask("capabilities");
+  if (!roleStr || !fused || !accessMask || !capabilityMask)
     return std::nullopt;
 
   // Inverse of `toString(TensorArgRole)`.
@@ -1174,23 +1194,17 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
     role = TensorArgRole::output;
   else if (*roleStr == toString(TensorArgRole::mutableInput))
     role = TensorArgRole::mutableInput;
+  else if (*roleStr == toString(TensorArgRole::none))
+    role = TensorArgRole::none;
   else
     return std::nullopt;
 
-  // Inverse of `toString(TensorArgAccess)`.
-  TensorArgAccess access;
-  if (*accessStr == toString(TensorArgAccess::none))
-    access = TensorArgAccess::none;
-  else if (*accessStr == toString(TensorArgAccess::load))
-    access = TensorArgAccess::load;
-  else if (*accessStr == toString(TensorArgAccess::store))
-    access = TensorArgAccess::store;
-  else if (*accessStr == toString(TensorArgAccess::transform))
-    access = TensorArgAccess::transform;
-  else
-    return std::nullopt;
-
-  return TensorArgContract{role, *fused, access, *hasCapability};
+  TensorArgContract contract;
+  contract.role = role;
+  contract.fused = *fused;
+  contract.accessMask = *accessMask;
+  contract.capabilityMask = *capabilityMask;
+  return contract;
 }
 
 } // namespace M::MOGG

@@ -28,17 +28,13 @@
 
 // `Output & Fused & DenseTensor` (kernel `trait_fused_no_access`) -- fused with
 // no access form.
-// CHECK-DAG: error: a Fused tensor argument must declare an access form
+// CHECK-DAG: error: a Fused tensor argument must declare exactly one access form
 
 // `MutableInput & Fused & Loadable & Storable`
-// (kernel `trait_multi_access_forms`) -- two access forms (load + store).
-// CHECK-DAG: error: trait-bound tensor argument declares more than one access form
-
-// `Input & LoadAccess & StoreAccess`
-// (kernel `trait_multi_access_markers_nonfused`) -- two access MARKERS on a
-// non-fused arg; the multi-access check fires independent of `Fused` (a second
-// "more than one access form" diagnostic in the same run).
-// CHECK-DAG: error: trait-bound tensor argument declares more than one access form
+// (kernel `trait_multi_access_forms`) -- a FUSED arg with two access forms
+// (load + store). Multiple access forms are now allowed on a NON-fused arg, but
+// a fused arg must declare exactly one, so this is still rejected.
+// CHECK-DAG: error: a Fused tensor argument must declare exactly one access form
 
 // === Role / access compatibility ========================================== //
 
@@ -48,6 +44,14 @@
 
 // `Input & Fused & Storable` (kernel `trait_store_on_input`) -- store access on
 // a read-only Input.
+// CHECK-DAG: error: store access is not valid on a read-only Input argument
+
+// `Input & LoadAccess & StoreAccess`
+// (kernel `trait_multi_access_markers_nonfused`) -- two access MARKERS on a
+// non-fused arg. Multiple access forms are now allowed, but `store` is still
+// invalid on a read-only Input, so the per-form role/access check rejects it
+// (a second "store access is not valid on a read-only Input argument"
+// diagnostic in the same run).
 // CHECK-DAG: error: store access is not valid on a read-only Input argument
 
 // `Input & Fused & Transformable` (kernel `trait_transform_on_input`) --
@@ -66,11 +70,22 @@
 // (stdlib) trait in the bound.
 // CHECK-DAG: references 'Copyable', which is not a tensor-argument trait
 
-// === Function-kind gating ================================================= //
+// === Shape-function lane disallows ======================================== //
+//
+// Trait-bound shape-function tensor arguments are allowed (the metadata-only
+// no-role flavor), but the shape-fn distill lane rejects io-role markers,
+// `Fused`, and any data access -- those stay execute-only / on the legacy lane.
 
-// A trait-bound arg on a shape function (kernel `trait_shape_fn`): trait args
-// are execute-only, and shape functions are rejected at import (a separate decl
-// op, so not handled by the KernelDeclOp-based verify check).
-// CHECK-DAG: error: trait-bound tensor arguments are not supported on shape functions yet (only `execute`)
+// `Input & DenseTensor` (shape fn `trait_shape_fn_with_role`) -- an io-role on
+// a shape-fn arg.
+// CHECK-DAG: error: shape-function tensor argument carries an io-role marker
+
+// `Fused & DenseTensor` (shape fn `trait_shape_fn_fused`) -- Fused on a
+// shape-fn arg.
+// CHECK-DAG: error: Fused is not allowed on a shape-function tensor argument
+
+// `DenseTensor & TileTensorable` (shape fn `trait_shape_fn_tiletensorable`) --
+// data access on a shape-fn arg.
+// CHECK-DAG: error: data access (TileTensorable / Loadable / Storable / Transformable / an *Access marker) is not allowed on a shape-function tensor argument
 
 module {}

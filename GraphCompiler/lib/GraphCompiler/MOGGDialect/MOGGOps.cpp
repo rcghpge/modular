@@ -1478,14 +1478,18 @@ struct _MoggTensorBufferCapture[
 //     producer body via dense `tile.load(idx)` -- exactly the mockup
 //     `AddTwoInputLoadFusion.__call__` shape.
 //   * `_MoggInputLoadFusionTensor` is the arg the kernel binds to: it holds the
-//     functor + a layout and presents the landed `Input & Fused & Loadable`
-//     surface, delegating `load(idx)` straight to the functor's `__call__`. It
-//     is passed directly to `execute` and the kernel infers its generic `T`.
+//     functor + a layout and presents the landed `Input & Fused & LoadAccess`
+//     surface. Its callable `Loadable` view delegates `load(idx)` straight to
+//     the functor's `__call__` only when `_access_enabled` is true. It is
+//     passed directly to `execute` and the kernel infers its generic `T`.
 // ONE struct serves both CPU and GPU (mirroring `_MoggDenseTensorArg` and the
-// mockup `EmitMojoInputLoadFusionTensor`): `_device_passable` selects between
-// the host `Loadable` surface (CPU) and the projected-to-device surface (GPU).
-// On the GPU path `_to_device_type` projects the functor field-by-field via the
-// encoder's `encode_fields` -- the functor's captured pointers (bare
+// mockup `EmitMojoInputLoadFusionTensor`). `_device_passable` controls whether
+// the host proxy also crosses to the device; `_access_enabled` separately
+// controls whether the callable `Loadable`/`Storable` surface is available on
+// this view of the wrapper. CPU wrappers access directly. GPU host proxies only
+// carry graph-visible access markers and project through `device_type` to the
+// access-enabled device view. `_to_device_type` still projects the functor
+// field-by-field for GPU launches. The functor's captured pointers (bare
 // `UnsafePointer`s) translate to device addresses through their own
 // `_to_device_type`, exactly as `_MoggDenseTensorArg` forwards its handle. (A
 // `TileTensor` field would NOT translate -- the encoder bit-copies it -- which
@@ -1515,37 +1519,46 @@ trait InputLoadFusion(TrivialRegisterPassable):
         ...
 
 
-# `LoadAccess` (the graph-visible marker) is UNCONDITIONAL so the wrapper
-# satisfies an `Input & Fused & LoadAccess` kernel bound on both host and device;
-# the callable `Loadable` is host-only (`where not _device_passable`). On the
-# device the kernel refines through `downcast[..., Loadable]`.
+# `LoadAccess` is graph-visible and stays present on both the host proxy and the
+# projected device value. `Loadable` is the callable dereference surface, so it is
+# gated by `_access_enabled`: CPU/non-device-passable wrappers enable it directly,
+# while accelerator host proxies disable it and project to `device_type` where
+# access is enabled.
 struct _MoggInputLoadFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
     _alignment: Int,
     _InFusion: InputLoadFusion,
     _device_passable: Bool,
+    _access_enabled: Bool,
 ](
     Copyable,
     DevicePassable where _device_passable,
     Fused,
     Input,
     LoadAccess,
-    Loadable where not _device_passable,
+    Loadable where _access_enabled,
     Movable,
     Tensor,
+    TrivialRegisterPassable,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
     comptime device_passable = Self._device_passable
+    comptime access_enabled = Self._access_enabled
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     var in_fusion: Self._InFusion
     var _layout: Self.LayoutType
 
     comptime device_type: AnyType = _MoggInputLoadFusionTensor[
-        Self._dtype, Self._LayoutType, Self._alignment, Self._InFusion, False
+        Self._dtype,
+        Self._LayoutType,
+        Self._alignment,
+        Self._InFusion,
+        False,
+        True,
     ]
 
     @always_inline
@@ -1586,7 +1599,7 @@ struct _MoggInputLoadFusionTensor[
         element_alignment: Int = 1,
     ](self, idx: Coord) -> SIMD[
         Self.dtype, width
-    ] where not Self._device_passable:
+    ] where Self._access_enabled:
         return self.in_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx)
@@ -1597,8 +1610,10 @@ struct _MoggInputLoadFusionTensor[
 // `OutputStoreFusion` / `EmitMojoOutputStoreFusionTensor` -- NO
 // `ManagedTensorSlice`. `OutputStoreFusion.__call__(idx, value)` runs the fused
 // consumer epilogue and writes; `_MoggOutputStoreFusionTensor` presents the
-// landed `Output & Fused & Storable` surface and delegates `store(idx, value)`
-// to the functor.
+// landed `Output & Fused & StoreAccess` surface. The callable `Storable`
+// conformance is gated by `_access_enabled` for the same reason as fused load:
+// GPU host proxies can be enqueued and projected, but cannot directly
+// dereference; the projected `device_type` enables the store surface.
 static constexpr llvm::StringLiteral kOutputStoreFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import Fused, Output, StoreAccess, Storable, Tensor
@@ -1615,16 +1630,18 @@ trait OutputStoreFusion(TrivialRegisterPassable):
         ...
 
 
-# `StoreAccess` (the graph-visible marker) is UNCONDITIONAL so the wrapper
-# satisfies an `Output & Fused & StoreAccess` kernel bound on both host and
-# device; the callable `Storable` is host-only (`where not _device_passable`).
-# On the device the kernel refines through `downcast[..., Storable]`.
+# `StoreAccess` is graph-visible and stays present on both the host proxy and the
+# projected device value. `Storable` is the callable dereference surface, so it is
+# gated by `_access_enabled`: CPU/non-device-passable wrappers enable it directly,
+# while accelerator host proxies disable it and project to `device_type` where
+# access is enabled.
 struct _MoggOutputStoreFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
     _alignment: Int,
     _OutFusion: OutputStoreFusion,
     _device_passable: Bool,
+    _access_enabled: Bool,
 ](
     Copyable,
     DevicePassable where _device_passable,
@@ -1632,20 +1649,27 @@ struct _MoggOutputStoreFusionTensor[
     Movable,
     Output,
     StoreAccess,
-    Storable where not _device_passable,
+    Storable where _access_enabled,
     Tensor,
+    TrivialRegisterPassable,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
     comptime device_passable = Self._device_passable
+    comptime access_enabled = Self._access_enabled
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     var out_fusion: Self._OutFusion
     var _layout: Self.LayoutType
 
     comptime device_type: AnyType = _MoggOutputStoreFusionTensor[
-        Self._dtype, Self._LayoutType, Self._alignment, Self._OutFusion, False
+        Self._dtype,
+        Self._LayoutType,
+        Self._alignment,
+        Self._OutFusion,
+        False,
+        True,
     ]
 
     @always_inline
@@ -1686,7 +1710,7 @@ struct _MoggOutputStoreFusionTensor[
         element_alignment: Int = 1,
     ](
         self, idx: Coord, value: SIMD[Self.dtype, width]
-    ) where not Self._device_passable:
+    ) where Self._access_enabled:
         self.out_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx, value)
@@ -4482,17 +4506,6 @@ struct _MoggDenseTensorArg[
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 
-/// Return true when stub argument `argIdx` carries buffer-capture metadata.
-[[maybe_unused]] static bool isTraitStubBufferCaptureArg(KernelStubOp stub,
-                                                         unsigned argIdx) {
-  ArrayAttr captures = stub.getTraitStubBufferCaptureAttr();
-  if (!captures || argIdx >= captures.size())
-    return false;
-  if (auto strAttr = dyn_cast<StringAttr>(captures[argIdx]))
-    return !strAttr.getValue().empty();
-  return isa<DictionaryAttr>(captures[argIdx]);
-}
-
 /// Assemble an execute-facing `_MoggDenseTensorArg` from a stub-bound buffer
 /// capture and the distilled contract role.
 static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
@@ -5126,12 +5139,12 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
   // Trait lane (Phase 5): a load/store-contract fusion functor (emitted by
   // `emitInputLoadFusionFunctor` / `emitOutputStoreFusionFunctor` /
   // `emitTransformFusionFunctor`) is wrapped in `_MoggInputLoadFusionTensor` /
-  // `_MoggOutputStoreFusionTensor` / `_MoggTransformFusionTensor` -- conforming
-  // to `Input & Fused & Loadable` / `Output & Fused & Storable` /
-  // `Output & Fused & Transformable & TileTensorable` -- and passed straight to
-  // `execute`. NO `_bind_to_fused_*` on a base slice. The transform wrapper
-  // also holds the real output buffer tile (so the parent kernel stores the
-  // transformed value) -- one operand, not two.
+  // `_MoggOutputStoreFusionTensor` / `_MoggTransformFusionTensor` -- carrying
+  // graph-visible access markers (`LoadAccess` / `StoreAccess` /
+  // `TransformAccess`) and enabling callable access only on the appropriate
+  // view -- and passed straight to `execute`. NO `_bind_to_fused_*` on a base
+  // slice. The transform wrapper also holds the real output buffer tile (so the
+  // parent kernel stores the transformed value) -- one operand, not two.
   {
     StringRef wrapperName;
     TensorArgAccess access = TensorArgAccess::none;
@@ -5210,11 +5223,15 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
         bool devicePassable = false;
         if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
           devicePassable = !MO::isOnHost(stub.getOperation());
+        bool accessEnabled = !devicePassable;
         comptimeParams = {
             MojoValue(llvm::formatv("type_of({0}).dtype", captureName).str()),
             MojoValue(
                 llvm::formatv("type_of({0}).LayoutType", captureName).str()),
-            alignmentParam, functorType, MojoValue(devicePassable)};
+            alignmentParam,
+            functorType,
+            MojoValue(devicePassable),
+            MojoValue(accessEnabled)};
         ctorArgs = {fusionInfo.instance, layoutArg};
       }
       MojoValue structName(wrapperName.str());

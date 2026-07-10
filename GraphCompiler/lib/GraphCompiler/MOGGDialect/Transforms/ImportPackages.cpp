@@ -687,9 +687,11 @@ struct ImportPackagesPass
     // helper has already emitted an error). A null `fn` is not an error: it
     // yields a null attr that the caller stores in the corresponding
     // optional slot.
-    auto buildFunctionAttr = [&](KGEN::LIT::FnOp fn, bool computeResultParams,
-                                 bool strictResultParams, bool distillTraitArgs)
-        -> mlir::FailureOr<MOGG::KernelFunctionAttr> {
+    auto buildFunctionAttr =
+        [&](KGEN::LIT::FnOp fn, bool computeResultParams,
+            bool strictResultParams, bool distillTraitArgs,
+            bool isShapeFunc =
+                false) -> mlir::FailureOr<MOGG::KernelFunctionAttr> {
       if (!fn)
         return MOGG::KernelFunctionAttr{};
       llvm::SmallVector<mlir::Attribute> paramAttrs;
@@ -725,10 +727,12 @@ struct ImportPackagesPass
           }
           anyTraitArg = true;
           mlir::FailureOr<TensorArgContract> contract =
-              distillTensorArgContract(traitType.getSymbols(),
-                                       [&](const llvm::Twine &msg) {
-                                         mlir::emitError(fn.getLoc()) << msg;
-                                       });
+              distillTensorArgContract(
+                  traitType.getSymbols(),
+                  [&](const llvm::Twine &msg) {
+                    mlir::emitError(fn.getLoc()) << msg;
+                  },
+                  isShapeFunc);
           if (mlir::failed(contract)) {
             // Diagnostic already emitted; keep scanning so every invalid
             // argument is reported, then fail the function below.
@@ -750,31 +754,6 @@ struct ImportPackagesPass
     };
 
     bool sawFailure = false;
-
-    // Reject trait-bound tensor arguments on shape functions: they compute
-    // output shapes from metadata, not the tensor-argument contract. Shape
-    // functions are a separate decl op (not on a KernelDeclOp) processed in
-    // their own loop below, so this is enforced here at import -- where every
-    // shape function is seen, paired with a kernel or not. (Primitives are
-    // built-in op *implementations* -- the `execute` analogue -- so they accept
-    // trait args and are not rejected. The KernelDeclOp-hosted kinds, execute /
-    // update_input_view / build_graph / elementwise, are checked in
-    // VerifyKernels.)
-    auto rejectTraitArgsOnNonExecute = [&](KGEN::LIT::FnOp fn,
-                                           StringRef kind) -> bool {
-      if (!fn)
-        return false;
-      bool found = false;
-      for (mlir::Type argType : fn.getArgumentTypes()) {
-        if (getTensorArgTraitType(argType)) {
-          mlir::emitError(fn.getLoc())
-              << "trait-bound tensor arguments are not supported on " << kind
-              << " functions yet (only `execute`)";
-          found = true;
-        }
-      }
-      return found;
-    };
 
     for (auto kernel : kernels) {
       auto [_, inserted] = seenRegistrations.insert(
@@ -869,13 +848,14 @@ struct ImportPackagesPass
         sawFailure = true;
         continue;
       }
-      if (rejectTraitArgsOnNonExecute(sf.func, "shape")) {
-        sawFailure = true;
-        continue;
-      }
+      // Trait-bound shape-function tensor arguments distill in the shape-fn
+      // lane (`isShapeFunc=true`): no io-role, metadata-only `DenseTensor`.
+      // Legacy `InputTensor` shape functions carry no trait args and are
+      // unaffected (their args get `UnitAttr` placeholders).
       auto sfFunctionAttr = buildFunctionAttr(
           sf.func, /*computeResultParams=*/true,
-          /*strictResultParams=*/true, /*distillTraitArgs=*/true);
+          /*strictResultParams=*/true, /*distillTraitArgs=*/true,
+          /*isShapeFunc=*/true);
       if (failed(sfFunctionAttr)) {
         sawFailure = true;
         continue;

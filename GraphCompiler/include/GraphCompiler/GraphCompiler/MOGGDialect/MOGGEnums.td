@@ -37,6 +37,9 @@ def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
 // classification enums `TensorArgRole` / `TensorArgAccess` in
 // KernelDeclAdaptor.h, with which the case spellings are kept in lockstep
 // (`tensorArgContractToAttr` maps between them).
+// `none` is the no-role flavor carried by a shape-function tensor argument: it
+// reads only metadata and is always read-only, so it has no io-role. Kept in
+// lockstep with `TensorArgRole::none` in KernelDeclAdaptor.h.
 def MOGG_TensorArgRole
     : I32EnumAttr<"TensorArgRoleKind", "tensor-argument role", [
         I32EnumAttrCase<"input", 0, "input">,
@@ -47,18 +50,22 @@ def MOGG_TensorArgRole
   let cppNamespace = "::M::MOGG";
 }
 
-// Element-access form a trait-bound tensor argument exposes -- the fusion
-// access kind, or `none` for a plain dense argument. Mirrors
-// `TensorArgAccess` in KernelDeclAdaptor.h. Only `none` is exercised in the
-// dense slice; the full closed enum is defined for the fused paths (D3).
+// Element-access forms a trait-bound tensor argument exposes -- a SET of fusion
+// access kinds, or the empty set `none` for a plain dense argument with no
+// element access. Mirrors the access/capability bitmasks of `TensorArgContract`
+// in KernelDeclAdaptor.h. A bit enum so a non-fused dense argument can carry
+// several forms at once (e.g. `load | store` for in-place read-modify-write);
+// a fused argument carries exactly one. The same bit-enum type is reused for
+// the contract's capability set.
 def MOGG_TensorArgAccess
-    : I32EnumAttr<"TensorArgAccessKind", "tensor-argument access form", [
-        I32EnumAttrCase<"none", 0, "none">,
-        I32EnumAttrCase<"load", 1, "load">,
-        I32EnumAttrCase<"store", 2, "store">,
-        I32EnumAttrCase<"transform", 3, "transform">,
+    : I32BitEnumAttr<"TensorArgAccessKind", "tensor-argument access form set", [
+        I32BitEnumAttrCaseNone<"none">,
+        I32BitEnumAttrCaseBit<"load", 0, "load">,
+        I32BitEnumAttrCaseBit<"store", 1, "store">,
+        I32BitEnumAttrCaseBit<"transform", 2, "transform">,
       ]> {
   let cppNamespace = "::M::MOGG";
+  let genSpecializedAttr = 0;
 }
 
 

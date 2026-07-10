@@ -30,26 +30,26 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
   let summary = "Distilled trait contract for a trait-bound tensor argument";
   let description = [{
     The single source of truth carried by the trait lane for one trait-bound
-    tensor argument (`#mogg.tensor_arg<{role, fused, access, has_capability}>`).
+    tensor argument (`#mogg.tensor_arg<{role, fused, access, capabilities}>`).
     It mirrors the per-argument `DictionaryAttr` baked onto
     `KernelFunctionAttr.tensor_arg_contracts` at import
     (`tensorArgContractToDict` / `dictToTensorArgContract` in
     `KernelDeclAdaptor.cpp`), and rides on the `mogg.tensor_arg.__init__` op in
     place of the legacy `{io, mut}` carried by `mogg.tensor.__init__`.
 
-      - `role`           : `input` / `output` / `mutable_input`. `mut` is not
-                           stored separately -- an argument is mutable iff its
-                           role is not `input` (D2).
-      - `fused`          : whether the argument is a fused (functor-backed)
-                           operand. Only `false` is exercised in the dense
-                           slice.
-      - `access`         : the element-access form (`none` / `load` / `store` /
-                           `transform`). Only `none` is exercised in the dense
-                           slice; the closed enum is defined for the fused
-                           paths (D3).
-      - `has_capability` : whether the callable capability leaf (e.g.
-                           `Loadable`) was required, rather than only the access
-                           marker (e.g. `LoadAccess`).
+      - `role`         : `input` / `output` / `mutable_input`. `mut` is not
+                         stored separately -- an argument is mutable iff its
+                         role is not `input` (D2).
+      - `fused`        : whether the argument is a fused (functor-backed)
+                         operand.
+      - `access`       : the SET of element-access forms (a bit enum, empty
+                         set `none`, or any combination of `load` / `store` /
+                         `transform`). A non-fused dense argument may carry
+                         several (e.g. `load|store` for in-place read-modify-
+                         write); a fused argument carries exactly one.
+      - `capabilities` : the subset of `access` for which the callable
+                         capability leaf (e.g. `Loadable`) was required, rather
+                         than only the access marker (e.g. `LoadAccess`).
 
     Per D4, this contract is the only home for the role/access information: it
     is not stamped onto the result `!mo.tensor` type, and no `MO_IOKind` case is
@@ -60,12 +60,12 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
     EnumParameter<MOGG_TensorArgRole>:$role,
     "bool":$fused,
     EnumParameter<MOGG_TensorArgAccess>:$access,
-    "bool":$has_capability
+    EnumParameter<MOGG_TensorArgAccess>:$capabilities
   );
 
   let assemblyFormat = [{
     `<` `{` `role` `=` $role `,` `fused` `=` $fused `,` `access` `=` $access
-        `,` `has_capability` `=` $has_capability `}` `>`
+        `,` `capabilities` `=` $capabilities `}` `>`
   }];
 
   let extraClassDeclaration = [{
@@ -108,12 +108,13 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
       - `tensor_arg_contracts` : per-argument tensor-trait contract for
                           trait-bound tensor arguments (the trait lane). Each
                           entry is a `DictionaryAttr`
-                          `{role, fused, access, has_capability}` for a
-                          trait-bound argument, or a `UnitAttr` for a
-                          non-trait argument. Empty when the function has no
-                          trait-bound arguments (so `ManagedTensorSlice`-lane
-                          kernels are unaffected). Distilled by
-                          `distillTensorArgContract`.
+                          `{role, fused, access, capabilities}` for a
+                          trait-bound argument (where `access`/`capabilities`
+                          are integer bitmasks of access forms), or a
+                          `UnitAttr` for a non-trait argument. Empty when the
+                          function has no trait-bound arguments (so
+                          `ManagedTensorSlice`-lane kernels are unaffected).
+                          Distilled by `distillTensorArgContract`.
 
     `arg_params` powers opaque-parameter inference in `MOToMOGGLowering`:
     given an `MO::OpaqueType` operand carrying `{S0 = 4, S1 = 8}` and a
