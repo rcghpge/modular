@@ -157,21 +157,8 @@ struct MetalEnqueueFunctionArgs {
 
 class MetalDeviceContext : public DeviceContext {
 public:
-  // Default for `maxOpsPerCommandBuffer` (see the constructor). Measured on
-  // Apple M5 batch-1 decode (Nemotron-4B, 11 caps x 2 interleaved passes):
-  // a shallow U -- committing every launch (cap 1) costs ~2.3% and large
-  // batches (cap 64) ~2.9%, with the minimum on a flat 4-8 plateau
-  // (~34.9-35.0 ms/step). Small caps pipeline CPU encoding with GPU
-  // execution (more commit points start the GPU sooner); large caps
-  // amortize per-commit overhead; 4 sits on the plateau minimum and keeps
-  // the open-buffer (error-attribution) window smallest. Concurrency
-  // (c32) is insensitive to the value.
-  static constexpr uint32_t kDefaultMaxOpsPerCommandBuffer = 4;
-
-  MetalDeviceContext(
-      MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue,
-      uint32_t maxOpsPerCommandBuffer = kDefaultMaxOpsPerCommandBuffer);
-  ~MetalDeviceContext() override;
+  MetalDeviceContext(MetalDevice &device,
+                     NS::SharedPtr<MTL::CommandQueue> commandQueue);
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
@@ -248,53 +235,6 @@ public:
 
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
-
-  // Coalesced kernel-launch state (DRIV-164). Consecutive kernel launches are
-  // encoded into one shared command buffer + serial compute encoder and
-  // committed in batches instead of one command buffer per launch, collapsing
-  // the per-op commit overhead that dominates dispatch-bound decode on Metal.
-  // Ordering is preserved: a single serial `MTL::ComputeCommandEncoder` runs
-  // its dispatches in submission order with Metal hazard tracking between
-  // them, so in-place read-modify-write chains stay serialized exactly as they
-  // did across separate command buffers. `flushPendingCommandBuffer()` ends
-  // the encoder and commits; every non-kernel queue operation (copies,
-  // set-memory, events, synchronize) flushes first so commit order still
-  // equals program order. All the pending-* fields below are guarded by
-  // `pendingCommandBufferMutex_`.
-  mutable std::mutex pendingCommandBufferMutex_;
-  // Max kernel launches encoded into one pending command buffer before a
-  // forced commit (constructor parameter; immutable per context). A genuine
-  // dependency/readback/sync point always flushes earlier, so this cap only
-  // bounds long uninterrupted kernel runs — and sets the encode/execute
-  // pipelining grain (see `kDefaultMaxOpsPerCommandBuffer`).
-  const uint32_t maxOpsPerCommandBuffer_;
-  // Owning (retained) references. `commandBuffer()`/`computeCommandEncoder()`
-  // hand back autoreleased objects, but the pending buffer + encoder must
-  // outlive the launch that opened them: they are committed by a later flush
-  // that may run on a different thread, after the launching thread's
-  // autorelease pool has drained. Holding them by value here retains them and
-  // releases on flush (mirrors `pendingArgBuffers_` and the `MetalDeviceEvent`
-  // command-buffer ownership); a raw pointer would dangle.
-  NS::SharedPtr<MTL::CommandBuffer> pendingCommandBuffer_;
-  NS::SharedPtr<MTL::ComputeCommandEncoder> pendingEncoder_;
-  uint32_t pendingEncodedOps_ = 0;
-  // Whether the open pending command buffer was created with a GPU-print log
-  // state attached. A launch whose logging setting differs from the open
-  // buffer's forces a flush so it starts a correctly-configured buffer (the
-  // log state is fixed at command-buffer creation time).
-  bool pendingHasLogState_ = false;
-  // Backing MTLBuffers for oversized by-value kernel arguments bound into the
-  // pending command buffer via `setBuffer`. They must outlive the deferred
-  // commit, so ownership is parked here and released on flush (once the
-  // command buffer is committed and owns its own reference). The common path
-  // (all args <= 4 KB, bound via `setBytes`) never touches this.
-  llvm::SmallVector<NS::SharedPtr<MTL::Buffer>, 8> pendingArgBuffers_;
-  // Ends the open encoder (if any) and commits the pending command buffer.
-  // Caller must hold `pendingCommandBufferMutex_`.
-  void flushPendingCommandBufferLocked();
-  // Locks `pendingCommandBufferMutex_` and flushes. Safe to call from any
-  // queue entry point that must observe prior kernel launches.
-  void flushPendingCommandBuffer();
 
   NS::SharedPtr<MTL::LogState> logState_;
   MTL::LogState *getOrCreateLogState(bool enable = true);
