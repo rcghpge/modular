@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Queue.h"
+#include "Common.h"
 #include "Context.h"
 #include "Device.h"
 #include "Driver.h"
@@ -605,6 +606,14 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
     return M_DRIVER_STATUS_BAD_MEMORY;
   return queue->copyIntraDevice(dst->memory, dst->offset, src->memory,
                                 src->offset, dst->size);
+}
+
+M_driver_status_t M_driver_queue_copy_inter_device(
+    [[maybe_unused]] M_driver_queue_t queue,
+    [[maybe_unused]] M_driver_memory_view_t dst,
+    [[maybe_unused]] M_driver_memory_view_t src,
+    [[maybe_unused]] M_driver_context_t src_context) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
 }
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,

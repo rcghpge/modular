@@ -25,6 +25,20 @@ struct M_driver_context {
   AsyncRT::CPUDevice &cpu() const { return *cpuDevice; }
   AsyncRT::Allocator *allocator() const { return cpuDevice->getAllocator(); }
 
+  M_driver_status_t copyToDeviceSync(M_driver_memory_t dst, uint64_t dstOffset,
+                                     const void *src, uint64_t size);
+  M_driver_status_t copyFromDeviceSync(void *dst, M_driver_memory_t src,
+                                       uint64_t srcOffset, uint64_t size);
+  M_driver_status_t copyIntraDeviceSync(M_driver_memory_t dst,
+                                        uint64_t dstOffset,
+                                        M_driver_memory_t src,
+                                        uint64_t srcOffset, uint64_t size);
+  M_driver_status_t copyInterDeviceSync(M_driver_memory_t dst,
+                                        uint64_t dstOffset,
+                                        M_driver_memory_t src,
+                                        uint64_t srcOffset, uint64_t size,
+                                        M_driver_context_t srcContext);
+
   M_driver_device_t device;
   AsyncRT::CPUDeviceRef cpuDevice;
 };

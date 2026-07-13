@@ -46,6 +46,9 @@
   HIP_FN(hipStreamDestroy)                                                     \
   HIP_FN(hipStreamSynchronize)                                                 \
   HIP_FN(hipMemcpyAsync)                                                       \
+  HIP_FN(hipMemcpyPeerAsync)                                                   \
+  HIP_FN(hipMemcpy)                                                            \
+  HIP_FN(hipMemcpyPeer)                                                        \
   HIP_FN(hipMemsetAsync)                                                       \
   HIP_FN(hipMemsetD16Async)                                                    \
   HIP_FN(hipMemsetD32Async)                                                    \

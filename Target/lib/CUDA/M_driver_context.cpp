@@ -24,3 +24,51 @@ M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
     return M_DRIVER_STATUS_BAD_CONTEXT;
   return M_driver_context::destroy(context);
 }
+
+M_driver_status_t M_driver_copy_to_device_sync(M_driver_context_t context,
+                                               M_driver_memory_view_t dst,
+                                               const void *src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (src == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyToDeviceSync(dst->memory, dst->offset, src, dst->size);
+}
+
+M_driver_status_t M_driver_copy_from_device_sync(M_driver_context_t context,
+                                                 void *dst,
+                                                 M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (src == nullptr || src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyFromDeviceSync(dst, src->memory, src->offset, src->size);
+}
+
+M_driver_status_t M_driver_copy_intra_device_sync(M_driver_context_t context,
+                                                  M_driver_memory_view_t dst,
+                                                  M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->copyIntraDeviceSync(dst->memory, dst->offset, src->memory,
+                                      src->offset, dst->size);
+}
+
+M_driver_status_t M_driver_copy_inter_device_sync(
+    M_driver_context_t context, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context) {
+  if (context == nullptr || src_context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->copyInterDeviceSync(dst->memory, dst->offset, src->memory,
+                                      src->offset, dst->size, src_context);
+}

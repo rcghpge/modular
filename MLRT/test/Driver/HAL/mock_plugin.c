@@ -227,9 +227,12 @@ M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
 struct M_driver_memory {
   void *ptr;
   bool owning;
+  // True only for pinned host allocations, whose `ptr` is host-dereferenceable.
+  bool host_accessible;
 };
 
-static M_driver_status_t mock_alloc(uint64_t size, M_driver_memory_t *memory) {
+static M_driver_status_t mock_alloc(uint64_t size, bool host_accessible,
+                                    M_driver_memory_t *memory) {
   if (!memory)
     return M_DRIVER_STATUS_INVALID_ARG;
   if (size == 0)
@@ -244,6 +247,7 @@ static M_driver_status_t mock_alloc(uint64_t size, M_driver_memory_t *memory) {
   }
   m->ptr = ptr;
   m->owning = true;
+  m->host_accessible = host_accessible;
   *memory = m;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -263,7 +267,7 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
                                                uint64_t size,
                                                M_driver_memory_t *memory) {
   (void)context;
-  return mock_alloc(size, memory);
+  return mock_alloc(size, /*host_accessible=*/true, memory);
 }
 
 M_DRIVER_API_EXPORT
@@ -278,7 +282,7 @@ M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
                                              uint64_t size,
                                              M_driver_memory_t *memory) {
   (void)context;
-  return mock_alloc(size, memory);
+  return mock_alloc(size, /*host_accessible=*/false, memory);
 }
 
 M_DRIVER_API_EXPORT
@@ -301,6 +305,8 @@ M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
     return M_DRIVER_STATUS_OUT_OF_MEMORY;
   m->ptr = (void *)(uintptr_t)address;
   m->owning = owning;
+  // Wrapped memory has unknown residency; treat it as not host-accessible.
+  m->host_accessible = false;
   *memory = m;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -322,7 +328,7 @@ M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
                                               uint64_t size,
                                               M_driver_memory_t *memory) {
   (void)queue;
-  return mock_alloc(size, memory);
+  return mock_alloc(size, /*host_accessible=*/false, memory);
 }
 
 M_DRIVER_API_EXPORT
@@ -340,6 +346,14 @@ M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
     return M_DRIVER_STATUS_INVALID_ARG;
 
   if (strcmp(property_name, M_DRIVER_MEMORY_PROPERTY_ADDRESS) == 0) {
+    *(void **)value = memory->ptr;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  if (strcmp(property_name, M_DRIVER_MEMORY_PROPERTY_HOST_ADDRESS) == 0) {
+    // Refuse a host address for memory that is not host-accessible, rather
+    // than hand back a device pointer that lies about its residency.
+    if (!memory->host_accessible)
+      return M_DRIVER_STATUS_INVALID_ARG;
     *(void **)value = memory->ptr;
     return M_DRIVER_STATUS_SUCCESS;
   }
@@ -393,6 +407,61 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
                                                    M_driver_memory_view_t dst,
                                                    M_driver_memory_view_t src) {
   (void)queue;
+  if (dst && dst->memory && src && src->memory && dst->size > 0)
+    memcpy((char *)dst->memory->ptr + dst->offset,
+           (char *)src->memory->ptr + src->offset, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_inter_device(
+    M_driver_queue_t queue, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context) {
+  (void)queue;
+  (void)src_context;
+  if (dst && dst->memory && src && src->memory && dst->size > 0)
+    memcpy((char *)dst->memory->ptr + dst->offset,
+           (char *)src->memory->ptr + src->offset, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_copy_to_device_sync(M_driver_context_t context,
+                                               M_driver_memory_view_t dst,
+                                               const void *src) {
+  (void)context;
+  if (dst && dst->memory && src && dst->size > 0)
+    memcpy((char *)dst->memory->ptr + dst->offset, src, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_copy_from_device_sync(M_driver_context_t context,
+                                                 void *dst,
+                                                 M_driver_memory_view_t src) {
+  (void)context;
+  if (dst && src && src->memory && src->size > 0)
+    memcpy(dst, (char *)src->memory->ptr + src->offset, (size_t)src->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_copy_intra_device_sync(M_driver_context_t context,
+                                                  M_driver_memory_view_t dst,
+                                                  M_driver_memory_view_t src) {
+  (void)context;
+  if (dst && dst->memory && src && src->memory && dst->size > 0)
+    memcpy((char *)dst->memory->ptr + dst->offset,
+           (char *)src->memory->ptr + src->offset, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_copy_inter_device_sync(
+    M_driver_context_t context, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context) {
+  (void)context;
+  (void)src_context;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
     memcpy((char *)dst->memory->ptr + dst->offset,
            (char *)src->memory->ptr + src->offset, (size_t)dst->size);

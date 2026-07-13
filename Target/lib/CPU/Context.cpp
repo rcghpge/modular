@@ -14,8 +14,10 @@
 #include "AsyncRT/Runtime/HostSystem.h"
 #include "Device.h"
 #include "HAL/M_driver_context.h"
+#include "Memory.h"
 
 #include <cassert>
+#include <cstring>
 
 M_driver_context_t M_driver_context::create(M_driver_device_t device) {
   // Get or create the AsyncRT CPUDevice. Request mainWillDonate=false since
@@ -47,4 +49,95 @@ M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
     return M_DRIVER_STATUS_BAD_CONTEXT;
   M_driver_context::destroy(context);
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Synchronous copy methods. CPU memory is ordinary host memory, so every
+// transfer is a plain blocking memcpy. A cross-device (inter) copy is likewise
+// a memcpy: there is a single host address space, so `src_context` is
+// irrelevant beyond being a valid handle.
+M_driver_status_t M_driver_context::copyToDeviceSync(M_driver_memory_t dst,
+                                                     uint64_t dstOffset,
+                                                     const void *src,
+                                                     uint64_t size) {
+  if (size > 0)
+    memcpy(static_cast<char *>(dst->ptr) + dstOffset, src, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyFromDeviceSync(void *dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t srcOffset,
+                                                       uint64_t size) {
+  if (size > 0)
+    memcpy(dst, static_cast<char *>(src->ptr) + srcOffset, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyIntraDeviceSync(M_driver_memory_t dst,
+                                                        uint64_t dstOffset,
+                                                        M_driver_memory_t src,
+                                                        uint64_t srcOffset,
+                                                        uint64_t size) {
+  if (size > 0)
+    memcpy(static_cast<char *>(dst->ptr) + dstOffset,
+           static_cast<char *>(src->ptr) + srcOffset, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyInterDeviceSync(
+    M_driver_memory_t dst, uint64_t dstOffset, M_driver_memory_t src,
+    uint64_t srcOffset, uint64_t size, M_driver_context_t /*srcContext*/) {
+  if (size > 0)
+    memcpy(static_cast<char *>(dst->ptr) + dstOffset,
+           static_cast<char *>(src->ptr) + srcOffset, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Synchronous copy C ABI: thin wrappers over the M_driver_context methods.
+M_driver_status_t M_driver_copy_to_device_sync(M_driver_context_t context,
+                                               M_driver_memory_view_t dst,
+                                               const void *src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (src == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyToDeviceSync(dst->memory, dst->offset, src, dst->size);
+}
+
+M_driver_status_t M_driver_copy_from_device_sync(M_driver_context_t context,
+                                                 void *dst,
+                                                 M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (src == nullptr || src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyFromDeviceSync(dst, src->memory, src->offset, src->size);
+}
+
+M_driver_status_t M_driver_copy_intra_device_sync(M_driver_context_t context,
+                                                  M_driver_memory_view_t dst,
+                                                  M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->copyIntraDeviceSync(dst->memory, dst->offset, src->memory,
+                                      src->offset, dst->size);
+}
+
+M_driver_status_t M_driver_copy_inter_device_sync(
+    M_driver_context_t context, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context) {
+  if (context == nullptr || src_context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->copyInterDeviceSync(dst->memory, dst->offset, src->memory,
+                                      src->offset, dst->size, src_context);
 }

@@ -119,6 +119,25 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t
+M_driver_queue::copyInterDevice(M_driver_memory_t dst, uint64_t dstOffset,
+                                M_driver_memory_t src, uint64_t srcOffset,
+                                uint64_t size, M_driver_context_t srcContext) {
+  // The peer copy is enqueued on this queue, which belongs to the
+  // destination's context, so make that context current.
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = context.device.driver.rawCuda;
+  if (CUresult r = cuda.cuMemcpyPeerAsync(
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset,
+          context.primaryCtx,
+          reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset,
+          srcContext->primaryCtx, size, stream);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&context.device.driver, r, "cuMemcpyPeerAsync");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t dstOffset, uint64_t size,
                                             uint8_t value) {

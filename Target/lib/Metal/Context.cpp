@@ -5,12 +5,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "Common.h"
 #include "Device.h"
 #include "Driver.h"
 #include "HAL/M_driver_context.h"
 #include "Memory.h"
 
 #include <cassert>
+#include <cstring>
 #include <string>
 
 M_driver_context_t M_driver_context::create(M_driver_device_t device) {
@@ -60,6 +62,37 @@ M_driver_status_t M_driver_context::free(M_driver_memory_t memory) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_context::copyToDeviceSync(M_driver_memory_t dst,
+                                                     uint64_t dstOffset,
+                                                     const void *src,
+                                                     uint64_t size) {
+  if (size > 0)
+    memcpy(static_cast<char *>(dst->mBuffer->contents()) + dstOffset, src,
+           size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyFromDeviceSync(void *dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t srcOffset,
+                                                       uint64_t size) {
+  if (size > 0)
+    memcpy(dst, static_cast<char *>(src->mBuffer->contents()) + srcOffset,
+           size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyIntraDeviceSync(M_driver_memory_t dst,
+                                                        uint64_t dstOffset,
+                                                        M_driver_memory_t src,
+                                                        uint64_t srcOffset,
+                                                        uint64_t size) {
+  if (size > 0)
+    memcpy(static_cast<char *>(dst->mBuffer->contents()) + dstOffset,
+           static_cast<char *>(src->mBuffer->contents()) + srcOffset, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 extern "C" M_driver_status_t
 M_driver_context_create(M_driver_device_t device, M_driver_context_t *context) {
   assert(context && "context must not be null");
@@ -71,4 +104,52 @@ extern "C" M_driver_status_t
 M_driver_context_destroy(M_driver_context_t context) {
   M_driver_context::destroy(context);
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Synchronous copy C ABI: thin wrappers over the M_driver_context methods
+// above. Metal targets a single GPU, so a peer (inter-device) copy is
+// unimplemented.
+extern "C" M_driver_status_t
+M_driver_copy_to_device_sync(M_driver_context_t context,
+                             M_driver_memory_view_t dst, const void *src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (src == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyToDeviceSync(dst->memory, dst->offset, src, dst->size);
+}
+
+extern "C" M_driver_status_t
+M_driver_copy_from_device_sync(M_driver_context_t context, void *dst,
+                               M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (src == nullptr || src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (dst == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return context->copyFromDeviceSync(dst, src->memory, src->offset, src->size);
+}
+
+extern "C" M_driver_status_t
+M_driver_copy_intra_device_sync(M_driver_context_t context,
+                                M_driver_memory_view_t dst,
+                                M_driver_memory_view_t src) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->copyIntraDeviceSync(dst->memory, dst->offset, src->memory,
+                                      src->offset, dst->size);
+}
+
+extern "C" M_driver_status_t M_driver_copy_inter_device_sync(
+    [[maybe_unused]] M_driver_context_t context,
+    [[maybe_unused]] M_driver_memory_view_t dst,
+    [[maybe_unused]] M_driver_memory_view_t src,
+    [[maybe_unused]] M_driver_context_t src_context) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
 }

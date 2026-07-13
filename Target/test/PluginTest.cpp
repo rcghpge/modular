@@ -5,7 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Fixture.h"
+#include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "llvm/ADT/ScopeExit.h"
 
@@ -491,4 +493,112 @@ TEST_F(DriverPluginQueueTest, CopyIntraDevice) {
 
     ASSERT_EQ(content, result);
   }
+}
+
+TEST_F(DriverPluginContextTest, ContextCopySync) {
+  constexpr size_t size = 256;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = static_cast<uint8_t>(i);
+
+  for (M_driver_context_t context : contexts) {
+    M_driver_memory_t srcMem = nullptr;
+    M_driver_memory_t dstMem = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &srcMem));
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &dstMem));
+    auto defer = llvm::scope_exit([&]() {
+      memory_free_sync(context, dstMem);
+      memory_free_sync(context, srcMem);
+    });
+
+    M_driver_memory_view toView{srcMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(copy_to_device_sync(context, &toView, content.data()));
+
+    M_driver_memory_view intraDstView{dstMem, /*offset=*/0, size};
+    M_driver_memory_view intraSrcView{srcMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(
+        copy_intra_device_sync(context, &intraDstView, &intraSrcView));
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    M_driver_memory_view fromView{dstMem, /*offset=*/0, size};
+    ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &fromView));
+
+    ASSERT_EQ(content, result);
+  }
+}
+
+TEST_F(DriverPluginQueueTest, CopyInterDevice) {
+  if (contexts.size() < 2 || queues.size() < 2)
+    GTEST_SKIP() << "peer copy requires at least two devices";
+
+  constexpr size_t length = 256;
+  constexpr size_t bufSize = length * sizeof(uint8_t);
+
+  std::vector<uint8_t> inHost(length);
+  std::vector<uint8_t> outHost(length, 0);
+  for (size_t i = 0; i < length; i++)
+    inHost[i] = static_cast<uint8_t>(i & 0xFF);
+
+  // src lives on device 0, dst on device 1 (the queue's device).
+  M_driver_memory_t srcDev = nullptr;
+  M_driver_memory_t dstDev = nullptr;
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[0], bufSize, &srcDev));
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[1], bufSize, &dstDev));
+
+  // Stage the payload onto device 0 and wait for it: the peer copy does not
+  // order itself against the producer queue.
+  M_driver_memory_view srcView{srcDev, /*offset=*/0, bufSize};
+  ASSERT_SUCCESS(queue_copy_to_device(queues[0], &srcView, inHost.data()));
+  ASSERT_SUCCESS(queue_synchronize(queues[0]));
+
+  // Peer-copy device 0 -> device 1 on device 1's queue; contexts[0] is the
+  // source (peer) context. EXPECT (not ASSERT) so the frees below still run.
+  M_driver_memory_view dstView{dstDev, /*offset=*/0, bufSize};
+  EXPECT_SUCCESS(
+      queue_copy_inter_device(queues[1], &dstView, &srcView, contexts[0]));
+
+  // Read device 1 back on the same queue (ordered after the peer copy) and
+  // verify the payload arrived intact.
+  EXPECT_SUCCESS(queue_copy_from_device(queues[1], outHost.data(), &dstView));
+  EXPECT_SUCCESS(queue_synchronize(queues[1]));
+
+  for (size_t i = 0; i < length; i++)
+    EXPECT_EQ(outHost[i], static_cast<uint8_t>(i & 0xFF));
+
+  memory_free_sync(contexts[1], dstDev);
+  memory_free_sync(contexts[0], srcDev);
+}
+
+TEST_F(DriverPluginContextTest, ContextCopyInterDeviceSync) {
+  if (contexts.size() < 2)
+    GTEST_SKIP() << "peer copy requires at least two devices";
+
+  constexpr size_t length = 256;
+  constexpr size_t bufSize = length * sizeof(uint8_t);
+
+  std::vector<uint8_t> inHost(length);
+  std::vector<uint8_t> outHost(length, 0);
+  for (size_t i = 0; i < length; i++)
+    inHost[i] = static_cast<uint8_t>((i * 7) & 0xFF);
+
+  M_driver_memory_t srcDev = nullptr;
+  M_driver_memory_t dstDev = nullptr;
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[0], bufSize, &srcDev));
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[1], bufSize, &dstDev));
+
+  M_driver_memory_view srcView{srcDev, /*offset=*/0, bufSize};
+  ASSERT_SUCCESS(copy_to_device_sync(contexts[0], &srcView, inHost.data()));
+
+  M_driver_memory_view dstView{dstDev, /*offset=*/0, bufSize};
+  EXPECT_SUCCESS(
+      copy_inter_device_sync(contexts[1], &dstView, &srcView, contexts[0]));
+
+  EXPECT_SUCCESS(copy_from_device_sync(contexts[1], outHost.data(), &dstView));
+
+  for (size_t i = 0; i < length; i++)
+    EXPECT_EQ(outHost[i], static_cast<uint8_t>((i * 7) & 0xFF));
+
+  memory_free_sync(contexts[1], dstDev);
+  memory_free_sync(contexts[0], srcDev);
 }

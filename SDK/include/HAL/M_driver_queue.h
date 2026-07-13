@@ -100,6 +100,32 @@ typedef M_driver_status_t (*M_driver_queue_copy_intra_device_func_ptr_t)(
     M_driver_memory_view_t src);
 
 /**
+ * Copy data between memory regions on two different devices (a peer copy).
+ *
+ * @p dst must reside on the device backing @p queue; @p src resides on the
+ * device backing @p src_context. `dst->size` bytes are copied; @p src must be
+ * at least that large. The copy is enqueued on @p queue, which belongs to the
+ * destination's context.
+ *
+ * @param[in] queue The queue to enqueue the copy on; belongs to @p dst's
+ *            device.
+ * @param[in] dst Destination device-memory view, on @p queue's device.
+ * @param[in] src Source device-memory view, on @p src_context's device.
+ * @param[in] src_context The context that owns @p src, used to resolve the
+ *            peer (source) device.
+ * @return Standard Status Protocol, or M_DRIVER_STATUS_UNIMPLEMENTED on
+ *         backends without peer-copy support.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_inter_device(
+    M_driver_queue_t queue, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context);
+
+typedef M_driver_status_t (*M_driver_queue_copy_inter_device_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context);
+
+/**
  * Set device memory to a repeated single byte.
  *
  * @param[in] queue The queue to use for the set operation.

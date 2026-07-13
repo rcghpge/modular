@@ -87,6 +87,29 @@ modular_cc_test(
     ],
 )
 
+# Cross-device (peer) copy test on NVIDIA. Needs two GPUs, so it is gated on
+# has_multi_gpu and lives in its own target rather than burdening the
+# single-GPU CUDAPluginTest with a multi-GPU requirement.
+modular_cc_test(
+    name = "CUDAPeerCopyTest",
+    size = "small",
+    srcs = ["test/Fixture.h"],
+    data = [":CUDAPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "$(location :CUDAPlugin.so)",
+    },
+    gpu_constraints = [
+        "//:nvidia_gpu",
+        "//:has_multi_gpu",
+    ],
+    tags = ["gpu"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":DriverPluginTests",
+        "@tl_expected",
+    ],
+)
+
 modular_cc_binary(
     # avoids the `lib` prefix; plugins are not traditional libs
     name = "HIPPlugin.so",
@@ -131,6 +154,28 @@ modular_cc_test(
     deps = [
         ":DriverPluginTests",
         "@hip_include//:hip_headers",
+        "@tl_expected",
+    ],
+)
+
+# Cross-device (peer) copy test on AMD. Needs two GPUs, so it is gated on
+# has_multi_gpu and lives in its own target (mirrors CUDAPeerCopyTest).
+modular_cc_test(
+    name = "HIPPeerCopyTest",
+    size = "small",
+    srcs = ["test/Fixture.h"],
+    data = [":HIPPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "$(location :HIPPlugin.so)",
+    },
+    gpu_constraints = [
+        "//:amd_gpu",
+        "//:has_multi_gpu",
+    ],
+    tags = ["gpu"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":DriverPluginTests",
         "@tl_expected",
     ],
 )

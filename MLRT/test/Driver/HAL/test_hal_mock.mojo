@@ -12,8 +12,10 @@ handling paths.
 """
 
 from std.os import getenv
-from _hal import Driver
+from std.memory import alloc
+from _hal import Driver, copy
 from _hal.context import Context
+from _hal.device import Device, get_device_spec
 from _hal.queue import Queue
 from _hal.stream import Stream
 from _hal.event import Event, EVENT_FLAG_CPU_VISIBLE
@@ -37,7 +39,7 @@ from _hal.status import (
     STATUS_BAD_BUNDLE,
     STATUS_EXECUTE_MODE_NOT_SUPPORTED,
 )
-from std.testing import assert_equal, assert_raises, assert_true
+from std.testing import assert_equal, assert_raises
 
 
 def _get_plugin_spec() -> String:
@@ -226,6 +228,420 @@ def test_stream_wait_for_events() raises:
 
 
 # ===-----------------------------------------------------------------------===#
+# Unified copy tests
+# ===-----------------------------------------------------------------------===#
+
+
+def test_unified_copy_device_to_device_on_queue() raises:
+    """`Queue.copy` does a device-to-device copy between two buffers."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    comptime n = 64
+    var src = alloc[UInt8](n)
+    var dst = alloc[UInt8](n)
+    for i in range(n):
+        src[i] = UInt8(i)
+        dst[i] = UInt8(0)
+
+    var a_dev = ctx[].alloc_sync(UInt64(n))
+    var b_dev = ctx[].alloc_sync(UInt64(n))
+
+    # Stage host bytes into a_dev with the low-level host transfer, copy them
+    # device-to-device with the unified copy, then read them back.
+    queue[].copy_to_device(a_dev.view(), src)
+    queue[].copy(dst=b_dev, src=a_dev)
+    queue[].copy_from_device(dst, b_dev.view())
+    queue[].synchronize()
+
+    for i in range(n):
+        assert_equal(dst[i], src[i])
+
+    src.free()
+    dst.free()
+    ctx[].free_sync(a_dev^)
+    ctx[].free_sync(b_dev^)
+
+
+def test_unified_copy_sync_free_function() raises:
+    """The free `copy(dst, src)` copies device-to-device via its own queue."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    comptime n = 32
+    var src = alloc[UInt8](n)
+    var dst = alloc[UInt8](n)
+    for i in range(n):
+        src[i] = UInt8(i * 2)
+        dst[i] = UInt8(0)
+
+    var a_dev = ctx[].alloc_sync(UInt64(n))
+    var b_dev = ctx[].alloc_sync(UInt64(n))
+
+    queue[].copy_to_device(a_dev.view(), src)
+    queue[].synchronize()
+    copy(dst=b_dev, src=a_dev)  # device -> device, synchronous
+    queue[].copy_from_device(dst, b_dev.view())
+    queue[].synchronize()
+
+    for i in range(n):
+        assert_equal(dst[i], src[i])
+
+    src.free()
+    dst.free()
+    ctx[].free_sync(a_dev^)
+    ctx[].free_sync(b_dev^)
+
+
+def test_unified_copy_on_stream() raises:
+    """`Stream.copy` does a device-to-device copy in submission order."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var stream = ctx[].create_stream()
+
+    comptime n = 48
+    var src = alloc[UInt8](n)
+    var dst = alloc[UInt8](n)
+    for i in range(n):
+        src[i] = UInt8(255 - i)
+        dst[i] = UInt8(0)
+
+    var a_dev = ctx[].alloc_sync(UInt64(n))
+    var b_dev = ctx[].alloc_sync(UInt64(n))
+
+    stream[].copy_to_device(a_dev.view(), src)
+    stream[].copy(dst=b_dev, src=a_dev)  # device -> device
+    stream[].copy_from_device(dst, b_dev.view())
+    stream[].synchronize()
+
+    for i in range(n):
+        assert_equal(dst[i], src[i])
+
+    src.free()
+    dst.free()
+    ctx[].free_sync(a_dev^)
+    ctx[].free_sync(b_dev^)
+
+
+def test_unified_copy_dst_too_small_raises() raises:
+    """A copy whose destination cannot hold the source raises."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    var small = ctx[].alloc_sync(UInt64(16))
+    var big = ctx[].alloc_sync(UInt64(32))
+
+    with assert_raises(contains="copy overflow"):
+        queue[].copy(dst=small, src=big)
+
+    ctx[].free_sync(small^)
+    ctx[].free_sync(big^)
+
+
+def test_unified_copy_front_fill() raises:
+    """A smaller src lands in the front of a larger dst; the tail is kept."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    comptime big_n = 32
+    comptime small_n = 16
+    var small = ctx[].alloc_sync(UInt64(small_n))
+    var big = ctx[].alloc_sync(UInt64(big_n))
+    var host = alloc[UInt8](small_n)
+    var out = alloc[UInt8](big_n)
+    for i in range(small_n):
+        host[i] = UInt8(i + 1)
+
+    # Fill `big` with 0xBB, stage the 16-byte payload into `small`, copy
+    # `small` into the front of `big`, and read it back: front = payload,
+    # tail = 0xBB (untouched).
+    queue[].set_memory(big.view(), UInt8(0xBB))
+    queue[].copy_to_device(small.view(), host)
+    queue[].copy(dst=big, src=small)
+    queue[].copy_from_device(out, big.view())
+    queue[].synchronize()
+    for i in range(small_n):
+        assert_equal(out[i], UInt8(i + 1))
+    for i in range(small_n, big_n):
+        assert_equal(out[i], UInt8(0xBB))
+
+    host.free()
+    out.free()
+    ctx[].free_sync(big^)
+    ctx[].free_sync(small^)
+
+
+def test_unified_copy_pinned() raises:
+    """Pinned host buffers route through host transports in every direction."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    comptime n = 32
+    var pinned_in = ctx[].alloc_host_pinned(UInt64(n))
+    var pinned_out = ctx[].alloc_host_pinned(UInt64(n))
+    var dev = ctx[].alloc_sync(UInt64(n))
+
+    # A device buffer has no host-dereferenceable address; the plugin refuses
+    # rather than hand back a device pointer that would fault on the host.
+    with assert_raises(contains="host_address"):
+        _ = ctx[].memory_get_host_address[MutAnyOrigin](dev)
+
+    # Pinned memory is CPU-addressable in place: write the input and read the
+    # output directly through the host address, with no copies.
+    var in_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_in)
+    var out_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_out)
+    for i in range(n):
+        in_ptr[i] = UInt8(i + 3)
+        out_ptr[i] = UInt8(0)
+
+    # pinned -> device -> pinned through the queue.
+    queue[].copy(dst=dev, src=pinned_in)
+    queue[].copy(dst=pinned_out, src=dev)
+    queue[].synchronize()
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(i + 3))
+
+    # pinned -> pinned is purely host-side and cannot be enqueued...
+    with assert_raises(contains="cannot be enqueued"):
+        queue[].copy(dst=pinned_out, src=pinned_in)
+
+    # ...but the synchronous free `copy` performs it as a memcpy.
+    for i in range(n):
+        out_ptr[i] = UInt8(0)
+    copy(dst=pinned_out, src=pinned_in)
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(i + 3))
+
+    ctx[].free_host_pinned(pinned_in^)
+    ctx[].free_host_pinned(pinned_out^)
+    ctx[].free_sync(dev^)
+
+
+def test_unified_copy_free_function_pinned_device() raises:
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+
+    comptime n = 24
+    var pinned_in = ctx[].alloc_host_pinned(UInt64(n))
+    var pinned_out = ctx[].alloc_host_pinned(UInt64(n))
+    var dev = ctx[].alloc_sync(UInt64(n))
+
+    # Pinned memory is host-accessible, so seed the input and clear the output
+    # in place through their host addresses — no copy needed.
+    var in_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_in)
+    var out_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_out)
+    for i in range(n):
+        in_ptr[i] = UInt8(200 - i)
+        out_ptr[i] = UInt8(0)
+
+    copy(dst=dev, src=pinned_in)
+    copy(dst=pinned_out, src=dev)
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(200 - i))
+
+    ctx[].free_host_pinned(pinned_in^)
+    ctx[].free_host_pinned(pinned_out^)
+    ctx[].free_sync(dev^)
+
+
+def test_unified_copy_inter_device_on_queue() raises:
+    """`Queue.copy` peer-copies a buffer from one device to another."""
+    var driver = Driver.create(_get_plugin_spec())
+    # Two devices sharing one arch spec but with different runtime ids — the
+    # shape of same-arch multi-GPU (one target arch, several physical devices).
+    # The unified `copy` requires both operands to share a comptime device_spec,
+    # while the peer path is selected by the differing runtime device ids.
+    comptime spec = get_device_spec[Int64(0)]()
+    var device0 = Device[spec]._create(driver[], Int64(0))
+    var device1 = Device[spec]._create(driver[], Int64(1))
+    var ctx0 = device0[].get_context()
+    var ctx1 = device1[].get_context()
+    var queue0 = ctx0[].create_queue()
+    var queue1 = ctx1[].create_queue()
+
+    comptime n = 64
+    var host_src = alloc[UInt8](n)
+    var host_out = alloc[UInt8](n)
+    for i in range(n):
+        host_src[i] = UInt8(i + 1)
+        host_out[i] = UInt8(0)
+
+    var src = ctx0[].alloc_sync(UInt64(n))  # device 0
+    var dst = ctx1[].alloc_sync(UInt64(n))  # device 1
+
+    # Stage the payload onto device 0 and synchronize (the peer copy does not
+    # order against the producer queue), peer-copy it to device 1 on device
+    # 1's queue, then read it back.
+    queue0[].copy_to_device(src.view(), host_src)
+    queue0[].synchronize()
+    queue1[].copy(dst=dst, src=src)  # device 0 -> device 1
+    queue1[].copy_from_device(host_out, dst.view())
+    queue1[].synchronize()
+
+    for i in range(n):
+        assert_equal(host_out[i], UInt8(i + 1))
+
+    host_src.free()
+    host_out.free()
+    ctx0[].free_sync(src^)
+    ctx1[].free_sync(dst^)
+
+
+def test_unified_copy_inter_device_free_function() raises:
+    """The free `copy` peer-copies between buffers on different devices."""
+    var driver = Driver.create(_get_plugin_spec())
+    # Two devices sharing one arch spec but with different runtime ids — the
+    # shape of same-arch multi-GPU (one target arch, several physical devices).
+    # The unified `copy` requires both operands to share a comptime device_spec,
+    # while the peer path is selected by the differing runtime device ids.
+    comptime spec = get_device_spec[Int64(0)]()
+    var device0 = Device[spec]._create(driver[], Int64(0))
+    var device1 = Device[spec]._create(driver[], Int64(1))
+    var ctx0 = device0[].get_context()
+    var ctx1 = device1[].get_context()
+    var queue0 = ctx0[].create_queue()
+    var queue1 = ctx1[].create_queue()
+
+    comptime n = 40
+    var host_src = alloc[UInt8](n)
+    var host_out = alloc[UInt8](n)
+    for i in range(n):
+        host_src[i] = UInt8(i * 3)
+        host_out[i] = UInt8(0)
+
+    var src = ctx0[].alloc_sync(UInt64(n))  # device 0
+    var dst = ctx1[].alloc_sync(UInt64(n))  # device 1
+
+    queue0[].copy_to_device(src.view(), host_src)
+    queue0[].synchronize()
+    # Synchronous peer copy; its queue is derived from `dst`'s context, so it
+    # runs on device 1.
+    copy(dst=dst, src=src)
+    queue1[].copy_from_device(host_out, dst.view())
+    queue1[].synchronize()
+
+    for i in range(n):
+        assert_equal(host_out[i], UInt8(i * 3))
+
+    host_src.free()
+    host_out.free()
+    ctx0[].free_sync(src^)
+    ctx1[].free_sync(dst^)
+
+
+def test_unified_copy_inter_device_dst_not_on_queue_raises() raises:
+    """A peer copy whose destination is not on the queue's device raises."""
+    var driver = Driver.create(_get_plugin_spec())
+    # Two devices sharing one arch spec but with different runtime ids — the
+    # shape of same-arch multi-GPU (one target arch, several physical devices).
+    # The unified `copy` requires both operands to share a comptime device_spec,
+    # while the peer path is selected by the differing runtime device ids.
+    comptime spec = get_device_spec[Int64(0)]()
+    var device0 = Device[spec]._create(driver[], Int64(0))
+    var device1 = Device[spec]._create(driver[], Int64(1))
+    var ctx0 = device0[].get_context()
+    var ctx1 = device1[].get_context()
+    var queue0 = ctx0[].create_queue()  # device 0
+
+    comptime n = 32
+    var src = ctx0[].alloc_sync(UInt64(n))  # device 0
+    var dst = ctx1[].alloc_sync(UInt64(n))  # device 1
+
+    # `dst` lives on device 1, but the queue belongs to device 0, so the
+    # plugin would use the wrong destination context for the peer copy.
+    with assert_raises(contains="queue's device"):
+        queue0[].copy(dst=dst, src=src)
+
+    ctx0[].free_sync(src^)
+    ctx1[].free_sync(dst^)
+
+
+def test_unified_copy_pinned_cross_device() raises:
+    """The free `copy` moves data between a pinned host buffer and a device
+    buffer on a DIFFERENT device. The pinned side is only a host pointer, so
+    the transfer runs on the device operand's context regardless of which
+    device allocated the pinned buffer — no same-device restriction applies.
+    """
+    var driver = Driver.create(_get_plugin_spec())
+    comptime spec = get_device_spec[Int64(0)]()
+    var device0 = Device[spec]._create(driver[], Int64(0))
+    var device1 = Device[spec]._create(driver[], Int64(1))
+    var ctx0 = device0[].get_context()
+    var ctx1 = device1[].get_context()
+
+    comptime n = 32
+    var pinned_in = ctx0[].alloc_host_pinned(UInt64(n))  # device 0, pinned
+    var pinned_out = ctx0[].alloc_host_pinned(UInt64(n))  # device 0, pinned
+    var dev = ctx1[].alloc_sync(UInt64(n))  # device 1, device-resident
+
+    var in_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_in)
+    var out_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_out)
+    for i in range(n):
+        in_ptr[i] = UInt8(100 + i)
+        out_ptr[i] = UInt8(0)
+
+    # pinned (device 0) -> device (device 1): H2D on device 1's context.
+    copy(dst=dev, src=pinned_in)
+    # device (device 1) -> pinned (device 0): D2H on device 1's context.
+    copy(dst=pinned_out, src=dev)
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(100 + i))
+
+    ctx0[].free_host_pinned(pinned_in^)
+    ctx0[].free_host_pinned(pinned_out^)
+    ctx1[].free_sync(dev^)
+
+
+def test_unified_copy_pinned_cross_device_on_queue() raises:
+    """`Queue.copy` moves data between a pinned host buffer and a device buffer
+    on a different device. The device operand must be on the queue's device;
+    the pinned host operand may come from any device's context.
+    """
+    var driver = Driver.create(_get_plugin_spec())
+    comptime spec = get_device_spec[Int64(0)]()
+    var device0 = Device[spec]._create(driver[], Int64(0))
+    var device1 = Device[spec]._create(driver[], Int64(1))
+    var ctx0 = device0[].get_context()
+    var ctx1 = device1[].get_context()
+    var queue1 = ctx1[].create_queue()  # device 1
+
+    comptime n = 32
+    var pinned_in = ctx0[].alloc_host_pinned(UInt64(n))  # device 0, pinned
+    var pinned_out = ctx0[].alloc_host_pinned(UInt64(n))  # device 0, pinned
+    var dev = ctx1[].alloc_sync(UInt64(n))  # device 1, device-resident
+
+    var in_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_in)
+    var out_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_out)
+    for i in range(n):
+        in_ptr[i] = UInt8(50 + i)
+        out_ptr[i] = UInt8(0)
+
+    # pinned(dev 0) -> dev(dev 1) -> pinned(dev 0), all on device 1's queue
+    # (the device operand's device).
+    queue1[].copy(dst=dev, src=pinned_in)
+    queue1[].copy(dst=pinned_out, src=dev)
+    queue1[].synchronize()
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(50 + i))
+
+    ctx0[].free_host_pinned(pinned_in^)
+    ctx0[].free_host_pinned(pinned_out^)
+    ctx1[].free_sync(dev^)
+
+
+# ===-----------------------------------------------------------------------===#
 # Entry point
 # ===-----------------------------------------------------------------------===#
 
@@ -250,3 +666,15 @@ def main() raises:
     test_stream_create_and_sync()
     test_stream_record_event()
     test_stream_wait_for_events()
+    test_unified_copy_device_to_device_on_queue()
+    test_unified_copy_sync_free_function()
+    test_unified_copy_on_stream()
+    test_unified_copy_dst_too_small_raises()
+    test_unified_copy_front_fill()
+    test_unified_copy_pinned()
+    test_unified_copy_free_function_pinned_device()
+    test_unified_copy_inter_device_on_queue()
+    test_unified_copy_inter_device_free_function()
+    test_unified_copy_inter_device_dst_not_on_queue_raises()
+    test_unified_copy_pinned_cross_device()
+    test_unified_copy_pinned_cross_device_on_queue()

@@ -105,6 +105,27 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t
+M_driver_queue::copyInterDevice(M_driver_memory_t dst, uint64_t dstOffset,
+                                M_driver_memory_t src, uint64_t srcOffset,
+                                uint64_t size, M_driver_context_t srcContext) {
+  // The copy is enqueued on this queue, which belongs to the destination's
+  // context, so make that device current.
+  M_driver_device &dev = context.getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
+  void *srcPtr = static_cast<char *>(src->ptr) + srcOffset;
+  if (hipError_t r = hip.hipMemcpyPeerAsync(
+          dstPtr, dev.id(), srcPtr, srcContext->getDevice().id(), size, stream);
+      r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipMemcpyPeerAsync");
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t dstOffset, uint64_t size,
                                             uint8_t value) {

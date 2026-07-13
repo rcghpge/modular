@@ -179,6 +179,12 @@ typedef M_driver_status_t (*M_driver_memory_free_async_func_ptr_t)(
 #define M_DRIVER_MEMORY_PROPERTY_ADDRESS "address"
 
 /**
+ * Host-dereferenceable address of an allocation. Only meaningful for pinned
+ * host memory created with M_driver_memory_alloc_pinned.
+ */
+#define M_DRIVER_MEMORY_PROPERTY_HOST_ADDRESS "host_address"
+
+/**
  * Retrieve a memory property.
  *
  * @param[in] property_name The name of the property as a null-terminated

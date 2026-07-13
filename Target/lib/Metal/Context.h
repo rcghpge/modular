@@ -21,6 +21,15 @@ struct M_driver_context {
   DriverResult<M_driver_memory_t> alloc(uint64_t size);
   M_driver_status_t free(M_driver_memory_t memory);
 
+  M_driver_status_t copyToDeviceSync(M_driver_memory_t dst, uint64_t dstOffset,
+                                     const void *src, uint64_t size);
+  M_driver_status_t copyFromDeviceSync(void *dst, M_driver_memory_t src,
+                                       uint64_t srcOffset, uint64_t size);
+  M_driver_status_t copyIntraDeviceSync(M_driver_memory_t dst,
+                                        uint64_t dstOffset,
+                                        M_driver_memory_t src,
+                                        uint64_t srcOffset, uint64_t size);
+
   void trackBuffer(void *ptr, MTL::Buffer *buffer) {
     allocations[reinterpret_cast<uintptr_t>(ptr)] = buffer;
   }

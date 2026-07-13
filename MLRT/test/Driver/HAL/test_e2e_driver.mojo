@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 from std.os import getenv
-from _hal import Driver, Context
+from _hal import Driver, Context, copy
 from _hal.device import Device, DeviceSpec, get_device_spec
 from _hal.status import HALError
 from _hal.plugin import MemoryHandle
@@ -224,6 +224,46 @@ def do_fill_test[
     ctx.free_sync(device_buffer^)
 
 
+def do_pinned_copy_test[
+    device_spec: DeviceSpec,
+](mut ctx: Context[device_spec]) raises:
+    """Pinned host buffers ride host transports through the unified copy."""
+    comptime n = 256
+    var queue = ctx.create_queue()
+
+    var pinned_in = ctx.alloc_host_pinned(UInt64(n))
+    var pinned_out = ctx.alloc_host_pinned(UInt64(n))
+    var dev = ctx.alloc_sync(UInt64(n))
+
+    # Pinned memory is CPU-addressable in place through its host address; no
+    # copy is needed to read or write it from the host.
+    var in_ptr = ctx.memory_get_host_address[MutAnyOrigin](pinned_in)
+    var out_ptr = ctx.memory_get_host_address[MutAnyOrigin](pinned_out)
+    for i in range(n):
+        in_ptr[i] = UInt8(i % 251)
+        out_ptr[i] = UInt8(0)
+
+    # pinned -> device -> pinned through the queue's unified copy.
+    queue[].copy(dst=dev, src=pinned_in)
+    queue[].copy(dst=pinned_out, src=dev)
+    queue[].synchronize()
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(i % 251))
+
+    # The synchronous free `copy` handles pinned -> pinned as a host memcpy.
+    for i in range(n):
+        out_ptr[i] = UInt8(0)
+    copy(dst=pinned_out, src=pinned_in)
+    for i in range(n):
+        assert_equal(out_ptr[i], UInt8(i % 251))
+
+    print("Pinned copy test OK")
+
+    ctx.free_host_pinned(pinned_in^)
+    ctx.free_host_pinned(pinned_out^)
+    ctx.free_sync(dev^)
+
+
 def main() raises:
     var plugin_spec = getenv("MODULAR_DRIVER_PLUGINS")
     if not plugin_spec:
@@ -254,3 +294,4 @@ def main() raises:
     do_execute(ctx[])
     do_offset_copy_test(ctx[])
     do_fill_test(ctx[])
+    do_pinned_copy_test(ctx[])

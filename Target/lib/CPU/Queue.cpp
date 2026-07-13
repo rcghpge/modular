@@ -255,6 +255,20 @@ M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
                                 src->offset, dst->size);
 }
 
+M_driver_status_t M_driver_queue_copy_inter_device(
+    M_driver_queue_t queue, M_driver_memory_view_t dst,
+    M_driver_memory_view_t src, M_driver_context_t src_context) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (dst == nullptr || src == nullptr || dst->memory == nullptr ||
+      src->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (src_context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return queue->copyIntraDevice(dst->memory, dst->offset, src->memory,
+                                src->offset, dst->size);
+}
+
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
                                             uint8_t value) {

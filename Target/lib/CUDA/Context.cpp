@@ -47,6 +47,7 @@ DriverResult<M_driver_memory_t> M_driver_context::allocPinned(uint64_t size) {
   M_driver_memory_t memory = new (std::nothrow) M_driver_memory(memAlloc);
   if (!memory)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  memory->hostAccessible = true;
   return memory;
 }
 
@@ -111,5 +112,74 @@ M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
     return M_DRIVER_STATUS_SUCCESS;
   if (CUresult r = driver.cuMemFree(devicePtr); r != CUDA_SUCCESS)
     return cudaErrorStatus(&device.driver, r, "cuMemFree");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyToDeviceSync(M_driver_memory_t dst,
+                                                     uint64_t dstOffset,
+                                                     const void *src,
+                                                     uint64_t size) {
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  if (CUresult r = cuda.cuMemcpyHtoD(
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset, src, size);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemcpyHtoD");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyFromDeviceSync(void *dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t srcOffset,
+                                                       uint64_t size) {
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  if (CUresult r = cuda.cuMemcpyDtoH(
+          dst, reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset, size);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemcpyDtoH");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyIntraDeviceSync(M_driver_memory_t dst,
+                                                        uint64_t dstOffset,
+                                                        M_driver_memory_t src,
+                                                        uint64_t srcOffset,
+                                                        uint64_t size) {
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  if (CUresult r = cuda.cuMemcpyDtoD(
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset,
+          reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset, size);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemcpyDtoD");
+  // The synchronous device-to-device memcpy does NOT host-block (CUDA performs
+  // no host-side synchronization for device-to-device transfers), so wait on
+  // the default stream it ran on to honor the blocking contract.
+  if (CUresult r = cuda.cuStreamSynchronize(nullptr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuStreamSynchronize (sync D2D)");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::copyInterDeviceSync(
+    M_driver_memory_t dst, uint64_t dstOffset, M_driver_memory_t src,
+    uint64_t srcOffset, uint64_t size, M_driver_context_t srcContext) {
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  if (CUresult r = cuda.cuMemcpyPeer(
+          reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset, primaryCtx,
+          reinterpret_cast<CUdeviceptr>(src->ptr) + srcOffset,
+          srcContext->primaryCtx, size);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemcpyPeer");
+  // Like the D2D case above, the synchronous peer copy does not host-block, so
+  // wait on the default stream to honor the blocking contract.
+  if (CUresult r = cuda.cuStreamSynchronize(nullptr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r,
+                           "cuStreamSynchronize (sync peer)");
   return M_DRIVER_STATUS_SUCCESS;
 }

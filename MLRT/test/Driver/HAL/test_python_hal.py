@@ -22,6 +22,7 @@ from max.sys._hal import (
     Driver,
     Event,
     Function,
+    copy,
 )
 from vec_add import vec_add  # type: ignore[import-not-found]
 
@@ -144,7 +145,7 @@ def test_queue_host_to_device_to_host_roundtrip() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_queue_copy_intra_device() -> None:
+def test_queuecopy_intra_device() -> None:
     ctx = Driver().get_device(0).get_context()
     queue = ctx.create_queue()
 
@@ -160,6 +161,33 @@ def test_queue_copy_intra_device() -> None:
     queue.copy_from_device(dst_addr, dev_b.view())
     queue.synchronize()
 
+    assert _bytes_of(dst) == src_data
+
+
+def test_unified_copy_device_to_device() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 128
+    src_data = bytes((i * 5) % 256 for i in range(n))
+    _src, src_addr = _make_host_buf(src_data)
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev_a = ctx.alloc_sync(n)
+    dev_b = ctx.alloc_sync(n)
+    dev_c = ctx.alloc_sync(n)
+
+    queue.copy_to_device(dev_a.view(), src_addr)
+    queue.synchronize()
+
+    # Unified copy on the queue (device -> device).
+    queue.copy(dst=dev_b, src=dev_a)
+    queue.synchronize()
+
+    # Module-level synchronous copy (device -> device via its own queue).
+    copy(dst=dev_c, src=dev_b)
+
+    queue.copy_from_device(dst_addr, dev_c.view())
+    queue.synchronize()
     assert _bytes_of(dst) == src_data
 
 
@@ -221,7 +249,7 @@ def test_stream_host_to_device_to_host_roundtrip() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_stream_copy_intra_device() -> None:
+def test_streamcopy_intra_device() -> None:
     ctx = Driver().get_device(0).get_context()
     stream = ctx.create_stream()
 

@@ -21,8 +21,8 @@
 
 M_driver_status_t M_driver_memory::getProperty(llvm::StringRef name,
                                                void *value) const {
-  if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS) {
-    // On CPU the device address is simply the host pointer.
+  if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS ||
+      name == M_DRIVER_MEMORY_PROPERTY_HOST_ADDRESS) {
     *static_cast<uint64_t *>(value) = reinterpret_cast<uint64_t>(ptr);
     return M_DRIVER_STATUS_SUCCESS;
   }
