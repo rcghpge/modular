@@ -109,11 +109,23 @@ ErrorOrSuccess verifyCustomOp(const MojoRegistry &registry,
 ErrorOrSuccess verifyCustomOp(mlir::ModuleOp kernelDecls, mlir::Operation *op);
 
 /// Resolve the filesystem paths of the built-in Mojo kernel packages
-/// (`kernels` and `primitives`). Used for cache-key construction
-/// (the cache invalidates when these binaries change). Returns an error if
-/// the runtime mojo path resolver can't find them.
+/// (`kernels` and `primitives`), the packages whose declarations
+/// `--mogg-import-packages` loads. Returns an error if the runtime mojo path
+/// resolver can't find them. For the full package set that participates in
+/// the MEF cache key, see `getKernelPackagePathsForCacheKey`.
 ErrorOr<llvm::SmallVector<std::string>>
 getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx);
+
+/// Resolve the filesystem paths of every Mojo binary package that can affect
+/// compiled kernels: the built-in packages (`kernels` and `primitives`) plus
+/// all binary packages reachable on the module import path. The built-in
+/// packages mostly re-export symbols whose implementations live in the
+/// import-path packages (`linalg`, `nn`, ...), so a kernel-source change can
+/// alter compiled kernels without changing the built-in packages' bytes; the
+/// MEF cache key must therefore cover the import-path packages too. Returns
+/// an error only if the built-in packages can't be resolved.
+ErrorOr<llvm::SmallVector<std::string>>
+getKernelPackagePathsForCacheKey(mlir::MLIRContext *ctx);
 
 } // namespace M::MOGG
 

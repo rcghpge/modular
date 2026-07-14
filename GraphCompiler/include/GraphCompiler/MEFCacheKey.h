@@ -31,7 +31,10 @@ struct GCPipelineOptions;
 /// The MEF cache key depends on
 /// - The GC pass pipeline, version, and options
 /// - KGEN compilation context (Mojo compile-time defines)
-/// - All op library MLIR
+/// - User-provided kernel library files
+/// - The built-in kernel packages and every Mojo binary package on the
+///   module import path (the kernel implementations the built-in packages
+///   re-export live there)
 ///
 /// It _does not_ depend on location info or specific symbol names.
 class MEFCacheKeyHasher {

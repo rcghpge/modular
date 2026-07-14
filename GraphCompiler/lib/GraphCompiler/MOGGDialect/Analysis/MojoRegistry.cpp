@@ -15,6 +15,8 @@
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Support/AssertStream.h"
 #include "Support/Filesystem/Paths.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -232,43 +234,96 @@ void M::MOGG::copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst) {
 
 namespace {
 
-ErrorOr<std::string> resolveLITModulePath(mlir::MLIRContext *ctx,
-                                          llvm::SourceMgr &sourceMgr,
-                                          llvm::StringRef moduleName) {
+/// Owns the parser state needed to resolve module names and walk the module
+/// import directories. One instance serves any number of resolutions, so
+/// callers pay the `SharedState` construction cost (config read, dialect
+/// preloading) once.
+class LITModuleResolver {
+public:
+  explicit LITModuleResolver(mlir::MLIRContext *ctx)
+      : config(ctx, options), sharedState(sourceMgr, config) {}
+
+  /// Resolve `moduleName` to the path of its precompiled binary package.
+  ErrorOr<std::string> resolveBinaryPackagePath(llvm::StringRef moduleName) {
+    std::optional<std::string> modulePath =
+        sharedState.resolveModulePath(moduleName, llvm::SMLoc());
+    if (!modulePath)
+      return Error(
+          llvm::formatv("Failed to resolve module path for `{}`", moduleName)
+              .str());
+    if (!M::Filesystem::isMojoBinaryPackagePath(*modulePath))
+      return Error(
+          llvm::formatv("Resolved module path for `{}` to source directory "
+                        "`{}` but a .mojoc precompiled file was expected "
+                        "instead",
+                        moduleName, *modulePath)
+              .str());
+    return *modulePath;
+  }
+
+  KGEN::LIT::SharedState &getSharedState() { return sharedState; }
+
+private:
+  // Order matters: `config` refers to `options`, `sharedState` to both.
+  llvm::SourceMgr sourceMgr;
   KGEN::CompilationOptions options;
-  KGEN::LIT::ParserConfig config(ctx, options);
-  KGEN::LIT::SharedState sharedState(sourceMgr, config);
-  std::optional<std::string> modulePath =
-      sharedState.resolveModulePath(moduleName, llvm::SMLoc());
-  if (!modulePath)
-    return Error(
-        llvm::formatv("Failed to resolve module path for `{}`", moduleName)
-            .str());
-  if (!M::Filesystem::isMojoBinaryPackagePath(*modulePath))
-    return Error(
-        llvm::formatv("Resolved module path for `{}` to source directory `{}` "
-                      "but a .mojoc precompiled file was expected instead",
-                      moduleName, *modulePath)
-            .str());
-  return *modulePath;
+  KGEN::LIT::ParserConfig config;
+  KGEN::LIT::SharedState sharedState;
+};
+
+ErrorOr<llvm::SmallVector<std::string>>
+resolveBuiltInKernelPackagePaths(LITModuleResolver &resolver) {
+  llvm::SmallVector<std::string> paths;
+  for (llvm::StringRef moduleName :
+       {kMoggKernelsModuleName, kMoggPrimitivesModuleName}) {
+    auto pathOr = resolver.resolveBinaryPackagePath(moduleName);
+    if (pathOr.isError())
+      return pathOr.takeError();
+    paths.push_back(*pathOr);
+  }
+  return paths;
 }
 
 } // namespace
 
 ErrorOr<llvm::SmallVector<std::string>>
 M::MOGG::getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx) {
-  llvm::SourceMgr sourceMgr;
-  llvm::SmallVector<std::string> paths;
-  auto kernelAPIPathOr =
-      resolveLITModulePath(ctx, sourceMgr, kMoggKernelsModuleName);
-  if (kernelAPIPathOr.isError())
-    return kernelAPIPathOr.takeError();
-  paths.push_back(*kernelAPIPathOr);
-  auto primitivesPathOr =
-      resolveLITModulePath(ctx, sourceMgr, kMoggPrimitivesModuleName);
-  if (primitivesPathOr.isError())
-    return primitivesPathOr.takeError();
-  paths.push_back(*primitivesPathOr);
+  LITModuleResolver resolver(ctx);
+  return resolveBuiltInKernelPackagePaths(resolver);
+}
+
+ErrorOr<llvm::SmallVector<std::string>>
+M::MOGG::getKernelPackagePathsForCacheKey(mlir::MLIRContext *ctx) {
+  LITModuleResolver resolver(ctx);
+
+  // The built-in packages are required; fail loudly if they don't resolve.
+  auto pathsOr = resolveBuiltInKernelPackagePaths(resolver);
+  if (pathsOr.isError())
+    return pathsOr.takeError();
+  llvm::SmallVector<std::string> paths = std::move(*pathsOr);
+
+  // Collect every binary package visible on the import path; the header
+  // comment explains why their contents must reach the cache key.
+  llvm::StringSet<> seen;
+  resolver.getSharedState().traverseImportDirectories(
+      /*importBufferFileId=*/0, [&](llvm::StringRef dir) {
+        std::error_code ec;
+        for (llvm::sys::fs::directory_iterator it(dir, ec), e; it != e && !ec;
+             it.increment(ec)) {
+          const std::string &path = it->path();
+          if (M::Filesystem::isMojoBinaryPackagePath(path))
+            seen.insert(path);
+        }
+        return mlir::WalkResult::advance();
+      });
+  // Append the collected packages, minus the built-ins already in `paths`,
+  // sorted for a deterministic order independent of directory iteration.
+  llvm::SmallVector<std::string> found;
+  for (const auto &entry : seen)
+    if (!llvm::is_contained(paths, entry.getKey()))
+      found.push_back(entry.getKey().str());
+  llvm::sort(found);
+  llvm::append_range(paths, found);
   return paths;
 }
 

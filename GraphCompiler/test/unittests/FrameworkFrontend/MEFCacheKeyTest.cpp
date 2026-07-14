@@ -11,6 +11,7 @@
 #include "GraphCompiler/GraphCompiler/Passes.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Context.h"
+#include "Support/FileSystemExtras.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinDialect.h"
@@ -88,6 +89,43 @@ constexpr llvm::StringLiteral kFuncBarModule = R"mlir(
     func.func private @bar(%a: i64, %b: i64) -> i64
   }
 )mlir";
+
+/// RAII helper that appends `dir` to the Mojo module import path env var and
+/// restores the previous value on destruction. The prior value is kept as a
+/// prefix so the built-in kernel packages still resolve.
+class AppendImportPathDir {
+public:
+  explicit AppendImportPathDir(llvm::StringRef dir) {
+    if (const char *prev = ::getenv(kImportPathEnvVar))
+      previous = prev;
+    std::string next = previous ? *previous + "," + dir.str() : dir.str();
+    ::setenv(kImportPathEnvVar, next.c_str(), /*overwrite=*/1);
+  }
+  ~AppendImportPathDir() {
+    if (previous)
+      ::setenv(kImportPathEnvVar, previous->c_str(), /*overwrite=*/1);
+    else
+      ::unsetenv(kImportPathEnvVar);
+  }
+
+private:
+  static constexpr const char *kImportPathEnvVar =
+      "MODULAR_MOJO_MAX_IMPORT_PATH";
+  std::optional<std::string> previous;
+};
+
+/// Create a self-cleaning temp directory containing a fake Mojo binary
+/// package `pkg.mojopkg` with the given bytes.
+std::optional<TempDir> makePackageDir(llvm::StringRef contents) {
+  auto dirOr = TempDir::create("mef-import-path-test.%%%%%%");
+  EXPECT_FALSE(dirOr.isError()) << "failed to create temp dir";
+  if (dirOr.isError())
+    return std::nullopt;
+  TempDir dir = dirOr.takeValue();
+  std::ofstream out(dir.getPath() / "pkg.mojopkg", std::ios::binary);
+  out << contents.str();
+  return dir;
+}
 
 } // namespace
 
@@ -220,6 +258,69 @@ TEST_F(MEFCacheKeyTest, KernelLibraryPathIsRelocatable) {
   ASSERT_FALSE(keyB.isError());
   EXPECT_EQ(keyA.takeValue(), keyB.takeValue())
       << "key must not depend on the kernel library's absolute path";
+}
+
+TEST_F(MEFCacheKeyTest, ImportPathPackageContentInvalidatesKey) {
+  // The kernel implementations live in packages resolved via the module
+  // import path (`linalg`, `nn`, ...), not in the two built-in re-export
+  // packages. A content change in any import-path package must move the
+  // key, or a serve run after a kernel-source rebuild silently reuses the
+  // stale MEF.
+  std::optional<TempDir> pkgDir =
+      makePackageDir("import-path package bytes v1");
+  ASSERT_TRUE(pkgDir);
+
+  AppendImportPathDir env(pkgDir->getPath().string());
+  auto before = tryBuild();
+  if (!before)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  {
+    std::ofstream out(pkgDir->getPath() / "pkg.mojopkg", std::ios::binary);
+    out << "import-path package bytes v2";
+  }
+  auto after = tryBuild();
+  if (!after)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto beforeKey = before->keyForModule(*mod);
+  auto afterKey = after->keyForModule(*mod);
+  ASSERT_FALSE(beforeKey.isError());
+  ASSERT_FALSE(afterKey.isError());
+  EXPECT_NE(beforeKey.takeValue(), afterKey.takeValue())
+      << "an import-path kernel package content change must change the key";
+}
+
+TEST_F(MEFCacheKeyTest, ImportPathPackageIsRelocatable) {
+  // MOCO-4152 still holds for import-path packages: identical bytes under a
+  // different directory must not perturb the key.
+  std::optional<TempDir> dirA =
+      makePackageDir("identical import-path package bytes");
+  std::optional<TempDir> dirB =
+      makePackageDir("identical import-path package bytes");
+  ASSERT_TRUE(dirA && dirB);
+  ASSERT_NE(dirA->getPath(), dirB->getPath()) << "temp dirs must differ";
+
+  std::optional<MEFCacheKeyHasher> hasherA, hasherB;
+  {
+    AppendImportPathDir env(dirA->getPath().string());
+    hasherA = tryBuild();
+  }
+  {
+    AppendImportPathDir env(dirB->getPath().string());
+    hasherB = tryBuild();
+  }
+  if (!hasherA || !hasherB)
+    GTEST_SKIP() << "kernel packages unavailable; skip";
+
+  auto mod = parse(kEmptyModule);
+  auto keyA = hasherA->keyForModule(*mod);
+  auto keyB = hasherB->keyForModule(*mod);
+  ASSERT_FALSE(keyA.isError());
+  ASSERT_FALSE(keyB.isError());
+  EXPECT_EQ(keyA.takeValue(), keyB.takeValue())
+      << "key must not depend on an import-path package's absolute path";
 }
 
 TEST_F(MEFCacheKeyTest, CasEnabledInvalidatesKey) {

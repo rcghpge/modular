@@ -135,13 +135,15 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
       return err.takeError();
   }
 
-  // Built-in kernel packages
-  auto builtInPathsOr = MOGG::getBuiltInKernelPackagePaths(&mlirCtx);
-  if (builtInPathsOr.isError())
-    return builtInPathsOr.takeError();
-  for (const std::string &libraryPath : *builtInPathsOr) {
-    if (auto err = feedFile(b3, libraryPath,
-                            "failed to open built-in kernel package: "))
+  // Built-in kernel packages plus every binary package on the module import
+  // path (see `getKernelPackagePathsForCacheKey` for why both must reach the
+  // key). Only contents are hashed, not paths, so the key stays relocatable
+  // (MOCO-4152).
+  auto kernelPackagePathsOr = MOGG::getKernelPackagePathsForCacheKey(&mlirCtx);
+  if (kernelPackagePathsOr.isError())
+    return kernelPackagePathsOr.takeError();
+  for (const std::string &libraryPath : *kernelPackagePathsOr) {
+    if (auto err = feedFile(b3, libraryPath, "failed to open kernel package: "))
       return err.takeError();
   }
 
