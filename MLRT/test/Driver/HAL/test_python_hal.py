@@ -12,6 +12,7 @@ selected by the build.
 from __future__ import annotations
 
 import ctypes
+import sys
 from pathlib import Path
 
 import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
@@ -95,12 +96,7 @@ def test_context_alloc_host_pinned_returns_buffer() -> None:
 
 
 def test_context_wrap_unwrap() -> None:
-    driver = Driver()
-    # Metal can't wrap a raw GPU address back into an MTLBuffer, so the whole
-    # wrap/unwrap surface is unimplemented there.
-    if driver.name == "Metal":
-        pytest.skip("wrap/unwrap unsupported on Metal")
-    ctx = driver.get_device(0).get_context()
+    ctx = Driver().get_device(0).get_context()
 
     # A zero address is rejected by every plugin rather than minting a
     # handle that would segfault on first use.
@@ -112,6 +108,19 @@ def test_context_wrap_unwrap() -> None:
     with pytest.raises(Exception, match="pinned"):
         ctx.unwrap_memory(ctx.alloc_host_pinned(32))
 
+    # Metal cannot wrap a raw GPU address back into an MTLBuffer, so both
+    # wrap and unwrap report the plugin's UNIMPLEMENTED status.
+    if ctx.driver_name == "Metal":
+        buf = ctx.alloc_sync(64)
+        with pytest.raises(Exception, match="wrap"):
+            ctx.wrap_memory(ctx.memory_get_address(buf), 64)
+        with pytest.raises(Exception, match="unwrap"):
+            ctx.unwrap_memory(buf)
+        return
+
+    # A non-owning wrap over an existing allocation reports the same
+    # address; dropping the wrapper releases only the HAL bookkeeping, so
+    # the original allocation stays valid.
     orig = ctx.alloc_sync(64)
     addr = ctx.memory_get_address(orig)
     wrapped = ctx.wrap_memory(addr, 64)
@@ -607,6 +616,30 @@ def test_array_construction_and_fill(tmp_path: Path) -> None:
     ).all()
 
 
+def test_array_copy_false_adoption(tmp_path: Path) -> None:
+    # copy=False adopts host memory zero-copy, which only works when the source
+    # is already on the context's device. On a host (CPU) context a numpy
+    # array is on-device and is adopted; on a device context it is not, so
+    # adoption is refused rather than silently copied. Whichever context this
+    # suite runs against, one branch below exercises the routing.
+    ctx = Driver().get_device(0).get_context()
+    src = np.arange(6, dtype=np.float32)
+    path = tmp_path / "raw.bin"
+    path.write_bytes(src.tobytes())
+    on_device = ctx.get_dlpack_device(False) == tuple(src.__dlpack_device__())
+    if on_device:
+        adopted = Array.from_numpy(ctx, src, copy=False)
+        np.testing.assert_array_equal(adopted.as_numpy(), src)
+        np.testing.assert_array_equal(adopted.as_numpy(copy=False), src)
+        mapped = Array.from_file(ctx, path, DType.float32, (6,), copy=False)
+        np.testing.assert_array_equal(mapped.as_numpy(), src)
+    else:
+        with pytest.raises(ValueError, match="host"):
+            Array.from_numpy(ctx, src, copy=False)
+        with pytest.raises(ValueError, match="host"):
+            Array.from_file(ctx, path, DType.float32, (6,), copy=False)
+
+
 def test_array_slicing_and_views() -> None:
     ctx = Driver().get_device(0).get_context()
     src = np.arange(24, dtype=np.int32).reshape(4, 6)
@@ -676,3 +709,107 @@ def test_array_copy_and_subbyte_packing() -> None:
     assert arr[2:].byte_size == (n - 2) // 2
     with pytest.raises(ValueError, match="byte"):
         arr[1:]
+
+
+# ----------------------------------------------------------------------
+# Array — DLPack protocol
+# ----------------------------------------------------------------------
+
+
+def test_array_dlpack_export() -> None:
+    ctx = Driver().get_device(0).get_context()
+    arr = Array.from_numpy(ctx, np.arange(6, dtype=np.float32).reshape(2, 3))
+
+    # The capsule pins the owning array; releasing it restores the balance.
+    base = sys.getrefcount(arr)
+    capsule = arr.__dlpack__()
+    assert sys.getrefcount(arr) == base + 1
+    del capsule
+    assert sys.getrefcount(arr) == base
+
+    arr.__dlpack__(max_version=(1, 0))  # versioned capsule, same lifetime
+    assert sys.getrefcount(arr) == base
+
+    with pytest.raises(BufferError, match="negative strides"):
+        Array.from_numpy(ctx, np.arange(4, dtype=np.int32))[::-1].__dlpack__()
+
+    # numpy cannot read device memory: its error must propagate intact and
+    # the aborted export must still be released.
+    with pytest.raises(RuntimeError):
+        np.from_dlpack(arr)
+    assert sys.getrefcount(arr) == base
+
+    # Pinned memory is host-accessible, so numpy consumes the
+    # exported capsule zero-copy — a round-trip through a real consumer.
+    if ctx.driver_name in ("CUDA", "HIP"):
+        pinned = Array.empty(ctx, DType.float32, (4,), pinned=True)
+        host_view = np.from_dlpack(pinned)
+        host_view[:] = 7.0
+        np.testing.assert_array_equal(
+            pinned.as_numpy(), np.full(4, 7.0, np.float32)
+        )
+
+
+class _DelegatingProducer:
+    """A non-Array producer, so imports take the real capsule path."""
+
+    def __init__(self, arr: Array) -> None:
+        self._arr = arr
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        return self._arr.__dlpack_device__()
+
+    def __dlpack__(self, *, stream: int | None = None) -> object:
+        return self._arr.__dlpack__(stream=stream)
+
+
+class _ForeignDeviceProducer:
+    """A producer on a device (kDLVulkan) no HAL plugin can import from."""
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        return (7, 0)
+
+    def __dlpack__(self, *, stream: int | None = None) -> object:
+        raise AssertionError("capsule must not be requested")
+
+
+def test_array_dlpack_import() -> None:
+    ctx = Driver().get_device(0).get_context()
+
+    # Host memory is only imported with an explicit copy=True.
+    src = np.arange(6, dtype=np.float32).reshape(2, 3)
+    with pytest.raises(ValueError, match="host"):
+        Array.from_dlpack(ctx, src)
+    arr = Array.from_dlpack(ctx, src, copy=True)
+    np.testing.assert_array_equal(arr.as_numpy(), src)
+
+    # An Array input short-circuits; a foreign device is rejected up front.
+    assert Array.from_dlpack(ctx, arr) is arr
+    with pytest.raises(ValueError, match="device"):
+        Array.from_dlpack(ctx, _ForeignDeviceProducer())
+
+    # Metal cannot wrap a foreign GPU address, so it cannot adopt.
+    producer = _DelegatingProducer(arr)
+    if ctx.driver_name == "Metal":
+        with pytest.raises(NotImplementedError, match="wrap"):
+            Array.from_dlpack(ctx, producer)
+        return
+
+    # A same-device producer is adopted zero-copy; dropping the adopted
+    # array runs the producer's deleter and releases its reference.
+    base = sys.getrefcount(arr)
+    adopted = Array.from_dlpack(ctx, producer)
+    assert adopted.data_ptr == arr.data_ptr
+    arr.fill(3)
+    np.testing.assert_array_equal(
+        adopted.as_numpy(), np.full((2, 3), 3, np.float32)
+    )
+    del adopted
+    assert sys.getrefcount(arr) == base
+
+    # The pinned-host variant adopts too and keeps the pinned flag.
+    pinned = Array.empty(ctx, DType.float32, (4,), pinned=True)
+    pinned.fill(5)
+    adopted = Array.from_dlpack(ctx, _DelegatingProducer(pinned))
+    assert adopted.pinned and adopted.data_ptr == pinned.data_ptr
+    np.testing.assert_array_equal(adopted.as_numpy(), np.full(4, 5, np.float32))

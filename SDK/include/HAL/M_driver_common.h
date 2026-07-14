@@ -87,6 +87,19 @@ struct M_driver_memory_view {
 typedef struct M_driver_memory_view *M_driver_memory_view_t;
 
 /**
+ * A DLPack device: the `(device_type, device_id)` pair identifying where a
+ * tensor lives, per the DLPack protocol. `device_type` holds a DLPack
+ * `DLDeviceType` code (e.g. `kDLCUDA`, `kDLCUDAHost`, `kDLMetal`); a plugin
+ * fills it from dlpack.h. For host-pinned or CPU memory, `device_id` is 0 (per
+ * the DLPack spec). Written by the `M_driver_device_property` "dlpack_device" /
+ * "dlpack_device_pinned" queries.
+ */
+typedef struct M_driver_dlpack_device {
+  int32_t device_type;
+  int32_t device_id;
+} M_driver_dlpack_device;
+
+/**
  * Returned status-codes from all API functions.
  *
  * Implementations are encouraged to use the predefined set below where

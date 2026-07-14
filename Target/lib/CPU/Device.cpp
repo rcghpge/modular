@@ -14,7 +14,10 @@
 #include "Driver.h"
 #include "HAL/M_driver_device.h"
 
+#include <dlpack/dlpack.h>
+
 #include <cassert>
+#include <cstring>
 
 M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
@@ -38,7 +41,14 @@ M_driver_status_t M_driver_device_get(M_driver_driver_t driver, int64_t id,
 
 M_driver_status_t
 M_driver_device_property([[maybe_unused]] M_driver_device_t device,
-                         [[maybe_unused]] const char *property_name,
-                         [[maybe_unused]] void *value) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+                         const char *property_name, void *value) {
+  if (std::strcmp(property_name, M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) == 0 ||
+      std::strcmp(property_name,
+                  M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED) == 0) {
+    auto *dl = static_cast<M_driver_dlpack_device *>(value);
+    dl->device_type = kDLCPU;
+    dl->device_id = 0;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
 }

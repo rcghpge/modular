@@ -46,6 +46,7 @@ modular_cc_binary(
         "//SDK:HAL",
         "//bazel/third-party:CUDAHeaders",
         "//bazel/third-party:NVMLHeaders",
+        "@dlpack",
         "@llvm-project//llvm:Support",
         "@tl_expected",
     ],
@@ -127,6 +128,7 @@ modular_cc_binary(
     deps = [
         ":Support",
         "//SDK:HAL",
+        "@dlpack",
         "@hip_include//:hip_headers",
         "@llvm-project//llvm:Support",
         "@tl_expected",
@@ -193,6 +195,7 @@ modular_cc_binary(
         ":Support",
         "//SDK:HAL",
         "//Support:Base",
+        "@dlpack",
         "@metal-cpp//:metal-cpp",
         "@tl_expected",
     ],
@@ -234,6 +237,7 @@ modular_cc_binary(
         "//AsyncRT:Runtime",
         "//SDK:HAL",
         "//Support:Base",
+        "@dlpack",
         "@llvm-project//llvm:Support",
         "@tl_expected",
     ],
@@ -254,6 +258,7 @@ modular_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":DriverPluginTests",
+        "@dlpack",
         "@tl_expected",
     ],
 )

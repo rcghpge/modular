@@ -50,6 +50,15 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
     M_driver_driver_t driver, int64_t device_id, M_driver_device_t *device);
 
 /**
+ * Property names for `M_driver_device_property`.
+ *
+ * "dlpack_device" / "dlpack_device_pinned" write an `M_driver_dlpack_device`;
+ * the pinned variant reports the device's host-pinned DLPack device type.
+ */
+#define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE "dlpack_device"
+#define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED "dlpack_device_pinned"
+
+/**
  * Retrieve an integer-valued property of a device, as 64-bit integer.
  *
  * @param[in] device The device to retrieve the property from.

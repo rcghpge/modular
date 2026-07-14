@@ -10,6 +10,8 @@
 
 #include "llvm/ADT/ScopeExit.h"
 
+#include <dlpack/dlpack.h>
+
 #include <array>
 #include <cstdint>
 
@@ -24,6 +26,19 @@ TEST_F(DriverPluginTest, CustomStatusMessage) {
 }
 
 TEST_F(DriverPluginTest, ApiIsCpu) { ASSERT_EQ(api, "cpu"); }
+
+TEST_F(DriverPluginTest, DlpackDevice) {
+  M_driver_device_t device = nullptr;
+  ASSERT_SUCCESS(device_get(driver, 0, &device));
+
+  for (const char *name : {M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE,
+                           M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED}) {
+    M_driver_dlpack_device dl{};
+    ASSERT_SUCCESS(device_property(device, name, &dl));
+    EXPECT_EQ(dl.device_type, kDLCPU);
+    EXPECT_EQ(dl.device_id, 0);
+  }
+}
 
 TEST_F(DriverPluginQueueTest, QueueIsStream) {
   for (M_driver_queue_t queue : queues) {
