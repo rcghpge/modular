@@ -12,14 +12,18 @@ selected by the build.
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 
 import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
+import numpy as np
 import pytest
 from max.sys._hal import (
+    Array,
     Buffer,
     Bundle,
     Context,
     Driver,
+    DType,
     Event,
     Function,
     copy,
@@ -191,6 +195,23 @@ def test_unified_copy_device_to_device() -> None:
     assert _bytes_of(dst) == src_data
 
 
+def test_context_sync_copy_roundtrip() -> None:
+    ctx = Driver().get_device(0).get_context()
+
+    n = 256
+    src_data = bytes((i * 11) % 256 for i in range(n))
+    _src, src_addr = _make_host_buf(src_data)
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev_a = ctx.alloc_sync(n)
+    dev_b = ctx.alloc_sync(n)
+
+    ctx.copy_to_device_sync(dev_a.view(), src_addr)
+    ctx.copy_intra_device_sync(dev_b.view(), dev_a.view())
+    ctx.copy_from_device_sync(dst_addr, dev_b.view())
+
+    assert _bytes_of(dst) == src_data
+
+
 # ----------------------------------------------------------------------
 # Memory set / fill via Queue
 # ----------------------------------------------------------------------
@@ -204,7 +225,7 @@ def test_queue_set_memory() -> None:
     dst, dst_addr = _make_empty_host_buf(n)
     dev = ctx.alloc_sync(n)
 
-    queue.set_memory(dev, 0x5A, n)
+    queue.set_memory(dev.view(), 0x5A)
     queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
@@ -220,7 +241,7 @@ def test_queue_fill() -> None:
     dev = ctx.alloc_sync(n)
 
     # 32-bit pattern, little-endian repeating across the buffer.
-    queue.fill(dev, 0xDEADBEEF, 4, n)
+    queue.fill(dev.view(), 0xDEADBEEF, 4)
     queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
@@ -276,7 +297,7 @@ def test_stream_set_memory() -> None:
     dst, dst_addr = _make_empty_host_buf(n)
     dev = ctx.alloc_sync(n)
 
-    stream.set_memory(dev, 0x5A, n)
+    stream.set_memory(dev.view(), 0x5A)
     stream.copy_from_device(dst_addr, dev.view())
     stream.synchronize()
 
@@ -291,7 +312,7 @@ def test_stream_fill() -> None:
     dst, dst_addr = _make_empty_host_buf(n)
     dev = ctx.alloc_sync(n)
 
-    stream.fill(dev, 0xDEADBEEF, 4, n)
+    stream.fill(dev.view(), 0xDEADBEEF, 4)
     stream.copy_from_device(dst_addr, dev.view())
     stream.synchronize()
 
@@ -523,8 +544,6 @@ def test_stream_execute_vec_add() -> None:
 
 
 def test_queue_execute_validates_shapes() -> None:
-    import pytest
-
     ctx = Driver().get_device(0).get_context()
     bundle = ctx.compile(vec_add)
     func = ctx.load_function(bundle, bundle.function_name)
@@ -538,3 +557,122 @@ def test_queue_execute_validates_shapes() -> None:
         queue.execute(
             func, grid=(1, 1, 1), block=(1, 1, 1), args=[0], arg_sizes=[]
         )
+
+
+# ----------------------------------------------------------------------
+# Array — typed view over a HAL Buffer
+# ----------------------------------------------------------------------
+
+
+def test_array_construction_and_fill(tmp_path: Path) -> None:
+    ctx = Driver().get_device(0).get_context()
+
+    # Host -> device -> host roundtrip preserves data and metadata.
+    src = np.arange(12, dtype=np.float32).reshape(3, 4)
+    arr = Array.from_numpy(ctx, src)
+    assert arr.shape == (3, 4)
+    assert arr.dtype == DType.float32
+    assert arr.strides == (4, 1)
+    assert arr.is_contiguous
+    np.testing.assert_array_equal(arr.as_numpy(), src)
+
+    # from_list infers shape/dtype from Python values; explicit dtype wins.
+    typed = Array.from_list(ctx, [[1, 2], [3, 4]], dtype=DType.int32)
+    assert typed.shape == (2, 2)
+    np.testing.assert_array_equal(
+        typed.as_numpy(), np.array([[1, 2], [3, 4]], np.int32)
+    )
+
+    # from_file copies a file's packed bytes to the device, honoring offset;
+    # a file too short for offset + dtype*shape is rejected.
+    data = np.arange(6, dtype=np.float32)
+    path = tmp_path / "weights.bin"
+    path.write_bytes(b"\xaa" * 3 + data.tobytes())
+    loaded = Array.from_file(ctx, path, DType.float32, (2, 3), offset=3)
+    np.testing.assert_array_equal(loaded.as_numpy(), data.reshape(2, 3))
+    with pytest.raises(ValueError, match="bytes"):
+        Array.from_file(ctx, path, DType.float32, (100,), offset=3)
+
+    # full/fill: byte-uniform zero, a multi-byte pattern, and -0.0 must
+    # keep its IEEE sign bit.
+    np.testing.assert_array_equal(
+        Array.full(ctx, DType.int64, (4,), 0).as_numpy(), np.zeros(4, np.int64)
+    )
+    np.testing.assert_array_equal(
+        Array.full(ctx, DType.int32, (4,), 0x01020304).as_numpy(),
+        np.full(4, 0x01020304, np.int32),
+    )
+    assert np.signbit(
+        Array.full(ctx, DType.float32, (2,), -0.0).as_numpy()
+    ).all()
+
+
+def test_array_slicing_and_views() -> None:
+    ctx = Driver().get_device(0).get_context()
+    src = np.arange(24, dtype=np.int32).reshape(4, 6)
+    arr = Array.from_numpy(ctx, src)
+
+    # Slicing follows numpy view semantics: strided, shares storage.
+    sub = arr[:, 1:3]  # as_numpy materializes via contiguous()
+    assert sub.shape == (4, 2)
+    assert not sub.is_contiguous
+    np.testing.assert_array_equal(sub.as_numpy(), src[:, 1:3])
+    assert arr[1, 2].shape == ()  # full integer index -> rank-0
+
+    arr[0].fill(9)  # writing through a slice hits the base
+    assert (arr.as_numpy()[0] == 9).all()
+    arr[1, 2] = 5  # element assignment also goes through to the base
+    assert arr.as_numpy()[1, 2] == 5
+
+    # view reinterprets the bytes as another dtype, sharing the buffer.
+    floats = np.array([1.0, 2.0, -3.5], dtype=np.float32)
+    np.testing.assert_array_equal(
+        Array.from_numpy(ctx, floats).view(DType.int32).as_numpy(),
+        floats.view(np.int32),
+    )
+
+    # A pure reshape needs no dtype, and a -1 entry is inferred.
+    fresh = Array.from_numpy(ctx, src)
+    reshaped = fresh.view(shape=(2, 12))
+    assert reshaped.dtype == fresh.dtype
+    np.testing.assert_array_equal(reshaped.as_numpy(), src.reshape(2, 12))
+    np.testing.assert_array_equal(
+        fresh.view(shape=(-1, 8)).as_numpy(), src.reshape(-1, 8)
+    )
+    np.testing.assert_array_equal(
+        fresh.reshape((-1, 12)).as_numpy(), src.reshape(-1, 12)
+    )
+    with pytest.raises(ValueError, match="-1"):
+        fresh.view(shape=(-1, -1))
+
+    with pytest.raises(IndexError):
+        arr[10]
+    with pytest.raises(TypeError):
+        arr[None]
+
+
+def test_array_copy_and_subbyte_packing() -> None:
+    ctx = Driver().get_device(0).get_context()
+
+    # Device-to-device copy into existing storage.
+    src = Array.from_numpy(ctx, np.arange(12, dtype=np.int32).reshape(3, 4))
+    dst = Array.empty(ctx, DType.int32, (3, 4))
+    Array.copy(src, dst)
+    np.testing.assert_array_equal(dst.as_numpy(), src.as_numpy())
+
+    # Sub-byte dtypes pack densely like the legacy buffer: N 4-bit values
+    # take ceil(N/2) bytes, and fill(0) zeroes exactly the packed bytes.
+    n = 8
+    arr = Array.empty(ctx, DType.float4_e2m1fn, (n,))
+    assert arr.element_size == 1  # per-element size rounds up
+    assert arr.byte_size == n // 2
+    arr.fill(0)
+    np.testing.assert_array_equal(
+        arr.view(DType.uint8, (arr.byte_size,)).as_numpy(),
+        np.zeros(arr.byte_size, np.uint8),
+    )
+    # A byte-aligned sub-byte slice is fine; a bit-unaligned one cannot be
+    # a byte-addressed view and must raise.
+    assert arr[2:].byte_size == (n - 2) // 2
+    with pytest.raises(ValueError, match="byte"):
+        arr[1:]

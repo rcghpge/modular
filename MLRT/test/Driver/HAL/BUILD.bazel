@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "modular_py_test", "mojo_shared_library", "mojo_test")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_py_test", "mojo_shared_library", "mojo_test", "requirement")
 
 package(
     default_visibility = ["//MLRT:consumers"],
@@ -153,6 +153,7 @@ modular_py_test(
     }),
     deps = [
         "//max/python/max/sys/_hal",
+        requirement("numpy"),
     ],
 )
 
