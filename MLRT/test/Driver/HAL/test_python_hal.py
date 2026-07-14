@@ -776,12 +776,12 @@ class _ForeignDeviceProducer:
 def test_array_dlpack_import() -> None:
     ctx = Driver().get_device(0).get_context()
 
-    # Host memory is only imported with an explicit copy=True.
     src = np.arange(6, dtype=np.float32).reshape(2, 3)
     with pytest.raises(ValueError, match="host"):
         Array.from_dlpack(ctx, src)
-    arr = Array.from_dlpack(ctx, src, copy=True)
-    np.testing.assert_array_equal(arr.as_numpy(), src)
+
+    # Build an on-device array to exercise the adopt paths below.
+    arr = Array.from_numpy(ctx, src)
 
     # An Array input short-circuits; a foreign device is rejected up front.
     assert Array.from_dlpack(ctx, arr) is arr
@@ -813,3 +813,73 @@ def test_array_dlpack_import() -> None:
     adopted = Array.from_dlpack(ctx, _DelegatingProducer(pinned))
     assert adopted.pinned and adopted.data_ptr == pinned.data_ptr
     np.testing.assert_array_equal(adopted.as_numpy(), np.full(4, 5, np.float32))
+
+
+# ----------------------------------------------------------------------
+# Array — async stream operations
+# ----------------------------------------------------------------------
+
+
+def test_array_async_ops() -> None:
+    ctx = Driver().get_device(0).get_context()
+    stream = ctx.create_stream()
+
+    # array_full / array_fill / array_copy enqueue WITHOUT waiting; the caller
+    # orders them (here: submission order on one stream, then synchronize).
+    a = stream.array_full(DType.float32, (4,), 2.0)
+    b = Array.empty(ctx, DType.float32, (4,))
+    stream.array_fill(b, 5.0)
+    stream.array_copy(a, b)  # src=a, dst=b  ->  b := a (2.0)
+    stream.synchronize()
+    np.testing.assert_array_equal(b.as_numpy(), np.full(4, 2.0, np.float32))
+
+    # A strided source is rejected — the fire-and-forget path cannot keep the
+    # internal contiguous temp alive.
+    strided = Array.full(ctx, DType.float32, (4,), 1.0)[::2]
+    with pytest.raises(ValueError, match="contiguous"):
+        stream.array_copy(strided, Array.empty(ctx, DType.float32, (2,)))
+
+    host = np.arange(6, dtype=np.float32).reshape(2, 3)
+    dev = stream.array_from_numpy(host)
+    stream.synchronize()
+    np.testing.assert_array_equal(dev.as_numpy(), host)
+    with pytest.raises(ValueError, match="contiguous"):
+        stream.array_from_numpy(host[:, ::2])
+
+    # The same async ops are available on a Queue (identical primitive surface
+    # to Stream). Keep the numpy source alive until synchronize().
+    queue = ctx.create_queue()
+    qa = queue.array_full(DType.float32, (3,), 7.0)
+    qsrc = np.arange(3, dtype=np.float32)
+    qn = queue.array_from_numpy(qsrc)
+    queue.synchronize()
+    np.testing.assert_array_equal(qa.as_numpy(), np.full(3, 7.0, np.float32))
+    np.testing.assert_array_equal(qn.as_numpy(), qsrc)
+
+
+def test_array_async_dlpack() -> None:
+    ctx = Driver().get_device(0).get_context()
+    stream = ctx.create_stream()
+    src = Array.from_numpy(ctx, np.arange(6, dtype=np.float32).reshape(2, 3))
+
+    if ctx.driver_name == "Metal":
+        # Metal cannot wrap a foreign GPU address, so adopt is refused exactly
+        # like the blocking path.
+        with pytest.raises(NotImplementedError, match="wrap"):
+            stream.array_from_dlpack(_DelegatingProducer(src))
+        return
+
+    # array_from_dlpack host-blocks, so the adopted (zero-copy, same address)
+    # array is safe to read immediately.
+    adopted = stream.array_from_dlpack(_DelegatingProducer(src))
+    assert adopted.data_ptr == src.data_ptr
+    np.testing.assert_array_equal(
+        adopted.as_numpy(), np.arange(6, dtype=np.float32).reshape(2, 3)
+    )
+
+    # Export returns a capsule (unversioned, versioned, and with the -1 no-sync
+    # sentinel). The caller must have ordered any async writes beforehand.
+    exported = Array.from_numpy(ctx, np.arange(4, dtype=np.float32))
+    assert exported.__dlpack__() is not None
+    assert exported.__dlpack__(max_version=(1, 0)) is not None
+    assert exported.__dlpack__(stream=-1) is not None
