@@ -24,7 +24,7 @@
 #include "MLRT/lib/Driver/DeviceContext/HIP/HIPDriver.h"
 #include "MLRT/lib/Driver/DeviceContext/Metal/MetalDeviceContext.h"
 #include "Support/BinaryID.h"
-#include "Support/Profiling/Tracy.h"
+#include "Support/Profiling/internal/Tracy.h"
 #include "Support/RCRef.h"
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/Sequence.h"

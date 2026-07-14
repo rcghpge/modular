@@ -6,7 +6,7 @@
 
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/AssertStream.h"
-#include "Support/Profiling/Tracy.h"
+#include "Support/Profiling/internal/Tracy.h"
 #include "llvm/ADT/StringRef.h"
 
 using namespace M;

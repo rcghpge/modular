@@ -28,7 +28,7 @@
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
-#include "Support/Profiling/Tracy.h"
+#include "Support/Profiling/internal/Tracy.h"
 #include "Support/Threading/SpinWaiter.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
