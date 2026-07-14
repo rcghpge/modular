@@ -297,6 +297,34 @@ M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
 typedef M_driver_status_t (*M_driver_queue_is_stream_func_ptr_t)(
     M_driver_queue_t queue, bool *is_stream);
 
+/**
+ * Common queue properties
+ */
+#define M_DRIVER_QUEUE_PROPERTY_NATIVE_HANDLE "native_handle"
+
+/**
+ * Retrieve a queue property.
+ *
+ * @param[in] queue The queue to inspect.
+ * @param[in] property_name The name of the property as a null-terminated
+ * string.
+ * @param[out] value Type-erased pointer to the value of the property. Consult
+ * the property table to instantiate the correct type at the call-site.
+ * - e.g. "native_handle" to retrieve the backend stream/queue object as a
+ *   uint64 (a raw handle value, not an assigned id; used as the DLPack
+ *   ``__dlpack__(stream=...)`` handle).
+ * @return Standard Status Protocol,
+ * - M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME if the property name is not valid,
+ *   or M_DRIVER_STATUS_UNIMPLEMENTED if the plugin exposes no native handle.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
+                                          const char *property_name,
+                                          void *value);
+
+typedef M_driver_status_t (*M_driver_queue_property_func_ptr_t)(
+    M_driver_queue_t queue, const char *property_name, void *value);
+
 #ifdef __cplusplus
 }
 #endif

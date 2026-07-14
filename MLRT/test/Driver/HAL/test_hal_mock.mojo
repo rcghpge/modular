@@ -39,7 +39,7 @@ from _hal.status import (
     STATUS_BAD_BUNDLE,
     STATUS_EXECUTE_MODE_NOT_SUPPORTED,
 )
-from std.testing import assert_equal, assert_raises
+from std.testing import assert_equal, assert_raises, assert_true
 
 
 def _get_plugin_spec() -> String:
@@ -122,6 +122,18 @@ def test_memory_wrap_unwrap() raises:
     # owns the allocation.
     _ = wrapped^
     assert_equal(ctx[].memory_get_address(buf), addr)
+
+
+def test_queue_native_handle() raises:
+    # The queue exposes its backend handle as a nonzero integer, the value
+    # lent to a DLPack producer for stream-scoped import ordering.
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+    var handle = queue[].native_handle()
+    assert_true(Bool(handle))
+    assert_true(handle.value() != 0)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -659,6 +671,7 @@ def main() raises:
     test_context_create()
     test_invalid_device_error_message()
     test_memory_wrap_unwrap()
+    test_queue_native_handle()
     test_queue_create_and_sync()
     test_queue_record_event()
     test_queue_wait_for_events()

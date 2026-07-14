@@ -336,3 +336,13 @@ M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
   *is_stream = true;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
+                                          const char *property_name,
+                                          void *value) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (property_name == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}

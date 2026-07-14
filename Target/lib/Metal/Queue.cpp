@@ -673,6 +673,21 @@ M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
   return queue->synchronize();
 }
 
+M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
+                                          const char *property_name,
+                                          void *value) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (property_name == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (llvm::StringRef(property_name) == M_DRIVER_QUEUE_PROPERTY_NATIVE_HANDLE) {
+    *static_cast<uint64_t *>(value) =
+        reinterpret_cast<uint64_t>(queue->mCommandQueue.get());
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
 M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
                                            bool *is_stream) {
   if (queue == nullptr)

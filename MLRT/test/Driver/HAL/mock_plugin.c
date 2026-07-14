@@ -383,6 +383,21 @@ M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
 }
 
 M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
+                                          const char *property_name,
+                                          void *value) {
+  if (!queue)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (!property_name || !value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (strcmp(property_name, M_DRIVER_QUEUE_PROPERTY_NATIVE_HANDLE) == 0) {
+    *(uint64_t *)value = (uint64_t)(uintptr_t)queue;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 M_driver_memory_view_t dst,
                                                 const void *src) {
