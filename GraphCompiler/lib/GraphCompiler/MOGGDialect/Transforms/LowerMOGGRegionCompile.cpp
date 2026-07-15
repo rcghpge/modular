@@ -18,6 +18,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
 
@@ -115,6 +116,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // Collect the chains for all module load and runtime creates.
     SmallVector<Value> moduleLoadChains;
 
+    // `moduleLoadResultByIndex[i]` is the `mgp.module.load` output chain for
+    // device module `i`. Used below to sequence each init-block execute after
+    // the load of the specific module it calls into.
+    SmallVector<Value> moduleLoadResultByIndex;
+
     // Track the RuntimeCreateOp
     // Mainly used to make sure we target the right module load and device
     // runtime for the executions
@@ -160,6 +166,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*fModuleIndex=*/deviceModuleIndex,
           /*gDebuginfo=*/loadKernels.getDebuginfo());
       moduleLoadChains.push_back(loadArchive.getResult());
+      // Index-aligned with `deviceModuleIndex` (pushed once per module, in
+      // order), so `moduleLoadResultByIndex[deviceModuleIndex]` is this
+      // module's load chain.
+      moduleLoadResultByIndex.push_back(loadArchive.getResult());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
       ++deviceModuleIndex;
@@ -192,28 +202,72 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                                kernelIndex, kernel);
     });
 
-    execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
-      builder.setInsertionPoint(kernel);
-      Region *parentRegion = kernel->getParentRegion();
-      Value executeContext = nullptr;
+    WalkResult executeWalkResult =
+        execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
+          builder.setInsertionPoint(kernel);
+          Region *parentRegion = kernel->getParentRegion();
+          Value executeContext = nullptr;
 
-      // For execute block, need to account for the bounding region in the
-      // case of control flow or other bounding operations.
-      while (parentRegion && !executeContext) {
-        for (Value arg : parentRegion->getArguments()) {
-          if (isa<MGP::ContextType>(arg.getType()))
-            executeContext = arg;
-        }
-        parentRegion = parentRegion->getParentRegion();
-      }
-      ASSERT_STREAM(executeContext,
-                    << "Cannot find execute context in bounding region of "
-                       "generic.execute");
-      auto [moduleIndex, kernelIndex] =
-          kernelModuleAndFnIndex[kernel.getCalleeSymbol()];
-      rewriteExecuteCompiledOp(builder, executeContext,
-                               lastDeviceRuntimeOp.getSlot(), moduleIndex,
-                               kernelIndex, kernel);
+          // For execute block, need to account for the bounding region in the
+          // case of control flow or other bounding operations.
+          while (parentRegion && !executeContext) {
+            for (Value arg : parentRegion->getArguments()) {
+              if (isa<MGP::ContextType>(arg.getType()))
+                executeContext = arg;
+            }
+            parentRegion = parentRegion->getParentRegion();
+          }
+          ASSERT_STREAM(executeContext,
+                        << "Cannot find execute context in bounding region of "
+                           "generic.execute");
+          auto kernelIndexIt =
+              kernelModuleAndFnIndex.find(kernel.getCalleeSymbol());
+          if (kernelIndexIt == kernelModuleAndFnIndex.end()) {
+            kernel.emitError()
+                << "compiled kernel '" << kernel.getCalleeSymbol()
+                << "' is not present in any loaded module";
+            signalPassFailure();
+            return WalkResult::interrupt();
+          }
+          auto [moduleIndex, kernelIndex] = kernelIndexIt->second;
+          // Execute-block executes need no setup-ordering guard: their slot is
+          // populated during the init phase, which always completes before the
+          // execute phase runs.
+          rewriteExecuteCompiledOp(builder, executeContext,
+                                   lastDeviceRuntimeOp.getSlot(), moduleIndex,
+                                   kernelIndex, kernel);
+          return WalkResult::advance();
+        });
+    if (executeWalkResult.wasInterrupted())
+      return;
+
+    // `mgp.module.load` is a stateful op: it populates the
+    // `KernelExecutionState` slot that an init-block `mgp.generic.execute`
+    // reads through its `!mgp.context`.
+
+    // Route each chain-less init execute's context through an `mgp.guard` on
+    // the load chain of the module it calls into. Gate per module so unrelated
+    // init kernels stay free to run in parallel.
+    init.walk([&](MGP::ExecuteGenericOp exec) {
+      // Already ordered after the load through a chain operand: leave it alone.
+      if (llvm::any_of(exec->getOperands(), [](Value v) {
+            return isa<MEF::ChainType>(v.getType());
+          }))
+        return;
+      // A chain-less execute resolved its callee to a loaded module above,
+      // which also pushed that module's load chain, so the index is in range.
+      uint64_t moduleIndex = exec.getBModuleIndex();
+      assert(moduleIndex < moduleLoadResultByIndex.size() &&
+             "chain-less init execute has no module-load chain to order after");
+      if (moduleIndex >= moduleLoadResultByIndex.size())
+        return;
+      Value context = exec.getTheContext();
+      Value moduleLoadChain = moduleLoadResultByIndex[moduleIndex];
+      builder.setInsertionPoint(exec);
+      auto guard = MGP::GuardOp::create(builder, exec.getLoc(),
+                                        TypeRange{context.getType()},
+                                        moduleLoadChain, ValueRange{context});
+      exec.getTheContextMutable().assign(guard.getResult(0));
     });
 
     // In emit-mojo path, ToMGPFromOpaqueOp is used to convert mo.opaque to
