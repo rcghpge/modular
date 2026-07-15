@@ -10,7 +10,7 @@
 # overridden with a tile-output variant.
 #
 from std.collections.string import StaticString
-import extensibility as compiler
+import extensibility
 from extensibility import (
     InputTensor,
     _FusedComputeOutputTileTensor,
@@ -18,7 +18,7 @@ from extensibility import (
 from std.gpu.host import DeviceContext
 
 
-@compiler.register("mo.matmul")
+@extensibility.register("mo.matmul")
 struct TileMatmulStub:
     @staticmethod
     def execute[

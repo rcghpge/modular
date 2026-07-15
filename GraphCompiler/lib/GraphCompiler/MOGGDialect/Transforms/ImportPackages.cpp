@@ -327,14 +327,15 @@ struct ScannedKernel {
 
 /// One primitive (non-struct) function found while scanning.
 /// Primitives are standalone functions decorated with @register_internal,
-/// as opposed to kernels which are structs decorated with @compiler.register.
+/// as opposed to kernels which are structs decorated with
+/// @extensibility.register.
 struct ScannedPrimitiveFunction {
   mlir::StringAttr registration;
   KGEN::LIT::FnOp func;
 };
 
 /// One standalone shape function found during scanning, decorated with
-/// @compiler.register_shape_function. `funcSymName` is the FQN of the
+/// @extensibility.register_shape_function. `funcSymName` is the FQN of the
 /// function itself, used as the sym_name of the emitted ShapeFunctionDeclOp.
 struct ScannedShapeFunction {
   mlir::StringAttr registration;
@@ -342,10 +343,10 @@ struct ScannedShapeFunction {
   KGEN::LIT::FnOp func;
 };
 
-/// Walk `mod` for struct declarations decorated with @compiler.register
+/// Walk `mod` for struct declarations decorated with @extensibility.register
 /// (kernels), standalone functions decorated with @register_internal
 /// (primitives), and standalone functions decorated with
-/// @compiler.register_shape_function (shapeFunctions).
+/// @extensibility.register_shape_function (shapeFunctions).
 static mlir::LogicalResult scanForKernelDecls(
     mlir::ModuleOp mod, llvm::SmallVectorImpl<ScannedKernel> &kernels,
     llvm::SmallVectorImpl<ScannedPrimitiveFunction> &primitives,
@@ -387,7 +388,7 @@ static mlir::LogicalResult scanForKernelDecls(
       else if (srcName == kMoggShapeFuncName) {
         func.emitError()
             << "shape functions defined as methods of a kernel struct are no "
-               "longer supported; use @compiler.register_shape_function "
+               "longer supported; use @extensibility.register_shape_function "
                "instead";
         result = mlir::failure();
         return mlir::WalkResult::interrupt();
@@ -541,7 +542,7 @@ static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
   // don't care about.
   pkg->walk<mlir::WalkOrder::PreOrder>([&](KGEN::LIT::StructDeclOp structOp)
                                            -> mlir::WalkResult {
-    // Skip @compiler.register kernel structs. They are implementations
+    // Skip @extensibility.register kernel structs. They are implementations
     // resolved by registration string through MojoRegistry and never flow as
     // !mo.opaque<…> data values, so they don't belong in the opaque-type
     // resolution table; including them is dead weight and a simple-name
@@ -628,7 +629,7 @@ struct ImportPackagesPass
     : public impl::ImportPackagesBase<ImportPackagesPass> {
   using Base::Base;
 
-  // Emit mogg.kernel.decl ops for @compiler.register kernels and
+  // Emit mogg.kernel.decl ops for @extensibility.register kernels and
   // mogg.primitive.decl ops for @register_internal primitives found in `pkg`.
   // Also populates `opaqueTypeMapping` with simple → fully-qualified struct
   // name entries discovered in `pkg`. `isUserDefined` sets the is_user_defined

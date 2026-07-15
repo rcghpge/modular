@@ -16,7 +16,7 @@ from std.utils import IndexList
 
 from layout import coord_to_index_list
 
-import extensibility as compiler
+import extensibility
 from extensibility import (
     DenseTensor,
     Fused,
@@ -33,7 +33,7 @@ from extensibility import (
 
 
 # No role trait (none of Input / Output / MutableInput).
-@compiler.register("trait_no_role")
+@extensibility.register("trait_no_role")
 struct TraitNoRole:
     @staticmethod
     def execute[
@@ -43,7 +43,7 @@ struct TraitNoRole:
 
 
 # More than one role trait.
-@compiler.register("trait_two_roles")
+@extensibility.register("trait_two_roles")
 struct TraitTwoRoles:
     @staticmethod
     def execute[
@@ -54,7 +54,7 @@ struct TraitTwoRoles:
 
 
 # Fused but with no access form.
-@compiler.register("trait_fused_no_access")
+@extensibility.register("trait_fused_no_access")
 struct TraitFusedNoAccess:
     @staticmethod
     def execute[
@@ -65,7 +65,7 @@ struct TraitFusedNoAccess:
 
 # A foreign (non-tensor-argument) trait in the bound -- `Copyable` is a stdlib
 # trait, not part of extensibility.tensor_arg_traits.
-@compiler.register("trait_foreign")
+@extensibility.register("trait_foreign")
 struct TraitForeign:
     @staticmethod
     def execute[
@@ -76,7 +76,7 @@ struct TraitForeign:
 
 
 # Store access on a read-only Input.
-@compiler.register("trait_store_on_input")
+@extensibility.register("trait_store_on_input")
 struct TraitStoreOnInput:
     @staticmethod
     def execute[
@@ -87,7 +87,7 @@ struct TraitStoreOnInput:
 
 # Two role traits, specifically the `Input & MutableInput` pair (exact-leaf
 # matching means `MutableInput` does not subsume `Input`; both roles count).
-@compiler.register("trait_input_and_mutable_input")
+@extensibility.register("trait_input_and_mutable_input")
 struct TraitInputAndMutableInput:
     @staticmethod
     def execute[
@@ -101,7 +101,7 @@ struct TraitInputAndMutableInput:
 # `Loadable` and `Storable` capability leaves. Multiple access forms are allowed
 # on a NON-fused arg, but a fused arg must declare exactly one, so this is
 # rejected.
-@compiler.register("trait_multi_access_forms")
+@extensibility.register("trait_multi_access_forms")
 struct TraitMultiAccessForms:
     @staticmethod
     def execute[
@@ -116,7 +116,7 @@ struct TraitMultiAccessForms:
 # Two access MARKERS on a NON-fused input (`LoadAccess & StoreAccess`).
 # Multiple access forms are now allowed, but `store` is still invalid on a
 # read-only Input, so the per-form role/access check rejects it.
-@compiler.register("trait_multi_access_markers_nonfused")
+@extensibility.register("trait_multi_access_markers_nonfused")
 struct TraitMultiAccessMarkersNonFused:
     @staticmethod
     def execute[
@@ -127,7 +127,7 @@ struct TraitMultiAccessMarkersNonFused:
 
 # Load access on an Output: `Output & Fused & Loadable` -- load is not valid on
 # an output.
-@compiler.register("trait_load_on_output")
+@extensibility.register("trait_load_on_output")
 struct TraitLoadOnOutput:
     @staticmethod
     def execute[
@@ -138,7 +138,7 @@ struct TraitLoadOnOutput:
 
 # Transform access on a read-only Input: `Input & Fused & Transformable` --
 # transform requires an Output.
-@compiler.register("trait_transform_on_input")
+@extensibility.register("trait_transform_on_input")
 struct TraitTransformOnInput:
     @staticmethod
     def execute[
@@ -149,7 +149,7 @@ struct TraitTransformOnInput:
 
 # Transform access on a MutableInput: `MutableInput & Fused & Transformable` --
 # transform requires an Output, so a mutable input is also rejected.
-@compiler.register("trait_transform_on_mutable_input")
+@extensibility.register("trait_transform_on_mutable_input")
 struct TraitTransformOnMutableInput:
     @staticmethod
     def execute[
@@ -164,14 +164,14 @@ struct TraitTransformOnMutableInput:
 # A shape-function tensor argument carrying an io-role marker. Shape-fn args are
 # read-only and must carry no role (use `Some[DenseTensor]`), so an `Input`
 # (or any io-role) is rejected in the shape-fn distill lane.
-@compiler.register_shape_function("trait_shape_fn_with_role")
+@extensibility.register_shape_function("trait_shape_fn_with_role")
 def trait_shape_fn_with_role[T: Input & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
 
 
 # A shape-function tensor argument carrying `Fused`. Fusion is an `execute`-only
 # concept; rejected on a shape-fn arg.
-@compiler.register_shape_function("trait_shape_fn_fused")
+@extensibility.register_shape_function("trait_shape_fn_fused")
 def trait_shape_fn_fused[T: Fused & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
 
@@ -179,6 +179,6 @@ def trait_shape_fn_fused[T: Fused & DenseTensor](x: T) -> IndexList[T.rank]:
 # A shape-function tensor argument carrying `TileTensorable` (data access). A
 # data-reading shape function must stay on the legacy `InputTensor` lane until
 # the data-dependent projection is wired (Slice 5); rejected here.
-@compiler.register_shape_function("trait_shape_fn_tiletensorable")
+@extensibility.register_shape_function("trait_shape_fn_tiletensorable")
 def trait_shape_fn_tiletensorable[T: TileTensorable](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

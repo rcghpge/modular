@@ -13,7 +13,7 @@ from std.gpu import global_idx
 from std.gpu.host.info import is_cpu
 from std.sys.info import simd_width_of
 import std.algorithm.functional
-import extensibility as compiler
+import extensibility
 from layout import IntTuple, TensorLayout
 from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
@@ -89,7 +89,7 @@ struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
         self.val = val
 
 
-@compiler.register("tensor_to_custom_scalar_si32_reg_trivial")
+@extensibility.register("tensor_to_custom_scalar_si32_reg_trivial")
 struct OpaqueToCustomScalarSI32RegTrivial:
     @staticmethod
     def execute(
@@ -124,7 +124,7 @@ struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterPassable):
         print("MyCustomScalarRegF32.__del__", self.val)
 
 
-@compiler.register("tensor_to_custom_scalar_si32_reg")
+@extensibility.register("tensor_to_custom_scalar_si32_reg")
 struct OpaqueToCustomScalarSI32Reg:
     @staticmethod
     def execute(
@@ -135,7 +135,7 @@ struct OpaqueToCustomScalarSI32Reg:
 
 # Adds two custom scalar types (one of which is register passable) and writes
 # to a tensor
-@compiler.register("opaque_add_to_tensor_si32_reg")
+@extensibility.register("opaque_add_to_tensor_si32_reg")
 struct OpaqueAddToTensorSI32Reg:
     @staticmethod
     def execute[
@@ -148,7 +148,7 @@ struct OpaqueAddToTensorSI32Reg:
         outp[0] = x.val + y.val
 
 
-@compiler.register("opaque_add_to_tensor_f32_reg")
+@extensibility.register("opaque_add_to_tensor_f32_reg")
 struct OpaqueAddToTensorF32:
     @staticmethod
     def execute[
@@ -178,7 +178,7 @@ struct MyCustomScalarSI32(ImplicitlyCopyable):
         print("MyCustomScalarSI32.__del__", self.val)
 
 
-@compiler.register("tensor_to_custom_scalar_si32")
+@extensibility.register("tensor_to_custom_scalar_si32")
 struct OpaqueToCustomScalarSI32:
     @staticmethod
     def execute(
@@ -189,7 +189,7 @@ struct OpaqueToCustomScalarSI32:
 
 # Adds two custom scalar types (one of which is register passable) and writes
 # to a tensor
-@compiler.register("opaque_add_to_tensor_si32")
+@extensibility.register("opaque_add_to_tensor_si32")
 struct OpaqueAddToTensorSI32:
     @staticmethod
     def execute[
@@ -202,7 +202,7 @@ struct OpaqueAddToTensorSI32:
         outp[0] = x.val + y.val
 
 
-@compiler.register("opaque_add_to_tensor_si32_raises")
+@extensibility.register("opaque_add_to_tensor_si32_raises")
 struct OpaqueAddToTensorSI32Raises:
     @staticmethod
     def execute[
@@ -220,7 +220,7 @@ struct OpaqueAddToTensorSI32Raises:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("imposter_add")
+@extensibility.register("imposter_add")
 struct Foo:
     @staticmethod
     def execute[
@@ -241,7 +241,7 @@ struct Foo:
         foreach[func](z, ctx)
 
 
-@compiler.register_shape_function("imposter_add")
+@extensibility.register_shape_function("imposter_add")
 def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
@@ -273,7 +273,7 @@ def _gpu_negate_kernel[
 # A single struct serves both targets: the CPU path runs the host
 # `TileTensorable` projection; the GPU path crosses the same value as a
 # `DevicePassable` and projects to a device `TileTensor`.
-@compiler.register("trait_negate")
+@extensibility.register("trait_negate")
 struct TraitNegate:
     @staticmethod
     def execute[
@@ -318,7 +318,7 @@ struct TraitNegate:
 # buffer (`x[i] += 1`). Proves the emitted `_MoggDenseTensorArg[io=MUTABLE_INPUT]`
 # satisfies a `MutableInput & DenseTensor & TileTensorable` stub bound -- i.e.
 # the wrapper conforms to `MutableInput` (gated on the io), not just `Input`.
-@compiler.register("trait_inplace_increment")
+@extensibility.register("trait_inplace_increment")
 struct TraitInplaceIncrement:
     @staticmethod
     def execute[
@@ -375,7 +375,7 @@ def _gpu_fused_load_negate_kernel[
     output.raw_store(i, rebind[SIMD[dtype, 1]](-input.load[1](Coord(i))))
 
 
-@compiler.register("trait_fused_load_negate")
+@extensibility.register("trait_fused_load_negate")
 struct TraitFusedLoadNegate:
     @staticmethod
     def execute[
@@ -432,7 +432,7 @@ def _gpu_fused_store_double_kernel[
     output.store[1](Coord(i), rebind[SIMD[type_of(output).dtype, 1]](v))
 
 
-@compiler.register("trait_fused_store_double")
+@extensibility.register("trait_fused_store_double")
 struct TraitFusedStoreDouble:
     @staticmethod
     def execute[
@@ -513,7 +513,7 @@ def _launch_fused_store_parameter_closure[
     )
 
 
-@compiler.register("trait_fused_store_parameter_closure")
+@extensibility.register("trait_fused_store_parameter_closure")
 struct TraitFusedStoreParameterClosure:
     @staticmethod
     def execute[
@@ -588,7 +588,7 @@ def _gpu_fused_transform_bias_kernel[
     zt.store(coord, rebind[SIMD[type_of(zt).dtype, 1]](t))
 
 
-@compiler.register("trait_fused_transform_bias")
+@extensibility.register("trait_fused_transform_bias")
 struct TraitFusedTransformBias:
     @staticmethod
     def execute[
@@ -645,7 +645,7 @@ struct TraitFusedTransformBias:
 #      `flip` and fn params `[dtype, target]`, an arg referencing `dtype` is
 #      `*(0, 1)`, which mapped to `target` (`fnLevelParams[1]`) instead of
 #      `dtype` (`(struct + fn)[1]`).
-@compiler.register("imposter_add_struct_param")
+@extensibility.register("imposter_add_struct_param")
 struct FooWithStructParam[flip: Bool]:
     @staticmethod
     def execute[
@@ -668,7 +668,7 @@ struct FooWithStructParam[flip: Bool]:
         foreach[func](z, ctx)
 
 
-@compiler.register_shape_function("imposter_add_struct_param")
+@extensibility.register_shape_function("imposter_add_struct_param")
 def imposter_add_struct_param_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
@@ -704,7 +704,7 @@ def _matmul[
 
 
 # c = a @ b, should support CPU and GPU
-@compiler.register("imposter_matmul")
+@extensibility.register("imposter_matmul")
 struct ImposterMatmul:
     @staticmethod
     def execute[
@@ -718,7 +718,7 @@ struct ImposterMatmul:
         _matmul(c, a, b)
 
 
-@compiler.register_shape_function("imposter_matmul")
+@extensibility.register_shape_function("imposter_matmul")
 def imposter_matmul_shape(
     a: InputTensor,
     b: InputTensor,
@@ -728,7 +728,7 @@ def imposter_matmul_shape(
     return rebind[IndexList[2]](shape)
 
 
-@compiler.register("print_tensor_spec")
+@extensibility.register("print_tensor_spec")
 struct PrintTensorSpecOp:
     @staticmethod
     def execute[
@@ -747,12 +747,12 @@ struct PrintTensorSpecOp:
         foreach[func](outp, ctx)
 
 
-@compiler.register_shape_function("print_tensor_spec")
+@extensibility.register_shape_function("print_tensor_spec")
 def print_tensor_spec_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
-@compiler.register("print_tensor")
+@extensibility.register("print_tensor")
 struct PrintTensor:
     @staticmethod
     def execute[
@@ -768,8 +768,8 @@ struct PrintTensor:
         foreach[func](outp, ctx)
 
 
-@compiler.register("print_tensor_spec_view")
-@compiler.view_kernel
+@extensibility.register("print_tensor_spec_view")
+@extensibility.view_kernel
 struct PrintTensorSpecViewOp:
     @staticmethod
     def print_spec(x: InputTensor):
@@ -797,12 +797,12 @@ struct PrintTensorSpecViewOp:
         foreach[func](outp, ctx)
 
 
-@compiler.register_shape_function("print_tensor_spec_view")
+@extensibility.register_shape_function("print_tensor_spec_view")
 def print_tensor_spec_view_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
-@compiler.register("print_tensor_spec_fused")
+@extensibility.register("print_tensor_spec_fused")
 struct PrintTensorSpecFusedOp:
     @staticmethod
     def execute[
@@ -825,12 +825,12 @@ struct PrintTensorSpecFusedOp:
         foreach[func](outp, ctx)
 
 
-@compiler.register_shape_function("print_tensor_spec_fused")
+@extensibility.register_shape_function("print_tensor_spec_fused")
 def print_tensor_spec_fused_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
-@compiler.register("print_output_shape_strides_fused")
+@extensibility.register("print_output_shape_strides_fused")
 struct PrintOutputShapeStridesFusedOp:
     @staticmethod
     def execute[
@@ -856,12 +856,12 @@ struct PrintOutputShapeStridesFusedOp:
         foreach[func](output, ctx)
 
 
-@compiler.register_shape_function("print_output_shape_strides_fused")
+@extensibility.register_shape_function("print_output_shape_strides_fused")
 def print_output_shape_strides_fused_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
-@compiler.register("imposter_add_elementwise")
+@extensibility.register("imposter_add_elementwise")
 struct AddElementwise:
     @staticmethod
     def elementwise[
@@ -871,7 +871,7 @@ struct AddElementwise:
         return lhs + rhs
 
 
-@compiler.register("imposter_add_lhs")
+@extensibility.register("imposter_add_lhs")
 struct AddFuseLHS:
     @staticmethod
     def execute[
@@ -892,7 +892,7 @@ struct AddFuseLHS:
         foreach[func](z, ctx)
 
 
-@compiler.register("imposter_has_prologue_fusion")
+@extensibility.register("imposter_has_prologue_fusion")
 struct ImposterHasPrologueFusion:
     @staticmethod
     def execute[
@@ -911,7 +911,7 @@ struct ImposterHasPrologueFusion:
         foreach[func](output, ctx)
 
 
-@compiler.register("imposter_add_fuse_inputs")
+@extensibility.register("imposter_add_fuse_inputs")
 struct AddFuseInputs:
     @staticmethod
     def execute[
@@ -933,7 +933,7 @@ struct AddFuseInputs:
 
 
 # c = a @ b, should support CPU and GPU
-@compiler.register("matmul_fuse_out")
+@extensibility.register("matmul_fuse_out")
 struct MatmulFuseOut:
     @staticmethod
     def execute[
@@ -962,7 +962,7 @@ struct MatmulFuseOut:
         _matmul[elementwise_lambda_fn=out_func](c, a, b)
 
 
-@compiler.register_shape_function("matmul_fuse_out")
+@extensibility.register_shape_function("matmul_fuse_out")
 def matmul_fuse_out_shape(
     a: InputTensor,
     b: InputTensor,
@@ -974,7 +974,7 @@ def matmul_fuse_out_shape(
 
 # Simple, expects variadics to have the same size, and simply copies the first
 # number from the associated inputs to outputs, plus a bias
-@compiler.register("variadic_input_to_output")
+@extensibility.register("variadic_input_to_output")
 struct VariadicInputToOutput:
     @staticmethod
     def execute[
@@ -994,7 +994,7 @@ struct VariadicInputToOutput:
 
 # Simply adds the first number of bias to the first number of boath outputs
 # Mainly here to test logic with multiple DPS outputs
-@compiler.register("add_bias_to_two_tensors")
+@extensibility.register("add_bias_to_two_tensors")
 struct AddBiasToDouble:
     @staticmethod
     def execute[
@@ -1011,7 +1011,7 @@ struct AddBiasToDouble:
         output2[0] = input2[0] + bias[0]
 
 
-@compiler.register("inplace_increment_elem")
+@extensibility.register("inplace_increment_elem")
 struct BasicInplace:
     @staticmethod
     def execute[
@@ -1023,7 +1023,7 @@ struct BasicInplace:
 
 
 # Have this nearly identical version as having a raise changes the Mojo function's signature
-@compiler.register("inplace_increment_elem_raises")
+@extensibility.register("inplace_increment_elem_raises")
 struct BasicInplaceRaises:
     @staticmethod
     def execute[
@@ -1034,7 +1034,7 @@ struct BasicInplaceRaises:
         input[0, 0] = x
 
 
-@compiler.register("variadic_add")
+@extensibility.register("variadic_add")
 struct VariadicAdd:
     @staticmethod
     def execute[
@@ -1059,8 +1059,8 @@ struct VariadicAdd:
         foreach[func](output, ctx)
 
 
-@compiler.register("transpose_2d")
-@compiler.view_kernel
+@extensibility.register("transpose_2d")
+@extensibility.view_kernel
 struct Transpose2DOp:
     @staticmethod
     def build_view[
@@ -1117,7 +1117,7 @@ struct Transpose2DOp:
         view_copy_impl[target=target](z, x_view, ctx)
 
 
-@compiler.register("print_shape_fused")
+@extensibility.register("print_shape_fused")
 struct ElementwisePrintShape:
     @staticmethod
     def execute[
@@ -1138,13 +1138,13 @@ struct ElementwisePrintShape:
         foreach[func](z, ctx)
 
 
-@compiler.register_shape_function("print_shape_fused")
+@extensibility.register_shape_function("print_shape_fused")
 def print_shape_fused_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
 # Raises if input shape is 10
-@compiler.register("custom_op_that_raises")
+@extensibility.register("custom_op_that_raises")
 struct CustomOpThatRaises:
     @staticmethod
     def execute[
@@ -1161,7 +1161,7 @@ struct CustomOpThatRaises:
         foreach[func](z, ctx)
 
 
-@compiler.register_shape_function("custom_op_that_raises")
+@extensibility.register_shape_function("custom_op_that_raises")
 def custom_op_that_raises_shape(x: InputTensor) raises -> IndexList[x.rank]:
     print("Hello")
     var out_shape = x.shape()
@@ -1170,7 +1170,7 @@ def custom_op_that_raises_shape(x: InputTensor) raises -> IndexList[x.rank]:
     return out_shape
 
 
-@compiler.register("mo.test.failing_constraint")
+@extensibility.register("mo.test.failing_constraint")
 struct OpThatAlwaysFailsConstraint:
     @staticmethod
     def execute[
@@ -1184,7 +1184,7 @@ struct OpThatAlwaysFailsConstraint:
         ), "Expected constraint failure for error message testing"
 
 
-@compiler.register("mo.test.return_error")
+@extensibility.register("mo.test.return_error")
 struct OpThatAlwaysRaises:
     @staticmethod
     def execute[
@@ -1197,7 +1197,7 @@ struct OpThatAlwaysRaises:
         raise Error("This is an error")
 
 
-@compiler.register("monnx.abs_v13")
+@extensibility.register("monnx.abs_v13")
 struct MONNXAbsOverload:
     @staticmethod
     def execute[
@@ -1216,7 +1216,7 @@ struct MONNXAbsOverload:
         foreach[func](out_tensor, ctx)
 
 
-@compiler.register("torch.aten.abs")
+@extensibility.register("torch.aten.abs")
 struct MTorchAbsOverload:
     @staticmethod
     def execute[
@@ -1235,7 +1235,7 @@ struct MTorchAbsOverload:
         foreach[func](out_tensor, ctx)
 
 
-@compiler.register("op_with_custom_params")
+@extensibility.register("op_with_custom_params")
 struct OpWithCustomParams:
     @staticmethod
     def execute[
@@ -1254,14 +1254,14 @@ struct OpWithCustomParams:
         print("custom_dtype =", custom_dtype)
 
 
-@compiler.register("mgprt_test_func")
+@extensibility.register("mgprt_test_func")
 struct MGPRTTestFunc:
     @staticmethod
     def execute(out_tensor: OutputTensor) raises:
         external_call["MGP_RT_TEST", NoneType]()
 
 
-@compiler.register("mutable_test_op")
+@extensibility.register("mutable_test_op")
 struct MutableTestOp:
     @staticmethod
     def execute(in_place_tensor: MutableInputTensor) raises:
@@ -1269,7 +1269,7 @@ struct MutableTestOp:
 
 
 # For testing support for Scalar[...] in Mojo
-@compiler.register("supports_scalar_kernel")
+@extensibility.register("supports_scalar_kernel")
 struct SupportsScalarKernel:
     @staticmethod
     def execute[
@@ -1283,7 +1283,7 @@ struct SupportsScalarKernel:
         print("value is", y)
 
 
-@compiler.register("kernel_with_no_target")
+@extensibility.register("kernel_with_no_target")
 struct KernelWithNoTarget:
     @staticmethod
     def execute[
@@ -1295,7 +1295,7 @@ struct KernelWithNoTarget:
         print("hello from kernel with no target")
 
 
-@compiler.register("basic_target")
+@extensibility.register("basic_target")
 struct BasicTarget:
     @staticmethod
     def execute[
@@ -1319,7 +1319,7 @@ struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, RegisterPassable):
         print("MyCustomScalarReg.__del__", self.val)
 
 
-@compiler.register("buff_to_my_custom_scalar_reg")
+@extensibility.register("buff_to_my_custom_scalar_reg")
 struct BuffToMyCustomScalarReg:
     @staticmethod
     def execute[
@@ -1330,7 +1330,7 @@ struct BuffToMyCustomScalarReg:
         return MyCustomScalarReg(x[0])
 
 
-@compiler.register("my_custom_scalar_reg_to_buff")
+@extensibility.register("my_custom_scalar_reg_to_buff")
 struct CustomScalarRegToBuff:
     @staticmethod
     def execute[
@@ -1342,7 +1342,7 @@ struct CustomScalarRegToBuff:
         input[0] = x.val
 
 
-@compiler.register("test_custom_op")
+@extensibility.register("test_custom_op")
 struct TestCustomOp:
     @staticmethod
     def execute[
@@ -1354,7 +1354,7 @@ struct TestCustomOp:
         print("World!")
 
 
-@compiler.register_shape_function("test_custom_op")
+@extensibility.register_shape_function("test_custom_op")
 def test_custom_op_shape[
     dtype: DType, rank: Int
 ](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
@@ -1368,7 +1368,7 @@ def test_custom_op_shape[
 # instead of a legacy `InputTensor`). The `execute` entry stays on the legacy
 # lane -- the shape-fn migration is independent of how `execute` is written --
 # and copies input to output so the result is verifiable end-to-end.
-@compiler.register("trait_metadata_shape_op")
+@extensibility.register("trait_metadata_shape_op")
 struct TraitMetadataShapeOp:
     @staticmethod
     def execute[
@@ -1386,14 +1386,14 @@ struct TraitMetadataShapeOp:
         foreach[func](output, ctx)
 
 
-@compiler.register_shape_function("trait_metadata_shape_op")
+@extensibility.register_shape_function("trait_metadata_shape_op")
 def trait_metadata_shape_op_shape[
     T: DenseTensor
 ](input: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
 
 
-@compiler.register("single_device_context")
+@extensibility.register("single_device_context")
 struct SingleDeviceContext:
     @staticmethod
     def execute[
@@ -1406,7 +1406,7 @@ struct SingleDeviceContext:
         dev_ctx[0].synchronize()
 
 
-@compiler.register("multi_device_context")
+@extensibility.register("multi_device_context")
 struct MultiDeviceContext:
     @staticmethod
     def execute[
@@ -1422,7 +1422,7 @@ struct MultiDeviceContext:
         dev_ctxs[1].synchronize()
 
 
-@compiler.register("multi_device_context_dedup")
+@extensibility.register("multi_device_context_dedup")
 struct MultiDeviceContextDedup:
     @staticmethod
     def execute[
@@ -1437,7 +1437,7 @@ struct MultiDeviceContextDedup:
         dev_ctxs[1].synchronize()
 
 
-@compiler.register("variadic_device_context")
+@extensibility.register("variadic_device_context")
 struct VariadicDeviceContext:
     @staticmethod
     def execute[
@@ -1454,7 +1454,7 @@ struct VariadicDeviceContext:
             dev_ctxs[i].synchronize()
 
 
-@compiler.register("imposter_cast_elementwise")
+@extensibility.register("imposter_cast_elementwise")
 struct CastElementwise:
     @staticmethod
     def elementwise[
@@ -1465,7 +1465,7 @@ struct CastElementwise:
         return x.cast[out_dtype]()
 
 
-@compiler.register("print_vector_size")
+@extensibility.register("print_vector_size")
 struct PrintVectorSize:
     @staticmethod
     def elementwise[
@@ -1487,7 +1487,7 @@ struct PrintVectorSize:
         return x
 
 
-@compiler.register("tensor_opaque_tensor_kernel")
+@extensibility.register("tensor_opaque_tensor_kernel")
 struct TensorOpaqueTensorKernel:
     @staticmethod
     def execute[
@@ -1501,7 +1501,7 @@ struct TensorOpaqueTensorKernel:
         pass
 
 
-@compiler.register("test_same_rank_dtype")
+@extensibility.register("test_same_rank_dtype")
 struct TestSameRankDtype:
     @staticmethod
     def execute[
@@ -1513,7 +1513,7 @@ struct TestSameRankDtype:
         output[0] = input[0]
 
 
-@compiler.register("test_fix_rank")
+@extensibility.register("test_fix_rank")
 struct TestFixRank:
     @staticmethod
     def execute[
@@ -1525,7 +1525,7 @@ struct TestFixRank:
         output[0] = input[0]
 
 
-@compiler.register("test_simd_input_size_1")
+@extensibility.register("test_simd_input_size_1")
 struct TestSIMDInputSize1:
     @staticmethod
     def execute[
@@ -1537,7 +1537,7 @@ struct TestSIMDInputSize1:
         output[0] = input[0]
 
 
-@compiler.register("test_simd_input")
+@extensibility.register("test_simd_input")
 struct TestSIMDInput:
     @staticmethod
     def execute[
@@ -1549,7 +1549,7 @@ struct TestSIMDInput:
         output[0] = input[0]
 
 
-@compiler.register("test_simd_input_size_2")
+@extensibility.register("test_simd_input_size_2")
 struct TestSIMDInputSize2:
     @staticmethod
     def execute[
@@ -1561,7 +1561,7 @@ struct TestSIMDInputSize2:
         output[0] = input[0]
 
 
-@compiler.register("custom_op_with_custom_parameter_shape_func")
+@extensibility.register("custom_op_with_custom_parameter_shape_func")
 struct CustomOpWithCustomParameterShapeFunc:
     @staticmethod
     def execute[
@@ -1570,14 +1570,16 @@ struct CustomOpWithCustomParameterShapeFunc:
         raise "This should not run!"
 
 
-@compiler.register_shape_function("custom_op_with_custom_parameter_shape_func")
+@extensibility.register_shape_function(
+    "custom_op_with_custom_parameter_shape_func"
+)
 def custom_op_with_custom_parameter_shape_func_shape[
     test_flag: Int
 ](input_tensor: InputTensor,) -> IndexList[input_tensor.rank]:
     return input_tensor.shape()
 
 
-@compiler.register("custom_op_with_static_string_params")
+@extensibility.register("custom_op_with_static_string_params")
 struct CustomOpWithStaticStringParams:
     @staticmethod
     def execute[target: StaticString, foo: StaticString]():
@@ -1600,7 +1602,7 @@ struct TensorWrapper(RegisterPassable):
     ]
 
 
-@compiler.register("to_tensor_wrapper")
+@extensibility.register("to_tensor_wrapper")
 struct ToTensorWrapper:
     @always_inline
     @staticmethod
@@ -1623,7 +1625,7 @@ struct ToTensorWrapper:
         )
 
 
-@compiler.register("print_tensor_wrapper")
+@extensibility.register("print_tensor_wrapper")
 struct TensorWrapperPrinter:
     @always_inline
     @staticmethod
@@ -1633,7 +1635,7 @@ struct TensorWrapperPrinter:
         print(tw.buffer)
 
 
-@compiler.register("fused_write_to_tensor_wrapper")
+@extensibility.register("fused_write_to_tensor_wrapper")
 struct MutableStore:
     @staticmethod
     def execute[
@@ -1670,7 +1672,7 @@ struct MutableStore:
         ](tensor, ctx)
 
 
-@compiler.register("my_square_compute_out_fusion")
+@extensibility.register("my_square_compute_out_fusion")
 struct MySquareComputeOutFusion:
     @staticmethod
     def execute[
@@ -1694,7 +1696,7 @@ struct MySquareComputeOutFusion:
             outp._fused_store[width=1](IndexList[1](0), res)
 
 
-@compiler.register("inplace_no_out_func")
+@extensibility.register("inplace_no_out_func")
 struct InplaceNoOutFunc:
     # This kernel is meant to test that epilogue fusion will
     # be skipped if the out_func overload of foreach is not used.
@@ -1719,7 +1721,7 @@ struct SIMDPair[S0: Int, S1: Int](RegisterPassable):
     var y: SIMD[DType.int32, Self.S1]
 
 
-@compiler.register("make_simd_pair")
+@extensibility.register("make_simd_pair")
 struct MakeSimdPair:
     @staticmethod
     def execute[P0: Int, P1: Int]() -> SIMDPair[P0, P1]:
@@ -1728,7 +1730,7 @@ struct MakeSimdPair:
         )
 
 
-@compiler.register("kernel_with_parameterized_opaque")
+@extensibility.register("kernel_with_parameterized_opaque")
 struct ParameterizedOpaqueType:
     @staticmethod
     def execute[
@@ -1741,14 +1743,14 @@ struct ParameterizedOpaqueType:
         output.store(IndexList[1](P0), x.y)
 
 
-@compiler.register_shape_function("kernel_with_parameterized_opaque")
+@extensibility.register_shape_function("kernel_with_parameterized_opaque")
 def kernel_with_parameterized_opaque_shape[
     P0: Int
 ](x: SIMDPair[P0, _]) -> IndexList[1]:
     return IndexList[1](x.S0 + x.S1)
 
 
-@compiler.register("kernel_with_default_parameter")
+@extensibility.register("kernel_with_default_parameter")
 struct KernelWithDefaultParameter:
     @staticmethod
     def execute[
@@ -1764,7 +1766,7 @@ struct KernelWithDefaultParameter:
         x.store(IndexList[1](0), Int32(0))
 
 
-@compiler.register("unique-parameters")
+@extensibility.register("unique-parameters")
 struct UniqueParameters:
     @always_inline
     @staticmethod
@@ -1786,7 +1788,7 @@ struct UniqueParameters:
             return MyCustomScalarRegTrivialSI32(1)
 
 
-@compiler.register("shape_func_with_mutable")
+@extensibility.register("shape_func_with_mutable")
 struct ShapeFuncWithMutable:
     @staticmethod
     def execute(
@@ -1797,14 +1799,14 @@ struct ShapeFuncWithMutable:
         output[0, 0] = 1.0
 
 
-@compiler.register_shape_function("shape_func_with_mutable")
+@extensibility.register_shape_function("shape_func_with_mutable")
 def shape_func_with_mutable_shape(
     x: InputTensor[rank=2, ...],
 ) -> IndexList[2]:
     return x.shape()
 
 
-@compiler.register("elemwise_add_with_param")
+@extensibility.register("elemwise_add_with_param")
 struct ElemwiseAddWithParam:
     @staticmethod
     def elementwise[
@@ -1815,7 +1817,7 @@ struct ElemwiseAddWithParam:
         return input + Scalar[dtype](bias)
 
 
-@compiler.register("elemwise_add_with_index")
+@extensibility.register("elemwise_add_with_index")
 struct ElemwiseAddWithIndex:
     @staticmethod
     def elementwise[
@@ -1832,7 +1834,7 @@ struct ElemwiseAddWithIndex:
 
 
 # Kernel that exposes both execute and build_graph entry points.
-@compiler.register("imposter_build_graph_capable")
+@extensibility.register("imposter_build_graph_capable")
 struct BuildGraphCapable:
     @staticmethod
     def execute[
@@ -1855,7 +1857,7 @@ struct BuildGraphCapable:
         pass
 
 
-@compiler.register("device_graph_fill")
+@extensibility.register("device_graph_fill")
 struct DeviceGraphFill:
     """Device-graph test kernel that fills its output with the constant `7`.
 
@@ -1916,7 +1918,7 @@ struct DeviceGraphFill:
         )
 
 
-@compiler.register("device_graph_increment")
+@extensibility.register("device_graph_increment")
 struct DeviceGraphIncrement:
     """Device-graph test kernel that adds the constant `1` to every element.
 
@@ -1980,7 +1982,7 @@ struct DeviceGraphIncrement:
         )
 
 
-@compiler.register("add_one", type="cpu")
+@extensibility.register("add_one", type="cpu")
 struct AddOneCPU:
     @staticmethod
     def execute[
@@ -1999,7 +2001,7 @@ struct AddOneCPU:
         )
 
 
-@compiler.register("gpu_only_kernel", type="gpu")
+@extensibility.register("gpu_only_kernel", type="gpu")
 struct GpuOnlyKernel:
     @staticmethod
     def execute[
@@ -2008,7 +2010,7 @@ struct GpuOnlyKernel:
         pass
 
 
-@compiler.register("add_one", type="gpu")
+@extensibility.register("add_one", type="gpu")
 struct AddOneGPU:
     @staticmethod
     def execute[
@@ -2031,7 +2033,7 @@ struct AddOneGPU:
 # `InputTensor` operands in the same `execute` signature, computing
 # `z[i] = x[i] + y[i]`. Confirms the trait-lane and legacy-lane capture
 # assembly compose in the same `CallExecuteOp::emitMojo` call.
-@compiler.register("trait_mixed_legacy_add")
+@extensibility.register("trait_mixed_legacy_add")
 struct TraitMixedLegacyAdd:
     @staticmethod
     def execute[
@@ -2055,7 +2057,7 @@ struct TraitMixedLegacyAdd:
 # `OutputTensor` alongside two trait-bound dense inputs, so the legacy write
 # path (`OutputTensor.__setitem__`) and the trait read path
 # (`to_tile_tensor(...).raw_load`) both fire in the same emitted kernel.
-@compiler.register("trait_mixed_legacy_out_add")
+@extensibility.register("trait_mixed_legacy_out_add")
 struct TraitMixedLegacyOutAdd:
     @staticmethod
     def execute[

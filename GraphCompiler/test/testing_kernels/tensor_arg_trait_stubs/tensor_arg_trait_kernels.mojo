@@ -16,7 +16,7 @@ from std.utils import IndexList
 
 from layout import coord_to_index_list
 
-import extensibility as compiler
+import extensibility
 from extensibility import (
     DenseTensor,
     Fused,
@@ -38,7 +38,7 @@ from extensibility import (
 
 
 # Dense add, written with explicit trait-bound generic type parameters.
-@compiler.register("trait_add_explicit")
+@extensibility.register("trait_add_explicit")
 struct TraitAddExplicit:
     @staticmethod
     def execute[
@@ -51,7 +51,7 @@ struct TraitAddExplicit:
 
 # Same contract as `TraitAddExplicit`, written with the `Some[...]` infer-only
 # sugar. Must distill to an identical contract per argument.
-@compiler.register("trait_add_some")
+@extensibility.register("trait_add_some")
 struct TraitAddSome:
     @staticmethod
     def execute[
@@ -67,7 +67,7 @@ struct TraitAddSome:
 
 # A fused, loadable input alongside a dense output -- exercises the fused-load
 # access form (`Input & Fused & Loadable`).
-@compiler.register("trait_fused_load")
+@extensibility.register("trait_fused_load")
 struct TraitFusedLoad:
     @staticmethod
     def execute[
@@ -84,7 +84,7 @@ struct TraitFusedLoad:
 # convention. A tensor arg's mutability belongs in its contract (the role), not
 # the calling convention, so VerifyKernels must reject this. It imports fine;
 # only `mogg-verify-kernels` flags it.
-@compiler.register("trait_bad_convention")
+@extensibility.register("trait_bad_convention")
 struct TraitBadConvention:
     @staticmethod
     def execute[
@@ -101,7 +101,7 @@ struct TraitBadConvention:
 # the legacy arg at position 1; the `!getTensorArgTraitType(...)` exclusion must
 # skip ONLY the trait arg at position 0. An off-by-one there would silently
 # suppress the legacy diagnostic.
-@compiler.register("trait_legacy_bad_convention")
+@extensibility.register("trait_legacy_bad_convention")
 struct TraitLegacyBadConvention:
     @staticmethod
     def execute[
@@ -118,8 +118,8 @@ struct TraitLegacyBadConvention:
 # `execute`-only for now, so VerifyKernels rejects this even though the
 # composition is well-formed and imports fine. (The `execute` here is a valid
 # trait kernel; only `update_input_view` is rejected.)
-@compiler.register("trait_update_view")
-@compiler.view_kernel
+@extensibility.register("trait_update_view")
+@extensibility.view_kernel
 struct TraitUpdateView:
     @staticmethod
     def update_input_view(input: Some[Input & DenseTensor]) -> Int:
@@ -139,7 +139,7 @@ struct TraitUpdateView:
 # Two dense trait outputs followed by a dense trait input -- exercises the
 # multi-output DPS split: both leading outputs must be classified as DPS
 # outputs (not folded into the inputs).
-@compiler.register("trait_multi_output")
+@extensibility.register("trait_multi_output")
 struct TraitMultiOutput:
     @staticmethod
     def execute[
@@ -156,7 +156,7 @@ struct TraitMultiOutput:
 # A dense output and a `MutableInput` trait argument -- the mutable-input role
 # must classify as a mutable (writable, non-DPS-output) tensor, distinct from a
 # read-only `Input`.
-@compiler.register("trait_mutable_input")
+@extensibility.register("trait_mutable_input")
 struct TraitMutableInput:
     @staticmethod
     def execute[
@@ -172,7 +172,7 @@ struct TraitMutableInput:
 # Mixed lane: a trait-bound dense output alongside legacy `ManagedTensorSlice`
 # (`InputTensor`) inputs. The trait output and the legacy inputs must classify
 # independently and coexist -- the legacy lane is unchanged.
-@compiler.register("trait_mixed_legacy")
+@extensibility.register("trait_mixed_legacy")
 struct TraitMixedLegacy:
     @staticmethod
     def execute[
@@ -189,7 +189,7 @@ struct TraitMixedLegacy:
 # Mirror of `trait_mixed_legacy` with a legacy `OutputTensor` and trait inputs:
 # the legacy output classifies as the DPS output, the trait inputs as borrowed
 # inputs.
-@compiler.register("trait_mixed_legacy_out")
+@extensibility.register("trait_mixed_legacy_out")
 struct TraitMixedLegacyOut:
     @staticmethod
     def execute[
@@ -207,7 +207,7 @@ struct TraitMixedLegacyOut:
 # fused-load roles. Each must classify identically to its `Some[...]` twin
 # above, proving the explicit and inferred spellings agree for ALL roles, not
 # just the dense add pair.
-@compiler.register("trait_multi_output_explicit")
+@extensibility.register("trait_multi_output_explicit")
 struct TraitMultiOutputExplicit:
     @staticmethod
     def execute[
@@ -218,7 +218,7 @@ struct TraitMultiOutputExplicit:
         pass
 
 
-@compiler.register("trait_mutable_input_explicit")
+@extensibility.register("trait_mutable_input_explicit")
 struct TraitMutableInputExplicit:
     @staticmethod
     def execute[
@@ -229,7 +229,7 @@ struct TraitMutableInputExplicit:
         pass
 
 
-@compiler.register("trait_fused_load_explicit")
+@extensibility.register("trait_fused_load_explicit")
 struct TraitFusedLoadExplicit:
     @staticmethod
     def execute[
@@ -243,7 +243,7 @@ struct TraitFusedLoadExplicit:
 # Leading mutable_input: the FIRST tensor arg is a (writable, non-output) input,
 # so `countDPSOutputs` must break at position 0 and yield ZERO DPS outputs --
 # directly exercising the "no leading output" boundary for trait args.
-@compiler.register("trait_leading_mutable")
+@extensibility.register("trait_leading_mutable")
 struct TraitLeadingMutable:
     @staticmethod
     def execute[
@@ -259,7 +259,7 @@ struct TraitLeadingMutable:
 # All-outputs: three leading trait outputs and nothing else, so the leading-
 # output loop runs to `n` without ever breaking -- covers count > 2 and the
 # run-to-end path.
-@compiler.register("trait_all_outputs")
+@extensibility.register("trait_all_outputs")
 struct TraitAllOutputs:
     @staticmethod
     def execute[
@@ -276,7 +276,7 @@ struct TraitAllOutputs:
 # Non-leading output: input, output, input. `countDPSOutputs` must break at the
 # FIRST input (position 0) and NOT count the later output as a DPS output --
 # mirroring the legacy struct lane's "break at first non-output" rule.
-@compiler.register("trait_non_leading_output")
+@extensibility.register("trait_non_leading_output")
 struct TraitNonLeadingOutput:
     @staticmethod
     def execute[
@@ -293,7 +293,7 @@ struct TraitNonLeadingOutput:
 # Mixed lane with a legacy MUTABLE arg: a legacy `MutableInputTensor`
 # (`mut=true`, non-DPS-output input) coexists with a trait output. The legacy
 # mutable arg must still render `[in] mut=true` and the trait output `[out]`.
-@compiler.register("trait_mixed_legacy_mut")
+@extensibility.register("trait_mixed_legacy_mut")
 struct TraitMixedLegacyMut:
     @staticmethod
     def execute[
@@ -309,7 +309,7 @@ struct TraitMixedLegacyMut:
 # Mixed lane with a FUSED trait arg: a legacy `InputTensor` coexists with a
 # trait `Input & Fused & Loadable`. Confirms the two lanes coexist when a fused
 # trait arg (not just a dense one) is present.
-@compiler.register("trait_mixed_legacy_fused")
+@extensibility.register("trait_mixed_legacy_fused")
 struct TraitMixedLegacyFused:
     @staticmethod
     def execute[
@@ -326,7 +326,7 @@ struct TraitMixedLegacyFused:
 # Pure-legacy control: no trait args at all. A regression guard that this change
 # leaves the legacy `[out]`/`[in]`/`mut` split byte-for-byte unchanged. The
 # `MutableInputTensor` here pins `mut=true` on the legacy lane too.
-@compiler.register("legacy_only_control")
+@extensibility.register("legacy_only_control")
 struct LegacyOnlyControl:
     @staticmethod
     def execute[
@@ -354,7 +354,7 @@ struct LegacyOnlyControl:
 # Plain `Tensor` metadata (no `DenseTensor`): an `Input` bound with only the base
 # `Tensor` trait still distills to input/none -- the dense-vs-plain distinction
 # is invisible to the contract.
-@compiler.register("trait_plain_tensor_input")
+@extensibility.register("trait_plain_tensor_input")
 struct TraitPlainTensorInput:
     @staticmethod
     def execute[
@@ -365,7 +365,7 @@ struct TraitPlainTensorInput:
 
 # `TileTensorable` has no contract effect: an `Output & DenseTensor &
 # TileTensorable` distills identically to a plain dense output (output/none).
-@compiler.register("trait_tile_tensorable_output")
+@extensibility.register("trait_tile_tensorable_output")
 struct TraitTileTensorableOutput:
     @staticmethod
     def execute[
@@ -377,7 +377,7 @@ struct TraitTileTensorableOutput:
 # Fused load via the bare `LoadAccess` MARKER (no `Loadable` capability leaf):
 # distills to input/load/fused with capabilities = 0 -- distinct from the
 # `trait_fused_load` capability case.
-@compiler.register("trait_fused_load_marker")
+@extensibility.register("trait_fused_load_marker")
 struct TraitFusedLoadMarker:
     @staticmethod
     def execute[
@@ -388,7 +388,7 @@ struct TraitFusedLoadMarker:
 
 # Fused store via the bare `StoreAccess` MARKER on an Output: output/store/fused,
 # capabilities = 0.
-@compiler.register("trait_fused_store_marker")
+@extensibility.register("trait_fused_store_marker")
 struct TraitFusedStoreMarker:
     @staticmethod
     def execute[
@@ -399,7 +399,7 @@ struct TraitFusedStoreMarker:
 
 # Fused store via the `Storable` CAPABILITY leaf on an Output:
 # output/store/fused, capabilities = store.
-@compiler.register("trait_fused_store_capability")
+@extensibility.register("trait_fused_store_capability")
 struct TraitFusedStoreCapability:
     @staticmethod
     def execute[
@@ -410,7 +410,7 @@ struct TraitFusedStoreCapability:
 
 # Fused transform via the bare `TransformAccess` MARKER on an Output:
 # output/transform/fused, capabilities = 0.
-@compiler.register("trait_fused_transform_marker")
+@extensibility.register("trait_fused_transform_marker")
 struct TraitFusedTransformMarker:
     @staticmethod
     def execute[
@@ -421,7 +421,7 @@ struct TraitFusedTransformMarker:
 
 # Fused transform via the `Transformable` CAPABILITY leaf on an Output:
 # output/transform/fused, capabilities = transform.
-@compiler.register("trait_fused_transform_capability")
+@extensibility.register("trait_fused_transform_capability")
 struct TraitFusedTransformCapability:
     @staticmethod
     def execute[
@@ -432,7 +432,7 @@ struct TraitFusedTransformCapability:
 
 # MutableInput can store (one access form at a time): MutableInput & Fused &
 # Storable distills to mutable_input/store/fused/capability.
-@compiler.register("trait_mutable_fused_store")
+@extensibility.register("trait_mutable_fused_store")
 struct TraitMutableFusedStore:
     @staticmethod
     def execute[
@@ -443,7 +443,7 @@ struct TraitMutableFusedStore:
 
 # MutableInput can also load: MutableInput & Fused & Loadable distills to
 # mutable_input/load/fused/capability.
-@compiler.register("trait_mutable_fused_load")
+@extensibility.register("trait_mutable_fused_load")
 struct TraitMutableFusedLoad:
     @staticmethod
     def execute[
@@ -455,7 +455,7 @@ struct TraitMutableFusedLoad:
 # Non-fused dense input that still advertises a load access form: Input &
 # DenseTensor & Loadable distills to input/load with capabilities = load but
 # fused = false (the access form is independent of the fusion marker).
-@compiler.register("trait_nonfused_load_capability")
+@extensibility.register("trait_nonfused_load_capability")
 struct TraitNonFusedLoadCapability:
     @staticmethod
     def execute[
@@ -472,7 +472,7 @@ struct TraitNonFusedLoadCapability:
 # an Output would be rejected by the per-form role/access compatibility check;
 # MutableInput permits both. Emitting the dense element-access conformances is a
 # later slice; here we only assert the distilled contract.
-@compiler.register("trait_nonfused_load_store_capability")
+@extensibility.register("trait_nonfused_load_store_capability")
 struct TraitNonFusedLoadStoreCapability:
     @staticmethod
     def execute[
@@ -489,6 +489,6 @@ struct TraitNonFusedLoadStoreCapability:
 # shape-fn lane to the no-role contract `{role: none, fused: false,
 # access: none}`. This is the positive counterpart to the shape-fn disallows in
 # tensor_arg_trait_invalid_stubs (io-role / Fused / TileTensorable).
-@compiler.register_shape_function("trait_metadata_shape_fn")
+@extensibility.register_shape_function("trait_metadata_shape_fn")
 def trait_metadata_shape_fn[T: DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

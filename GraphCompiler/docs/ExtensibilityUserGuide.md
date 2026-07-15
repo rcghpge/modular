@@ -10,7 +10,7 @@ An example can be found in the `BottomK` struct in
 `max/kernels/src/graph_compiler/builtin_kernels/reductions.mojo`.
 
 ```python
-@compiler.register("mo.bottom_k")
+@extensibility.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
     def execute[
@@ -59,13 +59,13 @@ We go over the most important components and what they mean:
 The key is one operation is organized under a singular struct:
 
 ```python
-@compiler.register("mo.bottom_k")
+@extensibility.register("mo.bottom_k")
 struct BottomK:
 ```
 
 This indicates the resulting methods in the struct correspond to the
 mo-operation “mo.bottom_k”. If we instead we did
-`@compiler.register("my_cool_op")` , then this would correspond to call
+`@extensibility.register("my_cool_op")` , then this would correspond to call
 to a custom op with symbol “my_cool_op.”
 
 ### Required Methods
@@ -150,7 +150,7 @@ fully featured as the old API. We support both register and memory-only types.
 **Example:**
 
 ```python
-@compiler.register("myOp")
+@extensibility.register("myOp")
 struct MyOp:
     @staticmethod
     def execute[
@@ -236,7 +236,7 @@ accessing the fusion lambdas when loading or storing to a tensor.
 ### DPS Operands
 
 ```python
-@compiler.register("mo.bottom_k")
+@extensibility.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
     def execute[
@@ -263,7 +263,7 @@ If an operation models side-effects on one of its input tensors then
 the **MutableInputTensor** alias of **ManagedTensorSlice** should be used.
 
 ```python
-@compiler.register("mutating_operation")
+@extensibility.register("mutating_operation")
 struct TensorMutatingOperation:
     @always_inline
     @staticmethod
@@ -286,7 +286,7 @@ We do not need to return things in a DPS style. We can do regular returns too
 and things should work as you expect:
 
 ```python
-@compiler.register(
+@extensibility.register(
     "continuous_batching_kv_cache_collection_h8_d128_bshd"
 )
 struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
@@ -314,8 +314,8 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
             max_cache_length,
         )
 
-@compiler.register("returning_transpose")
-@compiler.view_kernel
+@extensibility.register("returning_transpose")
+@extensibility.view_kernel
 struct ReturningTranspose:
     @always_inline
     @staticmethod
@@ -344,7 +344,7 @@ this will come later if needed.
 
 ### Special Decorators
 
-There are some special decorators like `@compiler.view_kernel` and
+There are some special decorators like `@extensibility.view_kernel` and
 `@compiler.elementwise` which are used to control optimizations by the graph
 compiler. These are undocumented for now, though if you think you need one of
 these, let us know.
@@ -369,7 +369,7 @@ registrations in `max/kernels/src/graph_compiler/builtin_kernels/`.
 The new API kernels can be called via custom ops. E.g.
 
 ```python
-@compiler.register("MyOp")
+@extensibility.register("MyOp")
 struct MyOp:
  pass
 ```
@@ -389,7 +389,7 @@ match with the registered kernel. Here an example is prudent:
 This maps to:
 
 ```python
-@compiler.register("MyOp")
+@extensibility.register("MyOp")
 struct MyOp:
     @staticmethod
     def execute(
@@ -414,7 +414,7 @@ ManagedTensorSlice): see “mo.split” and “mo.concat” implementations.
 Say we want to mutate the 2nd input of MyOp the signature would now look like:
 
 ```python
-@compiler.register("MyOp")
+@extensibility.register("MyOp")
 struct MyOp:
     @staticmethod
     def execute(

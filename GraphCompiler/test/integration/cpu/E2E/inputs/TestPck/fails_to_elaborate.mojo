@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-import extensibility as compiler
+import extensibility
 from extensibility import OutputTensor
 from std.collections.string.string_slice import _get_kgen_string
 from std.collections.string import StaticString
@@ -19,7 +19,7 @@ def constrained[cond: Bool, msg: StaticString]():
     ]()  # expected-note {{constraint failed}}
 
 
-@compiler.register("fails_to_elaborate")
+@extensibility.register("fails_to_elaborate")
 struct InvalidOwnedArgConvention:
     @staticmethod
     def execute[

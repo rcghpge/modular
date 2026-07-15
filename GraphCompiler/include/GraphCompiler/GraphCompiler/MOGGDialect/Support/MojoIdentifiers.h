@@ -90,7 +90,7 @@ constexpr llvm::StringLiteral kMoggUpdateViewFuncName = "update_input_view";
 constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
 
 /// Argument indices into the vector returned by `getDecoratorLambdaArgument`
-/// for the `@compiler.register` decorator (name, type, api, arch, model).
+/// for the `@extensibility.register` decorator (name, type, api, arch, model).
 constexpr size_t kRegisterDecoratorArgName = 0;
 constexpr size_t kRegisterDecoratorArgType = 1;
 constexpr size_t kRegisterDecoratorArgApi = 2;

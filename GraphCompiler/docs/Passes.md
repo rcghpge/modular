@@ -97,10 +97,10 @@ libraries; reduces repeated kernel discovery costs during lowering/codegen.
 Initialized with `kernelLibraryPaths`, then lazily loads Mojo packages and
 builds a generator table used by lowering passes (e.g., MO to MOGG).
 
-Custom kernels are registered on Mojo side through `@compiler.register(...)`.
-The compiler will later use the symbol to match the kernel during lowering.
-Custom ops can target these using `mo.custom {symbol = "MyOp"}`
-(see <ExtensibilityUserGuide.md>).
+Custom kernels are registered on Mojo side through
+`@extensibility.register(...)`. The compiler will later use the symbol to match
+the kernel during lowering. Custom ops can target these using
+`mo.custom {symbol = "MyOp"}` (see <ExtensibilityUserGuide.md>).
 
 The analysis parses Mojo packages/bytecode into MLIR, walks every
 function/struct, and builds multiple lookup tables with registered kernels,
@@ -1558,9 +1558,8 @@ rewrite to `mo` ops or `mogg` ops like `mogg.concat` and `mogg.split`
 (interestingly, there are kernels for both in the kernel API, but those are
 registered for `mo` and are unused in case pattern fusion is on). The MOGG
 Kernel API layer is a registry of hand-fused kernels exposed via
-`@compiler.register(...)` symbols, which `mo.custom` uses as the dispatch key
-at lowering time.
-MOGG Kernel API definitions (docs-by-source):
+`@extensibility.register(...)` symbols, which `mo.custom` uses as the dispatch
+key at lowering time. MOGG Kernel API definitions (docs-by-source):
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/max/kernels/src/graph_compiler/builtin_kernels/attention.mojo#L231>
 
 Most complexity is in the matching of complex patterns such as MHA. The
