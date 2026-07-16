@@ -6,11 +6,11 @@ package(default_visibility = ["//visibility:private"])
 
 # Common configuration shared across all lit_tests targets
 _COMMON_CUSTOM_SUBSTITUTIONS = {
-    "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
+    "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
 }
 
 _COMMON_DATA = [
-    "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
+    "//GraphCompiler/test/kernels:testing_kernels",
     "//max/kernels/src/graph_compiler/builtin_kernels",
 ]
 

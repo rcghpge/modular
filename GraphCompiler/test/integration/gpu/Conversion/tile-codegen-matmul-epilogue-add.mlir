@@ -3,7 +3,7 @@
 // The primary kernel's tile IOSpec is asserted to agree with the graph-wide
 // option.
 //
-// The stub matmul in testing_kernels/tile_stubs/MOGGTileKernelAPITest.mojo
+// The stub matmul in kernels/tile_stubs/MOGGTileKernelAPITest.mojo
 // overrides the built-in mo.matmul via kernel-library-paths and declares the
 // tile IOSpec that the assert checks against.
 //

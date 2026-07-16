@@ -55,7 +55,7 @@ mo.graph @test_throwing_kernel_with_mem_types() -> (!mo.tensor<[1], si32>) {
   %opaque1 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
   %opaque2 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
 
-  // This kernel is marked as `raises` in MOGGKernelAPITest.mojo
+  // This kernel is marked as `raises` in testing_kernels.mojo
   %res = mo.custom{symbol = "opaque_add_to_tensor_si32_raises", device = #M.device_ref<"cpu", 0>} (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarSI32">, !mo.opaque<"MyCustomScalarSI32">) -> !mo.tensor<[1], si32>
   mo.output %res: !mo.tensor<[1], si32>
 }

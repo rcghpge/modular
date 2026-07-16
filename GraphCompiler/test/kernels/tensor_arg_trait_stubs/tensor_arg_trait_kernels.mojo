@@ -6,7 +6,7 @@
 #
 # Trait-bound kernel stubs for testing the tensor-argument trait import path
 # (distilling a written trait composition into a `{role, fused, access,
-# capabilities}` contract). Kept separate from MOGGKernelAPITest, which feeds
+# capabilities}` contract). Kept separate from testing_kernels, which feeds
 # the full emit/lowering/execution paths -- these stubs only exercise import and
 # have no-op bodies, so they must not be mixed into the general kernel package.
 #

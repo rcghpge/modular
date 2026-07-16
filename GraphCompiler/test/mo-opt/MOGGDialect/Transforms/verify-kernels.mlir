@@ -4,8 +4,8 @@
 // mogg.kernel.decl ops produced by mogg-import-packages (KernelDeclAdaptor
 // path).
 
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.Foo registration = "imposter_add"
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.AddFuseLHS registration = "imposter_add_lhs"
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.AddElementwise registration = "imposter_add_elementwise"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.Foo registration = "imposter_add"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddFuseLHS registration = "imposter_add_lhs"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddElementwise registration = "imposter_add_elementwise"
 
 module {}

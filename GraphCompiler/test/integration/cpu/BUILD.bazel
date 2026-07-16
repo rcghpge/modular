@@ -17,14 +17,14 @@ filegroup(
 # for $(rlocationpath) to resolve them.
 _COMMON_DATA = [
     ":test_data",
-    "//GraphCompiler/test/testing_kernels:MOGGKernelAPITest",
+    "//GraphCompiler/test/kernels:testing_kernels",
     "//GraphCompiler/test/utils/test-helper:test_vs_numpy.py",
 ]
 
 # Common configuration shared across all lit_tests targets
 _COMMON_CUSTOM_SUBSTITUTIONS = {
-    "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
-    "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",
+    "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
+    "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
     "%mo_vs_numpy_py": "$(rlocationpath //GraphCompiler/test/utils/test-helper:test_vs_numpy.py)",
     "mo-opt": "$(rlocationpath //GraphCompiler/tools/mo-opt)",
     "mojo": "$(rlocationpath //KGEN/tools/mojo)",

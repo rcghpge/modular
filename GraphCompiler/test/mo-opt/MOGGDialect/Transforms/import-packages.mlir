@@ -8,16 +8,16 @@
 // table uniqueness), and the Mojo source name is stored in mojo_name.
 
 // Kernel with execute and shape (struct Foo).
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.Foo registration = "imposter_add"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.Foo registration = "imposter_add"
 
 // Kernel with execute only (struct AddFuseLHS).
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.AddFuseLHS registration = "imposter_add_lhs"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddFuseLHS registration = "imposter_add_lhs"
 
 // Kernel with elementwise only (struct AddElementwise).
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.AddElementwise registration = "imposter_add_elementwise"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddElementwise registration = "imposter_add_elementwise"
 
 // View kernel carries update_view signature (struct PrintTensorSpecViewOp).
-// CHECK-DAG: mogg.kernel.decl @MOGGKernelAPITest.MOGGKernelAPITest.PrintTensorSpecViewOp registration = "print_tensor_spec_view" {{.*}} update_view
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.PrintTensorSpecViewOp registration = "print_tensor_spec_view" {{.*}} update_view
 
 // Primitive singleton function; sym_name is the fully-qualified Mojo source
 // function name, registration is the @register_internal string.

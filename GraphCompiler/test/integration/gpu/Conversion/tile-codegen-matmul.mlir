@@ -4,7 +4,7 @@
 // the graph-wide option selects the ComputeTile path and that the primary
 // kernel's tile IOSpec passes the consistency assert.
 //
-// The stub matmul in testing_kernels/tile_stubs/MOGGTileKernelAPITest.mojo
+// The stub matmul in kernels/tile_stubs/MOGGTileKernelAPITest.mojo
 // overrides the built-in mo.matmul via kernel-library-paths.
 //
 // Tile codegen is selected per-device via the `tile_based_fusion` attribute on the

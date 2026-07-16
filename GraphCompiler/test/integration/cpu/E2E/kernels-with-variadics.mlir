@@ -5,7 +5,7 @@
 // This ensures mogg.as_tuple operations are properly emitted in Mojo
 
 // TODO(GEX-2558): Add a test with a kernel that has FusedOutputVariadicTensors
-// when we can used MOGGKernelAPITest.mojo under the emit mojo lowering path.
+// when we can used testing_kernels.mojo under the emit mojo lowering path.
 
 // CHECK-LABEL: --- Running 'split_1':
 // CHECK: 'split_1' returned tensor<1xf32> [2.000000e+00]

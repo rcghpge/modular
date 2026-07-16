@@ -50,7 +50,7 @@ kgen.generator @__gen_mogg_harness_a654c6b11ab78c1b6569ce83bd1fe1d8(...) {
   pop.store %arg1, %0 align<1> : !kgen.pointer<index>
   %1 = pop.pointer.bitcast %0 : !kgen.pointer<index> to !kgen.pointer<none>
   %2 = kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::to_managed_tensor_slice[...]"(...)
-  %3 = kgen.call @"MOGGKernelAPITestLib::MOGGKernelAPITest::ParameterizedOpaqueType::execute[...]"(...)
+  %3 = kgen.call @"testing_kernelsLib::testing_kernels::ParameterizedOpaqueType::execute[...]"(...)
   kgen.return
 }
 ```

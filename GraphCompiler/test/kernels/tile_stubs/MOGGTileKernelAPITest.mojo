@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 #
 # Tile-based kernel stubs for testing TileTensor epilogue fusion (GEX-3747).
-# Kept separate from MOGGKernelAPITest so that tests using the general
+# Kept separate from testing_kernels so that tests using the general
 # kernel-library-paths substitution are not affected by mo.matmul being
 # overridden with a tile-output variant.
 #
