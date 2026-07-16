@@ -216,6 +216,55 @@ M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+// Mock implements a single global "current driver context" so tests can
+// observe set/get round-trips.
+static M_driver_native_handle_t g_mock_current_driver_ctx = 0;
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_set_current(M_driver_context_t context) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  g_mock_current_driver_ctx = (M_driver_native_handle_t)context;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_get_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t *driver_context) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!driver_context)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *driver_context = g_mock_current_driver_ctx;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_set_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t driver_context) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  g_mock_current_driver_ctx = driver_context;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Fixed sentinel values so tests can assert the plumbing end to end.
+#define MOCK_MEMORY_INFO_FREE (3ull << 30)
+#define MOCK_MEMORY_INFO_TOTAL (4ull << 30)
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
+                                               uint64_t *free,
+                                               uint64_t *total) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!free || !total)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *free = MOCK_MEMORY_INFO_FREE;
+  *total = MOCK_MEMORY_INFO_TOTAL;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // Memory
 //

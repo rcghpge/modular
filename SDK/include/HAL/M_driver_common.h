@@ -71,6 +71,11 @@ typedef struct M_driver_event *M_driver_event_t;
 typedef struct M_driver_function *M_driver_function_t;
 
 /**
+ * An opaque backend-defined handle exposed for vendor-library interop.
+ */
+typedef intptr_t M_driver_native_handle_t;
+
+/**
  * A view over a device memory allocation.
  *
  * Bundles the owning allocation handle with a byte offset and byte length,

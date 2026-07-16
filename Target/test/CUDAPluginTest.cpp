@@ -115,6 +115,17 @@ TEST_F(DriverPluginTest, CustomStatusMessage) {
   ASSERT_STREQ(errorMessage, "Bad function");
 }
 
+TEST_F(DriverPluginContextTest, CurrentContextNonNullAfterSetCurrent) {
+  for (M_driver_context_t context : contexts) {
+    ASSERT_SUCCESS(context_set_current(context));
+    M_driver_native_handle_t active = 0;
+    ASSERT_SUCCESS(context_get_current_driver_context(context, &active));
+    // After set_current the thread's active CUcontext is this context's
+    // primary context, never null.
+    EXPECT_NE(active, 0);
+  }
+}
+
 TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
   std::string fileType("ptx");
   M_driver_static_bundle staticBundle{.mapped_data =

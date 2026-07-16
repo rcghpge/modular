@@ -40,6 +40,17 @@ TEST_F(DriverPluginTest, DlpackDevice) {
   }
 }
 
+TEST_F(DriverPluginContextTest, CurrentDriverContextIsNull) {
+  // The host tracks no driver-level context: set_current is a no-op and the
+  // active handle always reads back null.
+  for (M_driver_context_t context : contexts) {
+    ASSERT_SUCCESS(context_set_current(context));
+    M_driver_native_handle_t active = 1;
+    ASSERT_SUCCESS(context_get_current_driver_context(context, &active));
+    EXPECT_EQ(active, 0);
+  }
+}
+
 TEST_F(DriverPluginQueueTest, QueueIsStream) {
   for (M_driver_queue_t queue : queues) {
     bool isStream = false;

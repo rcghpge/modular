@@ -17,7 +17,10 @@
 #include "Memory.h"
 
 #include <cassert>
+#include <cerrno>
 #include <cstring>
+#include <sys/resource.h>
+#include <unistd.h>
 
 M_driver_context_t M_driver_context::create(M_driver_device_t device) {
   // Get or create the AsyncRT CPUDevice. Request mainWillDonate=false since
@@ -140,4 +143,68 @@ M_driver_status_t M_driver_copy_inter_device_sync(
     return M_DRIVER_STATUS_BAD_MEMORY;
   return context->copyInterDeviceSync(dst->memory, dst->offset, src->memory,
                                       src->offset, dst->size, src_context);
+}
+
+// The host has no driver-level current-context state to install or save;
+// these mirror CpuDevice::getCurrentDriverContext / setCurrentDriverContext
+// (a null handle, and a no-op restore).
+
+M_driver_status_t M_driver_context_set_current(M_driver_context_t context) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context_get_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t *driver_context) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (driver_context == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *driver_context = 0;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context_set_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t /*driver_context*/) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
+                                               uint64_t *free,
+                                               uint64_t *total) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (free == nullptr || total == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  // Mirrors CpuDevice::getMemoryInfo: total physical memory from sysconf, and
+  // "free" approximated as total minus this process's peak resident set size.
+  errno = 0;
+  long numPages = sysconf(_SC_PHYS_PAGES);
+  if (errno != 0)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  errno = 0;
+  long pageSize = sysconf(_SC_PAGE_SIZE);
+  if (errno != 0)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+  rusage usage;
+  if (getrusage(RUSAGE_SELF, &usage) == -1)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+// ru_maxrss is kilobytes on Linux and bytes on macOS.
+#ifdef __APPLE__
+  const uint64_t maxrssMultiple = 1;
+#else
+  const uint64_t maxrssMultiple = 1024;
+#endif
+  uint64_t used = static_cast<uint64_t>(usage.ru_maxrss) * maxrssMultiple;
+  uint64_t totalBytes =
+      static_cast<uint64_t>(numPages) * static_cast<uint64_t>(pageSize);
+  *total = totalBytes;
+  *free = used < totalBytes ? totalBytes - used : 0;
+  return M_DRIVER_STATUS_SUCCESS;
 }

@@ -72,3 +72,31 @@ M_driver_status_t M_driver_copy_inter_device_sync(
   return context->copyInterDeviceSync(dst->memory, dst->offset, src->memory,
                                       src->offset, dst->size, src_context);
 }
+
+M_driver_status_t M_driver_context_set_current(M_driver_context_t context) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->setCurrent();
+}
+
+M_driver_status_t M_driver_context_get_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t *driver_context) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->getCurrentDriverContext(driver_context);
+}
+
+M_driver_status_t M_driver_context_set_current_driver_context(
+    M_driver_context_t context, M_driver_native_handle_t driver_context) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->setCurrentDriverContext(driver_context);
+}
+
+M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
+                                               uint64_t *free,
+                                               uint64_t *total) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->memoryInfo(free, total);
+}

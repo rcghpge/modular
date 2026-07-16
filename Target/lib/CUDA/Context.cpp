@@ -183,3 +183,50 @@ M_driver_status_t M_driver_context::copyInterDeviceSync(
                            "cuStreamSynchronize (sync peer)");
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_context::setCurrent() {
+  if (CUresult r = device.driver.rawCuda.cuCtxSetCurrent(primaryCtx);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuCtxSetCurrent");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::getCurrentDriverContext(
+    M_driver_native_handle_t *driver_context) {
+  if (driver_context == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  CUcontext current = nullptr;
+  if (CUresult r = device.driver.rawCuda.cuCtxGetCurrent(&current);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuCtxGetCurrent");
+  *driver_context = reinterpret_cast<M_driver_native_handle_t>(current);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::setCurrentDriverContext(
+    M_driver_native_handle_t driver_context) {
+  if (CUresult r = device.driver.rawCuda.cuCtxSetCurrent(
+          reinterpret_cast<CUcontext>(driver_context));
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuCtxSetCurrent");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
+                                               uint64_t *total) {
+  if (free == nullptr || total == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  // cuMemGetInfo reports the *current* context's memory, so make this context
+  // current for the duration of the query (restored on scope exit).
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  if (scope.status != M_DRIVER_STATUS_SUCCESS)
+    return scope.status;
+  size_t freeBytes = 0;
+  size_t totalBytes = 0;
+  if (CUresult r = device.driver.rawCuda.cuMemGetInfo(&freeBytes, &totalBytes);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemGetInfo");
+  *free = freeBytes;
+  *total = totalBytes;
+  return M_DRIVER_STATUS_SUCCESS;
+}

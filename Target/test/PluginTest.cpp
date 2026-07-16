@@ -120,6 +120,55 @@ TEST_F(DriverPluginTest, DeviceContext) {
   }
 }
 
+TEST_F(DriverPluginContextTest, ContextMemoryInfo) {
+  if (api == "Metal")
+    GTEST_SKIP() << "memory_info is not implemented for Metal";
+  for (M_driver_context_t context : contexts) {
+    uint64_t freeBytes = 0;
+    uint64_t totalBytes = 0;
+    ASSERT_SUCCESS(context_memory_info(context, &freeBytes, &totalBytes));
+    EXPECT_GT(totalBytes, 0u);
+    EXPECT_LE(freeBytes, totalBytes);
+  }
+}
+
+TEST_F(DriverPluginContextTest, ContextMemoryInfoBadArgs) {
+  // A null context must be rejected. Plugins without an implementation may
+  // report their unimplemented status instead; either way it is not SUCCESS.
+  uint64_t freeBytes = 0;
+  uint64_t totalBytes = 0;
+  EXPECT_NE(M_DRIVER_STATUS_SUCCESS,
+            context_memory_info(nullptr, &freeBytes, &totalBytes));
+  for (M_driver_context_t context : contexts) {
+    EXPECT_NE(M_DRIVER_STATUS_SUCCESS,
+              context_memory_info(context, nullptr, nullptr));
+  }
+}
+
+TEST_F(DriverPluginContextTest, CurrentContextRoundTrip) {
+  if (api == "Metal")
+    GTEST_SKIP() << "current-context state is not implemented for Metal";
+  for (M_driver_context_t context : contexts) {
+    // Save whatever driver-level context is active (may be null), make this
+    // context current, then restore the saved state.
+    M_driver_native_handle_t saved = 0;
+    ASSERT_SUCCESS(context_get_current_driver_context(context, &saved));
+    ASSERT_SUCCESS(context_set_current(context));
+    M_driver_native_handle_t active = 0;
+    ASSERT_SUCCESS(context_get_current_driver_context(context, &active));
+    ASSERT_SUCCESS(context_set_current_driver_context(context, saved));
+  }
+}
+
+TEST_F(DriverPluginContextTest, CurrentContextBadArgs) {
+  EXPECT_NE(M_DRIVER_STATUS_SUCCESS, context_set_current(nullptr));
+  M_driver_native_handle_t driverContext = 0;
+  EXPECT_NE(M_DRIVER_STATUS_SUCCESS,
+            context_get_current_driver_context(nullptr, &driverContext));
+  EXPECT_NE(M_DRIVER_STATUS_SUCCESS,
+            context_set_current_driver_context(nullptr, 0));
+}
+
 TEST_F(DriverPluginContextTest, MemoryAllocSync) {
   for (M_driver_context_t context : contexts) {
     M_driver_memory_t memory;

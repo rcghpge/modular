@@ -153,3 +153,31 @@ extern "C" M_driver_status_t M_driver_copy_inter_device_sync(
     [[maybe_unused]] M_driver_context_t src_context) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
 }
+
+// Metal has no driver-level current-context concept (command encoding is
+// bound to explicit queue/context objects, never to the calling thread), and
+// no direct free/total memory query.
+
+extern "C" M_driver_status_t
+M_driver_context_set_current([[maybe_unused]] M_driver_context_t context) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+extern "C" M_driver_status_t M_driver_context_get_current_driver_context(
+    [[maybe_unused]] M_driver_context_t context,
+    [[maybe_unused]] M_driver_native_handle_t *driver_context) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+extern "C" M_driver_status_t M_driver_context_set_current_driver_context(
+    [[maybe_unused]] M_driver_context_t context,
+    [[maybe_unused]] M_driver_native_handle_t driver_context) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+extern "C" M_driver_status_t
+M_driver_context_memory_info([[maybe_unused]] M_driver_context_t context,
+                             [[maybe_unused]] uint64_t *free,
+                             [[maybe_unused]] uint64_t *total) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}

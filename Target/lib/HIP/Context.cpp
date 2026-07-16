@@ -6,6 +6,7 @@
 
 #include "Context.h"
 #include "Device.h"
+#include "Driver.h"
 #include "Error.h"
 #include "Memory.h"
 
@@ -191,5 +192,60 @@ M_driver_status_t M_driver_context::copyInterDeviceSync(
   if (hipError_t r = hip.hipStreamSynchronize(nullptr); r != hipSuccess)
     return hipErrorStatus(&dev.getDriver(), r,
                           "hipStreamSynchronize (sync peer)");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// HIP has no driver-level current-context object; the per-thread state is the
+// current device id, which round-trips through the opaque native handle.
+
+M_driver_status_t M_driver_context::setCurrent() {
+  if (hipError_t r = device.getDriver().hip().hipSetDevice(device.id());
+      r != hipSuccess)
+    return hipErrorStatus(&device.getDriver(), r, "hipSetDevice");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::getCurrentDriverContext(
+    M_driver_native_handle_t *driver_context) {
+  if (driver_context == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_driver &driver = device.getDriver();
+  int currentId = -1;
+  if (hipError_t r = driver.hip().hipGetDevice(&currentId); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipGetDevice");
+  *driver_context = static_cast<M_driver_native_handle_t>(currentId);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::setCurrentDriverContext(
+    M_driver_native_handle_t driver_context) {
+  M_driver_driver &driver = device.getDriver();
+  int targetId = static_cast<int>(driver_context);
+  if (hipError_t r = driver.hip().hipSetDevice(targetId); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipSetDevice");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
+                                               uint64_t *total) {
+  if (free == nullptr || total == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_driver &driver = device.getDriver();
+  // hipMemGetInfo reports the *current* device's memory. Make this context's
+  // device current for the query, then restore the previous device (mirrors
+  // the CUDA plugin's ScopedContext save/restore).
+  int prevId = -1;
+  if (hipError_t r = driver.hip().hipGetDevice(&prevId); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipGetDevice");
+  if (hipError_t r = driver.hip().hipSetDevice(device.id()); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipSetDevice");
+  size_t freeBytes = 0;
+  size_t totalBytes = 0;
+  hipError_t r = driver.hip().hipMemGetInfo(&freeBytes, &totalBytes);
+  (void)driver.hip().hipSetDevice(prevId);
+  if (r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipMemGetInfo");
+  *free = freeBytes;
+  *total = totalBytes;
   return M_DRIVER_STATUS_SUCCESS;
 }
