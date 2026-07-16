@@ -17,6 +17,7 @@
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "NVML.h"
 #include "Support/HashUtils.h"
+#include "Support/Profiling/internal/Range.h"
 #include "Support/Profiling/internal/Tracy.h"
 #include "Support/Profiling/internal/TracyCuda.h"
 #include "llvm/ADT/BitVector.h"
@@ -772,6 +773,17 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
     // Use the primary context for this device, with the effect that we share
     // the same context with other users of the CUDA Runtime API.
     CUDA_CHECK_ERR(driver.cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
+
+    // Activate on-demand profiling (libkineto/CUPTI) now that this device's
+    // real primary context exists, with the context current and before any
+    // CUDA graph is instantiated on it — see activatePendingTrace() in
+    // Support/Profiling/internal/Range.h for the ordering contract
+    // (MXTOOLS-190).  Cheap no-op unless profiling was enable()'d, and
+    // idempotent across devices.
+    {
+      CUDAContextScope ctxScope(cuContext, driver);
+      M::Profiling::activatePendingTrace();
+    }
 
     int computeCapabilityMajor, computeCapabilityMinor;
     NVML_CHECK_ERR(nvml.nvmlDeviceGetCudaComputeCapability(
