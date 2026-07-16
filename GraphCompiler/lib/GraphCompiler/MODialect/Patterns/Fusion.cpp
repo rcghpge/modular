@@ -2946,6 +2946,110 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
   }
 };
 
+// Fuses `mo.reduce.rms_norm -> mo.quantize.dynamic.block.scaled` (MXFP8) into a
+// single `mo.composite.rms_norm_fused_quantize_dynamic_block_scaled`. The
+// block-scaled analog of `RMSNormFusedQuantizeDynamicScaledFP8Pattern`: the
+// fused kernel computes the RMS norm and quantizes the bf16-rounded normed
+// value to MXFP8 (E4M3 values + rank-5 E8M0 block scales) in one pass, dropping
+// the HBM round-trip of the bf16 normed activation.
+struct RMSNormFusedQuantizeDynamicBlockScaledPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::CustomOp> {
+  DeviceRefAttr targetDevice;
+  RMSNormFusedQuantizeDynamicBlockScaledPattern(MLIRContext *ctx,
+                                                DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 3), targetDevice(targetDevice) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::CustomOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    if (op.getSymbol() != "mo.quantize.dynamic.block.scaled")
+      return rewriter.notifyMatchFailure(op, "not a block-scaled quantize op");
+    // The block-scaled quantize takes (input, tensor_sf) and returns
+    // (values, scales).
+    if (op.getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(op,
+                                         "unexpected quantize operand count");
+    if (op.getNumResults() != 2)
+      return rewriter.notifyMatchFailure(op,
+                                         "unexpected quantize result count");
+
+    DeviceRefAttr device = getTargetDevice(op, targetDevice);
+    if (!device || device.getLabel() != M::kGPULabel)
+      return rewriter.notifyMatchFailure(op, "fused op requires GPU");
+
+    // Fire only for the MXFP8 configuration the fused kernel implements: E4M3
+    // packed values + E8M0 block scales. This precisely excludes MXFP4 (which
+    // shares the E8M0 scale but packs values into uint8) and NVFP4 (E4M3
+    // scales).
+    auto valuesTy = dyn_cast<TensorType>(op.getResult(0).getType());
+    auto scaleTy = dyn_cast<TensorType>(op.getResult(1).getType());
+    if (!valuesTy || !scaleTy)
+      return rewriter.notifyMatchFailure(op, "non-tensor quantize results");
+    if (valuesTy.getDtype() != M::DType::f8e4m3fn)
+      return rewriter.notifyMatchFailure(op, "values not E4M3 (not MXFP8)");
+    if (scaleTy.getDtype() != M::DType::f8e8m0fnu)
+      return rewriter.notifyMatchFailure(op, "scales not E8M0 (not MXFP8)");
+
+    // Confirm the E8M0 block size is 32 (MXFP8). The fused kernel forwards this
+    // to the composite op as a compile-time parameter.
+    DictionaryAttr opParams = op.getParameters();
+    auto sfAttr =
+        opParams ? dyn_cast_or_null<IntegerAttr>(opParams.get("SF_VECTOR_SIZE"))
+                 : nullptr;
+    if (!sfAttr)
+      return rewriter.notifyMatchFailure(op, "missing SF_VECTOR_SIZE");
+    if (sfAttr.getInt() != 32)
+      return rewriter.notifyMatchFailure(op, "SF_VECTOR_SIZE must be 32");
+
+    // Single-consumer guard: the fused op does NOT emit the bf16 normed
+    // tensor, so the norm result must feed only this quantize. If the norm
+    // also feeds other ops, fusing would drop a needed value.
+    TensorValue input = dyn_cast<TensorValue>(op.getOperand(0));
+    if (!input || !input.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "quant input has multiple uses");
+
+    auto rmsNormOp = input.getDefiningOp<MO::ReduceRMSNormOp>();
+    if (!rmsNormOp)
+      return rewriter.notifyMatchFailure(op, "input not a rms_norm operation");
+
+    // The fused kernel hardcodes multiply_before_cast = true.
+    if (!rmsNormOp.getMultiplyBeforeCast())
+      return rewriter.notifyMatchFailure(op, "multiply_before_cast required");
+
+    // Build the fused composite op. The `tensor_sf` operand (identity for
+    // MXFP8) is dropped: the fused kernel does pure block scaling. `epsilon`
+    // and `weight_offset` are threaded through unchanged, preserving semantics
+    // for any weight_offset (e.g. the Gemma-style 1.0 the model uses). The
+    // quantize result types (E4M3 values + rank-5 E8M0 scales) are reused
+    // verbatim, so the downstream block-scaled GEMM is a drop-in consumer.
+    SmallVector<Value> fusedOperands = {
+        rmsNormOp.getInput(),        // rms_norm.input
+        rmsNormOp.getWeight(),       // rms_norm.gamma
+        rmsNormOp.getEpsilon(),      // rms_norm.epsilon
+        rmsNormOp.getWeightOffset(), // rms_norm.weight_offset
+    };
+
+    // Read what we need from `op` before replacing it: replaceOpWithNewOp
+    // erases `op`, so touching it afterwards (e.g. `op.getContext()`) is a
+    // use-after-free. The attribute `sfAttr` is context-owned and outlives the
+    // op, so caching its value is unnecessary.
+    MLIRContext *context = op.getContext();
+    auto fused = rewriter.replaceOpWithNewOp<
+        MO::Composite::RMSNormFusedQuantizeDynamicBlockScaledOp>(
+        op, op.getResultTypes(), fusedOperands);
+    // Forward the block size to the kernel's `SF_VECTOR_SIZE` compile-time
+    // parameter. Carried as a discardable attribute (matching the kernel param
+    // name) rather than an ODS operand/attribute so the composite op stays a
+    // clean 1:1 wrapper like the FP8 variant; `MOToMOGGLowering` forwards every
+    // integer op attribute to the kernel by name.
+    mlir::Builder builder(context);
+    fused->setAttr("SF_VECTOR_SIZE",
+                   builder.getI64IntegerAttr(sfAttr.getInt()));
+
+    return mlir::success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Shared helpers used by both the distributed and bundled allreduce-add-
 // rms_norm-quant-fp8 pattern matchers below.
@@ -4548,6 +4652,7 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
 
   patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                RMSNormFusedQuantizeDynamicScaledFP8Pattern,
+               RMSNormFusedQuantizeDynamicBlockScaledPattern,
                FuseMatmulReduceScatterPattern>(ctx, targetDeviceRef);
 
   if (mhaOpts.enable) {
