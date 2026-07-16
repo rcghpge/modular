@@ -67,14 +67,15 @@ static llvm::StringRef primitiveMojoName(MOGG::PrimitiveDeclOp decl) {
 // attribute values and return the variable name.
 template <typename T>
 static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
-                                   ArrayRef<T> values, bool isComptime = true) {
+                                   ArrayRef<T> values, bool isComptime = true,
+                                   MOGG::MojoValue elementType = "Int") {
   auto mojoValues = llvm::map_to_vector(
       values, [](T value) { return MOGG::MojoValue(value); });
 
   std::string type;
   llvm::raw_string_ostream os(type);
 
-  os << MOGG::kStructInlineArray << "[" << "Int" << ", " << values.size()
+  os << MOGG::kStructInlineArray << "[" << elementType << ", " << values.size()
      << "]";
 
   auto mojoType = MOGG::MojoValue(std::move(type));
@@ -403,16 +404,14 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue output = state.getMojoValueFor(getOutBuffer());
   MojoValue ctx = state.getMojoValueFor(getCtx());
 
-  MojoValue inputBuffers = state.builder.var(MojoValue(
-      kStructStaticTuple)[{kComptimeMutByteBuffer, getInBuffers().size()}]());
-  // The StaticTuple holds register-passable `MutByteBuffer` views; unwrap each
-  // input buffer composite's `.view` (an `OwnedByteBuffer` cannot live in a
-  // register-passable container).
-  for (auto &&[i, buffer] : llvm::enumerate(getInBuffers()))
-    state.builder.assign(
-        inputBuffers[i],
-        OwnedByteBufferRef(state.getMojoValueFor(buffer)).view());
+  auto inputValues =
+      llvm::map_to_vector(getInBuffers(), [&](Value val) -> MojoValue {
+        return state.getMojoValueFor(val);
+      });
 
+  MojoValue inputBuffers =
+      inlineArray<MojoValue>(state, inputValues, /*isComptime=*/false,
+                             /*elementType=*/kStructOwnedByteBuffer);
   state.builder.call(function, bDevice.quote(), {output, inputBuffers, ctx});
 
   return success();
