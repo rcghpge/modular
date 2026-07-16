@@ -440,6 +440,27 @@ constexpr void *buffer_pointer_for(void *ptr, size_t byteSize) {
   return ptr;
 }
 
+namespace {
+// Invokes `freeFn` once, from its destructor, when its last reference drops. A
+// host buffer's destructor holds a shared_ptr to this token inside one no-op
+// event handler per stream that used the buffer, so the free runs only after
+// every such stream's event has fired and released its handler. Templated on
+// the callable to avoid `std::function` type erasure; build via
+// `makeDeferredHostFree`.
+template <typename FreeFn>
+struct DeferredHostFree {
+  explicit DeferredHostFree(FreeFn freeFn) : freeFn(std::move(freeFn)) {}
+  ~DeferredHostFree() { freeFn(); }
+
+  FreeFn freeFn;
+};
+
+template <typename FreeFn>
+std::shared_ptr<DeferredHostFree<FreeFn>> makeDeferredHostFree(FreeFn freeFn) {
+  return std::make_shared<DeferredHostFree<FreeFn>>(std::move(freeFn));
+}
+} // namespace
+
 //
 // ===== DeviceBuffer ===== //
 //
@@ -493,13 +514,60 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!isHost()) {
     RECORD_PENDING_ERROR(ctx, ctx.freeList().free(ptr_));
   } else {
-    RECORD_PENDING_ERROR(
-        ctx, ctx.enqueueEventHandler(
-                 [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
-                   RECORD_PENDING_ERROR(*contextRef,
-                                        contextRef->hostFreeList().free(ptr));
-                 }));
+    // Host memory can only be released once every stream that DMA'd into or
+    // out of it has finished, not just the owning stream: a pinned staging
+    // buffer is routinely the source/destination of async copies on several
+    // GPU streams (e.g. multi-GPU KV-cache offload). Freeing against the owning
+    // stream alone races copies still in flight on the others.
+    //
+    // Following PyTorch's caching pinned allocator, enqueue a no-op event
+    // handler on the owning context and every other context the buffer was
+    // used on; each holds a reference to `deferredFree`, which runs the free
+    // from its destructor once the last handler completes.
+    auto deferredFree = makeDeferredHostFree(
+        [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
+          RECORD_PENDING_ERROR(*contextRef,
+                               contextRef->hostFreeList().free(ptr));
+        });
+    // Refcount is zero here, so no thread can record a new used context
+    // concurrently; the lock only publishes `recordUsedOnContext`'s writes.
+    // That function takes only `usedContextsMu_`, never `pendingWorkMutex_`, so
+    // enqueuing under the lock cannot deadlock.
+    std::lock_guard<std::mutex> lock(usedContextsMu_);
+    // Order the free against the owning context...
+    RECORD_PENDING_ERROR(ctx, ctx.enqueueEventHandler([deferredFree]() {}));
+    // ...and every other stream the buffer was used on.
+    for (const DeviceContextRef &usedCtx : usedContexts_) {
+      RECORD_PENDING_ERROR(*usedCtx,
+                           usedCtx->enqueueEventHandler([deferredFree]() {}));
+    }
   }
+}
+
+void DeviceBuffer::recordUsedOnContext(DeviceContext &ctx) {
+  // Only host/pinned buffers use the deferred, event-ordered host free that
+  // must account for foreign streams; device buffers free synchronously.
+  if (!isHost_)
+    return;
+  // Sub-buffers alias their root parent's backing memory and their destructor
+  // returns early -- only the root owner runs the deferred host free. Forward
+  // the recording up the parent chain so the root orders its free against
+  // `ctx` too; recording it here would be lost when the sub-buffer is
+  // destroyed.
+  if (DeviceBuffer *parent = parent_.getPointer()) {
+    parent->recordUsedOnContext(ctx);
+    return;
+  }
+  // The owning context is always ordered against in the destructor.
+  if (&ctx == context_.getPointer())
+    return;
+  std::lock_guard<std::mutex> lock(usedContextsMu_);
+  // The set of distinct contexts is tiny (bounded by the device count), so a
+  // linear de-dup keeps the vector from growing under repeated copies.
+  for (const DeviceContextRef &existing : usedContexts_)
+    if (existing.getPointer() == &ctx)
+      return;
+  usedContexts_.push_back(DeviceContextRef::copy(&ctx));
 }
 
 MODULAR_CXX_EXPORT DeviceContext &DeviceBuffer::context() { return *context_; }
@@ -1388,12 +1456,21 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     if (srcApi == Device::cpuAPI && dstApi != Device::cpuAPI)
       RETURN_IF_ERROR(src.context().synchronize());
 
+    // The host source is DMA'd on dst's stream, which may differ from src's
+    // owning context. Record it so src's host free is ordered against this
+    // stream too. If dst is also host memory (pinned -> pinned), it needs no
+    // recording here: the copy runs on dst's own owning context, and dst's
+    // destructor already orders its free against that context.
+    src.recordUsedOnContext(dst.context());
     return dst.context().enqueueCopyToDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (dst.isHost() || (dstApi == Device::cpuAPI)) {
     if (dstApi == Device::cpuAPI && srcApi != Device::cpuAPI)
       RETURN_IF_ERROR(dst.context().synchronize());
 
+    // The host destination is DMA'd on src's stream; record it so dst's host
+    // free is ordered against this stream too.
+    dst.recordUsedOnContext(src.context());
     return src.context().enqueueCopyFromDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (srcApi == dstApi) {

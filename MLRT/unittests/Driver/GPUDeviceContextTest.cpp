@@ -460,6 +460,94 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
   }
 }
 
+// Shared body for the multi-stream pinned-free regressions: a host/pinned
+// buffer used as an async-copy staging buffer on a stream other than its owning
+// context must not have its backing memory freed (and recycled) until that
+// other stream's copy completes.
+//
+// Two contexts on the (default) device give two distinct streams. The pinned
+// buffer is owned by `ownCtx` but copied on `copyCtx`; the copy therefore runs
+// on a stream `ownCtx` never orders against in the buggy implementation. This
+// mirrors OverlappingCopies' recycle-detection trick: if the free lands early,
+// the same-size reallocation reuses the still-in-flight memory and clobbering
+// it corrupts the copy's result.
+//
+// When `viaSubBuffer` is set the copy source is a sub-buffer aliasing the whole
+// pinned block. The sub-buffer's destructor performs no free (the root owns the
+// memory), so the used-context recording must be forwarded to the root for the
+// free to stay correctly ordered.
+static void runPinnedMultiStreamFree(bool viaSubBuffer) {
+  ASSIGN_NO_ERR(DeviceContextRef, ownCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, copyCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSERT_NE(ownCtx.getPointer(), copyCtx.getPointer());
+
+  // Large enough that the H2D copy stays in flight across the free below.
+  const int allocLen = 127 * 1024 * 1024; // 127MB, fits host manager chunks.
+
+  // Device buffer on copyCtx's stream that receives the pinned-buffer copy, and
+  // a host buffer to read it back for verification.
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf,
+                copyCtx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, refBuf, ownCtx->createHostBuffer(allocLen));
+
+  {
+    // Pinned/host staging buffer OWNED by ownCtx, but copied on copyCtx.
+    ASSIGN_NO_ERR(DeviceBufferRef, pinned, ownCtx->createHostBuffer(allocLen));
+    memset(pinned->ptr(), 12, allocLen);
+    // copyTo routes through copyCtx (dst.context()), so the copy runs on
+    // copyCtx's stream and records copyCtx as a used context on the buffer that
+    // owns the memory -- `pinned` directly, or its root via a sub-buffer.
+    if (viaSubBuffer) {
+      ASSIGN_NO_ERR(DeviceBufferRef, sub, pinned->createSubBuffer(0, allocLen));
+      EXPECT_NO_ERR(sub->copyTo(*devBuf));
+    } else {
+      EXPECT_NO_ERR(pinned->copyTo(*devBuf));
+    }
+    // `pinned` (and any sub-buffer) released here: its host free must be
+    // ordered against copyCtx's in-flight copy, not just ownCtx's idle stream.
+  }
+
+  // Drain ownCtx's ready event handlers. In the buggy (owning-stream-only)
+  // implementation this frees the pinned memory now -- ownCtx's stream is idle
+  // -- even though copyCtx's copy is still running.
+  EXPECT_NO_ERR(ownCtx->pollPendingEvents());
+
+  // Reallocate the same size from ownCtx's host free list and clobber only the
+  // final byte. If the pinned memory was recycled early (the bug), this single
+  // instant write lands on the last byte the in-flight H2D copy reads, so it
+  // reliably wins the race and corrupts devBuf (writing the whole buffer would
+  // lose to the much faster DMA read; cf. OverlappingCopies).
+  ASSIGN_NO_ERR(DeviceBufferRef, clobber, ownCtx->createHostBuffer(allocLen));
+  reinterpret_cast<char *>(clobber->ptr())[allocLen - 1] = 99;
+
+  // Let the copy finish and read devBuf back; the loop below verifies it kept
+  // the original data.
+  EXPECT_NO_ERR(copyCtx->synchronize());
+  EXPECT_NO_ERR(devBuf->copyTo(*refBuf));
+  EXPECT_NO_ERR(copyCtx->synchronize());
+  EXPECT_NO_ERR(ownCtx->synchronize());
+
+  const char *refPtr = reinterpret_cast<const char *>(refBuf->ptr());
+  for (int i = 0; i < allocLen; ++i) {
+    ASSERT_EQ(refPtr[i], 12)
+        << "corruption at index " << i
+        << ": pinned buffer freed before copyCtx's copy completed";
+  }
+}
+
+// Regression: pinned buffer copied directly on a foreign stream.
+TEST_F(GPUDeviceContextTest, PinnedBufferMultiStreamFree) {
+  runPinnedMultiStreamFree(/*viaSubBuffer=*/false);
+}
+
+// Regression: pinned buffer copied on a foreign stream through a sub-buffer,
+// whose used-context recording must forward to the root owner.
+TEST_F(GPUDeviceContextTest, PinnedSubBufferMultiStreamFree) {
+  runPinnedMultiStreamFree(/*viaSubBuffer=*/true);
+}
+
 TEST_F(GPUDeviceContextTest, RecycleBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, allocCtx,
                 DeviceContext::create(Device::gpuAPI));

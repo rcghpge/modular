@@ -28,6 +28,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 
 #include <chrono>
@@ -516,6 +517,13 @@ public:
 private:
   friend class DeviceContext;
 
+  // Records that this host/pinned buffer was used as an async-copy source or
+  // destination on `ctx`, a stream other than its owning `context_`, so the
+  // destructor can order the deferred host free against `ctx` too. No-op for
+  // device buffers and for the owning context; for a sub-buffer, forwards to
+  // the root owner that performs the free. Thread-safe.
+  void recordUsedOnContext(DeviceContext &ctx);
+
   DeviceContextRef context_;
   DeviceBufferRef parent_;
   void *ptr_;
@@ -524,6 +532,14 @@ private:
   // TODO: Remove the V1 compatibility.
   bool owning_ = true;
   std::optional<llvm::unique_function<void()>> destructorFn_ = std::nullopt;
+
+  // Streams other than `context_` on which this host/pinned buffer was used as
+  // an async-copy staging buffer. The destructor defers the host free until
+  // every one of them completes, not just the owning stream, to avoid a
+  // use-after-free. Populated by `recordUsedOnContext`; empty for device and
+  // single-stream buffers. Guarded by `usedContextsMu_`.
+  std::mutex usedContextsMu_;
+  llvm::SmallVector<DeviceContextRef, 0> usedContexts_;
 
   DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost);
   DeviceBuffer(DeviceContext &context, DeviceBuffer &parent, void *ptr,
