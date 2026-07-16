@@ -87,6 +87,21 @@ def test_driver_create() raises:
     assert_equal(device_count, 2)
 
 
+def test_driver_device_enumeration() raises:
+    var ok = True
+    try:
+        var device_count: Int
+        var driver = Driver.create(_get_plugin_spec())
+        device_count = Int(driver[].get_device_count())
+        for i in range(device_count):
+            var device = driver[].get_device_dynamic(Int64(i))
+            if Int(device[].id) != i:
+                ok = False
+    except e:
+        raise Error(String.write(e))
+    assert_true(ok, "device ID mismatch during enumeration")
+
+
 def test_invalid_device_id() raises:
     var driver = Driver.create(_get_plugin_spec())
     with assert_raises():
