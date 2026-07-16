@@ -385,11 +385,8 @@ bool DeviceGraphDependenciesOp::producesNewNodes() {
 //     ...
 //     out = <yielded>
 //   var node = builder.region(work, dependencies=[...])
-//   var resolved = out.value()
+//   var resolved = out.take()
 //   // uses of the op's body result now refer to `resolved`
-//
-// A body result whose yielded value is defined *outside* the body is a plain
-// pass-through and is bound directly (no captured var needed).
 LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -403,28 +400,22 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
     Value yielded;
     MojoValue outVar;
   };
+
   SmallVector<SurfacedResult> surfaced;
-  SmallVector<std::pair<Value, Value>> passThroughs; // (result, yielded)
   for (auto [result, yielded] :
        llvm::zip_equal(getBodyResults(), yieldOp.getOperands())) {
     if (result.use_empty())
       continue;
-    if (getBody().isAncestor(yielded.getParentRegion())) {
-      // `region` returns only the join node, and the surfaced type may not be
-      // default-constructible (e.g. a non-null buffer pointer), so it cannot be
-      // a bare uninitialized `var` captured by `mut`. Wrap it in an
-      // `Optional[T]` (None-initialized) that the `work` closure writes, and
-      // unwrap with `.value()` after `region`.
-      MojoValue optionalType = MojoValue(
-          kStructOptional)[EmitMojoState::mlirTypeToMojoType(result.getType())];
-      MojoValue outVar = state.builder.var(
-          optionalType(/*parameters=*/{},
-                       /*operands=*/{MojoValue(kComptimeNone)}),
-          /*cache=*/false);
-      surfaced.push_back({result, yielded, outVar});
-    } else {
-      passThroughs.emplace_back(result, yielded);
-    }
+
+    // The returned value may not be default constructable, so use
+    // `Optional[T]` for the result variable.
+    MojoValue optionalType = MojoValue(
+        kStructOptional)[EmitMojoState::mlirTypeToMojoType(result.getType())];
+    MojoValue outVar =
+        state.builder.var(optionalType(/*parameters=*/{},
+                                       /*operands=*/{MojoValue(kComptimeNone)}),
+                          /*cache=*/false);
+    surfaced.emplace_back(result, yielded, outVar);
   }
 
   // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
@@ -447,7 +438,7 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
       /*isAsync=*/false, /*captureConvention=*/workConvention,
       [&](const FunctionBody &functionBody) {
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
-        for (Operation &op : getBody().front().getOperations())
+        for (Operation &op : getBodyBlock().getOperations())
           if (state.lowerOpToMojo(&op).failed()) {
             errOccurred = true;
             return;
@@ -455,7 +446,8 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
         // Write each in-body result into its captured `Optional` var (the
         // value implicitly wraps into the Optional).
         for (const SurfacedResult &s : surfaced)
-          state.builder.assign(s.outVar, state.getMojoValueFor(s.yielded));
+          state.builder.assign(s.outVar,
+                               state.getMojoValueFor(s.yielded).transfer());
       });
   if (errOccurred)
     return failure();
@@ -472,15 +464,15 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
           MojoValue(kParameterDependencies).equal(dependenciesList)}));
   state.setMojoValueFor(getNode(), node);
 
-  // Bind the op's body results: unwrap each surfaced `Optional` via `.value()`
-  // and external pass-throughs directly to the yielded value.
+  // Bind the op's body results: unwrap each surfaced `Optional` via `.take()`.
   for (const SurfacedResult &s : surfaced)
-    state.setMojoValueFor(s.result, state.builder.var(s.outVar.get("value")(
+    state.setMojoValueFor(s.result, state.builder.var(s.outVar.get("take")(
                                         /*parameters=*/{}, /*operands=*/{})));
-  for (auto [result, yielded] : passThroughs)
-    state.setMojoValueFor(result, state.getMojoValueFor(yielded));
+
   return success();
 }
+
+Block &DeviceGraphDependenciesOp::getBodyBlock() { return getBody().front(); }
 
 bool DeviceGraphDependenciesOp::isThrows() { return true; }
 

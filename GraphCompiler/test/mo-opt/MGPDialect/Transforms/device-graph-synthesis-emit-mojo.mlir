@@ -20,7 +20,7 @@
 // allocated buffer is a body result of the `mgp.device_graph.dependencies` op;
 // since `region` returns only the join node, the buffer is surfaced through a
 // captured `Optional` (None-initialized) that the `work` closure writes (so it
-// captures by `mut`), then unwrapped with `.value()` after `region`.
+// captures by `mut`), then unwrapped with `.take()` after `region`.
 // CHECK: var [[OUT:var[_0-9]+]] = Optional[{{.*}}](None)
 // CHECK: def [[WORK0:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {mut}:
 // The allocation is a builder op: `mgp.device_graph.alloc` lowers to the
@@ -31,7 +31,7 @@
 // CHECK: {{.*}}mgp_device_graph_alloc({{.*}}, builder)
 // CHECK: [[OUT]] =
 // CHECK: var [[NODE0:var[_0-9]+]] = builder.region([[WORK0]], dependencies = [])
-// CHECK: {{var[_0-9]+}} = [[OUT]].value()
+// CHECK: {{var[_0-9]+}} = [[OUT]].take()
 
 // The dispatch is recorded in its own `read`-capturing `region`, ordered after
 // the alloc's node via the `dependencies=` list, and calls the node-free stub.

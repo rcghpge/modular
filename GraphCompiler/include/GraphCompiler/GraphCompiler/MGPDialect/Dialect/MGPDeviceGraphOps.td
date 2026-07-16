@@ -349,6 +349,9 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
     /// Returns the `mgp.device_graph.dependencies.yield` terminating the body.
     DeviceGraphDependenciesYieldOp getYieldOp();
 
+    /// Returns the single body region block.
+    Block &getBodyBlock();
+
     /// Returns the body's `!mgp.device_graph.builder` block argument (bound to
     /// the `graphBuilder` operand) -- the builder the body's recording work
     /// uses.
