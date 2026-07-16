@@ -8,7 +8,10 @@
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "GraphCompiler/CommonDriver/Utils.h"
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
+#include "GraphCompiler/GraphCompiler/Conversion/MOToMAP.h"
 #include "GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h"
+#include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
+#include "GraphCompiler/GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
@@ -49,7 +52,8 @@ using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOSH::MOSHDialect, MOGG::MOGGDialect,
-                  MGP::MGPDialect, GRT::GRTDialect, RMO::RMODialect>();
+                  MGP::MGPDialect, GRT::GRTDialect, RMO::RMODialect,
+                  MAP::MAPDialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }
@@ -138,7 +142,9 @@ void M::MO::registerPasses() {
   MO::registerMgpPipeline();
   MO::registerJitPipeline();
   MO::registerMOToMOGGPasses();
+  MO::registerMOToMAPPasses();
   MO::registerMOTransformsPasses();
+  MAP::registerMAPTransformsPasses();
   MGP::registerMOGGToMGP();
 
   MOGG::registerMergeIdenticalKernelStubs();
@@ -553,6 +559,9 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   // --- mo-pipeline ---
   buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-mogg");
+
+  // --- mo-to-map ---
+  buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "map");
 
   // --- mo-to-mogg ---
   buildStage(

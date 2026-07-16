@@ -22,6 +22,8 @@ package_group(
 pkg_files(
     name = "docs",
     srcs = [
+        ":MAPDialect.doc",
+        ":MAPTransformsIncGen.doc",
         ":MGPDialect.doc",
         ":MGPTransformsIncGen.doc",
         ":MODialect.doc",
@@ -29,6 +31,7 @@ pkg_files(
         ":MOGGDialectPassesIncGen.doc",
         ":MOGGToMGPIncGen.doc",
         ":MOSHDialect.doc",
+        ":MOToMAPIncGen.doc",
         ":MOToMOGGIncGen.doc",
         ":MOTransformsIncGen.doc",
         ":RMODialect.doc",
@@ -76,11 +79,14 @@ modular_cc_library(
     hdrs = glob(["include/GraphCompiler/GraphCompiler/*.h"]),
     copts = ["-fvisibility=default"],
     deps = [
+        ":MAPDialect",
+        ":MAPTransforms",
         ":MGPRT",
         ":MODialect",
         ":MOGGDialect",
         ":MOGGToMGP",
         ":MOGGTransforms",
+        ":MOToMAP",
         ":MOToMOGG",
         ":MOTransforms",
         ":RMODialect",
@@ -147,6 +153,7 @@ modular_cc_library(
         ["include/GraphCompiler/GraphCompiler/Conversion/*.h"],
         # Deal with a circular dependency.
         exclude = [
+            "include/GraphCompiler/GraphCompiler/Conversion/MOToMAP.h",
             "include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h",
         ],
     ),
@@ -1400,6 +1407,130 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOToMOGGIncGen",
         "//KGEN:ToolCommon",
+    ],
+)
+
+##
+# MAP Dialect
+##
+td_library(
+    name = "MAPDialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "MAPDialectIncGen",
+    dialect = "map",
+    td_file = "include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAP.td",
+    deps = [
+        ":MAPDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MAPDialectAttrsIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=map",
+            ],
+            "include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=map",
+            ],
+            "include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPAttrs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAP.td",
+    deps = [
+        ":MAPDialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MAPDialect",
+    srcs = glob(["lib/GraphCompiler/MAPDialect/Dialect/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MAPDialectAttrsIncGen",
+        ":MAPDialectIncGen",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+td_library(
+    name = "MAPTransformsTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MAPDialect/Transforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MAPTransformsIncGen",
+    output_name = "MAPTransforms",
+    td_file = "include/GraphCompiler/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td",
+    deps = [
+        ":MAPTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MAPTransforms",
+    srcs = glob(["lib/GraphCompiler/MAPDialect/Transforms/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MAPDialect/Transforms/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MAPDialect",
+        ":MAPTransformsIncGen",
+        ":MOToMAP",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+## MOToMAP
+td_library(
+    name = "MOToMAPTdFiles",
+    srcs = ["include/GraphCompiler/GraphCompiler/Conversion/MOToMAP.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOToMAPIncGen",
+    output_name = "MOToMAP",
+    td_file = "include/GraphCompiler/GraphCompiler/Conversion/MOToMAP.td",
+    deps = [
+        ":MOToMAPTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOToMAP",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOToMAP/*.cpp"]),
+    hdrs = ["include/GraphCompiler/GraphCompiler/Conversion/MOToMAP.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MAPDialect",
+        ":MODialect",
+        ":MOToMAPIncGen",
     ],
 )
 
