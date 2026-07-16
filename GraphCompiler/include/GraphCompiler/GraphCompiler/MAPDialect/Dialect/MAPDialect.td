@@ -32,6 +32,8 @@ def MAPDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MAP";
+
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPDIALECT_TD

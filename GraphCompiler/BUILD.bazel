@@ -1466,6 +1466,7 @@ modular_cc_library(
     deps = [
         ":MAPDialectAttrsIncGen",
         ":MAPDialectIncGen",
+        ":MOGGDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1530,7 +1531,9 @@ modular_cc_library(
     deps = [
         ":MAPDialect",
         ":MODialect",
+        ":MOGGDialect",
         ":MOToMAPIncGen",
+        "//KGEN:KGENDialect",
     ],
 )
 

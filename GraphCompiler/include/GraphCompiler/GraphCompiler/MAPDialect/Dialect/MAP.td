@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_MAP_TD
 
 include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.td"
+include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPTypes.td"
 include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPAttrs.td"
 include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPOps.td"
 

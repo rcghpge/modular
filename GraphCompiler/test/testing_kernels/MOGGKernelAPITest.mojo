@@ -2077,3 +2077,79 @@ struct TraitMixedLegacyOutAdd:
             var xv = xt.raw_load(i)
             var yv = rebind[SIMD[type_of(xt).dtype, 1]](yt.raw_load(i))
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
+
+
+# ===----------------------------------------------------------------------=== #
+# Signature-only opaque kernels for exercising MOToMAP lowering coverage.
+#
+# The bodies are empty: MOToMAP reads only the argument roles (fused vs plain
+# output) to decide which results get a store epilogue, so these kernels cover
+# one/two outputs across all-fused, none-fused and partially-fused shapes.
+# ===----------------------------------------------------------------------=== #
+
+
+@extensibility.register("map_lower_one_fused_output")
+struct MapLowerOneFusedOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        has_epilogue_fusion: Bool,
+    ](
+        res: FusedOutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
+@extensibility.register("map_lower_one_plain_output")
+struct MapLowerOnePlainOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](res: OutputTensor, a: InputTensor, ctx: DeviceContext,) raises:
+        pass
+
+
+@extensibility.register("map_lower_two_fused_outputs")
+struct MapLowerTwoFusedOutputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        has_epilogue_fusion: Bool,
+    ](
+        res0: FusedOutputTensor,
+        res1: FusedOutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
+@extensibility.register("map_lower_two_plain_outputs")
+struct MapLowerTwoPlainOutputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res0: OutputTensor,
+        res1: OutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+@extensibility.register("map_lower_partial_fused_outputs")
+struct MapLowerPartialFusedOutputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        has_epilogue_fusion: Bool,
+    ](
+        res0: FusedOutputTensor,
+        res1: OutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass

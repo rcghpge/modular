@@ -12,7 +12,12 @@
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_H
 
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
+#include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPTypes.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
