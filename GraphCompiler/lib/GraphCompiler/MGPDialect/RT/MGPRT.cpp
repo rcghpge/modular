@@ -48,7 +48,7 @@ AsyncRTWrapper<T> wrap(T *ptr) {
 }
 
 template <typename T, typename... Args>
-void fulfillReady(AnyAsyncValueRef &value, CPUDevice &cpu, Args &&...args) {
+void fulfillReady(AnyAsyncValueRef &value, Args &&...args) {
   if (value.getPointer() && value.getPointer()->isIndirect()) {
     value.copy().emplaceIndirect<T>(std::forward<Args>(args)...);
   } else {
@@ -115,31 +115,27 @@ MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_ssizet(ssize_t data,
                           AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<ssize_t>(value, cpuDevice, data);
+  fulfillReady<ssize_t>(value, data);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_int64t(int64_t data,
                           AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<int64_t>(value, cpuDevice, data);
+  fulfillReady<int64_t>(value, data);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_chain(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<Chain>(value, cpuDevice);
+  fulfillReady<Chain>(value);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsync_bool(bool data, AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<bool>(value, cpuDevice, data);
+  fulfillReady<bool>(value, data);
 }
 
 /// TAKES an already-owning DeviceBuffer handle the producer surrendered instead
@@ -173,7 +169,7 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
       data, size, std::move(asyncDeviceBufferRef));
 
-  fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
+  fulfillReady<TensorBufferRef>(value, std::move(tensorBufferRef));
 }
 
 /// TAKES an already-owning DeviceGraph handle the producer surrendered (via the
@@ -188,10 +184,9 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncDeviceGraphRefByTakingHandle(
     Driver::DeviceGraph *handle, AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
   Driver::DeviceGraphRef graph = M::takeRCRef(handle);
-  fulfillReady<Driver::DeviceGraphRef>(value, cpuDevice, std::move(graph));
+  fulfillReady<Driver::DeviceGraphRef>(value, std::move(graph));
 }
 
 /// Builds a TensorBufferRef from a data view (ptr + size) and an owning storage
@@ -203,7 +198,6 @@ COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
                                        size_t size,
                                        AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
   // Adopt the surrendered reference net-zero, then move it into the
   // TensorBufferRef's storage.
@@ -211,7 +205,7 @@ MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
   auto tensorBufferRef =
       TensorBufferRef::create(data, size, std::move(storageRef));
 
-  fulfillReady<TensorBufferRef>(value, cpuDevice, std::move(tensorBufferRef));
+  fulfillReady<TensorBufferRef>(value, std::move(tensorBufferRef));
 }
 
 /// Builds a Tensor (TensorBufferRef + spec) from a data view (ptr + size +
@@ -223,7 +217,6 @@ MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
                                        size_t size, size_t rank, size_t *dims,
                                        int8_t type,
                                        AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
   // Adopt the surrendered reference net-zero, then move it into the tensor's
   // TensorBufferRef storage.
@@ -232,7 +225,7 @@ MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
       TensorBufferRef::create(data, size, std::move(storageRef));
   TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
 
-  fulfillReady<Tensor>(value, cpuDevice, std::move(buf), std::move(spec));
+  fulfillReady<Tensor>(value, std::move(buf), std::move(spec));
 }
 
 /// Builds a *new* AsyncValue holding a TensorBufferRef from a data view (ptr +
@@ -270,21 +263,19 @@ MGP_RT_CreateTensorRefAsyncValue(AsyncValue *storage, void *data, size_t size,
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
                               AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
 
   ArrayRef<ssize_t> dims(data, data + rank);
-  fulfillReady<TensorShape>(value, cpuDevice, dims);
+  fulfillReady<TensorShape>(value, dims);
 }
 
 static void
 createAsyncMojoValue(void *data, void (*destructorFn)(void *),
                      AsyncRTWrapper<AnyAsyncValueRef> async,
                      MojoValue::Tag tag = MojoValue::Tag::kDefault) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
   AnyAsyncValueRef &value = unwrap(async);
 
-  fulfillReady<MojoValue>(value, cpuDevice, data, destructorFn, tag);
+  fulfillReady<MojoValue>(value, data, destructorFn, tag);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
