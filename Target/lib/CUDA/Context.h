@@ -42,6 +42,21 @@ struct M_driver_context {
   M_driver_status_t
   setCurrentDriverContext(M_driver_native_handle_t driver_context);
   M_driver_status_t memoryInfo(uint64_t *free, uint64_t *total);
+  M_driver_status_t
+  tensorMapEncodeTiled(void *tensor_map, int32_t data_type, uint32_t rank,
+                       uint64_t global_device_address,
+                       const uint64_t *global_dim,
+                       const uint64_t *global_strides, const uint32_t *box_dim,
+                       const uint32_t *element_strides, int32_t interleave,
+                       int32_t swizzle, int32_t l2_promotion, int32_t oob_fill);
+  M_driver_status_t tensorMapEncodeIm2col(
+      void *tensor_map, int32_t data_type, uint32_t rank,
+      uint64_t global_device_address, const uint64_t *global_dim,
+      const uint64_t *global_strides, const int32_t *pixel_box_lower_corner,
+      const int32_t *pixel_box_upper_corner, int32_t channels_per_pixel,
+      int32_t pixels_per_column, const uint32_t *element_strides,
+      int32_t interleave, int32_t swizzle, int32_t l2_promotion,
+      int32_t oob_fill);
   M_driver_status_t freePinned(M_driver_memory_t memory);
   M_driver_status_t freeSync(M_driver_memory_t memory);
 

@@ -182,6 +182,35 @@ TEST_F(DriverPluginContextTest, FunctionIntrospection) {
   EXPECT_GT(numBlocks, 0);
 }
 
+TEST_F(DriverPluginContextTest, TensorMapEncodeTiled) {
+  M_driver_device_t device = nullptr;
+  ASSERT_SUCCESS(device_get(driver, 0, &device));
+  int32_t ccMajor = 0;
+  ASSERT_SUCCESS(device_attribute(
+      device, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, &ccMajor));
+  if (ccMajor < 9)
+    GTEST_SKIP() << "TMA requires sm_90+";
+
+  constexpr uint64_t kDim = 64;
+  M_driver_memory_t mem = nullptr;
+  ASSERT_SUCCESS(
+      memory_alloc_sync(contexts[0], kDim * kDim * sizeof(float), &mem));
+  void *addr = nullptr;
+  ASSERT_SUCCESS(memory_property(mem, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &addr));
+
+  alignas(64) char tensorMap[128] = {};
+  uint64_t globalDim[2] = {kDim, kDim};
+  uint64_t globalStrides[1] = {kDim * sizeof(float)};
+  uint32_t boxDim[2] = {16, 16};
+  uint32_t elementStrides[2] = {1, 1};
+  ASSERT_SUCCESS(tensor_map_encode_tiled(
+      contexts[0], tensorMap, CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 2,
+      reinterpret_cast<uint64_t>(addr), globalDim, globalStrides, boxDim,
+      elementStrides, CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_NONE,
+      CU_TENSOR_MAP_L2_PROMOTION_NONE, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE));
+
+  ASSERT_SUCCESS(memory_free_sync(contexts[0], mem));
+}
 // Uses synchronous (context-based) memory allocation.
 TEST_F(DriverPluginQueueTest, VecAdd) {
   std::string fileType("ptx");

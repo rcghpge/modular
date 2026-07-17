@@ -16,6 +16,7 @@
 #include "M_driver_function.h"
 #include "M_driver_memory.h"
 #include "M_driver_queue.h"
+#include "M_driver_tma.h"
 
 /**
  * Standard status protocol

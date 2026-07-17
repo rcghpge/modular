@@ -808,3 +808,55 @@ M_driver_status_t M_driver_function_occupancy_max_active_blocks(
   *num_blocks = MOCK_OCCUPANCY_MAX_ACTIVE_BLOCKS;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+// The mock has no TMA engine; the encoders report incompatible.
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_tensor_map_encode_tiled(
+    M_driver_context_t context, void *tensor_map, int32_t data_type,
+    uint32_t rank, uint64_t global_device_address, const uint64_t *global_dim,
+    const uint64_t *global_strides, const uint32_t *box_dim,
+    const uint32_t *element_strides, int32_t interleave, int32_t swizzle,
+    int32_t l2_promotion, int32_t oob_fill) {
+  (void)context;
+  (void)tensor_map;
+  (void)data_type;
+  (void)rank;
+  (void)global_device_address;
+  (void)global_dim;
+  (void)global_strides;
+  (void)box_dim;
+  (void)element_strides;
+  (void)interleave;
+  (void)swizzle;
+  (void)l2_promotion;
+  (void)oob_fill;
+  return M_DRIVER_STATUS_INCOMPATIBLE;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_tensor_map_encode_im2col(
+    M_driver_context_t context, void *tensor_map, int32_t data_type,
+    uint32_t rank, uint64_t global_device_address, const uint64_t *global_dim,
+    const uint64_t *global_strides, const int32_t *pixel_box_lower_corner,
+    const int32_t *pixel_box_upper_corner, int32_t channels_per_pixel,
+    int32_t pixels_per_column, const uint32_t *element_strides,
+    int32_t interleave, int32_t swizzle, int32_t l2_promotion,
+    int32_t oob_fill) {
+  (void)context;
+  (void)tensor_map;
+  (void)data_type;
+  (void)rank;
+  (void)global_device_address;
+  (void)global_dim;
+  (void)global_strides;
+  (void)pixel_box_lower_corner;
+  (void)pixel_box_upper_corner;
+  (void)channels_per_pixel;
+  (void)pixels_per_column;
+  (void)element_strides;
+  (void)interleave;
+  (void)swizzle;
+  (void)l2_promotion;
+  (void)oob_fill;
+  return M_DRIVER_STATUS_INCOMPATIBLE;
+}
