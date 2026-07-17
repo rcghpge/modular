@@ -1563,6 +1563,52 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 }
 
 //===----------------------------------------------------------------------===//
+// BufferMemsetOp
+//===----------------------------------------------------------------------===//
+
+def BufferMemsetOp : MGP_DeviceOp<"buffer.memset", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+]> {
+  let summary = "Fills every element of a device buffer with a scalar value.";
+  let description = [{
+    Sets all `elemSize`-byte elements of `buffer` to the scalar whose
+    little-endian bit pattern is the low `elemSize` bytes of `valueBits`. This is
+    used to initialize a persistent buffer once during the model's `init` phase.
+
+    The value is carried as a raw bit pattern (rather than a typed attribute) so
+    a single primitive can memset any element type: the graph compiler computes
+    the pattern from the originating scalar and the runtime replays it with the
+    device's memset.
+
+    Example:
+    ```mlir
+      %ch1 = mgp.buffer.memset(%ch0, %buf, %ctx) { valueBits = 0, elemSize = 4 }
+               : (!mef.chain, !mgp.buffer<<"gpu", 3>>, !mgp.device_context<<"gpu", 3>>) -> !mef.chain
+    ```
+  }];
+
+  let arguments = (ins
+    ChainType:$inChain,
+    MGP_DeviceBufferType:$buffer,
+    MGP_DeviceContextType:$deviceContext,
+    UI64Attr:$valueBits,
+    UI64Attr:$elemSize
+  );
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    M::DeviceRefAttr BufferMemsetOp::getDevice() {
+      return getBuffer().getType().getDevice();
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
 

@@ -285,6 +285,46 @@ BufferHostToDeviceOp::getInOutSemantics(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferMemsetOp
+//===----------------------------------------------------------------------===//
+bool BufferMemsetOp::isThrows() { return true; }
+
+LogicalResult BufferMemsetOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primitiveMojoName(primDecl));
+
+  MojoValue deviceParam =
+      MojoValue(getBuffer().getType().getDevice().getLabel()).quote();
+  MojoValue bufferVal = state.getMojoValueFor(getBuffer());
+  MojoValue valueBitsVal = MojoValue(getValueBits());
+  MojoValue elemSizeVal = MojoValue(getElemSize());
+  MojoValue deviceCtxVal = state.getMojoValueFor(getDeviceContext());
+
+  state.builder.call(function, {deviceParam},
+                     {bufferVal, valueBitsVal, elemSizeVal, deviceCtxVal});
+
+  return success();
+}
+
+LogicalResult BufferMemsetOp::verify() {
+  uint64_t elemSize = getElemSize();
+  if (elemSize != 1 && elemSize != 2 && elemSize != 4 && elemSize != 8)
+    return emitOpError("elemSize must be one of 1, 2, 4, or 8 bytes, got ")
+           << elemSize << ".";
+  return verifyConsistentDevices(getOperation(), {getDevice()});
+}
+
+InOutSignatureAttr::InOutSemantics
+BufferMemsetOp::getInOutSemantics(size_t index) {
+  assert(index < getNumOperands());
+  return index == getBufferMutable().getOperandNumber()
+             ? InOutSignatureAttr::kOut
+             : InOutSignatureAttr::kIn;
+}
+
+//===----------------------------------------------------------------------===//
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
 

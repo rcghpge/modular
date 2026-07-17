@@ -2080,6 +2080,49 @@ void ConstantScalarOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
+// BufferCreateOp
+//===----------------------------------------------------------------------===//
+
+void BufferCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                           Type result, Attribute initValue) {
+  if (initValue)
+    odsState.addAttribute(getInitValueAttrName(odsState.name), initValue);
+  odsState.addTypes(result);
+}
+
+LogicalResult BufferCreateOp::verify() {
+  Attribute initValue = getInitValueAttr();
+  if (!initValue)
+    return success();
+
+  Type bufferElementType =
+      castFromTensorLike(getResult().getType()).getElementType();
+
+  // The init value is a single-element elements attribute (the form the Python
+  // API emits), or a scalar typed attribute. In either case its element type
+  // must match the buffer's element type.
+  Type valueElementType;
+  if (auto elts = dyn_cast<ElementsAttr>(initValue)) {
+    if (elts.getNumElements() != 1)
+      return emitError(
+          "mo.buffer.create initValue must be a single scalar element");
+    valueElementType = elts.getElementType();
+  } else if (auto typed = dyn_cast<TypedAttr>(initValue)) {
+    valueElementType = typed.getType();
+  } else {
+    return emitError("mo.buffer.create initValue must be a typed scalar or "
+                     "elements attribute");
+  }
+
+  if (isa<FloatType>(bufferElementType) != isa<FloatType>(valueElementType) ||
+      bufferElementType.getIntOrFloatBitWidth() !=
+          valueElementType.getIntOrFloatBitWidth())
+    return emitError("mo.buffer.create initValue element type must match the "
+                     "buffer's element type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
 

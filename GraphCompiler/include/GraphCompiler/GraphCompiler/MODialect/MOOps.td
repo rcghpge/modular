@@ -5375,21 +5375,47 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
   MO_PreservedDuringKernelLowering,
   Pure,
 ]> {
-  let summary = "Creates an uninitialized buffer on a specific device.";
+  let summary = "Creates a buffer on a specific device, optionally initialized.";
   let description = [{
-    This operation creates an uninitialized buffer with the specified shape and data type on a given device.
-    The buffer is not initialized with any values, and the operation is intended for use cases where the buffer
-    will be filled with data later in the computation.
+    This operation creates a buffer with the specified shape and data type on a given device.
+
+    By default the buffer is uninitialized and (re)allocated on every execution,
+    for use cases where it will be filled with data later in the computation.
+
+    When the optional `initValue` scalar attribute is set, the buffer instead
+    becomes persistent state: it is allocated once and filled with `initValue`
+    a single time during the model's `init` phase, and the same buffer is reused
+    across every `execute` call. This lets a kernel keep and mutate persistent
+    scratch state that is only initialized once (e.g. a counter buffer that a
+    kernel zeroes at the end of each invocation and expects to find zeroed on the
+    first call). `initValue` must have the same element type as the buffer.
 
     Example:
     ```mlir
     %buf = mo.buffer.create : !mo.buffer<[20, 20], f32, gpu:0>
+    %zeroed = mo.buffer.create { initValue = 0.0 : f32 } : !mo.buffer<[20, 20], f32, gpu:0>
     ```
   }];
 
+  let arguments = (ins
+    // A single-element elements attribute whose element type matches the
+    // buffer's dtype (see the verifier).
+    OptionalAttr<AnyAttr>:$initValue
+  );
   let results = (outs MO_Buffer:$result);
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  let hasVerifier = 1;
+
+  // A custom builder (with a defaulted `initValue`) is the way to make the
+  // optional attribute omittable from the generated Python binding: the `{}`
+  // default lets callers construct an uninitialized buffer without passing the
+  // attribute (MLIR attribute casters reject `None`).
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "Type":$result,
+                   CArg<"::mlir::Attribute", "{}">:$initValue)>,
+  ];
 }
 
 def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [

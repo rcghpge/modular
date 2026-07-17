@@ -39,6 +39,7 @@
 #include "llvm/ADT/StringMap.h"
 
 #include <deque>
+#include <numeric>
 
 using namespace M;
 
@@ -1288,26 +1289,135 @@ LogicalResult MOGraphLowering::lower(MO::MutableStoreOp mutableStoreOp) {
   return success();
 }
 
+/// Computes the little-endian bit pattern of a scalar `initValue` attribute,
+/// zero-extended to 64 bits, for use as the `valueBits` of an
+/// mgp.buffer.memset. Handles the single-element elements attribute the Python
+/// API emits (so any dtype is represented exactly), as well as scalar
+/// integer/bool and float attributes. Returns failure for any other attribute
+/// kind, which the verifier is expected to have already rejected.
+static FailureOr<uint64_t> initValueBits(Attribute initValue) {
+  // The Python API encodes the scalar as a single-element elements attribute.
+  // `M::ArrayElementsAttr` only supports iteration as `Attribute`, so pull out
+  // the element as a scalar attribute and reuse the scalar handling below.
+  if (auto elts = dyn_cast<ElementsAttr>(initValue)) {
+    if (elts.getNumElements() != 1)
+      return failure();
+    initValue = *elts.value_begin<Attribute>();
+  }
+  // A BoolAttr is an IntegerAttr with an i1 type, so the integer branch also
+  // covers booleans.
+  if (auto intAttr = dyn_cast<IntegerAttr>(initValue))
+    return intAttr.getValue().zextOrTrunc(64).getZExtValue();
+  if (auto floatAttr = dyn_cast<FloatAttr>(initValue))
+    return floatAttr.getValue().bitcastToAPInt().zextOrTrunc(64).getZExtValue();
+  return failure();
+}
+
 LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, bufferCreateOp);
 
   Type resultType = bufferCreateOp.getResult().getType();
   auto resTensorType = MO::castFromTensorLike(resultType);
 
-  Value inChain = loweringState.getCurrentExecuteChain();
-  inChain = opLoweringState.getGuardChain(inChain);
+  Attribute initValue = bufferCreateOp.getInitValueAttr();
+  if (!initValue) {
+    // Uninitialized per-call scratch buffer: allocate a fresh buffer in the
+    // 'execute' block on every invocation (the original behavior).
+    Value inChain = loweringState.getCurrentExecuteChain();
+    inChain = opLoweringState.getGuardChain(inChain);
+
+    auto tensorSpecOr = opLoweringState.createTensorSpec(resTensorType);
+    if (failed(tensorSpecOr))
+      return failure();
+
+    auto bufferOr =
+        opLoweringState.createBuffer(inChain, *tensorSpecOr, resultType);
+    if (failed(bufferOr))
+      return failure();
+
+    opLoweringState.createOutputTensor(bufferCreateOp.getResult(), inChain,
+                                       bufferOr->buffer, bufferOr->tensorSpec);
+
+    return success();
+  }
+
+  // Persistent, once-initialized state buffer. The buffer is allocated and
+  // filled with `initValue` exactly once in the 'init' region, cached in the
+  // context, then retrieved (as the same allocation) on every 'execute' call so
+  // that kernel mutations persist across calls.
+
+  // Persistent buffers must have a statically known byte size so that a single
+  // memset can fill them during init.
+  std::optional<int64_t> numElements = resTensorType.getNumElements();
+  if (!numElements)
+    return bufferCreateOp->emitOpError(
+        "persistent buffer with an 'initValue' must have a statically known "
+        "shape (dynamic dimensions are unsupported)");
+  uint64_t sizeOfDtype = resTensorType.getDtype().getSizeInBytes();
+  uint64_t sizeInBytes = sizeOfDtype * static_cast<uint64_t>(*numElements);
+
+  FailureOr<uint64_t> valueBitsOr = initValueBits(initValue);
+  if (failed(valueBitsOr))
+    return bufferCreateOp->emitOpError(
+        "unsupported 'initValue' attribute kind");
+  uint64_t valueBits = *valueBitsOr;
+
+  DeviceRefAttr device = MO::getDeviceOrDefault(resTensorType);
+  MGP::BufferBuilder *bufferBuilder = loweringState.getBufferBuilder(device);
+
+  Location loc = bufferCreateOp.getLoc();
+
+  //===--- Init region: alloc -> memset -> cache. ---===//
+  OpBuilder &initBuilder = loweringState.getInitOpBuilder();
+  TypedValue<MGP::ContextType> initContext =
+      loweringState.getInitMgpContext().getResult();
+  TypedValue<MGP::DeviceContextType> initDevCtx =
+      loweringState.getInitDevice(device);
+  auto initChain =
+      cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain());
+
+  // Match the alignment logic in MOOpLoweringState::createBuffer.
+  uint64_t alignment =
+      M::Driver::getPreferredAlignment(device.getLabel().str());
+  if (device.getLabel() == kCPULabel)
+    alignment = std::gcd(alignment, opLoweringState.minimumCpuAlignment);
+
+  Value sizeVal = mlir::index::ConstantOp::create(
+      initBuilder, loc, static_cast<int64_t>(sizeInBytes));
+
+  Value allocBuffer = bufferBuilder->bufferAlloc(
+      initBuilder, loc, initContext, /*inChain=*/initChain, /*size=*/sizeVal,
+      /*deviceContext=*/initDevCtx, alignment);
+
+  auto memsetChain = MGP::BufferMemsetOp::create(
+                         initBuilder, loc, /*inChain=*/initChain,
+                         /*buffer=*/allocBuffer, /*deviceContext=*/initDevCtx,
+                         /*valueBits=*/valueBits, /*elemSize=*/sizeOfDtype)
+                         .getOutChain();
+
+  auto [cacheChain, slot] = bufferBuilder->cache(
+      initBuilder, loc, initContext, /*inChain=*/memsetChain,
+      /*contextCreateOp=*/loweringState.getInitMgpContext(),
+      /*buffer=*/allocBuffer);
+  loweringState.setInitChain(cacheChain);
+
+  //===--- Execute region: retrieve the cached buffer, build the tensor.
+  //---===//
+  OpBuilder &execBuilder = loweringState.getExecuteOpBuilder();
+  Value execChain = loweringState.getCurrentExecuteChain();
+  execChain = opLoweringState.getGuardChain(execChain);
+
+  Value cachedBuffer = bufferBuilder->getCached(
+      execBuilder, loc, /*context=*/loweringState.getExecuteMgpContext(),
+      /*inChain=*/cast<TypedValue<MEF::ChainType>>(execChain), slot,
+      /*expectedBufferType=*/allocBuffer.getType());
 
   auto tensorSpecOr = opLoweringState.createTensorSpec(resTensorType);
   if (failed(tensorSpecOr))
     return failure();
 
-  auto bufferOr =
-      opLoweringState.createBuffer(inChain, *tensorSpecOr, resultType);
-  if (failed(bufferOr))
-    return failure();
-
-  opLoweringState.createOutputTensor(bufferCreateOp.getResult(), inChain,
-                                     bufferOr->buffer, bufferOr->tensorSpec);
+  opLoweringState.createOutputTensor(bufferCreateOp.getResult(), execChain,
+                                     cachedBuffer, *tensorSpecOr);
 
   return success();
 }
