@@ -50,3 +50,10 @@ M_driver_device_property([[maybe_unused]] M_driver_device_t device,
   }
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
 }
+
+extern "C" M_driver_status_t
+M_driver_device_attribute([[maybe_unused]] M_driver_device_t device,
+                          [[maybe_unused]] int32_t attribute,
+                          [[maybe_unused]] int32_t *value) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}

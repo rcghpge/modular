@@ -40,3 +40,10 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
     return M_DRIVER_STATUS_BAD_DEVICE;
   return device->property(property_name, value);
 }
+
+M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
+                                            int32_t attribute, int32_t *value) {
+  if (device == nullptr)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  return device->attribute(attribute, value);
+}

@@ -53,3 +53,16 @@ M_driver_status_t M_driver_device::property(const char *propertyName,
   }
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
 }
+
+M_driver_status_t M_driver_device::attribute(int32_t attribute,
+                                             int32_t *value) {
+  if (value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  int cuValue = 0;
+  if (CUresult r = driver.rawCuda.cuDeviceGetAttribute(
+          &cuValue, static_cast<CUdevice_attribute>(attribute), deviceId);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&driver, r, "cuDeviceGetAttribute");
+  *value = static_cast<int32_t>(cuValue);
+  return M_DRIVER_STATUS_SUCCESS;
+}

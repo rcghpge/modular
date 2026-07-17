@@ -35,6 +35,7 @@
   HIP_FN(hipDeviceReset)                                                       \
   HIP_FN(hipSetDevice)                                                         \
   HIP_FN(hipGetDevice)                                                         \
+  HIP_FN(hipDeviceGetAttribute)                                                \
   HIP_FN(hipMemGetInfo)                                                        \
   HIP_FN(hipMalloc)                                                            \
   HIP_FN(hipFree)                                                              \

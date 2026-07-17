@@ -10,9 +10,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "Device.h"
+#include "AsyncRT/Runtime/CPUDevice.h"
+#include "AsyncRT/Runtime/HostSystem.h"
 #include "Common.h"
 #include "Driver.h"
 #include "HAL/M_driver_device.h"
+
+namespace AsyncRT = M::AsyncRT;
 
 #include <dlpack/dlpack.h>
 
@@ -51,4 +55,24 @@ M_driver_device_property([[maybe_unused]] M_driver_device_t device,
     return M_DRIVER_STATUS_SUCCESS;
   }
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+M_driver_status_t
+M_driver_device_attribute([[maybe_unused]] M_driver_device_t device,
+                          int32_t attribute, int32_t *value) {
+  if (device == nullptr)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  if (value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  // Mirrors CpuDeviceContext::getAttribute: only PARALLELISM_LEVEL (1000) is
+  // answered; other attributes report a soft error so callers can fall back.
+  if (attribute != 1000)
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+  AsyncRT::CPUDeviceRef cpuDevice = AsyncRT::getOrCreateCPUDevice(
+      AsyncRT::CPUDeviceSource::CPUDeviceContext,
+      AsyncRT::CPUDeviceOptions().withMainWillNotDonate(),
+      /*allowUsingExistingOptions=*/true);
+  *value =
+      static_cast<int32_t>(cpuDevice->getWorkQueue()->getParallelismLevel());
+  return M_DRIVER_STATUS_SUCCESS;
 }

@@ -39,6 +39,7 @@ public:
   M_driver_driver &getDriver() { return driver; }
 
   M_driver_status_t property(const char *propertyName, void *value);
+  M_driver_status_t attribute(int32_t attribute, int32_t *value);
 };
 
 #endif // TARGET_LIB_HIP_DEVICE_H

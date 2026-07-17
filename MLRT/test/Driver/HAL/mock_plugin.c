@@ -197,6 +197,19 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
 }
 
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
+                                            int32_t attribute, int32_t *value) {
+  // Mock returns a stable dummy value so introspection-style tests that
+  // touch `get_attribute` against the mock plugin don't fail.
+  (void)device;
+  (void)attribute;
+  if (!value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *value = 1;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------

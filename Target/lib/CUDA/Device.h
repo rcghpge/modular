@@ -25,6 +25,7 @@ struct M_driver_device {
       : driver(driver), deviceId(id) {}
 
   M_driver_status_t property(const char *propertyName, void *value);
+  M_driver_status_t attribute(int32_t attribute, int32_t *value);
 };
 
 #endif // TARGET_LIB_CUDA_DEVICE_H

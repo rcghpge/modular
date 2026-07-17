@@ -77,6 +77,24 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
 typedef M_driver_status_t (*M_driver_device_property_func_ptr_t)(
     M_driver_device_t device, const char *property_name, void *value);
 
+/**
+ * Retrieve a numeric device attribute by its integer ID.
+ *
+ * Attribute IDs follow a backend-defined enumeration; a plugin whose native
+ * enumeration differs translates the ID to its equivalent.
+ *
+ * @param[in] device The device to query.
+ * @param[in] attribute The attribute ID.
+ * @param[out] value The integer attribute value.
+ * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_DEVICE.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
+                                            int32_t attribute, int32_t *value);
+
+typedef M_driver_status_t (*M_driver_device_attribute_func_ptr_t)(
+    M_driver_device_t device, int32_t attribute, int32_t *value);
+
 #ifdef __cplusplus
 }
 #endif
