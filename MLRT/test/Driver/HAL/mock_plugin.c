@@ -702,3 +702,53 @@ M_driver_status_t M_driver_function_unload(M_driver_context_t context,
   (void)function;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_function_property(M_driver_context_t context,
+                                             M_driver_function_t function,
+                                             const char *property_name,
+                                             void *value) {
+  (void)context;
+  if (!function)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  if (!property_name || !value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (strcmp(property_name, M_DRIVER_FUNCTION_PROPERTY_NATIVE_HANDLE) == 0) {
+    // The mock's "native module handle" is the bundle sentinel.
+    *(uint64_t *)value = (uint64_t)(uintptr_t)&g_bundle_sentinel;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_function_set_attribute(M_driver_context_t context,
+                                                  M_driver_function_t function,
+                                                  int32_t attribute,
+                                                  int32_t value) {
+  (void)context;
+  (void)attribute;
+  (void)value;
+  if (!function)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// Fixed occupancy so tests can assert the plumbing end to end.
+#define MOCK_OCCUPANCY_MAX_ACTIVE_BLOCKS 4
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_function_occupancy_max_active_blocks(
+    M_driver_context_t context, M_driver_function_t function,
+    int32_t block_size, uint64_t dynamic_shared_memory_bytes,
+    int32_t *num_blocks) {
+  (void)context;
+  (void)block_size;
+  (void)dynamic_shared_memory_bytes;
+  if (!function)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  if (!num_blocks)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *num_blocks = MOCK_OCCUPANCY_MAX_ACTIVE_BLOCKS;
+  return M_DRIVER_STATUS_SUCCESS;
+}

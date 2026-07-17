@@ -44,6 +44,7 @@
   HIP_FN(hipModuleGetFunction)                                                 \
   HIP_FN(hipModuleLaunchKernel)                                                \
   HIP_FN(hipModuleUnload)                                                      \
+  HIP_FN(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor)                   \
   HIP_FN(hipStreamCreateWithPriority)                                          \
   HIP_FN(hipStreamDestroy)                                                     \
   HIP_FN(hipStreamSynchronize)                                                 \

@@ -32,6 +32,11 @@ struct M_driver_function {
        const char *function_name, uint64_t function_name_len);
 
   static M_driver_status_t unload(M_driver_function_t func);
+
+  M_driver_status_t
+  occupancyMaxActiveBlocks(M_driver_context &ctx, int32_t block_size,
+                           uint64_t dynamic_shared_memory_bytes,
+                           int32_t *num_blocks);
 };
 
 #endif // TARGET_LIB_HIP_FUNCTION_H

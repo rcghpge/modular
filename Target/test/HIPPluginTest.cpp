@@ -179,6 +179,31 @@ TEST_F(DriverPluginContextTest, FunctionLoadFromBundle) {
   EXPECT_SUCCESS(bundle_unload(contexts[0], runtime));
 }
 
+TEST_F(DriverPluginContextTest, FunctionOccupancy) {
+  std::vector<char> hsaco = compileHIPKernel();
+  ASSERT_FALSE(hsaco.empty()) << "Failed to compile HIP kernel via HIPRTC";
+
+  std::string fileType("hsaco");
+  auto bundle = makeStaticBundle(hsaco, fileType);
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t runtime = nullptr;
+  ASSERT_SUCCESS(bundle_load(contexts[0], &bundle, &opts, &runtime));
+
+  std::string funcName("vec_add");
+  M_driver_function_t func = nullptr;
+  ASSERT_SUCCESS(function_load(contexts[0], runtime, funcName.c_str(),
+                               funcName.size(), &func));
+
+  int32_t numBlocks = 0;
+  ASSERT_SUCCESS(function_occupancy_max_active_blocks(
+      contexts[0], func, /*block_size=*/128,
+      /*dynamic_shared_memory_bytes=*/0, &numBlocks));
+  EXPECT_GT(numBlocks, 0);
+
+  EXPECT_SUCCESS(function_unload(contexts[0], func));
+  EXPECT_SUCCESS(bundle_unload(contexts[0], runtime));
+}
+
 TEST_F(DriverPluginContextTest, FunctionLoadBadName) {
   std::vector<char> hsaco = compileHIPKernel();
   ASSERT_FALSE(hsaco.empty()) << "Failed to compile HIP kernel via HIPRTC";

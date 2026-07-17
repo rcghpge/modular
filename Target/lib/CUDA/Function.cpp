@@ -118,8 +118,8 @@ M_driver_function::load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
         &ctx.device.driver, r,
         "cuFuncSetAttribute NON_PORTABLE_CLUSTER_SIZE_ALLOWED"));
 
-  auto ptr =
-      std::make_unique<M_driver_function>(M_driver_function{.function = func});
+  auto ptr = std::make_unique<M_driver_function>(
+      M_driver_function{.function = func, .module = bundle->module});
   return ptr.release();
 }
 
@@ -128,5 +128,41 @@ M_driver_status_t M_driver_function::unload(M_driver_context &ctx,
   ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   delete func;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t
+M_driver_function::getNativeHandle(M_driver_native_handle_t *native_handle) {
+  if (native_handle == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *native_handle = reinterpret_cast<M_driver_native_handle_t>(module);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_function::setAttribute(M_driver_context &ctx,
+                                                  int32_t attribute,
+                                                  int32_t value) {
+  M::Target::CUDA::CUDALoader &cuda = ctx.device.driver.rawCuda;
+  if (CUresult r = cuda.cuFuncSetAttribute(
+          function, static_cast<CUfunction_attribute>(attribute), value);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&ctx.device.driver, r, "cuFuncSetAttribute");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_function::occupancyMaxActiveBlocks(
+    M_driver_context &ctx, int32_t block_size,
+    uint64_t dynamic_shared_memory_bytes, int32_t *num_blocks) {
+  if (num_blocks == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M::Target::CUDA::CUDALoader &cuda = ctx.device.driver.rawCuda;
+  int blocks = 0;
+  if (CUresult r = cuda.cuOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks, function, block_size,
+          static_cast<size_t>(dynamic_shared_memory_bytes));
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&ctx.device.driver, r,
+                           "cuOccupancyMaxActiveBlocksPerMultiprocessor");
+  *num_blocks = blocks;
   return M_DRIVER_STATUS_SUCCESS;
 }

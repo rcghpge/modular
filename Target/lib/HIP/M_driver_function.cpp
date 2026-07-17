@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
-#include "Device.h"
 #include "Function.h"
 #include "HAL/M_driver_api.h"
 #include "HAL/M_driver_bundle.h"
@@ -37,4 +36,36 @@ M_driver_status_t M_driver_function_unload(M_driver_context_t context,
   if (function == nullptr)
     return M_DRIVER_STATUS_BAD_FUNCTION;
   return M_driver_function::unload(function);
+}
+
+// Mirrors the HIP DeviceContext: it exposes no native module handle and does
+// not support setting function attributes on module-loaded functions.
+
+M_driver_status_t
+M_driver_function_property([[maybe_unused]] M_driver_context_t context,
+                           [[maybe_unused]] M_driver_function_t function,
+                           const char *property_name, void *value) {
+  if (property_name == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+M_driver_status_t
+M_driver_function_set_attribute([[maybe_unused]] M_driver_context_t context,
+                                [[maybe_unused]] M_driver_function_t function,
+                                [[maybe_unused]] int32_t attribute,
+                                [[maybe_unused]] int32_t value) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t M_driver_function_occupancy_max_active_blocks(
+    M_driver_context_t context, M_driver_function_t function,
+    int32_t block_size, uint64_t dynamic_shared_memory_bytes,
+    int32_t *num_blocks) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  return function->occupancyMaxActiveBlocks(
+      *context, block_size, dynamic_shared_memory_bytes, num_blocks);
 }

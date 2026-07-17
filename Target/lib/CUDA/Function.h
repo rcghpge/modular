@@ -27,6 +27,9 @@ struct M_driver_runtime_bundle {
 
 struct M_driver_function {
   CUfunction function;
+  // The module the function was loaded from, retained so the function's
+  // native module handle can be exposed for vendor-library interop.
+  CUmodule module;
 
   [[nodiscard]] static DriverResult<M_driver_function_t>
   load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
@@ -34,6 +37,14 @@ struct M_driver_function {
 
   static M_driver_status_t unload(M_driver_context &ctx,
                                   M_driver_function_t func);
+
+  M_driver_status_t getNativeHandle(M_driver_native_handle_t *native_handle);
+  M_driver_status_t setAttribute(M_driver_context &ctx, int32_t attribute,
+                                 int32_t value);
+  M_driver_status_t
+  occupancyMaxActiveBlocks(M_driver_context &ctx, int32_t block_size,
+                           uint64_t dynamic_shared_memory_bytes,
+                           int32_t *num_blocks);
 };
 
 #endif // TARGET_LIB_CUDA_FUNCTION_H

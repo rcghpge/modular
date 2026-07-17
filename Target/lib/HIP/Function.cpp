@@ -7,6 +7,7 @@
 #include "Function.h"
 #include "Context.h"
 #include "Device.h"
+#include "Driver.h"
 #include "Error.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -86,5 +87,23 @@ M_driver_status_t M_driver_function::unload(M_driver_function_t func) {
     return M_DRIVER_STATUS_BAD_FUNCTION;
 
   delete func;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_function::occupancyMaxActiveBlocks(
+    M_driver_context &ctx, int32_t block_size,
+    uint64_t dynamic_shared_memory_bytes, int32_t *num_blocks) {
+  if (num_blocks == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_driver &driver = ctx.getDevice().getDriver();
+  int blocks = 0;
+  if (hipError_t r =
+          driver.hip().hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+              &blocks, function, block_size,
+              static_cast<size_t>(dynamic_shared_memory_bytes));
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r,
+                          "hipModuleOccupancyMaxActiveBlocksPerMultiprocessor");
+  *num_blocks = blocks;
   return M_DRIVER_STATUS_SUCCESS;
 }

@@ -208,3 +208,29 @@ M_driver_runtime_bundle::unload(M_driver_runtime_bundle_t bundle) {
   delete bundle;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t
+M_driver_function_property([[maybe_unused]] M_driver_context_t context,
+                           [[maybe_unused]] M_driver_function_t function,
+                           const char *property_name, void *value) {
+  if (property_name == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+M_driver_status_t
+M_driver_function_set_attribute([[maybe_unused]] M_driver_context_t context,
+                                [[maybe_unused]] M_driver_function_t function,
+                                [[maybe_unused]] int32_t attribute,
+                                [[maybe_unused]] int32_t value) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t M_driver_function_occupancy_max_active_blocks(
+    [[maybe_unused]] M_driver_context_t context,
+    [[maybe_unused]] M_driver_function_t function,
+    [[maybe_unused]] int32_t block_size,
+    [[maybe_unused]] uint64_t dynamic_shared_memory_bytes,
+    [[maybe_unused]] int32_t *num_blocks) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}

@@ -146,6 +146,42 @@ TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
   EXPECT_SUCCESS(bundle_unload(contexts[0], bundle));
 }
 
+TEST_F(DriverPluginContextTest, FunctionIntrospection) {
+  std::string fileType("ptx");
+  M_driver_static_bundle staticBundle{.mapped_data =
+                                          M_driver_slice_from(vecAddPtx),
+                                      .file_type = fileType.c_str(),
+                                      .file_type_len = fileType.size()};
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t bundle = nullptr;
+  ASSERT_SUCCESS(bundle_load(contexts[0], &staticBundle, &opts, &bundle));
+  auto bundleCleanup =
+      llvm::scope_exit([&]() { bundle_unload(contexts[0], bundle); });
+
+  std::string funcName("vec_add");
+  M_driver_function_t func = nullptr;
+  ASSERT_SUCCESS(function_load(contexts[0], bundle, funcName.c_str(),
+                               funcName.size(), &func));
+  auto funcCleanup =
+      llvm::scope_exit([&]() { function_unload(contexts[0], func); });
+
+  uint64_t nativeHandle = 0;
+  ASSERT_SUCCESS(function_property(contexts[0], func,
+                                   M_DRIVER_FUNCTION_PROPERTY_NATIVE_HANDLE,
+                                   &nativeHandle));
+  EXPECT_NE(nativeHandle, 0u);
+
+  ASSERT_SUCCESS(function_set_attribute(
+      contexts[0], func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+      64 * 1024));
+
+  int32_t numBlocks = 0;
+  ASSERT_SUCCESS(function_occupancy_max_active_blocks(
+      contexts[0], func, /*block_size=*/128,
+      /*dynamic_shared_memory_bytes=*/0, &numBlocks));
+  EXPECT_GT(numBlocks, 0);
+}
+
 // Uses synchronous (context-based) memory allocation.
 TEST_F(DriverPluginQueueTest, VecAdd) {
   std::string fileType("ptx");
