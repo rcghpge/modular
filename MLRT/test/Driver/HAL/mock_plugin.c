@@ -320,6 +320,23 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
 }
 
 M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
+                                    M_driver_memory_t *memory, void **host_ptr,
+                                    uint64_t *device_address) {
+  (void)context;
+  if (!host_ptr || !device_address)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_status_t status = mock_alloc(size, /*host_accessible=*/true, memory);
+  if (status != M_DRIVER_STATUS_SUCCESS)
+    return status;
+  // Host memory is its own device address on the mock.
+  *host_ptr = (void *)*memory;
+  *device_address = (uint64_t)(uintptr_t)*memory;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
                                               M_driver_memory_t memory) {
   (void)context;

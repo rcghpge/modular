@@ -692,3 +692,22 @@ TEST_F(DriverPluginQueueTest, QueueWaitValue64) {
   ASSERT_SUCCESS(queue_synchronize(queues[0]));
   ASSERT_SUCCESS(memory_free_pinned(contexts[0], mem));
 }
+
+TEST_F(DriverPluginQueueTest, PinnedMappedAllocWaitValue) {
+  if (api != "CUDA" && api != "HIP")
+    GTEST_SKIP() << "device-mapped pinned allocation requires a CUDA or HIP "
+                    "driver";
+  M_driver_memory_t mem = nullptr;
+  void *hostPtr = nullptr;
+  uint64_t deviceAddress = 0;
+  ASSERT_SUCCESS(memory_alloc_pinned_mapped(contexts[0], sizeof(uint64_t), &mem,
+                                            &hostPtr, &deviceAddress));
+  ASSERT_NE(hostPtr, nullptr);
+  ASSERT_NE(deviceAddress, 0u);
+  // Pre-set the value through the host alias so the equality wait on the
+  // device-visible address is already satisfied when the queue reaches it.
+  *static_cast<uint64_t *>(hostPtr) = 42;
+  ASSERT_SUCCESS(queue_wait_value64(queues[0], deviceAddress, 42));
+  ASSERT_SUCCESS(queue_synchronize(queues[0]));
+  ASSERT_SUCCESS(memory_free_pinned(contexts[0], mem));
+}

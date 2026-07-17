@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "Device.h"
 #include "HAL/M_driver_api.h"
 #include "Memory.h"
 
@@ -21,6 +22,15 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
     return result.error();
   *memory = *result;
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t
+M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
+                                    M_driver_memory_t *memory, void **host_ptr,
+                                    uint64_t *device_address) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->allocPinnedMapped(size, memory, host_ptr, device_address);
 }
 
 M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,

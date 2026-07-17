@@ -161,3 +161,14 @@ M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
     return M_DRIVER_STATUS_BAD_MEMORY;
   return memory->getProperty(property_name, value);
 }
+
+M_driver_status_t
+M_driver_memory_alloc_pinned_mapped([[maybe_unused]] M_driver_context_t context,
+                                    [[maybe_unused]] uint64_t size,
+                                    [[maybe_unused]] M_driver_memory_t *memory,
+                                    [[maybe_unused]] void **host_ptr,
+                                    [[maybe_unused]] uint64_t *device_address) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}

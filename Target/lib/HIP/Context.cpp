@@ -10,6 +10,8 @@
 #include "Error.h"
 #include "Memory.h"
 
+#include <new>
+
 using M::Target::HIP::hipErrorStatus;
 
 DriverResult<M_driver_context_t>
@@ -247,5 +249,40 @@ M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
     return hipErrorStatus(&driver, r, "hipMemGetInfo");
   *free = freeBytes;
   *total = totalBytes;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t
+M_driver_context::allocPinnedMapped(uint64_t size, M_driver_memory_t *memory,
+                                    void **host_ptr, uint64_t *device_address) {
+  if (memory == nullptr || host_ptr == nullptr || device_address == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size == 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  if (auto preamble = device.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  M_driver_driver &driver = device.getDriver();
+  // Mirrors HIPDeviceContext::allocateCompletionFlag.
+  void *p = nullptr;
+  if (hipError_t r = driver.hip().hipHostMalloc(
+          &p, size, hipHostMallocPortable | hipHostMallocMapped);
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipHostMalloc");
+  void *devPtr = nullptr;
+  if (hipError_t r = driver.hip().hipHostGetDevicePointer(&devPtr, p, 0);
+      r != hipSuccess) {
+    (void)driver.hip().hipHostFree(p);
+    return hipErrorStatus(&driver, r, "hipHostGetDevicePointer");
+  }
+  M_driver_memory_t wrapper = new (std::nothrow) M_driver_memory{p};
+  if (!wrapper) {
+    (void)driver.hip().hipHostFree(p);
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  }
+  *memory = wrapper;
+  *host_ptr = p;
+  *device_address = reinterpret_cast<uint64_t>(devPtr);
   return M_DRIVER_STATUS_SUCCESS;
 }

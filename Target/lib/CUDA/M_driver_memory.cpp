@@ -25,6 +25,15 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
 }
 
 M_driver_status_t
+M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
+                                    M_driver_memory_t *memory, void **host_ptr,
+                                    uint64_t *device_address) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return context->allocPinnedMapped(size, memory, host_ptr, device_address);
+}
+
+M_driver_status_t
 M_driver_memory_alloc_sync([[maybe_unused]] M_driver_context_t context,
                            [[maybe_unused]] uint64_t size,
                            [[maybe_unused]] M_driver_memory_t *memory) {

@@ -34,6 +34,32 @@ typedef M_driver_status_t (*M_driver_memory_alloc_pinned_func_ptr_t)(
     M_driver_context_t context, uint64_t size, M_driver_memory_t *memory);
 
 /**
+ * Allocate pinned host memory mapped into the device address space, returning
+ * both the host pointer and the device-visible address of the allocation.
+ * Used for host<->device synchronization slots (completion flags) that the
+ * device waits on via M_driver_queue_wait_value64. Free with
+ * M_driver_memory_free_pinned.
+ *
+ * @param[in] context The context to create the memory for.
+ * @param[in] size Size in bytes of the allocation.
+ * @param[out] memory Pointer to the address of the newly allocated memory.
+ * @param[out] host_ptr The host-side pointer to the allocation.
+ * @param[out] device_address The device-visible address of the allocation.
+ * @return Standard Status Protocol, or M_DRIVER_STATUS_OUT_OF_MEMORY if the
+ *         allocation fails. Backends without device-mapped host memory
+ *         report a non-success status.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
+                                    M_driver_memory_t *memory, void **host_ptr,
+                                    uint64_t *device_address);
+
+typedef M_driver_status_t (*M_driver_memory_alloc_pinned_mapped_func_ptr_t)(
+    M_driver_context_t context, uint64_t size, M_driver_memory_t *memory,
+    void **host_ptr, uint64_t *device_address);
+
+/**
  * Free pinned (page-locked) host memory for the given context.
  *
  * @param[in] context The context to free the memory from.

@@ -71,6 +71,8 @@ CUDA_FN(cuGraphDebugDotPrint)
 
 CUDA_FN(cuMemAllocHost)
 CUDA_FN(cuMemFreeHost)
+CUDA_FN(cuMemHostAlloc)
+CUDA_FN(cuMemHostGetDevicePointer)
 CUDA_FN(cuMemAllocAsync)
 CUDA_FN(cuMemFreeAsync)
 CUDA_FN(cuMemAlloc)

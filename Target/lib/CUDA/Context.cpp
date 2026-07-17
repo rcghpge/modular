@@ -230,3 +230,40 @@ M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
   *total = totalBytes;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t
+M_driver_context::allocPinnedMapped(uint64_t size, M_driver_memory_t *memory,
+                                    void **host_ptr, uint64_t *device_address) {
+  if (memory == nullptr || host_ptr == nullptr || device_address == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size == 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  M::Target::CUDA::CUDALoader &cuda = device.driver.rawCuda;
+
+  // DEVICEMAP is required so cuMemHostGetDevicePointer succeeds on non-UVA
+  // systems; PORTABLE lets any context in the process use the allocation
+  // (mirrors CUDADeviceContext::allocateCompletionFlag).
+  void *p = nullptr;
+  if (CUresult r = cuda.cuMemHostAlloc(
+          &p, size, CU_MEMHOSTALLOC_PORTABLE | CU_MEMHOSTALLOC_DEVICEMAP);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemHostAlloc");
+  CUdeviceptr devPtr = 0;
+  if (CUresult r = cuda.cuMemHostGetDevicePointer(&devPtr, p, 0);
+      r != CUDA_SUCCESS) {
+    (void)cuda.cuMemFreeHost(p);
+    return cudaErrorStatus(&device.driver, r, "cuMemHostGetDevicePointer");
+  }
+  M_driver_memory_t wrapper = new (std::nothrow) M_driver_memory(p);
+  if (!wrapper) {
+    (void)cuda.cuMemFreeHost(p);
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  }
+  *memory = wrapper;
+  *host_ptr = p;
+  *device_address = static_cast<uint64_t>(devPtr);
+  return M_DRIVER_STATUS_SUCCESS;
+}
