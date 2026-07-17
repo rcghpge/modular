@@ -775,11 +775,12 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
     CUDA_CHECK_ERR(driver.cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
 
     // Activate on-demand profiling (libkineto/CUPTI) now that this device's
-    // real primary context exists, with the context current and before any
-    // CUDA graph is instantiated on it — see activatePendingTrace() in
-    // Support/Profiling/internal/Range.h for the ordering contract
-    // (MXTOOLS-190).  Cheap no-op unless profiling was enable()'d, and
-    // idempotent across devices.
+    // real primary context exists, with the context current — see
+    // activatePendingTrace() in Support/Profiling/internal/Range.h for the
+    // contract (and why the before-first-cuGraphInstantiate ordering an
+    // earlier revision required is obsolete on CUDA 13.1 — MXTOOLS-266).
+    // Cheap no-op unless profiling was enable()'d or the process is in
+    // Dynolog daemon mode; idempotent across devices.
     {
       CUDAContextScope ctxScope(cuContext, driver);
       M::Profiling::activatePendingTrace();
