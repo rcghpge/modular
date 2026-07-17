@@ -110,6 +110,10 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
   HIPApi &hip = dev.getDriver().hip();
   auto &gpu = config->config.gpu;
 
+  // Mirrors HIPDeviceContext: function launch attributes are not supported.
+  if (gpu.num_attributes > 0)
+    return M_DRIVER_STATUS_UNIMPLEMENTED;
+
   if (hipError_t r = hip.hipModuleLaunchKernel(
           function->function, gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
           gpu.block.y, gpu.block.z, gpu.shared_mem_bytes, queue->stream, args,

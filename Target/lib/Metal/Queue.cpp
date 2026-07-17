@@ -645,6 +645,8 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (function == nullptr)
     return M_DRIVER_STATUS_BAD_FUNCTION;
+  if (config != nullptr && config->config.gpu.num_attributes > 0)
+    return M_DRIVER_STATUS_UNIMPLEMENTED;
   return queue->execute(function, config, args, arg_sizes, num_args);
 }
 
