@@ -325,6 +325,48 @@ M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
 typedef M_driver_status_t (*M_driver_queue_property_func_ptr_t)(
     M_driver_queue_t queue, const char *property_name, void *value);
 
+/**
+ * Enqueue a host function callback on the queue.
+ *
+ * The callback runs on a driver thread once all preceding work on the queue
+ * has completed, and receives `user_data` as its only argument. The callback
+ * must not call any device APIs.
+ *
+ * @param[in] queue The queue to enqueue the callback on.
+ * @param[in] fn The callback function.
+ * @param[in] user_data Opaque pointer passed through to `fn` when it runs.
+ * @return Standard Status Protocol. Backends without host-callback support
+ *         report a non-success status.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_launch_host_func(M_driver_queue_t queue,
+                                                  void (*fn)(void *),
+                                                  void *user_data);
+
+typedef M_driver_status_t (*M_driver_queue_launch_host_func_func_ptr_t)(
+    M_driver_queue_t queue, void (*fn)(void *), void *user_data);
+
+/**
+ * Enqueue a wait until the 64-bit value at `device_address` equals `value`.
+ *
+ * The queue stalls at this node until the device-visible 64-bit slot holds
+ * `value`; preceding work is unaffected and subsequent work does not start
+ * until the wait is satisfied.
+ *
+ * @param[in] queue The queue to enqueue the wait on.
+ * @param[in] device_address Device-visible address of the 64-bit slot.
+ * @param[in] value The value to wait for (equality).
+ * @return Standard Status Protocol. Backends without stream memory ops
+ *         report a non-success status.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_wait_value64(M_driver_queue_t queue,
+                                              uint64_t device_address,
+                                              uint64_t value);
+
+typedef M_driver_status_t (*M_driver_queue_wait_value64_func_ptr_t)(
+    M_driver_queue_t queue, uint64_t device_address, uint64_t value);
+
 #ifdef __cplusplus
 }
 #endif

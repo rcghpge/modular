@@ -609,6 +609,32 @@ M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_launch_host_func(M_driver_queue_t queue,
+                                                  void (*fn)(void *),
+                                                  void *user_data) {
+  if (!queue)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (!fn)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  // The mock queue is synchronous: run the callback inline.
+  fn(user_data);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_wait_value64(M_driver_queue_t queue,
+                                              uint64_t device_address,
+                                              uint64_t value) {
+  if (!queue)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  // The mock queue is synchronous, so the wait cannot be satisfied later:
+  // check once instead of blocking.
+  if (*(const uint64_t *)(uintptr_t)device_address != value)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------

@@ -651,3 +651,44 @@ TEST_F(DriverPluginContextTest, ContextCopyInterDeviceSync) {
   memory_free_sync(contexts[1], dstDev);
   memory_free_sync(contexts[0], srcDev);
 }
+
+static void bumpHostFlag(void *userData) {
+  *static_cast<uint64_t *>(userData) = 42;
+}
+
+TEST_F(DriverPluginQueueTest, QueueNativeHandle) {
+  if (api != "CUDA" && api != "HIP")
+    GTEST_SKIP() << "native stream handle requires a CUDA or HIP driver";
+  for (M_driver_queue_t queue : queues) {
+    uint64_t handle = 0;
+    ASSERT_SUCCESS(
+        queue_property(queue, M_DRIVER_QUEUE_PROPERTY_NATIVE_HANDLE, &handle));
+    // The backing native stream is never null.
+    EXPECT_NE(handle, 0u);
+  }
+}
+
+TEST_F(DriverPluginQueueTest, QueueLaunchHostFunc) {
+  if (api != "CUDA" && api != "HIP")
+    GTEST_SKIP() << "host-function callbacks require a CUDA or HIP driver";
+  uint64_t flag = 0;
+  ASSERT_SUCCESS(queue_launch_host_func(queues[0], bumpHostFlag, &flag));
+  ASSERT_SUCCESS(queue_synchronize(queues[0]));
+  EXPECT_EQ(flag, 42u);
+}
+
+TEST_F(DriverPluginQueueTest, QueueWaitValue64) {
+  if (api != "CUDA" && api != "HIP")
+    GTEST_SKIP() << "stream wait-value requires a CUDA or HIP driver";
+  // Pinned host memory is device-visible; pre-set the value so the equality
+  // wait is already satisfied when the queue reaches it.
+  M_driver_memory_t mem = nullptr;
+  ASSERT_SUCCESS(memory_alloc_pinned(contexts[0], sizeof(uint64_t), &mem));
+  void *addr = nullptr;
+  ASSERT_SUCCESS(memory_property(mem, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &addr));
+  *static_cast<uint64_t *>(addr) = 42;
+  ASSERT_SUCCESS(
+      queue_wait_value64(queues[0], reinterpret_cast<uint64_t>(addr), 42));
+  ASSERT_SUCCESS(queue_synchronize(queues[0]));
+  ASSERT_SUCCESS(memory_free_pinned(contexts[0], mem));
+}

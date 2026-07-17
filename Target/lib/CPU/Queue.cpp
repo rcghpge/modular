@@ -14,6 +14,7 @@
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Support/Chain.h"
+#include "Common.h"
 #include "Context.h"
 #include "Event.h"
 #include "HAL/M_driver_api.h"
@@ -345,4 +346,25 @@ M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
   if (property_name == nullptr || value == nullptr)
     return M_DRIVER_STATUS_INVALID_ARG;
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+// Native stream handles and host-function callbacks are not supported on the
+// CPU queue yet.
+
+M_driver_status_t
+M_driver_queue_launch_host_func([[maybe_unused]] M_driver_queue_t queue,
+                                [[maybe_unused]] void (*fn)(void *),
+                                [[maybe_unused]] void *user_data) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t
+M_driver_queue_wait_value64([[maybe_unused]] M_driver_queue_t queue,
+                            [[maybe_unused]] uint64_t device_address,
+                            [[maybe_unused]] uint64_t value) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
 }

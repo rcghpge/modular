@@ -174,3 +174,19 @@ M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
   *is_stream = true;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_queue_launch_host_func(M_driver_queue_t queue,
+                                                  void (*fn)(void *),
+                                                  void *user_data) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->launchHostFunc(fn, user_data);
+}
+
+M_driver_status_t M_driver_queue_wait_value64(M_driver_queue_t queue,
+                                              uint64_t device_address,
+                                              uint64_t value) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->waitValue64(device_address, value);
+}

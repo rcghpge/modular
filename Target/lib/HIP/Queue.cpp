@@ -277,3 +277,25 @@ M_driver_status_t M_driver_queue::synchronize() {
 
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_queue::launchHostFunc(void (*fn)(void *),
+                                                 void *user_data) {
+  if (fn == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  M_driver_driver &driver = context.getDevice().getDriver();
+  if (hipError_t r = driver.hip().hipLaunchHostFunc(stream, fn, user_data);
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipLaunchHostFunc");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::waitValue64(uint64_t device_address,
+                                              uint64_t value) {
+  M_driver_driver &driver = context.getDevice().getDriver();
+  if (hipError_t r = driver.hip().hipStreamWaitValue64(
+          stream, reinterpret_cast<hipDeviceptr_t>(device_address), value,
+          hipStreamWaitValueEq, /*mask=*/~0ULL);
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipStreamWaitValue64");
+  return M_DRIVER_STATUS_SUCCESS;
+}

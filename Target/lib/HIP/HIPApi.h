@@ -48,6 +48,8 @@
   HIP_FN(hipStreamCreateWithPriority)                                          \
   HIP_FN(hipStreamDestroy)                                                     \
   HIP_FN(hipStreamSynchronize)                                                 \
+  HIP_FN(hipStreamWaitValue64)                                                 \
+  HIP_FN(hipLaunchHostFunc)                                                    \
   HIP_FN(hipMemcpyAsync)                                                       \
   HIP_FN(hipMemcpyPeerAsync)                                                   \
   HIP_FN(hipMemcpy)                                                            \
