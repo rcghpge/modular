@@ -205,7 +205,7 @@ struct _InlineArrayIterOwned[T: Movable & ImplicitlyDeletable, size: Int](
 
 
 @explicit_destroy(
-    "Use `destroy_with()` to explicitly destroy an `InlineArray` of"
+    "Use `deinit_with()` to explicitly destroy an `InlineArray` of"
     " non-`ImplicitlyDeletable` elements"
 )
 struct InlineArray[ElementType: Movable, size: Int](
@@ -219,7 +219,8 @@ struct InlineArray[ElementType: Movable, size: Int](
     ImplicitlyCopyable where conforms_to(ElementType, ImplicitlyCopyable),
     ImplicitlyDeletable where conforms_to(ElementType, ImplicitlyDeletable),
     Iterable,
-    IterableOwned where conforms_to(ElementType, ImplicitlyDeletable),
+    # TODO(MOCO-4308): Remove redundant 'Movable' constraint
+    IterableOwned where conforms_to(ElementType, Movable & ImplicitlyDeletable),
     Movable,
     Sized,
     Writable where conforms_to(ElementType, Writable),
@@ -272,7 +273,7 @@ struct InlineArray[ElementType: Movable, size: Int](
     """The underlying storage for the array."""
 
     comptime _DeviceElementType: Movable = downcast[
-        downcast[Self.ElementType, DevicePassable].device_type, Movable
+        Self.ElementType.device_type, Movable
     ] if conforms_to(Self.ElementType, DevicePassable) else Self.ElementType
     """The device-side element type: the element's `device_type` when it is
     `DevicePassable`, otherwise the element type itself."""
@@ -301,9 +302,10 @@ struct InlineArray[ElementType: Movable, size: Int](
         iterable_origin: The origin of the iterable.
     """
 
-    comptime IteratorOwnedType: Iterator = _InlineArrayIterOwned[
-        downcast[Self.ElementType, ImplicitlyDeletable], Self.size
-    ]
+    # TODO(MOCO-4308): Remove redundant 'Movable' constraint
+    comptime IteratorOwnedType: Iterator where conforms_to(
+        Self.ElementType, Movable & ImplicitlyDeletable
+    ) = _InlineArrayIterOwned[Self.ElementType, Self.size]
     """The owned iterator type for this array."""
 
     def _to_device_type(
@@ -561,24 +563,24 @@ struct InlineArray[ElementType: Movable, size: Int](
         """Destroys the array's elements."""
         destroy_n(self.unsafe_ptr(), Self.size)
 
-    def destroy_with(
-        deinit self, destroy_func: Some[def(var Self.ElementType)], /
+    def deinit_with(
+        deinit self, deinit_func: Some[def(var Self.ElementType)], /
     ):
-        """Consumes this array and destroys its elements using the provided
+        """Consumes this array and deinitializes its elements using the provided
         closure.
 
-        This can be used to destroy an `InlineArray` of
+        This can be used to deinitialize an `InlineArray` of
         non-`ImplicitlyDeletable` values.
 
         Args:
-            destroy_func: The deinitializing closure called on each array
+            deinit_func: The deinitializing closure called on each array
                 element.
         """
         for idx in range(Self.size):
-            # TODO(MOCO-4111): `destroy_func` cannot convert to
-            # `UnsafePointer.destroy_pointee_with` since `UnsafePointer` is
+            # TODO(MOCO-4111): `deinit_func` cannot convert to
+            # `UnsafePointer.unsafe_deinit` since `UnsafePointer` is
             # bound on `T: AnyType` but `InlineArray` has `ElementType: Movable`.
-            destroy_func(
+            deinit_func(
                 __get_address_as_owned_value(
                     (self.unsafe_ptr() + idx)._get_kgen_pointer()
                 )
@@ -887,24 +889,19 @@ struct InlineArray[ElementType: Movable, size: Int](
             Self.size,
         ).fields[FieldsFn=write_fields]()
 
+    # TODO(MOCO-4308): Remove redundant 'Movable' constraint
     def __iter__(
         var self,
     ) -> Self.IteratorOwnedType where conforms_to(
-        Self.ElementType, ImplicitlyDeletable
+        Self.ElementType, Movable & ImplicitlyDeletable
     ):
         """Consume the array and return an iterator over its elements.
 
         Returns:
             An iterator that owns the array's elements.
         """
-        return Self.IteratorOwnedType(
-            rebind_var[
-                InlineArray[
-                    downcast[Self.ElementType, ImplicitlyDeletable],
-                    Self.size,
-                ]
-            ](self^)
-        )
+        # TODO(MOCO-4309): return Self.IteratorOwnedType(self^)
+        return _InlineArrayIterOwned(self^)
 
     def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
         """Iterate over elements of the array, returning immutable references.
@@ -916,6 +913,7 @@ struct InlineArray[ElementType: Movable, size: Int](
         comptime assert conforms_to(
             Self.ElementType, Copyable
         ), "InlineArray iteration requires the element to be `Copyable`."
+        # TODO(MOCO-4326): Remove rebind
         return {
             0,
             rebind[
@@ -928,14 +926,15 @@ struct InlineArray[ElementType: Movable, size: Int](
             ](Pointer(to=self)),
         }
 
+    # TODO(MSTDL-2390): Remove `Copyable` constraint once we have better iter traits.
     def __reversed__(
         ref self,
     ) -> _InlineArrayIter[
-        downcast[Self.ElementType, Copyable],
+        Self.ElementType,
         Self.size,
         origin_of(self),
         False,
-    ]:
+    ] where conforms_to(Self.ElementType, Copyable):
         """Iterate over elements of the array in reverse order, returning
         immutable references.
 
@@ -943,18 +942,7 @@ struct InlineArray[ElementType: Movable, size: Int](
             An iterator of immutable references to the array elements in reverse
             order.
         """
-        # TODO(MSTDL-2390): Remove `Copyable` constraint once we have better iter traits.
-        comptime assert conforms_to(
-            Self.ElementType, Copyable
-        ), "InlineArray iteration requires the element to be `Copyable`."
         return _InlineArrayIter[forward=False](
             Self.size,
-            rebind[
-                Pointer[
-                    InlineArray[
-                        downcast[Self.ElementType, Copyable], Self.size
-                    ],
-                    origin_of(self),
-                ]
-            ](Pointer(to=self)),
+            Pointer(to=self),
         )

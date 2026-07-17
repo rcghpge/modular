@@ -243,7 +243,7 @@ struct _LinkedListIterOwned[T: Movable & ImplicitlyDeletable](
 
 
 @explicit_destroy(
-    "Use `destroy_with()` to explicitly destroy a `LinkedList` with"
+    "Use `deinit_with()` to explicitly destroy a `LinkedList` with"
     " non-`ImplicitlyDeletable` elements"
 )
 struct LinkedList[ElementType: Movable](
@@ -354,11 +354,11 @@ struct LinkedList[ElementType: Movable](
     ):
         """Hand each element to `destroy_func`, then free every node.
 
-        Shared teardown for `clear`, `__del__`, and `destroy_with`.
+        Shared teardown for `clear`, `__del__`, and `deinit_with`.
 
         Leaves the list "spent": `_head`/`_tail` dangle at freed memory, so the
         caller must either reset them (see `clear`) or be about to drop `self`
-        (see `__del__`/`destroy_with`).
+        (see `__del__`/`deinit_with`).
 
         Args:
             destroy_func: A closure called once per element to consume it.
@@ -388,21 +388,21 @@ struct LinkedList[ElementType: Movable](
         """
         self.clear()
 
-    def destroy_with(
-        deinit self, destroy_func: Some[def(var Self.ElementType)], /
+    def deinit_with(
+        deinit self, deinit_func: Some[def(var Self.ElementType)], /
     ):
-        """Consume the list, destroying each element with a closure.
+        """Consume the list, deinitializing each element with a closure.
 
         Use this to tear down a `LinkedList` whose elements are not
         `ImplicitlyDeletable`.
 
         Args:
-            destroy_func: A closure called once per element to destroy it.
+            deinit_func: A closure called once per element to deinitialize it.
 
         Notes:
             Time Complexity: O(n) in len(self).
         """
-        self._delete_list_elements(destroy_func)
+        self._delete_list_elements(deinit_func)
 
     def append(mut self, var value: Self.ElementType):
         """Add an element to the end of the list.
@@ -620,7 +620,7 @@ struct LinkedList[ElementType: Movable](
         while current:
             var nn = current.value()
             current = nn[].next()
-            nn.destroy_pointee()
+            nn.unsafe_deinit_pointee()
             dealloc(
                 ThinAllocation(unsafe_assume_ownership=nn).unsafe_with_layout(
                     {count = 1}
@@ -720,7 +720,7 @@ struct LinkedList[ElementType: Movable](
 
     def count(
         self, read elem: Self.ElementType
-    ) -> UInt where conforms_to(Self.ElementType, Equatable):
+    ) -> Int where conforms_to(Self.ElementType, Equatable):
         """Count the occurrences of `elem` in the list.
 
         Args:
@@ -740,7 +740,7 @@ struct LinkedList[ElementType: Movable](
 
             current = current.value()[].next()
 
-        return UInt(count)
+        return count
 
     def index(
         self,
@@ -938,6 +938,7 @@ struct LinkedList[ElementType: Movable](
         comptime assert conforms_to(
             Self.ElementType, Copyable
         ), "LinkedList iteration requires the element to be `Copyable`."
+        # TODO(MOCO-4326): Remove rebind
         return _LinkedListIter(
             rebind[
                 Pointer[
@@ -947,13 +948,14 @@ struct LinkedList[ElementType: Movable](
             ](Pointer(to=self))
         )
 
+    # TODO(MSTDL-2390): Remove `Copyable` constraint once we have better iter traits.
     def __reversed__(
         ref self,
     ) -> _LinkedListIter[
-        downcast[Self.ElementType, Copyable],
+        Self.ElementType,
         origin_of(self),
         forward=False,
-    ]:
+    ] where conforms_to(Self.ElementType, Copyable):
         """Iterate backwards over the list, returning immutable references.
 
         Returns:
@@ -964,22 +966,15 @@ struct LinkedList[ElementType: Movable](
             - O(1) for iterator construction.
             - O(n) in len(self) for a complete iteration of the list.
         """
-        # TODO(MSTDL-2390): Remove `Copyable` constraint once we have better iter traits.
-        comptime assert conforms_to(
-            Self.ElementType, Copyable
-        ), "LinkedList iteration requires the element to be `Copyable`."
-        return _LinkedListIter[
-            downcast[Self.ElementType, Copyable],
-            origin_of(self),
-            forward=False,
-        ](
+        # TODO(MOCO-4326): Remove rebind
+        return {
             rebind[
                 Pointer[
                     LinkedList[downcast[Self.ElementType, Copyable]],
                     origin_of(self),
                 ]
             ](Pointer(to=self))
-        )
+        }
 
     def __bool__(self) -> Bool:
         """Check if the list is non-empty.

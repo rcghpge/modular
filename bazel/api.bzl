@@ -1,7 +1,11 @@
 """Public API accessors to reduce the number of load statements needed in BUILD.bazel files."""
 
+load("@llvm-project//mlir:tblgen.bzl", _gentbl_cc_library = "gentbl_cc_library", _td_library = "td_library")
 load("@rules_pkg//pkg:mappings.bzl", _pkg_filegroup = "pkg_filegroup", _pkg_files = "pkg_files", _strip_prefix = "strip_prefix")
+load("@with_cfg.bzl//with_cfg/private:select.bzl", "decompose_select_elements")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:copy_files.bzl", _copy_files = "copy_files")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:dialect_checksum.bzl", _dialect_checksum = "dialect_checksum")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:kgen.bzl", _kgen_kernel = "kgen_kernel")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:lit.bzl", _lit_tests = "lit_tests")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mef.bzl", "MOJO_DEPS", _mef = "mef")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_cc_binary.bzl", _modular_cc_binary = "modular_cc_binary")  # buildifier: disable=bzl-visibility
@@ -13,6 +17,7 @@ load("//bazel/internal:modular_py_library.bzl", _modular_py_library = "modular_p
 load("//bazel/internal:modular_py_test.bzl", _modular_py_test = "modular_py_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_py_venv.bzl", _modular_py_venv = "modular_py_venv")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_run_binary_test.bzl", _modular_run_binary_test = "modular_run_binary_test")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:modular_shared_library.bzl", _modular_shared_library = "modular_shared_library")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_sphinx_docs.bzl", _modular_sphinx_docs = "modular_sphinx_docs")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_versioned_expand_template.bzl", _modular_versioned_expand_template = "modular_versioned_expand_template")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_binary.bzl", _mojo_binary = "mojo_binary")  # buildifier: disable=bzl-visibility
@@ -22,9 +27,16 @@ load("//bazel/internal:mojo_shared_library.bzl", _mojo_shared_library = "mojo_sh
 load("//bazel/internal:mojo_test.bzl", _mojo_test = "mojo_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test_environment.bzl", _mojo_test_environment = "mojo_test_environment")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:py_repl.bzl", _py_repl = "py_repl")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:tablegen.bzl", _driver_option_tablegen = "driver_option_tablegen", _gentbl_mlir_dialect = "gentbl_mlir_dialect", _gentbl_modular_passes = "gentbl_modular_passes")  # buildifier: disable=bzl-visibility
 load("//bazel/pip:pip_requirement.bzl", _requirement = "pip_requirement")
 
+dialect_checksum = _dialect_checksum
+driver_option_tablegen = _driver_option_tablegen
+gentbl_mlir_dialect = _gentbl_mlir_dialect
+gentbl_cc_library = _gentbl_cc_library
+gentbl_modular_passes = _gentbl_modular_passes
 lit_tests = _lit_tests
+kgen_kernel = _kgen_kernel
 modular_multi_py_version_test = _modular_multi_py_version_test
 modular_py_library = _modular_py_library
 modular_py_venv = _modular_py_venv
@@ -40,11 +52,48 @@ pkg_filegroup = _pkg_filegroup
 py_repl = _py_repl
 requirement = _requirement
 strip_prefix = _strip_prefix
+td_library = _td_library
+
+_OVERRIDE_DEFINES = {
+    "MOJO_COMPILER_ACCELERATOR_SUPPORT": "0",
+    "MODULAR_KGEN_PROFILING_ENABLED": "0",
+    "MLRT_ACCELERATOR_SUPPORT": "0",
+}
 
 def modular_py_test(tags = [], **kwargs):
     if "external-exclusive" in tags:
         tags.append("exclusive")
     _modular_py_test(tags = tags, **kwargs)
+
+def _process_define_list(defines):
+    # poor dev's type check, for sanity:
+    if type(defines) != type([]):
+        fail("_process_define_list: expected list")
+    result = []
+    for define in defines:
+        key = define.split("=")[0]
+        override = _OVERRIDE_DEFINES.get(key)
+        if override:
+            result.append(key + "=" + override)
+        else:
+            result.append(define)
+    return result
+
+def _process_defines(defines):
+    if type(defines) == type([]):
+        return _process_define_list(defines)
+    else:
+        # Decompose the select()s, process, and recombine
+        result = []
+        for is_select, elements in decompose_select_elements(defines):
+            if is_select:
+                new_select = {}
+                for key, values in elements.items():
+                    new_select[key] = _process_define_list(values)
+                result += select(new_select)
+            else:
+                result += _process_define_list(elements)
+        return result
 
 def _process_cc_deps(data, deps):
     # TODO: This will break in the presence of select()s
@@ -68,28 +117,55 @@ def _process_cc_deps(data, deps):
         "data": data + (["@modular_wheel//:wheel"] if needs_wheel else []),
     }
 
-def modular_cc_binary(data = [], deps = [], **kwargs):
+# Ignore internal_deps for public builds
+# buildifier: disable=unused-variable
+def modular_cc_binary(data = [], deps = [], internal_deps = [], defines = [], local_defines = [], **kwargs):
     _modular_cc_binary(
+        local_defines = _process_defines(local_defines),
+        defines = _process_defines(defines),
         **(kwargs | _process_cc_deps(
             data = data,
             deps = deps,
         ))
     )
 
-def modular_cc_library(data = [], deps = [], **kwargs):
+# Ignore internal_deps for public builds
+# buildifier: disable=unused-variable
+def modular_cc_library(name, data = [], deps = [], internal_deps = [], defines = [], local_defines = [], **kwargs):
+    if name in ["Profiling", "ProfilingKineto"]:
+        # Provide TimeProfiler for now since that may be what they're actually after
+        _modular_cc_library(name = name, deps = ["//Support:TimeProfiler"])
+        return
+
     _modular_cc_library(
+        name = name,
+        local_defines = _process_defines(local_defines),
+        defines = _process_defines(defines),
         **(kwargs | _process_cc_deps(
             data = data,
             deps = deps,
         ))
     )
 
-def modular_cc_test(data = [], deps = [], **kwargs):
+# Ignore internal_deps for public builds
+# buildifier: disable=unused-variable
+def modular_cc_test(data = [], deps = [], internal_deps = [], defines = [], local_defines = [], **kwargs):
     _modular_cc_test(
+        local_defines = _process_defines(local_defines),
+        defines = _process_defines(defines),
         **(kwargs | _process_cc_deps(
             data = data,
             deps = deps,
         ))
+    )
+
+# Ignore internal_deps for public builds
+# buildifier: disable=unused-variable
+def modular_shared_library(internal_deps = [], defines = [], local_defines = [], **kwargs):
+    _modular_shared_library(
+        local_defines = _process_defines(local_defines),
+        defines = _process_defines(defines),
+        **kwargs
     )
 
 def modular_generate_stubfiles(name, pyi_srcs, deps = [], tags = [], **_kwargs):
@@ -155,4 +231,7 @@ def _noop(**_kwargs):
     pass
 
 install_docs = _noop
+mlir_nanobind = _noop
 modular_nanobind_extension = _noop
+modular_nanobind_library = _noop
+modular_python_binding_library_test = _noop

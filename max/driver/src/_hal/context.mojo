@@ -22,16 +22,17 @@ from .plugin import (
     M_driver_static_bundle,
     M_driver_slice,
     M_driver_bundle_compilation_options,
+    M_driver_dlpack_device,
 )
 
-from .buffer import Buffer
+from .buffer import Buffer, BufferView
 from .device import DeviceSpec
 from .stream import Stream
 
 from .status import STATUS_SUCCESS, HALError
 
 from std.memory import (
-    ImmutPointer,
+    ImmPointer,
     ArcPointer,
     UnsafePointer,
     UnsafeMaybeUninit,
@@ -139,6 +140,64 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             origin
         ]()
 
+    # ===-------------------------------------------------------------------===#
+    # Queries
+    # ===-------------------------------------------------------------------===#
+
+    def get_driver_name(self) raises HALError -> String:
+        """Returns the API name reported by the plugin backing this context.
+
+        This is the plugin's own identity (e.g. "CUDA", "Metal", "HIP"),
+        not the loader label from the plugin spec, so it is stable however
+        the plugin was loaded.
+        """
+        return self._raw[].get_api_name()
+
+    def get_device_id(self) -> Int64:
+        """Returns the id of the device this context is bound to."""
+        return self._device[].id
+
+    def get_dlpack_device(
+        self, pinned: Bool
+    ) raises HALError -> M_driver_dlpack_device:
+        """Returns the DLPack `(device_type, device_id)` for this context."""
+        return self._device[].get_dlpack_device(pinned)
+
+    # ===-------------------------------------------------------------------===#
+    # Synchronous copies
+    # ===-------------------------------------------------------------------===#
+
+    def copy_to_device_sync(
+        self,
+        dst: BufferView,
+        src: UnsafePointer[mut=False, UInt8, _],
+    ) raises HALError:
+        """Copies `dst.byte_size` bytes from host memory into `dst`, blocking
+        until complete."""
+        self._raw[].copy_to_device_sync(self._handle, dst._view, src)
+
+    def copy_from_device_sync(
+        self,
+        dst: UnsafePointer[mut=True, UInt8, _],
+        src: BufferView,
+    ) raises HALError:
+        """Copies `src.byte_size` bytes from `src` into host memory, blocking
+        until complete."""
+        self._raw[].copy_from_device_sync(self._handle, dst, src._view)
+
+    def copy_intra_device_sync(
+        self,
+        dst: BufferView,
+        src: BufferView,
+    ) raises HALError:
+        """Copies `dst.byte_size` bytes from `src` into `dst`, blocking until
+        complete."""
+        debug_assert(
+            src.byte_size() >= dst.byte_size(),
+            "copy_intra_device_sync source view smaller than destination",
+        )
+        self._raw[].copy_intra_device_sync(self._handle, dst._view, src._view)
+
     def _compile_inner[
         fn_type: TrivialRegisterPassable,
         func: fn_type,
@@ -184,7 +243,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         return (bundle^, compiled_info)
 
     def load_bundle[
-        asm_origin: ImmutOrigin
+        asm_origin: ImmOrigin
     ](
         self, asm: StringSlice[origin=asm_origin]
     ) raises HALError -> RuntimeBundle:
@@ -199,12 +258,12 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
                 data=Pointer(to=asm.unsafe_ptr()[]),
                 size=UInt64(asm.byte_length()),
             ),
-            file_type=Pointer(to=file_type.unsafe_ptr()[]),
+            file_type=Pointer(to=file_type.unsafe_ptr().bitcast[Int8]()[]),
             file_type_len=UInt64(file_type.byte_length()),
         )
 
         var opts = M_driver_bundle_compilation_options(
-            debug_level=rebind[ImmutPointer[Int8, ImmutUntrackedOrigin]](
+            debug_level=rebind[ImmPointer[Int8, ImmUntrackedOrigin]](
                 "".unsafe_ptr()
             ),
             debug_level_len=UInt64(0),
@@ -260,6 +319,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         return Buffer[Self.device_spec](
             _handle=self._raw[].alloc_sync(self._handle, byte_size),
             byte_size=byte_size,
+            is_host_pinned=False,
             _context=self._self_ref.try_upgrade().value(),
         )
 
@@ -272,6 +332,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         return Buffer[Self.device_spec](
             _handle=self._raw[].alloc_pinned(self._handle, byte_size),
             byte_size=byte_size,
+            is_host_pinned=True,
             _context=self._self_ref.try_upgrade().value(),
         )
 
@@ -298,6 +359,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
                 self._handle, address, byte_size, owning
             ),
             byte_size=byte_size,
+            is_host_pinned=False,
             _context=self._self_ref.try_upgrade().value(),
         )
 
@@ -317,6 +379,25 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
     ) raises HALError -> UInt64:
         """Get the GPU address of a device memory allocation."""
         return self._raw[].get_memory_property["address", UInt64](mem._handle)
+
+    def memory_get_host_address[
+        mut: Bool, //, origin: Origin[mut=mut]
+    ](self, mem: Buffer[Self.device_spec]) raises HALError -> UnsafePointer[
+        UInt8, origin
+    ]:
+        """Get a host-dereferenceable pointer to a host-accessible allocation.
+
+        Host-accessible memory is any allocation on a host (CPU) device and
+        pinned GPU allocations (`alloc_host_pinned`); on unified-memory GPUs
+        every allocation qualifies. The plugin is the authority on residency:
+        """
+        return UnsafePointer[UInt8, origin](
+            unsafe_from_address=Int(
+                self._raw[].get_memory_property["host_address", UInt64](
+                    mem._handle
+                )
+            )
+        )
 
     # ===-------------------------------------------------------------------===#
     # Function execution

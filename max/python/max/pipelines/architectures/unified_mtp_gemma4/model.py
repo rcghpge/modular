@@ -19,7 +19,13 @@ from typing import Any, ClassVar
 
 import numpy as np
 import numpy.typing as npt
-from max.driver import Buffer, Device, DevicePinnedBuffer, DLPackArray
+from max.driver import (
+    Buffer,
+    Device,
+    DevicePinnedBuffer,
+    DLPackArray,
+    copy_pinned_to_destinations,
+)
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, Module
@@ -65,7 +71,11 @@ from ..gemma4.batch_vision_inputs import (
 from ..gemma4.context import Gemma4Context
 from ..gemma4.model_config import Gemma4ForConditionalGenerationConfig
 from ..gemma4.vision_model.vision_model import Gemma4VisionModel
-from ..gemma4.weight_adapters import convert_safetensor_vision_state_dict
+from ..gemma4.weight_adapters import (
+    convert_safetensor_vision_state_dict,
+    fuse_gemma4_projection_weights,
+    gemma4_uses_fused_projections,
+)
 from ..gemma4_assistant.gemma4_assistant import Gemma4Assistant
 from ..gemma4_assistant.model_config import Gemma4AssistantConfig
 from .batch_processor import UnifiedMTPGemma4BatchProcessor
@@ -172,7 +182,10 @@ class UnifiedMTPGemma4Model(
         # Force signal buffer initialization.
         _ = self.signal_buffers
 
-        self._scatter_buffers: dict[int, tuple[Buffer, list[Buffer]]] = {}
+        # Cached per-device scatter-index buffers keyed by length. Only regular
+        # DeviceBuffers are cached; the pinned host buffer is freshly allocated
+        # every call (see ``_scatter_to_devices``).
+        self._scatter_buffers: dict[int, list[Buffer]] = {}
 
         self.vision_model, self.model = self.load_model(session)
 
@@ -225,6 +238,15 @@ class UnifiedMTPGemma4Model(
                 return_logits=ReturnLogits.VARIABLE,
             )
             self.config = config
+
+            # DISTINF-194: pre-fuse the target's gate/up and qkv/qk projections
+            # when configured (before target.*/draft.* prefixing below), so the
+            # fused keys match the target submodel's FusedMLP / stacked qkv
+            # layers. The draft submodel is not fused.
+            if gemma4_uses_fused_projections(config):
+                target_state_dict = fuse_gemma4_projection_weights(
+                    target_state_dict
+                )
 
             # -- 4. Create draft config --
             draft_hf_config = draft_model_config.huggingface_config
@@ -573,26 +595,32 @@ class UnifiedMTPGemma4Model(
     def _scatter_to_devices(
         self, scatter_np: npt.NDArray[np.int32]
     ) -> list[Buffer]:
-        """Copy scatter indices to each device using cached pinned buffers."""
+        """Copy scatter indices to each device.
+
+        Allocates a fresh pinned host buffer every call and never reuses it
+        across calls. Under the overlap scheduler a reused pinned buffer would
+        be clobbered by the next step's host write while the current step's
+        asynchronous H2D copy is still reading it. The per-device destination
+        buffers are cached and reused (never pinned).
+        """
         dev = self.devices[0]
         n = len(scatter_np)
-        bufs = self._scatter_buffers.get(n)
-        host: Buffer
-        if bufs is None:
-            if not dev.is_host:
-                host = DevicePinnedBuffer(
-                    dtype=DType.int32, shape=(n,), device=dev
-                )
-            else:
-                host = Buffer(shape=(n,), dtype=DType.int32, device=dev)
-            device = [host.to(d) for d in self.devices]
-            bufs = (host, device)
-            self._scatter_buffers[n] = bufs
-        host, device = bufs
+        host_buffer_cls = DevicePinnedBuffer if not dev.is_host else Buffer
+        host: Buffer = host_buffer_cls(
+            dtype=DType.int32, shape=(n,), device=dev
+        )
+
+        buffers = self._scatter_buffers.get(n)
+        if buffers is None:
+            buffers = [
+                Buffer(shape=(n,), dtype=DType.int32, device=d)
+                for d in self.devices
+            ]
+            self._scatter_buffers[n] = buffers
+
         host.to_numpy()[:] = scatter_np.astype(np.int32)
-        for d in device:
-            d.inplace_copy_from(host)
-        return device
+        copy_pinned_to_destinations(host, buffers)
+        return buffers
 
     def _empty_embeddings(self) -> list[Buffer]:
         if not hasattr(self, "_cached_empty_embeddings"):

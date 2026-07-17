@@ -185,10 +185,10 @@ struct TiledMatmul[
     kernel_id: InnerKernelID,
     a_type: DType,
     a_layout: TensorLayout,
-    a_origin: ImmutOrigin,
+    a_origin: ImmOrigin,
     b_type: DType,
     b_layout: TensorLayout,
-    b_origin: ImmutOrigin,
+    b_origin: ImmOrigin,
     c_type: DType,
     c_layout: TensorLayout,
     c_origin: MutOrigin,
@@ -557,7 +557,7 @@ def _matmul_cpu_impl[
         def _dealloc_packed(var packed: Allocation[Scalar[a.dtype]]):
             dealloc(packed^)
 
-        a_packed_alloc^.destroy_with(_dealloc_packed)
+        a_packed_alloc^.deinit_with(_dealloc_packed)
 
 
 @always_inline

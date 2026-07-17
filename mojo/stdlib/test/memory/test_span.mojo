@@ -16,7 +16,7 @@ from std.testing import assert_equal, assert_raises, assert_true, assert_false
 from test_utils import MoveOnly, check_write_to
 from std.math import iota
 from std.hashlib import Hasher
-from std.memory import ImmutSpan, MutSpan
+from std.memory import ImmSpan, MutSpan
 
 
 def test_span_list_int() raises:
@@ -410,13 +410,13 @@ def test_binary_search() raises:
         assert_true(view._binary_search_index(Scalar[dtype](max_val)))
         assert_equal(
             view._binary_search_index(Scalar[dtype](max_val)).value(),
-            UInt(max_val),
+            max_val,
         )
         view = Span(data)[: len(data) - 1]
         assert_true(view._binary_search_index(Scalar[dtype](max_val - 1)))
         assert_equal(
             view._binary_search_index(Scalar[dtype](max_val - 1)).value(),
-            UInt(max_val - 1),
+            max_val - 1,
         )
 
     _test[DType.uint8]()
@@ -528,13 +528,13 @@ def test_mut_span_alias() raises:
 def test_immut_span_alias() raises:
     var data: List[Int] = [1, 2, 3, 4, 5]
 
-    def sum_span(span: ImmutSpan[Int, _]) -> Int:
+    def sum_span(span: ImmSpan[Int, _]) -> Int:
         var total = 0
         for i in range(len(span)):
             total += span[i]
         return total
 
-    # ImmutSpan works with both mutable and immutable data
+    # ImmSpan works with both mutable and immutable data
     assert_equal(sum_span(data), 15)
 
 
@@ -600,8 +600,8 @@ def test_span_hashable_non_copyable() raises:
     (ptr + 1).unsafe_write(HashableOnly(2))
     var span = Span(ptr=ptr, length=2)
     _ = hash(span)
-    (ptr + 1).destroy_pointee()
-    ptr.destroy_pointee()
+    (ptr + 1).unsafe_deinit_pointee()
+    ptr.unsafe_deinit_pointee()
     ptr.free()
 
 
@@ -610,7 +610,7 @@ def test_span_with_move_only_type() raises:
     ptr.unsafe_write(MoveOnly(42))
     var span = Span(ptr=ptr, length=1)
     assert_equal(span[0].data, 42)
-    ptr.destroy_pointee()
+    ptr.unsafe_deinit_pointee()
     ptr.free()
 
 

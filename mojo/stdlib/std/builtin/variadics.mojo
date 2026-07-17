@@ -114,6 +114,27 @@ struct TypeList[
         idx: The index of the type to access.
     """
 
+    comptime _get_type_at_index[idx: __mlir_type.index] = __mlir_attr[
+        `#kgen.param_list.get<:`,
+        Self._mlir_type,
+        ` `,
+        +Self.values,
+        `, `,
+        idx,
+        `> : `,
+        +Self.Trait,
+    ]
+    """Gets a type at the given raw `index`.
+
+    Unlike `__getitem_param__`, this accepts a raw `!kgen.index` so callers can
+    index without constructing a `SIMDSize` (and thus without pulling in
+    `SIMDSize` comparison machinery). Used by the stdlib plugin router during
+    bootstrap.
+
+    Parameters:
+        idx: The raw `index` of the type to access.
+    """
+
     @implicit
     @always_inline("builtin")
     def __init__(
@@ -1150,7 +1171,7 @@ struct _VariadicListIter[
     //,
     elt_type: AnyType,
     elt_origin: Origin[mut=elt_is_mutable],
-    list_origin: ImmutOrigin,
+    list_origin: ImmOrigin,
     is_owned: Bool,
 ](RegisterPassable):
     """Iterator for VariadicList.
@@ -1226,13 +1247,13 @@ struct VariadicList[
     @always_inline
     @implicit
     def __init__[
-        size: __mlir_type.index, container_origin: ImmutOrigin
+        size: __mlir_type.index, container_origin: ImmOrigin
     ](
         out self,
         value: Pointer[
-            _MLIR.POPArrayType[size, Self._EltPointerType._mlir_type],
+            _MLIR.POPArrayType[size, Self._EltPointerType._mlir_lit_ref],
             container_origin,
-        ]._mlir_type,
+        ]._mlir_lit_ref,
     ):
         """Constructs a VariadicList from a compiler-generated array of element
         pointers.
@@ -1278,7 +1299,9 @@ struct VariadicList[
 
             for i in reversed(range(len(self))):
                 # Safety: We own the elements in this list.
-                UnsafePointer(to=self[i]).mut_cast[True]().destroy_pointee()
+                UnsafePointer(to=self[i]).mut_cast[
+                    True
+                ]().unsafe_deinit_pointee()
 
     def consume_elements(
         deinit self,
@@ -1328,7 +1351,7 @@ struct VariadicList[
 
     @always_inline
     def __getitem__[
-        self_origin: ImmutOrigin
+        self_origin: ImmOrigin
     ](ref[self_origin] self, idx: Int) -> ref[
         # cast mutability of self to match the mutability of the element,
         # since that is what we want to use in the ultimate reference and
@@ -1403,7 +1426,7 @@ struct VariadicList[
         ).fields[FieldsFn=write_fields]()
 
     def __iter__[
-        self_origin: ImmutOrigin
+        self_origin: ImmOrigin
     ](
         ref[self_origin] self,
     ) -> _VariadicListIter[
@@ -1505,7 +1528,7 @@ struct VariadicPack[
     # This disables nested origin exclusivity checking because it is taking a
     # raw variadic pack which can have nested origins in it (which this does not
     # dereference).
-    @__unsafe_disable_nested_origin_exclusivity
+    @__unsafe_nested_origins_read_only
     def __init__(out self, value: Self._mlir_type):
         """Constructs a VariadicPack from the internal representation.
 
@@ -1547,7 +1570,9 @@ struct VariadicPack[
                 comptime assert conforms_to(element_type, ImplicitlyDeletable)
 
                 # Safety: We own the elements in this pack.
-                UnsafePointer(to=self[i]).mut_cast[True]().destroy_pointee()
+                UnsafePointer(to=self[i]).mut_cast[
+                    True
+                ]().unsafe_deinit_pointee()
 
     def consume_elements[
         elt_handler: def[idx: Int](var elt: Self.element_types[idx]) capturing
@@ -1680,9 +1705,9 @@ struct VariadicPack[
         return __mlir_op.`kgen.struct.load_indirect`(self.get_as_kgen_pack())
 
     def _write_to[
-        O1: ImmutOrigin,
-        O2: ImmutOrigin,
-        O3: ImmutOrigin,
+        O1: ImmOrigin,
+        O2: ImmOrigin,
+        O3: ImmOrigin,
         *,
         is_repr: Bool = False,
     ](

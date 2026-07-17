@@ -36,7 +36,7 @@ from std.gpu import block_dim, block_idx, thread_idx, global_idx
 ```
 
 For an example of launching a GPU kernel from a MAX custom operation, see the
-[vector addition example](https://github.com/modular/modular/blob/main/examples/custom_ops/kernels/vector_addition.mojo)
+[vector addition example](https://github.com/modular/modular/blob/main/max/examples/custom_ops/kernels/vector_addition.mojo)
 in the MAX repo.
 """
 
@@ -54,23 +54,16 @@ from .primitives import (
     launch_dependent_grids,
     wait_on_dependent_grids,
     block_dim,
-    block_dim_uint,
     block_id_in_cluster,
     block_idx,
-    block_idx_uint,
     cluster_dim,
     cluster_idx,
     global_idx,
-    global_idx_uint,
     grid_dim,
-    grid_dim_uint,
     lane_id,
-    lane_id_uint,
     sm_id,
     thread_idx,
-    thread_idx_uint,
     warp_id,
-    warp_id_uint,
 )
 from .globals import MAX_THREADS_PER_BLOCK_METADATA, WARP_SIZE
 from .host import DeviceBuffer, DeviceContext, HostBuffer

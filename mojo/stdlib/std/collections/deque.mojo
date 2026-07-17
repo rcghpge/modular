@@ -35,7 +35,7 @@ from std.memory.alloc import alloc, dealloc, ThinAllocation, Layout
 
 
 @explicit_destroy(
-    "Use `destroy_with()` to explicitly destroy a `Deque` of"
+    "Use `deinit_with()` to explicitly destroy a `Deque` of"
     " non-`ImplicitlyDeletable` elements"
 )
 struct Deque[ElementType: Movable](
@@ -59,7 +59,7 @@ struct Deque[ElementType: Movable](
         ElementType: The type of the elements in the deque. Must implement
             `Movable`. A `Deque` is implicitly destructible only when
             `ElementType` is `ImplicitlyDeletable`; otherwise drain it with
-            `destroy_with()`.
+            `deinit_with()`.
     """
 
     # The by-ref iterator still requires `Copyable & ImplicitlyDeletable` (see
@@ -80,9 +80,9 @@ struct Deque[ElementType: Movable](
         iterable_origin: The origin of the iterable.
     """
 
-    comptime IteratorOwnedType: Iterator = _DequeIterOwned[
-        downcast[Self.ElementType, ImplicitlyDeletable]
-    ]
+    comptime IteratorOwnedType: Iterator where conforms_to(
+        Self.ElementType, ImplicitlyDeletable
+    ) = _DequeIterOwned[Self.ElementType]
     """The owned iterator type for this deque."""
 
     # ===-------------------------------------------------------------------===#
@@ -268,25 +268,25 @@ struct Deque[ElementType: Movable](
         """Destroys all elements in the deque and frees its memory."""
         for i in range(len(self)):
             offset = self._physical_index(self._head + i)
-            (self._data + offset).destroy_pointee()
+            (self._data + offset).unsafe_deinit_pointee()
         self^._unsafe_assume_destroyed_and_deallocate()
 
-    def destroy_with(
-        deinit self, destroy_func: Some[def(var Self.ElementType)], /
+    def deinit_with(
+        deinit self, deinit_func: Some[def(var Self.ElementType)], /
     ):
-        """Consumes this deque and destroys its elements using the provided
+        """Consumes this deque and deinitializes its elements using the provided
         closure.
 
         This can be used to destroy a `Deque` of non-`ImplicitlyDeletable`
         values.
 
         Args:
-            destroy_func: The deinitializing closure called on each `Deque`
+            deinit_func: The deinitializing closure called on each `Deque`
                 element.
         """
         for i in range(len(self)):
             offset = self._physical_index(self._head + i)
-            destroy_func(
+            deinit_func(
                 __get_address_as_owned_value(
                     (self._data + offset)._get_kgen_pointer()
                 )
@@ -434,12 +434,7 @@ struct Deque[ElementType: Movable](
         Returns:
             An iterator that owns the deque's elements.
         """
-        return {
-            rebind_var[Deque[downcast[Self.ElementType, ImplicitlyDeletable]]](
-                self^
-            ),
-            0,
-        }
+        return {self^, 0}
 
     def __iter__(
         ref self,
@@ -473,34 +468,18 @@ struct Deque[ElementType: Movable](
     def __reversed__(
         ref self,
     ) -> _DequeIter[
-        downcast[Self.ElementType, Copyable & ImplicitlyDeletable],
+        Self.ElementType,
         origin_of(self),
         False,
-    ]:
+    ] where conforms_to(Self.ElementType, Copyable & ImplicitlyDeletable):
         """Iterate backwards over the deque, returning the references.
 
         Returns:
             A reversed iterator of the references to the deque elements.
         """
-        # TODO(MSTDL-2390): Remove `Copyable` constraint once we have better iter traits.
-        comptime assert conforms_to(
-            Self.ElementType, Copyable & ImplicitlyDeletable
-        ), (
-            "Deque iteration requires the element to be `Copyable &"
-            " ImplicitlyDeletable`."
-        )
         return _DequeIter[forward=False](
             len(self),
-            rebind[
-                Pointer[
-                    Deque[
-                        downcast[
-                            Self.ElementType, Copyable & ImplicitlyDeletable
-                        ]
-                    ],
-                    origin_of(self),
-                ]
-            ](Pointer(to=self)),
+            Pointer(to=self),
         )
 
     # ===-------------------------------------------------------------------===#
@@ -620,7 +599,7 @@ struct Deque[ElementType: Movable](
         """
         # checking for positive _maxlen first is important for speed
         if self._maxlen > 0 and len(self) == self._maxlen:
-            (self._data + self._head).destroy_pointee()
+            (self._data + self._head).unsafe_deinit_pointee()
             self._head = self._physical_index(self._head + 1)
 
         (self._data + self._tail).unsafe_write(value^)
@@ -644,7 +623,7 @@ struct Deque[ElementType: Movable](
         # checking for positive _maxlen first is important for speed
         if self._maxlen > 0 and len(self) == self._maxlen:
             self._tail = self._physical_index(self._tail - 1)
-            (self._data + self._tail).destroy_pointee()
+            (self._data + self._tail).unsafe_deinit_pointee()
 
         self._head = self._physical_index(self._head - 1)
         (self._data + self._head).unsafe_write(value^)
@@ -661,7 +640,7 @@ struct Deque[ElementType: Movable](
         """
         for i in range(len(self)):
             offset = self._physical_index(self._head + i)
-            (self._data + offset).destroy_pointee()
+            (self._data + offset).unsafe_deinit_pointee()
         dealloc(
             ThinAllocation(
                 unsafe_assume_ownership=self._data
@@ -706,7 +685,7 @@ struct Deque[ElementType: Movable](
 
         # pop excess `self` elements
         for _ in range(n_pop_self):
-            (self._data + self._head).destroy_pointee()
+            (self._data + self._head).unsafe_deinit_pointee()
             self._head = self._physical_index(self._head + 1)
 
         # move from `self` to new location if we have to re-allocate
@@ -714,12 +693,12 @@ struct Deque[ElementType: Movable](
             self._prepare_for_new_elements(n_move_total, n_move_self)
 
         # we will consume all elements of `values`
-        var values_capacity = values.capacity
+        var values_capacity = values.capacity()
         values_data = values.steal_data()
 
         # pop excess elements from `values`
         for i in range(n_pop_values):
-            (values_data + i).destroy_pointee()
+            (values_data + i).unsafe_deinit_pointee()
 
         # move remaining elements from `values`
         src = values_data + n_pop_values
@@ -751,19 +730,19 @@ struct Deque[ElementType: Movable](
         # pop excess `self` elements
         for _ in range(n_pop_self):
             self._tail = self._physical_index(self._tail - 1)
-            (self._data + self._tail).destroy_pointee()
+            (self._data + self._tail).unsafe_deinit_pointee()
 
         # move from `self` to new location if we have to re-allocate
         if n_move_total >= self._capacity:
             self._prepare_for_new_elements(n_move_total, n_move_self)
 
         # we will consume all elements of `values`
-        var values_capacity = values.capacity
+        var values_capacity = values.capacity()
         values_data = values.steal_data()
 
         # pop excess elements from `values`
         for i in range(n_pop_values):
-            (values_data + i).destroy_pointee()
+            (values_data + i).unsafe_deinit_pointee()
 
         # move remaining elements from `values`
         src = values_data + n_pop_values
@@ -876,7 +855,7 @@ struct Deque[ElementType: Movable](
         for idx in range(deque_len):
             offset = self._physical_index(self._head + idx)
             if (self._data + offset)[] == value:
-                (self._data + offset).destroy_pointee()
+                (self._data + offset).unsafe_deinit_pointee()
 
                 if idx < deque_len // 2:
                     for i in reversed(range(idx)):
@@ -1229,7 +1208,7 @@ struct _DequeIterOwned[T: Movable & ImplicitlyDeletable](
         # _head/_tail are never modified, so len(self._deque) stays constant.
         for i in range(self._index, len(self._deque)):
             var phys = self._deque._physical_index(self._deque._head + i)
-            (self._deque._data + phys).destroy_pointee()
+            (self._deque._data + phys).unsafe_deinit_pointee()
         # Zero out head/tail so Deque.__del__ only frees memory.
         self._deque._head = 0
         self._deque._tail = 0

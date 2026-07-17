@@ -17,19 +17,22 @@
 # ===-----------------------------------------------------------------------===#
 
 from std.collections import OptionalReg
+from std.sys import align_of
+from std.sys.info import simd_width_of, _accelerator_arch
 from std.sys.info import (
     simd_width_of,
     _accelerator_arch,
     has_apple_gpu_accelerator,
 )
-import extensibility as compiler
+import extensibility
 
 # ===-----------------------------------------------------------------------===#
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
 from std.gpu.host import DeviceContext
-from std.gpu.host.info import is_gpu
+from layout.tile_tensor import row_major
+from std.gpu.host.info import is_gpu, _is_sm10x_gpu
 from layout import (
     Coord,
     Idx,
@@ -51,6 +54,7 @@ from linalg.matmul.gpu.amd import (
 )
 from linalg.mxfp4_matmul_sm90 import mxfp4_matmul_sm90
 from linalg.matmul.gpu.apple.fp4_matmul import enqueue_apple_fp4_matmul
+from linalg.matmul.gpu.apple.fp8_gemv import enqueue_apple_fp8_matmul
 from linalg.matmul.gpu.apple.int8_matmul import (
     enqueue_apple_int8_matmul,
     enqueue_apple_int8_quantize_activation,
@@ -103,7 +107,7 @@ from std.utils import IndexList
 from .kernels import *
 
 
-@compiler.register("mo.composite.matmul_fused_partial_rms_norm")
+@extensibility.register("mo.composite.matmul_fused_partial_rms_norm")
 struct MatmulFusedPartialRMSNorm:
     """Fuses GEMV (M=1 matmul) with partial RMS normalization.
 
@@ -153,7 +157,9 @@ struct MatmulFusedPartialRMSNorm:
         )
 
 
-@compiler.register_shape_function("mo.composite.matmul_fused_partial_rms_norm")
+@extensibility.register_shape_function(
+    "mo.composite.matmul_fused_partial_rms_norm"
+)
 def composite_matmul_fused_partial_rms_norm_shape[
     dtype: DType,
     rank: Int,
@@ -169,7 +175,7 @@ def composite_matmul_fused_partial_rms_norm_shape[
     return input.shape()
 
 
-@compiler.register("mo.matmul")
+@extensibility.register("mo.matmul")
 struct Matmul:
     @staticmethod
     def execute[
@@ -244,7 +250,7 @@ struct Matmul:
         )
 
 
-@compiler.register("mo.batch_matmul")
+@extensibility.register("mo.batch_matmul")
 struct BatchMatmul:
     @staticmethod
     def execute[
@@ -297,7 +303,7 @@ struct BatchMatmul:
         ](c_tile, a_tile, b_tile, context=ctx)
 
 
-@compiler.register_shape_function("mo.batch_matmul")
+@extensibility.register_shape_function("mo.batch_matmul")
 def batch_matmul_shape[
     rank: Int,
     a_type: DType,
@@ -312,7 +318,7 @@ def batch_matmul_shape[
     )
 
 
-@compiler.register("mo.composite.matmul_add")
+@extensibility.register("mo.composite.matmul_add")
 struct FusedMatmulAdd:
     @staticmethod
     def execute[
@@ -355,7 +361,7 @@ struct FusedMatmulAdd:
         )
 
 
-@compiler.register("mo.linalg.band_part")
+@extensibility.register("mo.linalg.band_part")
 struct LinalgBandPart:
     @staticmethod
     def execute[
@@ -393,7 +399,7 @@ struct LinalgBandPart:
         )
 
 
-@compiler.register("mo.grouped.matmul.ragged")
+@extensibility.register("mo.grouped.matmul.ragged")
 struct Struct_grouped_matmul_ragged:
     @always_inline
     @staticmethod
@@ -424,7 +430,7 @@ struct Struct_grouped_matmul_ragged:
         )
 
 
-@compiler.register("mo.grouped.matmul.block.scaled")
+@extensibility.register("mo.grouped.matmul.block.scaled")
 struct Struct_grouped_matmul_block_scaled:
     """MOGG wrapper for grouped block-scaled matrix multiplication.
 
@@ -503,7 +509,7 @@ struct Struct_grouped_matmul_block_scaled:
         )
 
 
-@compiler.register("mo.grouped.matmul.block.scaled.swiglu")
+@extensibility.register("mo.grouped.matmul.block.scaled.swiglu")
 struct Struct_grouped_matmul_block_scaled_swiglu:
     """MOGG wrapper for fused grouped NVFP4 matmul + SwiGLU + NVFP4 quant.
 
@@ -602,7 +608,7 @@ struct Struct_grouped_matmul_block_scaled_swiglu:
         )
 
 
-@compiler.register("mo.grouped.matmul.dynamic.scaled.fp8")
+@extensibility.register("mo.grouped.matmul.dynamic.scaled.fp8")
 struct Struct_grouped_matmul_dynamic_scaled_fp8:
     @always_inline
     @staticmethod
@@ -657,7 +663,7 @@ struct Struct_grouped_matmul_dynamic_scaled_fp8:
         )
 
 
-@compiler.register("mo.grouped.matmul.rowwise.dynamic.scaled.fp8")
+@extensibility.register("mo.grouped.matmul.rowwise.dynamic.scaled.fp8")
 struct Struct_grouped_matmul_rowwise_dynamic_scaled_fp8:
     """MOGG wrapper for grouped (ragged MoE) rowwise/per-token scaled FP8 matmul.
 
@@ -711,7 +717,7 @@ struct Struct_grouped_matmul_rowwise_dynamic_scaled_fp8:
         )
 
 
-@compiler.register("mo.grouped.matmul.block.scaled.mxfp4")
+@extensibility.register("mo.grouped.matmul.block.scaled.mxfp4")
 struct Struct_grouped_matmul_block_scaled_mxfp4[preshuffled_b: Bool = False]:
     """MOGG wrapper for grouped block-scaled matrix multiplication.
 
@@ -812,7 +818,7 @@ struct Struct_grouped_matmul_block_scaled_mxfp4[preshuffled_b: Bool = False]:
             )
 
 
-@compiler.register("mo.batched.matmul.dynamic.scaled.fp8")
+@extensibility.register("mo.batched.matmul.dynamic.scaled.fp8")
 struct Struct_batched_matmul_dynamic_scaled_fp8:
     @always_inline
     @staticmethod
@@ -862,7 +868,7 @@ struct Struct_batched_matmul_dynamic_scaled_fp8:
         )
 
 
-@compiler.register("mo.matmul.dynamic.block.scaled")
+@extensibility.register("mo.matmul.dynamic.block.scaled")
 struct Struct_matmul_dynamic_block_scaled:
     @always_inline
     @staticmethod
@@ -946,7 +952,7 @@ struct Struct_matmul_dynamic_block_scaled:
         )
 
 
-@compiler.register("mo.matmul.dynamic.block.scaled.mxfp4")
+@extensibility.register("mo.matmul.dynamic.block.scaled.mxfp4")
 struct Struct_matmul_dynamic_block_scaled_mxfp4:
     @always_inline
     @staticmethod
@@ -977,7 +983,7 @@ struct Struct_matmul_dynamic_block_scaled_mxfp4:
         )
 
 
-@compiler.register("mo.matmul.mxfp4.dequant.fp8")
+@extensibility.register("mo.matmul.mxfp4.dequant.fp8")
 struct Struct_matmul_mxfp4_dequant_fp8:
     @always_inline
     @staticmethod
@@ -1023,7 +1029,7 @@ struct Struct_matmul_mxfp4_dequant_fp8:
         )
 
 
-@compiler.register("mo.matmul.weight.only.block.scaled.apple")
+@extensibility.register("mo.matmul.weight.only.block.scaled.apple")
 struct Struct_matmul_weight_only_block_scaled_apple:
     """Apple M5 weight-only NVFP4 (W4A16) matmul: `out = a @ dequant(b)^T`.
 
@@ -1062,6 +1068,49 @@ struct Struct_matmul_weight_only_block_scaled_apple:
             a.to_tile_tensor[DType.int64](),
             b.to_tile_tensor[DType.int64](),
             b_scales.to_tile_tensor[DType.int64](),
+            context,
+        )
+
+
+@extensibility.register("mo.matmul.weight.only.scaled.float8.apple")
+struct Struct_matmul_weight_only_scaled_float8_apple:
+    """Apple M5 weight-only FP8 (W8A16) matmul: `out = a @ dequant(b)^T`.
+
+    The FP8 sibling of `mo.matmul.weight.only.block.scaled.apple`. The activation
+    `a` stays in bf16 (NOT dynamically quantized to FP8), and the FP8-E4M3 weight
+    `b` is widened to f32/bf16 at the point of consumption (register-resident in
+    the `M == 1` GEMV, or a transient bf16 buffer for the `M > 1` interim). Unlike
+    the NVFP4 sibling there is NO per-block weight scale (modelopt static FP8
+    carries one per-tensor scalar `weight_scale`); that scalar is applied at the
+    graph level by the caller as a post-matmul multiply (the FP8 analog of NVFP4's
+    `weight_scale_2`), so it is NOT an input here. `input_scale` cancels for a
+    bf16 activation, so it is not an input either.
+    """
+
+    @always_inline
+    @staticmethod
+    def execute[
+        c_type: DType,
+        //,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=c_type, rank=2, ...],
+        a: InputTensor[dtype=DType.bfloat16, rank=2, ...],
+        b: InputTensor[dtype=DType.float8_e4m3fn, rank=2, ...],
+        context: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[
+            target
+        ](), "Apple weight-only scaled FP8 matmul only supports GPUs"
+        comptime assert has_apple_gpu_accelerator(), (
+            "mo.matmul.weight.only.scaled.float8.apple requires an Apple"
+            " (Metal) GPU accelerator"
+        )
+
+        enqueue_apple_fp8_matmul[c_type=c_type](
+            c.to_tile_tensor[DType.int64](),
+            a.to_tile_tensor[DType.int64](),
+            b.to_tile_tensor[DType.int64](),
             context,
         )
 
@@ -1127,7 +1176,7 @@ def _apple_int8_w8a8_dispatch[
     _ = asc_buf^
 
 
-@compiler.register("mo.matmul.int8.w8a8.apple")
+@extensibility.register("mo.matmul.int8.w8a8.apple")
 struct Struct_matmul_int8_w8a8_apple:
     """Apple M5 int8 W8A8 matmul (no bias): `out = dequant(quant(a) @ b^T)`.
 
@@ -1171,7 +1220,7 @@ struct Struct_matmul_int8_w8a8_apple:
         )
 
 
-@compiler.register("mo.matmul.int8.w8a8.apple.bias")
+@extensibility.register("mo.matmul.int8.w8a8.apple.bias")
 struct Struct_matmul_int8_w8a8_apple_bias:
     """Apple M5 int8 W8A8 matmul WITH per-output-channel bias.
 
@@ -1205,7 +1254,7 @@ struct Struct_matmul_int8_w8a8_apple_bias:
         )
 
 
-@compiler.register("layout_transform_KN_to_KNkni")
+@extensibility.register("layout_transform_KN_to_KNkni")
 struct LayoutTransformMatmulKN2KNkni:
     @always_inline
     @staticmethod
@@ -1236,7 +1285,7 @@ struct LayoutTransformMatmulKN2KNkni:
         )
 
 
-@compiler.register("layout_transform_NK_to_KNkni")
+@extensibility.register("layout_transform_NK_to_KNkni")
 struct LayoutTransformMatmulNK2KNkni:
     @always_inline
     @staticmethod
@@ -1267,7 +1316,7 @@ struct LayoutTransformMatmulNK2KNkni:
         )
 
 
-@compiler.register("pack_matmul_b_shape_func")
+@extensibility.register("pack_matmul_b_shape_func")
 struct PackMatmulBShapeFunc:
     @always_inline
     @staticmethod
@@ -1275,7 +1324,7 @@ struct PackMatmulBShapeFunc:
         raise Error("Only meant to be used for shape function!")
 
 
-@compiler.register_shape_function("pack_matmul_b_shape_func")
+@extensibility.register_shape_function("pack_matmul_b_shape_func")
 def pack_matmul_b_shape_func_shape[
     a_type: DType,
     a_shape: IntTuple,
@@ -1295,7 +1344,7 @@ def pack_matmul_b_shape_func_shape[
     ](b_input.to_tile_tensor[DType.int64]().as_immut(), kernel_type_m)
 
 
-@compiler.register("mo.matmul_dynamic_scaled_fp8")
+@extensibility.register("mo.matmul_dynamic_scaled_fp8")
 struct MatmulDynamicScaledFloat8:
     @always_inline
     @staticmethod
@@ -1338,7 +1387,7 @@ struct MatmulDynamicScaledFloat8:
         )
 
 
-@compiler.register("mo.matmul_static_scaled_float8")
+@extensibility.register("mo.matmul_static_scaled_float8")
 struct MatmulStaticScaledFloat8:
     @always_inline
     @staticmethod
@@ -1361,46 +1410,89 @@ struct MatmulStaticScaledFloat8:
         var input_tt = input_tensor.to_tile_tensor[DType.int64]()
         var weight_tt = weight_tensor.to_tile_tensor[DType.int64]()
 
-        @parameter
-        @__copy_capture(output_tt, input_scale, weight_scale)
-        @always_inline
-        def scaled_output_fn[
-            dtype: DType, width: SIMDSize, *, alignment: Int = 1
-        ](idx: IndexList[2], val: SIMD[dtype, width]):
-            var scale = input_scale.cast[dtype]() * weight_scale.cast[dtype]()
-            var scaled_val = val * scale
+        comptime if _is_sm10x_gpu(ctx.default_device_info):
+            # Fold the per-tensor scales into the SM100 compute epilogue and
+            # write `output_type` (bf16) directly into the real output. This
+            # presents c_type==bf16 + a_type==float8_e4m3fn to
+            # `matmul_dispatch_sm100`, which routes the static-scaled FP8 GEMM
+            # through the tuned tcgen05 Mojo SM100 FP8 pipeline
+            # (`matmul_dispatch_sm100_fp8`) instead of DISPATCH_MISSing on the
+            # fp32 accumulator dtype and falling back to vendor cuBLASLt for
+            # all m>1. The compute lambda returns the value already cast to the
+            # output dtype, as required by `_matmul_gpu`'s compute-lambda
+            # wrapper (output.dtype must equal c_type).
+            @parameter
+            @__copy_capture(input_scale, weight_scale)
+            @always_inline
+            def scaled_compute_fn[
+                dtype: DType,
+                width: SIMDSize,
+                *,
+                alignment: Int = align_of[SIMD[dtype, width]](),
+            ](idx: IndexList[2], val: SIMD[dtype, width]) capturing -> SIMD[
+                dtype, width
+            ]:
+                var scale = (
+                    input_scale.cast[DType.float32]()
+                    * weight_scale.cast[DType.float32]()
+                )
+                var scaled_val = val.cast[DType.float32]() * scale
+                return scaled_val.cast[dtype]()
 
-            output_tt.store_linear[width=width, alignment=alignment](
-                idx, scaled_val.cast[output_type]()
+            matmul[
+                target=target,
+                transpose_b=True,
+                elementwise_compute_lambda_fn=scaled_compute_fn,
+            ](
+                output_tt,
+                input_tt,
+                weight_tt,
+                Optional(ctx),
+            )
+        else:
+
+            @parameter
+            @__copy_capture(output_tt, input_scale, weight_scale)
+            @always_inline
+            def scaled_output_fn[
+                dtype: DType, width: SIMDSize, *, alignment: Int = 1
+            ](idx: IndexList[2], val: SIMD[dtype, width]):
+                var scale = (
+                    input_scale.cast[dtype]() * weight_scale.cast[dtype]()
+                )
+                var scaled_val = val * scale
+
+                output_tt.store_linear[width=width, alignment=alignment](
+                    idx, scaled_val.cast[output_type]()
+                )
+
+            # Allocate an fp32 scratch buffer for the matmul accumulator;
+            # the epilogue lambda reads from it, applies scaling, and writes
+            # the quantized result into the real output.
+            comptime N = type_of(weight_tt).static_shape[0]
+            var M = Int(input_tt.dim[0]())
+            var device_ctx = ctx
+            var scratch_buffer = device_ctx.enqueue_create_buffer[
+                DType.float32
+            ](M * N)
+            var output_scratch = TileTensor(
+                scratch_buffer.unsafe_ptr(),
+                row_major(Coord(Int64(M), Idx[N])),
             )
 
-        # Allocate an fp32 scratch buffer for the matmul accumulator;
-        # the epilogue lambda reads from it, applies scaling, and writes
-        # the quantized result into the real output.
-        comptime N = type_of(weight_tt).static_shape[0]
-        var M = Int(input_tt.dim[0]())
-        var device_ctx = ctx
-        var scratch_buffer = device_ctx.enqueue_create_buffer[DType.float32](
-            M * N
-        )
-        var output_scratch = TileTensor(
-            scratch_buffer.unsafe_ptr(),
-            row_major(Coord(Int64(M), Idx[N])),
-        )
-
-        matmul[
-            target=target,
-            transpose_b=True,
-            elementwise_lambda_fn=scaled_output_fn,
-        ](
-            output_scratch,
-            input_tt,
-            weight_tt,
-            Optional(device_ctx),
-        )
+            matmul[
+                target=target,
+                transpose_b=True,
+                elementwise_lambda_fn=scaled_output_fn,
+            ](
+                output_scratch,
+                input_tt,
+                weight_tt,
+                Optional(device_ctx),
+            )
 
 
-@compiler.register("mo.merge_ragged_tensors")
+@extensibility.register("mo.merge_ragged_tensors")
 struct MergeRaggedTensors:
     @always_inline
     @staticmethod
@@ -1429,7 +1521,7 @@ struct MergeRaggedTensors:
         )
 
 
-@compiler.register("mo.lora_sgmv.ragged")
+@extensibility.register("mo.lora_sgmv.ragged")
 struct Struct_lora_sgmv_ragged:
     @always_inline
     @staticmethod
@@ -1465,7 +1557,7 @@ struct Struct_lora_sgmv_ragged:
         )
 
 
-@compiler.register("mo.lora_sgmv.qkv_shrink.ragged")
+@extensibility.register("mo.lora_sgmv.qkv_shrink.ragged")
 struct Struct_lora_sgmv_qkv_shrink_ragged:
     @always_inline
     @staticmethod
@@ -1501,7 +1593,7 @@ struct Struct_lora_sgmv_qkv_shrink_ragged:
         )
 
 
-@compiler.register("mo.matmul_swiglu", type="gpu")
+@extensibility.register("mo.matmul_swiglu", type="gpu")
 struct MatmulSwiGLU:
     """Fused GEMM+SwiGLU on SM100 for BF16 inputs.
 
@@ -1532,7 +1624,7 @@ struct MatmulSwiGLU:
         )
 
 
-@compiler.register("mo.matmul_swiglu_bias", type="gpu")
+@extensibility.register("mo.matmul_swiglu_bias", type="gpu")
 struct MatmulSwiGLUBias:
     """Fused GEMM+SwiGLU+bias on SM100 for BF16 inputs.
 

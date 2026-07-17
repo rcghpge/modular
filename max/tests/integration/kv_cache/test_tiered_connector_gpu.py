@@ -569,6 +569,9 @@ def _write_block_pattern(buf: Buffer, block_id: int, seed: int) -> np.ndarray:
     buf.view(dtype=DType.uint8, shape=[buf.shape[0], nbytes])[
         block_id, :
     ].inplace_copy_from(host.to(buf.device))
+    # Sync the main-stream write before the connector's aux-stream D2H reads
+    # this block, else it offloads stale bytes (QUA-685 / MXSERV-227).
+    buf.device.synchronize()
     return pattern
 
 
@@ -858,7 +861,6 @@ class _DiskConnectorConfig:
 
     disk_offload_dir: str
     disk_offload_max_gb: float
-    disk_offload_direct_io: bool
     host_kvcache_swap_space_gb: float
 
 
@@ -897,7 +899,6 @@ def _build_multi_cache_manager(
     cfg = _DiskConnectorConfig(
         disk_offload_dir=disk_dir,
         disk_offload_max_gb=1.0,
-        disk_offload_direct_io=False,
         host_kvcache_swap_space_gb=999.0,
     )
     sliding = _fp8_cache_params(cfg, n_kv_heads=4, head_dim=256)  # idx0

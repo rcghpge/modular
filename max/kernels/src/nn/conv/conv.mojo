@@ -4732,6 +4732,7 @@ def conv_gpu[
                 output_type,
                 filter_is_fcrs,
                 maybe_epilogue_func=maybe_epilogue_func,
+                has_residual=has_residual,
             ](
                 input,
                 filter,
@@ -4741,6 +4742,10 @@ def conv_gpu[
                 rebind[IndexList[2]](symmetric_padding),
                 num_groups,
                 ctx,
+                source_ptr.value() if has_residual else UnsafePointer[
+                    Scalar[output_type], MutAnyOrigin
+                ].unsafe_dangling(),
+                beta,
             ):
                 return
 
@@ -5082,7 +5087,6 @@ def conv_gpu[
                 def epilogue_wrapper[
                     _width: Int, alignment: Int = 1
                 ](coords: Coord) {var}:
-                    comptime align = align_of[SIMD[output_type, _width]]()
                     var idx = rebind[IndexList[4]](coord_to_index_list(coords))
                     vec = output_tmp_lt.load[width=_width](idx)
                     epilogue(idx, vec)

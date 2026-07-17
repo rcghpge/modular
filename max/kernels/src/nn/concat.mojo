@@ -19,7 +19,6 @@ from std.sys.info import CompilationTarget, simd_width_of, size_of
 
 from std.algorithm.functional import (
     _get_start_indices_of_nth_subvolume,
-    _get_start_indices_of_nth_subvolume,
     dual_elementwise,
     elementwise,
     sync_parallelize,
@@ -35,12 +34,20 @@ from layout import (
     coord_to_index_list,
     row_major,
 )
-from std.memory import memcpy
+from std.memory import unsafe_memcpy
 from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 
 from std.utils import IndexList, StaticTuple, product
 
 from .gather_scatter import normalize_neg_index
+
+# Reuse the static-divisor subvolume decomposition the layer_norm / rms_norm /
+# softmax migration introduced (the static-folding counterpart of
+# `_get_start_indices_of_nth_subvolume`). When an output dim is statically
+# known in the `Coord` *type* carried by the tensor layout, the `divmod`
+# strength-reduces to a magic-multiply + shift (SASS `IMAD.WIDE`/`SHF`, no
+# `IDIV`/`MUFU.RCP`); dynamic dims fall back to the runtime divide.
+from .shapes import _get_start_indices_of_nth_subvolume_static
 
 comptime elementwise_epilogue_type = def[
     c_type: DType, rank: Int, width: SIMDSize = 1, *, alignment: Int = 1
@@ -81,7 +88,7 @@ def memcpy_or_fuse[
     out_shape: IndexList[rank, ...],
 ) raises:
     comptime if not epilogue_fn:
-        memcpy(dest=dest_data + out_byte_offset, src=src_data, count=n)
+        unsafe_memcpy(dest=dest_data + out_byte_offset, src=src_data, count=n)
     else:
         comptime func = epilogue_fn.value()
         comptime simd_width = simd_width_of[dtype]()
@@ -164,7 +171,7 @@ def _canonical_reshape[
 
 
 def _canonical_reshape_output[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -188,7 +195,7 @@ def _canonical_reshape_output[
 
 
 def _concat_parallel[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -335,7 +342,7 @@ def _concat_parallel[
 
 @always_inline
 def _concat[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -397,7 +404,7 @@ def _concat[
 
 @always_inline
 def _concat_inner[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -425,7 +432,7 @@ def _concat_inner[
 
 @always_inline
 def _check_input_consistency[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -443,7 +450,7 @@ def _check_input_consistency[
 
 @always_inline
 def _concat_serial[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -474,7 +481,7 @@ def _concat_serial[
 
 @always_inline
 def _concat_cpu[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -509,7 +516,7 @@ def _concat_cpu[
 
 @always_inline
 def concat_shape[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     input_type: DType,
@@ -574,7 +581,7 @@ def concat_shape[
 
 @always_inline
 def concat[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     //,
     dtype: DType,
@@ -634,7 +641,7 @@ def _concat_gpu_flat_kernel[
     output_origin: MutOrigin,
     OutputStorage: TensorStorage,
     InputLayoutType: TensorLayout,
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputStorage: TensorStorage,
     //,
     dtype: DType,
@@ -699,7 +706,7 @@ def _concat_inner_most_single_dim[
     output_origin: MutOrigin,
     OutputStorage: TensorStorage,
     InputLayoutType: TensorLayout,
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputStorage: TensorStorage,
     //,
     dtype: DType,
@@ -724,8 +731,13 @@ def _concat_inner_most_single_dim[
     if idx >= row_count:
         return
 
-    var index = _get_start_indices_of_nth_subvolume[1](
-        idx, coord_to_index_list(output.layout.shape_coord())
+    # Static-divisor row -> n-D decomposition: the output's outer dims that are
+    # statically known in `OutputLayoutType` fold the per-thread `divmod` to a
+    # magic-multiply + shift (no `IDIV`); dynamic dims fall back to the runtime
+    # divide read from the `Coord`'s leaf values. Behavior is bit-identical to
+    # `_get_start_indices_of_nth_subvolume[1]`.
+    var index = _get_start_indices_of_nth_subvolume_static(
+        idx, output.layout.shape_coord()
     )
     var in_coord = Coord(index)
 
@@ -745,7 +757,7 @@ def _concat_inner_most_single_dim[
 
 @always_inline
 def _concat_gpu_elementwise[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     InputStorage: TensorStorage,
     //,
@@ -777,7 +789,7 @@ def _concat_gpu_elementwise[
 
 @always_inline
 def _concat_gpu_elementwise[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     InputStorage: TensorStorage,
     //,
@@ -916,7 +928,7 @@ def _concat_gpu_elementwise[
 
 @always_inline
 def _concat_gpu[
-    input_origin: ImmutOrigin,
+    input_origin: ImmOrigin,
     InputLayoutType: TensorLayout,
     InputStorage: TensorStorage,
     //,
@@ -1087,8 +1099,14 @@ def _fused_concat_inner_most_single_dim[
     if idx >= product(input_shapes[0], rank):
         return
 
-    var index = _get_start_indices_of_nth_subvolume[1](
-        idx, coord_to_index_list(output.layout.shape_coord())
+    # Static-divisor row -> n-D decomposition: the FusedConcatSlice
+    # hot site. The graph compiler threads a `TileTensor` whose layout
+    # `_shape_types` preserve the statically-known MLIR output dims, so the
+    # per-thread `divmod` over the outer dims folds to magic-multiply + shift
+    # (no `IDIV`). Dynamic dims fall back to the runtime divide; behavior is
+    # bit-identical to `_get_start_indices_of_nth_subvolume[1]`.
+    var index = _get_start_indices_of_nth_subvolume_static(
+        idx, output.layout.shape_coord()
     )
 
     comptime for i in range(num_inputs):
@@ -1141,8 +1159,10 @@ def _fused_dual_concat_inner_most_single_dim[
     var idx = block_idx.x * block_size + thread_idx.x
 
     if idx < product(input_shapes_0[0], rank):
-        var index = _get_start_indices_of_nth_subvolume[1](
-            idx, coord_to_index_list(output_0.layout.shape_coord())
+        # Static-divisor row -> n-D decomposition; folds the per-
+        # thread `divmod` over `output_0`'s statically-known outer dims.
+        var index = _get_start_indices_of_nth_subvolume_static(
+            idx, output_0.layout.shape_coord()
         )
 
         comptime for i in range(size_0):
@@ -1157,8 +1177,10 @@ def _fused_dual_concat_inner_most_single_dim[
             )
 
     if idx < product(input_shapes_1[0], rank):
-        var index = _get_start_indices_of_nth_subvolume[1](
-            idx, coord_to_index_list(output_1.layout.shape_coord())
+        # Static-divisor row -> n-D decomposition; folds the per-
+        # thread `divmod` over `output_1`'s statically-known outer dims.
+        var index = _get_start_indices_of_nth_subvolume_static(
+            idx, output_1.layout.shape_coord()
         )
 
         comptime for i in range(size_1):

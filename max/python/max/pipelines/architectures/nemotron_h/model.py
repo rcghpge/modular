@@ -46,6 +46,7 @@ from max.pipelines.lib import (
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
+    SupportsSSMStateWarmup,
 )
 from max.pipelines.lib.utils import parse_state_dict_from_weights
 from max.pipelines.modeling.types import RequestID
@@ -53,7 +54,7 @@ from max.profiler import traced
 
 from ..llama3.model import Llama3Inputs, LlamaModelBase
 from .model_config import NemotronHConfig, build_fp8_quant_config
-from .nemotron_h import NemotronH
+from .nemotron_h import NemotronH, _ssm_state_dtype
 from .state_cache import NemotronHStateCache
 
 logger = logging.getLogger("max.pipelines")
@@ -99,7 +100,7 @@ class NemotronHInputs(Llama3Inputs):
         )
 
 
-class NemotronHModel(LlamaModelBase):
+class NemotronHModel(LlamaModelBase, SupportsSSMStateWarmup):
     """Nemotron-H pipeline model (hybrid Mamba-2 + attention)."""
 
     model_config_cls: ClassVar[type[Any]] = NemotronHConfig
@@ -164,6 +165,10 @@ class NemotronHModel(LlamaModelBase):
             max_slots=max_batch_size,
             device=self.devices[0],
             conv_dtype=self._model_dtype,
+            # bf16 on Apple GPUs (halves the dominant decode-step pool
+            # traffic; the scan still accumulates in fp32), fp32 elsewhere.
+            # Must match the graph-side BufferType in NemotronH.input_types.
+            ssm_dtype=_ssm_state_dtype(),
         )
         if not is_virtual_device_mode():
             self._slot_idx_prealloc = Buffer(
@@ -363,3 +368,21 @@ class NemotronHModel(LlamaModelBase):
     def release(self, request_id: RequestID) -> None:
         if self._state_cache is not None:
             self._state_cache.release(request_id)
+
+    def release_warmup_state(self, request_ids: list[RequestID]) -> None:
+        """Release SSM/conv pool slots claimed during graph-capture warmup.
+
+        Called by the overlap pipeline's ``_warmup_model_inputs`` context
+        manager after each ``(batch_size, cache_length)`` probe completes.
+        Releases the warmup request IDs from the state cache so the pool is
+        not exhausted before serving begins.  Each probe claims up to
+        ``batch_size`` fresh slots; without this release the pool would be
+        drained by the warmup sweep.
+
+        The pool buffers themselves are NOT cleared here — the state written
+        during warmup will be zeroed by the next ``claim()`` for that slot,
+        which happens when a real request is assigned to it.
+        """
+        if self._state_cache is not None:
+            for rid in request_ids:
+                self._state_cache.release(rid)

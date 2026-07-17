@@ -279,6 +279,8 @@ async def test_ttft_recorded_once_per_chunk() -> None:
     pipeline.tokenizer.decode = AsyncMock(return_value="chunk_text")
     pipeline.model_worker.stream = mock_stream
     pipeline.debug_logging = False
+    # Match the real ctor contract: coalescing is off by default (floor == 1).
+    pipeline._min_chunk_tokens = 1
     pipeline._reasoning_parser = AsyncMock(return_value=None)
 
     # Patch METRICS and call the real next_token_chunk method.
@@ -362,6 +364,8 @@ async def test_tpot_not_recorded_for_single_token() -> None:
     pipeline.tokenizer.decode = AsyncMock(return_value="chunk_text")
     pipeline.model_worker.stream = mock_stream
     pipeline.debug_logging = False
+    # Match the real ctor contract: coalescing is off by default (floor == 1).
+    pipeline._min_chunk_tokens = 1
     pipeline._reasoning_parser = AsyncMock(return_value=None)
 
     with patch("max.serve.pipelines.llm.METRICS", mock_metrics):
@@ -422,6 +426,8 @@ async def _run_reasoning_pipeline(
     pipeline.tokenizer.decode = decode or AsyncMock(return_value="decoded_text")
     pipeline.model_worker.stream = mock_stream
     pipeline.debug_logging = False
+    # Match the real ctor contract: coalescing is off by default (floor == 1).
+    pipeline._min_chunk_tokens = 1
     pipeline._reasoning_parser = AsyncMock(
         return_value=KimiK2_5ReasoningParser(
             think_start_token_id=THINK_START_TOKEN_ID,
@@ -530,6 +536,30 @@ async def test_next_token_chunk_reasoning(
         assert chunk.token_count == t_count
         assert chunk.decoded_reasoning_tokens == r_text
         assert chunk.decoded_tokens == t_text
+
+
+@pytest.mark.asyncio
+async def test_delimiter_only_generation_reports_prompt_and_cached_tokens() -> (
+    None
+):
+    """A generation whose only token is a stripped reasoning delimiter must
+    still carry the prompt and cached token counts on its terminal chunk.
+
+    With max_tokens=1 a reasoning model's single generated token is often the
+    think-start delimiter; the parser strips it, so the terminal chunk is the
+    only one the streaming route ever sees. Without prompt_token_count on it,
+    the final usage chunk reports prompt_tokens=0 (CLIN-1523); without
+    cached_token_count the prefix-cache hits never surface either. Because
+    this terminal chunk is the first chunk, it carries num_cached_tokens the
+    same way the regular first-chunk path does.
+    """
+    chunks = await _run_reasoning_pipeline(
+        _make_responses([[THINK_START_TOKEN_ID]], num_cached_tokens=7)
+    )
+    assert len(chunks) == 1
+    assert chunks[0].token_count == 0
+    assert chunks[0].prompt_token_count == 10
+    assert chunks[0].cached_token_count == 7
 
 
 @pytest.mark.asyncio
@@ -660,6 +690,8 @@ async def test_next_token_chunk_stop_sequence_sets_eos_status() -> None:
     pipeline.tokenizer.decode = AsyncMock(return_value="stop_word")
     pipeline.model_worker.stream = mock_stream
     pipeline.debug_logging = False
+    # Match the real ctor contract: coalescing is off by default (floor == 1).
+    pipeline._min_chunk_tokens = 1
     pipeline._reasoning_parser = AsyncMock(return_value=None)
 
     mock_request = Mock(

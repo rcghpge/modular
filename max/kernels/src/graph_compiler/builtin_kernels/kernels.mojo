@@ -19,7 +19,7 @@ from std.collections import OptionalReg
 from std.math import align_up, ceildiv, iota
 from std.random import seed
 from std.sys.info import size_of
-import extensibility as compiler
+import extensibility
 
 # ===-----------------------------------------------------------------------===#
 # Kernel imports
@@ -34,7 +34,7 @@ from comm import MAX_GPUS, Signal
 from extensibility import StaticTensorSpec
 from std.gpu.host import CompletionFlag, DeviceContext, DeviceContextList
 from layout.tile_tensor import row_major
-from std.gpu.host.info import is_cpu, is_gpu, is_valid_target
+from std.gpu.host.info import B200, Vendor, is_cpu, is_gpu, is_valid_target
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (
     ComptimeInt,
@@ -103,11 +103,17 @@ from nn.toppminp import min_p_sampling as min_p_sampling_cpu
 from nn.toppminp_gpu import min_p_sampling_gpu
 from state_space.gated_delta_conv1d import gated_delta_conv1d_fwd_gpu
 from state_space.gated_delta import gated_delta_recurrence_fwd_gpu
+from state_space.gated_group_rmsnorm import (
+    gated_group_rmsnorm_cpu,
+    gated_group_rmsnorm_gpu,
+)
 from state_space.mamba2_ssd_scan import (
     mamba2_ssd_chunk_scan_varlen_fwd_cpu,
     mamba2_ssd_chunk_scan_varlen_fwd_gpu,
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu,
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu,
+    mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple,
+    mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split,
 )
 from state_space.varlen_causal_conv1d import (
     causal_conv1d_varlen_fwd_cpu,
@@ -138,7 +144,7 @@ from extensibility import (
 from extensibility import (
     _MutableInputVariadicTensors as MutableInputVariadicTensors,
 )
-from std.memory import UnsafePointer, memcpy
+from std.memory import UnsafePointer, unsafe_memcpy
 from std.time import sleep
 from std.logger import Logger
 
@@ -226,7 +232,7 @@ def export() abi("Mojo"):
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.range")
+@extensibility.register("mo.range")
 struct Range:
     @staticmethod
     def execute[
@@ -252,7 +258,7 @@ struct Range:
         ](func, output, ctx)
 
 
-@compiler.register_shape_function("mo.range")
+@extensibility.register_shape_function("mo.range")
 def range_shape[
     dtype: DType
 ](
@@ -269,7 +275,7 @@ def range_shape[
 
 
 # useful for testing --> identity op that simply copies input into output
-@compiler.register("copy")
+@extensibility.register("copy")
 struct Copy:
     @staticmethod
     def execute[
@@ -292,7 +298,7 @@ struct Copy:
         foreach[func](output, ctx)
 
 
-@compiler.register("nan_check_count")
+@extensibility.register("nan_check_count")
 struct NanCheckCountOp:
     """Counts NaN/Inf values in a floating-point tensor.
 
@@ -318,7 +324,7 @@ struct NanCheckCountOp:
         )
 
 
-@compiler.register("nan_check_raise")
+@extensibility.register("nan_check_raise")
 struct NanCheckRaiseOp:
     """Raises an error if NaN or Inf counts are non-zero.
 
@@ -402,7 +408,7 @@ comptime _SliceStrideTypes[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.max_pool")
+@extensibility.register("mo.max_pool")
 struct MaxPool:
     @staticmethod
     def execute[
@@ -430,7 +436,7 @@ struct MaxPool:
         )
 
 
-@compiler.register_shape_function("mo.max_pool")
+@extensibility.register_shape_function("mo.max_pool")
 def max_pool_shape[
     dtype: DType,
     int_type: DType,
@@ -452,7 +458,7 @@ def max_pool_shape[
     )
 
 
-@compiler.register("mo.max_pool_ceil_mode_true")
+@extensibility.register("mo.max_pool_ceil_mode_true")
 struct MaxPoolCeilModeTrue:
     @staticmethod
     def execute[
@@ -480,7 +486,7 @@ struct MaxPoolCeilModeTrue:
         )
 
 
-@compiler.register_shape_function("mo.max_pool_ceil_mode_true")
+@extensibility.register_shape_function("mo.max_pool_ceil_mode_true")
 def max_pool_ceil_mode_true_shape[
     dtype: DType,
     int_type: DType,
@@ -507,7 +513,7 @@ def max_pool_ceil_mode_true_shape[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.non_maximum_suppression")
+@extensibility.register("mo.non_maximum_suppression")
 struct NonMaximumSuppression:
     @staticmethod
     def execute[
@@ -534,7 +540,7 @@ struct NonMaximumSuppression:
         )
 
 
-@compiler.register_shape_function("mo.non_maximum_suppression")
+@extensibility.register_shape_function("mo.non_maximum_suppression")
 def non_maximum_suppression_shape[
     dtype: DType
 ](
@@ -562,7 +568,7 @@ def non_maximum_suppression_shape[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.roi_align")
+@extensibility.register("mo.roi_align")
 struct ROIAlign:
     @staticmethod
     def execute[
@@ -589,7 +595,7 @@ struct ROIAlign:
         )
 
 
-@compiler.register_shape_function("mo.roi_align")
+@extensibility.register_shape_function("mo.roi_align")
 def roi_align_shape(
     input: InputTensor[rank=4, ...],
     rois: InputTensor[rank=2, ...],
@@ -615,7 +621,7 @@ def roi_align_shape(
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("repeat_interleave")
+@extensibility.register("repeat_interleave")
 struct RepeatInterleave:
     @staticmethod
     def execute(
@@ -638,7 +644,7 @@ struct RepeatInterleave:
         )
 
 
-@compiler.register_shape_function("repeat_interleave")
+@extensibility.register_shape_function("repeat_interleave")
 def repeat_interleave_kernel_shape(
     input: InputTensor, repeats: InputTensor[rank=1, ...], axis: Scalar
 ) raises -> IndexList[input.rank]:
@@ -658,7 +664,7 @@ def repeat_interleave_kernel_shape(
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.random.normal")
+@extensibility.register("mo.random.normal")
 struct RandomNormal:
     @staticmethod
     def execute[
@@ -672,27 +678,27 @@ struct RandomNormal:
         seed_value: InputTensor[dtype=DType.uint64, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
         @always_inline
         def output_fn[
             _width: SIMDSize,
             _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]):
+        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {read output}:
             output._lambda_store[width=_width](
                 rebind[IndexList[output.rank]](coords),
                 rebind[SIMD[output.dtype, _width]](val),
             )
 
-        random_normal[output_fn, target=target](
+        random_normal[target=target](
             output.shape(),
             mean,
             variance,
             seed_value.unsafe_ptr[DType.uint64](),
             ctx,
+            output_fn,
         )
 
 
-@compiler.register_shape_function("mo.random.normal")
+@extensibility.register_shape_function("mo.random.normal")
 def random_normal_shape[
     output_rank: Int
 ](
@@ -708,7 +714,7 @@ def random_normal_shape[
     return unrolled_shape
 
 
-@compiler.register("mo.random.uniform")
+@extensibility.register("mo.random.uniform")
 struct RandomUniform:
     @staticmethod
     def execute[
@@ -722,27 +728,27 @@ struct RandomUniform:
         seed_value: InputTensor[dtype=DType.uint64, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
         @always_inline
         def output_fn[
             _width: SIMDSize,
             _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]):
+        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {read output}:
             output._lambda_store[width=_width](
                 rebind[IndexList[output.rank]](coords),
                 rebind[SIMD[output.dtype, _width]](val),
             )
 
-        random_uniform[output_fn, target=target](
+        random_uniform[target=target](
             output.shape(),
             lower_bound,
             upper_bound,
             seed_value.unsafe_ptr[DType.uint64](),
             ctx,
+            output_fn,
         )
 
 
-@compiler.register_shape_function("mo.random.uniform")
+@extensibility.register_shape_function("mo.random.uniform")
 def random_uniform_shape[
     output_rank: Int
 ](
@@ -860,7 +866,7 @@ def concat_from_list_shape_impl[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("fold")
+@extensibility.register("fold")
 struct Fold:
     @staticmethod
     def execute[
@@ -901,7 +907,7 @@ struct Fold:
         )
 
 
-@compiler.register_shape_function("fold")
+@extensibility.register_shape_function("fold")
 def fold_kernel_shape[
     dtype: DType,
     stride_h: Int,
@@ -932,7 +938,7 @@ def fold_kernel_shape[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("irfft")
+@extensibility.register("irfft")
 struct IRFFT:
     @staticmethod
     def execute[
@@ -1087,7 +1093,7 @@ def generic_fused_qkv_matmul_kv_cache_bshd_paged_kernel_api[
     )
 
 
-@compiler.register("mo.rope_split_store.ragged.paged")
+@extensibility.register("mo.rope_split_store.ragged.paged")
 struct Struct_rope_split_store_ragged_paged[interleaved: Bool]:
     @always_inline
     @staticmethod
@@ -1133,7 +1139,7 @@ struct Struct_rope_split_store_ragged_paged[interleaved: Bool]:
         )
 
 
-@compiler.register("mo.rope_split_store.ragged.paged.with_position_id")
+@extensibility.register("mo.rope_split_store.ragged.paged.with_position_id")
 struct Struct_rope_split_store_ragged_paged_with_position_id[interleaved: Bool]:
     @always_inline
     @staticmethod
@@ -1253,7 +1259,7 @@ def generic_fused_qk_rope_bshd_paged_ragged_kernel_api[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.rope.ragged")
+@extensibility.register("mo.rope.ragged")
 struct Struct_rope_ragged_paged[interleaved: Bool]:
     @always_inline
     @staticmethod
@@ -1291,10 +1297,9 @@ struct Struct_rope_ragged_paged[interleaved: Bool]:
             )
 
         @always_inline
-        @parameter
         def output_fn[
             width: SIMDSize, alignment: Int
-        ](idx: IndexList[3], val: SIMD[dtype, width]) capturing -> None:
+        ](idx: IndexList[3], val: SIMD[dtype, width]) {var output} -> None:
             output._lambda_store[width=width, element_alignment=alignment](
                 idx,
                 cast_saturating[out_dtype](val),
@@ -1311,17 +1316,17 @@ struct Struct_rope_ragged_paged[interleaved: Bool]:
         rope_ragged[
             interleaved=Self.interleaved,
             target=target,
-            output_fn=output_fn,
         ](
             x_tensor,
             row_offsets_tensor,
             start_tensor,
             freqs_cis_tensor,
             ctx,
+            output_fn,
         )
 
 
-@compiler.register("mo.rope.ragged.with_position_id")
+@extensibility.register("mo.rope.ragged.with_position_id")
 struct Struct_rope_ragged_paged_with_position_id[interleaved: Bool]:
     @always_inline
     @staticmethod
@@ -1360,10 +1365,9 @@ struct Struct_rope_ragged_paged_with_position_id[interleaved: Bool]:
             )
 
         @always_inline
-        @parameter
         def output_fn[
             width: SIMDSize, alignment: Int
-        ](idx: IndexList[3], val: SIMD[dtype, width]) capturing -> None:
+        ](idx: IndexList[3], val: SIMD[dtype, width]) {var output} -> None:
             output._lambda_store[width=width, element_alignment=alignment](
                 idx,
                 rebind[SIMD[dtype, width]](val),
@@ -1382,13 +1386,13 @@ struct Struct_rope_ragged_paged_with_position_id[interleaved: Bool]:
         rope_ragged[
             interleaved=Self.interleaved,
             target=target,
-            output_fn=output_fn,
         ](
             x_tensor,
             row_offsets_tensor,
             start_tensor,
             freqs_cis_tensor,
             ctx,
+            output_fn,
             position_ids=position_ids_tensor.as_unsafe_any_origin().as_immut(),
         )
 
@@ -1526,7 +1530,7 @@ def _execute_mha_ragged_paged_scalar_args[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.moe.create.indices")
+@extensibility.register("mo.moe.create.indices")
 struct Struct_moe_create_indices:
     @always_inline
     @staticmethod
@@ -1552,7 +1556,7 @@ struct Struct_moe_create_indices:
         )
 
 
-@compiler.register("mo.moe.router.group.limited")
+@extensibility.register("mo.moe.router.group.limited")
 struct Struct_moe_router_group_limited:
     @always_inline
     @staticmethod
@@ -1604,7 +1608,7 @@ struct Struct_moe_router_group_limited:
         )
 
 
-@compiler.register("mo.moe.create.indices.with.scales.offset")
+@extensibility.register("mo.moe.create.indices.with.scales.offset")
 struct Struct_moe_create_indices_with_scales_offset:
     @always_inline
     @staticmethod
@@ -1632,7 +1636,7 @@ struct Struct_moe_create_indices_with_scales_offset:
         )
 
 
-@compiler.register("mo.moe.single.group.router.eplb")
+@extensibility.register("mo.moe.single.group.router.eplb")
 struct Struct_moe_single_group_router_eplb:
     @always_inline
     @staticmethod
@@ -1694,7 +1698,7 @@ struct Struct_moe_single_group_router_eplb:
         )
 
 
-@compiler.register("mo.moe.single.group.router")
+@extensibility.register("mo.moe.single.group.router")
 struct Struct_moe_single_group_router:
     @always_inline
     @staticmethod
@@ -1742,7 +1746,7 @@ struct Struct_moe_single_group_router:
         )
 
 
-@compiler.register("mo.moe.eplb.remap")
+@extensibility.register("mo.moe.eplb.remap")
 struct Struct_moe_eplb_remap:
     @always_inline
     @staticmethod
@@ -1811,7 +1815,7 @@ def layout_transform_conv_transpose_filter_common[
     )
 
 
-@compiler.register("pack_conv_transpose_filter_shape")
+@extensibility.register("pack_conv_transpose_filter_shape")
 struct PackConvTransposeFilterShape:
     @always_inline
     @staticmethod
@@ -1822,7 +1826,7 @@ struct PackConvTransposeFilterShape:
         raise Error("Only meant to be used for shape function!")
 
 
-@compiler.register_shape_function("pack_conv_transpose_filter_shape")
+@extensibility.register_shape_function("pack_conv_transpose_filter_shape")
 def pack_conv_transpose_filter_shape_shape[
     rank: Int,
     filter_type: DType,
@@ -1947,7 +1951,7 @@ def print_kv_cache_paged_generic_kernel_api[
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("sampler.fused_token_sampling")
+@extensibility.register("sampler.fused_token_sampling")
 struct Struct_fused_token_sampling:
     @always_inline
     @staticmethod
@@ -2025,7 +2029,7 @@ struct Struct_fused_token_sampling:
             )
 
 
-@compiler.register("min_p_sampling")
+@extensibility.register("min_p_sampling")
 struct Struct_min_p_sampling:
     @always_inline
     @staticmethod
@@ -2061,7 +2065,7 @@ struct Struct_min_p_sampling:
             )
 
 
-@compiler.register("sampler.apply_penalties")
+@extensibility.register("sampler.apply_penalties")
 struct Struct_sampler_apply_penalties:
     @always_inline
     @staticmethod
@@ -2093,7 +2097,7 @@ struct Struct_sampler_apply_penalties:
         )
 
 
-@compiler.register("sampler.update_frequency_data")
+@extensibility.register("sampler.update_frequency_data")
 struct Struct_sampler_update_frequency_data:
     @always_inline
     @staticmethod
@@ -2160,7 +2164,7 @@ def _partitioned_scratch_requirement[
     return vecs_per_device * pessemistic_simd_width * size_of[dtype]()
 
 
-@compiler.register("mo.bundled.allreduce.sum")
+@extensibility.register("mo.bundled.allreduce.sum")
 struct BundledAllReduceSum:
     @staticmethod
     def execute[
@@ -2246,7 +2250,7 @@ struct BundledAllReduceSum:
         )
 
 
-@compiler.register("mo.composite.bundled.allreduce_add_rms_norm_quant_fp8")
+@extensibility.register("mo.composite.bundled.allreduce_add_rms_norm_quant_fp8")
 struct BundledAllReduceAddRMSNormQuantFP8:
     @staticmethod
     def execute[
@@ -2367,7 +2371,7 @@ struct BundledAllReduceAddRMSNormQuantFP8:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.eagle_prefill_shift_tokens")
+@extensibility.register("mo.eagle_prefill_shift_tokens")
 struct EaglePrefillShiftTokens:
     @always_inline
     @staticmethod
@@ -2397,7 +2401,7 @@ struct EaglePrefillShiftTokens:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("learnable_2d_interp_pos_emb")
+@extensibility.register("learnable_2d_interp_pos_emb")
 struct Learnable2DInterpPosEmb:
     @always_inline
     @staticmethod
@@ -2427,7 +2431,7 @@ struct Learnable2DInterpPosEmb:
         )
 
 
-@compiler.register("mo.spatial_merge")
+@extensibility.register("mo.spatial_merge")
 struct SpatialMerge:
     @always_inline
     @staticmethod
@@ -2455,7 +2459,7 @@ struct SpatialMerge:
         )
 
 
-@compiler.register("tpool_patch_merger")
+@extensibility.register("tpool_patch_merger")
 struct TPoolPatchMerger:
     @always_inline
     @staticmethod
@@ -2503,7 +2507,7 @@ struct TPoolPatchMerger:
         )
 
 
-@compiler.register_shape_function("tpool_patch_merger")
+@extensibility.register_shape_function("tpool_patch_merger")
 def tpool_patch_merger_shape(
     input: InputTensor[rank=2, ...],
     _grid_thws: InputTensor[dtype=DType.int64, rank=2, ...],
@@ -2521,7 +2525,7 @@ def tpool_patch_merger_shape(
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("gated_delta_conv1d_fwd")
+@extensibility.register("gated_delta_conv1d_fwd")
 struct GatedDeltaConv1dFwd:
     """Gated DeltaNet causal conv1d forward pass (Pass 1 of two-pass prefill).
 
@@ -2679,7 +2683,7 @@ struct GatedDeltaConv1dFwd:
             )
 
 
-@compiler.register_shape_function("gated_delta_conv1d_fwd")
+@extensibility.register_shape_function("gated_delta_conv1d_fwd")
 def gated_delta_conv1d_fwd_shape[
     work_dtype: DType,
     state_dtype: DType,
@@ -2694,7 +2698,7 @@ def gated_delta_conv1d_fwd_shape[
     return qkv_input_ragged.shape()
 
 
-@compiler.register("gated_delta_recurrence_fwd")
+@extensibility.register("gated_delta_recurrence_fwd")
 struct GatedDeltaRecurrenceFwd:
     """Gated DeltaNet recurrence forward pass (Pass 2 of two-pass prefill).
 
@@ -2902,7 +2906,7 @@ struct GatedDeltaRecurrenceFwd:
             )
 
 
-@compiler.register_shape_function("gated_delta_recurrence_fwd")
+@extensibility.register_shape_function("gated_delta_recurrence_fwd")
 def gated_delta_recurrence_fwd_shape[
     work_dtype: DType,
     state_dtype: DType,
@@ -2922,7 +2926,7 @@ def gated_delta_recurrence_fwd_shape[
     return IndexList[2](total_seq_len, value_dim)
 
 
-@compiler.register("mamba2_ssd_chunk_scan_varlen_fwd")
+@extensibility.register("mamba2_ssd_chunk_scan_varlen_fwd")
 struct Mamba2SSDChunkScanVarlenFwd[dt_softplus: Bool = True]:
     """Varlen Mamba-2 SSD chunked-scan prefill forward.
 
@@ -3157,7 +3161,7 @@ struct Mamba2SSDChunkScanVarlenFwd[dt_softplus: Bool = True]:
             raise Error("Unsupported target device")
 
 
-@compiler.register_shape_function("mamba2_ssd_chunk_scan_varlen_fwd")
+@extensibility.register_shape_function("mamba2_ssd_chunk_scan_varlen_fwd")
 def mamba2_ssd_chunk_scan_varlen_fwd_shape[
     dtype: DType,
 ](
@@ -3176,7 +3180,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_shape[
     return x.shape()
 
 
-@compiler.register("mamba2_ssd_chunk_scan_varlen_fwd_inplace")
+@extensibility.register("mamba2_ssd_chunk_scan_varlen_fwd_inplace")
 struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
     """Varlen Mamba-2 SSD chunked-scan — in-place SSM-pool write-back.
 
@@ -3204,7 +3208,8 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         - C: (total_len, ngroups, dstate)
         - D: (nheads,) optional/empty
         - dt_bias: (nheads,) optional/empty
-        - ssm_pool: (max_slots, nheads, head_dim, dstate) fp32  [MUT]
+        - ssm_pool: (max_slots, nheads, head_dim, dstate) fp32, or bf16 on
+          Apple GPUs (storage dtype only; the scan accumulates in fp32)  [MUT]
         - query_start_loc: (batch + 1,) int32
         - has_initial_state: (batch,) bool optional/empty
         - cache_indices: (batch,) uint32 — slot indices into ssm_pool
@@ -3213,6 +3218,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
     @staticmethod
     def execute[
         dtype: DType,
+        state_dtype: DType,
         target: StaticString,
     ](
         y: OutputTensor[dtype=dtype, rank=3, ...],
@@ -3224,8 +3230,10 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         D: InputTensor[dtype=dtype, rank=1, ...],
         dt_bias: InputTensor[dtype=dtype, rank=1, ...],
         # ssm_pool is declared MutableInputTensor so the graph binds the
-        # caller's persistent pool buffer and routes it through the chain.
-        ssm_pool: MutableInputTensor[dtype=DType.float32, rank=4, ...],
+        # caller's persistent pool buffer and routes it through the chain. Its
+        # storage dtype is independent of the working dtype (fp32 everywhere;
+        # bf16 on Apple GPUs — see the Apple kernel's numerics contract).
+        ssm_pool: MutableInputTensor[dtype=state_dtype, rank=4, ...],
         query_start_loc: InputTensor[dtype=DType.int32, rank=1, ...],
         has_initial_state: InputTensor[dtype=DType.bool, rank=1, ...],
         cache_indices: InputTensor[dtype=DType.uint32, rank=1, ...],
@@ -3292,90 +3300,262 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         @parameter
         @always_inline
         def launch_cpu[DSTATE_VAL: Int]() raises:
-            mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[dtype, DSTATE_VAL](
-                nheads,
-                head_dim,
-                ngroups,
-                nheads_ngroups_ratio,
-                batch,
-                dt_softplus_int8,
-                x_tt,
-                dt_tt,
-                A_tt,
-                B_tt,
-                C_tt,
-                D_tt,
-                dt_bias_tt,
-                y_tt,
-                ssm_pool_tt,
-                query_start_loc_tt,
-                has_initial_state_tt,
-                cache_indices_tt,
-                x_strides,
-                dt_strides,
-                A_strides,
-                B_strides,
-                C_strides,
-                D_strides,
-                dt_bias_strides,
-                y_strides,
-                ssm_pool_strides,
-            )
+            # The CPU kernel stores fp32 state only; bf16 state is wired on
+            # the Apple GPU kernel alone. The `comptime if` keeps the bf16
+            # instantiation from elaborating this branch, but the direct call
+            # below is still type-checked with `state_dtype` symbolic
+            # (`comptime if` does not narrow parameter types), so the pool is
+            # `rebind`-ed to its fp32 spelling — a compile-time promise the
+            # compiler verifies at instantiation, where this branch only
+            # exists with `state_dtype == float32`.
+            comptime if state_dtype == DType.float32:
+                mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[dtype, DSTATE_VAL](
+                    nheads,
+                    head_dim,
+                    ngroups,
+                    nheads_ngroups_ratio,
+                    batch,
+                    dt_softplus_int8,
+                    x_tt,
+                    dt_tt,
+                    A_tt,
+                    B_tt,
+                    C_tt,
+                    D_tt,
+                    dt_bias_tt,
+                    y_tt,
+                    rebind[
+                        TileTensor[
+                            DType.float32,
+                            ssm_pool_tt.LayoutType,
+                            ssm_pool_tt.origin,
+                        ]
+                    ](ssm_pool_tt),
+                    query_start_loc_tt,
+                    has_initial_state_tt,
+                    cache_indices_tt,
+                    x_strides,
+                    dt_strides,
+                    A_strides,
+                    B_strides,
+                    C_strides,
+                    D_strides,
+                    dt_bias_strides,
+                    y_strides,
+                    ssm_pool_strides,
+                )
+            else:
+                raise Error(
+                    "non-fp32 SSM state is only supported on the Apple GPU"
+                    " kernel"
+                )
 
         @parameter
         @always_inline
         def launch_gpu[DSTATE_VAL: Int]() raises:
-            comptime BLOCK_SIZE = 64
-            var num_p_blocks = ceildiv(head_dim, BLOCK_SIZE)
-            comptime kernel = mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu[
-                dtype,
-                DSTATE_VAL,
-                x_tt.LayoutType,
-                dt_tt.LayoutType,
-                A_tt.LayoutType,
-                B_tt.LayoutType,
-                C_tt.LayoutType,
-                D_tt.LayoutType,
-                dt_bias_tt.LayoutType,
-                y_tt.LayoutType,
-                ssm_pool_tt.LayoutType,
-                query_start_loc_tt.LayoutType,
-                has_initial_state_tt.LayoutType,
-                cache_indices_tt.LayoutType,
-            ]
-            var compiled = ctx.compile_function[kernel]()
-            ctx.enqueue_function(
-                compiled,
-                nheads,
-                head_dim,
-                ngroups,
-                nheads_ngroups_ratio,
-                batch,
-                dt_softplus_int8,
-                x_tt,
-                dt_tt,
-                A_tt,
-                B_tt,
-                C_tt,
-                D_tt,
-                dt_bias_tt,
-                y_tt,
-                ssm_pool_tt,
-                query_start_loc_tt,
-                has_initial_state_tt,
-                cache_indices_tt,
-                x_strides,
-                dt_strides,
-                A_strides,
-                B_strides,
-                C_strides,
-                D_strides,
-                dt_bias_strides,
-                y_strides,
-                ssm_pool_strides,
-                grid_dim=(num_p_blocks, nheads, batch),
-                block_dim=(BLOCK_SIZE, 1, 1),
+            # NVIDIA B200 (sm_100) gets the cooperative DSTATE-split
+            # decode-occupancy variant (r7); every other device (AMD MI355
+            # gfx950, Hopper, Apple, ...) runs the portable v1
+            # one-thread-per-channel kernel. The split uses a `lane_group_sum`
+            # full-warp shuffle + 2D block that assume warp width 32, which is
+            # invalid on AMD's wavefront-64 (it failed 2/9 MI355 tests, why
+            # round-2 was reverted in 07c5e0b7533). The gate keeps AMD/non-B200
+            # byte-identical to main. Predicate is `== B200` (not `version ==
+            # "sm_100"`: B200's version string is "sm_100a"; the split was
+            # measured and validated on B200 only, so B100/B300 stay on v1 too).
+            # Gate on `ctx.default_device_info == B200` (the comptime device
+            # `GPUInfo` for the accelerator arch): the wrapper `target` is a
+            # `StaticString`, so `GPUInfo.from_target[target]()` is ill-typed
+            # (`from_target` wants a `!kgen.target`) and hard-errors the
+            # `builtin_kernels` build on every arch.
+            comptime use_dstate_split = ctx.default_device_info == B200
+            # Apple silicon GPU (Metal, cc==5) gets the vectorized-contiguous
+            # dstate I/O variant: same one-thread-per-channel mapping/launch as
+            # v1, but the scalar dstate load/store loops (mem-pipe-bound on M5)
+            # become VEC-wide SIMD chunk loads/stores. Gate on the comptime
+            # device vendor (matching the `== B200` gate rationale above).
+            comptime use_apple_vec = (
+                ctx.default_device_info.vendor == Vendor.APPLE_GPU
             )
+            # bf16 SSM state is only wired on the Apple vectorized kernel; the
+            # B200 dstate-split and portable v1 kernels are fp32-state. The
+            # Python side only allocates a bf16 pool on Apple (nemotron_h
+            # `_ssm_state_dtype`), so this guard is defensive.
+            comptime assert (
+                state_dtype == DType.float32 or use_apple_vec
+            ), "non-fp32 SSM state is only supported on the Apple GPU kernel"
+
+            comptime if use_dstate_split:
+                # Cooperative DSTATE-split: DSTATE_SPLIT threads cooperate on
+                # each head_dim channel's DSTATE recurrence (lifts decode bs=1
+                # occupancy; v1 one-thread-per-channel was ~4% achieved occupancy
+                # on B200). The block holds CH_PER_BLOCK channels x DSTATE_SPLIT
+                # threads = 128 threads (4 warps). DSTATE_SPLIT must divide both
+                # DSTATE and 32 (warp) so each channel's lane group stays
+                # warp-aligned for the lane_group_sum reduction; it divides every
+                # dispatched DSTATE (16/64/128/256) cleanly.
+                # Sweep (decode-shape microbench, B200, bf16, dstate=128):
+                #   per-launch us @ bs=1: split1=46.8, split4=22.5, split8=16.6
+                #   (-64.6% vs split1). split8 wins at bs=1/16/32.
+                comptime DSTATE_SPLIT = 8
+                comptime BLOCK_THREADS = 128
+                comptime CH_PER_BLOCK = BLOCK_THREADS // DSTATE_SPLIT
+                var num_p_blocks = ceildiv(head_dim, CH_PER_BLOCK)
+                comptime kernel = mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
+                    dtype,
+                    DSTATE_VAL,
+                    x_tt.LayoutType,
+                    dt_tt.LayoutType,
+                    A_tt.LayoutType,
+                    B_tt.LayoutType,
+                    C_tt.LayoutType,
+                    D_tt.LayoutType,
+                    dt_bias_tt.LayoutType,
+                    y_tt.LayoutType,
+                    ssm_pool_tt.LayoutType,
+                    query_start_loc_tt.LayoutType,
+                    has_initial_state_tt.LayoutType,
+                    cache_indices_tt.LayoutType,
+                    DSTATE_SPLIT,
+                ]
+                var compiled = ctx.compile_function[kernel]()
+                ctx.enqueue_function(
+                    compiled,
+                    nheads,
+                    head_dim,
+                    ngroups,
+                    nheads_ngroups_ratio,
+                    batch,
+                    dt_softplus_int8,
+                    x_tt,
+                    dt_tt,
+                    A_tt,
+                    B_tt,
+                    C_tt,
+                    D_tt,
+                    dt_bias_tt,
+                    y_tt,
+                    ssm_pool_tt,
+                    query_start_loc_tt,
+                    has_initial_state_tt,
+                    cache_indices_tt,
+                    x_strides,
+                    dt_strides,
+                    A_strides,
+                    B_strides,
+                    C_strides,
+                    D_strides,
+                    dt_bias_strides,
+                    y_strides,
+                    ssm_pool_strides,
+                    grid_dim=(num_p_blocks, nheads, batch),
+                    block_dim=(DSTATE_SPLIT, CH_PER_BLOCK, 1),
+                )
+            elif use_apple_vec:
+                comptime BLOCK_SIZE = 64
+                var num_p_blocks = ceildiv(head_dim, BLOCK_SIZE)
+                comptime kernel = mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
+                    dtype,
+                    DSTATE_VAL,
+                    x_tt.LayoutType,
+                    dt_tt.LayoutType,
+                    A_tt.LayoutType,
+                    B_tt.LayoutType,
+                    C_tt.LayoutType,
+                    D_tt.LayoutType,
+                    dt_bias_tt.LayoutType,
+                    y_tt.LayoutType,
+                    ssm_pool_tt.LayoutType,
+                    query_start_loc_tt.LayoutType,
+                    has_initial_state_tt.LayoutType,
+                    cache_indices_tt.LayoutType,
+                    state_dtype,
+                ]
+                var compiled = ctx.compile_function[kernel]()
+                ctx.enqueue_function(
+                    compiled,
+                    nheads,
+                    head_dim,
+                    ngroups,
+                    nheads_ngroups_ratio,
+                    batch,
+                    dt_softplus_int8,
+                    x_tt,
+                    dt_tt,
+                    A_tt,
+                    B_tt,
+                    C_tt,
+                    D_tt,
+                    dt_bias_tt,
+                    y_tt,
+                    ssm_pool_tt,
+                    query_start_loc_tt,
+                    has_initial_state_tt,
+                    cache_indices_tt,
+                    x_strides,
+                    dt_strides,
+                    A_strides,
+                    B_strides,
+                    C_strides,
+                    D_strides,
+                    dt_bias_strides,
+                    y_strides,
+                    ssm_pool_strides,
+                    grid_dim=(num_p_blocks, nheads, batch),
+                    block_dim=(BLOCK_SIZE, 1, 1),
+                )
+            else:
+                comptime BLOCK_SIZE = 64
+                var num_p_blocks = ceildiv(head_dim, BLOCK_SIZE)
+                comptime kernel = mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu[
+                    dtype,
+                    DSTATE_VAL,
+                    x_tt.LayoutType,
+                    dt_tt.LayoutType,
+                    A_tt.LayoutType,
+                    B_tt.LayoutType,
+                    C_tt.LayoutType,
+                    D_tt.LayoutType,
+                    dt_bias_tt.LayoutType,
+                    y_tt.LayoutType,
+                    ssm_pool_tt.LayoutType,
+                    query_start_loc_tt.LayoutType,
+                    has_initial_state_tt.LayoutType,
+                    cache_indices_tt.LayoutType,
+                ]
+                var compiled = ctx.compile_function[kernel]()
+                ctx.enqueue_function(
+                    compiled,
+                    nheads,
+                    head_dim,
+                    ngroups,
+                    nheads_ngroups_ratio,
+                    batch,
+                    dt_softplus_int8,
+                    x_tt,
+                    dt_tt,
+                    A_tt,
+                    B_tt,
+                    C_tt,
+                    D_tt,
+                    dt_bias_tt,
+                    y_tt,
+                    ssm_pool_tt,
+                    query_start_loc_tt,
+                    has_initial_state_tt,
+                    cache_indices_tt,
+                    x_strides,
+                    dt_strides,
+                    A_strides,
+                    B_strides,
+                    C_strides,
+                    D_strides,
+                    dt_bias_strides,
+                    y_strides,
+                    ssm_pool_strides,
+                    grid_dim=(num_p_blocks, nheads, batch),
+                    block_dim=(BLOCK_SIZE, 1, 1),
+                )
 
         comptime if is_cpu[target]():
             if dstate == 256:
@@ -3399,9 +3579,12 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
             raise Error("Unsupported target device")
 
 
-@compiler.register_shape_function("mamba2_ssd_chunk_scan_varlen_fwd_inplace")
+@extensibility.register_shape_function(
+    "mamba2_ssd_chunk_scan_varlen_fwd_inplace"
+)
 def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape[
     dtype: DType,
+    state_dtype: DType,
 ](
     x: InputTensor[dtype=dtype, rank=3, ...],
     dt: InputTensor[dtype=dtype, rank=2, ...],
@@ -3410,7 +3593,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape[
     C: InputTensor[dtype=dtype, rank=3, ...],
     D: InputTensor[dtype=dtype, rank=1, ...],
     dt_bias: InputTensor[dtype=dtype, rank=1, ...],
-    ssm_pool: InputTensor[dtype=DType.float32, rank=4, ...],
+    ssm_pool: InputTensor[dtype=state_dtype, rank=4, ...],
     query_start_loc: InputTensor[dtype=DType.int32, rank=1, ...],
     has_initial_state: InputTensor[dtype=DType.bool, rank=1, ...],
     cache_indices: InputTensor[dtype=DType.uint32, rank=1, ...],
@@ -3419,7 +3602,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape[
     return x.shape()
 
 
-@compiler.register("causal_conv1d_varlen_fwd")
+@extensibility.register("causal_conv1d_varlen_fwd")
 struct CausalConv1DVarlenFwd[activation: StaticString]:
     """Varlen causal 1D convolution forward pass.
 
@@ -3634,7 +3817,7 @@ struct CausalConv1DVarlenFwd[activation: StaticString]:
             raise Error("Unsupported target device")
 
 
-@compiler.register_shape_function("causal_conv1d_varlen_fwd")
+@extensibility.register_shape_function("causal_conv1d_varlen_fwd")
 def causal_conv1d_varlen_fwd_shape[
     dtype: DType,
 ](
@@ -3655,11 +3838,116 @@ def causal_conv1d_varlen_fwd_shape[
 
 
 # ===-----------------------------------------------------------------------===#
+# Gated group-RMSNorm (Mamba-2 mixer, `norm_before_gate=False`)
+# ===-----------------------------------------------------------------------===#
+
+
+@extensibility.register("gated_group_rmsnorm")
+struct GatedGroupRMSNorm[group_size: Int]:
+    """Fused silu-gate + group RMSNorm + weight-scale for the Mamba-2 mixer.
+
+    Collapses `cast -> silu(gate) * y -> group rms_norm -> * norm_weight -> cast`
+    into one dispatch, matching HF `Zamba2RMSNormGated` with
+    `norm_before_gate=False`. The registration lives here in the built-in kernel
+    library (mirroring the `causal_conv1d_varlen_fwd` /
+    `mamba2_ssd_chunk_scan_varlen_fwd_inplace` precedents) so the graph compiler
+    / serve path resolves the op with no out-of-tree `custom_extensions`. The
+    kernel math lives in `state_space.gated_group_rmsnorm`.
+
+    Parameters:
+        group_size: Width of each independently normalized group along the
+            intermediate axis (`intermediate // n_groups`).
+
+    Tensor shapes:
+        - output: `(n_rows, intermediate)` - model dtype.
+        - y: `(n_rows, intermediate)` - SSD scan output, model dtype.
+        - gate: `(n_rows, intermediate)` - gate projection (any float dtype;
+          may be a strided split view of the fused in-proj).
+        - weight: `(intermediate,)` - fp32 RMSNorm weight.
+        - eps: Scalar epsilon (fp32) inside `rsqrt(mean_sq + eps)`.
+    """
+
+    @staticmethod
+    def execute[
+        dtype: DType,
+        gate_dtype: DType,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=dtype, rank=2, ...],
+        y: InputTensor[dtype=dtype, rank=2, ...],
+        gate: InputTensor[dtype=gate_dtype, rank=2, ...],
+        weight: InputTensor[dtype=DType.float32, rank=1, ...],
+        eps: Float32,
+        ctx: DeviceContext,
+    ) capturing raises:
+        var n_rows = y.dim_size(0)
+        var intermediate = y.dim_size(1)
+        comptime gs = Self.group_size
+        # The kernel floor-divides `intermediate // gs`; a non-multiple would
+        # silently drop the tail columns of the last (partial) group. The
+        # unfused `ops.reshape(yf, [-1, group_size])` this replaced errored on
+        # a non-multiple, so guard the invariant here (production 7680/960=8 is
+        # exact -- this is a guard, not a behavior change).
+        debug_assert(
+            intermediate % gs == 0,
+            (
+                "gated_group_rmsnorm: intermediate must be a multiple of"
+                " group_size"
+            ),
+        )
+        var num_groups = intermediate // gs
+
+        var output_tt = output.to_tile_tensor[DType.int32]()
+        var y_tt = y.to_tile_tensor[DType.int32]()
+        var gate_tt = gate.to_tile_tensor[DType.int32]()
+        var weight_tt = weight.to_tile_tensor[DType.int32]()
+
+        comptime if is_cpu[target]():
+            gated_group_rmsnorm_cpu[dtype, gate_dtype](
+                output_tt,
+                y_tt,
+                gate_tt,
+                weight_tt,
+                n_rows,
+                num_groups,
+                gs,
+                eps,
+            )
+        elif is_gpu[target]():
+            gated_group_rmsnorm_gpu[dtype, gate_dtype](
+                output_tt,
+                y_tt,
+                gate_tt,
+                weight_tt,
+                n_rows,
+                num_groups,
+                gs,
+                eps,
+                ctx,
+            )
+        else:
+            raise Error("gated_group_rmsnorm: unsupported target device")
+
+
+@extensibility.register_shape_function("gated_group_rmsnorm")
+def gated_group_rmsnorm_shape[
+    dtype: DType,
+    gate_dtype: DType,
+](
+    y: InputTensor[dtype=dtype, rank=2, ...],
+    gate: InputTensor[dtype=gate_dtype, rank=2, ...],
+    weight: InputTensor[dtype=DType.float32, rank=1, ...],
+    eps: Float32,
+) -> IndexList[2]:
+    return y.shape()
+
+
+# ===-----------------------------------------------------------------------===#
 # Sleep kernel
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.sleep")
+@extensibility.register("mo.sleep")
 struct Sleep:
     @staticmethod
     def execute[
@@ -3697,7 +3985,7 @@ struct Sleep:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.inplace_memcpy")
+@extensibility.register("mo.inplace_memcpy")
 struct InplaceMemcpy[DstDevice: StaticString, SrcDevice: StaticString]:
     """Copies the contents of `src` into `dst` in place.
 
@@ -3741,7 +4029,7 @@ struct InplaceMemcpy[DstDevice: StaticString, SrcDevice: StaticString]:
             )
         elif is_cpu[Self.DstDevice]() and is_cpu[Self.SrcDevice]():
             # Host-to-host. Plain synchronous memcpy.
-            memcpy(
+            unsafe_memcpy(
                 dest=dst.unsafe_ptr(),
                 src=src.unsafe_ptr(),
                 count=count,
@@ -3756,7 +4044,7 @@ struct InplaceMemcpy[DstDevice: StaticString, SrcDevice: StaticString]:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.launch_host_func")
+@extensibility.register("mo.launch_host_func")
 struct LaunchHostFunc:
     """Enqueues a pre-packed host callback on the device's default stream.
 
@@ -3789,7 +4077,7 @@ struct LaunchHostFunc:
         ctx.stream().enqueue_host_func(rebind[_HostFuncTy](tr_ptr), ud_ptr)
 
 
-@compiler.register("mo.wait_host_value")
+@extensibility.register("mo.wait_host_value")
 struct WaitHostValue:
     """Stalls the stream until a host-visible flag reaches a given value.
 
@@ -3828,7 +4116,7 @@ struct WaitHostValue:
         ctx.stream().wait_for_host_value(flag, value)
 
 
-@compiler.register("mo.wait_host_value_with_dep")
+@extensibility.register("mo.wait_host_value_with_dep")
 struct WaitHostValueWithDep:
     """Variant of `mo.wait_host_value` that takes a fake mutable
     dependency operand.

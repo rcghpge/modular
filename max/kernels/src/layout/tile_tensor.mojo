@@ -254,7 +254,7 @@ struct TileTensor[
         comptime if Self.mut:
             return TypeList.of[
                 Self,
-                Self.OriginCastType[ImmutOrigin(Self.origin)],
+                Self.OriginCastType[ImmOrigin(Self.origin)],
             ]().contains[T]()
         else:
             return TypeList.of[Self]().contains[T]()
@@ -622,6 +622,26 @@ struct TileTensor[
             comptime for i in range(CoordLikes.size):
                 UnsafePointer(to=coord[i]).unsafe_write(coords[i])
             return self.load(coord)
+
+    @always_inline("nodebug")
+    def __getitem__[
+        *CoordLikes: CoordLike
+    ](self, coords: Tuple[*CoordLikes]) -> Self.ElementType:
+        """Retrieve a single element from the tensor at the specified coordinates.
+
+        Accepts either a single `Coord` argument or multiple scalar
+        `CoordLike` arguments packed into a `Coord`.
+
+        Parameters:
+            CoordLikes: The types of each index argument (`CoordLike`).
+
+        Args:
+            coords: The tuple containing coordinates specifying the element's position.
+
+        Returns:
+            The element at the specified position.
+        """
+        return self[Coord(coords)]
 
     @always_inline
     def slice[
@@ -1767,7 +1787,7 @@ struct TileTensor[
             _StaticSplitShape[count, axis, Self.LayoutType._shape_types](),
             Self.LayoutType._stride_types,
         ],
-        ImmutOrigin(Self.origin),
+        ImmOrigin(Self.origin),
         Storage=Self.Storage.OffsetResultType[TypeList.of[Int]()],
         address_space=Self.address_space,
         linear_idx_type=Self.linear_idx_type,
@@ -1872,7 +1892,7 @@ struct TileTensor[
             ](),
             Self.LayoutType._stride_types,
         ],
-        ImmutOrigin(Self.origin),
+        ImmOrigin(Self.origin),
         Storage=Self.Storage.OffsetResultType[TypeList.of[Int]()],
         address_space=Self.address_space,
         linear_idx_type=Self.linear_idx_type,
@@ -2533,7 +2553,7 @@ struct TileTensor[
             ),
         }
 
-    comptime Immut = Self.OriginCastType[ImmutOrigin(Self.origin)]
+    comptime Immut = Self.OriginCastType[ImmOrigin(Self.origin)]
     """Type alias for an immutably-casted tensor."""
 
     comptime OriginCastType[
@@ -2587,7 +2607,7 @@ struct TileTensor[
     @always_inline
     def as_immut(
         self,
-    ) -> Self.OriginCastType[ImmutOrigin(Self.origin)]:
+    ) -> Self.OriginCastType[ImmOrigin(Self.origin)]:
         """
         Return an immutable version of this tensor.
 
@@ -2595,7 +2615,7 @@ struct TileTensor[
             A `LayoutTensor` covering the same elements, but without mutability.
         """
         return {
-            self._unsafe_storage_cast[to_origin=ImmutOrigin(Self.origin)](),
+            self._unsafe_storage_cast[to_origin=ImmOrigin(Self.origin)](),
             self.layout,
         }
 
@@ -2764,6 +2784,51 @@ struct TileTensor[
             (rhs._storage, rhs.layout),
         )
 
+    @always_inline
+    def abs(self) where Self.mut and conforms_to(Self.Storage, TensorOps):
+        """Takes the elementwise absolute value of this tensor, in place.
+
+        For unsigned dtypes this is the identity.
+        """
+        Self.Storage.abs(self._unsafe_storage_cast[to_mut=True](), self.layout)
+
+    @always_inline
+    def recip(self) where Self.mut and conforms_to(Self.Storage, TensorOps):
+        """Replaces each element of this tensor with its reciprocal, in place.
+
+        Elements equal to zero produce infinity, following IEEE 754 division
+        semantics.
+
+        Constraints:
+            The tensor's dtype must be a floating-point type.
+        """
+        Self.Storage.recip(
+            self._unsafe_storage_cast[to_mut=True](), self.layout
+        )
+
+    @always_inline
+    def exp[
+        scale: Scalar[Self.dtype] = 1
+    ](self) where Self.mut and conforms_to(Self.Storage, TensorOps):
+        """Replaces each element `x` of this tensor with `exp(scale * x)`,
+        in place.
+
+        The scale factor is applied before exponentiation so that scaled
+        exponentials (for example softmax logit scaling) fuse into a single
+        pass over the elements. The default scale of `1` gives a plain
+        exponential.
+
+        Parameters:
+            scale: The compile-time factor each element is multiplied by
+                before exponentiation.
+
+        Constraints:
+            The tensor's dtype must be a floating-point type.
+        """
+        Self.Storage.exp[scale](
+            self._unsafe_storage_cast[to_mut=True](), self.layout
+        )
+
 
 @fieldwise_init
 struct NullableTileTensor[
@@ -2884,7 +2949,7 @@ struct NullableTileTensor[
         out self: NullableTileTensor[
             other.dtype,
             other.LayoutType,
-            ImmutOrigin(other.origin),
+            ImmOrigin(other.origin),
             address_space=other.address_space,
             linear_idx_type=other.linear_idx_type,
             element_size=other.element_size,
@@ -2926,7 +2991,7 @@ struct NullableTileTensor[
         out self: NullableTileTensor[
             other.dtype,
             other.LayoutType,
-            ImmutOrigin(other.origin),
+            ImmOrigin(other.origin),
             address_space=other.address_space,
             linear_idx_type=other.linear_idx_type,
             element_size=other.element_size,

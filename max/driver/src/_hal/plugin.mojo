@@ -32,14 +32,19 @@ from std.ffi import (
 
 from std.memory import (
     alloc,
-    ImmutPointer,
+    ImmPointer,
     MutPointer,
     OpaquePointer,
     UnsafePointer,
     UnsafeMaybeUninit,
 )
 
-from .status import STATUS_SUCCESS, STATUS_UNKNOWN_ERROR, HALError
+from .status import (
+    STATUS_SUCCESS,
+    STATUS_UNKNOWN_ERROR,
+    STATUS_UNKNOWN_PROPERTY_NAME,
+    HALError,
+)
 from .device import DeviceSpec
 
 # ===-----------------------------------------------------------------------===#
@@ -48,15 +53,15 @@ from .device import DeviceSpec
 
 
 @fieldwise_init
-struct M_driver_slice[origin: ImmutOrigin](TrivialRegisterPassable):
-    var data: ImmutPointer[UInt8, Self.origin]
+struct M_driver_slice[origin: ImmOrigin](TrivialRegisterPassable):
+    var data: ImmPointer[UInt8, Self.origin]
     var size: UInt64
 
 
 @fieldwise_init
-struct M_driver_static_bundle[origin: ImmutOrigin](TrivialRegisterPassable):
+struct M_driver_static_bundle[origin: ImmOrigin](TrivialRegisterPassable):
     var mapped_data: M_driver_slice[Self.origin]
-    var file_type: ImmutPointer[Int8, StaticConstantOrigin]
+    var file_type: ImmPointer[Int8, StaticConstantOrigin]
     var file_type_len: UInt64
 
 
@@ -65,6 +70,12 @@ struct M_driver_dim(TrivialRegisterPassable):
     var x: UInt32
     var y: UInt32
     var z: UInt32
+
+
+@fieldwise_init
+struct M_driver_dlpack_device(TrivialRegisterPassable):
+    var device_type: Int32
+    var device_id: Int32
 
 
 @fieldwise_init
@@ -91,7 +102,7 @@ struct M_driver_queue_execute_config:
 
 @fieldwise_init
 struct M_driver_bundle_compilation_options(TrivialRegisterPassable):
-    var debug_level: ImmutPointer[Int8, ImmutUntrackedOrigin]
+    var debug_level: ImmPointer[Int8, ImmUntrackedOrigin]
     var debug_level_len: UInt64
     var optimization_level: Int32
 
@@ -187,7 +198,7 @@ struct M_driver_memory_view(Copyable, Movable):
     var size: UInt64
 
 
-comptime MemoryViewHandle[origin: ImmutOrigin] = ImmutPointer[
+comptime MemoryViewHandle[origin: ImmOrigin] = ImmPointer[
     M_driver_memory_view, origin
 ]
 
@@ -461,6 +472,70 @@ struct RawDriver(Movable):
             )
         return value.unsafe_assume_init_ref()
 
+    def get_queue_property[
+        name: StringLiteral, T: TrivialRegisterPassable
+    ](self, queue: QueueHandle) raises HALError -> T:
+        """Query a named property of a queue."""
+        var value = UnsafeMaybeUninit[T]()
+        var status = self._raw.queue_property.f(
+            queue,
+            name.as_c_string_slice(),
+            OutParam[T](to=value).bitcast[NoneType](),
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to get queue property '{name}': {err.message}"
+                ),
+            )
+        return value.unsafe_assume_init_ref()
+
+    def get_optional_queue_property[
+        name: StringLiteral, T: TrivialRegisterPassable
+    ](self, queue: QueueHandle) raises HALError -> OptionalReg[T]:
+        """Queries a queue property, returning None if the plugin does not
+        expose it (`UNKNOWN_PROPERTY_NAME`) instead of raising. Any other
+        failure still raises."""
+        var value = UnsafeMaybeUninit[T]()
+        var status = self._raw.queue_property.f(
+            queue,
+            name.as_c_string_slice(),
+            OutParam[T](to=value).bitcast[NoneType](),
+        )
+        if status == STATUS_UNKNOWN_PROPERTY_NAME:
+            return OptionalReg[T]()
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to get queue property '{name}': {err.message}"
+                ),
+            )
+        return OptionalReg[T](value.unsafe_assume_init_ref())
+
+    def get_device_property[
+        name: StringLiteral, T: TrivialRegisterPassable
+    ](self, device: DeviceHandle) raises HALError -> T:
+        """Query a named property of a device."""
+        var value = UnsafeMaybeUninit[T]()
+        var status = self._raw.device_property.f(
+            device,
+            name.as_c_string_slice(),
+            OutParam[T](to=value).bitcast[NoneType](),
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to get device property '{name}': {err.message}"
+                ),
+            )
+        return value.unsafe_assume_init_ref()
+
     # ===-------------------------------------------------------------------===#
     # Copy operations
     # ===-------------------------------------------------------------------===#
@@ -473,7 +548,7 @@ struct RawDriver(Movable):
     ) raises HALError:
         var status = self._raw.queue_copy_to_device.f(
             queue,
-            ImmutPointer(to=dst),
+            ImmPointer(to=dst),
             src,
         )
         if status != STATUS_SUCCESS:
@@ -492,7 +567,7 @@ struct RawDriver(Movable):
         var status = self._raw.queue_copy_from_device.f(
             queue,
             dst,
-            ImmutPointer(to=src),
+            ImmPointer(to=src),
         )
         if status != STATUS_SUCCESS:
             var err = self.get_status_message(status)
@@ -509,14 +584,107 @@ struct RawDriver(Movable):
     ) raises HALError:
         var status = self._raw.queue_copy_intra_device.f(
             queue,
-            ImmutPointer(to=dst),
-            ImmutPointer(to=src),
+            ImmPointer(to=dst),
+            ImmPointer(to=src),
         )
         if status != STATUS_SUCCESS:
             var err = self.get_status_message(status)
             raise HALError(
                 err.status,
                 message=String(t"failed to copy intra-device: {err.message}"),
+            )
+
+    def copy_inter_device(
+        self,
+        queue: QueueHandle,
+        dst: M_driver_memory_view,
+        src: M_driver_memory_view,
+        src_context: ContextHandle,
+    ) raises HALError:
+        var status = self._raw.queue_copy_inter_device.f(
+            queue,
+            ImmPointer(to=dst),
+            ImmPointer(to=src),
+            src_context,
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(t"failed to copy inter-device: {err.message}"),
+            )
+
+    def copy_to_device_sync(
+        self,
+        context: ContextHandle,
+        dst: M_driver_memory_view,
+        src: UnsafePointer[mut=False, UInt8, _],
+    ) raises HALError:
+        var status = self._raw.copy_to_device_sync.f(
+            context, ImmPointer(to=dst), src
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to copy to device (sync): {err.message}"
+                ),
+            )
+
+    def copy_from_device_sync(
+        self,
+        context: ContextHandle,
+        dst: UnsafePointer[mut=True, UInt8, _],
+        src: M_driver_memory_view,
+    ) raises HALError:
+        var status = self._raw.copy_from_device_sync.f(
+            context, dst, ImmPointer(to=src)
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to copy from device (sync): {err.message}"
+                ),
+            )
+
+    def copy_intra_device_sync(
+        self,
+        context: ContextHandle,
+        dst: M_driver_memory_view,
+        src: M_driver_memory_view,
+    ) raises HALError:
+        var status = self._raw.copy_intra_device_sync.f(
+            context, ImmPointer(to=dst), ImmPointer(to=src)
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to copy intra-device (sync): {err.message}"
+                ),
+            )
+
+    def copy_inter_device_sync(
+        self,
+        context: ContextHandle,
+        dst: M_driver_memory_view,
+        src: M_driver_memory_view,
+        src_context: ContextHandle,
+    ) raises HALError:
+        var status = self._raw.copy_inter_device_sync.f(
+            context, ImmPointer(to=dst), ImmPointer(to=src), src_context
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to copy inter-device (sync): {err.message}"
+                ),
             )
 
     def set_memory(
@@ -527,7 +695,7 @@ struct RawDriver(Movable):
     ) raises HALError:
         var status = self._raw.queue_set_memory.f(
             queue,
-            ImmutPointer(to=dst),
+            ImmPointer(to=dst),
             value,
         )
         if status != STATUS_SUCCESS:
@@ -546,7 +714,7 @@ struct RawDriver(Movable):
     ) raises HALError:
         var status = self._raw.queue_fill.f(
             queue,
-            ImmutPointer(to=dst),
+            ImmPointer(to=dst),
             value,
             value_size,
         )
@@ -732,6 +900,28 @@ struct RawDriver(Movable):
                 message=String(t"failed to execute function: {err.message}"),
             )
 
+    def get_api_name(self) raises HALError -> String:
+        """Retrieve the plugin-reported API name (e.g. "CUDA", "Metal")."""
+        var value = UnsafeMaybeUninit[OpaquePointer[ImmUntrackedOrigin]]()
+        var status = self._raw.property.f(
+            self._driver_handle,
+            "api".as_c_string_slice(),
+            OutParam[OpaquePointer[ImmUntrackedOrigin]](to=value),
+        )
+        if status != STATUS_SUCCESS:
+            var err = self.get_status_message(status)
+            raise HALError(
+                err.status,
+                message=String(
+                    t"failed to get driver 'api' property: {err.message}"
+                ),
+            )
+        return String(
+            CStringSlice(
+                unsafe_from_ptr=value.unsafe_assume_init_ref().bitcast[Int8]()
+            )
+        )
+
     # ===-------------------------------------------------------------------===#
     # Status
     # ===-------------------------------------------------------------------===#
@@ -790,7 +980,7 @@ struct RawPlugin(Movable):
     var create: HALFunction[
         "M_driver_create",
         def(
-            version: ImmutPointer[DriverVersion, _],
+            version: ImmPointer[DriverVersion, _],
             driver: OutParam[DriverHandle, _],
         ) thin -> PluginResultCode,
     ]
@@ -803,7 +993,7 @@ struct RawPlugin(Movable):
         def(
             handle: DriverHandle,
             property_name: CStringSlice[_],
-            value: OutParam[OpaquePointer[ImmutUntrackedOrigin], _],
+            value: OutParam[OpaquePointer[ImmUntrackedOrigin], _],
         ) thin -> PluginResultCode,
     ]
     var device_count: HALFunction[
@@ -908,7 +1098,7 @@ struct RawPlugin(Movable):
     var queue_copy_to_device: HALFunction[
         "M_driver_queue_copy_to_device",
         def[
-            dst_origin: ImmutOrigin, src_origin: ImmutOrigin
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
         ](
             queue: QueueHandle,
             dst: MemoryViewHandle[dst_origin],
@@ -918,7 +1108,7 @@ struct RawPlugin(Movable):
     var queue_copy_from_device: HALFunction[
         "M_driver_queue_copy_from_device",
         def[
-            dst_origin: MutOrigin, src_origin: ImmutOrigin
+            dst_origin: MutOrigin, src_origin: ImmOrigin
         ](
             queue: QueueHandle,
             dst: UnsafePointer[UInt8, dst_origin],
@@ -928,17 +1118,69 @@ struct RawPlugin(Movable):
     var queue_copy_intra_device: HALFunction[
         "M_driver_queue_copy_intra_device",
         def[
-            dst_origin: ImmutOrigin, src_origin: ImmutOrigin
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
         ](
             queue: QueueHandle,
             dst: MemoryViewHandle[dst_origin],
             src: MemoryViewHandle[src_origin],
         ) thin -> PluginResultCode,
     ]
+    var queue_copy_inter_device: HALFunction[
+        "M_driver_queue_copy_inter_device",
+        def[
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
+        ](
+            queue: QueueHandle,
+            dst: MemoryViewHandle[dst_origin],
+            src: MemoryViewHandle[src_origin],
+            src_context: ContextHandle,
+        ) thin -> PluginResultCode,
+    ]
+    var copy_to_device_sync: HALFunction[
+        "M_driver_copy_to_device_sync",
+        def[
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
+        ](
+            context: ContextHandle,
+            dst: MemoryViewHandle[dst_origin],
+            src: UnsafePointer[UInt8, src_origin],
+        ) thin -> PluginResultCode,
+    ]
+    var copy_from_device_sync: HALFunction[
+        "M_driver_copy_from_device_sync",
+        def[
+            dst_origin: MutOrigin, src_origin: ImmOrigin
+        ](
+            context: ContextHandle,
+            dst: UnsafePointer[UInt8, dst_origin],
+            src: MemoryViewHandle[src_origin],
+        ) thin -> PluginResultCode,
+    ]
+    var copy_intra_device_sync: HALFunction[
+        "M_driver_copy_intra_device_sync",
+        def[
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
+        ](
+            context: ContextHandle,
+            dst: MemoryViewHandle[dst_origin],
+            src: MemoryViewHandle[src_origin],
+        ) thin -> PluginResultCode,
+    ]
+    var copy_inter_device_sync: HALFunction[
+        "M_driver_copy_inter_device_sync",
+        def[
+            dst_origin: ImmOrigin, src_origin: ImmOrigin
+        ](
+            context: ContextHandle,
+            dst: MemoryViewHandle[dst_origin],
+            src: MemoryViewHandle[src_origin],
+            src_context: ContextHandle,
+        ) thin -> PluginResultCode,
+    ]
     var queue_set_memory: HALFunction[
         "M_driver_queue_set_memory",
         def[
-            dst_origin: ImmutOrigin
+            dst_origin: ImmOrigin
         ](
             queue: QueueHandle,
             dst: MemoryViewHandle[dst_origin],
@@ -948,7 +1190,7 @@ struct RawPlugin(Movable):
     var queue_fill: HALFunction[
         "M_driver_queue_fill",
         def[
-            dst_origin: ImmutOrigin
+            dst_origin: ImmOrigin
         ](
             queue: QueueHandle,
             dst: MemoryViewHandle[dst_origin],
@@ -1061,11 +1303,21 @@ struct RawPlugin(Movable):
             queue: QueueHandle, is_stream: OutParam[Bool, _]
         ) thin -> PluginResultCode,
     ]
+    var queue_property: HALFunction[
+        "M_driver_queue_property",
+        def[
+            value_origin: MutOrigin
+        ](
+            queue: QueueHandle,
+            property_name: CStringSlice[_],
+            value: OpaquePointer[value_origin],
+        ) thin -> PluginResultCode,
+    ]
     var bundle_load: HALFunction[
         "M_driver_bundle_load",
         def[
             bundle_origin: MutOrigin,
-            bundle_data_origin: ImmutOrigin,
+            bundle_data_origin: ImmOrigin,
             opts_origin: MutOrigin,
         ](
             context: ContextHandle,
@@ -1130,6 +1382,21 @@ struct RawPlugin(Movable):
         self.queue_copy_intra_device = type_of(self.queue_copy_intra_device)(
             handle, so_path
         )
+        self.queue_copy_inter_device = type_of(self.queue_copy_inter_device)(
+            handle, so_path
+        )
+        self.copy_to_device_sync = type_of(self.copy_to_device_sync)(
+            handle, so_path
+        )
+        self.copy_from_device_sync = type_of(self.copy_from_device_sync)(
+            handle, so_path
+        )
+        self.copy_intra_device_sync = type_of(self.copy_intra_device_sync)(
+            handle, so_path
+        )
+        self.copy_inter_device_sync = type_of(self.copy_inter_device_sync)(
+            handle, so_path
+        )
         self.queue_set_memory = type_of(self.queue_set_memory)(handle, so_path)
         self.queue_fill = type_of(self.queue_fill)(handle, so_path)
         self.event_create = type_of(self.event_create)(handle, so_path)
@@ -1153,6 +1420,7 @@ struct RawPlugin(Movable):
             handle, so_path
         )
         self.queue_is_stream = type_of(self.queue_is_stream)(handle, so_path)
+        self.queue_property = type_of(self.queue_property)(handle, so_path)
         self.bundle_load = type_of(self.bundle_load)(handle, so_path)
         self.bundle_unload = type_of(self.bundle_unload)(handle, so_path)
 
@@ -1165,7 +1433,7 @@ struct RawPlugin(Movable):
         )
 
         var status = self.create.f(
-            ImmutPointer(to=version),
+            ImmPointer(to=version),
             OutParam[DriverHandle](to=handle),
         )
         if status != STATUS_SUCCESS:

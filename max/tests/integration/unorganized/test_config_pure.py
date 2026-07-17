@@ -29,10 +29,12 @@ from max.pipelines.lib import (
     KVCacheConfig,
     LoRAConfig,
     MAXModelConfig,
+    PipelineArgs,
     PipelineConfig,
     PipelineRuntimeConfig,
     SamplingConfig,
 )
+from max.pipelines.lib.config.model_config import _infer_weight_path
 from max.pipelines.lib.model_manifest import ModelManifest
 from max.pipelines.modeling.config_enums import SupportedEncoding
 from max.pipelines.modeling.types.task import PipelineTask
@@ -826,7 +828,7 @@ def _make_f32_only_repo() -> Mock:
 class TestFloat32WeightFallbackScoping:
     """Regression tests for the float32 -> 16-bit weight-path fallback.
 
-    ``_try_resolve_weight_path`` falls back to a repo's float32 safetensors
+    ``_infer_weight_path`` falls back to a repo's float32 safetensors
     when a float16/bfloat16 graph has no matching files. That fallback is
     scoped to diffuser sub-components (``subfolder`` set); it must NOT fire
     for architecture-validated models (LLMs, speculative-decoding draft
@@ -870,8 +872,12 @@ class TestFloat32WeightFallbackScoping:
             ),
         ):
             # Best-effort (pre-architecture) pass must not bind weight_path.
-            config._try_resolve_weight_path()
-            assert config.weight_path == []
+            assert (
+                _infer_weight_path(
+                    config, "bfloat16", config._applied_dtype_cast_from
+                )
+                == []
+            )
 
             # Architecture-level given-encoding resolution.
             config.validate_and_resolve_quantization_encoding_weight_path(
@@ -880,6 +886,43 @@ class TestFloat32WeightFallbackScoping:
 
         # The requested bfloat16 is preserved; the float32 weights are cast at
         # load time, recorded in the dtype-cast bookkeeping.
+        assert config.quantization_encoding == "bfloat16"
+        assert config._applied_dtype_cast_from == "float32"
+        assert config._applied_dtype_cast_to == "bfloat16"
+
+    def test_no_given_encoding_f32_only_repo_casts_to_bfloat16(self) -> None:
+        """Architecture-level resolution alone still casts f32 -> bf16.
+
+        No ``quantization_encoding`` given, repo has only float32 weights,
+        no ``subfolder``. Calls ``validate_and_resolve_quantization_encoding_weight_path``
+        directly (bypassing ``resolve()``/the best-effort pass entirely) to
+        verify the ``without-given-encoding`` path applies the same
+        float32 -> bfloat16 GPU cast the best-effort pass normally applies
+        first. Regression guard for the case where resolve() wasn't called
+        first or the best-effort pass silently failed to infer an encoding:
+        without this cast, a model whose repo ships only float32 weights
+        would silently run in float32 on GPU instead of the expected
+        bfloat16.
+        """
+        config = MAXModelConfig(model_path="test/f32-only")
+        assert config.quantization_encoding is None
+
+        with (
+            patch.object(
+                MAXModelConfig,
+                "huggingface_weight_repo",
+                new_callable=PropertyMock,
+                return_value=_make_f32_only_repo(),
+            ),
+            patch(
+                "max.pipelines.lib.config.model_config.supported_encoding_supported_on",
+                return_value=True,
+            ),
+        ):
+            config.validate_and_resolve_quantization_encoding_weight_path(
+                default_encoding="bfloat16"
+            )
+
         assert config.quantization_encoding == "bfloat16"
         assert config._applied_dtype_cast_from == "float32"
         assert config._applied_dtype_cast_to == "bfloat16"
@@ -904,9 +947,11 @@ class TestFloat32WeightFallbackScoping:
             new_callable=PropertyMock,
             return_value=_make_f32_only_repo(),
         ):
-            config._try_resolve_weight_path()
+            resolved_weight_path = _infer_weight_path(
+                config, "bfloat16", config._applied_dtype_cast_from
+            )
 
-        assert config.weight_path == _F32_SAFETENSORS
+        assert resolved_weight_path == _F32_SAFETENSORS
         assert config.quantization_encoding == "bfloat16"
 
 
@@ -1190,23 +1235,15 @@ def test_config__test_retrieve_factory_with_known_architecture(
 ) -> None:
     PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH, allow_override=True)
 
-    config = PipelineConfig(
-        models=ModelManifest(
-            {
-                "main": MAXModelConfig(
-                    model_path=modular_ai_llama_3_1_local_path,
-                    quantization_encoding="bfloat16",
-                    max_length=1,
-                )
-            }
-        ),
-        runtime=PipelineRuntimeConfig(
-            max_batch_size=1,
-            prefer_module_v3=True,
-        ),
+    config = PipelineArgs(
+        model_path=modular_ai_llama_3_1_local_path,
+        quantization_encoding="bfloat16",
+        max_length=1,
+        max_batch_size=1,
+        prefer_module_v3=True,
     )
 
-    _, _ = PIPELINE_REGISTRY.retrieve_factory(pipeline_config=config)
+    _, _ = PIPELINE_REGISTRY.retrieve_factory(PipelineConfig.from_args(config))
 
 
 @prepare_registry
@@ -2382,3 +2419,51 @@ def test_resolve_backend__unset_no_arch_defaults_to_xgrammar() -> None:
     config._resolve_default_structured_output_backend(arch=None)
 
     assert config.sampling.structured_output_backend == "xgrammar"
+
+
+def test_from_args__unset_backend_preserves_none_sentinel() -> None:
+    """Regression: ``PipelineArgs`` with no ``--structured-output-backend``
+    must carry the ``None`` sentinel into the built ``PipelineConfig``.
+
+    Before the fix, ``PipelineArgs.structured_output_backend`` defaulted to a
+    hardcoded ``"llguidance"`` string, so ``from_args`` produced a
+    ``SamplingConfig`` that already looked like an explicit user choice. That
+    short-circuited ``_resolve_default_structured_output_backend`` and the
+    global ``xgrammar`` default (and any arch pin) was never reached."""
+    args = PipelineArgs(model_path="test/model")
+    assert args.structured_output_backend is None
+
+    config = PipelineConfig.from_args(args)
+
+    assert config.sampling.structured_output_backend is None
+
+
+def test_from_args__unset_backend_resolves_to_xgrammar() -> None:
+    """End-to-end guard for the reported bug: a model launched without an
+    explicit backend and no arch pin ends up on ``xgrammar``, not
+    ``llguidance``."""
+    args = PipelineArgs(model_path="test/model")
+
+    config = PipelineConfig.from_args(args)
+    config._resolve_default_structured_output_backend(
+        arch=_backend_arch(default=None)
+    )
+
+    assert config.sampling.structured_output_backend == "xgrammar"
+
+
+def test_from_args__explicit_backend_is_preserved() -> None:
+    """An explicit ``--structured-output-backend`` value survives
+    ``from_args`` and wins over resolution."""
+    args = PipelineArgs(
+        model_path="test/model", structured_output_backend="llguidance"
+    )
+
+    config = PipelineConfig.from_args(args)
+    assert config.sampling.structured_output_backend == "llguidance"
+
+    config._resolve_default_structured_output_backend(
+        arch=_backend_arch(default=None)
+    )
+
+    assert config.sampling.structured_output_backend == "llguidance"

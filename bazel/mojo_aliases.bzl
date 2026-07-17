@@ -6,6 +6,11 @@ _PACKAGES = {
     "test_utils": "mojo/stdlib/test/test_utils",
 }
 
+_EXTRA_ALIASES = {
+    "__init__.mojo": "mojo/stdlib/std:__init__.mojo",
+    "std_srcs": "mojo/stdlib/std:std_srcs",
+}
+
 _MAX_PACKAGES = {
     "machine": "driver/src/machine",
     "_hal": "driver/src/_hal",
@@ -28,13 +33,13 @@ _MAX_PACKAGES = {
     "pipeline": "kernels/src/pipeline",
     "structured_kernels": "kernels/src/structured_kernels",
     "testdata": "kernels/test/testdata",
-    "compiler": "compiler/src:compiler",
     "_cublas": "kernels/src/_cublas",
     "_cufft": "kernels/src/_cufft",
     "_curand": "kernels/src/_curand",
     "_cudnn": "kernels/src/_cudnn",
     "_rocblas": "kernels/src/_rocblas",
     "_miopen": "kernels/src/_miopen",
+    "max_mojo": "mojo/max",
 }
 
 _INTERNAL_PACKAGES = [
@@ -48,6 +53,13 @@ _TESTONLY_MAX_PACKAGES = ["testdata"]
 def _mojo_aliases_impl(rctx):
     alias_rules = []
     for name, target in _PACKAGES.items():
+        alias_rules.append("""
+alias(
+    name = "{name}",
+    actual = "@//{prefix}{target}",
+)""".format(name = name, target = target, prefix = "{prefix}"))
+
+    for name, target in _EXTRA_ALIASES.items():
         alias_rules.append("""
 alias(
     name = "{name}",

@@ -54,7 +54,6 @@ for squared in map[square](values):
 """
 
 import std.memory
-from std.builtin.constrained import _constrained_conforms_to
 from std.builtin.rebind import downcast
 
 
@@ -410,12 +409,6 @@ struct _Enumerate[InnerIteratorType: Iterator](
         self._inner = iterator^
         self._count = start
 
-    def __init__(
-        out self, *, copy: Self
-    ) where conforms_to(Self.InnerIteratorType, Copyable):
-        self._inner = copy._inner.copy()
-        self._count = copy._count
-
     def __iter__(
         ref self,
     ) -> Self.IteratorType[origin_of(self)] where conforms_to(
@@ -554,7 +547,7 @@ struct _ZipIterator[origin: Origin, *Ts: Iterator](
                     type_of(res[i]), ImplicitlyDeletable
                 )
                 if i < initialized:
-                    UnsafePointer(to=res[i]).destroy_pointee()
+                    UnsafePointer(to=res[i]).unsafe_deinit_pointee()
 
             std.memory.forget_deinit(res^)
             raise StopIteration
@@ -671,11 +664,6 @@ struct _MapIterator[
 
     var _inner: Self.InnerIteratorType
 
-    def __init__(
-        out self, *, copy: Self
-    ) where conforms_to(Self.InnerIteratorType, Copyable):
-        self._inner = copy._inner.copy()
-
     def __iter__(
         ref self,
     ) -> Self.IteratorType[origin_of(self)] where conforms_to(
@@ -696,7 +684,7 @@ struct _MapIterator[
 
 @always_inline
 def map[
-    origin: ImmutOrigin,
+    origin: ImmOrigin,
     IterableType: Iterable,
     ResultType: Copyable,
     //,
@@ -803,16 +791,6 @@ struct _PeekableIterator[InnerIterator: Iterator](
         self._inner = inner^
         self._next = None
 
-    def __init__(
-        out self, *, copy: Self
-    ) where conforms_to(Self.InnerIterator, Copyable) and conforms_to(
-        Self.InnerIterator.Element, Copyable
-    ):
-        self._inner = copy._inner.copy()
-
-        comptime assert conforms_to(Self.Element, Copyable)
-        self._next = copy._next.copy()
-
     def __iter__(
         ref self,
     ) -> Self.IteratorType[origin_of(self)] where conforms_to(
@@ -839,13 +817,13 @@ struct _PeekableIterator[InnerIterator: Iterator](
 
     def peek(
         mut self,
-    ) -> Optional[Pointer[Self.Element, ImmutOrigin(origin_of(self._next[]))]]:
+    ) -> Optional[Pointer[Self.Element, ImmOrigin(origin_of(self._next[]))]]:
         if not self._next:
             try:
                 self._next = next(self._inner)
             except:
                 return None
-        return Pointer(to=self._next.unsafe_value()).get_immutable()
+        return Pointer[mut=False](to=self._next.unsafe_value())
 
 
 def peekable(

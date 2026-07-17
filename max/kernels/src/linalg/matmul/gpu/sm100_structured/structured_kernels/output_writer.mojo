@@ -77,7 +77,7 @@ from .tmem import TmemArrayType
 
 struct TileWriter[
     # Inferred from constructor arg
-    tma_origin: ImmutOrigin,
+    tma_origin: ImmOrigin,
     c_type: DType,
     c_rank: Int,
     c_tile_shape: IndexList[c_rank],
@@ -418,6 +418,22 @@ struct TileWriter[
         var c_row = c_coord[0] * UInt32(Self.BM)
         var c_col = c_coord[1] * UInt32(Self.MMA_N)
 
+        # Warp-uniform, computed once per tile: lets the direct-GMEM epilogue
+        # skip per-position bounds checks (and their branches) for tiles fully
+        # inside (M, N). transpose_c swaps the row/col → user-M/user-N mapping.
+        # Mirrors _copy_to_gmem_impl's tile_in_bounds.
+        var tile_in_bounds: Bool
+        comptime if Self.transpose_c:
+            tile_in_bounds = (
+                c_row + UInt32(Self.BM) <= c_shape[1]
+                and c_col + UInt32(Self.MMA_N) <= c_shape[0]
+            )
+        else:
+            tile_in_bounds = (
+                c_row + UInt32(Self.BM) <= c_shape[0]
+                and c_col + UInt32(Self.MMA_N) <= c_shape[1]
+            )
+
         var upper_frag_partial: InlineArray[
             Scalar[Self.accum_type], Self.rep_frag_size
         ]
@@ -472,18 +488,34 @@ struct TileWriter[
                     comptime for _j in range(cast_width):
                         lower_simd[offset + _j] = dst[_j]
 
-            epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
-                Self.c_type,
-                Self.rep_frag_size,
-                Self.elementwise_lambda_fn.value(),
-                Self.is_lower_frag_required,
-            ](
-                upper_simd,
-                lower_simd,
-                UInt32(stage),
-                c_row,
-                c_col,
-            )
+            if tile_in_bounds:
+                epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
+                    Self.c_type,
+                    Self.rep_frag_size,
+                    Self.elementwise_lambda_fn.value(),
+                    Self.is_lower_frag_required,
+                    is_in_bounds=True,
+                ](
+                    upper_simd,
+                    lower_simd,
+                    UInt32(stage),
+                    c_row,
+                    c_col,
+                )
+            else:
+                epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
+                    Self.c_type,
+                    Self.rep_frag_size,
+                    Self.elementwise_lambda_fn.value(),
+                    Self.is_lower_frag_required,
+                    is_in_bounds=False,
+                ](
+                    upper_simd,
+                    lower_simd,
+                    UInt32(stage),
+                    c_row,
+                    c_col,
+                )
 
             WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()
 
@@ -2310,7 +2342,7 @@ struct StandardOutputWriter(OutputWriter):
     @staticmethod
     @always_inline
     def write_batched[
-        tma_origin: ImmutOrigin,
+        tma_origin: ImmOrigin,
         c_type: DType,
         c_rank: Int,
         c_tile_shape: IndexList[c_rank],

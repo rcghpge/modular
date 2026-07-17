@@ -45,6 +45,15 @@ This version is still a work in progress.
   strict-match ~0.70. Decode is optimized with an in-place SSM state-pool
   read-modify-write that writes only the active slots (+52% output tok/s at
   concurrency 32).
+- Extended Nemotron-H with the Nemotron-3-Nano-30B-A3B hybrid MoE variant (a
+  sigmoid-plus-bias top-6 router over 128 routed experts plus a shared expert)
+  and enabled the Nemotron-H architecture on Apple silicon GPUs in bfloat16.
+  The MoE path on Metal uses an integer-domain expert-gather index
+  (`ops.floor_div`, avoiding a 64-bit-float divide) and a 32-bit
+  `moe_create_indices` atomic (Apple GPUs lack 64-bit atomics), and adds an
+  Apple FP4 (W4A16) decode GEMV with an f16-domain E2M1 decode plus a
+  redesigned varlen causal-conv1d kernel. Verified on M5: the 30B-A3B MoE
+  serves in bfloat16 at GSM8K 8-shot ~0.85.
 - Added tool-calling and reasoning support to Qwen 3.5 / 3.6.
 - Added tool-calling, reasoning, and structured-output (`response_format`)
   support to GLM-5.1 / GLM-5.2, enabled with
@@ -123,6 +132,39 @@ This version is still a work in progress.
   `host_kvcache_swap_space_gb` now sizes one shared host pool of that size for
   the whole deployment, rather than allocating a separate pool of that size per
   replica.
+- The dKV external KV-cache connector (`--kv-connector dkv`) now supports
+  data-parallel (DP) serving and shares its prefix cache across DP replicas on
+  the default single-tenant path, matching the `local` and `tiered` connectors.
+  Every replica resolves to the same replica-agnostic store, and the stored
+  block key carries no replica component, so a block offloaded through one
+  replica is served to any other.
+- The dKV external KV-cache connector now supports tensor parallelism
+  (TP greater than 1) on the multi-tenant path for head-sharded (MHA/GQA), MLA
+  (replicated-KV), and GQA head-replicated (`allow_kv_head_replication`) models.
+  Each GPU handshakes its own per-shard store, and every KV load/offload fans
+  out across the processing replica's shard clients with identical block ids and
+  hashes; a block counts as loaded only once every shard has it. The store key
+  reflects the KV-head slice each GPU holds: the TP rank when head-sharded, a
+  single shared shard for MLA, and the head-group index under head replication.
+- On the dKV multi-tenant tensor-parallel path, a KV load that returns
+  differing block counts across a replica's per-GPU shard clients now drains
+  the over-loading shards' in-flight device reads before returning the minimum
+  count. This keeps a stray in-flight host-to-device copy (into a block the
+  block manager frees because it did not land on every shard) from later
+  clobbering a reallocated block. The drain host-completes the reads on the
+  remote (NIXL) transport and enqueues a cross-stream ordering on the
+  co-located same-host (CUDA) transport, so it closes the window on both. The
+  common equal-count path is unchanged and pays no extra synchronization.
+- The dKV external KV-cache connector (`--kv-connector dkv`) now requires a
+  non-empty tenant identity (`MODULAR_DKV_TENANT_ID`, set by the deployment
+  operator); the empty-tenant "default" path is removed. Both the connector and
+  the dKV server now reject an unset/empty tenant rather than keying an unfenced
+  shared store, so every deployment (single-tenant included) routes through the
+  per-tenant region-sharded store — DP replicas of one tenant still share one
+  store. Multi-cache models (speculative draft+target, quantized values+scales)
+  now resolve on this path, folded into the handshake's `kv_config_hash`. A
+  single-tenant node spanning more than one GPU must set the dKV server's
+  `--fair-share-partitions` to its GPU count.
 - The graph compiler now fuses query/key RMSNorm followed by rotate-half RoPE
   into a single `rms_norm_rope` GPU kernel even when the RMSNorm is written "in
   float32" — that is, when a `bfloat16`/`float16` activation is upcast to
@@ -152,6 +194,18 @@ This version is still a work in progress.
 
 ### Inference server
 
+- Raised the maximum tool function name length from 64 to 1024 characters.
+  Client-supplied tool names that legitimately exceed 64 characters are now
+  accepted instead of rejected with a 400 error.
+- Added vision encoder statistics to the scheduler's per-iteration batch log
+  for multimodal models. Each batch line now includes a `Vision Encoder`
+  clause reporting the number of images encoded this iteration versus served
+  from the vision encoder cache (with the cache hit rate), and the image
+  patches and vision tokens encoded. This makes it clear when a slow
+  context-encoding iteration is driven by the vision encoder rather than the
+  language model. The same values are exported as OpenTelemetry metrics under
+  the `maxserve.vision.*` namespace. Applies to models backed by the shared
+  vision encoder cache (Gemma 4, Kimi K2.5, and Gemma 4 MTP).
 - Added an opt-in `emit_reasoning_content` server config. When enabled, chat
   completion responses emit a reasoning model's chain-of-thought under
   `reasoning_content` instead of `reasoning` (the two are never emitted
@@ -218,7 +272,7 @@ This version is still a work in progress.
   `patternProperties`) are now normalized to `"type": "object"` before grammar
   compilation, matching the behavior of xgrammar-based engines. A genuinely
   empty `{}` schema is still treated as "any value".
-- Retuned the Prometheus/OpenTelemetry histogram buckets for MAX Serve metrics.
+- Retuned the Prometheus/OpenTelemetry histogram buckets for MAX metrics.
   Previously every histogram shared one millisecond-latency bucket range, which
   was inaccurate for non-latency metrics. Each histogram now uses bucket
   boundaries matched to its actual range (percentages bucket 0–100, token and
@@ -270,6 +324,12 @@ This version is still a work in progress.
   dKV key for the same logical block — no change to the dkv wire
   format, stored block identity, or `DKVExternalBlockMetadata`
   orchestrator hint shape. Default behavior is unchanged.
+- MAX now refreshes an external KV cache tier's recency when a request's prefix
+  is served from the on-GPU cache. Such a hit sends no traffic to the external
+  tier, so a hot shared prefix could otherwise go cold there and be evicted
+  while still resident on device; a best-effort recency `touch` now keeps hot
+  shared prefixes warm in an external tier such as dKV. Set
+  `MODULAR_DKV_DISABLE_G0_TOUCH=1` to disable the refresh.
 
 ### `max` CLI
 
@@ -294,20 +354,34 @@ This version is still a work in progress.
   GPUs. Leaving it unset compiles for the build host's CPU, as before.
 
 - **Preview (no-op today)**: `InferenceSession.profiling` is a new namespace
-  that will control the libkineto-backed MAX profiler. The lifecycle methods
-  are callable but do not yet produce trace files; the libkineto-backed
-  Chrome-trace JSON output (compatible with
-  [HTA](https://github.com/facebookresearch/HolisticTraceAnalysis)) and the
-  `session.debug.profiling_*` setter mirrors land in subsequent nightlies.
-  The control surface is final: `session.profiling.start()` / `.stop()` /
-  `.wait_for_trace()` and the read-only `.state` and `.is_enabled` properties.
-  This API is orthogonal to the existing `session.gpu_profiling()` (NVTX/Nsight)
-  path.
-
-- `ProfilingConfig` gains six new fields for the libkineto profiler:
+  that will control the libkineto-backed MAX profiler. The control surface is
+  final and callable — `session.profiling.start()` / `.stop()` /
+  `.wait_for_trace()` and the read-only `.state` / `.is_enabled` — but it does
+  not record yet: libkineto-backed Chrome-trace JSON capture (compatible with
+  Meta's [HTA](https://github.com/facebookresearch/HolisticTraceAnalysis))
+  lands in a later nightly. This API is orthogonal to the existing
+  `session.gpu_profiling()` (NVTX/Nsight) path; see `max/docs/profiling.md`
+  in the repository for the user guide.
+- `ProfilingConfig` gains six new fields for the libkineto profiler, each
+  configurable from Python through the matching `session.debug.profiling_*`
+  setter or its `MODULAR_MAX_DEBUG_PROFILING_*` environment variable:
   `profiling_enabled`, `profiling_output_path`, `profiling_dynolog_enabled`,
   `profiling_warmup_steps`, `profiling_active_steps`, and
   `profiling_periodic_flush_seconds`.
+- `profiling_output_path` accepts template variables (`{pid}`, `{rank}`) and a
+  directory form (`/tmp/traces/`); the path is expanded per process (keyed on
+  rank, PID, timestamp, and a sequence counter) so that, once trace capture is
+  enabled, multi-process and multi-rank runs won't collide on a single fixed
+  filename. `{rank}` resolves to `MODULAR_RANK` / `OMPI_COMM_WORLD_RANK` /
+  `"0"`.
+- `max.engine.ProfilingError` is a new exception type the profiler will raise
+  to surface trace-write failures.
+- Forking while the profiler is enabled is safe for host applications that
+  embed `InferenceSession` and fork (Python `multiprocessing` with the `fork`
+  start method, pre-fork servers, or a bare `os.fork()`) — child processes
+  start with the profiler disabled and can call `start()` again; the parent
+  retains its enabled state across the fork. (MAX itself launches
+  workers with the `spawn` start method and is unaffected.)
 
 - Eager execution in `max.experimental` now routes every realization through
   the `max.experimental.executor.Executor` abstraction. The out-of-the-box
@@ -325,6 +399,30 @@ This version is still a work in progress.
   bounding compile cost to the targets a program uses instead of JIT-compiling
   the full kernel library at import. Set `MAX_EAGER_OP_PRECOMPILE=1` to
   precompile the full matrix at import instead.
+
+- The eager interpreter's binary-elementwise and comparison ops (`add`, `sub`,
+  `mul`, `div`, `mod`, `max`, `min`, `pow`, `and`, `or`, `xor`, and the
+  comparison predicates) now run through pre-compiled graph-compiler models
+  instead of hand-written Mojo bindings, matching the matmul and
+  unary-elementwise migrations. On CPU they run float32/float64; the
+  float16/bfloat16 CPU inputs the Mojo path accepted are no longer supported
+  and raise.
+
+- The eager interpreter's reduce-along-axis ops (`max`/`min`/`add`/`mul`/`mean`
+  reductions, `softmax`/`logsoftmax`, `argmax`/`argmin`, and `cumsum`) now run
+  through pre-compiled graph-compiler models instead of hand-written Mojo
+  bindings. On CPU the reduction/argmax family runs float32/float64: the
+  float16/bfloat16 CPU inputs the Mojo path accepted are no longer supported
+  and raise. On accelerators it narrows to 32/64-bit integers (CUDA's reduce
+  kernels don't compile 8/16-bit int reduction). An unsupported dtype raises
+  immediately instead of silently falling back.
+
+- The eager interpreter's shape-rearrange ops (`pad` constant/reflect/edge,
+  `tile`, `split`, `concat`, and `slice`) now run through pre-compiled
+  graph-compiler models instead of hand-written Mojo bindings, matching the
+  matmul, elementwise, and reduce migrations. Structural parameters (pad
+  widths, repeat counts, split/slice bounds) stay runtime operands, so one
+  compiled graph per `(op, device, dtype[, rank])` serves every shape.
 
 - Added a `max warm-interpreter-cache` command that batch-compiles the full
   eager interpreter model matrix into the on-disk cache for the current
@@ -417,6 +515,16 @@ This version is still a work in progress.
 
 ## Breaking changes
 
+- Removed the `MAX_SERVE_METRIC_LEVEL` and
+  `MAX_SERVE_DETAILED_METRIC_BUFFER_FACTOR` environment variables along with
+  the `BASIC`/`DETAILED` metric-level distinction. MAX Serve now always emits
+  its full set of metrics, so panels that previously required `DETAILED` (for
+  example batch execution time) are populated in every deployment rather than
+  only when detailed metrics were explicitly enabled. High-volume
+  per-iteration scheduler metrics are still coalesced into a single
+  cross-process flush, so there is no change in per-metric recording overhead.
+  To record no metrics at all (previously `MAX_SERVE_METRIC_LEVEL=NONE`), set
+  `MAX_SERVE_METRIC_RECORDING_METHOD=NOOP` or `MAX_SERVE_DISABLE_TELEMETRY=1`.
 - Removed `InferenceSession.use_old_top_k_kernel()` and the
   `USE_OLD_TOP_K_KERNEL` environment variable. The legacy top-k sampling
   kernel this fallback selected has been deleted; the current two-stage
@@ -428,9 +536,27 @@ This version is still a work in progress.
   `IOSpec.FusedInput`, `IOSpec.FusedOutput`) instead of module-level aliases.
   Update custom-op call sites to qualify these names under `IOSpec`, for
   example `Tensor[IOSpec.Input, spec]`.
+- The `compiler` Mojo package has been removed. It only re-exported 4 symbols
+  from `extensibility`, please use that directly instead.
 
 ## Fixes
 
+- Fixed the compiled-model cache (`.max_cache`) not invalidating when the
+  Mojo kernel libraries change. The cache key previously content-hashed only
+  the two built-in kernel packages, not the packages they import
+  (`linalg`, `nn`, ...), so rebuilding after a kernel-source edit could
+  silently serve a stale compiled model — for example during back-to-back
+  kernel A/B benchmarking. The key now covers every Mojo binary package on
+  the module import path, so kernel changes correctly trigger a recompile
+  and clearing caches by hand is no longer needed.
+- Fixed the structured-output grammar backend silently defaulting to
+  `llguidance` instead of the intended global default `xgrammar` for models
+  launched via `max serve`. The `--structured-output-backend` flag hardcoded
+  `llguidance` as its default value, which shadowed the `None` "unset" sentinel
+  the resolver relies on to apply the global default (`xgrammar`) or an
+  architecture's pinned backend. The flag now defaults to unset, so any model
+  without an explicit `--structured-output-backend` (and no architecture pin)
+  correctly resolves to `xgrammar`.
 - Fixed MiniMax-M3 tool-call grammar enforcement silently disabling itself
   when the model emits more than one tool-call section in a single response.
   Enforcement used to switch off once the first section closed, so a second
@@ -452,7 +578,7 @@ This version is still a work in progress.
   fused residual, FP8-quantized, and distributed all-reduce variants is now
   carried as `float32` end to end — from the graph op through the graph
   compiler to the kernel. The Python `epsilon: float` argument is unchanged.
-- Fixed MAX Serve crashing the model worker on the first host KV-cache
+- Fixed MAX crashing the model worker on the first host KV-cache
   offload/reload when run with `--kv-connector dkv`. The dKV connector had
   drifted out of sync with its client and no longer passed the required
   attention group on the load/offload path; it now supplies it, so the
@@ -503,5 +629,15 @@ This version is still a work in progress.
   resolvable quantization config for its draft (BF16 NextN) weights, the draft
   config is now built with a bfloat16 dispatch dtype instead of constructing an
   invalid `EPConfig`.
+
+- Fixed over-provisioned KV cache offload configurations bringing the server
+  down mid-startup instead of failing fast. The `local` and `tiered`
+  connectors reserved their full host (pinned DRAM) and disk budgets eagerly,
+  so an impossible `host_kvcache_swap_space_gb` grew the pinned buffer until
+  the process was OOM-killed, and an impossible `disk_offload_max_gb` filled
+  the filesystem. They now run a startup preflight that checks the host budget
+  against available memory (including the process cgroup limit) and the disk
+  budget against filesystem free space, raising an actionable error before
+  allocating.
 
 ## Mojo language

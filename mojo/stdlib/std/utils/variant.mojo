@@ -143,9 +143,9 @@ struct _CustomNicheStorage[Storage: UnsafeCustomNicheStorage](
         )
 
 
-comptime _NicheStorageFor[T: AnyType] = _CustomNicheStorage[
-    downcast[T, UnsafeCustomNicheStorage]
-] if conforms_to(T, UnsafeCustomNicheStorage) else _DefaultNicheStorage[T]
+comptime _NicheStorageFor[T: AnyType] = _CustomNicheStorage[T] if conforms_to(
+    T, UnsafeCustomNicheStorage
+) else _DefaultNicheStorage[T]
 
 
 struct _NichedOptionalStorage[
@@ -187,9 +187,11 @@ struct _NichedOptionalStorage[
             self._memory = {}
             self._memory.as_uninit[U]()[].init_from(value^)
         else:
-            # This is the empty "none" type.
+            # This is the empty "none" type. `U` is refined to
+            # `TrivialRegisterPassable` above, so an explicit `^` transfer of
+            # `value` is a no-op the compiler rejects; a plain discard suffices.
             comptime assert conforms_to(U, TrivialRegisterPassable)
-            _ = value^
+            _ = value
             self = Self()
 
     @always_inline
@@ -303,7 +305,7 @@ struct _DefaultVariantStorage[*Ts: AnyType](
             comptime assert conforms_to(T, ImplicitlyDeletable)
 
             if self.get_discriminant() == UInt8(i):
-                self.unsafe_ptr[T]().destroy_pointee()
+                self.unsafe_ptr[T]().unsafe_deinit_pointee()
                 return
 
     @always_inline("nodebug")
@@ -352,7 +354,7 @@ comptime _IsNicheEligible[*Ts: AnyType]: Bool = (Ts.size == 2) and (
 where one is `UnsafeNicheable` and the other is an empty type."""
 
 comptime _NichedStorageFor[*Ts: AnyType] = _NichedOptionalStorage[
-    downcast[Ts[0], UnsafeNicheable],
+    Ts[0],
     downcast[Ts[1], TrivialRegisterPassable],
 ] if conforms_to(Ts[0], UnsafeNicheable) else _NichedOptionalStorage[
     downcast[Ts[1], UnsafeNicheable],
@@ -376,16 +378,7 @@ struct Variant[*Ts: Movable](
     Copyable where Ts.all_conforms_to[Copyable](),
     Equatable where Ts.all_conforms_to[Equatable](),
     Hashable where Ts.all_conforms_to[Hashable](),
-    # TODO(MOCO-3421): all_conforms_to[ImplicitlyCopyable] implies
-    # all_conforms_to[Copyable] since ImplicitlyCopyable refines Copyable, but
-    # the compiler can't infer parent trait constraints from derived ones yet.
-    # Remove the Copyable and Movable checks from this where clause once that's
-    # fixed.
-    ImplicitlyCopyable where (
-        Ts.all_conforms_to[ImplicitlyCopyable]()
-        and Ts.all_conforms_to[Copyable]()
-        and Ts.all_conforms_to[Movable]()
-    ),
+    ImplicitlyCopyable where Ts.all_conforms_to[ImplicitlyCopyable](),
     ImplicitlyDeletable,
     Movable,
     RegisterPassable where Ts.all_conforms_to[RegisterPassable](),
@@ -859,11 +852,11 @@ struct Variant[*Ts: Movable](
         """
         return Self.Ts.contains[T]()
 
-    def destroy_with[T: Movable, F: def(var T)](deinit self, destroy_func: F):
-        """Destroy a value contained in this Variant in-place using a caller
+    def deinit_with[T: Movable, F: def(var T)](deinit self, deinit_func: F, /):
+        """Deinitialize a value contained in this Variant in-place using a caller
         provided destructor function.
 
-        This method can be used to destroy types that do not conform to
+        This method can be used to deinitialize types that do not conform to
         `ImplicitlyDeletable` in a `Variant` in-place.
 
         This method will abort if this variant does not current contain an
@@ -871,17 +864,17 @@ struct Variant[*Ts: Movable](
 
         Parameters:
             T: The element type the variant is expected to currently contain,
-                and which will be destroyed by `destroy_func`.
-            F: The type of the caller-provided destructor function.
+                and which will be deinitialized by `deinit_func`.
+            F: The type of the caller-provided deinitializer function.
 
         Args:
-            destroy_func: Caller-provided destructor function for destroying
+            deinit_func: Caller-provided function for deinitializing
                 an instance of `T`.
         """
         if not self.isa[T]():
-            abort("Variant.destroy_with: wrong variant type")
+            abort("Variant.deinit_with: wrong variant type")
 
-        destroy_func(self._storage^.take[T]())
+        deinit_func(self._storage^.take[T]())
 
 
 # ===-------------------------------------------------------------------===#

@@ -56,9 +56,9 @@ Parameters:
     origin: The origin of the span.
 """
 
-comptime ImmutSpan[
+comptime ImmSpan[
     T: AnyType,
-    origin: ImmutOrigin,
+    origin: ImmOrigin,
 ] = Span[T, origin]
 """A span providing read-only access to its elements.
 
@@ -66,6 +66,11 @@ Parameters:
     T: The type of the elements in the span.
     origin: The origin of the span.
 """
+
+
+@doc_hidden
+@deprecated(use=ImmSpan)
+comptime ImmutSpan = ImmSpan
 
 
 @fieldwise_init
@@ -152,10 +157,12 @@ struct _SpanIter[
         return (n, {n})
 
 
+@stable(since="1.0")
 struct Span[
     mut: Bool,
     //,
     T: AnyType,
+    /,
     origin: Origin[mut=mut],
 ](
     Boolable,
@@ -178,7 +185,7 @@ struct Span[
     """
 
     # Aliases
-    comptime Immutable = Span[Self.T, ImmutOrigin(Self.origin)]
+    comptime Immutable = Span[Self.T, ImmOrigin(Self.origin)]
     """The immutable version of the `Span`."""
     comptime _UnsafePointerType = UnsafePointer[
         Self.T,
@@ -240,7 +247,7 @@ struct Span[
     @doc_hidden
     @implicit
     @always_inline("nodebug")
-    def __init__(other: Span, out self: ImmutSpan[other.T, other.origin]):
+    def __init__(other: Span, out self: ImmSpan[other.T, other.origin]):
         """Implicitly cast the mutable origin of self to an immutable one.
 
         Args:
@@ -382,19 +389,19 @@ struct Span[
     @always_inline
     def __reversed__(
         self,
-    ) -> _SpanIter[downcast[Self.T, Copyable], Self.origin, forward=False,]:
+    ) -> _SpanIter[
+        Self.T,
+        Self.origin,
+        forward=False,
+    ] where conforms_to(
+        Self.T, Copyable
+    ):
         """Iterate backwards over the `Span`.
 
         Returns:
             A reversed iterator of the `Span` elements.
         """
-        comptime assert conforms_to(
-            Self.T, Copyable
-        ), "Span iteration requires the element to be `Copyable`"
-        return _SpanIter[forward=False](
-            len(self),
-            rebind[Span[downcast[Self.T, Copyable], Self.origin]](self),
-        )
+        return _SpanIter[forward=False](len(self), self)
 
     # ===------------------------------------------------------------------===#
     # Trait implementations
@@ -618,7 +625,7 @@ struct Span[
     # dereferenced by the method.
     # TODO: replace with a safe model that checks the body of the method for
     # accesses to the origin.
-    @__unsafe_disable_nested_origin_exclusivity
+    @__unsafe_nested_origins_read_only
     def __eq__(
         self, rhs: Span[Self.T, _]
     ) -> Bool where conforms_to(Self.T, Equatable):
@@ -715,8 +722,8 @@ struct Span[
         Raises:
             If a or b are larger than the length of the span.
         """
-        var length = UInt(len(self))
-        if a > Int(length) or b > Int(length):
+        var length = len(self)
+        if a > length or b > length:
             raise Error(
                 "index out of bounds (length: ",
                 length,
@@ -859,7 +866,7 @@ struct Span[
         dtype: DType,
         //,
         F: def[w: SIMDSize](v: SIMD[dtype, w]) -> SIMD[DType.bool, w],
-    ](self: Span[Scalar[dtype], _], func: F) -> UInt:
+    ](self: Span[Scalar[dtype], _], func: F) -> Int:
         """Count the amount of times the function returns `True`.
 
         Parameters:
@@ -883,7 +890,7 @@ struct Span[
             count += mask.reduce_bit_count()
 
         vectorize[simdwidth](length, do_count)
-        return UInt(count)
+        return count
 
     @always_inline
     def unsafe_subspan(self, *, offset: Int, length: Int) -> Self:
@@ -911,7 +918,7 @@ struct Span[
     def _binary_search_index[
         dtype: DType,
         //,
-    ](self: Span[Scalar[dtype], _], needle: Scalar[dtype]) -> Optional[UInt]:
+    ](self: Span[Scalar[dtype], _], needle: Scalar[dtype]) -> Optional[Int]:
         """Finds the index of `needle` with binary search.
         Args:
             needle: The value to binary search for.
@@ -931,7 +938,7 @@ struct Span[
             value = self.unsafe_get(cursor + half - 1)
             cursor += UInt(splat(value < needle)) & half
 
-        return Optional(cursor) if value == needle else None
+        return Optional(Int(cursor)) if value == needle else None
 
     def binary_search_by[
         func: def(Self.T) thin -> Int,

@@ -34,18 +34,14 @@ from std.utils._visualizers import lldb_formatter_wrapping_type
 
 @lldb_formatter_wrapping_type
 struct Tuple[*element_types: Movable](
+    Comparable where element_types.all_conforms_to[Comparable](),
     Copyable where element_types.all_conforms_to[Copyable](),
     Defaultable where element_types.all_conforms_to[Defaultable](),
     Equatable where element_types.all_conforms_to[Equatable](),
     Hashable where element_types.all_conforms_to[Hashable](),
-    # TODO(MOCO-3421): all_conforms_to[ImplicitlyCopyable] implies
-    # all_conforms_to[Copyable] since ImplicitlyCopyable refines Copyable, but
-    # the compiler can't infer parent trait constraints from derived ones yet.
-    # Remove the Copyable check from this where clause once that's fixed.
-    ImplicitlyCopyable where (
-        element_types.all_conforms_to[ImplicitlyCopyable]()
-        and element_types.all_conforms_to[Copyable]()
-    ),
+    ImplicitlyCopyable where element_types.all_conforms_to[
+        ImplicitlyCopyable
+    ](),
     # ImplicitlyDeletable and Movable are listed explicitly because
     # conditional conformances require all conformances to be stated.
     ImplicitlyDeletable,
@@ -134,7 +130,7 @@ struct Tuple[*element_types: Movable](
                 ParentConformsTo="ImplicitlyDeletable",
             ]()
             comptime assert conforms_to(TUnknown, ImplicitlyDeletable)
-            UnsafePointer(to=self[i]).destroy_pointee()
+            UnsafePointer(to=self[i]).unsafe_deinit_pointee()
 
     @always_inline("nodebug")
     def __init__(out self, *, copy: Self):

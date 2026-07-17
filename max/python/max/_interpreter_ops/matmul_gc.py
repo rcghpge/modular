@@ -18,8 +18,8 @@ Two compile modes, selected by ``MAX_EAGER_OP_PRECOMPILE`` (see
 
 - **Lazy per-target (default).** First dispatch for a (device, dtype) compiles
   just that target's fully-symbolic rank-3 batched-matmul graph.
-- **Precompile sweep (``=1``).** :func:`compile_matmul_sweep` compiles the full
-  matrix at import; a :func:`matmul_model` miss is then a hard error.
+- **Precompile sweep (``=1``).** The batched sweep compiles the full matrix at
+  import; a :func:`matmul_model` miss is then a hard error.
 
 Lazy mode avoids a trivial matmul JIT-compiling the whole kernel library on a
 cold cache (~3000+ kernels, minutes; MXF-508). Models serve the eager
@@ -28,20 +28,16 @@ import from ``handlers.py``.
 """
 
 import itertools
-import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import prod
 
 from max import engine
 from max._interpreter_ops import gc_compile
-from max._mlir_context import in_default_mlir_context
 from max.driver import Device, DeviceSpec, accelerator_count, load_devices
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, Module, TensorType
 from max.graph import ops as graph_ops
-
-logger = logging.getLogger(__name__)
 
 _GRAPH_BASE_NAME = "matmul"
 
@@ -87,8 +83,6 @@ _COMPILATION_TARGETS = [
     )
 ]
 
-_MATMUL_MODEL_CACHE: dict[str, engine.Model] = {}
-
 
 def canonical_shape(shape: Sequence[int]) -> tuple[int, int, int]:
     """Flattens an arbitrary-rank matmul operand to canonical rank 3.
@@ -119,48 +113,57 @@ def _build_matmul_graph(
         g.output(graph_ops.matmul(lhs.tensor, rhs.tensor))
 
 
-# True once a batched sweep has run, so dispatch attempts adoption at most once.
-_swept = False
+def build_matmul_module() -> Module:
+    """Build the full batched matmul module: every ``_COMPILATION_TARGETS`` slot
+    (CPU + all accelerators, all dtypes) in one module.
 
-
-@in_default_mlir_context
-def compile_matmul_sweep() -> None:
-    """Compile every supported (device, dtype) matmul target in one batched
-    ``load_all`` (parallel compile), warming the in-process cache.
-
-    Used three ways, all the same call: the import-time precompile (``=1``);
-    the ``warm-interpreter-cache`` CLI; and lazy dispatch *adopting* a warm
-    stamp. In the adoption case the identical batched module hashes to the warm
-    on-disk cache key, so ``load_all`` is a fast load rather than a recompile.
+    Host-ELF and cubins both embed self-contained in the exported MEF, so one
+    force-load populates every device class at once. Shared by the warm producer
+    (export) and the batched sweep (compile into cache).
     """
-    global _swept
     module = Module()
     for compilation_target in _COMPILATION_TARGETS:
         _build_matmul_graph(module, compilation_target)
-    devices = {ct.device for ct in _COMPILATION_TARGETS}
-    session = engine.InferenceSession(devices=devices)
-    _MATMUL_MODEL_CACHE.update(session.load_all(module, weights_registry={}))
-    _swept = True
+    return module
 
 
-@in_default_mlir_context
-def _compile_matmul_target(target: CompilationTarget) -> engine.Model:
-    """Build and compile a single (device, dtype) matmul graph."""
+def build_matmul_module_for_device(device: Device) -> Module:
+    """Build the matmul module for a single device slot: every dtype target on
+    *device* (matched by label + id), and nothing else.
+
+    Per-slot counterpart of :func:`build_matmul_module`. The warm producer
+    exports one MEF per slot so the warm is device-count-independent: a k-GPU
+    consumer force-loads only slots ``0..k-1``, letting a warm made for a higher
+    count still adopt.
+    """
     module = Module()
-    _build_matmul_graph(module, target)
-    session = gc_compile.session_for(target.device)
-    _MATMUL_MODEL_CACHE.update(session.load_all(module, weights_registry={}))
-    return _MATMUL_MODEL_CACHE[target.graph_name]
+    for compilation_target in _COMPILATION_TARGETS:
+        if (
+            compilation_target.device.label == device.label
+            and compilation_target.device.id == device.id
+        ):
+            _build_matmul_graph(module, compilation_target)
+    return module
+
+
+# Discovered at import so a missing driver fails here, not at first dispatch.
+_DEVICES = gc_compile.discover_devices()
+
+
+_FAMILY = gc_compile.GCOpFamily(
+    name="matmul",
+    build_module=build_matmul_module,
+    build_module_for_device=build_matmul_module_for_device,
+    sweep_devices=lambda: list(_DEVICES),
+)
+gc_compile.register_family(_FAMILY)
 
 
 def matmul_model(device: Device, dtype: DType) -> engine.Model:
     """Return the matmul :class:`~max.engine.Model` for *device* + *dtype*.
 
-    Lazy by default: compiled on first use and cached in ``_MATMUL_MODEL_CACHE``
-    for the process lifetime. With ``MAX_EAGER_OP_PRECOMPILE=1`` it was
-    precompiled at import and this is a lookup. If a ``warm-interpreter-cache``
-    stamp is present for this context, the first miss adopts the warm with one
-    batched sweep (a cache load) instead of compiling each target singly.
+    Lazy by default (compiled and cached on first use); the first miss adopts a
+    whole warm cache. ``MAX_EAGER_OP_PRECOMPILE=1`` makes this a pure lookup.
 
     Args:
         device: The target device (CPU or GPU accelerator).
@@ -170,45 +173,34 @@ def matmul_model(device: Device, dtype: DType) -> engine.Model:
         The compiled :class:`~max.engine.Model`.
 
     Raises:
-        KeyError: With ``MAX_EAGER_OP_PRECOMPILE=1``, if the target was not in
-            the import-time sweep.
+        KeyError: With ``MAX_EAGER_OP_PRECOMPILE=1``, if the target was not
+            precompiled.
 
     Note:
-        No support guard (unlike :func:`unary_elementwise_gc.unary_model`):
-        RMO->MO lowering casts both operands to a common dtype the backend can
-        always compile a matmul for, so an unsupported target is unreachable.
+        No support guard (unlike unary): RMO->MO casts both operands to a
+        common backend-compilable dtype, so no target is unsupported.
     """
     target = CompilationTarget(_GRAPH_BASE_NAME, device, dtype)
-    model = _MATMUL_MODEL_CACHE.get(target.graph_name)
+    key = target.graph_name
+    model = _FAMILY.cache.get(key)
     if model is not None:
         return model
     if gc_compile.should_precompile():
         # TODO(MXF-510): raise UnsupportedGraphError so executors fall back.
         raise KeyError(
-            f"No pre-compiled matmul model for key {target.graph_name!r}."
-            f"  Available: {sorted(_MATMUL_MODEL_CACHE)}."
+            f"No pre-compiled matmul model for key {key!r}."
+            f"  Available: {sorted(_FAMILY.cache)}."
             f"  Unset {gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR} (the default)"
             " to compile targets lazily on first use."
         )
     with gc_compile.COMPILE_LOCK:
-        # Re-check under the lock (another thread may have compiled it).
-        model = _MATMUL_MODEL_CACHE.get(target.graph_name)
+        model = _FAMILY.cache.get(key)
         if model is not None:
             return model
-        global _swept
-        if not _swept and gc_compile.warm_stamp_matches():
-            # Mark _swept before attempting so a stale stamp can't loop; guard
-            # so an adoption failure falls through to per-target, not the op.
-            _swept = True
-            try:
-                compile_matmul_sweep()
-            except Exception:
-                logger.warning(
-                    "Eager interpreter warm-cache adoption failed; compiling"
-                    " matmul targets on demand.",
-                    exc_info=True,
-                )
-            model = _MATMUL_MODEL_CACHE.get(target.graph_name)
-            if model is not None:
-                return model
-        return _compile_matmul_target(target)
+        _FAMILY.ensure_swept()
+        model = _FAMILY.cache.get(key)
+        if model is not None:
+            return model
+        return gc_compile.compile_single_target(
+            _FAMILY, key, device, lambda m: _build_matmul_graph(m, target)
+        )

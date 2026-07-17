@@ -80,7 +80,6 @@ class TieredConnector:
         disk_cache_dir: str,
         max_disk_size_gb: float,
         kv_hash_algo: KVHashAlgo = "ahash64",
-        use_direct_io: bool = False,
         synchronous_d2h_copy_mode: bool = False,
     ) -> None:
         if total_num_host_blocks <= 0:
@@ -119,7 +118,6 @@ class TieredConnector:
             block_nbytes=self._block_disk_bytes,
             max_disk_size_bytes=int(max_disk_size_gb * GiB),
             kv_hash_algo=kv_hash_algo,
-            use_direct_io=use_direct_io,
         )
 
         logger.info(
@@ -401,6 +399,14 @@ class TieredConnector:
             # If flag is set, immediately synchronize the event.
             if self._synchronous_d2h_copy_mode:
                 pending_disk_write.d2h_copy_complete_event.synchronize()
+
+    def touch(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+    ) -> None:
+        """No-op: this connector does not refresh recency on device-cache hits."""
+        return None
 
     def shutdown(self) -> None:
         """Clean shutdown of connector resources."""

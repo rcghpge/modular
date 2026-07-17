@@ -46,7 +46,7 @@ This version is still a work in progress.
 
   ```mojo
   var fp1: def(*Int) thin -> None
-  var fp2: def[a: ImmutOrigin](ref [a] x: Int) thin -> None
+  var fp2: def[a: ImmOrigin](ref [a] x: Int) thin -> None
   ...
   fp1(1, 2)
   fp2(42)
@@ -124,9 +124,57 @@ This version is still a work in progress.
       ^
   ```
 
-  Note that this is only possible for source packages for now
+  Note that for precompiled packages (`.mojoc` files), locations *inside* the
+  package are omitted. For example, the above would instead resemble the
+  following for a precompiled `foo` package:
+
+  ```text
+  Included from /bug.mojo:2:
+  /foo/nested_pkg/my_module.mojo:1:5: note: candidate not viable: unexpected argument
+  def bar(): pass
+      ^
+  ```
+
+  Note also that for brevity the compiler does not report where any `std`
+  packages are pulled in as they're treated as privileged and implicitly
+  imported into every module. This includes if the user explicitly imports all
+  or part of the standard library themselves.
+
+- `imm` is now the preferred spelling for the `read` argument and
+  closure-capture convention. `read` still works but will soon be deprecated.
+
+- A file can now import another identically named module or package, assuming
+  it is found first during import resolution (#4534):
+
+  ```mojo
+  # -------- #
+  # foo.mojo #
+  # -------- #
+  from foo import bar   # a package on the system
+
+  bar()
+  ```
 
 ## Language changes
+
+- User-written structs must now explicitly declare closure-trait conformance
+  in their inheritance list to satisfy a `def(...) -> ...` closure trait.
+  Previously a struct with a compatible `__call__` was accepted implicitly
+  (duck-typing). Declare the trait in the struct's inheritance list:
+
+  ```mojo
+  def apply[F: def(Int) -> Int](f: F, x: Int) -> Int:
+      return f(x)
+
+  struct Double(def(Int) -> Int):  # previously: `struct Double:`
+      def __call__(self, x: Int) capturing -> Int:
+          return x * 2
+
+  _ = apply(Double(), 5)
+  ```
+
+  Conformance is checked at struct definition rather than deferred to the use
+  site.
 
 - Relative imports must now use `from` (`from . import foo`); the `import .foo`
   form is no longer accepted.
@@ -210,25 +258,17 @@ This version is still a work in progress.
   module1.bar()
   ```
 
-- The `@explicit_destroy` decorator is no longer required on structs that
-  conditionally conform to `ImplicitlyDeletable`.
+- The `@explicit_destroy` decorator is no longer sufficient for a `struct` type
+  to opt-out of `ImplicitlyDeletable` conformance.
 
-  By default, all Mojo structs implicitly conform to `ImplicitlyDeletable`.
-  As before, a type author can opt-out of that implicit conformance using the
-  `@explicit_destroy` decorator:
+  As before, by default all Mojo structs implicitly conform to
+  `ImplicitlyDeletable`. Mojo now requires writing a constrained
+  `ImplicitlyDeletable where ...` conformance to narrow or opt-out of that
+  trait.
 
-  ```mojo
-  @explicit_destroy
-  struct FileHandle:
-      pass
-
-  comptime assert not conforms_to(FileHandle, ImplicitlyDeletable)
-  ```
-
-  Now, if the type *conditionally* conforms to `ImplicitlyDeletable`, you may
-  omit redundantly writing `@explicit_destroy`. This works both for types
+  This works both for types
   that are never `ImplicitlyDeletable` (`where False`) and for types that are
-  non-ImplicitlyDeletable based on a non trivial condition (`where <cond>`):
+  non-ImplicitlyDeletable based on a non-trivial condition (`where <cond>`):
 
   ```mojo
   # no @explicit_destroy necessary
@@ -237,6 +277,8 @@ This version is still a work in progress.
   ):
       def destroy(deinit self):
           pass
+
+  comptime assert not conforms_to(NeverDeletable, ImplicitlyDeletable)
 
   # no @explicit_destroy necessary
   struct Container[T: AnyType](
@@ -247,6 +289,9 @@ This version is still a work in progress.
   comptime assert conforms_to(Container[Int], ImplicitlyDeletable)
   comptime assert not conforms_to(Container[NonDeletable], ImplicitlyDeletable)
   ```
+
+  Using `@explicit_destroy` without an argument error string is now an error, as
+  it would have no effect or purpose.
 
   `@explicit_destroy("custom error")` can still be used to provide additional
   instruction to users when an instance cannot be deleted implicitly.
@@ -267,12 +312,117 @@ This version is still a work in progress.
       pass
   ```
 
+- The compiler now rejects newlines in the middle of certain statements, where
+  they were previously permitted:
+
+  - Between `def`/`struct`/`trait`/`comptime` keywords and the following
+    identifier
+  - Between the `async` and `def` keywords on function definitions
+  - Anywhere in the midst of an `import` statement, save for parenthesized
+    import lists.
+
+- It is now possible to import modules & packages through regular directories
+  using the same path-like syntax.
+
+  For example, given the following structure:
+
+  ```text
+  dir
+  └── nested_dir
+      ├── module.mojo
+      └── package
+          └── __init__.mojo
+  ```
+
+  It is possible to import from the modules and packages inside the directories
+  `dir` and `nested_dir`:
+
+  ```mojo
+  import dir.nested_dir.module
+
+  from dir.nested_dir.package import foo
+  ```
+
+  Note that an import statement *resolving* to a directory cannot later be used
+  for scoped lookups as if it were a module or package:
+
+  ```mojo
+  import dir
+
+  dir.nested_dir.package.foo() # error
+  ```
+
 ## Library stabilizations
 
-- The traits `ImplicitlyDeletable`, `Movable`, `Copyable`, and
-  `ImplicitlyCopyable` are now stable.
+- `trait ImplicitlyDeletable`
+- `trait Movable`
+- `trait Copyable`
+- `trait ImplicitlyCopyable`
+
+- List
+  - `def __init__(out self)`
+  - `def __init__(out self, *, capacity: Int)`
+  - `def __init__(out self, *, copy: Self) where conforms_to(Self.T, Copyable):`
+  - `def __del__(deinit self) where conforms_to(Self.T, ImplicitlyDeletable):`
+
+  - ```def __getitem__[
+        origin: Origin, //
+      ](ref[origin] self, slice: ContiguousSlice) -> Span[Self.T, origin]:
+    ```
+
+- Span
 
 ## Library changes
+
+- `List.capacity` is now a `capacity()` method instead of a public field. This
+  keeps the allocated capacity out of the stable public field surface, since it
+  should only change indirectly through operations like `append()`. Replace
+  `my_list.capacity` with `my_list.capacity()`.
+
+- Added `Dict.clear_with(destroy_func)`, the closure counterpart of `clear()`.
+  Instead of destroying each entry in place, it hands the key and value to
+  `destroy_func`, so it can clear a `Dict` whose key or value type is not
+  `ImplicitlyDeletable`. The dictionary's capacity is retained, so it stays
+  reusable.
+
+- Added `Dict.insert(key, value)`, which stores a key/value pair and returns
+  the displaced entry as an `Optional[DictEntry]` (empty when the key was not
+  already present). Unlike `dict[key] = value`, `insert` does not destroy the
+  displaced entry; it returns it, and the caller must destroy the returned
+  entry. This is what lets `insert` work when the key or value type is not
+  `ImplicitlyDeletable`:
+
+  ```mojo
+  var d = Dict[Int, Int]()
+  var displaced = d.insert(1, 10)  # None — key 1 was absent
+  displaced = d.insert(1, 20)      # the displaced (1, 10) entry
+  ```
+
+- By-reference `Dict` iteration (`for entry in dict`, `keys()`, `values()`,
+  `items()`, and `reversed()`) no longer requires the key and value types to be
+  `ImplicitlyDeletable`. These iterators only borrow references and never
+  destroy an entry, so they now work on a `Dict` whose key or value type is not
+  `ImplicitlyDeletable`. Consuming iteration (`for entry in dict^` and
+  `take_items()`) still requires `ImplicitlyDeletable`, since it drops the
+  entries it does not yield.
+
+- The container backing variadic `**kwargs` has been renamed from
+  `OwnedKwargsDict` to `StringDict`. `StringDict` no longer
+  requires its value type `V` to be `ImplicitlyDeletable`. A keyword dictionary
+  whose values are linear (non-`ImplicitlyDeletable`) is itself linear and must
+  be torn down explicitly with the new `deinit_with(deinit_func)`, which hands
+  each key and value to `deinit_func`. It also gained `insert(key, value)`
+  (returns the displaced entry as an `Optional[DictEntry]` without destroying
+  it) and `popitem()` (moves out and returns a whole entry), mirroring `Dict`.
+  Operations that destroy a displaced value in place — `kwargs[key] = value` and
+  the two-argument `pop(key, default)` — still require `V` to be
+  `ImplicitlyDeletable`; use `insert`, `popitem`, or the single-argument
+  `pop(key)` for linear values.
+
+- `Coord` now conforms to `DevicePassable`, so a `Coord` embedded in a
+  `DevicePassable` type (such as a `TileTensor`'s `Layout`) is encoded to the
+  device through `Coord._to_device_type` instead of a raw field bit-copy, the
+  same way `IndexList` already was.
 
 - `reversed()` now works on typed ranges such as
   `reversed(range(Int16(1), 10, 2))`. The `ReversibleRange` trait gained an
@@ -280,19 +430,19 @@ This version is still a work in progress.
   return type, so every range flavor (including the typed scalar ranges) can
   conform and return its own reversed iterator.
 
-- Added `to_numpy_array` and `from_numpy_array` to the new `python.numpy` module
-  for moving flat numeric data between Mojo `Span`/`List` and NumPy arrays
-  without hand-written `ctypes` plumbing:
+- Added `copy_to_numpy_array` and `from_numpy_array` to the new `python.numpy`
+  module for moving flat numeric data between Mojo `Span`/`List` and NumPy
+  arrays without hand-written `ctypes` plumbing:
 
   ```mojo
-  from std.python.numpy import from_numpy_array, to_numpy_array
+  from std.python.numpy import from_numpy_array, copy_to_numpy_array
 
   var values: List[Float64] = [1.0, 2.0, 3.0]
-  var array = to_numpy_array(values)                 # NumPy array (copies)
+  var array = copy_to_numpy_array(values)            # NumPy array (copies)
   var span = from_numpy_array[DType.float64](array)  # borrow array as a Span
   ```
 
-  Both support the fixed-width numeric dtypes. `to_numpy_array` copies its
+  Both support the fixed-width numeric dtypes. `copy_to_numpy_array` copies its
   input into a new, independent array; `from_numpy_array` borrows the array's
   buffer zero-copy.
 
@@ -397,7 +547,7 @@ This version is still a work in progress.
   closure on each element:
 
   ```mojo
-  collection^.destroy_with(my_destroy_closure)
+  collection^.deinit_with(my_destroy_closure)
   ```
 
   Generic code that takes one of these collections by value may now need
@@ -464,7 +614,7 @@ This version is still a work in progress.
   `__iter__()`.
 
 - The implicit conversion constructors that cast an `UnsafePointer` to
-  `MutUnsafeAnyOrigin` or `ImmutUnsafeAnyOrigin` are now deprecated and emit a
+  `MutUnsafeAnyOrigin` or `ImmUnsafeAnyOrigin` are now deprecated and emit a
   deprecation warning when used. `UnsafeAnyOrigin` is an unsafe escape hatch
   that silently extends unrelated lifetimes and disables exclusivity checking,
   so it should never be applied implicitly. Prefer keeping a concrete origin;
@@ -562,6 +712,24 @@ This version is still a work in progress.
   ptr.unsafe_write(copy=value)
   ```
 
+- `UnsafePointer.destroy_pointee()` and `UnsafePointer.destroy_pointee_with()`
+  are now deprecated in favor of the new `unsafe_deinit_pointee()` method, which
+  covers both cases: call it with no arguments to destroy an
+  `ImplicitlyDeletable` pointee, or pass a deinitializing closure to destroy a
+  non-`ImplicitlyDeletable` pointee in place.
+
+- `Pointer` gained explicit `unsafe_`-prefixed methods for operations that are
+  individually unsafe — unchecked bounds, aliasing casts, moving or overwriting
+  memory — rather than requiring the whole pointer to be typed unsafe:
+  `unsafe_offset()`, `unsafe_load()`, `unsafe_store()`, `unsafe_strided_load()`,
+  `unsafe_strided_store()`, `unsafe_gather()`, `unsafe_scatter()`,
+  `unsafe_as_noalias()`, `unsafe_address_space_cast()`, and
+  `unsafe_take_pointee()`. These methods work on any `Pointer`. The previous
+  unprefixed names still work, but are now hidden from the generated docs and
+  remain gated behind an unsafe pointer type; prefer the `unsafe_`-prefixed
+  names going forward. Each method's docstring documents the exact `Safety:`
+  requirements the caller must uphold.
+
 ## Tooling changes
 
 - Added a `--lld-path` CLI flag. This overrides the LLD path that Mojo uses.
@@ -583,6 +751,19 @@ This version is still a work in progress.
   toggle and the `MODULAR_DISABLE_METAL_GPU_PRINT` environment variable disable
   Metal `os_log` GPU print; print is also suppressed during a capture, which
   otherwise cannot be replayed.
+
+- A bare `--target-accelerator` architecture (for example `gfx950` or `sm_90`)
+  is now handled identically to its vendor-prefixed form (`amdgpu:gfx950`,
+  `nvidia:sm_90`). Previously `has_amd_gpu_accelerator()`,
+  `has_nvidia_gpu_accelerator()`, and `has_apple_gpu_accelerator()` only
+  recognized the vendor-prefixed spelling, so code that specialized on them
+  (such as warp-tiling parameters) could silently take the wrong path and fail
+  a downstream `comptime` constraint. `amd:<arch>` is also now accepted as an
+  alias for `amdgpu:<arch>`, mirroring the existing `nvidia:<arch>` prefix.
+
+- The GPU `Vendor` type can now be imported from `std.sys`
+  (`from std.sys import Vendor`). It remains importable from
+  `std.gpu.host.info` for backward compatibility.
 
 - `DeviceContext.load_function` now keys its runtime cache on the requested
   entry-point name as well as the blob. Loading two different entry points
@@ -671,6 +852,12 @@ This version is still a work in progress.
 
 ## Removed
 
+- Removed the `UInt`-returning GPU indexing accessors (`thread_idx_uint`,
+  `block_idx_uint`, `block_dim_uint`, `grid_dim_uint`, `global_idx_uint`,
+  `lane_id_uint`, `warp_id_uint`). Use the `Int`-returning `thread_idx`,
+  `block_idx`, `block_dim`, `grid_dim`, `global_idx`, `lane_id`, and
+  `warp_id` accessors instead.
+
 - Removed the `store_volatile()` and `load_volatile()` intrinsics from
   `std.gpu.intrinsics`. Use `UnsafePointer.store[volatile=True]()` and
   `UnsafePointer.load[volatile=True]()` instead, which work across all
@@ -680,6 +867,9 @@ This version is still a work in progress.
   `AddressSpace` directly.
 
 ## Fixed
+
+- [#6755](https://github.com/modular/modular/issues/6755) - Volatile loads are
+  no longer removed when their results are unused.
 
 - Type refinement from a `conforms_to()` guard now applies inside the branches
   of a ternary `exp1 if cond else exp2` used in a `comptime` context, matching
@@ -744,4 +934,35 @@ This version is still a work in progress.
 
       def operate(self) -> Self.Output where conforms_to(Self.T, Movable):
           return Int(123)
+  ```
+
+- A method whose return type is a generic struct instantiated with a
+  parameter that only satisfies the struct's declared trait bound via the
+  method's own `where` clause (rather than via the parameter's own
+  declaration) is now accepted, instead of spuriously rejecting the returned
+  value as a different, unconvertible type.
+
+  ```mojo
+  struct Collection[T: AnyType](Movable):
+      def foo(
+          var self,
+      ) -> Iter[Self.T] where conforms_to(Self.T, ImplicitlyDeletable):
+          return Iter(self^)
+
+  @fieldwise_init
+  struct Iter[T: ImplicitlyDeletable]:
+      var _collection: Collection[Self.T]
+  ```
+
+- A struct using `where False` to opt out of a builtin trait's implicit
+  synthesis (e.g. `Movable where False`) no longer spuriously fails to
+  compile when one of its fields also opts out of that same trait. For
+  example, this now compiles:
+
+  ```mojo
+  struct One(Movable where False):
+      pass
+
+  struct Two(Movable where False):
+      var y: One
   ```

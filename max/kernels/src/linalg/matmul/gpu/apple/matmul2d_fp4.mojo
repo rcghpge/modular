@@ -269,16 +269,14 @@ struct Fp4WeightLoader[
 
     comptime SF = NVFP4_SF_VECTOR_SIZE  # 16
 
-    # Held with `ImmutUntrackedOrigin`: struct fields cannot expose `AnyOrigin`
+    # Held with `ImmUntrackedOrigin`: struct fields cannot expose `AnyOrigin`
     # (same field-origin rule as `DenseALoader` in `matmul_kernel.mojo`). The
     # kernel args these views derive from outlive the K-loop, so the explicit-
     # lifetime case applies. Constructed via `Fp4WeightLoader.from_kernel_args`.
-    var a: TileTensor[Self.in_type, Self.a_layout, ImmutUntrackedOrigin]
-    var packed: TileTensor[
-        DType.uint8, Self.packed_layout, ImmutUntrackedOrigin
-    ]
+    var a: TileTensor[Self.in_type, Self.a_layout, ImmUntrackedOrigin]
+    var packed: TileTensor[DType.uint8, Self.packed_layout, ImmUntrackedOrigin]
     var scales: TileTensor[
-        DType.float8_e4m3fn, Self.scale_layout, ImmutUntrackedOrigin
+        DType.float8_e4m3fn, Self.scale_layout, ImmUntrackedOrigin
     ]
     var M: Int
     var N: Int
@@ -298,19 +296,19 @@ struct Fp4WeightLoader[
     ) -> Self:
         """Build the loader from the kernel's `AnyOrigin` tensor args.
 
-        Rebases each view onto `ImmutUntrackedOrigin` (the field-origin rule; the
+        Rebases each view onto `ImmUntrackedOrigin` (the field-origin rule; the
         args outlive the K-loop), preserving layout/shape/stride.
         """
         return Self(
             TileTensor(
-                a.ptr.unsafe_origin_cast[ImmutUntrackedOrigin](), a.layout
+                a.ptr.unsafe_origin_cast[ImmUntrackedOrigin](), a.layout
             ),
             TileTensor(
-                packed.ptr.unsafe_origin_cast[ImmutUntrackedOrigin](),
+                packed.ptr.unsafe_origin_cast[ImmUntrackedOrigin](),
                 packed.layout,
             ),
             TileTensor(
-                scales.ptr.unsafe_origin_cast[ImmutUntrackedOrigin](),
+                scales.ptr.unsafe_origin_cast[ImmUntrackedOrigin](),
                 scales.layout,
             ),
             M,
@@ -476,7 +474,7 @@ struct Matmul2dFp4[
     comptime SF = NVFP4_SF_VECTOR_SIZE  # 16
 
     comptime NUM_SG = Self.num_sg_m * Self.num_sg_n
-    comptime THREADS_PER_BLOCK = Self.NUM_SG * Int(WARP_SIZE)
+    comptime THREADS_PER_BLOCK = Self.NUM_SG * WARP_SIZE
     # Threadgroup output tile.
     comptime TG_M = Self.MMA_M * Self.num_sg_m * Self.tm
     comptime TG_N = Self.MMA_N * Self.num_sg_n * Self.tn
@@ -522,7 +520,7 @@ struct Matmul2dFp4[
         scales `(N, ceil(K/16))`. Interior fast path (tile-aligned N, K%16==0).
         """
         var lane = Int(lane_id())
-        var sg_id = Int(thread_idx.x) // Int(WARP_SIZE)
+        var sg_id = Int(thread_idx.x) // WARP_SIZE
         var sg_m = sg_id // Self.num_sg_n
         var sg_n = sg_id % Self.num_sg_n
 
@@ -655,7 +653,7 @@ struct Matmul2dFp4[
 
         var lane = Int(lane_id())
         var tid = Int(thread_idx.x)
-        var sg_id = tid // Int(WARP_SIZE)
+        var sg_id = tid // WARP_SIZE
         var sg_m = sg_id // Self.num_sg_n
         var sg_n = sg_id % Self.num_sg_n
 

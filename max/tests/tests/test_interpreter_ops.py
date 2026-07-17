@@ -60,6 +60,9 @@ def _interpreter_only() -> Generator[None]:
 # DTypes to test for elementwise operations
 # Note: bfloat16 is excluded since NumPy doesn't support it natively
 FLOAT_DTYPES = [DType.float32, DType.float64]
+# Shape-rearrange ops are pure copies, so they also serve float16 (which has no
+# typed CPU kernel) via the width-based uint bit-cast.
+REARRANGE_FLOAT_DTYPES = FLOAT_DTYPES + [DType.float16]
 INT_DTYPES = [DType.int8, DType.int16, DType.int32, DType.int64]
 UINT_DTYPES = [DType.uint8, DType.uint16, DType.uint32, DType.uint64]
 SIGNED_DTYPES = FLOAT_DTYPES + INT_DTYPES
@@ -166,6 +169,26 @@ class TestBinaryElementwiseOps:
 
         expected = np.power(a_np, b_np)
         np.testing.assert_array_almost_equal(np.from_dlpack(c), expected)
+
+    @pytest.mark.parametrize("dtype", INT_DTYPES + UINT_DTYPES)
+    def test_pow_integer(self, dtype: DType) -> None:
+        """Int ``pow`` matches numpy; Pow sweeps integer dtypes (``div`` does not)."""
+        shape = [3, 4]
+        np_dtype = dtype.to_numpy()
+        # Small bases / exponent 2 keep the result within every int width.
+        a_np = np.arange(1, 13, dtype=np_dtype).reshape(shape)
+        b_np = np.full(shape, 2, dtype=np_dtype)
+
+        a = Tensor.from_dlpack(a_np)
+        b = Tensor.from_dlpack(b_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            c = a**b
+
+        expected = np.power(a_np, b_np)
+        np.testing.assert_array_equal(np.from_dlpack(c), expected)
 
     @pytest.mark.parametrize("dtype", ELEMENTWISE_DTYPES)
     def test_max(self, dtype: DType) -> None:
@@ -3335,6 +3358,30 @@ class TestConcatOp:
         expected = np.concatenate([a_np, b_np], axis=0)
         np.testing.assert_array_almost_equal(np.from_dlpack(result), expected)
 
+    @pytest.mark.parametrize("axis", [0, 1, -1])
+    @pytest.mark.parametrize(
+        "dtype",
+        [DType.uint8, DType.int16, DType.bool, DType.float16],
+    )
+    def test_concat_extra_dtypes(self, dtype: DType, axis: int) -> None:
+        """Concat over dtypes the old Mojo path also accepted.
+
+        float16 has no typed CPU kernel; it exercises the width-16 uint bit-cast.
+        """
+        a_np = np.array([[1, 0, 1], [0, 1, 1]]).astype(dtype.to_numpy())
+        b_np = np.array([[1, 1, 0], [0, 0, 1]]).astype(dtype.to_numpy())
+
+        a = Tensor.from_dlpack(a_np)
+        b = Tensor.from_dlpack(b_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            result = F.concat([a, b], axis=axis)
+
+        expected = np.concatenate([a_np, b_np], axis=axis)
+        np.testing.assert_array_equal(np.from_dlpack(result), expected)
+
 
 def _numpy_layer_norm(
     x: np.ndarray, gamma: np.ndarray, beta: np.ndarray, eps: float = 1e-5
@@ -3744,7 +3791,7 @@ class TestSliceOp:
         expected = x_np[2:7]
         np.testing.assert_array_equal(np.from_dlpack(result), expected)
 
-    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dtype", REARRANGE_FLOAT_DTYPES)
     def test_slice_2d(self, dtype: DType) -> None:
         """Test 2D slice across both dimensions."""
         np_dtype = dtype.to_numpy()
@@ -4508,7 +4555,7 @@ class TestSplitOp:
             assert isinstance(result, Tensor)
             np.testing.assert_array_equal(np.from_dlpack(result), exp)
 
-    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dtype", REARRANGE_FLOAT_DTYPES)
     @pytest.mark.parametrize("axis", [0, 1])
     def test_2d_axes(self, dtype: DType, axis: int) -> None:
         """Test split on a 2D tensor along each axis."""
@@ -6523,7 +6570,7 @@ class TestTileOp:
 
         np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
 
-    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dtype", REARRANGE_FLOAT_DTYPES)
     @pytest.mark.parametrize(
         "reps", [(2, 3), (1, 4), (3, 1)], ids=["2x3", "1x4", "3x1"]
     )
@@ -8874,6 +8921,23 @@ class TestLazyGCModelCompilation:
     selecting lazy (default) vs the opt-in precompile sweep.
     """
 
+    @pytest.fixture(autouse=True)
+    def _isolate_from_session_warm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Run these decision-logic tests free of any session-wide warm cache.
+
+        The shared conftest points ``MODULAR_DERIVED_PATH`` at a build-time warm
+        dir and this target sets ``MODULAR_EAGER_WARM_ADOPT_ASSERTED=1``, so the
+        import-time precompile force-loads it. This class instead unit-tests the
+        lazy/stamp/per-target decision logic against a mocked cache dir, so an
+        always-adoptable process-wide manifest would short-circuit the very path
+        under test. Clear both; tests that need a manifest set their own env (or
+        patch ``read_manifest``) in-body, after this fixture.
+        """
+        monkeypatch.delenv("MODULAR_DERIVED_PATH", raising=False)
+        monkeypatch.delenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", raising=False)
+
     def test_matmul_model_compiles_once_and_reuses(self) -> None:
         """A second call for the same (device, dtype) returns the cached model."""
         from max._interpreter_ops import matmul_gc
@@ -8903,6 +8967,27 @@ class TestLazyGCModelCompilation:
         with pytest.raises(KeyError, match="Unsupported unary op/device/dtype"):
             unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.int32)
 
+    def test_unary_model_canonicalizes_rmo_alias(self) -> None:
+        """An rmo (Mo-prefixed) unary op resolves like its mo form.
+
+        Canonicalizing the op name keys ``rmo.MoExpOp`` to the same cache
+        entry as ``mo.ExpOp``; without it a supported op misses and raises
+        KeyError (see gc_compile.canonical_op_name).
+        """
+        from max._core.dialects import mo, rmo
+        from max._interpreter_ops import unary_elementwise_gc as u
+
+        rmo_exp = rmo.MoExpOp
+        cpu = CPU()
+        assert u._graph_name(rmo_exp, cpu, DType.float32) == u._graph_name(
+            mo.ExpOp, cpu, DType.float32
+        )
+        assert u._is_supported(rmo_exp, cpu, DType.float32)
+        # Resolves to the same cached model rather than raising KeyError.
+        assert u.unary_model(rmo_exp, cpu, DType.float32) is u.unary_model(
+            mo.ExpOp, cpu, DType.float32
+        )
+
     def test_matmul_model_precompile_raises_on_miss(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -8911,7 +8996,7 @@ class TestLazyGCModelCompilation:
 
         # Opt into precompile mode and simulate a target the sweep did not cover.
         monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
-        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
+        monkeypatch.setattr(matmul_gc._FAMILY, "cache", {})
         with pytest.raises(KeyError, match="No pre-compiled matmul model"):
             matmul_gc.matmul_model(CPU(), DType.float32)
 
@@ -8924,7 +9009,7 @@ class TestLazyGCModelCompilation:
         monkeypatch.delenv(
             gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
         )
-        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
+        monkeypatch.setattr(matmul_gc._FAMILY, "cache", {})
         model = matmul_gc.matmul_model(CPU(), DType.float32)
         assert model is not None
 
@@ -8936,7 +9021,7 @@ class TestLazyGCModelCompilation:
         from max._interpreter_ops import gc_compile, unary_elementwise_gc
 
         monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
-        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", {})
+        monkeypatch.setattr(unary_elementwise_gc._FAMILY, "cache", {})
         # float32 Exp is supported (passes the _is_supported guard), so the miss
         # falls through to the precompile-mode hard error, not "Unsupported".
         with pytest.raises(KeyError, match="No pre-compiled unary model"):
@@ -8952,7 +9037,7 @@ class TestLazyGCModelCompilation:
         monkeypatch.delenv(
             gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
         )
-        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", {})
+        monkeypatch.setattr(unary_elementwise_gc._FAMILY, "cache", {})
         model = unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.float32)
         assert model is not None
 
@@ -8967,101 +9052,57 @@ class TestLazyGCModelCompilation:
         gc_compile.write_warm_stamp()
         assert gc_compile.warm_stamp_matches()
 
-    def test_matmul_model_adopts_warm_stamp(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    def test_gc_op_family_prefers_manifest_over_stamp(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A lazy miss with a matching stamp adopts via one batched sweep."""
-        from max._interpreter_ops import gc_compile, matmul_gc
+        """ensure_swept force-loads an adoptable manifest, skipping the stamp sweep."""
+        from max._interpreter_ops import gc_compile
+        from max.graph import Module
 
-        monkeypatch.delenv(
-            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        family = gc_compile.GCOpFamily(
+            name="test",
+            build_module=lambda: Module(),
+            build_module_for_device=lambda device: Module(),
+            sweep_devices=lambda: [],
         )
-        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
-        gc_compile.write_warm_stamp()
-
-        cache: dict[str, object] = {}
-        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", cache)
-        monkeypatch.setattr(matmul_gc, "_swept", False)
-        key = matmul_gc.CompilationTarget(
-            matmul_gc._GRAPH_BASE_NAME, CPU(), DType.float32
-        ).graph_name
         calls: list[str] = []
 
-        def fake_sweep() -> None:
-            calls.append("sweep")
-            cache[key] = object()
+        def fake_adopt(manifest: object) -> bool:
+            calls.append("manifest")
+            return True
 
-        monkeypatch.setattr(matmul_gc, "compile_matmul_sweep", fake_sweep)
+        monkeypatch.setattr(gc_compile, "read_manifest", lambda: {"x": 1})
+        monkeypatch.setattr(gc_compile, "manifest_adoptable", lambda m: True)
+        monkeypatch.setattr(family, "_adopt_from_manifest", fake_adopt)
         monkeypatch.setattr(
-            matmul_gc,
-            "_compile_matmul_target",
-            lambda target: calls.append("per_target"),
+            family, "compile_sweep", lambda: calls.append("stamp_sweep")
         )
-        matmul_gc.matmul_model(CPU(), DType.float32)
-        # Adopted the batched warm; did not fall back to per-target compile.
+        family.ensure_swept()
+        assert calls == ["manifest"]
+        assert family.swept
+
+    def test_gc_op_family_sweeps_on_warm_stamp(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no manifest but a matching warm stamp, ensure_swept batch-sweeps."""
+        from max._interpreter_ops import gc_compile
+        from max.graph import Module
+
+        family = gc_compile.GCOpFamily(
+            name="test",
+            build_module=lambda: Module(),
+            build_module_for_device=lambda device: Module(),
+            sweep_devices=lambda: [],
+        )
+        calls: list[str] = []
+        monkeypatch.setattr(gc_compile, "read_manifest", lambda: None)
+        monkeypatch.setattr(gc_compile, "warm_stamp_matches", lambda: True)
+        monkeypatch.setattr(
+            family, "compile_sweep", lambda: calls.append("sweep")
+        )
+        family.ensure_swept()
         assert calls == ["sweep"]
-
-    def test_matmul_model_no_stamp_compiles_per_target(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Without a stamp, a lazy miss compiles the single target."""
-        from max._interpreter_ops import gc_compile, matmul_gc
-
-        monkeypatch.delenv(
-            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
-        )
-        # Fresh cache dir with no stamp written.
-        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
-        monkeypatch.setattr(matmul_gc, "_MATMUL_MODEL_CACHE", {})
-        monkeypatch.setattr(matmul_gc, "_swept", False)
-        calls: list[str] = []
-
-        def fake_per_target(target: object) -> object:
-            calls.append("per_target")
-            return object()
-
-        monkeypatch.setattr(
-            matmul_gc, "compile_matmul_sweep", lambda: calls.append("sweep")
-        )
-        monkeypatch.setattr(
-            matmul_gc, "_compile_matmul_target", fake_per_target
-        )
-        matmul_gc.matmul_model(CPU(), DType.float32)
-        assert calls == ["per_target"]
-
-    def test_unary_model_adopts_warm_stamp(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A lazy unary miss with a matching stamp adopts via batched sweep."""
-        from max._core.dialects import mo
-        from max._interpreter_ops import gc_compile, unary_elementwise_gc
-
-        monkeypatch.delenv(
-            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
-        )
-        monkeypatch.setattr(gc_compile, "_cache_dir", lambda: tmp_path)
-        gc_compile.write_warm_stamp()
-
-        cache: dict[str, object] = {}
-        monkeypatch.setattr(unary_elementwise_gc, "_UNARY_MODEL_CACHE", cache)
-        monkeypatch.setattr(unary_elementwise_gc, "_swept", False)
-        key = unary_elementwise_gc._graph_name(mo.ExpOp, CPU(), DType.float32)
-        calls: list[str] = []
-
-        def fake_sweep() -> None:
-            calls.append("sweep")
-            cache[key] = object()
-
-        monkeypatch.setattr(
-            unary_elementwise_gc, "compile_unary_sweep", fake_sweep
-        )
-        monkeypatch.setattr(
-            unary_elementwise_gc,
-            "_compile_unary_target",
-            lambda op, dev, dt: calls.append("per_target"),
-        )
-        unary_elementwise_gc.unary_model(mo.ExpOp, CPU(), DType.float32)
-        assert calls == ["sweep"]
+        assert family.swept
 
     def test_cache_dir_from_derived_path(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -9086,3 +9127,299 @@ class TestLazyGCModelCompilation:
         sig = gc_compile._context_signature()
         assert sig == gc_compile._context_signature()
         assert "accelerators=" in sig and "cpu=" in sig
+
+    def test_manifest_roundtrip_and_adoptable(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
+        monkeypatch.setattr(
+            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
+        )
+        envelope = {
+            "host_arch": gc_compile.platform.machine(),
+            "gpu": {"arch": "sm_100a"},
+            "device_count": 2,
+            "toolchain": {"mode": "asserted"},
+        }
+        entries = [
+            {
+                "family": "matmul",
+                "device_class": "cpu",
+                "mef": "matmul_cpu.mef",
+            },
+            {
+                "family": "matmul",
+                "device_class": "gpu:0",
+                "mef": "matmul_slot_0.mef",
+            },
+        ]
+        assert gc_compile.write_manifest(envelope, entries)
+        m = gc_compile.read_manifest()
+        assert m is not None
+        assert gc_compile.manifest_adoptable(m)
+        assert (
+            gc_compile.manifest_entry_path(m, "matmul", "gpu:0")
+            == tmp_path / "matmul_slot_0.mef"
+        )
+        # An unknown (family, device_class) pair resolves to None.
+        assert gc_compile.manifest_entry_path(m, "unary", "cpu") is None
+
+    def test_manifest_not_adoptable_without_optin(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.delenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", raising=False)
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
+        monkeypatch.setattr(
+            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
+        )
+        gc_compile.write_manifest(
+            {
+                "gpu": {"arch": "sm_100a"},
+                "device_count": 2,
+                "toolchain": {"mode": "asserted"},
+            },
+            [],
+        )
+        manifest = gc_compile.read_manifest()
+        assert manifest is not None
+        assert not gc_compile.manifest_adoptable(manifest)
+
+    def test_manifest_device_count_is_adoption_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Per-slot MEFs make device_count a ceiling, not an equality: a warm
+        adopts iff it has at least as many slots as this box needs (which
+        force-loads slots 0..k-1); fewer means missing slots, so it can't."""
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 4)
+        monkeypatch.setattr(
+            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
+        )
+
+        def write(device_count: int) -> dict[str, object]:
+            gc_compile.write_manifest(
+                {
+                    "host_arch": gc_compile.platform.machine(),
+                    "gpu": {"arch": "sm_100a"},
+                    "device_count": device_count,
+                    "toolchain": {"mode": "asserted"},
+                },
+                [],
+            )
+            manifest = gc_compile.read_manifest()
+            assert manifest is not None
+            return manifest
+
+        # Warmed 2 < this box's 4: slots 2,3 were never compiled -> reject.
+        assert not gc_compile.manifest_adoptable(write(2))
+        # Warmed 8 >= this box's 4: force-loads slots 0..3, extras unused -> adopt.
+        assert gc_compile.manifest_adoptable(write(8))
+
+    def test_manifest_not_adoptable_on_host_arch_mismatch(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
+        monkeypatch.setattr(
+            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
+        )
+        # Count + GPU arch match, opt-in on, only the host arch differs (the
+        # per-slot CPU MEF embeds host-ELF kernels, so a foreign host can't
+        # adopt).
+        gc_compile.write_manifest(
+            {
+                "host_arch": "not-this-host",
+                "gpu": {"arch": "sm_100a"},
+                "device_count": 2,
+                "toolchain": {"mode": "asserted"},
+            },
+            [],
+        )
+        manifest = gc_compile.read_manifest()
+        assert manifest is not None
+        assert not gc_compile.manifest_adoptable(manifest)
+
+    def test_cpu_only_manifest_adoptable_when_no_accelerator(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A CPU-only manifest (no ``gpu`` key) adopts on a box with no
+        accelerator, there is no GPU slot to mismatch."""
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 0)
+        gc_compile.write_manifest(
+            {
+                "host_arch": gc_compile.platform.machine(),
+                "cpu_target": "triple=x86_64-unknown-linux-gnu;cpu=x86-64-v3",
+                "toolchain": {"mode": "asserted"},
+            },
+            [],
+        )
+        manifest = gc_compile.read_manifest()
+        assert manifest is not None
+        assert gc_compile.manifest_adoptable(manifest)
+
+    def test_cpu_only_manifest_not_adoptable_with_accelerator(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A CPU-only manifest is rejected on a box that has an accelerator: its
+        GPU slots were never warmed, so a GPU box must not adopt it."""
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
+        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
+        # The CPU-only branch returns before consulting
+        # accelerator_architecture_name; stub it anyway so a stray call can't
+        # raise on a CPU host.
+        monkeypatch.setattr(
+            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
+        )
+        gc_compile.write_manifest(
+            {
+                "host_arch": gc_compile.platform.machine(),
+                "cpu_target": "triple=x86_64-unknown-linux-gnu;cpu=x86-64-v3",
+                "toolchain": {"mode": "asserted"},
+            },
+            [],
+        )
+        manifest = gc_compile.read_manifest()
+        assert manifest is not None
+        assert not gc_compile.manifest_adoptable(manifest)
+
+    def test_read_manifest_absent_is_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from max._interpreter_ops import gc_compile
+
+        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
+        assert gc_compile.read_manifest() is None
+
+    def test_binary_model_compiles_once_and_reuses(self) -> None:
+        """A second call for the same binary target returns the cached model."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc
+
+        cpu = CPU()
+        first = elementwise_binary_gc.binary_model(mo.AddOp, cpu, DType.float32)
+        second = elementwise_binary_gc.binary_model(
+            mo.AddOp, cpu, DType.float32
+        )
+        assert first is second
+
+    def test_binary_comparison_model_compiles(self) -> None:
+        """A comparison op (bool output) compiles like an arithmetic one."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc
+
+        model = elementwise_binary_gc.binary_model(
+            mo.GreaterOp, CPU(), DType.float32
+        )
+        assert model is not None
+
+    def test_binary_model_unsupported_dtype_raises(self) -> None:
+        """Div sweeps floats only; an int dtype is outside the supported set."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc
+
+        with pytest.raises(
+            KeyError, match="Unsupported binary op/device/dtype"
+        ):
+            elementwise_binary_gc.binary_model(mo.DivOp, CPU(), DType.int32)
+
+    def test_binary_model_pow_integer_supported(self) -> None:
+        """Pow sweeps NUMERIC, so an int Pow compiles (not the Div case)."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc
+
+        model = elementwise_binary_gc.binary_model(mo.PowOp, CPU(), DType.int32)
+        assert model is not None
+
+    def test_binary_model_precompile_raises_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With =1, a supported-but-unswept target is a hard error."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc, gc_compile
+
+        monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
+        monkeypatch.setattr(elementwise_binary_gc._FAMILY, "cache", {})
+        # float32 Add is supported (passes the _is_supported guard), so the miss
+        # falls through to the precompile-mode hard error, not "Unsupported".
+        with pytest.raises(KeyError, match="No pre-compiled binary model"):
+            elementwise_binary_gc.binary_model(mo.AddOp, CPU(), DType.float32)
+
+    def test_binary_model_lazy_default_compiles_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """By default (env var unset) a supported miss compiles lazily."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import elementwise_binary_gc, gc_compile
+
+        monkeypatch.delenv(
+            gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
+        )
+        monkeypatch.setattr(elementwise_binary_gc._FAMILY, "cache", {})
+        model = elementwise_binary_gc.binary_model(
+            mo.AddOp, CPU(), DType.float32
+        )
+        assert model is not None
+
+    def test_shape_rearrange_precompile_raises_on_miss(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With =1, a supported-but-unswept rearrange target is a hard error."""
+        from max._core.dialects import mo
+        from max._interpreter_ops import gc_compile, shape_rearrange_gc
+
+        monkeypatch.setenv(gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, "1")
+        monkeypatch.setattr(shape_rearrange_gc._FAMILY, "cache", {})
+        # uint32 concat passes the _is_supported guard, so the miss falls
+        # through to the precompile-mode hard error, not "Unsupported".
+        with pytest.raises(
+            KeyError, match="No pre-compiled shape-rearrange model"
+        ):
+            shape_rearrange_gc.model(mo.ConcatOp, CPU(), DType.uint32)
+
+    def test_uint_view_dtype_rejects_sub_byte(self) -> None:
+        """Byte-aligned dtypes bit-cast to a same-width uint; sub-byte raises."""
+        from max._interpreter_ops import shape_rearrange_gc
+
+        assert shape_rearrange_gc.uint_view_dtype(DType.float16) == DType.uint16
+        assert shape_rearrange_gc.uint_view_dtype(DType.float64) == DType.uint64
+        assert shape_rearrange_gc.uint_view_dtype(DType.bool) == DType.uint8
+        assert (
+            shape_rearrange_gc.uint_view_dtype(DType.float8_e4m3fn)
+            == DType.uint8
+        )
+        with pytest.raises(NotImplementedError, match="sub-byte"):
+            shape_rearrange_gc.uint_view_dtype(DType.float4_e2m1fn)
+
+    def test_tile_rank_over_cap_raises(self) -> None:
+        """Rank beyond an op's cap raises cleanly, not a kernel comptime assert.
+
+        Uses the same KeyError "Unsupported" signal as an unsupported dtype.
+        """
+        from max._core.dialects import mo
+        from max._interpreter_ops import shape_rearrange_gc
+
+        # tile's GC kernel supports up to rank 4; rank 5 must be rejected here.
+        with pytest.raises(
+            KeyError, match="Unsupported shape-rearrange rank 5"
+        ):
+            shape_rearrange_gc.model(mo.TileOp, CPU(), DType.uint8, rank=5)

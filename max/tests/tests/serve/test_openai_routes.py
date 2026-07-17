@@ -46,6 +46,8 @@ from max.pipelines.lib import (
 )
 from max.pipelines.lib.tokenizer import open_image
 from max.pipelines.modeling.types import (
+    ParsedToolCallDelta,
+    ParsedToolResponse,
     PipelineTask,
     RequestID,
     TextGenerationRequestTool,
@@ -75,6 +77,7 @@ from max.serve.router.openai_routes import (
     _resolve_grammar_constraints,
     get_tool_parser,
     openai_create_chat_completion,
+    openai_parse_chat_completion_request,
 )
 from max.serve.schemas.openai import (
     ChatCompletionLogprobs,
@@ -898,6 +901,7 @@ def _make_disconnect_request(
             pipeline=pipeline,
             pipeline_config=pipeline_config,
             settings=Settings(api_types=[APIType.OPENAI], use_heartbeat=False),
+            grammar_validator=None,
         )
     )
     request.body = AsyncMock(return_value=body)
@@ -1175,6 +1179,36 @@ async def test_reasoning_not_promoted_on_length(
     message = response.choices[0].message
     assert message.reasoning == "The weather is 22F and Sunny."
     assert not message.content
+
+
+@pytest.mark.asyncio
+async def test_stop_sequence_not_found_leaves_message_intact(
+    patch_openai_metrics: None,
+) -> None:
+    """Regression: a stop_sequence recorded but not found in the joined
+    message (idx == -1, e.g. already stripped by the streaming coalescer's
+    stop truncation) must not slice off the last real character via a bare
+    ``[:-1]``. The non-streaming trim is guarded with ``if idx >= 0``."""
+    mock_pipeline = Mock()
+    mock_pipeline.model_name = "test-model"
+    mock_pipeline.all_tokens = AsyncMock(
+        return_value=[
+            TokenGeneratorOutput(
+                status=GenerationStatus.END_OF_SEQUENCE,
+                decoded_tokens="hello world",
+                stop_sequence="STOP",
+                token_count=2,
+                prompt_token_count=1,
+            )
+        ]
+    )
+
+    response = await OpenAIChatResponseGenerator(mock_pipeline).complete(
+        [_make_mock_request()]
+    )
+    message = response.choices[0].message
+    assert message.content == "hello world"
+    assert response.choices[0].finish_reason == "stop"
 
 
 async def _run_stream(
@@ -1769,6 +1803,369 @@ async def test_openai_chat_stream_kimi_tool_prefix_maps_to_delta_content(
                 all_arguments_parts.append(tc.function.arguments)
                 assert intro not in tc.function.arguments
     assert "".join(all_arguments_parts) == '{"location": "Boston"}'
+
+
+# ============================================================================
+# Regression tests: empty delta packets during tool-call generation
+#
+# While the parser captures/suppresses structural tool-call tokens it returns
+# ``[]`` ("consumed this chunk, nothing to emit yet"). The stream must skip
+# those chunks instead of pushing a delta with no content, no reasoning, and
+# no tool-call fragment (an "empty packet").
+# ============================================================================
+
+
+class _ScriptedToolParser:
+    """ToolParser stub that replays a pre-scripted list of ``parse_delta`` results.
+
+    Each ``parse_delta`` call pops the next scripted result, letting a test
+    drive the exact streaming shape — in particular the ``[]`` "consumed but
+    nothing to emit" state that previously produced empty packets. Any calls
+    beyond the script return ``None`` (plain passthrough).
+    """
+
+    def __init__(self, results: list[list[ParsedToolCallDelta] | None]) -> None:
+        self._results = list(results)
+        self.reset_calls = 0
+        self.parse_delta_calls: list[str] = []
+
+    def parse_complete(self, response: str) -> ParsedToolResponse:
+        return ParsedToolResponse()
+
+    def parse_delta(self, delta: str) -> list[ParsedToolCallDelta] | None:
+        self.parse_delta_calls.append(delta)
+        if self._results:
+            return self._results.pop(0)
+        return None
+
+    def reset(self) -> None:
+        self.reset_calls += 1
+
+
+async def _run_stream_with_parser(
+    chunks: list[TokenGeneratorOutput],
+    parser: Any,
+    *,
+    stream_options: ChatCompletionStreamOptionsParam | None = None,
+) -> list[CreateChatCompletionStreamResponse]:
+    """Stream with a caller-supplied tool parser and parse the emitted chunks."""
+    mock_pipeline = Mock()
+    mock_pipeline.model_name = "test-model"
+
+    async def mock_next_token_chunk(request: Any) -> Any:
+        async def _gen() -> Any:
+            for chunk in chunks:
+                yield chunk
+
+        return _gen()
+
+    mock_pipeline.next_token_chunk = mock_next_token_chunk
+    mock_request = _make_mock_request()
+
+    generator = OpenAIChatResponseGenerator(
+        mock_pipeline,
+        parser=parser,
+        parse_tool_calls=True,
+        stream_options=stream_options,
+    )
+    return [
+        CreateChatCompletionStreamResponse.model_validate_json(p)
+        async for p in await generator.stream(mock_request)
+        if isinstance(p, str) and p != "[DONE]"
+    ]
+
+
+def _delta_is_empty(response: CreateChatCompletionStreamResponse) -> bool:
+    """True when a streamed chunk carries a choice delta with nothing useful.
+
+    A delta always pins ``role="assistant"``; "empty" means no content, no
+    reasoning, no tool-call fragment, and no terminal ``finish_reason``.
+    """
+    if not response.choices:
+        # A usage-only final chunk (choices == []) is not an empty packet.
+        return False
+    choice = response.choices[0]
+    delta = choice.delta
+    reasoning = getattr(delta, "reasoning", None) or getattr(
+        delta, "reasoning_content", None
+    )
+    return (
+        not delta.content
+        and not delta.tool_calls
+        and not reasoning
+        and choice.finish_reason is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_stream_suppresses_empty_tool_call_packets(
+    patch_openai_metrics: None,
+) -> None:
+    """Hidden tool-call tokens must not surface as empty delta packets.
+
+    Chunk timeline (parser return in parens):
+      1. real assistant prose        -> [content="Sure! "]
+      2. structural token, hidden    -> []   (must be skipped)
+      3. structural token, hidden    -> []   (must be skipped)
+      4. first tool-call fragment     -> [id + name]
+      5. argument bytes, terminal     -> [arguments]
+    """
+    parser = _ScriptedToolParser(
+        [
+            [ParsedToolCallDelta(index=0, content="Sure! ")],
+            [],
+            [],
+            [ParsedToolCallDelta(index=0, id="call_abc", name="get_weather")],
+            [ParsedToolCallDelta(index=0, arguments='{"location": "Boston"}')],
+        ]
+    )
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="Sure! ",
+            token_count=1,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_calls_section_begin|>",
+            token_count=2,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_call_begin|>",
+            token_count=3,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="functions.get_weather:0",
+            token_count=4,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens='{"location": "Boston"}',
+            token_count=5,
+            prompt_token_count=5,
+        ),
+    ]
+
+    responses = await _run_stream_with_parser(chunks, parser)
+
+    # No empty packet ever reaches the client.
+    assert not any(_delta_is_empty(r) for r in responses), (
+        "empty delta packet leaked to the client: "
+        f"{[r.model_dump(exclude_none=True) for r in responses]}"
+    )
+
+    # Exactly three deltas: prose, tool-call header, tool-call arguments.
+    assert len(responses) == 3
+
+    assert responses[0].choices[0].delta.content == "Sure! "
+    assert responses[0].choices[0].delta.tool_calls is None
+
+    header = responses[1].choices[0].delta.tool_calls
+    assert header is not None and len(header) == 1
+    assert header[0].id == "call_abc"
+    assert header[0].function is not None
+    assert header[0].function.name == "get_weather"
+    assert responses[1].choices[0].delta.content is None
+    assert responses[1].choices[0].finish_reason is None
+
+    args = responses[2].choices[0].delta.tool_calls
+    assert args is not None and len(args) == 1
+    assert args[0].function is not None
+    assert args[0].function.arguments == '{"location": "Boston"}'
+    assert responses[2].choices[0].finish_reason == "tool_calls"
+
+    # The suppressed chunks were still consumed by the parser.
+    assert parser.parse_delta_calls == [
+        "Sure! ",
+        "<|tool_calls_section_begin|>",
+        "<|tool_call_begin|>",
+        "functions.get_weather:0",
+        '{"location": "Boston"}',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_stream_suppressed_packets_still_counted(
+    patch_openai_metrics: None,
+) -> None:
+    """Skipping empty packets must not drop their tokens from usage totals."""
+    parser = _ScriptedToolParser(
+        [
+            [],  # hidden structural token
+            [],  # hidden structural token
+            [
+                ParsedToolCallDelta(
+                    index=0, id="call_1", name="f", arguments="{}"
+                )
+            ],
+        ]
+    )
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_calls_section_begin|>",
+            token_count=2,
+            prompt_token_count=7,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_call_begin|>",
+            token_count=3,
+            prompt_token_count=7,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="functions.f:0<|tool_call_argument_begin|>{}",
+            token_count=5,
+            prompt_token_count=7,
+        ),
+    ]
+
+    responses = await _run_stream_with_parser(
+        chunks, parser, stream_options={"include_usage": True}
+    )
+
+    assert not any(_delta_is_empty(r) for r in responses)
+
+    # The two hidden chunks are suppressed; only the tool-call delta and the
+    # final usage-only chunk remain.
+    content_chunks = [r for r in responses if r.choices]
+    usage_chunks = [r for r in responses if not r.choices]
+    assert len(content_chunks) == 1
+    assert len(usage_chunks) == 1
+
+    usage = usage_chunks[0].usage
+    assert usage is not None
+    # completion_tokens must include the suppressed chunks (2 + 3 + 5 = 10).
+    assert usage.completion_tokens == 10
+    assert usage.prompt_tokens == 7
+    assert usage.total_tokens == 17
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_stream_no_empty_packet_when_only_content_suppressed(
+    patch_openai_metrics: None,
+) -> None:
+    """A lone ``[]`` chunk (parser consumed everything) yields no packet at all."""
+    parser = _ScriptedToolParser([[]])
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_calls_section_begin|>",
+            token_count=1,
+            prompt_token_count=3,
+        ),
+    ]
+
+    responses = await _run_stream_with_parser(chunks, parser)
+
+    # The single chunk is terminal, so it still needs to carry finish_reason —
+    # but it is not an "empty" packet because finish_reason is set.
+    assert len(responses) == 1
+    assert not _delta_is_empty(responses[0])
+    assert responses[0].choices[0].finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_stream_kimi_section_marker_alone_no_empty_packet(
+    patch_openai_metrics: None,
+) -> None:
+    """Integration: real KimiToolParser, section marker arriving alone.
+
+    When ``<|tool_calls_section_begin|>`` lands in its own chunk the parser
+    returns ``[]`` (in-section, nothing to emit). That chunk must be dropped,
+    not forwarded as an empty delta.
+    """
+    chunks = [
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens="<|tool_calls_section_begin|>",
+            token_count=1,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.ACTIVE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens=(
+                "<|tool_call_begin|>functions.get_weather:0"
+                "<|tool_call_argument_begin|>"
+            ),
+            token_count=1,
+            prompt_token_count=5,
+        ),
+        TokenGeneratorOutput(
+            status=GenerationStatus.END_OF_SEQUENCE,
+            decoded_reasoning_tokens=None,
+            reasoning_token_count=0,
+            decoded_tokens=(
+                '{"location": "Boston"}'
+                "<|tool_call_end|><|tool_calls_section_end|>"
+            ),
+            token_count=1,
+            prompt_token_count=5,
+        ),
+    ]
+
+    responses = await _run_stream_with_parser(chunks, KimiToolParser())
+
+    assert not any(_delta_is_empty(r) for r in responses), (
+        "empty delta packet leaked during Kimi tool-call streaming: "
+        f"{[r.model_dump(exclude_none=True) for r in responses]}"
+    )
+
+    # The tool name and arguments still stream through intact.
+    names = [
+        tc.function.name
+        for r in responses
+        if r.choices
+        for tc in (r.choices[0].delta.tool_calls or [])
+        if tc.function is not None and tc.function.name is not None
+    ]
+    assert names == ["get_weather"]
+
+    argument_parts = [
+        tc.function.arguments
+        for r in responses
+        if r.choices
+        for tc in (r.choices[0].delta.tool_calls or [])
+        if tc.function is not None and tc.function.arguments is not None
+    ]
+    assert "".join(argument_parts) == '{"location": "Boston"}'
+
+    # A terminal finish_reason of tool_calls is present exactly once.
+    finish_reasons = [
+        r.choices[0].finish_reason
+        for r in responses
+        if r.choices and r.choices[0].finish_reason is not None
+    ]
+    assert finish_reasons == ["tool_calls"]
 
 
 # ============================================================================
@@ -2567,3 +2964,101 @@ async def test_non_stream_reasoning_content_wire_serialization(
     assert message_off["reasoning"] == "thinking"
     # The unselected field is null-not-absent on this path (same behavior as above).
     assert message_off["reasoning_content"] is None
+
+
+@pytest.mark.asyncio
+async def test_parse_chat_completion_accepts_replayed_reasoning_key() -> None:
+    """Assistant turns replaying MAX's own ``reasoning`` key carry CoT forward.
+
+    By default (``emit_reasoning_content=False``) MAX emits prior-turn
+    reasoning under the ``reasoning`` JSON key. A client that echoes MAX's
+    assistant output back into a follow-up request therefore sends
+    ``reasoning`` (not ``reasoning_content``). The parser must read both so
+    the chain-of-thought is not silently dropped before the chat template
+    runs. Mirrors the agentic replay: assistant reasoning + tool_calls
+    followed by the tool reply.
+    """
+    settings = Settings(api_types=[APIType.OPENAI], use_heartbeat=False)
+    request = CreateChatCompletionRequest.model_validate(
+        {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "user", "content": "What is the weather?"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning": "The user wants weather; call the tool.",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": "{}",
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": "sunny",
+                },
+            ],
+        }
+    )
+
+    parsed = await openai_parse_chat_completion_request(
+        request, wrap_content=False, settings=settings
+    )
+
+    assistant = parsed.messages[1]
+    assert assistant.role == "assistant"
+    assert (
+        assistant.reasoning_content == "The user wants weather; call the tool."
+    )
+
+
+@pytest.mark.asyncio
+async def test_parse_chat_completion_reasoning_content_key_and_precedence() -> (
+    None
+):
+    """``reasoning_content`` still works and wins when both keys are present."""
+    settings = Settings(api_types=[APIType.OPENAI], use_heartbeat=False)
+
+    # ``reasoning_content`` alone (no regression).
+    request = CreateChatCompletionRequest.model_validate(
+        {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "hi",
+                    "reasoning_content": "explicit content key",
+                },
+            ],
+        }
+    )
+    parsed = await openai_parse_chat_completion_request(
+        request, wrap_content=False, settings=settings
+    )
+    assert parsed.messages[0].reasoning_content == "explicit content key"
+
+    # Both keys present: ``reasoning_content`` takes precedence (``or`` semantics).
+    request_both = CreateChatCompletionRequest.model_validate(
+        {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "hi",
+                    "reasoning_content": "wins",
+                    "reasoning": "loses",
+                },
+            ],
+        }
+    )
+    parsed_both = await openai_parse_chat_completion_request(
+        request_both, wrap_content=False, settings=settings
+    )
+    assert parsed_both.messages[0].reasoning_content == "wins"

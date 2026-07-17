@@ -25,6 +25,9 @@ from . import (
     dialects as dialects,
 )
 from . import (
+    dlpack as dlpack,
+)
+from . import (
     driver as driver,
 )
 from . import (
@@ -35,6 +38,9 @@ from . import (
 )
 from . import (
     graph as graph,
+)
+from . import (
+    metrics as metrics,
 )
 from . import (
     mlrt as mlrt,

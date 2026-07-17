@@ -166,55 +166,6 @@ def small_MN_gemms[
 
 
 @always_inline
-def try_small_MN_gemms_bf16[
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    pdl_level: PDLLevel = PDLLevel(),
-](
-    c: TileTensor[mut=True, ...],
-    a: TileTensor,
-    b: TileTensor,
-    ctx: DeviceContext,
-) raises -> Int:
-    """Try to dispatch via the bf16 SmallMNGemms tuning table.
-
-    Returns `DISPATCH_HIT` if the (N, K) matches an entry and the runtime `m`
-    falls into one of its `[M, M_end)` buckets; otherwise returns
-    `DISPATCH_MISS` without launching anything. Shared between the M=1 GEMV
-    path (`dispatch_gemv`) and the main bf16 dispatch
-    (`matmul_dispatch_sm100_bf16`) so the table is consulted once, in one
-    place.
-    """
-    comptime static_N = c.static_shape[1]
-    comptime static_K = a.static_shape[1]
-
-    comptime small_MN_gemms_table = Table(
-        _get_tuning_list_small_MN_gemms_bf16(), "small_MN_gemms_configs"
-    )
-
-    @always_inline
-    def small_MN_gemms_rule(x: TuningConfigSmallMNGemms) {} -> Bool:
-        return x.K == static_K and x.N == static_N
-
-    comptime small_MN_gemms_configs = small_MN_gemms_table.find(
-        rule=small_MN_gemms_rule
-    )
-
-    comptime if small_MN_gemms_configs:
-        var m = Int(c.dim[0]())
-        comptime for config in small_MN_gemms_configs:
-            if m >= config.M and m < config.M_end:
-                logger.info("Dispatching to small_MN_gemms: ", config)
-                small_MN_gemms[
-                    config=config,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    pdl_level=pdl_level,
-                ](c, a, b, ctx)
-                return DISPATCH_HIT
-
-    return DISPATCH_MISS
-
-
-@always_inline
 def dispatch_gemv[
     c_type: DType,
     a_type: DType,
@@ -237,10 +188,7 @@ def dispatch_gemv[
 
     For most M=1 shapes GEMV is preferred, but for certain large (N, K)
     combinations the SM100 GEMM kernel achieves higher throughput. Add new
-    (N, K) pairs to `SM100_GEMV_SHAPES` as they are identified through
-    benchmarking, or to the SmallMNGemms tuning table when the shape needs an
-    explicit cp-async / split-K config (the bf16 branch consults that table
-    via `matmul_dispatch_sm100_bf16` before falling back to the heuristic).
+    (N, K) pairs to `SM100_GEMV_SHAPES` as they are identified through benchmarking.
 
     N=1 always routes to GEMV: SM100 TMA requires N * sizeof(c_type) % 16 == 0.
     """
@@ -248,19 +196,6 @@ def dispatch_gemv[
     comptime static_K = a.static_shape[1]
 
     comptime static_NK = Index(static_N, static_K)
-
-    # Shared with `matmul_dispatch_sm100_bf16`: bf16 shapes that register a
-    # SmallMNGemms config (cp-async swapAB for Kimi-style decode, the
-    # small-N decode family, etc.) want the tuning-table kernel even at M=1.
-    # On MISS this returns DISPATCH_MISS and we fall through to the GEMV path
-    # below.
-    comptime if a_type == DType.bfloat16 and c_type in (DType.bfloat16,):
-        var status = try_small_MN_gemms_bf16[
-            elementwise_lambda_fn=elementwise_lambda_wrapper,
-            pdl_level=pdl_level,
-        ](c, a, b, ctx)
-        if status:
-            return
 
     # (N, K) shapes where SM100 GEMM outperforms GEMV kernel.
     comptime SM100_GEMV_SHAPES = [
@@ -595,12 +530,37 @@ def matmul_dispatch_sm100_fp8[
     var m = Int(c.dim[0]())
 
     if m <= 128:
-        return heuristic_and_outliers_dispatch[
+        var status = heuristic_and_outliers_dispatch[
             transpose_b=transpose_b,
             elementwise_lambda_fn=elementwise_lambda_fn,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             pdl_level=pdl_level,
         ](c, a, b, ctx)
+        if status:
+            return status
+
+        # Untuned small-M (N, K): unlike the fp8-OUTPUT case,
+        # `select_and_launch_sm100_config` has no never-miss for bf16 output, so
+        # it DISPATCH_MISSes when `choose_config` yields a config absent from the
+        # sampled config set. That happens for the small-M decode band
+        # (Nemotron c=32, m in {25..31}: `choose_config` picks mma_n=16/cta=1,
+        # which no build_sm100_matmul_configs grid sample -- stepped by 8, with m
+        # passed exact -- ever produces), which would fall back to vendor
+        # cuBLASLt. Mirror the fp8-output never-miss above: launch the guaranteed
+        # -valid default SM100 config on MAX's own tcgen05 Mojo FP8 kernel. The
+        # static-scale compute epilogue rides through as
+        # `elementwise_compute_lambda_fn`.
+        comptime default_config = default_matmul_config_bf16_fp8[
+            a_type, b_type, c_type, transpose_b
+        ]()
+        _matmul_dispatch_sm100[
+            transpose_b=transpose_b,
+            config=default_config,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            pdl_level=pdl_level,
+        ](c, a, b, ctx)
+        return DISPATCH_HIT
 
     @parameter
     @always_inline("nodebug")
@@ -689,7 +649,22 @@ def matmul_dispatch_sm100_fp8[
     # block_swizzle_size = 0,
     # ](c, a, b, ctx)
     # return DISPATCH_HIT
-    return DISPATCH_MISS
+
+    # Untuned (N, K): fall through to the existing heuristic config-set
+    # dispatch (the same tail the bf16 dispatcher uses at
+    # `matmul_dispatch_sm100_bf16`) instead of DISPATCH_MISSing to vendor
+    # cuBLASLt. `choose_config` + `build_sm100_matmul_configs` cover every
+    # prefill m on MAX's own tcgen05 Mojo FP8 kernel (verified host-side:
+    # 0 miss over m in [129, 8192] for the served FP8 (N, K) shapes), so this
+    # keeps FP8 prefill on the Mojo kernel rather than the closed vendor BLAS.
+    # The static-scale compute epilogue rides through as
+    # `elementwise_compute_lambda_fn`.
+    return sm100_heuristic_and_outliers_dispatch[
+        transpose_b=transpose_b,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+        elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+        pdl_level=pdl_level,
+    ](c, a, b, ctx)
 
 
 def _sm100_outlier_configs[
@@ -965,19 +940,59 @@ def matmul_dispatch_sm100_bf16[
         ](c, a, b, ctx)
         return DISPATCH_HIT
 
-    var small_mn_status = try_small_MN_gemms_bf16[
-        elementwise_lambda_fn=elementwise_lambda_wrapper,
-        pdl_level=pdl_level,
-    ](c, a, b, ctx)
-    if small_mn_status:
-        return DISPATCH_HIT
+    comptime small_MN_gemms_table = Table(
+        _get_tuning_list_small_MN_gemms_bf16(), "small_MN_gemms_configs"
+    )
 
-    return sm100_heuristic_and_outliers_dispatch[
+    @always_inline
+    def small_MN_gemms_rule(x: TuningConfigSmallMNGemms) {} -> Bool:
+        return x.K == static_K and x.N == static_N
+
+    comptime small_MN_gemms_configs = small_MN_gemms_table.find(
+        rule=small_MN_gemms_rule
+    )
+
+    comptime if small_MN_gemms_configs and c_type in (DType.bfloat16,):
+        var m = Int(c.dim[0]())
+        comptime for config in small_MN_gemms_configs:
+            if m >= config.M and m < config.M_end:
+                logger.info("Dispatching to small_MN_gemms: ", config)
+                small_MN_gemms[
+                    config=config,
+                    elementwise_lambda_fn=elementwise_lambda_wrapper,
+                    pdl_level=pdl_level,
+                ](c, a, b, ctx)
+                return DISPATCH_HIT
+
+    var status = sm100_heuristic_and_outliers_dispatch[
         transpose_b=transpose_b,
         elementwise_lambda_fn=elementwise_lambda_fn,
         elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
         pdl_level=pdl_level,
     ](c, a, b, ctx)
+    if status:
+        return status
+
+    # Untuned small-M (N, K): `select_and_launch_sm100_config`'s never-miss is
+    # fp8-OUTPUT-only (config.mojo, `c_type == float8_e4m3fn` guard), so for
+    # bf16 output it DISPATCH_MISSes when `choose_config` yields a config absent
+    # from the sampled set. That happens for the small-M decode band (m in
+    # {25..31}: `choose_config` picks mma_n=16/cta=1, which no
+    # build_sm100_matmul_configs grid sample -- stepped by 8, with m passed
+    # exact -- ever produces), which would fall back to vendor cuBLASLt. Mirror
+    # the fp8-band fix in `matmul_dispatch_sm100_fp8`: launch the guaranteed
+    # -valid default SM100 config on MAX's own tcgen05 Mojo kernel.
+    comptime default_config = default_matmul_config_bf16_fp8[
+        a_type, b_type, c_type, transpose_b
+    ]()
+    _matmul_dispatch_sm100[
+        transpose_b=transpose_b,
+        config=default_config,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+        elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+        pdl_level=pdl_level,
+    ](c, a, b, ctx)
+    return DISPATCH_HIT
 
 
 def matmul_dispatch_sm100_fp32[

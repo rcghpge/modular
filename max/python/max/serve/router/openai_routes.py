@@ -21,7 +21,7 @@ import re
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from json.decoder import JSONDecodeError
 from random import randint
@@ -48,6 +48,9 @@ from max.pipelines.context import (
 )
 from max.pipelines.context.exceptions import InputError
 from max.pipelines.lib import PipelineConfig
+from max.pipelines.lib.pipeline_variants.structured_output_backend import (
+    GrammarValidator,
+)
 from max.pipelines.lib.tool_parsing import create as create_tool_parser
 from max.pipelines.lib.tool_parsing import (
     maybe_name_from_tool,
@@ -58,6 +61,7 @@ from max.pipelines.lora import LoRAOperation, LoRARequest, LoRAStatus
 from max.pipelines.modeling.types import (
     ImageContentPart,
     MessageContent,
+    ParsedToolCallDelta,
     ParsedToolResponse,
     PipelineTokenizer,
     RequestID,
@@ -86,7 +90,9 @@ from max.serve.pipelines.llm import (
     TokenGeneratorPipeline,
 )
 from max.serve.router._image_resolution import (
+    MediaRef,
     decode_and_validate_images,
+    make_media_ref,
     resolve_image_from_url,
 )
 from max.serve.schemas.openai import (
@@ -141,7 +147,7 @@ from openai.types.chat.chat_completion_stream_options_param import (
 )
 from openai.types.create_embedding_response import Usage as EmbeddingUsage
 from PIL import Image
-from pydantic import AnyUrl, BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from starlette.datastructures import State
 
@@ -155,13 +161,80 @@ _CLIENT_DISCONNECTED_STATUS_CODE = 499
 # Default tool-name charset (OpenAI's); a parser may widen it via VALID_TOOL_NAME_RE.
 _DEFAULT_VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
-# OpenAI's 64-char cap; checked by length so it holds even when a parser widens the charset.
-_MAX_TOOL_NAME_LEN = 64
+# Tool-name length cap; checked by length so it holds even when a parser widens the charset.
+_MAX_TOOL_NAME_LEN = 1024
 
 # Standard OpenAI message roles; a tokenizer may allow more via ``extra_chat_roles``.
 _STANDARD_CHAT_ROLES = frozenset(
     {"developer", "system", "user", "assistant", "tool", "function"}
 )
+
+
+@dataclass
+class _MergedToolCall:
+    """Accumulates one streamed chunk's tool-call deltas for a single index."""
+
+    index: int
+    id: str | None = None
+    name: str | None = None
+    arguments: list[str] = field(default_factory=list)
+
+    def to_chunk(self) -> ChoiceDeltaToolCall:
+        args = "".join(self.arguments)
+        if self.id is not None:
+            # A call's first frame: match OpenAI's shape with the name and an
+            # ``arguments`` string (``""`` when no args landed in this chunk).
+            function: ChoiceDeltaToolCallFunction | None = (
+                ChoiceDeltaToolCallFunction(name=self.name, arguments=args)
+            )
+        elif self.name is not None or self.arguments:
+            function = ChoiceDeltaToolCallFunction(
+                name=self.name, arguments=args if self.arguments else None
+            )
+        else:
+            function = None
+        return ChoiceDeltaToolCall(
+            index=self.index,
+            id=self.id,
+            type="function" if self.id is not None else None,
+            function=function,
+        )
+
+
+def _merge_tool_call_deltas(
+    tool_deltas: Sequence[ParsedToolCallDelta],
+) -> list[ChoiceDeltaToolCall]:
+    """Coalesces streamed tool-call deltas that share an index into one entry.
+
+    A single ``parse_delta`` return commonly holds a name/id delta *and* the
+    first arguments delta for the same call, because ``STREAM_MIN_CHUNK_TOKENS``
+    batching lands both in one decoded-token chunk. OpenAI's streaming contract
+    emits exactly one ``tool_calls`` entry per index per chunk (the first frame
+    is ``{index, id, type, function: {name, arguments}}``), so emitting two
+    entries that share an index makes strict clients mis-merge them into a
+    duplicated tool call (CENG-768). Merge per index — preserving first-
+    appearance order — taking ``id``/``type`` and ``name`` from their bearing
+    deltas and concatenating ``arguments`` in delta order.
+    """
+    merged: dict[int, _MergedToolCall] = {}
+    for delta in tool_deltas:
+        # A field is "present" when it is not None, so an empty string counts
+        # as present-but-empty. A delta whose id, name, and arguments are all
+        # None carries no tool-call fragment (e.g. a content-only delta) and
+        # contributes nothing.
+        if delta.id is None and delta.name is None and delta.arguments is None:
+            continue
+        acc = merged.get(delta.index)
+        if acc is None:
+            acc = _MergedToolCall(index=delta.index)
+            merged[delta.index] = acc
+        if delta.id is not None:
+            acc.id = delta.id
+        if delta.name is not None:
+            acc.name = delta.name
+        if delta.arguments is not None:
+            acc.arguments.append(delta.arguments)
+    return [acc.to_chunk() for acc in merged.values()]
 
 
 class _ClientDisconnectedError(RuntimeError):
@@ -423,6 +496,12 @@ class OpenAIChatResponseGenerator(
         # Reset parser state for new streaming session
         if self.parse_tool_calls:
             self.parser.reset()
+            # Thread per-tool parameter schemas into the parser, enabling
+            # schema-driven incremental argument streaming for XML/tag-based
+            # tool parsers that opt in. No-op for parsers that don't override
+            # it.
+            if self._tool_schemas:
+                self.parser.set_streaming_tool_schemas(self._tool_schemas)
             self._stream_tool_names.clear()
             self._stream_tool_args.clear()
 
@@ -487,19 +566,13 @@ class OpenAIChatResponseGenerator(
                                 ).append(delta.arguments)
                             if delta.id or delta.name or delta.arguments:
                                 has_emitted_tool_calls = True
-                                tool_call_chunks.append(
-                                    ChoiceDeltaToolCall(
-                                        index=delta.index,
-                                        id=delta.id,
-                                        type="function" if delta.id else None,
-                                        function=ChoiceDeltaToolCallFunction(
-                                            name=delta.name,
-                                            arguments=delta.arguments,
-                                        )
-                                        if delta.name or delta.arguments
-                                        else None,
-                                    )
-                                )
+
+                        # Emit one tool_calls entry per index for this chunk.
+                        # A single parse_delta return often carries the name/id
+                        # delta and the first args delta for the same call, so
+                        # coalesce them; two same-index entries in one chunk
+                        # break strict OpenAI clients (CENG-768).
+                        tool_call_chunks = _merge_tool_call_deltas(tool_deltas)
 
                         # Always assign a string (possibly "") so that
                         # merged_stream_content is non-None and prevents
@@ -558,6 +631,24 @@ class OpenAIChatResponseGenerator(
                         allow_none=True,
                         has_tool_calls=has_emitted_tool_calls,
                     )
+                    # While tokens are captured and hidden during tool-call
+                    # generation, the resolved delta can be empty: the parser
+                    # consumed the chunk (merged_stream_content is not None) but
+                    # produced no content, no tool-call fragment, and no
+                    # reasoning. Emitting it would push an empty packet to the
+                    # client. Skip it unless the chunk carries something the
+                    # client needs — a terminal finish_reason or log
+                    # probabilities.
+                    if (
+                        not content
+                        and not reasoning
+                        and not tool_call_chunks
+                        and finish_reason is None
+                        and logprobs_response is None
+                    ):
+                        n_reasoning_tokens += chunk.reasoning_token_count or 0
+                        n_tokens += chunk.token_count
+                        continue
                     reasoning_kwargs = {self._reasoning_field: reasoning}
                     choices = [
                         ChatCompletionStreamResponseChoice(
@@ -759,7 +850,8 @@ class OpenAIChatResponseGenerator(
             finish_reason: Literal["stop", "length"]
             if len(stop_sequence) > 0:
                 idx = response_message.find(stop_sequence[0])
-                response_message = response_message[:idx]
+                if idx >= 0:
+                    response_message = response_message[:idx]
                 finish_reason = "stop"
             else:
                 finish_reason = get_finish_reason_from_status(
@@ -1174,8 +1266,8 @@ async def openai_parse_chat_completion_request(
                 )
 
     messages: list[TextGenerationRequestMessage] = []
-    image_refs: list[AnyUrl] = []
-    video_refs: list[AnyUrl] = []
+    image_refs: list[MediaRef] = []
+    video_refs: list[MediaRef] = []
     for m in completion_request.messages:
         # ``CreateChatCompletionRequest.messages`` carries OpenAI's
         # ``ChatCompletionMessageParam`` TypedDicts (plus a MAX-specific
@@ -1188,7 +1280,18 @@ async def openai_parse_chat_completion_request(
             else None
         )
         tool_call_id = m.get("tool_call_id")
-        reasoning_content = m.get("reasoning_content")
+        # A client replaying a prior assistant turn echoes back the
+        # reasoning under whichever key MAX emitted it: ``reasoning_content``
+        # when ``emit_reasoning_content`` is set, otherwise ``reasoning``
+        # (the default, see ``build_chat_completion_response``). Accept both
+        # so replayed chain-of-thought is not silently dropped before the
+        # chat template runs (prior-turn CoT carry across tool boundaries).
+        reasoning_content_raw = m.get("reasoning_content") or m.get("reasoning")
+        reasoning_content = (
+            reasoning_content_raw
+            if isinstance(reasoning_content_raw, str)
+            else None
+        )
 
         if isinstance(content, list):
             # ``TextGenerationRequestMessage`` accepts plain dicts here and
@@ -1215,7 +1318,7 @@ async def openai_parse_chat_completion_request(
                 part_type = content_part.get("type")
                 if part_type == "image_url":
                     image_url = content_part["image_url"]
-                    image_refs.append(AnyUrl(image_url["url"]))
+                    image_refs.append(make_media_ref(image_url["url"]))
                     if wrap_content:
                         # Carry the optional sizing hint onto the placeholder.
                         message_content.append(
@@ -1232,7 +1335,7 @@ async def openai_parse_chat_completion_request(
                         message_content.append(dict(content_part))
                 elif part_type == "video_url":
                     video_url = content_part["video_url"]
-                    video_refs.append(AnyUrl(video_url["url"]))
+                    video_refs.append(make_media_ref(video_url["url"]))
                     if wrap_content:
                         # Carry the optional sampling/sizing hints onto the
                         # placeholder.
@@ -1531,6 +1634,7 @@ async def openai_create_chat_completion(
         response_format = _create_response_format(
             completion_request.response_format,
             enable_response_format_schema=pipeline_config.sampling.enable_structured_output,
+            grammar_validator=request.app.state.grammar_validator,
         )
 
         # For architectures with a grammar-based tool parser (e.g., Kimi),
@@ -1605,6 +1709,18 @@ async def openai_create_chat_completion(
                     tools_forced,
                     enforce_from_start,
                 )
+
+        # Admission-time validation. Rejects a tool-call grammar the active
+        # backend cannot compile with an InputError (HTTP 400) here.
+        grammar_validator = request.app.state.grammar_validator
+        if (
+            grammar_validator is not None
+            and response_format is not None
+            and response_format.type == "grammar"
+            and response_format.grammar is not None
+        ):
+            grammar_validator.check_tool_grammar(response_format.grammar)
+
         stream_options = None
         if completion_request.stream:
             stream_options = completion_request.stream_options
@@ -1873,6 +1989,7 @@ def _validate_json_schema(json_schema: dict[str, Any]) -> None:
 def _create_response_format(
     response_format: ResponseFormat | None,
     enable_response_format_schema: bool,
+    grammar_validator: GrammarValidator | None = None,
 ) -> TextGenerationResponseFormat | None:
     """Convert OpenAI response format to TextGenerationResponseFormat.
 
@@ -1900,8 +2017,8 @@ def _create_response_format(
 
     if response_type == "json_object":
         # For json_object mode (any valid JSON), use a permissive schema that
-        # accepts any JSON object. llguidance's grammar_from_json_schema supports
-        # this - an empty or minimal schema means "any valid JSON".
+        # accepts any JSON object; a minimal ``{"type": "object"}`` means "any
+        # valid JSON object" to both grammar backends.
         json_schema = {"type": "object"}
         # Normalize type to json_schema for the internal representation since both
         # json_object and json_schema use grammar-based constrained decoding.
@@ -1922,14 +2039,20 @@ def _create_response_format(
         elif schema is not None:
             json_schema = dict(schema)
 
-    # Validate the schema early to return 400 instead of crashing the model worker.
-    _validate_json_schema(json_schema)
-
     # Default a missing root ``type`` to ``"object"`` before the schema
     # reaches the grammar backend. An untyped root compiles to a grammar that
     # permits a bare unbounded top-level value, which lets a looping model run
     # to ``max_length`` (the runaway-output incident).
     json_schema = normalize_response_format_schema(json_schema)
+
+    # Validate against the active backend, which compiles the schema and checks
+    # grammar validity (rejecting what the worker can't compile with an InputError).
+    # Fall back to the backend-agnostic check when there is no validator.
+    if json_schema:
+        if grammar_validator is not None:
+            grammar_validator.check_json_schema(json.dumps(json_schema))
+        else:
+            _validate_json_schema(json_schema)
 
     # Enforce grammar from the first token only when there is an actual
     # schema to enforce. The json_schema can also be used to create a grammar,
