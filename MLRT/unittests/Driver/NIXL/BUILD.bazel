@@ -15,6 +15,7 @@ modular_cc_library(
     hdrs = ["TestCommon.h"],
     visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
     deps = [
+        "//Support:NixlPluginDir",
         "@llvm-project//llvm:Support",
         "@llvm-project//third-party/unittest:gtest",
         "@nixl_upstream//:nixl_api_headers",

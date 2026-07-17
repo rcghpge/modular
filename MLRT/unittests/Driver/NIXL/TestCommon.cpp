@@ -6,6 +6,7 @@
 
 #include "MLRT/unittests/Driver/NIXL/TestCommon.h"
 
+#include "Support/NixlPluginDir.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
 #include <chrono>
@@ -22,25 +23,37 @@ std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
   return os << nixlEnumStrings::statusStr(status);
 }
 
+// Applies the per-vendor flavor resolution (Support/NixlPluginDir.h) to a
+// candidate @nixl_upstream root and sets NIXL_PLUGIN_DIR when a flavor
+// resolves. Returns true when the candidate root existed (whether or not a
+// flavor was found), ending the search.
+static bool setPluginDirFromRepoRoot(const std::filesystem::path &root) {
+  std::error_code ec;
+  if (!std::filesystem::exists(root, ec))
+    return false;
+  if (auto vendorDir = M::resolveNixlPluginDir(root))
+    setenv("NIXL_PLUGIN_DIR", vendorDir->c_str(), /*overwrite=*/0);
+  return true;
+}
+
 void configureNixlPluginDir() {
   // If the caller already set NIXL_PLUGIN_DIR, respect it.
   if (std::getenv("NIXL_PLUGIN_DIR"))
     return;
 
-  // Pre-load CUDA/NVML/UCX driver libraries with RTLD_LAZY|RTLD_GLOBAL so
-  // their symbols are visible when nixlPluginManager calls
+  // Pre-load the GPU runtime libraries with RTLD_LAZY|RTLD_GLOBAL so their
+  // symbols are visible when nixlPluginManager calls
   //   dlopen(libplugin_UCX.so, RTLD_NOW)
-  // libplugin_UCX.so (cuda variant) is built with -Wl,-z,undefs — it has
-  // unresolved references to CUDA driver (libcuda.so) and NVML
-  // (libnvidia-ml.so) symbols. RTLD_NOW at dlopen time requires ALL symbols
-  // to be resolvable from currently loaded libraries. Pre-loading these with
+  // libplugin_UCX.so is built with -Wl,-z,undefs — it has unresolved
+  // references to CUDA driver/NVML symbols (cuda flavor) or HSA symbols
+  // (rocm flavors). RTLD_NOW at dlopen time requires ALL symbols to be
+  // resolvable from currently loaded libraries. Pre-loading these with
   // RTLD_GLOBAL makes them available. Failures are non-fatal: on CPU-only
-  // or non-NVIDIA machines the plugin simply won't load.
+  // machines the plugin simply won't load.
   const char *gpuLibs[] = {
-      "libcuda.so.1",
-      "libcuda.so",
-      "libnvidia-ml.so.1",
-      "libnvidia-ml.so",
+      "libcuda.so.1",          "libcuda.so",
+      "libnvidia-ml.so.1",     "libnvidia-ml.so",
+      "libhsa-runtime64.so.1", "libhsa-runtime64.so",
   };
   for (const char *lib : gpuLibs) {
     dlopen(lib, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE);
@@ -48,16 +61,14 @@ void configureNixlPluginDir() {
 
   // The upstream nixl plugin manager looks for libplugin_UCX.so and
   // libplugin_LIBFABRIC.so in NIXL_PLUGIN_DIR. Under Bazel tests the plugins
-  // are runfiles at <runfiles_root>/+http_archive+nixl_upstream/.
+  // are runfiles in per-vendor subdirectories of
+  // <runfiles_root>/+http_archive+nixl_upstream/.
   //
   // Strategy 1: Bazel sets TEST_SRCDIR to the runfiles root. Use it directly.
   if (const char *testSrcDir = std::getenv("TEST_SRCDIR")) {
-    std::string candidate =
-        std::string(testSrcDir) + "/+http_archive+nixl_upstream";
-    if (std::filesystem::exists(candidate)) {
-      setenv("NIXL_PLUGIN_DIR", candidate.c_str(), /*overwrite=*/0);
+    if (setPluginDirFromRepoRoot(std::filesystem::path(testSrcDir) /
+                                 "+http_archive+nixl_upstream"))
       return;
-    }
   }
 
   // Strategy 2: Walk up the directory tree from the binary looking for the
@@ -70,19 +81,14 @@ void configureNixlPluginDir() {
 
   auto path = exe.parent_path();
   while (!path.empty() && path != path.parent_path()) {
-    auto candidate = path / "+http_archive+nixl_upstream";
-    if (std::filesystem::exists(candidate)) {
-      setenv("NIXL_PLUGIN_DIR", candidate.c_str(), /*overwrite=*/0);
+    if (setPluginDirFromRepoRoot(path / "+http_archive+nixl_upstream"))
       return;
-    }
     path = path.parent_path();
   }
 
   // Strategy 3: classic <binary>.runfiles layout (non-test-wrapper use).
-  auto runfilesDir = exe.string() + ".runfiles/+http_archive+nixl_upstream";
-  if (std::filesystem::exists(runfilesDir)) {
-    setenv("NIXL_PLUGIN_DIR", runfilesDir.c_str(), /*overwrite=*/0);
-  }
+  setPluginDirFromRepoRoot(exe.string() +
+                           ".runfiles/+http_archive+nixl_upstream");
 }
 
 namespace {
