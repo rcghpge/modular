@@ -3620,6 +3620,21 @@ void Composite::BundledAllReduceAddRMSNormQuantFP8Op::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// MegaFFNNvfp4Op
+//===----------------------------------------------------------------------===//
+
+void Composite::MegaFFNNvfp4Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  // The fused kernel writes the persistent `arrival_count` pool-slot buffer in
+  // place (cross-CTA scheduler hand-off). Surfacing the Write keeps the op from
+  // being treated as side-effect-free (it is no longer `Pure`) and lets the
+  // buffer/chain machinery sequence the in-place mutation. Mirrors
+  // `BundledAllReduceAddRMSNormQuantFP8Op::getEffects` above.
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getArrivalCountMutable());
+}
+
+//===----------------------------------------------------------------------===//
 // DistributedScatterOp
 //===----------------------------------------------------------------------===//
 

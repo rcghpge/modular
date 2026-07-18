@@ -4222,6 +4222,198 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// MegaFFN NVFP4 Fusion Pattern
+//===----------------------------------------------------------------------===//
+//
+// Collapses the two-op NVFP4 MoE FFN chain
+//
+//   %down_in, %silu_scales =
+//       mo.composite.grouped_matmul_swiglu_nvfp4(...)        // L1: gate-up
+//   %out = mo.composite.grouped_matmul_block_scaled(
+//       %down_in, %down_w, %silu_scales, ...)                // L2: down
+//       (anchor)
+//
+// into a single `mo.composite.mega_ffn_nvfp4`. Anchored on the down op (L2);
+// the gate-up op (L1) is reached as the producer of L2's activations. The
+// intermediate (`down_in`, `silu_scales`) is consumed only by L2 and is
+// dropped.
+//
+// SM100/B200 only — arch-gated internally via DeviceInfoMapping (mirroring
+// MatmulAddPattern) and additionally behind the `mega-ffn-enable` driver pass
+// option (see populateFusionMegaFFNPatterns and PatternFusion). The
+// host-contract invariants
+// the kernel relies on (front-packed active experts, ids[e] >= 0 => tokens > 0,
+// device-only routing buffers) are upstream EP-gate guarantees: the pattern
+// does not — and cannot statically — prove them. It only fires when the
+// producer is the matching gate-up composite, which is the path that already
+// satisfies them.
+struct MegaFFNNvfp4Pattern
+    : public MO::DeviceAwareRewritePattern<
+          OpRewritePattern, MO::Composite::GroupedMatmulBlockScaledOp> {
+  // Hard scheduler limit: the kernel reads ids[lane] and ids[lane + 32] across
+  // the scheduler warp's 32 lanes, so the active-expert array is at most 64.
+  static constexpr int64_t kMaxNumExperts = 64;
+
+  MegaFFNNvfp4Pattern(MLIRContext *ctx, MO::DeviceInfoMapping deviceInfoMapping)
+      : DeviceAwareRewritePattern(ctx, 2),
+        _deviceInfoMapping(std::move(deviceInfoMapping)) {}
+
+private:
+  MO::DeviceInfoMapping _deviceInfoMapping;
+
+public:
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::Composite::GroupedMatmulBlockScaledOp downOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Fuse only on GPU.
+    auto resultTy = cast<MO::TensorType>(downOp.getOutput().getType());
+    DeviceRefAttr device = resultTy.getDeviceRef();
+    if (!device || device.getLabel() != M::kGPULabel)
+      return rewriter.notifyMatchFailure(downOp, "mega_ffn fusion only on GPU");
+
+    // Only apply for SM100 devices; the fused kernel is sm_100a-only.
+    DeviceInfoAttr deviceInfo = _deviceInfoMapping.get(device);
+    if (deviceInfo.getArch() != "sm_100a")
+      return rewriter.notifyMatchFailure(
+          downOp, "mega_ffn fusion only applies to NVIDIA sm_100a");
+
+    // The down op's activations must come from a gate-up SwiGLU+quant op (L1).
+    auto l1 = downOp.getHiddenStates()
+                  .getDefiningOp<MO::Composite::GroupedMatmulSwigluNvfp4Op>();
+    if (!l1)
+      return rewriter.notifyMatchFailure(
+          downOp, "down activations not from grouped_matmul_swiglu_nvfp4");
+
+    // The two outputs of L1 must be paired into L2: down_in == L1#0 (packed
+    // activations) and the down a_scales == L1#1 (SwiGLU scale tile). Guards
+    // against an unrelated block-scaled GMM that reads only one L1 output.
+    if (downOp.getHiddenStates() != l1.getCPacked())
+      return rewriter.notifyMatchFailure(
+          downOp, "down activations are not L1's packed output");
+    if (downOp.getAScales() != l1.getCSwigluScales())
+      return rewriter.notifyMatchFailure(
+          downOp, "down a_scales are not L1's SwiGLU scale output");
+
+    // Both L1 outputs must feed only this down op; otherwise fusing would have
+    // to re-materialize the intermediate.
+    if (!l1.getCPacked().hasOneUse() || !l1.getCSwigluScales().hasOneUse())
+      return rewriter.notifyMatchFailure(
+          downOp, "L1 intermediate has more than one use");
+
+    // Both legs must be driven by the same EP routing tensors so the fused
+    // kernel's single scheduler can enumerate both legs' tiles. (num_active_
+    // experts and expert_scales are per-leg and legitimately differ.)
+    if (downOp.getExpertStartIndices() != l1.getExpertStartIndices() ||
+        downOp.getExpertIds() != l1.getExpertIds() ||
+        downOp.getAScaleOffsets() != l1.getAScaleOffsets() ||
+        downOp.getEstimatedTotalM() != l1.getEstimatedTotalM())
+      return rewriter.notifyMatchFailure(
+          downOp, "L1 and L2 are driven by different routing tensors");
+
+    // num_experts is the leading dim of the rank-3 down weight; bail if it is
+    // statically known to exceed the scheduler's hard limit.
+    int64_t numExperts =
+        cast<MO::TensorType>(downOp.getWeight().getType()).getIntDim(0);
+    if (numExperts != mlir::ShapedType::kDynamic && numExperts > kMaxNumExperts)
+      return rewriter.notifyMatchFailure(downOp, "num_experts exceeds 64");
+
+    // Output must be bf16 (the fused kernel writes bf16 hidden states).
+    if (!resultTy.getElementType().isBF16())
+      return rewriter.notifyMatchFailure(downOp,
+                                         "mega_ffn output must be bfloat16");
+
+    // Device-consistency check across both fused ops.
+    if (!rewriter.addOps({l1, downOp}))
+      return rewriter.notifyMatchFailure(
+          downOp, "matched ops have inconsistent devices");
+
+    Location loc = downOp.getLoc();
+    MLIRContext *ctx = downOp.getContext();
+
+    // ---- Mint the persistent `arrival_count` pool-slot buffer. ----
+    //
+    // The kernel uses cross-CTA pool-slot arrival counters (strided by
+    // ATOMIC_PAD=32) to hand off between the two legs. Under the registration's
+    // `POST_SELF_CLEAN_UP` policy every touched slot is reset in band, so a
+    // buffer that starts all-zero stays all-zero at every launch boundary. We
+    // mint it here as a PERSISTENT buffer via `mo.buffer.create` with a zero
+    // `initValue`: the runtime allocates and zeroes it ONCE at model load and
+    // reuses it across executions -- no per-launch alloc/memset, and no
+    // in-graph fill that would race under ExecInvariantCodeMotion or break
+    // under stream capture.
+    //
+    // Sized to a static upper bound on `total_m_blocks` (sum over experts of
+    // `ceildiv(tokens_e, MMA_N)`, which the kernel indexes in
+    // `[0, total_m_blocks)`): with the smallest decode tile MMA_N=8 and at most
+    // `numExperts` partial blocks, `ceildiv(M, 8) + numExperts + 1` bounds it.
+    // Over-allocation is safe (untouched slots are never read). This needs a
+    // static token bound, so bail if either M or numExperts is dynamic (the
+    // >64 guard above only rejects a statically-known oversize). The EP path
+    // that emits these composites uses statically-shaped activation buffers.
+    int64_t m =
+        cast<MO::TensorType>(l1.getHiddenStates().getType()).getIntDim(0);
+    if (m == mlir::ShapedType::kDynamic ||
+        numExperts == mlir::ShapedType::kDynamic)
+      return rewriter.notifyMatchFailure(
+          downOp, "mega_ffn needs a static token count and num_experts to size "
+                  "the arrival_count buffer");
+
+    constexpr int64_t kAtomicPad = 32;
+    constexpr int64_t kMinTokenBlock = 8;
+    int64_t arrivalCountSize =
+        ((m + kMinTokenBlock - 1) / kMinTokenBlock + numExperts + 1) *
+        kAtomicPad;
+
+    // uint32 element dtype, taken from a routing tensor (all ui32).
+    DType u32 = cast<MO::TensorType>(downOp.getExpertStartIndices().getType())
+                    .getDtype();
+    auto arrivalTy = MO::BufferType::get(
+        MO::TensorType::get(ctx, {arrivalCountSize}, u32, device));
+    Value arrivalBuf = rewriter.create<MO::BufferCreateOp>(
+        loc, arrivalTy,
+        /*initValue=*/
+        mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), 0));
+    // Fresh chain: the buffer is minted here and touched only by the fused op,
+    // so there is no prior mutation to sequence against.
+    Value inChain = rewriter.create<MO::ChainCreateOp>(loc, ValueRange{});
+
+    auto megaFFN = rewriter.create<MO::Composite::MegaFFNNvfp4Op>(
+        loc, /*output=*/resultTy, /*outChain=*/MO::ChainType::get(ctx),
+        /*hidden_states=*/l1.getHiddenStates(),
+        /*gate_up_weight=*/l1.getWeight(),
+        /*gate_up_a_scales=*/l1.getAScales(),
+        /*gate_up_b_scales=*/l1.getBScales(),
+        /*down_weight=*/downOp.getWeight(),
+        /*down_b_scales=*/downOp.getBScales(),
+        /*expert_start_indices=*/downOp.getExpertStartIndices(),
+        /*expert_ids=*/downOp.getExpertIds(),
+        /*a_scale_offsets=*/downOp.getAScaleOffsets(),
+        /*gate_up_expert_scales=*/l1.getExpertScales(),
+        /*down_expert_scales=*/downOp.getExpertScales(),
+        /*c_input_scales=*/l1.getCInputScales(),
+        /*estimated_total_m=*/downOp.getEstimatedTotalM(),
+        /*gate_up_num_active_experts=*/l1.getNumActiveExperts(),
+        /*down_num_active_experts=*/downOp.getNumActiveExperts(),
+        /*arrival_count=*/arrivalBuf,
+        /*inChain=*/inChain);
+
+    // Forward the clamped-SwiGLU (`swigluoai`) activation selector from L1; the
+    // kernel supplies the canonical alpha/limit constants when it is set.
+    if (auto clampAttr = l1->getAttr("clamp_activation"))
+      megaFFN->setAttr("clamp_activation", clampAttr);
+    else
+      megaFFN->setAttr("clamp_activation", rewriter.getBoolAttr(false));
+
+    // downOp has a single result; the fused op's outChain is unused (the buffer
+    // is touched only here).
+    rewriter.replaceOp(downOp, megaFFN.getOutput());
+    // L1 is now dead (single-use intermediate, checked above).
+    rewriter.eraseOp(l1);
+    return mlir::success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // GEMV + Partial RMS Norm Fusion Pattern
 //===----------------------------------------------------------------------===//
 //
@@ -4665,6 +4857,11 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
 void populateFusionMatmulAddPatterns(const DeviceInfoMapping &deviceInfoMapping,
                                      mlir::RewritePatternSet &patterns) {
   patterns.add<MatmulAddPattern>(patterns.getContext(), deviceInfoMapping);
+}
+
+void populateFusionMegaFFNPatterns(const DeviceInfoMapping &deviceInfoMapping,
+                                   mlir::RewritePatternSet &patterns) {
+  patterns.add<MegaFFNNvfp4Pattern>(patterns.getContext(), deviceInfoMapping);
 }
 
 } // namespace M::MO

@@ -98,6 +98,13 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
       splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
       MO::populateFusionMatmulAddPatterns(deviceInfoMapping,
                                           splitToSlicePatterns);
+      // MegaFFNNvfp4Pattern produces mo.composite.mega_ffn_nvfp4, whose kernel
+      // is MAX-only and SM100-only. The pattern arch-gates itself via
+      // deviceInfoMapping; it is additionally behind a pass option so OSS
+      // builds (where the fused kernel is unregistered) can disable it.
+      if (enableMegaFFNPattern.getValue())
+        MO::populateFusionMegaFFNPatterns(deviceInfoMapping,
+                                          splitToSlicePatterns);
       if (failed(
               applyPatternsGreedily(graphOp, std::move(splitToSlicePatterns))))
         return signalPassFailure();

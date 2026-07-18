@@ -86,6 +86,10 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
     Option<"mhaAllowInternalReshape", "mha-allow-internal-reshape", "bool", /*default=*/"true",
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
+    Option<"enableMegaFFNPattern", "mega-ffn-enable", "bool", /*default=*/"true",
+            "Enable the NVFP4 MegaFFN fusion (grouped_matmul_swiglu_nvfp4 + "
+            "grouped_matmul_block_scaled -> mega_ffn_nvfp4). Only fires on SM100 "
+            "targets; the kernel is MAX-only, so this is disabled in OSS builds.">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If the graph operation does not already have a device specified, "
            "use this device for pattern fusion passes that depend on the target device.">,

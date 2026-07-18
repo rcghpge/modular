@@ -63,4 +63,11 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
 void populateFusionMatmulAddPatterns(const DeviceInfoMapping &deviceInfoMapping,
                                      mlir::RewritePatternSet &patterns);
 
+/// Adds `MegaFFNNvfp4Pattern`, which fuses the two-op NVFP4 MoE FFN composite
+/// chain into a single `mo.composite.mega_ffn_nvfp4`. The pattern arch-gates
+/// itself to SM100-class GPUs via `deviceInfoMapping`; the driver pass
+/// additionally guards it behind the `mega-ffn-enable` pass option.
+void populateFusionMegaFFNPatterns(const DeviceInfoMapping &deviceInfoMapping,
+                                   mlir::RewritePatternSet &patterns);
+
 } // namespace M::MO

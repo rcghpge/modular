@@ -536,4 +536,177 @@ def MOComposite_DistributedMatmulReduceScatterSumOp : MO_DistributedOp<"composit
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
+//===----------------------------------------------------------------------===//
+//
+// First-class composite versions of the two grouped-matmul custom ops that make
+// up an NVFP4 MoE FFN: the gate-up GEMM + SwiGLU + bf16->nvfp4 quant (L1), and
+// the down GEMM (L2). These are emitted directly by the model graph (in place of
+// the `mo.composite.grouped_matmul_swiglu_nvfp4` /
+// `mo.composite.grouped_matmul_block_scaled` `mo.custom` ops) so the MegaFFN
+// fusion below can match typed ops with named
+// operands instead of string-keyed customs. Each lowers 1:1 to the same kernel,
+// re-registered under the composite op name.
+//
+// Routing operands (`expert_start_indices`, `expert_ids`, `a_scale_offsets`) and
+// the expert-usage scalars are produced on-device by the EP gate; the kernel's
+// host contract (front-packed active experts, `num_experts <= 64`,
+// `ids[e] >= 0 => tokens[e] > 0`) is an upstream guarantee, not verified here.
+
+def MOComposite_GroupedMatmulSwigluNvfp4Op
+    : MO_CompositeOp<"grouped_matmul_swiglu_nvfp4", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<[
+    "estimated_total_m", "num_active_experts", "swiglu_alpha",
+    "swiglu_limit"]>,
+]> {
+  let summary = "Grouped gate-up GEMM + SwiGLU + bf16->nvfp4 quantize (MoE L1)";
+  let description = [{
+    The gate-up leg of an NVFP4 MoE FFN: a per-expert (ragged) grouped matmul of
+    the packed-NVFP4 activations by the gate-up weights, followed by a SwiGLU
+    activation and a bf16->nvfp4 quantization of the result. Returns the packed
+    NVFP4 activations for the down leg (`c_packed`) and their per-expert SwiGLU
+    scale tile (`c_swiglu_scales`).
+
+    `swiglu_alpha`/`swiglu_limit` are host scalars parameterizing the clamped
+    SwiGLU (swigluoai) activation, enabled by the `clamp_activation` attribute.
+
+    Composite form of the `mo.composite.grouped_matmul_swiglu_nvfp4` kernel;
+    lowers 1:1.
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$hidden_states,
+    MO_Tensor:$weight,
+    MO_Tensor:$a_scales,
+    MO_Tensor:$b_scales,
+    MO_Tensor:$expert_start_indices,
+    MO_Tensor:$expert_ids,
+    MO_Tensor:$a_scale_offsets,
+    MO_Tensor:$expert_scales,
+    MO_Tensor:$c_input_scales,
+    MO_Tensor:$estimated_total_m,
+    MO_Tensor:$num_active_experts,
+    MO_Tensor:$swiglu_alpha,
+    MO_Tensor:$swiglu_limit,
+    DefaultValuedAttr<BoolAttr, "false">:$clamp_activation
+  );
+  let results = (outs MO_Tensor:$c_packed, MO_Tensor:$c_swiglu_scales);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOComposite_GroupedMatmulBlockScaledOp
+    : MO_CompositeOp<"grouped_matmul_block_scaled", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["estimated_total_m", "num_active_experts"]>,
+]> {
+  let summary = "Grouped block-scaled down GEMM (MoE L2)";
+  let description = [{
+    The down leg of an NVFP4 MoE FFN: a per-expert (ragged) block-scaled grouped
+    matmul of the packed-NVFP4 activations by the down weights, producing the
+    bf16 hidden-state output.
+
+    Composite form of the `mo.composite.grouped_matmul_block_scaled` kernel;
+    lowers 1:1.
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$hidden_states,
+    MO_Tensor:$weight,
+    MO_Tensor:$a_scales,
+    MO_Tensor:$b_scales,
+    MO_Tensor:$expert_start_indices,
+    MO_Tensor:$expert_ids,
+    MO_Tensor:$a_scale_offsets,
+    MO_Tensor:$expert_scales,
+    MO_Tensor:$estimated_total_m,
+    MO_Tensor:$num_active_experts
+  );
+  let results = (outs MO_Tensor:$output);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MegaFFNNvfp4Op
+//===----------------------------------------------------------------------===//
+
+def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
+  // NOT `Pure`: the op writes the persistent `arrival_count` pool-slot buffer
+  // in place (cross-CTA scheduler hand-off), so it carries a memory effect and
+  // threads a chain. The `MO_MutableOpInterface` + chain interface methods
+  // auto-derive from the `inChain`/`outChain`-named operand/result (see
+  // MOInterfaces.td default impls); `MemoryEffectsOpInterface::getEffects` is
+  // hand-written in MOOps.cpp (a Write on `arrival_count`).
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_SingleDeviceWithHostOperands<[
+    "estimated_total_m", "gate_up_num_active_experts",
+    "down_num_active_experts"]>,
+]> {
+  let summary = "Fused NVFP4 MoE FFN (gate-up + SwiGLU + quant + down) in one "
+                "kernel";
+  let description = [{
+    Single-kernel NVFP4 MoE FFN: collapses the gate-up GEMM + SwiGLU +
+    bf16->nvfp4 quantize leg (`mo.composite.grouped_matmul_swiglu_nvfp4`) and the
+    block-scaled down GEMM leg (`mo.composite.grouped_matmul_block_scaled`) into
+    one launch with an in-kernel cross-CTA hand-off between the two legs.
+    Produced by the MegaFFN fusion pattern; the intermediate packed activations
+    and SwiGLU scales are kept entirely on-chip and are not graph values.
+
+    B200 (SM100) only. The fusion pattern fires on SM100 targets when enabled;
+    on any other target the unfused two-composite chain is preserved.
+
+    Operands are the union of the two legs' inputs (minus the dead intermediate):
+    the gate-up leg's `hidden_states`/`weight`/`a_scales`/`b_scales`/
+    `expert_scales`/`c_input_scales`, the down leg's `weight`/`b_scales`/
+    `expert_scales`, the shared routing tensors (`expert_start_indices`,
+    `expert_ids`, `a_scale_offsets`, `estimated_total_m`), and each leg's
+    `num_active_experts`.
+
+    The `arrival_count` buffer holds the cross-CTA pool-slot arrival counters
+    the kernel uses to hand off between the two legs. It is a PERSISTENT device
+    buffer minted once by the fusion pattern (`mo.buffer.create` with a zero
+    `initValue`) and initialized once at model load; under the kernel's
+    `POST_SELF_CLEAN_UP` policy every touched slot is reset in band, so the
+    buffer is all-zero at every launch boundary (correct under single-stream
+    serialization). `inChain`/`outChain` sequence the in-place write (required
+    for any op with an `mo.buffer` operand; the chain is GC-internal and is
+    dropped before the kernel-arg binding, so `arrival_count` binds to the
+    registration's `MutableInputTensor` arg).
+
+    The clamped-SwiGLU (`swigluoai`) activation is selected by the discardable
+    `clamp_activation` attribute; the kernel supplies the canonical swigluoai
+    alpha/limit constants when it is set.
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$hidden_states,
+    MO_Tensor:$gate_up_weight,
+    MO_Tensor:$gate_up_a_scales,
+    MO_Tensor:$gate_up_b_scales,
+    MO_Tensor:$down_weight,
+    MO_Tensor:$down_b_scales,
+    MO_Tensor:$expert_start_indices,
+    MO_Tensor:$expert_ids,
+    MO_Tensor:$a_scale_offsets,
+    MO_Tensor:$gate_up_expert_scales,
+    MO_Tensor:$down_expert_scales,
+    MO_Tensor:$c_input_scales,
+    MO_Tensor:$estimated_total_m,
+    MO_Tensor:$gate_up_num_active_experts,
+    MO_Tensor:$down_num_active_experts,
+    MO_Buffer:$arrival_count,
+    MO_Chain:$inChain
+  );
+  let results = (outs MO_Tensor:$output, MO_Chain:$outChain);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOCOMPOSITEOPS_TD
