@@ -121,7 +121,7 @@ struct TraitMultiAccessMarkersNonFused:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: Some[Input & LoadAccess & StoreAccess], ctx: DeviceContext,) raises:
+    ](z: Some[Input & LoadAccess & StoreAccess], ctx: DeviceContext) raises:
         pass
 
 

@@ -323,7 +323,7 @@ struct TraitInplaceIncrement:
     @staticmethod
     def execute[
         target: StaticString,
-    ](x: Some[MutableInput & DenseTensor], ctx: DeviceContext,) raises:
+    ](x: Some[MutableInput & DenseTensor], ctx: DeviceContext) raises:
         comptime assert conforms_to(type_of(x), MutableInput)
         comptime assert conforms_to(type_of(x), TileTensorable)
         var xt = to_tile_tensor(x)
@@ -733,7 +733,7 @@ struct PrintTensorSpecOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext) raises:
         print("x.shape =", x._static_shape_tuple)
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
@@ -757,7 +757,7 @@ struct PrintTensor:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, input: InputTensor, ctx: DeviceContext,) raises:
+    ](outp: OutputTensor, input: InputTensor, ctx: DeviceContext) raises:
         print(input)
 
         @parameter
@@ -786,7 +786,7 @@ struct PrintTensorSpecViewOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
+    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext) raises:
         Self.print_spec(x)
 
         @parameter
@@ -1575,7 +1575,7 @@ struct CustomOpWithCustomParameterShapeFunc:
 )
 def custom_op_with_custom_parameter_shape_func_shape[
     test_flag: Int
-](input_tensor: InputTensor,) -> IndexList[input_tensor.rank]:
+](input_tensor: InputTensor) -> IndexList[input_tensor.rank]:
     return input_tensor.shape()
 
 
@@ -1608,7 +1608,7 @@ struct ToTensorWrapper:
     @staticmethod
     def execute[
         spec: StaticTensorSpec[dtype=DType.float32, rank=2, ...], //
-    ](tensor: InputTensor[static_spec=spec],) -> TensorWrapper:
+    ](tensor: InputTensor[static_spec=spec]) -> TensorWrapper:
         var shape = tensor.shape()
         var strides = tensor.strides()
         var shape_coord = Coord[Int64, Int64]()
