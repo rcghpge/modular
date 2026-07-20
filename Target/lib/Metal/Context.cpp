@@ -93,6 +93,55 @@ M_driver_status_t M_driver_context::copyIntraDeviceSync(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_context::setMemorySync(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
+                                                  uint64_t size,
+                                                  uint8_t value) {
+  if (size > 0)
+    memset(static_cast<char *>(dst->mBuffer->contents()) + dstOffset, value,
+           size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::fillSync(M_driver_memory_t dst,
+                                             uint64_t dstOffset, uint64_t size,
+                                             uint64_t value,
+                                             uint64_t valueSize) {
+  if (valueSize != 1 && valueSize != 2 && valueSize != 4 && valueSize != 8)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size % valueSize != 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (valueSize == 1)
+    return setMemorySync(dst, dstOffset, size, static_cast<uint8_t>(value));
+
+  // `dst->mBuffer->contents() + dstOffset` is not guaranteed to be aligned to
+  // `valueSize` -- the fill contract only constrains `size`, not `offset`.
+  // Store via memcpy rather than casting to uintN_t* and dereferencing, which
+  // would be undefined behavior on a misaligned pointer (and trips
+  // -fsanitize=alignment).
+  auto *bytes = static_cast<char *>(dst->mBuffer->contents()) + dstOffset;
+  switch (valueSize) {
+  case 2: {
+    uint16_t v16 = static_cast<uint16_t>(value);
+    for (size_t i = 0; i < size; i += sizeof(v16))
+      memcpy(bytes + i, &v16, sizeof(v16));
+    break;
+  }
+  case 4: {
+    uint32_t v32 = static_cast<uint32_t>(value);
+    for (size_t i = 0; i < size; i += sizeof(v32))
+      memcpy(bytes + i, &v32, sizeof(v32));
+    break;
+  }
+  case 8: {
+    for (size_t i = 0; i < size; i += sizeof(value))
+      memcpy(bytes + i, &value, sizeof(value));
+    break;
+  }
+  }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 extern "C" M_driver_status_t
 M_driver_context_create(M_driver_device_t device, M_driver_context_t *context) {
   assert(context && "context must not be null");
@@ -180,4 +229,28 @@ M_driver_context_memory_info([[maybe_unused]] M_driver_context_t context,
                              [[maybe_unused]] uint64_t *free,
                              [[maybe_unused]] uint64_t *total) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+// Synchronous fill C ABI: thin wrappers over the M_driver_context methods
+// above.
+extern "C" M_driver_status_t
+M_driver_set_memory_sync(M_driver_context_t context, M_driver_memory_view_t dst,
+                         uint8_t value) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->setMemorySync(dst->memory, dst->offset, dst->size, value);
+}
+
+extern "C" M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
+                                                M_driver_memory_view_t dst,
+                                                uint64_t value,
+                                                uint64_t value_size) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->fillSync(dst->memory, dst->offset, dst->size, value,
+                           value_size);
 }

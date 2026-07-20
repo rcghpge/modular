@@ -29,6 +29,10 @@ struct M_driver_context {
                                         uint64_t dstOffset,
                                         M_driver_memory_t src,
                                         uint64_t srcOffset, uint64_t size);
+  M_driver_status_t setMemorySync(M_driver_memory_t dst, uint64_t dstOffset,
+                                  uint64_t size, uint8_t value);
+  M_driver_status_t fillSync(M_driver_memory_t dst, uint64_t dstOffset,
+                             uint64_t size, uint64_t value, uint64_t valueSize);
 
   void trackBuffer(void *ptr, MTL::Buffer *buffer) {
     allocations[reinterpret_cast<uintptr_t>(ptr)] = buffer;

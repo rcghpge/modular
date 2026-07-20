@@ -28,6 +28,8 @@ from max.sys._hal import (
     Event,
     Function,
     copy,
+    fill,
+    set_memory,
 )
 from vec_add import vec_add  # type: ignore[import-not-found]
 
@@ -254,6 +256,43 @@ def test_queue_fill() -> None:
     queue.copy_from_device(dst_addr, dev.view())
     queue.synchronize()
 
+    assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
+
+
+# ----------------------------------------------------------------------
+# Module-level synchronous set_memory / fill (blocking, no queue)
+# ----------------------------------------------------------------------
+
+
+def test_set_memory_sync() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    # Blocking, queue-less: fills all of `dev` and returns once complete.
+    set_memory(dst=dev, value=0x5A)
+
+    queue.copy_from_device(dst_addr, dev.view())
+    queue.synchronize()
+    assert _bytes_of(dst) == bytes([0x5A]) * n
+
+
+def test_fill_sync() -> None:
+    ctx = Driver().get_device(0).get_context()
+    queue = ctx.create_queue()
+
+    n = 128
+    dst, dst_addr = _make_empty_host_buf(n)
+    dev = ctx.alloc_sync(n)
+
+    # Blocking, queue-less: fills all of `dev` with a 32-bit pattern.
+    fill(dst=dev, value=0xDEADBEEF, value_size=4)
+
+    queue.copy_from_device(dst_addr, dev.view())
+    queue.synchronize()
     assert _bytes_of(dst) == (0xDEADBEEF).to_bytes(4, "little") * (n // 4)
 
 
@@ -682,6 +721,20 @@ def test_array_slicing_and_views() -> None:
         arr[10]
     with pytest.raises(TypeError):
         arr[None]
+
+
+def test_array_fill_slice_stays_in_range() -> None:
+    # A sliced fill must touch only the slice's bytes, not the whole backing
+    # buffer: exercises the view offset+size through the synchronous Context
+    # fill path (a middle row has a non-zero byte offset).
+    ctx = Driver().get_device(0).get_context()
+    arr = Array.full(ctx, DType.int32, (4, 6), 0)
+    arr[1].fill(7)
+    out = arr.as_numpy()
+    assert (out[1] == 7).all()
+    assert (out[0] == 0).all()
+    assert (out[2] == 0).all()
+    assert (out[3] == 0).all()
 
 
 def test_array_copy_and_subbyte_packing() -> None:

@@ -96,6 +96,51 @@ M_driver_status_t M_driver_context::copyInterDeviceSync(
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_context::setMemorySync(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
+                                                  uint64_t size,
+                                                  uint8_t value) {
+  if (size > 0)
+    memset(static_cast<char *>(dst->ptr) + dstOffset, value, size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::fillSync(M_driver_memory_t dst,
+                                             uint64_t dstOffset, uint64_t size,
+                                             uint64_t value,
+                                             uint64_t valueSize) {
+  if (size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+  if (valueSize != 1 && valueSize != 2 && valueSize != 4 && valueSize != 8)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size % valueSize != 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (valueSize == 1)
+    return setMemorySync(dst, dstOffset, size, static_cast<uint8_t>(value));
+
+  auto *bytes = static_cast<uint8_t *>(dst->ptr) + dstOffset;
+  switch (valueSize) {
+  case 2: {
+    uint16_t v16 = static_cast<uint16_t>(value);
+    for (size_t i = 0; i < size; i += sizeof(v16))
+      memcpy(bytes + i, &v16, sizeof(v16));
+    break;
+  }
+  case 4: {
+    uint32_t v32 = static_cast<uint32_t>(value);
+    for (size_t i = 0; i < size; i += sizeof(v32))
+      memcpy(bytes + i, &v32, sizeof(v32));
+    break;
+  }
+  case 8: {
+    for (size_t i = 0; i < size; i += sizeof(value))
+      memcpy(bytes + i, &value, sizeof(value));
+    break;
+  }
+  }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // Synchronous copy C ABI: thin wrappers over the M_driver_context methods.
 M_driver_status_t M_driver_copy_to_device_sync(M_driver_context_t context,
                                                M_driver_memory_view_t dst,
@@ -207,4 +252,25 @@ M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
   *total = totalBytes;
   *free = used < totalBytes ? totalBytes - used : 0;
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_set_memory_sync(M_driver_context_t context,
+                                           M_driver_memory_view_t dst,
+                                           uint8_t value) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->setMemorySync(dst->memory, dst->offset, dst->size, value);
+}
+
+M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
+                                     M_driver_memory_view_t dst, uint64_t value,
+                                     uint64_t value_size) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->fillSync(dst->memory, dst->offset, dst->size, value,
+                           value_size);
 }

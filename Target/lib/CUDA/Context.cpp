@@ -267,3 +267,80 @@ M_driver_context::allocPinnedMapped(uint64_t size, M_driver_memory_t *memory,
   *device_address = static_cast<uint64_t>(devPtr);
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_context::setMemorySync(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
+                                                  uint64_t size,
+                                                  uint8_t value) {
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  CUdeviceptr dstPtr = reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset;
+  if (CUresult r = cuda.cuMemsetD8(dstPtr, value, size); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r, "cuMemsetD8");
+  if (CUresult r = cuda.cuStreamSynchronize(nullptr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r,
+                           "cuStreamSynchronize (sync set_memory)");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::fillSync(M_driver_memory_t dst,
+                                             uint64_t dstOffset, uint64_t size,
+                                             uint64_t value,
+                                             uint64_t valueSize) {
+  if (valueSize == 1)
+    return setMemorySync(dst, dstOffset, size, static_cast<uint8_t>(value));
+
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = device.driver.rawCuda;
+  CUdeviceptr dstPtr = reinterpret_cast<CUdeviceptr>(dst->ptr) + dstOffset;
+  switch (valueSize) {
+  case 2:
+    if ((size & 1) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    if (CUresult r =
+            cuda.cuMemsetD16(dstPtr, static_cast<uint16_t>(value), size >> 1);
+        r != CUDA_SUCCESS)
+      return cudaErrorStatus(&device.driver, r, "cuMemsetD16");
+    break;
+  case 4:
+    if ((size & 3) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    if (CUresult r =
+            cuda.cuMemsetD32(dstPtr, static_cast<uint32_t>(value), size >> 2);
+        r != CUDA_SUCCESS)
+      return cudaErrorStatus(&device.driver, r, "cuMemsetD32");
+    break;
+  case 8: {
+    if ((size & 7) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    uint32_t hiBits = static_cast<uint32_t>(value >> 32);
+    uint32_t loBits = static_cast<uint32_t>(value & 0xfffffffful);
+    if (hiBits == loBits) {
+      if (CUresult r = cuda.cuMemsetD32(dstPtr, loBits, size >> 2);
+          r != CUDA_SUCCESS)
+        return cudaErrorStatus(&device.driver, r,
+                               "cuMemsetD32 (uint64 broadcast)");
+    } else {
+      size_t len = size >> 3;
+      CUdeviceptr hiPtr = dstPtr + sizeof(uint32_t);
+      if (CUresult r = cuda.cuMemsetD2D32(dstPtr, 8, loBits, 1, len);
+          r != CUDA_SUCCESS)
+        return cudaErrorStatus(&device.driver, r,
+                               "cuMemsetD2D32 (uint64 low half)");
+      if (CUresult r = cuda.cuMemsetD2D32(hiPtr, 8, hiBits, 1, len);
+          r != CUDA_SUCCESS)
+        return cudaErrorStatus(&device.driver, r,
+                               "cuMemsetD2D32 (uint64 high half)");
+    }
+    break;
+  }
+  default:
+    return M_DRIVER_STATUS_INVALID_ARG;
+  }
+  if (CUresult r = cuda.cuStreamSynchronize(nullptr); r != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r,
+                           "cuStreamSynchronize (sync fill)");
+  return M_DRIVER_STATUS_SUCCESS;
+}

@@ -100,3 +100,24 @@ M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
     return M_DRIVER_STATUS_BAD_CONTEXT;
   return context->memoryInfo(free, total);
 }
+
+M_driver_status_t M_driver_set_memory_sync(M_driver_context_t context,
+                                           M_driver_memory_view_t dst,
+                                           uint8_t value) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->setMemorySync(dst->memory, dst->offset, dst->size, value);
+}
+
+M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
+                                     M_driver_memory_view_t dst, uint64_t value,
+                                     uint64_t value_size) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (dst == nullptr || dst->memory == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return context->fillSync(dst->memory, dst->offset, dst->size, value,
+                           value_size);
+}

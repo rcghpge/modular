@@ -10,6 +10,7 @@
 #include "Error.h"
 #include "Memory.h"
 
+#include <algorithm>
 #include <new>
 
 using M::Target::HIP::hipErrorStatus;
@@ -284,5 +285,122 @@ M_driver_context::allocPinnedMapped(uint64_t size, M_driver_memory_t *memory,
   *memory = wrapper;
   *host_ptr = p;
   *device_address = reinterpret_cast<uint64_t>(devPtr);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::setMemorySync(M_driver_memory_t dst,
+                                                  uint64_t dstOffset,
+                                                  uint64_t size,
+                                                  uint8_t value) {
+  M_driver_device &dev = getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
+
+  if (hipError_t r =
+          hip.hipMemsetAsync(dstPtr, static_cast<int>(value), size, nullptr);
+      r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r, "hipMemsetAsync");
+  if (hipError_t r = hip.hipStreamSynchronize(nullptr); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r,
+                          "hipStreamSynchronize (sync memset)");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::fillSync(M_driver_memory_t dst,
+                                             uint64_t dstOffset, uint64_t size,
+                                             uint64_t value,
+                                             uint64_t valueSize) {
+  if (valueSize == 1)
+    return setMemorySync(dst, dstOffset, size, static_cast<uint8_t>(value));
+
+  M_driver_device &dev = getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  void *dstPtr = static_cast<char *>(dst->ptr) + dstOffset;
+
+  switch (valueSize) {
+  case 2: {
+    if ((size & 1) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    if (hipError_t r = hip.hipMemsetD16Async(
+            dstPtr, static_cast<unsigned short>(value), size >> 1, nullptr);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r, "hipMemsetD16Async");
+    break;
+  }
+  case 4: {
+    if ((size & 3) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    if (hipError_t r = hip.hipMemsetD32Async(dstPtr, static_cast<int>(value),
+                                             size >> 2, nullptr);
+        r != hipSuccess)
+      return hipErrorStatus(&dev.getDriver(), r, "hipMemsetD32Async");
+    break;
+  }
+  case 8: {
+    if ((size & 7) != 0)
+      return M_DRIVER_STATUS_INVALID_ARG;
+    uint32_t hiBits = static_cast<uint32_t>(value >> 32);
+    uint32_t loBits = static_cast<uint32_t>(value & 0xfffffffful);
+    if (hiBits == loBits) {
+      if (hipError_t r = hip.hipMemsetD32Async(dstPtr, static_cast<int>(loBits),
+                                               size >> 2, nullptr);
+          r != hipSuccess)
+        return hipErrorStatus(&dev.getDriver(), r,
+                              "hipMemsetD32Async (uint64 broadcast)");
+    } else {
+      size_t len = size >> 3;
+      if (len > 0) {
+        // Seed the first 8 bytes with the uint64 pattern by writing its
+        // low and high 32-bit halves, then fill the rest via doubling
+        // device-to-device copies (log2(len) calls instead of O(len)).
+        //
+        // `hipMemsetD2D32Async` would do this in 2 calls, but ROCm
+        // forwards `width` unchanged into byte-valued internal fields
+        // (sizeBytes = width * height * depth), making the documented
+        // "width in 32-bit elements" contract unusable: width=1 aborts
+        // with "Pattern Size: 4 cannot be greater than fill size: 1",
+        // and width=4 (bytes) silently fails to fill rows 1..N-1 on
+        // pinned host memory. This bug is unchanged in ROCm 7.1.1,
+        // 7.2.0, 7.2.1, and 7.2.2.
+        void *hiPtr = reinterpret_cast<void *>(
+            reinterpret_cast<uintptr_t>(dstPtr) + sizeof(uint32_t));
+        if (hipError_t r = hip.hipMemsetD32Async(dstPtr, loBits, 1, nullptr);
+            r != hipSuccess)
+          return hipErrorStatus(&dev.getDriver(), r,
+                                "hipMemsetD32Async (uint64 low half seed)");
+        if (hipError_t r = hip.hipMemsetD32Async(hiPtr, hiBits, 1, nullptr);
+            r != hipSuccess)
+          return hipErrorStatus(&dev.getDriver(), r,
+                                "hipMemsetD32Async (uint64 high half seed)");
+        for (size_t filled = 1; filled < len;) {
+          size_t copyCount = std::min(filled, len - filled);
+          void *dstCopy = reinterpret_cast<void *>(
+              reinterpret_cast<uintptr_t>(dstPtr) + filled * sizeof(uint64_t));
+          if (hipError_t r = hip.hipMemcpyAsync(
+                  dstCopy, dstPtr, copyCount * sizeof(uint64_t),
+                  hipMemcpyDeviceToDevice, nullptr);
+              r != hipSuccess)
+            return hipErrorStatus(
+                &dev.getDriver(), r,
+                "hipMemcpyAsync DtoD (uint64 broadcast doubling)");
+          filled += copyCount;
+        }
+      }
+    }
+    break;
+  }
+  default:
+    return M_DRIVER_STATUS_INVALID_ARG;
+  }
+
+  if (hipError_t r = hip.hipStreamSynchronize(nullptr); r != hipSuccess)
+    return hipErrorStatus(&dev.getDriver(), r,
+                          "hipStreamSynchronize (sync fill)");
   return M_DRIVER_STATUS_SUCCESS;
 }

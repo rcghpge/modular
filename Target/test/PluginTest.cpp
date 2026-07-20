@@ -577,6 +577,88 @@ TEST_F(DriverPluginContextTest, ContextCopySync) {
   }
 }
 
+TEST_F(DriverPluginContextTest, ContextFillSync) {
+  constexpr size_t size = 128;
+  for (M_driver_context_t context : contexts) {
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
+
+    // set_memory_sync: single-byte fill. Blocking, so no synchronize needed.
+    {
+      M_driver_memory_view setView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(set_memory_sync(context, &setView, uint8_t(42)));
+
+      std::array<uint8_t, size> result;
+      M_driver_memory_view srcView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &srcView));
+      std::array<uint8_t, size> expected;
+      expected.fill(42);
+      ASSERT_EQ(expected, result);
+    }
+
+    // 16-bit pattern.
+    {
+      M_driver_memory_view fillView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(
+          fill_sync(context, &fillView, uint16_t(0xABCD), sizeof(uint16_t)));
+
+      std::array<uint16_t, size / sizeof(uint16_t)> result;
+      M_driver_memory_view srcView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &srcView));
+      for (uint16_t v : result)
+        ASSERT_EQ(v, uint16_t(0xABCD));
+    }
+
+    // 32-bit pattern.
+    {
+      M_driver_memory_view fillView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(fill_sync(context, &fillView, uint32_t(0xDEADBEEF),
+                               sizeof(uint32_t)));
+
+      std::array<uint32_t, size / sizeof(uint32_t)> result;
+      M_driver_memory_view srcView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &srcView));
+      for (uint32_t v : result)
+        ASSERT_EQ(v, uint32_t(0xDEADBEEF));
+    }
+
+    // 64-bit pattern with distinct halves (exercises the non-broadcast path).
+    {
+      constexpr uint64_t pattern = 0x0123456789ABCDEFull;
+      M_driver_memory_view fillView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(fill_sync(context, &fillView, pattern, sizeof(uint64_t)));
+
+      std::array<uint64_t, size / sizeof(uint64_t)> result;
+      M_driver_memory_view srcView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &srcView));
+      for (uint64_t v : result)
+        ASSERT_EQ(v, pattern);
+    }
+
+    // value_size == 1 routes through the single-byte set_memory_sync path.
+    {
+      M_driver_memory_view fillView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(
+          fill_sync(context, &fillView, uint8_t(0x5A), sizeof(uint8_t)));
+
+      std::array<uint8_t, size> result;
+      M_driver_memory_view srcView{memory, /*offset=*/0, size};
+      ASSERT_SUCCESS(copy_from_device_sync(context, result.data(), &srcView));
+      std::array<uint8_t, size> expected;
+      expected.fill(0x5A);
+      ASSERT_EQ(expected, result);
+    }
+
+    // An unsupported value_size is still rejected.
+    {
+      M_driver_memory_view fillView{memory, /*offset=*/0, size};
+      ASSERT_EQ(M_DRIVER_STATUS_INVALID_ARG,
+                fill_sync(context, &fillView, uint64_t(0), /*value_size=*/3));
+    }
+  }
+}
+
 TEST_F(DriverPluginQueueTest, CopyInterDevice) {
   if (contexts.size() < 2 || queues.size() < 2)
     GTEST_SKIP() << "peer copy requires at least two devices";

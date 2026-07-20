@@ -563,6 +563,35 @@ M_driver_status_t M_driver_copy_inter_device_sync(
 }
 
 M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_set_memory_sync(M_driver_context_t context,
+                                           M_driver_memory_view_t dst,
+                                           uint8_t value) {
+  (void)context;
+  if (!dst || !dst->memory || dst->size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+
+  memset((char *)dst->memory->ptr + dst->offset, value, (size_t)dst->size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
+                                     M_driver_memory_view_t dst, uint64_t value,
+                                     uint64_t value_size) {
+  (void)context;
+  if (!dst || !dst->memory || dst->size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+
+  char *p = (char *)dst->memory->ptr + dst->offset;
+  for (uint64_t i = 0; i < dst->size; i += value_size) {
+    uint64_t remaining = dst->size - i;
+    uint64_t n = remaining < value_size ? remaining : value_size;
+    memcpy(p + i, &value, (size_t)n);
+  }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
                                             uint8_t value) {

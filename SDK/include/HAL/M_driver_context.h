@@ -170,6 +170,44 @@ typedef M_driver_status_t (*M_driver_copy_inter_device_sync_func_ptr_t)(
     M_driver_context_t context, M_driver_memory_view_t dst,
     M_driver_memory_view_t src, M_driver_context_t src_context);
 
+/**
+ * Synchronous fills.
+ *
+ * Each runs directly on @p context with no queue/stream and blocks the calling
+ * thread until the fill completes. These mirror M_driver_queue_set_memory and
+ * M_driver_queue_fill but target a context directly, so no queue is created.
+ */
+
+/**
+ * Set `dst->size` bytes at `dst->offset` into `dst->memory` to a repeated
+ * single byte @p value.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_set_memory_sync(M_driver_context_t context,
+                                           M_driver_memory_view_t dst,
+                                           uint8_t value);
+
+typedef M_driver_status_t (*M_driver_set_memory_sync_func_ptr_t)(
+    M_driver_context_t context, M_driver_memory_view_t dst, uint8_t value);
+
+/**
+ * Fill `dst->size` bytes at `dst->offset` into `dst->memory` with a repeated
+ * `value_size`-byte @p value. `dst->size` must be a multiple of `value_size`,
+ * which must be one of 1, 2, 4, or 8. A `value_size` of 1 is equivalent to
+ * M_driver_set_memory_sync.
+ *
+ * @return Standard Status Protocol, or M_DRIVER_STATUS_INVALID_ARG if
+ *         `value_size` is unsupported or `dst->size` is not a multiple of it.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
+                                     M_driver_memory_view_t dst, uint64_t value,
+                                     uint64_t value_size);
+
+typedef M_driver_status_t (*M_driver_fill_sync_func_ptr_t)(
+    M_driver_context_t context, M_driver_memory_view_t dst, uint64_t value,
+    uint64_t value_size);
+
 #ifdef __cplusplus
 }
 #endif

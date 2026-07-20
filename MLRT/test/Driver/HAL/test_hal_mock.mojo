@@ -13,7 +13,7 @@ handling paths.
 
 from std.os import getenv
 from std.memory import alloc
-from _hal import Driver, copy
+from _hal import Driver, copy, fill, set_memory
 from _hal.context import Context
 from _hal.device import Device, get_device_spec
 from _hal.queue import Queue
@@ -322,6 +322,33 @@ def test_unified_copy_sync_free_function() raises:
     dst.free()
     ctx[].free_sync(a_dev^)
     ctx[].free_sync(b_dev^)
+
+
+def test_sync_set_memory_and_fill_free_functions() raises:
+    """The free `set_memory` / `fill` write a device buffer synchronously."""
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device[Int64(0)]()
+    var ctx = device[].get_context()
+    var queue = ctx[].create_queue()
+
+    comptime n = 32
+    var out = alloc[UInt8](n)
+    var dev = ctx[].alloc_sync(UInt64(n))
+
+    set_memory(dst=dev, value=UInt8(0x11))
+    queue[].copy_from_device(out, dev.view())
+    queue[].synchronize()
+    for i in range(n):
+        assert_equal(out[i], UInt8(0x11))
+
+    fill(dst=dev, value=UInt64(0x22222222), value_size=UInt64(4))
+    queue[].copy_from_device(out, dev.view())
+    queue[].synchronize()
+    for i in range(n):
+        assert_equal(out[i], UInt8(0x22))
+
+    out.free()
+    ctx[].free_sync(dev^)
 
 
 def test_unified_copy_on_stream() raises:
@@ -696,6 +723,7 @@ def main() raises:
     test_stream_wait_for_events()
     test_unified_copy_device_to_device_on_queue()
     test_unified_copy_sync_free_function()
+    test_sync_set_memory_and_fill_free_functions()
     test_unified_copy_on_stream()
     test_unified_copy_dst_too_small_raises()
     test_unified_copy_front_fill()

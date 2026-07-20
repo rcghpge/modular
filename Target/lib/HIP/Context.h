@@ -60,6 +60,10 @@ public:
                                         M_driver_memory_t src,
                                         uint64_t srcOffset, uint64_t size,
                                         M_driver_context_t srcContext);
+  M_driver_status_t setMemorySync(M_driver_memory_t dst, uint64_t dstOffset,
+                                  uint64_t size, uint8_t value);
+  M_driver_status_t fillSync(M_driver_memory_t dst, uint64_t dstOffset,
+                             uint64_t size, uint64_t value, uint64_t valueSize);
 };
 
 #endif // TARGET_LIB_HIP_CONTEXT_H
