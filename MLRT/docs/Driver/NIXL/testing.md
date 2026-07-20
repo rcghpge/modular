@@ -1,0 +1,69 @@
+# NIXL testing
+
+NIXL allows us to share memory between GPUs on different hosts for
+KV-cache transfer in disaggregated inference. Its tests span from a
+pure library check up to end-to-end two-node serving. They
+are organized by one rule: a lane **gates** (its failure means the code
+is broken) only when it runs where hardware is guaranteed — remote
+execution, a dedicated GPU runner, or a runner-label queue that waits
+for a machine. Lanes that share a contended machine pool, where a run
+can fail simply because no node was free, are **informational**: their
+results are reported, not gated. Splitting off the informational lanes
+is only necessary because of GitHub Actions restrictions. A CI system
+that allows a gating run wait on those pod-pool jobs would let them gate
+too.
+
+## Lanes
+
+| Lane                                | What it checks                                                                                            | Where it runs                            | Cadence                | Gates?             |
+|-------------------------------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------|------------------------|--------------------|
+| Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                  | remote execution, no GPU                 | pre-submit             | Yes                |
+| GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv | `validateNIXLSync`                       | nightly                | Yes                |
+| Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                             | `nightlyMultiGPUTest` on B200 and MI355  | nightly                | Yes                |
+| Single-node perf smoke              | UCX and EFA-loopback bandwidth floors — catches transport-selection regressions                           | `modrunner-b200-efa-2x`                  | nightly                | Yes                |
+| Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k25, deepseekv3.1)                   | shared `mammoth-benchmark` B200 pod pool | dispatched by the gate | No (informational) |
+
+## The aggregate gate
+
+The `validateNIXLSync` is the one CI run that validates a NIXL
+change end to end. Its red/green is the correctness gate — the
+in-tree unit tests (`//MLRT/unittests/Driver/NIXL/...`), the binding and
+transfer-engine tests, and the single-node perf smoke, all lanes that
+wait for hardware to be available in CI. It runs nightly on `main` (a
+standing baseline) and on demand:
+
+```bash
+gh workflow run validateNIXLSync.yaml --ref <branch-or-main>
+```
+
+It also fire-and-forgets the shared-pool lane as an informational
+companion. Pass `-f run_shared_pool_tests=false` to gate on correctness
+alone.
+
+## Why the shared-pool lane is informational
+
+The cross-node EFA smoke and the Mammoth quick-tests schedule pods onto a
+small shared machine pool. When the pool is full, pods sit `Pending` past
+the deployment deadline and the job fails — indistinguishable, at a
+glance, from a code regression. The drivers classify that signature as
+**INFRA-BLOCKED** (a warning, not a red), so a genuine failure stands
+out. And because a loopback smoke does not cross the physical fabric, the
+two-node EFA smoke remains the guard for fabric-level regressions: weigh
+a red there against the captured pod diagnostics before treating it as a
+code bug.
+
+## Benchmarks
+
+The **drag race** (`//utils/benchmarking/nixl:drag_race`) is an
+on-demand bandwidth benchmark for a chosen backend and topology
+(intranode loopback or two nodes). It is not run in CI, but it builds in
+presubmit and has a host-DRAM micro-run that keeps it green.
+
+## Related docs
+
+- [`validate_upstream_sync.md`](validate_upstream_sync.md) — what to run
+  before landing an upstream NIXL pin bump.
+- [`run_efa_di_benchmark.md`](run_efa_di_benchmark.md) — manual two-node
+  EFA disaggregated-inference benchmark.
+- [`update_instructions.md`](update_instructions.md) — how to bump the
+  vendored NIXL pin.

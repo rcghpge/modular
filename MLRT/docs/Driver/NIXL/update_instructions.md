@@ -58,9 +58,10 @@ patch rather than forking:
 ## Testing after an update
 
 A NIXL change must be validated against the in-tree libraries, the
-disaggregated-inference stack, and EFA. See the
-[validation doc](../../MLRT/docs/Driver/NIXL/validate_upstream_sync.md)
-for the full procedure and test list.
+disaggregated-inference stack, and EFA. See
+[`testing.md`](testing.md) for the lane overview and
+[`validate_upstream_sync.md`](validate_upstream_sync.md) for the full
+pin-bump procedure and test list.
 
 The quickest path is the one-click GitHub Actions workflow, which runs the
 NIXL unit tests (Core/UCX on a B200) and the disaggregated `benchmarkMammoth`

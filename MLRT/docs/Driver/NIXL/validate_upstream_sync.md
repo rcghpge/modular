@@ -20,24 +20,9 @@ the workflow runs when the diff touches a transfer path, plugin
 loading, or telemetry.
 
 The [`validateNIXLSync`](../../../../.github/workflows/validateNIXLSync.yaml)
-workflow bundles all of this into one dispatchable run, split into two
-tiers:
-
-- **Correctness gate** (defines the run's red/green): the in-tree unit
-  tests, the `max._core.nixl` binding tests, the `KVTransferEngine`
-  send/recv and hermetic DRAM tests, and the single-node
-  bandwidth-floor perf smoke. These run on dedicated hardware or a
-  GitHub runner-label queue — which waits for a machine instead of
-  failing on a deadline — so a red here means the code is broken.
-- **Shared-pool tier** (informational): the 4-row cross-node EFA KV
-  transfer smoke and the three Mammoth 1p1d quick-tests, dispatched as
-  a separate
-  [`nixlSharedPoolTests`](../../../../.github/workflows/nixlSharedPoolTests.yaml)
-  run. These schedule onto the shared B200 pod pool and regularly fail
-  on cluster capacity rather than code (pods sit `Pending` until the
-  poll deadline), so their result is linked from the validateNIXLSync
-  summary instead of gating it. Check the pod diagnostics / row logs
-  for Pending-at-deadline before treating a red there as a regression.
+workflow bundles all of this into one dispatchable run. See
+[`testing.md`](testing.md) for the full tier structure — which lanes gate
+the run's red/green and which are informational.
 
 ## In-tree unit tests
 
