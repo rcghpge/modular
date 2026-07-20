@@ -216,9 +216,9 @@ def test_context_sync_copy_roundtrip() -> None:
     dev_a = ctx.alloc_sync(n)
     dev_b = ctx.alloc_sync(n)
 
-    ctx.copy_to_device_sync(dev_a.view(), src_addr)
-    ctx.copy_intra_device_sync(dev_b.view(), dev_a.view())
-    ctx.copy_from_device_sync(dst_addr, dev_b.view())
+    ctx.copy_to_device(dev_a.view(), src_addr)
+    ctx.copy_intra_device(dev_b.view(), dev_a.view())
+    ctx.copy_from_device(dst_addr, dev_b.view())
 
     assert _bytes_of(dst) == src_data
 
