@@ -245,20 +245,21 @@ public:
 
   /// Resolve `moduleName` to the path of its precompiled binary package.
   ErrorOr<std::string> resolveBinaryPackagePath(llvm::StringRef moduleName) {
-    std::optional<std::string> modulePath =
+    std::optional<KGEN::LIT::SharedState::ModuleSpec> modulePath =
         sharedState.resolveModulePath(moduleName, llvm::SMLoc());
     if (!modulePath)
       return Error(
           llvm::formatv("Failed to resolve module path for `{}`", moduleName)
               .str());
-    if (!M::Filesystem::isMojoBinaryPackagePath(*modulePath))
+    if (!modulePath->isPrecompiled()) {
       return Error(
           llvm::formatv("Resolved module path for `{}` to source directory "
                         "`{}` but a .mojoc precompiled file was expected "
                         "instead",
-                        moduleName, *modulePath)
+                        moduleName, modulePath->path)
               .str());
-    return *modulePath;
+    }
+    return modulePath->path;
   }
 
   KGEN::LIT::SharedState &getSharedState() { return sharedState; }
