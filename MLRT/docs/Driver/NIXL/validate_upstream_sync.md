@@ -19,6 +19,26 @@ The tests are listed cheapest first. Run everything in
 the workflow runs when the diff touches a transfer path, plugin
 loading, or telemetry.
 
+The [`validateNIXLSync`](../../../../.github/workflows/validateNIXLSync.yaml)
+workflow bundles all of this into one dispatchable run, split into two
+tiers:
+
+- **Correctness gate** (defines the run's red/green): the in-tree unit
+  tests, the `max._core.nixl` binding tests, the `KVTransferEngine`
+  send/recv and hermetic DRAM tests, and the single-node
+  bandwidth-floor perf smoke. These run on dedicated hardware or a
+  GitHub runner-label queue — which waits for a machine instead of
+  failing on a deadline — so a red here means the code is broken.
+- **Shared-pool tier** (informational): the 4-row cross-node EFA KV
+  transfer smoke and the three Mammoth 1p1d quick-tests, dispatched as
+  a separate
+  [`nixlSharedPoolTests`](../../../../.github/workflows/nixlSharedPoolTests.yaml)
+  run. These schedule onto the shared B200 pod pool and regularly fail
+  on cluster capacity rather than code (pods sit `Pending` until the
+  poll deadline), so their result is linked from the validateNIXLSync
+  summary instead of gating it. Check the pod diagnostics / row logs
+  for Pending-at-deadline before treating a red there as a regression.
+
 ## In-tree unit tests
 
 These run via `bazel test` and cover the agent core, UCX plugin, and
@@ -68,13 +88,20 @@ gh workflow run benchmarkMammoth.yaml \
   -f benchmark_config=quick-test-synthetic75k300-kimi-k25-nvfp4
 ```
 
-To run all three quick-test combos in a single workflow:
+To run the full validation (correctness gate, which also dispatches the
+shared-pool tests — EFA KV smoke + all three quick-test combos — as an
+informational companion run):
 
 ```bash
 gh workflow run validateNIXLSync.yaml \
   --repo modularml/modular \
   --ref <branch-or-main>
 ```
+
+Pass `-f run_shared_pool_tests=false` to validate correctness only
+without consuming the shared B200 pod pool, or dispatch
+`nixlSharedPoolTests.yaml` directly (it takes a `docker_image` input)
+to run only the pod-pool tests.
 
 Nightly CI runs the corresponding `synthetic-75k300-*` and
 `multiturn-*` variants (without the `quick-test-` prefix) for deeper
@@ -133,25 +160,21 @@ nightly variants or as accumulated flakiness.
 
 ## Coverage gaps to track
 
-The current validation surface is mostly "big smoke tests" — there
-are open items to add targeted coverage:
-
-- Wire `nixlKvSmokeTest.yaml` into `validateNIXLSync.yaml` and the
-  nightly so the KV transfer smoke test runs automatically on every
-  NIXL change.
+Remaining items are tracked under the GEX-3974 testing epic (nightly
+correctness baseline on main, resurrecting the `manual`-tagged tests,
+AMD coverage). The KV transfer smoke and the single-node perf smoke are
+now wired into `validateNIXLSync.yaml` and run nightly.
 
 ## Suggested checklist for a pin-bump PR
 
 Paste this into the PR description:
 
 ```markdown
-- [ ] `bt //MLRT/unittests/Driver/NIXL/Core/...` green
-- [ ] `bt //MLRT/unittests/Driver/NIXL/UCX/...` green
-- [ ] KV transfer engine smoke test: sender node and receiver node both
-      exited 0, sender printed ≥ 10 GiB/s over EFA (if NIXL transfer
-      path changed)
-- [ ] `benchmarkMammoth` triggered for all three quick-test combos,
-      all green
+- [ ] `validateNIXLSync` correctness gate green (unit tests, binding
+      tests, transfer engine tests, EFA KV smoke, perf smoke)
+- [ ] Shared-pool tier (`nixlSharedPoolTests`) result reviewed — green,
+      or red attributed to pod-pool capacity via the diagnostics
+      artifact
 - [ ] Watched `#mammoth-benchmark-notifications` for one nightly
       cycle after merge (if not blocking the PR)
 ```
