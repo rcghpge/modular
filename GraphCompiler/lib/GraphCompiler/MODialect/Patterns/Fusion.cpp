@@ -2871,6 +2871,70 @@ struct RMSNormFusedResidualAddPattern
   }
 };
 
+// Fuses the single-norm residual-add + RMSNorm boundary
+// `rms_norm(add(a, b))` into one `mo.composite.rms_norm_residual_add` launch,
+// emitting both the normalized output and the `a + b` intermediate (so the
+// pre-add residual carried to the next block reuses the fused op's second
+// output instead of a separate add). This is the canonical transformer/mamba
+// pre-norm boundary. It is intentionally distinct from
+// `RMSNormFusedResidualAddPattern` (which handles the double-norm topology
+// `rms_norm(rms_norm(x) + r)`); this pattern deliberately declines that case
+// and runs at lower benefit so the double-norm pattern wins where both apply.
+struct RMSNormResidualAddPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::ReduceRMSNormOp> {
+  RMSNormResidualAddPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Match `rms_norm(add(a, b))`.
+    auto addOp = op.getInput().getDefiningOp<MO::AddOp>();
+    if (!addOp)
+      return rewriter.notifyMatchFailure(
+          op, "rms_norm input not from an add operation");
+    if (addOp.getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(op,
+                                         "add operation expects 2 operands");
+
+    // Leave the double-norm topology `rms_norm(rms_norm(x) + r)` to
+    // RMSNormFusedResidualAddPattern (higher benefit): if either add operand is
+    // itself an inner rms_norm, decline here.
+    Value lhs = addOp.getOperand(0);
+    Value rhs = addOp.getOperand(1);
+    if (lhs.getDefiningOp<MO::ReduceRMSNormOp>() ||
+        rhs.getDefiningOp<MO::ReduceRMSNormOp>())
+      return rewriter.notifyMatchFailure(
+          op, "double-norm topology handled by RMSNormFusedResidualAddPattern");
+
+    // Check device consistency across the matched ops.
+    if (!rewriter.addOps({addOp}))
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+
+    Value gamma = op.getWeight();
+    Value eps = op.getEpsilon();
+    Value weightOffset = op.getWeightOffset();
+    BoolAttr multiplyBeforeCast = op.getMultiplyBeforeCastAttr();
+
+    // The fused op returns [output, intermediate] where
+    //   intermediate = a + b
+    //   output       = rms_norm(intermediate, gamma, eps, weight_offset)
+    auto fusedOp = rewriter.create<MO::Composite::RMSNormResidualAddOp>(
+        op.getLoc(), op.getResult().getType(), addOp.getResult().getType(), lhs,
+        rhs, gamma, eps, weightOffset, multiplyBeforeCast.getValue(),
+        op.getOutputParamDecls());
+
+    // Replace the rms_norm with the normalized output, and rewire the add's
+    // other consumers (the carried residual) to the intermediate output.
+    rewriter.replaceOp(op, fusedOp.getOutput());
+    rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getIntermediate());
+
+    return mlir::success();
+  }
+};
+
 struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::CustomOp> {
   DeviceRefAttr targetDevice;
@@ -4839,8 +4903,8 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
                MatmulTranspBPattern, ConcatZeroAxisPattern,
                ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                LayerNormPattern, RMSNormFusedResidualAddPattern,
-               ReduceRMSNormRoPEPattern, ConcatSlicePattern,
-               MatmulFusedPartialRMSNormPattern>(ctx);
+               RMSNormResidualAddPattern, ReduceRMSNormRoPEPattern,
+               ConcatSlicePattern, MatmulFusedPartialRMSNormPattern>(ctx);
 
   patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                RMSNormFusedQuantizeDynamicScaledFP8Pattern,

@@ -128,6 +128,54 @@ def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused
 }
 
 //===----------------------------------------------------------------------===//
+// RMSNormResidualAddOp
+//===----------------------------------------------------------------------===//
+
+def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Fused single-norm residual add + RMS norm operation";
+  let description = [{
+    Fused operation computing:
+      intermediate = input + residual_input
+      output = rms_norm(intermediate, gamma, epsilon, weight_offset)
+
+    Returns both the final normalized output and the post-add intermediate
+    tensor. This is the canonical transformer/mamba pre-norm boundary
+    `rms_norm(residual + out)`, where the pre-add value is carried forward as
+    the next block's residual. Unlike `rms_norm_fused_residual_add`, there is a
+    single RMS norm (no inner norm on `input`).
+
+    Example:
+
+    ```mlir
+      %output, %intermediate = mo.composite.rms_norm_residual_add(
+          %input, %residual, %gamma, %eps, %offset) {
+          multiply_before_cast = false} :
+        (...) -> (!mo.tensor<[3, 2], f32>, !mo.tensor<[3, 2], f32>)
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$residualInput,
+    MO_Tensor:$gamma,
+    MO_Tensor:$epsilon,
+    MO_Tensor:$weightOffset,
+    BoolAttr:$multiply_before_cast,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$output, MO_Tensor:$intermediate);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // FusedConcatSliceOp
 //===----------------------------------------------------------------------===//
 

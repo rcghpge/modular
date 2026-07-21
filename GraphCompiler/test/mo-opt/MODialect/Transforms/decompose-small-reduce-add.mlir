@@ -10,13 +10,14 @@
 // Positive cases: result feeds rms_norm -> decompose.
 // -----------------------------------------------------------------------------
 
-// feeding rms_norm directly: 2 slices + 1 add, no reduce.add.
+// feeding rms_norm directly: 2 slices, no reduce.add. The trailing add and
+// rms_norm are themselves fused into the single-norm residual-add boundary
+// (mo.composite.rms_norm_residual_add), so no separate mo.add survives.
 // CHECK-LABEL: mo.graph @decompose_reduce_add_into_rms_norm
 // CHECK-NOT: mo.reduce.add
 // CHECK: mo.slice
 // CHECK: mo.slice
-// CHECK: mo.add
-// CHECK: mo.reduce.rms_norm
+// CHECK: mo.composite.rms_norm_residual_add
 mo.graph @decompose_reduce_add_into_rms_norm(
     %arg0: !mo.tensor<[2, 2, 3], f32>,
     %gamma: !mo.tensor<[3], f32>,
@@ -46,11 +47,12 @@ mo.graph @decompose_reduce_add_roundtrip_rms_norm(
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
 
-// Inclusive upper bound (kMaxDecomposeExtent) -> still decompose.
+// Inclusive upper bound (kMaxDecomposeExtent) -> still decompose. The final
+// add in the slice/add tree feeds rms_norm, so it fuses into the composite.
 // CHECK-LABEL: mo.graph @decompose_reduce_add_extent8_boundary
 // CHECK-NOT: mo.reduce.add
 // CHECK: mo.slice
-// CHECK: mo.reduce.rms_norm
+// CHECK: mo.composite.rms_norm_residual_add
 mo.graph @decompose_reduce_add_extent8_boundary(
     %arg0: !mo.tensor<[2, 8, 3], f32>,
     %gamma: !mo.tensor<[3], f32>,
@@ -62,11 +64,12 @@ mo.graph @decompose_reduce_add_extent8_boundary(
 }
 
 // Reducing axis 0 (an outer axis) into rms_norm still decomposes; the slice
-// bounds track whichever axis is reduced.
+// bounds track whichever axis is reduced. The final add fuses into the
+// composite the same way as the extent-8 boundary case above.
 // CHECK-LABEL: mo.graph @decompose_reduce_add_axis0
 // CHECK-NOT: mo.reduce.add
 // CHECK: mo.slice
-// CHECK: mo.reduce.rms_norm
+// CHECK: mo.composite.rms_norm_residual_add
 mo.graph @decompose_reduce_add_axis0(
     %arg0: !mo.tensor<[2, 4, 3], f32>,
     %gamma: !mo.tensor<[3], f32>,
@@ -84,8 +87,7 @@ mo.graph @decompose_reduce_add_axis0(
 // CHECK-NOT: mo.reduce.add
 // CHECK: mo.slice
 // CHECK: mo.slice
-// CHECK: mo.add
-// CHECK: mo.reduce.rms_norm
+// CHECK: mo.composite.rms_norm_residual_add
 mo.graph @decompose_reduce_add_negative_axis(
     %arg0: !mo.tensor<[2, 3, 2], f32>,
     %gamma: !mo.tensor<[1], f32>,
@@ -102,8 +104,7 @@ mo.graph @decompose_reduce_add_negative_axis(
 // CHECK-LABEL: mo.graph @decompose_dynamic_outer_static_axis
 // CHECK-NOT: mo.reduce.add
 // CHECK: mo.slice
-// CHECK: mo.add
-// CHECK: mo.reduce.rms_norm
+// CHECK: mo.composite.rms_norm_residual_add
 mo.graph @decompose_dynamic_outer_static_axis(
     %arg0: !mo.tensor<[batch, 2, 3], f32>,
     %gamma: !mo.tensor<[3], f32>,

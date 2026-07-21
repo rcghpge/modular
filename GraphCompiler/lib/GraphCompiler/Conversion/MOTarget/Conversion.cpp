@@ -29,7 +29,8 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::CustomOp,
       // TODO (GEX-723)
       MO::ReduceGroupNormOp, MO::LayerNormOp, MO::ReduceMinAndMaxOp,
-      MO::Composite::ReduceRMSNormFusedResidualAddOp, MO::ReduceRMSNormOp,
+      MO::Composite::ReduceRMSNormFusedResidualAddOp,
+      MO::Composite::RMSNormResidualAddOp, MO::ReduceRMSNormOp,
       // Buffer operations
       MO::ChainCreateOp,
       // Copied from MOConversionTarget
