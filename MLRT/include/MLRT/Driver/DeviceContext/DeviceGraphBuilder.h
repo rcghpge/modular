@@ -18,6 +18,11 @@
 
 #include <optional>
 
+// The graph builder drives legacy DeviceContext internals (DeviceFunction,
+// device-graph capture) that the HAL DeviceContext does not expose; under
+// --config=hal-device-context the whole builder compiles out.
+#if !MODULAR_HAL_DEVICE_CONTEXT
+
 namespace M::Driver {
 
 class DeviceGraphBuilder;
@@ -200,5 +205,7 @@ private:
 };
 
 } // namespace M::Driver
+
+#endif // MODULAR_HAL_DEVICE_CONTEXT
 
 #endif // MLRT_DRIVER_DEVICECONTEXT_DEVICEGRAPHBUILDER_H

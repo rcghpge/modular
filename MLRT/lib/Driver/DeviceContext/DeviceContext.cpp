@@ -1874,24 +1874,6 @@ MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
   return arch;
 }
 
-//
-// ===== DriverVersion ===== //
-//
-
-DriverVersion::DriverVersion(std::string version) : version_(version) {
-  std::sscanf(version.c_str(), "%d.%d.%d", &major_, &minor_, &patch_);
-}
-
-int DriverVersion::major() const { return major_; }
-
-int DriverVersion::minor() const { return minor_; }
-
-int DriverVersion::patch() const { return patch_; }
-
-MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
-  return version_;
-}
-
 ErrorOrSuccess Device::enablePeerAccess(const Device &peer) {
   // Call device-specific implementation.
   ErrorOrSuccess result = enablePeerAccessImpl(peer);

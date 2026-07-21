@@ -305,6 +305,7 @@ modular_cc_test(
     }),
     deps = [
         ":TestUtils",
+        "//MLRT:Driver/CompilationDeviceImpl",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@llvm-project//llvm:Support",
@@ -408,6 +409,7 @@ modular_cc_test(
     tags = ["gpu"],
     deps = [
         ":TestUtils",
+        "//MLRT:Driver/CompilationDeviceImpl",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@llvm-project//llvm:Support",

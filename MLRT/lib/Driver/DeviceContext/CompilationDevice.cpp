@@ -18,6 +18,24 @@
 
 namespace M::Driver {
 
+//
+// ===== DriverVersion ===== //
+//
+
+DriverVersion::DriverVersion(std::string version) : version_(version) {
+  std::sscanf(version.c_str(), "%d.%d.%d", &major_, &minor_, &patch_);
+}
+
+int DriverVersion::major() const { return major_; }
+
+int DriverVersion::minor() const { return minor_; }
+
+int DriverVersion::patch() const { return patch_; }
+
+MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
+  return version_;
+}
+
 MODULAR_CXX_EXPORT ErrorOr<std::unique_ptr<CompilationDevice>>
 CompilationDevice::create(StringRef api, StringRef arch) {
   // Branch based on the configured API (not the requested API which is often

@@ -24,8 +24,23 @@
 
 namespace M::Driver {
 
-// Forward declarations
-class DriverVersion;
+/// A parsed driver version string (`major.minor.patch`). Lives with the
+/// compilation-device layer so it is available regardless of which
+/// DeviceContext implementation is active.
+class DriverVersion {
+public:
+  explicit DriverVersion(std::string version);
+  int major() const;
+  int minor() const;
+  int patch() const;
+  std::string toString() const;
+
+private:
+  std::string version_;
+  int major_;
+  int minor_;
+  int patch_;
+};
 
 /// CompilationDevice provides compilation functionality without GPU hardware.
 ///

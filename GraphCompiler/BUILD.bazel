@@ -1588,6 +1588,7 @@ modular_shared_library(
         ":Support",
         "//Init",
         "//MLRT:Core/Tensor",
+        "//MLRT:Driver/DeviceContext",
         "//Support:Base",
         "//Support:Context",
     ],

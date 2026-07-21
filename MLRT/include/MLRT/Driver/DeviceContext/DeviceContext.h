@@ -11,10 +11,24 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 #define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
+// Default to the legacy backend when the build does not define the flag
+// (including targets compiled with -UMODULAR_HAL_DEVICE_CONTEXT).
+#ifndef MODULAR_HAL_DEVICE_CONTEXT
+#define MODULAR_HAL_DEVICE_CONTEXT 0
+#endif
+
+#if MODULAR_HAL_DEVICE_CONTEXT
+// Under --config=hal-device-context the M::Driver device classes are the HAL
+// shim over the Mojo HAL DeviceContext; the legacy DeviceContext declarations
+// below are fully replaced.
+#include "MLRT/Driver/DeviceContext/HALDeviceContext.h"
+#else
+
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
+#include "CompilationDevice.h"
 #include "ErrorMacros.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
@@ -191,21 +205,6 @@ size_t getPreferredAlignment(std::string label);
 // before compiling CPU kernels. Thread-safe.
 void setVirtualCpuTarget(StringRef cpu);
 std::string getVirtualCpuTarget();
-
-class DriverVersion {
-public:
-  explicit DriverVersion(std::string version);
-  int major() const;
-  int minor() const;
-  int patch() const;
-  std::string toString() const;
-
-private:
-  std::string version_;
-  int major_;
-  int minor_;
-  int patch_;
-};
 
 class DeviceContextScope {
 public:
@@ -1338,5 +1337,7 @@ struct DenseMapInfo<M::Driver::Device::FunctionCacheKey> {
   }
 };
 } // namespace llvm
+
+#endif // MODULAR_HAL_DEVICE_CONTEXT
 
 #endif // MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H

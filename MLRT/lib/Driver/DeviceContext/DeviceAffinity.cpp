@@ -26,6 +26,13 @@ namespace M::MLRT {
 /// Returns an empty map on any failure (unsupported platform, missing
 /// topology, device enumeration errors, etc.).
 static std::map<int, int> inferGpuToCpuCoreMapping() {
+#if MODULAR_HAL_DEVICE_CONTEXT
+  // Under --config=hal-device-context the legacy C++ DeviceContext is not
+  // linked into Mojo programs, so device enumeration is unavailable here.
+  // Returning an empty mapping makes taskIdForDevice fall back to round-robin
+  // placement (tier 3), the same behavior as any other inference failure.
+  return {};
+#else
   const auto &numaTopologyOrError = NUMATopology::get();
   if (numaTopologyOrError.isError())
     return {};
@@ -62,6 +69,7 @@ static std::map<int, int> inferGpuToCpuCoreMapping() {
     gpuToCpuCoreMapping[i] = cpuIds[cpuCoreIndex];
   }
   return gpuToCpuCoreMapping;
+#endif // MODULAR_HAL_DEVICE_CONTEXT
 }
 
 /// Cached wrapper around inferGpuToCpuCoreMapping().
