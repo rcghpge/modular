@@ -4,9 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Lowers MO ops into `map` / `imap` kernels. Each lowerable MO op with a
-// registered Mojo kernel becomes a `map.iter.opaque` wrapping a `map.call` to
-// that kernel, with a trivial store epilogue per result. Kernel selection
+// Lowers MO ops into `map` kernels. Each lowerable MO op with a registered
+// Mojo kernel becomes either a `map.iter.opaque` wrapping a `map.call` to that
+// kernel (with a trivial store epilogue per result), or, for elementwise
+// kernels, a `map.iter.foreach` expressing the loop body explicitly as scalar
+// `map.load` / `map.call.elementwise` / `map.store` ops. Kernel selection
 // reuses the same `mogg.kernel.decl` machinery as MOToMOGG (MojoRegistry /
 // getMojoKernelAdaptor). Contexts, variadics and scalars are intentionally
 // NOT materialized here; that is deferred until after fusion.
@@ -24,6 +26,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "mlir/IR/Builders.h"
 
@@ -83,7 +86,7 @@ MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
   BlockArgument idx = body->addArgument(indexType, loc);
   BlockArgument cap = body->addArgument(out.getType(), loc);
   builder.setInsertionPointToStart(body);
-  MAP::StoreOp::create(builder, loc, /*dest=*/cap, /*index=*/idx,
+  MAP::StoreOp::create(builder, loc, /*tensor=*/cap, /*index=*/idx,
                        /*value=*/val);
   return epilogue;
 }
@@ -139,11 +142,86 @@ LogicalResult lowerToOpaque(Operation *op,
   return success();
 }
 
+// Lowers an elementwise MO op to a `map.iter.foreach` expressing its loop
+// body explicitly: one `map.load` per input, a `map.call.elementwise` call
+// to the kernel's scalar function, and a `map.store` into the output, all
+// indexed by the op's `map.index<N>` block argument.
+LogicalResult
+lowerElementwiseToForeach(Operation *op,
+                          const MOGG::KernelDeclAdaptor &adaptor) {
+  // Multi-output elementwise kernels are not supported yet.
+  if (op->getNumResults() != 1)
+    return op->emitOpError(
+        "MOToMAP: elementwise op must have exactly one result");
+
+  auto resultTensorTy = dyn_cast<MO::TensorType>(op->getResult(0).getType());
+  if (!resultTensorTy)
+    return op->emitOpError("MOToMAP: elementwise op result must be !mo.tensor");
+
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  MOSH::ShapeAttr shapeAttr = resultTensorTy.getTypedShapeAttr();
+  unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
+  Type elemTy = resultTensorTy.getElementType();
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{resultTensorTy},
+      /*shape=*/shapeAttr,
+      /*inputs=*/op->getOperands(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+
+  // Body block args: [input tensors..., output tensor, map.index<rank>].
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  for (Value operand : op->getOperands())
+    body->addArgument(operand.getType(), loc);
+  body->addArgument(resultTensorTy, loc);
+  body->addArgument(MAP::IndexType::get(ctx, rank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  BlockArgument idxArg = body->getArguments().back();
+
+  // map.load for each input.
+  SmallVector<Value> scalarLoads;
+  for (auto [i, operand] : llvm::enumerate(op->getOperands())) {
+    BlockArgument inputArg = body->getArgument(i);
+    auto inputTensorTy = cast<MO::TensorType>(operand.getType());
+    Value loaded = MAP::LoadOp::create(
+        bodyBuilder, loc, inputTensorTy.getElementType(), inputArg, idxArg);
+    scalarLoads.push_back(loaded);
+  }
+
+  // map.call.elementwise — kernel symbol from the fully resolved Mojo name.
+  auto kernelSymbol =
+      FlatSymbolRefAttr::get(ctx, adaptor.fullyResolvedName.strref());
+  Value scalar = MAP::CallElementwiseOp::create(
+      bodyBuilder, loc, elemTy, kernelSymbol, idxArg, scalarLoads);
+
+  // map.store into the output block argument.
+  BlockArgument outputArg =
+      body->getArgument(static_cast<unsigned>(op->getNumOperands()));
+  MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, scalar);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
   if (adaptor.isError())
     return success();
+
+  // Elementwise kernels don't have an executeFunction (only
+  // elementwiseFunction), so this must be checked before the executeFunction
+  // gate below.
+  if (adaptor->isElementwise())
+    return lowerElementwiseToForeach(op, *adaptor);
+
   if (!adaptor->executeFunction)
     return op->emitOpError("MOToMAP: kernel has no execute function");
 
@@ -155,9 +233,6 @@ LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   if (isa<MO::InvokeShapeFuncOp>(op))
     return op->emitOpError(
         "MOToMAP: shape-function kernels are not yet supported");
-  else if (adaptor->isElementwise())
-    return op->emitOpError(
-        "MOToMAP: elementwise kernels are not yet supported");
   else if (adaptor->isViewKernel())
     return op->emitOpError("MOToMAP: view kernels are not yet supported");
   else

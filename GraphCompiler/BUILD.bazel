@@ -1541,6 +1541,7 @@ modular_cc_library(
         ":MAPDialect",
         ":MODialect",
         ":MOGGDialect",
+        ":MOSHDialect",
         ":MOToMAPIncGen",
         "//KGEN:KGENDialect",
     ],
