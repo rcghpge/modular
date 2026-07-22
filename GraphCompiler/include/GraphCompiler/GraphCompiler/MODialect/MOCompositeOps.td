@@ -585,6 +585,44 @@ def MOComposite_DistributedMatmulReduceScatterSumOp : MO_DistributedOp<"composit
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedReduceScatterRMSNormOp
+//===----------------------------------------------------------------------===//
+
+def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.distributed.reduce_scatter_rms_norm", [
+  MO_MultiDevice,
+  MO_CompositeOpTrait
+]> {
+  string cppNamespace = MODialect.cppNamespace # "::Composite";
+  let summary = "Fused ReduceScatter sum + RMSNorm across N devices for a single device.";
+  let description = [{
+    ReduceScatter takes in inputs each coming from a different device and
+    partitions the reduction so each device receives a disjoint row shard of the
+    sum. This op keeps that shard's sum in f32 registers and RMSNorm-normalizes
+    it in the same launch, avoiding the HBM round-trip of a separate norm kernel.
+
+    It returns both the normed shard (`output`, fed to the next layer) and the
+    reduce-scatter sum shard (`outResidual`, the residual stream). The norm is
+    inherently `multiply_before_cast=true`: gamma is folded in f32 and the value
+    is cast to the input dtype once, last. bf16 in/out only (no quantization).
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    Variadic<MO_Tensor>:$gamma,
+    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
+    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$output,
+    Variadic<MO_Tensor>:$outResidual,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 // Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
 //===----------------------------------------------------------------------===//
 //

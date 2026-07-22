@@ -4218,6 +4218,18 @@ void Composite::AllReduceAddRMSNormQuantFP8Op::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedReduceScatterRMSNormOp
+//===----------------------------------------------------------------------===//
+
+void Composite::DistributedReduceScatterRMSNormOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceRMSNormRoPEOp
 //===----------------------------------------------------------------------===//
 
