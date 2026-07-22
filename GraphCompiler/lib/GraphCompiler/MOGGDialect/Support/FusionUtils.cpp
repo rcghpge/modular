@@ -255,6 +255,8 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
       MO::DeviceInfoMapping(moduleOp).get(deviceRef).getTileBasedFusion();
   bool kernelIsTile =
       tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTileTensor;
+  bool kernelIsTileStore =
+      tensorArg->ioSpec == MOGG::IOSpec::FusedOutputTileTensor;
   bool kernelIsSimdCompute =
       tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTensor;
   if (tileBasedFusion) {
@@ -267,11 +269,15 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
           "tile kernel (_FusedComputeOutputTileTensor) is required");
     if (kernelIsTile)
       return KernelOutputFusionLambdaType::ComputeTile;
-  } else if (kernelIsTile) {
+    // Store-tile: the fused lambda owns the store (tile analog of Output),
+    // selected by the primary kernel declaring _FusedOutputTileTensor.
+    if (kernelIsTileStore)
+      return KernelOutputFusionLambdaType::OutputTile;
+  } else if (kernelIsTile || kernelIsTileStore) {
     return Error(
         "kernel '" + executeOp.getKernelSymName().str() +
-        "' declares a tile-based fused output (_FusedComputeOutputTileTensor) "
-        "but device '" +
+        "' declares a tile-based fused output (_FusedComputeOutputTileTensor "
+        "or _FusedOutputTileTensor) but device '" +
         deviceRef.getLabel().str() +
         "' is not configured for tile codegen (tile_based_fusion)");
   }

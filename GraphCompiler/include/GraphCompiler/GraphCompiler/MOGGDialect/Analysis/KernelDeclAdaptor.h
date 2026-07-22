@@ -46,6 +46,7 @@ enum class IOSpec {
   FusedOutputTensor,
   FusedComputeOutputTensor,
   FusedComputeOutputTileTensor,
+  FusedOutputTileTensor,
 };
 
 //===----------------------------------------------------------------------===//

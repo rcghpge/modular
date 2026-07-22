@@ -416,6 +416,8 @@ constexpr llvm::StringLiteral kTraitComputeOutputFusion =
     "managed_tensor_slice.ComputeOutputFusion";
 constexpr llvm::StringLiteral kTraitComputeOutputFusionTile =
     "managed_tensor_slice.ComputeOutputFusionTile";
+constexpr llvm::StringLiteral kTraitOutputFusionTile =
+    "managed_tensor_slice.OutputFusionTile";
 constexpr llvm::StringLiteral kTraitElementwiseFusion =
     "managed_tensor_slice.ElementwiseFusion";
 constexpr llvm::StringLiteral kTraitElementwiseFusionTile =
@@ -501,6 +503,8 @@ constexpr llvm::StringLiteral kParameterCopier = "copier";
 /// must differ from the runtime arg name (`kParameterCopier`), or the emitted
 /// method redefines `copier`. Mirrors the trait's `Copier`/`copier` split.
 constexpr llvm::StringLiteral kParameterCopierType = "Copier";
+constexpr llvm::StringLiteral kParameterStoreCopier = "store_copier";
+constexpr llvm::StringLiteral kParameterStoreCopierType = "StoreCopier";
 
 //===----------------------------------------------------------------------===//
 // Stdlib package names
@@ -556,6 +560,7 @@ constexpr int64_t kIOSpecIOFusedInput = 2;
 constexpr int64_t kIOSpecIOFusedOutput = 3;
 constexpr int64_t kIOSpecIOFusedComputeOutput = 31;
 constexpr int64_t kIOSpecIOFusedComputeOutputTile = 32;
+constexpr int64_t kIOSpecIOFusedOutputTile = 33;
 constexpr int64_t kIOSpecIOUnknown = -1;
 
 constexpr llvm::StringLiteral kInputTensor = "InputTensor";
@@ -567,6 +572,7 @@ constexpr llvm::StringLiteral kFusedComputeOutputTensor =
     "FusedComputeOutputTensor";
 constexpr llvm::StringLiteral kFusedComputeOutputTileTensor =
     "FusedComputeOutputTileTensor";
+constexpr llvm::StringLiteral kFusedOutputTileTensor = "FusedOutputTileTensor";
 
 /// Mojo `IO` enum member-alias short names (the names that appear inside
 /// `KGEN::SugarKind::MemberAlias` attributes when an `IOSpec` parameter is
@@ -578,6 +584,7 @@ constexpr llvm::StringLiteral kIoFusedOutput = "FusedOutput";
 constexpr llvm::StringLiteral kIoFusedComputeOutput = "FusedComputeOutput";
 constexpr llvm::StringLiteral kIoFusedComputeOutputTile =
     "_FusedComputeOutputTile";
+constexpr llvm::StringLiteral kIoFusedOutputTile = "_FusedOutputTile";
 
 //===----------------------------------------------------------------------===//
 // Wrapper classes for high-traffic Mojo types
@@ -623,6 +630,8 @@ public:
       "_bind_to_fused_compute_output";
   static constexpr llvm::StringLiteral kBindToFusedComputeOutputTile =
       "_bind_to_fused_compute_output_tile";
+  static constexpr llvm::StringLiteral kBindToFusedOutputTile =
+      "_bind_to_fused_output_tile";
 
   /// Field accessors (return the raw field value, not a call).
   MojoValue staticSpec() const { return value.get(kStaticSpec); }

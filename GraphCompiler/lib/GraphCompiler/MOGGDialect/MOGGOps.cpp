@@ -949,10 +949,11 @@ static void emitElementwiseLambdaBodyOps(
       }
 
       if (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+          lambdaType == KernelOutputFusionLambdaType::OutputTile ||
           lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
         // The layout/dim source is the method's destination-tile argument:
-        // `val` for the compute-output (epilogue) path, `dst` for the pure
-        // elementwise path (which has no primary `val` output operand).
+        // `val` for the compute-output / store (epilogue) paths, `dst` for the
+        // pure elementwise path (which has no primary `val` output operand).
         llvm::StringRef layoutSrc =
             lambdaType == KernelOutputFusionLambdaType::ElementwiseTile
                 ? kParameterDst
@@ -973,6 +974,7 @@ static void emitElementwiseLambdaBodyOps(
 
       bool useTileElementwise =
           (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+           lambdaType == KernelOutputFusionLambdaType::OutputTile ||
            lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) &&
           elemAdaptor.isTileElementwise();
 
@@ -1116,6 +1118,44 @@ emitFusionStructReturnOrStore(EmitMojoState &state, MojoBuilder &sdb,
     return;
   }
 
+  // Tile-based store fusion (OutputTile): the fusion owns the store.
+  if (lambdaType == KernelOutputFusionLambdaType::OutputTile) {
+    auto tensorTy = captureTensorTypes[0];
+    auto rank = tensorTy.getRank() == 0 ? 1 : tensorTy.getRank();
+
+    MojoValue tileShape = sdb.comptime(MojoValue(kFnGetKernelTileShape)[{
+        MojoValue(kParameterDType), MojoValue("gpu").quote()}]());
+
+    SmallVector<MojoValue> coordArgs;
+    SmallVector<MojoValue> tileDims;
+    for (unsigned d = 0; d < rank; ++d) {
+      coordArgs.push_back(
+          MojoValue(kStructInt)({}, {MojoValue(kParameterTileCoords)[d]}));
+      tileDims.push_back(tileShape[d]);
+    }
+    MojoValue tileCoord = MojoValue(kStructCoord)({}, coordArgs);
+
+    MojoValue outputTensor = MojoValue(kComptimeOutputTensor)(
+        {MojoValue(kParameterStaticSpec).equal(MojoValue("Self.spec_0"))},
+        {MojoValue("self.ptr_0"), MojoValue("self.shape_0"),
+         MojoValue("self.strides_0")});
+    MojoValue outTile = outputTensor.get("to_tile_tensor")().get(
+        "tile")[tileDims]({}, {tileCoord});
+
+    MojoValue dstSpace = MojoValue(kParameterStoreCopierType)
+                             .get(TileTensorRef::kDstAddressSpace);
+    MojoValue srcSpace = MojoValue(kParameterStoreCopierType)
+                             .get(TileTensorRef::kSrcAddressSpace);
+    MojoValue dstCast =
+        outTile.get(TileTensorRef::kAddressSpaceCast)[dstSpace]();
+    MojoValue srcCast =
+        resultValue.get(TileTensorRef::kAddressSpaceCast)[srcSpace]();
+
+    sdb.call(MojoValue(kParameterStoreCopier).get("copy"), {},
+             {dstCast, srcCast});
+    return;
+  }
+
   if (generateStoreForOutput) {
     auto tensorTy = captureTensorTypes[0];
     auto dtype = state.mlirDTypeToMojoType(tensorTy.getDtype());
@@ -1186,6 +1226,7 @@ static void emitFusionStructMethodBody(
   // For tile compute/elementwise fusion, the position parameter is tile_coords;
   // for SIMD compute/output fusion it is idx.
   bool isTile = lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+                lambdaType == KernelOutputFusionLambdaType::OutputTile ||
                 lambdaType == KernelOutputFusionLambdaType::ElementwiseTile;
   valueMap[lambdaBody->getArguments().back()] =
       MojoValue(isTile ? kParameterTileCoords : kParameterIdx);
@@ -1264,6 +1305,9 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     traitName = kTraitComputeOutputFusionTile;
     methodName = "compute";
     methodReturnsValue = true;
+  } else if (lambdaType == KernelOutputFusionLambdaType::OutputTile) {
+    traitName = kTraitOutputFusionTile;
+    methodName = "store";
   } else {
     traitName = kTraitComputeOutputFusion;
     methodName = "compute";
@@ -1298,18 +1342,22 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         std::optional<MojoValue> returnType;
 
         if (lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+            lambdaType == KernelOutputFusionLambdaType::OutputTile ||
             lambdaType == KernelOutputFusionLambdaType::ElementwiseTile) {
           MojoValue tileTensorType = MojoValue(kStructTileTensor)[{
               kParameterDType, kParameterLayoutType, kComptimeMutAnyOrigin}];
-          // The tile-signature is identical for the compute-output and pure
-          // elementwise paths; only the third method argument differs. The
-          // compute-output (epilogue) path binds the primary output tile as
-          // `val`; the pure elementwise path receives the destination fragment
-          // as `dst` (all inputs flow through the copier).
+          // The tile-signature is identical across the compute-output, store
+          // (epilogue) and pure elementwise paths; only the third method
+          // argument differs. The compute-output and store (epilogue) paths
+          // bind the primary output tile as `val`; the pure elementwise path
+          // receives the destination fragment as `dst` (all inputs flow
+          // through the copier).
           StringRef thirdArgName =
               lambdaType == KernelOutputFusionLambdaType::ElementwiseTile
                   ? kParameterDst
                   : kParameterVal;
+          bool isStoreTile =
+              lambdaType == KernelOutputFusionLambdaType::OutputTile;
           methodParameters = {
               NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
               NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
@@ -1320,14 +1368,22 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
               // emitted method redefines `copier`.
               NamedMojoDef::asVerbatim(kParameterCopierType, kStructTileCopier),
           };
+          // The store path takes a second, copier that writes the output tile.
+          if (isStoreTile)
+            methodParameters.push_back(NamedMojoDef::asVerbatim(
+                kParameterStoreCopierType, kStructTileCopier));
           methodArgs.push_back(NamedMojoDef::asVerbatim(kParameterSelf));
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(kParameterTileCoords, idxType));
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(kParameterCopier, kParameterCopierType));
+          if (isStoreTile)
+            methodArgs.push_back(NamedMojoDef::asVerbatim(
+                kParameterStoreCopier, kParameterStoreCopierType));
           methodArgs.push_back(
               NamedMojoDef::asVerbatim(thirdArgName, tileTensorType));
-          returnType = tileTensorType;
+          if (methodReturnsValue)
+            returnType = tileTensorType;
         } else {
           // SIMD-based fusion paths.
           MojoValue simdType =
@@ -1423,6 +1479,10 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     if (!outputLambdaType.isError() &&
         *outputLambdaType == KernelOutputFusionLambdaType::ComputeTile) {
       return ManagedTensorSliceRef::kBindToFusedComputeOutputTile;
+    }
+    if (!outputLambdaType.isError() &&
+        *outputLambdaType == KernelOutputFusionLambdaType::OutputTile) {
+      return ManagedTensorSliceRef::kBindToFusedOutputTile;
     }
     // Both SIMD compute-output cases use the same Mojo method name;
     // overload resolution distinguishes by trait type.

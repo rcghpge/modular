@@ -136,6 +136,9 @@ enum class KernelOutputFusionLambdaType {
                // _FusedComputeOutputTensor).
   ComputeTile, // Tile-based compute fusion lambda with a TileTensor return
                // (kernel operand is _FusedComputeOutputTileTensor).
+  OutputTile,  // Tile-based output fusion lambda with a store (the fusion owns
+               // the store; kernel operand is _FusedOutputTileTensor). Tile
+               // analog of Output.
   // TODO(GEX-3912): unlike SIMD (which reuses `Compute` for both standalone and
   // epilogue fusion, distinguishing them by bind kind), tile needs a separate
   // `ElementwiseTile` only because the standalone path manufactures into `dst`

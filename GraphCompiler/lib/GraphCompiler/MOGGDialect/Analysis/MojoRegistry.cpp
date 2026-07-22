@@ -119,9 +119,9 @@ static int deviceInfoSpecificity(DeviceInfoAttr infos) {
 
 // Transitional tile-codegen gate (remove per GEX-3941): returns true when the
 // kernel's `execute` declares a tile-based fused output
-// (_FusedComputeOutputTileTensor). Such a kernel is only lowerable on a device
-// configured for tile codegen (tile_based_fusion), so `getResolvedKernel`
-// discounts it as a candidate on non-tile devices.
+// (_FusedComputeOutputTileTensor or _FusedOutputTileTensor). Such a kernel is
+// only lowerable on a device configured for tile codegen (tile_based_fusion),
+// so `getResolvedKernel` discounts it as a candidate on non-tile devices.
 static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
   KernelDeclAdaptor adaptor(decl);
   if (!adaptor.executeFunction.has_value())
@@ -129,7 +129,9 @@ static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
   for (const auto &arg : adaptor.executeFunction->outputArguments) {
     const auto *tensorArg =
         std::get_if<KernelDeclTensorAdaptor>(&arg.underlyingType);
-    if (tensorArg && tensorArg->ioSpec == IOSpec::FusedComputeOutputTileTensor)
+    if (tensorArg &&
+        (tensorArg->ioSpec == IOSpec::FusedComputeOutputTileTensor ||
+         tensorArg->ioSpec == IOSpec::FusedOutputTileTensor))
       return true;
   }
   return false;
