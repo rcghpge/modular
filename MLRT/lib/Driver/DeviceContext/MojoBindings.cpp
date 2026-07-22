@@ -11,11 +11,7 @@
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
-#include "AsyncRT/Runtime/WorkQueue.h"
-#include "MLRT/Core/Tensor/Tensor.h"
-#include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
-#include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
@@ -220,21 +216,6 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(DeviceBuffer *buffer) {
   DeviceBufferRef::lowLevelDropRef(buffer);
 }
 
-// Reference counting for a bare `AsyncValue *` handle, backing the limited Mojo
-// `AnyAsyncValueRef` wrapper (mirrors the DeviceBuffer retain/release above). A
-// null handle is the empty/non-tracked reference, so both are no-ops on null.
-MODULAR_EXPORT void AsyncRT_AsyncValue_retain(AsyncRT::AsyncValue *value) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retain", TRACY_COLOR_GRAY);
-  if (value)
-    RCRef<AsyncRT::AsyncValue>::lowLevelAddRef(value);
-}
-
-MODULAR_EXPORT void AsyncRT_AsyncValue_release(AsyncRT::AsyncValue *value) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_release", TRACY_COLOR_GRAY);
-  if (value)
-    RCRef<AsyncRT::AsyncValue>::lowLevelDropRef(value);
-}
-
 // Wraps an already-owning `DeviceBuffer` handle (surrendered net-zero by the
 // Mojo side via `DeviceBuffer.take_handle()`) in an
 // `AsyncValue<DeviceBufferRef>` and returns the owning `AsyncValue*` (refcount
@@ -254,35 +235,6 @@ AsyncRT_AsyncValue_createFromDeviceBuffer(DeviceBuffer *handle) {
   // `releasePointer` resets `storage` to null so its destructor does not drop
   // the reference.
   return storage.releasePointer();
-}
-
-// Retains the `AsyncValue` behind an existing `AnyAsyncValueRef` storage handle
-// (e.g. a cached buffer's memory handle) and hands the owning `AsyncValue*`
-// (refcount +1) to a Mojo `AnyAsyncValueRef`. A null handle yields null.
-MODULAR_EXPORT AsyncRT::AsyncValue *
-AsyncRT_AsyncValue_retainHandle(AnyAsyncValueRef *handle) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainHandle", TRACY_COLOR_GRAY);
-  if (!handle)
-    return nullptr;
-  return handle->copy().releasePointer();
-}
-
-// Retains the backing storage handle of a packed buffer/tensor async slot and
-// hands the owning `AsyncValue*` (refcount +1) to a Mojo `AnyAsyncValueRef`.
-// Used by unpack so an unpacked value (or a derivative) keeps its backing
-// memory alive when it is re-packed as an output. Non-tracked storage yields
-// null.
-MODULAR_EXPORT AsyncRT::AsyncValue *
-AsyncRT_AsyncValue_retainBufferStorage(AnyAsyncValueRef *async) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainBufferStorage",
-                       TRACY_COLOR_GRAY);
-  AnyAsyncValueRef &value = *async;
-  AnyAsyncValueRef handle;
-  if (value.isType<MLRT::TensorBufferRef>())
-    handle = value.get<MLRT::TensorBufferRef>().getMemStorageHandle();
-  else if (value.isType<MLRT::Tensor>())
-    handle = value.get<MLRT::Tensor>().getBufferRef().getMemStorageHandle();
-  return handle.releasePointer();
 }
 
 MODULAR_EXPORT const DeviceContext *
@@ -1183,23 +1135,6 @@ MODULAR_EXPORT void AsyncRT_DeviceGraph_release(DeviceGraph *graph) {
 MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_replay", TRACY_COLOR_GRAY);
   return checkSuccess(graph->replay());
-}
-
-//===----------------------------------------------------------------------===//
-// Device affinity
-//===----------------------------------------------------------------------===//
-
-// Compute the worker task ID for a GPU device. Called from the Mojo standard
-// library via external_call (std.runtime.asyncrt.task_id_for_device). Obtains
-// the thread pool size internally from the current AsyncRT cpuDevice. This is a
-// stdlib runtime-ABI wrapper (not a compiler dependency), so it lives in the
-// DeviceContext bindings library that already ships with the runtime rather
-// than in KGEN CompilerRT, keeping the Mojo compiler free of a build-time
-// dependency on AsyncRT/DeviceAffinity.
-MODULAR_EXPORT int32_t MLRT_TaskIdForDevice(int32_t deviceId) {
-  auto *rt = AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull();
-  size_t numWorkers = rt->getWorkQueue()->getParallelismLevel();
-  return MLRT::taskIdForDevice(deviceId, numWorkers);
 }
 
 //

@@ -505,8 +505,6 @@ modular_cc_library(
     # Driver/DeviceContextImplCpp comment).
     copts = ["-UMODULAR_HAL_DEVICE_CONTEXT"],
     deps = [
-        ":Core/Tensor",
-        ":Driver/DeviceAffinity",
         ":Driver/DeviceContextImplCpp",
         "//AsyncRT:Runtime",
         "//Support:Base",
@@ -564,6 +562,7 @@ modular_shared_library(
     output_name = "AsyncRTMojoBindings",
     deps = [
         ":Driver/DeviceContextAPI",
+        ":Driver/MojoRuntimeBindingsImpl",
         "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:BinaryID",
@@ -623,6 +622,44 @@ mojo_shared_library(
 # DeviceContext (MojoHAL_* exports), implementing the HALDeviceContext.h
 # declarations that DeviceContext.h dispatches to under
 # --config=hal-device-context.
+# Backend-independent runtime bindings (MojoBindings.cpp): symbols Mojo
+# programs may call (AsyncRT_AsyncValue_*, MLRT_TaskIdForDevice),
+# regardless of which DeviceContext implementation is active. Linked into the
+# Driver/DeviceContext shared library under both configurations.
+modular_cc_library(
+    name = "Driver/MojoRuntimeBindingsImpl",
+    srcs = ["lib/Driver/DeviceContext/MojoRuntimeBindings.cpp"],
+    deps = [
+        ":Core/Tensor",
+        ":Driver/DeviceAffinity",
+        "//AsyncRT:Runtime",
+        "//Support:Base",
+        "//Support:Profiling",
+        "//Support:SymbolExport",
+    ],
+    # Nothing in C++ references these exports (they exist for Mojo
+    # external_call), so without alwayslink the linker drops the object.
+    alwayslink = True,  # keep
+)
+
+# Shared-library form of the std runtime bindings for the Mojo toolchain's
+# runtime environment under --config=hal-device-context, where the toolchain
+# does not link the DeviceContext runtime that normally carries them (see
+# bazel/internal implicit_deps).
+modular_shared_library(
+    name = "Driver/MojoRuntimeBindings",
+    srcs = [],
+    output_name = "MojoRuntimeBindings",
+    tags = [ALLOW_UNUSED_TAG],
+    # Only meaningful under --config=hal-device-context.
+    target_compatible_with = select({
+        "//:hal_device_context_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [":Driver/MojoRuntimeBindingsImpl"],
+)
+
 modular_cc_library(
     name = "Driver/DeviceContextImplHAL",
     srcs = ["lib/Driver/DeviceContext/HAL/HALDeviceContext.cpp"],
@@ -634,9 +671,11 @@ modular_cc_library(
         "@plugin//:__pkg__",
     ],
     deps = [
+        ":Core/Tensor",
         ":Driver/CompilationDeviceImpl",
         ":Driver/DeviceContextAPI",
         ":Driver/HALDeviceContextExports",
+        "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Configuration",

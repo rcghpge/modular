@@ -12,6 +12,7 @@
 
 #include "MLRT/Driver/DeviceContext/HALDeviceContext.h"
 
+#include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
 #include "Support/Configuration.h"
@@ -983,3 +984,25 @@ MODULAR_CXX_EXPORT const char *AsyncRT_DeviceStream_hip_stream(void *result,
   return halInteropUnavailable();
 }
 } // extern "C"
+
+// ===-- AsyncValue runtime ABI ---------------------------------------------===
+// //
+// Backend-independent AsyncValue helpers Mojo's `std.runtime.async_value`
+// calls via external_call.
+
+using M::AsyncRT::AnyAsyncValueRef;
+using M::AsyncRT::CPUDevice;
+using M::Driver::DeviceBuffer;
+using M::Driver::DeviceBufferRef;
+
+// Wraps an already-owning `DeviceBuffer` handle (surrendered net-zero by the
+// Mojo side via `DeviceBuffer.take_handle()`) in an
+// `AsyncValue<DeviceBufferRef>`.
+MODULAR_EXPORT M::AsyncRT::AsyncValue *
+AsyncRT_AsyncValue_createFromDeviceBuffer(DeviceBuffer *handle) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  DeviceBufferRef buf = M::takeRCRef(handle);
+  AnyAsyncValueRef storage =
+      AnyAsyncValueRef::createReady<DeviceBufferRef>(cpuDevice, std::move(buf));
+  return storage.releasePointer();
+}
