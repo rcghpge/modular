@@ -23,15 +23,17 @@ def MAPDialect : Dialect {
   let summary = "Modular Access Primitives dialect.";
   let description = [{
     MAP (Modular Access Primitives) expresses executable loop nests / kernels
-    that load and store tensors and perform computation. It works together with
-    the companion IMAP (Index Modular Access Primitives) dialect, which
-    expresses index transformations.
-
-    This is scaffolding: the dialect currently defines no operations, attributes
-    or types.
+    that load and store tensors and perform computation. It has two op
+    families: `map.iter.opaque` wraps a hand-written Mojo kernel with a fusible
+    store epilogue (`map.iter.epilogue` / `map.call`), while `map.iter.foreach`
+    expresses the loop body explicitly as scalar `map.load` / `map.store` /
+    `map.call.elementwise` ops per index (`map.index<N>`).
   }];
 
   let cppNamespace = "::M::MAP";
+  let dependentDialects = [
+    "::M::MO::MODialect",
+  ];
 
   let useDefaultTypePrinterParser = 1;
 }

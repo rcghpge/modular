@@ -13,6 +13,13 @@
 
 include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.td"
 include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPTypes.td"
+include "GraphCompiler/GraphCompiler/MODialect/MOTypes.td"
+include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.td"
+include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.td"
+include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.td"
+include "KGEN/KGENDialect/KGENTypes.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -20,6 +27,11 @@ include "mlir/IR/SymbolInterfaces.td"
 // Base class for ops in this dialect.
 class MAP_Op<string mnemonic, list<Trait> traits = []>
     : Op<MAPDialect, mnemonic, traits>;
+
+// Type constraint matching the `map.index<N>` type.
+def MAP_AnyIndex : Type<
+    CPred<"::llvm::isa<::M::MAP::IndexType>($_self)">,
+    "map.index type">;
 
 //===----------------------------------------------------------------------===//
 // map.iter.opaque
@@ -45,7 +57,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     ```mlir
     %mm = map.iter.opaque inputs (%A, %B) outputs (%out : !mo.tensor<[M, N], bf16>) {
       %epi = map.iter.epilogue (%val : bf16, %idx : !map.index<2>) capturing (%out) {
-        map.iter.store %out[%idx] = %val : !mo.tensor<[M, N], bf16>, !map.index<2>, bf16
+        map.store %out[%idx] = %val : !mo.tensor<[M, N], bf16>
       } : !mo.tensor<[M, N], bf16>
       map.call @builtin_kernels.linalg.Matmul params = {...}
         inputs (%A, %B) outputs (%epi) : (...) -> (...)
@@ -127,25 +139,155 @@ def MAP_CallOp : MAP_Op<"call", [
 }
 
 //===----------------------------------------------------------------------===//
-// map.iter.store
+// map.iter.foreach
 //===----------------------------------------------------------------------===//
 
-def MAP_IterStoreOp : MAP_Op<"iter.store"> {
-  let summary = "Store a value into a tensor at an index.";
+def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
+  IsolatedFromAbove,
+  SingleBlock,
+  NoTerminator,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
+]> {
+  let summary = "Structured iteration over a tensor shape";
   let description = [{
-    Stores `value` into `dest` at `index`. Used in a store-path callback
-    (`map.iter.epilogue`).
+    Iterates over every point in an N-dimensional shape, executing the body
+    region once per index. The shape is a `MOSH::ShapeAttr` and may contain
+    static integer dims, named symbolic parameters (D0, D1, …), or parametric
+    expressions.
+
+    Inputs are op operands that are also shadowed as body block arguments
+    (same convention as `mogg.kernel`). Outputs are extra body block arguments
+    with no corresponding op operand; their types match the op results. The
+    index is a single extra block argument of type `map.index<N>`.
+
+    Block arguments are ordered: [input_args..., output_args..., index_arg].
+
+    Example:
+    ```mlir
+    %result = map.iter.foreach<[8, 16, 128]>
+        inputs  (%x: !mo.tensor<[8, 16, 128], f32>,
+                 %y: !mo.tensor<[8, 16, 128], f32>)
+        outputs (%out: !mo.tensor<[8, 16, 128], f32>)
+        index   (%idx: !map.index<3>)
+        -> !mo.tensor<[8, 16, 128], f32>
+    { ... }
+    ```
   }];
 
   let arguments = (ins
-    AnyType:$dest,
-    AnyType:$index,
-    AnyType:$value
+    MOSH_ShapeAttr:$shape,
+    Variadic<MO_Tensor>:$inputs,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo
   );
 
+  let results = (outs Variadic<MO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.load
+//===----------------------------------------------------------------------===//
+
+def MAP_LoadOp : MAP_Op<"load", [
+  TypesMatchWith<"result type matches tensor element type",
+                 "tensor", "result",
+                 "::llvm::cast<::M::MO::TensorType>($_self).getElementType()">,
+  TypesMatchWith<"index type matches tensor rank",
+                 "tensor", "index",
+                 "::M::MAP::IndexType::get($_self.getContext(), "
+                 "::llvm::cast<::M::MO::TensorType>($_self).getRank())">,
+  Pure
+]> {
+  let summary = "Load a value from a tensor at an N-D index";
+  let description = [{
+    Loads the value at an N-dimensional index from a tensor that is a block
+    argument of the enclosing `map.iter.foreach`. Logically a single scalar
+    element per index; the actual lowering may load a wider vector or tile
+    instead, depending on the target hardware and how the surrounding loop
+    is vectorized/tiled. The tensor type is spelled out in the assembly; the
+    result type is inferred as the tensor's element type (same convention as
+    `memref.load`).
+
+    Example:
+    ```mlir
+    %xv = map.load %x[%idx] : !mo.tensor<[8, 16, 128], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$tensor, MAP_AnyIndex:$index);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = [{ $tensor `[` $index `]` `:` qualified(type($tensor)) attr-dict }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.store
+//===----------------------------------------------------------------------===//
+
+def MAP_StoreOp : MAP_Op<"store", [
+  TypesMatchWith<"value type matches tensor element type",
+                 "tensor", "value",
+                 "::llvm::cast<::M::MO::TensorType>($_self).getElementType()">,
+  TypesMatchWith<"index type matches tensor rank",
+                 "tensor", "index",
+                 "::M::MAP::IndexType::get($_self.getContext(), "
+                 "::llvm::cast<::M::MO::TensorType>($_self).getRank())">
+]> {
+  let summary = "Store a value into a tensor at an N-D index";
+  let description = [{
+    Stores a value at an N-dimensional index into a tensor that is an output
+    block argument of the enclosing `map.iter.foreach`. Logically a single
+    scalar element per index; the actual lowering may store a wider vector
+    or tile instead, depending on the target hardware and how the
+    surrounding loop is vectorized/tiled. The tensor type is spelled out in
+    the assembly; the scalar type is inferred from the tensor's element type
+    (same convention as `memref.store`).
+
+    Example:
+    ```mlir
+    map.store %out[%idx] = %outv : !mo.tensor<[8, 16, 128], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$tensor, MAP_AnyIndex:$index, AnyType:$value);
+
+  let assemblyFormat = [{ $tensor `[` $index `]` `=` $value `:` qualified(type($tensor)) attr-dict }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.call.elementwise
+//===----------------------------------------------------------------------===//
+
+def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
+  HasParent<"IterForeachOp">,
+  Pure,
+]> {
+  let summary = "Call a named pointwise kernel on the current index and scalar arguments";
+  let description = [{
+    Calls a named pointwise kernel identified by a flat symbol reference,
+    given the enclosing `map.iter.foreach`'s current index and the scalar
+    operands, and returns a single scalar result. All operands other than
+    the index, and the result, must be scalar (non-tensor) types. Only valid
+    inside a `map.iter.foreach` body.
+
+    Example:
+    ```mlir
+    %outv = map.call.elementwise @builtin_kernels.elementwise.Add(%idx, %xv, %yv)
+                : !map.index<3>, f32, f32 -> f32
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$callee, MAP_AnyIndex:$index,
+                       Variadic<AnyType>:$args);
+  let results = (outs AnyType:$result);
+
   let assemblyFormat = [{
-    $dest `[` $index `]` `=` $value attr-dict `:`
-    type($dest) `,` type($index) `,` type($value)
+    $callee `(` $index `,` $args `)` attr-dict `:` type($index) `,` type($args) `->` type($result)
   }];
 }
 

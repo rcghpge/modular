@@ -20,7 +20,7 @@
 // CHECK-LABEL: mo.graph @one_fused
 // CHECK: %[[MM:.*]] = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP:.*]] = %[[O]] : !mo.tensor<[2, 2], f32>) {
-// CHECK:     map.iter.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>, !map.index<2>, f32
+// CHECK:     map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
 // CHECK:   } : !mo.tensor<[2, 2], f32>
 // CHECK:   map.call @{{.*}}MapLowerOneFusedOutput params = {} inputs(%[[A]]) outputs(%[[EPI]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: } {fusionInfo = #mogg.fusion<{{.*}}custom__map_lower_one_fused_output

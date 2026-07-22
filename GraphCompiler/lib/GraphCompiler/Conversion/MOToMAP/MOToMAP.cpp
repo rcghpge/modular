@@ -83,8 +83,8 @@ MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
   BlockArgument idx = body->addArgument(indexType, loc);
   BlockArgument cap = body->addArgument(out.getType(), loc);
   builder.setInsertionPointToStart(body);
-  MAP::IterStoreOp::create(builder, loc, /*dest=*/cap, /*index=*/idx,
-                           /*value=*/val);
+  MAP::StoreOp::create(builder, loc, /*dest=*/cap, /*index=*/idx,
+                       /*value=*/val);
   return epilogue;
 }
 

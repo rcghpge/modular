@@ -13,10 +13,15 @@
 
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPTypes.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 //===----------------------------------------------------------------------===//

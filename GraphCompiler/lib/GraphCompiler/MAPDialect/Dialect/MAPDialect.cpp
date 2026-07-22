@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPAttrs.h"
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"

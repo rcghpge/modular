@@ -1418,6 +1418,9 @@ td_library(
     srcs = glob(["include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/*.td"]),
     includes = ["include"],
     deps = [
+        ":MODialectTdFiles",
+        ":MOGGDialectTdFiles",
+        ":MOSHDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
@@ -1429,6 +1432,9 @@ gentbl_mlir_dialect(
     td_file = "include/GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAP.td",
     deps = [
         ":MAPDialectTdFiles",
+        ":MODialectTdFiles",
+        ":MOGGDialectTdFiles",
+        ":MOSHDialectTdFiles",
     ],
 )
 
@@ -1466,7 +1472,10 @@ modular_cc_library(
     deps = [
         ":MAPDialectAttrsIncGen",
         ":MAPDialectIncGen",
+        ":MODialect",
         ":MOGGDialect",
+        ":MOSHDialect",
+        "//Support:MDialect",
         "@llvm-project//mlir:IR",
     ],
 )

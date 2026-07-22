@@ -6,11 +6,15 @@
 
 #include "GraphCompiler/GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 
+using namespace M;
 using namespace mlir;
 using namespace M::MAP;
 
@@ -46,7 +50,7 @@ parseOperandGroup(OpAsmParser &parser,
   if (parser.parseLParen())
     return failure();
   if (succeeded(parser.parseOptionalRParen()))
-    return success();
+    return mlir::success();
   do {
     OpAsmParser::UnresolvedOperand operand;
     Type type;
@@ -205,4 +209,227 @@ void IterEpilogueOp::getAsmBlockArgumentNames(Region &region,
       setNameFn(arg, numCaptures == 1 ? "cap" : ("cap" + std::to_string(c)));
     }
   }
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.foreach
+//===----------------------------------------------------------------------===//
+
+// Parse a parenthesized list of block-argument-only entries: (name: type, ...).
+// Does NOT add operands to the state — only populates argumentInfo.
+static ParseResult
+parseBlockArgList(OpAsmParser &parser,
+                  SmallVectorImpl<OpAsmParser::Argument> &argInfo) {
+  if (parser.parseLParen())
+    return failure();
+  if (succeeded(parser.parseOptionalRParen()))
+    return mlir::success();
+  do {
+    OpAsmParser::Argument arg;
+    if (parser.parseArgument(arg, /*allowType=*/true))
+      return failure();
+    argInfo.push_back(arg);
+  } while (succeeded(parser.parseOptionalComma()));
+  return parser.parseRParen();
+}
+
+// Print a parenthesized list of block arguments (name: type) without operands.
+static void printBlockArgList(OpAsmPrinter &p, Block::BlockArgListType args) {
+  p << "(";
+  llvm::interleaveComma(args, p, [&](BlockArgument arg) {
+    p.printOperand(arg);
+    p << ": ";
+    p.printType(arg.getType());
+  });
+  p << ")";
+}
+
+ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
+  // Parse shape: <[d0, d1, ...]>
+  // Uses MOSH::parseShapeAttr which handles static ints, symbolic params,
+  // and parametric expressions inside the [...] brackets.
+  if (parser.parseLess())
+    return failure();
+  mlir::TypedAttr shapeTypedAttr;
+  auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
+  if (!shapeResult.has_value())
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected '[' for map.iter.foreach shape");
+  if (failed(*shapeResult))
+    return failure();
+  if (parser.parseGreater())
+    return failure();
+  state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
+
+  // Parse inputs with shadowing: inputs (%x: T, %y: T)
+  SmallVector<OpAsmParser::Argument> allArgInfo;
+  if (parser.parseKeyword("inputs") ||
+      parseParenOperandListWithShadowing(parser, state, allArgInfo,
+                                         /*isIsolatedFromAbove=*/true))
+    return failure();
+
+  // Parse outputs (block args only): outputs (%out: T)
+  SmallVector<OpAsmParser::Argument> outputArgInfo;
+  if (parser.parseKeyword("outputs") ||
+      parseBlockArgList(parser, outputArgInfo))
+    return failure();
+  for (auto &arg : outputArgInfo)
+    allArgInfo.push_back(arg);
+
+  // Parse index (block arg only): index (%idx: map.index<N>)
+  SmallVector<OpAsmParser::Argument> indexArgInfo;
+  if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
+    return failure();
+  if (indexArgInfo.size() != 1)
+    return parser.emitError(
+        parser.getCurrentLocation(),
+        "'map.iter.foreach' expects exactly one index argument");
+  allArgInfo.push_back(indexArgInfo.front());
+
+  // Parse result types: -> T or (T, T, ...)
+  if (parser.parseArrowTypeList(state.types))
+    return failure();
+
+  // Parse body region with all block args.
+  if (parseRegion(parser, allArgInfo, *state.addRegion(),
+                  /*isIsolatedFromAbove=*/true))
+    return failure();
+
+  return parser.parseOptionalAttrDict(state.attributes);
+}
+
+void IterForeachOp::print(OpAsmPrinter &p) {
+  // Print shape: <[d0, d1, ...]>
+  // Uses MOSH::printShapeValue to render each dim (integer, symbolic, or
+  // parametric expression) without the outer "#mosh<ape[...]>" envelope.
+  p << "<[";
+  MOSH::printShapeValue(p, getShape().getValues());
+  p << "]>";
+  p << "\n    ";
+
+  Block &body = getBody().front();
+  unsigned numInputs = getInputs().size();
+  unsigned numOutputs = getResults().size();
+
+  // inputs (%x: T, ...) — operands shadowed as block args
+  p << "inputs  ";
+  printParenOperandListWithShadowing(p, getInputs(),
+                                     body.getArguments().slice(0, numInputs),
+                                     /*isIsolatedFromAbove=*/true);
+  p << "\n    ";
+
+  // outputs (%out: T, ...) — block args only
+  p << "outputs ";
+  printBlockArgList(p, body.getArguments().slice(numInputs, numOutputs));
+  p << "\n    ";
+
+  // index (%idx: map.index<N>) — block arg only
+  p << "index   ";
+  printBlockArgList(p, body.getArguments().slice(numInputs + numOutputs, 1));
+  p << " ";
+
+  // -> result types (on same line as index, opening brace follows inline)
+  p.printArrowTypeList(getResultTypes());
+  p << " ";
+
+  // Body region.
+  // printRegion() from ParserUtils requires operands.size() ==
+  // region.getNumArguments(), but IterForeachOp's region has inputs + outputs +
+  // index block args, while getInputs() covers only the input operands.
+  // Instead: shadow input block args with their outer operand SSA names so
+  // the body prints "%x", "%y", etc.  Output and index block args were
+  // already assigned names by the printBlockArgList calls above; shadowing
+  // them with themselves is a no-op that keeps those names consistent.
+  {
+    llvm::DenseSet<Value> seen;
+    bool inputsDistinct = true;
+    for (Value v : getInputs()) {
+      if (!seen.insert(v).second) {
+        inputsDistinct = false;
+        break;
+      }
+    }
+    if (inputsDistinct) {
+      SmallVector<Value> shadowValues(getInputs().begin(), getInputs().end());
+      for (BlockArgument arg : body.getArguments().drop_front(numInputs))
+        shadowValues.push_back(arg);
+      p.shadowRegionArgs(getBody(), shadowValues);
+    }
+  }
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {"shape", "operand_segment_sizes"});
+}
+
+LogicalResult IterForeachOp::verify() {
+  Block &body = getBody().front();
+  unsigned numInputs = getInputs().size();
+  unsigned numOutputs = getResults().size();
+  unsigned expectedArgs = numInputs + numOutputs + 1; // +1 for index
+
+  if (body.getNumArguments() != expectedArgs)
+    return emitOpError() << "body expects " << expectedArgs
+                         << " block arguments (" << numInputs << " inputs + "
+                         << numOutputs << " outputs + 1 index), "
+                         << "got " << body.getNumArguments();
+
+  // Input block arg types must match input operand types.
+  for (unsigned i = 0; i < numInputs; ++i) {
+    if (body.getArgument(i).getType() != getInputs()[i].getType())
+      return emitOpError() << "input block argument " << i
+                           << " type mismatch with operand";
+  }
+
+  // Output block arg types must match result types.
+  for (unsigned i = 0; i < numOutputs; ++i) {
+    if (body.getArgument(numInputs + i).getType() != getResults()[i].getType())
+      return emitOpError() << "output block argument " << i
+                           << " type mismatch with result";
+  }
+
+  // Index arg must be map.index<N> where N == shape.size().
+  BlockArgument indexArg = body.getArgument(numInputs + numOutputs);
+  auto indexTy = llvm::dyn_cast<IndexType>(indexArg.getType());
+  if (!indexTy)
+    return emitOpError() << "index block argument must be map.index<N>";
+
+  if (indexTy.getRank() != getShape().getRank())
+    return emitOpError() << "index rank " << indexTy.getRank()
+                         << " does not match shape rank "
+                         << getShape().getRank();
+
+  return success();
+}
+
+llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
+  // Scan results then inputs for the first value with a device annotation.
+  for (Value v : llvm::concat<Value>(getResults(), getInputs())) {
+    if (auto dt = llvm::dyn_cast<M::MO::MOHasDeviceTypeInterface>(v.getType()))
+      if (M::DeviceRefAttr device = dt.getDeviceRef())
+        return {device};
+  }
+  return {M::DeviceRefAttr{}};
+}
+
+//===----------------------------------------------------------------------===//
+// map.load
+//===----------------------------------------------------------------------===//
+
+LogicalResult LoadOp::verify() {
+  auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
+  if (!tensorTy)
+    return emitOpError() << "tensor operand must be !mo.tensor type";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// map.store
+//===----------------------------------------------------------------------===//
+
+LogicalResult StoreOp::verify() {
+  auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
+  if (!tensorTy)
+    return emitOpError() << "tensor operand must be !mo.tensor type";
+  return success();
 }
