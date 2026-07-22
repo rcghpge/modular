@@ -146,7 +146,7 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
   }
 
   // Fallback path: in elaborated bytecode the IO param is a fully-resolved
-  // LITStructAttr { value: SIMDSize { value: i64 } } (two levels of nesting).
+  // LITStructAttr { value: SIMDLength { value: i64 } } (two levels of nesting).
   if (input == kIOSpecIOUnknown) {
     mlir::TypedAttr inputAttr = KGEN::getCanonicalAttr(rawInputAttr);
     auto inputStruct = KGEN::sugarDynCast<KGEN::LIT::LITStructAttr>(inputAttr);

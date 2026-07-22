@@ -1285,7 +1285,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   auto structName = state.structDefsBuilder.getIdentifier("FusionStruct");
   MojoValue structNameVal = state.structDefsBuilder.newVar(structName);
   auto &sdb = state.structDefsBuilder;
-  const auto simdWidthType = isOutputLambda ? kStructSIMDSize : kStructInt;
+  const auto simdWidthType = isOutputLambda ? kStructSIMDLength : kStructInt;
   sdb.structDecl(
       structNameVal, parameters, {MojoValue(traitName)}, fields, [&]() {
         // Trait-conforming method: load/store/compute. Parameter and argument
