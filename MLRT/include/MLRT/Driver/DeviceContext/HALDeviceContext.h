@@ -6,9 +6,10 @@
 //
 // HAL replacement for the DeviceContext API. Under --config=hal-device-context
 // (which defines MODULAR_HAL_DEVICE_CONTEXT globally) DeviceContext.h
-// dispatches to this header instead of the legacy DeviceContext declarations:
-// it provides the same `M::Driver` class names and drop-in signatures so
-// consumers compile against a single API regardless of backend.
+// dispatches to this header instead of the legacy declarations: same
+// `M::Driver` class names and drop-in signatures, implemented as a pure shim
+// over the Mojo HAL `DeviceContext` via the MojoHAL_* C-ABI exports
+// (MLRT/lib/Driver/DeviceContext/HAL/hal_device_context_exports.mojo).
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,8 +38,20 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+
+// Opaque handles to the heap allocated wrapped Mojo values the MojoHAL_*
+// exports create and release. The Mojo side types the same handles as
+// `_DeviceContextBoxPtr` etc. in hal_device_context_exports.mojo.
+struct MojoHALContextBox;
+struct MojoHALBufferBox;
+struct MojoHALScopeBox;
+struct MojoHALCompletionFlagBox;
+struct MojoHALStreamBox;
+struct MojoHALEventBox;
 
 namespace M {
 namespace Driver {
@@ -103,8 +116,8 @@ public:
   static const std::string &getAcceleratorArchOrEmpty();
 
   /// Preferred allocation alignment for a device label. GPU-backed labels use
-  /// the same hard-coded 256 as the legacy DeviceContext implementation;
-  /// anything else falls back to the host's preferred memory alignment.
+  /// the same hard-coded 256 as the legacy implementation; anything else
+  /// falls back to the host's preferred memory alignment.
   static size_t preferredAlignment(StringRef api) {
     if (api == gpuAPI || api == cudaAPI || api == hipAPI || api == metalAPI)
       return 256;
@@ -116,10 +129,10 @@ public:
   /// Returns the device API as one of the `API` constants. Plugin APIs
   /// without a dedicated constant (for example the mock test plugin) report
   /// the generic `gpuAPI`.
-  API api() const;
-  int id() const;
+  API api() const { return api_; }
+  int id() const { return id_; }
   ErrorOr<const char *> getArchName() const;
-  const std::string &name() const;
+  const std::string &name() const { return name_; }
   ErrorOrSuccess isCompatible() const;
   ErrorOr<MemInfo> getMemoryInfo() const;
   /// Queries a numeric device attribute. `attr` is forwarded to the plugin as
@@ -137,15 +150,37 @@ public:
   /// Creates a new context (with its own stream) on this device.
   ErrorOr<DeviceContextRef> createContext();
 
-  /// DLPack device descriptor for this device. Mirrors the legacy DeviceContext
+  /// DLPack device descriptor for this device. Mirrors the legacy
   /// per-backend mappings; APIs without a DLPack code (for example the mock
   /// test plugin's generic gpu) report `kDLExtDev`.
-  DLDevice getDLDevice(bool pinned) const;
+  DLDevice getDLDevice(bool pinned) const {
+    if (api_ == cudaAPI)
+      return pinned ? DLDevice{kDLCUDAHost, 0} : DLDevice{kDLCUDA, id_};
+    if (api_ == hipAPI)
+      return pinned ? DLDevice{kDLROCMHost, 0} : DLDevice{kDLROCM, id_};
+    if (api_ == metalAPI)
+      return pinned ? DLDevice{kDLCPU, 0} : DLDevice{kDLMetal, id_};
+    return DLDevice{kDLExtDev, id_};
+  }
+
+private:
+  friend class DeviceContext;
+  Device(MojoHALContextBox *mojoCtx, API api, std::string apiStr, int id,
+         std::string name)
+      : mojoCtx_(mojoCtx), api_(api), apiStr_(std::move(apiStr)), id_(id),
+        name_(std::move(name)) {}
+
+  MojoHALContextBox *mojoCtx_; // DeviceContext owned by this Device.
+  API api_;
+  std::string apiStr_; // Plugin api string as passed to create().
+  int id_;
+  std::string name_;
+  mutable std::string archName_;
 };
 
 // Numeric device attributes, by CUDA-style `CUdevice_attribute` code. Mirrors
-// the legacy DeviceContext `Device::Attribute` enum verbatim; the codes are
-// forwarded to the driver plugin's `M_driver_device_attribute`.
+// the legacy `Device::Attribute` enum verbatim; the codes are forwarded to
+// the driver plugin's `M_driver_device_attribute`.
 enum class Device::Attribute : int {
   // Maximum number of threads per block
   MAX_THREADS_PER_BLOCK = 1,
@@ -212,15 +247,26 @@ class MODULAR_CXX_EXPORT DeviceBuffer final
 public:
   ~DeviceBuffer();
 
-  void *ptr() const;
+  void *ptr() const { return ptr_; }
   /// Relinquishes ownership of the underlying allocation to the caller and
   /// returns its pointer; destroying the buffer then frees nothing.
   void *releasePtr();
-  size_t byteSize() const;
-  bool isHost() const;
 
-  DeviceContext &context();
-  const DeviceContext &context() const;
+  /// Wraps a heap-boxed Mojo `DeviceBuffer` surrendered by the Mojo side (the
+  /// `take_handle` exchange) in an owning shim `DeviceBuffer`; the box is
+  /// released when the last reference drops. The shim-side context reference
+  /// is not populated -- the box carries its Mojo-side context.
+  static DeviceBufferRef adoptMojoBox(MojoHALBufferBox *mojoBox, void *ptr,
+                                      size_t byteSize) {
+    return DeviceBufferRef::take(new DeviceBuffer(
+        mojoBox, ptr, byteSize,
+        /*isHost=*/false, BoxKind::Device, DeviceContextRef()));
+  }
+  size_t byteSize() const { return byteSize_; }
+  bool isHost() const { return isHost_; }
+
+  DeviceContext &context() { return *context_; }
+  const DeviceContext &context() const { return *context_; }
 
   /// Returns a view of [byteOffset, byteOffset + byteSize) of this buffer.
   /// The view keeps this buffer alive.
@@ -247,7 +293,33 @@ public:
 
   /// Replaces the release of the underlying memory with `destructor`: on
   /// destruction the callback runs instead of freeing through the driver.
-  void setDestructorFn(llvm::unique_function<void()> destructor);
+  void setDestructorFn(llvm::unique_function<void()> destructor) {
+    destructorFn_ = std::move(destructor);
+  }
+
+private:
+  friend class DeviceContext;
+
+  /// Which MojoHAL_*_release entry frees `mojoBox_`.
+  enum class BoxKind : uint8_t { Device, Host, Mmap };
+
+  DeviceBuffer(MojoHALBufferBox *mojoBox, void *ptr, size_t byteSize,
+               bool isHost, BoxKind kind, DeviceContextRef context,
+               DeviceBufferRef parent = DeviceBufferRef())
+      : mojoBox_(mojoBox), ptr_(ptr), byteSize_(byteSize), isHost_(isHost),
+        kind_(kind), context_(std::move(context)), parent_(std::move(parent)) {}
+
+  MojoHALBufferBox
+      *mojoBox_; // Heap-boxed Mojo buffer (DeviceBuffer/HostBuffer/mmap).
+  void *ptr_;
+  size_t byteSize_;
+  bool isHost_;
+  BoxKind kind_;
+  DeviceContextRef context_;
+  DeviceBufferRef parent_; // Keeps a sub-buffer's parent allocation alive.
+  /// When set, runs in place of the default free (legacy semantics); the
+  /// Mojo box is then released without freeing the wrapped memory.
+  llvm::unique_function<void()> destructorFn_;
 };
 
 /// RAII guard that makes a context's driver context current on the calling
@@ -258,7 +330,16 @@ public:
   ~DeviceContextScope();
 
   /// Reports whether activating the context succeeded.
-  ErrorOrSuccess err() const;
+  ErrorOrSuccess err() const {
+    if (err_.isError())
+      return Error(llvm::Twine(err_.getError()));
+    return {};
+  }
+
+private:
+  MojoHALScopeBox
+      *mojoScope_; // Heap-boxed Mojo scope; null if activation failed.
+  ErrorOrSuccess err_;
 };
 
 /// A host-signalable, device-waitable 64-bit slot in device-mapped pinned
@@ -271,11 +352,23 @@ public:
   CompletionFlag(const CompletionFlag &) = delete;
   CompletionFlag &operator=(const CompletionFlag &) = delete;
 
-  uint64_t devicePtr() const;
+  uint64_t devicePtr() const { return devicePtr_; }
 
   void reset();
   void signal(uint64_t value);
   uint64_t load() const;
+
+private:
+  friend class DeviceContext;
+  friend class DeviceStream;
+  CompletionFlag(MojoHALCompletionFlagBox *mojoFlag, void *hostPtr,
+                 uint64_t devicePtr)
+      : mojoFlag_(mojoFlag), hostPtr_(hostPtr), devicePtr_(devicePtr) {}
+
+  MojoHALCompletionFlagBox
+      *mojoFlag_; // Heap-boxed Mojo-side flag (owns the pinned slot).
+  void *hostPtr_;
+  uint64_t devicePtr_;
 };
 
 /// An in-order command stream on one device.
@@ -285,7 +378,7 @@ public:
   ~DeviceStream();
 
   /// Returns the device this stream executes on.
-  Device &device() const;
+  Device &device() const { return *device_.getPointer(); }
 
   ErrorOrSuccess synchronize();
 
@@ -301,12 +394,22 @@ public:
                                         uint64_t value) const;
 
   /// Enqueues a host callback on this stream. Like the non-CUDA legacy
-  /// DeviceContext backends, the HAL backend does not support it.
-  ErrorOrSuccess enqueueHostFunc(void (*fn)(void *), void *userData) const;
+  /// implementation's backends, the HAL backend does not support it.
+  ErrorOrSuccess enqueueHostFunc(void (*fn)(void *), void *userData) const {
+    return Error("enqueueHostFunc is not supported on this device");
+  }
 
   /// Raw device driver stream handle, to enable passing to PyTorch and
   /// similar APIs. Null if the handle cannot be queried.
   void *ptr() const;
+
+private:
+  friend class DeviceContext;
+  DeviceStream(MojoHALStreamBox *mojoStream, DeviceRef device)
+      : mojoStream_(mojoStream), device_(std::move(device)) {}
+
+  MojoHALStreamBox *mojoStream_; // Heap-boxed Mojo HAL DeviceStream.
+  DeviceRef device_;
 };
 
 /// A synchronization event.
@@ -316,17 +419,29 @@ public:
   ~DeviceEvent();
 
   /// Returns the device this event was created on.
-  Device &device() const;
+  Device &device() const { return *device_.getPointer(); }
 
   ErrorOrSuccess synchronize();
 
   /// Whether the event has completed. Unrecorded events report ready,
-  /// matching the legacy DeviceContext backends.
+  /// matching the legacy backends.
   ErrorOr<bool> isReady() const;
 
   /// Returns the elapsed time in milliseconds between this event and `end`.
   /// The HAL backend has no event-timing support; fails.
   ErrorOr<float> elapsedTime(const DeviceEvent &end) const;
+
+private:
+  friend class DeviceContext;
+  friend class DeviceStream;
+  DeviceEvent(MojoHALEventBox *mojoEvent, DeviceRef device,
+              DeviceContextRef context)
+      : mojoEvent_(mojoEvent), device_(std::move(device)),
+        context_(std::move(context)) {}
+
+  MojoHALEventBox *mojoEvent_;
+  DeviceRef device_;
+  DeviceContextRef context_;
 };
 
 /// A collection of device graphs generated during a recording session.
@@ -401,7 +516,8 @@ private:
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
 };
 
-/// A single stream of execution on one device.
+/// A single stream of execution on one device, backed by a heap-boxed Mojo
+/// HAL `DeviceContext`.
 class MODULAR_CXX_EXPORT DeviceContext final
     : public ReferenceCounted<DeviceContext> {
 public:
@@ -414,8 +530,8 @@ public:
                              bool *isDefault = nullptr);
 
   /// Returns the device this context executes on.
-  Device &device();
-  const Device &device() const;
+  Device &device() { return *device_; }
+  const Device &device() const { return *device_; }
 
   // ===-- Streams / events ---------------------------------------------=== //
 
@@ -448,9 +564,9 @@ public:
   // ===-- Thread binding / interop -------------------------------------=== //
 
   ErrorOrSuccess bindToCurrentThread() const;
-  /// The legacy DeviceContext implementation only clears its internal
-  /// thread-local bookkeeping (no driver call); the HAL shim keeps none, so
-  /// this is a no-op.
+  /// The legacy implementation only clears its internal thread-local
+  /// bookkeeping (no driver call); the HAL shim keeps none, so this is a
+  /// no-op.
   static void unbindFromCurrentThread() {}
   std::optional<intptr_t> getDLPackStream() const;
 
@@ -516,7 +632,8 @@ public:
   // ===-- Debugging helpers ---------------------------------------------=== //
 
   /// The debug allocator (MODULAR_DEBUG_DEVICE_ALLOCATOR) is a
-  /// legacy-DeviceContext-only diagnostic; the HAL backend reports it disabled.
+  /// legacy-implementation-only diagnostic; the HAL backend reports it
+  /// disabled.
   bool isDebugAllocatorEnabled(StringRef name) const { return false; }
 
   /// Whether `ptr` is a device address owned by this context. The legacy
@@ -524,12 +641,64 @@ public:
   /// answer; a driver-backed residency query is a future optimization.
   bool ownsDeviceAddress(const void *ptr) const { return false; }
 
+  /// Pins an existing host allocation for fast DMA. The HAL API has no
+  /// host-register support yet, so this reports the legacy "unsupported"
+  /// default and callers fall back to unpinned transfers.
+  ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) {
+    return Error("registerHostMemory is not supported on this device");
+  }
+  /// See `registerHostMemory`.
+  ErrorOrSuccess unregisterHostMemory(void *ptr) {
+    return Error("unregisterHostMemory is not supported on this device");
+  }
+
   /// Contexts compare equal when they drive the same underlying stream,
-  /// mirroring the legacy DeviceContext implementation.
+  /// mirroring the legacy implementation.
   bool operator==(const DeviceContext &other) const;
   bool operator!=(const DeviceContext &other) const {
     return !(*this == other);
   }
+
+  /// The heap-boxed Mojo HAL `DeviceContext` this object wraps. The graph
+  /// runtime hands op code a C++ `DeviceContext*`; the Mojo side recovers its
+  /// Mojo `DeviceContext` from this box.
+  void *mojoHandle() const { return mojoCtx_; }
+
+  /// Adopts a heap-boxed Mojo `DeviceContext` produced by the Mojo
+  /// a boxed Mojo `DeviceContext` (the reverse of `mojoHandle()`): the returned
+  /// C++ context takes ownership of `mojoBox` and releases it when its
+  /// refcount reaches zero. Used by the graph runtime to materialize a C++
+  /// `DeviceContext` from the opaque handle a kernel hands back.
+  static ErrorOr<DeviceContextRef> adoptMojoBox(void *mojoBox);
+
+private:
+  friend class Device;
+  friend class DeviceBuffer;
+  friend class DeviceContextScope;
+
+  DeviceContext(MojoHALContextBox *mojoCtx, DeviceRef device);
+
+  /// Streams created via createStream(), shared with selectStream() views so
+  /// every view resolves the same pool. `base` is the owning context's own
+  /// stream, captured at construction (empty on capture failure, in which
+  /// case selectStream(0) falls back to the context itself).
+  struct StreamPool {
+    std::mutex mu;
+    DeviceStreamRef base;
+    llvm::SmallVector<DeviceStreamRef> side;
+  };
+
+  /// View constructor (selectStream): adopts `mojoCtx` (a box whose current
+  /// stream is the selected one) and shares the owning context's pool.
+  DeviceContext(MojoHALContextBox *mojoCtx, DeviceRef device,
+                std::shared_ptr<StreamPool> pool)
+      : mojoCtx_(mojoCtx), streamPool_(std::move(pool)),
+        device_(std::move(device)) {}
+
+  MojoHALContextBox *mojoCtx_;
+  std::shared_ptr<StreamPool> streamPool_;
+  DeviceRef device_;
+  mutable std::string archName_;
 };
 
 } // namespace Driver

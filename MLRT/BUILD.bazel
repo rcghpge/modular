@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "mojo_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
 # gazelle:default_visibility //MLRT:consumers
@@ -602,6 +602,23 @@ alias(
     ],
 )
 
+# The Mojo side of the HAL C++ compatibility layer. The C++ shim links this
+# and forwards each DeviceContext.h method to a MojoHAL_* symbol. Only
+# meaningful under --config=hal-device-context.
+mojo_shared_library(
+    name = "Driver/HALDeviceContextExports",
+    srcs = ["lib/Driver/DeviceContext/HAL/hal_device_context_exports.mojo"],
+    shared_lib_name = "libHALDeviceContextMojo.so",
+    tags = [ALLOW_UNUSED_TAG],
+    # The exports reach into HAL-specific DeviceContext internals, which only
+    # exist when std's DeviceContext is the HAL implementation.
+    target_compatible_with = select({
+        "//:hal_device_context_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = ["@mojo//:std"],
+)
+
 # HAL replacement for the DeviceContext C++ API: a pure shim over the Mojo HAL
 # DeviceContext (MojoHAL_* exports), implementing the HALDeviceContext.h
 # declarations that DeviceContext.h dispatches to under
@@ -619,8 +636,10 @@ modular_cc_library(
     deps = [
         ":Driver/CompilationDeviceImpl",
         ":Driver/DeviceContextAPI",
+        ":Driver/HALDeviceContextExports",
         "//Support:Base",
         "//Support:BinaryID",
+        "//Support:Configuration",
         "//Support:SymbolExport",
         "@llvm-project//llvm:Support",
     ],

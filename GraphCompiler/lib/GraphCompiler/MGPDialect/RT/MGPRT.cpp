@@ -158,7 +158,14 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   // (createBufferOwning would double-own the same allocation -> double free),
   // no releasePtr. Using copyRCRef here would leak +1, since the Mojo side no
   // longer releases.
+#if MODULAR_HAL_DEVICE_CONTEXT
+  // Under HAL the consumed handle is the heap-boxed Mojo DeviceBuffer;
+  // wrap it in a fresh shim DeviceBuffer that owns the box.
+  Driver::DeviceBufferRef buf = Driver::DeviceBuffer::adoptMojoBox(
+      reinterpret_cast<MojoHALBufferBox *>(handle), data, size);
+#else
   Driver::DeviceBufferRef buf = M::takeRCRef(handle);
+#endif
 
   // Wrap the DeviceBuffer in an AsyncValue.
   auto asyncDeviceBufferRef =
@@ -333,7 +340,15 @@ MGP_RT_UnpackDeviceContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
       const_cast<Driver::DeviceContext *>(deviceContextRef.getPointer());
   assert(ptr != nullptr &&
          "MGP_RT_UnpackDeviceContext: DeviceContextRef holds a null pointer");
+#if MODULAR_HAL_DEVICE_CONTEXT
+  // Under the HAL backend the Mojo `DeviceContext` is the source of truth and
+  // the C++ object merely wraps it. The kernel ABI reconstructs a Mojo
+  // `DeviceContext` from this handle (DeviceContext._from_unsafe_cpp_handle),
+  // so hand out the boxed Mojo `DeviceContext` rather than the C++ wrapper.
+  return ptr->mojoHandle();
+#else
   return ptr;
+#endif
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
