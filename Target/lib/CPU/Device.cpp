@@ -20,6 +20,7 @@ namespace AsyncRT = M::AsyncRT;
 
 #include <dlpack/dlpack.h>
 
+#include "llvm/ADT/StringRef.h"
 #include <cassert>
 #include <cstring>
 
@@ -43,9 +44,20 @@ M_driver_status_t M_driver_device_get(M_driver_driver_t driver, int64_t id,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t
-M_driver_device_property([[maybe_unused]] M_driver_device_t device,
-                         const char *property_name, void *value) {
+M_driver_status_t M_driver_device_property(M_driver_device_t device,
+                                           const char *property_name,
+                                           void *value) {
+  if (device == nullptr)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  if (property_name == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (llvm::StringRef(property_name) == M_DRIVER_DEVICE_PROPERTY_NAME) {
+    llvm::StringRef name = "CPU";
+    char *out = static_cast<char *>(value);
+    std::memcpy(out, name.data(), name.size());
+    out[name.size()] = '\0';
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (std::strcmp(property_name, M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) == 0 ||
       std::strcmp(property_name,
                   M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED) == 0) {

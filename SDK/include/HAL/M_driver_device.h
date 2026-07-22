@@ -52,11 +52,17 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
 /**
  * Property names for `M_driver_device_property`.
  *
- * "dlpack_device" / "dlpack_device_pinned" write an `M_driver_dlpack_device`;
- * the pinned variant reports the device's host-pinned DLPack device type.
+ * - "dlpack_device" / "dlpack_device_pinned": write an
+ *   `M_driver_dlpack_device`; the pinned variant reports the device's
+ *   host-pinned DLPack device type.
+ * - "name": null-terminated device name string. The value parameter is a
+ *   `char *` buffer; the plugin writes up to 256 bytes including the
+ *   terminator.
  */
 #define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE "dlpack_device"
 #define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED "dlpack_device_pinned"
+#define M_DRIVER_DEVICE_PROPERTY_NAME "name"
+#define M_DRIVER_DEVICE_PROPERTY_NAME_MAX_LEN 256
 
 /**
  * Retrieve an integer-valued property of a device, as 64-bit integer.

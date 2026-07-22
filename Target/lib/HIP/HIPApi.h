@@ -36,6 +36,7 @@
   HIP_FN(hipSetDevice)                                                         \
   HIP_FN(hipGetDevice)                                                         \
   HIP_FN(hipDeviceGetAttribute)                                                \
+  HIP_FN(hipDeviceGetName)                                                     \
   HIP_FN(hipMemGetInfo)                                                        \
   HIP_FN(hipMalloc)                                                            \
   HIP_FN(hipFree)                                                              \
@@ -78,6 +79,11 @@ struct HIPApi {
   HIP_FORALL_FUNCTIONS(DECLARE_FN_PTR)
 #undef DECLARE_FN_PTR
 
+  // `hipGetDeviceProperties` is ABI-versioned on ROCm 6 (the real export is
+  // `hipGetDevicePropertiesR0600`) so we don't use the HIP_FN macro so we can
+  // fall back to the older version.
+  hipError_t (*getDeviceProperties)(hipDeviceProp_t *, int) = nullptr;
+
   // HIPApi owns the dlopen handle; copying would produce two owners that both
   // call dlclose on destruction.
   HIPApi(const HIPApi &) = delete;
@@ -110,6 +116,14 @@ struct HIPApi {
     HIP_FORALL_FUNCTIONS(LOAD_SYM)
 
 #undef LOAD_SYM
+
+    api.getDeviceProperties =
+        reinterpret_cast<decltype(api.getDeviceProperties)>(
+            dlsym(lib, "hipGetDevicePropertiesR0600"));
+    if (!api.getDeviceProperties)
+      api.getDeviceProperties =
+          reinterpret_cast<decltype(api.getDeviceProperties)>(
+              dlsym(lib, "hipGetDeviceProperties"));
 
     return api;
   }

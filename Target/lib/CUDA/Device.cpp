@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 //
 #include "Device.h"
+#include "HAL/M_driver_device.h"
+#include "llvm/ADT/StringRef.h"
 
 #include "HAL/M_driver_device.h"
 
@@ -38,6 +40,16 @@ M_driver_status_t M_driver_device::destroy(M_driver_device_t device) {
 
 M_driver_status_t M_driver_device::property(const char *propertyName,
                                             void *value) {
+  if (propertyName == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (llvm::StringRef(propertyName) == M_DRIVER_DEVICE_PROPERTY_NAME) {
+    if (CUresult r = driver.rawCuda.cuDeviceGetName(
+            static_cast<char *>(value), M_DRIVER_DEVICE_PROPERTY_NAME_MAX_LEN,
+            deviceId);
+        r != CUDA_SUCCESS)
+      return cudaErrorStatus(&driver, r, "cuDeviceGetName");
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (std::strcmp(propertyName, M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) == 0) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);
     dl->device_type = kDLCUDA;

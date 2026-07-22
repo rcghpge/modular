@@ -8,7 +8,10 @@
 #include "Driver.h"
 #include "HAL/M_driver_common.h"
 #include "HAL/M_driver_device.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include <cstring>
+#include <dlfcn.h>
 
 #include <dlpack/dlpack.h>
 
@@ -36,6 +39,37 @@ DriverResult<M_driver_device_t> M_driver_device::create(M_driver_driver &drv,
 
 M_driver_status_t M_driver_device::property(const char *propertyName,
                                             void *value) {
+  if (propertyName == nullptr || value == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (llvm::StringRef(propertyName) == M_DRIVER_DEVICE_PROPERTY_NAME) {
+    hipError_t result = driver.hip().hipDeviceGetName(
+        static_cast<char *>(value), M_DRIVER_DEVICE_PROPERTY_NAME_MAX_LEN,
+        deviceId);
+    if (result != hipSuccess)
+      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  if (llvm::StringRef(propertyName) == "arch") {
+    // The LLVM/compile target arch (e.g. "gfx942") lives in
+    // `hipDeviceProp_t::gcnArchName`. The properties entry point is nullable
+    // (see HIPApi::getDeviceProperties); without it only this query degrades.
+    auto getProps = driver.hip().getDeviceProperties;
+    if (getProps == nullptr)
+      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    hipDeviceProp_t prop;
+    if (getProps(&prop, deviceId) != hipSuccess)
+      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    // `gcnArchName` may carry target features, e.g. "gfx942:sramecc+:xnack-";
+    // the compile target wants the base "gfx942".
+    llvm::StringRef arch = llvm::StringRef(prop.gcnArchName).split(':').first;
+    size_t n = arch.size();
+    if (n >= M_DRIVER_DEVICE_PROPERTY_NAME_MAX_LEN)
+      n = M_DRIVER_DEVICE_PROPERTY_NAME_MAX_LEN - 1;
+    char *out = static_cast<char *>(value);
+    memcpy(out, arch.data(), n);
+    out[n] = '\0';
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (std::strcmp(propertyName, M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) == 0) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);
     dl->device_type = kDLROCM;
