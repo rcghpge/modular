@@ -461,47 +461,6 @@ def MOComposite_RMSNormFusedQuantizeDynamicScaledFP8Op
 }
 
 //===----------------------------------------------------------------------===//
-// RMSNormFusedQuantizeDynamicBlockScaledOp
-//===----------------------------------------------------------------------===//
-
-def MOComposite_RMSNormFusedQuantizeDynamicBlockScaledOp
-    : MO_CompositeOp<"rms_norm_fused_quantize_dynamic_block_scaled", [
-  Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
-]> {
-  let summary = "Fused RMS norm + dynamic block-scaled MXFP8 quantize";
-  let description = [{
-    Fused operation computing block-scaled MXFP8 quantization of an
-    RMS-normalized input:
-
-      normed = rms_norm(input, weight, epsilon, weight_offset)
-                 {multiply_before_cast = true}
-      output, scale = quantize.dynamic.block.scaled(normed)
-                        {SF_VECTOR_SIZE}
-
-    Returns the E4M3 quantized output and its E8M0 per-block scale tensor in the
-    rank-5 interleaved layout the SM100 block-scaled GEMM consumes. `output` and
-    `scale` are numerically identical to the unfused
-    `rms_norm -> quantize.dynamic.block.scaled` (MXFP8) pipeline. The fusion
-    pattern attaches the block size as an `SF_VECTOR_SIZE` attribute (32 for
-    MXFP8), which the MOGG lowering forwards to the kernel as a compile-time
-    parameter. Produced by the RMS-norm + MXFP8-block-quantize fusion pattern
-    (GPU only).
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_Tensor:$weight,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset
-  );
-  let results = (outs MO_Tensor:$output, MO_Tensor:$scale);
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // MatmulFusedPartialRMSNormOp
 //===----------------------------------------------------------------------===//
 
