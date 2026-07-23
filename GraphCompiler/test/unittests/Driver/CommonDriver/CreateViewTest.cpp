@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/DeviceDriver/Driver.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/unittests/Driver/TestUtils.h"
 #include "Support/ML/DType.h"
 #include "Support/ML/TensorSpec.h"

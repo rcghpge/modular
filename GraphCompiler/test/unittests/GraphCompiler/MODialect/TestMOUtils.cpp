@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MODialect/MOTypes.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MOUtils.h"
+#include "GraphCompiler/MODialect/MOTypes.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"

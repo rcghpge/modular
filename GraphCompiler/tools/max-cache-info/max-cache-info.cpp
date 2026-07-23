@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/CompileDriver/CompileDriver.h"
+#include "GraphCompiler/Driver/Compile/CompileDriver.h"
 #include "Support/CommandLine.h"
 
 using namespace M;

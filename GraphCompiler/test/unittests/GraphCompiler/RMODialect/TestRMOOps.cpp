@@ -8,11 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "GraphCompiler/GraphCompiler/RMODialect/RMODialect.h"
-#include "GraphCompiler/GraphCompiler/RMODialect/RMOOps.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GraphCompiler/RMODialect/RMODialect.h"
+#include "GraphCompiler/RMODialect/RMOOps.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"

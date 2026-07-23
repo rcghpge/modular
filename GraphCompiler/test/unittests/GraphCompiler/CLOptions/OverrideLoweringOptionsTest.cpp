@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/GraphCompilerCLOptions.h"
+#include "GraphCompiler/GraphCompilerCLOptions.h"
 #include "gtest/gtest.h"
 
 using namespace M::MO;

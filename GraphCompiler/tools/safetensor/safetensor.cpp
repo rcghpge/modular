@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "GraphCompiler/DeviceDriver/Driver.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/RCRef.h"

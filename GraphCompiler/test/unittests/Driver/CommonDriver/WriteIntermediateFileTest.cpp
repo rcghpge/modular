@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/CommonDriver/Utils.h"
+#include "GraphCompiler/Driver/Common/Utils.h"
 #include "Support/CommonCLOptions.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"

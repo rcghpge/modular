@@ -31,23 +31,23 @@ Dialects have extensive documentation. Here's a quick reference:
 
 - **RMO (Relaxed Modular Operations)** - accepts incomplete type information
   from frontends and lowers to MO. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/RMODialect/RMODialect.td`.
+  `GraphCompiler/include/GraphCompiler/RMODialect/RMODialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (RMO section).
 - **MO (Modular Operations)** - framework-agnostic, strongly-typed graph ops
   with value semantics. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/MODialect/MODialect.td`.
+  `GraphCompiler/include/GraphCompiler/MODialect/MODialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MO section).
 - **MOSH (Modular Shape)** - shape/parameter computation for MO graphs.
   Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/MOSHDialect/MOSHDialect.td`.
+  `GraphCompiler/include/GraphCompiler/MOSHDialect/MOSHDialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MOSH mention).
 - **MOGG (Modular Operation Generator Graph)** - kernel selection/fusion and
   codegen-specific IR. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.td`.
+  `GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGDialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MOGG section).
 - **MGP (Modular Glue Primitives)** - runtime glue dialect with buffer
   semantics; directly translatable to MEF. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.td`.
+  `GraphCompiler/include/GraphCompiler/MGPDialect/Dialect/MGPDialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MGP section).
 
 Other referenced dialects, not directly part of the compiler:
@@ -1765,7 +1765,7 @@ to a non-elementwise kernel that has an input lambda for that operand.
 Source:
 `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FusePrologues.cpp`
 Pass definition:
-`GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
 ### FuseEpilogues
 
@@ -1818,7 +1818,7 @@ The pass internally loops over epilogue fusion and reshape-into-epilogue fusion
 Source:
 `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseEpilogues.cpp`
 Pass definition:
-`GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
 ### FuseMutableLoads
 

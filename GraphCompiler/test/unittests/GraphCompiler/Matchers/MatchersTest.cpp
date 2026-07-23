@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/Matchers.h"
+#include "GraphCompiler/Matchers.h"
 
-#include "GraphCompiler/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/Conversion/RMOSupport/Broadcast.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "gtest/gtest.h"

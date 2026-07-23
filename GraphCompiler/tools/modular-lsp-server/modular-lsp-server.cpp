@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "Cache/CachedTransform.h"
-#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
-#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHDialect.h"
-#include "GraphCompiler/GraphCompiler/RMODialect/RMODialect.h"
+#include "GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GraphCompiler/MOSHDialect/MOSHDialect.h"
+#include "GraphCompiler/RMODialect/RMODialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"

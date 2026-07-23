@@ -11,7 +11,7 @@
 #ifndef RUNTIME_SAFETENSOR_H
 #define RUNTIME_SAFETENSOR_H
 
-#include "GraphCompiler/DeviceDriver/Driver.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"

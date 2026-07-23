@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPBufferLifetimeAnalysis.h"
+#include "GraphCompiler/MGPDialect/Dialect/MGPBufferLifetimeAnalysis.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "gtest/gtest.h"

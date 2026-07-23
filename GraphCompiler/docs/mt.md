@@ -31,7 +31,7 @@ into a MEF file, then ask the framework to execute the resulting MEF file.
 
 The tool has a set of command line options that it recognizes and parses into
 a C++ structure. These are the set of options that can be found in
-`GraphCompiler/include/GraphCompiler/ExecutionDriver/DriverCLOptions.h`.
+`GraphCompiler/include/GraphCompiler/Driver/Execution/DriverCLOptions.h`.
 These options are passed into the loaded framework. For example:
 
 ```shell

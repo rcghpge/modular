@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"

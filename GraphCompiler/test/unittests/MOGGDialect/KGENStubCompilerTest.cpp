@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
+#include "GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/MDialect/MDialect.h"
 

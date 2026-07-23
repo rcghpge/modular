@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "GraphCompiler/GraphCompiler/RMODialect/RMODialect.h"
+#include "GraphCompiler/Conversion/RMOSupport/Broadcast.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GraphCompiler/RMODialect/RMODialect.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "gtest/gtest.h"

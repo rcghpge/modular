@@ -14,7 +14,7 @@
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Support/Diagnostic.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
-#include "GraphCompiler/DeviceDriver/Driver.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "Kernels/WeightsRegistry.h"

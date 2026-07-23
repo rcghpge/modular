@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/CommonDriver/DriverInputFormat.h"
+#include "GraphCompiler/Driver/Common/DriverInputFormat.h"
 #include "llvm/Support/FileSystem.h"
 
 #include "gmock/gmock.h"

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
+#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "gtest/gtest.h"
 

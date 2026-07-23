@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "GraphCompiler/DeviceDriver/Driver.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
 #include "gtest/gtest.h"

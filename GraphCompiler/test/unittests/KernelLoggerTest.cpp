@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
+#include "GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "AsyncRT/Runtime/HostSystem.h"

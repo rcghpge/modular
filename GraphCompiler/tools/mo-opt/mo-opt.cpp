@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "GraphCompiler/GraphCompiler/GraphCompiler.h"
+#include "GraphCompiler/GraphCompiler.h"
 #include "Init/Init.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"

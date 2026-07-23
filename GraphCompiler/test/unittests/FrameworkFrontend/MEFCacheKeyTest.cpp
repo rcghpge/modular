@@ -6,9 +6,9 @@
 
 #include "GraphCompiler/MEFCacheKey.h"
 
-#include "GraphCompiler/GraphCompiler/MODialect/MODialect.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
-#include "GraphCompiler/GraphCompiler/Passes.h"
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GraphCompiler/Passes.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Context.h"
 #include "Support/FileSystemExtras.h"

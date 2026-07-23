@@ -1,0 +1,683 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// This defines types in the MO dialect.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
+#define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
+
+include "GraphCompiler/MODialect/MODialect.td"
+include "GraphCompiler/MODialect/MOTypeInterfaces.td"
+include "Support/Compiler/TensorUtils.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
+include "mlir/IR/EnumAttr.td"
+
+// Base class for types in this dialect.
+class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
+    : TypeDef<MODialect, name, traits> {
+  let mnemonic = typeMnemonic;
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Tensor
+//===----------------------------------------------------------------------===//
+
+def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface]> {
+  let summary = "Type of tensor specs of statically known rank.";
+  let description = [{
+    This type represents the shape and element type of a tensor, an optional
+    device ref, and an optional dictionary of metadata (e.g., layout, etc.).
+
+    The `shapeAttr` is always a `MOSH::ShapeAttr` (e.g., `[D0, 42, N]`). Rank
+    is statically known; individual dimensions may be concrete integers or
+    parametric.
+
+    The element type is an M::DType, with `invalid` denoting an unknown type.
+    The type implements a subset of the methods in ShapedTypeInterface.
+
+    The `deviceRef` optional field denotes the device the tensor lives on.
+
+    Examples:
+    ```mlir
+    !mo.tensor<[4, 16], f32>           // static shape
+    !mo.tensor<[N, N, 6], i32>         // parameterized shape
+    !mo.tensor<[1, M, N], i32>         // partially known and parameterized shape
+    !mo.tensor<[4, 16], f32, gpu:0>    // optional device
+    ```
+  }];
+
+  let parameters = (ins
+    "TypedAttr" : $shapeAttr,
+    "DType" : $dtype,
+    DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
+    DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
+
+  let genVerifyDecl = 1;
+  let hasCustomAssemblyFormat = 1;
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    // Base builder which all others call
+    TypeBuilder<(ins
+      "TypedAttr" : $shape,
+      "DType" : $dtype,
+      "DeviceRefAttr" : $deviceRef,
+      "DictionaryAttr" : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "ArrayRef<int64_t>" : $shape,
+      "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilder<(ins
+      "ArrayRef<int64_t>" : $shape,
+      "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilder<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>];
+
+  let extraClassDeclaration = [{
+    /// Returns a clone with a new integer shape and element dtype.
+    TensorType cloneWith(
+      std::optional<ArrayRef<int64_t>> shape, Type dtype) const;
+
+    /// Returns a clone with a new dimensions for shape.
+    TensorType cloneWith(
+      ArrayRef<TypedAttr> shapeDims) const;
+
+    /// Returns clone with a new shape attribute.
+    TensorType cloneWith(TypedAttr shapeAttr) const;
+
+    /// Returns clone with a new dtype attribute.
+    TensorType cloneWith(DType dtype) const;
+
+    /// Returns a clone with a new layout attribute.
+    TensorType cloneWith(LayoutAttr layoutAttr) const;
+
+    /// Returns a clone without the layout attribute.
+    TensorType cloneWithoutLayout() const;
+
+    /// Returns a clone with a new iokind attribute.
+    TensorType cloneWith(IOKindAttr ioKindAttr) const;
+
+    /// Returns a clone without the IOKind attribute.
+    TensorType cloneWithoutIOKind() const;
+
+    /// Returns clone with a new metadata attribute.
+    TensorType cloneWith(DictionaryAttr metadataAttr) const;
+
+    /// Returns a clone of type with given device annotation.
+    TensorType cloneWith(DeviceRefAttr device) const;
+
+    /// Checks if the tensor is statically ranked.
+    bool hasRank() const;
+
+    /// Get the rank of the tensor. Fails if not statically ranked.
+    size_t getRank() const;
+
+    /// Get the rank of the tensor but scalars are considered rank 1.
+    size_t getRankNonZero() const;
+
+    /// Checks if this type has a static shape, i.e. if the type is ranked and
+    /// all dimensions have known size.
+    bool hasStaticShape() const;
+
+    /// Get the mlir element type of the tensor.
+    Type getElementType() const;
+
+    /// Helper to get the shape attribute with MOSH::ShapeAttr type. Fails if
+    /// the shape is unknown.
+    MOSH::ShapeAttr getTypedShapeAttr() const;
+
+    /// Returns the referenced parameter names (shape or dimension).
+    SmallPtrSet<StringAttr, 4> getUsedParamNames() const;
+
+    /// Return the symbolic dimensions. Fails if the shape is unknown.
+    ArrayRef<TypedAttr> getDims() const;
+
+    /// Return the nth symbolic dimensions. Fails if the shape is unknown.
+    TypedAttr getDim(size_t n) const;
+
+    /// Return whether the nth dimension is a parameter. Does not include `?`.
+    /// Fails if dynamically ranked. Accepts expressions with parameters e.g.
+    /// (A + 2).
+    bool isParameterizedDim(size_t n) const;
+
+    /// Return whether the nth dimension is a known integer.
+    /// Fails if dynamically ranked.
+    bool isIntegerDim(size_t n) const;
+
+    /// Returns what type of value is represented by the given dimension attr.
+    static bool isParameterizedDimParam(TypedAttr attr);
+    static bool isIntegerDimParam(TypedAttr attr);
+
+    /// Return the dimensions as integers, using mlir::ShapedType::kDynamic for
+    /// unknown dimensions. Fails if the shape is unknown.
+    SmallVector<int64_t> getIntDims() const;
+
+    /// Return the nth dimension as an integer, using mlir::ShapedType::kDynamic
+    /// for unknown dimensions. Fails if the shape is unknown.
+    int64_t getIntDim(size_t n) const;
+
+    /// Returns the number of elements as a symbolic (i.e. parametric)
+    /// expression. Fails if not statically ranked.
+    TypedAttr getSymbolicNumElements() const;
+
+    // Returns the number of elements in the tensor if defined. This is when
+    // the rank is known and all dimensions are statically known integers >= 0.
+    // Otherwise returns no value.
+    std::optional<int64_t> getNumElements() const;
+
+    /// Short-hand to create a scalar tensor type.
+    static TensorType getScalarType(Type elementType,
+      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
+
+    /// Short-hand to create a SI64 vector tensor type.
+    static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
+      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
+
+    /// Return the layout attribute carried by this tensor type. If no layout
+    /// attribute is specified, return a null attribute `LayoutAttr{}`.
+    MO::LayoutAttr getLayoutAttr();
+
+    /// Return the IOKind attribute carried by this tensor type. If no iokind
+    /// attribute is specified, return a null attribute `IOKindAttr{}`.
+    MO::IOKindAttr getIOKindAttr();
+
+    /// Returns true if the tensor is mutable.
+    BoolAttr getIsMutableAttr();
+
+    /// Returns a clone with a new mutability attribute.
+    TensorType cloneWithMut(BoolAttr isMutable) const;
+
+    /// Duplicates a tensor type but with a dimension set to a new value.
+    TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MO_List
+//===----------------------------------------------------------------------===//
+
+def MO_List : MO_Type<"List", "list", [MO_HasDeviceTypeInterface,
+  DeclareTypeInterfaceMethods<MO_HasDeviceTypeInterface, ["getDeviceRef", "cloneWithNewDevice"]>]>
+{
+  let summary = "Type of immutable list container.";
+  let description = [{
+    This type represents an immutable list of elements (currently restricted to
+    `!mo.tensor`).
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Bundle
+//===----------------------------------------------------------------------===//
+
+def MO_Bundle : MO_Type<"Bundle", "bundle"> {
+  let summary = "Ordered collection of per-device tensors.";
+  let description = [{
+    A grouping type that bundles multiple per-device tensors into a single SSA
+    value.  All elements must be `!mo.tensor` types.  Elements may have
+    different devices, shapes, or dtypes.
+
+    The type has two interchangeable surface syntaxes. The verbose form lists
+    each element tensor explicitly and is used when the elements are not
+    uniform:
+
+    ```mlir
+    !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[4], f32, gpu:1>]>
+    ```
+
+    The compact form is used when every element shares the same shape, dtype,
+    device label, and metadata, and the device IDs are strictly ordered and
+    contiguous (`ids[i] == ids[0] + i`). It names the shared attributes once
+    and the device range as `label:firstId-lastId`:
+
+    ```mlir
+    !mo.bundle<[3], f32, gpu:0-1>
+    ```
+
+    A single-element compact bundle omits the range suffix. A single-element
+    bundle on the default host device also omits the device section entirely:
+
+    ```mlir
+    !mo.bundle<[3], f32, gpu:0>   // single element, explicit device
+    !mo.bundle<[3], f32>          // single element, default host device
+    ```
+
+    The compact form is purely syntactic sugar; the stored `elementTypes` are
+    identical regardless of which form is parsed.
+  }];
+
+  let parameters = (ins ArrayRefParameter<"Type">:$elementTypes);
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the number of elements in the bundle.
+    size_t getNumElements() const { return getElementTypes().size(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Scalar
+//===----------------------------------------------------------------------===//
+
+def MO_Scalar : MO_Type<"Scalar", "scalar"> {
+  let summary = "Type of scalars.";
+  let description = [{
+    This type represents scalars.
+
+  }];
+
+  let parameters = (ins
+    "DType" : $dtype);
+
+  let assemblyFormat = "`<` $dtype `>`";
+
+  let extraClassDeclaration = [{
+    /// Get the mlir element type of the tensor.
+    Type getDType() const;
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Buffer
+//===----------------------------------------------------------------------===//
+
+def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface,
+  DeclareTypeInterfaceMethods<MO_ShapedTypeInterface>]> {
+  let summary = "Mutable tensor type.";
+  let description = [{
+    This is a close analogue of the existing mo.tensor type but is meant
+    to represent tensors that can be mutated.
+
+    In conjunction with the operations mo.mutable.load and mo.mutable.store
+    this type can be used to model in-place operations in the MO dialect.
+
+    The `shapeAttr` is less permisive than the equivalent for `!mo.tensor`
+    values and must be a `MOSH::ShapeAttr` (i.e. statically ranked).
+
+    The element type is an M::DType, with `invalid` denoting an unknown type.
+
+    Examples:
+    ```mlir
+    !mo.buffer<[4, 16], f32>    // static shape
+    !mo.buffer<[N, N, 6], i32>  // parameterized shape
+    !mo.tensor<Sh, invalid>     // shape parameter reference
+    ```
+  }];
+
+  let parameters = (ins
+    "TypedAttr" : $shapeAttr,
+    "DType" : $dtype,
+    DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
+    DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
+
+  let genVerifyDecl = 1;
+  let hasCustomAssemblyFormat = 1;
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    // Base builder which all others call
+    TypeBuilder<(ins
+      "TypedAttr" : $shape,
+      "DType" : $dtype,
+      "DeviceRefAttr" : $deviceRef,
+      "DictionaryAttr" : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TensorType" : $tensorType)>,
+  ];
+
+  let extraClassDeclaration = [{
+    /// Returns a clone of type with given #M.device_ref annotation. The
+    /// type must not already have such an annotation.
+    BufferType cloneWith(DeviceRefAttr deviceRef) const;
+
+    /// Convert `mo.buffer` to the corresponding `mo.tensor` type
+    static TensorType toTensorType(BufferType type);
+    TensorType toTensorType();
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Chain
+//===----------------------------------------------------------------------===//
+
+def MO_Chain : MO_Type<"Chain", "chain"> {
+  let summary = "Controls sequencing of side-effecting operations.";
+  let description = [{
+    This type is used to sequence side-effecting operations. Any operation in
+    the MO dialect that has side-effects should both consume and produce a
+    chain type.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// MO_Opaque
+//===----------------------------------------------------------------------===//
+
+def MO_Opaque : MO_Type<"Opaque", "opaque"> {
+  let summary = "Opaque MO type.";
+  let description = [{
+    This is a custom user-defined type.
+      Example:
+      ```mlir
+        !mo.opaque<"my_list">
+        !mo.opaque<"my_list", {foo = 42}>
+      ```
+  }];
+
+  let parameters = (ins
+    "StringAttr": $symbol,
+    DefaultValuedParameter<"::mlir::DictionaryAttr",
+                           "::mlir::DictionaryAttr::get($_ctxt)">:$parameters
+  );
+
+  let builders = [
+    TypeBuilder<(ins "StringAttr": $symbol, "DictionaryAttr": $parameters)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr": $symbol)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr": $symbol,
+                                        "DictionaryAttr": $parameters)>,
+  ];
+
+  let assemblyFormat = "`<` $symbol (`,` $parameters^)? `>`";
+  let skipDefaultBuilders = true;
+
+  let extraClassDeclaration = [{
+    /// Returns the parameters as an optional, suitable for use when converting
+    /// to MGP::OpaqueType. Returns std::nullopt if the parameters dict is empty.
+    std::optional<DictionaryAttr> getOptionalParameters() const {
+      DictionaryAttr params = getParameters();
+      if (params && !params.empty())
+        return params;
+      return std::nullopt;
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ODS constraints to inject verifier logic via type annotation.
+//===----------------------------------------------------------------------===//
+
+// Checks if a MO_TensorType has one of the specified ranks.
+class MO_HasAnyRankOfPred<list<int> ranks> :
+  Or<!foreach(rank, ranks,
+    CPred<[{cast<MO::TensorType>($_self).getRank() == }] # rank>)>;
+
+// Checks if a MO_BufferType has one of the specified ranks.
+class MO_BufferHasAnyRankOfPred<list<int> ranks> :
+  Or<!foreach(rank, ranks,
+    CPred<[{cast<MO::BufferType>($_self).toTensorType().getRank() == }] # rank>)>;
+
+/// Checks if a MO_TensorType has float elements.
+def FloatElementTypePred : CPred<
+  "llvm::isa<FloatType>(cast<::M::MO::TensorType>($_self).getElementType())">;
+
+/// Checks if a MO_TensorType has int or index elements.
+def IntOrIndexElementTypePred : CPred<
+  "cast<::M::MO::TensorType>($_self).getElementType().isInteger()">;
+
+// Checks if a MO_TensorType has signed elements.
+def SignedElementTypePred : CPred<
+  "!cast<::M::MO::TensorType>($_self).getElementType().isUnsignedInteger() && "
+  "!cast<::M::MO::TensorType>($_self).getDtype().isBool()">;
+
+/// Checks if a MO_TensorType has SI64 elements.
+def HasSI64ElementTypePred : SubstLeaves<
+  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI64.predicate>;
+
+/// Checks if a MO_TensorType has SI32 elements.
+def HasSI32ElementTypePred : SubstLeaves<
+  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", SI32.predicate>;
+
+/// Checks if a MO_TensorType has I1 elements.
+def HasBoolElementTypePred : SubstLeaves<
+  "$_self", "cast<M::MO::TensorType>($_self).getElementType()", I1.predicate>;
+
+/// Base class for defining constraints on MO_BufferType.
+class MO_ConfinedBuffer<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Buffer, predicates, summary, "::M::MO::BufferType">;
+
+/// Confines the MO_BufferType so it is rank 1.
+def MO_Rank1Buffer: MO_ConfinedBuffer<
+  [MO_BufferHasAnyRankOfPred<[1]>], "rank-1 buffer">;
+
+/// Base class for defining constraints on MO_TensorType.
+class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Tensor, predicates, summary, "::M::MO::TensorType">;
+
+class MO_ConfinedScalar<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Scalar, predicates, summary, "::M::MO::ScalarType">;
+
+def BoolScalarPred : CPred<
+  "cast<::M::MO::ScalarType>($_self).getDtype().isBool()">;
+
+def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
+
+/// There's currently no alias analysis around !mo.buffer values which is
+/// problematic in the face of operations that can directly forward their inputs
+/// (such as mo.guard or one of the control flow ops in conjunction with
+/// mo.yield). For now have this alias which allows AnyType except !mo.buffer.
+/// TODO(GEX-1576): Implement alias analysis
+def MO_AnyNonBufferType : Type<
+  CPred<"!llvm::isa<::M::MO::BufferType>($_self)">,
+  "any type but !mo.buffer">;
+
+/// Confines the MO_TensorType so that it's ranked and a scalar.
+def MO_RankedScalarTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;
+
+/// Confines the MO_TensorType so that it's a scalar or unranked.
+def MO_ScalarTensorIfRanked : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>], "scalar or unranked tensor">;
+
+/// Confines the MO_TensorType so that it's ranked and a scalar int or index.
+def MO_RankedScalarIndexTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>, IntOrIndexElementTypePred],
+  "ranked scalar index tensor">;
+
+/// Confines the MO_TensorType so that it's a scalar float.
+def MO_RankedScalarFloatTensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[0]>, FloatElementTypePred],
+  "ranked scalar floating point tensor">;
+
+/// Confines the MO_TensorType so that it has float elements, and rank 0 if
+/// rank is static.
+def MO_FloatScalarIfRanked : MO_ConfinedTensor<
+  [FloatElementTypePred, MO_HasAnyRankOfPred<[0]>],
+  "rank 0 or unranked with float elements">;
+
+/// Confines the MO_TensorType so that it has floats.
+def MO_FloatTensor : MO_ConfinedTensor<[FloatElementTypePred], "floating point tensor">;
+
+/// Confines the MO_TensorType so that it's either unranked or a non-scalar.
+def MO_NonScalarIfRanked: MO_ConfinedTensor<
+  [Neg<MO_HasAnyRankOfPred<[0]>>], "unranked or non-scalar tensor">;
+
+/// Confines the MO_TensorType so it is a rank 1 floating point tensor.
+def MO_Rank1FloatTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, FloatElementTypePred], "rank-1 tensor with floats">;
+
+/// Confines the MO_TensorType so it is a rank 1 int or index tensor.
+def MO_Rank1IndexTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, IntOrIndexElementTypePred], "rank-1 tensor with indices">;
+
+/// Confines the MO_TensorType so it is rank 2 and has index dtype.
+def MO_Rank2IndexTensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>, IntOrIndexElementTypePred], "rank-2 index tensor">;
+
+/// Confines the MO_TensorType so it is rank 1.
+def MO_Rank1Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>], "rank-1 tensor">;
+
+/// Confines the MO_TensorType so it is rank 2.
+def MO_Rank2Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>], "rank-2 tensor">;
+
+/// Confines the MO_TensorType so it is rank 3.
+def MO_Rank3Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[3]>], "rank-3 tensor">;
+
+/// Confines the MO_TensorType so it is rank 4.
+def MO_Rank4Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[4]>], "rank-4 tensor">;
+
+/// Confines the MO_TensorType so that it has int or index elements.
+def MO_IndicesTensor : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred], "tensor with integer or index elements">;
+
+/// Confines the MO_TensorType so that it has signed elements.
+def MO_SignedTensor : MO_ConfinedTensor<
+  [SignedElementTypePred], "tensor with signed elements">;
+
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and rank 1.
+def MO_ShapeLike : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
+                                 HasSI32ElementTypePred]>],
+  "rank 1 and signed 64 or signed 32 integer elements">;
+
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
+/// [N].
+def MO_PaddingLike : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
+  "shape [N] and signed 64 or signed 32 integer elements">;
+
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
+/// [N] or unranked.
+def MO_PaddingLikeIfRanked : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
+  "unranked or shape [N] and signed 64 or signed 32 integer elements">;
+
+/// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
+/// rank is static.
+def MO_ShapeLikeIfRanked : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>, Or<[HasSI64ElementTypePred,
+                               HasSI32ElementTypePred]>],
+  "rank 1 or unranked with signed 64 or signed 32 integer elements">;
+
+/// Confines the MO_TensorType so that it has rank 1 if rank is static.
+def MO_VectorIfRanked : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>], "rank 1 or unranked">;
+
+/// Confines the MO_TensorType so that it has int/index elements, and rank 1 if
+/// rank is static.
+def MO_IndicesVectorIfRanked : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred, MO_HasAnyRankOfPred<[1]>],
+  "rank 1 or unranked with integer or index elements">;
+
+/// Confines the MO_TensorType so that it has int/index elements, and rank 0 if
+/// rank is static.
+def MO_IndexScalarIfRanked : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred, MO_HasAnyRankOfPred<[0]>],
+  "rank 0 or unranked with integer or index elements">;
+
+/// Confines the MO_TensorType so that it has rank 2 if rank is static.
+def MO_MatrixIfRanked : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>], "rank 2 or unranked">;
+
+def MO_ScalarOfAnyRank : MO_ConfinedTensor<
+  [CPred<"cast<MO::TensorType>($_self).getNumElements().value_or(0) == 1">],
+  "Has exactly one element">;
+
+/// Confines the MO_TensorType so that it has Boolean elements
+def MO_BooleanMask : MO_ConfinedTensor<
+    [HasBoolElementTypePred], "boolean element type">;
+
+/// Confines the MO_TensorType so that it has Boolean elements and rank 0
+def MO_CondLike :
+  ConfinedType<MO_Tensor,
+    [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
+    "rank 0 and boolean element type"> {
+  let cppType = "::M::MO::TensorType";
+
+  let builderCall = [{
+    ::MO::TensorType::get(::llvm::ArrayRef<::mlir::TypedAttr>{},
+                          $_builder.getI1Type())
+  }];
+}
+
+/// Confines the MO_TensorType so that it has Boolean elements and rank 0 if
+/// rank is static.
+def MO_CondLikeIfRanked : ConfinedType<MO_Tensor,
+    [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
+    "rank 0 or unranked with boolean element type"> {
+  let cppType = "::M::MO::TensorType";
+}
+
+/// Confines the MO_TensorType so that it has signed 64-bit integer elements
+def MO_I64Tensor : ConfinedType<MO_Tensor,
+    [HasSI64ElementTypePred],
+    "signed 64 integer element type"> {
+  let cppType = "::M::MO::TensorType";
+}
+
+/// Confines the MO_TensorType so that it has signed 64-bit integer elements
+/// and rank 2.
+def MO_Rank2I64Tensor : ConfinedType<MO_Tensor,
+    [HasSI64ElementTypePred, MO_HasAnyRankOfPred<[2]>],
+    "rank 2 signed 64 integer tensor"> {
+  let cppType = "::M::MO::TensorType";
+}
+
+class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name # ".getType())">;
+
+class ShapeAttrStrFunc<string name> : StrFunc<"::M::MO::getShape($" # name # ".getType())">;
+
+/// Check all operands `names...` have the same dtype.
+/// eg: `AllDTypesMatch<["input", "result"]>`.
+/// There is an existing `AllElementTypesMatch` def,
+/// but it doesn't work with MO::TensorType.
+class AllDTypesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, DTypeStrFunc<"_self">.result,
+                              "dtype">;
+
+/// Check all operands `names...` have the same shapeAttr.
+/// eg: `AllShapeAttrsMatch<["input", "result"]>`.
+class AllShapeAttrsMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, ShapeAttrStrFunc<"_self">.result,
+                              "shapeAttr">;
+
+#endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD

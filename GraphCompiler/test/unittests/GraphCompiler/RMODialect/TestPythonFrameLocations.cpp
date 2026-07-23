@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.h"
-#include "GraphCompiler/GraphCompiler/RMODialect/RMODialect.h"
+#include "GraphCompiler/RMODialect/RMOAttrs.h"
+#include "GraphCompiler/RMODialect/RMODialect.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
