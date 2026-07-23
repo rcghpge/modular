@@ -5,10 +5,11 @@
 //===----------------------------------------------------------------------===//
 //
 // Lowers MO ops into `map` kernels. Each lowerable MO op with a registered
-// Mojo kernel becomes either a `map.iter.opaque` wrapping a `map.call` to that
-// kernel (with a trivial store epilogue per result), or, for elementwise
-// kernels, a `map.iter.foreach` expressing the loop body explicitly as scalar
-// `map.load` / `map.call.elementwise` / `map.store` ops. Kernel selection
+// Mojo kernel becomes either a `map.iter.opaque` wrapping a `map.call.opaque`
+// to that kernel (with a trivial store epilogue per result), or, for
+// elementwise kernels, a `map.iter.foreach` expressing the loop body
+// explicitly as scalar `map.load` / `map.call.elementwise` / `map.store` ops.
+// Kernel selection
 // reuses the same `mogg.kernel.decl` machinery as MOToMOGG (MojoRegistry /
 // getMojoKernelAdaptor). Contexts, variadics and scalars are intentionally
 // NOT materialized here; that is deferred until after fusion.
@@ -130,12 +131,16 @@ LogicalResult lowerToOpaque(Operation *op,
   }
 
   builder.setInsertionPointToEnd(body);
-  MAP::CallOp::create(builder, loc,
-                      FlatSymbolRefAttr::get(
-                          op->getContext(), adaptor.fullyResolvedName.strref()),
-                      forwardParameters(op, builder),
-                      /*inputs=*/op->getOperands(),
-                      /*outputs=*/callOutputs);
+  MAP::CallOpaqueOp::create(
+      builder, loc,
+      FlatSymbolRefAttr::get(op->getContext(),
+                             adaptor.fullyResolvedName.strref()),
+      forwardParameters(op, builder),
+      /*inputs=*/op->getOperands(),
+      /*outputs=*/callOutputs);
+
+  SmallVector<Value> returnValues(outs.begin(), outs.end());
+  MAP::YieldOp::create(builder, loc, returnValues);
 
   op->replaceAllUsesWith(opaque.getResults());
   op->erase();

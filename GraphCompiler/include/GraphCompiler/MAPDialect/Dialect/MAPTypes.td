@@ -24,8 +24,7 @@ def MAP_Index : MAP_Type<"Index", "index"> {
   let summary = "A statically-ranked index into an iteration space.";
   let description = [{
     Represents an index into a `map.iter` kernel's iteration space, carrying its
-    static rank. This is the `imap` (index-space) index type; per the MAP naming
-    convention it lives in the `map` dialect.
+    static rank.
 
     Example:
     ```mlir

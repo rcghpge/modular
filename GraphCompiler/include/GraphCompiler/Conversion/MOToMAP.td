@@ -10,9 +10,9 @@
 include "mlir/Pass/PassBase.td"
 
 def MOToMAP : Pass<"mo-to-map", "mlir::ModuleOp"> {
-  let summary = "Lower `mo` dialect ops into `map` / `imap` kernels.";
+  let summary = "Lower `mo` dialect ops into `map` kernels.";
   let description = [{
-    This pass lowers known `mo` dialect ops into one `map` / `imap` kernel each,
+    This pass lowers known `mo` dialect ops into one `map` kernel each,
     as the entry point of the advanced fusion pipeline.
 
     This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does

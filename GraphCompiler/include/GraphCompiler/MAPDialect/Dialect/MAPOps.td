@@ -39,28 +39,31 @@ def MAP_AnyIndex : Type<
 
 def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     SingleBlock,
-    NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   ]> {
   let summary = "An opaque (hand-written) kernel with fusible load/store paths.";
   let description = [{
     Wraps a call to an opaque Mojo kernel (e.g. a hand-tuned GEMM) that exposes
     named load/store callbacks. The body holds the load/store callbacks
-    (`map.iter.prologue` / `map.iter.epilogue`) plus the `map.call` that invokes
-    the kernel; it is not a sequence of computation ops.
+    (`map.iter.prologue` / `map.iter.epilogue`) plus the `map.call.opaque` that
+    invokes the kernel; it is not a sequence of computation ops. The body is
+    terminated by a `map.yield` that yields the filled outputs.
 
     The `inputs` are the kernel's tensor operands. The `outputs` are the kernel
     results; each becomes a block argument of the body so the callbacks and the
-    `map.call` can address it, and the op result of the same type carries the
-    filled tensor out.
+    `map.call.opaque` can address it, and the op result of the same type
+    carries the filled tensor out.
 
     ```mlir
-    %mm = map.iter.opaque inputs (%A, %B) outputs (%out : !mo.tensor<[M, N], bf16>) {
+    %mm = map.iter.opaque
+        inputs (%A : !mo.tensor<[M, K], bf16>, %B : !mo.tensor<[K, N], bf16>)
+        outputs (%out : !mo.tensor<[M, N], bf16>) {
       %epi = map.iter.epilogue (%val : bf16, %idx : !map.index<2>) capturing (%out) {
         map.store %out[%idx] = %val : !mo.tensor<[M, N], bf16>
       } : !mo.tensor<[M, N], bf16>
-      map.call @builtin_kernels.linalg.Matmul params = {...}
+      map.call.opaque @builtin_kernels.linalg.Matmul[transpose_b = false]
         inputs (%A, %B) outputs (%epi) : (...) -> (...)
+      map.yield %out : !mo.tensor<[M, N], bf16>
     }
     ```
 
@@ -78,6 +81,22 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.yield
+//===----------------------------------------------------------------------===//
+
+def MAP_YieldOp : MAP_Op<"yield", [Terminator]> {
+  let summary = "Terminates a map.iter.opaque body, yielding its results.";
+  let description = [{
+    The terminator of a `map.iter.opaque` body. Its operands are the filled
+    output tensors, which become the enclosing kernel's results.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let assemblyFormat = "($operands^ `:` type($operands))? attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
@@ -109,10 +128,10 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
 }
 
 //===----------------------------------------------------------------------===//
-// map.call
+// map.call.opaque
 //===----------------------------------------------------------------------===//
 
-def MAP_CallOp : MAP_Op<"call", [
+def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   ]> {
@@ -120,8 +139,9 @@ def MAP_CallOp : MAP_Op<"call", [
   let description = [{
     Calls the kernel declared under `callee` (a `mogg.kernel.decl` symbol, e.g.
     `@builtin_kernels.linalg.Matmul`) with the given `inputs` and `outputs`. The
-    `params` dictionary maps kernel parameters (e.g. `packed_b`, `transpose_b`)
-    to their values.
+    kernel parameters (e.g. `packed_b`, `transpose_b`) are carried in brackets
+    immediately after the callee symbol, e.g.
+    `@...Matmul[packed_b = false, transpose_b = false]`.
   }];
 
   let arguments = (ins
@@ -132,7 +152,7 @@ def MAP_CallOp : MAP_Op<"call", [
   );
 
   let assemblyFormat = [{
-    $callee `params` `=` $params
+    $callee `[` custom<KernelParamsBody>($params) `]`
     `inputs` `(` $inputs `)` `outputs` `(` $outputs `)`
     attr-dict `:` functional-type($inputs, $outputs)
   }];

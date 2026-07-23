@@ -2,9 +2,9 @@
 // RUN: mo-opt %s --mo-to-map | FileCheck %s --check-prefix=DISABLED
 
 // MOToMAP lowers each MO op with a registered opaque (non-elementwise,
-// non-view) kernel into a `map.iter.opaque` wrapping a `map.call`, driven by
-// the kernel's operand mapping. This test exercises the output-fusion coverage
-// the pass supports today, using dedicated signature-only kernels from
+// non-view) kernel into a `map.iter.opaque` wrapping a `map.call.opaque`,
+// driven by the kernel's operand mapping. This test exercises the output-fusion
+// coverage the pass supports today, using dedicated signature-only kernels from
 // %kernel_api_test_lib (the `map_lower_*` kernels in the testing package):
 //
 //   - a fused output (FusedOutputTensor) becomes a store epilogue passed to the
@@ -18,11 +18,14 @@
 // that epilogue.
 
 // CHECK-LABEL: mo.graph @one_fused
-// CHECK: %[[MM:.*]] = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
+// CHECK: %[[MM:.*]] = map.iter.opaque
+// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP:.*]] = %[[O]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:     map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
 // CHECK:   } : !mo.tensor<[2, 2], f32>
-// CHECK:   map.call @{{.*}}MapLowerOneFusedOutput params = {} inputs(%[[A]]) outputs(%[[EPI]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK:   map.call.opaque @{{.*}}MapLowerOneFusedOutput[] inputs(%[[A]]) outputs(%[[EPI]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK:   map.yield %[[O]] : !mo.tensor<[2, 2], f32>
 // CHECK: } {fusionInfo = #mogg.fusion<{{.*}}custom__map_lower_one_fused_output
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -33,9 +36,11 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // raw output block argument.
 
 // CHECK-LABEL: mo.graph @one_plain
-// CHECK: %[[MM:.*]] = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
+// CHECK: %[[MM:.*]] = map.iter.opaque
+// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
-// CHECK:   map.call @{{.*}}MapLowerOnePlainOutput params = {} inputs(%[[A]]) outputs(%[[O]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK:   map.call.opaque @{{.*}}MapLowerOnePlainOutput[] inputs(%[[A]]) outputs(%[[O]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_plain_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -45,10 +50,12 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // both epilogues.
 
 // CHECK-LABEL: mo.graph @two_fused
-// CHECK: %[[MM:.*]]:2 = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
+// CHECK: %[[MM:.*]]:2 = map.iter.opaque
+// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI0:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O0]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI1:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O1]] : !mo.tensor<[2, 2], f32>) {
-// CHECK:   map.call @{{.*}}MapLowerTwoFusedOutputs params = {} inputs(%[[A]]) outputs(%[[EPI0]], %[[EPI1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK:   map.call.opaque @{{.*}}MapLowerTwoFusedOutputs[] inputs(%[[A]]) outputs(%[[EPI0]], %[[EPI1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -57,9 +64,11 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // Two plain results: no epilogue, and the call writes to both raw outputs.
 
 // CHECK-LABEL: mo.graph @two_plain
-// CHECK: %[[MM:.*]]:2 = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
+// CHECK: %[[MM:.*]]:2 = map.iter.opaque
+// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
-// CHECK:   map.call @{{.*}}MapLowerTwoPlainOutputs params = {} inputs(%[[A]]) outputs(%[[O0]], %[[O1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK:   map.call.opaque @{{.*}}MapLowerTwoPlainOutputs[] inputs(%[[A]]) outputs(%[[O0]], %[[O1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 mo.graph @two_plain(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_plain_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -70,10 +79,12 @@ mo.graph @two_plain(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // argument for the second, and there is exactly one epilogue.
 
 // CHECK-LABEL: mo.graph @two_partial
-// CHECK: %[[MM:.*]]:2 = map.iter.opaque inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>) outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
+// CHECK: %[[MM:.*]]:2 = map.iter.opaque
+// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI0:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O0]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
-// CHECK:   map.call @{{.*}}MapLowerPartialFusedOutputs params = {} inputs(%[[A]]) outputs(%[[EPI0]], %[[O1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK:   map.call.opaque @{{.*}}MapLowerPartialFusedOutputs[] inputs(%[[A]]) outputs(%[[EPI0]], %[[O1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>

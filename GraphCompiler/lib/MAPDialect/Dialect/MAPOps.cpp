@@ -19,6 +19,40 @@ using namespace mlir;
 using namespace M::MAP;
 
 //===----------------------------------------------------------------------===//
+// map.call.opaque — bracketed kernel-params directive
+//===----------------------------------------------------------------------===//
+
+// Parses the `key = value, ...` body between the brackets in `@callee[...]`
+// into a dictionary (the `[` and `]` are literals in the op's assembly format).
+// The bracket form (rather than the builtin `{...}` dictionary syntax) keeps
+// the call reading as `@callee[params]`; `@callee` is parsed by the builtin
+// symbol parser, which stops at the `[`.
+static ParseResult parseKernelParamsBody(OpAsmParser &parser,
+                                         DictionaryAttr &params) {
+  SmallVector<NamedAttribute> entries;
+  StringRef key;
+  while (succeeded(parser.parseOptionalKeyword(&key))) {
+    Attribute value;
+    if (parser.parseEqual() || parser.parseAttribute(value))
+      return mlir::failure();
+    entries.emplace_back(StringAttr::get(parser.getContext(), key), value);
+    if (failed(parser.parseOptionalComma()))
+      break;
+  }
+  params = DictionaryAttr::get(parser.getContext(), entries);
+  return mlir::success();
+}
+
+static void printKernelParamsBody(OpAsmPrinter &p, Operation *,
+                                  DictionaryAttr params) {
+  llvm::interleaveComma(params, p, [&](NamedAttribute attr) {
+    p.printKeywordOrString(attr.getName().strref());
+    p << " = ";
+    p.printAttribute(attr.getValue());
+  });
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
@@ -26,16 +60,17 @@ using namespace M::MAP;
 #include "GraphCompiler/MAPDialect/Dialect/MAP.cpp.inc"
 
 //===----------------------------------------------------------------------===//
-// map.call
+// map.call.opaque
 //===----------------------------------------------------------------------===//
 
-LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+LogicalResult
+CallOpaqueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   auto decl = symbolTable.lookupNearestSymbolFrom<M::MOGG::KernelDeclOp>(
       *this, getCalleeAttr());
   if (!decl)
     return emitOpError("'")
            << getCallee() << "' does not refer to a kernel.decl op";
-  return success();
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -48,14 +83,14 @@ parseOperandGroup(OpAsmParser &parser,
                   SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
                   SmallVectorImpl<Type> &types) {
   if (parser.parseLParen())
-    return failure();
+    return mlir::failure();
   if (succeeded(parser.parseOptionalRParen()))
     return mlir::success();
   do {
     OpAsmParser::UnresolvedOperand operand;
     Type type;
     if (parser.parseOperand(operand) || parser.parseColonType(type))
-      return failure();
+      return mlir::failure();
     operands.push_back(operand);
     types.push_back(type);
   } while (succeeded(parser.parseOptionalComma()));
@@ -80,31 +115,36 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
       parseOperandGroup(parser, inputs, inputTypes) ||
       parser.resolveOperands(inputs, inputTypes, parser.getCurrentLocation(),
                              result.operands))
-    return failure();
+    return mlir::failure();
 
   // outputs ( %out : tOut, ... ) -> region entry args + op result types
   SmallVector<OpAsmParser::Argument> outArgs;
   if (parser.parseKeyword("outputs") ||
       parser.parseArgumentList(outArgs, OpAsmParser::Delimiter::Paren,
                                /*allowType=*/true))
-    return failure();
+    return mlir::failure();
   for (const OpAsmParser::Argument &arg : outArgs)
     result.addTypes(arg.type);
 
   // body region (entry block args are the outputs)
   Region *body = result.addRegion();
   if (parser.parseRegion(*body, outArgs))
-    return failure();
+    return mlir::failure();
 
   return parser.parseOptionalAttrDict(result.attributes);
 }
 
 void IterOpaqueOp::print(OpAsmPrinter &p) {
-  p << " inputs (";
+  p.increaseIndent();
+  p.printNewline();
+  p << "inputs (";
   printValuesWithTypes(p, getInputs());
-  p << ") outputs (";
+  p << ")";
+  p.printNewline();
+  p << "outputs (";
   printValuesWithTypes(p, getBody().getArguments());
   p << ") ";
+  p.decreaseIndent();
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict((*this)->getAttrs());
 }
@@ -127,7 +167,7 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> entryArgs;
   if (parser.parseArgumentList(entryArgs, OpAsmParser::Delimiter::Paren,
                                /*allowType=*/true))
-    return failure();
+    return mlir::failure();
 
   // capturing ( %inner = %outer : type, ... ): the region is isolated from
   // above, so each captured value is an operand (%outer, resolved in the
@@ -136,7 +176,7 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
   if (parser.parseKeyword("capturing") || parser.parseLParen())
-    return failure();
+    return mlir::failure();
   if (failed(parser.parseOptionalRParen())) {
     do {
       OpAsmParser::Argument innerArg;
@@ -144,18 +184,18 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
       Type type;
       if (parser.parseArgument(innerArg) || parser.parseEqual() ||
           parser.parseOperand(outer) || parser.parseColonType(type))
-        return failure();
+        return mlir::failure();
       innerArg.type = type;
       entryArgs.push_back(innerArg);
       captures.push_back(outer);
       captureTypes.push_back(type);
     } while (succeeded(parser.parseOptionalComma()));
     if (parser.parseRParen())
-      return failure();
+      return mlir::failure();
   }
   if (parser.resolveOperands(captures, captureTypes,
                              parser.getCurrentLocation(), result.operands))
-    return failure();
+    return mlir::failure();
 
   // body region (isolated; entry args are [leading..., captures...]).
   // enableNameShadowing lets the capture block args reuse the same SSA names as
@@ -163,12 +203,12 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
   // (valid only because the region is IsolatedFromAbove).
   Region *body = result.addRegion();
   if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
-    return failure();
+    return mlir::failure();
 
   // : result-type
   Type resultType;
   if (parser.parseColonType(resultType))
-    return failure();
+    return mlir::failure();
   result.addTypes(resultType);
 
   return parser.parseOptionalAttrDict(result.attributes);
@@ -221,13 +261,13 @@ static ParseResult
 parseBlockArgList(OpAsmParser &parser,
                   SmallVectorImpl<OpAsmParser::Argument> &argInfo) {
   if (parser.parseLParen())
-    return failure();
+    return mlir::failure();
   if (succeeded(parser.parseOptionalRParen()))
     return mlir::success();
   do {
     OpAsmParser::Argument arg;
     if (parser.parseArgument(arg, /*allowType=*/true))
-      return failure();
+      return mlir::failure();
     argInfo.push_back(arg);
   } while (succeeded(parser.parseOptionalComma()));
   return parser.parseRParen();
@@ -249,16 +289,16 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   // Uses MOSH::parseShapeAttr which handles static ints, symbolic params,
   // and parametric expressions inside the [...] brackets.
   if (parser.parseLess())
-    return failure();
+    return mlir::failure();
   mlir::TypedAttr shapeTypedAttr;
   auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
   if (!shapeResult.has_value())
     return parser.emitError(parser.getCurrentLocation(),
                             "expected '[' for map.iter.foreach shape");
   if (failed(*shapeResult))
-    return failure();
+    return mlir::failure();
   if (parser.parseGreater())
-    return failure();
+    return mlir::failure();
   state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
 
   // Parse inputs with shadowing: inputs (%x: T, %y: T)
@@ -266,20 +306,20 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   if (parser.parseKeyword("inputs") ||
       parseParenOperandListWithShadowing(parser, state, allArgInfo,
                                          /*isIsolatedFromAbove=*/true))
-    return failure();
+    return mlir::failure();
 
   // Parse outputs (block args only): outputs (%out: T)
   SmallVector<OpAsmParser::Argument> outputArgInfo;
   if (parser.parseKeyword("outputs") ||
       parseBlockArgList(parser, outputArgInfo))
-    return failure();
+    return mlir::failure();
   for (auto &arg : outputArgInfo)
     allArgInfo.push_back(arg);
 
   // Parse index (block arg only): index (%idx: map.index<N>)
   SmallVector<OpAsmParser::Argument> indexArgInfo;
   if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
-    return failure();
+    return mlir::failure();
   if (indexArgInfo.size() != 1)
     return parser.emitError(
         parser.getCurrentLocation(),
@@ -288,12 +328,12 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
 
   // Parse result types: -> T or (T, T, ...)
   if (parser.parseArrowTypeList(state.types))
-    return failure();
+    return mlir::failure();
 
   // Parse body region with all block args.
   if (parseRegion(parser, allArgInfo, *state.addRegion(),
                   /*isIsolatedFromAbove=*/true))
-    return failure();
+    return mlir::failure();
 
   return parser.parseOptionalAttrDict(state.attributes);
 }
@@ -399,7 +439,7 @@ LogicalResult IterForeachOp::verify() {
                          << " does not match shape rank "
                          << getShape().getRank();
 
-  return success();
+  return mlir::success();
 }
 
 llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
@@ -420,7 +460,7 @@ LogicalResult LoadOp::verify() {
   auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
   if (!tensorTy)
     return emitOpError() << "tensor operand must be !mo.tensor type";
-  return success();
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -431,5 +471,5 @@ LogicalResult StoreOp::verify() {
   auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
   if (!tensorTy)
     return emitOpError() << "tensor operand must be !mo.tensor type";
-  return success();
+  return mlir::success();
 }
