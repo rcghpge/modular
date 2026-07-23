@@ -162,13 +162,18 @@ modular_cc_library(
     name = "GraphCompilerConversion",
     srcs = glob(
         ["lib/Conversion/*.cpp"],
-        # OperandInference is its own target (it depends on MOGGDialect.headers,
-        # which would otherwise cycle back through GraphCompilerConversion).
-        exclude = ["lib/Conversion/OperandInference.cpp"],
+        # OperandInference and ParameterInference are their own targets.
+        exclude = [
+            "lib/Conversion/OperandInference.cpp",
+            "lib/Conversion/ParameterInference.cpp",
+        ],
     ),
     hdrs = glob(
         ["include/GraphCompiler/Conversion/*.h"],
-        exclude = ["include/GraphCompiler/Conversion/OperandInference.h"],
+        exclude = [
+            "include/GraphCompiler/Conversion/OperandInference.h",
+            "include/GraphCompiler/Conversion/ParameterInference.h",
+        ],
     ) + [
         # MGPTransforms consumes this pass header but cannot depend on the
         # :MOGGToMGP target (that would cycle), so re-export it here as before.
@@ -196,6 +201,19 @@ modular_cc_library(
     deps = [
         ":MODialect",
         ":MOGGDialect.headers",
+    ],
+)
+
+# Shared parameter inference: derives a kernel's parameter dictionary from an MO
+# op's attributes. Unlike OperandInference it does not touch MOGG.
+modular_cc_library(
+    name = "ParameterInference",
+    srcs = ["lib/Conversion/ParameterInference.cpp"],
+    hdrs = ["include/GraphCompiler/Conversion/ParameterInference.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MODialect",
+        "//KGEN:KGENDialect",
     ],
 )
 
@@ -1581,6 +1599,7 @@ modular_cc_library(
         ":MOSHDialect",
         ":MOToMAPIncGen",
         ":OperandInference",
+        ":ParameterInference",
         "//KGEN:KGENDialect",
     ],
 )

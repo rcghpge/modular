@@ -18,6 +18,7 @@
 
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/Conversion/OperandInference.h"
+#include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
@@ -28,7 +29,6 @@
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "mlir/IR/Builders.h"
 
 using namespace M;
@@ -46,31 +46,6 @@ bool shouldLower(Operation *op) {
     return false;
   Dialect *dialect = op->getDialect();
   return dialect && isa<MO::MODialect>(dialect);
-}
-
-DictionaryAttr forwardParameters(Operation *op, OpBuilder &builder) {
-  if (auto custom = dyn_cast<MO::CustomOp>(op)) {
-    if (DictionaryAttr params = custom.getParameters())
-      return params;
-    return builder.getDictionaryAttr({});
-  }
-
-  SmallVector<NamedAttribute> params;
-  for (NamedAttribute attr : op->getAttrs()) {
-    Attribute value = attr.getValue();
-    if (isa<M::DeviceRefAttr>(value))
-      continue;
-    if (auto typeAttr = dyn_cast<TypeAttr>(value)) {
-      params.push_back(NamedAttribute(
-          attr.getName(),
-          KGEN::DTypeConstantAttr::get(
-              value.getContext(), MO::getDTypeOrInvalid(typeAttr.getValue()))));
-      continue;
-    }
-    if (isa<TypedAttr>(value))
-      params.push_back(attr);
-  }
-  return builder.getDictionaryAttr(params);
 }
 
 MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
@@ -135,7 +110,7 @@ LogicalResult lowerToOpaque(Operation *op,
       builder, loc,
       FlatSymbolRefAttr::get(op->getContext(),
                              adaptor.fullyResolvedName.strref()),
-      forwardParameters(op, builder),
+      inferParameters(op, builder),
       /*inputs=*/op->getOperands(),
       /*outputs=*/callOutputs);
 
