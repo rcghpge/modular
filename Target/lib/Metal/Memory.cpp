@@ -11,7 +11,9 @@
 M_driver_status_t M_driver_memory::getProperty(llvm::StringRef name,
                                                void *value) {
   if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS) {
-    *static_cast<uint64_t *>(value) = mBuffer->gpuAddress();
+    // Add `offset` so a sub-range handle reports its own address, not the base
+    // of the containing buffer.
+    *static_cast<uint64_t *>(value) = mBuffer->gpuAddress() + offset;
     return M_DRIVER_STATUS_SUCCESS;
   }
   if (name == M_DRIVER_MEMORY_PROPERTY_HOST_ADDRESS) {
@@ -77,21 +79,31 @@ M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
   return context->free(memory);
 }
 
-M_driver_status_t M_driver_memory_wrap(
-    [[maybe_unused]] M_driver_context_t context,
-    [[maybe_unused]] uint64_t address, [[maybe_unused]] uint64_t size,
-    [[maybe_unused]] bool owning, [[maybe_unused]] M_driver_memory_t *memory) {
-  // A raw GPU address cannot be wrapped back into an MTLBuffer.
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
+                                       uint64_t address, uint64_t size,
+                                       bool owning, M_driver_memory_t *memory) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!memory)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  if (!address)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  auto result = context->memoryWrap(address, size, owning);
+  if (!result)
+    return result.error();
+  *memory = *result;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t
-M_driver_memory_unwrap([[maybe_unused]] M_driver_context_t context,
-                       [[maybe_unused]] M_driver_memory_t memory,
-                       [[maybe_unused]] uint64_t *address) {
-  // The SharedPtr<MTL::Buffer> is the allocation; a non-owning Metal
-  // handle cannot exist.
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
+                                         M_driver_memory_t memory,
+                                         uint64_t *address) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!memory || !address)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  *address = memory->mBuffer->gpuAddress() + memory->offset;
+  return context->memoryUnwrap(memory);
 }
 
 M_driver_status_t

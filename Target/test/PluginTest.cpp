@@ -793,3 +793,167 @@ TEST_F(DriverPluginQueueTest, PinnedMappedAllocWaitValue) {
   ASSERT_SUCCESS(queue_synchronize(queues[0]));
   ASSERT_SUCCESS(memory_free_pinned(contexts[0], mem));
 }
+
+TEST_F(DriverPluginContextTest, MemoryWrapUnwrapErrors) {
+  for (M_driver_context_t context : contexts) {
+    // A live allocation gives us a valid address and handle for the argument
+    // checks below.
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, 128, &memory));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
+
+    uint64_t address = 0;
+    ASSERT_SUCCESS(
+        memory_property(memory, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &address));
+    ASSERT_NE(address, 0u);
+
+    M_driver_memory_t wrapped = nullptr;
+    EXPECT_EQ(memory_wrap(nullptr, address, 128, /*owning=*/false, &wrapped),
+              M_DRIVER_STATUS_BAD_CONTEXT);
+    EXPECT_EQ(memory_wrap(context, address, 128, /*owning=*/false, nullptr),
+              M_DRIVER_STATUS_BAD_MEMORY);
+    // A zero address has no valid region to wrap.
+    EXPECT_EQ(
+        memory_wrap(context, /*address=*/0, 128, /*owning=*/false, &wrapped),
+        M_DRIVER_STATUS_INVALID_ARG);
+
+    uint64_t out = 0;
+    EXPECT_EQ(memory_unwrap(nullptr, memory, &out),
+              M_DRIVER_STATUS_BAD_CONTEXT);
+    EXPECT_EQ(memory_unwrap(context, nullptr, &out),
+              M_DRIVER_STATUS_BAD_MEMORY);
+    EXPECT_EQ(memory_unwrap(context, memory, nullptr),
+              M_DRIVER_STATUS_BAD_MEMORY);
+  }
+}
+
+TEST_F(DriverPluginContextTest, MemoryWrapNonOwningAliasesAllocation) {
+  constexpr size_t size = 256;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = static_cast<uint8_t>(i);
+
+  for (M_driver_context_t context : contexts) {
+    M_driver_memory_t orig = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &orig));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, orig); });
+
+    uint64_t address = 0;
+    ASSERT_SUCCESS(
+        memory_property(orig, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &address));
+
+    M_driver_memory_view origView{orig, /*offset=*/0, size};
+    ASSERT_SUCCESS(copy_to_device_sync(context, &origView, content.data()));
+
+    // A non-owning wrapper of the same address must alias the same region.
+    M_driver_memory_t wrapped = nullptr;
+    ASSERT_SUCCESS(
+        memory_wrap(context, address, size, /*owning=*/false, &wrapped));
+    ASSERT_NE(wrapped, nullptr);
+
+    uint64_t wrappedAddress = 0;
+    ASSERT_SUCCESS(memory_property(wrapped, M_DRIVER_MEMORY_PROPERTY_ADDRESS,
+                                   &wrappedAddress));
+    EXPECT_EQ(wrappedAddress, address);
+
+    std::array<uint8_t, size> viaWrapped;
+    viaWrapped.fill(0);
+    M_driver_memory_view wrappedView{wrapped, /*offset=*/0, size};
+    ASSERT_SUCCESS(
+        copy_from_device_sync(context, viaWrapped.data(), &wrappedView));
+    EXPECT_EQ(content, viaWrapped);
+
+    // Freeing the non-owning wrapper releases only the handle, not the region.
+    ASSERT_SUCCESS(memory_free_sync(context, wrapped));
+
+    // The original allocation is therefore still alive and readable.
+    std::array<uint8_t, size> viaOrig;
+    viaOrig.fill(0);
+    ASSERT_SUCCESS(copy_from_device_sync(context, viaOrig.data(), &origView));
+    EXPECT_EQ(content, viaOrig);
+  }
+}
+
+TEST_F(DriverPluginContextTest, MemoryUnwrapReleasesOwnershipRoundTrip) {
+  constexpr size_t size = 256;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = static_cast<uint8_t>((i * 3 + 1) & 0xFF);
+
+  for (M_driver_context_t context : contexts) {
+    M_driver_memory_t orig = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &orig));
+
+    uint64_t address = 0;
+    ASSERT_SUCCESS(
+        memory_property(orig, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &address));
+
+    M_driver_memory_view origView{orig, /*offset=*/0, size};
+    ASSERT_SUCCESS(copy_to_device_sync(context, &origView, content.data()));
+
+    // Release ownership: unwrap returns the region's address and leaves `orig`
+    // non-owning, so freeing `orig` will no longer free the region.
+    uint64_t unwrapped = 0;
+    ASSERT_SUCCESS(memory_unwrap(context, orig, &unwrapped));
+    EXPECT_EQ(unwrapped, address);
+
+    // Re-adopt the released address as an owning handle. This round-trip is the
+    // documented owning-wrap use: the address came from this plugin's own
+    // allocator, so freeing the handle frees the region through the device
+    // path.
+    M_driver_memory_t rewrapped = nullptr;
+    ASSERT_SUCCESS(
+        memory_wrap(context, unwrapped, size, /*owning=*/true, &rewrapped));
+    ASSERT_NE(rewrapped, nullptr);
+
+    // Data survives the ownership hand-off.
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    M_driver_memory_view rewrappedView{rewrapped, /*offset=*/0, size};
+    ASSERT_SUCCESS(
+        copy_from_device_sync(context, result.data(), &rewrappedView));
+    EXPECT_EQ(content, result);
+
+    // Freeing the now non-owning original releases only bookkeeping; the region
+    // stays alive under the re-wrapped owning handle.
+    ASSERT_SUCCESS(memory_free_sync(context, orig));
+    result.fill(0);
+    ASSERT_SUCCESS(
+        copy_from_device_sync(context, result.data(), &rewrappedView));
+    EXPECT_EQ(content, result);
+
+    // The owning handle frees the region.
+    ASSERT_SUCCESS(memory_free_sync(context, rewrapped));
+  }
+}
+
+TEST_F(DriverPluginContextTest, MemoryUnwrapIsIdempotent) {
+  constexpr size_t size = 128;
+  for (M_driver_context_t context : contexts) {
+    M_driver_memory_t orig = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &orig));
+
+    uint64_t address = 0;
+    ASSERT_SUCCESS(
+        memory_property(orig, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &address));
+
+    uint64_t first = 0;
+    ASSERT_SUCCESS(memory_unwrap(context, orig, &first));
+    EXPECT_EQ(first, address);
+
+    // Unwrapping an already non-owning handle just returns the address again;
+    // the handle stays valid.
+    uint64_t second = 0;
+    ASSERT_SUCCESS(memory_unwrap(context, orig, &second));
+    EXPECT_EQ(second, address);
+
+    // `orig` is non-owning after unwrap, so it can no longer free the region.
+    // Reclaim ownership through a fresh owning wrap so the region is freed
+    // exactly once.
+    M_driver_memory_t owner = nullptr;
+    ASSERT_SUCCESS(
+        memory_wrap(context, address, size, /*owning=*/true, &owner));
+    ASSERT_SUCCESS(memory_free_sync(context, orig));  // bookkeeping only
+    ASSERT_SUCCESS(memory_free_sync(context, owner)); // frees the region
+  }
+}

@@ -13,7 +13,14 @@
 #include "llvm/ADT/StringRef.h"
 
 struct M_driver_memory {
-  NS::SharedPtr<MTL::Buffer> mBuffer;
+  MTL::Buffer *mBuffer;
+  // Owning handles release the buffer on free; `unwrap` clears this so a
+  // borrowed handle's free releases only the wrapper.
+  bool owning = true;
+  // Sub-range offset within `mBuffer`: every derived address must add it, or a
+  // wrapped sub-range would alias the buffer base. Zero for whole-buffer
+  // allocs.
+  uint64_t offset = 0;
 
   M_driver_status_t getProperty(llvm::StringRef name, void *value);
 };

@@ -47,17 +47,19 @@ DriverResult<M_driver_memory_t> M_driver_context::alloc(uint64_t size) {
     buffer->release();
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
   }
-  M_driver_memory_t memory = new (std::nothrow) M_driver_memory{buffer};
+  M_driver_memory_t memory = new (std::nothrow) M_driver_memory{buffer.get()};
   if (!memory)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
 
-  trackBuffer(contents, buffer.get());
+  trackBuffer(contents, buffer);
   return memory;
 }
 
 M_driver_status_t M_driver_context::free(M_driver_memory_t memory) {
   auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  untrackBuffer(memory->mBuffer->contents());
+  if (memory->owning) {
+    untrackBuffer(memory->mBuffer->contents());
+  }
   delete memory;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -139,6 +141,29 @@ M_driver_status_t M_driver_context::fillSync(M_driver_memory_t dst,
     break;
   }
   }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+DriverResult<M_driver_memory_t>
+M_driver_context::memoryWrap(uint64_t address, uint64_t size, bool owning) {
+  auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  auto gpuAddress = address;
+  auto buffer = getTrackedBufferFromGPUAddress(gpuAddress);
+  if (!buffer)
+    return tl::unexpected(buffer.error());
+
+  M_driver_memory_t memory = new (std::nothrow)
+      M_driver_memory{*buffer, owning, gpuAddress - (*buffer)->gpuAddress()};
+  if (!memory) {
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  }
+
+  return memory;
+}
+
+M_driver_status_t M_driver_context::memoryUnwrap(M_driver_memory_t memory) {
+  memory->owning = false;
   return M_DRIVER_STATUS_SUCCESS;
 }
 

@@ -77,6 +77,8 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
+  dstOffset += dst->offset;
+
   NS::UInteger bufferLength = dst->mBuffer->length();
   if (bufferLength == 0)
     return context->device->driver->status.create(
@@ -95,7 +97,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
 
   __block size_t capturedByteSize = size;
   __block size_t capturedOffset = dstOffset;
-  MTL::Buffer *dstBuf = dst->mBuffer.get();
+  MTL::Buffer *dstBuf = dst->mBuffer;
 
   std::lock_guard<std::mutex> lock(mMutex);
 
@@ -106,6 +108,11 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
 
   encodePendingWaits(cmdBuffer);
 
+  // The handler runs later on another thread; a concurrent `free()` could
+  // release the buffer first (it drops the map's `SharedPtr`). A memcpy has no
+  // encoder, so Metal won't auto-retain it -- retain manually (released below).
+  dstBuf->retain();
+
   // The CB has no GPU work — the "copy" is a std::memcpy executed CPU-side in
   // the completion handler. Metal's UMA model means there's no dedicated HtoD
   // copy API; host and device share memory, so a plain memcpy is the transfer.
@@ -115,6 +122,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
       void *dstPtr = static_cast<char *>(dstContents) + capturedOffset;
       std::memcpy(dstPtr, src, capturedByteSize);
     }
+    dstBuf->release();
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
@@ -144,12 +152,14 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
     return context->device->driver->status.create(
         "Failed to create MTL::SharedEvent for copyFromDevice");
 
+  srcOffset += src->offset;
+
   if (srcOffset + size > src->mBuffer->length())
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
 
   __block size_t capturedOffset = srcOffset;
-  MTL::Buffer *srcBuf = src->mBuffer.get();
+  MTL::Buffer *srcBuf = src->mBuffer;
 
   std::lock_guard<std::mutex> lock(mMutex);
 
@@ -160,6 +170,10 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
 
   encodePendingWaits(cmdBuffer);
 
+  // Retain the buffer across the async completion handler (see note in
+  // `copyToDevice`). Paired release below.
+  srcBuf->retain();
+
   // The CB has no GPU work — the "copy" is a std::memcpy executed CPU-side in
   // the completion handler. Metal's UMA model means there's no dedicated HtoD
   // copy API; host and device share memory, so a plain memcpy is the transfer.
@@ -169,6 +183,7 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
       void *srcPtr = static_cast<char *>(srcContents) + capturedOffset;
       std::memcpy(dst, srcPtr, size);
     }
+    srcBuf->release();
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
@@ -187,6 +202,9 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
 
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  dstOffset += dst->offset;
+  srcOffset += src->offset;
 
   if (dstOffset + size > dst->mBuffer->length())
     return context->device->driver->status.create(
@@ -214,8 +232,8 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   if (encoder == nullptr)
     return context->device->driver->status.create(
         "Failed to create blit command encoder");
-  encoder->copyFromBuffer(src->mBuffer.get(), srcOffset, dst->mBuffer.get(),
-                          dstOffset, size);
+  encoder->copyFromBuffer(src->mBuffer, srcOffset, dst->mBuffer, dstOffset,
+                          size);
   encoder->endEncoding();
 
   cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
@@ -236,6 +254,8 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
 
   if (size == 0)
     return M_DRIVER_STATUS_SUCCESS; // no-op
+
+  dstOffset += dst->offset;
 
   if (dstOffset + size > dst->mBuffer->length())
     return context->device->driver->status.create(
@@ -264,8 +284,14 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
 
   encodePendingWaits(cmdBuffer);
 
+  // Retain across the async handler (see `copyToDevice`): `dstPtr` points into
+  // mapped memory a concurrent `free()` could unmap first.
+  MTL::Buffer *heldBuf = dst->mBuffer;
+  heldBuf->retain();
+
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
     std::memset(dstPtr, value, size);
+    heldBuf->release();
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
@@ -292,6 +318,8 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
 
   if ((size % valueSize) != 0)
     return M_DRIVER_STATUS_INVALID_ARG;
+
+  dstOffset += dst->offset;
 
   if (dstOffset + size > dst->mBuffer->length())
     return context->device->driver->status.create(
@@ -325,6 +353,11 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
 
   encodePendingWaits(cmdBuffer);
 
+  // Retain across the async handler (see `copyToDevice`): `dstPtr` points into
+  // mapped memory a concurrent `free()` could unmap first.
+  MTL::Buffer *heldBuf = dst->mBuffer;
+  heldBuf->retain();
+
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
     switch (valueSize) {
     case 2: {
@@ -348,6 +381,7 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
       break;
     }
     }
+    heldBuf->release();
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
@@ -446,7 +480,7 @@ M_driver_queue::execute(M_driver_function_t function,
   // Set resources that might be used by the kernel
   // FIXME: only set resources that are used by the kernel
   for (const auto &it : context->allocations)
-    encoder->useResource(it.second, MTL::ResourceUsageWrite);
+    encoder->useResource(it.second.get(), MTL::ResourceUsageWrite);
 
   // Bind dynamic threadgroup (shared) memory if the kernel requested it.
   if (sharedMemBytes > 0)
