@@ -757,17 +757,7 @@ ErrorOr<DeviceContextRef> DeviceContext::selectStream(unsigned streamId) {
 }
 
 bool DeviceContext::operator==(const DeviceContext &other) const {
-  ErrorOr<DeviceStreamRef> errStream = stream();
-  if (errStream.isError())
-    return false;
-  void *streamThis = (*errStream).getPointer()->ptr();
-
-  errStream = other.stream();
-  if (errStream.isError())
-    return false;
-  void *streamOther = (*errStream).getPointer()->ptr();
-
-  return streamThis == streamOther;
+  return this == &other;
 }
 
 ErrorOr<DeviceEventRef> DeviceContext::enqueueEvent() {
