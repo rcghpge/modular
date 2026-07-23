@@ -171,7 +171,7 @@ constexpr llvm::StringLiteral kLeafFusedOutputVariadicTensors =
 constexpr llvm::StringLiteral kLeafSIMD = "SIMD";
 constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
 constexpr llvm::StringLiteral kLeafTileTensor = "TileTensor";
-constexpr llvm::StringLiteral kLeafDeviceContextList = "DeviceContextList";
+constexpr llvm::StringLiteral kLeafDeviceContextArray = "DeviceContextArray";
 constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 
 /// Mojo module names that the MojoRegistry imports unconditionally.
@@ -222,10 +222,10 @@ constexpr llvm::StringLiteral kMojoFusedOutputVariadicTensorsName =
 constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextTypeName =
     "std::DeviceContext";
 
-/// The stored Mojo type symbol name of device-context lists in extensibility
-/// kernels (used by multi-device custom ops).
-constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextListTypeName =
-    "std::DeviceContextList";
+/// The stored Mojo type symbol name of device-context arrays in
+/// extensibility kernels (used by multi-device custom ops).
+constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextArrayTypeName =
+    "std::DeviceContextArray";
 
 /// These type names can be confusing. Inside the Graph Compiler code, the
 /// types show up like this:
@@ -254,8 +254,8 @@ constexpr llvm::StringLiteral kStructOptional = "Optional";
 constexpr llvm::StringLiteral kStructString = "String";
 constexpr llvm::StringLiteral kStructDeviceContext =
     "std.gpu.host.device_context.DeviceContext";
-constexpr llvm::StringLiteral kStructDeviceContextList =
-    "std.gpu.host.device_context.DeviceContextList";
+constexpr llvm::StringLiteral kStructDeviceContextArray =
+    "std.gpu.host.device_context.DeviceContextArray";
 constexpr llvm::StringLiteral kStructDeviceGraph =
     "std.gpu.host.device_graph.DeviceGraph";
 constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
@@ -470,6 +470,8 @@ constexpr llvm::StringLiteral kParameterRank = "rank";
 constexpr llvm::StringLiteral kParameterIOSpec = "io_spec";
 constexpr llvm::StringLiteral kParameterStaticSpec = "static_spec";
 constexpr llvm::StringLiteral kParameterSize = "size";
+/// `DeviceContextArray[length=N]`'s parameter keyword.
+constexpr llvm::StringLiteral kParameterLength = "length";
 constexpr llvm::StringLiteral kParameterStaticSpecs = "static_specs";
 constexpr llvm::StringLiteral kParameterSimdWidth = "simd_width";
 constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";

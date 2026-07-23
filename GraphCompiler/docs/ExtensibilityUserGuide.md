@@ -130,9 +130,9 @@ list:
   - If specified, the graph compiler will give you access to the device
     context, which is needed for GPU support at the moment
   - If you don’t need this, you don’t have to include this
-- `DeviceContextList[N]`
+- `DeviceContextArray[N]`
   - For multi-device ops, declare the context argument as
-    `DeviceContextList[N]`. The graph compiler synthesizes the list from
+    `DeviceContextArray[N]`. The graph compiler synthesizes the array from
     the per-device contexts attached to the operation, with one
     `DeviceContext` per device in launch order. Index with
     `dev_ctxs[i]` at runtime or `dev_ctxs.__getitem_param__[i]()` at

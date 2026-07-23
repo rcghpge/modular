@@ -335,7 +335,7 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContext))
     return KernelDeclContextPtrAdaptor{};
 
-  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContextList))
+  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContextArray))
     return KernelDeclContextPtrListAdaptor{};
 
   // --- Device graph builder (launch arg of build_graph) ---

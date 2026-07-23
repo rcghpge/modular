@@ -19,7 +19,7 @@ from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
 from std.collections import InlineArray
-from std.gpu.host import DeviceContext, DeviceContextList, DeviceGraphBuilder
+from std.gpu.host import DeviceContext, DeviceContextArray, DeviceGraphBuilder
 from extensibility import (
     InputTensor,
     InputVariadicTensors,
@@ -1401,7 +1401,7 @@ struct SingleDeviceContext:
     ](
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
-        dev_ctx: DeviceContextList[1],
+        dev_ctx: DeviceContextArray[1],
     ) raises:
         dev_ctx[0].synchronize()
 
@@ -1414,7 +1414,7 @@ struct MultiDeviceContext:
     ](
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
-        dev_ctxs: DeviceContextList[2],
+        dev_ctxs: DeviceContextArray[2],
     ) raises:
         print("dev_ctx0.id() =", dev_ctxs[0].id())
         print("dev_ctx1.id() =", dev_ctxs[1].id())
@@ -1431,7 +1431,7 @@ struct MultiDeviceContextDedup:
         output: OutputTensor[dtype=dtype, ...],
         x: InputTensor[dtype=dtype, ...],
         y: InputTensor[dtype=dtype, ...],
-        dev_ctxs: DeviceContextList[2],
+        dev_ctxs: DeviceContextArray[2],
     ) raises:
         dev_ctxs[0].synchronize()
         dev_ctxs[1].synchronize()
@@ -1447,7 +1447,7 @@ struct VariadicDeviceContext:
     ](
         outputs: OutputVariadicTensors[dtype=dtype, rank=rank, ...],
         inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) raises:
         for i in range(len(dev_ctxs)):
             print("dev_ctxs[", i, "].id() =", dev_ctxs[i].id())

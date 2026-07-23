@@ -251,7 +251,7 @@ declVerifyOutputsAppearBeforeInputs(KernelDeclOp decl,
 }
 
 /// Each kernel function variant has at most one launch arg
-/// (DeviceContext / DeviceContextList on execute / shape, DeviceGraphBuilder
+/// (DeviceContext / DeviceContextArray on execute / shape, DeviceGraphBuilder
 /// on build_graph) and the launch arg must come last in the signature.
 LogicalResult declVerifyContextsAppearLastInSignature(
     KernelDeclOp decl, const KernelDeclAdaptor &adaptor,

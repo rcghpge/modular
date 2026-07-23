@@ -5364,12 +5364,12 @@ LogicalResult TensorFusedOp::verify() {
 LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getInputs());
   if (isa<MOGG::ContextType>(getInputs().front().getType())) {
-    // Build a `DeviceContextList[N]` directly from the per-device
+    // Build a `DeviceContextArray[N]` directly from the per-device
     // contexts via its variadic constructor.
-    MojoValue deviceContextListConstructor = MojoValue(
-        kStructDeviceContextList)[{
-        MojoValue(kParameterSize).equal(std::to_string(inputValues.size()))}];
-    MojoValue inputTupleValue = deviceContextListConstructor({}, inputValues);
+    MojoValue deviceContextArrayConstructor = MojoValue(
+        kStructDeviceContextArray)[{
+        MojoValue(kParameterLength).equal(std::to_string(inputValues.size()))}];
+    MojoValue inputTupleValue = deviceContextArrayConstructor({}, inputValues);
     state.setMojoValueFor(getResult(), state.builder.var(inputTupleValue));
     return success();
   }

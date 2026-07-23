@@ -416,7 +416,7 @@ struct KernelDeclOperandAdaptor {
   }
 
   /// Launch arguments are the trailing "where to run" argument of a kernel
-  /// function: a DeviceContext / DeviceContextList for `execute` / `shape`,
+  /// function: a DeviceContext / DeviceContextArray for `execute` / `shape`,
   /// or a DeviceGraphBuilder for `build_graph`. They share the
   /// "must-appear-last" placement rule and are skipped together when
   /// aligning input arguments across function variants.
