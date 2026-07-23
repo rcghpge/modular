@@ -79,6 +79,10 @@ const char *MojoHAL_DeviceBuffer_createSubBuffer(MojoHALBufferBox **out_buf,
                                                  MojoHALBufferBox *parent,
                                                  uint64_t byteOffset,
                                                  uint64_t byteSize);
+const char *MojoHAL_HostBuffer_createSubBuffer(MojoHALBufferBox **out_buf,
+                                               MojoHALBufferBox *parent,
+                                               uint64_t byteOffset,
+                                               uint64_t byteSize);
 const char *MojoHAL_DeviceContext_reassignWait(MojoHALContextBox *dst_ctx,
                                                MojoHALContextBox *src_ctx);
 const char *MojoHAL_DeviceContext_memmapFile(MojoHALBufferBox **out_buf,
@@ -313,13 +317,15 @@ DeviceBuffer::~DeviceBuffer() {
 ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
                                                        size_t byteSize) {
   // Device and Mmap boxes expose a Mojo DeviceBuffer view the export can
-  // re-slice; HostBuffer boxes are a different Mojo type with no view ctor.
-  if (kind_ == BoxKind::Host)
-    return Error(
-        "sub-buffers of host buffers are not implemented for the HAL backend");
+  // re-slice directly; Host boxes carry a Mojo HostBuffer, whose export
+  // returns the same kind of DeviceBuffer view over the pinned host region.
   MojoHALBufferBox *buf = nullptr;
-  if (const char *err = MojoHAL_DeviceBuffer_createSubBuffer(
-          &buf, mojoBox_, byteOffset, byteSize))
+  const char *err = kind_ == BoxKind::Host
+                        ? MojoHAL_HostBuffer_createSubBuffer(
+                              &buf, mojoBox_, byteOffset, byteSize)
+                        : MojoHAL_DeviceBuffer_createSubBuffer(
+                              &buf, mojoBox_, byteOffset, byteSize);
+  if (err)
     return takeError(err);
   // Sub-buffer boxes are plain Mojo DeviceBuffer views regardless of what
   // backs the parent; `parent_` keeps the parent box (and any mapping) alive.

@@ -451,6 +451,29 @@ def MojoHAL_DeviceContext_getAttribute(
 
 
 @export
+def MojoHAL_HostBuffer_createSubBuffer(
+    out_buf: _OutPtr[_DeviceBufferBoxPtr],
+    parent: _DeviceBufferBoxPtr,
+    byte_offset: UInt64,
+    byte_size: UInt64,
+) abi("C") -> _CString[]:
+    # Host boxes carry a `HostBuffer` (see MojoHAL_HostBuffer_release); the
+    # view it returns is a plain `DeviceBuffer` over the pinned host region,
+    # so the caller boxes it like any other sub-buffer view.
+    ref parent_buf = parent.bitcast[HostBuffer[DType.uint8]]()[]
+    try:
+        var view = parent_buf.create_sub_buffer[DType.uint8](
+            Int(byte_offset), Int(byte_size)
+        )
+        var boxed = alloc[DeviceBuffer[DType.uint8]](1)
+        boxed.unsafe_write(view^)
+        out_buf[] = boxed
+        return None
+    except e:
+        return _err_cstr(String(e))
+
+
+@export
 def MojoHAL_DeviceBuffer_createSubBuffer(
     out_buf: _OutPtr[_DeviceBufferBoxPtr],
     parent: _DeviceBufferBoxPtr,
