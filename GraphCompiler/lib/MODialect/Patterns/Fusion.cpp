@@ -724,14 +724,18 @@ struct ConvConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
-      return rewriter.notifyMatchFailure(op, "filter isn't constant");
-
     auto maybeNumGroups = MO::tryGetConstantInt(op.getNumGroups());
     if (!maybeNumGroups) {
       return rewriter.notifyMatchFailure(
           op, "currently only pack constant num_groups");
     }
+
+    bool filterIsConstant =
+        dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp());
+    if (!filterIsConstant && *maybeNumGroups <= 1)
+      return rewriter.notifyMatchFailure(
+          op, "could pack this non-constant filter, but for num_groups <= 1 "
+              "it isn't worth the runtime repack cost");
 
     if (!rewriter.deviceAnnots.isConsistentWith(getHostDevice(op))) {
       // TODO(#25114): Support outside of host.

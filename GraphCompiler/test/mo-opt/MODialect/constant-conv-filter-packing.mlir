@@ -69,3 +69,29 @@ mo.graph @conv2d_dynamic_filter(
 
   mo.output %res : !mo.tensor<[4, 2, 2, 1], f32>
 }
+
+// The filter isn't constant, but packing is required for num_groups > 1, so
+// the pattern should fire despite the filter being dynamic.
+// CHECK-LABEL: mo.graph @conv2d_dynamic_filter_grouped
+mo.graph @conv2d_dynamic_filter_grouped(
+  %input: !mo.tensor<[4, 3, 3, 2], f32>,
+  // CHECK: %[[FILTER:[a-zA-Z0-9_]+]]: !mo.tensor<[2, 2, 1, 2], f32, {layout = #mo.layout<RSCF>}>
+  %filter: !mo.tensor<[2, 2, 1, 2], f32, {layout = #mo.layout<RSCF>}>
+) -> !mo.tensor<[4, 2, 2, 2], f32> {
+  %strides = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %ng = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+
+  // CHECK: mo.layout.transform(%[[FILTER]])
+  // CHECK-SAME: {layout = #mo.layout<RSCF>}
+  // CHECK-SAME: {layout = #mo.layout<FRSCf>}
+
+  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+    !mo.tensor<[4, 3, 3, 2], f32>, !mo.tensor<[2, 2, 1, 2], f32, {layout = #mo.layout<RSCF>}>,
+    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[4, 2, 2, 2], f32>
+
+  mo.output %res : !mo.tensor<[4, 2, 2, 2], f32>
+}
