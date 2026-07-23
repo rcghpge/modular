@@ -32,7 +32,6 @@ from extensibility import (
     simd_store_into_managed_tensor_slice,
 )
 from builtin_primitives.primitives import (
-    foreach,
     foreach_out_func,
     view_copy_impl,
 )
