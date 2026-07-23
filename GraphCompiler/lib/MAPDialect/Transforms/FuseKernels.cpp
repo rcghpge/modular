@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMAP.h"
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 
 using namespace M;

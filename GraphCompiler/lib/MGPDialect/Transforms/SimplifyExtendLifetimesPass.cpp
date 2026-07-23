@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOGGToMGP.h"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 

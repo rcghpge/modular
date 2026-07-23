@@ -31,11 +31,11 @@ namespace M::MGP {
 #define GEN_PASS_DECL_MOGGTOMGP
 #define GEN_PASS_DECL_RAISEBACKINDEXCONSTANT
 #define GEN_PASS_DECL_LOWERPRIMITIVES
-#include "GraphCompiler/Conversion/MOGGToMGP.h.inc"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h.inc"
 
 /// Generate the code for registering the pass.
 #define GEN_PASS_REGISTRATION
-#include "GraphCompiler/Conversion/MOGGToMGP.h.inc"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h.inc"
 
 } // namespace M::MGP
 

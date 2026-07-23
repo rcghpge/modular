@@ -16,7 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMAP.h"
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
+#include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
@@ -26,7 +27,6 @@
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "mlir/IR/Builders.h"
@@ -37,7 +37,7 @@ using namespace mlir;
 namespace M::MO {
 
 #define GEN_PASS_DEF_MOTOMAP
-#include "GraphCompiler/Conversion/MOToMAP.h.inc"
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h.inc"
 
 namespace {
 

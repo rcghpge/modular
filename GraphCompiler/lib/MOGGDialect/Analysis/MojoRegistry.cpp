@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
+#include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
-#include "GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"

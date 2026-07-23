@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOGGToMGP.h"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 
@@ -16,7 +16,7 @@ using namespace M;
 namespace M::MGP {
 
 #define GEN_PASS_DEF_RAISEBACKINDEXCONSTANT
-#include "GraphCompiler/Conversion/MOGGToMGP.h.inc"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h.inc"
 
 } // namespace M::MGP
 

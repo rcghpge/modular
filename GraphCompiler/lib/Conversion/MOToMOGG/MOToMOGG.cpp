@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMOGG.h"
+#include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
@@ -67,7 +67,7 @@ static bool isDimAttrSupported(TypedAttr dimAttr) {
 namespace M::MO {
 
 #define GEN_PASS_DEF_MOTOMOGG
-#include "GraphCompiler/Conversion/MOToMOGG.h.inc"
+#include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h.inc"
 
 } // namespace M::MO
 

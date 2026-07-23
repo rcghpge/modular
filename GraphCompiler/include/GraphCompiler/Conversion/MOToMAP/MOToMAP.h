@@ -16,7 +16,7 @@ namespace M::MO {
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL
-#include "GraphCompiler/Conversion/MOToMAP.h.inc"
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h.inc"
 
 /// Returns whether the advanced (MAP) fusion pipeline is enabled. Gated on
 /// the presence of the `MAX_GC_USE_ADV_FUSION` environment variable; only its

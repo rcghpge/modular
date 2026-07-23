@@ -6,9 +6,9 @@
 
 #include "GraphCompiler/GraphCompiler.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
-#include "GraphCompiler/Conversion/MOGGToMGP.h"
-#include "GraphCompiler/Conversion/MOToMAP.h"
-#include "GraphCompiler/Conversion/MOToMOGG.h"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
+#include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"
 #include "GraphCompiler/Driver/Common/Utils.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"

@@ -160,15 +160,20 @@ modular_cc_library(
 # mindful.
 modular_cc_library(
     name = "GraphCompilerConversion",
-    srcs = glob(["lib/Conversion/*.cpp"]),
+    srcs = glob(
+        ["lib/Conversion/*.cpp"],
+        # OperandInference is its own target (it depends on MOGGDialect.headers,
+        # which would otherwise cycle back through GraphCompilerConversion).
+        exclude = ["lib/Conversion/OperandInference.cpp"],
+    ),
     hdrs = glob(
         ["include/GraphCompiler/Conversion/*.h"],
-        # Deal with a circular dependency.
-        exclude = [
-            "include/GraphCompiler/Conversion/MOToMAP.h",
-            "include/GraphCompiler/Conversion/MOToMOGG.h",
-        ],
-    ),
+        exclude = ["include/GraphCompiler/Conversion/OperandInference.h"],
+    ) + [
+        # MGPTransforms consumes this pass header but cannot depend on the
+        # :MOGGToMGP target (that would cycle), so re-export it here as before.
+        "include/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h",
+    ],
     tags = ["no-clang-tidy-headers"],
     deps = [
         ":MOGGToMGPIncGen",
@@ -177,6 +182,20 @@ modular_cc_library(
         "//Support:Base",
         "//Support:Compiler",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+# Shared operand inference used by both the MO->MOGG and MO->MAP lowering paths.
+# Depends only on MOGGDialect.headers (not the MOGGDialect impl) so it does not
+# cycle with MOGGDialect, which consumes it.
+modular_cc_library(
+    name = "OperandInference",
+    srcs = ["lib/Conversion/OperandInference.cpp"],
+    hdrs = ["include/GraphCompiler/Conversion/OperandInference.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MODialect",
+        ":MOGGDialect.headers",
     ],
 )
 
@@ -826,7 +845,12 @@ modular_cc_library(
         "include/GraphCompiler/MOGGDialect/Support/*.h",
         "include/GraphCompiler/MOGGDialect/Analysis/*.h",
         "include/GraphCompiler/Interfaces/*.h",
-    ]),
+    ]) + [
+        # MOToMOGGLowering.h (a MOGG header) includes OperandInference.h, so it
+        # must be available wherever these headers are. The compiled symbol
+        # lives in the separate :OperandInference target.
+        "include/GraphCompiler/Conversion/OperandInference.h",
+    ],
     tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
     deps = [
@@ -884,6 +908,7 @@ modular_cc_library(
         ":MOGGDialectPassesIncGen",
         ":MOGGFusionSupport",
         ":MOSHDialect",
+        ":OperandInference",
         ":Support",
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
@@ -1352,7 +1377,7 @@ modular_cc_library(
 ## MOGGToMGP
 td_library(
     name = "MOGGToMGPTdFiles",
-    srcs = ["include/GraphCompiler/Conversion/MOGGToMGP.td"],
+    srcs = ["include/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.td"],
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -1362,7 +1387,7 @@ td_library(
 gentbl_modular_passes(
     name = "MOGGToMGPIncGen",
     output_name = "MOGGToMGP",
-    td_file = "include/GraphCompiler/Conversion/MOGGToMGP.td",
+    td_file = "include/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.td",
     deps = [
         ":MOGGToMGPTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -1389,7 +1414,7 @@ modular_cc_library(
 ## MOToMogg
 td_library(
     name = "MOToMOGGTdFiles",
-    srcs = ["include/GraphCompiler/Conversion/MOToMOGG.td"],
+    srcs = ["include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.td"],
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -1399,7 +1424,7 @@ td_library(
 gentbl_modular_passes(
     name = "MOToMOGGIncGen",
     output_name = "MOToMOGG",
-    td_file = "include/GraphCompiler/Conversion/MOToMOGG.td",
+    td_file = "include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.td",
     deps = [
         ":MOToMOGGTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -1410,7 +1435,7 @@ gentbl_modular_passes(
 modular_cc_library(
     name = "MOToMOGG",
     srcs = glob(["lib/Conversion/MOToMOGG/*.cpp"]),
-    hdrs = ["include/GraphCompiler/Conversion/MOToMOGG.h"],
+    hdrs = ["include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"],
     copts = ["-fvisibility=default"],
     deps = [
         ":GraphCompilerInterfaces",
@@ -1527,7 +1552,7 @@ modular_cc_library(
 ## MOToMAP
 td_library(
     name = "MOToMAPTdFiles",
-    srcs = ["include/GraphCompiler/Conversion/MOToMAP.td"],
+    srcs = ["include/GraphCompiler/Conversion/MOToMAP/MOToMAP.td"],
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -1537,7 +1562,7 @@ td_library(
 gentbl_modular_passes(
     name = "MOToMAPIncGen",
     output_name = "MOToMAP",
-    td_file = "include/GraphCompiler/Conversion/MOToMAP.td",
+    td_file = "include/GraphCompiler/Conversion/MOToMAP/MOToMAP.td",
     deps = [
         ":MOToMAPTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
@@ -1547,7 +1572,7 @@ gentbl_modular_passes(
 modular_cc_library(
     name = "MOToMAP",
     srcs = glob(["lib/Conversion/MOToMAP/*.cpp"]),
-    hdrs = ["include/GraphCompiler/Conversion/MOToMAP.h"],
+    hdrs = ["include/GraphCompiler/Conversion/MOToMAP/MOToMAP.h"],
     copts = ["-fvisibility=default"],
     deps = [
         ":MAPDialect",
@@ -1555,6 +1580,7 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOSHDialect",
         ":MOToMAPIncGen",
+        ":OperandInference",
         "//KGEN:KGENDialect",
     ],
 )

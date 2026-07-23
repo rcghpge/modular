@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOGGToMGP.h"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
@@ -46,7 +46,7 @@ using namespace M;
 namespace M::MGP {
 
 #define GEN_PASS_DEF_MOGGTOMGP
-#include "GraphCompiler/Conversion/MOGGToMGP.h.inc"
+#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h.inc"
 
 } // namespace M::MGP
 

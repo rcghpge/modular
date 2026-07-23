@@ -32,7 +32,7 @@ namespace M::MO {
 /// Generate the code for declaring and registering the pass.
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL
-#include "GraphCompiler/Conversion/MOToMOGG.h.inc"
+#include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h.inc"
 
 } // namespace M::MO
 

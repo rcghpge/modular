@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Helper for mapping MO's operands and results to a kernel's arguments and
-// results.
+// Operand inference: maps an MO op's operands and results to a kernel's
+// arguments and results. Shared by the MO->MOGG and MO->MAP lowering paths.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_GRAPHCOMPILER_MOGGSUPPORT_OPERANDMAPPER_H
-#define GENERICML_GRAPHCOMPILER_MOGGSUPPORT_OPERANDMAPPER_H
+#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_OPERANDINFERENCE_H
+#define GENERICML_GRAPHCOMPILER_CONVERSION_OPERANDINFERENCE_H
 
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 
@@ -38,4 +38,4 @@ mapMOOpToKernelImplementation(Operation *op,
 
 } // namespace M::MOGG
 
-#endif // GENERICML_GRAPHCOMPILER_MOGGSUPPORT_OPERANDMAPPER_H
+#endif // GENERICML_GRAPHCOMPILER_CONVERSION_OPERANDINFERENCE_H

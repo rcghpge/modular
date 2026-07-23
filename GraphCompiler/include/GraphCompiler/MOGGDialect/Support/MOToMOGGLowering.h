@@ -6,13 +6,13 @@
 #ifndef GENERICML_GRAPH_COMPILER_MOGG_SUPPORT_MOTOMOGGLOWERING_H
 #define GENERICML_GRAPH_COMPILER_MOGG_SUPPORT_MOTOMOGGLOWERING_H
 
+#include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
