@@ -20,8 +20,9 @@ too.
 | Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                  | remote execution, no GPU                 | pre-submit             | Yes                |
 | GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv | `validateNIXLSync`                       | nightly                | Yes                |
 | Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                             | `nightlyMultiGPUTest` on B200 and MI355  | nightly                | Yes                |
-| Single-node perf smoke              | UCX and EFA-loopback bandwidth floors — catches transport-selection regressions                           | `modrunner-b200-efa-2x`                  | nightly                | Yes                |
+| Single-node perf smoke              | NVIDIA UCX + EFA-loopback and AMD UCX bandwidth floors — catches transport-selection regressions          | `modrunner-b200-efa-2x` + `-mi355-8x`    | nightly                | Yes                |
 | Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k25, deepseekv3.1)                   | shared `mammoth-benchmark` B200 pod pool | dispatched by the gate | No (informational) |
+| Shared-pool (AMD)                   | 4-row cross-node KV smoke on AMD (UCX, pod network)                                                       | shared AMD (MI355) pod pool              | dispatched by the gate | No (informational) |
 
 ## The aggregate gate
 
@@ -51,6 +52,18 @@ out. And because a loopback smoke does not cross the physical fabric, the
 two-node EFA smoke remains the guard for fabric-level regressions: weigh
 a red there against the captured pod diagnostics before treating it as a
 code bug.
+
+The AMD shared-pool lane is the same 4-row cross-node smoke on AMD GPUs,
+run from the ROCm serving image — the same `nixlKvSmokeTest.yaml` workflow
+as the EFA lane, dispatched with `gpu_vendor: amd` (which selects the
+`-amd` image, the `k8s/rocm` manifests, and the AMD pod pool). This UCX
+variant runs over the pod network: its pods request `amd.com/gpu` but no
+RDMA device, so it proves the ROCm image, plugin load, and cross-node
+transfer plumbing end to end — not the RoCE fabric. Its floor is low
+because UCX without an RDMA device rides TCP. Crossing the AMD RoCE fabric
+end to end — the pods additionally requesting `modular.com/rdma_ib_device`
+(the CI analog of the Coder "Enable RoCE networking" flag) — is layered on
+with the UCCL backend in the follow-up.
 
 ## Benchmarks
 
