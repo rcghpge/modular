@@ -57,8 +57,8 @@ inference.
 
 | Cluster config                                         | Benchmark config                               | Runtime |
 |--------------------------------------------------------|------------------------------------------------|---------|
-| `1p1d_tp_prefill_dp_decode_kimi_k25_nvfp4_b200_aws`    | `quick-test-synthetic75k300-kimi-k25-nvfp4`    | ~30 min |
-| `1p1d_tp_prefill_dp_decode_kimi_k25_nvfp4_b200_aws`    | `quick-test-multiturn-kimi-k25-nvfp4`          | ~30 min |
+| `1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws`    | `quick-test-synthetic75k300-kimi-k27-nvfp4`    | ~30 min |
+| `1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws`    | `quick-test-multiturn-kimi-k27-nvfp4`          | ~30 min |
 | `1p1d_dp_prefill_dp_decode_deepseekv31_nvfp4_b200_aws` | `quick-test-synthetic75k300-deepseekv31-nvfp4` | ~30 min |
 
 Trigger from the GitHub UI ("Run workflow" on `benchmarkMammoth`), or
@@ -69,8 +69,8 @@ feature branch — both auto-build the MAX Serve image from the target ref:
 gh workflow run benchmarkMammoth.yaml \
   --repo modularml/modular \
   --ref <branch-or-main> \
-  -f cluster_config=1p1d_tp_prefill_dp_decode_kimi_k25_nvfp4_b200_aws \
-  -f benchmark_config=quick-test-synthetic75k300-kimi-k25-nvfp4
+  -f cluster_config=1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws \
+  -f benchmark_config=quick-test-synthetic75k300-kimi-k27-nvfp4
 ```
 
 To run the full validation (correctness gate, which also dispatches the

@@ -21,7 +21,7 @@ too.
 | GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv | `validateNIXLSync`                       | nightly                | Yes                |
 | Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                             | `nightlyMultiGPUTest` on B200 and MI355  | nightly                | Yes                |
 | Single-node perf smoke              | NVIDIA UCX + EFA-loopback and AMD UCX bandwidth floors — catches transport-selection regressions          | `modrunner-b200-efa-2x` + `-mi355-8x`    | nightly                | Yes                |
-| Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k25, deepseekv3.1)                   | shared `mammoth-benchmark` B200 pod pool | dispatched by the gate | No (informational) |
+| Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k27, deepseekv3.1)                   | shared `mammoth-benchmark` B200 pod pool | dispatched by the gate | No (informational) |
 | Shared-pool (AMD)                   | 4-row cross-node KV smoke on AMD (UCX, pod network)                                                       | shared AMD (MI355) pod pool              | dispatched by the gate | No (informational) |
 
 ## The aggregate gate

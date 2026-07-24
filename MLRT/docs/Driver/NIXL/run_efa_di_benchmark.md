@@ -204,7 +204,7 @@ explicitly stopping them frees shared resources sooner.
 | `No rails have both local mr and remote key registered` followed by `NIXL_ERR_INVALID_PARAM` crashing prefill | Cross-GPU DI transfer where prefill GPU N picks rail N to send but decode GPU M ≠ N only registered rail M, leaving zero overlap. VRAM should register on every rail (like DRAM does) so any sender's local rail finds a valid rkey.        | Make sure your branch's `selectRailsForMemory(VRAM_SEG)` in `libfabric_rail_manager.cpp` returns the full rail set rather than only the GPU-local rail.                                                                                                               |
 | `prov_errno=7` (`EFA_IO_COMP_STATUS_REMOTE_ERROR_BAD_ADDRESS`) events accumulating                            | The receiver's NIC rejected an RMA write because the sender's address wasn't yet `fi_av_insert`'d in the receiver's AV when the first `fi_writedata` arrived. This is the classic AV-insert race on FI_OPT_EFA_HOMOGENEOUS_PEERS endpoints. | A small handful per run is usually tolerable (the cascade-fix in the libfabric backend keeps a single bad write from poisoning the rail). Persistent floods point to a missing or broken MR-ready control-channel handshake before the first writedata to a new peer. |
 
-## Kimi-K2.5-NVFP4 multi-turn concurrency sweep
+## Kimi-K2.7-Code-NVFP4 multi-turn concurrency sweep
 
 ### Starting the server
 
@@ -221,7 +221,7 @@ MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=95 \
 MODULAR_NIXL_TRANSFER_BACKEND=libfabric \
 FI_EFA_USE_DEVICE_RDMA=1 \
 ./bazelw run //max/examples/internal/di:run_dist -- \
-  --config-yaml="$PWD/max/examples/internal/di/configs/kimi-k2_5-ep-tp-dp-fp4-metagross-synthetic-multi-turn-ms-delay-eagle3-d3-internode-efa.yaml" \
+  --config-yaml="$PWD/max/examples/internal/di/configs/kimi-k2_7-ep-tp-dp-fp4-metagross-synthetic-multi-turn-ms-delay-eagle3-d3-internode-efa.yaml" \
   --start-proxy-server --proxy-port 9999 \
   --hosts "$DECODE_HOST,$PREFILL_HOST"
 ```
@@ -238,7 +238,7 @@ cd ~/code/modular
 ./bazelw run --config=disable-mypy \
   //max/python/max/_entrypoints:pipelines -- benchmark \
   --backend modular \
-  --model nvidia/Kimi-K2.5-NVFP4 \
+  --model nvidia/Kimi-K2.7-Code-NVFP4 \
   --endpoint /v1/chat/completions \
   --host localhost \
   --port 9999 \
