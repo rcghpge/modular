@@ -91,9 +91,13 @@ def _err_cstr(msg: String) -> _CString[]:
 @export
 def MojoHAL_strfree(s: _CString[]) abi("C"):
     if s:
-        s.unsafe_value().unsafe_ptr().bitcast[UInt8]().unsafe_mut_cast[
-            True
-        ]().free()
+        # `_err_cstr` allocated this via `alloc[UInt8]`. `CStringSlice` hands
+        # back a safe immutable pointer, so rebuild the matching mutable,
+        # untracked `UInt8` allocation pointer from its address and free that.
+        var addr = Int(s.unsafe_value().unsafe_ptr())
+        UnsafePointer[UInt8, MutUntrackedOrigin](
+            unsafe_from_address=addr
+        ).free()
 
 
 @export
