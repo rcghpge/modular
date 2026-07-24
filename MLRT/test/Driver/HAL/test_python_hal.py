@@ -110,16 +110,6 @@ def test_context_wrap_unwrap() -> None:
     with pytest.raises(Exception, match="pinned"):
         ctx.unwrap_memory(ctx.alloc_host_pinned(32))
 
-    # Metal cannot wrap a raw GPU address back into an MTLBuffer, so both
-    # wrap and unwrap report the plugin's UNIMPLEMENTED status.
-    if ctx.driver_name == "Metal":
-        buf = ctx.alloc_sync(64)
-        with pytest.raises(Exception, match="wrap"):
-            ctx.wrap_memory(ctx.memory_get_address(buf), 64)
-        with pytest.raises(Exception, match="unwrap"):
-            ctx.unwrap_memory(buf)
-        return
-
     # A non-owning wrap over an existing allocation reports the same
     # address; dropping the wrapper releases only the HAL bookkeeping, so
     # the original allocation stays valid.
@@ -841,12 +831,7 @@ def test_array_dlpack_import() -> None:
     with pytest.raises(ValueError, match="device"):
         Array.from_dlpack(ctx, _ForeignDeviceProducer())
 
-    # Metal cannot wrap a foreign GPU address, so it cannot adopt.
     producer = _DelegatingProducer(arr)
-    if ctx.driver_name == "Metal":
-        with pytest.raises(NotImplementedError, match="wrap"):
-            Array.from_dlpack(ctx, producer)
-        return
 
     # A same-device producer is adopted zero-copy; dropping the adopted
     # array runs the producer's deleter and releases its reference.
@@ -860,11 +845,16 @@ def test_array_dlpack_import() -> None:
     del adopted
     assert sys.getrefcount(arr) == base
 
-    # The pinned-host variant adopts too and keeps the pinned flag.
+    # The pinned-host variant adopts zero-copy too. The adopted array carries
+    # the pinned flag only when the plugin distinguishes a pinned-host DLPack
+    # device from its device one (CUDA's kDLCUDAHost vs kDLCUDA); Metal reports
+    # the same device for both, so the flag does not survive the round-trip.
+    keeps_pinned = ctx.get_dlpack_device(True) != ctx.get_dlpack_device(False)
     pinned = Array.empty(ctx, DType.float32, (4,), pinned=True)
     pinned.fill(5)
     adopted = Array.from_dlpack(ctx, _DelegatingProducer(pinned))
-    assert adopted.pinned and adopted.data_ptr == pinned.data_ptr
+    assert adopted.data_ptr == pinned.data_ptr
+    assert adopted.pinned == keeps_pinned
     np.testing.assert_array_equal(adopted.as_numpy(), np.full(4, 5, np.float32))
 
 
@@ -914,13 +904,6 @@ def test_array_async_dlpack() -> None:
     ctx = Driver().get_device(0).get_context()
     stream = ctx.create_stream()
     src = Array.from_numpy(ctx, np.arange(6, dtype=np.float32).reshape(2, 3))
-
-    if ctx.driver_name == "Metal":
-        # Metal cannot wrap a foreign GPU address, so adopt is refused exactly
-        # like the blocking path.
-        with pytest.raises(NotImplementedError, match="wrap"):
-            stream.array_from_dlpack(_DelegatingProducer(src))
-        return
 
     # array_from_dlpack host-blocks, so the adopted (zero-copy, same address)
     # array is safe to read immediately.
