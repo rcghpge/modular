@@ -23,6 +23,12 @@
 // CHECK: _bind_to_fused_output_tile
 // CHECK: managed_tensor_slice.OutputFusionTile
 
+// The output tensor (capture 0) and the broadcast scale aux input (capture 1)
+// are each captured as a single `TileTensor` field (derived from their
+// `spec_N`), not decomposed ptr/shape/strides.
+// CHECK: var tile_0: {{.*}}TileTensor[{{.*}}Layout[shape_types = Self.spec_0.static_layout._shape_types{{.*}}]{{.*}}Origin]
+// CHECK: var tile_1: {{.*}}TileTensor[{{.*}}Layout[shape_types = Self.spec_1.static_layout._shape_types{{.*}}]{{.*}}Origin]
+
 // FusionStruct emits a TileTensor-based `store` method (not `compute`): the
 // tile signature takes `tile_coords`, the aux-load `Copier`, a kernel-supplied
 // `StoreCopier`, and the output tile `val`, and is terminal -- no TileTensor
@@ -33,16 +39,19 @@
 // CHECK-SAME: store_copier: StoreCopier
 // CHECK-SAME: val: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
-// The body stages the broadcast scale into a copier-dst-space tile, combines it
+// The body takes the scale tile from its captured `TileTensor` field
+// (`self.tile_1.tile[...]`), stages it into a copier-dst-space tile, combines it
 // with the norm output tile `val` (Mul.elementwise, no SIMD), then gathers the
-// fragment into the output tile via the passed-in `store_copier`.
+// fragment into the output tile -- taken from `self.tile_0.tile[...]` (no
+// ptr/shape/strides reconstruction) -- via the passed-in `store_copier`.
 // CHECK-NOT: simd_load_from_tensor_pointer
 // CHECK-NOT: simd_store_into_tensor_pointer
 // CHECK-NOT: rebind[SIMD
 // CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
+// CHECK: self.tile_1.tile[
 // CHECK: copier.copy(
 // CHECK: Mul.elementwise(val,
-// CHECK: store_copier.copy(
+// CHECK: store_copier.copy(self.tile_0.tile[
 
 module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda", "sm_100a", "NVIDIA B200", tile_based_fusion = true>}} {
 mo.graph @rms_norm_mul_tile_gpu(

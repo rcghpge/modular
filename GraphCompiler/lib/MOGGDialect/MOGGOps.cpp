@@ -140,11 +140,22 @@ static void addTensorCaptureParam(
                      .str())});
 }
 
-/// Add ptr, shape, and strides fields for a tensor capture.
+/// Add the runtime field(s) for a tensor capture. The tile path stores a single
+/// storage-agnostic `TileTensor`; the SIMD path stores decomposed
+/// `(ptr, shape, strides)`.
 static void
 addTensorCaptureField(SmallVectorImpl<std::pair<MojoValue, MojoValue>> &fields,
-                      unsigned captureIdx, StringRef dtypeText, int64_t rank) {
+                      unsigned captureIdx, StringRef dtypeText, int64_t rank,
+                      bool isTile) {
   auto ci = std::to_string(captureIdx);
+  if (isTile) {
+    // Capture the tensor as one `TileTensor` (built from `mts.to_tile_tensor()`
+    // at instantiation) instead of a raw `UnsafePointer` + shape/strides.
+    fields.push_back(
+        {MojoValue("tile_" + ci),
+         TileTensorRef::captureFieldType(dtypeText, "Self.spec_" + ci)});
+    return;
+  }
   fields.push_back({MojoValue("ptr_" + ci),
                     MojoValue(kStructUnsafePointer)[{
                         MojoValue(kStructScalar)[{MojoValue(dtypeText)}],
@@ -713,7 +724,7 @@ scalarConstantAttrToMojoLiteral(TypedAttr attr) {
 /// after all tensor fields.
 static void collectFusionCaptures(
     EmitMojoState &state, Block *lambdaBody, OperandRange fusibleTensors,
-    bool isOutputLambda,
+    bool isOutputLambda, bool isTile,
     SmallVectorImpl<std::pair<MojoValue, MojoValue>> &parameters,
     SmallVectorImpl<std::pair<MojoValue, MojoValue>> &fields,
     SmallVectorImpl<MO::TensorType> &captureTensorTypes,
@@ -728,7 +739,7 @@ static void collectFusionCaptures(
     auto dtype = state.mlirDTypeToMojoType(tensorTy.getDtype()).text;
     auto rank = tensorTy.getRank() == 0 ? 1 : tensorTy.getRank();
     addTensorCaptureParam(parameters, i, dtype, rank);
-    addTensorCaptureField(fields, i, dtype, rank);
+    addTensorCaptureField(fields, i, dtype, rank, isTile);
   }
 
   // Find values used inside the body but defined outside (external captures).
@@ -756,7 +767,7 @@ static void collectFusionCaptures(
         auto dtype = state.mlirDTypeToMojoType(tensorTy.getDtype()).text;
         auto rank = tensorTy.getRank() == 0 ? 1 : tensorTy.getRank();
         addTensorCaptureParam(parameters, captureIdx, dtype, rank);
-        addTensorCaptureField(fields, captureIdx, dtype, rank);
+        addTensorCaptureField(fields, captureIdx, dtype, rank, isTile);
         extraTensorCaptures.push_back({operand, captureIdx});
       } else {
         // If the scalar comes from a constant.scalar op defined outside the
@@ -848,10 +859,9 @@ static MojoValue emitTileCopierLoad(MojoBuilder &sdb, unsigned captureIdx,
   auto dstVar = sdb.var(TileTensorRef::fromMutStorage(storageVar, val.layout()),
                         /*cache=*/false);
 
-  // Reconstruct the full captured input tensor from its raw components and
-  // extract the `tile_shape`-sized tile at `tile_coords`. This mirrors the
-  // Phase 2 reference (`self.a.tile[TM, TN](tc)`) and the driver's own output
-  // path (`self.tensor.to_tile_tensor().tile[...](tc)`): the load copier
+  // Extract the `tile_shape`-sized tile at `tile_coords` from the captured
+  // `TileTensor`. This mirrors the driver's own output path
+  // (`self.tensor.to_tile_tensor().tile[...](tc)`): the load copier
   // (`GenericToLocalTileCopier[thread_layout=tile_shape]`) `distribute`s this
   // *full* tile across the thread block so each thread stages its own fragment
   // into the per-thread local `dst`. Building a per-thread
@@ -872,18 +882,13 @@ static MojoValue emitTileCopierLoad(MojoBuilder &sdb, unsigned captureIdx,
         MojoValue(kStructInt)({}, {MojoValue(kParameterTileCoords)[d]}));
   MojoValue tileCoord = MojoValue(kStructCoord)({}, coordArgs);
 
-  // `InputTensor[static_spec = Self.spec_N](self.ptr_N, self.shape_N,
-  //  self.strides_N).to_tile_tensor().tile[tile_shape[0], ...](tc)`.
-  MojoValue inputTensor = MojoValue(kComptimeInputTensor)(
-      {MojoValue(kParameterStaticSpec)
-           .equal(MojoValue(std::string("Self.spec_") + captureN))},
-      {MojoValue(std::string("self.ptr_") + captureN),
-       MojoValue(std::string("self.shape_") + captureN),
-       MojoValue(std::string("self.strides_") + captureN)});
+  // `self.tile_N.tile[tile_shape[0], ...](tc)` — the captured tensor is stored
+  // as a `TileTensor` field, so no `(ptr, shape, strides)` reconstruction is
+  // needed.
   SmallVector<MojoValue> tileDims;
   for (unsigned d = 0; d < loadRank; ++d)
     tileDims.push_back(tileShape[d]);
-  MojoValue fullTile = inputTensor.get("to_tile_tensor")();
+  MojoValue fullTile(std::string("self.tile_") + captureN);
   auto srcVar =
       sdb.var(fullTile.get("tile")[tileDims]({}, {tileCoord}), /*cache=*/false);
 
@@ -1135,12 +1140,10 @@ emitFusionStructReturnOrStore(EmitMojoState &state, MojoBuilder &sdb,
     }
     MojoValue tileCoord = MojoValue(kStructCoord)({}, coordArgs);
 
-    MojoValue outputTensor = MojoValue(kComptimeOutputTensor)(
-        {MojoValue(kParameterStaticSpec).equal(MojoValue("Self.spec_0"))},
-        {MojoValue("self.ptr_0"), MojoValue("self.shape_0"),
-         MojoValue("self.strides_0")});
-    MojoValue outTile = outputTensor.get("to_tile_tensor")().get(
-        "tile")[tileDims]({}, {tileCoord});
+    // The output tensor is stored as a `TileTensor` field (`self.tile_0`);
+    // extract the destination tile at `tile_coords`.
+    MojoValue outTile =
+        MojoValue("self.tile_0").get("tile")[tileDims]({}, {tileCoord});
 
     MojoValue dstSpace = MojoValue(kParameterStoreCopierType)
                              .get(TileTensorRef::kDstAddressSpace);
@@ -1314,6 +1317,12 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     methodReturnsValue = true;
   }
 
+  // Tile-based fusion structs capture each tensor as one `TileTensor` field
+  // instead of decomposed `(ptr, shape, strides)`.
+  bool isTile = lambdaType == KernelOutputFusionLambdaType::ComputeTile ||
+                lambdaType == KernelOutputFusionLambdaType::OutputTile ||
+                lambdaType == KernelOutputFusionLambdaType::ElementwiseTile;
+
   // Collect struct compile-time parameters, fields, and external captures.
   SmallVector<std::pair<MojoValue, MojoValue>> parameters;
   SmallVector<std::pair<MojoValue, MojoValue>> fields;
@@ -1322,7 +1331,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
   SmallVector<std::pair<Value, MojoValue>> inlineConstants;
   collectFusionCaptures(state, lambdaBody, fusibleTensors, isOutputLambda,
-                        parameters, fields, captureTensorTypes,
+                        isTile, parameters, fields, captureTensorTypes,
                         extraTensorCaptures, scalarCaptures, inlineConstants);
 
   // Emit struct definition with trait-conforming method.
@@ -1435,24 +1444,26 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     }
   }
 
-  // Emit struct instantiation: decompose each tensor into (ptr, shape, strides)
-  // and pass static_spec as compile-time parameters.
+  // Emit struct instantiation: pass static_spec as a compile-time parameter and
+  // the tensor as either one `TileTensor` (tile path) or decomposed
+  // (ptr, shape, strides) (SIMD path).
   SmallVector<MojoValue> comptimeArgs;
   SmallVector<MojoValue> instanceArgs;
-  for (unsigned i = 0; i < fusedInputs.size(); ++i) {
-    ManagedTensorSliceRef mts(fusedInputs[i]);
+  auto pushCaptureInstance = [&](ManagedTensorSliceRef mts) {
     comptimeArgs.push_back(mts.staticSpec());
+    if (isTile) {
+      instanceArgs.push_back(state.builder.var(mts.toTileTensor()));
+      return;
+    }
     instanceArgs.push_back(state.builder.var(mts.unsafePtr()));
     instanceArgs.push_back(state.builder.var(mts.shape()));
     instanceArgs.push_back(state.builder.var(mts.strides()));
-  }
-  for (auto &[tensorVal, captureIdx] : extraTensorCaptures) {
-    ManagedTensorSliceRef mts(state.getMojoValueFor(tensorVal));
-    comptimeArgs.push_back(mts.staticSpec());
-    instanceArgs.push_back(state.builder.var(mts.unsafePtr()));
-    instanceArgs.push_back(state.builder.var(mts.shape()));
-    instanceArgs.push_back(state.builder.var(mts.strides()));
-  }
+  };
+  for (unsigned i = 0; i < fusedInputs.size(); ++i)
+    pushCaptureInstance(ManagedTensorSliceRef(fusedInputs[i]));
+  for (auto &[tensorVal, captureIdx] : extraTensorCaptures)
+    pushCaptureInstance(
+        ManagedTensorSliceRef(state.getMojoValueFor(tensorVal)));
   for (auto &[val, fieldName, mojoType] : scalarCaptures)
     instanceArgs.push_back(state.getMojoValueFor(val));
   MojoValue fusionInstance =
@@ -2010,9 +2021,9 @@ emitInputLoadFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
   SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
   SmallVector<std::pair<Value, MojoValue>> inlineConstants;
   collectFusionCaptures(state, lambdaBody, fusibleTensors,
-                        /*isOutputLambda=*/false, mtsParams, mtsFields,
-                        captureTensorTypes, extraTensorCaptures, scalarCaptures,
-                        inlineConstants);
+                        /*isOutputLambda=*/false, /*isTile=*/false, mtsParams,
+                        mtsFields, captureTensorTypes, extraTensorCaptures,
+                        scalarCaptures, inlineConstants);
 
   // Each tensor capture is the `TileTensor` projection of its (dense) source --
   // `TileTensor` is `TrivialRegisterPassable`, so the functor is too. Captured
@@ -2195,9 +2206,9 @@ emitOutputStoreFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
   SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
   SmallVector<std::pair<Value, MojoValue>> inlineConstants;
   collectFusionCaptures(state, lambdaBody, fusibleTensors,
-                        /*isOutputLambda=*/true, mtsParams, mtsFields,
-                        captureTensorTypes, extraTensorCaptures, scalarCaptures,
-                        inlineConstants);
+                        /*isOutputLambda=*/true, /*isTile=*/false, mtsParams,
+                        mtsFields, captureTensorTypes, extraTensorCaptures,
+                        scalarCaptures, inlineConstants);
 
   // Capture 0 is the output (the store target); the rest are input tiles. All
   // captured as `TileTensor` projections via the trait surface. The projection
@@ -2356,9 +2367,9 @@ emitTransformFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
   SmallVector<std::tuple<Value, std::string, std::string>> scalarCaptures;
   SmallVector<std::pair<Value, MojoValue>> inlineConstants;
   collectFusionCaptures(state, lambdaBody, fusibleTensors,
-                        /*isOutputLambda=*/true, mtsParams, mtsFields,
-                        captureTensorTypes, extraTensorCaptures, scalarCaptures,
-                        inlineConstants);
+                        /*isOutputLambda=*/true, /*isTile=*/false, mtsParams,
+                        mtsFields, captureTensorTypes, extraTensorCaptures,
+                        scalarCaptures, inlineConstants);
 
   // Capture 0 is the output -- NOT captured here (the wrapper holds the output
   // buffer; the functor only transforms). Captures i>0 are the epilogue's input

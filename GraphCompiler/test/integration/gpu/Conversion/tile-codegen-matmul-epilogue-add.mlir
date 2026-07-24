@@ -17,6 +17,10 @@
 // CHECK: _bind_to_fused_compute_output_tile
 // CHECK: ComputeOutputFusionTile
 
+// The bias aux input is captured as a single `TileTensor` field (derived from
+// its `spec_1`), not decomposed ptr/shape/strides.
+// CHECK: var tile_1: {{.*}}TileTensor[{{.*}}Layout[shape_types = Self.spec_1.static_layout._shape_types{{.*}}]{{.*}}Origin]
+
 // FusionStruct emits a TileTensor-based compute method.
 // The method signature uses TileTensor params (not SIMD); the tile trait/type
 // names are import-qualified so the generated Mojo compiles.
@@ -24,11 +28,14 @@
 // CHECK-SAME: tile_coords
 // CHECK-SAME: val: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
-// The body stages the bias into a copier-dst-space tile and combines it with
-// the matmul output tile `val` — copier.copy + Add.elementwise, no SIMD.
+// The body takes the bias tile from its captured `TileTensor` field
+// (`self.tile_1.tile[...]`, no ptr/shape/strides reconstruction), stages it into
+// a copier-dst-space tile, and combines it with the matmul output tile `val` —
+// copier.copy + Add.elementwise, no SIMD.
 // CHECK-NOT: simd_load_from_tensor_pointer
 // CHECK-NOT: rebind[SIMD
 // CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
+// CHECK: self.tile_1.tile[
 // CHECK: copier.copy(
 // CHECK: Add.elementwise(val,
 // CHECK: return

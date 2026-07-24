@@ -287,6 +287,7 @@ constexpr llvm::StringLiteral kStructSIMD = "SIMD";
 constexpr llvm::StringLiteral kStructTileTensor = "layout.TileTensor";
 constexpr llvm::StringLiteral kStructTensorLayout = "layout.TensorLayout";
 constexpr llvm::StringLiteral kStructTileCopier = "layout.tile_io.TileCopier";
+constexpr llvm::StringLiteral kStructTileLayout = "layout.tile_layout.Layout";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
@@ -613,6 +614,7 @@ public:
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kShape = "shape";
   static constexpr llvm::StringLiteral kStrides = "strides";
+  static constexpr llvm::StringLiteral kToTileTensor = "to_tile_tensor";
   static constexpr llvm::StringLiteral kStaticSpec = "static_spec";
   static constexpr llvm::StringLiteral kStaticShapeTuple =
       "_static_shape_tuple";
@@ -649,6 +651,7 @@ public:
   MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
   MojoValue shape() const { return value.get(kShape)(); }
   MojoValue strides() const { return value.get(kStrides)(); }
+  MojoValue toTileTensor() const { return value.get(kToTileTensor)(); }
 
   /// Fusion bind method invocations. Returns the method handle (uncalled);
   /// the caller appends `({}, args)` to invoke.
@@ -873,6 +876,21 @@ public:
     MojoValue castPtr =
         parenPtr.get(kUnsafeOriginCast)[kComptimeMutUntrackedOrigin]();
     return MojoValue(kStructTileTensor)({}, {castPtr, layout});
+  }
+
+  /// The `TileTensor` field type that captures a tensor in a tile-based fusion
+  /// struct: `dtype` plus a `TileLayout` rebuilt from the capture's comptime
+  /// `StaticTensorSpec` parameter `specParam` (e.g. `Self.spec_0`). Matches the
+  /// type of `ManagedTensorSlice.to_tile_tensor()`, so the field accepts it.
+  static MojoValue captureFieldType(llvm::StringRef dtypeText,
+                                    llvm::StringRef specParam) {
+    return MojoValue(
+        llvm::formatv("{0}[{1}, {2}[shape_types = "
+                      "{3}.static_layout._shape_types, stride_types = "
+                      "{3}.static_layout._stride_types], {4}]",
+                      kStructTileTensor, dtypeText, kStructTileLayout,
+                      specParam, kComptimeMutUntrackedOrigin)
+            .str());
   }
 
   MojoValue value;

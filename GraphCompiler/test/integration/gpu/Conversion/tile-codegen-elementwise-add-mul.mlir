@@ -29,16 +29,17 @@
 // CHECK: def compute[dtype : DType, rank : Int, LayoutType : {{.*}}TensorLayout, Copier : {{.*}}TileCopier]
 // CHECK-SAME: dst: {{.*}}TileTensor[dtype, LayoutType, MutAnyOrigin])
 
-// Three DISTINCT inputs: each reconstructed as its own full input tile (distinct
-// `spec`/`ptr`), copier.copy'd into its own staging tile, then re-viewed as a
-// GENERIC / `MutAnyOrigin` tile for the elementwise chain.
-// CHECK: [[SRC0:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_0]({{.*}}self.ptr_0{{.*}}).to_tile_tensor().tile[
+// Three DISTINCT inputs: each taken from its own captured `TileTensor` field
+// (`self.tile_N`, distinct field per input), copier.copy'd into its own staging
+// tile, then re-viewed as a GENERIC / `MutAnyOrigin` tile for the elementwise
+// chain.
+// CHECK: [[SRC0:var[_0-9]+]] = self.tile_0.tile[
 // CHECK: copier.copy({{.*}}, [[SRC0]].address_space_cast[Copier.src_address_space]())
 // CHECK: [[T0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: [[SRC1:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_1]({{.*}}self.ptr_1{{.*}}).to_tile_tensor().tile[
+// CHECK: [[SRC1:var[_0-9]+]] = self.tile_1.tile[
 // CHECK: copier.copy({{.*}}, [[SRC1]].address_space_cast[Copier.src_address_space]())
 // CHECK: [[T1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
-// CHECK: [[SRC2:var[_0-9]+]] = {{.*}}InputTensor[static_spec = Self.spec_2]({{.*}}self.ptr_2{{.*}}).to_tile_tensor().tile[
+// CHECK: [[SRC2:var[_0-9]+]] = self.tile_2.tile[
 // CHECK: copier.copy({{.*}}, [[SRC2]].address_space_cast[Copier.src_address_space]())
 // CHECK: [[T2:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 
