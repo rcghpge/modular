@@ -71,3 +71,39 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>]
   } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %out : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 }
+
+// -----
+
+// The staged body is a graph region, so an op may textually precede the def of a
+// value it uses (here `test.consume_size` precedes `test.produce_size`). Finalize
+// splices the staged ops into the SSACFG `mgp.device_graph.create` build body,
+// where dominance is enforced, so the pass must topologically reorder the def
+// ahead of its use. Regression guard for the `mgp.buffer.plan` ordering fix:
+// without the sort this fails the verifier with "does not dominate this use"
+// (`mgp-dynamic-memory-planning` emits `mgp.buffer.plan` before its size ops).
+
+// CHECK-LABEL: mgp.model @dg_unordered
+// CHECK: mgp.device_graph.create
+// CHECK: %[[SZ:[a-zA-Z0-9_]+]] = "test.produce_size"
+// CHECK: "test.consume_size"(%[[SZ]])
+mgp.model @dg_unordered : mof devices [#M.device_ref<"gpu", 0>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>, %in: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  %out = mgp.device_graph.staging inputs(%in : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  ^bb0(%builder: !mgp.device_graph.builder,
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+    // Use precedes def -- legal in the staging graph region, illegal once
+    // spliced into the SSACFG create body unless topologically reordered.
+    %consumed = "test.consume_size"(%sz) : (index) -> index
+    %sz = "test.produce_size"() : () -> index
+    %node, %r = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      mgp.device_graph.dependencies.yield %in_t : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    } : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    mgp.device_graph.staging.yield %r : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+  mef.output %ch0, %out : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+} {isDeviceGraph}

@@ -9,6 +9,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/MDialect/MAttrs.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "llvm/ADT/SmallVector.h"
 
 using namespace M;
@@ -137,6 +138,10 @@ void finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
              llvm::zip_equal(stagingInputArgs, inputArgs))
           oldArg.replaceAllUsesWith(newArg);
         DeviceGraphYieldOp::create(bodyBuilder, bodyLoc, graphOutputs);
+
+        // We're transitioning to an SSACFG based operation, so we need to order
+        // the operations in the body to enforce dominance requirements.
+        mlir::sortTopologically(createBody);
       });
 
   // Pack the built graph back into async and yield it from the region.
