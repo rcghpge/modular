@@ -12,8 +12,11 @@ modular_cc_test(
     name = "AgentTests",
     size = "small",
     srcs = ["AgentTests.cpp"],
-    gpu_constraints = ["//:nvidia_gpu"],
+    gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
+    # NVIDIA or AMD, never Apple: Apple GPUs only exist on macOS, and NIXL is
+    # Linux-only.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//MLRT/unittests/Driver/NIXL:TestCommon",
         "@nixl_upstream//:nixl_api_headers",

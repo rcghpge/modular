@@ -27,8 +27,11 @@ modular_cc_test(
     size = "medium",
     srcs = ["TransferTests.cpp"],
     env = UCX_TEST_ENV,
-    gpu_constraints = ["//:nvidia_gpu"],
+    gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
+    # NVIDIA or AMD, never Apple: Apple GPUs only exist on macOS, and
+    # NIXL/UCX is Linux-only.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = UCX_TEST_DEPS,
 )
 
@@ -37,8 +40,11 @@ modular_cc_test(
     size = "medium",
     srcs = ["MetadataExchangeTests.cpp"],
     env = UCX_TEST_ENV,
-    gpu_constraints = ["//:nvidia_gpu"],
+    gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
+    # NVIDIA or AMD, never Apple: Apple GPUs only exist on macOS, and
+    # NIXL/UCX is Linux-only.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = UCX_TEST_DEPS,
 )
 
@@ -47,8 +53,11 @@ modular_cc_test(
     size = "medium",
     srcs = ["ErrorHandlingTests.cpp"],
     env = UCX_TEST_ENV,
-    gpu_constraints = ["//:nvidia_gpu"],
+    gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
+    # NVIDIA or AMD, never Apple: Apple GPUs only exist on macOS, and
+    # NIXL/UCX is Linux-only.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = UCX_TEST_DEPS,
 )
 
@@ -57,7 +66,10 @@ modular_cc_test(
     size = "medium",
     srcs = ["ConcurrencyTests.cpp"],
     env = UCX_TEST_ENV,
-    gpu_constraints = ["//:nvidia_gpu"],
+    gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
+    # NVIDIA or AMD, never Apple: Apple GPUs only exist on macOS, and
+    # NIXL/UCX is Linux-only.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = UCX_TEST_DEPS,
 )
