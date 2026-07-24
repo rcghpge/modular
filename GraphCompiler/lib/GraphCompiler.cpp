@@ -417,29 +417,17 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
-  // Experimental device-graph synthesis path, off by default. When enabled,
-  // lower each `isDeviceGraph` model's compiled regions toward a device graph
-  // instead of running sequence fusion; otherwise use the existing pipeline.
-  if (opts.synthesizeDeviceGraphs) {
-    // Stage 1: move the compiled regions into a transient staging op.
+
+  { // Device-graph synthesis path
     pm.addPass(MGP::createStageDeviceGraphsPass());
-    // Stage 2: convert each region into a `mgp.device_graph.dependencies` op,
-    // capturing the dependency DAG explicitly.
     pm.addPass(MGP::createComputeDeviceGraphDependenciesPass());
-    // Stage 3: fold the redundant `mogg.async` pack/unpack round-trips the
-    // boundary dissolution leaves behind.
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
-    // Stage 4: generate `@stub_N_build_graph` recording stubs and retarget the
-    // staged kernel-stub calls to them.
     pm.addPass(MGP::createGenerateBuildGraphStubsPass());
-    // Stage 6: lift the staging op into `mgp.device_graph.create` /
-    // `mgp.device_graph.execute`, rewiring `mef.output`.
     pm.addPass(MGP::createFinalizeDeviceGraphsPass());
-    // Sanity check on our handling of unrealized_conversion_cast operations.
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  } else {
-    pm.addPass(MOGG::createSequenceFusion());
   }
+
+  pm.addPass(MOGG::createSequenceFusion());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
@@ -531,7 +519,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   mgpOpts.enableComputeLambdas = opts.enableComputeLambdas;
   mgpOpts.moggDebugDumpFusedTensorSpecs = opts.moggDebugDumpFusedTensorSpecs;
   mgpOpts.dumpMojoText = opts.dumpMojoText;
-  mgpOpts.synthesizeDeviceGraphs = opts.synthesizeDeviceGraphs;
 
   // --- jit options ---
   MOGG::JitCompileKernelsOptions jitOpts;

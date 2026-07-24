@@ -1,5 +1,5 @@
 // RUN: mo-opt %s \
-// RUN:     --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_lib synthesize-device-graphs=true dump-mojo-text=true" \
+// RUN:     --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_lib dump-mojo-text=true" \
 // RUN:     -o /dev/null 2>&1 | FileCheck %s
 
 // `dump-mojo-text=true` runs the DumpMojo pass, which writes the emitted Mojo to
