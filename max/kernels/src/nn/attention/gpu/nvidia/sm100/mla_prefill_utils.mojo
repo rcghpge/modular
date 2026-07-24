@@ -68,12 +68,16 @@ struct MLAConfig[
     *,
     rope_gmem_dtype: DType,
     rope_mma_dtype: DType,
-    scale_dtype: DType = DType.invalid,
+    scale_dtype_: Optional[DType] = None,
 ](TrivialRegisterPassable):
+    # Concrete scale dtype for `Scalar[...]`/`TMATensorTile[...]` reads. Falls
+    # back to `qkv_dtype` when unset; presence flows to `FA4Config` via the
+    # optional `scale_dtype_`.
+    comptime scale_dtype = Self.scale_dtype_.or_else(Self.qkv_dtype)
     var fa4_config: FA4Config[
         Self.qkv_dtype,
-        rope_dtype=Self.rope_mma_dtype,
-        scale_dtype=Self.scale_dtype,
+        rope_dtype_=Self.rope_mma_dtype,
+        scale_dtype_=Self.scale_dtype_,
     ]
     var MMA_M: Int
     var BM: Int
@@ -178,7 +182,9 @@ struct MLAConfig[
             swizzle_mode = self.qkv_swizzle_mode,
             page_size = page_size,
             is_mla = True,
-            num_q = num_q,
+            # FA4Config's primary knob is now BM; MLA is single-CTA so
+            # num_q=2 -> BM=256, num_q=1 -> BM=128.
+            BM = 256 if num_q == 2 else 128,
             nope_depth = nope_depth,
             single_o = single_o,
             bn_cap = bn_cap,
@@ -348,7 +354,7 @@ def select_mla_prefill_config[
     *,
     rope_gmem_dtype: DType,
     rope_mma_dtype: DType,
-    scale_dtype: DType = DType.invalid,
+    scale_dtype_: Optional[DType] = None,
 ](
     *,
     num_q_heads: Int,
@@ -360,7 +366,7 @@ def select_mla_prefill_config[
     qkv_dtype,
     rope_gmem_dtype=rope_gmem_dtype,
     rope_mma_dtype=rope_mma_dtype,
-    scale_dtype=scale_dtype,
+    scale_dtype_=scale_dtype_,
 ]:
     """Selects the supported SM100 MLA-prefill config for these dims.
 
@@ -381,7 +387,7 @@ def select_mla_prefill_config[
         qkv_dtype,
         rope_gmem_dtype=rope_gmem_dtype,
         rope_mma_dtype=rope_mma_dtype,
-        scale_dtype=scale_dtype,
+        scale_dtype_=scale_dtype_,
     ]
     # `bn_floor` == the `MLAConfig.supported()` BN floor (`self.BN >= 64`): the
     # largest MMA_K-aligned BN cap that still admits >= 2 KV stages for a wide V.
@@ -521,7 +527,7 @@ struct MLAPositionSummary(TrivialRegisterPassable):
 struct MLAKVLayouts[
     k_nope_dtype: DType,
     k_rope_dtype: DType,
-    kv_scale_dtype: DType,
+    kv_scale_dtype: Optional[DType],
     config: MLAConfig,
 ]:
     """Comptime layout and size metadata for MLA K/V tiles."""
@@ -809,11 +815,11 @@ struct SM100MLA[
     comptime rope_mma_kind = (
         UMMAKind.KIND_F16 if Self.rope_mma_dtype.is_half_float() else UMMAKind.KIND_F8F6F4
     )
-    # use_fused_kv means we use a fused kv pipeline in shared memory
+    # use_shared_kv means we use a shared kv pipeline in shared memory
     # that forces us to put the k nope and rope in separate regions of smem
     # preventing us from fusing the nope and rope parts of UMMA0
     comptime fused_umma0 = (Self.qkv_dtype == Self.rope_mma_dtype) and (
-        not Self.config.fa4_config.use_fused_kv
+        not Self.config.fa4_config.use_shared_kv
     )
     comptime BK0 = Self.qk_depth if Self.fused_umma0 else Self.nope_depth
 
@@ -890,11 +896,17 @@ struct SM100MLA[
         num_pv_stages=Self.config.fa4_config.num_pv_stages,
         num_kv_stages=Self.config.fa4_config.num_kv_stages,
         use_order_barriers=EnableForcedOrdering,
-        use_fused_kv=Self.config.fa4_config.use_fused_kv,
+        use_shared_kv=Self.config.fa4_config.use_shared_kv,
         pair_cta=Self.config.fa4_config.pair_cta,
         num_q=Self.config.fa4_config.num_q,
         splitk_partitions=Self.config.fa4_config.splitk_partitions,
         BM=Self.config.fa4_config.BM,
+        # MLA is never warp-specialized (use_ws is always False here), but the
+        # param must be threaded so this MiscMBarsType matches the one built by
+        # `SM100AttentionSMem.MiscMBarsType` (same `...use_ws` expression) — an
+        # omitted param defaults to literal `False`, a DIFFERENT type from the
+        # `config.fa4_config.use_ws` expression, and the two would not convert.
+        use_ws=Self.config.fa4_config.use_ws,
     ]
 
     @staticmethod

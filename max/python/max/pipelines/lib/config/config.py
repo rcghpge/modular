@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import tempfile
@@ -22,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from max.config import ConfigFileModel
 from max.driver import accelerator_api, load_devices
-from max.engine import InferenceSession
+from max.engine import InferenceSession, ProfilingError
 from max.graph.quantization import QuantizationEncoding
 from max.nn.comm import Signals
 from max.nn.kv_cache.cache_params import KVConnectorType
@@ -149,6 +150,46 @@ def _is_disable_parser_sentinel(value: str | None) -> bool:
     disable the parser, overriding any architecture-declared default.
     """
     return isinstance(value, str) and value.lower() == DISABLE_PARSER_SENTINEL
+
+
+# Guards the one-time ``atexit`` registration of
+# ``_finalize_profiling_on_exit``.  The profiling namespace is shared across
+# sessions (it fronts process-global profiler state), so one hook flushes the
+# trace no matter how many sessions were configured — and registering per
+# ``configure_session()`` call would pin every session alive until interpreter
+# exit via the hook's argument reference.
+_profiling_atexit_registered = False
+
+
+def _finalize_profiling_on_exit(session: InferenceSession) -> None:
+    """``atexit`` hook that drains the libkineto trace at process shutdown.
+
+    Auto-enable in :meth:`PipelineConfig.configure_session` has no symmetric
+    point at which to disable because the consumers (``max pipelines
+    generate``, ``LLM``, ``serve``) do not call back into config code
+    when they finish.  Registering this hook from ``configure_session``
+    means the trace gets flushed on a normal interpreter exit even if
+    user code never invokes ``session.profiling.stop()``.
+
+    User code that *does* call ``stop()`` explicitly leaves the profiler
+    in the ``idle`` state, so the ``is_enabled`` guard makes this a no-op
+    on its second visit.  Exceptions during shutdown are intentionally
+    swallowed — interpreter teardown is too unreliable to bubble them up
+    and the trace failure (if any) is already recorded in
+    ``lastTraceError`` for callers that consult it before exit.
+    """
+    try:
+        if session.profiling.is_enabled:
+            session.profiling.stop()
+            session.profiling.wait_for_trace()
+    except ProfilingError:
+        # The only expected failure here is trace serialization, which
+        # wait_for_trace() raises as ProfilingError; it's already recorded in
+        # lastTraceError for callers that consult it, so swallow it at exit.
+        # We intentionally do NOT catch broad Exception: a programming error
+        # (e.g. a renamed attribute) must surface as an atexit traceback
+        # rather than be silently dropped.
+        pass
 
 
 class PipelineConfig(ConfigFileModel):
@@ -352,6 +393,42 @@ class PipelineConfig(ConfigFileModel):
         session._use_experimental_kernels(self.runtime.use_experimental_kernels)
         session._use_vendor_blas(self.runtime.use_vendor_blas)
         session._use_vendor_ccl(self.runtime.use_vendor_ccl)
+
+        # libkineto auto-enable at session construction.  start() must run
+        # before model load: CUPTI cannot retroactively instrument CUDA graphs
+        # instantiated before its subscription (see activatePendingTrace() in
+        # Support/Profiling/internal/Range.h), so a later start() captures
+        # zero GPU activity.  MXTOOLS-211 tracks the MLRT graph-cache
+        # invalidation that lifts this restriction.
+        #
+        # Propagate the remaining ProfilingConfig fields to session.debug
+        # *before* start() so libkineto reads the right output path / step
+        # counts when it primes its CUPTI subscription.
+        if self.profiling.profiling_enabled:
+            if self.profiling.profiling_output_path is not None:
+                session.debug.profiling_output_path = (
+                    self.profiling.profiling_output_path
+                )
+            session.debug.profiling_dynolog_enabled = (
+                self.profiling.profiling_dynolog_enabled
+            )
+            session.debug.profiling_warmup_steps = (
+                self.profiling.profiling_warmup_steps
+            )
+            session.debug.profiling_active_steps = (
+                self.profiling.profiling_active_steps
+            )
+            session.debug.profiling_periodic_flush_seconds = (
+                self.profiling.profiling_periodic_flush_seconds
+            )
+            session.profiling.start()
+            # One hook per process suffices: session.profiling fronts shared
+            # process-global profiler state, so flushing through the first
+            # session flushes for all (see _profiling_atexit_registered).
+            global _profiling_atexit_registered
+            if not _profiling_atexit_registered:
+                atexit.register(_finalize_profiling_on_exit, session)
+                _profiling_atexit_registered = True
 
     def estimate_signal_buffer_memory(
         self, arch_config: ArchConfig | None = None
@@ -828,6 +905,15 @@ class PipelineConfig(ConfigFileModel):
             else:
                 setattr(self, config_name, config_class(**matched_kwargs))
 
+    def _validate_repo_access(self) -> None:
+        """Validates that every model's repo was provided and is accessible.
+
+        Called at the end of the construction factories so a bad repo fails
+        fast. See :meth:`MAXModelConfig.validate_repo_access`.
+        """
+        for model in self.models.values():
+            model.validate_repo_access()
+
     @classmethod
     def from_flat_kwargs(cls, **kwargs: Any) -> Self:
         """Construct a :class:`PipelineConfig` from a flat CLI kwargs namespace.
@@ -895,6 +981,7 @@ class PipelineConfig(ConfigFileModel):
         if unmatched_kwargs:
             raise ValueError(f"Unmatched kwargs: {unmatched_kwargs}")
 
+        instance._validate_repo_access()
         return instance
 
     def _validate_required_arguments_against_architecture(
@@ -1423,10 +1510,6 @@ class PipelineConfig(ConfigFileModel):
         # This means that a KV cache dtype can be determined, assuming an override wasn't provided.
         model_config.set_cache_dtype_given_quantization_encoding()
 
-        model_config.validate_and_resolve_rope_type(
-            arch_rope_type=arch.rope_type
-        )
-
         # by this point, the quantization_encoding must be provided. verify it is supported.
         if model_config.quantization_encoding not in arch.supported_encodings:
             raise ValueError(
@@ -1526,7 +1609,7 @@ class PipelineConfig(ConfigFileModel):
                 models_dict["draft"] = args.draft_model.model_copy(deep=True)
             manifest = ModelManifest(models_dict)
 
-        return cls(
+        config = cls(
             models=manifest,
             model_override=list(args.model_override),
             sampling=SamplingConfig(
@@ -1550,6 +1633,7 @@ class PipelineConfig(ConfigFileModel):
                 ce_delay_ms=args.ce_delay_ms,
                 enable_prioritize_first_decode=args.enable_prioritize_first_decode,
                 enable_chunked_prefill=args.enable_chunked_prefill,
+                chunked_prefill_min_chunk_size=args.chunked_prefill_min_chunk_size,
                 enable_in_flight_batching=args.enable_in_flight_batching,
                 eplb_replicas_per_gpu=args.eplb_replicas_per_gpu,
                 max_num_steps=args.max_num_steps,
@@ -1561,11 +1645,16 @@ class PipelineConfig(ConfigFileModel):
                 execute_empty_batches=args.execute_empty_batches,
                 max_batch_total_tokens=args.max_batch_total_tokens,
                 device_graph_capture=args.device_graph_capture,
+                fold_sampler_into_graph=args.fold_sampler_into_graph,
+                max_pending_futures=args.max_pending_futures,
                 force=args.force,
                 kvcache_ce_watermark=args.kvcache_ce_watermark,
                 decode_stall_timeout_s=args.decode_stall_timeout_s,
                 decode_request_ttl_s=args.decode_request_ttl_s,
                 enable_overlap_scheduler=args.enable_overlap_scheduler,
+                dp_ce_balance_timeout_ms=args.dp_ce_balance_timeout_ms,
+                dp_ce_balance_threshold=args.dp_ce_balance_threshold,
+                dp_ce_balance_enable_dynamic_chunk_size=args.dp_ce_balance_enable_dynamic_chunk_size,
                 allow_unsupported_logprobs=args.allow_unsupported_logprobs,
                 allow_extra_request_fields=args.allow_extra_request_fields,
                 prefer_module_v3=args.prefer_module_v3,
@@ -1593,6 +1682,8 @@ class PipelineConfig(ConfigFileModel):
             task=args.task,
             debug_verify_replay=args.debug_verify_replay,
         )
+        config._validate_repo_access()
+        return config
 
 
 def _parse_flag_bool(value: str, flag_name: str) -> bool:

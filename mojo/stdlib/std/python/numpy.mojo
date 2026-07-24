@@ -27,7 +27,8 @@ supported. This targets the common case of handing computed numeric data to a
 library such as `matplotlib`.
 """
 
-from std.memory import Span, unsafe_memcpy
+from std.memory import unsafe_memcpy
+from std.collections import Span
 
 from .python import Python
 from .python_object import PythonObject
@@ -238,5 +239,6 @@ def from_numpy_array[
     # against the `array` binding.
     var ptr = array.ctypes.data.unsafe_get_as_pointer[dtype]()
     return Span[Scalar[dtype], origin](
-        ptr=ptr.unsafe_mut_cast[mut]().unsafe_origin_cast[origin](), length=n
+        unsafe_ptr=ptr.unsafe_mut_cast[mut]().unsafe_origin_cast[origin](),
+        length=n,
     )

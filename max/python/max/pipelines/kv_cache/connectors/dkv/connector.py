@@ -69,7 +69,7 @@ def _to_dkv_u64(h: bytes) -> int:
     """Packs a connector-level block hash into the 64-bit dkv wire key.
 
     The dkv proto stays ``uint64 seq_hash``. Accepts the canonical bytes
-    forms produced by :func:`max.pipelines.kv_cache.kv_connector.to_block_hash_bytes`:
+    forms the block hasher produces:
 
     * 8 bytes (``ahash64`` / ``sha256_64``): used as-is, big-endian unsigned.
     * 32 bytes (full ``sha256``): truncated to the first 8 bytes (big-endian
@@ -849,10 +849,10 @@ class DKVConnector:
     ) -> int:
         """Loads external blocks into ``replica_idx``'s device memory by hash.
 
-        Each ``block_hashes`` element must be canonical bytes from
-        :func:`to_block_hash_bytes`: 8 bytes for ``ahash64`` / ``sha256_64``
-        or 32 bytes for full ``sha256``. 32-byte digests are truncated to
-        their first 8 bytes at the dkv boundary (see :func:`_to_dkv_u64`).
+        Each ``block_hashes`` element must be canonical bytes: 8 bytes for
+        ``ahash64`` / ``sha256_64`` or 32 bytes for full ``sha256``. 32-byte
+        digests are truncated to their first 8 bytes at the dkv boundary (see
+        :func:`_to_dkv_u64`).
 
         Routes to the processing replica's single client (backend dedup: one
         client per DP replica, registering that replica's full TP GPU set). The
@@ -911,6 +911,11 @@ class DKVConnector:
         hashes to the Rust client's ``touch``, which the server treats as an
         access that bumps recency.
 
+        Touch contract: pass the full root-anchored sequence (full sequence for
+        a full-attention group, full active window for SWA); never a
+        root-omitting slice. See :meth:`KVConnector.touch` and the dKV
+        ``RegionLru::touch`` canonical contract.
+
         Each ``block_hashes`` element follows the same 8-or-32 byte contract as
         :meth:`load` (truncated to its first 8 bytes at the dkv boundary; see
         :func:`_to_dkv_u64`). Best-effort and fire-and-forget: the Rust client
@@ -938,6 +943,16 @@ class DKVConnector:
             )
         except Exception as exc:
             _logger.debug("dKV touch skipped: %s", exc)
+
+    def count_cached_prefix(
+        self, block_hashes: Sequence[bytes]
+    ) -> tuple[int, int]:
+        """Returns ``(0, 0)``: block presence is tracked by the remote dKV
+        service, so there is no cheap local index to consult synchronously.
+        Callers treat dKV-resident blocks as misses for counting purposes;
+        the ``load`` path still fetches them normally.
+        """
+        return (0, 0)
 
     def wait_for_loads(self) -> None:
         for client in self._clients:

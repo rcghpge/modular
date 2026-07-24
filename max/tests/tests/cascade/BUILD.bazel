@@ -40,6 +40,19 @@ modular_py_test(
 )
 
 modular_py_test(
+    name = "test_echo_textgen",
+    size = "small",
+    srcs = ["test_echo_textgen.py"],
+    deps = [
+        "//max/python/max/experimental/cascade",
+        "//max/python/max/experimental/cascade/core",
+        "//max/python/max/experimental/cascade/pipelines",
+        requirement("numpy"),
+        requirement("pytest-asyncio"),
+    ],
+)
+
+modular_py_test(
     name = "test_chat_completions",
     size = "small",
     srcs = ["test_chat_completions.py"],
@@ -70,7 +83,10 @@ modular_py_test(
 
 modular_py_test(
     name = "test_runtimes",
-    size = "small",
+    # Spins up ~40 parametrized cases, each booting gRPC/HTTP worker
+    # subprocesses; ~48s in isolation blows the 60s "small" budget under
+    # parallel contention.
+    size = "medium",
     srcs = ["test_runtimes.py"],
     deps = [
         "//max/python/max/experimental/cascade",
@@ -80,6 +96,34 @@ modular_py_test(
         "//max/python/max/experimental/cascade/pipelines",
         "//max/python/max/serve:process_control",
         requirement("pydantic"),
+        requirement("pytest-asyncio"),
+    ],
+)
+
+modular_py_test(
+    name = "test_context_config",
+    size = "small",
+    srcs = ["test_context_config.py"],
+    deps = [
+        "//max/python/max/experimental/cascade",
+        "//max/python/max/experimental/cascade/core",
+        "//max/python/max/experimental/cascade/deployment:context_config",
+        "//max/python/max/experimental/cascade/deployment:routing",
+        "//max/python/max/experimental/cascade/grpc_runtime",
+        "//max/python/max/experimental/cascade/http_runtime",
+        "//max/python/max/experimental/cascade/pipelines",
+        requirement("pytest-asyncio"),
+    ],
+)
+
+modular_py_test(
+    name = "test_routing",
+    size = "small",
+    srcs = ["test_routing.py"],
+    deps = [
+        "//max/python/max/experimental/cascade",
+        "//max/python/max/experimental/cascade/core",
+        "//max/python/max/experimental/cascade/deployment:routing",
         requirement("pytest-asyncio"),
     ],
 )
@@ -105,9 +149,21 @@ modular_py_test(
 )
 
 modular_py_test(
-    name = "test_max_model_worker",
+    name = "test_max_tokenizer_decode_stream",
     size = "small",
-    srcs = ["test_max_model_worker.py"],
+    srcs = ["test_max_tokenizer_decode_stream.py"],
+    deps = [
+        "//max/python/max/experimental/cascade/workers",
+        requirement("numpy"),
+        requirement("pytest-asyncio"),
+        requirement("transformers"),
+    ],
+)
+
+modular_py_test(
+    name = "test_all_pipelines",
+    size = "medium",
+    srcs = ["test_all_pipelines.py"],
     # TODO(SERVSYS-1284): importing max.pipelines.lib alone blows the 300s
     # budget on the shared BuildBuddy macOS workers (times out in pytest
     # collection).
@@ -116,10 +172,12 @@ modular_py_test(
         "//conditions:default": [],
     }),
     deps = [
-        "//max/python/max/driver",
-        "//max/python/max/experimental/cascade/workers",
+        # all_pipelines brings every architecture (llama3 resolves SmolLM at
+        # runtime); pipelines provides the CommonTextGenPipeline class.
+        "//max/python/max/experimental/cascade/pipelines",
+        "//max/python/max/experimental/cascade/pipelines:all_pipelines",
+        "//max/python/max/pipelines/architectures",
         "//max/python/max/pipelines/lib",
-        requirement("numpy"),
         requirement("pytest-asyncio"),
     ],
 )
@@ -132,15 +190,14 @@ modular_py_test(
         "no-sandbox",
         "requires-network",
     ],
-    # The llama3 architecture SmolLM resolves to (via string lookup in the
-    # registry) arrives transitively through the cascade pipelines target,
-    # which depends on every architecture for the dispatcher's runfiles.
     deps = [
         "//max/python/max/driver",
         "//max/python/max/experimental/cascade",
         "//max/python/max/experimental/cascade/core",
+        # all_pipelines brings every architecture (llama3 resolves SmolLM at
+        # runtime); pipelines provides the CommonTextGenPipeline class.
         "//max/python/max/experimental/cascade/pipelines",
-        "//max/python/max/experimental/cascade/workers",
+        "//max/python/max/experimental/cascade/pipelines:all_pipelines",
         "//max/python/max/pipelines/lib",
         "//max/tests/integration:hf_repo_lock",
         requirement("numpy"),

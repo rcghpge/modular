@@ -50,13 +50,19 @@ boundary -- no cross-sequence bleed. `final_states (batch, nheads, head_dim,
 dstate)` is written at each sequence end.
 """
 
-from std.gpu import block_dim, block_idx, thread_idx
+from std.gpu import (
+    MAX_THREADS_PER_BLOCK_METADATA,
+    block_dim,
+    block_idx,
+    thread_idx,
+)
 from std.gpu.host import DeviceContext
 from std.gpu.primitives.warp import lane_group_sum
 from std.algorithm import sync_parallelize
 from std.math import exp2
 from std.sys.info import align_of
 from std.utils.index import IndexList
+from std.utils.static_tuple import StaticTuple
 from layout import PointerStorage, TensorLayout, TensorStorage, TileTensor
 from state_space.selective_scan import softplus
 
@@ -344,11 +350,73 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu[
     Identical to ``mamba2_ssd_chunk_scan_varlen_fwd_gpu`` except final states
     are written directly into ``ssm_pool[cache_indices[b], ...]`` (fp32,
     [max_slots, nheads, head_dim, dstate]) instead of a separate
-    ``final_states`` output tensor.  This eliminates the graph-side
+    ``final_states`` output tensor. This eliminates the graph-side
     gather/scatter_nd/buffer_store whole-pool round-trip.
 
     Grid: (ceildiv(head_dim, BLOCK), nheads, batch). Same launch shape as the
     non-inplace variant.
+
+    Parameters:
+        kernel_dtype: Element type of the input/output tensors `x`, `dt`,
+            `A`, `B`, `C`, `D`, `dt_bias`, and `y`.
+        DSTATE: State dimension per head; the `dstate` extent of `B`, `C`,
+            and the SSM state vector.
+        x_LT: Tensor layout of `x`.
+        dt_LT: Tensor layout of `dt`.
+        A_LT: Tensor layout of `A`.
+        B_LT: Tensor layout of `B`.
+        C_LT: Tensor layout of `C`.
+        D_LT: Tensor layout of `D`.
+        dt_bias_LT: Tensor layout of `dt_bias`.
+        y_LT: Tensor layout of `y`.
+        ssm_pool_LT: Tensor layout of `ssm_pool`.
+        query_start_loc_LT: Tensor layout of `query_start_loc`.
+        has_initial_state_LT: Tensor layout of `has_initial_state`.
+        cache_indices_LT: Tensor layout of `cache_indices`.
+        Storage: Storage policy shared by all tile operands (defaults to
+            `PointerStorage[element_width=1]`).
+
+    Args:
+        nheads: Number of attention heads.
+        head_dim: Channel dimension per head; the `p` extent of `x` and `y`.
+        ngroups: Number of B/C groups; `nheads // ngroups` heads share each
+            group.
+        nheads_ngroups_ratio: Ratio `nheads // ngroups` mapping head `h` to
+            group `h // nheads_ngroups_ratio`.
+        batch: Number of sequences in the varlen batch.
+        dt_softplus: Nonzero applies `softplus` to `dt + dt_bias`; zero
+            skips it.
+        x: Input sequence tensor of shape `(total_len, nheads, head_dim)`.
+        dt: Step-size tensor of shape `(total_len, nheads)`.
+        A: Per-head scalar recurrence diagonal of shape `(nheads,)`.
+        B: Input-projection tensor of shape `(total_len, ngroups, dstate)`.
+        C: Output-projection tensor of shape `(total_len, ngroups, dstate)`.
+        D: Skip-connection per head of shape `(nheads,)`; may be empty to
+            disable.
+        dt_bias: Per-head bias added to `dt` of shape `(nheads,)`; may be
+            empty to disable.
+        y: Output tensor of shape `(total_len, nheads, head_dim)`, written
+            in place.
+        ssm_pool: State pool of shape `(max_slots, nheads, head_dim,
+            dstate)` fp32; read for initial state and written in place at
+            `cache_indices[b]`.
+        query_start_loc: Cumulative sequence offsets of shape
+            `(batch + 1,)`; sequence `b` spans
+            `[query_start_loc[b], query_start_loc[b+1])`.
+        has_initial_state: Per-sequence flag of shape `(batch,)`; when true,
+            load the initial state from `ssm_pool[cache_indices[b]]`.
+        cache_indices: Slot index per sequence of shape `(batch,)` into
+            `ssm_pool` for the initial and final state.
+        x_strides: Strides of `x` along `(total_len, nheads, head_dim)`.
+        dt_strides: Strides of `dt` along `(total_len, nheads)`.
+        A_strides: Strides of `A` along `(nheads,)`.
+        B_strides: Strides of `B` along `(total_len, ngroups, dstate)`.
+        C_strides: Strides of `C` along `(total_len, ngroups, dstate)`.
+        D_strides: Strides of `D` along `(nheads,)`.
+        dt_bias_strides: Strides of `dt_bias` along `(nheads,)`.
+        y_strides: Strides of `y` along `(total_len, nheads, head_dim)`.
+        ssm_pool_strides: Strides of `ssm_pool` along `(max_slots, nheads,
+            head_dim, dstate)`.
     """
     var p = block_dim.x * block_idx.x + thread_idx.x
     var h = block_idx.y
@@ -470,6 +538,36 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu[
         ssm_pool.raw_store(off, state[n])
 
 
+# NVIDIA B200 (sm_100) launch-bounds occupancy floor. This kernel is only ever
+# launched with a 128-thread block (production kernels.mojo and the unit test
+# both use `block_dim=(DSTATE_SPLIT, CH_PER_BLOCK, 1)` with
+# DSTATE_SPLIT*CH_PER_BLOCK == 128), so `.maxntid 128` is exact.
+#
+# At the c32 (batch-32) decode regime this is the #1 decode GPU kernel and is
+# REGISTER-capped, not launch-bound. For the production tile L == DSTATE //
+# DSTATE_SPLIT == 128 // 8 == 16, the kernel allocates 149 registers uncapped
+# (3 CTAs/SM, ~16% occupancy) yet fits a 128-register budget with ZERO spill
+# (the 149->128 is dead slack; measured via `_ptxas_info_verbose`). Setting
+# `.minnctapersm 4` forces that 128-reg budget: 4 CTAs * 128 threads * 128 regs
+# == the 65536-register SM file, i.e. 4 CTAs/SM (~25% occupancy). Because the
+# kernel is Long-Scoreboard / latency-bound (DRAM ~15% SoL, not bandwidth-
+# bound), the extra resident CTAs hide global-load latency -- occupancy is the
+# lever, and the zero-spill 128-reg point is the one that pays off.
+#
+# The floor is GATED on `L <= 16`: for larger tiles (e.g. DSTATE==256, split 8
+# -> L==32) the hot fp32 state/B/C SIMD vectors of width L do NOT fit 128
+# registers (they spill even uncapped at 255), so a 128-reg floor would only
+# add spill traffic. Those tiles keep `.minnctapersm 1` (a no-op floor) and
+# ptxas's natural register budget. This is a codegen (regalloc) hint only --
+# output is bit-identical to the un-annotated kernel; the correctness gate is
+# `test_mamba2_ssd_inplace_dstate_split_vs_functional`.
+@__llvm_metadata(
+    MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(128))
+)
+@__llvm_metadata(
+    `nvvm.minctasm`=SIMDLength(4) if (DSTATE // DSTATE_SPLIT)
+    <= 16 else SIMDLength(1)
+)
 def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
     kernel_dtype: DType,
     DSTATE: Int,
@@ -1293,6 +1391,56 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[
 
     Mirrors ``mamba2_ssd_chunk_scan_varlen_fwd_cpu`` but writes final states
     into ``ssm_pool[cache_indices[b], ...]`` directly.
+
+    Parameters:
+        kernel_dtype: Element type of the input/output tensors `x`, `dt`,
+            `A`, `B`, `C`, `D`, `dt_bias`, and `y`.
+        DSTATE: State dimension per head; the `dstate` extent of `B`, `C`,
+            and the SSM state vector.
+
+    Args:
+        nheads: Number of attention heads.
+        head_dim: Channel dimension per head; the `p` extent of `x` and `y`.
+        ngroups: Number of B/C groups; `nheads // ngroups` heads share each
+            group.
+        nheads_ngroups_ratio: Ratio `nheads // ngroups` mapping head `h` to
+            group `h // nheads_ngroups_ratio`.
+        batch: Number of sequences in the varlen batch.
+        dt_softplus: Nonzero applies `softplus` to `dt + dt_bias`; zero
+            skips it.
+        x: Input sequence tensor of shape `(total_len, nheads, head_dim)`.
+        dt: Step-size tensor of shape `(total_len, nheads)`.
+        A: Per-head scalar recurrence diagonal of shape `(nheads,)`.
+        B: Input-projection tensor of shape `(total_len, ngroups, dstate)`.
+        C: Output-projection tensor of shape `(total_len, ngroups, dstate)`.
+        D: Skip-connection per head of shape `(nheads,)`; may be empty to
+            disable.
+        dt_bias: Per-head bias added to `dt` of shape `(nheads,)`; may be
+            empty to disable.
+        y: Output tensor of shape `(total_len, nheads, head_dim)`, written
+            in place.
+        ssm_pool: State pool of shape `(max_slots, nheads, head_dim,
+            dstate)` fp32; read for initial state and written in place at
+            `cache_indices[b]`.
+        query_start_loc: Cumulative sequence offsets of shape
+            `(batch + 1,)`; sequence `b` spans
+            `[query_start_loc[b], query_start_loc[b+1])`.
+        has_initial_state: Per-sequence flag of shape `(batch,)`; when true,
+            load the initial state from `ssm_pool[cache_indices[b]]`.
+        cache_indices: Slot index per sequence of shape `(batch,)` into
+            `ssm_pool` for the initial and final state.
+        x_strides: Strides of `x` along `(total_len, nheads, head_dim)`.
+        dt_strides: Strides of `dt` along `(total_len, nheads)`.
+        A_strides: Strides of `A` along `(nheads,)`.
+        B_strides: Strides of `B` along `(total_len, ngroups, dstate)`.
+        C_strides: Strides of `C` along `(total_len, ngroups, dstate)`.
+        D_strides: Strides of `D` along `(nheads,)`.
+        dt_bias_strides: Strides of `dt_bias` along `(nheads,)`.
+        y_strides: Strides of `y` along `(total_len, nheads, head_dim)`.
+        ssm_pool_strides: Strides of `ssm_pool` along `(max_slots, nheads,
+            head_dim, dstate)`.
+        ctx: Device context for the parallel worker pool (defaults to
+            `None`).
     """
     var has_D = Int(D.dim[0]()) > 0
     var has_dt_bias = Int(dt_bias.dim[0]()) > 0

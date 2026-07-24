@@ -328,7 +328,7 @@ def empty[T: Movable]() -> _Empty[T]:
 
 
 @fieldwise_init
-struct _Once[T: Movable](
+struct _Once[T: Movable & ImplicitlyDeletable](
     Copyable where conforms_to(T, Copyable),
     Iterable where conforms_to(T, Copyable),
     IterableOwned,
@@ -365,7 +365,7 @@ struct _Once[T: Movable](
 
 
 @always_inline
-def once[T: Movable, //](var element: T, /) -> _Once[T]:
+def once[T: Movable & ImplicitlyDeletable, //](var element: T, /) -> _Once[T]:
     """Creates an iterator that yields an element exactly once.
 
     Parameters:
@@ -536,7 +536,7 @@ struct _ZipIterator[origin: Origin, *Ts: Iterator](
         __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(res))
         try:
             comptime for i in range(Self._InjectedValues.__len__()):
-                UnsafePointer(to=res[i]).unsafe_write(
+                Pointer(to=res[i]).unsafe_write(
                     rebind_var[type_of(res[i])](next(self._values[i]))
                 )
                 initialized += 1
@@ -547,7 +547,7 @@ struct _ZipIterator[origin: Origin, *Ts: Iterator](
                     type_of(res[i]), ImplicitlyDeletable
                 )
                 if i < initialized:
-                    UnsafePointer(to=res[i]).unsafe_deinit_pointee()
+                    Pointer(to=res[i]).unsafe_deinit_pointee()
 
             std.memory.forget_deinit(res^)
             raise StopIteration
@@ -596,7 +596,7 @@ def zip[
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(res))
 
     comptime for i in range(res._InjectedValues.__len__()):
-        UnsafePointer(to=res._values[i]).unsafe_write(
+        Pointer(to=res._values[i]).unsafe_write(
             rebind_var[type_of(res._values[i])](iter(iterables[i]))
         )
 
@@ -632,7 +632,7 @@ def zip[
 
     @parameter
     def init_elt[idx: Int](var elt: iterables.element_types[idx]):
-        UnsafePointer(to=res._values[idx]).unsafe_write(
+        Pointer(to=res._values[idx]).unsafe_write(
             rebind_var[type_of(res._values[idx])](iter(elt^))
         )
 
@@ -777,7 +777,7 @@ struct _PeekableIterator[InnerIterator: Iterator](
     ),
     IterableOwned,
     Iterator,
-):
+) where conforms_to(InnerIterator.Element, ImplicitlyDeletable):
     comptime Element = Self.InnerIterator.Element
     comptime IteratorType[
         iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
@@ -823,12 +823,17 @@ struct _PeekableIterator[InnerIterator: Iterator](
                 self._next = next(self._inner)
             except:
                 return None
-        return Pointer[mut=False](to=self._next.unsafe_value())
+        return Pointer[mut=False, Self.Element](to=self._next.unsafe_value())
 
 
 def peekable(
     ref iterable: Some[Iterable],
-) -> _PeekableIterator[type_of(iterable).IteratorType[origin_of(iterable)]]:
+) -> _PeekableIterator[
+    type_of(iterable).IteratorType[origin_of(iterable)]
+] where conforms_to(
+    type_of(iterable).IteratorType[origin_of(iterable)].Element,
+    ImplicitlyDeletable,
+):
     """Returns a peekable iterator that can use the `peek` method to look ahead
     at the next element without advancing the iterator.
 
@@ -843,7 +848,10 @@ def peekable(
 
 def peekable(
     var iterable: Some[IterableOwned],
-) -> _PeekableIterator[type_of(iterable).IteratorOwnedType]:
+) -> _PeekableIterator[type_of(iterable).IteratorOwnedType] where conforms_to(
+    type_of(iterable).IteratorOwnedType.Element,
+    ImplicitlyDeletable,
+):
     """Returns a peekable iterator that can use the `peek` method to look ahead
     at the next element without advancing the iterator, consuming the iterable.
 
@@ -954,7 +962,7 @@ def chain[
     res._idx = 0
 
     comptime for i in range(res._Iterators.__len__()):
-        UnsafePointer(to=res._iterators[i]).unsafe_write(
+        Pointer(to=res._iterators[i]).unsafe_write(
             rebind_var[type_of(res._iterators[i])](iter(iterables[i]))
         )
 
@@ -981,7 +989,7 @@ def chain[
 
     @parameter
     def init_elt[idx: Int](var elt: iterables.element_types[idx]):
-        UnsafePointer(to=res._iterators[idx]).unsafe_write(
+        Pointer(to=res._iterators[idx]).unsafe_write(
             rebind_var[type_of(res._iterators[idx])](iter(elt^))
         )
 

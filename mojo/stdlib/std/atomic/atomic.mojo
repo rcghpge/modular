@@ -245,9 +245,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
     def load[
         *,
         ordering: Ordering = _DEFAULT_MEMORY_ORDERING,
-    ](ptr: UnsafePointer[mut=False, Scalar[Self.dtype], ...]) -> Scalar[
-        Self.dtype
-    ]:
+    ](ptr: Pointer[mut=False, Scalar[Self.dtype], ...]) -> Scalar[Self.dtype]:
         """Loads the current value from the atomic.
 
         Parameters:
@@ -286,14 +284,14 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         Returns:
             The current value of the atomic.
         """
-        return Self.load[ordering=ordering](UnsafePointer(to=self.value))
+        return Self.load[ordering=ordering](Pointer(to=self.value))
 
     @staticmethod
     @always_inline("nodebug")
     def fetch_add[
         *, ordering: Ordering = _DEFAULT_ARITHMETIC_ORDERING
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         rhs: Scalar[Self.dtype],
     ) -> Scalar[Self.dtype]:
         """Performs atomic in-place add.
@@ -326,7 +324,9 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             syncscope=_get_kgen_string[Self.scope](),
             _type=Scalar[Self.dtype]._mlir_type,
         ](
-            ptr.bitcast[Scalar[Self.dtype]._mlir_type]()._get_kgen_pointer(),
+            ptr.unsafe_bitcast[
+                Scalar[Self.dtype]._mlir_type
+            ]()._get_kgen_pointer(),
             rhs._mlir_value,
         )
         return Scalar[Self.dtype](mlir_value=res)
@@ -336,7 +336,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
     def _xchg[
         *, ordering: Ordering = _DEFAULT_MEMORY_ORDERING
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         value: Scalar[Self.dtype],
     ) -> Scalar[Self.dtype]:
         """Performs an atomic exchange.
@@ -366,7 +366,9 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             syncscope=_get_kgen_string[Self.scope](),
             _type=Scalar[Self.dtype]._mlir_type,
         ](
-            ptr.bitcast[Scalar[Self.dtype]._mlir_type]()._get_kgen_pointer(),
+            ptr.unsafe_bitcast[
+                Scalar[Self.dtype]._mlir_type
+            ]()._get_kgen_pointer(),
             value._mlir_value,
         )
         return Scalar[Self.dtype](mlir_value=res)
@@ -376,7 +378,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
     def store[
         *, ordering: Ordering = _DEFAULT_MEMORY_ORDERING
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         value: Scalar[Self.dtype],
     ):
         """Performs an atomic store.
@@ -412,7 +414,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         Args:
             value: The value to store.
         """
-        var value_addr = UnsafePointer(to=self.value)
+        var value_addr = Pointer(to=self.value)
         Self.store[ordering=ordering](value_addr, value)
 
     @always_inline
@@ -436,7 +438,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         Returns:
             The original value before addition.
         """
-        var value_addr = UnsafePointer(to=self.value)
+        var value_addr = Pointer(to=self.value)
         return Self.fetch_add[ordering=ordering](value_addr, rhs)
 
     @always_inline
@@ -481,7 +483,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             self.value -= rhs
             return res
 
-        var value_addr = UnsafePointer(to=self.value._mlir_value)
+        var value_addr = Pointer(to=self.value._mlir_value)
         var res = __mlir_op.`pop.atomic.rmw`[
             bin_op=__mlir_attr.`#pop<bin_op sub>`,
             ordering=ordering.__mlir_attr(),
@@ -511,8 +513,9 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         *,
         success_ordering: Ordering = _DEFAULT_COMPARISON_ORDERING,
         failure_ordering: Ordering = _DEFAULT_COMPARISON_ORDERING,
+        weak: Bool = False,
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         mut expected: Scalar[Self.dtype],
         desired: Scalar[Self.dtype],
     ) -> Bool:
@@ -524,6 +527,8 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         Parameters:
             success_ordering: The memory ordering for the success case.
             failure_ordering: The memory ordering for the failure case.
+            weak: Allows the comparison to fail spuriously even when `ptr`
+                equals `expected`. Only safe inside a retry loop.
 
         Args:
           ptr: The source pointer.
@@ -550,7 +555,8 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
                 scope=Self.scope,
                 success_ordering=success_ordering,
                 failure_ordering=failure_ordering,
-            ](ptr, UnsafePointer(to=expected), desired)
+                weak=weak,
+            ](ptr, Pointer(to=expected), desired)
 
         # For the floating point case, we need to bitcast the floating point
         # values to their integral representation and perform the atomic
@@ -558,8 +564,8 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
 
         comptime integral_type = _integral_type_of[Self.dtype]()
 
-        var atomic_integral_ptr = ptr.bitcast[Scalar[integral_type]]()
-        var expected_integral_ptr = UnsafePointer(to=expected).bitcast[
+        var atomic_integral_ptr = ptr.unsafe_bitcast[Scalar[integral_type]]()
+        var expected_integral_ptr = Pointer(to=expected).unsafe_bitcast[
             Scalar[integral_type]
         ]()
         var desired_integral = bitcast[integral_type](desired)
@@ -568,6 +574,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             scope=Self.scope,
             success_ordering=success_ordering,
             failure_ordering=failure_ordering,
+            weak=weak,
         ](atomic_integral_ptr, expected_integral_ptr, desired_integral)
 
     @always_inline("nodebug")
@@ -575,6 +582,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         *,
         success_ordering: Ordering = _DEFAULT_COMPARISON_ORDERING,
         failure_ordering: Ordering = _DEFAULT_COMPARISON_ORDERING,
+        weak: Bool = False,
     ](
         mut self, mut expected: Scalar[Self.dtype], desired: Scalar[Self.dtype]
     ) -> Bool:
@@ -586,6 +594,8 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         Parameters:
             success_ordering: The memory ordering for the success case.
             failure_ordering: The memory ordering for the failure case.
+            weak: Allows the comparison to fail spuriously even when `self`
+                equals `expected`. Only safe inside a retry loop.
 
         Args:
           expected: The expected value.
@@ -598,14 +608,15 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         return Self.compare_exchange[
             success_ordering=success_ordering,
             failure_ordering=failure_ordering,
-        ](UnsafePointer(to=self.value), expected, desired)
+            weak=weak,
+        ](Pointer(to=self.value), expected, desired)
 
     @staticmethod
     @always_inline
     def max[
         *, ordering: Ordering = _DEFAULT_COMPARISON_ORDERING
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         rhs: Scalar[Self.dtype],
     ):
         """Performs atomic in-place max on the pointer.
@@ -654,14 +665,14 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             Self.dtype.is_numeric()
         ), "the input type must be arithmetic"
 
-        Self.max[ordering=ordering](UnsafePointer(to=self.value), rhs)
+        Self.max[ordering=ordering](Pointer(to=self.value), rhs)
 
     @staticmethod
     @always_inline
     def min[
         *, ordering: Ordering = _DEFAULT_COMPARISON_ORDERING
     ](
-        ptr: UnsafePointer[mut=True, Scalar[Self.dtype], ...],
+        ptr: Pointer[mut=True, Scalar[Self.dtype], ...],
         rhs: Scalar[Self.dtype],
     ):
         """Performs atomic in-place min on the pointer.
@@ -712,7 +723,7 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
             Self.dtype.is_numeric()
         ), "the input type must be arithmetic"
 
-        Self.min[ordering=ordering](UnsafePointer(to=self.value), rhs)
+        Self.min[ordering=ordering](Pointer(to=self.value), rhs)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -728,19 +739,50 @@ def _compare_exchange_integral_impl[
     scope: StaticString,
     success_ordering: Ordering,
     failure_ordering: Ordering,
+    weak: Bool = False,
 ](
-    atomic_ptr: UnsafePointer[mut=True, Scalar[dtype], ...],
-    expected_ptr: UnsafePointer[mut=True, Scalar[dtype], ...],
+    atomic_ptr: Pointer[mut=True, Scalar[dtype], ...],
+    expected_ptr: Pointer[mut=True, Scalar[dtype], ...],
     desired: Scalar[dtype],
 ) -> Bool:
     comptime assert dtype.is_integral(), "the input type must be integral"
+
+    # `weak` is a unit attribute with no "absent" value, so each form needs
+    # its own `__mlir_op` call rather than one with a conditional attribute.
+    comptime if weak:
+        var cmpxchg_res = __mlir_op.`pop.atomic.cmpxchg`[
+            weak=__mlir_attr.unit,
+            failure_ordering=failure_ordering.__mlir_attr(),
+            success_ordering=success_ordering.__mlir_attr(),
+            syncscope=_get_kgen_string[scope](),
+        ](
+            atomic_ptr.unsafe_bitcast[
+                Scalar[dtype]._mlir_type
+            ]()._get_kgen_pointer(),
+            expected_ptr[]._mlir_value,
+            desired._mlir_value,
+        )
+
+        expected_ptr[] = Scalar[dtype](
+            mlir_value=__mlir_op.`kgen.struct.extract`[
+                index=__mlir_attr.`0:index`
+            ](cmpxchg_res)
+        )
+
+        return Bool(
+            mlir_value=__mlir_op.`kgen.struct.extract`[
+                index=__mlir_attr.`1:index`
+            ](cmpxchg_res)
+        )
 
     var cmpxchg_res = __mlir_op.`pop.atomic.cmpxchg`[
         failure_ordering=failure_ordering.__mlir_attr(),
         success_ordering=success_ordering.__mlir_attr(),
         syncscope=_get_kgen_string[scope](),
     ](
-        atomic_ptr.bitcast[Scalar[dtype]._mlir_type]()._get_kgen_pointer(),
+        atomic_ptr.unsafe_bitcast[
+            Scalar[dtype]._mlir_type
+        ]()._get_kgen_pointer(),
         expected_ptr[]._mlir_value,
         desired._mlir_value,
     )
@@ -765,8 +807,8 @@ def _compare_exchange_integral_impl[
 @always_inline
 def _max_impl_base[
     dtype: DType, //, *, scope: StaticString, ordering: Ordering
-](ptr: UnsafePointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
-    var value_addr = ptr.bitcast[Scalar[dtype]._mlir_type]()
+](ptr: Pointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
+    var value_addr = ptr.unsafe_bitcast[Scalar[dtype]._mlir_type]()
     _ = __mlir_op.`pop.atomic.rmw`[
         bin_op=__mlir_attr.`#pop<bin_op max>`,
         ordering=ordering.__mlir_attr(),
@@ -778,8 +820,8 @@ def _max_impl_base[
 @always_inline
 def _min_impl_base[
     dtype: DType, //, *, scope: StaticString, ordering: Ordering
-](ptr: UnsafePointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
-    var value_addr = ptr.bitcast[Scalar[dtype]._mlir_type]()
+](ptr: Pointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
+    var value_addr = ptr.unsafe_bitcast[Scalar[dtype]._mlir_type]()
     _ = __mlir_op.`pop.atomic.rmw`[
         bin_op=__mlir_attr.`#pop<bin_op min>`,
         ordering=ordering.__mlir_attr(),
@@ -795,18 +837,18 @@ def _max_impl[
     *,
     scope: StaticString,
     ordering: Ordering,
-](ptr: UnsafePointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
+](ptr: Pointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
     comptime if is_nvidia_gpu() and dtype.is_floating_point():
         comptime integral_type = _integral_type_of[dtype]()
         comptime unsigned_integral_type = _unsigned_integral_type_of[dtype]()
         if rhs >= 0:
             _max_impl_base[scope=scope, ordering=ordering](
-                ptr.bitcast[Scalar[integral_type]](),
+                ptr.unsafe_bitcast[Scalar[integral_type]](),
                 bitcast[integral_type](rhs),
             )
             return
         _min_impl_base[scope=scope, ordering=ordering](
-            ptr.bitcast[Scalar[unsigned_integral_type]](),
+            ptr.unsafe_bitcast[Scalar[unsigned_integral_type]](),
             bitcast[unsigned_integral_type](rhs),
         )
         return
@@ -821,18 +863,18 @@ def _min_impl[
     *,
     scope: StaticString,
     ordering: Ordering,
-](ptr: UnsafePointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
+](ptr: Pointer[mut=True, Scalar[dtype], ...], rhs: Scalar[dtype]):
     comptime if is_nvidia_gpu() and dtype.is_floating_point():
         comptime integral_type = _integral_type_of[dtype]()
         comptime unsigned_integral_type = _unsigned_integral_type_of[dtype]()
         if rhs >= 0:
             _min_impl_base[scope=scope, ordering=ordering](
-                ptr.bitcast[Scalar[integral_type]](),
+                ptr.unsafe_bitcast[Scalar[integral_type]](),
                 bitcast[integral_type](rhs),
             )
             return
         _max_impl_base[scope=scope, ordering=ordering](
-            ptr.bitcast[Scalar[unsigned_integral_type]](),
+            ptr.unsafe_bitcast[Scalar[unsigned_integral_type]](),
             bitcast[unsigned_integral_type](rhs),
         )
         return

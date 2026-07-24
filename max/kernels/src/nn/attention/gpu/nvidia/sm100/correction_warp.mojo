@@ -40,12 +40,12 @@ from .smem import SM100AttentionSMem
 @always_inline
 def fa4_correction[
     qkv_dtype: DType,
-    rope_dtype: DType,
-    scale_dtype: DType,
+    rope_dtype_: Optional[DType],
+    scale_dtype_: Optional[DType],
     MaskType: MHAMask,
     //,
     config: FA4Config[
-        qkv_dtype, rope_dtype=rope_dtype, scale_dtype=scale_dtype
+        qkv_dtype, rope_dtype_=rope_dtype_, scale_dtype_=scale_dtype_
     ],
     page_size: Int,
 ](
@@ -243,7 +243,11 @@ def fa4_correction[
     # before the per-WG c0/c1 split. Identical window to the other warps
     # (total_iters == last_masked_set_end for check_mask==False masks).
     comptime if config.num_q == 1 and config.splitk_partitions > 1:
-        var _np: UInt32 = UInt32(cluster_dim.x)
+        var _np: UInt32
+        comptime if config.dynamic_cluster_dim:
+            _np = UInt32(cluster_dim.x)
+        else:
+            _np = UInt32(config.splitk_partitions)
         var _w = splitk_window(
             total_iters_runtime,
             _np,

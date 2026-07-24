@@ -10,6 +10,29 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- Mojo supports an (internal only for now) feature known as *interior origins*,
+  which allows collections to protect from a common class of memory unsafety
+  problems. `List`, for example, now returns element references bound
+  to an *interior origin* of the list instead of the whole-list origin, so an
+  element reference is invalidated when the list is mutated (for example by
+  `append()` or `pop()`). Code that holds an element reference across such a
+  mutation is now correctly rejected by the lifetime checker instead of
+  silently dangling after a reallocation:
+
+  ```mojo
+  var list = [1, 2, 3]
+  ref elem = list[0]
+  list.append(4)  # may reallocate, invalidating `elem`
+  print(elem)     # error: use of invalidated interior reference
+  ```
+
+- Mojo now support type inference from literals initializer.
+
+  ```mojo
+  var x : List[_] = [1, 2, 3]
+  var x : List = [1.0, 2.0, 3.0]
+  ```
+
 - Mojo now support `==` and `!=` for type equality check, and `_type_is_eq` is
   removed.
 
@@ -142,18 +165,6 @@ This version is still a work in progress.
 
 - `imm` is now the preferred spelling for the `read` argument and
   closure-capture convention. `read` still works but will soon be deprecated.
-
-- A file can now import another identically named module or package, assuming
-  it is found first during import resolution (#4534):
-
-  ```mojo
-  # -------- #
-  # foo.mojo #
-  # -------- #
-  from foo import bar   # a package on the system
-
-  bar()
-  ```
 
 ## Language changes
 
@@ -353,6 +364,7 @@ This version is still a work in progress.
   ```
 
 ## Library stabilizations
+<!-- rumdl-disable MD013 -->
 
 - `trait ImplicitlyDeletable`
 - `trait Movable`
@@ -363,21 +375,160 @@ This version is still a work in progress.
   - `def __init__(out self)`
   - `def __init__(out self, *, capacity: Int)`
   - `def __init__(out self, *, copy: Self) where conforms_to(Self.T, Copyable):`
+  - `def __init__(out self, *, length: Int, fill: Self.T) where conforms_to(Self.T, Copyable):`
   - `def __del__(deinit self) where conforms_to(Self.T, ImplicitlyDeletable):`
+  - `def reserve(mut self, capacity: Int):`
+  - `def resize(mut self, length: Int, fill: Self.T) where conforms_to(Self.T, Copyable & ImplicitlyDeletable):`
+  - `def __getitem__[origin: Origin, //](ref[origin] self, slice: ContiguousSlice) -> Span[Self.T, origin_of(self)._get_owned_interior["element"]]:`
+  - `def __init__(out self, *, length: Int, fill: Self.T) where conforms_to(Self.T, Copyable):`
+  - `def __iadd__(mut self, var other: Self, /) where conforms_to(Self.T, Copyable):`
+  - `def extend(mut self, var other: Self):`
+  - `def __contains__[dtype: DType, //](self: Span[Scalar[dtype], _]. value: Scalar[dtype]) -> Bool`
+  - `def __contains__(self, value: Self.T) -> Bool where conforms_to(Self.T, Equatable)`
 
-  - ```def __getitem__[
-        origin: Origin, //
-      ](ref[origin] self, slice: ContiguousSlice) -> Span[Self.T, origin]:
-    ```
-
+- Bool
 - Span
+  - `def __init__(out self):`
+  - `def __init__(other: Span, out self: ImmSpan[other.T, other.origin]):`
+
+<!-- rumdl-enable MD013 -->
 
 ## Library changes
+
+- When an unhandled error propagates out of `main` and no stack trace was
+  collected, Mojo now prints a hint to set
+  `MODULAR_DEBUG=stack-trace-on-error` to enable stack trace collection,
+  rather than printing only the error message.
+
+- `Variant` now accepts element types that are not `Movable`. Its type list is
+  bounded by `AnyType`, and `Variant` conditionally conforms to `Movable`,
+  `Copyable`, and related traits only when all of its element types do. A
+  value whose type is not `Movable` can be stored in place with the new
+  closure-based constructor and `set()` overload, which construct the value
+  directly into the variant's storage (placement-new) rather than moving it:
+
+  ```mojo
+  from std.utils import Variant
+
+  @fieldwise_init
+  struct Pinned(Movable where False):
+      var value: Int
+
+  def make() -> Pinned:
+      return Pinned(7)
+
+  var v = Variant[Pinned, Int](call=make)  # construct in place
+  v.set(call=make)                         # replace in place
+  ```
+
+- Various datatypes have adopted interior origins for increased memory safety,
+  including `List`, `Deque`, `Variant`, `String`, `Dict`, `LinkedList`,
+  `OwnedPointer`, and `HostBuffer`. A reference or view into one of these
+  containers now carries an interior origin, so one held across a mutation is
+  rejected by the lifetime checker instead of silently dangling after a
+  reallocation. For example, indexing a `List` (`list[i]`) returns a reference
+  bound to the list:
+
+  ```mojo
+  var list = [1, 2, 3]
+  ref elem = list[0]
+  list.append(4)  # may reallocate, invalidating `elem`
+  print(elem)     # error: use of invalidated interior reference
+  ```
+
+  `HostBuffer.as_span()` now returns a `Span` bound to an interior origin of the
+  buffer instead of the whole-buffer origin, so a span held across a mutation of
+  the buffer is rejected by the lifetime checker:
+
+  ```mojo
+  var buf = ctx.enqueue_create_host_buffer[DType.float32](4)
+  var s = buf.as_span()
+  buf[0] = 1.0    # mutates the buffer, invalidating `s`
+  print(s[0])     # error: use of invalidated interior reference
+  ```
+
+- Added `Tuple.consume_elements`, which moves each element out of a tuple into a
+  caller-provided closure one at a time. Destructuring such as `a, b = t^`
+  copies each element, so it cannot take apart a tuple whose elements are
+  `Movable` but not `ImplicitlyCopyable`; `consume_elements` transfers ownership
+  instead, mirroring `VariadicPack.consume_elements`.
+
+  ```mojo
+  var t = ([1, 2, 3], [4, 5, 6])  # `List` is not `ImplicitlyCopyable`
+
+  @parameter
+  def handler[idx: Int](var elt: t.element_types[idx]):
+      print(len(elt))
+
+  t^.consume_elements[handler]()
+  ```
+
+- `InlineArray`'s second parameter is renamed from `size` to `length`.
+  `InlineArray.size` remains as a deprecated alias for `InlineArray.length`;
+  update any explicit `InlineArray[T, size=N]` to `InlineArray[T, length=N]`,
+  and `.size` reads to `.length`.
+
+- `InlineArray`'s first parameter is renamed from `ElementType` to `T`.
+  Any explicit usages must be updated.
+
+- `Span`'s pointer-and-length constructor argument is renamed from `ptr` to
+  `unsafe_ptr`, to flag that this construction path is memory-unsafe: the caller
+  must ensure the pointer addresses at least `length` valid elements. Update
+  `Span(ptr=..., length=...)` to `Span(unsafe_ptr=..., length=...)`.
+
+- `DeviceContextList` is renamed to `DeviceContextArray`, and its parameter is
+  renamed from `size` to `length`. The old struct name remains as a
+  deprecated alias, and `DeviceContextArray.size` remains as a deprecated
+  alias for `DeviceContextArray.length`; update any explicit
+  `DeviceContextList[size=N]` to `DeviceContextArray[length=N]`.
 
 - `List.capacity` is now a `capacity()` method instead of a public field. This
   keeps the allocated capacity out of the stable public field surface, since it
   should only change indirectly through operations like `append()`. Replace
   `my_list.capacity` with `my_list.capacity()`.
+
+- Renamed `StaticConstantOrigin` to `ImmStaticOrigin`, to align with the
+  `Imm`-prefixed spelling used for the other immutable origins. The old name
+  is still available as a deprecated alias and will be removed in a future
+  release.
+
+- Floating-point `range()` iteration is now drift-free and reversible.
+  Element `i` is computed as `fma(i, step, start)`. Forward and reverse
+  iteration produce identical sequences across repeated calls
+  and across any IEEE-754 platform at the same floating-point width.
+  Previously a step that was not exactly representable, such as `0.1`, could
+  drift and yield an extra forward element that `reversed()` then dropped.
+
+- `range()` now rejects non-numeric element types (`Bool` and the narrow MX
+  float formats) at construction. The one- and two-argument float ranges
+  (`range(Float64(4.5))` and `range(Float64(0.5), Float64(3.0))`) are compile
+  errors instead of infinite loops; use the three-argument stepped form.
+
+- `repr()` of a scalar `SIMD` value (`size == 1`) now prints using its type
+  alias instead of the verbose `SIMD[DType.<dtype>, 1](...)` form when the
+  dtype has one. For example, `repr(UInt32(4))` is now `UInt32(4)` (previously
+  `SIMD[DType.uint32, 1](4)`), and `repr(List[UInt](1, 2))` is now
+  `List[SIMD[DType.uint, 1]]([UInt(1), UInt(2)])`. `size > 1` values, and
+  scalar dtypes without an alias (such as `DType.bool`), keep the
+  `SIMD[...]` form. This only affects `repr()`; `String(...)` / `print(...)`
+  output is unchanged.
+
+- Renamed `memmove` to `unsafe_memmove` to make its unsafety explicit. The old
+  `memmove` name is deprecated and will be removed in a future release.
+
+- Renamed `memset` and `memset_zero` to `unsafe_memset` and
+  `unsafe_memset_zero` to make their unsafety explicit. The old names are
+  deprecated and will be removed in a future release.
+
+- Renamed `memcmp` to `unsafe_memcmp` to make its unsafety explicit. The old
+  `memcmp` name is deprecated and will be removed in a future release.
+
+- Renamed `uninit_move_n` and `uninit_copy_n` to `unsafe_uninit_move_n` and
+  `unsafe_uninit_copy_n` to make their unsafety explicit. The old names are
+  deprecated and will be removed in a future release.
+
+- Renamed `destroy_n` to `unsafe_destroy_n` to make its unsafety explicit. The
+  old `destroy_n` name is deprecated and will be removed in a future release.
 
 - Added `Dict.clear_with(destroy_func)`, the closure counterpart of `clear()`.
   Instead of destroying each entry in place, it hands the key and value to
@@ -398,6 +549,17 @@ This version is still a work in progress.
   displaced = d.insert(1, 20)      # the displaced (1, 10) entry
   ```
 
+- Added `Set.insert(element)` and `Set.clear_with(destroy_func)`, mirroring the
+  `Dict` methods above, so a `Set` whose element type is not
+  `ImplicitlyDeletable` can now be populated and cleared. `insert` moves any
+  displaced equal element out and returns it as an `Optional[T]` instead of
+  destroying it in place; `clear_with` hands each element to `destroy_func`
+  while retaining capacity.
+
+- `Dict.fromkeys(keys, value)` has been generalized from taking a `List` to
+  accepting any iterable of keys. Both forms require the key and
+  value types to be `ImplicitlyDeletable`.
+
 - By-reference `Dict` iteration (`for entry in dict`, `keys()`, `values()`,
   `items()`, and `reversed()`) no longer requires the key and value types to be
   `ImplicitlyDeletable`. These iterators only borrow references and never
@@ -405,6 +567,8 @@ This version is still a work in progress.
   `ImplicitlyDeletable`. Consuming iteration (`for entry in dict^` and
   `take_items()`) still requires `ImplicitlyDeletable`, since it drops the
   entries it does not yield.
+
+- `Span` has moved from `std.memory.span` to `std.collections.span`.
 
 - The container backing variadic `**kwargs` has been renamed from
   `OwnedKwargsDict` to `StringDict`. `StringDict` no longer
@@ -450,11 +614,11 @@ This version is still a work in progress.
   to this `Scalar` type. Because of this some conversions have become more
   strict.
 
-  A new `SIMDSize` type has been added for the width of `SIMD` itself and must
+  A new `SIMDLength` type has been added for the width of `SIMD` itself and must
   be used when inferring a parameter based on a SIMD argument like so:
 
   ```mojo
-  def frob[w: SIMDSize](v: SIMD[DType.int, w]): ...
+  def frob[w: SIMDLength](v: SIMD[DType.int, w]): ...
   ```
 
   Alternatively the width can be unbound if you simply want to be parametric
@@ -465,6 +629,9 @@ This version is still a work in progress.
   ```
 
   The new `Int` should still be used in all other situations.
+
+  This type was briefly named `SIMDSize` earlier in this nightly cycle;
+  `SIMDSize` remains as a deprecated alias for `SIMDLength`.
 
 - `chdir` has been added to the `std.os` module and an `fchdir` method has been
   added to `io.FileDescriptor`. These are wrappers for the corresponding POSIX
@@ -532,6 +699,11 @@ This version is still a work in progress.
 - The `value` argument of `List.resize` has been renamed to `fill` to match
   List's constructor.
 
+- `List.insert()` and `LinkedList.insert()` no longer normalize negative
+  indices. Mojo collections are moving away from negative indexing, so the
+  valid index range is now `[0, len(self)]`; a negative index is out of bounds
+  and aborts (checked when asserts are enabled).
+
 - The `Reflected.field_type[name]` reflection member has been renamed to
   `Reflected.field[name]`, because it returns a chainable `Reflected` handle
   for the named field rather than the field's bare type, so the old name was
@@ -543,7 +715,7 @@ This version is still a work in progress.
   conforming only when their element type does. This lets a collection hold
   non-`ImplicitlyDeletable` elements at all (previously such a collection failed
   to compile); a collection of non-deletable elements is itself linear and must
-  be drained explicitly with the new `destroy_with()` method, which calls a
+  be drained explicitly with the new `deinit_with()` method, which calls a
   closure on each element:
 
   ```mojo
@@ -577,7 +749,7 @@ This version is still a work in progress.
       `setdefault`, `fromkeys`, `update`, `__or__`, `__ior__`, `pop`, `clear`)
       still require the `K` key and `V` value types to be `ImplicitlyDeletable`,
       so a `Dict` with non-`ImplicitlyDeletable` keys or values can currently be
-      constructed and torn down with `destroy_with()` but not populated or
+      constructed and torn down with `deinit_with()` but not populated or
       mutated. For deletable key/value types (the common case) this is
       transparent.
     - Consuming iteration (`for entry in dict^`) is likewise conditional,
@@ -585,7 +757,7 @@ This version is still a work in progress.
   - `LinkedList[ElementType]`
     - Unlike `Dict`, a `LinkedList` with non-`ImplicitlyDeletable` elements can
       be populated (`append`, `prepend`, `insert`, `extend`) and then torn down
-      with `destroy_with()`.
+      with `deinit_with()`.
     - Only `clear` still requires `ElementType` to be `ImplicitlyDeletable`. For
       deletable element types (the common case) this is transparent.
     - `LinkedList.insert()` no longer raises on an out-of-range index; like
@@ -593,6 +765,42 @@ This version is still a work in progress.
     - Consuming iteration (`for x in list^`, the `IterableOwned` conformance)
       is likewise conditional, requiring `ElementType` to be
       `ImplicitlyDeletable`.
+  - `Tuple[*element_types]`
+    - A tuple is now `ImplicitlyDeletable` only when every element type is. A
+      tuple with a non-`ImplicitlyDeletable` element is linear and must be torn
+      down with the new `deinit_with()` method (or fully consumed with
+      `consume_elements()`). For deletable element types (the common case) this
+      is transparent. Generic code that stores a `Tuple[*Ts]` with an unbounded
+      pack may need `& ImplicitlyDeletable` on the pack bound to keep dropping
+      the tuple implicitly.
+  - `Set[ElementType, HasherType]`
+    - The element bound loosened from `KeyElement & ImplicitlyDeletable` to just
+      `KeyElement`, so a `Set` can now hold a non-`ImplicitlyDeletable` element
+      type.
+    - Like `Dict`, element-mutating operations (`add`, `remove`, `discard`,
+      `clear`) still require `ElementType` to be `ImplicitlyDeletable`, so such
+      a `Set` can currently be constructed and torn down with `deinit_with()`
+      but not populated. For deletable element types (the common case) this is
+      transparent.
+    - Consuming iteration (`for x in set^`) is likewise conditional, requiring
+      `ElementType` to be `ImplicitlyDeletable`.
+
+- `InlineArray`'s element type bound loosened from `Movable` to `AnyType`, so an
+  `InlineArray` can now hold a non-`Movable` element type. The `Movable`
+  conformance is now conditional on the element: move construction (including
+  list-literal construction such as `[a, b, c]`) requires a `Movable` element,
+  while indexing, by-reference iteration, and destruction do not. Code that
+  uses `Movable` element types is unaffected, since a `Movable` element still
+  yields a movable array.
+
+- `Optional` gained `deinit_assert_empty()`, which destroys an empty linear
+  `Optional` without a caller-provided deinitializer, aborting in safe-assert
+  builds if it is non-empty.
+
+- `Optional.map()` and `Optional.and_then()` now work when the element type is
+  linear (not `ImplicitlyDeletable`): they move the contained value out and
+  destroy the emptied `Optional` explicitly, so a linear value can be
+  transformed and handed back to the caller.
 
 - Is is now possible to iterate over owned elements in
   `List`, `Dict`, `InlineArray`, `LinkedList`, and `Set`
@@ -665,7 +873,7 @@ This version is still a work in progress.
    var my_coord = coord[1, 2, 3]
    ```
 
-   to create a `Coord[ComptimeInt[1], ComptimeInt[2], ComptimeInt[3]]`
+  to create a `Coord[ComptimeInt[1], ComptimeInt[2], ComptimeInt[3]]`
 
 - Removed `trait_downcast_var()`. Improvements to type refinement based on
   `where conforms_to(..)` and `comptime assert conforms_to(..)` make explicit
@@ -687,6 +895,22 @@ This version is still a work in progress.
   Mojo `Error` into a Python exception via `PyErr_SetString` and returns a null
   `PyObjectPtr`.
 
+- The `PyCFunctionFast` calling convention used by
+  `PythonModuleBuilder.def_py_c_function()` for `METH_FASTCALL` callbacks now
+  declares its argument array as a safe
+  `Pointer[PyObjectPtr, MutUntrackedOrigin]` instead of an `UnsafePointer`.
+  The two types share the same layout, so the C ABI is unchanged; hand-written
+  fastcall callbacks only need to update the parameter's spelling in their
+  signature and read the borrowed arguments with `args[unsafe_offset=i]`.
+
+- Typed-self methods registered through `PythonTypeBuilder.def_method()` now
+  declare their self parameter as a safe `Pointer[Self]` instead of an
+  `UnsafePointer[Self]`, and the extension argument helpers
+  `check_and_get_arg()` and `check_and_get_or_convert_arg()` return a safe
+  `Pointer`. The two pointer types share the same layout, so behavior is
+  unchanged; update method signatures to spell `Pointer` (for example,
+  `self_ptr: Pointer[mut=True, Self]`).
+
 - Iterating over a `String`, `StringSlice`, or `StringLiteral` now yields
   grapheme clusters by default. Their `__iter__()` and `__reversed__()` methods
   return a `GraphemeSliceIter`, so `for c in my_string:` produces what a user
@@ -696,6 +920,8 @@ This version is still a work in progress.
 
 - The `Equatable` trait now allows for positional-only implementations, and
   argument on implementers no longer need to match the trait exactly.
+
+- `Pointer` and `UnsafePointer` have had their `type` parameter renamed to `T`.
 
 - `UnsafePointer.init_pointee_move()` and `UnsafePointer.init_pointee_copy()`
   are now deprecated in favor of a single `unsafe_write()` method. Moving a
@@ -729,6 +955,38 @@ This version is still a work in progress.
   remain gated behind an unsafe pointer type; prefer the `unsafe_`-prefixed
   names going forward. Each method's docstring documents the exact `Safety:`
   requirements the caller must uphold.
+
+- `UnsafePointer.init_pointee_move_from()` is now deprecated in favor of the new
+  `unsafe_write_move_from()` method, which moves the value out of a source
+  pointer into the uninitialized memory `self` points to (leaving the source
+  uninitialized):
+
+  ```mojo
+  dst.unsafe_write_move_from(src)
+  ```
+
+  Like `unsafe_write()` and `unsafe_take_pointee()`, this method works on any
+  `Pointer` — the old `init_pointee_move_from()` was gated behind an unsafe
+  pointer type, so callers no longer need to wrap safe pointers in
+  `MutUnsafePointer` to move a value between them.
+
+- `OwnedDLHandle.get_function` now returns a callable that keeps the owning
+  handle alive while it runs, fixing a crash where the library could be
+  `dlclose`d between symbol lookup and the call. Its parameter is now the
+  return type instead of the full function-pointer type, and it raises if the
+  symbol is missing (previously it aborted the process):
+
+  ```mojo
+  # Before:
+  var sqrt = lib.get_function[def(Float64) abi("C") -> Float64]("sqrt")
+  # After:
+  var sqrt = lib.get_function[Float64]("sqrt")
+  ```
+
+  Arguments are passed using the Mojo calling convention, which is correct
+  for scalar and register-passable arguments. Multi-field struct arguments
+  are rejected at compile time because the Mojo and C conventions can
+  disagree on how aggregates are passed.
 
 ## Tooling changes
 
@@ -789,6 +1047,14 @@ This version is still a work in progress.
   GPU generations (M1-M5). It accepts `Float16`, `BFloat16`, and `Float32`
   inputs with a `Float32` accumulator.
 
+- `Atomic.compare_exchange()` now accepts a `weak` parameter, and requires
+  `weak=True` to compile on Apple GPU targets: AIR exposes no strong
+  compare-exchange primitive, so Metal only lowers the `weak` form. This is
+  safe for the common case of a CAS-retry loop, since a spurious failure just
+  costs one extra iteration. Previously any use of `compare_exchange()`,
+  including helpers built on it like atomic scatter-reduce, failed to
+  compile on Metal.
+
 - Apple M5 `simdgroup_matrix` MMA now accepts FP8 (`float8_e4m3fn`,
   `float8_e5m2`) inputs with an F32 accumulator, alongside the existing
   F16/BF16/F32 and 8-bit integer types.
@@ -837,6 +1103,19 @@ This version is still a work in progress.
       )
   ```
 
+- `DeviceGraphBuilder.add_function` now covers every live
+  `DeviceContext.enqueue_function` form, so any kernel launchable on a device
+  context can also be recorded as a graph node:
+
+  - Added an overload accepting a `DeviceExternalFunction` loaded from
+    PTX/SASS via `DeviceContext.load_function()`.
+  - Added an overload taking a capturing kernel as a compile-time parameter
+    with runtime arguments, mirroring the capturing parameter-based
+    `DeviceContext.enqueue_function`.
+  - All `add_function` overloads now accept a `location` argument so wrappers
+    can attribute launch errors to their callers, and the closure overload now
+    accepts (and honors) a `func_attribute` argument.
+
 - `AddressSpace` is now target-extensible rather than a fixed, portable enum.
   The built-in GPU spaces (`GENERIC`, `GLOBAL`, `SHARED`, `CONSTANT`, `LOCAL`,
   `SHARED_CLUSTER`, `BUFFER_RESOURCE`) are unchanged, but accessing any other
@@ -849,6 +1128,8 @@ This version is still a work in progress.
   error.
 
 - Added support for the Steam Deck's RDNA2 Van Gogh APU.
+
+- The `layout` package is now bundled with MAX instead of Mojo.
 
 ## Removed
 
@@ -866,7 +1147,47 @@ This version is still a work in progress.
 - Removed the deprecated `GPUAddressSpace` alias for `AddressSpace`. Use
   `AddressSpace` directly.
 
+- Removed the `DType.invalid` sentinel alias. Code that used it to represent an
+  absent or optional dtype should use `Optional[DType]` instead. Accordingly,
+  `DType._from_str()` now returns an `Optional[DType]` (`None` when the string
+  does not name a dtype) rather than `DType.invalid`.
+
+- Removed positional indexing on `StringLiteral` (`literal[i]`). It allowed
+  out-of-bounds reads and was inconsistent with the `[byte=]`, `[codepoint=]`,
+  and `[grapheme=]` indexing scheme used by `String` and `StringSlice`. Use
+  those keyword accessors instead (for example, on a `StaticString`).
+
 ## Fixed
+
+- Code folding in VSCode now works for Mojo files. `mojo-lsp-server` no longer
+  advertises folding-range support, which only produced docstring ranges and
+  caused VSCode to disable its built-in indentation-based folding — leaving
+  functions, structs, and blocks unfoldable. Editors now fall back to
+  indentation-based folding until the server returns structural folding
+  ranges.
+
+- Fixed `print()` and `debug_assert()` emitting garbled output on AMD GPUs when
+  a printed string's byte length was an exact multiple of 8. The AMDGPU
+  `hostcall` printf interface reads each string up to its nul terminator, and
+  the terminator was being dropped in that case, so the host read past the
+  payload.
+
+- `base64.b16decode` now raises on invalid input instead of silently producing
+  corrupt output.
+
+- [#6784](https://github.com/modular/modular/issues/6784),
+  [#6434](https://github.com/modular/modular/issues/6434) - `math.sqrt` on
+  `Float64` now works on NVIDIA GPU. It lowers to the IEEE correctly-rounded
+  hardware sqrt (`sqrt.rn.f64`) instead of being rejected at compile time.
+  NVIDIA has no approximate f64 sqrt, so the `Float32` fast path continues to
+  use `sqrt.approx.ftz.f32`.
+
+- [#4473](https://github.com/modular/modular/issues/4473) - The `offset`
+  parameter of `FileHandle.seek()` (and `NamedTemporaryFile.seek()`) is now a
+  signed `Int` instead of `UInt64`, so negative offsets relative to
+  `os.SEEK_CUR` or `os.SEEK_END` work as the docstrings already showed.
+  Previously a negative offset only compiled as a literal (via unsigned
+  wrap-around) and could not be passed from a signed variable.
 
 - [#6755](https://github.com/modular/modular/issues/6755) - Volatile loads are
   no longer removed when their results are unused.
@@ -966,3 +1287,14 @@ This version is still a work in progress.
   struct Two(Movable where False):
       var y: One
   ```
+
+- `CPython.PyCapsule_New` now takes its `name` argument as a `StaticString`
+  instead of an owned `String`. CPython stores the `name` pointer directly in
+  the capsule rather than copying it, so an owned `String` argument left the
+  capsule holding a dangling pointer once the temporary was destroyed.
+
+- A failed import no longer poisons its name for the rest of the compilation.
+  Previously, after something like `import pkg.util` failed to resolve, a
+  later `import util` would silently bind the cached failure even when a real
+  `util.mojo` exists on the search path, making the module unimportable with
+  no diagnostic.

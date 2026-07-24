@@ -131,16 +131,14 @@ struct _PrecompiledEntriesRuntime[format_origin: ImmOrigin, //, *Ts: Writable](
 @always_inline
 def _comptime_list_to_span[
     T: ImplicitlyDeletable & Copyable, //, list: List[T]
-]() -> Span[T, StaticConstantOrigin]:
+]() -> Span[T, ImmStaticOrigin]:
     """Convert a comptime list to a runtime span of static constant origin."""
 
     def list_to_array[list: List[T]]() -> InlineArray[T, len(list)]:
         var array = InlineArray[T, len(list)](uninitialized=True)
 
         comptime for i in range(len(list)):
-            UnsafePointer(to=array[i]).unsafe_write(
-                materialize[list[i].copy()]()
-            )
+            Pointer(to=array[i]).unsafe_write(materialize[list[i].copy()]())
         return array^
 
     comptime array = list_to_array[list]()
@@ -169,7 +167,7 @@ struct _FormatUtils:
             p: UnsafePointer[mut=False, UInt8, _], start: Int, end: Int
         ) -> StringSlice[p.origin]:
             return StringSlice(
-                unsafe_from_utf8=Span(ptr=p + start, length=end - start)
+                unsafe_from_utf8=Span(unsafe_ptr=p + start, length=end - start)
             )
 
         var auto_arg_index = 0
@@ -530,7 +528,7 @@ struct _FormatCurlyEntry[origin: ImmOrigin](ImplicitlyCopyable):
             p: UnsafePointer[mut=False, UInt8, _], start: Int, end: Int
         ) -> StringSlice[p.origin]:
             return StringSlice(
-                unsafe_from_utf8=Span(ptr=p + start, length=end - start)
+                unsafe_from_utf8=Span(unsafe_ptr=p + start, length=end - start)
             )
 
         var field = _build_slice(fmt_src.unsafe_ptr(), start_value + 1, i)
@@ -605,7 +603,7 @@ struct _FormatCurlyEntry[origin: ImmOrigin](ImplicitlyCopyable):
         comptime s_value = UInt8(ord("s"))
         # alias a_value = UInt8(ord("a")) # TODO
 
-        def _format(idx: Int) {read self, read args, mut writer}:
+        def _format(idx: Int) {imm self, imm args, mut writer}:
             comptime for i in range(Ts.size):
                 if i == idx:
                     var flag = self.conversion_flag

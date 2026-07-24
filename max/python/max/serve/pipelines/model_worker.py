@@ -402,6 +402,10 @@ class ModelWorker:
                 pipeline, settings.eplb_profile
             )
 
+            if eplb_stats_accumulator is not None:
+                # Zero warmup/graph-capture skew so the first snapshot is clean.
+                eplb_stats_accumulator.reset()
+
             eplb_stats_backend = (
                 EplbStatsBackend(
                     zmq_endpoint_base,
@@ -598,4 +602,9 @@ async def start_model_worker(
         logger.debug("Model worker task is ready")
 
         async with model_worker_interface.model_worker_proxy() as model_worker:
+            # Block until the worker channel is connected before serving, so
+            # runtime admission never has to disambiguate "not connected yet"
+            # from "queue full." Reuses the model-worker readiness budget.
+            await model_worker.wait_until_connected(settings.mw_timeout_s)
+            logger.debug("Model worker channel connected")
             yield model_worker

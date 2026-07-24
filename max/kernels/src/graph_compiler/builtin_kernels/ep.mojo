@@ -19,7 +19,7 @@ Expert Parallelism (EP) Communication Kernel.
 import extensibility
 from comm.sync import is_p2p_enabled
 from std.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
-from std.gpu.host import DeviceBuffer, DeviceContext, DeviceContextList
+from std.gpu.host import DeviceBuffer, DeviceContext, DeviceContextArray
 from std.gpu.host.info import is_gpu
 from std.memory.unsafe_pointer import pointer_to_int
 from layout.tile_tensor import row_major
@@ -80,6 +80,8 @@ comptime RT_LAYOUT_2D = type_of(row_major(Int64(1), Int64(1)))
 
 @extensibility.register("ep.init")
 struct Struct_ep_init:
+    """Registers the `ep.init` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -289,6 +291,8 @@ struct Struct_ep_init:
 
 @extensibility.register("ep.dispatch_async")
 struct Struct_ep_dispatch_async:
+    """Registers the `ep.dispatch_async` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -315,6 +319,42 @@ struct Struct_ep_dispatch_async:
     ) raises:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
         transferred in either Blockwise FP8 or BF16 format.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before dispatch
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token
+                payload during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales
+                accompanying the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            dispatch_fmt_str: String selecting the dispatch token
+                format, either `"BlockwiseFP8"` or `"BF16"`
+                (inferred).
+            target: Compile-time device target.
+
+        Args:
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Top-k expert IDs per token. Shape
+                `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            context: GPU device context for the current device.
         """
 
         comptime if dispatch_fmt_str == "BlockwiseFP8":
@@ -371,6 +411,9 @@ struct Struct_ep_dispatch_async:
 
 @extensibility.register("ep.dispatch_async.block.scaled.nv")
 struct Struct_ep_dispatch_async_block_scaled_nv:
+    """Registers the `ep.dispatch_async.block.scaled.nv` graph op with the graph compiler.
+    """
+
     @always_inline
     @staticmethod
     @parameter
@@ -398,6 +441,40 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
     ) raises:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
         transferred in NVFP4 format.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before dispatch
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token
+                payload during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales
+                accompanying the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            target: Compile-time device target.
+
+        Args:
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Top-k expert IDs per token. Shape
+                `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            input_scales: Global input scales for NVFP4 quantization.
+            context: GPU device context for the current device.
         """
         var input_scales_tensor = input_scales.to_tile_tensor[DType.int64]()
         comptime assert input_scales_tensor.flat_rank == 1
@@ -438,6 +515,9 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
 
 @extensibility.register("ep.dispatch_async.mxfp4")
 struct Struct_ep_dispatch_async_mxfp4:
+    """Registers the `ep.dispatch_async.mxfp4` graph op with the graph compiler.
+    """
+
     @always_inline
     @staticmethod
     def execute[
@@ -464,6 +544,39 @@ struct Struct_ep_dispatch_async_mxfp4:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
         transferred in MXFP4 format with per-token even-mode scales packed
         alongside the FP4 quants in the send buffer.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before dispatch
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token
+                payload during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the per-token even-mode
+                scales accompanying the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            target: Compile-time device target.
+
+        Args:
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Top-k expert IDs per token. Shape
+                `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            context: GPU device context for the current device.
         """
         comptime token_fmt_type = MXFP4TokenFormat[
             fp4_dtype=dispatch_dtype,
@@ -493,6 +606,8 @@ struct Struct_ep_dispatch_async_mxfp4:
 
 @extensibility.register("ep.dispatch_wait")
 struct Struct_ep_dispatch_wait:
+    """Registers the `ep.dispatch_wait` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -549,6 +664,8 @@ struct Struct_ep_dispatch_wait:
 
 @extensibility.register("ep.dispatch_wait.fp8")
 struct Struct_ep_dispatch_wait_fp8:
+    """Registers the `ep.dispatch_wait.fp8` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -612,6 +729,9 @@ struct Struct_ep_dispatch_wait_fp8:
 
 @extensibility.register("ep.dispatch_wait.block.scaled.nv")
 struct Struct_ep_dispatch_wait_block_scaled_nv:
+    """Registers the `ep.dispatch_wait.block.scaled.nv` graph op with the graph compiler.
+    """
+
     @always_inline
     @staticmethod
     def execute[
@@ -677,6 +797,9 @@ struct Struct_ep_dispatch_wait_block_scaled_nv:
 
 @extensibility.register("ep.dispatch_wait.mxfp4")
 struct Struct_ep_dispatch_wait_mxfp4:
+    """Registers the `ep.dispatch_wait.mxfp4` graph op with the graph compiler.
+    """
+
     @always_inline
     @staticmethod
     def execute[
@@ -753,6 +876,8 @@ struct Struct_ep_dispatch_wait_mxfp4:
 
 @extensibility.register("ep.dispatch")
 struct Struct_ep_dispatch:
+    """Registers the `ep.dispatch` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -781,7 +906,60 @@ struct Struct_ep_dispatch:
         recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
-        """Execute the fused Expert Parallelism dispatch kernel."""
+        """Execute the fused Expert Parallelism dispatch kernel.
+
+        Routes tokens to experts based on top-k IDs, sends them to
+        peer devices in BF16 format, waits for incoming tokens, and
+        writes them to the output buffer along with their routing
+        metadata.
+
+        Parameters:
+            dispatch_dtype: `DType` used for the token payload during
+                dispatch (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens any GPU can
+                receive (inferred).
+            n_gpus_per_node: Number of GPUs per physical node
+                (inferred).
+            n_nodes: Number of physical nodes in the deployment
+                (inferred).
+            fused_shared_expert: Whether a shared expert is fused
+                into the dispatch kernel (inferred).
+            skip_a2a: Whether to skip the all-to-all communication
+                and send tokens only within the current device
+                (inferred).
+            allreduce_world_size: Number of ranks participating in
+                the allreduce following dispatch (inferred).
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Output tensor storing the received tokens
+                in BF16 format. Shape `[num_tokens, hidden_size]`.
+            row_offsets: Output tensor storing the row offsets for
+                the received tokens.
+            expert_ids: Output tensor storing the expert ID for
+                each received token.
+            src_info: Output tensor recording the originating rank
+                and token index for each received token. Shape
+                `[num_tokens, 2]`.
+            atomic_counters: Atomic counters coordinating work
+                across thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Input tensor of top-k expert IDs per token.
+                Shape `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            context: GPU device context for the current device.
+        """
 
         comptime assert dispatch_dtype == DType.bfloat16
 
@@ -816,6 +994,8 @@ struct Struct_ep_dispatch:
 
 @extensibility.register("ep.dispatch.fp8")
 struct Struct_ep_dispatch_fp8:
+    """Registers the `ep.dispatch.fp8` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -884,6 +1064,9 @@ struct Struct_ep_dispatch_fp8:
 
 @extensibility.register("ep.dispatch.block.scaled.nv")
 struct Struct_ep_dispatch_block_scaled_nv:
+    """Registers the `ep.dispatch.block.scaled.nv` graph op with the graph compiler.
+    """
+
     @always_inline
     @staticmethod
     @parameter
@@ -920,6 +1103,60 @@ struct Struct_ep_dispatch_block_scaled_nv:
     ) raises:
         """Execute the fused Expert Parallelism NVFP4 dispatch kernel. Tokens
         are dispatched in NVFP4 format.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before dispatch
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token
+                payload during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales
+                accompanying the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused
+                into the dispatch kernel (inferred).
+            skip_a2a: Whether to skip the all-to-all communication
+                and send tokens only within the current device
+                (inferred).
+            allreduce_world_size: Number of ranks participating in
+                the allreduce following dispatch (inferred).
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Output tensor storing the received tokens
+                in NVFP4 format.
+            output_scales: Output tensor storing the NVFP4 block
+                scales for the received tokens.
+            row_offsets: Output tensor storing the row offsets for
+                the received tokens.
+            scales_offsets: Output tensor storing the offsets into
+                the scales buffer for the received tokens.
+            expert_ids: Output tensor storing the expert ID for
+                each received token.
+            src_info: Output tensor recording the originating rank
+                and token index for each received token. Shape
+                `[num_tokens, 2]`.
+            atomic_counters: Atomic counters coordinating work
+                across thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Input tensor of top-k expert IDs per token.
+                Shape `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            input_scales: Global input scales for NVFP4 quantization.
+            context: GPU device context for the current device.
         """
         var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
         var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
@@ -968,6 +1205,8 @@ struct Struct_ep_dispatch_block_scaled_nv:
 
 @extensibility.register("ep.dispatch.mxfp4")
 struct Struct_ep_dispatch_mxfp4:
+    """Registers the `ep.dispatch.mxfp4` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     @parameter
@@ -1050,6 +1289,9 @@ struct Struct_ep_dispatch_mxfp4:
 
 @extensibility.register("mo.distributed.ep.dispatch.block.scaled.nv")
 struct DistributedEPDispatchBlockScaledNV:
+    """Registers the `mo.distributed.ep.dispatch.block.scaled.nv` graph op with the graph compiler.
+    """
+
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -1083,7 +1325,7 @@ struct DistributedEPDispatchBlockScaledNV:
         atomic_counters: MutableInputVariadicTensors[
             dtype=DType.int32, rank=1, ...
         ],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) capturing raises:
         """Multi-device fused Expert Parallelism NVFP4 dispatch.
 
@@ -1091,6 +1333,55 @@ struct DistributedEPDispatchBlockScaledNV:
         _ep_launch_device_collective. Each device routes its tokens to experts
         based on top-k IDs, quantizes them to NVFP4 format, and sends them
         to the appropriate peer devices.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before quantization
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token payload
+                during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales accompanying
+                the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension (inferred).
+            top_k: Number of experts each token is routed to (inferred).
+            n_experts: Total number of experts across all GPUs (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused into the
+                dispatch kernel (inferred).
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Output variadic tensors storing the dispatched
+                NVFP4-quantized tokens, one per device.
+            output_scales: Output variadic tensors storing the NVFP4 block
+                scales, one per device.
+            row_offsets: Output variadic tensors storing the row offsets for
+                the received tokens, one per device.
+            scales_offsets: Output variadic tensors storing the offsets into
+                the scales buffer, one per device.
+            expert_ids: Output variadic tensors storing the expert ID for
+                each received token, one per device.
+            src_info: Output variadic tensors recording the originating
+                rank and token index for each received token, one per
+                device.
+            input_tokens: Input variadic tensors of tokens to dispatch,
+                one per device.
+            topk_ids: Input variadic tensors of top-k expert IDs per token,
+                one per device.
+            send_ptrs: Send buffer pointers for the dispatch phase, one
+                per device.
+            recv_ptrs: Receive buffer pointers for the dispatch phase,
+                one per device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            input_scales: Input variadic tensors of global input scales
+                for NVFP4 quantization, one per device.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
         """
         comptime num_devices = input_tokens.size
 
@@ -1100,20 +1391,20 @@ struct DistributedEPDispatchBlockScaledNV:
         def launch_dispatch[
             index: Int
         ]() raises {
-            read output_tokens,
-            read output_scales,
-            read row_offsets,
-            read scales_offsets,
-            read expert_ids,
-            read src_info,
-            read atomic_counters,
-            read input_tokens,
-            read topk_ids,
-            read send_ptrs,
-            read recv_ptrs,
-            read recv_count_ptrs,
-            read input_scales,
-            read gpu_ctxs,
+            imm output_tokens,
+            imm output_scales,
+            imm row_offsets,
+            imm scales_offsets,
+            imm expert_ids,
+            imm src_info,
+            imm atomic_counters,
+            imm input_tokens,
+            imm topk_ids,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm input_scales,
+            imm gpu_ctxs,
         }:
             var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
             var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
@@ -1161,6 +1452,9 @@ struct DistributedEPDispatchBlockScaledNV:
 
 @extensibility.register("mo.distributed.ep.dispatch.mxfp4")
 struct DistributedEPDispatchMXFP4:
+    """Registers the `mo.distributed.ep.dispatch.mxfp4` graph op with the graph compiler.
+    """
+
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -1173,6 +1467,8 @@ struct DistributedEPDispatchMXFP4:
         n_gpus_per_node: Int,
         n_nodes: Int,
         fused_shared_expert: Bool,
+        fuse_a_scale_preshuffle: Bool,
+        max_padded_m: Int,
         //,
         target: StaticString,
         _trace_name: StaticString,
@@ -1192,14 +1488,59 @@ struct DistributedEPDispatchMXFP4:
         atomic_counters: MutableInputVariadicTensors[
             dtype=DType.int32, rank=1, ...
         ],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) capturing raises:
-        """Multi-device fused Expert Parallelism NVFP4 dispatch.
+        """Multi-device fused Expert Parallelism MXFP4 dispatch.
 
         Launches the EP dispatch kernel on all devices simultaneously via
         _ep_launch_device_collective. Each device routes its tokens to experts
         based on top-k IDs, quantizes them to MXFP4 format, and sends them
         to the appropriate peer devices.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before quantization
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token payload
+                during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the per-token scales accompanying
+                the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension (inferred).
+            top_k: Number of experts each token is routed to (inferred).
+            n_experts: Total number of experts across all GPUs (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused into the
+                dispatch kernel (inferred).
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Output variadic tensors storing the dispatched
+                MXFP4-quantized tokens, one per device.
+            output_scales: Output variadic tensors storing the per-token
+                E8M0 scales for the dispatched tokens, one per device.
+            row_offsets: Output variadic tensors storing the row offsets for
+                the received tokens, one per device.
+            expert_ids: Output variadic tensors storing the expert ID for
+                each received token, one per device.
+            src_info: Output variadic tensors recording the originating
+                rank and token index for each received token, one per
+                device.
+            input_tokens: Input variadic tensors of tokens to dispatch,
+                one per device.
+            topk_ids: Input variadic tensors of top-k expert IDs per token,
+                one per device.
+            send_ptrs: Send buffer pointers for the dispatch phase, one
+                per device.
+            recv_ptrs: Receive buffer pointers for the dispatch phase,
+                one per device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
         """
         comptime num_devices = input_tokens.size
 
@@ -1209,25 +1550,30 @@ struct DistributedEPDispatchMXFP4:
         def launch_dispatch[
             index: Int
         ]() raises {
-            read output_tokens,
-            read output_scales,
-            read row_offsets,
-            read expert_ids,
-            read src_info,
-            read atomic_counters,
-            read input_tokens,
-            read topk_ids,
-            read send_ptrs,
-            read recv_ptrs,
-            read recv_count_ptrs,
-            read gpu_ctxs,
+            imm output_tokens,
+            imm output_scales,
+            imm row_offsets,
+            imm expert_ids,
+            imm src_info,
+            imm atomic_counters,
+            imm input_tokens,
+            imm topk_ids,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm gpu_ctxs,
         }:
             var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
             var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
 
-            var format_handler = MXFP4TokenFormat[hidden_size, top_k](
+            var format_handler = MXFP4TokenFormat[
+                hidden_size,
+                top_k,
+                fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
+            ](
                 out_tokens,
                 out_scales,
+                max_padded_m,
             )
 
             ep_fused_dispatch_kernel_api[
@@ -1256,6 +1602,9 @@ struct DistributedEPDispatchMXFP4:
 
 @extensibility.register("mo.distributed.ep.dispatch")
 struct DistributedEPDispatch:
+    """Registers the `mo.distributed.ep.dispatch` graph op with the graph compiler.
+    """
+
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -1282,9 +1631,49 @@ struct DistributedEPDispatch:
         atomic_counters: MutableInputVariadicTensors[
             dtype=DType.int32, rank=1, ...
         ],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) capturing raises:
-        """Multi-device fused Expert Parallelism BF16 dispatch."""
+        """Multi-device fused Expert Parallelism BF16 dispatch.
+
+        Parameters:
+            dispatch_dtype: `DType` used for token dispatch to experts
+                (inferred).
+            hidden_size: Size of the model's hidden dimension (inferred).
+            top_k: Number of experts each token is routed to (inferred).
+            n_experts: Total number of experts across all GPUs (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused into the
+                dispatch kernel (inferred).
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Output variadic tensors storing the dispatched
+                tokens, one per device.
+            row_offsets: Output variadic tensors storing the row offsets for
+                the received tokens, one per device.
+            expert_ids: Output variadic tensors storing the expert ID for
+                each received token, one per device.
+            src_info: Output variadic tensors recording the originating
+                rank and token index for each received token, one per
+                device.
+            input_tokens: Input variadic tensors of tokens to dispatch,
+                one per device.
+            topk_ids: Input variadic tensors of top-k expert IDs per token,
+                one per device.
+            send_ptrs: Send buffer pointers for the dispatch phase, one
+                per device.
+            recv_ptrs: Receive buffer pointers for the dispatch phase,
+                one per device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
+        """
         comptime num_devices = input_tokens.size
         comptime assert dispatch_dtype == DType.bfloat16
 
@@ -1294,17 +1683,17 @@ struct DistributedEPDispatch:
         def launch_dispatch[
             index: Int
         ]() raises {
-            read output_tokens,
-            read row_offsets,
-            read expert_ids,
-            read src_info,
-            read atomic_counters,
-            read input_tokens,
-            read topk_ids,
-            read send_ptrs,
-            read recv_ptrs,
-            read recv_count_ptrs,
-            read gpu_ctxs,
+            imm output_tokens,
+            imm row_offsets,
+            imm expert_ids,
+            imm src_info,
+            imm atomic_counters,
+            imm input_tokens,
+            imm topk_ids,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm gpu_ctxs,
         }:
             var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
             var format_handler = BF16TokenFormat[hidden_size, top_k](out_tokens)
@@ -1335,6 +1724,9 @@ struct DistributedEPDispatch:
 
 @extensibility.register("mo.distributed.ep.dispatch.fp8")
 struct DistributedEPDispatchFP8:
+    """Registers the `mo.distributed.ep.dispatch.fp8` graph op with the graph compiler.
+    """
+
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -1367,9 +1759,62 @@ struct DistributedEPDispatchFP8:
         atomic_counters: MutableInputVariadicTensors[
             dtype=DType.int32, rank=1, ...
         ],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) capturing raises:
-        """Multi-device fused Expert Parallelism FP8 dispatch."""
+        """Multi-device fused Expert Parallelism FP8 dispatch.
+
+        Launches the EP dispatch kernel on all devices simultaneously via
+        _launch_device_collective. Each device routes its tokens to experts
+        based on top-k IDs, quantizes them to Blockwise FP8 format, and sends
+        them to peer devices.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before quantization
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token payload
+                during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales accompanying
+                the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension (inferred).
+            top_k: Number of experts each token is routed to (inferred).
+            n_experts: Total number of experts across all GPUs (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            dispatch_scale_granularity: Block size used for the blockwise
+                FP8 quantization scales (inferred).
+            fused_shared_expert: Whether a shared expert is fused into the
+                dispatch kernel (inferred).
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Output variadic tensors storing the dispatched
+                Blockwise FP8-quantized tokens, one per device.
+            output_scales: Output variadic tensors storing the block scales
+                for the dispatched tokens, one per device.
+            row_offsets: Output variadic tensors storing the row offsets for
+                the received tokens, one per device.
+            expert_ids: Output variadic tensors storing the expert ID for
+                each received token, one per device.
+            src_info: Output variadic tensors recording the originating
+                rank and token index for each received token, one per
+                device.
+            input_tokens: Input variadic tensors of tokens to dispatch,
+                one per device.
+            topk_ids: Input variadic tensors of top-k expert IDs per token,
+                one per device.
+            send_ptrs: Send buffer pointers for the dispatch phase, one
+                per device.
+            recv_ptrs: Receive buffer pointers for the dispatch phase,
+                one per device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
+        """
         comptime num_devices = input_tokens.size
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
@@ -1378,18 +1823,18 @@ struct DistributedEPDispatchFP8:
         def launch_dispatch[
             index: Int
         ]() raises {
-            read output_tokens,
-            read output_scales,
-            read row_offsets,
-            read expert_ids,
-            read src_info,
-            read atomic_counters,
-            read input_tokens,
-            read topk_ids,
-            read send_ptrs,
-            read recv_ptrs,
-            read recv_count_ptrs,
-            read gpu_ctxs,
+            imm output_tokens,
+            imm output_scales,
+            imm row_offsets,
+            imm expert_ids,
+            imm src_info,
+            imm atomic_counters,
+            imm input_tokens,
+            imm topk_ids,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm gpu_ctxs,
         }:
             var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
             var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
@@ -1423,6 +1868,9 @@ struct DistributedEPDispatchFP8:
 
 @extensibility.register("mo.distributed.ep.combine")
 struct DistributedEPCombine:
+    """Registers the `mo.distributed.ep.combine` graph op with the graph compiler.
+    """
+
     @staticmethod
     def execute[
         combine_dtype: DType,
@@ -1453,9 +1901,45 @@ struct DistributedEPCombine:
         atomic_counters: MutableInputVariadicTensors[
             dtype=DType.int32, rank=1, ...
         ],
-        dev_ctxs: DeviceContextList,
+        dev_ctxs: DeviceContextArray,
     ) capturing raises:
-        """Multi-device fused Expert Parallelism combine with output fusion."""
+        """Multi-device fused Expert Parallelism combine with output fusion.
+
+        Parameters:
+            combine_dtype: `DType` of the combined expert output tokens.
+            router_weights_dtype: `DType` of the router weights.
+            hidden_size: Size of the model's hidden dimension.
+            top_k: Number of experts each token is routed to.
+            n_experts: Total number of experts across all GPUs.
+            max_token_per_rank: Maximum number of tokens per GPU.
+            n_gpus_per_node: Number of GPUs per node.
+            n_nodes: Number of physical nodes.
+            fused_shared_expert: Whether a shared expert is fused into the
+                combine kernel.
+            has_epilogue_fusion: Whether the combine output is fused with a
+                downstream elementwise epilogue.
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Fused output variadic tensors storing the combined
+                expert outputs, one per device.
+            input_tokens: Input variadic tensors of expert-processed tokens to
+                combine, one per device.
+            src_info: Source info tensors recording the originating rank and
+                token index for each received token, one per device.
+            send_ptrs: Send buffer pointers for the combine phase, one per
+                device.
+            recv_ptrs: Receive buffer pointers for the combine phase, one per
+                device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            router_weights: Router weights used to scale each expert's
+                contribution, one per device.
+            atomic_counters: Atomic counters coordinating work across thread
+                blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
+        """
         comptime num_devices = input_tokens.size
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
@@ -1464,15 +1948,15 @@ struct DistributedEPCombine:
         def launch_combine[
             index: Int
         ]() raises {
-            read output_tokens,
-            read input_tokens,
-            read src_info,
-            read send_ptrs,
-            read recv_ptrs,
-            read recv_count_ptrs,
-            read router_weights,
-            read atomic_counters,
-            read gpu_ctxs,
+            imm output_tokens,
+            imm input_tokens,
+            imm src_info,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm router_weights,
+            imm atomic_counters,
+            imm gpu_ctxs,
         }:
             var rw_tensor = router_weights[index].to_tile_tensor[DType.int64]()
 
@@ -1489,7 +1973,7 @@ struct DistributedEPCombine:
             @parameter
             @always_inline
             def output_fn[
-                dtype: DType, width: SIMDSize, *, alignment: Int = 1
+                dtype: DType, width: SIMDLength, *, alignment: Int = 1
             ](coords: IndexList[2], val: SIMD[dtype, width]):
                 output_tokens[index]._lambda_store[
                     width=width, element_alignment=alignment
@@ -1527,6 +2011,8 @@ struct DistributedEPCombine:
 
 @extensibility.register("ep.combine_async")
 struct Struct_ep_combine_async:
+    """Registers the `ep.combine_async` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -1548,7 +2034,41 @@ struct Struct_ep_combine_async:
         recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
-        """Execute the Expert Parallelism combine kernel."""
+        """Execute the Expert Parallelism combine kernel.
+
+        Sends expert-processed output tokens back to their original
+        devices asynchronously, without waiting for the transfers to
+        complete.
+
+        Parameters:
+            combine_dtype: `DType` used for the token payload during
+                the combine phase (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            target: Compile-time device target.
+
+        Args:
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks during the combine phase.
+            input_tokens: Expert output tokens to send back to their
+                original devices. Shape `[num_tokens, hidden_size]`.
+            src_info: Source routing information from the dispatch
+                phase recording the originating rank and token index
+                for each token. Shape `[num_tokens, 2]`.
+            send_ptrs: Send buffer pointers for the combine phase.
+            recv_ptrs: Receive buffer pointers for the combine phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                the number of tokens received per expert.
+            context: GPU device context for the current device.
+        """
 
         ep_combine_async_kernel_api[
             combine_dtype,
@@ -1572,6 +2092,8 @@ struct Struct_ep_combine_async:
 
 @extensibility.register("ep.combine_wait")
 struct Struct_ep_combine_wait:
+    """Registers the `ep.combine_wait` graph op with the graph compiler."""
+
     @parameter
     @always_inline
     @staticmethod
@@ -1595,7 +2117,44 @@ struct Struct_ep_combine_wait:
         router_weights: InputTensor[dtype=router_weights_dtype, rank=2, ...],
         context: DeviceContext,
     ) raises:
-        """Execute the Expert Parallelism combine completion kernel."""
+        """Execute the Expert Parallelism combine completion kernel.
+
+        Waits for incoming expert outputs and computes the weighted
+        sum of routed expert outputs for each token using the router
+        weights.
+
+        Parameters:
+            combine_dtype: `DType` used for the token payload during
+                the combine phase (inferred).
+            router_weights_dtype: `DType` of the router weights
+                tensor used to compute the weighted sum (inferred).
+            hidden_size: Size of the model's hidden dimension.
+            top_k: Number of experts each token is routed to.
+            n_experts: Total number of experts across all GPUs.
+            max_token_per_rank: Maximum number of tokens any GPU can
+                receive.
+            n_gpus_per_node: Number of GPUs per physical node.
+            n_nodes: Number of physical nodes in the deployment.
+            has_epilogue_fusion: Whether to apply an elementwise
+                epilogue function after computing the combined
+                output.
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Fused output tensor storing the weighted
+                sum of routed expert outputs for each token. Shape
+                `[num_tokens, hidden_size]`.
+            atomic_counters: Atomic counters coordinating work
+                across thread blocks during the combine phase.
+            recv_ptrs: Receive buffer pointers for the combine
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                the number of tokens received per expert.
+            router_weights: Router weights for the current device
+                used to compute the weighted sum of expert outputs.
+                Shape `[num_tokens, top_k]`.
+            context: GPU device context for the current device.
+        """
         var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -1613,7 +2172,7 @@ struct Struct_ep_combine_wait:
         @parameter
         @always_inline
         def output_fn[
-            dtype: DType, width: SIMDSize, *, alignment: Int = 1
+            dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
             output_tokens._lambda_store[
                 width=width, element_alignment=alignment
@@ -1651,6 +2210,8 @@ struct Struct_ep_combine_wait:
 
 @extensibility.register("ep.combine")
 struct Struct_ep_combine:
+    """Registers the `ep.combine` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     @parameter
@@ -1679,7 +2240,61 @@ struct Struct_ep_combine:
         router_weights: InputTensor[dtype=router_weights_dtype, rank=2, ...],
         context: DeviceContext,
     ) raises:
-        """Execute the fused Expert Parallelism combine kernel."""
+        """Execute the fused Expert Parallelism combine kernel.
+
+        Sends expert outputs back to their original devices, waits for
+        all transfers to complete, and computes the weighted sum of
+        routed expert outputs for each token.
+
+        Parameters:
+            combine_dtype: `DType` used for the token payload during
+                the combine phase (inferred).
+            router_weights_dtype: `DType` of the router weights tensor
+                used to compute the weighted sum (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens any GPU can
+                receive (inferred).
+            n_gpus_per_node: Number of GPUs per physical node
+                (inferred).
+            n_nodes: Number of physical nodes in the deployment
+                (inferred).
+            fused_shared_expert: Whether a shared expert is fused into
+                the combine kernel, adding its output to the routed
+                expert outputs (inferred).
+            has_epilogue_fusion: Whether to apply an elementwise
+                epilogue function after computing the combined output
+                (inferred).
+            skip_a2a: Whether to skip the all-to-all communication and
+                send tokens only within the current device (inferred).
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Fused output tensor storing the weighted
+                sum of routed expert outputs for each token. Shape
+                `[num_tokens, hidden_size]`.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks during the combine phase.
+            input_tokens: Expert output tokens to send back to their
+                original devices. Shape `[num_tokens, hidden_size]`.
+            src_info: Source routing information from the dispatch
+                phase recording the originating rank and token index
+                for each token. Shape `[num_tokens, 2]`.
+            send_ptrs: Send buffer pointers for the combine phase,
+                one per local GPU.
+            recv_ptrs: Receive buffer pointers for the combine phase,
+                one per local GPU.
+            recv_count_ptrs: Receive count buffer pointers tracking the
+                number of tokens received per expert.
+            router_weights: Router weights for the current device used
+                to compute the weighted sum of expert outputs. Shape
+                `[num_tokens, top_k]`.
+            context: GPU device context for the current device.
+        """
         var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -1697,7 +2312,7 @@ struct Struct_ep_combine:
         @parameter
         @always_inline
         def output_fn[
-            dtype: DType, width: SIMDSize, *, alignment: Int = 1
+            dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
             output_tokens._lambda_store[
                 width=width, element_alignment=alignment
@@ -1734,6 +2349,8 @@ struct Struct_ep_combine:
 
 @extensibility.register("ep.combine.skip_a2a")
 struct Struct_ep_combine_skip_a2a:
+    """Registers the `ep.combine.skip_a2a` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     @parameter
@@ -1764,7 +2381,69 @@ struct Struct_ep_combine_skip_a2a:
         topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
         context: DeviceContext,
     ) raises:
-        """Execute the fused Expert Parallelism combine kernel."""
+        """Execute the fused Expert Parallelism combine kernel.
+
+        Sends expert outputs back to their original devices, waits for
+        all transfers to complete, and computes the weighted sum of
+        routed expert outputs for each token. When `skip_a2a` is set,
+        skips the all-to-all communication and reduces expert outputs
+        locally using an allreduce of size `allreduce_world_size`.
+
+        Parameters:
+            combine_dtype: `DType` used for the token payload during
+                the combine phase (inferred).
+            router_weights_dtype: `DType` of the router weights
+                tensor used to compute the weighted sum (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens any GPU can
+                receive (inferred).
+            n_gpus_per_node: Number of GPUs per physical node
+                (inferred).
+            n_nodes: Number of physical nodes in the deployment
+                (inferred).
+            fused_shared_expert: Whether a shared expert is fused
+                into the combine kernel, adding its output to the
+                routed expert outputs (inferred).
+            has_epilogue_fusion: Whether to apply an elementwise
+                epilogue function after computing the combined
+                output (inferred).
+            skip_a2a: Whether to skip the all-to-all communication
+                and reduce expert outputs locally instead
+                (inferred).
+            allreduce_world_size: World size for the local allreduce
+                used when `skip_a2a` is set (inferred).
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Fused output tensor storing the weighted
+                sum of routed expert outputs for each token. Shape
+                `[num_tokens, hidden_size]`.
+            atomic_counters: Atomic counters coordinating work
+                across thread blocks during the combine phase.
+            input_tokens: Expert output tokens to send back to
+                their original devices. Shape
+                `[num_tokens, hidden_size]`.
+            src_info: Source routing information from the dispatch
+                phase recording the originating rank and token
+                index for each token. Shape `[num_tokens, 2]`.
+            send_ptrs: Send buffer pointers for the combine phase,
+                one per local GPU.
+            recv_ptrs: Receive buffer pointers for the combine
+                phase, one per local GPU.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                the number of tokens received per expert.
+            router_weights: Router weights for the current device
+                used to compute the weighted sum of expert outputs.
+                Shape `[num_tokens, top_k]`.
+            topk_ids: Top-k expert IDs selected for each token.
+                Shape `[num_tokens, top_k]`.
+            context: GPU device context for the current device.
+        """
         var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -1782,7 +2461,7 @@ struct Struct_ep_combine_skip_a2a:
         @parameter
         @always_inline
         def output_fn[
-            dtype: DType, width: SIMDSize, *, alignment: Int = 1
+            dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
             output_tokens._lambda_store[
                 width=width, element_alignment=alignment
@@ -1823,6 +2502,8 @@ struct Struct_ep_combine_skip_a2a:
 
 @extensibility.register("ep.fused_silu")
 struct Struct_ep_fused_silu:
+    """Registers the `ep.fused_silu` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -1896,6 +2577,8 @@ struct Struct_ep_fused_silu:
 
 @extensibility.register("ep.fused_silu.fp8")
 struct Struct_ep_fused_silu_fp8:
+    """Registers the `ep.fused_silu.fp8` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -1980,6 +2663,8 @@ struct Struct_ep_fused_silu_fp8:
 
 @extensibility.register("ep.fused_silu.mxfp4")
 struct Struct_ep_fused_silu_mxfp4:
+    """Registers the `ep.fused_silu.mxfp4` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[
@@ -2017,7 +2702,7 @@ struct Struct_ep_fused_silu_mxfp4:
         writes the E8M0 scale directly into the grouped matmul's per-expert
         fixed-stride `scale_4d` slot layout (slot stride `max_padded_M *
         K_SCALES`), so the standalone `preshuffle_grouped_scale_4d_gpu` can be
-        omitted from the critical path.  The scales output tensor must then have
+        omitted from the critical path. The scales output tensor must then have
         shape `[n_local_experts * max_padded_M, K_SCALES]`.
         """
         # Ensure this kernel only runs on GPU targets
@@ -2081,6 +2766,8 @@ struct Struct_ep_fused_silu_mxfp4:
 
 @extensibility.register("ep.fused_silu.nvfp4")
 struct Struct_ep_fused_silu_nvfp4:
+    """Registers the `ep.fused_silu.nvfp4` graph op with the graph compiler."""
+
     @always_inline
     @staticmethod
     def execute[

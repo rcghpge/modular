@@ -27,7 +27,8 @@ from std.sys.defines import get_defined_int
 from std.ffi import CStringSlice
 
 from std.bit import byte_swap
-from std.memory import Span, bitcast, unsafe_memcpy
+from std.memory import bitcast, unsafe_memcpy
+from std.collections import Span
 
 
 def constrained_conforms_to_writable[*Ts: AnyType, Parent: AnyType]():
@@ -396,7 +397,7 @@ comptime STACK_BUFFER_BYTES = get_defined_int["STACK_BUFFER_BYTES", 4096]()
 
 
 struct _WriteBufferHeap(Writable, Writer):
-    var _data: UnsafePointer[Byte, MutUntrackedOrigin]
+    var _data: Pointer[Byte, MutUntrackedOrigin]
     var _pos: Int
 
     def __init__(out self):
@@ -436,7 +437,7 @@ struct _WriteBufferHeap(Writable, Writer):
             ]()
             abort()
         unsafe_memcpy(
-            dest=self._data + self._pos,
+            dest=self._data.unsafe_offset(self._pos),
             src=string.unsafe_ptr(),
             count=len_bytes,
         )
@@ -444,7 +445,9 @@ struct _WriteBufferHeap(Writable, Writer):
 
     def write_to(self, mut writer: Some[Writer]):
         writer.write_string(
-            StringSlice(unsafe_from_utf8=Span(ptr=self._data, length=self._pos))
+            StringSlice(
+                unsafe_from_utf8=Span(unsafe_ptr=self._data, length=self._pos)
+            )
         )
 
     def nul_terminate(
@@ -456,11 +459,11 @@ struct _WriteBufferHeap(Writable, Writer):
                 " HEAP_BUFFER_BYTES=4096`\n"
             ]()
             abort()
-        self._data[self._pos] = 0
+        self._data[unsafe_offset=self._pos] = 0
         self._pos += 1
 
         return CStringSlice(
-            unsafe_from_ptr=self._data.bitcast[Int8]()
+            unsafe_from_ptr=self._data.unsafe_bitcast[Int8]()
             .as_immutable()
             .unsafe_origin_cast[origin_of(self).unsafe_mut_cast[False]()]()
         )
@@ -469,8 +472,10 @@ struct _WriteBufferHeap(Writable, Writer):
         mut: Bool, origin: Origin[mut=mut], //
     ](ref[origin] self) -> StringSlice[origin]:
         return StringSlice(
-            unsafe_from_utf8=Span(
-                ptr=self._data.mut_cast[mut]().unsafe_origin_cast[origin](),
+            unsafe_from_utf8=Span[Byte, origin](
+                unsafe_ptr=self._data.mut_cast[mut]().unsafe_origin_cast[
+                    origin
+                ](),
                 length=self._pos,
             )
         )
@@ -508,7 +513,7 @@ struct _WriteBufferStack[
         self.writer[].write_string(
             StringSlice(
                 unsafe_from_utf8=Span(
-                    ptr=self.data.unsafe_ptr(), length=self.pos
+                    unsafe_ptr=self.data.unsafe_ptr(), length=self.pos
                 )
             )
         )
@@ -583,7 +588,7 @@ def _hex_digits_to_hex_chars(
     Examples:
 
     ```mojo
-    from std.memory import memset_zero
+    from std.memory import unsafe_memset_zero
     from std.testing import assert_equal
     from std.utils import StringSlice
     from std.format._utils import _hex_digits_to_hex_chars
@@ -593,11 +598,11 @@ def _hex_digits_to_hex_chars(
         comptime S = StringSlice[origin_of(items)]
         var ptr = items.unsafe_ptr()
         ptr.store(_hex_digits_to_hex_chars(UInt32(ord("🔥"))))
-        assert_equal("0001f525", S(unsafe_from_utf8=Span(ptr=ptr, length=8)))
+        assert_equal("0001f525", S(unsafe_from_utf8=Span(unsafe_ptr=ptr, length=8)))
         ptr.store(_hex_digits_to_hex_chars(UInt16(ord("你"))))
-        assert_equal("4f60", S(unsafe_from_utf8=Span(ptr=ptr, length=4)))
+        assert_equal("4f60", S(unsafe_from_utf8=Span(unsafe_ptr=ptr, length=4)))
         ptr.store(_hex_digits_to_hex_chars(UInt8(ord("Ö"))))
-        assert_equal("d6", S(unsafe_from_utf8=Span(ptr=ptr, length=2)))
+        assert_equal("d6", S(unsafe_from_utf8=Span(unsafe_ptr=ptr, length=2)))
     ```
     """
     comptime size = size_of[decimal.dtype]()
@@ -617,7 +622,7 @@ def _write_hex[
     Examples:
 
     ```mojo
-    from std.memory import memset_zero
+    from std.memory import unsafe_memset_zero
     from std.testing import assert_equal
     from std.utils import StringSlice
     from std.format._utils import _write_hex

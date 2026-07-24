@@ -18,12 +18,14 @@ import faulthandler
 import os
 import signal
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+import threading
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from enum import Enum, IntEnum, auto
 from inspect import Parameter, Signature
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal, cast
+from typing import Any, BinaryIO, Literal, cast
 from unittest import mock
 
 import numpy as np
@@ -34,6 +36,7 @@ from max._core.engine import Model as Model
 from max._core.engine import ModelMetadata as ModelMetadata
 from max._core.engine import PrintStyle
 from max._core.engine import TensorSpec as TensorSpec
+from max._core.engine import read as _read
 from max._core.mlrt import AsyncValue as _AsyncValue
 from max._core.profiler import (
     kineto_disable as _kineto_disable,
@@ -45,7 +48,16 @@ from max._core.profiler import (
     kineto_is_enabled as _kineto_is_enabled,
 )
 from max._core.profiler import (
+    kineto_is_recording as _kineto_is_recording,
+)
+from max._core.profiler import (
     kineto_last_trace_error as _kineto_last_trace_error,
+)
+from max._core.profiler import (
+    kineto_range_begin as _kineto_range_begin,
+)
+from max._core.profiler import (
+    kineto_range_end as _kineto_range_end,
 )
 from max._core.profiler import (
     kineto_state as _kineto_state,
@@ -103,6 +115,10 @@ levels provide more detail but may introduce additional overhead.
 See Also:
     :meth:`InferenceSession.gpu_profiling`: Method to set the profiling mode.
 """
+
+
+# TODO(GEX-2071): Remove global lock when parallel compilation is safe.
+_COMPILATION_LOCK = threading.Lock()
 
 
 def _raise_if_not_contiguous(x: InputType) -> None:
@@ -408,7 +424,8 @@ class CompiledModel:
     initialization, so a single artifact can be initialized more than once.
     """
 
-    _compiled: _AsyncValue[_CompiledModels]
+    # A pending compile() handle, or the plain resolved artifact from read().
+    _compiled: _AsyncValue[_CompiledModels] | _CompiledModels
     _expected_weights: dict[str, Any] | None
     # Top-level graph names captured from the source MLIR module when known.
     # Empty for path-compiled artifacts (no module to inspect). Used by the
@@ -418,11 +435,11 @@ class CompiledModel:
 
     def __init__(
         self,
-        compiled: _AsyncValue[_CompiledModels],
+        compiled: _AsyncValue[_CompiledModels] | _CompiledModels,
         expected_weights: dict[str, Any] | None,
     ) -> None:
         # Internal constructor; users obtain instances from
-        # :meth:`InferenceSession.compile`.
+        # :meth:`InferenceSession.compile` or :func:`read`.
         self._compiled = compiled
         self._expected_weights = expected_weights
         self._graph_names = ()
@@ -441,10 +458,36 @@ class CompiledModel:
         Args:
             path: Filesystem path to write the MEF to.
         """
+        if isinstance(self._compiled, _CompiledModels):
+            self._compiled.export_mef(str(path))
+            return
         self._compiled.wait()
         if (exc := self._compiled.exception()) is not None:
             raise exc
         self._compiled.result().export_mef(str(path))
+
+
+def read(source: str | os.PathLike[str] | BinaryIO) -> CompiledModel:
+    """Reads a previously exported compiled-model artifact (a ``.mef``).
+
+    Args:
+        source: The path to a ``.mef`` file, or a binary file-like
+            object (anything with ``read()``, such as :class:`io.BytesIO`)
+            positioned at the start of the artifact.
+
+    Returns:
+        A :class:`CompiledModel` holding the deserialized artifact, ready
+        to be initialized on any session via :meth:`InferenceSession.init`.
+
+    Raises:
+        RuntimeError: If the artifact is missing or cannot be
+            deserialized.
+    """
+    if isinstance(source, (str, os.PathLike)):
+        artifact = _read(source)
+    else:
+        artifact = _read(source.read())
+    return CompiledModel(compiled=artifact, expected_weights=None)
 
 
 class ProfilingError(Exception):
@@ -505,13 +548,12 @@ class _ProfilingNamespace:
     def start(self) -> None:
         """Enable libkineto and begin recording.
 
-        Subscribes to CUPTI activity callbacks. Tracy and libkineto are
-        mutually exclusive at build time, so in ``--config=tracy`` builds
-        (which do not link libkineto) this is a no-op. Idempotent — calling
+        Subscribes to CUPTI activity callbacks. Idempotent — calling
         :meth:`start` while already enabled is a no-op.
 
-        On builds without libkineto (today: macOS and Linux aarch64) or
-        hosts without a live CUDA primary context, this is a safe no-op:
+        On builds without libkineto (it is linked only in
+        ``--config=kineto`` builds on Linux x86_64) or hosts without a
+        live CUDA primary context, this is a safe no-op:
         ``state`` will still report ``"warmup"`` but no trace file is
         written by the matching :meth:`stop`.
         """
@@ -561,13 +603,64 @@ class _ProfilingNamespace:
         """``True`` between :meth:`start` and :meth:`stop`.
 
         Equivalent to ``state in {"warmup", "active"}``; ``False`` in
-        ``"idle"`` and ``"flushing"``.
+        ``"idle"`` and ``"flushing"``.  Reflects only this session API's
+        enable intent — it stays ``False`` during Dynolog daemon-driven
+        on-demand traces, when :meth:`range` annotations do record; gate
+        hot-path annotation work on :attr:`is_recording` instead.
 
         Cheap relative to constructing a trace name you would otherwise skip,
         but still crosses the Python/C++ FFI boundary on every call — cache
         the result if you need it inside a tight loop.
         """
         return _kineto_is_enabled()
+
+    @property
+    def is_recording(self) -> bool:
+        """``True`` while a trace is live and :meth:`range` spans record.
+
+        Covers traces of either origin — :meth:`start` via this API or a
+        Dynolog daemon-driven on-demand request — so it is the right gate
+        for eliding expensive range-name construction on the hot path:
+        unlike :attr:`is_enabled`, it does not opt the caller out of
+        daemon-trace annotation.  A single relaxed atomic load behind the
+        FFI boundary.
+        """
+        return _kineto_is_recording()
+
+    @contextmanager
+    def range(self, name: str, color: int = 0) -> Iterator[None]:
+        """Annotate a semantic CPU range in the trace.
+
+        Opens a named span on the calling thread for the duration of the
+        ``with`` block. The span is recorded by libkineto as a Chrome-trace
+        CPU activity and correlated to the GPU kernels launched inside it,
+        so it shows up as a labeled bar above the kernel timeline in
+        Perfetto/HTA. Use it to mark application-level phases — the
+        runtime already records every kernel launch automatically:
+
+        .. code-block:: python
+
+            session.profiling.start()
+            with session.profiling.range("prefill"):
+                model.execute(input_data)
+            session.profiling.stop()
+
+        Ranges may be nested. When the profiler is not recording, the
+        underlying begin/end calls reduce to a single predicted branch in
+        the runtime, so leaving these annotations in production code is
+        safe; only the Python-side overhead of entering a context manager
+        remains.
+
+        Args:
+            name: Label shown on the span in the trace viewer.
+            color: Reserved for a future color hint; currently not carried
+                into the trace (libkineto activities have no color channel).
+        """
+        _kineto_range_begin(name, color)
+        try:
+            yield
+        finally:
+            _kineto_range_end()
 
     def __enter__(self) -> _ProfilingNamespace:
         """Enter a profiling context: equivalent to calling :meth:`start`.
@@ -864,6 +957,10 @@ class InferenceSession:
         :meth:`init_all`, or :meth:`CompiledModel.export_mef`. Use
         :meth:`compile` for the synchronous variant that blocks and raises.
 
+        Compiles are serialized process-wide: if another compile is in
+        flight (from any session), this call blocks until it resolves
+        before scheduling this one. See ``_COMPILATION_LOCK``.
+
         Args:
             model: A :class:`Graph` instance, a :class:`max.graph.Module`
                 containing one or more ``mo.graph`` ops, or the path to a
@@ -984,9 +1081,11 @@ class InferenceSession:
                 custom_extensions=custom_extensions,
                 tile_based_fusion=tile_based_fusion,
             )
+            handle = compiled._compiled
+            assert isinstance(handle, _AsyncValue)
             # Synchronously complete the compilation and raise errors.
-            compiled._compiled.wait()
-        exception = compiled._compiled.exception()
+            handle.wait()
+        exception = handle.exception()
         if exception is None:
             return compiled
         # compile_async surfaces the compile failure here rather than from the
@@ -1105,6 +1204,10 @@ class InferenceSession:
                     f"Weight '{weight_name}' is not contiguous: {str(e)}"
                 ) from e
 
+        if isinstance(compiled._compiled, _CompiledModels):
+            # Wrapping consumes the resolved artifact; cache the async
+            # handle so a later init can reuse it.
+            compiled._compiled = self._impl._wrap_compiled(compiled._compiled)
         with _record_phase("init_seconds"):
             models = self._impl._load_all(
                 compiled._compiled, weights_registry_real
@@ -1144,22 +1247,30 @@ class InferenceSession:
         custom_extensions_final: list[CustomExtensionType],
         tile_based_fusion: bool = False,
     ) -> _AsyncValue[_CompiledModels]:
-        """Compiles an MLIR module under the session's compilation lock.
+        """Compiles an MLIR module under the process-global compilation lock.
 
-        Wraps any synchronous setup failure in a ``RuntimeError`` pointing at
-        the ``max-debug.source-tracebacks`` config key for richer diagnostics.
-        Compilation itself is asynchronous; that failure surfaces when the
-        returned value is awaited (see :meth:`compile`).
+        Compilation itself is asynchronous; a compile failure surfaces when
+        the returned value is awaited (see :meth:`compile`).
+
+        Raises:
+            RuntimeError: If synchronous compile setup fails; the message
+                points at the ``max-debug.source-tracebacks`` config key
+                for richer diagnostics.
         """
+        _COMPILATION_LOCK.acquire()
         try:
-            return self._impl.compile(
+            handle = self._impl.compile(
                 module.mlir_module._CAPIPtr,
                 custom_extensions_final,
                 _derive_pipeline_name(module),
                 tile_based_fusion,
             )
         except Exception as e:
+            _COMPILATION_LOCK.release()
             raise RuntimeError(self._compile_failure_message()) from e
+        # Released from a runtime worker thread when the compile resolves.
+        handle.add_done_callback(lambda _: _COMPILATION_LOCK.release())
+        return handle
 
     def set_debug_print_options(
         self,

@@ -1213,7 +1213,7 @@ def size_of[type: AnyType, target: _TargetType = _current_target()]() -> Int:
         `> : !kgen.type`,
     ]
     return Int(
-        SIMDSize(
+        SIMDLength(
             mlir_value=__mlir_attr[
                 `#kgen.param.expr<get_sizeof, #kgen.type<`,
                 mlir_type,
@@ -1266,7 +1266,7 @@ def align_of[type: AnyType, target: _TargetType = _current_target()]() -> Int:
         `> : !kgen.type`,
     ]
     return Int(
-        SIMDSize(
+        SIMDLength(
             mlir_value=__mlir_attr[
                 `#kgen.param.expr<get_alignof, #kgen.type<`,
                 +mlir_type,
@@ -1290,7 +1290,7 @@ def align_of[dtype: DType, target: _TargetType = _current_target()]() -> Int:
         The alignment of the dtype in bytes.
     """
     return Int(
-        SIMDSize(
+        SIMDLength(
             mlir_value=__mlir_attr[
                 `#kgen.param.expr<get_alignof, #kgen.type<`,
                 Scalar[dtype]._mlir_type,
@@ -1422,7 +1422,7 @@ def _macos_version() raises -> Tuple[Int, Int, Int]:
         "kern.osproductversion".as_c_string_slice().unsafe_ptr(),
         osver.unsafe_ptr(),
         Pointer(to=buf_len),
-        Optional[UnsafePointer[NoneType, MutAnyOrigin]](),
+        Optional[Pointer[NoneType, MutAnyOrigin]](),
         Int(0),
     )
     if err:
@@ -1437,11 +1437,17 @@ def _macos_version() raises -> Tuple[Int, Int, Int]:
 
     if "." in osver:
         major = Int(osver[byte = : osver.find(".")])
-        osver = String(osver[byte = osver.find(".") + 1 :])
+        # TODO(MOCO-4373): split into two statements so the interior-origin
+        # slice of `osver` is copied into a new String before `osver` is
+        # reassigned; the single-statement form false-positives on
+        # interior-origin invalidation.
+        var rest_major = String(osver[byte = osver.find(".") + 1 :])
+        osver = rest_major^
 
     if "." in osver:
         minor = Int(osver[byte = : osver.find(".")])
-        osver = String(osver[byte = osver.find(".") + 1 :])
+        var rest_minor = String(osver[byte = osver.find(".") + 1 :])
+        osver = rest_minor^
 
     if "." in osver:
         patch = Int(osver[byte = : osver.find(".")])

@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""Generates tensors filled with values drawn from a normal (Gaussian) distribution for CPU and GPU."""
 
 from std.algorithm.functional import elementwise
 from std.gpu.host import DeviceContext
@@ -27,7 +28,7 @@ def random_normal[
     target: StaticString,
     OutputFn: ImplicitlyCopyable
     & RegisterPassable
-    & def[width: SIMDSize, _rank: Int](
+    & def[width: SIMDLength, _rank: Int](
         idx: IndexList[_rank], val: SIMD[dtype, width]
     ),
 ](

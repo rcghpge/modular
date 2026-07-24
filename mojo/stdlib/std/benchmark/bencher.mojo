@@ -682,12 +682,13 @@ struct Bench(Writable):
             suffix: Suffix string to append to output file name.
         """
         if self.config.out_file:
-            stem = String(self.config.out_file.value())
-            current_suffix = String("")
-            split = stem.split(".")
+            var stem = String(self.config.out_file.value())
+            var current_suffix = String("")
+            var split = stem.split(".")
             if len(split) > 1:
-                stem = ".".join(split[:-1])
                 current_suffix = String(split[len(split) - 1])
+                var new_stem = String(".".join(split[:-1]))
+                stem = new_stem^
 
             self.config.out_file = Path(
                 ".".join(Span[String]([stem + suffix, current_suffix^]))
@@ -987,7 +988,7 @@ struct Bench(Writable):
         @always_inline
         def bench_iter(
             mut b: Bencher,
-        ) {read func,}:
+        ) {imm func,}:
             b.iter(func)
 
         self.bench_function(bench_iter, bench_id, measures=measures)

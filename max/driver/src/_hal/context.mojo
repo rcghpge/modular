@@ -34,6 +34,7 @@ from .status import STATUS_SUCCESS, HALError
 from std.memory import (
     ImmPointer,
     ArcPointer,
+    MutOpaquePointer,
     UnsafePointer,
     UnsafeMaybeUninit,
 )
@@ -123,7 +124,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
 
     def handle[
         origin: Origin, //
-    ](ref[origin] self) -> UnsafePointer[ContextHandle.type, origin]:
+    ](ref[origin] self) -> UnsafePointer[ContextHandle.T, origin]:
         """Returns the raw context handle, tying its origin back to `self`.
 
         Accessing `self._handle` directly hands out a `ContextHandle` whose
@@ -167,7 +168,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
     # Synchronous copies
     # ===-------------------------------------------------------------------===#
 
-    def copy_to_device_sync(
+    def copy_to_device(
         self,
         dst: BufferView,
         src: UnsafePointer[mut=False, UInt8, _],
@@ -176,7 +177,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         until complete."""
         self._raw[].copy_to_device_sync(self._handle, dst._view, src)
 
-    def copy_from_device_sync(
+    def copy_from_device(
         self,
         dst: UnsafePointer[mut=True, UInt8, _],
         src: BufferView,
@@ -185,7 +186,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         until complete."""
         self._raw[].copy_from_device_sync(self._handle, dst, src._view)
 
-    def copy_intra_device_sync(
+    def copy_intra_device(
         self,
         dst: BufferView,
         src: BufferView,
@@ -194,10 +195,22 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         complete."""
         debug_assert(
             src.byte_size() >= dst.byte_size(),
-            "copy_intra_device_sync source view smaller than destination",
+            "copy_intra_device source view smaller than destination",
         )
         self._raw[].copy_intra_device_sync(self._handle, dst._view, src._view)
 
+    def set_memory(self, dst: BufferView, value: UInt8) raises HALError:
+        """Sets every byte of `dst` to `value`, blocking until complete."""
+        self._raw[].set_memory_sync(self._handle, dst._view, value)
+
+    def fill(
+        self, dst: BufferView, value: UInt64, value_size: UInt64
+    ) raises HALError:
+        """Fills `dst` with a repeated `value_size`-byte `value`, blocking until
+        complete. `value_size` must be one of 1, 2, 4, or 8."""
+        self._raw[].fill_sync(self._handle, dst._view, value, value_size)
+
+    @always_inline
     def _compile_inner[
         fn_type: TrivialRegisterPassable,
         func: fn_type,
@@ -231,6 +244,7 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             emission_kind="object",
         )
 
+    @always_inline
     def compile[
         fn_type: TrivialRegisterPassable,
         func: fn_type,
@@ -400,6 +414,29 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         )
 
     # ===-------------------------------------------------------------------===#
+    # Current-context state
+    # ===-------------------------------------------------------------------===#
+
+    def set_current(self) raises HALError:
+        """Sets this context as the calling thread's current context."""
+        self._raw[].set_context_current(self._handle)
+
+    def get_current_driver_context(self) raises HALError -> Int:
+        """Returns the calling thread's active driver-level context as an
+        opaque handle."""
+        return self._raw[].get_current_driver_context(self._handle)
+
+    def set_current_driver_context(self, driver_context: Int) raises HALError:
+        """Installs a handle previously obtained from
+        `get_current_driver_context` as the calling thread's current context.
+        """
+        self._raw[].set_current_driver_context(self._handle, driver_context)
+
+    def get_memory_info(self) raises HALError -> Tuple[UInt64, UInt64]:
+        """Returns the free and total device memory, in bytes."""
+        return self._raw[].get_context_memory_info(self._handle)
+
+    # ===-------------------------------------------------------------------===#
     # Function execution
     # ===-------------------------------------------------------------------===#
 
@@ -408,8 +445,100 @@ struct Context[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
     ) raises HALError -> FunctionHandle:
         return self._raw[].load_function(self._handle, bundle._handle, name)
 
+    def set_function_attribute(
+        self, func: FunctionHandle, attribute: Int32, value: Int32
+    ) raises HALError:
+        """Sets a backend function attribute (e.g. the dynamic shared-memory
+        cap) on a loaded function."""
+        self._raw[].set_function_attribute(self._handle, func, attribute, value)
+
     def unload_function(self, func: FunctionHandle) raises HALError:
         self._raw[].unload_function(self._handle, func)
+
+    def function_occupancy_max_active_blocks(
+        self,
+        func: FunctionHandle,
+        block_size: Int32,
+        dynamic_shared_memory_bytes: UInt64,
+    ) raises HALError -> Int32:
+        """Returns the max number of resident blocks per multiprocessor for
+        the function at the given block size and dynamic shared-memory usage.
+        """
+        return self._raw[].function_occupancy_max_active_blocks(
+            self._handle, func, block_size, dynamic_shared_memory_bytes
+        )
+
+    def tensor_map_encode_tiled(
+        self,
+        tensor_map: MutOpaquePointer[_],
+        data_type: Int32,
+        rank: Int32,
+        global_device_address: UInt64,
+        global_dim: UnsafePointer[mut=False, UInt64, _],
+        global_strides: UnsafePointer[mut=False, UInt64, _],
+        box_dim: UnsafePointer[mut=False, UInt32, _],
+        element_strides: UnsafePointer[mut=False, UInt32, _],
+        interleave: Int32,
+        swizzle: Int32,
+        l2_promotion: Int32,
+        oob_fill: Int32,
+    ) raises HALError:
+        """Encodes a tiled TMA descriptor into `tensor_map` for this
+        context's device."""
+        self._raw[].tensor_map_encode_tiled(
+            self._handle,
+            tensor_map,
+            data_type,
+            rank,
+            global_device_address,
+            global_dim,
+            global_strides,
+            box_dim,
+            element_strides,
+            interleave,
+            swizzle,
+            l2_promotion,
+            oob_fill,
+        )
+
+    def tensor_map_encode_im2col(
+        self,
+        tensor_map: MutOpaquePointer[_],
+        data_type: Int32,
+        rank: Int32,
+        global_device_address: UInt64,
+        global_dim: UnsafePointer[mut=False, UInt64, _],
+        global_strides: UnsafePointer[mut=False, UInt64, _],
+        pixel_box_lower_corner: UnsafePointer[mut=False, Int32, _],
+        pixel_box_upper_corner: UnsafePointer[mut=False, Int32, _],
+        channels_per_pixel: Int32,
+        pixels_per_column: Int32,
+        element_strides: UnsafePointer[mut=False, UInt32, _],
+        interleave: Int32,
+        swizzle: Int32,
+        l2_promotion: Int32,
+        oob_fill: Int32,
+    ) raises HALError:
+        """Encodes an im2col TMA descriptor into `tensor_map` for this
+        context's device."""
+        self._raw[].tensor_map_encode_im2col(
+            self._handle,
+            tensor_map,
+            data_type,
+            rank,
+            global_device_address,
+            global_dim,
+            global_strides,
+            pixel_box_lower_corner,
+            pixel_box_upper_corner,
+            channels_per_pixel,
+            pixels_per_column,
+            element_strides,
+            interleave,
+            swizzle,
+            l2_promotion,
+            oob_fill,
+        )
 
 
 @fieldwise_init

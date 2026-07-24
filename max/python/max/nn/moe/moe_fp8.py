@@ -72,20 +72,14 @@ class MoEQuantized(MoE):
         op (the dispatch output shape depends on this flag); the EP forward
         driver calls it once per layer before dispatch.
 
-        The fold writes the up-proj (KS224, ``ep_wait``) and down-proj (KS64,
-        ``fused_silu``) A-scale directly into the grouped-matmul slot layout,
-        dropping the standalone preshuffle kernels from the decode critical
-        path. It is enabled whenever this is an MXFP4 preshuffled-B EP layer and
-        the selected dispatch path wires the fold. This dispatch-coupled fold
-        (up + down) covers standard SiLU only; OAI-clamped SwiGLU keeps it off
-        and instead folds just the down-proj A-scale locally in the fused
-        activation kernel (see ``ep_mxfp4_down_slot_stride`` in ``_local_ep_compute``).
+        The fold writes the up-proj A-scale during dispatch and the down-proj
+        A-scale during ``fused_silu`` directly into the grouped-matmul slot
+        layout, dropping the standalone preshuffle kernels from the decode
+        critical path.
 
         Args:
-            dispatch_supports_fold: Whether the dispatch path selected for this
-                forward threads the fold params. The multi-device single-op
-                ``call_distributed_ep_dispatch`` does not, so the fold stays off
-                there and the standalone preshuffle runs.
+            dispatch_supports_fold: Whether the selected dispatch path threads the
+                fold parameters.
         """
         if self._ep_batch_manager is None:
             return
@@ -94,7 +88,6 @@ class MoEQuantized(MoE):
             and self.quant_config is not None
             and self.quant_config.is_mxfp4
             and self.quant_config.mxfp4_preshuffled_b
-            and not self.use_swigluoai
         )
 
     @property
@@ -314,6 +307,13 @@ class MoEQuantized(MoE):
             if mxfp4_ep_scale_fusion
             else 0
         )
+        # Decode cap = global decode batch; sizes the preb direct grid.y. 0
+        # disables (full-stride fallback).
+        mxfp4_decode_grid_m_cap = (
+            self.ep_batch_manager.config.max_batch_size
+            if self._ep_batch_manager
+            else 0
+        )
         # The up-proj reads its A-scale from the dispatched tokens, which
         # `ep_wait` wrote in slot layout when the fusion is on.
         up_a_scales_preshuffled = (
@@ -363,6 +363,7 @@ class MoEQuantized(MoE):
                     # KS224: ep_wait wrote the up-proj A-scale in slot layout.
                     a_scales_preshuffled=up_a_scales_preshuffled,
                     a_scales_max_padded_m=mxfp4_ep_max_padded_m,
+                    decode_grid_m_cap=mxfp4_decode_grid_m_cap,
                 )
                 down_in, silu_scales = strategy.fused_silu_quantize(
                     gate_up,
@@ -421,6 +422,7 @@ class MoEQuantized(MoE):
                 estimated_total_m=estimated_total_m,
                 a_scales_preshuffled=down_slot_stride > 0,
                 a_scales_max_padded_m=down_slot_stride,
+                decode_grid_m_cap=mxfp4_decode_grid_m_cap,
             )
         return strategy.grouped_matmul(
             self.down_proj,

@@ -19,7 +19,7 @@ from .plugin import (
 )
 from .buffer import Buffer, BufferView
 from .context import Context
-from .copy import _enqueue_copy
+from .memory import _enqueue_copy
 from .event import Event, EventFlags, EVENT_FLAG_NONE, Waitable, _EventInner
 from .device import DeviceSpec
 from .status import STATUS_SUCCESS, HALError
@@ -31,7 +31,7 @@ from std.memory import (
     UnsafeMaybeUninit,
 )
 from std.memory.arc_pointer import WeakPointer
-from _hal.execution_config import (
+from .execution_config import (
     ExecutionConfig,
     BlockExecutionConfig,
     GridBlockExecutionConfig,
@@ -101,6 +101,8 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         arg_sizes: UnsafePointer[mut=True, UInt64, _],
         num_args: UInt32,
         shared_mem_bytes: UInt32 = 0,
+        attributes: OptionalReg[OpaquePointer[MutUntrackedOrigin]] = None,
+        num_attributes: UInt32 = 0,
     ) raises HALError:
         """
         Enqueue an execution of the passed function as a kernel on this queue.
@@ -117,6 +119,8 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             arg_sizes,
             num_args,
             shared_mem_bytes=shared_mem_bytes,
+            attributes=attributes,
+            num_attributes=num_attributes,
         )
 
     def execute[
@@ -129,6 +133,8 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
         args: UnsafePointer[mut=True, OpaquePointer[MutUntrackedOrigin], _],
         arg_sizes: UnsafePointer[mut=True, UInt64, _],
         num_args: UInt32,
+        attributes: OptionalReg[OpaquePointer[MutUntrackedOrigin]] = None,
+        num_attributes: UInt32 = 0,
     ) raises HALError:
         """
         Enqueue an execution of the passed function as a kernel on this queue.
@@ -190,6 +196,8 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             arg_sizes,
             num_args,
             shared_mem_bytes=UInt32(near_compute_scratchpad_usage),
+            attributes=attributes,
+            num_attributes=num_attributes,
         )
 
     # Direction-specific transports. Callable directly for fine-grained
@@ -234,6 +242,16 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             "copy_intra_device source view smaller than destination",
         )
         self._raw[].copy_intra_device(self._handle, dst._view, src._view)
+
+    def launch_host_func[
+        origin: MutOrigin
+    ](
+        self,
+        func: def(OpaquePointer[origin]) thin -> None,
+        user_data: OpaquePointer[origin],
+    ) raises HALError:
+        """Enqueues a host function callback (e.g. cuLaunchHostFunc)."""
+        self._raw[].queue_launch_host_func(self._handle, func, user_data)
 
     def set_memory(
         self,
@@ -291,9 +309,16 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
             src=src,
         )
 
+    def wait_value64(
+        self, device_address: UInt64, value: UInt64
+    ) raises HALError:
+        """Enqueues a wait until the 64-bit slot at `device_address` equals
+        `value` (e.g. cuStreamWaitValue64 with EQ semantics)."""
+        self._raw[].queue_wait_value64(self._handle, device_address, value)
+
     def record_event[
         flags: EventFlags = EVENT_FLAG_NONE,
-    ](self, out event: Event[flags],) raises HALError:
+    ](self, out event: Event[flags]) raises HALError:
         """Creates a fresh event, records it on this queue's timeline, and
         returns it.
 
@@ -319,7 +344,7 @@ struct Queue[device_spec: DeviceSpec](ImplicitlyDeletable, Movable):
 
     def wait_for_events[
         *EventTypes: Waitable,
-    ](self, *events: *EventTypes,) raises HALError:
+    ](self, *events: *EventTypes) raises HALError:
         """Enqueues a wait for the given events on this queue.
 
         Accepts any combination of events with different flag combos.

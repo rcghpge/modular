@@ -98,7 +98,7 @@ struct TypeList[
     )
     """The number of types in the list."""
 
-    comptime __getitem_param__[idx: SIMDSize] = __mlir_attr[
+    comptime __getitem_param__[idx: SIMDLength] = __mlir_attr[
         `#kgen.param_list.get<:`,
         Self._mlir_type,
         ` `,
@@ -127,8 +127,8 @@ struct TypeList[
     """Gets a type at the given raw `index`.
 
     Unlike `__getitem_param__`, this accepts a raw `!kgen.index` so callers can
-    index without constructing a `SIMDSize` (and thus without pulling in
-    `SIMDSize` comparison machinery). Used by the stdlib plugin router during
+    index without constructing a `SIMDLength` (and thus without pulling in
+    `SIMDLength` comparison machinery). Used by the stdlib plugin router during
     bootstrap.
 
     Parameters:
@@ -679,7 +679,7 @@ struct _ParameterListIter[type: Copyable, //, *values: type](
     @always_inline
     def __next__(
         mut self,
-    ) raises StopIteration -> ref[StaticConstantOrigin] Self.type:
+    ) raises StopIteration -> ref[ImmStaticOrigin] Self.type:
         var index = self.index
 
         if index >= Self.values.size:
@@ -779,7 +779,7 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         return Self.size
 
     @staticmethod
-    def get_span() -> Span[Self.type, StaticConstantOrigin]:
+    def get_span() -> Span[Self.type, ImmStaticOrigin]:
         """Gets a span of the elements on the variadic list.
 
         Returns:
@@ -797,11 +797,11 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         # Map it into a runtime constant.
         ref static_array = global_constant[array]()
         # Get a pointer to the first element, not the whole array.
-        var first_elt = UnsafePointer(to=static_array).bitcast[Self.type]()
-        return Span(ptr=first_elt, length=Self.size)
+        var first_elt = Pointer(to=static_array).unsafe_bitcast[Self.type]()
+        return Span(unsafe_ptr=first_elt, length=Self.size)
 
     @always_inline
-    def __getitem__(self, idx: Int) -> ref[StaticConstantOrigin] Self.type:
+    def __getitem__(self, idx: Int) -> ref[ImmStaticOrigin] Self.type:
         """Gets a single element on the variadic list.
 
         Args:
@@ -812,7 +812,7 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         """
         return self.get_span()[idx]
 
-    comptime __getitem_param__[idx: SIMDSize]: Self.type = __mlir_attr[
+    comptime __getitem_param__[idx: SIMDLength]: Self.type = __mlir_attr[
         `#kgen.param_list.get<:`,
         Self._mlir_type,
         ` `,
@@ -942,7 +942,7 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         PrevV: FromAndTo,
         VA: Self._mlir_type,
         idx: __mlir_type.index,
-    ] = ToWrap[PrevV, Self.__getitem_param__[SIMDSize(mlir_value=idx)]]
+    ] = ToWrap[PrevV, Self.__getitem_param__[SIMDLength(mlir_value=idx)]]
     """Takes an index because kgen.variadic.reduce passes it but we don't want it"""
 
     # TODO: This isn't returning a ParamList, so it should really be a 'def' so
@@ -1265,18 +1265,18 @@ struct VariadicList[
         Args:
             value: The raw reference to the array of element pointers.
         """
-        # Convert the !lit.ref to an UnsafePointer, then cast to a pointer to
+        # Convert the !lit.ref to a pointer, then cast to a pointer to
         # the first element.
-        var array_up = UnsafePointer(
+        var array_up = Pointer(
             to=Pointer(_mlir_value=value)[]
         ).unsafe_origin_cast[UntrackedOrigin[mut=False]]()
-        var elt_ptr = UnsafePointer[_, UntrackedOrigin[mut=False]](
+        var elt_ptr = Pointer[_, UntrackedOrigin[mut=False]](
             _mlir_value=__mlir_op.`pop.array.gep`(
                 array_up._get_kgen_pointer(),
                 Int(0).__mlir_index__(),
             )
-        ).bitcast[Self._EltPointerType]()
-        self._value = Span(ptr=elt_ptr, length=Int(mlir_value=size))
+        ).unsafe_bitcast[Self._EltPointerType]()
+        self._value = Span(unsafe_ptr=elt_ptr, length=Int(mlir_value=size))
 
     # The destructor for this type is trivial if not an "owned" list.
     comptime __del__is_trivial: Bool = not Self.is_owned
@@ -1299,9 +1299,7 @@ struct VariadicList[
 
             for i in reversed(range(len(self))):
                 # Safety: We own the elements in this list.
-                UnsafePointer(to=self[i]).mut_cast[
-                    True
-                ]().unsafe_deinit_pointee()
+                Pointer(to=self[i]).mut_cast[True]().unsafe_deinit_pointee()
 
     def consume_elements(
         deinit self,
@@ -1321,7 +1319,7 @@ struct VariadicList[
         ), "consume_elements may only be called on owned variadic lists"
 
         for i in range(len(self)):
-            var ptr = UnsafePointer(to=self[i])
+            var ptr = Pointer(to=self[i])
             # TODO: Cannot use UnsafePointer.take_pointee because it requires
             # the element to be Movable, which is not required here.
             elt_handler(
@@ -1570,9 +1568,7 @@ struct VariadicPack[
                 comptime assert conforms_to(element_type, ImplicitlyDeletable)
 
                 # Safety: We own the elements in this pack.
-                UnsafePointer(to=self[i]).mut_cast[
-                    True
-                ]().unsafe_deinit_pointee()
+                Pointer(to=self[i]).mut_cast[True]().unsafe_deinit_pointee()
 
     def consume_elements[
         elt_handler: def[idx: Int](var elt: Self.element_types[idx]) capturing
@@ -1591,7 +1587,7 @@ struct VariadicPack[
         ), "consume_elements may only be called on owned variadic packs"
 
         comptime for i in range(Self.__len__()):
-            var ptr = UnsafePointer(to=self[i])
+            var ptr = Pointer(to=self[i])
             # TODO: Cannot use UnsafePointer.take_pointee because it requires
             # the element to be Movable, which is not required here.
             elt_handler[i](

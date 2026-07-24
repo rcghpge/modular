@@ -309,6 +309,15 @@ class PipelineArgs(ConfigFileModel):
         ),
     )
 
+    chunked_prefill_min_chunk_size: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Floor, in tokens, on any chunk created by chunked prefill "
+            "(neither a chunk nor its remainder may be smaller). 0 disables."
+        ),
+    )
+
     enable_in_flight_batching: bool = Field(
         default=False,
         description=(
@@ -385,6 +394,23 @@ class PipelineArgs(ConfigFileModel):
         ),
     )
 
+    fold_sampler_into_graph: bool = Field(
+        default=True,
+        description=(
+            "Fold greedy token selection (argmax) into the captured forward "
+            "graph so a single device-graph replay materializes the sampled "
+            "token."
+        ),
+    )
+
+    max_pending_futures: int = Field(
+        default=1,
+        description=(
+            "Maximum number of unrealized future-token placeholders a "
+            "request may hold at once; 2 enables schedule-ahead decoding."
+        ),
+    )
+
     force: bool = Field(
         default=False,
         description=(
@@ -419,6 +445,33 @@ class PipelineArgs(ConfigFileModel):
     enable_overlap_scheduler: bool = Field(
         default=False,
         description=("Whether to enable the overlap scheduler."),
+    )
+
+    dp_ce_balance_timeout_ms: float = Field(
+        default=-1.0,
+        description=(
+            "Max deferral time in milliseconds for token-balanced CE "
+            "scheduling across DP replicas. -1 disables the balancer; 0 "
+            "places eagerly with post-cache weights; > 0 defers unbalanced "
+            "CE work up to the deadline."
+        ),
+    )
+
+    dp_ce_balance_threshold: float = Field(
+        default=0.8,
+        description=(
+            "Per-step CE occupancy across DP replicas (0-1) at or above "
+            "which CE work is scheduled without further deferral."
+        ),
+    )
+
+    dp_ce_balance_enable_dynamic_chunk_size: bool = Field(
+        default=True,
+        description=(
+            "Whether below-threshold multi-replica CE steps run immediately "
+            "with chunk sizes reduced to the balance level (False = hold "
+            "whole)."
+        ),
     )
 
     allow_unsupported_logprobs: bool = Field(
@@ -697,7 +750,7 @@ class PipelineArgs(ConfigFileModel):
         etc.) instead of duplicating it. It is not a general round-trip:
         ``pipeline_config`` is expected to be freshly constructed and not
         yet resolved. Resolution-derived state (e.g. an applied dtype cast
-        recorded by ``MAXModelConfig.resolve()``) is *not* preserved --
+        recorded during architecture-level resolution) is *not* preserved --
         :class:`PipelineArgs` is deliberately isolated from resolution
         mutations (see #90128), so passing an already-resolved
         ``pipeline_config`` here will silently drop that state.
@@ -761,6 +814,7 @@ class PipelineArgs(ConfigFileModel):
             ce_delay_ms=runtime.ce_delay_ms,
             enable_prioritize_first_decode=runtime.enable_prioritize_first_decode,
             enable_chunked_prefill=runtime.enable_chunked_prefill,
+            chunked_prefill_min_chunk_size=runtime.chunked_prefill_min_chunk_size,
             enable_in_flight_batching=runtime.enable_in_flight_batching,
             eplb_replicas_per_gpu=runtime.eplb_replicas_per_gpu,
             max_num_steps=runtime.max_num_steps,
@@ -772,11 +826,16 @@ class PipelineArgs(ConfigFileModel):
             execute_empty_batches=runtime.execute_empty_batches,
             max_batch_total_tokens=runtime.max_batch_total_tokens,
             device_graph_capture=runtime.device_graph_capture,
+            fold_sampler_into_graph=runtime.fold_sampler_into_graph,
+            max_pending_futures=runtime.max_pending_futures,
             force=runtime.force,
             kvcache_ce_watermark=runtime.kvcache_ce_watermark,
             decode_stall_timeout_s=runtime.decode_stall_timeout_s,
             decode_request_ttl_s=runtime.decode_request_ttl_s,
             enable_overlap_scheduler=runtime.enable_overlap_scheduler,
+            dp_ce_balance_timeout_ms=runtime.dp_ce_balance_timeout_ms,
+            dp_ce_balance_threshold=runtime.dp_ce_balance_threshold,
+            dp_ce_balance_enable_dynamic_chunk_size=runtime.dp_ce_balance_enable_dynamic_chunk_size,
             allow_unsupported_logprobs=runtime.allow_unsupported_logprobs,
             allow_extra_request_fields=runtime.allow_extra_request_fields,
             prefer_module_v3=runtime.prefer_module_v3,

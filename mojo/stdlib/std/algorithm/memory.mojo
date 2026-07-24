@@ -31,8 +31,8 @@ def unsafe_parallel_memcpy[
     dtype: DType
 ](
     *,
-    dest: UnsafePointer[mut=True, Scalar[dtype], _],
-    src: UnsafePointer[Scalar[dtype], _],
+    dest: Pointer[mut=True, Scalar[dtype], _],
+    src: Pointer[Scalar[dtype], _],
     count: Int,
     count_per_task: Int,
     num_tasks: Int,
@@ -68,8 +68,8 @@ def unsafe_parallel_memcpy[
             return
 
         unsafe_memcpy(
-            dest=dest + begin,
-            src=src + begin,
+            dest=dest.unsafe_offset(begin),
+            src=src.unsafe_offset(begin),
             count=to_copy,
         )
 
@@ -80,8 +80,8 @@ def unsafe_parallel_memcpy[
     dtype: DType,
 ](
     *,
-    dest: UnsafePointer[mut=True, Scalar[dtype], _],
-    src: UnsafePointer[Scalar[dtype], _],
+    dest: Pointer[mut=True, Scalar[dtype], _],
+    src: Pointer[Scalar[dtype], _],
     count: Int,
 ):
     """Copies `count` elements from a memory buffer `src` to `dest` in parallel.
@@ -122,8 +122,8 @@ def parallel_memcpy[
     dtype: DType
 ](
     *,
-    dest: OptionalUnsafePointer[mut=True, Scalar[dtype], _],
-    src: OptionalUnsafePointer[Scalar[dtype], _],
+    dest: OptionalPointer[mut=True, Scalar[dtype], _],
+    src: OptionalPointer[Scalar[dtype], _],
     count: Int,
     count_per_task: Int,
     num_tasks: Int,
@@ -158,8 +158,8 @@ def parallel_memcpy[
     dtype: DType,
 ](
     *,
-    dest: OptionalUnsafePointer[mut=True, Scalar[dtype], _],
-    src: OptionalUnsafePointer[Scalar[dtype], _],
+    dest: OptionalPointer[mut=True, Scalar[dtype], _],
+    src: OptionalPointer[Scalar[dtype], _],
     count: Int,
 ):
     """Copies `count` elements from a memory buffer `src` to `dest` in parallel.

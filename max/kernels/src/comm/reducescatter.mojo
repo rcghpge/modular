@@ -59,7 +59,7 @@ from .sync import (
 comptime _target_address_space = AddressSpace.GLOBAL if is_amd_gpu() else AddressSpace.GENERIC
 
 comptime elementwise_epilogue_type = def[
-    dtype: DType, width: SIMDSize, *, alignment: Int
+    dtype: DType, width: SIMDLength, *, alignment: Int
 ](Coord, SIMD[dtype, size=width]) capturing -> None
 
 
@@ -527,7 +527,7 @@ def reducescatter[
         axis: Scatter axis. 0 to scatter along rows (default), 1 to scatter along columns.
             Requires 2D row-major inputs when axis >= 0.
         use_multimem: If True, use hardware-accelerated multimem reduction.
-            Currently only valid with 1D input. TODO(KERN-2526): generalize.
+            Currently only valid with 1D input.
         domain_id: Barrier counter bank to use (0 for full-world; a distinct
             nonzero value for grouped collectives sharing the same Signal
             buffers). See `_multi_gpu_barrier`.
@@ -657,7 +657,7 @@ def reducescatter[
     @__copy_capture(output_buffer)
     def default_output_lambda[
         _dtype: DType,
-        _width: SIMDSize,
+        _width: SIMDLength,
         *,
         _alignment: Int,
     ](coords: Coord, val: SIMD[_dtype, _width]) -> None:

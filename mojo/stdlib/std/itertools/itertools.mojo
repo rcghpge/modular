@@ -27,6 +27,8 @@ These utilities enable functional-style iteration patterns and composable iterat
 operations.
 """
 
+from std.memory import forget_deinit
+
 # ===-----------------------------------------------------------------------===#
 # count
 # ===-----------------------------------------------------------------------===#
@@ -85,7 +87,7 @@ struct _Product2[IteratorTypeA: Iterator, IteratorTypeB: Copyable & Iterator](
     Iterable where conforms_to(IteratorTypeA, Copyable),
     IterableOwned,
     Iterator,
-):
+) where conforms_to(IteratorTypeA.Element, ImplicitlyDeletable):
     comptime Element = Tuple[
         Self.IteratorTypeA.Element, Self.IteratorTypeB.Element
     ]
@@ -180,6 +182,9 @@ def product[
     IterableTypeA.IteratorType[origin_of(iterable_a)],
     IterableTypeB.IteratorType[origin_of(iterable_b)],
 ] where conforms_to(
+    IterableTypeA.IteratorType[origin_of(iterable_a)].Element,
+    ImplicitlyDeletable,
+) and conforms_to(
     IterableTypeB.IteratorType[origin_of(iterable_b)], Copyable & Iterator
 ):
     """Returns an iterator that yields tuples of the elements of the outer
@@ -214,6 +219,46 @@ def product[
     }
 
 
+def _flatten[
+    T: Movable, //, *InnerTs: Movable
+](
+    var arg: Tuple[T, Tuple[*InnerTs]],
+    # TODO(MOCO-4359): Use `out result: Tuple[T, *InnerTs]` once trailing
+    # unpacking is supported.
+    out result: Tuple[
+        *TypeList._concat[
+            TypeList.of[Trait=Movable, T]().values,
+            TypeList[Trait=Movable, InnerTs.values]().values,
+        ]()
+    ],
+):
+    """Right-flattens `(a, (b, c, ...))` into `(a, b, c, ...)`.
+
+    The nested `product` iterators build their tuples one pair at a time, so
+    each `__next__` yields a right-nested tuple that has to be flattened. The
+    element types are only known to be `Movable` and `Tuple` is only
+    conditionally `ImplicitlyDeletable`, so `arg` can't be dropped implicitly.
+    Each element is moved into `result` instead, then `arg` is discarded
+    without running a destructor.
+    """
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(result))
+
+    Pointer(to=result[0]).unsafe_write_move_from(
+        rebind[Pointer[type_of(result[0]), origin_of(arg)]](Pointer(to=arg[0]))
+    )
+
+    comptime for j in range(type_of(arg[1]).__len__()):
+        Pointer(to=result[j + 1]).unsafe_write_move_from(
+            rebind[Pointer[type_of(result[j + 1]), origin_of(arg)]](
+                Pointer(to=arg[1][j])
+            )
+        )
+
+    # Every element has been moved out and the `!kgen.struct` destructor is
+    # trivial, so discard `arg` without running a destructor.
+    forget_deinit(arg^)
+
+
 # ===-----------------------------------------------------------------------===#
 # product (3 iterables)
 # ===-----------------------------------------------------------------------===#
@@ -229,6 +274,10 @@ struct _Product3[
     Iterable where conforms_to(IteratorTypeA, Copyable),
     IterableOwned,
     Iterator,
+) where conforms_to(
+    IteratorTypeA.Element, ImplicitlyDeletable
+) and conforms_to(
+    IteratorTypeB.Element, ImplicitlyDeletable
 ):
     comptime Element = Tuple[
         Self.IteratorTypeA.Element,
@@ -268,16 +317,8 @@ struct _Product3[
         return self^
 
     def __next__(mut self) raises StopIteration -> Self.Element:
-        comptime assert conforms_to(Self.IteratorTypeA.Element, Copyable)
-        comptime assert conforms_to(Self.IteratorTypeB.Element, Copyable)
-        comptime assert conforms_to(Self.IteratorTypeC.Element, Copyable)
-
-        var nested = next(self._inner)  # Returns (a, (b, c))
-        var a = nested[0].copy()
-        var b = nested[1][0].copy()
-        var c = nested[1][1].copy()
-        # Flatten to (a, b, c)
-        return (a^, b^, c^)
+        # `next` yields the right-nested `(a, (b, c))`; flatten to `(a, b, c)`.
+        return rebind_var[Self.Element](_flatten(next(self._inner)))
 
     def bounds(self) -> Tuple[Int, Optional[Int]]:
         return self._inner.bounds()
@@ -294,10 +335,21 @@ def product[
     IterableTypeA.IteratorType[origin_of(iterable_a)],
     IterableTypeB.IteratorType[origin_of(iterable_b)],
     IterableTypeC.IteratorType[origin_of(iterable_c)],
-] where conforms_to(
-    IterableTypeB.IteratorType[origin_of(iterable_b)], Copyable & Iterator
-) and conforms_to(
-    IterableTypeC.IteratorType[origin_of(iterable_c)], Copyable & Iterator
+] where (
+    conforms_to(
+        IterableTypeB.IteratorType[origin_of(iterable_b)], Copyable & Iterator
+    )
+    and conforms_to(
+        IterableTypeC.IteratorType[origin_of(iterable_c)], Copyable & Iterator
+    )
+    and conforms_to(
+        IterableTypeA.IteratorType[origin_of(iterable_a)].Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        IterableTypeB.IteratorType[origin_of(iterable_b)].Element,
+        ImplicitlyDeletable,
+    )
 ):
     """Returns an iterator that yields tuples of the elements of the outer
     product of three iterables.
@@ -351,6 +403,10 @@ struct _Product4[
     Iterable where conforms_to(IteratorTypeA, Copyable),
     IterableOwned,
     Iterator,
+) where (
+    conforms_to(IteratorTypeA.Element, ImplicitlyDeletable)
+    and conforms_to(IteratorTypeB.Element, ImplicitlyDeletable)
+    and conforms_to(IteratorTypeC.Element, ImplicitlyDeletable)
 ):
     comptime Element = Tuple[
         Self.IteratorTypeA.Element,
@@ -392,19 +448,8 @@ struct _Product4[
         return self^
 
     def __next__(mut self) raises StopIteration -> Self.Element:
-        comptime assert conforms_to(Self.IteratorTypeA.Element, Copyable)
-        comptime assert conforms_to(Self.IteratorTypeB.Element, Copyable)
-        comptime assert conforms_to(Self.IteratorTypeC.Element, Copyable)
-        comptime assert conforms_to(Self.IteratorTypeD.Element, Copyable)
-
-        var nested = next(self._inner)  # Returns (a, (b, c, d))
-        # Flatten to (a, b, c, d)
-
-        var a = nested[0].copy()
-        var b = nested[1][0].copy()
-        var c = nested[1][1].copy()
-        var d = nested[1][2].copy()
-        return (a^, b^, c^, d^)
+        # `next` yields the right-nested `(a, (b, c, d))`; flatten it.
+        return rebind_var[Self.Element](_flatten(next(self._inner)))
 
     def bounds(self) -> Tuple[Int, Optional[Int]]:
         return self._inner.bounds()
@@ -435,6 +480,18 @@ def product[
     )
     and conforms_to(
         IterableTypeD.IteratorType[origin_of(iterable_d)], Copyable & Iterator
+    )
+    and conforms_to(
+        IterableTypeA.IteratorType[origin_of(iterable_a)].Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        IterableTypeB.IteratorType[origin_of(iterable_b)].Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        IterableTypeC.IteratorType[origin_of(iterable_c)].Element,
+        ImplicitlyDeletable,
     )
 ):
     """Returns an iterator that yields tuples of the elements of the outer
@@ -484,7 +541,11 @@ def product(
 ) -> _Product2[
     type_of(iterable_a).IteratorOwnedType,
     type_of(iterable_b).IteratorOwnedType,
-] where conforms_to(type_of(iterable_b).IteratorOwnedType, Copyable & Iterator):
+] where conforms_to(
+    type_of(iterable_b).IteratorOwnedType, Copyable & Iterator
+) and conforms_to(
+    type_of(iterable_a).IteratorOwnedType.Element, ImplicitlyDeletable
+):
     """Returns an iterator that yields tuples of the elements of the outer
     product of the iterables, consuming both iterables.
 
@@ -511,10 +572,17 @@ def product(
     type_of(iterable_a).IteratorOwnedType,
     type_of(iterable_b).IteratorOwnedType,
     type_of(iterable_c).IteratorOwnedType,
-] where conforms_to(
-    type_of(iterable_b).IteratorOwnedType, Copyable & Iterator
-) and conforms_to(
-    type_of(iterable_c).IteratorOwnedType, Copyable & Iterator
+] where (
+    conforms_to(type_of(iterable_b).IteratorOwnedType, Copyable & Iterator)
+    and conforms_to(type_of(iterable_c).IteratorOwnedType, Copyable & Iterator)
+    and conforms_to(
+        type_of(iterable_a).IteratorOwnedType.Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        type_of(iterable_b).IteratorOwnedType.Element,
+        ImplicitlyDeletable,
+    )
 ):
     """Returns an iterator that yields tuples of the elements of the outer
     product of three iterables, consuming all three iterables.
@@ -550,6 +618,18 @@ def product(
     conforms_to(type_of(iterable_b).IteratorOwnedType, Copyable & Iterator)
     and conforms_to(type_of(iterable_c).IteratorOwnedType, Copyable & Iterator)
     and conforms_to(type_of(iterable_d).IteratorOwnedType, Copyable & Iterator)
+    and conforms_to(
+        type_of(iterable_a).IteratorOwnedType.Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        type_of(iterable_b).IteratorOwnedType.Element,
+        ImplicitlyDeletable,
+    )
+    and conforms_to(
+        type_of(iterable_c).IteratorOwnedType.Element,
+        ImplicitlyDeletable,
+    )
 ):
     """Returns an iterator that yields tuples of the elements of the outer
     product of four iterables, consuming all four iterables.
