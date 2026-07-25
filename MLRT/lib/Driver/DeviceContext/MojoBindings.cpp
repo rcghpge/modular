@@ -13,6 +13,14 @@
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+
+// See the static_assert in DeviceContext.cpp.
+static_assert(
+    !MODULAR_HAL_DEVICE_CONTEXT,
+    "the AsyncRT_Device* bindings must compile against the legacy "
+    "DeviceContext declarations: -UMODULAR_HAL_DEVICE_CONTEXT in this "
+    "target's copts must override Driver/DeviceContextAPI's define");
+
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADriver.h"

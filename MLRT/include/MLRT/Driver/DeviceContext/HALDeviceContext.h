@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 //
 // HAL replacement for the DeviceContext API. Under --config=hal-device-context
-// (which defines MODULAR_HAL_DEVICE_CONTEXT globally) DeviceContext.h
-// dispatches to this header instead of the legacy declarations: same
+// DeviceContext.h dispatches to this header instead of the legacy
+// declarations: same
 // `M::Driver` class names and drop-in signatures, implemented as a pure shim
 // over the Mojo HAL `DeviceContext` via the MojoHAL_* C-ABI exports
 // (MLRT/lib/Driver/DeviceContext/HAL/hal_device_context_exports.mojo).

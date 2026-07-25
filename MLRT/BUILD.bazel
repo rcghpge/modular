@@ -478,6 +478,15 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
         "include/MLRT/Driver/DeviceContext/HALDeviceContext.h",
     ],
+    # Switches DeviceContext.h to the HAL shim declarations. Propagated from the
+    # target that provides the header rather than a global `--copt`, which would
+    # rekey every C++ action including LLVM onto a separate build cache
+    # (DRIV-340). Targets that must keep the legacy declarations undefine it in
+    # their own `copts`.
+    defines = select({
+        "//:hal_device_context_enabled": ["MODULAR_HAL_DEVICE_CONTEXT=1"],
+        "//conditions:default": [],
+    }),
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
@@ -572,7 +581,7 @@ modular_shared_library(
         "@dlpack",
         "@llvm-project//llvm:Support",
     ] + select({
-        # Carries the implementation matching the global
+        # Carries the implementation matching the
         # MODULAR_HAL_DEVICE_CONTEXT declaration switch: the HAL shim (and its
         # MojoHAL exports) under --config=hal-device-context, the legacy DeviceContext
         # implementation plus its AsyncRT_Device* Mojo bindings otherwise.
@@ -723,12 +732,13 @@ modular_cc_library(
         "lib/Driver/DeviceContext/Metal/MetalDriver.h",
         "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h",
     ],
-    # This IS the legacy DeviceContext implementation: it always compiles against the
-    # legacy DeviceContext declarations, even when --config=hal-device-context defines
-    # MODULAR_HAL_DEVICE_CONTEXT globally (rule copts follow the global
-    # --copt, so the -U wins). Under the flag its objects only reach binaries
-    # through libAsyncRTMojoBindings.so, whose exports flag-mode binaries
-    # must not link (see the GraphCompiler dep selects).
+    # This IS the legacy DeviceContext implementation: it always compiles against
+    # the legacy declarations, even under --config=hal-device-context -- rule
+    # copts land after Driver/DeviceContextAPI's propagated `defines`, so this -U
+    # wins (pinned by a static_assert in DeviceContext.cpp). Under the flag its
+    # objects only reach binaries through libAsyncRTMojoBindings.so, whose
+    # exports flag-mode binaries must not link (see the GraphCompiler dep
+    # selects).
     copts = ["-UMODULAR_HAL_DEVICE_CONTEXT"],
     linkopts = select({
         "@platforms//os:macos": [

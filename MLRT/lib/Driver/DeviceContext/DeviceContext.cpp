@@ -9,6 +9,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+
+// If the -U ever stops beating Driver/DeviceContextAPI's propagated define, the
+// legacy headers below fail with a cascade of unrelated-looking errors. Fail
+// first, naming the cause.
+static_assert(
+    !MODULAR_HAL_DEVICE_CONTEXT,
+    "the legacy DeviceContext implementation must compile against the "
+    "legacy declarations: -UMODULAR_HAL_DEVICE_CONTEXT in this "
+    "target's copts must override Driver/DeviceContextAPI's define");
+
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
