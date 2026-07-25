@@ -63,7 +63,7 @@ static llvm::StringRef primitiveMojoName(MOGG::PrimitiveDeclOp decl) {
   return decl.getSymNameAttr().strref();
 }
 
-// Helper to emit a typed comptime InlineArray[Int, N] declaration from
+// Helper to emit a typed comptime Array[Int, N] declaration from
 // attribute values and return the variable name.
 template <typename T>
 static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
@@ -75,7 +75,7 @@ static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
   std::string type;
   llvm::raw_string_ostream os(type);
 
-  os << MOGG::kStructInlineArray << "[" << elementType << ", " << values.size()
+  os << MOGG::kStructArray << "[" << elementType << ", " << values.size()
      << "]";
 
   auto mojoType = MOGG::MojoValue(std::move(type));
@@ -535,7 +535,7 @@ LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue baseArg = state.getMojoValueFor(getBaseBuffer());
 
   // Call: mgp_buffer_bulk_slice(base, offsets, sizes)
-  // Returns InlineArray[MutByteBuffer, N]; extract each result by index.
+  // Returns Array[MutByteBuffer, N]; extract each result by index.
   MojoValue result =
       state.builder.var(function({}, {baseArg, offsetsArray, sizesArray}));
 
@@ -634,16 +634,16 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
 
   size_t numRuntimeSizes = getRuntimeSizes().size();
 
-  // Emit compile-time InlineArray parameters.
+  // Emit compile-time Array parameters.
   MojoValue alignmentsParam = inlineArray(state, getAlignments());
   MojoValue canShareParam = inlineArray(state, getCanShare());
 
-  // Emit compile-time InlineArray for optional staticSizes attribute.
+  // Emit compile-time Array for optional staticSizes attribute.
   MojoValue staticSizesParam;
   if (auto staticSizes = getStaticSizes()) {
     staticSizesParam = inlineArray(state, *staticSizes);
   } else {
-    // Empty InlineArray for no static sizes.
+    // Empty Array for no static sizes.
     staticSizesParam = inlineArray(state, ArrayRef<int64_t>{});
   }
 
@@ -652,13 +652,13 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
   for (Value size : getRuntimeSizes())
     runtimeSizeArgs.push_back(state.getMojoValueFor(size));
 
-  // Emit a typed var for the runtime sizes: InlineArray[Int, N] = [v0, v1, ...]
+  // Emit a typed var for the runtime sizes: Array[Int, N] = [v0, v1, ...]
   MojoValue runtimeSizesArray;
   {
     MojoValue name = state.builder.newVar("var");
     std::string str;
     llvm::raw_string_ostream stream(str);
-    stream << "var " << name << ": " << kStructInlineArray << "[Int, "
+    stream << "var " << name << ": " << kStructArray << "[Int, "
            << numRuntimeSizes << "] = [";
     llvm::interleaveComma(runtimeSizeArgs, stream,
                           [&](const MojoValue &v) { stream << v; });

@@ -4424,7 +4424,7 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
     // The first operand (input) is consumed for move-only opaque types, so
     // transfer (^ move) those. Buffer/tensor composites are NOT transferred:
     // their pack copies (retains) the storage handle, so they may be borrowed
-    // (e.g. an InlineArray element from bulk_slice, which cannot be moved out).
+    // (e.g. an Array element from bulk_slice, which cannot be moved out).
     if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType>(operand.getType()))
       mojoVal = mojoVal.transfer();
     operands.push_back(mojoVal);

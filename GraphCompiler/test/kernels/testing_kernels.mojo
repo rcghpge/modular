@@ -18,7 +18,6 @@ from layout import IntTuple, TensorLayout
 from layout import TileTensor, CoordLike, Coord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
-from std.collections import InlineArray
 from std.gpu.host import DeviceContext, DeviceContextArray, DeviceGraphBuilder
 from extensibility import (
     InputTensor,

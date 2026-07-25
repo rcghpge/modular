@@ -291,8 +291,7 @@ constexpr llvm::StringLiteral kStructTileLayout = "layout.tile_layout.Layout";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
-constexpr llvm::StringLiteral kStructInlineArray =
-    "std.collections.InlineArray";
+constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
 constexpr llvm::StringLiteral kStructMoggAsyncPackHelper =
     "builtin_primitives.primitives.MoggAsyncPackHelper";
 constexpr llvm::StringLiteral kStructScalar = "Scalar";
