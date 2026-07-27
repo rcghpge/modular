@@ -29,16 +29,16 @@ func.func @device_graph_round_trip(
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>
 
-  // Value-returning: replay surfaces the graph output as its sole result; there
-  // is no chain result (the output carries the data dependency) and no
-  // destination `outputs` operand.
-  // CHECK: %{{.+}} = mgp.device_graph.execute %[[GRAPH]], %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mgp.buffer<<"gpu", 0>>
-  %res = mgp.device_graph.execute
+  // Value-returning: replay surfaces the graph output as a value result; the
+  // graph signature is chain-free, and the op produces its own leading `!mef.chain`
+  // completion chain result before the value outputs.
+  // CHECK: %{{.+}}, %{{.+}} = mgp.device_graph.execute %[[GRAPH]], %{{.+}} inputs(%{{.+}}, %{{.+}} : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mgp.buffer<<"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mef.chain, !mgp.buffer<<"gpu", 0>>
+  %chain, %res = mgp.device_graph.execute
       %graph, %dctx
       inputs(%in, %wt : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>)
       : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
         !mgp.device_context<<"gpu", 0>>
-        -> !mgp.buffer<<"gpu", 0>>
+        -> !mef.chain, !mgp.buffer<<"gpu", 0>>
 
   // Neither create nor execute produces a chain; the model output chain is the
   // incoming chain.
@@ -62,14 +62,13 @@ func.func @device_graph_empty_groups(
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<() -> ()>
 
-  // Empty `inputs()` and no graph outputs: the op has zero results and the
-  // `-> ` result-type clause is omitted on print.
-  // CHECK: mgp.device_graph.execute %{{.+}}, %{{.+}} inputs() : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>>
-  // CHECK-NOT: ->
-  mgp.device_graph.execute
+  // Empty `inputs()` and no graph outputs: the op still produces its leading
+  // `!mef.chain` completion chain (no value outputs).
+  // CHECK: %{{.+}} = mgp.device_graph.execute %{{.+}}, %{{.+}} inputs() : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>> -> !mef.chain
+  %chain = mgp.device_graph.execute
       %graph, %dctx
       inputs()
-      : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>>
+      : !mgp.device_graph<() -> ()>, !mgp.device_context<<"gpu", 0>> -> !mef.chain
 
   return %ch : !mef.chain
 }

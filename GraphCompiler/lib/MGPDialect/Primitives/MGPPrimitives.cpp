@@ -311,6 +311,7 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 // forward each stored output `AnyAsyncValueRef` into the result slots.
 static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
                                      RemainingArguments deviceContextAndInputs,
+                                     Result<Chain> outChain,
                                      RemainingResults outputs,
                                      EncodedLocation loc) {
   TRACY_ZONE_SCOPED_NC("mgp_device_graph_execute", TRACY_COLOR_TEAL);
@@ -322,12 +323,16 @@ static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
   // addresses into the graph, so replay needs no input copy.
   (void)deviceContextAndInputs;
 
-  if (ErrorOrSuccess errOr = graph->replay(); errOr.isError())
-    return std::move(outputs).setAllToError(errOr.takeError(), loc);
+  if (ErrorOrSuccess err = graph->replay()) {
+    Error msg = err.takeError();
+    std::move(outChain).setToError(msg.copy());
+    return std::move(outputs).setAllToError(std::move(msg), loc);
+  }
 
   // The recorded outputs (registered via `add_output` during the build and
-  // transferred into the graph by `instantiate`) become the op's results. Share
-  // the underlying `Tensor`/`TensorBufferRef` via `copy()` -- no deep copy.
+  // transferred into the graph by `instantiate`) become the op's value results
+  // (device graphs carry no chain, so `getOutputs()` is chain-free). Share the
+  // underlying `Tensor`/`TensorBufferRef` via `copy()` -- no deep copy.
   //
   // GraphRT hands us pre-allocated (indirect) result async values that
   // downstream consumers already reference, so we must resolve those in place
@@ -341,6 +346,10 @@ static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
 
   for (const auto &[output, value] : llvm::zip_equal(outputs, stored))
     output.copy().resolveIndirect(value.copy());
+
+  // Fresh ordering chain: replay finished, so host-side consumers ordered after
+  // this op may proceed.
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//

@@ -20,6 +20,31 @@ namespace {
 
 using DeviceContextValue = mlir::TypedValue<DeviceContextType>;
 
+DeviceRefAttr findGraphDevice(ValueRange values) {
+  for (Value value : values) {
+    if (auto deviceType =
+            dyn_cast<MGPHasDeviceTypeInterface>(value.getType())) {
+      return deviceType.getDevice();
+    }
+  }
+
+  return {};
+}
+
+// device graphs have no chain concept: a host-side sequencing chain is
+// neither a real graph input nor output (in the staged body the chain inputs
+// are dead pass-throughs and the chain outputs come from host-side
+// `mogg.async.ready`). Drop chain-typed values from the graph's I/O; the
+// ordering chain is produced fresh by the `mgp.device_graph.execute` op
+// below.
+bool isChain(Value v) { return isa<MEF::ChainType>(v.getType()); }
+
+SmallVector<Value> nonChainValues(ValueRange v) {
+  auto isNonChainValue = [](Value v) { return !isChain(v); };
+
+  return llvm::filter_to_vector(v, isNonChainValue);
+}
+
 /// Lower a single `mgp.device_graph.staging` op into a
 /// `mgp.device_graph.create` / `mgp.device_graph.execute` pair, rewiring
 /// `mef.output` and erasing the staging op.
@@ -28,32 +53,25 @@ void finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
   Value stagingBuilderArg = stagingBody.getArgument(0);
   auto stagingInputArgs = stagingBody.getArguments().drop_front(1);
 
-  // The escaping values the staged body yields become the graph's outputs.
-  SmallVector<Value> graphOutputs(stagingOp.getYieldOp().getOperands());
+  // The escaping (non-chain) values the staged body yields become the graph's
+  // outputs.
+  SmallVector<Value> graphOutputs =
+      nonChainValues(stagingOp.getYieldOp().getOperands());
 
   // create/execute draw the model inputs from the staging op and the context /
   // device context from the execute block.
-  SmallVector<Value> inputs(stagingOp.getInputs());
+  SmallVector<Value> inputs = nonChainValues(stagingOp.getInputs());
+
   Value theContext = model.getExecuteContext();
 
   // The device graph runs on the device its buffers/tensors live on. The
   // model's execute devices list the host (CPU) context first, and the host
   // context cannot build a device graph (`createGraphBuilder` is unsupported
-  // there), so
-  // `.front()` is wrong for accelerator graphs. Determine the graph's device
-  // from its I/O and select the matching execute device context. (First cut:
-  // a single device per model, so one device covers the whole graph.)
-  DeviceRefAttr graphDevice;
-  auto findGraphDevice = [&](ValueRange values) {
-    for (Value value : values) {
-      if (auto deviceType =
-              dyn_cast<MGPHasDeviceTypeInterface>(value.getType())) {
-        graphDevice = deviceType.getDevice();
-        return;
-      }
-    }
-  };
-  findGraphDevice(graphOutputs);
+  // there), so `.front()` is wrong for accelerator graphs.
+  // Determine the graph's device from its I/O and select the matching execute
+  // device context. (First cut: a single device per model, so one device
+  // covers the whole graph.)
+  DeviceRefAttr graphDevice = findGraphDevice(graphOutputs);
   if (!graphDevice)
     findGraphDevice(inputs);
 
@@ -134,9 +152,16 @@ void finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
             createBody->end(), stagingBody.getOperations(), stagingBody.begin(),
             std::prev(stagingBody.end()));
         stagingBuilderArg.replaceAllUsesWith(graphBuilder);
-        for (auto [oldArg, newArg] :
-             llvm::zip_equal(stagingInputArgs, inputArgs))
-          oldArg.replaceAllUsesWith(newArg);
+        // Rebind the staged input block args to the create body's input args.
+        // Chain inputs were filtered out of the graph signature, so skip them
+        // (they are unused inside the staged body).
+        unsigned createArgIdx = 0;
+        for (auto [stagingArg, stagingInput] :
+             llvm::zip_equal(stagingInputArgs, stagingOp.getInputs())) {
+          if (isChain(stagingInput))
+            continue;
+          stagingArg.replaceAllUsesWith(inputArgs[createArgIdx++]);
+        }
         DeviceGraphYieldOp::create(bodyBuilder, bodyLoc, graphOutputs);
 
         // We're transitioning to an SSACFG based operation, so we need to order
@@ -150,15 +175,32 @@ void finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
       MOGG::AsyncPackOp::create(rewriter, loc, createOp.getOutGraph());
   MOGG::OutputOp::create(rewriter, loc, ValueRange{packedGraph});
 
-  // Replay (outside the region): feed the same inputs, surface the graph's
-  // outputs as results. Neither op consumes or produces a chain; the replay is
-  // ordered after the build by the graph value. Reset the insertion point
-  // outside the region (it was left in the region body) so the execute op
-  // replaces the staging op in the execute block.
+  // Replay (outside the region): feed the same (non-chain) inputs, surface the
+  // graph's value outputs as results, and produce a fresh completion chain that
+  // host-side ordering hangs off of. The replay is ordered after the build by
+  // the graph value. Reset the insertion point outside the region (it was left
+  // in the region body) so the execute op replaces the staging op in the
+  // execute block.
   rewriter.setInsertionPoint(stagingOp);
-  rewriter.replaceOpWithNewOp<DeviceGraphExecuteOp>(
-      stagingOp, TypeRange(graphOutputs), regionOp.getResult(0), deviceContext,
-      inputs);
+  auto executeOp = DeviceGraphExecuteOp::create(
+      rewriter, loc, /*chain=*/MEF::ChainType::get(ctx),
+      /*outputs=*/TypeRange(graphOutputs),
+      /*graph=*/regionOp.getResult(0),
+      /*deviceContext=*/deviceContext,
+      /*inputs=*/inputs);
+
+  // Rewire the staging op's results: chain results (host ordering) map to the
+  // execute completion chain; value results map to the execute value outputs in
+  // yield order.
+  Value executeChain = executeOp.getChain();
+  unsigned outputIdx = 0;
+  for (Value stagingResult : stagingOp.getResults()) {
+    if (isChain(stagingResult))
+      stagingResult.replaceAllUsesWith(executeChain);
+    else
+      stagingResult.replaceAllUsesWith(executeOp.getOutputs()[outputIdx++]);
+  }
+  rewriter.eraseOp(stagingOp);
 }
 
 } // namespace

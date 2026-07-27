@@ -25,9 +25,11 @@
 // CHECK: %[[PACKED:[a-zA-Z0-9_]+]] = mogg.async.pack
 // CHECK: mogg.output %[[PACKED]] : !mogg.async<!mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>>
 
-// Replay (outside the region) returns just the output (no chain result), ordered
-// after the build by the graph value; `mef.output` keeps the original chain.
-// CHECK: %[[RES:[a-zA-Z0-9_]+]] = mgp.device_graph.execute %[[GRAPH]], %[[GPU]] inputs(%[[IN]] : !mgp.tensor<2x3xf32, <"gpu", 0>>) : !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+// Replay (outside the region), ordered after the build by the graph value.
+// Device graphs carry no chain, so the graph signature is chain-free; the
+// execute op produces its own fresh completion chain result before the value
+// output. `mef.output` keeps the model's original chain.
+// CHECK: %{{[a-zA-Z0-9_]+}}, %[[RES:[a-zA-Z0-9_]+]] = mgp.device_graph.execute %[[GRAPH]], %[[GPU]] inputs(%[[IN]] : !mgp.tensor<2x3xf32, <"gpu", 0>>) : !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK: mef.output %[[CH0]], %[[RES]] : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK-NOT: mgp.device_graph.staging
 
@@ -106,4 +108,42 @@ mgp.model @dg_unordered : mof devices [#M.device_ref<"gpu", 0>]
     mgp.device_graph.staging.yield %r : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %out : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+} {isDeviceGraph}
+
+// -----
+
+// Device graphs have no chain concept. When the staged body has a chain input
+// (dead pass-through) and yields a chain output (host-side sequencing), finalize
+// must (a) keep `!mef.chain` out of the `mgp.device_graph` signature entirely and
+// (b) give `mgp.device_graph.execute` its own fresh completion chain result, then
+// rewire the staging op's chain result to it.
+
+// CHECK-LABEL: mgp.model @dg_chain
+// The graph signature is chain-free on BOTH sides (inputs and results).
+// CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+// CHECK: } : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>
+// The execute op produces a completion chain (result #0) + the value output; the
+// staging op's chain result is rewired to that chain (fed to `mef.output`).
+// CHECK: %[[CHAIN:[a-zA-Z0-9_]+]], %[[RES:[a-zA-Z0-9_]+]] = mgp.device_graph.execute %{{.+}}, %{{.+}} inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) : !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_context<<"gpu", 0>> -> !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+// CHECK: mef.output %[[CHAIN]], %[[RES]] : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+mgp.model @dg_chain : mof devices [#M.device_ref<"gpu", 0>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>, %in: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  // Staged I/O carries a chain input (%ch0, dead in-body) and a chain output.
+  %out:2 = mgp.device_graph.staging inputs(%ch0, %in : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  ^bb0(%builder: !mgp.device_graph.builder,
+       %ch_in: !mef.chain,
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+    %node, %r = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      mgp.device_graph.dependencies.yield %in_t : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    } : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    // Host-side "done" chain, yielded as a graph output today; must be dropped.
+    %done = "test.make_chain"() : () -> !mef.chain
+    mgp.device_graph.staging.yield %done, %r : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+  } -> !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+  mef.output %out#0, %out#1 : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 } {isDeviceGraph}

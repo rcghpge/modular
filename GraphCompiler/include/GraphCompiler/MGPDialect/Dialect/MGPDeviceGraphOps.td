@@ -182,19 +182,19 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
 
     Replay produces the graph's outputs internally and surfaces them as the op's
     `outputs` results (value-returning, not destination-passing): one result per
-    graph output, whose types match `graph`'s signature results. The op neither
-    consumes nor produces a chain -- the `graph` operand orders the replay after
-    the graph is built, and the output values carry the downstream data
-    dependency.
+    graph output, whose types match `graph`'s signature results. Device graphs
+    have no notion of a chain, so `!mef.chain` never appears in the graph
+    signature; instead this op produces its own `chain` result that represents
+    completion of the replay, threading host-side ordering after the graph runs.
 
     Example:
     ```mlir
-      %out = mgp.device_graph.execute
+      %chain, %out = mgp.device_graph.execute
           %graph, %gpu_ctx
           inputs(%in, %bias
               : !mgp.tensor<2x4xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>>)
           : !mgp.device_graph<...>, !mgp.device_context<<"gpu", 0>>
-            -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+            -> !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
     ```
   }];
 
@@ -203,14 +203,14 @@ def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
     MGP_DeviceContextType:$deviceContext,
     Variadic<AnyType>:$inputs
   );
-  let results = (outs Variadic<AnyType>:$outputs);
+  let results = (outs ChainType:$chain, Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
     $graph `,` $deviceContext
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
     attr-dict
     `:` qualified(type($graph)) `,` qualified(type($deviceContext))
-    ( `->` qualified(type($outputs))^ )?
+    `->` qualified(type($chain)) ( `,` qualified(type($outputs))^ )?
   }];
 
   let hasVerifier = 1;
