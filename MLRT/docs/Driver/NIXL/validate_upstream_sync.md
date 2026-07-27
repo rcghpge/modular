@@ -132,7 +132,11 @@ For changes that touch cross-node KV transfer specifically:
 - [`run_efa_di_benchmark.md`](./run_efa_di_benchmark.md) — pairs two
   AWS B200 Coder workspaces over EFA and runs a DeepSeek V3.1 NVFP4
   1P1D benchmark. Use this when CI is unavailable or you need to
-  attach a debugger / profiler to a real EFA transfer.
+  attach a debugger / profiler to a real EFA transfer. Its automated
+  lane, `run_dist_from_local.py`, drives the whole bring-up +
+  benchmark + verdict from one command (cross-node or intranode) —
+  reach for it first; fall back to the manual steps for interactive
+  debugging or profiler attachment.
 
 ## Nightly monitoring
 
