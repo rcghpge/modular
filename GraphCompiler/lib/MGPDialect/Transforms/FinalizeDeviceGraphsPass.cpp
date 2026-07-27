@@ -40,9 +40,7 @@ DeviceRefAttr findGraphDevice(ValueRange values) {
 bool isChain(Value v) { return isa<MEF::ChainType>(v.getType()); }
 
 SmallVector<Value> nonChainValues(ValueRange v) {
-  auto isNonChainValue = [](Value v) { return !isChain(v); };
-
-  return llvm::filter_to_vector(v, isNonChainValue);
+  return llvm::filter_to_vector(v, [](Value v) { return !isChain(v); });
 }
 
 /// Lower a single `mgp.device_graph.staging` op into a

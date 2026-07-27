@@ -3956,16 +3956,6 @@ LogicalResult GenericCompiledRegionOp::verify() {
   if (!getExecutionDevice())
     return emitError("Compiled regions must have a device");
 
-  // Ensure that output ops are fed by only a certain set of operations.
-  auto outputOp = body.front().getTerminator();
-  for (auto &&operand : outputOp->getOperands()) {
-    if (!isa<KernelTerminatorProvider>(operand.getDefiningOp())) {
-      return operand.getDefiningOp()->emitError(
-          "This operation is feeding an output op but it is not marked as a "
-          "KernelTerminatorProvider");
-    }
-  }
-
   return success();
 }
 

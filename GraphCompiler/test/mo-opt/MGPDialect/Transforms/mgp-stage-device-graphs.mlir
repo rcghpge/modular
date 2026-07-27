@@ -47,6 +47,63 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>]
 
 // -----
 
+// A non-`mogg.generic.compiled.region` op interleaved between two staged regions
+// (here an `mgp.guard`) must be staged together with them. `mgp.guard` is
+// lowered to an equivalent `mogg.generic.compiled.region` and then staged as
+// other compiled regions.
+
+// CHECK-LABEL: mgp.model @dg_guard
+// No `mgp.guard` op is stranded ahead of the staging op (that stranding is the
+// cycle); the guard has been rewritten to a compiled region.
+// CHECK: execute (
+// CHECK-NOT: mgp.guard
+// The staging op takes only the model input -- its `inputs` must not reference a
+// value the staging op itself produces.
+// CHECK: %[[STAGING:.*]] = mgp.device_graph.staging inputs(%[[IN:[a-zA-Z0-9_]+]] : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+// CHECK-NEXT: ^bb0(%{{.*}}: !mgp.device_graph.builder, %[[INT:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>):
+// Region A (the assert) produces the chain.
+// CHECK: %[[A:[a-zA-Z0-9_]+]] = mogg.generic.compiled.region (%[[INT]])
+// CHECK: fusionInfo = "test.assert"
+// The guard becomes a forwarding compiled region: it takes region A's chain and
+// the input, forwards the input through, and carries the "mgp.guard" label.
+// CHECK: %[[G:[a-zA-Z0-9_]+]] = mogg.generic.compiled.region (%[[A]], %[[INT]]) : (%{{.*}}: !mef.chain, %{{.*}}: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
+// CHECK: fusionInfo = "mgp.guard"
+// Region B consumes the guard region's forwarded result.
+// CHECK: mogg.generic.compiled.region (%[[G]])
+// CHECK: fusionInfo = "test.b"
+// CHECK: mgp.device_graph.staging.yield
+
+mgp.model @dg_guard : mof devices [#M.device_ref<"gpu", 0>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>, %in: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  // Region A: produces a chain (mirrors the `mgp.assert` region that feeds a
+  // guard in the real graph).
+  %ca = mogg.generic.compiled.region (%in) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mef.chain {
+    %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    %r = mogg.async.ready : !mef.chain
+    mogg.output %r : !mef.chain
+  } fusionInfo = "test.assert" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  // Guard: gates the model input on region A's chain. Not a compiled region, so
+  // the current pass leaves it behind and forms the cycle.
+  %g = mgp.guard %ca, %in : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  // Region B: consumes the guarded value.
+  %b = mogg.generic.compiled.region (%g) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
+    %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+    %ch = mogg.chain.dummy() : () -> !mef.chain
+    %bf = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
+    %t = mgp.tensor.create %ch, %bf, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+  } fusionInfo = "test.b" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  mef.output %ch0, %b : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+} {isDeviceGraph}
+
+// -----
+
 // A model WITHOUT `isDeviceGraph` is left untouched: no staging op is created
 // and the compiled region stays directly in the execute block.
 
