@@ -217,21 +217,26 @@ const std::string &Device::getAcceleratorArchOrEmpty() {
     ErrorOr<DeviceRef> devOr = create(gpuAPI, 0);
     if (devOr.isError())
       return std::string();
+
     DeviceRef dev = devOr.takeValue();
     ErrorOr<const char *> nameOr = dev.getPointer()->getArchName();
     if (nameOr.isError())
       return std::string();
-    // Classify the vendor from the architecture string the way consumers
-    // expect (`nvidia:sm_90a`, `amdgpu:gfx942`). An unrecognized or empty
-    // arch (the Mojo HAL `arch_name` is still a stub) reports no
-    // accelerator.
     llvm::StringRef name(nameOr.takeValue());
-    llvm::StringRef vendor = name.starts_with("sm_")     ? "nvidia"
-                             : name.starts_with("gfx")   ? "amdgpu"
-                             : name.starts_with("apple") ? "metal"
-                                                         : "";
+
+    // FIXME: Vendor mapping logic should move out of here.
+    llvm::StringRef vendor;
+    if (dev->api() == "cuda")
+      vendor = "nvidia";
+    else if (dev->api() == "hip")
+      vendor = "amdgpu";
+#if MODULAR_MACOS
+    else if (dev->api() == "metal")
+      vendor = "metal";
+#endif
     if (vendor.empty())
       return std::string();
+
     return (llvm::Twine(vendor) + ":" + name).str();
   }();
   return arch;
