@@ -119,7 +119,7 @@ struct DriverPluginTest : ::testing::Test {
   llvm::StringRef api;
 };
 
-struct DriverPluginContextTest : DriverPluginTest {
+struct DriverPluginDeviceTest : DriverPluginTest {
   void SetUp() override {
     DriverPluginTest::SetUp();
     if (this->HasFatalFailure() || this->IsSkipped())
@@ -130,6 +130,20 @@ struct DriverPluginContextTest : DriverPluginTest {
     for (int64_t i = 0; i < deviceCount; i++) {
       M_driver_device_t device = nullptr;
       EXPECT_SUCCESS(device_get(driver, i, &device));
+      devices.push_back(device);
+    }
+  }
+
+  std::vector<M_driver_device_t> devices;
+};
+
+struct DriverPluginContextTest : DriverPluginDeviceTest {
+  void SetUp() override {
+    DriverPluginDeviceTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    for (M_driver_device_t device : devices) {
       M_driver_context_t context = nullptr;
       ASSERT_SUCCESS(context_create(device, &context));
       contexts.push_back(context);

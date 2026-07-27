@@ -120,6 +120,18 @@ TEST_F(DriverPluginTest, DeviceContext) {
   }
 }
 
+TEST_F(DriverPluginDeviceTest, PropertyArch) {
+  if (api == "cpu")
+    GTEST_SKIP() << "\"arch\" device property not supported on " << api;
+  for (M_driver_device_t device : devices) {
+    char arch[M_DRIVER_DEVICE_PROPERTY_MAX_LEN] = {};
+    ASSERT_SUCCESS(
+        device_property(device, M_DRIVER_DEVICE_PROPERTY_ARCH, &arch));
+    ASSERT_NE(0, std::strlen(arch));
+    std::cout << arch << "\n";
+  }
+}
+
 TEST_F(DriverPluginContextTest, ContextMemoryInfo) {
   if (api == "Metal")
     GTEST_SKIP() << "memory_info is not implemented for Metal";
