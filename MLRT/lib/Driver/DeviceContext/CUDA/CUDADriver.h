@@ -424,6 +424,27 @@ using CUmulticastObjectProp = struct CUmulticastObjectProp_st {
   unsigned long long flags;
 };
 
+/// Source-access ordering for cuMemcpyBatchAsync (CUDA 12.8+).
+/// CU_MEMCPY_SRC_ACCESS_ORDER_STREAM preserves the same-stream write-after-read
+/// ordering that graph-capture replay relies on for correctness.
+using CUmemcpySrcAccessOrder = enum CUmemcpySrcAccessOrder_enum {
+  CU_MEMCPY_SRC_ACCESS_ORDER_NONE = 0,
+  CU_MEMCPY_SRC_ACCESS_ORDER_STREAM = 1,
+  CU_MEMCPY_SRC_ACCESS_ORDER_DURING_API_CALL = 2,
+};
+
+/// Attributes struct for cuMemcpyBatchAsync (CUDA 12.8+).
+/// Layout must match CUmemcpyAttributes from the CUDA driver headers exactly:
+/// the driver reads the full struct, so a truncated version yields
+/// CUDA_ERROR_INVALID_VALUE. Location hints and flags stay zero-initialized
+/// (no hint), which is valid.
+using CUmemcpyAttributes = struct CUmemcpyAttributes_st {
+  CUmemcpySrcAccessOrder srcAccessOrder;
+  CUmemLocation srcLocHint;
+  CUmemLocation dstLocHint;
+  unsigned int flags;
+};
+
 /// Check if CUDA API logging is enabled at runtime via MLRT_CUDA_DEBUG env var.
 inline bool isCUDADebugLoggingEnabled() {
   static const bool enabled =
@@ -466,6 +487,11 @@ public:
 #undef CUDA_FUNC
 
   static ErrorOr<const CUDADriver &> get();
+
+  /// Returns true when cuMemcpyBatchAsync (CUDA 12.8+) was successfully
+  /// loaded from the driver library at initialization time. Callers should
+  /// check this before invoking cuMemcpyBatchAsync directly.
+  bool hasCuMemcpyBatchAsync() const { return cuMemcpyBatchAsync_ != nullptr; }
 
   // CUDADriver object lifetime is tied to a static unique_ptr.
   CUDADriver() = default;

@@ -947,6 +947,21 @@ public:
     return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
   }
 
+  /// Batched copy of equal-length (dst, src, size) pairs on this device.
+  /// One driver submit when available; otherwise loops enqueueCopyToDevice.
+  /// Callers group by device; mixed-device batches are rejected upstream.
+  virtual ErrorOrSuccess
+  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
+                           const std::vector<const void *> &srcs,
+                           const std::vector<size_t> &sizes) {
+    assert(dsts.size() == srcs.size() && dsts.size() == sizes.size());
+    for (size_t i = 0, n = dsts.size(); i < n; ++i) {
+      if (auto err = enqueueCopyToDevice(dsts[i], srcs[i], sizes[i]))
+        return err;
+    }
+    return success();
+  }
+
   virtual ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
                                                size_t byteSize) = 0;
   inline ErrorOrSuccess enqueueCopyFromDevice(void *dst,

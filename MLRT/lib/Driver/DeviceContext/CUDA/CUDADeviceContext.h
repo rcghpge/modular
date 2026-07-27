@@ -433,6 +433,15 @@ public:
                              size_t srcByteOffset, size_t srcByteSize,
                              bool crossStreamSync) override;
 
+  /// Batched copy of equal-length (dst, src, size) pairs on this stream.
+  /// Uses cuMemcpyBatchAsync (CUDA 12.8+) or per-pair cuMemcpyHtoDAsync_v2.
+  /// All destinations must target this device; callers group and reject
+  /// mixed-device batches upstream.
+  ErrorOrSuccess
+  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
+                           const std::vector<const void *> &srcs,
+                           const std::vector<size_t> &sizes) override;
+
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;
 

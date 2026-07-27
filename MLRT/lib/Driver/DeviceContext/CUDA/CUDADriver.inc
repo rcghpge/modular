@@ -26,6 +26,16 @@
 #error "CUDADriver.inc included without defining CUDA_FUNC"
 #endif
 
+// Optional entries: CUDA_OPT_FUNC stores nullptr on dlsym miss instead of
+// returning an error. Used for APIs not present on every supported driver
+// version (e.g. cuMemcpyBatchAsync introduced in CUDA 12.8). If undefined by
+// the includer, fall back to the required CUDA_FUNC to keep old includers
+// working.
+#ifndef CUDA_OPT_FUNC
+#define CUDA_OPT_FUNC CUDA_FUNC
+#define CUDA_OPT_FUNC_DEFINED_LOCALLY
+#endif
+
 CUDA_FUNC(cuInit, Result, unsigned int)
 
 CUDA_FUNC(cuGetErrorName, Result, Result, const char **)
@@ -202,3 +212,19 @@ CUDA_FUNC(cuOccupancyMaxActiveBlocksPerMultiprocessor, Result, int *,
           CUfunction, int, size_t)
 
 CUDA_FUNC(cuFuncGetParamInfo, Result, CUfunction, size_t, size_t *, size_t *)
+
+// cuMemcpyBatchAsync: introduced in CUDA 12.8. Loaded optionally so the
+// driver still initializes on CUDA < 12.8 hosts (falls back to per-copy
+// cuMemcpyHtoDAsync_v2 in CUDADeviceContext::enqueueBatchCopyToDevice).
+// Signature (CUDA 12.8): dsts, srcs, sizes, count, attrs, attrsIdxs, numAttrs,
+// failIdx (out: index of the failing copy), stream. The failIdx out-param sits
+// before the stream -- omitting it shifts the stream argument and yields
+// CUDA_ERROR_INVALID_VALUE.
+CUDA_OPT_FUNC(cuMemcpyBatchAsync, Result, void **, const void **, size_t *,
+              size_t, CUmemcpyAttributes *, size_t *, size_t, size_t *,
+              CUstream)
+
+#ifdef CUDA_OPT_FUNC_DEFINED_LOCALLY
+#undef CUDA_OPT_FUNC
+#undef CUDA_OPT_FUNC_DEFINED_LOCALLY
+#endif

@@ -62,7 +62,14 @@ ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
                  "\" in \"" + lib_name + "\"");                                \
   }
 
+// Optional entries: store nullptr on dlsym miss without returning an error.
+// This allows the driver to initialize on CUDA < 12.8 hosts that do not
+// export cuMemcpyBatchAsync.
+#define CUDA_OPT_FUNC(name, ...)                                               \
+  driver->name##_ = reinterpret_cast<t##name *>(dlsym(dlLib, #name));
+
 #include "CUDADriver.inc"
+#undef CUDA_OPT_FUNC
 #undef CUDA_FUNC
 
   // Initialize the driver and return the newly allocated driver if successful.

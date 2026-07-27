@@ -1748,6 +1748,44 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
   return success();
 }
 
+ErrorOrSuccess CUDADeviceContext::enqueueBatchCopyToDevice(
+    const std::vector<void *> &dsts, const std::vector<const void *> &srcs,
+    const std::vector<size_t> &sizes) {
+  assert(dsts.size() == srcs.size() && dsts.size() == sizes.size() &&
+         "dst/src/size vectors must have equal length");
+  if (dsts.empty())
+    return success();
+
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueBatchCopyToDevice",
+                       TRACY_COLOR_PURPLE);
+  CUDA_WITH_CTX_ERR(*this);
+
+  // Same-device grouping is enforced upstream; pinned host destinations on
+  // this device are valid (they are not CU_MEMORYTYPE_DEVICE).
+
+  if (driver_.hasCuMemcpyBatchAsync()) {
+    // Stream-ordered WAR vs producers on this stream (graph-capture replay).
+    CUmemcpyAttributes attrs{};
+    attrs.srcAccessOrder = CU_MEMCPY_SRC_ACCESS_ORDER_STREAM;
+    // attrs[0] applies from copy index attrsIdx (= 0) through the batch.
+    size_t attrsIdx = 0;
+    // API wants mutable pointer arrays.
+    std::vector<void *> dstsMut(dsts.begin(), dsts.end());
+    std::vector<const void *> srcsMut(srcs.begin(), srcs.end());
+    std::vector<size_t> sizesMut(sizes.begin(), sizes.end());
+    size_t failIdx = 0; // first failing copy on error
+    CUDA_CHECK_ERR(driver_.cuMemcpyBatchAsync(
+        dstsMut.data(), srcsMut.data(), sizesMut.data(), dstsMut.size(), &attrs,
+        &attrsIdx, /*numAttrs=*/1, &failIdx, stream_));
+  } else {
+    for (size_t i = 0, n = dsts.size(); i < n; ++i)
+      CUDA_CHECK_ERR(
+          driver_.cuMemcpyHtoDAsync_v2(dsts[i], srcs[i], sizes[i], stream_));
+  }
+  MAYBE_SYNC(*this);
+  return success();
+}
+
 ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                                         const void *src,
                                                         size_t byteSize) {
