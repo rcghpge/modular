@@ -4230,6 +4230,18 @@ void Composite::DistributedReduceScatterRMSNormOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedAllGatherRMSNormOp
+//===----------------------------------------------------------------------===//
+
+void Composite::DistributedAllGatherRMSNormOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceRMSNormRoPEOp
 //===----------------------------------------------------------------------===//
 

@@ -582,6 +582,42 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// DistributedAllGatherRMSNormOp
+//===----------------------------------------------------------------------===//
+
+def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.distributed.allgather_rms_norm", [
+  MO_MultiDevice,
+  MO_CompositeOpTrait
+]> {
+  string cppNamespace = MODialect.cppNamespace # "::Composite";
+  let summary = "Fused AllGather + RMSNorm across N devices for a single device.";
+  let description = [{
+    AllGather concatenates the per-device row shards (`inputs`) so every device
+    holds the full replicated tensor, then RMSNorms it in the same launch (no
+    separate-norm HBM round-trip). Returns the normed tensor (`output`) and the
+    raw gathered residual (`outResidual`); a gathered row is a verbatim copy, so
+    the residual is bit-identical to a standalone all-gather (no f32 peer-sum).
+    `multiply_before_cast=true`, bf16 in/out only (no quantization).
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    Variadic<MO_Tensor>:$gamma,
+    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
+    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$output,
+    Variadic<MO_Tensor>:$outResidual,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 // Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
 //===----------------------------------------------------------------------===//
 //
