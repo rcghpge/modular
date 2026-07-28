@@ -35,6 +35,7 @@
 #include "llvm/ADT/Twine.h"
 #include <dlpack/dlpack.h>
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -42,6 +43,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Opaque handles to the heap allocated wrapped Mojo values the MojoHAL_*
 // exports create and release. The Mojo side types the same handles as
@@ -603,6 +605,21 @@ public:
   inline ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
                                             const void *src) {
     return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
+  }
+
+  /// Batched copy of equal-length (dst, src, size) pairs on this device. The
+  /// HAL has no batched-submit primitive, so this loops like the legacy
+  /// default; callers group by device, so mixed-device batches never arrive.
+  inline ErrorOrSuccess
+  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
+                           const std::vector<const void *> &srcs,
+                           const std::vector<size_t> &sizes) {
+    assert(dsts.size() == srcs.size() && dsts.size() == sizes.size());
+    for (size_t i = 0, n = dsts.size(); i < n; ++i) {
+      if (auto err = enqueueCopyToDevice(dsts[i], srcs[i], sizes[i]))
+        return err;
+    }
+    return success();
   }
 
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
