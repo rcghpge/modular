@@ -379,6 +379,31 @@ public:
                   ArrayRef<std::pair<MojoValue, MojoValue>> fields,
                   std::function<void()> body);
 
+  /// Result of a scoped `structDecl` call: the resolved names of the struct's
+  /// compile-time bracket parameters, in the same order as the input
+  /// `parameters`, mirroring how `FunctionBody` returns resolved def()
+  /// parameter/argument names.
+  struct StructBody {
+    SmallVector<MojoValue> parameters;
+  };
+
+  /// Emits `struct Name[params](traits):`, opens the struct's ONE-LEVEL body
+  /// scope, then hands control BACK to the caller via `body`. Unlike the other
+  /// `structDecl` overloads (which take a pre-declared `fields` list), this one
+  /// does NOT pre-declare members: inside `body`, the caller declares fields
+  /// with the EXISTING `varDecl(type)`, methods with the EXISTING `def(...)`,
+  /// and associated constants with the EXISTING `comptime(value, type)` -- in
+  /// any order, as many times as needed. `parameters` use `NamedMojoDef` (the
+  /// caller supplies at least a name PREFIX; the builder resolves each to a
+  /// fresh unique name exactly like `def()`'s own parameters/arguments), and
+  /// the resolved names are handed back via `StructBody` since field/method
+  /// type strings commonly need to reference them (e.g. `Self.dtype_3`).
+  /// Always emits `@fieldwise_init`, matching the two other body-callback
+  /// overloads.
+  void structDecl(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
+                  ArrayRef<MojoValue> traits,
+                  std::function<void(const StructBody &)> &&body);
+
   /// Imports the specified module.
   void import(const MojoValue &mod);
 

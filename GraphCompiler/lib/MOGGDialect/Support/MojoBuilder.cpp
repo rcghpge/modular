@@ -378,6 +378,46 @@ void MojoBuilder::structDecl(
                  /*fieldwiseInit=*/true, std::move(body));
 }
 
+void MojoBuilder::structDecl(const MojoValue &name,
+                             ArrayRef<NamedMojoDef> parameters,
+                             ArrayRef<MojoValue> traits,
+                             std::function<void(const StructBody &)> &&body) {
+  newline();
+
+  StructBody structBody;
+
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/true);
+
+  statement("@fieldwise_init");
+
+  std::string headerStr;
+  llvm::raw_string_ostream os(headerStr);
+  os << "struct " << name.text;
+  if (!parameters.empty()) {
+    os << "[";
+    llvm::interleaveComma(parameters, os, [&](const NamedMojoDef &param) {
+      MojoValue paramName =
+          param.verbatim ? MojoValue(param.name.prefix) : newVar(param.name);
+      os << paramName.text << ": " << param.type.text;
+      if (param.defaultValue.has_value())
+        os << " = " << param.defaultValue->text;
+      structBody.parameters.push_back(paramName);
+    });
+    os << "]";
+  }
+  if (!traits.empty()) {
+    os << "(";
+    llvm::interleaveComma(traits, os,
+                          [&](const MojoValue &t) { os << t.text; });
+    os << ")";
+  }
+  os << ":";
+  statement(headerStr);
+
+  guard.doDeferredActions();
+  body(structBody);
+}
+
 void MojoBuilder::structDeclImpl(
     const MojoValue &name, ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
     ArrayRef<MojoValue> traits,
