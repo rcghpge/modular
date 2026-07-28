@@ -1636,7 +1636,9 @@ modular_cc_library(
     deps = [
         ":MAPDialect",
         ":MAPToMOGGIncGen",
+        ":MODialect",
         ":MOGGDialect",
+        ":MOSHDialect",
         ":MOToMAP",
     ],
 )

@@ -24,6 +24,8 @@ def MAPToMOGG : Pass<"map-to-mogg", "mlir::ModuleOp"> {
   let dependentDialects = [
     "M::MAP::MAPDialect",
     "M::MOGG::MOGGDialect",
+    "M::MO::MODialect",
+    "M::MOSH::MOSHDialect",
   ];
 }
 
