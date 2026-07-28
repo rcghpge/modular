@@ -188,6 +188,15 @@ modular_cc_binary(
         "lib/Metal/*.cpp",
         "lib/Metal/*.h",
     ]),
+    # IOKit + CoreFoundation are used to read the AGXAccelerator
+    # `gpu-core-count` for the MULTIPROCESSOR_COUNT device attribute.
+    linkopts = select({
+        "@platforms//os:macos": [
+            "-Wl,-framework,IOKit",
+            "-Wl,-framework,CoreFoundation",
+        ],
+        "//conditions:default": [],
+    }),
     linkshared = True,
     linkstatic = False,
     visibility = ["//visibility:public"],

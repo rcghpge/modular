@@ -11,12 +11,17 @@
 #include "llvm/Support/LineIterator.h"
 #include "llvm/Support/MemoryBuffer.h"
 
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
 #include <dlpack/dlpack.h>
 
 #include <cassert>
 #include <cstring>
 #include <filesystem>
+#include <limits>
+#include <optional>
 #include <set>
+#include <string>
 
 using namespace llvm;
 
@@ -70,6 +75,47 @@ static bool sdkSupportsMSLVersion(int maj, int min) {
   }();
 
   return supportedVersions.count({maj, min}) > 0;
+}
+
+/// Returns the number of GPU cores (Apple's analogue of a CUDA multiprocessor
+/// count) by reading the `gpu-core-count` property of the `AGXAccelerator`
+/// IORegistry entry, or `nullopt` if it cannot be determined. Mirrors the
+/// AsyncRT Metal backend (`MetalDevice::getAttribute`).
+static std::optional<int32_t> gpuCoreCount() {
+// Host is built for macOS 11.0, but `kIOMainPortDefault` is only available on
+// macOS >= 12.0. Apple GPU support requires macOS >= 15, so the warning is
+// safe to ignore.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+  io_iterator_t iterator;
+  CFMutableDictionaryRef matchDict = IOServiceMatching("AGXAccelerator");
+  if (IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator) !=
+      KERN_SUCCESS)
+    return std::nullopt;
+
+  std::optional<int32_t> result;
+  io_service_t service;
+  while ((service = IOIteratorNext(iterator)) != 0) {
+    CFMutableDictionaryRef properties = nullptr;
+    if (IORegistryEntryCreateCFProperties(
+            service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS) {
+      CFNumberRef coreCountRef = (CFNumberRef)CFDictionaryGetValue(
+          properties, CFSTR("gpu-core-count"));
+      if (coreCountRef && CFGetTypeID(coreCountRef) == CFNumberGetTypeID()) {
+        int coreCount = 0;
+        CFNumberGetValue(coreCountRef, kCFNumberIntType, &coreCount);
+        result = coreCount;
+      }
+      if (properties)
+        CFRelease(properties);
+    }
+    IOObjectRelease(service);
+    if (result)
+      break;
+  }
+  IOObjectRelease(iterator);
+  return result;
+#pragma clang diagnostic pop
 }
 } // namespace
 
@@ -166,9 +212,99 @@ extern "C" M_driver_status_t M_driver_device_property(M_driver_device_t device,
   return device->getProperty(property_name, value);
 }
 
-extern "C" M_driver_status_t
-M_driver_device_attribute([[maybe_unused]] M_driver_device_t device,
-                          [[maybe_unused]] int32_t attribute,
-                          [[maybe_unused]] int32_t *value) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+extern "C" M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
+                                                       int32_t attribute,
+                                                       int32_t *value) {
+  if (!device)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  if (!value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  MTL::Device *dev = device->mDevice;
+
+  // Attribute codes are CUDA-style `CUdevice_attribute` values, matching
+  // `Device::Attribute` in MLRT's HALDeviceContext.h. Values (and which
+  // attributes are unsupported on Apple GPUs) mirror the AsyncRT Metal backend
+  // `MetalDevice::getAttribute`, keeping the HAL plugin and the built-in Metal
+  // device context in agreement.
+  enum : int32_t {
+    MAX_THREADS_PER_BLOCK = 1,
+    MAX_BLOCK_DIM_X = 2,
+    MAX_BLOCK_DIM_Y = 3,
+    MAX_BLOCK_DIM_Z = 4,
+    MAX_GRID_DIM_X = 5,
+    MAX_GRID_DIM_Y = 6,
+    MAX_GRID_DIM_Z = 7,
+    MAX_SHARED_MEMORY_PER_BLOCK = 8,
+    MULTIPROCESSOR_COUNT = 16,
+    COMPUTE_CAPABILITY_MAJOR = 75,
+    COMPUTE_CAPABILITY_MINOR = 76,
+    METAL_DISABLE_LOGGING = 110,
+  };
+
+  switch (attribute) {
+  // 'Maximum threads per threadgroup', same for Apple7 - Apple10.
+  case MAX_THREADS_PER_BLOCK:
+    *value = 1024;
+    return M_DRIVER_STATUS_SUCCESS;
+
+  // Block dimensions map to max threads per threadgroup.
+  case MAX_BLOCK_DIM_X:
+    *value = static_cast<int32_t>(dev->maxThreadsPerThreadgroup().width);
+    return M_DRIVER_STATUS_SUCCESS;
+  case MAX_BLOCK_DIM_Y:
+    *value = static_cast<int32_t>(dev->maxThreadsPerThreadgroup().height);
+    return M_DRIVER_STATUS_SUCCESS;
+  case MAX_BLOCK_DIM_Z:
+    *value = static_cast<int32_t>(dev->maxThreadsPerThreadgroup().depth);
+    return M_DRIVER_STATUS_SUCCESS;
+
+  // There is no limit to the size of a grid.
+  case MAX_GRID_DIM_X:
+  case MAX_GRID_DIM_Y:
+  case MAX_GRID_DIM_Z:
+    *value = std::numeric_limits<int32_t>::max();
+    return M_DRIVER_STATUS_SUCCESS;
+
+  // 'Maximum total threadgroup memory allocation'.
+  case MAX_SHARED_MEMORY_PER_BLOCK:
+    *value = static_cast<int32_t>(dev->maxThreadgroupMemoryLength());
+    return M_DRIVER_STATUS_SUCCESS;
+
+  // Apple's analogue of the multiprocessor count is the GPU core count.
+  case MULTIPROCESSOR_COUNT: {
+    std::optional<int32_t> cores = gpuCoreCount();
+    if (!cores)
+      return device->driver->status.create(
+          "MULTIPROCESSOR_COUNT unavailable: could not read "
+          "AGXAccelerator gpu-core-count");
+    *value = *cores;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
+  case COMPUTE_CAPABILITY_MAJOR: {
+    std::string name = (dev && dev->name())
+                           ? dev->name()->cString(NS::UTF8StringEncoding)
+                           : std::string();
+    DriverResult<int> cc = device->getComputeCapability(name);
+    if (!cc)
+      return cc.error();
+    *value = *cc;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  case COMPUTE_CAPABILITY_MINOR:
+    *value = 0;
+    return M_DRIVER_STATUS_SUCCESS;
+
+  case METAL_DISABLE_LOGGING:
+    *value = 0;
+    return M_DRIVER_STATUS_SUCCESS;
+
+  default:
+    return device->driver->status.create("device attribute " +
+                                         std::to_string(attribute) +
+                                         " not supported for Apple GPU");
+  }
 }

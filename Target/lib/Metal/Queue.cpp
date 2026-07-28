@@ -13,9 +13,6 @@
 #include "Function.h"
 #include "Memory.h"
 
-#include <algorithm>
-#include <dispatch/dispatch.h>
-
 DriverResult<M_driver_queue_t>
 M_driver_queue::create(M_driver_context_t context) {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
@@ -24,27 +21,6 @@ M_driver_queue::create(M_driver_context_t context) {
       NS::TransferPtr(context->device->mDevice->newCommandQueue());
   if (!commandQueue)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
-
-  // Seed a thread-local autorelease pool on Metal's callback thread.
-  // Metal autoreleases AGXG16SDevice on its internal callback thread during
-  // command buffer processing; that thread has no pool by default. Submitting
-  // a no-op command buffer with a completion handler that creates a
-  // thread_local pool ensures all subsequent autoreleases on that thread are
-  // caught. The pool persists for the thread's lifetime so this is
-  // forward-compatible with async (non-blocking) queue usage.
-  // NOTE: dispatch_semaphore is required here (not std::binary_semaphore)
-  // because Metal dispatches completion handlers via GCD. Using a GCD-aware
-  // wait ensures the handler runs on the correct callback thread.
-  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-  MTL::CommandBuffer *warmup = commandQueue->commandBuffer();
-  warmup->addCompletedHandler(^(MTL::CommandBuffer *) {
-    M_driver_driver::ensureThreadlocalAutoreleasePoolExists();
-    dispatch_semaphore_signal(sem);
-  });
-  warmup->commit();
-  dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
-  dispatch_release(sem);
-
   M_driver_queue_t queue = new (std::nothrow) M_driver_queue{
       context, commandQueue, /*mPending=*/{}, /*mPendingWaits=*/{},
       /*mMutex=*/{}};
@@ -126,6 +102,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -187,6 +164,7 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -238,6 +216,7 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
 
   cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -295,6 +274,7 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -385,6 +365,7 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
     doneEvent->setSignaledValue(1);
   });
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
@@ -496,6 +477,7 @@ M_driver_queue::execute(M_driver_function_t function,
 
   cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
   cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
   mPending.push_back(doneEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
