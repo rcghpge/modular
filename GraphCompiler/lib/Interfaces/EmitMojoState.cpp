@@ -79,7 +79,8 @@ static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
 #define EMIT_MOJO_EXTERNALLY(OpTy)                                             \
   if (auto asOp = dyn_cast<OpTy>(op)) {                                        \
     if (emitMojo(asOp, state).failed()) {                                      \
-      return op->emitError("Could not lower this operation to Mojo");          \
+      return op->emitError()                                                   \
+             << "'" << op->getName() << "' could not be lowered to Mojo";      \
     }                                                                          \
     return success();                                                          \
   }
@@ -127,8 +128,8 @@ LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
       builder.comment(llvm::formatv("Emitting Mojo for: {0}", op->getName()));
 
     if (emitMojoInterface.emitMojo(*this).failed()) {
-      return emitMojoInterface->emitError(
-          "Could not lower this operation to Mojo");
+      return emitMojoInterface->emitError()
+             << "'" << op->getName() << "' could not be lowered to Mojo";
     }
     return success();
   }
@@ -172,9 +173,10 @@ LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
 
   EMIT_MOJO_EXTERNALLY(KGEN::ParamConstantOp);
 
-  return op->emitError(
-      "This operation doesn't implement EmitsMojoInterface and it is not a "
-      "supported index or pop dialect operation");
+  return op->emitError()
+         << "'" << op->getName()
+         << "' must implement 'EmitsMojoInterface' to lower to Mojo; it is not "
+            "a supported 'index' or 'pop' dialect operation either";
 }
 
 //===----------------------------------------------------------------------===//
