@@ -2,15 +2,10 @@
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // GEX-4020 regression: output_height/output_width are block arguments here
-// (not mo.constant) -- the runtime operands an eager graph produces -- and
-// the op itself declares a genuinely symbolic output (not a static result
-// type), so the AddFallbackShapeFuncs pass actually runs for it. The
-// fallback previously truncated the invoke_shape_func operand list to the
-// first four operands, dropping spatial_scale/sampling_ratio, which the
-// registered shape function still declares as parameters, so building the
-// shape-resolution call failed to compile. A value of 1 (from
-// --model-inputs=ones) pools the whole 2x2 ROI into a single bin whose true
-// mean is the checked value below.
+// (not mo.constant), the shape a runtime-operand eager graph produces. The
+// fallback previously truncated to the first four operands, dropping
+// spatial_scale/sampling_ratio, which the registered shape function still
+// declares -- so the emitted invoke_shape_func must carry all six.
 mo.graph @roi_align_dynamic_output_size<() -> D0, D1, D2, D3>(
   %inp_ones: !mo.tensor<[1, 5, 5, 1], f32>,
   %output_height: !mo.tensor<[], si64>,
