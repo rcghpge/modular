@@ -66,8 +66,8 @@ struct CustomStatus {
 
   /// Get a standard or custom status message from the given code.
   ///
-  /// If the status code is ephemeral (greater than or equal to
-  /// M_DRIVER_STATUS_CUSTOM_CODES_BASE + numCustomStatusCodes), it will be
+  /// If the status code is ephemeral (less than or equal to
+  /// M_DRIVER_STATUS_CUSTOM_CODES_BASE - numCustomStatusCodes), it will be
   /// removed from the messages store after being copied into the buffer.
   ///
   /// @param status Status code to get the message for.

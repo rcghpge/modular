@@ -36,7 +36,7 @@ void copyStatusMessage(char *dstMsgBuf, int64_t dstMsgBufSize,
 
 M_driver_status_t CustomStatus::create(llvm::Twine message) {
   std::lock_guard<std::mutex> lock(mutex);
-  M_driver_status_t status = customStatusCodeNext++;
+  M_driver_status_t status = customStatusCodeNext--;
   llvm::SmallString<64> &storage = messages[status];
   message.toVector(storage);
   return status;
