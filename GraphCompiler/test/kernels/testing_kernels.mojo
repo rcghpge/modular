@@ -12,7 +12,7 @@ from std.ffi import external_call
 from std.gpu import global_idx
 from std.gpu.host.info import is_cpu
 from std.sys.info import simd_width_of
-import std.algorithm.functional
+from max.algorithm.functional import elementwise
 import extensibility
 from layout import IntTuple, TensorLayout
 from layout import TileTensor, CoordLike, Coord
@@ -1883,9 +1883,7 @@ struct DeviceGraphFill:
                 idx, SIMD[dtype, width](Self._fill_value)
             )
 
-        std.algorithm.functional.elementwise[func, 1, target="gpu"](
-            output.shape_coord(), ctx
-        )
+        elementwise[func, 1, target="gpu"](output.shape_coord(), ctx)
 
     @staticmethod
     def build_graph[
@@ -1945,9 +1943,7 @@ struct DeviceGraphIncrement:
             )
             output._fused_store[element_alignment=alignment](idx, val)
 
-        std.algorithm.functional.elementwise[func, 1, target="gpu"](
-            output.shape_coord(), ctx
-        )
+        elementwise[func, 1, target="gpu"](output.shape_coord(), ctx)
 
     @staticmethod
     def build_graph[
@@ -1994,9 +1990,7 @@ struct AddOneCPU:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
             outp._fused_store[element_alignment=alignment](idx, val)
 
-        std.algorithm.functional.elementwise[func, 1, target="cpu"](
-            outp.shape_coord(), ctx
-        )
+        elementwise[func, 1, target="cpu"](outp.shape_coord(), ctx)
 
 
 @extensibility.register("gpu_only_kernel", type="gpu")
@@ -2022,9 +2016,7 @@ struct AddOneGPU:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
             outp._fused_store[element_alignment=alignment](idx, val)
 
-        std.algorithm.functional.elementwise[func, 1, target="gpu"](
-            outp.shape_coord(), ctx
-        )
+        elementwise[func, 1, target="gpu"](outp.shape_coord(), ctx)
 
 
 # Mixed-lane e2e proof: a trait-bound dense output alongside two legacy

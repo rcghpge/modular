@@ -12,6 +12,7 @@ mojo_library(
     deps = [
         "//max:extensibility",
         "//max:layout",
+        "//max:max_mojo",
         "//max/kernels/src/graph_compiler/builtin_primitives",
         "@mojo//:std",
     ],
