@@ -40,6 +40,10 @@ public:
     void add(Desc *desc);
     Desc *remove(void *ptr);
 
+    // Non-destructive lookup by exact base pointer: returns the descriptor
+    // whose `ptr_` equals `ptr`, or nullptr. Does not unlink.
+    Desc *find(void *ptr) const;
+
     // Rewrite `allocatedBy_` on every live descriptor whose current value is
     // `from`, replacing it with `to`. Used when a `MemoryManagerFreeList` is
     // about to be destroyed to redirect descriptors it allocated but does not
@@ -59,6 +63,12 @@ public:
   ~MemoryManager();
 
   size_t allocationAlignment() const;
+
+  // Exact byte extent of the live allocation whose base pointer is `ptr` (the
+  // aligned block size handed out for it), or 0 if `ptr` is not a current
+  // allocation base from this manager. Lets a device backend map only the
+  // tensor's own bytes instead of the whole containing chunk.
+  size_t allocatedSize(void *ptr) const;
 
   bool isHost() const;
 

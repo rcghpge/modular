@@ -208,6 +208,14 @@ MemoryManager::Desc *MemoryManager::DescMap::remove(void *ptr) {
   return result;
 }
 
+MemoryManager::Desc *MemoryManager::DescMap::find(void *ptr) const {
+  uint32_t h = hash(ptr);
+  Desc *result = buckets_[h & bucketMask_];
+  while ((result != nullptr) && (result->ptr_ != ptr))
+    result = result->nextMap_;
+  return result;
+}
+
 void MemoryManager::DescMap::redirectAllocatedBy(MemoryManagerFreeList *from,
                                                  MemoryManagerFreeList *to) {
   for (size_t i = 0; i < bucketCount_; ++i) {
@@ -818,6 +826,14 @@ size_t MemoryManager::vmmAllocatableBytes() const {
 bool MemoryManager::isEnabled() const { return maxCacheSize_ > 0; }
 
 bool MemoryManager::isVmmEnabled() const { return vmmEnabled_; }
+
+size_t MemoryManager::allocatedSize(void *ptr) const {
+  if (ptr == nullptr)
+    return 0;
+  std::lock_guard<std::mutex> lock(mu_);
+  const Desc *desc = allocatedMap_.find(ptr);
+  return desc != nullptr ? desc->size_.load() : size_t{0};
+}
 
 Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
                                          size_t wrappedSize) const {

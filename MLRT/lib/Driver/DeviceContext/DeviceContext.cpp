@@ -1673,6 +1673,10 @@ MemoryManager &Device::memoryManager() const {
   return *memoryManager_;
 }
 
+size_t Device::allocatedSize(void *ptr) const {
+  return memoryManager().allocatedSize(ptr);
+}
+
 void Device::clearMemoryManager() {
   // Tear the device MemoryManager down here, while the derived Device is still
   // alive, so the virtual VMM unmap/release calls in clear() dispatch to the

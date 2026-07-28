@@ -290,6 +290,13 @@ public:
   MemoryManager &memoryManager() const;
   MemoryManager &hostMemoryManager() const;
 
+  // Exact byte extent of the device allocation whose base pointer is `ptr`, or
+  // 0 if `ptr` is not a current allocation base from this device's
+  // MemoryManager. Lets a device backend map only a tensor's own bytes instead
+  // of the whole containing chunk when the manager sub-allocated `ptr` as an
+  // interior pointer.
+  size_t allocatedSize(void *ptr) const;
+
   // Low-level uncached synchronous allocation of memory to support the
   // MemoryManager.
   // REQUIRES: byteSize > 0
