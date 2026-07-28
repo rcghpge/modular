@@ -23,6 +23,7 @@ pkg_files(
     name = "docs",
     srcs = [
         ":MAPDialect.doc",
+        ":MAPToMOGGIncGen.doc",
         ":MAPTransformsIncGen.doc",
         ":MGPDialect.doc",
         ":MGPTransformsIncGen.doc",
@@ -34,6 +35,7 @@ pkg_files(
         ":MOToMAPIncGen.doc",
         ":MOToMOGGIncGen.doc",
         ":MOTransformsIncGen.doc",
+        ":PackageVariadicsAndScalarsIncGen.doc",
         ":RMODialect.doc",
         ":RMOTransformsIncGen.doc",
     ],
@@ -92,6 +94,7 @@ modular_cc_library(
     copts = ["-fvisibility=default"],
     deps = [
         ":MAPDialect",
+        ":MAPToMOGG",
         ":MAPTransforms",
         ":MGPRT",
         ":MODialect",
@@ -101,6 +104,7 @@ modular_cc_library(
         ":MOToMAP",
         ":MOToMOGG",
         ":MOTransforms",
+        ":PackageVariadicsAndScalars",
         ":RMODialect",
         ":RMOTransforms",
         ":Support",
@@ -1601,6 +1605,71 @@ modular_cc_library(
         ":OperandInference",
         ":ParameterInference",
         "//KGEN:KGENDialect",
+    ],
+)
+
+## MAPToMOGG
+td_library(
+    name = "MAPToMOGGTdFiles",
+    srcs = ["include/GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MAPToMOGGIncGen",
+    output_name = "MAPToMOGG",
+    td_file = "include/GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.td",
+    deps = [
+        ":MAPToMOGGTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MAPToMOGG",
+    srcs = glob(["lib/Conversion/MAPToMOGG/*.cpp"]),
+    hdrs = ["include/GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MAPDialect",
+        ":MAPToMOGGIncGen",
+        ":MOGGDialect",
+        ":MOToMAP",
+    ],
+)
+
+## PackageVariadicsAndScalars
+td_library(
+    name = "PackageVariadicsAndScalarsTdFiles",
+    srcs = ["include/GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "PackageVariadicsAndScalarsIncGen",
+    output_name = "PackageVariadicsAndScalars",
+    td_file = "include/GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.td",
+    deps = [
+        ":PackageVariadicsAndScalarsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "PackageVariadicsAndScalars",
+    srcs = glob(["lib/Conversion/PackageVariadicsAndScalars/*.cpp"]),
+    hdrs = ["include/GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MOGGDialect",
+        ":MOToMAP",
+        ":PackageVariadicsAndScalarsIncGen",
     ],
 )
 

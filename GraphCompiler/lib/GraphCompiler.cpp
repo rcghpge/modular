@@ -6,9 +6,11 @@
 
 #include "GraphCompiler/GraphCompiler.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
+#include "GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.h"
 #include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"
+#include "GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h"
 #include "GraphCompiler/Driver/Common/Utils.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
@@ -145,6 +147,8 @@ void M::MO::registerPasses() {
   MO::registerMOToMAPPasses();
   MO::registerMOTransformsPasses();
   MAP::registerMAPTransformsPasses();
+  MAP::registerMAPToMOGGPasses();
+  MOGG::registerPackageVariadicsAndScalarsPasses();
   MGP::registerMOGGToMGP();
 
   MOGG::registerMergeIdenticalKernelStubs();
@@ -550,6 +554,21 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // --- mo-to-map ---
   buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
+  // --- advanced-fusion MAP lowering (gated on MAX_GC_USE_ADV_FUSION) ---
+  // Lower the `map` kernels emitted by mo-to-map toward `mogg` codegen ops:
+  // prep the MAP dialect, then cross MAP into MOGG. Finalizing the MOGG
+  // codegen form (package variadics/scalars) happens later, as part of the
+  // mogg-pre-mgp stage below.
+
+  // --- map-pre-mogg: MAP-dialect prep before the conversion ---
+  buildStage(
+      [&](auto &p) { p.addPass(MAP::createOutlineStructuredKernelBodies()); },
+      "map-pre-mogg");
+
+  // --- map-to-mogg: the MAP -> MOGG conversion ---
+  buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG()); },
+             "map-to-mogg");
+
   // --- mo-to-mogg ---
   buildStage(
       [&](auto &p) {
@@ -563,6 +582,9 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // creates mo.custom ops and lowers them to MOGG kernels in-place.
   buildStage(
       [&](auto &p) {
+        // Finalize the advanced-fusion MOGG codegen form: package variadics
+        // and scalars.
+        p.addPass(MOGG::createPackageVariadicsAndScalars());
         buildMoggPipeline(p, moggOpts);
         if (opts.nanCheck)
           p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
