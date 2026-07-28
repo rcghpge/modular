@@ -706,9 +706,8 @@ ErrorOrSuccess Fallback<MO::ResizeLinearOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
                                                OpBuilder &builder,
                                                MO::RoiAlignOp op) {
-  // The shape function doesn't need spatial_scale and sampling_ratio.
   buildForOpResult(graph, builder, op, MO::RoiAlignOp::getOperationName(),
-                   op.getOperands().take_front(4), op.getOutputParamDecls(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
