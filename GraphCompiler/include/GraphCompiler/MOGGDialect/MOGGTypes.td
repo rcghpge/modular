@@ -170,4 +170,44 @@ def MOGG_ScalarOfAnyRank : ConfinedType<
   "Has exactly 1 element"
 >;
 
+//===----------------------------------------------------------------------===//
+// Advanced-fusion codegen types
+//
+// The types below back the new MAP -> MOGG -> MGP lowering path. Everything
+// ABOVE remains the legacy type set and is removed once advanced fusion
+// (MAX_GC_USE_ADV_FUSION) is the default, so these are appended here for a clean
+// eventual cut. They are opaque handles by design: the op that creates a value
+// carries its shape / dtype / mutability / io-kind, not the type.
+//===----------------------------------------------------------------------===//
+
+def MOGG_Pointer : MOGG_Type<"Pointer", "pointer_"> {
+  let summary = "An opaque pointer to a tensor's backing data.";
+  let description = [{
+    Codegen-dialect handle for a raw data pointer. Kernels in the new lowering
+    path take pointers (plus dimensions) rather than rich tensor objects; the
+    tensor is reconstructed inside the body via `mogg._tensor.create`.
+  }];
+}
+
+def MOGG_Tensor : MOGG_Type<"Tensor", "tensor_"> {
+  let summary = "An opaque codegen tensor handle.";
+  let description = [{
+    A tensor value in the codegen dialect. Shape, element type, mutability and
+    io-kind are carried by the op that creates it (`mogg._tensor.create` /
+    `mogg._tensor.create.epilogue`), not by this type.
+  }];
+}
+
+def MOGG_Dim : MOGG_Type<"Dim", "dim_"> {
+  let summary = "An opaque runtime dimension value.";
+  let description = [{
+    A single runtime dimension in the codegen dialect. Optionally carries the
+    source dynamic-dimension parameter (a `#kgen.param.decl.ref`), printed bare
+    as `!mogg.dim_<batch>`. `MOGGToMGP` drops the name — a symbolic dimension
+    would prevent kernel deduplication, so dims become SSA value handles there.
+  }];
+  let parameters = (ins OptionalParameter<"::M::KGEN::ParamDeclRefAttr">:$name);
+  let assemblyFormat = "(`<` custom<DimName>($name)^ `>`)?";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD

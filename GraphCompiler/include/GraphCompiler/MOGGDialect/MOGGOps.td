@@ -1739,4 +1739,179 @@ def MOGG_ShapeFunctionDeclOp : MOGG_Op<"shape_func.decl", [Symbol]> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Advanced-fusion codegen ops
+//
+// `MAPToMOGG` lowers the `map` dialect into the ops below. Everything ABOVE is
+// the legacy MOGG op set, removed once advanced fusion (MAX_GC_USE_ADV_FUSION)
+// is the default; new codegen ops are appended here so the cleanup is a clean
+// cut at this line. Values are opaque handles (`!mogg.pointer_` / `!mogg.tensor_`
+// / `!mogg.dim_`); shape/dtype/mut/io live on the creating op. No lowering is
+// wired yet.
+//===----------------------------------------------------------------------===//
+
+def MOGG_KernelRegionOp : MOGG_Op<"_kernel", [
+  MO_ExplicitDevice,
+  MO_HasDeviceInterface,
+  NoTerminator,
+]> {
+  let summary =
+      "A codegen kernel: `!mo.tensor` inputs/outputs outside, `!mogg.pointer_` "
+      "inside.";
+  let description = [{
+    The new-path counterpart of `mogg.generic.compiled.region` / `mogg.kernel`.
+    Inputs are `!mo.tensor` operands and outputs are `!mo.tensor` results; inside
+    the body both become `!mogg.pointer_` block arguments (outputs turn into
+    externally-allocated operands only later, in `MOGGToMGP`). The body's
+    entry-block arguments are, in order: one `!mogg.pointer_` per input tensor,
+    one `!mogg.pointer_` per output tensor, then the runtime `!mogg.dim_`s (dynamic
+    dimensions), then one `!mogg.context`. Like `mogg.kernel` there is no
+    terminator and no `mogg.output`: the output pointer block arguments are the
+    outputs. `MAPToMOGG` lowers a `map.iter.opaque` into one of these.
+
+    Like `mogg.kernel.stub`, the op carries a `#M.device_ref` `device` attribute
+    (the `MOExplicitDevice` trait) so device assignment and outlining resolve the
+    kernel's execution device from the op itself rather than falling back to the
+    host.
+  }];
+
+  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let results = (outs Variadic<MO_Tensor>:$outputs);
+  let regions = (region SizedRegion<1>:$body);
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
+}
+
+def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [Pure]> {
+  let summary = "Build a codegen shape from a static shape attr + dynamic dims.";
+  let description = [{
+    New-path counterpart of `mogg.shape.__init__`: materializes a `!mogg.shape`
+    from a static `#mosh.ape` and the `!mogg.dim_` handles for its dynamic
+    dimensions (in shape order). The dims come from the enclosing `mogg._kernel`
+    block arguments.
+  }];
+  let arguments = (ins Variadic<MOGG_Dim>:$dynamic_dims, MOSH_ShapeAttr:$shape);
+  let results = (outs MOGG_Shape:$result);
+  let assemblyFormat = [{
+    `(` $dynamic_dims `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [Pure]> {
+  let summary = "Build a codegen tensor from a pointer, shape and static metadata.";
+  let description = [{
+    New-path counterpart of `mogg.tensor.__init__`: reconstructs a `!mogg.tensor_`
+    inside a kernel body from a data pointer and a shape. Element type,
+    mutability and io-kind are attributes (the opaque `!mogg.tensor_` carries
+    none of them). The `$device` records the device kind (cpu vs gpu) so emit
+    can pick the preferred alignment locally instead of reaching out to the
+    enclosing kernel stub.
+  }];
+  let arguments = (ins
+    MOGG_Pointer:$ptr,
+    MOGG_Shape:$shape,
+    M_DeviceRefAttr:$device,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MO_IOKind:$io
+  );
+  let results = (outs MOGG_Tensor:$tensor);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
+  AttrSizedOperandSegments,
+  NoTerminator,
+]> {
+  let summary = "A fused-output tensor bound to its own epilogue body.";
+  let description = [{
+    New-path counterpart of `mogg.tensor.fused` for the output (store) side:
+    produces a `!mogg.tensor_` (of `$shape`) that writes through its own
+    epilogue body, rather than referencing a separate named lambda op. The
+    body takes a variadic list of captured tensors plus an arbitrary list of
+    extra operands (e.g. an index the callback is evaluated at); the body's
+    own scalar parameters are the entry-block arguments. `MAPToMOGG` lowers a
+    `map.iter.epilogue` into one of these. Element type / mutability /
+    io-kind are attributes, and `$device` records the device kind (cpu vs
+    gpu) so emit can pick the preferred alignment locally instead of
+    reaching out to the enclosing kernel stub. Scaffolding: not yet wired.
+  }];
+  let arguments = (ins
+    MOGG_Shape:$shape,
+    Variadic<MOGG_Tensor>:$captures,
+    Variadic<AnyType>:$args,
+    M_DeviceRefAttr:$device,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MO_IOKind:$io
+  );
+  let results = (outs MOGG_Tensor:$tensor);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    $shape (`(` $args^ `:` type($args) `)`)?
+    (`capturing` `(` $captures^ `:` type($captures) `)`)?
+    `:` type($shape) `->` type($tensor)
+    attr-dict-with-keyword $body
+  }];
+}
+
+def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", []> {
+  let summary = "Store a scalar value into a codegen tensor at an index.";
+  let description = [{
+    Store path of a fusion callback body: writes `$value` into `$tensor` at
+    `$index`.
+  }];
+  let arguments = (ins MOGG_Tensor:$tensor, AnyType:$index, AnyType:$value);
+  let assemblyFormat = [{
+    $tensor `[` $index `]` `=` $value attr-dict `:`
+    qualified(type($tensor)) `,` qualified(type($index)) `,` qualified(type($value))
+  }];
+}
+
+def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
+  AttrSizedOperandSegments,
+]> {
+  let summary = "Call a registered opaque kernel's execute function.";
+  let description = [{
+    New-path counterpart of `mogg.call.execute`: invokes the kernel named by
+    `$callee` over `!mogg.tensor_` inputs/outputs. The optional
+    `$device_context` wires the callee's device context explicitly instead of
+    scavenging it from the enclosing kernel stub's block arguments at emit time.
+    Not a terminator (the enclosing `mogg._kernel` body is terminated by
+    `mogg.output`).
+  }];
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    Variadic<MOGG_Tensor>:$inputs,
+    Variadic<MOGG_Tensor>:$outputs,
+    Optional<MOGG_Context>:$device_context,
+    OptionalAttr<DictionaryAttr>:$kernel_param
+  );
+  let assemblyFormat = [{
+    $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
+            (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
+            (`context` `(` $device_context^ `:` type($device_context) `)`)?
+            attr-dict
+  }];
+}
+
+def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure]> {
+  let summary = "A code-generation no-op cast between handle types.";
+  let description = [{
+    Reconciles the type system during the async-unpack transition (e.g.
+    `!mgp.buffer` -> `!mogg.pointer_`). Emits no Mojo.
+
+    TODO (debt): remove once `mogg.async.unpack` folds directly to the typed
+    handle; sequence fusion currently expects `async.unpack` to fold, so a
+    conversion op is needed to please the type system.
+  }];
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `to` type($output)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

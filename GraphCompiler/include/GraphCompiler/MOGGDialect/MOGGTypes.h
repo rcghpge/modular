@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_H
 
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"

@@ -37,6 +37,29 @@ void MOGGDialect::registerTypes() {
 }
 
 //===----------------------------------------------------------------------===//
+// !mogg.dim_ custom directive
+//===----------------------------------------------------------------------===//
+
+namespace M::MOGG {
+// Prints/parses the optional `!mogg.dim_<name>` parameter as a bare identifier
+// (like MOSH shapes render dynamic dims), reusing KGEN's param-name round-trip.
+// A dimension parameter always has the shape dim type (si64).
+static mlir::ParseResult parseDimName(mlir::AsmParser &parser,
+                                      KGEN::ParamDeclRefAttr &name) {
+  mlir::StringAttr rawName;
+  if (KGEN::parseParamName(parser, rawName))
+    return mlir::failure();
+  name = KGEN::ParamDeclRefAttr::get(
+      rawName, MOSH::ShapeAttr::getDimType(parser.getContext()));
+  return mlir::success();
+}
+static void printDimName(mlir::AsmPrinter &printer,
+                         KGEN::ParamDeclRefAttr name) {
+  KGEN::printParamName(printer, name.getName());
+}
+} // namespace M::MOGG
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

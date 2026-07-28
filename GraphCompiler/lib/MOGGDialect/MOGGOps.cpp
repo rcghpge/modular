@@ -2355,6 +2355,147 @@ LogicalResult CallExecuteOp::verify() {
   return success();
 }
 
+ParseResult KernelRegionOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Op operands: the `!mo.tensor` inputs, printed bare as `(%a, %b : types)`
+  // (no `inputs` keyword).
+  llvm::SMLoc operandsLoc = parser.getCurrentLocation();
+  SmallVector<OpAsmParser::UnresolvedOperand> inputOperands;
+  SmallVector<Type> inputTypes;
+  if (parser.parseLParen())
+    return failure();
+  if (failed(parser.parseOptionalRParen())) {
+    if (parser.parseOperandList(inputOperands) || parser.parseColon() ||
+        parser.parseTypeList(inputTypes) || parser.parseRParen())
+      return failure();
+  }
+
+  // Results: an optional `-> types`.
+  SmallVector<Type> resultTypes;
+  if (parser.parseOptionalArrowTypeList(resultTypes))
+    return failure();
+
+  if (parser.resolveOperands(inputOperands, inputTypes, operandsLoc,
+                             result.operands))
+    return failure();
+  result.addTypes(resultTypes);
+
+  // Body entry-block arguments given as labeled groups. The display order is
+  // inputs, outputs, context, dims; the in-memory order the verifier and
+  // downstream passes rely on is [inputs, outputs, dims, context].
+  SmallVector<OpAsmParser::Argument> inputArgs, outputArgs, ctxArgs, dimArgs;
+  auto parseGroup =
+      [&](StringRef keyword,
+          SmallVectorImpl<OpAsmParser::Argument> &into) -> ParseResult {
+    if (succeeded(parser.parseOptionalKeyword(keyword)))
+      return parser.parseArgumentList(into, OpAsmParser::Delimiter::Paren,
+                                      /*allowType=*/true);
+    return success();
+  };
+  if (parseGroup("inputs", inputArgs) || parseGroup("outputs", outputArgs) ||
+      parseGroup("context", ctxArgs) || parseGroup("dims", dimArgs))
+    return failure();
+
+  SmallVector<OpAsmParser::Argument> bodyArgs;
+  bodyArgs.append(inputArgs.begin(), inputArgs.end());
+  bodyArgs.append(outputArgs.begin(), outputArgs.end());
+  bodyArgs.append(dimArgs.begin(), dimArgs.end());
+  bodyArgs.append(ctxArgs.begin(), ctxArgs.end());
+
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  return parser.parseRegion(*result.addRegion(), bodyArgs);
+}
+
+void KernelRegionOp::print(OpAsmPrinter &p) {
+  // Op operands: the `!mo.tensor` inputs, printed bare.
+  p << " (";
+  p.printOperands(getInputs());
+  if (!getInputs().empty()) {
+    p << " : ";
+    llvm::interleaveComma(getInputs().getTypes(), p);
+  }
+  p << ")";
+
+  // Results: `-> types` (omitted when there are none).
+  if (!getOutputs().empty()) {
+    SmallVector<Type> outTypes(getOutputs().getTypes());
+    p.printArrowTypeList(outTypes);
+  }
+
+  // Body entry-block arguments, as labeled groups. The in-memory order is
+  // [inputs, outputs, dims, context]; the display shows context before dims.
+  auto args = getBody().front().getArguments();
+  size_t numInputs = getInputs().size();
+  size_t numOutputs = getOutputs().size();
+  size_t numTensors = std::min(numInputs + numOutputs, args.size());
+
+  auto inputArgs = args.take_front(std::min(numInputs, args.size()));
+  auto outputArgs = args.drop_front(inputArgs.size()).take_front(numOutputs);
+  auto tail = args.drop_front(numTensors);
+  // `tail` is `[dims..., context]`; the context is the trailing argument.
+  BlockArgument ctxArg = tail.empty() ? BlockArgument() : tail.back();
+  auto dimArgs = tail.empty() ? tail : tail.drop_back(1);
+
+  p.increaseIndent();
+  auto printGroup = [&](StringRef label, auto group) {
+    if (group.empty())
+      return;
+    p.printNewline();
+    p << label << " (";
+    llvm::interleaveComma(group, p,
+                          [&](BlockArgument ba) { p.printRegionArgument(ba); });
+    p << ")";
+  };
+  printGroup("inputs", inputArgs);
+  printGroup("outputs", outputArgs);
+  if (ctxArg) {
+    p.printNewline();
+    p << "context (";
+    p.printRegionArgument(ctxArg);
+    p << ")";
+  }
+  printGroup("dims", dimArgs);
+  p.decreaseIndent();
+
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult KernelRegionOp::verify() {
+  // Inputs are `!mo.tensor` operands and outputs are `!mo.tensor` results; the
+  // body block arguments are the codegen handles: one !mogg.pointer_ per input
+  // then output tensor, then zero or more !mogg.dim_, then exactly one trailing
+  // !mogg.context.
+  const size_t numTensors = getInputs().size() + getOutputs().size();
+  auto args = getBody().front().getArguments();
+
+  if (args.size() < numTensors + 1)
+    return emitOpError()
+           << "expected at least " << (numTensors + 1)
+           << " body block arguments (one !mogg.pointer_ per input "
+              "and output tensor plus a trailing !mogg.context), "
+              "got "
+           << args.size();
+
+  for (size_t i = 0; i < numTensors; ++i)
+    if (!isa<PointerType>(args[i].getType()))
+      return emitOpError() << "body block argument #" << i
+                           << " must be a !mogg.pointer_ (one per input then "
+                              "output tensor)";
+
+  size_t i = numTensors;
+  while (i < args.size() && isa<DimType>(args[i].getType()))
+    ++i;
+  if (i != args.size() - 1 || !isa<ContextType>(args.back().getType()))
+    return emitOpError() << "body block arguments after the pointers must be "
+                            "zero or more !mogg.dim_ followed by exactly one "
+                            "!mogg.context";
+
+  return success();
+}
+
 LogicalResult
 CallExecuteOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifySymbolUsesForKernelDeclCall(
