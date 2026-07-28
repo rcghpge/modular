@@ -263,7 +263,7 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 //===----------------------------------------------------------------------===//
 
 def TensorSliceOp : MGP_Op<"tensor.slice", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
@@ -281,28 +281,35 @@ def TensorSliceOp : MGP_Op<"tensor.slice", [
     be on the host (cpu) device since it is a metadata buffer, not a data
     buffer; the slice is zero-copy and no device data is read from start.
 
+    The device context must be on the same device as the input; backends whose
+    runtime only accepts registered pointers register the slice through it.
+
     Example:
     ```mlir
     %input : !mgp.tensor<5xf32, <"gpu", 0>>
     %spec  : !mgp.tensor_spec<3xf32>
     %start : !mgp.tensor<1xsi64, <"cpu", 0>>
-    %out = mgp.tensor.slice %input, %spec, %start
+    %ctx   : !mgp.device_context<<"gpu", 0>>
+    %out = mgp.tensor.slice %input, %spec, %start, %ctx
              : !mgp.tensor<5xf32, <"gpu", 0>>, !mgp.tensor_spec<3xf32>,
-               !mgp.tensor<1xsi64, <"cpu", 0>>
+               !mgp.tensor<1xsi64, <"cpu", 0>>,
+               !mgp.device_context<<"gpu", 0>>
     ```
   }];
 
   let arguments = (ins
     MGP_DeviceTensorType:$input,
     MGP_TensorSpecType:$outputSpec,
-    MGP_DeviceTensorType:$start
+    MGP_DeviceTensorType:$start,
+    MGP_DeviceContextType:$deviceContext
   );
 
   let results = (outs MGP_DeviceTensorType:$output);
 
   let assemblyFormat = [{
-    $input `,` $outputSpec `,` $start attr-dict `:`
-    type($input) `,` type($outputSpec) `,` type($start)
+    $input `,` $outputSpec `,` $start `,` $deviceContext attr-dict `:`
+    type($input) `,` type($outputSpec) `,` type($start) `,`
+    qualified(type($deviceContext))
   }];
 
   let hasVerifier = 1;
@@ -1815,7 +1822,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 //===----------------------------------------------------------------------===//
 
 def BufferSliceOp : MGP_Op<"buffer.slice", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
   InferTypeOpAdaptor,
@@ -1831,15 +1838,19 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     Note that no copying is done, and the result buffer merely borrows from
     the (offset into) the input buffer.
 
+    The device context must be on the same device as the input buffer; backends
+    whose runtime only accepts registered pointers register the slice through it.
+
     Example:
     ```mlir
     %ch:  !mgp.chain
-    %ctx : !mgp.context
+    %ctx : !mgp.device_context<<"cpu", 0>>
     %in_buf : !mgp.buffer
     %offset : index
     %size : index
     %out_buf =
-        mgp.buffer.slice %in_buf, %offset, %size : !mgp.buffer
+        mgp.buffer.slice %in_buf, %offset, %size, %ctx
+          : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
     %out_buf : !mgp.buffer
     ```
   }];
@@ -1847,14 +1858,18 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
   let arguments = (ins
     MGP_DeviceBufferType:$inBuffer,
     Index:$offset,
-    Index:$size
+    Index:$size,
+    MGP_DeviceContextType:$deviceContext
   );
 
   let results = (outs MGP_DeviceBufferType:$outBuffer);
 
   let assemblyFormat = [{
-    $inBuffer `,` $offset `,` $size attr-dict `:` type($inBuffer)
+    $inBuffer `,` $offset `,` $size `,` $deviceContext attr-dict `:`
+      type($inBuffer) `,` qualified(type($deviceContext))
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1863,7 +1878,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 
 def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
   AttrSizedOperandSegments,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   InferTypeOpAdaptor,
   Pure,
@@ -1876,19 +1891,25 @@ def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
     represented as a single op to avoid stressing sequence fusion with a large
     fan-out of duplicatable slice ops.
 
+    The device context must be on the same device as the base buffer; backends
+    whose runtime only accepts registered pointers (e.g. Trainium) register each
+    slice through it.
+
     Example:
     ```mlir
     %base : !mgp.buffer<<"gpu", 0>>
+    %ctx : !mgp.device_context<<"gpu", 0>>
     %off0, %off1 : index
     %sz0, %sz1 : index
     %slice0, %slice1 =
-        mgp.buffer.bulk_slice %base offsets(%off0, %off1) sizes(%sz0, %sz1)
-          : !mgp.buffer<<"gpu", 0>>
+        mgp.buffer.bulk_slice %base, %ctx offsets(%off0, %off1) sizes(%sz0, %sz1)
+          : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
     ```
   }];
 
   let arguments = (ins
     MGP_DeviceBufferType:$baseBuffer,
+    MGP_DeviceContextType:$deviceContext,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes
   );
@@ -1896,8 +1917,9 @@ def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
   let results = (outs Variadic<MGP_DeviceBufferType>:$outBuffers);
 
   let assemblyFormat = [{
-    $baseBuffer `offsets` `(` $offsets `)` `sizes` `(` $sizes `)` attr-dict
-      `:` type($baseBuffer)
+    $baseBuffer `,` $deviceContext `offsets` `(` $offsets `)`
+      `sizes` `(` $sizes `)` attr-dict
+      `:` type($baseBuffer) `,` qualified(type($deviceContext))
   }];
 
   let hasVerifier = 1;

@@ -426,12 +426,14 @@ Value MGPBufferBuilder::bufferConcat(
 }
 
 Value MGPBufferBuilder::bufferSlice(OpBuilder &builder, Location loc,
-                                    Value inBuffer, Value offset, Value size) {
+                                    Value inBuffer, Value offset, Value size,
+                                    Value deviceContext) {
   return BufferSliceOp::create(
       builder, loc,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*offset=*/offset,
-      /*size=*/size);
+      /*size=*/size,
+      /*deviceContext=*/cast<TypedValue<DeviceContextType>>(deviceContext));
 }
 
 Value MGPBufferBuilder::bufferToBool(OpBuilder &builder, Location loc,

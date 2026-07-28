@@ -201,6 +201,39 @@ func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weight
 // -----
 
 //
+// mgp.tensor.slice
+//
+func.func @tensor_slice_device_context_mismatch(%input: !mgp.tensor<5xf32, <"gpu", 0>>, %spec: !mgp.tensor_spec<3xf32>, %start: !mgp.tensor<1xsi64>, %cpu: !mgp.device_context<<"cpu", 0>>) -> !mgp.tensor<3xf32, <"gpu", 0>> {
+  // expected-error@+1 {{'mgp.tensor.slice' op device context must be on the same device as the input}}
+  %sliced = mgp.tensor.slice %input, %spec, %start, %cpu : !mgp.tensor<5xf32, <"gpu", 0>>, !mgp.tensor_spec<3xf32>, !mgp.tensor<1xsi64>, !mgp.device_context<<"cpu", 0>>
+  mef.output %sliced : !mgp.tensor<3xf32, <"gpu", 0>>
+}
+
+// -----
+
+//
+// mgp.buffer.slice
+//
+func.func @buffer_slice_device_context_mismatch(%buf: !mgp.buffer<<"gpu", 0>>, %offset: index, %size: index, %cpu: !mgp.device_context<<"cpu", 0>>) -> !mgp.buffer<<"gpu", 0>> {
+  // expected-error@+1 {{'mgp.buffer.slice' op device context must be on the same device as the input buffer}}
+  %sliced = mgp.buffer.slice %buf, %offset, %size, %cpu : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"cpu", 0>>
+  mef.output %sliced : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+//
+// mgp.buffer.bulk_slice
+//
+func.func @bulk_slice_device_context_mismatch(%base: !mgp.buffer<<"gpu", 0>>, %offset: index, %size: index, %cpu: !mgp.device_context<<"cpu", 0>>) -> !mgp.buffer<<"gpu", 0>> {
+  // expected-error@+1 {{'mgp.buffer.bulk_slice' op device context must be on the same device as the base buffer}}
+  %sliced = mgp.buffer.bulk_slice %base, %cpu offsets(%offset) sizes(%size) : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"cpu", 0>>
+  mef.output %sliced : !mgp.buffer<<"gpu", 0>>
+}
+
+// -----
+
+//
 // mgp.call
 //
 

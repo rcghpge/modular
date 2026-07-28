@@ -12,7 +12,7 @@ mgp.model @basic_memory_planning : mof devices [#M.device_ref<"gpu", 0>] init (%
   // These allocations should be merged into a single pool
   // CHECK: %[[HIGH_WATER:.*]], %[[OFFSETS:.*]]:2 = mgp.buffer.plan
   // CHECK: %[[POOL:.*]] = mgp.buffer.alloc %[[CHAIN]], %[[HIGH_WATER]], %[[GPU_DEV]], align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  // CHECK: %[[SLICES:.*]]:2 = mgp.buffer.bulk_slice %[[POOL]] offsets(%[[OFFSETS]]#0, %[[OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>
+  // CHECK: %[[SLICES:.*]]:2 = mgp.buffer.bulk_slice %[[POOL]], %[[GPU_DEV]] offsets(%[[OFFSETS]]#0, %[[OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   // CHECK-NOT: mgp.buffer.slice
 
   %alloc0 = mgp.buffer.alloc %arg0, %arg4, %arg3, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
@@ -38,7 +38,7 @@ mgp.model @cpu_allocations_ignored : mof devices [#M.device_ref<"cpu", 0>, #M.de
   // GPU allocations should be planned
   // CHECK: %[[GPU_HIGH_WATER:.*]], %[[GPU_OFFSETS:.*]]:2 = mgp.buffer.plan
   // CHECK: %[[GPU_POOL:.*]] = mgp.buffer.alloc %[[CHAIN]], %[[GPU_HIGH_WATER]], %[[GPU_DEV]], align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  // CHECK: %[[GPU_SLICES:.*]]:2 = mgp.buffer.bulk_slice %[[GPU_POOL]] offsets(%[[GPU_OFFSETS]]#0, %[[GPU_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>
+  // CHECK: %[[GPU_SLICES:.*]]:2 = mgp.buffer.bulk_slice %[[GPU_POOL]], %[[GPU_DEV]] offsets(%[[GPU_OFFSETS]]#0, %[[GPU_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %gpu_alloc0 = mgp.buffer.alloc %arg0, %arg5, %arg4, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %gpu_alloc1 = mgp.buffer.alloc %arg0, %arg5, %arg4, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
 
@@ -88,7 +88,7 @@ mgp.model @different_alignments : mof devices [#M.device_ref<"gpu", 0>] init (%a
   // CHECK: %[[ALIGN_HIGH_WATER:.*]], %[[ALIGN_OFFSETS:.*]]:3 = mgp.buffer.plan
   // CHECK-SAME: alignments = #M.dense_array<16, 32, 64>
   // CHECK: %[[ALIGN_POOL:.*]] = mgp.buffer.alloc %[[CHAIN]], %[[ALIGN_HIGH_WATER]], %[[GPU_DEV]], align 64 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  // CHECK: %[[ALIGN_SLICES:.*]]:3 = mgp.buffer.bulk_slice %[[ALIGN_POOL]] offsets(%[[ALIGN_OFFSETS]]#0, %[[ALIGN_OFFSETS]]#1, %[[ALIGN_OFFSETS]]#2) sizes(%[[SIZE]], %[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>
+  // CHECK: %[[ALIGN_SLICES:.*]]:3 = mgp.buffer.bulk_slice %[[ALIGN_POOL]], %[[GPU_DEV]] offsets(%[[ALIGN_OFFSETS]]#0, %[[ALIGN_OFFSETS]]#1, %[[ALIGN_OFFSETS]]#2) sizes(%[[SIZE]], %[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %alloc1 = mgp.buffer.alloc %arg0, %arg4, %arg3, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %alloc2 = mgp.buffer.alloc %arg0, %arg4, %arg3, align 32 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %alloc3 = mgp.buffer.alloc %arg0, %arg4, %arg3, align 64 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
@@ -122,8 +122,8 @@ mgp.model @multiple_devices : mof devices [#M.device_ref<"gpu", 0>, #M.device_re
   %alloc0_gpu1 = mgp.buffer.alloc %arg0, %arg5, %arg4, align 16 : !mgp.buffer<<"gpu", 1>>, !mgp.device_context<<"gpu", 1>>
   %alloc1_gpu1 = mgp.buffer.alloc %arg0, %arg5, %arg4, align 16 : !mgp.buffer<<"gpu", 1>>, !mgp.device_context<<"gpu", 1>>
 
-  // CHECK-DAG: mgp.buffer.bulk_slice %[[GPU0_POOL]] offsets(%[[GPU0_OFFSETS]]#0, %[[GPU0_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>
-  // CHECK-DAG: mgp.buffer.bulk_slice %[[GPU1_POOL]] offsets(%[[GPU1_OFFSETS]]#0, %[[GPU1_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 1>>
+  // CHECK-DAG: mgp.buffer.bulk_slice %[[GPU0_POOL]], %[[GPU0_DEV]] offsets(%[[GPU0_OFFSETS]]#0, %[[GPU0_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
+  // CHECK-DAG: mgp.buffer.bulk_slice %[[GPU1_POOL]], %[[GPU1_DEV]] offsets(%[[GPU1_OFFSETS]]#0, %[[GPU1_OFFSETS]]#1) sizes(%[[SIZE]], %[[SIZE]]) : <<"gpu", 1>>, !mgp.device_context<<"gpu", 1>>
 
   %ch0 = "use"(%arg0, %alloc0_gpu0) : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
   %ch1 = "use"(%ch0, %alloc1_gpu0) : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain

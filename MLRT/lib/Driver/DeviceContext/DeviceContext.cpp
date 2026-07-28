@@ -651,8 +651,18 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) {
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
     RETURN_ERROR("offset, len and elem_size are out of range");
   }
-  return DeviceBufferRef::take(new DeviceBuffer(
-      context(), *this, origPtr + byteOffset, byteSize, isHost()));
+  // Defaults to `origPtr + byteOffset`; backends whose runtime only accepts
+  // registered pointers return the registered slice address instead.
+  DEFINE_OR_RETURN_ERROR(
+      void *, subPtr,
+      context().device().registerBufferSlice(origPtr, byteOffset, byteSize));
+  return DeviceBufferRef::take(
+      new DeviceBuffer(context(), *this, subPtr, byteSize, isHost()));
+}
+
+ErrorOr<void *> Device::registerBufferSlice(void *parentPtr, size_t byteOffset,
+                                            size_t /*byteSize*/) {
+  return static_cast<char *>(parentPtr) + byteOffset;
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess

@@ -460,6 +460,8 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // BufferSliceOp
 //===----------------------------------------------------------------------===//
+bool BufferSliceOp::isThrows() { return true; }
+
 LogicalResult BufferSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -481,6 +483,14 @@ LogicalResult BufferSliceOp::inferReturnTypes(
     return failure();
   inferredReturnTypes.emplace_back(
       DeviceBufferType::get(context, inBufferTy.getDevice()));
+  return success();
+}
+
+LogicalResult BufferSliceOp::verify() {
+  if (getDeviceContext().getType().getDevice() !=
+      getInBuffer().getType().getDevice())
+    return emitOpError(
+        "device context must be on the same device as the input buffer");
   return success();
 }
 
@@ -508,6 +518,10 @@ LogicalResult BufferBulkSliceOp::verify() {
   if (!llvm::all_equal(
           {getOffsets().size(), getSizes().size(), getOutBuffers().size()}))
     return emitOpError("offsets, sizes, and results must have the same count");
+  if (getDeviceContext().getType().getDevice() !=
+      getBaseBuffer().getType().getDevice())
+    return emitOpError(
+        "device context must be on the same device as the base buffer");
   return success();
 }
 
@@ -515,6 +529,8 @@ bool BufferBulkSliceOp::extendsLifetime(size_t operandIndex,
                                         size_t /*resultIndex*/) {
   return operandIndex == getBaseBufferMutable().getOperandNumber();
 }
+
+bool BufferBulkSliceOp::isThrows() { return true; }
 
 LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -533,11 +549,12 @@ LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue sizesArray =
       inlineArray(state, ArrayRef(sizes), /*isComptime=*/false);
   MojoValue baseArg = state.getMojoValueFor(getBaseBuffer());
+  MojoValue deviceCtxVar = state.getMojoValueFor(getDeviceContext());
 
-  // Call: mgp_buffer_bulk_slice(base, offsets, sizes)
+  // Call: mgp_buffer_bulk_slice(base, offsets, sizes, deviceContext)
   // Returns Array[MutByteBuffer, N]; extract each result by index.
-  MojoValue result =
-      state.builder.var(function({}, {baseArg, offsetsArray, sizesArray}));
+  MojoValue result = state.builder.var(
+      function({}, {baseArg, offsetsArray, sizesArray, deviceCtxVar}));
 
   for (auto &&[i, outBuf] : llvm::enumerate(getOutBuffers()))
     state.setMojoValueFor(outBuf, result[i]);

@@ -304,6 +304,18 @@ public:
                                     bool isHost) = 0;
   virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) = 0;
 
+  // Returns the device pointer for a sub-buffer viewing [byteOffset, byteOffset
+  // + byteSize) of the allocation at `parentPtr`. The default is plain pointer
+  // arithmetic; backends whose runtime only accepts registered pointers
+  // override this to register the slice.
+  //
+  // There is no unregister counterpart, and the returned pointer may outlive
+  // the requesting DeviceBuffer: an override must tie the registration's
+  // lifetime to `parentPtr`'s allocation and return the same address when
+  // called again with the same arguments.
+  virtual ErrorOr<void *>
+  registerBufferSlice(void *parentPtr, size_t byteOffset, size_t byteSize);
+
   // ---- CUDA Virtual Memory Management (VMM) support ----
   //
   // These back the MemoryManager's single-arena defragmenting allocator: a

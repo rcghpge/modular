@@ -233,8 +233,9 @@ class DynamicMemoryPlanningPass
       for (const AllocInfo &a : allocs)
         sizes.push_back(a.runtimeSize);
 
-      auto bulkSliceOp = BufferBulkSliceOp::create(
-          execBuilder, loc, memPoolBuffer, offsets, sizes);
+      auto bulkSliceOp =
+          BufferBulkSliceOp::create(execBuilder, loc, memPoolBuffer,
+                                    deviceContext.value(), offsets, sizes);
 
       for (size_t i = 0; i < allocs.size(); ++i) {
         allocs[i].alloc->replaceAllUsesWith(

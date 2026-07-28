@@ -328,7 +328,7 @@ public:
                              ArrayRef<Value> inBuffers) = 0;
 
   virtual Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
-                            Value offset, Value size) = 0;
+                            Value offset, Value size, Value deviceContext) = 0;
 
   /// Returns the bool contents of a single-byte buffer.
   virtual Value bufferToBool(OpBuilder &builder, Location loc,
@@ -461,7 +461,7 @@ public:
                      Value outBuffer, ArrayRef<Value> inBuffers) override;
 
   Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
-                    Value offset, Value size) override;
+                    Value offset, Value size, Value deviceContext) override;
 
   Value bufferToBool(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,

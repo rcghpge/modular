@@ -271,6 +271,12 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Build/collect inputs to the MGP buffer split op
   SmallVector<Value> outputBuffers;
 
+  // The slices stay on the input buffer's device.
+  auto sliceDeviceRef =
+      cast<MGP::DeviceBufferType>(inputBuffer.getType()).getDevice();
+  TypedValue<MGP::DeviceContextType> sliceDeviceContext =
+      loweringState.getExecuteDevice(sliceDeviceRef);
+
   Value offset = opLoweringState.create<mlir::index::ConstantOp>(0).getResult();
   Value sliceSize;
   for (TypedValue<MGP::TensorSpecType> outSpec : outputSpecs) {
@@ -292,10 +298,10 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
                       .getResult();
     }
 
-    Value outSlice =
-        opLoweringState
-            .create<MGP::BufferSliceOp>(inputBuffer, offset, sliceSize)
-            .getResult();
+    Value outSlice = opLoweringState
+                         .create<MGP::BufferSliceOp>(
+                             inputBuffer, offset, sliceSize, sliceDeviceContext)
+                         .getResult();
     outputBuffers.push_back(outSlice);
   }
 

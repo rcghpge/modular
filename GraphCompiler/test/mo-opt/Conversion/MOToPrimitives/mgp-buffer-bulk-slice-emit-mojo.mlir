@@ -20,7 +20,7 @@ mgp.model @bulk_slice_basic : mof devices [#M.device_ref<"gpu", 0>] init (%weigh
   // CHECK: mogg.async.unpack
   // CHECK: mgp.buffer.bulk_slice
   // CHECK: mogg.output
-  %slice0, %slice1 = mgp.buffer.bulk_slice %base offsets(%off0, %off1) sizes(%sz0, %sz1) : !mgp.buffer<<"gpu", 0>>
+  %slice0, %slice1 = mgp.buffer.bulk_slice %base, %gpu offsets(%off0, %off1) sizes(%sz0, %sz1) : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
 
   mef.output %ch0, %slice0, %slice1 : !mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>
 }

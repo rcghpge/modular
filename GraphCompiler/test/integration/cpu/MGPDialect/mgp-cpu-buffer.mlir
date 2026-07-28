@@ -261,7 +261,7 @@ mgp.model @buffer_slice : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %idx0 = index.constant 12
   %idx1 = index.constant 12
   %buf = mgp.buffer.constant #M.dense_array<1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0, 6, 0, 0, 0> : !M.array<24xui8>
-  %sliced = mgp.buffer.slice %buf, %idx0, %idx1 : !mgp.buffer
+  %sliced = mgp.buffer.slice %buf, %idx0, %idx1, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<3xsi32>
   %tensor = mgp.tensor.create %ch0, %sliced, %spec : !mgp.tensor<3xsi32>
   mef.output %ch0, %tensor : !mef.chain, !mgp.tensor<3xsi32>
@@ -282,7 +282,7 @@ mgp.model @buffer_cache_slice : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %ch1 = mgp.buffer.cache %ch0, %ctx[0], %buf1 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %idx = index.constant 0
   %buf = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer
-  %sliced = mgp.buffer.slice %buf, %idx0, %idx1 : !mgp.buffer
+  %sliced = mgp.buffer.slice %buf, %idx0, %idx1, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<3xsi32>
   %tensor = mgp.tensor.create %ch0, %sliced, %spec : !mgp.tensor<3xsi32>
   mef.output %ch0, %tensor : !mef.chain, !mgp.tensor<3xsi32>

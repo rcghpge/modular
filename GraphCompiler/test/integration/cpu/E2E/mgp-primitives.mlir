@@ -27,7 +27,7 @@ mgp.model @debug_tensor_print : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %buffer = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<2x2xui8>
   %ch1 = mgp.debug.tensor.print %ch0, %buffer, %spec, "test" : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<2x2xui8>) -> !mef.chain
-  %sliced = mgp.buffer.slice %buffer, %two, %two : !mgp.buffer
+  %sliced = mgp.buffer.slice %buffer, %two, %two, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %slicedSpec = mgp.tensor_spec.create %one : !mgp.tensor_spec<?xsi16>
   %ch2 = mgp.debug.tensor.print %ch1, %sliced, %slicedSpec, "sliced" : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<?xsi16>) -> !mef.chain
   mef.output %ch2 : !mef.chain
@@ -116,9 +116,9 @@ mgp.model @to_tensor_from_tensor : mof {argument_device_indices = [0 : ui32], re
   mef.output %2, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.tensor<1xsi32>) {
   %buffer = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
-  %idx8 = index.constant 8
+  %sliceLen = index.constant 4
   %idx0 = index.constant 0
-  %3 = mgp.buffer.slice %buffer, %idx0, %idx8 : !mgp.buffer
+  %3 = mgp.buffer.slice %buffer, %idx0, %sliceLen, %arg3 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %4 = mgp.buffer.to_index %arg0, %3 : !mgp.buffer
   %5 = mgp.tensor_spec.create %4 : !mgp.tensor_spec<?xsi64>
   %6 = mgp.tensor_spec.create  : !mgp.tensor_spec<1xsi32>

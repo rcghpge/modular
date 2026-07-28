@@ -78,22 +78,22 @@ mo.graph @test_buffer_dependencies(%arg0: !mo.tensor<[], si64>) -> !mo.tensor<[]
 // CHECK:   %[[SIZE_IN_BYTES:.*]] = index.constant 8
 // CHECK:   %[[C0:.*]] = index.constant 0
 // CHECK:   %[[OFFSET0:.*]] = index.mul %[[C0]], %[[SIZE_IN_BYTES]]
-// CHECK:   %[[SLICE0:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET0]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[SLICE0:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET0]], %[[SIZE_IN_BYTES]], %{{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 // CHECK:   %[[DIM0:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE0]] : !mgp.buffer
 
 // CHECK:   %[[C1:.*]] = index.constant 1
 // CHECK:   %[[OFFSET1:.*]] = index.mul %[[C1]], %[[SIZE_IN_BYTES]]
-// CHECK:   %[[SLICE1:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET1]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[SLICE1:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET1]], %[[SIZE_IN_BYTES]], %{{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 // CHECK:   %[[DIM1:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE1]] : !mgp.buffer
 
 // CHECK:   %[[C2:.*]] = index.constant 2
 // CHECK:   %[[OFFSET2:.*]] = index.mul %[[C2]], %[[SIZE_IN_BYTES]]
-// CHECK:   %[[SLICE2:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET2]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[SLICE2:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET2]], %[[SIZE_IN_BYTES]], %{{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 // CHECK:   %[[DIM2:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE2]] : !mgp.buffer
 
 // CHECK:   %[[C3:.*]] = index.constant 3
 // CHECK:   %[[OFFSET3:.*]] = index.mul %[[C3]], %[[SIZE_IN_BYTES]]
-// CHECK:   %[[SLICE3:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET3]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[SLICE3:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET3]], %[[SIZE_IN_BYTES]], %{{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 // CHECK:   %[[DIM3:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE3]] : !mgp.buffer
 
 // CHECK:   %[[SPEC:.*]] = mgp.tensor_spec.create %[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]] : !mgp.tensor_spec<?x?x?x?xsi64>

@@ -809,8 +809,10 @@ struct MOOpLoweringState {
 
   Value bufferSlice(Value inBuffer, Value offset, Value size,
                     Type outMoTensorType) {
+    auto deviceRef = getStorageBufferBuilder(outMoTensorType)->getDevice();
+    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(outMoTensorType)
-        ->bufferSlice(builder, loc, inBuffer, offset, size);
+        ->bufferSlice(builder, loc, inBuffer, offset, size, deviceContext);
   }
 
   Value bufferToBool(Value inChain, Value buffer, Type moTensorType) {

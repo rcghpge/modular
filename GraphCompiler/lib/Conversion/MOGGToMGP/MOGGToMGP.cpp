@@ -1029,8 +1029,12 @@ static LogicalResult lowerMoggSliceImpl(MGP::MOOpLoweringState &opLoweringState,
 
   // Emit a single mgp.tensor.slice op. The Mojo primitive computes the sliced
   // dimension, stride, and start offset at runtime from the operands.
+  auto inputDevice =
+      cast<MGP::DeviceTensorType>(loweredInput.getType()).getDevice();
+  TypedValue<MGP::DeviceContextType> deviceContext =
+      opLoweringState.loweringState.getExecuteDevice(inputDevice);
   Value slicedTensor = opLoweringState.create<MGP::TensorSliceOp>(
-      loweredInput, *outputSpecOr, loweredStart);
+      loweredInput, *outputSpecOr, loweredStart, deviceContext);
 
   // Associate the sliced tensor with the MOGG slice result.
   Value inChain = opLoweringState.getGuardChain(chain);

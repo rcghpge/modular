@@ -100,7 +100,7 @@ mgp.model @buffer_slice : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"g
   %buf0 = mgp.buffer.alloc %ch0, %size0, %gpu: !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %dev_chain = mgp.buffer.host_to_device %ch0, %cpu_buf0, %buf0, %gpu : !mgp.buffer -> !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %sync = mgp.sync(%dev_chain, %ctx, %gpu) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
-  %sliced = mgp.buffer.slice %buf0, %idx0, %idx1 : !mgp.buffer<<"gpu", 0>>
+  %sliced = mgp.buffer.slice %buf0, %idx0, %idx1, %gpu : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<6xsi32>
   %slicedSpec = mgp.tensor_spec.create %idx2 : !mgp.tensor_spec<?xsi32>
   %ch3 = mgp.debug.tensor.print %sync, %buf0, %spec : (!mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.tensor_spec<6xsi32>) -> !mef.chain

@@ -799,6 +799,8 @@ bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 // TensorSliceOp
 //===----------------------------------------------------------------------===//
 
+bool TensorSliceOp::isThrows() { return true; }
+
 LogicalResult TensorSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -843,6 +845,9 @@ LogicalResult TensorSliceOp::verify() {
   DeviceTensorType startType = getStart().getType();
   if (startType.getDevice().getLabel() != kCPULabel)
     return emitOpError("start must be on the host (cpu) device");
+  if (getDeviceContext().getType().getDevice() != inputType.getDevice())
+    return emitOpError(
+        "device context must be on the same device as the input");
   return success();
 }
 

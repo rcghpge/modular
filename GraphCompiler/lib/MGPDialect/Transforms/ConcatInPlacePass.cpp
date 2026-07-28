@@ -141,8 +141,8 @@ class ConcatInPlacePass
         if (Operation *op = inBuffer.getDefiningOp())
           execState.builder.setInsertionPoint(op);
 
-        Value outSlice = bufferBuilder->bufferSlice(builder, loc, concatBuffer,
-                                                    offset, sliceSize);
+        Value outSlice = bufferBuilder->bufferSlice(
+            builder, loc, concatBuffer, offset, sliceSize, concatOp.getCtx());
         outBuffers.push_back(outSlice);
       }
 
