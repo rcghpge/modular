@@ -674,7 +674,7 @@ def MojoHAL_DeviceStream_nativeHandle(
         out_handle[] = (
             stream[]
             ._native_stream()
-            .bitcast[Byte]()
+            .unsafe_bitcast[Byte]()
             .unsafe_origin_cast[MutUntrackedOrigin]()
         )
         return None
@@ -822,7 +822,7 @@ def MojoHAL_DeviceContext_getDLPackStream(
             ctx[]
             .stream()
             ._native_stream()
-            .bitcast[Byte]()
+            .unsafe_bitcast[Byte]()
             .unsafe_mut_cast[True]()
             .unsafe_origin_cast[MutUntrackedOrigin]()
         )

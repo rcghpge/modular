@@ -157,14 +157,18 @@ struct _MoggInputLoadFusionTensor[
         ]()
         encoder.encode_fields[Self._InFusion](
             self.in_fusion,
-            (target.bitcast[UInt8]() + in_fusion_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(in_fusion_offset)
+            .unsafe_bitcast[NoneType](),
         )
         comptime layout_offset = reflect[Self.device_type].field_offset[
             index=1, target=encoder.target()
         ]()
         encoder.encode(
             self._layout,
-            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(layout_offset)
+            .unsafe_bitcast[NoneType](),
         )
 
     @staticmethod
@@ -268,14 +272,18 @@ struct _MoggOutputStoreFusionTensor[
         ]()
         encoder.encode_fields[Self._OutFusion](
             self.out_fusion,
-            (target.bitcast[UInt8]() + out_fusion_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(out_fusion_offset)
+            .unsafe_bitcast[NoneType](),
         )
         comptime layout_offset = reflect[Self.device_type].field_offset[
             index=1, target=encoder.target()
         ]()
         encoder.encode(
             self._layout,
-            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(layout_offset)
+            .unsafe_bitcast[NoneType](),
         )
 
     @staticmethod
@@ -397,21 +405,27 @@ struct _MoggTransformFusionTensor[
         ]()
         encoder.encode_fields[Self._TransformFusion](
             self.transform_fusion,
-            (target.bitcast[UInt8]() + fusion_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(fusion_offset)
+            .unsafe_bitcast[NoneType](),
         )
         comptime layout_offset = reflect[Self.device_type].field_offset[
             index=1, target=encoder.target()
         ]()
         encoder.encode(
             self._layout,
-            (target.bitcast[UInt8]() + layout_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(layout_offset)
+            .unsafe_bitcast[NoneType](),
         )
         comptime handle_offset = reflect[Self.device_type].field_offset[
             index=2, target=encoder.target()
         ]()
         self.handle._to_device_type(
             encoder,
-            (target.bitcast[UInt8]() + handle_offset).bitcast[NoneType](),
+            target.unsafe_bitcast[UInt8]()
+            .unsafe_offset(handle_offset)
+            .unsafe_bitcast[NoneType](),
         )
 
     @staticmethod
