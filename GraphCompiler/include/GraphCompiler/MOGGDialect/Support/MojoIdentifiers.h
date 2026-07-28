@@ -733,20 +733,22 @@ class OpaquePointerRef {
 public:
   explicit OpaquePointerRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method symbol names on `UnsafePointer` / `OpaquePointer`.
-  static constexpr llvm::StringLiteral kBitcast = "bitcast";
-  static constexpr llvm::StringLiteral kTakePointee = "take_pointee";
+  /// Mojo method symbol names on `UnsafePointer` / `OpaquePointer`. The
+  /// `unsafe_`-prefixed spellings are available on both the safe and unsafe
+  /// pointer flavors, while the unprefixed ones are gated to the unsafe flavor.
+  static constexpr llvm::StringLiteral kBitcast = "unsafe_bitcast";
+  static constexpr llvm::StringLiteral kTakePointee = "unsafe_take_pointee";
   /// Type-level constructor (`OpaquePointer.unsafe_dangling()`); invoked on the
   /// type rather than an instance, so there's no member accessor for it.
   static constexpr llvm::StringLiteral kUnsafeDangling = "unsafe_dangling";
 
-  /// `bitcast[Type]` — caller does `.bitcast(type)()` to invoke after
+  /// `unsafe_bitcast[Type]` — caller does `.bitcast(type)()` to invoke after
   /// supplying the type parameter.
   MojoValue bitcast(const MojoValue &targetType) const {
     return value.get(kBitcast)[targetType];
   }
 
-  /// `take_pointee()` reads through the pointer.
+  /// `unsafe_take_pointee()` reads through the pointer.
   MojoValue takePointee() const { return value.get(kTakePointee)(); }
 
   MojoValue value;
