@@ -142,11 +142,19 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   p << ")";
   p.printNewline();
   p << "outputs (";
-  printValuesWithTypes(p, getBody().getArguments());
+  printValuesWithTypes(p, getOutputBlockArgs());
   p << ") ";
   p.decreaseIndent();
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict((*this)->getAttrs());
+}
+
+Block::BlockArgListType IterOpaqueOp::getOutputBlockArgs() {
+  return getBody().front().getArguments().take_back(getNumResults());
+}
+
+Block::BlockArgListType IterOpaqueOp::getInputBlockArgs() {
+  return getBody().front().getArguments().drop_back(getNumResults());
 }
 
 void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,

@@ -69,3 +69,20 @@ func.func @opaque_unary(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4],
   }
   return %y : !mo.tensor<[2, 3, 4], f32>
 }
+
+// A DPS-only opaque kernel: the output block argument is the result, with no
+// `map.yield` terminator at all (the form MOToMAP now emits).
+
+// CHECK-LABEL: func.func @opaque_no_yield
+// CHECK: map.iter.opaque
+// CHECK: inputs (%[[X:.*]] : !mo.tensor<[2, 3, 4], f32>)
+// CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 3, 4], f32>) {
+// CHECK:   map.call.opaque @kernels.relu[] inputs(%[[X]]) outputs(%[[O]]) : (!mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32>
+// CHECK-NOT: map.yield
+// CHECK: }
+func.func @opaque_no_yield(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32> {
+  %y = map.iter.opaque inputs (%X : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%out) : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+  }
+  return %y : !mo.tensor<[2, 3, 4], f32>
+}

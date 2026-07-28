@@ -39,6 +39,7 @@ def MAP_AnyIndex : Type<
 
 def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     SingleBlock,
+    NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   ]> {
   let summary = "An opaque (hand-written) kernel with fusible load/store paths.";
@@ -46,13 +47,17 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     Wraps a call to an opaque Mojo kernel (e.g. a hand-tuned GEMM) that exposes
     named load/store callbacks. The body holds the load/store callbacks
     (`map.iter.prologue` / `map.iter.epilogue`) plus the `map.call.opaque` that
-    invokes the kernel; it is not a sequence of computation ops. The body is
-    terminated by a `map.yield` that yields the filled outputs.
+    invokes the kernel; it is not a sequence of computation ops.
 
     The `inputs` are the kernel's tensor operands. The `outputs` are the kernel
     results; each becomes a block argument of the body so the callbacks and the
     `map.call.opaque` can address it, and the op result of the same type
-    carries the filled tensor out.
+    carries the filled tensor out. When every result is produced this way (the
+    common case today), the body has no terminator: the output block arguments
+    themselves are the results, the same destination-passing-style convention
+    `mogg._kernel` uses. A trailing `map.yield` is only needed if some
+    `map.call.opaque` in the body produces an actual (non-DPS) return value
+    that isn't already one of the output block arguments.
 
     ```mlir
     %mm = map.iter.opaque
@@ -63,7 +68,6 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
       } : !mo.tensor<[M, N], bf16>
       map.call.opaque @builtin_kernels.linalg.Matmul[transpose_b = false]
         inputs (%A, %B) outputs (%epi) : (...) -> (...)
-      map.yield %out : !mo.tensor<[M, N], bf16>
     }
     ```
 
@@ -80,6 +84,20 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
 
+  let extraClassDeclaration = [{
+    /// The subrange of body entry-block arguments that are the DPS outputs:
+    /// the trailing `getNumResults()` arguments (block arguments are ordered
+    /// [inputs..., outputs...], outputs last).
+    ::mlir::Block::BlockArgListType getOutputBlockArgs();
+
+    /// The subrange of body entry-block arguments shadowing `$inputs` --
+    /// whatever precedes the output block args. Today `$inputs` are not
+    /// themselves shadowed, so this is always empty; anchoring the split on
+    /// the (always known) result count rather than the input count keeps this
+    /// correct either way.
+    ::mlir::Block::BlockArgListType getInputBlockArgs();
+  }];
+
   let hasCustomAssemblyFormat = 1;
 }
 
@@ -90,8 +108,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 def MAP_YieldOp : MAP_Op<"yield", [Terminator]> {
   let summary = "Terminates a map.iter.opaque body, yielding its results.";
   let description = [{
-    The terminator of a `map.iter.opaque` body. Its operands are the filled
-    output tensors, which become the enclosing kernel's results.
+    An optional terminator of a `map.iter.opaque` body, needed only when some
+    `map.call.opaque` produces a return value that is not already one of the
+    body's output block arguments (the DPS case, the common one today, has no
+    terminator at all).
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);

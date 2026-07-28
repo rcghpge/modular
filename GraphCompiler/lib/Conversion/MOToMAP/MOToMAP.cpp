@@ -114,9 +114,9 @@ LogicalResult lowerToOpaque(Operation *op,
       /*inputs=*/op->getOperands(),
       /*outputs=*/callOutputs);
 
-  SmallVector<Value> returnValues(outs.begin(), outs.end());
-  MAP::YieldOp::create(builder, loc, returnValues);
-
+  // Every output here is DPS (the output block args `outs` themselves are the
+  // op's results); no map.yield is needed since map.call.opaque never
+  // produces its own return value.
   op->replaceAllUsesWith(opaque.getResults());
   op->erase();
   return success();

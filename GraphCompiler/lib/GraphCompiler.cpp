@@ -548,7 +548,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-mogg");
 
   // --- mo-to-map ---
-  buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "map");
+  buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
   // --- mo-to-mogg ---
   buildStage(
