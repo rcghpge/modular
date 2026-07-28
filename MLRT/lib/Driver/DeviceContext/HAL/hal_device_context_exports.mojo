@@ -84,7 +84,7 @@ def _err_cstr(msg: String) -> _CString[]:
     return CStringSlice(
         unsafe_from_ptr=p.bitcast[c_char]()
         .as_imm()
-        .unsafe_origin_cast[UntrackedOrigin[mut=False]]()
+        .unsafe_origin_cast[ImmUntrackedOrigin]()
     )
 
 
