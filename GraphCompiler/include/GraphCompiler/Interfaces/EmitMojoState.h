@@ -369,33 +369,6 @@ public:
   getResultParamNameFor(const KernelDeclFunctionAdaptor &fnAdaptor,
                         StringRef paramName);
 
-  struct InferredParameters {
-    llvm::SmallVector<MojoValue> structParameters;
-    llvm::SmallVector<MojoValue> functionParameters;
-  };
-
-  /// Fill and return the list of inferred parameters for a struct kernel
-  /// function (execute, shape, elementwise, or update_view). Uses the stored
-  /// struct-level and fn-level ParamDeclAttrs from the KernelDeclAdaptor.
-  /// Non-const because reading the function signature's pog list metadata
-  /// is non-const-callable on `FnTypeGeneratorType`.
-  static ErrorOr<InferredParameters> inferKernelParameters(
-      KernelDeclAdaptor &adaptor, llvm::StringRef funcLabel,
-      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
-
-  /// Fill and return the list of inferred parameters for a standalone
-  /// primitive function (mogg.primitive.decl). No struct-level params.
-  static ErrorOr<InferredParameters> inferKernelParameters(
-      PrimitiveDeclOp primDecl,
-      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
-
-  /// Fill and return the list of inferred parameters for a standalone shape
-  /// function (mogg.shape_func.decl registered via @register_shape_function).
-  /// No struct-level params.
-  static ErrorOr<InferredParameters> inferKernelParameters(
-      ShapeFunctionDeclOp shapeDecl,
-      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
-
   /// Base function to infer all parameter values of a kernel.
   ErrorOr<MojoValue>
   inferDefaultKernelParamValue(Operation *callOp, StringRef paramName,

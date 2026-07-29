@@ -29,6 +29,13 @@ class ShapeType;
 namespace M::MO {
 class LayoutAttr;
 class MOHasDeviceTypeInterface;
+
+/// Category of a type when used as a kernel operand, queried by operand
+/// inference through `MOKernelOperandTypeInterface`. `Buffer` is a mutable
+/// tensor. Rank / host validation for a `Scalar` match comes from the separate
+/// `MOShapedTypeInterface` / `MOHasDeviceTypeInterface`, which opaque codegen
+/// handles do not implement.
+enum class KernelOperandKind { Tensor, Buffer, Scalar, Opaque };
 } // namespace M::MO
 
 namespace mlir {

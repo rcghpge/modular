@@ -22,15 +22,20 @@ static StringRef moOperationName(Operation *op) {
 }
 
 static std::optional<KernelDeclOperandVariant>
-MOTypeToKernelDeclOperand(Type type, mlir::MLIRContext *ctx) {
-  if (isa<MO::TensorType>(type))
+MOTypeToKernelDeclOperand(Type type) {
+  auto iface = dyn_cast<MO::MOKernelOperandTypeInterface>(type);
+  if (!iface)
+    return std::nullopt;
+  switch (iface.getKernelOperandKind()) {
+  case MO::KernelOperandKind::Tensor:
     return KernelDeclTensorAdaptor{MOGG::IOSpec::InputTensor};
-  if (isa<MO::BufferType>(type))
+  case MO::KernelOperandKind::Buffer:
     return KernelDeclTensorAdaptor{MOGG::IOSpec::MutableInputTensor};
-  if (isa<MO::ScalarType>(type))
+  case MO::KernelOperandKind::Scalar:
     return KernelDeclScalarAdaptor{};
-  if (auto opaqueType = dyn_cast<MO::OpaqueType>(type))
-    return KernelDeclOpaqueAdaptor{opaqueType.getSymbol()};
+  case MO::KernelOperandKind::Opaque:
+    return KernelDeclOpaqueAdaptor{iface.getKernelOperandOpaqueName()};
+  }
   return std::nullopt;
 }
 
@@ -62,11 +67,15 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
     if (tensorType->mut)
       return Error("Expected an immutable tensor type");
 
-    auto moTensorType = cast<MO::TensorType>(originalMOType);
-    if (moTensorType.getRank() != 0)
-      return Error("MO tensor type should have a rank of 0");
+    // Validate rank-0 / on-host only when the operand type carries that
+    // information. MO tensors do; opaque codegen handles (`!mogg.tensor_`) do
+    // not, and were already validated upstream, so they are trusted here.
+    if (auto shaped = dyn_cast<MO::MOShapedTypeInterface>(originalMOType))
+      if (shaped.getRank() != 0)
+        return Error("MO tensor type should have a rank of 0");
 
-    if (!MO::isOnHost(moTensorType))
+    if (isa<MO::MOHasDeviceTypeInterface>(originalMOType) &&
+        !MO::isOnHost(originalMOType))
       return Error("Scalars should always be on the host CPU");
 
     return success();
@@ -77,8 +86,11 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
 
 template <bool matchOperands>
 static ErrorOr<KernelDeclIndexToOperandAdaptorMapping>
-matchOperandsOrResultsKernelDecl(Operation *op,
-                                 const KernelDeclFunctionAdaptor &adaptor) {
+matchOperandsOrResultsKernelDecl(ValueRange values,
+                                 const KernelDeclFunctionAdaptor &adaptor,
+                                 StringRef opName,
+                                 bool hasSameVariadicOperandSize,
+                                 bool hasExtraOutputShapeArgument) {
   static const char *argumentKind = matchOperands ? "input" : "output";
 
   auto skipContextType =
@@ -110,9 +122,7 @@ matchOperandsOrResultsKernelDecl(Operation *op,
   uint64_t moOpIndex = 0, kernelIndex = 0;
 
   while (true) {
-    auto moType = matchOperands
-                      ? skipChainType(op->getOperandTypes(), moOpIndex)
-                      : skipChainType(op->getResultTypes(), moOpIndex);
+    auto moType = skipChainType(values.getTypes(), moOpIndex);
     if (!moType.has_value())
       break;
     ++moOpIndex;
@@ -132,8 +142,7 @@ matchOperandsOrResultsKernelDecl(Operation *op,
 
   uint64_t variadicSize = 0;
   if (mojoVariadicsCount > 0) {
-    if (mojoVariadicsCount > 1 &&
-        !isa<MO::SameVariadicOperandSizeInterface>(op)) {
+    if (mojoVariadicsCount > 1 && !hasSameVariadicOperandSize) {
       return Error(
           llvm::formatv("Op with multiple variadic operands must implement the "
                         "SameVariadicOperandSize interface. Custom ops are not "
@@ -148,7 +157,7 @@ matchOperandsOrResultsKernelDecl(Operation *op,
           "Op '{}' has a total {} variadic operands divided "
           "between {} variadic kernel operands. They are expected "
           "to divide evenly",
-          moOperationName(op), totalVariadicOperands, mojoVariadicsCount));
+          opName, totalVariadicOperands, mojoVariadicsCount));
     }
     variadicSize = totalVariadicOperands / mojoVariadicsCount;
   }
@@ -159,16 +168,13 @@ matchOperandsOrResultsKernelDecl(Operation *op,
   bool matchingVariadicTensor = false;
 
   while (true) {
-    auto moType = matchOperands
-                      ? skipChainType(op->getOperandTypes(), moOpIndex)
-                      : skipChainType(op->getResultTypes(), moOpIndex);
+    auto moType = skipChainType(values.getTypes(), moOpIndex);
     auto kernelType = skipContextType(kernelOperands, kernelIndex);
 
     if (!moType.has_value() || !kernelType.has_value())
       break;
 
-    auto moTypeToKernelDeclOperand =
-        MOTypeToKernelDeclOperand(*moType, op->getContext());
+    auto moTypeToKernelDeclOperand = MOTypeToKernelDeclOperand(*moType);
     if (!moTypeToKernelDeclOperand.has_value()) {
       return Error(
           llvm::formatv("Unsupported op argument type at index {}", moOpIndex));
@@ -181,7 +187,7 @@ matchOperandsOrResultsKernelDecl(Operation *op,
       return Error(llvm::formatv(
           "Op '{}' {} at position {} does not match registered kernel operand "
           "at position {}: {} vs {}. Detail: {}",
-          moOperationName(op), argumentKind, moOpIndex,
+          opName, argumentKind, moOpIndex,
           kernelType->sourceDescriptor->position, *moTypeToKernelDeclOperand,
           *kernelType, errorOnMatch.getError()));
     }
@@ -203,18 +209,17 @@ matchOperandsOrResultsKernelDecl(Operation *op,
   if (matchingVariadicTensor)
     skipContextType(kernelOperands, ++kernelIndex);
 
-  bool moOpEnd =
-      moOpIndex == (matchOperands ? op->getNumOperands() : op->getNumResults());
+  bool moOpEnd = moOpIndex == values.size();
   bool kernelEnd = kernelIndex == kernelOperands.size();
 
-  if (opHasExtraOutputShapeArgument(op))
+  if (hasExtraOutputShapeArgument)
     return mapping;
 
   if (!kernelEnd) {
     return Error(llvm::formatv(
         "Could not provide all {} arguments to op '{}': missing operands "
         "starting from argument named '{}'",
-        argumentKind, moOperationName(op),
+        argumentKind, opName,
         kernelOperands[kernelIndex].sourceDescriptor->sourceName.str()));
   }
 
@@ -223,12 +228,12 @@ matchOperandsOrResultsKernelDecl(Operation *op,
       return Error(
           llvm::formatv("Op '{}' has too many operands: operands starting "
                         "at position {} has no equivalent in kernel",
-                        moOperationName(op), moOpIndex));
+                        opName, moOpIndex));
     }
     return mapping;
   }
 
-  auto moType = skipChainType(op->getResultTypes(), moOpIndex);
+  auto moType = skipChainType(values.getTypes(), moOpIndex);
 
   // A by-ref result with an unrecognized underlying type
   // (KernelDeclUnsupported) is treated as absent, matching the old
@@ -245,21 +250,20 @@ matchOperandsOrResultsKernelDecl(Operation *op,
     return Error(llvm::formatv(
         "Op '{}' has too many results: results starting at position {} have no "
         "equivalent output argument or function result in kernel",
-        moOperationName(op), moOpIndex));
+        opName, moOpIndex));
   }
 
   if (!moType.has_value() && hasValidOutputResult) {
     return Error(llvm::formatv(
         "Op '{}' is missing a result for kernel function result of type {}",
-        moOperationName(op), *adaptor.outputResult));
+        opName, *adaptor.outputResult));
   }
 
-  auto moTypeToKernelDeclOperand =
-      MOTypeToKernelDeclOperand(*moType, op->getContext());
+  auto moTypeToKernelDeclOperand = MOTypeToKernelDeclOperand(*moType);
   if (!moTypeToKernelDeclOperand.has_value()) {
     return Error(
         llvm::formatv("Op '{}': Unsupported op result type at position {}",
-                      moOperationName(op), moOpIndex));
+                      opName, moOpIndex));
   }
 
   auto errorOnMatch = matchConvertedMOTypeToKernelDeclType(
@@ -269,8 +273,8 @@ matchOperandsOrResultsKernelDecl(Operation *op,
     return Error(llvm::formatv(
         "Op '{}' output at position {} does not match kernel function result; "
         "op has {} but kernel has {}. Detail: {}",
-        moOperationName(op), moOpIndex, *moTypeToKernelDeclOperand,
-        *adaptor.outputResult, errorOnMatch.getError()));
+        opName, moOpIndex, *moTypeToKernelDeclOperand, *adaptor.outputResult,
+        errorOnMatch.getError()));
   }
   mapping[moOpIndex] = *adaptor.outputResult;
 
@@ -278,20 +282,33 @@ matchOperandsOrResultsKernelDecl(Operation *op,
 }
 
 ErrorOr<KernelDeclOperandMapping>
-mapMOOpToKernelImplementation(Operation *op,
-                              const KernelDeclFunctionAdaptor &adaptor) {
-  auto matchedInputsOrError =
-      matchOperandsOrResultsKernelDecl<true>(op, adaptor);
+mapToKernelImplementation(ValueRange operands, ValueRange results,
+                          const KernelDeclFunctionAdaptor &adaptor,
+                          StringRef opName, bool hasSameVariadicOperandSize,
+                          bool hasExtraOutputShapeArgument) {
+  auto matchedInputsOrError = matchOperandsOrResultsKernelDecl<true>(
+      operands, adaptor, opName, hasSameVariadicOperandSize,
+      hasExtraOutputShapeArgument);
   if (matchedInputsOrError.isError())
     return matchedInputsOrError.takeError();
 
-  auto matchedOutputsOrError =
-      matchOperandsOrResultsKernelDecl<false>(op, adaptor);
+  auto matchedOutputsOrError = matchOperandsOrResultsKernelDecl<false>(
+      results, adaptor, opName, hasSameVariadicOperandSize,
+      hasExtraOutputShapeArgument);
   if (matchedOutputsOrError.isError())
     return matchedOutputsOrError.takeError();
 
   return KernelDeclOperandMapping{matchedInputsOrError.takeValue(),
                                   matchedOutputsOrError.takeValue()};
+}
+
+ErrorOr<KernelDeclOperandMapping>
+mapMOOpToKernelImplementation(Operation *op,
+                              const KernelDeclFunctionAdaptor &adaptor) {
+  return mapToKernelImplementation(
+      op->getOperands(), op->getResults(), adaptor, moOperationName(op),
+      isa<MO::SameVariadicOperandSizeInterface>(op),
+      opHasExtraOutputShapeArgument(op));
 }
 
 } // namespace M::MOGG

@@ -32,6 +32,21 @@ struct KernelDeclOperandMapping {
   KernelDeclIndexToOperandAdaptorMapping resultMapping;
 };
 
+/// Maps a kernel call's `operands` and `results` (given directly as value
+/// ranges) to the kernel's arguments. This is the general entry point: it does
+/// not require an `Operation` and so also serves destination-passing-style call
+/// ops whose outputs are operands rather than results (e.g.
+/// `mogg._call.opaque`). `opName` names the caller in diagnostics; the two
+/// flags mirror the `SameVariadicOperandSize` / extra-output-shape-argument op
+/// properties.
+ErrorOr<KernelDeclOperandMapping>
+mapToKernelImplementation(ValueRange operands, ValueRange results,
+                          const KernelDeclFunctionAdaptor &adaptor,
+                          StringRef opName, bool hasSameVariadicOperandSize,
+                          bool hasExtraOutputShapeArgument);
+
+/// Convenience overload that reads the operands/results and op properties off
+/// `op`.
 ErrorOr<KernelDeclOperandMapping>
 mapMOOpToKernelImplementation(Operation *op,
                               const KernelDeclFunctionAdaptor &adaptor);

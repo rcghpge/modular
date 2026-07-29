@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/Interfaces/LoweringState.h"
 #include "GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
@@ -428,7 +429,7 @@ static llvm::StringRef primitiveMojoName(PrimitiveDeclOp decl) {
 }
 
 MojoValue callFunctionNestedInStruct(const KernelDeclFunctionAdaptor &fnAdaptor,
-                                     EmitMojoState::InferredParameters params,
+                                     InferredParameters params,
                                      ArrayRef<MojoValue> operands,
                                      EmitMojoState &) {
   auto [prefixSymbolName, fnName] =
@@ -478,7 +479,7 @@ LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(primDecl, inferParam);
+  auto maybeParams = inferKernelParameters(primDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -1037,8 +1038,8 @@ static void emitElementwiseLambdaBodyOps(
               : (elemAdaptor.isElementwise()
                      ? llvm::StringRef(MOGG::kMoggElementwiseFunctionLabel)
                      : llvm::StringRef(MOGG::kMoggExecuteFunctionLabel));
-      auto maybeParams = EmitMojoState::inferKernelParameters(
-          elemAdaptor, elemFuncLabel, inferParam);
+      auto maybeParams =
+          inferKernelParameters(elemAdaptor, elemFuncLabel, inferParam);
       if (maybeParams.isError()) {
         lambdaBody->getParentOp()->emitError()
             << "Failed to infer kernel parameters in elementwise lambda "
@@ -1090,8 +1091,7 @@ static void emitElementwiseLambdaBodyOps(
       auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
         return state.inferDefaultKernelParamValue(callOp, paramName);
       };
-      auto maybeParams =
-          EmitMojoState::inferKernelParameters(affinePrimDecl, inferParam);
+      auto maybeParams = inferKernelParameters(affinePrimDecl, inferParam);
 
       SmallVector<MojoValue> params;
       if (!maybeParams.isError())
@@ -2321,8 +2321,7 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams =
-      EmitMojoState::inferKernelParameters(viewMatPrimDecl, inferParam);
+  auto maybeParams = inferKernelParameters(viewMatPrimDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -2649,7 +2648,7 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(
+  auto maybeParams = inferKernelParameters(
       execAdaptor, MOGG::kMoggExecuteFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
@@ -2750,7 +2749,7 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(
+  auto maybeParams = inferKernelParameters(
       buildGraphAdaptor, MOGG::kMoggBuildGraphFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
@@ -4785,7 +4784,7 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
     }
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
-  auto maybeParams = EmitMojoState::inferKernelParameters(
+  auto maybeParams = inferKernelParameters(
       uvAdaptor, MOGG::kMoggUpdateViewFunctionLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
@@ -4847,8 +4846,7 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   llvm::StringRef ewFuncLabel = ewAdaptor.isElementwise()
                                     ? MOGG::kMoggElementwiseFunctionLabel
                                     : MOGG::kMoggExecuteFunctionLabel;
-  auto maybeParams =
-      EmitMojoState::inferKernelParameters(ewAdaptor, ewFuncLabel, inferParam);
+  auto maybeParams = inferKernelParameters(ewAdaptor, ewFuncLabel, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();
@@ -5253,8 +5251,7 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   ShapeFunctionDeclOp shapeDecl =
       state.registry.lookupShapeFunctionBySymName(getKernelSymName());
 
-  auto maybeParams =
-      EmitMojoState::inferKernelParameters(shapeDecl, inferParam);
+  auto maybeParams = inferKernelParameters(shapeDecl, inferParam);
   if (maybeParams.isError())
     return emitError() << "Failed to infer all the kernel parameters: "
                        << maybeParams.takeError();

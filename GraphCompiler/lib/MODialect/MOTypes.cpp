@@ -1040,6 +1040,26 @@ Type ScalarType::getDType() const {
 }
 
 //===----------------------------------------------------------------------===//
+// MOKernelOperandTypeInterface
+//===----------------------------------------------------------------------===//
+
+KernelOperandKind TensorType::getKernelOperandKind() const {
+  return KernelOperandKind::Tensor;
+}
+KernelOperandKind BufferType::getKernelOperandKind() const {
+  return KernelOperandKind::Buffer;
+}
+KernelOperandKind ScalarType::getKernelOperandKind() const {
+  return KernelOperandKind::Scalar;
+}
+KernelOperandKind OpaqueType::getKernelOperandKind() const {
+  return KernelOperandKind::Opaque;
+}
+mlir::StringAttr OpaqueType::getKernelOperandOpaqueName() const {
+  return getSymbol();
+}
+
+//===----------------------------------------------------------------------===//
 // MODialect type support
 //===----------------------------------------------------------------------===//
 
