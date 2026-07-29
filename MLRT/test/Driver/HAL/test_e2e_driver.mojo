@@ -273,7 +273,7 @@ def main() raises:
     try:
         driver = Driver.create(plugin_spec)
     except e:
-        raise Error(String.write(e))
+        raise Error(e)
     print("Driver:", driver[].get_name())
     print("Devices:", driver[].get_device_count())
 
@@ -281,14 +281,14 @@ def main() raises:
     try:
         device = driver[].get_device[0]()
     except e:
-        raise Error(String.write(e))
+        raise Error(e)
     print("Device", device[].id, "OK")
 
     var ctx: ArcPointer[Context[get_device_spec[0]()]]
     try:
         ctx = device[].get_context()
     except e:
-        raise Error(String.write(e))
+        raise Error(e)
     print("Context created")
 
     do_execute(ctx[])

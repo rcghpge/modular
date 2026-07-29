@@ -52,4 +52,4 @@ def main() raises:
     try:
         test_driver_create()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))

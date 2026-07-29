@@ -83,7 +83,7 @@ def test_driver_create() raises:
         var driver = Driver.create(_get_plugin_spec())
         device_count = Int(driver[].get_device_count())
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
     assert_equal(device_count, 2)
 
 
@@ -98,7 +98,7 @@ def test_driver_device_enumeration() raises:
             if Int(device[].id) != i:
                 ok = False
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
     assert_true(ok, "device ID mismatch during enumeration")
 
 
@@ -115,7 +115,7 @@ def test_context_create() raises:
         var ctx = device[].get_context()
         # Let ctx go out of scope to exercise Context destructor.
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_invalid_device_error_message() raises:
@@ -164,7 +164,7 @@ def test_queue_create_and_sync() raises:
         var queue = ctx[].create_queue()
         queue[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_queue_record_event() raises:
@@ -177,7 +177,7 @@ def test_queue_record_event() raises:
         queue[].wait_for_events(event)
         queue[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_queue_wait_for_events() raises:
@@ -192,7 +192,7 @@ def test_queue_wait_for_events() raises:
         queue2[].wait_for_events(e1, e2)
         queue2[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_queue_wait_for_events_mixed_flags() raises:
@@ -208,7 +208,7 @@ def test_queue_wait_for_events_mixed_flags() raises:
         queue2[].wait_for_events(e_intra, e_host)
         queue2[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 # ===-----------------------------------------------------------------------===#
@@ -224,7 +224,7 @@ def test_stream_create_and_sync() raises:
         var stream = ctx[].create_stream()
         stream[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_stream_record_event() raises:
@@ -237,7 +237,7 @@ def test_stream_record_event() raises:
         stream[].wait_for_events(event)
         stream[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 def test_stream_wait_for_events() raises:
@@ -251,7 +251,7 @@ def test_stream_wait_for_events() raises:
         consumer[].wait_for_events(ev)
         consumer[].synchronize()
     except e:
-        raise Error(String.write(e))
+        raise Error(String(e))
 
 
 # ===-----------------------------------------------------------------------===#
