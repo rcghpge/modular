@@ -2173,3 +2173,167 @@ struct MapLowerVariadic:
         ctx: DeviceContext,
     ) raises:
         pass
+
+
+# A real-body counterpart to `map_lower_one_plain_output`: same plain-output
+# signature (so it lowers through the identical MAP plain path), but it actually
+# writes `res = a + 1` so an end-to-end run can validate a numeric result.
+@extensibility.register("map_lower_add_one")
+struct MapLowerAddOne:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](res: OutputTensor, a: InputTensor, ctx: DeviceContext,) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+            return rebind[SIMD[res.dtype, width]](a.load[width](idx)) + 1
+
+        foreach[func, target=target](res, ctx)
+
+
+# Real-body plain-output kernels below broaden the advanced-fusion MAP-ABI
+# execution coverage past the single 1-in/1-out shape. Each mirrors
+# `map_lower_add_one`: a plain `OutputTensor` (no epilogue fusion) driven by a
+# real `foreach` closure, so the MAP plain path both lowers AND computes a
+# deterministic result an end-to-end run can validate. Output shape is
+# identity-from-first-input for all of them, so none needs a shape function.
+
+
+# 3 inputs / 1 output: `res = a + b + c`.
+@extensibility.register("map_lower_add3")
+struct MapLowerAdd3:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res: OutputTensor,
+        a: InputTensor,
+        b: InputTensor,
+        c: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+            return (
+                rebind[SIMD[res.dtype, width]](a.load[width](idx))
+                + rebind[SIMD[res.dtype, width]](b.load[width](idx))
+                + rebind[SIMD[res.dtype, width]](c.load[width](idx))
+            )
+
+        foreach[func, target=target](res, ctx)
+
+
+# 1 input / 2 outputs: `res0 = a + 1`, `res1 = a * 2` (two plain outputs, two
+# independent `foreach` loops).
+@extensibility.register("map_lower_two_outputs")
+struct MapLowerTwoOutputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res0: OutputTensor,
+        res1: OutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def add_one[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
+            return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + 1
+
+        foreach[add_one](res0, ctx)
+
+        @parameter
+        @always_inline
+        def times_two[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
+            return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) * 2
+
+        foreach[times_two](res1, ctx)
+
+
+# 2 inputs / 2 outputs: `res0 = a + b`, `res1 = a - b`.
+@extensibility.register("map_lower_add_sub")
+struct MapLowerAddSub:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res0: OutputTensor,
+        res1: OutputTensor,
+        a: InputTensor,
+        b: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def add[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
+            return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + rebind[
+                SIMD[res0.dtype, width]
+            ](b.load[width](idx))
+
+        foreach[add, target=target](res0, ctx)
+
+        @parameter
+        @always_inline
+        def sub[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
+            return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) - rebind[
+                SIMD[res1.dtype, width]
+            ](b.load[width](idx))
+
+        foreach[sub, target=target](res1, ctx)
+
+
+# Scalar operand: `res = a * s` where `s: Scalar[dtype]`. Exercises the MAP
+# `scalar.create` materialization path with a real computed result.
+@extensibility.register("map_lower_scale")
+struct MapLowerScale:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        target: StaticString,
+    ](
+        res: OutputTensor[dtype=dtype, ...],
+        a: InputTensor[dtype=dtype, ...],
+        s: Scalar[dtype],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+            return rebind[SIMD[res.dtype, width]](a.load[width](idx)) * rebind[
+                Scalar[res.dtype]
+            ](s)
+
+        foreach[func](res, ctx)
+
+
+# Variadic operand: `res = sum(inputs)` over an `InputVariadicTensors`.
+# Exercises the MAP `tuple.create` materialization path. Modeled on the
+# signature-only `map_lower_variadic` but with a real summing body.
+@extensibility.register("map_lower_var_sum")
+struct MapLowerVarSum:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        size: Int,
+        target: StaticString,
+    ](
+        res: OutputTensor[dtype=dtype, rank=1, ...],
+        inputs: InputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+            var acc = SIMD[res.dtype, width](0)
+
+            comptime for i in range(size):
+                acc += rebind[SIMD[res.dtype, width]](
+                    inputs[i].load[width](idx)
+                )
+
+            return acc
+
+        foreach[func](res, ctx)

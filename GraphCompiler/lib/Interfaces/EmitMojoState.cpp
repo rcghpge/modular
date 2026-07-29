@@ -10,6 +10,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoTraits.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
@@ -31,6 +32,13 @@ void EmitMojoState::setFusionStructLoweringFor(Value val, MojoValue instance,
       val,
       FusionStructInfo{std::move(instance), bindMethod, std::move(typeName)});
   ASSERT_STREAM(inserted, << "value already bound to a lambda lowering");
+}
+
+void EmitMojoState::emitOutputStoreFusionDefsOnce() {
+  if (emittedOutputStoreFusionArgDefs)
+    return;
+  structDefsBuilder.verbatim(MojoValue(kOutputStoreFusionDefs.str()));
+  emittedOutputStoreFusionArgDefs = true;
 }
 
 #define EMITS_MOJO_EXTERNALLY(OpTy)                                            \

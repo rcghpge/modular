@@ -104,6 +104,29 @@ struct EmitMojoState {
   /// being lowered.
   FunctionBody currentFunctionBody;
 
+  /// RAII guard that saves `currentFunctionBody`, swaps in `newBody` for its
+  /// lifetime, and restores the saved value on destruction -- mirrors
+  /// `mlir::OpBuilder::InsertionGuard`. Construct it inside a nested
+  /// `MojoBuilder::def` body callback (e.g. a fusion functor's `__call__`) so
+  /// its lifetime naturally spans exactly that nested scope.
+  class FunctionBodyGuard {
+  public:
+    FunctionBodyGuard(EmitMojoState &state, FunctionBody newBody)
+        : state(state),
+          savedFunctionBody(std::move(state.currentFunctionBody)) {
+      state.currentFunctionBody = std::move(newBody);
+    }
+    FunctionBodyGuard(const FunctionBodyGuard &) = delete;
+    FunctionBodyGuard &operator=(const FunctionBodyGuard &) = delete;
+    ~FunctionBodyGuard() {
+      state.currentFunctionBody = std::move(savedFunctionBody);
+    }
+
+  private:
+    EmitMojoState &state;
+    FunctionBody savedFunctionBody;
+  };
+
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 
@@ -121,6 +144,13 @@ struct EmitMojoState {
   /// Record a fusion struct lowering for a BindLambdaOp output value.
   void setFusionStructLoweringFor(Value val, MojoValue instance,
                                   StringLiteral bindMethod, MojoValue typeName);
+
+  /// Emit the shared output-store fusion trait + wrapper definitions
+  /// (`kOutputStoreFusionDefs`: `OutputStoreFusion` +
+  /// `_MoggOutputStoreFusionTensor`) into `structDefsBuilder` exactly once per
+  /// module, guarded by `emittedOutputStoreFusionArgDefs`. Both the MOGG-ABI
+  /// and MAP-ABI store-fusion emitters share this entry point.
+  void emitOutputStoreFusionDefsOnce();
 
 private:
   /// A mapping between mlir::Value to MojoValue (text).
@@ -185,6 +215,12 @@ public:
       return kComptimeOpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return kStructDeviceContext;
+    } else if (isa<PointerType>(mlirType)) {
+      // A raw data pointer at the MAP-ABI stub boundary.
+      return kComptimeOpaquePointer;
+    } else if (isa<DimType>(mlirType)) {
+      // A runtime dynamic dimension is passed as a plain `Int`.
+      return kStructInt;
     } else if (isa<MGP::DeviceGraphType>(mlirType)) {
       return kStructDeviceGraph;
     } else if (isa<MGP::DeviceGraphBuilderType>(mlirType)) {

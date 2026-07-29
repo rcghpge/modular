@@ -1084,6 +1084,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   private:
     mlir::LogicalResult emitMojoMOGGABI(EmitMojoState &state);
     mlir::LogicalResult emitMojoMGPABI(EmitMojoState &state);
+    mlir::LogicalResult emitMojoMAPABI(EmitMojoState &state);
   }];
 }
 
@@ -1789,7 +1790,10 @@ def MOGG_KernelRegionOp : MOGG_Op<"_kernel", [
   let hasCustomAssemblyFormat = 1;
 }
 
-def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [Pure]> {
+def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Build a codegen shape from a static shape attr + dynamic dims.";
   let description = [{
     New-path counterpart of `mogg.shape.__init__`: materializes a `!mogg.shape`
@@ -1804,7 +1808,10 @@ def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [Pure]> {
   }];
 }
 
-def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [Pure]> {
+def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Build a codegen tensor from a pointer, shape and static metadata.";
   let description = [{
     New-path counterpart of `mogg.tensor.__init__`: reconstructs a `!mogg.tensor_`
@@ -1831,6 +1838,7 @@ def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [Pure]> {
 def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   AttrSizedOperandSegments,
   NoTerminator,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "A fused-output tensor bound to its own epilogue body.";
   let description = [{
@@ -1864,7 +1872,9 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   }];
 }
 
-def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", []> {
+def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Store a scalar value into a codegen tensor at an index.";
   let description = [{
     Store path of a fusion callback body: writes `$value` into `$tensor` at
@@ -1879,6 +1889,7 @@ def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", []> {
 
 def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Call a registered opaque kernel's execute function.";
   let description = [{
@@ -1904,7 +1915,10 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   }];
 }
 
-def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [Pure]> {
+def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Pack a single-element tensor operand into a scalar operand.";
   let description = [{
     New-path counterpart of `mogg.as_scalar`: `PackageVariadicsAndScalars`
@@ -1919,7 +1933,10 @@ def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [Pure]> {
   }];
 }
 
-def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [Pure]> {
+def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Pack a run of variadic tensor operands into a tuple operand.";
   let description = [{
     New-path counterpart of `mogg.as_tuple`: `PackageVariadicsAndScalars`

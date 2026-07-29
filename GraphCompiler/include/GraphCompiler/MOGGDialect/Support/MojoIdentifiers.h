@@ -250,6 +250,12 @@ constexpr llvm::StringLiteral kMojoInternalStringSliceTypeName = "std::Origin";
 constexpr llvm::StringLiteral kStructIO = "extensibility.IO";
 constexpr llvm::StringLiteral kStructIndexList = "std.utils.IndexList";
 constexpr llvm::StringLiteral kStructUnsafePointer = "UnsafePointer";
+/// Generic (parametrizable) origin struct, e.g. `UntrackedOrigin[mut=...]`.
+/// Distinct from the FIXED `kComptimeMutUntrackedOrigin`/
+/// `kComptimeMutAnyOrigin` aliases below, which bake in a specific
+/// mutability and so can't be used where `mut` must stay a generic
+/// parameter.
+constexpr llvm::StringLiteral kStructUntrackedOrigin = "UntrackedOrigin";
 constexpr llvm::StringLiteral kStructOptional = "Optional";
 constexpr llvm::StringLiteral kStructString = "String";
 constexpr llvm::StringLiteral kStructDeviceContext =
@@ -288,6 +294,10 @@ constexpr llvm::StringLiteral kStructTileTensor = "layout.TileTensor";
 constexpr llvm::StringLiteral kStructTensorLayout = "layout.TensorLayout";
 constexpr llvm::StringLiteral kStructTileCopier = "layout.tile_io.TileCopier";
 constexpr llvm::StringLiteral kStructTileLayout = "layout.tile_layout.Layout";
+/// Trait-lane wrapper carrying the graph-visible `StoreAccess` marker over an
+/// output-store fusion functor (`OutputStoreFusion` conformance).
+constexpr llvm::StringLiteral kStructMoggOutputStoreFusionTensor =
+    "_MoggOutputStoreFusionTensor";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
@@ -467,6 +477,9 @@ constexpr llvm::StringLiteral kParameterMut = "mut";
 constexpr llvm::StringLiteral kParameterInput = "input";
 constexpr llvm::StringLiteral kParameterDType = "dtype";
 constexpr llvm::StringLiteral kParameterRank = "rank";
+/// SIMD width parameter name in a fusion functor's `__call__`/`load`/`store`
+/// method signature (paired with `dtype`/`rank`/`element_alignment`).
+constexpr llvm::StringLiteral kParameterWidth = "width";
 constexpr llvm::StringLiteral kParameterIOSpec = "io_spec";
 constexpr llvm::StringLiteral kParameterStaticSpec = "static_spec";
 constexpr llvm::StringLiteral kParameterSize = "size";
@@ -897,6 +910,29 @@ public:
                       kStructTileTensor, dtypeText, kStructTileLayout,
                       specParam, kComptimeMutUntrackedOrigin)
             .str());
+  }
+
+  /// Constructs a `TileTensor` from a raw pointer plus fully explicit
+  /// dtype/LayoutType/mut, for callers where none of those are statically
+  /// known (e.g. rebuilding a captured tensor's own tile from its own
+  /// per-capture struct parameters):
+  ///   `TileTensor[dtype=<dtype>, LayoutType=<layoutType>,
+  ///   origin=UntrackedOrigin[mut=<mut>]](ptr=<ptr>, layout=<layout>)`
+  /// Unlike `fromExternalPtr`, mutability is a caller-supplied value rather
+  /// than the fixed `MutUntrackedOrigin` alias.
+  static MojoValue fromExternalPtrExplicit(const MojoValue &ptr,
+                                           const MojoValue &layout,
+                                           const MojoValue &dtype,
+                                           const MojoValue &layoutType,
+                                           const MojoValue &mut) {
+    MojoValue origin = MojoValue(
+        kStructUntrackedOrigin)[{MojoValue(kParameterMut).equal(mut)}];
+    MojoValue tileType = MojoValue(
+        kStructTileTensor)[{MojoValue(kParameterDType).equal(dtype),
+                            MojoValue(kParameterLayoutType).equal(layoutType),
+                            MojoValue(kParameterOrigin).equal(origin)}];
+    return tileType(
+        {}, {MojoValue("ptr").equal(ptr), MojoValue(kLayout).equal(layout)});
   }
 
   MojoValue value;
