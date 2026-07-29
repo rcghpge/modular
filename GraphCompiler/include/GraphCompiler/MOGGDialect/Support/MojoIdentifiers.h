@@ -263,11 +263,11 @@ constexpr llvm::StringLiteral kStructDeviceContext =
 constexpr llvm::StringLiteral kStructDeviceContextArray =
     "std.gpu.host.device_context.DeviceContextArray";
 constexpr llvm::StringLiteral kStructDeviceGraph =
-    "std.gpu.host.device_graph.DeviceGraph";
+    "max.gpu.host.device_graph.DeviceGraph";
 constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
-    "std.gpu.host.device_graph.DeviceGraphBuilder";
+    "max.gpu.host.device_graph.DeviceGraphBuilder";
 constexpr llvm::StringLiteral kStructDeviceGraphNode =
-    "std.gpu.host.device_graph.DeviceGraphNode";
+    "max.gpu.host.device_graph.DeviceGraphNode";
 // Device-graph builder methods / keyword args used by EmitMojo for the
 // `mgp.device_graph.create` and `mgp.device_graph.dependencies` ops.
 // `create` is the static `DeviceGraph.create(ctx, build)` factory.
@@ -320,7 +320,7 @@ constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
     "managed_tensor_slice._FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
     "managed_tensor_slice._FusedOutputVariadicTensors";
-constexpr llvm::StringLiteral kStructTrace = "std.runtime.tracing.Trace";
+constexpr llvm::StringLiteral kStructTrace = "max.runtime.tracing.Trace";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
 constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";
@@ -336,7 +336,7 @@ constexpr llvm::StringLiteral kAliasIndexListToTileLayout =
 constexpr llvm::StringLiteral kEnumAddressSpaceGeneric = "GENERIC";
 constexpr llvm::StringLiteral kEnumIoInput = "extensibility.IO.Input";
 constexpr llvm::StringLiteral kEnumTraceLevelOp =
-    "std.runtime.tracing.TraceLevel.OP";
+    "max.runtime.tracing.TraceLevel.OP";
 /// `DType.int8` member used to spell out a one-byte dtype.
 constexpr llvm::StringLiteral kEnumDTypeInt8 = "int8";
 /// `DType.int` member: the native index-sized integer dtype used for the
@@ -403,10 +403,10 @@ constexpr llvm::StringLiteral kFnCreateTaskWithAffinity =
 constexpr llvm::StringLiteral kFnTaskIdForDevice =
     "std.runtime.asyncrt.task_id_for_device";
 constexpr llvm::StringLiteral kFnGetSafeTaskId =
-    "std.runtime.tracing.get_safe_task_id";
+    "max.runtime.tracing.get_safe_task_id";
 
-/// Mojo builtins emitted directly.
-constexpr llvm::StringLiteral kFnMax = "max";
+/// Mojo functions emitted directly.
+constexpr llvm::StringLiteral kFnMax = "std.math.max";
 constexpr llvm::StringLiteral kFnPrint = "print";
 
 // NOTE: Mojo field / method names accessed on values via `.foo` are no longer
@@ -535,14 +535,15 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
         {"std.gpu.host.device_context", ""},
-        {"std.gpu.host.device_graph", ""},
+        {"max.gpu.host.device_graph", ""},
         {"std.utils", ""},
         {"std.utils.numerics", ""},
+        {"std.math", ""},
         {"std.runtime", ""},
         {"std.runtime.asyncrt", ""},
-        {"std.runtime.tracing", ""},
         {"std.memory", ""},
         {"std.collections", ""},
+        {"max.runtime.tracing", ""},
         {"layout", ""},
         // Makes `layout.tile_io.TileCopier` resolvable in the tile `compute`
         // signature when the tile path is compiled.

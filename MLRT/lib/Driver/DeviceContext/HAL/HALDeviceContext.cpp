@@ -988,7 +988,7 @@ MODULAR_CXX_EXPORT const char *AsyncRT_DeviceStream_hip_stream(void *result,
 
 // ===-- AsyncValue runtime ABI ---------------------------------------------===
 // //
-// Backend-independent AsyncValue helpers Mojo's `std.runtime.async_value`
+// Backend-independent AsyncValue helpers Mojo's `max.runtime.async_value`
 // calls via external_call.
 
 using M::AsyncRT::AnyAsyncValueRef;

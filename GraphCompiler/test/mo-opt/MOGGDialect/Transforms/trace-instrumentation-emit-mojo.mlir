@@ -5,7 +5,7 @@
 //
 // Fused relu+add produces fusion info Elementwise(relu, add) (dialect
 // prefixes are stripped from trace descriptions for readability).
-// CHECK: with std.runtime.tracing.Trace[std.runtime.tracing.TraceLevel.OP, target = StaticString("cpu")]("Elementwise(relu, add)"{{.*}}):
+// CHECK: with max.runtime.tracing.Trace[max.runtime.tracing.TraceLevel.OP, target = StaticString("cpu")]("Elementwise(relu, add)"{{.*}}):
 
 mo.graph @simple_fusion(
     %x: !mo.tensor<[10], f32>,
