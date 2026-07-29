@@ -1891,8 +1891,8 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<MOGG_Tensor>:$inputs,
-    Variadic<MOGG_Tensor>:$outputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
     Optional<MOGG_Context>:$device_context,
     OptionalAttr<DictionaryAttr>:$kernel_param
   );
@@ -1901,6 +1901,35 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
             (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
             (`context` `(` $device_context^ `:` type($device_context) `)`)?
             attr-dict
+  }];
+}
+
+def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [Pure]> {
+  let summary = "Pack a single-element tensor operand into a scalar operand.";
+  let description = [{
+    New-path counterpart of `mogg.as_scalar`: `PackageVariadicsAndScalars`
+    inserts this to convert a `!mogg.tensor_` operand that a kernel expects as a
+    scalar into a `!mogg.scalar_`. Element type is carried by the source tensor's
+    creating op, not restated here.
+  }];
+  let arguments = (ins MOGG_Tensor:$tensor);
+  let results = (outs MOGG_Scalar:$scalar);
+  let assemblyFormat = [{
+    `(` $tensor `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [Pure]> {
+  let summary = "Pack a run of variadic tensor operands into a tuple operand.";
+  let description = [{
+    New-path counterpart of `mogg.as_tuple`: `PackageVariadicsAndScalars`
+    inserts this to pack the consecutive `!mogg.tensor_` operands that satisfy a
+    single variadic kernel argument into one `!mogg.tuple_`.
+  }];
+  let arguments = (ins Variadic<MOGG_Tensor>:$elements);
+  let results = (outs MOGG_Tuple:$tuple);
+  let assemblyFormat = [{
+    `(` $elements `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

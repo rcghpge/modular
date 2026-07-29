@@ -189,12 +189,16 @@ def MOGG_Pointer : MOGG_Type<"Pointer", "pointer_"> {
   }];
 }
 
-def MOGG_Tensor : MOGG_Type<"Tensor", "tensor_"> {
+def MOGG_Tensor : MOGG_Type<"Tensor", "tensor_",
+  [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen tensor handle.";
   let description = [{
     A tensor value in the codegen dialect. Shape, element type, mutability and
     io-kind are carried by the op that creates it (`mogg._tensor.create` /
-    `mogg._tensor.create.epilogue`), not by this type.
+    `mogg._tensor.create.epilogue`), not by this type. Implements
+    `MOKernelOperandTypeInterface` (as `Tensor`) so operand inference can run on
+    a `mogg._call.opaque` — the rank/host validation of a scalar match is skipped
+    for this opaque handle (already validated upstream).
   }];
 }
 
@@ -208,6 +212,25 @@ def MOGG_Dim : MOGG_Type<"Dim", "dim_"> {
   }];
   let parameters = (ins OptionalParameter<"::M::KGEN::ParamDeclRefAttr">:$name);
   let assemblyFormat = "(`<` custom<DimName>($name)^ `>`)?";
+}
+
+def MOGG_Scalar : MOGG_Type<"Scalar", "scalar_",
+  [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
+  let summary = "An opaque codegen scalar handle.";
+  let description = [{
+    A scalar kernel operand in the codegen dialect, produced by
+    `mogg._scalar.create` from a `!mogg.tensor_` (the new-path counterpart of
+    `mogg.as_scalar`). Element type is carried by the creating op, not the type.
+  }];
+}
+
+def MOGG_Tuple : MOGG_Type<"Tuple", "tuple_"> {
+  let summary = "An opaque codegen tuple handle (a packed variadic).";
+  let description = [{
+    A packed run of variadic tensor operands, produced by `mogg._tuple.create`
+    (the new-path counterpart of `mogg.as_tuple`). The packed elements are the
+    operands of the creating op.
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD

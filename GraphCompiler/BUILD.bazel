@@ -1678,6 +1678,7 @@ modular_cc_library(
     deps = [
         ":MOGGDialect",
         ":MOToMAP",
+        ":OperandInference",
         ":PackageVariadicsAndScalarsIncGen",
     ],
 )

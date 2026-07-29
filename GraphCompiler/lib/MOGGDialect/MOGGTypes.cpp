@@ -65,3 +65,14 @@ static void printDimName(mlir::AsmPrinter &printer,
 
 #define GET_TYPEDEF_CLASSES
 #include "GraphCompiler/MOGGDialect/MOGGTypes.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// MOKernelOperandTypeInterface
+//===----------------------------------------------------------------------===//
+
+MO::KernelOperandKind MOGG::TensorType::getKernelOperandKind() const {
+  return MO::KernelOperandKind::Tensor;
+}
+MO::KernelOperandKind MOGG::ScalarType::getKernelOperandKind() const {
+  return MO::KernelOperandKind::Scalar;
+}

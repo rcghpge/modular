@@ -2143,3 +2143,33 @@ struct MapLowerPartialFusedOutputs:
         ctx: DeviceContext,
     ) capturing raises:
         pass
+
+
+@extensibility.register("map_lower_scalar")
+struct MapLowerScalar:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        target: StaticString,
+    ](
+        res: OutputTensor,
+        a: InputTensor,
+        s: Scalar[dtype],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+@extensibility.register("map_lower_variadic")
+struct MapLowerVariadic:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        size: Int,
+        target: StaticString,
+    ](
+        res: OutputTensor,
+        inputs: InputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
+        ctx: DeviceContext,
+    ) raises:
+        pass

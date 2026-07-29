@@ -10,7 +10,7 @@
 include "mlir/Pass/PassBase.td"
 
 def PackageVariadicsAndScalars
-    : Pass<"package-variadics-and-scalars", "mlir::ModuleOp"> {
+    : Pass<"mogg-package-variadics-and-scalars", "mlir::ModuleOp"> {
   let summary = "Materialize tuple and scalar operands on `mogg` calls.";
   let description = [{
     Inspects the signatures of `mogg` call ops and inserts the tuple (variadic)
