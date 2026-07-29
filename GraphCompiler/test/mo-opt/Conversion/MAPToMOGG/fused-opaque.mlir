@@ -11,7 +11,7 @@
 // One fused output.
 // CHECK-LABEL: mo.graph @one_fused
 // CHECK: mogg._kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
-// CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK: %[[OT:.*]] = mogg._tensor.create(%{{.*}}, %[[OSH:.*]]) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[OSH]] capturing(%[[OT]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
 // CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):

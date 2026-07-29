@@ -149,6 +149,7 @@ void M::MO::registerPasses() {
   MAP::registerMAPTransformsPasses();
   MAP::registerMAPToMOGGPasses();
   MOGG::registerPackageVariadicsAndScalarsPasses();
+  MOGG::registerOutlineKernelsIntoFunctionsPass();
   MGP::registerMOGGToMGP();
 
   MOGG::registerMergeIdenticalKernelStubs();
@@ -582,9 +583,10 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // creates mo.custom ops and lowers them to MOGG kernels in-place.
   buildStage(
       [&](auto &p) {
-        // Finalize the advanced-fusion MOGG codegen form: package variadics
-        // and scalars.
+        // Finalize the advanced-fusion MOGG codegen form: package variadics/
+        // scalars, then outline each mogg._kernel into a mogg.kernel.stub.
         p.addPass(MOGG::createPackageVariadicsAndScalars());
+        p.addPass(MOGG::createOutlineKernelsIntoFunctions());
         buildMoggPipeline(p, moggOpts);
         if (opts.nanCheck)
           p.addPass(MO::createNanCheckPass(opts.nanCheckStride));

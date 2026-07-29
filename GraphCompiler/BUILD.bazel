@@ -952,6 +952,7 @@ modular_cc_library(
         ":MOGGFusionSupport",
         ":MOGGToMGP",
         ":MOPatterns",
+        ":MOToMAP",
         ":Support",
         "//AsyncRT:CompilerSupport",
         "//KGEN:TransformUtils",

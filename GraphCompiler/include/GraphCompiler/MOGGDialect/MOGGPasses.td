@@ -357,6 +357,29 @@ def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
+def OutlineKernelsIntoFunctions
+    : Pass<"mogg-outline-kernels-into-functions", "mlir::ModuleOp"> {
+  let summary = "Outline each `mogg._kernel` body into a `mogg.kernel.stub`.";
+  let description = [{
+    Moves each `mogg._kernel` body into a module-level `mogg.kernel.stub`
+    labeled with the `MAP` ABI, and replaces the kernel body with a single
+    `mogg.call.stub` forwarding the kernel's pointer/dim/context block arguments
+    to the stub. The `mogg._kernel` container is kept: it carries the
+    `!mo.tensor` interface that `MOGGToMGP` later lowers by unpacking the async
+    operands into the handles the stub consumes.
+
+    The `MAP` ABI label lets `EmitMojo` branch on the advanced-fusion path
+    without touching the legacy MOGG/MGP emission.
+
+    This is gated on `M::MO::useAdvancedFusion()`.
+  }];
+
+  let dependentDialects = [
+    "M::MO::MODialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
 def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "ModuleOp"> {
   let summary = "Merge kernel stubs that are identical";
   let description = [{

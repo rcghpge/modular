@@ -70,7 +70,7 @@ mogg.kernel.stub @stub_1() fusionInfo = "stub_1"
 
 mo.graph @wrong_abi(%0 : !mo.tensor<[], f32>) -> () {
   mogg.kernel () -> () {
-    // expected-error@below{{Call site should be in the MOGG ABI}}
+    // expected-error@below{{Call site should be in the MOGG or MAP ABI}}
     mogg.call.stub @stub_1
     mogg.call.execute["foo"] {moOpName = "mo.custom"}
   } fusionInfo = "foo" {device = #M.device_ref<"cpu", 0>}

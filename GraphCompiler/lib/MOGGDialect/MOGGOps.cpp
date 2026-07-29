@@ -4528,8 +4528,11 @@ LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (failed(calleeFunc))
     return failure();
 
-  if (calleeFunc->getAbi() != ABIKind::MOGG)
-    return emitError("Call site should be in the MOGG ABI");
+  // The MAP ABI is the advanced-fusion outlining path (a stub outlined from a
+  // `mogg._kernel`); it reuses `mogg.call.stub` as its call site.
+  if (calleeFunc->getAbi() != ABIKind::MOGG &&
+      calleeFunc->getAbi() != ABIKind::MAP)
+    return emitError("Call site should be in the MOGG or MAP ABI");
 
   return success();
 }

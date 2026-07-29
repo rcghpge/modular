@@ -1773,9 +1773,16 @@ def MOGG_KernelRegionOp : MOGG_Op<"_kernel", [
     (the `MOExplicitDevice` trait) so device assignment and outlining resolve the
     kernel's execution device from the op itself rather than falling back to the
     host.
+
+    `fusionInfo` carries the fusion-tree provenance forwarded from the source
+    `map.iter.opaque`; absent only for a kernel region built by hand (e.g. in a
+    test) rather than through `MAPToMOGG`.
   }];
 
-  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo
+  );
   let results = (outs Variadic<MO_Tensor>:$outputs);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;

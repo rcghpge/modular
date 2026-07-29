@@ -15,7 +15,7 @@
 // CHECK: inputs (%{{.*}}: !mogg.pointer_)
 // CHECK: outputs (%{{.*}}: !mogg.pointer_)
 // CHECK: context (%[[CTX:.*]]: !mogg.context)
-// CHECK: dims (%[[D:.*]]: !mogg.dim_<batch>) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK: dims (%[[D:.*]]: !mogg.dim_<batch>) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK: mogg._shape.create(%[[D]]) {shape = #mosh<ape[dyn, 4]> : !mosh.ape} : (!mogg.dim_<batch>) -> !mogg.shape
 // CHECK: mogg._shape.create(%[[D]]) {shape = #mosh<ape[dyn, 4]> : !mosh.ape} : (!mogg.dim_<batch>) -> !mogg.shape
 // CHECK: mogg._call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%[[CTX]] : !mogg.context)

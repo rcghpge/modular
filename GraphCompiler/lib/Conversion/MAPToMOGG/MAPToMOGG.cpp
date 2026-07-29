@@ -34,6 +34,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
@@ -200,6 +201,15 @@ LogicalResult lowerOpaque(MAP::IterOpaqueOp iterOpaqueKernel) {
   // used for the reconstructed tensors so outlining and `MOGGToMGP` resolve the
   // real execution device instead of the host fallback.
   kernel.setDeviceRef(device);
+
+  // Forward the fusion-tree provenance `MOToMAP` recorded on `map.iter.opaque`
+  // (typed `AnyAttr` there so the `map` dialect need not depend on `mogg`);
+  // fall back to a fresh leaf only if it's absent (e.g. hand-written test IR).
+  if (Attribute fusionInfo = iterOpaqueKernel.getFusionInfoAttr())
+    kernel.setFusionInfoAttr(cast<MOGG::FusionInfoAttr>(fusionInfo));
+  else
+    kernel.setFusionInfoAttr(MOGG::FusionInfoAttr::get(
+        ctx, MOGG::createFusionLeaf(iterOpaqueKernel)));
 
   // Unique dynamic dims across all input/output tensors (first-seen order); the
   // kernel gets one !mogg.dim_ block arg per unique dim.
