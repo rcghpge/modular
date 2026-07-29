@@ -68,7 +68,8 @@ M_driver_status_t M_driver_device::property(llvm::StringRef name, void *value) {
     if (cc >= 90)
       sm += "a";
 
-    std::strncpy(static_cast<char *>(value), sm.c_str(), sm.size());
+    std::strncpy(static_cast<char *>(value), sm.c_str(),
+                 M_DRIVER_DEVICE_PROPERTY_MAX_LEN);
     return M_DRIVER_STATUS_SUCCESS;
   }
   if (name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) {
