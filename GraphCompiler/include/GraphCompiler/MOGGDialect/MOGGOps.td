@@ -1933,11 +1933,16 @@ def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [Pure]> {
   }];
 }
 
-def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure]> {
-  let summary = "A code-generation no-op cast between handle types.";
+def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+  let summary = "A cast between an unpacked async handle and a codegen handle.";
   let description = [{
     Reconciles the type system during the async-unpack transition (e.g.
-    `!mgp.buffer` -> `!mogg.pointer_`). Emits no Mojo.
+    `!mgp.buffer` -> `!mogg.pointer_`). For a `!mogg.pointer_` result it emits
+    real Mojo, bridging the unpacked `OwnedByteBuffer` to the raw opaque data
+    pointer the MAP-ABI stub expects; the `!mogg.context` / `!mogg.dim_` casts
+    are code-generation no-ops (the unpacked handle already has the right Mojo
+    type).
 
     TODO (debt): remove once `mogg.async.unpack` folds directly to the typed
     handle; sequence fusion currently expects `async.unpack` to fold, so a

@@ -4088,6 +4088,41 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// RebindOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RebindOp::emitMojo(EmitMojoState &state) {
+  // Bridges an unpacked async handle (`mogg.async.unpack` result) to the
+  // codegen handle a MAP-ABI stub argument expects.
+  Type resultType = getOutput().getType();
+
+  // Context / dim casts are code-generation no-ops: `mogg.async.unpack` already
+  // produced a value of the Mojo type the stub expects (a `DeviceContext` for
+  // `!mogg.context`, an `Int` for `!mogg.dim_`), so forward it unchanged.
+  if (isa<MOGG::ContextType, MOGG::DimType>(resultType)) {
+    state.setMojoValueFor(getResult(), state.getMojoValueFor(getInput()));
+    return success();
+  }
+
+  // Pointer cast: the input is the `OwnedByteBuffer` an `!mgp.buffer` unpacks
+  // to, but the MAP-ABI stub takes a raw `OpaquePointer[MutAnyOrigin]` (it does
+  // `ptr.bitcast[NoneType]()` in `tensor.create`). Take the buffer's data
+  // pointer and bitcast it to the opaque pointer type.
+  if (isa<MOGG::PointerType>(resultType)) {
+    MojoValue rawPtr =
+        OwnedByteBufferRef(state.getMojoValueFor(getInput())).unsafePtr();
+    MojoValue opaquePtr =
+        OpaquePointerRef(rawPtr).bitcast(MojoValue(kComptimeDTypeNoneType))();
+    state.setMojoValueFor(getResult(), state.builder.var(opaquePtr));
+    return success();
+  }
+
+  return emitOpError(
+             "mogg._rebind: unsupported result type for Mojo emission: ")
+         << resultType;
+}
+
+//===----------------------------------------------------------------------===//
 // AsyncPackOp
 //===----------------------------------------------------------------------===//
 

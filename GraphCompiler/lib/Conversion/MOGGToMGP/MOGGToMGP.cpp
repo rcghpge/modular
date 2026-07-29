@@ -187,6 +187,7 @@ public:
   LogicalResult lower(MO::SequenceOp op);
   LogicalResult lower(MO::TensorBundleOp op);
   LogicalResult lower(MO::TensorUnbundleOp op);
+  LogicalResult lower(MOGG::KernelRegionOp op);
 
   /// Param ops need the enclosing region to resolve parameter expressions.
   LogicalResult lowerParam(Region *parentRegion, KGEN::ParamDeclareOp op);
@@ -1822,6 +1823,168 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   return success();
 }
 
+// Drops the param-decl-ref name from every `!mogg.dim_<name>` block arg of a
+// MAP-ABI kernel stub (and its function signature), turning them into anonymous
+// `!mogg.dim_`. A symbolic dim name on the stub boundary would block kernel
+// deduplication, so `MOGGToMGP` strips it here to match the anonymous casts
+// feeding the re-homed `mogg.call.stub`. Changing a block-arg type updates its
+// in-body uses automatically. Idempotent, so a stub shared by several regions
+// is safe to revisit.
+static void stripStubDimNames(MOGG::KernelStubOp stub) {
+  MLIRContext *ctx = stub.getContext();
+  SmallVector<Type> argTypes;
+  bool changed = false;
+  for (BlockArgument arg : stub.getBodyBlock().getArguments()) {
+    Type type = arg.getType();
+    if (auto dim = dyn_cast<MOGG::DimType>(type); dim && dim.getName()) {
+      type = MOGG::DimType::get(ctx, /*name=*/{});
+      arg.setType(type);
+      changed = true;
+    }
+    argTypes.push_back(type);
+  }
+  if (!changed)
+    return;
+  FunctionType funcType = stub.getFunctionType();
+  stub.setFunctionTypeAttr(
+      TypeAttr::get(FunctionType::get(ctx, argTypes, funcType.getResults())));
+}
+
+// Lowers a new-path `mogg._kernel` into a `mogg.generic.compiled.region`. This
+// is deliberately NOT the legacy `mogg.kernel` path
+// (MOGGKernelOpLoweringState::lowerKernelOp), which is left untouched: here the
+// kernel stub is already outlined (OutlineKernelsIntoFunctions), so we only
+// materialize the region operands (input buffers, freshly-allocated output
+// buffers, dim values, device context), build the region, unpack + cast each
+// async block arg to the handle the stub expects, and re-home the existing
+// `mogg.call.stub`.
+//
+// TODO(GEX-3965): buffer allocation / context / dim materialization should move
+// to dedicated pre-MGP passes, leaving this a genuinely thin lowering.
+LogicalResult MOGraphLowering::lower(MOGG::KernelRegionOp op) {
+  MGP::MOOpLoweringState st(loweringState, op);
+  MLIRContext *ctx = op.getContext();
+  Location loc = op.getLoc();
+  DeviceRefAttr device = MO::getDeviceOrDefaultAny(op);
+
+  // The body block args are, in order: one `!mogg.pointer_` per input, then per
+  // output, then the `!mogg.dim_<name>`s, then one trailing `!mogg.context`.
+  Block &kernelBody = op.getBody().front();
+  unsigned numInputs = op.getInputs().size();
+  unsigned numOutputs = op.getOutputs().size();
+  unsigned numArgs = kernelBody.getNumArguments();
+  if (numArgs < numInputs + numOutputs + 1)
+    return op.emitOpError("MOGGToMGP: malformed mogg._kernel body");
+
+  Value inChain = st.getGuardChain(loweringState.getCurrentExecuteChain());
+
+  // Region operands (plain sync values) + their in/out signature, built in the
+  // exact body-block-arg order so operand i lines up with kernel block arg i.
+  SmallVector<Value> operands;
+  SmallVector<InOutSignatureAttr::InOutSemantics> semantics;
+
+  // Inputs: `!mo.tensor` operands lower to `!mgp.buffer`.
+  for (Value buffer : st.getLoweredOperands()) {
+    operands.push_back(buffer);
+    semantics.push_back(InOutSignatureAttr::kIn);
+  }
+
+  // Outputs: freshly-allocated buffers (externally-allocated, DPS).
+  FailureOr<SmallVector<MGP::MOOutputStorage>> storageOr =
+      st.createOutputStorage(inChain);
+  if (failed(storageOr))
+    return failure();
+  SmallVector<MGP::MOOutputStorage> storage = *storageOr;
+  assert(storage.size() == op.getNumResults() &&
+         "expected one output storage per mogg._kernel result");
+  for (const MGP::MOOutputStorage &out : storage) {
+    operands.push_back(out.buffer);
+    semantics.push_back(InOutSignatureAttr::kOut);
+  }
+
+  // Dims: materialize each trailing `!mogg.dim_<name>` block arg from its
+  // param.
+  for (unsigned i = numInputs + numOutputs; i + 1 < numArgs; ++i) {
+    auto dimType = dyn_cast<MOGG::DimType>(kernelBody.getArgument(i).getType());
+    if (!dimType || !dimType.getName())
+      return op.emitOpError("MOGGToMGP: mogg._kernel dim arg lacks a name");
+    ErrorOr<Value> dimValue = loweringState.lowerExpression(
+        op->getParentRegion(), loc, dimType.getName());
+    if (dimValue.isError())
+      return op.emitOpError("MOGGToMGP: ") << dimValue.getError();
+    operands.push_back(dimValue.takeValue());
+    semantics.push_back(InOutSignatureAttr::kNone);
+  }
+
+  // Context.
+  operands.push_back(loweringState.getExecuteDevice(device));
+  semantics.push_back(InOutSignatureAttr::kNone);
+
+  // Build the region; result 0 is the output chain.
+  OpBuilder &builder = st.builder;
+  auto region = MOGG::GenericCompiledRegionOp::create(
+      builder, loc, TypeRange{MEF::ChainType::get(ctx)}, operands,
+      /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
+      InOutSignatureAttr::get(ctx, semantics),
+      /*fusionInfo=*/MOGG::FusionInfoAttr{},
+      /*isAsync=*/BoolAttr::get(ctx, false),
+      /*constantResources=*/ArrayAttr::get(ctx, {}),
+      /*canFuseIntoOther=*/BoolAttr::get(ctx, !MO::isOnHost(op)),
+      /*canBeFusedInto=*/BoolAttr::get(ctx, true),
+      /*canDuplicate=*/BoolAttr::get(ctx, false),
+      /*isStructuredKernel=*/BoolAttr::get(ctx, true));
+  region.setDeviceRef(device);
+
+  // Region body: one `!mogg.async<T>` block arg per operand, same order.
+  Block *regionBody = &region.getBody().emplaceBlock();
+  SmallVector<Type> argTypes;
+  SmallVector<Location> argLocs;
+  for (Value operand : operands) {
+    argTypes.push_back(MOGG::AsyncType::get(operand.getType()));
+    argLocs.push_back(loc);
+  }
+  regionBody->addArguments(argTypes, argLocs);
+
+  // Unpack + cast each async arg to the handle the stub expects, then re-home
+  // the already-outlined `mogg.call.stub`.
+  builder.setInsertionPointToStart(regionBody);
+  SmallVector<Value> stubArgs;
+  for (unsigned i = 0; i < numArgs; ++i) {
+    Value unpacked =
+        MOGG::AsyncUnpackOp::create(builder, loc, regionBody->getArgument(i));
+    // `mogg._rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
+    // `!mgp.device_context` / a dim value) with the stub's codegen handle
+    // (`!mogg.pointer_` / `!mogg.context` / `!mogg.dim_`). For `!mogg.pointer_`
+    // it emits real Mojo -- bridging the unpacked `OwnedByteBuffer` to the raw
+    // opaque data pointer the MAP-ABI stub expects; the context/dim casts are
+    // pass-throughs (the unpacked handles already have the right Mojo type).
+    // debt: drop once `mogg.async.unpack` folds directly to the typed handle.
+    // For a dim arg, cast to an ANONYMOUS `!mogg.dim_` (name dropped): the
+    // symbolic name blocks kernel dedup, and the referenced stub's dim args are
+    // stripped in lockstep below so the re-homed call still type-checks.
+    Type handleType = kernelBody.getArgument(i).getType();
+    if (isa<MOGG::DimType>(handleType))
+      handleType = MOGG::DimType::get(ctx, /*name=*/{});
+    Value handle = MOGG::RebindOp::create(builder, loc, handleType, unpacked);
+    stubArgs.push_back(handle);
+  }
+  auto originalCall = cast<MOGG::CallStubOp>(&kernelBody.front());
+  MOGG::CallStubOp::create(builder, loc, /*results=*/TypeRange{},
+                           originalCall.getNameAttr(), stubArgs,
+                           /*affinity_device_id=*/IntegerAttr{});
+  // Strip the dim-arg names from the referenced stub so its signature matches
+  // the anonymous casts above (see stripStubDimNames).
+  if (MOGG::KernelStubOp stub = originalCall.getCallee())
+    stripStubDimNames(stub);
+  Value readyChain = MOGG::AsyncReadyOp::create(builder, loc);
+  MOGG::OutputOp::create(builder, loc, ValueRange{readyChain});
+
+  // Register the outputs against the graph, guarded by the region's out chain.
+  builder.setInsertionPointAfter(region);
+  st.createOutputs(region->getResult(0), storage);
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
   if (llvm::isa_and_nonnull<mlir::index::IndexDialect>(op.getDialect()))
     return cloneTrivialOp(&op);
@@ -1854,6 +2017,8 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::GuardOp, MO::ChainCreateOp, MO::MutableStoreOp,
             MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
             MO::CallOp>([this](auto op) { return lower(op); })
+      // Advanced-fusion new-path kernel (gated by MAX_GC_USE_ADV_FUSION).
+      .Case<MOGG::KernelRegionOp>([this](auto op) { return lower(op); })
       // Interface-based lowering for externally-defined ops.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })

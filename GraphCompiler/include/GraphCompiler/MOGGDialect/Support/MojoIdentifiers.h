@@ -701,11 +701,16 @@ class OwnedByteBufferRef {
 public:
   explicit OwnedByteBufferRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field symbol name on `OwnedByteBuffer`.
+  /// Mojo field / method symbol names on `OwnedByteBuffer`.
   static constexpr llvm::StringLiteral kView = "view";
+  static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
 
   /// `val.view` — the non-owning `MutByteBuffer` view over the memory.
   MojoValue view() const { return value.get(kView); }
+
+  /// `val.unsafe_ptr()` — the view's raw device data pointer
+  /// (`UnsafePointer[Int8, MutAnyOrigin]`).
+  MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
 
   MojoValue value;
 };
