@@ -29,7 +29,7 @@
 #include "Support/DeviceSpecs.h"
 #include "Support/HashUtils.h"
 #include "Support/ML/CommonAttributes.h"
-#include "Support/Profiling/internal/Tracy.h"
+#include "Support/internal/Tracy/Tracy.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"

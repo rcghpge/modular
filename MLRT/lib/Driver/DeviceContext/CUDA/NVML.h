@@ -13,7 +13,7 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
-#include "Support/Profiling/internal/Tracy.h"
+#include "Support/internal/Tracy/Tracy.h"
 
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"

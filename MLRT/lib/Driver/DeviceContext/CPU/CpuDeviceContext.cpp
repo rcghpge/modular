@@ -22,7 +22,7 @@
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/Fill.h"
-#include "Support/Profiling/internal/Tracy.h"
+#include "Support/internal/Tracy/Tracy.h"
 #include "llvm/ADT/Twine.h"
 
 #include <chrono>

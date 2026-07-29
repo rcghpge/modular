@@ -15,9 +15,9 @@
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
-#include "Support/Profiling/internal/Tracy.h"
 #include "Support/RCRef.h"
 #include "Support/SymbolExport.h"
+#include "Support/internal/Tracy/Tracy.h"
 
 using namespace M;
 

@@ -28,9 +28,9 @@ static_assert(
 #include "MLRT/lib/Driver/DeviceContext/HIP/HIPDriver.h"
 #include "MLRT/lib/Driver/DeviceContext/Metal/MetalDeviceContext.h"
 #include "Support/BinaryID.h"
-#include "Support/Profiling/internal/Tracy.h"
 #include "Support/RCRef.h"
 #include "Support/SymbolExport.h"
+#include "Support/internal/Tracy/Tracy.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
 

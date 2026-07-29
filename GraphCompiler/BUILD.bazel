@@ -1262,6 +1262,7 @@ modular_cc_library(
         "//MLRT:GraphRT/MEFExecutor",
         "//MLRT:GraphRT/Primitives",
         "//Support:Profiling",
+        "//Support:ProfilingRanges",
     ],
 )
 

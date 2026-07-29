@@ -17,9 +17,9 @@
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "NVML.h"
 #include "Support/HashUtils.h"
-#include "Support/Profiling/internal/Range.h"
-#include "Support/Profiling/internal/Tracy.h"
-#include "Support/Profiling/internal/TracyCuda.h"
+#include "Support/Profiling/Ranges.h"
+#include "Support/internal/Tracy/Tracy.h"
+#include "Support/internal/Tracy/TracyCuda.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
@@ -776,7 +776,7 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
 
     // Activate on-demand profiling (libkineto/CUPTI) now that this device's
     // real primary context exists, with the context current — see
-    // activatePendingTrace() in Support/Profiling/internal/Range.h for the
+    // activatePendingTrace() in Support/Profiling/Ranges.h for the
     // contract (and why the before-first-cuGraphInstantiate ordering an
     // earlier revision required is obsolete on CUDA 13.1 — MXTOOLS-266).
     // Cheap no-op unless profiling was enable()'d or the process is in

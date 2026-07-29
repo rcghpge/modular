@@ -10,8 +10,8 @@
 
 #include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "Support/Profiling/internal/Tracy.h"
 #include "Support/StringExtras.h"
+#include "Support/internal/Tracy/Tracy.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"

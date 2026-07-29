@@ -13,7 +13,7 @@
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
-#include "Support/Profiling/internal/Tracy.h"
+#include "Support/internal/Tracy/Tracy.h"
 
 #include <cassert>
 #include <string>

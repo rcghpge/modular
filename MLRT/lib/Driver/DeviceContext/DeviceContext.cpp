@@ -37,8 +37,8 @@ static_assert(
 #include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
 #include "Support/HashUtils.h"
-#include "Support/Profiling/internal/Tracy.h"
 #include "Support/SymbolExport.h"
+#include "Support/internal/Tracy/Tracy.h"
 #include "Target/DriverPlugin.h"
 #include "Virtual/VirtualDeviceContext.h"
 
