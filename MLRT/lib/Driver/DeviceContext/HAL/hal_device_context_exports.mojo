@@ -35,7 +35,14 @@ from std.gpu.host import (
 from std.gpu.host.device_context import _CString
 from std.gpu.host.device_attribute import DeviceAttribute
 from std.gpu.host.device_context import _DeviceContextScopeHAL
-from std.memory import alloc, unsafe_memcpy, UnsafePointer
+from std.memory import (
+    alloc,
+    dealloc,
+    Layout,
+    ThinAllocation,
+    unsafe_memcpy,
+    UnsafePointer,
+)
 
 
 # ===---------------------------------------------------------------------=== #
@@ -80,9 +87,9 @@ def _err_cstr(msg: String) -> _CString[]:
     var n = msg.byte_length()
     var p = alloc[UInt8](n + 1)
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
-    p[n] = 0
+    p[unsafe_offset=n] = 0
     return CStringSlice(
-        unsafe_from_ptr=p.bitcast[c_char]()
+        unsafe_from_ptr=p.unsafe_bitcast[c_char]()
         .as_imm()
         .unsafe_origin_cast[ImmUntrackedOrigin]()
     )
@@ -97,7 +104,7 @@ def MojoHAL_strfree(s: _CString[]) abi("C"):
         var addr = Int(s.unsafe_value().unsafe_ptr())
         UnsafePointer[UInt8, MutUntrackedOrigin](
             unsafe_from_address=addr
-        ).free()
+        ).unsafe_free()
 
 
 @export
@@ -126,9 +133,9 @@ def MojoHAL_DeviceContext_create(
         var ctx = DeviceContext(
             Int(device_id), api=String(unsafe_from_utf8_ptr=api)
         )
-        var boxed = alloc[DeviceContext](1)
-        boxed.unsafe_write(ctx^)
-        out_ctx[] = boxed
+        var boxed = alloc(Layout[DeviceContext].single())
+        boxed.unsafe_ptr().unsafe_write(ctx^)
+        out_ctx[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -138,7 +145,11 @@ def MojoHAL_DeviceContext_create(
 def MojoHAL_DeviceContext_release(ctx: _DeviceContextBoxPtr) abi("C"):
     var boxed = ctx
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[DeviceContext].single()
+        )
+    )
 
 
 @export
@@ -156,8 +167,8 @@ def _alloc_cstr(msg: String) -> UnsafePointer[c_char, MutUntrackedOrigin]:
     var n = msg.byte_length()
     var p = alloc[UInt8](n + 1)
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
-    p[n] = 0
-    return p.bitcast[c_char]()
+    p[unsafe_offset=n] = 0
+    return p.unsafe_bitcast[c_char]()
 
 
 # ===---------------------------------------------------------------------=== #
@@ -175,9 +186,9 @@ def MojoHAL_DeviceContext_createBuffer(
     try:
         var buf = DeviceBuffer[DType.uint8](ctx[], Int(byte_size))
         out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        var boxed = alloc[DeviceBuffer[DType.uint8]](1)
-        boxed.unsafe_write(buf^)
-        out_buf[] = boxed
+        var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+        boxed.unsafe_ptr().unsafe_write(buf^)
+        out_buf[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -194,9 +205,9 @@ def MojoHAL_DeviceContext_createBufferOwning(
     var buf = DeviceBuffer[DType.uint8](
         ctx[], ptr, Int(byte_size), owning=owning
     )
-    var boxed = alloc[DeviceBuffer[DType.uint8]](1)
-    boxed.unsafe_write(buf^)
-    out_buf[] = boxed
+    var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+    boxed.unsafe_ptr().unsafe_write(buf^)
+    out_buf[] = boxed^.unsafe_leak()
     return None
 
 
@@ -204,7 +215,11 @@ def MojoHAL_DeviceContext_createBufferOwning(
 def MojoHAL_DeviceBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
     var boxed = buf
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[DeviceBuffer[DType.uint8]].single()
+        )
+    )
 
 
 @export
@@ -234,11 +249,13 @@ def MojoHAL_DeviceContext_createHostBuffer(
     try:
         var buf = HostBuffer[DType.uint8](ctx[], Int(byte_size))
         out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        var boxed = alloc[HostBuffer[DType.uint8]](1)
-        boxed.unsafe_write(buf^)
+        var boxed = alloc(Layout[HostBuffer[DType.uint8]].single())
+        boxed.unsafe_ptr().unsafe_write(buf^)
         # Host-buffer boxes travel through the same buffer handle; the C++
         # side keys host/device by the entry that produced the handle.
-        out_buf[] = boxed.bitcast[DeviceBuffer[DType.uint8]]()
+        out_buf[] = (
+            boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[DType.uint8]]()
+        )
         return None
     except e:
         return _err_cstr(String(e))
@@ -246,9 +263,13 @@ def MojoHAL_DeviceContext_createHostBuffer(
 
 @export
 def MojoHAL_HostBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
-    var boxed = buf.bitcast[HostBuffer[DType.uint8]]()
+    var boxed = buf.unsafe_bitcast[HostBuffer[DType.uint8]]()
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[HostBuffer[DType.uint8]].single()
+        )
+    )
 
 
 # ===---------------------------------------------------------------------=== #
@@ -464,14 +485,14 @@ def MojoHAL_HostBuffer_createSubBuffer(
     # Host boxes carry a `HostBuffer` (see MojoHAL_HostBuffer_release); the
     # view it returns is a plain `DeviceBuffer` over the pinned host region,
     # so the caller boxes it like any other sub-buffer view.
-    ref parent_buf = parent.bitcast[HostBuffer[DType.uint8]]()[]
+    ref parent_buf = parent.unsafe_bitcast[HostBuffer[DType.uint8]]()[]
     try:
         var view = parent_buf.create_sub_buffer[DType.uint8](
             Int(byte_offset), Int(byte_size)
         )
-        var boxed = alloc[DeviceBuffer[DType.uint8]](1)
-        boxed.unsafe_write(view^)
-        out_buf[] = boxed
+        var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+        boxed.unsafe_ptr().unsafe_write(view^)
+        out_buf[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -492,13 +513,13 @@ def MojoHAL_DeviceBuffer_createSubBuffer(
         return _err_cstr("offset, len and elem_size are out of range")
     var view = DeviceBuffer[DType.uint8](
         parent_buf.context(),
-        parent_buf.unsafe_ptr() + Int(byte_offset),
+        parent_buf.unsafe_ptr().unsafe_offset(Int(byte_offset)),
         Int(byte_size),
         owning=False,
     )
-    var boxed = alloc[DeviceBuffer[DType.uint8]](1)
-    boxed.unsafe_write(view^)
-    out_buf[] = boxed
+    var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+    boxed.unsafe_ptr().unsafe_write(view^)
+    out_buf[] = boxed^.unsafe_leak()
     return None
 
 
@@ -568,9 +589,9 @@ def MojoHAL_DeviceContext_memmapFile(
         return _err_cstr("failed to mmap file")
 
     var view = DeviceBuffer[DType.uint8](ctx[], base, Int(size), owning=False)
-    var boxed = alloc[_MmapBox](1)
-    boxed.unsafe_write(_MmapBox(view^, base, UInt64(size)))
-    out_buf[] = boxed.bitcast[DeviceBuffer[DType.uint8]]()
+    var boxed = alloc(Layout[_MmapBox].single())
+    boxed.unsafe_ptr().unsafe_write(_MmapBox(view^, base, UInt64(size)))
+    out_buf[] = boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[DType.uint8]]()
     out_ptr[] = base
     out_size[] = UInt64(size)
     return None
@@ -578,11 +599,15 @@ def MojoHAL_DeviceContext_memmapFile(
 
 @export
 def MojoHAL_MmapBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
-    var boxed = buf.bitcast[_MmapBox]()
+    var boxed = buf.unsafe_bitcast[_MmapBox]()
     var base = boxed[].base
     var length = boxed[].length
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[_MmapBox].single()
+        )
+    )
     _ = external_call["munmap", Int32](base, length)
 
 
@@ -597,9 +622,9 @@ def MojoHAL_DeviceContext_stream(
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> _CString[]:
     var stream = ctx[].stream()
-    var boxed = alloc[DeviceStream](1)
-    boxed.unsafe_write(stream^)
-    out_stream[] = boxed
+    var boxed = alloc(Layout[DeviceStream].single())
+    boxed.unsafe_ptr().unsafe_write(stream^)
+    out_stream[] = boxed^.unsafe_leak()
     return None
 
 
@@ -611,9 +636,9 @@ def MojoHAL_DeviceContext_createStream(
 ) abi("C") -> _CString[]:
     try:
         var stream = ctx[].create_stream(priority=Int(priority))
-        var boxed = alloc[DeviceStream](1)
-        boxed.unsafe_write(stream^)
-        out_stream[] = boxed
+        var boxed = alloc(Layout[DeviceStream].single())
+        boxed.unsafe_ptr().unsafe_write(stream^)
+        out_stream[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -629,9 +654,9 @@ def MojoHAL_DeviceContext_withStream(
     # `DeviceContext::selectStream` view on the C++ side.
     var view = ctx[]
     view._stream = stream[]._hal_stream()
-    var boxed = alloc[DeviceContext](1)
-    boxed.unsafe_write(view^)
-    out_ctx[] = boxed
+    var boxed = alloc(Layout[DeviceContext].single())
+    boxed.unsafe_ptr().unsafe_write(view^)
+    out_ctx[] = boxed^.unsafe_leak()
     return None
 
 
@@ -639,7 +664,11 @@ def MojoHAL_DeviceContext_withStream(
 def MojoHAL_DeviceStream_release(stream: _DeviceStreamBoxPtr) abi("C"):
     var boxed = stream
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[DeviceStream].single()
+        )
+    )
 
 
 @export
@@ -710,12 +739,14 @@ def MojoHAL_DeviceContext_eventCreate(
     # (DeviceContext::enqueueEvent); `record=False` creates an unrecorded event
     # (DeviceContext::eventCreate).
     try:
-        var boxed = alloc[DeviceEvent](1)
+        var event: DeviceEvent
         if record:
-            boxed.unsafe_write(DeviceEvent(ctx[]))
+            event = DeviceEvent(ctx[])
         else:
-            boxed.unsafe_write(DeviceEvent._create_unrecorded(ctx[]))
-        out_event[] = boxed
+            event = DeviceEvent._create_unrecorded(ctx[])
+        var boxed = alloc(Layout[DeviceEvent].single())
+        boxed.unsafe_ptr().unsafe_write(event^)
+        out_event[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -725,7 +756,11 @@ def MojoHAL_DeviceContext_eventCreate(
 def MojoHAL_DeviceEvent_release(event: _DeviceEventBoxPtr) abi("C"):
     var boxed = event
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[DeviceEvent].single()
+        )
+    )
 
 
 @export
@@ -782,15 +817,17 @@ def MojoHAL_DeviceContext_pushContext(
     # Saves the calling thread's current driver context and makes `ctx`'s
     # current; restored by MojoHAL_DeviceContextScope_pop.
     try:
-        var boxed = alloc[_DeviceContextScopeHAL](1)
-        boxed.unsafe_write(ctx[].push_context())
+        var pushed = ctx[].push_context()
+        var boxed = alloc(Layout[_DeviceContextScopeHAL].single())
+        var ptr = boxed.unsafe_ptr()
+        ptr.unsafe_write(pushed^)
         try:
-            _ = boxed[].__enter__()
+            _ = ptr[].__enter__()
         except e:
-            boxed.unsafe_deinit_pointee()
-            boxed.free()
+            ptr.unsafe_deinit_pointee()
+            dealloc(boxed^)
             return _err_cstr(String(e))
-        out_scope[] = boxed
+        out_scope[] = boxed^.unsafe_leak()
         return None
     except e:
         return _err_cstr(String(e))
@@ -804,7 +841,11 @@ def MojoHAL_DeviceContextScope_pop(scope: _DeviceContextScopeBoxPtr) abi("C"):
     except e:
         print("warning: restoring driver context failed:", e)
     boxed.unsafe_deinit_pointee()
-    boxed.free()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[_DeviceContextScopeHAL].single()
+        )
+    )
 
 
 @export
@@ -860,17 +901,17 @@ def MojoHAL_DeviceContext_allocateCompletionFlag(
         var buffer = hal_ctx.alloc_host_pinned(slot_size)
         var host_ptr = hal_ctx.memory_get_host_address[MutUntrackedOrigin](
             buffer
-        ).bitcast[Byte]()
+        ).unsafe_bitcast[Byte]()
         var device_addr = hal_ctx.memory_get_address(buffer)
         # Initialize the flag to zero so the first wait observes a clean state.
         Atomic[DType.uint64].store[ordering=Ordering.RELAXED](
-            host_ptr.bitcast[UInt64](), 0
+            host_ptr.unsafe_bitcast[UInt64](), 0
         )
-        var boxed = alloc[_CompletionFlagBox](1)
-        boxed.unsafe_write(
+        var boxed = alloc(Layout[_CompletionFlagBox].single())
+        boxed.unsafe_ptr().unsafe_write(
             _CompletionFlagBox(device_ctx, buffer^, host_ptr, device_addr)
         )
-        out_flag[] = boxed
+        out_flag[] = boxed^.unsafe_leak()
         out_host_ptr[] = host_ptr
         out_device_addr[] = device_addr
         return None
@@ -881,8 +922,12 @@ def MojoHAL_DeviceContext_allocateCompletionFlag(
 @export
 def MojoHAL_CompletionFlag_release(flag: _CompletionFlagBoxPtr) abi("C"):
     var boxed = flag
-    var box = boxed.take_pointee()
-    boxed.free()
+    var box = boxed.unsafe_take_pointee()
+    dealloc(
+        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+            Layout[_CompletionFlagBox].single()
+        )
+    )
     # `Buffer` has no destructor (a plain handle + size), so rebuild one from
     # the box's copyable fields for the consuming `free_host_pinned` call and
     # let `box` drop normally.
@@ -905,7 +950,7 @@ def MojoHAL_CompletionFlag_signal(
     # Release pairs with the device-side wait (and `load`'s acquire), mirroring
     # CompletionFlag::signal.
     Atomic[DType.uint64].store[ordering=Ordering.RELEASE](
-        host_ptr.bitcast[UInt64](), value
+        host_ptr.unsafe_bitcast[UInt64](), value
     )
 
 
@@ -914,7 +959,7 @@ def MojoHAL_CompletionFlag_load(
     host_ptr: _RawMemoryPtr,
 ) abi("C") -> UInt64:
     return Atomic[DType.uint64].load[ordering=Ordering.ACQUIRE](
-        host_ptr.bitcast[UInt64]()
+        host_ptr.unsafe_bitcast[UInt64]()
     )
 
 
@@ -923,7 +968,7 @@ def MojoHAL_CompletionFlag_reset(host_ptr: _RawMemoryPtr) abi("C"):
     # Relaxed, mirroring CompletionFlag::reset: stream-ordered enqueue of the
     # wait happens-after this store.
     Atomic[DType.uint64].store[ordering=Ordering.RELAXED](
-        host_ptr.bitcast[UInt64](), 0
+        host_ptr.unsafe_bitcast[UInt64](), 0
     )
 
 
