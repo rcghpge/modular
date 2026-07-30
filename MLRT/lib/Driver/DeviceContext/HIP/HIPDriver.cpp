@@ -12,6 +12,7 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
+#include "Support/Profiling/Ranges.h"
 #include "llvm/ADT/Twine.h"
 
 #include <dlfcn.h>
@@ -36,6 +37,17 @@ ErrorOr<std::unique_ptr<HIPDriver>> HIPDriver::allocAndInitDriver() {
     return Error(llvm::Twine("Failed to open HIP library: "
                              "hip is not supported on this operating system."));
   }
+
+  // Activate on-demand profiling (libkineto/rocprofiler-sdk) BEFORE the HIP
+  // runtime loads: rocprofiler-sdk only accepts in-process tool registration
+  // until the HIP/HSA runtime initializes, so this is the AMD mirror of the
+  // post-context-creation call in CUDADeviceContext.cpp — see
+  // activatePendingTrace() in Support/Profiling/Ranges.h for the contract.
+  // Cheap no-op unless a profiler was requested for this process (enable(), the
+  // max-debug.profiling-enabled auto-start knob, MODULAR_PROFILER_PLUGIN, or
+  // Dynolog daemon mode).
+  M::Profiling::activatePendingTrace();
+
   // Attempt to open the shared library of the HIP driver.
   // RTLD_GLOBAL allows UCX ROCm backend to also use these loaded symbols.
   void *dl_lib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);

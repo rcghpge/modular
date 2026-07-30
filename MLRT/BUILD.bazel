@@ -580,6 +580,14 @@ modular_shared_library(
         "//Support:BinaryID",
         "//Support:Buffer",
         "//Support:Configuration",
+        # The profiler host glue makes this DSO's copy of the range shim able
+        # to load/adopt the profiler plugin. Required for the device-init
+        # activation trigger: in Python processes the MLRT device contexts
+        # (and their activatePendingTrace() call sites) resolve into THIS
+        # DSO, not libmax, and a glue-less copy would silently drop the
+        # notification — on AMD that permanently forfeits GPU recording
+        # (rocprofiler tool registration must precede the first HIP call).
+        "//Support:ProfilerHostGlue",
         "//Support:SymbolExport",
         "@dlpack",
         "@llvm-project//llvm:Support",
