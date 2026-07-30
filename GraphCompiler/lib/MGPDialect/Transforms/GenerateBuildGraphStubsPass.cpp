@@ -7,6 +7,7 @@
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "Support/DeviceSpecs.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
@@ -202,9 +203,19 @@ LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
   return success();
 }
 
-/// Replace each `mgp.buffer.alloc` in `staging` with `mgp.device_graph.alloc`.
+/// Replace each device `mgp.buffer.alloc` in `staging` with
+/// `mgp.device_graph.alloc`.
+///
+/// Only device allocations are recorded into the graph. Host (CPU) allocations
+/// back planned host-side metadata (e.g. tensor specs) that is written on the
+/// host via `mgp.buffer.set_with_index`; routing them through the builder would
+/// place them in the graph's device memory, so the host write would fault on
+/// devices whose memory is not host-addressable. Those stay `mgp.buffer.alloc`.
 void rewriteBuilderAllocs(DeviceGraphStagingOp staging) {
   staging.getBody().walk([&](BufferAllocOp alloc) {
+    if (alloc.getDevice().getLabel() == M::kCPULabel)
+      return;
+
     IRRewriter rewriter(alloc);
     auto graphBuilderType = rewriter.getType<DeviceGraphBuilderType>();
     auto cast = UnrealizedConversionCastOp::create(

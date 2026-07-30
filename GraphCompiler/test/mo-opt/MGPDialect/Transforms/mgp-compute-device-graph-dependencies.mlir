@@ -117,6 +117,51 @@ mgp.model @dg_ctx : mof devices [#M.device_ref<"gpu", 0>]
 
 // -----
 
+// A staged region that uses a HOST (`cpu`) device context. Unlike the device
+// context above, a host context must NOT be re-sourced from the builder: the
+// builder yields the graph's device context, so recording host-side work
+// against it would run on the device (and fault on devices whose memory is not
+// host-addressable). The host context threads through directly from the outer
+// staging context input instead.
+
+// CHECK-LABEL: mgp.model @dg_host_ctx
+// CHECK: mgp.device_graph.staging inputs({{.*}}) {
+// CHECK-NEXT: ^bb0(%[[SB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder, %{{[a-zA-Z0-9_]+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>, %[[CPU:[a-zA-Z0-9_]+]]: !mgp.device_context<<"cpu", 0>>):
+// CHECK: mgp.device_graph.dependencies builder(%[[SB]]) dependencies() {
+// CHECK-NEXT: ^bb0(%{{.*}}: !mgp.device_graph.builder):
+// No builder->cpu-context cast: the host context comes straight from the outer
+// staging block arg.
+// CHECK-NOT: builtin.unrealized_conversion_cast %{{.*}} : !mgp.device_graph.builder to !mgp.device_context<<"cpu", 0>>
+// CHECK: mogg.async.pack(%[[CPU]]) : !mgp.device_context<<"cpu", 0>>
+
+mgp.model @dg_host_ctx : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>]
+  init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %cpu, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>, %in: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  %staging = mgp.device_graph.staging inputs(%in, %cpu : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.device_context<<"cpu", 0>>) {
+  ^bb0(%builder: !mgp.device_graph.builder,
+       %in_t: !mgp.tensor<2x3xf32, <"gpu", 0>>,
+       %ctx_t: !mgp.device_context<<"cpu", 0>>):
+    %a = mogg.generic.compiled.region (%in_t, %ctx_t) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>, %ctxarg: !mgp.device_context<<"cpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
+      %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %ctx_in = mogg.async.unpack(%ctxarg) : !mgp.device_context<<"cpu", 0>>
+      %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
+      "test.use_ctx"(%ctx_in) : (!mgp.device_context<<"cpu", 0>>) -> ()
+      %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+      %ch = mogg.chain.dummy() : () -> !mef.chain
+      %t = mgp.tensor.create %ch, %b, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
+      %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+      mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+    } fusionInfo = "test.host_ctx" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+    mgp.device_graph.staging.yield %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+  mef.output %ch0, %staging : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+} {isDeviceGraph}
+
+// -----
+
 // A model WITHOUT `isDeviceGraph` is left untouched: no conversion happens.
 
 // CHECK-LABEL: mgp.model @not_dg

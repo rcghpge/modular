@@ -91,7 +91,8 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
     if (auto async = llvm::dyn_cast<AsyncType>(elementType))
       elementType = async.getElementType();
 
-    if (isa<DeviceContextType>(elementType)) {
+    auto ctxType = dyn_cast<DeviceContextType>(elementType);
+    if (ctxType && ctxType.getDevice().getLabel() != M::kCPULabel) {
       Value &cast = deviceContextCast[elementType];
       if (!cast)
         cast = UnrealizedConversionCastOp::create(builder, loc, elementType,
