@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <chrono>
 #include <optional>
 
 // The graph builder drives legacy DeviceContext internals (DeviceFunction,
@@ -183,6 +184,18 @@ public:
   /// format. Can be subsequently replayed multiple times.
   virtual ErrorOr<DeviceGraphRef> instantiate() = 0;
 
+  /// Returns a `DeviceContext` facade that records operations enqueued through
+  /// it into this builder instead of executing them eagerly. This lets code
+  /// written against `DeviceContext` (the bulk of the stdlib and kernels)
+  /// record into a device graph without modification. See
+  /// `RecordingDeviceContext`.
+  ///
+  /// \param initialDep the node that recorded operations chain after. This
+  /// builder does not model dependencies itself (that lives in the Mojo layer),
+  /// so the caller passes a node — typically an `addEmpty` node seeded with the
+  /// ambient/region predecessors — as the recording chain's root.
+  ErrorOr<DeviceContextRef> recordingContext(DeviceGraphNode initialDep);
+
   /// Add an output to the device graph.
   void addOutput(AsyncRT::AnyAsyncValueRef output);
 
@@ -202,6 +215,111 @@ private:
   /// to be tracked so that it can be referenced when executing the device
   /// graph.
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
+};
+
+/// A `DeviceContext` facade that records enqueued operations into a
+/// `DeviceGraphBuilder` instead of executing them eagerly.
+///
+/// Returned by `DeviceGraphBuilder::recordingContext()`. The point is to let
+/// the large body of code written against `DeviceContext` (the bulk of the
+/// stdlib and kernels) record into a device graph unmodified, rather than
+/// trait-ifying every kernel entry point.
+///
+/// Operations split three ways:
+///   - Write / launch / order-only enqueues (`enqueueFunctionExecDirect`,
+///     `enqueueCopyToDevice`, `enqueueCopyFromDevice`, `enqueueSetMemory`,
+///     `memCopyDtoD`) become graph nodes. Each new node is chained after the
+///     previous one (see `lastNode_`) to emulate the stream's in-order
+///     execution.
+///   - Setup / query calls (`memAlloc`, `memFree`, `loadFunction`,
+///     `getAttribute`, `getDeviceMemoryInfo`, `stream`, ...) forward to the
+///     builder's real backing context, so recorded nodes reference real
+///     handles/addresses.
+///   - Host-visible waits (`synchronize`, events, timers) hard-error, because
+///     they cannot be satisfied at record time; a kernel that reads a value
+///     back and branches on it must be hoisted out of the recorded region.
+///
+/// Assumes single-threaded recording (true for one forward pass).
+class RecordingDeviceContext : public DeviceContext {
+public:
+  /// \param initialDep the node that the first recorded operation depends on;
+  /// subsequent operations chain after each other. See
+  /// `DeviceGraphBuilder::recordingContext`.
+  RecordingDeviceContext(DeviceGraphBuilder &builder,
+                         DeviceGraphNode initialDep);
+  ~RecordingDeviceContext() override;
+
+  // ----- Buffer creation: owned by the underlying context ----- //
+
+  // A buffer created through the recording view must belong to the backing
+  // context, not to the view: the view cannot outlive the recorded region,
+  // its `synchronize()` hard-errors (so host readback via the buffer would
+  // fail), and the graph replays on the backing context's stream. Delegating
+  // creation tags the buffer with the backing context.
+  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) override;
+  ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize) override;
+
+  // ----- Recorded (write / launch / order-only) ----- //
+
+  ErrorOrSuccess enqueueFunctionExecDirect(
+      const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
+      uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+      uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
+      uint32_t argCount, const size_t *argSizes) override;
+  ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
+                                     size_t byteSize) override;
+  ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
+                                       size_t byteSize) override;
+  ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
+                                  size_t valSize) override;
+
+  // ----- Forwarded to the backing context ----- //
+
+  ErrorOr<DeviceFunctionRef>
+  loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
+               int32_t maxDynamicSharedBytes, StringRef debugLevel,
+               int32_t optimizationLevel) override;
+  ErrorOr<DeviceFunctionRef>
+  loadFunctionWithDebugName(StringRef moduleName, StringRef functionName,
+                            StringRef code, int32_t maxDynamicSharedBytes,
+                            StringRef debugLevel, int32_t optimizationLevel,
+                            StringRef debugName) override;
+  ErrorOr<int> getAttribute(Attribute attr) const override;
+  ErrorOr<DeviceStreamRef> stream() const override;
+
+  // ----- Hard-error (non-recordable host-visible waits) ----- //
+
+  ErrorOrSuccess synchronize() override;
+  ErrorOr<DeviceEventRef> enqueueEvent() override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
+  ErrorOr<DeviceTimerRef> startTimer() override;
+  ErrorOr<std::chrono::nanoseconds>
+  stopTimer(const DeviceTimer &timer) override;
+
+protected:
+  ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
+  ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
+                             size_t srcByteOffset, size_t srcByteSize,
+                             bool crossStreamSync) override;
+  MMapFileImplResult
+  memmapFileImpl(const std::filesystem::path &filename) const override;
+  void *driverContext() const override;
+
+private:
+  /// The current predecessor set for a new node: the last recorded node (or
+  /// empty for the first), which is what serializes operations in enqueue
+  /// order.
+  llvm::SmallVector<DeviceGraphNode, 1> currentDeps() const;
+  /// Advances `lastNode_` to `node` on success, or propagates its error.
+  ErrorOrSuccess chain(ErrorOr<DeviceGraphNode> node);
+
+  DeviceGraphBuilderRef builder_;
+  DeviceGraphNode lastNode_;
 };
 
 } // namespace M::Driver

@@ -21,6 +21,7 @@
 include "GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
+include "GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -254,6 +255,39 @@ def DeviceGraphAllocOp : MGP_DeviceGraphOp<"alloc", [
     $inChain `,` $runtimeSize `,` $graphBuilder ( `,` `align` $rawAlign^ )?
     attr-dict `:` qualified(type($outBuffer))
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphRecordingContextOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphRecordingContextOp : MGP_DeviceGraphOp<"recording_context", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+]> {
+  let summary = "Views a device-graph builder as a recording device context.";
+  let description = [{
+    Extracts a recording `!mogg.context` from a `!mgp.device_graph.builder`.
+    Operations dispatched against the returned context record into the builder
+    (in enqueue order) instead of executing eagerly.
+
+    This is how an execute-only kernel -- one without a node-free `build_graph`
+    method -- is recorded during device-graph synthesis: the recording stub
+    obtains this context and passes it as the launch argument of the kernel's
+    `mogg.call.execute`, so the kernel's ordinary `execute` dispatches record
+    into the graph. It appears only inside a device-graph build body and is
+    emitted to Mojo (never C++-lowered), lowering to
+    `DeviceGraphBuilder.recording_context()`.
+
+    Example:
+    ```mlir
+      %ctx = mgp.device_graph.recording_context %builder : !mogg.context
+    ```
+  }];
+
+  let arguments = (ins MGP_DeviceGraphBuilderType:$graphBuilder);
+  let results = (outs MOGG_Context:$context);
+
+  let assemblyFormat = "$graphBuilder attr-dict `:` qualified(type($context))";
 }
 
 //===----------------------------------------------------------------------===//

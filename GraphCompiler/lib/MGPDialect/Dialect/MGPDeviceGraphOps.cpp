@@ -164,7 +164,7 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue buildClosure = state.builder.lambda(
       "build", /*parameters=*/{}, /*arguments=*/{builderParam},
       /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
-      /*isAsync=*/false, /*captureConvention=*/"read",
+      /*isAsync=*/false, /*captureConvention=*/"imm",
       [&](const FunctionBody &functionBody) {
         // Builder block arg -> the closure's parameter.
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
@@ -269,6 +269,26 @@ LogicalResult DeviceGraphAllocOp::emitMojo(MOGG::EmitMojoState &state) {
 
 // The `mgp_device_graph_alloc` primitive raises (it allocates a device buffer).
 bool DeviceGraphAllocOp::isThrows() { return true; }
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphRecordingContextOp
+//===----------------------------------------------------------------------===//
+
+// Emits `var ctx_N = builder.recording_context()`: the recording device-context
+// view of the builder that execute-only kernels dispatch their `execute`
+// against.
+LogicalResult
+DeviceGraphRecordingContextOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
+  MojoValue result =
+      state.builder.var(builder.get(kFnDeviceGraphBuilderRecordingContext)());
+  state.setMojoValueFor(getContext(), result);
+  return success();
+}
+
+// `recording_context()` raises (it asks the driver for a recording context).
+bool DeviceGraphRecordingContextOp::isThrows() { return true; }
 
 //===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesOp
@@ -429,7 +449,7 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   // captures would need a finer per-capture convention; that does not arise
   // for the current single-dispatch bodies.)
   llvm::StringRef workConvention =
-      surfaced.empty() ? llvm::StringRef("read") : llvm::StringRef("mut");
+      surfaced.empty() ? llvm::StringRef("imm") : llvm::StringRef("mut");
 
   bool errOccurred = false;
   MojoValue workClosure = state.builder.lambda(

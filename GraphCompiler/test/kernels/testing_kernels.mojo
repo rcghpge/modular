@@ -237,7 +237,7 @@ struct Foo:
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
 
-        foreach[func](z, ctx)
+        foreach[func, target=target](z, ctx)
 
 
 @extensibility.register_shape_function("imposter_add")
@@ -1830,6 +1830,22 @@ struct ElemwiseAddWithIndex:
         comptime for i in range(width):
             bias[i] = Scalar[dtype](indices[0] + i)
         return input + bias
+
+
+# Kernel that exposes only an `execute` entry point. Device-graph synthesis
+# must record it through the builder's recording context, since there is no
+# `build_graph` method to call.
+@extensibility.register("imposter_execute_only")
+struct ExecuteOnly:
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ):
+        pass
 
 
 # Kernel that exposes both execute and build_graph entry points.

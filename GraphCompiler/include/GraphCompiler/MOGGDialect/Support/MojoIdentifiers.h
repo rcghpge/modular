@@ -274,6 +274,8 @@ constexpr llvm::StringLiteral kStructDeviceGraphNode =
 constexpr llvm::StringLiteral kFnDeviceGraphCreate = "create";
 constexpr llvm::StringLiteral kFnDeviceGraphRegion = "region";
 constexpr llvm::StringLiteral kFnDeviceGraphBuilderContext = "context";
+constexpr llvm::StringLiteral kFnDeviceGraphBuilderRecordingContext =
+    "recording_context";
 constexpr llvm::StringLiteral kFnDeviceGraphBuilderAddOutput = "add_output";
 constexpr llvm::StringLiteral kParameterDependencies = "dependencies";
 constexpr llvm::StringLiteral kStructManagedTensorSlice =

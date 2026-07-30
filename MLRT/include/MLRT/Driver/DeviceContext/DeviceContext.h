@@ -897,11 +897,15 @@ public:
 
   Device &device() const;
 
-  // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize);
+  // DeviceBuffer allocation. Virtual so a decorating context (e.g. the
+  // graph-recording `RecordingDeviceContext`) can delegate creation to the
+  // context that should own the buffer, rather than tagging the buffer with
+  // the decorator.
+  virtual ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize);
 
-  // Host memory allocation.
-  ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize);
+  // Host memory allocation. Virtual for the same reason as
+  // `enqueueCreateBuffer` above.
+  virtual ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize);
 
   /// Allocates an 8-byte `CompletionFlag` in pinned host memory mapped
   /// into this device's address space (CUDA:
@@ -1224,6 +1228,10 @@ private:
   friend class MemoryManagerFreeList;
   friend class DeviceBuffer;
   friend class DeviceContextScope;
+  // The graph-recording context facade forwards allocation, memmap, and
+  // driver-context queries to the builder's backing context, which requires
+  // access to these protected members on a sibling instance.
+  friend class RecordingDeviceContext;
   // Following line is equivalent to:
   // FRIEND_TEST(GPUDeviceContextTest, DeviceContextScope)
   friend class GPUDeviceContextTest_DeviceContextScope_Test;

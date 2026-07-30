@@ -18,24 +18,45 @@ using namespace mlir;
 namespace {
 
 /// Locate the producer dispatch in a kernel stub body: the `mogg.call.execute`
-/// terminating a `mogg.with_trace`.
-CallExecuteOp findProducerDispatch(KernelStubOp stub, WithTraceOp &withTrace) {
-  CallExecuteOp result;
-  stub.walk([&](CallExecuteOp execute) {
-    result = execute;
-    withTrace = execute->getParentOfType<WithTraceOp>();
+/// (compute kernel) or `mogg.call.materialize` (view copy) terminating a
+/// `mogg.with_trace`.
+Operation *findProducerDispatch(KernelStubOp stub, WithTraceOp &withTrace) {
+  Operation *result = nullptr;
+  stub.walk([&](Operation *op) {
+    if (!isa<CallExecuteOp, CallMaterializeOp>(op))
+      return WalkResult::advance();
+    result = op;
+    withTrace = op->getParentOfType<WithTraceOp>();
     return WalkResult::interrupt();
   });
   return result;
 }
 
+/// The launch context (`!mogg.context`) the producer dispatches against, or
+/// null if it takes none. Both producer ops expose it, but not through a shared
+/// interface.
+Value getProducerLaunchContext(Operation *producer) {
+  if (auto execute = dyn_cast<CallExecuteOp>(producer))
+    return execute.getDeviceContext();
+  return cast<CallMaterializeOp>(producer).getDeviceContext();
+}
+
 /// Build the sibling recording stub `@<original>_build_graph` from `original`
 /// and insert it at module scope via `symtab`. The clone mirrors the original
-/// body, but its producer dispatch (`mogg.call.execute` inside
-/// `mogg.with_trace`) becomes a node-free `mogg.call.build_graph` recording
-/// into a `!mgp.device_graph.builder` (the retyped launch arg). The stub
-/// returns nothing -- node ordering is carried by the enclosing
-/// `mgp.device_graph.dependencies` op, not threaded through the stub.
+/// body with its launch arg retyped from `!mogg.context` to
+/// `!mgp.device_graph.builder`, and how the producer dispatch (a
+/// `mogg.call.execute` or `mogg.call.materialize` inside `mogg.with_trace`)
+/// records depends on the producer:
+///   - A `mogg.call.execute` whose kernel has a node-free `build_graph` method:
+///     the dispatch becomes a `mogg.call.build_graph` recording into the
+///     builder directly (the `mogg.with_trace` is dropped).
+///   - An execute-only kernel (`mogg.call.execute` with no `build_graph`) or a
+///     `mogg.call.materialize` view copy: the producer is kept, but its launch
+///     context is repointed to a recording device context viewed off the
+///     builder via `mgp.device_graph.recording_context`, so the ordinary
+///     dispatch records into the graph.
+/// Either way the stub returns nothing -- node ordering is carried by the
+/// enclosing `mgp.device_graph.dependencies` op, not threaded through the stub.
 /// Returns the sibling's symbol name.
 FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
                                           KernelStubOp original) {
@@ -43,55 +64,87 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   OwningOpRef<KernelStubOp> clone = cast<KernelStubOp>(original->clone());
 
   WithTraceOp withTrace;
-  CallExecuteOp execute = findProducerDispatch(*clone, withTrace);
-  if (!execute) {
+  Operation *producer = findProducerDispatch(*clone, withTrace);
+  if (!producer) {
     return original.emitError(
         "device-graph recording stub generation: kernel stub has no "
-        "`mogg.with_trace { mogg.call.execute }` producer dispatch");
+        "`mogg.with_trace { mogg.call.execute | mogg.call.materialize }` "
+        "producer dispatch");
   }
 
   // The launch context the producer dispatches against must be the stub's last
   // block argument -- that is the slot the builder takes over.
   Block &body = clone->getBodyBlock();
-  Value context = execute.getDeviceContext();
+  Value context = getProducerLaunchContext(producer);
   if (body.getNumArguments() == 0 || context != body.getArguments().back()) {
     return original.emitError(
         "device-graph recording stub generation: expected the kernel stub's "
         "last argument to be the producer launch context");
   }
 
+  // Only a `mogg.call.execute` whose kernel declares a node-free `build_graph`
+  // method records through `mogg.call.build_graph`. Everything else -- an
+  // execute-only kernel or a `mogg.call.materialize` view copy -- records by
+  // dispatching the producer against a recording device context.
+  auto execute = dyn_cast<CallExecuteOp>(producer);
+  bool useBuildGraph = false;
+  if (execute) {
+    auto decl =
+        symtab.lookup<KernelDeclOp>(execute.getKernelSymNameAttr().getValue());
+    useBuildGraph = decl && decl.getBuildGraph().has_value();
+  }
+
   // Snapshot the producer's operands/attrs *before* retyping the launch arg:
   // `getKernelInputs()` keys off the context type to drop it, so it must run
-  // while the arg is still `!mogg.context`.
-  SmallVector<Value> kernelInputs = execute.getKernelInputs();
-  SmallVector<Value> outputs = llvm::to_vector(execute.getOutputs());
-  StringAttr kernelSymName = execute.getKernelSymNameAttr();
-  StringAttr moOpName = execute.getMoOpNameAttr();
-  UnitAttr isThrows = execute.getIsThrowsAttr();
-  DictionaryAttr kernelParams = execute.getKernelParamAttr();
+  // while the arg is still `!mogg.context`. Only the `build_graph` path
+  // rebuilds the dispatch, so this is unneeded otherwise.
+  SmallVector<Value> kernelInputs, outputs;
+  StringAttr kernelSymName, moOpName;
+  UnitAttr isThrows;
+  DictionaryAttr kernelParams;
+  if (useBuildGraph) {
+    kernelInputs = execute.getKernelInputs();
+    outputs = llvm::to_vector(execute.getOutputs());
+    kernelSymName = execute.getKernelSymNameAttr();
+    moOpName = execute.getMoOpNameAttr();
+    isThrows = execute.getIsThrowsAttr();
+    kernelParams = execute.getKernelParamAttr();
+  }
 
   // Retype the launch arg: `!mogg.context` -> `!mgp.device_graph.builder`.
   BlockArgument launchArg = body.getArguments().back();
   launchArg.setType(DeviceGraphBuilderType::get(ctx));
 
-  Operation &insertionPoint = withTrace ? *withTrace : *execute;
+  Operation &insertionPoint = withTrace ? *withTrace : *producer;
 
-  // Replace `with_trace { call.execute }` with a `call.build_graph` recording
-  // into the builder. `call.build_graph` is a plain value op (not a kernel
-  // terminator), so the wrapping `with_trace` is dropped.
-  OpBuilder builder(&insertionPoint);
-  CallBuildGraphOp::create(builder,
-                           /*location=*/execute.getLoc(),
-                           /*kernelSymName=*/kernelSymName,
-                           /*moOpName=*/moOpName,
-                           /*isThrows=*/isThrows,
-                           /*inputs=*/kernelInputs,
-                           /*outputs=*/outputs,
-                           /*graphBuilder=*/launchArg,
-                           /*kernel_param=*/kernelParams);
-
-  if (withTrace)
-    withTrace.erase();
+  if (useBuildGraph) {
+    OpBuilder builder(&insertionPoint);
+    // Replace `with_trace { call.execute }` with a `call.build_graph` recording
+    // into the builder. `call.build_graph` is a plain value op (not a kernel
+    // terminator), so the wrapping `with_trace` is dropped.
+    CallBuildGraphOp::create(builder,
+                             /*location=*/producer->getLoc(),
+                             /*kernelSymName=*/kernelSymName,
+                             /*moOpName=*/moOpName,
+                             /*isThrows=*/isThrows,
+                             /*inputs=*/kernelInputs,
+                             /*outputs=*/outputs,
+                             /*graphBuilder=*/launchArg,
+                             /*kernel_param=*/kernelParams);
+    if (withTrace)
+      withTrace.erase();
+  } else {
+    auto builder = OpBuilder::atBlockBegin(&clone->getBodyBlock());
+    // Execute-only kernel or view copy: keep the producer dispatch, but repoint
+    // its launch context from the (now builder-typed) block arg to a recording
+    // device context viewed off the builder. The dispatch then records into the
+    // graph instead of running eagerly.
+    auto recordingContext = DeviceGraphRecordingContextOp::create(
+        builder, producer->getLoc(), M::MOGG::ContextType::get(ctx), launchArg);
+    launchArg.replaceUsesWithIf(
+        recordingContext.getContext(),
+        [&](OpOperand &use) { return use.getOwner() == producer; });
+  }
 
   // The recording is node-free: ordering is expressed by the enclosing
   // `mgp.device_graph.dependencies` op (which lowers to

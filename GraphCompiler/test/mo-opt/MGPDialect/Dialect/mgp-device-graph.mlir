@@ -117,6 +117,8 @@ func.func @device_graph_builder_ops_round_trip(
       // CHECK: mgp.device_graph.alloc %{{.+}}, %{{.+}}, %{{.+}}, align 256 : !mgp.buffer<<"gpu", 0>>
       %buf = mgp.device_graph.alloc %bch, %size, %builder, align 256
           : !mgp.buffer<<"gpu", 0>>
+      // CHECK: %{{.+}} = mgp.device_graph.recording_context %{{.+}} : !mogg.context
+      %rec = mgp.device_graph.recording_context %builder : !mogg.context
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<() -> ()>

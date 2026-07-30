@@ -2710,6 +2710,7 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
   // result.
   KernelDeclOp buildGraphKernelDecl =
       state.registry.lookupKernelBySymName(getKernelSymName());
+
   KernelDeclAdaptor buildGraphAdaptor(buildGraphKernelDecl);
   if (!buildGraphAdaptor.buildGraphFunction)
     return emitOpError("kernel '")
@@ -2718,13 +2719,11 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
       *buildGraphAdaptor.buildGraphFunction;
 
   // Collect kernel I/Os: DPS outputs, then inputs (mirroring `execute`).
-  SmallVector<MojoValue> kernelOperands;
-  for (Value val : getOutputs())
-    kernelOperands.push_back(state.getMojoValueFor(val));
+  auto kernelOperands = llvm::map_to_vector(
+      getOutputs(), [&](Value val) { return state.getMojoValueFor(val); });
 
   auto inputs = getInputs();
-  for (unsigned i = 0; i < inputs.size(); ++i) {
-    Value input = inputs[i];
+  for (auto [i, input] : llvm::enumerate(inputs)) {
     MojoValue inputValue = state.getMojoValueFor(input);
 
     // Transform mutable inputs if the kernel expects an InputTensor.

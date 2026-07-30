@@ -407,7 +407,12 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_HtoD_async(DeviceContext *ctx,
                                                             DeviceBuffer *dst,
                                                             const void *src) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_HtoD_async", TRACY_COLOR_GRAY);
-  assert((ctx == &dst->context()) && "ctx not matching dst");
+  // Compare devices, not context identity: a recording-context view
+  // (`DeviceGraphBuilder::recordingContext`) is a distinct DeviceContext object
+  // that shares the backing device, and legitimately enqueues copies of buffers
+  // owned by that device.
+  assert((&ctx->device() == &dst->context().device()) &&
+         "ctx device not matching dst");
   return checkSuccess(ctx->enqueueCopyToDevice(*dst, src));
 }
 
@@ -415,7 +420,10 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_DtoH_async(DeviceContext *ctx,
                                                             void *dst,
                                                             DeviceBuffer *src) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_DtoH_async", TRACY_COLOR_GRAY);
-  assert((ctx == &src->context()) && "ctx not matching src");
+  // Compare devices, not context identity (see HtoD_async above): a
+  // recording-context view shares the backing device but is a distinct object.
+  assert((&ctx->device() == &src->context().device()) &&
+         "ctx device not matching src");
   return checkSuccess(ctx->enqueueCopyFromDevice(dst, *src));
 }
 
@@ -521,7 +529,11 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
     uint32_t argCount, const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_enqueueFunctionDirect",
                        TRACY_COLOR_GRAY);
-  assert((ctx == &func->context()) && "ctx not matching func");
+  // Compare devices, not context identity: a recording-context view
+  // (`DeviceGraphBuilder::recordingContext`) records launches of functions
+  // compiled on the underlying context, which shares the same device.
+  assert((&ctx->device() == &func->context().device()) &&
+         "ctx device not matching func");
   return checkSuccess(ctx->enqueueFunctionExecDirect(
       *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes, attrs,
       numAttrs, args, argCount, argSizes));
@@ -948,6 +960,20 @@ AsyncRT_DeviceContext_createGraphBuilder(DeviceGraphBuilder **result,
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_createGraphBuilder",
                        TRACY_COLOR_GRAY);
   return checkRef(result, ctx->createGraphBuilder());
+}
+
+// Returns a DeviceContext facade that records operations enqueued through it
+// into `builder` instead of executing them eagerly. `seedNodeId` is the node
+// that recorded operations chain after — the Mojo layer seeds it with the
+// ambient/region dependencies, since the builder does not model dependencies
+// itself. Ownership of the returned context is transferred to Mojo (released
+// via AsyncRT_DeviceContext_release).
+MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_recordingContext(
+    DeviceContext **result, DeviceGraphBuilder *builder, int32_t seedNodeId) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_recordingContext",
+                       TRACY_COLOR_GRAY);
+  return checkRef(result,
+                  builder->recordingContext(DeviceGraphNode{seedNodeId}));
 }
 
 MODULAR_EXPORT void
