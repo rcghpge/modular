@@ -635,7 +635,10 @@ mojo_shared_library(
         "//:hal_device_context_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    deps = ["@mojo//:std"],
+    deps = [
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
 )
 
 # HAL replacement for the DeviceContext C++ API: a pure shim over the Mojo HAL

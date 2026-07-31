@@ -25,7 +25,7 @@ from std.gpu.host._hal import get_device_spec
 from std.gpu.host._hal.context import Buffer
 
 comptime _HALRawBuffer = Buffer[get_device_spec[0]()]
-from std.gpu.host import (
+from max.gpu.host import (
     DeviceBuffer,
     DeviceContext,
     DeviceEvent,
