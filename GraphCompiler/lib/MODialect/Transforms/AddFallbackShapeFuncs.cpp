@@ -224,17 +224,28 @@ struct AddFallbackShapeFunctions
                            << asOp.getSymbol() << "'";
           return mlir::WalkResult::interrupt();
         }
+
+        // We only get here if the op declares its own output dims, and a shape
+        // function is the only thing that can compute them.
+        if (!registry.containsShapeFunction(asOp.getSymbol())) {
+          asOp.emitError()
+              << "custom op '" << asOp.getSymbol()
+              << "' with data-dependent output dimensions requires a "
+                 "registered shape function; add "
+                 "'@extensibility.register_shape_function(\""
+              << asOp.getSymbol() << "\")' to the kernel";
+          return mlir::WalkResult::interrupt();
+        }
+
         // Collect compile-time parameter names so the fallback can forward
         // matching custom-op attributes to the shape function call. Sourced
         // from the shape fn's own params (it may differ from execute, e.g.
         // shape typically omits `target`/`_trace_name`).
         StringSet<> inputParams;
-        if (registry.containsShapeFunction(asOp.getSymbol())) {
-          auto shapeFn =
-              registry.lookupShapeFunction(asOp.getSymbol()).getFunction();
-          for (mlir::Attribute attr : shapeFn.getParams())
-            inputParams.insert(mlir::cast<KGEN::ParamDeclAttr>(attr).getName());
-        }
+        auto shapeFn =
+            registry.lookupShapeFunction(asOp.getSymbol()).getFunction();
+        for (mlir::Attribute attr : shapeFn.getParams())
+          inputParams.insert(mlir::cast<KGEN::ParamDeclAttr>(attr).getName());
 
         auto result =
             Fallback<MO::CustomOp>{}.build(graph, builder, asOp, inputParams);

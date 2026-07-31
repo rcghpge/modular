@@ -83,8 +83,8 @@ bool MojoRegistry::containsPrimitive(llvm::StringRef name) const {
 ShapeFunctionDeclOp
 MojoRegistry::lookupShapeFunction(llvm::StringRef name) const {
   auto it = shapeFuncByName.find(name);
-  ASSERT_STREAM(it != shapeFuncByName.end(),
-                "no shape function registered for '" << name << "'");
+  if (it == shapeFuncByName.end())
+    return {};
   return it->second;
 }
 

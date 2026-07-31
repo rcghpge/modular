@@ -966,9 +966,17 @@ ErrorOr<KernelOp> MOGGKernelBuilder::lowerToKernelBase() {
   // avoid validation errors.
   bool isShapeFuncInvocation = isa<MO::InvokeShapeFuncOp>(moOp);
   std::optional<KernelDeclFunctionAdaptor> shapeFnAdaptor;
-  if (isShapeFuncInvocation)
-    shapeFnAdaptor = KernelDeclFunctionAdaptor(registry.lookupShapeFunction(
-        cast<MO::InvokeShapeFuncOp>(moOp).getShapeFuncName()));
+  if (isShapeFuncInvocation) {
+    StringRef shapeFuncName =
+        cast<MO::InvokeShapeFuncOp>(moOp).getShapeFuncName();
+    ShapeFunctionDeclOp shapeDecl = registry.lookupShapeFunction(shapeFuncName);
+    if (!shapeDecl)
+      return Error(llvm::formatv(
+          "'{0}' requires a registered shape function; add "
+          "'@extensibility.register_shape_function(\"{0}\")' to the kernel",
+          shapeFuncName));
+    shapeFnAdaptor = KernelDeclFunctionAdaptor(shapeDecl);
+  }
   const KernelDeclFunctionAdaptor *functionToMap =
       isShapeFuncInvocation ? &*shapeFnAdaptor : &*adaptor.executeFunction;
 
