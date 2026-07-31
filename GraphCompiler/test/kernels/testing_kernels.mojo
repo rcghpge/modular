@@ -2356,3 +2356,31 @@ struct MapLowerVarSum:
             return acc
 
         foreach[func](res, ctx)
+
+
+@extensibility.register("map_lower_two_fused_inputs")
+struct MapLowerTwoFusedInputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res: OutputTensor,
+        a: FusedInputTensor,
+        b: FusedInputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
+@extensibility.register("map_lower_partial_fused_inputs")
+struct MapLowerPartialFusedInputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        res: OutputTensor,
+        a: FusedInputTensor,
+        b: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass

@@ -67,13 +67,31 @@ MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
   return epilogue;
 }
 
+MAP::IterPrologueOp buildLoadPrologue(OpBuilder &builder, Location loc,
+                                      Value in) {
+  auto inType = cast<MO::TensorType>(in.getType());
+  auto indexType = MAP::IndexType::get(builder.getContext(), inType.getRank());
+
+  auto prologue =
+      MAP::IterPrologueOp::create(builder, loc, in.getType(), ValueRange{in});
+
+  OpBuilder::InsertionGuard guard(builder);
+  Block *body = builder.createBlock(&prologue.getBody());
+  BlockArgument idx = body->addArgument(indexType, loc);
+  BlockArgument cap = body->addArgument(in.getType(), loc);
+  builder.setInsertionPointToStart(body);
+  Value loaded = MAP::LoadOp::create(builder, loc, inType.getElementType(),
+                                     /*tensor=*/cap, /*index=*/idx);
+  MAP::YieldOp::create(builder, loc, loaded);
+  return prologue;
+}
+
 LogicalResult lowerToOpaque(Operation *op,
                             const MOGG::KernelDeclAdaptor &adaptor,
                             const MOGG::KernelDeclOperandMapping &mapping) {
+  llvm::DenseMap<uint64_t, bool> inputFusible;
   for (const auto &[idx, arg] : mapping.operandMapping)
-    if (arg.isFusedTensorType())
-      return op->emitOpError(
-          "MOToMAP: input (prologue) fusion is not yet supported");
+    inputFusible[idx] = arg.isFusedTensorType();
 
   llvm::DenseMap<uint64_t, bool> outputFusible;
   for (const auto &[idx, arg] : mapping.resultMapping)
@@ -93,6 +111,18 @@ LogicalResult lowerToOpaque(Operation *op,
     outs.push_back(body->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(body);
+  SmallVector<Value> callInputs;
+  for (auto [idx, operand] : llvm::enumerate(op->getOperands())) {
+    if (!inputFusible.lookup(idx)) {
+      callInputs.push_back(operand);
+      continue;
+    }
+    if (!isa<MO::TensorType>(operand.getType()))
+      return op->emitOpError(
+          "MOToMAP: input fusion is only supported for tensor operands");
+    callInputs.push_back(buildLoadPrologue(builder, loc, operand).getResult());
+  }
+
   SmallVector<Value> callOutputs;
   for (auto [idx, out] : llvm::enumerate(outs)) {
     if (!outputFusible.lookup(idx)) {
@@ -111,7 +141,7 @@ LogicalResult lowerToOpaque(Operation *op,
       FlatSymbolRefAttr::get(op->getContext(),
                              adaptor.fullyResolvedName.strref()),
       inferParameters(op, builder),
-      /*inputs=*/op->getOperands(),
+      /*inputs=*/callInputs,
       /*outputs=*/callOutputs);
 
   // Every output here is DPS (the output block args `outs` themselves are the
