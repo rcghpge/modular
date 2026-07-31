@@ -7,15 +7,15 @@
 // RUN: mt --execute %t_no_fused.mlir | FileCheck %s
 
 // FUSE-CHECK-LABEL: --- Running 'test_myint':
-// FUSE-CHECK-NEXT: MyInt.__del__ 8
-// FUSE-CHECK-NEXT: MyInt.__del__ 64
+// FUSE-CHECK-NEXT: MyInt.__deinit__ 8
+// FUSE-CHECK-NEXT: MyInt.__deinit__ 64
 // CHECK-NOT:  <error: Assert>
 
 // CHECK-LABEL: --- Running 'test_myint':
 // CHECK-NEXT: MyInt.__moveinit__ 8
 // CHECK-NEXT: MyInt.__moveinit__ 64
-// CHECK-NEXT: MyInt.__del__ 8
-// CHECK-NEXT: MyInt.__del__ 64
+// CHECK-NEXT: MyInt.__deinit__ 8
+// CHECK-NEXT: MyInt.__deinit__ 64
 // CHECK-NOT:  <error: Assert>
 
 mgp.model @test_myint: mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -36,13 +36,13 @@ mgp.model @test_myint: mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
 }
 
 // FUSE-CHECK-LABEL: --- Running 'test_myintreg2':
-// FUSE-CHECK-NEXT: MyIntReg2.__del__ 7
-// FUSE-CHECK-NEXT: MyIntReg2.__del__ 49
+// FUSE-CHECK-NEXT: MyIntReg2.__deinit__ 7
+// FUSE-CHECK-NEXT: MyIntReg2.__deinit__ 49
 // CHECK-NOT:  <error: Assert>
 
 // CHECK-LABEL: --- Running 'test_myintreg2':
-// CHECK-NEXT: MyIntReg2.__del__ 7
-// CHECK-NEXT: MyIntReg2.__del__ 49
+// CHECK-NEXT: MyIntReg2.__deinit__ 7
+// CHECK-NEXT: MyIntReg2.__deinit__ 49
 // CHECK-NOT:  <error: Assert>
 
 mgp.model @test_myintreg2: mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {

@@ -105,8 +105,8 @@ struct MyCustomScalarRegSI32(ImplicitlyCopyable, RegisterPassable):
         print("MyCustomScalarRegSI32.__init__", val)
         self.val = val
 
-    def __del__(deinit self):
-        print("MyCustomScalarRegSI32.__del__", self.val)
+    def __deinit__(deinit self):
+        print("MyCustomScalarRegSI32.__deinit__", self.val)
 
 
 # It is intentional there are no methods which consume this.
@@ -119,8 +119,8 @@ struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterPassable):
         print("MyCustomScalarRegF32.__init__", val)
         self.val = val
 
-    def __del__(deinit self):
-        print("MyCustomScalarRegF32.__del__", self.val)
+    def __deinit__(deinit self):
+        print("MyCustomScalarRegF32.__deinit__", self.val)
 
 
 @extensibility.register("tensor_to_custom_scalar_si32_reg")
@@ -173,8 +173,8 @@ struct MyCustomScalarSI32(ImplicitlyCopyable):
         print("MyCustomScalarSI32.__init__", val)
         self.val = val
 
-    def __del__(deinit self):
-        print("MyCustomScalarSI32.__del__", self.val)
+    def __deinit__(deinit self):
+        print("MyCustomScalarSI32.__deinit__", self.val)
 
 
 @extensibility.register("tensor_to_custom_scalar_si32")
@@ -1314,8 +1314,8 @@ struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, RegisterPassable):
         print("MyCustomScalarReg.__init__", val)
         self.val = val
 
-    def __del__(deinit self):
-        print("MyCustomScalarReg.__del__", self.val)
+    def __deinit__(deinit self):
+        print("MyCustomScalarReg.__deinit__", self.val)
 
 
 @extensibility.register("buff_to_my_custom_scalar_reg")

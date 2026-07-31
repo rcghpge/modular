@@ -48,7 +48,7 @@
 
 // CHECK-LABEL: Running 'scalar_to_scalar_ndbuff_reg'
 // CHECK{LITERAL}: MyCustomScalarReg.__init__ 42
-// CHECK{LITERAL}: MyCustomScalarReg.__del__ 42
+// CHECK{LITERAL}: MyCustomScalarReg.__deinit__ 42
 // CHECK{LITERAL}: 'scalar_to_scalar_ndbuff_reg' returned tensor<1xsi32> [42]
 
 mo.graph @scalar_to_scalar_ndbuff_reg() -> (!mo.tensor<[1], si32>) {

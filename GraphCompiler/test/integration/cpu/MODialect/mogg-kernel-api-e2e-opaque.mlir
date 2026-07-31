@@ -3,9 +3,9 @@
 
 // CHECK: Running 'test_kernel_with_0_dps_outputs_reg_types':
 // CHECK-DAG: MyCustomScalarRegSI32.__init__ 100
-// CHECK-DAG: MyCustomScalarRegSI32.__del__ 100
+// CHECK-DAG: MyCustomScalarRegSI32.__deinit__ 100
 // CHECK-DAG: MyCustomScalarRegSI32.__init__ 42
-// CHECK-DAG: MyCustomScalarRegSI32.__del__ 42
+// CHECK-DAG: MyCustomScalarRegSI32.__deinit__ 42
 // CHECK: 'test_kernel_with_0_dps_outputs_reg_types' returned tensor<1xsi32> [142]
 mo.graph @test_kernel_with_0_dps_outputs_reg_types() -> (!mo.tensor<[1], si32>) {
   %const1 = mo.constant {value = #M.dense_array<100> : tensor<1xsi32>} : !mo.tensor<[1], si32>
@@ -21,9 +21,9 @@ mo.graph @test_kernel_with_0_dps_outputs_reg_types() -> (!mo.tensor<[1], si32>) 
 
 // CHECK: Running 'test_kernel_with_0_dps_outputs_mem_types':
 // CHECK-DAG: MyCustomScalarSI32.__init__ 100
-// CHECK-DAG: MyCustomScalarSI32.__del__ 100
+// CHECK-DAG: MyCustomScalarSI32.__deinit__ 100
 // CHECK-DAG: MyCustomScalarSI32.__init__ 42
-// CHECK-DAG: MyCustomScalarSI32.__del__ 42
+// CHECK-DAG: MyCustomScalarSI32.__deinit__ 42
 // CHECK: 'test_kernel_with_0_dps_outputs_mem_types' returned tensor<1xsi32> [142]
 mo.graph @test_kernel_with_0_dps_outputs_mem_types() -> (!mo.tensor<[1], si32>) {
   %const1 = mo.constant {value = #M.dense_array<100> : tensor<1xsi32>} : !mo.tensor<[1], si32>
@@ -44,9 +44,9 @@ mo.graph @test_kernel_with_0_dps_outputs_mem_types() -> (!mo.tensor<[1], si32>) 
 //
 // CHECK: Running 'test_throwing_kernel_with_mem_types':
 // CHECK-DAG: MyCustomScalarSI32.__init__ 200
-// CHECK-DAG: MyCustomScalarSI32.__del__ 200
+// CHECK-DAG: MyCustomScalarSI32.__deinit__ 200
 // CHECK-DAG: MyCustomScalarSI32.__init__ 58
-// CHECK-DAG: MyCustomScalarSI32.__del__ 58
+// CHECK-DAG: MyCustomScalarSI32.__deinit__ 58
 // CHECK: 'test_throwing_kernel_with_mem_types' returned tensor<1xsi32> [258]
 mo.graph @test_throwing_kernel_with_mem_types() -> (!mo.tensor<[1], si32>) {
   %const1 = mo.constant {value = #M.dense_array<200> : tensor<1xsi32>} : !mo.tensor<[1], si32>
