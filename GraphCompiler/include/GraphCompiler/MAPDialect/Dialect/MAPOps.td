@@ -148,7 +148,35 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
 }
 
 //===----------------------------------------------------------------------===//
-// map.call.opaque
+// map.iter.prologue
+//===----------------------------------------------------------------------===//
+
+def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
+    IsolatedFromAbove,
+    SingleBlock,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  ]> {
+  let summary = "A load-path callback inlined into an opaque kernel's input.";
+  let description = [{
+    An SSA callback the enclosing kernel's `map.call` consumes on its `inputs`:
+    it is handed an index and produces the value the kernel should read at
+    that index, as if it had loaded the bound tensor directly. The leading
+    block argument is the index; any remaining block arguments are the
+    captured operands (the tensors the body reads from), which are the op's
+    actual operands. The region is isolated from above; the `capturing (...)`
+    clause is print/parse sugar over those operands. Terminated by
+    `map.yield`.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$captures);
+  let results = (outs AnyType:$result);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.call
 //===----------------------------------------------------------------------===//
 
 def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [

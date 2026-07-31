@@ -260,6 +260,96 @@ void IterEpilogueOp::getAsmBlockArgumentNames(Region &region,
 }
 
 //===----------------------------------------------------------------------===//
+// map.iter.prologue
+//===----------------------------------------------------------------------===//
+
+ParseResult IterPrologueOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Leading block arg: ( %idx : tIdx )
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  if (parser.parseArgumentList(entryArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true))
+    return failure();
+
+  // capturing ( %inner = %outer : type, ... ): same sugar as
+  // map.iter.epilogue -- see there for why the region can be isolated from
+  // above yet have the body read as if it referenced the outer values
+  // directly.
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  if (parser.parseKeyword("capturing") || parser.parseLParen())
+    return failure();
+  if (failed(parser.parseOptionalRParen())) {
+    do {
+      OpAsmParser::Argument innerArg;
+      OpAsmParser::UnresolvedOperand outer;
+      Type type;
+      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
+          parser.parseOperand(outer) || parser.parseColonType(type))
+        return failure();
+      innerArg.type = type;
+      entryArgs.push_back(innerArg);
+      captures.push_back(outer);
+      captureTypes.push_back(type);
+    } while (succeeded(parser.parseOptionalComma()));
+    if (parser.parseRParen())
+      return failure();
+  }
+  if (parser.resolveOperands(captures, captureTypes,
+                             parser.getCurrentLocation(), result.operands))
+    return failure();
+
+  // body region (isolated; entry args are [idx, captures...]).
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
+    return failure();
+
+  // : result-type
+  Type resultType;
+  if (parser.parseColonType(resultType))
+    return failure();
+  result.addTypes(resultType);
+
+  return parser.parseOptionalAttrDict(result.attributes);
+}
+
+void IterPrologueOp::print(OpAsmPrinter &p) {
+  Block &block = getBody().front();
+  ValueRange captures = getCaptures();
+  unsigned numLeading = block.getNumArguments() - captures.size();
+
+  p << " (";
+  printValuesWithTypes(p, block.getArguments().take_front(numLeading));
+  p << ") capturing (";
+  llvm::interleaveComma(
+      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
+        BlockArgument inner = block.getArgument(numLeading + i);
+        p << inner << " = " << captures[i] << " : " << inner.getType();
+      });
+  p << ") ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p << " : " << getResult().getType();
+  p.printOptionalAttrDict((*this)->getAttrs());
+}
+
+void IterPrologueOp::getAsmBlockArgumentNames(Region &region,
+                                              OpAsmSetValueNameFn setNameFn) {
+  if (region.empty())
+    return;
+  auto args = region.front().getArguments();
+  unsigned numCaptures = getCaptures().size();
+  unsigned numLeading = args.size() - numCaptures;
+  static constexpr const char *kLeadingNames[] = {"idx"};
+  for (auto [i, arg] : llvm::enumerate(args)) {
+    if (i < numLeading) {
+      setNameFn(arg, i < 1 ? kLeadingNames[i] : ("arg" + std::to_string(i)));
+    } else {
+      unsigned c = i - numLeading;
+      setNameFn(arg, numCaptures == 1 ? "cap" : ("cap" + std::to_string(c)));
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // map.iter.foreach
 //===----------------------------------------------------------------------===//
 
