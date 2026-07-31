@@ -1264,7 +1264,7 @@ struct MGPRTTestFunc:
 struct MutableTestOp:
     @staticmethod
     def execute(in_place_tensor: MutableInputTensor) raises:
-        in_place_tensor._ptr.store(0, 0)
+        in_place_tensor._ptr.unsafe_store(0, 0)
 
 
 # For testing support for Scalar[...] in Mojo
@@ -1921,7 +1921,7 @@ struct DeviceGraphFill:
             var tid = global_idx.x
             if tid >= length:
                 return
-            ptr[tid] = Scalar[dtype](Self._fill_value)
+            ptr[unsafe_offset=tid] = Scalar[dtype](Self._fill_value)
 
         comptime block_dim = 256
         _ = builder.add_function(
@@ -1983,7 +1983,9 @@ struct DeviceGraphIncrement:
             var tid = global_idx.x
             if tid >= length:
                 return
-            out_ptr[tid] = in_ptr[tid] + Scalar[dtype](Self._increment)
+            out_ptr[unsafe_offset=tid] = in_ptr[unsafe_offset=tid] + Scalar[
+                dtype
+            ](Self._increment)
 
         comptime block_dim = 256
         _ = builder.add_function(

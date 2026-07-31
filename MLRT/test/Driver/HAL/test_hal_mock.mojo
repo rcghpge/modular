@@ -270,8 +270,8 @@ def test_unified_copy_device_to_device_on_queue() raises:
     var src = alloc[UInt8](n)
     var dst = alloc[UInt8](n)
     for i in range(n):
-        src[i] = UInt8(i)
-        dst[i] = UInt8(0)
+        src[unsafe_offset=i] = UInt8(i)
+        dst[unsafe_offset=i] = UInt8(0)
 
     var a_dev = ctx[].alloc_sync(UInt64(n))
     var b_dev = ctx[].alloc_sync(UInt64(n))
@@ -284,10 +284,10 @@ def test_unified_copy_device_to_device_on_queue() raises:
     queue[].synchronize()
 
     for i in range(n):
-        assert_equal(dst[i], src[i])
+        assert_equal(dst[unsafe_offset=i], src[unsafe_offset=i])
 
-    src.free()
-    dst.free()
+    src.unsafe_free()
+    dst.unsafe_free()
     ctx[].free_sync(a_dev^)
     ctx[].free_sync(b_dev^)
 
@@ -303,8 +303,8 @@ def test_unified_copy_sync_free_function() raises:
     var src = alloc[UInt8](n)
     var dst = alloc[UInt8](n)
     for i in range(n):
-        src[i] = UInt8(i * 2)
-        dst[i] = UInt8(0)
+        src[unsafe_offset=i] = UInt8(i * 2)
+        dst[unsafe_offset=i] = UInt8(0)
 
     var a_dev = ctx[].alloc_sync(UInt64(n))
     var b_dev = ctx[].alloc_sync(UInt64(n))
@@ -316,10 +316,10 @@ def test_unified_copy_sync_free_function() raises:
     queue[].synchronize()
 
     for i in range(n):
-        assert_equal(dst[i], src[i])
+        assert_equal(dst[unsafe_offset=i], src[unsafe_offset=i])
 
-    src.free()
-    dst.free()
+    src.unsafe_free()
+    dst.unsafe_free()
     ctx[].free_sync(a_dev^)
     ctx[].free_sync(b_dev^)
 
@@ -339,15 +339,15 @@ def test_sync_set_memory_and_fill_free_functions() raises:
     queue[].copy_from_device(out, dev.view())
     queue[].synchronize()
     for i in range(n):
-        assert_equal(out[i], UInt8(0x11))
+        assert_equal(out[unsafe_offset=i], UInt8(0x11))
 
     fill(dst=dev, value=UInt64(0x22222222), value_size=UInt64(4))
     queue[].copy_from_device(out, dev.view())
     queue[].synchronize()
     for i in range(n):
-        assert_equal(out[i], UInt8(0x22))
+        assert_equal(out[unsafe_offset=i], UInt8(0x22))
 
-    out.free()
+    out.unsafe_free()
     ctx[].free_sync(dev^)
 
 
@@ -362,8 +362,8 @@ def test_unified_copy_on_stream() raises:
     var src = alloc[UInt8](n)
     var dst = alloc[UInt8](n)
     for i in range(n):
-        src[i] = UInt8(255 - i)
-        dst[i] = UInt8(0)
+        src[unsafe_offset=i] = UInt8(255 - i)
+        dst[unsafe_offset=i] = UInt8(0)
 
     var a_dev = ctx[].alloc_sync(UInt64(n))
     var b_dev = ctx[].alloc_sync(UInt64(n))
@@ -374,10 +374,10 @@ def test_unified_copy_on_stream() raises:
     stream[].synchronize()
 
     for i in range(n):
-        assert_equal(dst[i], src[i])
+        assert_equal(dst[unsafe_offset=i], src[unsafe_offset=i])
 
-    src.free()
-    dst.free()
+    src.unsafe_free()
+    dst.unsafe_free()
     ctx[].free_sync(a_dev^)
     ctx[].free_sync(b_dev^)
 
@@ -413,7 +413,7 @@ def test_unified_copy_front_fill() raises:
     var host = alloc[UInt8](small_n)
     var out = alloc[UInt8](big_n)
     for i in range(small_n):
-        host[i] = UInt8(i + 1)
+        host[unsafe_offset=i] = UInt8(i + 1)
 
     # Fill `big` with 0xBB, stage the 16-byte payload into `small`, copy
     # `small` into the front of `big`, and read it back: front = payload,
@@ -424,12 +424,12 @@ def test_unified_copy_front_fill() raises:
     queue[].copy_from_device(out, big.view())
     queue[].synchronize()
     for i in range(small_n):
-        assert_equal(out[i], UInt8(i + 1))
+        assert_equal(out[unsafe_offset=i], UInt8(i + 1))
     for i in range(small_n, big_n):
-        assert_equal(out[i], UInt8(0xBB))
+        assert_equal(out[unsafe_offset=i], UInt8(0xBB))
 
-    host.free()
-    out.free()
+    host.unsafe_free()
+    out.unsafe_free()
     ctx[].free_sync(big^)
     ctx[].free_sync(small^)
 
@@ -456,15 +456,15 @@ def test_unified_copy_pinned() raises:
     var in_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_in)
     var out_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_out)
     for i in range(n):
-        in_ptr[i] = UInt8(i + 3)
-        out_ptr[i] = UInt8(0)
+        in_ptr[unsafe_offset=i] = UInt8(i + 3)
+        out_ptr[unsafe_offset=i] = UInt8(0)
 
     # pinned -> device -> pinned through the queue.
     queue[].copy(dst=dev, src=pinned_in)
     queue[].copy(dst=pinned_out, src=dev)
     queue[].synchronize()
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(i + 3))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(i + 3))
 
     # pinned -> pinned is purely host-side and cannot be enqueued...
     with assert_raises(contains="cannot be enqueued"):
@@ -472,10 +472,10 @@ def test_unified_copy_pinned() raises:
 
     # ...but the synchronous free `copy` performs it as a memcpy.
     for i in range(n):
-        out_ptr[i] = UInt8(0)
+        out_ptr[unsafe_offset=i] = UInt8(0)
     copy(dst=pinned_out, src=pinned_in)
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(i + 3))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(i + 3))
 
     ctx[].free_host_pinned(pinned_in^)
     ctx[].free_host_pinned(pinned_out^)
@@ -497,13 +497,13 @@ def test_unified_copy_free_function_pinned_device() raises:
     var in_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_in)
     var out_ptr = ctx[].memory_get_host_address[MutAnyOrigin](pinned_out)
     for i in range(n):
-        in_ptr[i] = UInt8(200 - i)
-        out_ptr[i] = UInt8(0)
+        in_ptr[unsafe_offset=i] = UInt8(200 - i)
+        out_ptr[unsafe_offset=i] = UInt8(0)
 
     copy(dst=dev, src=pinned_in)
     copy(dst=pinned_out, src=dev)
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(200 - i))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(200 - i))
 
     ctx[].free_host_pinned(pinned_in^)
     ctx[].free_host_pinned(pinned_out^)
@@ -529,8 +529,8 @@ def test_unified_copy_inter_device_on_queue() raises:
     var host_src = alloc[UInt8](n)
     var host_out = alloc[UInt8](n)
     for i in range(n):
-        host_src[i] = UInt8(i + 1)
-        host_out[i] = UInt8(0)
+        host_src[unsafe_offset=i] = UInt8(i + 1)
+        host_out[unsafe_offset=i] = UInt8(0)
 
     var src = ctx0[].alloc_sync(UInt64(n))  # device 0
     var dst = ctx1[].alloc_sync(UInt64(n))  # device 1
@@ -545,10 +545,10 @@ def test_unified_copy_inter_device_on_queue() raises:
     queue1[].synchronize()
 
     for i in range(n):
-        assert_equal(host_out[i], UInt8(i + 1))
+        assert_equal(host_out[unsafe_offset=i], UInt8(i + 1))
 
-    host_src.free()
-    host_out.free()
+    host_src.unsafe_free()
+    host_out.unsafe_free()
     ctx0[].free_sync(src^)
     ctx1[].free_sync(dst^)
 
@@ -572,8 +572,8 @@ def test_unified_copy_inter_device_free_function() raises:
     var host_src = alloc[UInt8](n)
     var host_out = alloc[UInt8](n)
     for i in range(n):
-        host_src[i] = UInt8(i * 3)
-        host_out[i] = UInt8(0)
+        host_src[unsafe_offset=i] = UInt8(i * 3)
+        host_out[unsafe_offset=i] = UInt8(0)
 
     var src = ctx0[].alloc_sync(UInt64(n))  # device 0
     var dst = ctx1[].alloc_sync(UInt64(n))  # device 1
@@ -587,10 +587,10 @@ def test_unified_copy_inter_device_free_function() raises:
     queue1[].synchronize()
 
     for i in range(n):
-        assert_equal(host_out[i], UInt8(i * 3))
+        assert_equal(host_out[unsafe_offset=i], UInt8(i * 3))
 
-    host_src.free()
-    host_out.free()
+    host_src.unsafe_free()
+    host_out.unsafe_free()
     ctx0[].free_sync(src^)
     ctx1[].free_sync(dst^)
 
@@ -643,15 +643,15 @@ def test_unified_copy_pinned_cross_device() raises:
     var in_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_in)
     var out_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_out)
     for i in range(n):
-        in_ptr[i] = UInt8(100 + i)
-        out_ptr[i] = UInt8(0)
+        in_ptr[unsafe_offset=i] = UInt8(100 + i)
+        out_ptr[unsafe_offset=i] = UInt8(0)
 
     # pinned (device 0) -> device (device 1): H2D on device 1's context.
     copy(dst=dev, src=pinned_in)
     # device (device 1) -> pinned (device 0): D2H on device 1's context.
     copy(dst=pinned_out, src=dev)
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(100 + i))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(100 + i))
 
     ctx0[].free_host_pinned(pinned_in^)
     ctx0[].free_host_pinned(pinned_out^)
@@ -679,8 +679,8 @@ def test_unified_copy_pinned_cross_device_on_queue() raises:
     var in_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_in)
     var out_ptr = ctx0[].memory_get_host_address[MutAnyOrigin](pinned_out)
     for i in range(n):
-        in_ptr[i] = UInt8(50 + i)
-        out_ptr[i] = UInt8(0)
+        in_ptr[unsafe_offset=i] = UInt8(50 + i)
+        out_ptr[unsafe_offset=i] = UInt8(0)
 
     # pinned(dev 0) -> dev(dev 1) -> pinned(dev 0), all on device 1's queue
     # (the device operand's device).
@@ -688,7 +688,7 @@ def test_unified_copy_pinned_cross_device_on_queue() raises:
     queue1[].copy(dst=pinned_out, src=dev)
     queue1[].synchronize()
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(50 + i))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(50 + i))
 
     ctx0[].free_host_pinned(pinned_in^)
     ctx0[].free_host_pinned(pinned_out^)

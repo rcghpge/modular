@@ -23,7 +23,7 @@ def vec_add_kernel(
     var tid = global_idx.x
     if tid >= n:
         return
-    result[tid] = a[tid] + b[tid]
+    result[unsafe_offset=tid] = a[unsafe_offset=tid] + b[unsafe_offset=tid]
 
 
 def vec_add_compiled(ctx_obj: PythonObject) raises -> PythonObject:

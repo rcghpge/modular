@@ -23,7 +23,7 @@ def vec_add(
     var tid = global_idx.x
     if tid >= n:
         return
-    result[tid] = a[tid] + b[tid]
+    result[unsafe_offset=tid] = a[unsafe_offset=tid] + b[unsafe_offset=tid]
 
 
 def do_execute[
@@ -55,9 +55,9 @@ def do_execute[
     var in1_host = alloc[Float32](length)
     var out_host = alloc[Float32](length)
     for i in range(length):
-        in0_host[i] = Float32(i)
-        in1_host[i] = Float32((i % 2) * -i * 2)
-        out_host[i] = Float32(0.0)
+        in0_host[unsafe_offset=i] = Float32(i)
+        in1_host[unsafe_offset=i] = Float32((i % 2) * -i * 2)
+        out_host[unsafe_offset=i] = Float32(0.0)
 
     queue[].copy_to_device(
         in0_dev.view(),
@@ -79,22 +79,22 @@ def do_execute[
     var args = alloc[OpaquePointer[MutUntrackedOrigin]](4)
     var arg_sizes = alloc[UInt64](4)
 
-    args[0] = rebind[OpaquePointer[MutUntrackedOrigin]](
+    args[unsafe_offset=0] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=in0_ptr)
     )
-    args[1] = rebind[OpaquePointer[MutUntrackedOrigin]](
+    args[unsafe_offset=1] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=in1_ptr)
     )
-    args[2] = rebind[OpaquePointer[MutUntrackedOrigin]](
+    args[unsafe_offset=2] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=out_ptr)
     )
-    args[3] = rebind[OpaquePointer[MutUntrackedOrigin]](
+    args[unsafe_offset=3] = rebind[OpaquePointer[MutUntrackedOrigin]](
         UnsafePointer(to=length_val)
     )
-    arg_sizes[0] = UInt64(size_of[UInt64]())
-    arg_sizes[1] = UInt64(size_of[UInt64]())
-    arg_sizes[2] = UInt64(size_of[UInt64]())
-    arg_sizes[3] = UInt64(size_of[Int]())
+    arg_sizes[unsafe_offset=0] = UInt64(size_of[UInt64]())
+    arg_sizes[unsafe_offset=1] = UInt64(size_of[UInt64]())
+    arg_sizes[unsafe_offset=2] = UInt64(size_of[UInt64]())
+    arg_sizes[unsafe_offset=3] = UInt64(size_of[Int]())
 
     # Execute.
     comptime block_dim = UInt32(256)
@@ -122,13 +122,13 @@ def do_execute[
     for i in range(length):
         var fi = Float32(i)
         var expected = (fi % 2) * -fi * 2 + fi
-        assert_equal(out_host[i], expected)
+        assert_equal(out_host[unsafe_offset=i], expected)
 
     # Also test out DtoD copies
     var out_dev_copy = ctx.alloc_sync(UInt64(buf_size))
     var out_host_copy = alloc[Float32](length)
     for i in range(length):
-        out_host_copy[i] = Float32(0.0)
+        out_host_copy[unsafe_offset=i] = Float32(0.0)
 
     queue[].copy_intra_device(out_dev_copy.view(), out_dev.view())
     queue[].synchronize()
@@ -139,15 +139,15 @@ def do_execute[
     queue[].synchronize()
 
     for i in range(length):
-        assert_equal(out_host_copy[i], out_host[i])
+        assert_equal(out_host_copy[unsafe_offset=i], out_host[unsafe_offset=i])
 
     # Cleanup.
-    out_host_copy.free()
-    args.free()
-    arg_sizes.free()
-    in0_host.free()
-    in1_host.free()
-    out_host.free()
+    out_host_copy.unsafe_free()
+    args.unsafe_free()
+    arg_sizes.unsafe_free()
+    in0_host.unsafe_free()
+    in1_host.unsafe_free()
+    out_host.unsafe_free()
     ctx.unload_function(func)
     ctx.free_sync(out_dev_copy^)
     ctx.free_sync(out_dev^)
@@ -168,7 +168,7 @@ def do_offset_copy_test[
 
     var src = alloc[UInt8](half)
     for i in range(half):
-        src[i] = UInt8(0xAB)
+        src[unsafe_offset=i] = UInt8(0xAB)
 
     # Fill the lower half, then write the upper half at byte offset `half`.
     stream[].set_memory(
@@ -186,10 +186,12 @@ def do_offset_copy_test[
     )
     stream[].synchronize()
     for i in range(n):
-        assert_equal(host[i], UInt8(0xCD) if i < half else UInt8(0xAB))
+        assert_equal(
+            host[unsafe_offset=i], UInt8(0xCD) if i < half else UInt8(0xAB)
+        )
 
-    src.free()
-    host.free()
+    src.unsafe_free()
+    host.unsafe_free()
     ctx.free_sync(device_buffer^)
 
 
@@ -218,9 +220,9 @@ def do_fill_test[
     # 0xDEADBEEF stored little-endian repeats bytes EF BE AD DE.
     for i in range(n):
         var expected_byte = UInt8((pattern >> (8 * (i % 4))) & 0xFF)
-        assert_equal(host[i], expected_byte)
+        assert_equal(host[unsafe_offset=i], expected_byte)
 
-    host.free()
+    host.unsafe_free()
     ctx.free_sync(device_buffer^)
 
 
@@ -240,22 +242,22 @@ def do_pinned_copy_test[
     var in_ptr = ctx.memory_get_host_address[MutAnyOrigin](pinned_in)
     var out_ptr = ctx.memory_get_host_address[MutAnyOrigin](pinned_out)
     for i in range(n):
-        in_ptr[i] = UInt8(i % 251)
-        out_ptr[i] = UInt8(0)
+        in_ptr[unsafe_offset=i] = UInt8(i % 251)
+        out_ptr[unsafe_offset=i] = UInt8(0)
 
     # pinned -> device -> pinned through the queue's unified copy.
     queue[].copy(dst=dev, src=pinned_in)
     queue[].copy(dst=pinned_out, src=dev)
     queue[].synchronize()
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(i % 251))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(i % 251))
 
     # The synchronous free `copy` handles pinned -> pinned as a host memcpy.
     for i in range(n):
-        out_ptr[i] = UInt8(0)
+        out_ptr[unsafe_offset=i] = UInt8(0)
     copy(dst=pinned_out, src=pinned_in)
     for i in range(n):
-        assert_equal(out_ptr[i], UInt8(i % 251))
+        assert_equal(out_ptr[unsafe_offset=i], UInt8(i % 251))
 
     print("Pinned copy test OK")
 
