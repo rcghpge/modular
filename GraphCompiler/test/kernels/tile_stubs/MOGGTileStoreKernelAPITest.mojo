@@ -18,7 +18,7 @@ from extensibility import (
     InputTensor,
     _FusedOutputTileTensor,
 )
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 
 
 @extensibility.register("mo.reduce.rms_norm")

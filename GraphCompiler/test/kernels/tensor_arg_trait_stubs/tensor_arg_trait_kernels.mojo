@@ -11,7 +11,7 @@
 # have no-op bodies, so they must not be mixed into the general kernel package.
 #
 from std.collections.string import StaticString
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.utils import IndexList
 
 from layout import coord_to_index_list
