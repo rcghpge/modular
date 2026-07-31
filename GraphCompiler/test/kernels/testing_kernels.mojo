@@ -10,7 +10,7 @@ from std.collections.string import StaticString
 from std.math import ceildiv, iota
 from std.ffi import external_call
 from std.gpu import global_idx
-from std.gpu.host.info import is_cpu
+from max.gpu.host.info import is_cpu
 from std.sys.info import simd_width_of
 from max.algorithm.functional import elementwise
 import extensibility
