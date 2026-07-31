@@ -79,7 +79,7 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory
 from std.gpu.sync import named_barrier
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_release_allocation_lock,
@@ -206,12 +206,14 @@ def _fp8_index_body[
 
     comptime k_elems = BM_key * depth
     comptime q_elems = MMA_N * depth
-    var smem = external_memory[
-        Scalar[dtype],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-        name="fp8_index_sm100_smem",
-    ]()
+    var smem = UnsafePointer(
+        external_memory[
+            Scalar[dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+            name="fp8_index_sm100_smem",
+        ]()
+    )
     var k_smem = smem
     var q_smem = smem + k_elems
     var qs_smem = (smem + k_elems + q_elems).bitcast[Float32]()

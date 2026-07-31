@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory import UnsafePointer
 from std.sys import size_of, argv
 from std.gpu import (
     WARP_SIZE,
@@ -23,8 +24,8 @@ from std.gpu import (
 from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import IntTuple, Layout, LayoutTensor, RuntimeLayout
 from layout.tensor_core_async import (
     tile_layout_k_major,
@@ -138,9 +139,9 @@ def block_scaled_mxfp8_kernel[
         b_type, BN, BK, swizzle_mode=b_swizzle
     ]()
 
-    var smem = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=8
-    ]()
+    var smem = UnsafePointer(
+        external_memory[UInt8, address_space=AddressSpace.SHARED, alignment=8]()
+    )
     var a_smem = smem.bitcast[Scalar[a_type]]()
 
     comptime a_smem_tile_t = LayoutTensor[
@@ -224,7 +225,7 @@ def block_scaled_mxfp8_kernel[
     comptime accum_type = get_accum_type[a_type]()
 
     comptime c_frag_size = MMA_M * MMA_N // num_threads
-    var c_frag: InlineArray[Scalar[accum_type], c_frag_size]
+    var c_frag: Array[Scalar[accum_type], c_frag_size]
 
     comptime a_expected_bytes = a_size * size_of[a_type]()
     comptime b_expected_bytes = b_size * size_of[b_type]()

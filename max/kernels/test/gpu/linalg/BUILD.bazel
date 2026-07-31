@@ -19,6 +19,13 @@ _GROUPED_BLOCK_SCALED_GEMM_B200_TESTS = [
     "test_grouped_matmul_1d1d_block_fp4_smoke.mojo",
 ]
 
+_EXTRA_DEPS = {
+    "test_batched_matmul.mojo": ["//max:max_mojo"],
+    "test_cublaslt_scaled_mxfp8_matmul.mojo": ["//max:max_mojo"],
+    "test_cublaslt_scaled_nvfp4_matmul.mojo": ["//max:max_mojo"],
+    "test_matmul.mojo": ["//max:max_mojo"],
+}
+
 _EXTRA_CONSTRAINTS = {
     "test_amd_matmul_asm.mojo": ["//:amd_gpu"],
     "test_apple_gpu_matmul.mojo": ["//:apple_gpu"],
@@ -423,6 +430,7 @@ _GPU_MEMORY = {
         deps = [
             "//max:internal_utils",
             "//max:linalg",
+            "//max:max_mojo",
             "//max:nn",
             "//max:structured_kernels",
             "@mojo//:std",
@@ -479,6 +487,7 @@ _GPU_MEMORY = {
         deps = [
             "//max:internal_utils",
             "//max:linalg",
+            "//max:max_mojo",
             "//max:structured_kernels",
             "@mojo//:std",
             "@mojo//:test_utils",
@@ -630,7 +639,7 @@ mojo_test(
             "//max:structured_kernels",
             "@mojo//:std",
             "@mojo//:test_utils",
-        ],
+        ] + _EXTRA_DEPS.get(src, []),
     )
     for src in glob(
         ["**/*.mojo"],

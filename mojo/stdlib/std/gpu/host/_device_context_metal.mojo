@@ -11,9 +11,19 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
+from std.builtin.device_passable import (
+    DevicePassable,
+    DevicePointerLike,
+    DeviceTypeEncoder,
+)
 from std.collections.optional import Optional
-from std.memory import Layout, stack_allocation, alloc, dealloc, ThinAllocation
+from std.memory import (
+    Layout,
+    unsafe_stack_allocation,
+    alloc,
+    dealloc,
+    ThinAllocation,
+)
 from std.reflection import SourceLocation
 from std.sys import size_of
 from std.sys.info import _current_target, _TargetType
@@ -24,7 +34,6 @@ from .device_context import (
     _DeviceFunctionPtr,
     _FunctionEnqueuer,
     DeviceContext,
-    DevicePointer,
 )
 from .dim import Dim
 from ._launch_args import _compact_zero_sized_capture_slots
@@ -68,20 +77,25 @@ struct MetalDeviceTypeEncoder(DeviceTypeEncoder):
         """
         return _current_target()
 
-    def encode_device_ptr(
-        mut self, value: DevicePointer, dst: MutOpaquePointer[_]
-    ):
-        """Encodes a `DevicePointer` into `dst`.
+    def encode_device_ptr[
+        DevicePointerType: DevicePointerLike
+    ](mut self, value: DevicePointerType, dst: MutOpaquePointer[_],):
+        """Encodes a device pointer into `dst`.
 
-        By default treat `DevicePointer` as `UnsafePointer`, works for USM
-        targets such as CUDA and HIP.
+        Parameters:
+            DevicePointerType: The type of the device pointer.
 
         Args:
-            value: The `DevicePointer` instance to encode into `dst`.
+            value: The device pointer to encode into `dst`.
             dst: The opaque destination pointer to encode into.
         """
         value.unsafe_ptr()._to_device_type(self, dst)
-        self._buffers.append(value.buffer()._handle.value())
+
+        var handle = value._buffer_handle()
+        debug_assert(
+            Bool(handle), "Metal device pointers must have a buffer handle"
+        )
+        self._buffers.append(handle.value().unsafe_bitcast[_DeviceBufferCpp]())
 
 
 @always_inline
@@ -147,7 +161,7 @@ def call_with_pack_metal[
     # Unchecked path: no `DevicePassable` encoding, so no arg is treated as
     # a device pointer for buffer binding purposes.
     #
-    # `is_dev_inline` is an `InlineArray` (not `stack_allocation`) so the
+    # `is_dev_inline` is an `InlineArray` (not `unsafe_stack_allocation`) so the
     # compiler tracks its lifetime as a named local. Without this, the
     # stack slot can be reused for `metal_args` below — `metal_args`'s
     # `arg_is_device_ptr` field still points at the old slot, which now
@@ -175,7 +189,7 @@ def call_with_pack_metal[
         Int32(0),
     )
 
-    var metal_args_addrs = stack_allocation[
+    var metal_args_addrs = unsafe_stack_allocation[
         1, OpaquePointer[origin_of(metal_args)]
     ]()
     metal_args_addrs[] = Pointer(to=metal_args).unsafe_bitcast[NoneType]()
@@ -267,7 +281,7 @@ def call_with_pack_checked_metal[
             messages.
     """
     # Stack-allocated backing storage for the small-capture path. Using
-    # `InlineArray` (rather than `stack_allocation`) gives the compiler a
+    # `InlineArray` (rather than `unsafe_stack_allocation`) gives the compiler a
     # named local whose origin flows into the `MetalEnqueueFunctionArgs`
     # pointer fields below — that origin dependency keeps the storage
     # alive across the `ctx.enqueue` call, preventing stack-slot reuse
@@ -372,7 +386,9 @@ def call_with_pack_checked_metal[
         Int32(len(device_type_encoder._buffers)),
     )
 
-    var metal_args_addrs = stack_allocation[1, OpaquePointer[MutAnyOrigin]]()
+    var metal_args_addrs = unsafe_stack_allocation[
+        1, OpaquePointer[MutAnyOrigin]
+    ]()
     metal_args_addrs[] = (
         Pointer(to=metal_args).unsafe_bitcast[NoneType]().as_unsafe_any_origin()
     )

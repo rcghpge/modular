@@ -28,9 +28,9 @@ from std.gpu.primitives.grid_controls import (
     wait_on_dependent_grids,
 )
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
-from std.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
+from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
 from std.gpu.primitives.warp import broadcast
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_release_allocation_lock,
@@ -218,11 +218,12 @@ struct SM100MHA2Q[
     comptime VTMAOpType = KVTMATile[
         Self.KVLUTType.dtype,
         Self.config.swizzle_mode,
-        BN=kv_sub_tile_rows(Self.config.BN, Self.page_size),
-        # WS shared sub-tile ring: V TMA box is one 256x64 depth-tile
-        # (`v_box_cols()`); folds to full-depth for non-WS. Must match the
-        # dispatch `create_tma_tile` box + the `fa4_load` signature.
-        BK=Self.config.v_box_cols(),
+        # V TMA box geometry per layout via `v_tma_box_rows()` /
+        # `v_tma_box_cols()` -- the shared selector (see their docstrings).
+        # Must match the dispatch `create_tma_tile` box + the `fa4_load`
+        # signature.
+        BN=Self.config.v_tma_box_rows(Self.page_size),
+        BK=Self.config.v_tma_box_cols(),
     ]
     comptime OTMAStoreType = RaggedTMA3DTile[
         Self.output_type,

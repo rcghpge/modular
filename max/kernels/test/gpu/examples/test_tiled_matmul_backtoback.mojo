@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv
 from std.math.uutils import ufloordiv, udivmod, uceildiv
@@ -228,11 +229,13 @@ def b2b_gemm[
     # Prepare shared memory buffers for A, B, and C.
     # We load our entire local `A` block into shared
     # memory and reuse it on each iteration.
-    var a_smem = external_memory[
-        Scalar[in_type],
-        address_space=AddressSpace.SHARED,
-        alignment=align_of[SIMD[in_type, simd_size]](),
-    ]()
+    var a_smem = UnsafePointer(
+        external_memory[
+            Scalar[in_type],
+            address_space=AddressSpace.SHARED,
+            alignment=align_of[SIMD[in_type, simd_size]](),
+        ]()
+    )
     comptime a_smem_size = BM * K  # single block
     var a_smem_iter = LayoutTensorIter[
         in_type,
@@ -682,14 +685,10 @@ def test_b2b_matmul(ctx: DeviceContext) raises:
     var mat_b = ManagedLayoutTensor[src_type, layout_b](ctx)
     var mat_c = ManagedLayoutTensor[src_type, layout_c](ctx)
     var mat_d = ManagedLayoutTensor[dst_type, layout_d](ctx)
-    var stack_d = InlineArray[Scalar[dst_type], layout_d.size()](
-        uninitialized=True
-    )
+    var stack_d = Array[Scalar[dst_type], layout_d.size()](uninitialized=True)
     comptime layout_ab = Layout.row_major(M, L)
-    var stack_ab = InlineArray[Scalar[dst_type], layout_ab.size()](
-        uninitialized=True
-    )
-    var stack_ab_downcast = InlineArray[Scalar[src_type], layout_ab.size()](
+    var stack_ab = Array[Scalar[dst_type], layout_ab.size()](uninitialized=True)
+    var stack_ab_downcast = Array[Scalar[src_type], layout_ab.size()](
         uninitialized=True
     )
     var host_d_ref = LayoutTensor[dst_type, layout_d](stack_d)

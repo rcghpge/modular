@@ -108,7 +108,9 @@ class HistogramMetric(str, Enum):
         "maxserve_batch_prompt_throughput_tokens_per_second"
     )
     BATCH_SIZE = "maxserve_batch_size"
-    CACHE_HIT_RATE_PCT = "maxserve_cache_hit_rate_percent_utilization"
+    CACHE_REQUEST_PREFIX_COVERAGE_PCT = (
+        "maxserve_cache_request_prefix_coverage_percent"
+    )
     CACHE_USED_KV_PCT = "maxserve_cache_used_kv_pct_percent"
     INPUT_PROCESSING_TIME_MS = "maxserve_input_processing_time_milliseconds"
     INPUT_TOKENS_PER_REQUEST = "maxserve_input_tokens_per_request_tokens"
@@ -410,8 +412,6 @@ class BaseBenchmarkMetrics(BaseModel, Metrics):
             if isinstance(val, (StandardPercentileMetrics, ThroughputMetrics)):
                 d.update(val.to_flat_dict(name))
                 d.update(val.confidence_to_flat_dict(name))
-            elif isinstance(val, ChunkTimingMetrics):
-                d.update(val.to_flat_dict(name))
         if self.metrics_by_endpoint:
             # Backwards compat: `server_metrics` mirrors the first endpoint so
             # existing BigQuery/analysis consumers keep working.
@@ -471,6 +471,11 @@ class _CompletedRunBase(BaseModel):
     completed: int
     failures: int
     request_throughput: float
+    # Successful requests dropped from the measured set by the skip_first /
+    # skip_last trim windows. ``completed`` counts only what remains, so
+    # without this field a slow iteration whose few successes all fell inside
+    # the windows is indistinguishable from one where the server did nothing.
+    excluded_successful: int = 0
     # ``None`` when the iteration produced no measured samples (e.g. every
     # request failed or all were skipped). Emitting ``None`` rather than a
     # NaN-filled metric keeps the serialized JSON free of null-valued
@@ -494,6 +499,7 @@ class _CompletedRunBase(BaseModel):
             "completed": self.completed,
             "failures": self.failures,
             "request_throughput": self.request_throughput,
+            "excluded_successful": self.excluded_successful,
             "errors": self.errors,
             "request_submit_times": self.request_submit_times,
             "request_complete_times": self.request_complete_times,
@@ -503,11 +509,29 @@ class _CompletedRunBase(BaseModel):
             d.update(self.latency_ms.confidence_to_flat_dict("latency_ms"))
         return d
 
+    def all_measured_excluded(self) -> bool:
+        """Return True when successes existed but the skip windows ate them all.
+
+        In this state every derived metric (throughput, latency, token
+        counts) is degenerate for lack of samples, not because the server
+        did nothing — validation reports it as a single insufficient-data
+        error instead of one error per degenerate metric.
+        """
+        return self.completed <= 0 and self.excluded_successful > 0
+
     def validate_metrics(self) -> tuple[bool, list[str]]:
         """Validate common aggregate invariants.
 
         Subclasses extend with their workload-specific checks.
         """
+        if self.all_measured_excluded():
+            return False, [
+                f"Insufficient data: all {self.excluded_successful}"
+                " successful requests were excluded by the skip_first /"
+                " skip_last windows, leaving no measured samples. The server"
+                " completed requests, but too few for this concurrency"
+                " level's trim; no metrics can be concluded from this run."
+            ]
         errors: list[str] = []
         if self.failures > 0:
             errors.append(f"Some requests failed (failures={self.failures})")
@@ -661,7 +685,9 @@ class TextGenAggregates(_CompletedRunBase):
         return d
 
     def validate_metrics(self) -> tuple[bool, list[str]]:
-        _, errors = super().validate_metrics()
+        ok, errors = super().validate_metrics()
+        if self.all_measured_excluded():
+            return ok, errors
         if self.total_output <= 0:
             errors.append(
                 f"No output tokens generated (total_output={self.total_output})"
@@ -1041,40 +1067,6 @@ class BenchmarkResult(BaseModel):
         if agg is None:
             return []
         return agg.confidence_warnings()
-
-
-@dataclass
-class ChunkTimingMetrics:
-    """Timing statistics for audio chunks (min, mean, median, p99, max)."""
-
-    min: float
-    mean: float
-    median: float
-    p99: float
-    max: float
-
-    @staticmethod
-    def from_samples(data: list[float]) -> ChunkTimingMetrics:
-        if not data:
-            return ChunkTimingMetrics(
-                min=0.0, mean=0.0, median=0.0, p99=0.0, max=0.0
-            )
-        return ChunkTimingMetrics(
-            min=float(np.min(data)),
-            mean=float(np.mean(data)),
-            median=float(np.median(data)),
-            p99=float(np.percentile(data, 99)),
-            max=float(np.max(data)),
-        )
-
-    def to_flat_dict(self, name: str) -> dict[str, float]:
-        return {
-            f"min_{name}": self.min,
-            f"mean_{name}": self.mean,
-            f"median_{name}": self.median,
-            f"p99_{name}": self.p99,
-            f"max_{name}": self.max,
-        }
 
 
 # ---------------------------------------------------------------------------

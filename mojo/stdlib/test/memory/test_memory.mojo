@@ -59,7 +59,6 @@ def test_memcpy() raises:
     var src = Pointer(to=pair1)
     var dest = Pointer(to=pair2)
 
-    # UnsafePointer test
     pair2.lo = 0
     pair2.hi = 0
     unsafe_memcpy(dest=dest, src=src, count=1)
@@ -794,7 +793,7 @@ def test_memmove_overlapping_regions() raises:
     unsafe_memmove(
         # NOTE: need `as_unsafe_any_origin` to avoid exclusivity violations
         dest=list.unsafe_ptr().as_unsafe_any_origin(),
-        src=list.unsafe_ptr().as_unsafe_any_origin() + 1,
+        src=list.unsafe_ptr().as_unsafe_any_origin().unsafe_offset(1),
         count=len(list) - 1,
     )
     assert_equal(list, [2, 3, 4, 5, 6, 7, 7])

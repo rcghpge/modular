@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import logging
 import pickle
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +24,7 @@ from max.dtype import DType
 from max.graph.weights import WeightsFormat
 from max.pipelines import PIPELINE_REGISTRY
 from max.pipelines.context import SamplingParamsGenerationConfigDefaults
+from max.pipelines.kv_cache import cache_dtype_for_encoding
 from max.pipelines.lib import (
     KVCacheConfig,
     LoRAConfig,
@@ -34,7 +34,11 @@ from max.pipelines.lib import (
     PipelineRuntimeConfig,
     SamplingConfig,
 )
-from max.pipelines.lib.config.model_config import _infer_weight_path
+from max.pipelines.lib.config.model_config import (
+    _infer_weight_path,
+    _select_dtype_cast,
+    _select_quantization_encoding,
+)
 from max.pipelines.lib.model_manifest import ModelManifest
 from max.pipelines.modeling.config_enums import SupportedEncoding
 from max.pipelines.modeling.types.task import PipelineTask
@@ -420,18 +424,25 @@ class TestPipelineConfigUtilityMethods:
 
         config = PipelineConfig.from_flat_kwargs(**kwargs)
         assert config.model.quantization_encoding == "float4_e2m1fnx2"
-        # The KV cache dtype initially has a default value.
-        assert config.model.kv_cache.cache_dtype == DType.float32
 
         assert config.draft_model is not None
         assert config.draft_model.quantization_encoding == "float8_e4m3fn"
-        # The draft model KV cache dtype initially has a default value.
-        assert config.draft_model.kv_cache.cache_dtype == DType.float32
 
-        config.model.set_cache_dtype_given_quantization_encoding()
-        config.draft_model.set_cache_dtype_given_quantization_encoding()
-        assert config.model.kv_cache.cache_dtype == DType.bfloat16
-        assert config.draft_model.kv_cache.cache_dtype == DType.bfloat16
+        # The KV cache dtype is derived from the quantization encoding on demand.
+        assert (
+            cache_dtype_for_encoding(
+                config.model.quantization_encoding,
+                config.model.kv_cache.kv_cache_format,
+            )
+            == DType.bfloat16
+        )
+        assert (
+            cache_dtype_for_encoding(
+                config.draft_model.quantization_encoding,
+                config.draft_model.kv_cache.kv_cache_format,
+            )
+            == DType.bfloat16
+        )
 
     @mock_pipeline_config_resolve
     def test_denoising_cache_survives_runtime_kwargs(self) -> None:
@@ -872,37 +883,27 @@ class TestFloat32WeightFallbackScoping:
             ),
         ):
             # Best-effort (pre-architecture) pass must not bind weight_path.
-            assert (
-                _infer_weight_path(
-                    config, "bfloat16", config._applied_dtype_cast_from
-                )
-                == []
-            )
+            assert _infer_weight_path(config, "bfloat16", None) == []
 
             # Architecture-level given-encoding resolution.
-            config.validate_and_resolve_quantization_encoding_weight_path(
-                default_encoding="bfloat16"
-            )
+            encoding = _select_quantization_encoding(config, "bfloat16")
+            cast_from, cast_to = _select_dtype_cast(config, "bfloat16")
 
         # The requested bfloat16 is preserved; the float32 weights are cast at
         # load time, recorded in the dtype-cast bookkeeping.
-        assert config.quantization_encoding == "bfloat16"
-        assert config._applied_dtype_cast_from == "float32"
-        assert config._applied_dtype_cast_to == "bfloat16"
+        assert encoding == "bfloat16"
+        assert cast_from == "float32"
+        assert cast_to == "bfloat16"
 
     def test_no_given_encoding_f32_only_repo_casts_to_bfloat16(self) -> None:
         """Architecture-level resolution alone still casts f32 -> bf16.
 
         No ``quantization_encoding`` given, repo has only float32 weights,
-        no ``subfolder``. Calls ``validate_and_resolve_quantization_encoding_weight_path``
-        directly (bypassing ``resolve()``/the best-effort pass entirely) to
-        verify the ``without-given-encoding`` path applies the same
-        float32 -> bfloat16 GPU cast the best-effort pass normally applies
-        first. Regression guard for the case where resolve() wasn't called
-        first or the best-effort pass silently failed to infer an encoding:
-        without this cast, a model whose repo ships only float32 weights
-        would silently run in float32 on GPU instead of the expected
-        bfloat16.
+        no ``subfolder``. Calls ``_select_quantization_encoding`` directly to
+        verify the no-given-encoding path applies the float32 -> bfloat16 GPU
+        cast. Regression guard for a model whose repo ships only float32
+        weights: without this cast it would silently run in float32 on GPU
+        instead of the expected bfloat16.
         """
         config = MAXModelConfig(model_path="test/f32-only")
         assert config.quantization_encoding is None
@@ -919,13 +920,12 @@ class TestFloat32WeightFallbackScoping:
                 return_value=True,
             ),
         ):
-            config.validate_and_resolve_quantization_encoding_weight_path(
-                default_encoding="bfloat16"
-            )
+            encoding = _select_quantization_encoding(config, "bfloat16")
+            cast_from, cast_to = _select_dtype_cast(config, "bfloat16")
 
-        assert config.quantization_encoding == "bfloat16"
-        assert config._applied_dtype_cast_from == "float32"
-        assert config._applied_dtype_cast_to == "bfloat16"
+        assert encoding == "bfloat16"
+        assert cast_from == "float32"
+        assert cast_to == "bfloat16"
 
     def test_diffuser_subcomponent_f32_fallback_still_resolves(self) -> None:
         """A diffuser sub-component (``subfolder`` set) still gets the fallback.
@@ -947,9 +947,7 @@ class TestFloat32WeightFallbackScoping:
             new_callable=PropertyMock,
             return_value=_make_f32_only_repo(),
         ):
-            resolved_weight_path = _infer_weight_path(
-                config, "bfloat16", config._applied_dtype_cast_from
-            )
+            resolved_weight_path = _infer_weight_path(config, "bfloat16", None)
 
         assert resolved_weight_path == _F32_SAFETENSORS
         assert config.quantization_encoding == "bfloat16"
@@ -1162,7 +1160,13 @@ def test_config__test_quantization_encoding_with_dtype_casting(
             prefer_module_v3=True,
         ),
     )
-    assert config.model.kv_cache.cache_dtype == DType.float32
+    assert (
+        cache_dtype_for_encoding(
+            config.model.quantization_encoding,
+            config.model.kv_cache.kv_cache_format,
+        )
+        == DType.float32
+    )
 
 
 @pytest.mark.skip(
@@ -1192,7 +1196,13 @@ def test_config__test_quantization_encoding_with_dtype_casting2(
             prefer_module_v3=True,
         ),
     )
-    assert config.model.kv_cache.cache_dtype == DType.float32
+    assert (
+        cache_dtype_for_encoding(
+            config.model.quantization_encoding,
+            config.model.kv_cache.kv_cache_format,
+        )
+        == DType.float32
+    )
 
 
 @pytest.mark.skip(
@@ -1222,7 +1232,13 @@ def test_config__test_quantization_encoding_with_dtype_casting3(
             prefer_module_v3=True,
         ),
     )
-    assert config.model.kv_cache.cache_dtype == DType.bfloat16
+    assert (
+        cache_dtype_for_encoding(
+            config.model.quantization_encoding,
+            config.model.kv_cache.kv_cache_format,
+        )
+        == DType.bfloat16
+    )
 
 
 @pytest.mark.skip(
@@ -2056,49 +2072,6 @@ def test_validate_and_resolve_overlap_scheduler__validate(
     )
     with pytest.raises(ValueError):
         config._validate_and_resolve_overlap_scheduler()
-
-
-@prepare_registry
-@mock_pipeline_config_resolve
-def test_validate_and_resolve_max_num_steps_deprecated_override(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Non-1 max_num_steps is deprecated, warned, and forced to 1."""
-    config = PipelineConfig(
-        models=ModelManifest(
-            {
-                "main": MAXModelConfig(
-                    model_path="test/model",
-                    device_specs=[DeviceSpec.accelerator()],
-                )
-            }
-        ),
-        runtime=PipelineRuntimeConfig(max_num_steps=10),
-    )
-    with caplog.at_level(logging.WARNING):
-        config._validate_and_resolve_max_num_steps()
-    assert config.runtime.max_num_steps == 1
-    assert "deprecated" in caplog.text.lower()
-    assert "10" in caplog.text
-
-
-@prepare_registry
-@mock_pipeline_config_resolve
-def test_validate_and_resolve_max_num_steps_legacy_default() -> None:
-    """Legacy max_num_steps=-1 resolves silently to 1."""
-    config = PipelineConfig(
-        models=ModelManifest(
-            {
-                "main": MAXModelConfig(
-                    model_path="test/model",
-                    device_specs=[DeviceSpec.accelerator()],
-                )
-            }
-        ),
-        runtime=PipelineRuntimeConfig(max_num_steps=-1),
-    )
-    config._validate_and_resolve_max_num_steps()
-    assert config.runtime.max_num_steps == 1
 
 
 @prepare_registry

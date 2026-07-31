@@ -66,6 +66,7 @@ T>=2 each WG streams >= 1 real key). Cases (each x depth in {64, 128}):
                      equal-per-WG-max cases would mask)
 """
 
+from std.memory import UnsafePointer
 from std.math import exp2, recip, isnan
 from std.random import randn, seed
 from std.sys import size_of
@@ -76,7 +77,7 @@ from std.gpu.host.info import _is_sm10x_gpu
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory
 from std.gpu.sync import named_barrier
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_after,
@@ -166,9 +167,11 @@ def combine_kernel[
 
     # ---- Dynamic SMEM carve ----
     # [stage0 | stage1 | maxsum0 | maxsum1 | l2_stage | l2_maxsum | o_smem | meta]
-    var smem_base = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=128
-    ]()
+    var smem_base = UnsafePointer(
+        external_memory[
+            UInt8, address_space=AddressSpace.SHARED, alignment=128
+        ]()
+    )
     var f32_base = smem_base.bitcast[Scalar[ACC_TYPE]]()
     var stage0 = f32_base
     var stage1 = stage0 + STAGE
@@ -199,9 +202,7 @@ def combine_kernel[
 
     # ---- (A) inject known O_p into this WG's C-TMEM band (shared base per WG) ----
     for t in range(num_d_tiles):
-        var o_frag = InlineArray[Scalar[ACC_TYPE], DEPTH_TILE](
-            uninitialized=True
-        )
+        var o_frag = Array[Scalar[ACC_TYPE], DEPTH_TILE](uninitialized=True)
         for j in range(DEPTH_TILE):
             o_frag[j] = O_in[p * ROWS + row, t * DEPTH_TILE + j][0]
         tcgen05_st[datapaths=32, bits=32, repeat=DEPTH_TILE, pack=False](
@@ -215,7 +216,7 @@ def combine_kernel[
     # ---- (B) Level 1: per-WG 4-way unnormalized partial (into o_band regs) ----
     var stage_wg = stage0 if wg == 0 else stage1
     var maxsum_wg = maxsum0 if wg == 0 else maxsum1
-    var o_band = InlineArray[Scalar[ACC_TYPE], own_cols](uninitialized=True)
+    var o_band = Array[Scalar[ACC_TYPE], own_cols](uninitialized=True)
     var m_wg, l_wg = fa4_ws_level1_combine[M_PACK, ROWS, depth, use_fma=True](
         UInt32(row),
         UInt32(g),

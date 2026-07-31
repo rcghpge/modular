@@ -48,7 +48,7 @@ from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory, fence_async_view_proxy
 from std.gpu.sync import named_barrier
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_after,
@@ -533,7 +533,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             # tile — no prior O accumulator to correct).
             if tiles_done > first_processed_tile_sw:
                 c_prod.acquire()
-                var _scale_tuple = InlineArray[Scalar[Self.AccumType], 1](
+                var _scale_tuple = Array[Scalar[Self.AccumType], 1](
                     fill=scale_for_old_max
                 )
                 tcgen05_st[
@@ -981,7 +981,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                         float2_register[j] = element * SIMD[Self.AccumType, 2](
                             scale_value
                         )
-                    var _o_st_corr = InlineArray[
+                    var _o_st_corr = Array[
                         Scalar[Self.AccumType], per_warp_corr_elems
                     ](uninitialized=True)
 
@@ -1202,12 +1202,14 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 return
 
         # SMEM allocation: Q FP8, KV stages, P stages, max/li, barriers.
-        q_smem = external_memory[
-            Scalar[Self.fp8_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="mha_dynamic_shared_memory",
-        ]()
+        q_smem = UnsafePointer(
+            external_memory[
+                Scalar[Self.fp8_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="mha_dynamic_shared_memory",
+            ]()
+        )
         var kv_smem = q_smem + Self.BlockElems * Self.NumQKBlocks
         comptime kv_total_stages = Self.config.num_kv_stages
         var p_smem = kv_smem + Self.KVStageElems * kv_total_stages

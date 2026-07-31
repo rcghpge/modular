@@ -72,6 +72,7 @@ NVIDIA SM100 only (SS-UMMA / TMA / tcgen05). Verified against
 match via `test_mla_index_fp8`.
 """
 
+from std.memory import UnsafePointer
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -86,7 +87,7 @@ from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory
 from std.gpu.sync import named_barrier
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_release_allocation_lock,
@@ -105,7 +106,7 @@ from layout.tma_async import (
     SplitLastDimTMATensorTile,
 )
 
-from std.gpu.compute.arch.mma_nvidia_sm100 import mma_arrive
+from max.gpu.compute.arch.mma_nvidia_sm100 import mma_arrive
 
 from nn.attention.gpu.nvidia.sm100.mha_1q import SM100TensorAccumulatorSS
 from nn.attention.mha_operand import MHAOperand
@@ -239,12 +240,14 @@ def _fp8_index_score_prefill_kernel_sm100[
 
     comptime k_elems = BM_key * depth
     comptime q_elems = MMA_N * depth
-    var smem = external_memory[
-        Scalar[dtype],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-        name="fp8_index_sm100_prefill_smem",
-    ]()
+    var smem = UnsafePointer(
+        external_memory[
+            Scalar[dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+            name="fp8_index_sm100_prefill_smem",
+        ]()
+    )
     # Q resident (B operand, one token block) | K ring (A operand) | q_scale
     # resident | mbars: q(1) + k_full(NSTAGE) + k_empty(NSTAGE) +
     # accumulator(2*N_S) | tcgen05 TMEM base slot.

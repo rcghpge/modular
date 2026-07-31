@@ -232,12 +232,15 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="blocks",
         description="Total number of blocks or pages, measured at the scheduler after batch work.",
     ),  # type: ignore
-    "maxserve.cache.hit_rate": _meter.create_histogram(
-        "maxserve.cache.hit_rate",
-        unit="percent_utilization",
+    "maxserve.cache.request_prefix_coverage": _meter.create_histogram(
+        "maxserve.cache.request_prefix_coverage",
+        unit="percent",
         description=(
-            "Per-request KV cache hit rate (cached prefix tokens / prompt "
-            "tokens), emitted once per admitted request."
+            "Per-request prefix cache coverage (cached prefix tokens / "
+            "prompt tokens), emitted once per admitted request and "
+            "unweighted by request size. For the token-weighted cache hit "
+            "rate, derive it from maxserve.cache.hits and "
+            "maxserve.cache.misses instead."
         ),
     ),  # type: ignore
     "maxserve.cache.preemption_count": _meter.create_counter(
@@ -289,6 +292,21 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         "maxserve.dkv.rpc_read_latency",
         unit="ms",
         description="dKV read_blocks RPC latency",
+    ),  # type: ignore
+    "maxserve.dkv.connected_clients": _meter.create_gauge(
+        "maxserve.dkv.connected_clients",
+        unit="clients",
+        description="Number of dKV connector clients currently connected to the external KV tier.",
+    ),  # type: ignore
+    "maxserve.dkv.total_clients": _meter.create_gauge(
+        "maxserve.dkv.total_clients",
+        unit="clients",
+        description="Total number of dKV connector clients, one per data-parallel replica.",
+    ),  # type: ignore
+    "maxserve.dkv.reconnect_attempts": _meter.create_gauge(
+        "maxserve.dkv.reconnect_attempts",
+        unit="attempts",
+        description="Cumulative dKV reconnect attempts across all clients, reported as a gauge of the current lifetime total.",
     ),  # type: ignore
     "maxserve.spec_decode.acceptance_rate_per_position": _meter.create_histogram(
         "maxserve.spec_decode.acceptance_rate_per_position",
@@ -386,10 +404,37 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="percent",
         description="Percentage of host KV cache blocks in use (0-100%), sampled once per scheduler batch when host paging is enabled.",
     ),  # type: ignore
+    "maxserve.cache.device_blocks_served": _meter.create_counter(
+        "maxserve.cache.device_blocks_served",
+        unit="blocks",
+        description=(
+            "Cumulative KV blocks served directly from the local device "
+            "prefix cache, with no host/disk promotion or cross-replica "
+            "copy needed."
+        ),
+    ),  # type: ignore
     "maxserve.cache.h2d_blocks_copied": _meter.create_counter(
         "maxserve.cache.h2d_blocks_copied",
         unit="blocks",
         description="Cumulative host->device KV block copies.",
+    ),  # type: ignore
+    "maxserve.cache.cross_replica_blocks_copied": _meter.create_counter(
+        "maxserve.cache.cross_replica_blocks_copied",
+        unit="blocks",
+        description=(
+            "Cumulative KV blocks copied device-to-device across "
+            "data-parallel replicas to reuse a prefix-cache hit resident "
+            "on another replica."
+        ),
+    ),  # type: ignore
+    "maxserve.cache.cross_replica_bytes_copied": _meter.create_counter(
+        "maxserve.cache.cross_replica_bytes_copied",
+        unit="bytes",
+        description=(
+            "Cumulative bytes moved by device-to-device KV copies across "
+            "data-parallel replicas. Rate this to see NVLink/interconnect "
+            "bandwidth consumed by cross-replica prefix reuse."
+        ),
     ),  # type: ignore
     "maxserve.cache.d2h_blocks_copied": _meter.create_counter(
         "maxserve.cache.d2h_blocks_copied",
@@ -450,6 +495,26 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         "maxserve.vision.cache_hit_rate",
         unit="percent",
         description="Per-batch vision encoder cache hit rate (0-100%).",
+    ),  # type: ignore
+    "maxserve.video.clips_encoded": _meter.create_counter(
+        "maxserve.video.clips_encoded",
+        unit="clips",
+        description="Cumulative video clips run through the video encoder (cache misses).",
+    ),  # type: ignore
+    "maxserve.video.tokens_encoded": _meter.create_counter(
+        "maxserve.video.tokens_encoded",
+        unit="tokens",
+        description="Cumulative merged video tokens produced by the video encoder.",
+    ),  # type: ignore
+    "maxserve.video.encoding_time_milliseconds": _meter.create_histogram(
+        "maxserve.video.encoding_time_milliseconds",
+        unit="ms",
+        description="Per-batch video encoder wall-clock time.",
+    ),  # type: ignore
+    "maxserve.video.frames_per_clip": _meter.create_histogram(
+        "maxserve.video.frames_per_clip",
+        unit="frames",
+        description="Sampled frame count per newly-encoded video clip.",
     ),  # type: ignore
     "maxserve.tool_call.conformance_errors": _meter.create_counter(
         "maxserve.tool_call.conformance_errors",
@@ -875,10 +940,12 @@ class _AsyncMetrics:
             ),
         )
 
-    def cache_hit_rate(self, hit_rate: float) -> None:
+    def cache_request_prefix_coverage(self, coverage: float) -> None:
         self.client.send_measurement(
             MaxMeasurement(
-                "maxserve.cache.hit_rate", hit_rate, self.extra_attributes
+                "maxserve.cache.request_prefix_coverage",
+                coverage,
+                self.extra_attributes,
             ),
         )
 
@@ -946,6 +1013,42 @@ class _AsyncMetrics:
             ),
         )
 
+    def video_clips_encoded(self, clips: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.video.clips_encoded",
+                clips,
+                self.extra_attributes,
+            ),
+        )
+
+    def video_tokens_encoded(self, tokens: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.video.tokens_encoded",
+                tokens,
+                self.extra_attributes,
+            ),
+        )
+
+    def video_encoding_time_milliseconds(self, time_ms: float) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.video.encoding_time_milliseconds",
+                time_ms,
+                self.extra_attributes,
+            ),
+        )
+
+    def video_frames_per_clip(self, frames: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.video.frames_per_clip",
+                frames,
+                self.extra_attributes,
+            ),
+        )
+
     def input_tokens_per_request(self, value: int) -> None:
         self.client.send_measurement(
             MaxMeasurement(
@@ -996,6 +1099,33 @@ class _AsyncMetrics:
             MaxMeasurement(
                 "maxserve.dkv.rpc_read_latency",
                 latency_ms,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_connected_clients(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.connected_clients",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_total_clients(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.total_clients",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_reconnect_attempts(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.reconnect_attempts",
+                value,
                 self.extra_attributes,
             ),
         )
@@ -1132,10 +1262,37 @@ class _AsyncMetrics:
             ),
         )
 
+    def cache_device_blocks_served(self, count: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.cache.device_blocks_served",
+                count,
+                self.extra_attributes,
+            ),
+        )
+
     def cache_h2d_blocks_copied(self, count: int) -> None:
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.cache.h2d_blocks_copied",
+                count,
+                self.extra_attributes,
+            ),
+        )
+
+    def cache_cross_replica_blocks_copied(self, count: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.cache.cross_replica_blocks_copied",
+                count,
+                self.extra_attributes,
+            ),
+        )
+
+    def cache_cross_replica_bytes_copied(self, count: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.cache.cross_replica_bytes_copied",
                 count,
                 self.extra_attributes,
             ),

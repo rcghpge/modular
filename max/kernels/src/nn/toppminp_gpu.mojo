@@ -24,7 +24,7 @@ from std.gpu.host.dim import Dim
 from std.sys.info import has_apple_gpu_accelerator
 from std.random import Random
 from layout import Coord, Idx, TileTensor, row_major
-from std.memory import bitcast, stack_allocation
+from std.memory import bitcast, unsafe_stack_allocation
 from nn.softmax import _softmax_gpu
 from nn.topk import (
     TopK_2,
@@ -92,11 +92,13 @@ def topk_wrapper[
     var _in_buffer = in_buffer + batch_id * num_elements
 
     # # Allocate shared memory for the values and indices
-    var topk_sram = stack_allocation[
-        block_size,
-        TopK_2[input_type, largest],
-        address_space=AddressSpace.SHARED,
-    ]()
+    var topk_sram = UnsafePointer(
+        unsafe_stack_allocation[
+            block_size,
+            TopK_2[input_type, largest],
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     # Pack the topk_vals and topk_idxs into shared memory
     var block_offset = block_lane * block_size
@@ -321,34 +323,44 @@ def radix_sort_pairs_kernel[
         return
 
     # Shared mem declarations
-    var s_counts = stack_allocation[
-        BLOCK_SIZE * NUM_BUCKETS,
-        Int32,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var total_counts = stack_allocation[
-        NUM_BUCKETS,
-        Int32,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var total_offsets = stack_allocation[
-        (NUM_BUCKETS + 1),  # +1 extended size for descending
-        Int32,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var total_offsets_descending = stack_allocation[
-        NUM_BUCKETS,
-        Int32,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var s_thread_offsets = stack_allocation[
-        BLOCK_SIZE * NUM_BUCKETS,
-        Int32,
-        address_space=AddressSpace.SHARED,
-    ]()
+    var s_counts = UnsafePointer(
+        unsafe_stack_allocation[
+            BLOCK_SIZE * NUM_BUCKETS,
+            Int32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var total_counts = UnsafePointer(
+        unsafe_stack_allocation[
+            NUM_BUCKETS,
+            Int32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var total_offsets = UnsafePointer(
+        unsafe_stack_allocation[
+            (NUM_BUCKETS + 1),  # +1 extended size for descending
+            Int32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var total_offsets_descending = UnsafePointer(
+        unsafe_stack_allocation[
+            NUM_BUCKETS,
+            Int32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var s_thread_offsets = UnsafePointer(
+        unsafe_stack_allocation[
+            BLOCK_SIZE * NUM_BUCKETS,
+            Int32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     # Initialize counts[NUM_BUCKETS]
-    var counts_stack = InlineArray[Int32, NUM_BUCKETS](uninitialized=True)
+    var counts_stack = Array[Int32, NUM_BUCKETS](uninitialized=True)
     var counts_buf = TileTensor(counts_stack, row_major[NUM_BUCKETS]()).fill(0)
     var counts = counts_buf.ptr
 
@@ -434,9 +446,7 @@ def radix_sort_pairs_kernel[
         barrier()
 
     # Each thread initializes local_offsets[NUM_BUCKETS] = 0
-    var local_offsets_stack = InlineArray[Int32, NUM_BUCKETS](
-        uninitialized=True
-    )
+    var local_offsets_stack = Array[Int32, NUM_BUCKETS](uninitialized=True)
     var local_offsets_buf = TileTensor(
         local_offsets_stack, row_major[NUM_BUCKETS]()
     ).fill(0)
@@ -489,7 +499,7 @@ struct DoubleBuffer[dtype: DType](ImplicitlyCopyable):
     between them.
     """
 
-    var _d_buffers: InlineArray[
+    var _d_buffers: Array[
         Optional[UnsafePointer[Scalar[Self.dtype], MutUntrackedOrigin]], 2
     ]
     var _selection: Int32

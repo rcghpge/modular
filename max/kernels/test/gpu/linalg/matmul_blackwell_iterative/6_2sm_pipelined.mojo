@@ -36,10 +36,10 @@ from std.gpu import (
     warp_id as get_warp_id,
 )
 from std.gpu.memory import fence_async_view_proxy, external_memory
-from std.gpu.compute.mma import st_matrix
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.mma import st_matrix
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from std.gpu.sync import named_barrier
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.tcgen05 import *
 from internal_utils import assert_almost_equal
 from layout import (
     IntTuple,
@@ -397,16 +397,16 @@ def store_C[
         1, remainder_repetitions * num_regs_per_thread
     )
 
-    var c_upper_pow_2_main: InlineArray[Scalar[accum_type], main_frag_size]
+    var c_upper_pow_2_main: Array[Scalar[accum_type], main_frag_size]
 
-    var c_lower_pow_2_main: InlineArray[Scalar[accum_type], main_frag_size]
+    var c_lower_pow_2_main: Array[Scalar[accum_type], main_frag_size]
 
-    var c_upper_pow_2_rem = InlineArray[
-        Scalar[accum_type], remainder_frag_size
-    ](uninitialized=True)
-    var c_lower_pow_2_rem = InlineArray[
-        Scalar[accum_type], remainder_frag_size
-    ](uninitialized=True)
+    var c_upper_pow_2_rem = Array[Scalar[accum_type], remainder_frag_size](
+        uninitialized=True
+    )
+    var c_lower_pow_2_rem = Array[Scalar[accum_type], remainder_frag_size](
+        uninitialized=True
+    )
 
     # Primary Load
     c_upper_pow_2_main = tcgen05_ld[
@@ -690,11 +690,13 @@ def kernel_6[
             UntrackedOrigin[mut=True],
         ]
     ](
-        external_memory[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[a_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+            ]()
+        )
     )  # pointer to first byte of scratchpad
 
     comptime a_smem_size = a_smem_layout.size()

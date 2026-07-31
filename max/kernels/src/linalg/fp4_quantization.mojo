@@ -15,7 +15,7 @@
 
 from std.math import align_up, ceildiv
 from std.math.uutils import uceildiv, udivmod, ufloordiv
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.gpu import (
     block_idx,
     thread_idx,
@@ -83,8 +83,8 @@ from std.gpu.memory import external_memory, fence_async_view_proxy
 from std.gpu import barrier
 from std.sys import size_of, align_of, simd_width_of, get_defined_int
 from layout.swizzle import make_swizzle
-from std.algorithm import elementwise
-from std.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
+from max.algorithm import elementwise
+from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 from std.sys import get_defined_bool
 from std.sys.intrinsics import llvm_intrinsic
 from linalg.matmul.gpu.sm100.block_scaled_dispatch import (
@@ -93,7 +93,7 @@ from linalg.matmul.gpu.sm100.block_scaled_dispatch import (
 from std.gpu.primitives.grid_controls import PDLLevel
 from linalg.matmul.gpu.sm100_structured.default.dispatch import DISPATCH_HIT
 from std.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
-from std.runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
+from max.runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
 from std.collections.string.string_slice import get_static_string
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig, GEMMKind
 from linalg.matmul.gpu.sm100.tile_scheduler import RasterOrder
@@ -1052,11 +1052,13 @@ def quantize_dynamic_scaled_async_fp4_kernel[
             address_space=AddressSpace.SHARED,
         ]
     ](
-        external_memory[
-            Scalar[input_dtype],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[input_dtype],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+            ]()
+        )
     )
 
     comptime input_smem_tile_size = _idx_product[
@@ -1605,12 +1607,14 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     comptime scales_smem_tile_size = align_up(
         Int(Coord(scales_tile_shape).product()), 128
     )
-    var smem_ptr = stack_allocation[
-        scales_smem_tile_size,
-        Scalar[scales_dtype],
-        alignment=128,
-        address_space=AddressSpace.SHARED,
-    ]()
+    var smem_ptr = UnsafePointer(
+        unsafe_stack_allocation[
+            scales_smem_tile_size,
+            Scalar[scales_dtype],
+            alignment=128,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     var scales_smem = TileTensor(
         smem_ptr,
@@ -2901,14 +2905,14 @@ def _mxfp4_dotprod[
 
     for ko in range(k_groups):
         var a_scale = a_scales_ptr[ko].cast[DType.float32]()
-        var b_scale = InlineArray[Float32, BLOCK_N](uninitialized=True)
+        var b_scale = Array[Float32, BLOCK_N](uninitialized=True)
 
         comptime for bn in range(BLOCK_N):
             b_scale[bn] = b_scales_ptr[bn * k_groups + ko].cast[DType.float32]()
 
         comptime for ki in range(0, MXFP4_SF_VECTOR_SIZE // 2, 4):
             var a_data = bitcast[DType.int32, 1](a_local_ptr.load[width=4](ki))
-            var b_data = InlineArray[Int32, BLOCK_N](uninitialized=True)
+            var b_data = Array[Int32, BLOCK_N](uninitialized=True)
 
             comptime for bn in range(BLOCK_N):
                 b_data[bn] = bitcast[DType.int32, 1](

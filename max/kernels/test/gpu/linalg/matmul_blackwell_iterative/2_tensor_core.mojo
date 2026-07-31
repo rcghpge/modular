@@ -21,8 +21,8 @@ from std.gpu.primitives.cluster import block_rank_in_cluster
 from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.tcgen05 import *
 
 # Additional imports for testing
 from internal_utils import assert_almost_equal
@@ -116,12 +116,14 @@ def kernel_3[
             UntrackedOrigin[mut=True],
         ]
     ](
-        external_memory[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="tmem_test_dynamic_shared_memory",
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[a_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="tmem_test_dynamic_shared_memory",
+            ]()
+        )
     )
 
     # a_smem_layout is a description of how tile is arranged in memory, and LayoutTensor is a pointer to memory + a layout, taking in a_smem as its pointer
@@ -170,7 +172,7 @@ def kernel_3[
     comptime accum_type = get_accum_type[a_type]()
 
     comptime c_frag_size = MMA_M * MMA_N // num_threads  # MMA_M * MMA_N is the size of the accumulator, num_threads is the number of threads in the warp, c_frag_size is the num of elements in the accumulator per thread
-    var c_frag: InlineArray[
+    var c_frag: Array[
         Scalar[accum_type], c_frag_size
     ]  # array of accumulator elements
 

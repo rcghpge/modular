@@ -43,7 +43,7 @@ from std.gpu.memory import (
 from std.gpu.sync import (
     named_barrier,
 )
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_before,
@@ -563,12 +563,14 @@ struct MLA_SM100_Decode_Sparse[
                     )
 
                 return  # This query position doesn't exist for this batch
-        q_smem = external_memory[
-            Scalar[Self.q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="mha_dynamic_shared_memory",
-        ]()
+        q_smem = UnsafePointer(
+            external_memory[
+                Scalar[Self.q_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="mha_dynamic_shared_memory",
+            ]()
+        )
         var kv_smem_bf16 = q_smem + Self.BlockElems * Self.NumQKBlocks
 
         # Split KV SMEM into nope FP8 and rope BF16 regions.

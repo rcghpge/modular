@@ -45,7 +45,7 @@ from layout._fillers import BATCH_SIZE
 from layout._utils import make_amd_buffer_resource
 from layout.element import Element, MemoryElement
 from layout.tma_async import _tma_desc_tile_shape
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.utils import IndexList, StaticTuple
 from std.utils.index import Index
 from .int_tuple import (
@@ -298,8 +298,8 @@ struct LayoutTensor[
     ```mojo
     from layout import Layout, LayoutTensor
 
-    # Create tensor on CPU using InlineArray to allocate storage space.
-    var storage = InlineArray[Float32, 5 * 4](uninitialized=True)
+    # Create tensor on CPU using Array to allocate storage space.
+    var storage = Array[Float32, 5 * 4](uninitialized=True)
     var tensor_5x4 = LayoutTensor[DType.float32, Layout.row_major(5, 4)](storage)
     ```
     """
@@ -441,11 +441,7 @@ struct LayoutTensor[
     @always_inline
     def __init__(
         out self: Self.GenericAddressSpaceLayoutTensor,
-        span: Span[
-            Scalar[Self.dtype],
-            Self.origin,
-            ...,
-        ],
+        span: Span[Scalar[Self.dtype], Self.origin],
     ):
         """Create a `LayoutTensor` with a `Span`.
 
@@ -460,11 +456,7 @@ struct LayoutTensor[
     @always_inline
     def __init__(
         out self: Self.GenericAddressSpaceLayoutTensor,
-        span: Span[
-            Scalar[Self.dtype],
-            Self.origin,
-            ...,
-        ],
+        span: Span[Scalar[Self.dtype], Self.origin],
         runtime_layout: RuntimeLayout[Self.layout, ...],
     ):
         """Create a `LayoutTensor` with a `Span` and a runtime layout
@@ -485,11 +477,7 @@ struct LayoutTensor[
     @always_inline
     def __init__(
         out self: Self.GenericAddressSpaceLayoutTensor,
-        span: Span[
-            Scalar[Self.dtype],
-            Self.origin,
-            ...,
-        ],
+        span: Span[Scalar[Self.dtype], Self.origin],
         runtime_layout: RuntimeLayout[Self.layout, ...],
         element_runtime_layout: RuntimeLayout[Self.element_layout, ...],
     ):
@@ -1079,7 +1067,7 @@ struct LayoutTensor[
         )
 
     @always_inline
-    def get_immutable(
+    def as_imm(
         self,
     ) -> Self.OriginCastType[ImmOrigin(Self.origin)]:
         """
@@ -1089,10 +1077,23 @@ struct LayoutTensor[
             A `LayoutTensor` covering the same elements, but without mutability.
         """
         return {
-            self.ptr.as_immutable(),
+            self.ptr.as_imm(),
             self.runtime_layout,
             self.runtime_element_layout,
         }
+
+    @always_inline
+    @deprecated(use=as_imm)
+    def get_immutable(
+        self,
+    ) -> Self.OriginCastType[ImmOrigin(Self.origin)]:
+        """
+        Return an immutable version of this tensor.
+
+        Returns:
+            A `LayoutTensor` covering the same elements, but without mutability.
+        """
+        return self.as_imm()
 
     @always_inline
     def _offset(self, m: Int, n: Int) -> Int:
@@ -2432,6 +2433,7 @@ struct LayoutTensor[
             self._offset(coords)
         )
 
+    @__allow_legacy_custom_self_type
     @always_inline("nodebug")
     def store[
         width: SIMDLength, store_alignment: Int = Self.alignment
@@ -2509,6 +2511,7 @@ struct LayoutTensor[
             self._offset(m, n), val
         )
 
+    @__allow_legacy_custom_self_type
     @always_inline("nodebug")
     def store[
         width: SIMDLength, store_alignment: Int = Self.alignment
@@ -2554,6 +2557,7 @@ struct LayoutTensor[
             self._offset(coords), val
         )
 
+    @__allow_legacy_custom_self_type
     @always_inline("nodebug")
     def aligned_store[
         width: SIMDLength
@@ -2667,12 +2671,14 @@ struct LayoutTensor[
         )
 
         return Self.StackTensorType(
-            stack_allocation[
-                Self.layout.size() * Self.element_layout.size(),
-                Self.dtype,
-                alignment=stack_alignment,
-                address_space=Self.address_space,
-            ]().as_unsafe_any_origin()
+            UnsafePointer(
+                unsafe_stack_allocation[
+                    Self.layout.size() * Self.element_layout.size(),
+                    Self.dtype,
+                    alignment=stack_alignment,
+                    address_space=Self.address_space,
+                ]()
+            ).as_unsafe_any_origin()
         )
 
     @staticmethod
@@ -4454,7 +4460,7 @@ struct LayoutTensor[
                     self.runtime_layout.stride.value[i] * vector_shape_i
                 )
 
-        var ptr = self.ptr.as_immutable().unsafe_origin_cast[_origin]()
+        var ptr = self.ptr.as_imm().unsafe_origin_cast[_origin]()
 
         comptime if Self.layout.all_dims_known():
             comptime if vectorized_type.masked:
@@ -5244,6 +5250,7 @@ struct LayoutTensor[
         """
         return self.CompositionType[rhs_layout, dst_layout](self.ptr)
 
+    @__allow_legacy_custom_self_type
     @always_inline
     def distance(
         self: Self.Immut,
@@ -5294,6 +5301,7 @@ struct LayoutTensor[
             Int(self.ptr) - Int(addr)
         ) // Scalar[Self.linear_idx_type](size_of[Self.dtype]())
 
+    @__allow_legacy_custom_self_type
     @always_inline
     def distance[
         _layout: Layout,
@@ -5377,6 +5385,7 @@ struct LayoutTensor[
             )(rt)
             return idx
 
+    @__allow_legacy_custom_self_type
     @always_inline("nodebug")
     def copy_from(self: Self._AsMut, other: LayoutTensor):
         """Copy data from another tensor to this tensor.
@@ -5401,8 +5410,8 @@ struct LayoutTensor[
         ```mojo
         from layout import LayoutTensor, Layout
 
-        var src_storage = InlineArray[Float32, 2 * 3](uninitialized=True)
-        var dst_storage = InlineArray[Float32, 3 * 2](uninitialized=True)
+        var src_storage = Array[Float32, 2 * 3](uninitialized=True)
+        var dst_storage = Array[Float32, 3 * 2](uninitialized=True)
         var src = LayoutTensor[
             DType.float32,
             Layout([2, 3]),
@@ -5722,6 +5731,7 @@ struct LayoutTensor[
                     dst_ptr + dst_idx,
                 )
 
+    @__allow_legacy_custom_self_type
     @always_inline
     def fill[
         *,
@@ -5767,7 +5777,7 @@ struct LayoutTensor[
         from layout import Layout, LayoutTensor
 
         def main() raises:
-            var storage = InlineArray[Float32, 3 * 4](uninitialized=True)
+            var storage = Array[Float32, 3 * 4](uninitialized=True)
             var tensor = LayoutTensor[
                 DType.float32,
                 Layout([3, 4]),
@@ -5831,7 +5841,7 @@ struct LayoutTensor[
         from layout import Layout, LayoutTensor
 
         def main() raises:
-            var storage = InlineArray[Float32, 2 * 3](uninitialized=True)
+            var storage = Array[Float32, 2 * 3](uninitialized=True)
             var tensor = LayoutTensor[
                 DType.float32,
                 Layout([2, 3]),

@@ -1,7 +1,7 @@
 """Aliases for mojo packages."""
 
 _PACKAGES = {
-    "std": "mojo/stdlib/std",
+    "std": "mojo/stdlib/std:std_impl",
     "python": "mojo/python/mojo",
     "test_utils": "mojo/stdlib/test/test_utils",
 }
@@ -12,8 +12,7 @@ _EXTRA_ALIASES = {
 }
 
 _MAX_PACKAGES = {
-    "machine": "driver/src/machine",
-    "_hal": "driver/src/_hal",
+    "algorithm": "kernels/src/algorithm",
     "kv_cache": "kernels/src/kv_cache",
     "layout": "kernels/src/layout",
     "linalg": "kernels/src/linalg",
@@ -43,6 +42,8 @@ INTERNAL_PACKAGES = [
     "//Kernels/lib/matmul_rs",
     "//Kernels/lib/msa",
     "//Kernels/src/mega_ffn",
+    "//max/internal/driver/src/_hal",
+    "//max/internal/driver/src/machine",
 ]
 
 # Packages that are marked testonly and cannot be used by production targets

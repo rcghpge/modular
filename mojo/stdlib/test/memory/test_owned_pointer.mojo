@@ -14,6 +14,7 @@
 from std.memory import OwnedPointer
 from test_utils import (
     ExplicitCopyOnly,
+    ExplicitDelOnly,
     ImplicitCopyOnly,
     MoveOnly,
     ObservableDel,
@@ -130,17 +131,40 @@ def test_moveinit() raises:
     _ = b2^
 
 
-def test_steal_data() raises:
+def test_unsafe_take_allocation() raises:
     var deleted = False
 
     var owned_ptr = OwnedPointer(ObservableDel(Pointer(to=deleted)))
 
-    var ptr = owned_ptr^.steal_data()
+    var ptr = owned_ptr^.unsafe_take_allocation().unsafe_leak()
 
     # Check that `Box` did not deinitialize its pointee.
     assert_false(deleted)
 
     _ = OwnedPointer(unsafe_from_raw_pointer=ptr)
+
+
+def test_owned_pointer_linear_type() raises:
+    # An `OwnedPointer` holding a linear (non-`ImplicitlyDeletable`) element
+    # has no implicit destructor, so it is consumed explicitly with `take()`.
+    # The linear value is destroyed before any raising assert runs (the
+    # linear-in-`raises` idiom).
+    var b = OwnedPointer(ExplicitDelOnly(5))
+    var v = b^.take()
+    var data = v.data
+    v^.destroy()
+    assert_equal(data, 5)
+
+    # `unsafe_take_allocation()` releases the storage without touching the
+    # pointee, so it also works for a linear element type.
+    var b2 = OwnedPointer(ExplicitDelOnly(7))
+    var b3 = OwnedPointer(
+        unsafe_from_raw_pointer=b2^.unsafe_take_allocation().unsafe_leak()
+    )
+    var v3 = b3^.take()
+    var data3 = v3.data
+    v3^.destroy()
+    assert_equal(data3, 7)
 
 
 def test_write_to() raises:

@@ -24,11 +24,11 @@ inserted by the NanCheckPass compiler pass. The architecture is:
    diagnostic error if any are non-zero.
 """
 
-from std.algorithm import elementwise
+from max.algorithm import elementwise
 from std.gpu import barrier, block_dim, block_idx, thread_idx
 from std.gpu.host import DeviceContext
 from std.gpu.host.info import is_cpu
-from std.memory import alloc, dealloc, stack_allocation
+from std.memory import alloc, dealloc, unsafe_stack_allocation
 from std.memory.alloc import Layout as AllocLayout
 from std.atomic import Atomic
 from std.sys import simd_width_of
@@ -51,12 +51,12 @@ def _nan_check_gpu_kernel[
     out_inf: UnsafePointer[Scalar[DType.int32], MutAnyOrigin],
 ):
     """GPU kernel: count NaN/Inf values via parallel reduction."""
-    var nan_local = stack_allocation[
-        1, Int32, address_space=AddressSpace.SHARED
-    ]()
-    var inf_local = stack_allocation[
-        1, Int32, address_space=AddressSpace.SHARED
-    ]()
+    var nan_local = UnsafePointer(
+        unsafe_stack_allocation[1, Int32, address_space=AddressSpace.SHARED]()
+    )
+    var inf_local = UnsafePointer(
+        unsafe_stack_allocation[1, Int32, address_space=AddressSpace.SHARED]()
+    )
     if thread_idx.x == 0:
         nan_local[0] = Int32(0)
         inf_local[0] = Int32(0)
@@ -108,10 +108,10 @@ def nan_check_count[
         # CPU path: vectorized scan using elementwise with atomic accumulators.
         var nan_acc = alloc(
             AllocLayout[Scalar[DType.int32]](count=1)
-        ).into_deletable()
+        ).into_managed()
         var inf_acc = alloc(
             AllocLayout[Scalar[DType.int32]](count=1)
-        ).into_deletable()
+        ).into_managed()
 
         var nan_acc_ptr = nan_acc.unsafe_ptr()
         var inf_acc_ptr = inf_acc.unsafe_ptr()

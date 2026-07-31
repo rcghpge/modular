@@ -22,10 +22,7 @@ from std.builtin.coroutine import (
     _coro_resume_fn,
     _suspend_async,
 )
-
-# RaisingCoroutine is a builtin type, available without explicit import.
-from std.gpu.host import DeviceContext
-
+from std.builtin._startup import _ensure_runtime_init
 
 # ===-----------------------------------------------------------------------===#
 # _AsyncContext
@@ -120,6 +117,48 @@ def _async_wait_timeout(
 # ===-----------------------------------------------------------------------===#
 
 
+def initialize_runtime():
+    """Initializes the global Mojo runtime if it is not already initialized.
+
+    The Mojo runtime manages the thread pool used by parallel and
+    asynchronous APIs such as `parallelize()` and `TaskGroup`. Programs with
+    a Mojo `main()` function initialize the runtime automatically at startup,
+    so most programs never need to call this function.
+
+    However, when Mojo code is compiled into a shared library (with
+    `mojo build --emit shared-lib`) and called from a non-Mojo host program
+    (such as C or C++), no Mojo `main()` function runs and the runtime is
+    never initialized. In that case, call this function before using any API
+    that depends on the runtime — for example, at the start of each function
+    exported with `@export`. This function is idempotent and inexpensive when
+    the runtime is already initialized.
+
+    Initializing the runtime once covers all threads in the process. The
+    runtime remains alive for the remainder of the process.
+
+    Examples:
+
+    ```mojo
+    from max.algorithm import parallelize
+    from std.runtime import initialize_runtime
+
+
+    @export("fill_squares")
+    def fill_squares(
+        data: Pointer[Int64, MutUntrackedOrigin], len: Int
+    ) abi("C"):
+        initialize_runtime()
+
+        @parameter
+        def fill(i: Int):
+            data.unsafe_store(i, Int64(i * i))
+
+        parallelize[fill](len)
+    ```
+    """
+    _ensure_runtime_init()
+
+
 @always_inline
 def parallelism_level() -> Int:
     """Gets the parallelism level of the Runtime.
@@ -133,29 +172,6 @@ def parallelism_level() -> Int:
             Int32,
         ]()
     )
-
-
-def parallelism_level(ctx: Optional[DeviceContext]) -> Int:
-    """Gets the parallelism level from a DeviceContext.
-
-    For CPU contexts this returns the number of worker threads in the
-    runtime associated with that context. Falls back to the global
-    parallelism level if the context is None or the query fails.
-
-    Args:
-        ctx: The device context to query.
-
-    Returns:
-        The parallelism level of the context.
-    """
-    from std.gpu.host import DeviceAttribute
-
-    if ctx:
-        try:
-            return ctx.value().get_attribute(DeviceAttribute.PARALLELISM_LEVEL)
-        except:
-            pass
-    return parallelism_level()
 
 
 def create_task(

@@ -98,6 +98,16 @@ class KVConnectorType(str, Enum):
     and a ``disk_offload_dir`` on the connector config.
     """
 
+    rust_tiered = "rust_tiered"
+    """Tiers evicted pages across host memory and disk, backed by the Rust
+    ``kv_tier_connector`` extension.
+
+    The performant, CUDA-only successor to :attr:`tiered`: it runs its copies
+    and disk I/O on Rust threads (no GIL contention) and overlaps onloads with
+    GPU compute via asynchronous transfer handles. Same config requirements as
+    :attr:`tiered`. Falls back with an error on non-CUDA devices.
+    """
+
     dkv = "dkv"
     """Routes pages through a distributed KV block store.
 
@@ -110,6 +120,22 @@ def _validate_is_2d_uint8_buffer(buffer: Buffer) -> None:
         raise ValueError("KVCacheMemory buffer must have 2 dimensions")
     if buffer.dtype != DType.uint8:
         raise ValueError("KVCacheMemory buffer must have dtype uint8")
+
+
+def _view_as_uint8_pages(buffer: Buffer) -> Buffer:
+    """Re-view a KV buffer as a 2-D ``[num_pages, bytes_per_page]`` uint8 array.
+
+    The original dtype and per-page element count are folded into a flat
+    per-page byte stride so the offload engine and transfer engine can treat
+    every cache uniformly regardless of dtype or shape.
+    """
+    return buffer.view(
+        dtype=DType.uint8,
+        shape=[
+            buffer.shape[0],
+            buffer.num_elements * buffer.dtype.size_in_bytes // buffer.shape[0],
+        ],
+    )
 
 
 @dataclass
@@ -205,6 +231,56 @@ class ReplicatedKVCacheMemory(KVCacheMemory):
         return [self.buffer, *self.peers]
 
 
+@dataclass
+class KVCacheMemoryGroup:
+    """One producer-authored NIXL group for the transfer engine.
+
+    A group is exactly one logical ``(child, kind)`` tensor — e.g. a cache's
+    ``values`` or its ``scales`` — carrying every TP-shard view of that tensor.
+    ``buffers`` are the same 2-D ``[num_pages, bytes_per_page]`` ``uint8`` views
+    that :meth:`KVCacheBuffer.to_memory` emits, one per TP shard; for a
+    replicated cache (MLA) they are the rank-0 shard followed by its peers.
+
+    Authoring the group boundary on the producer side replaces the transfer
+    engine's old shape-comparison grouping, which could silently merge two
+    distinct kinds that happened to share a ``bytes_per_page``. ``replicated``
+    rides on the group so replication becomes a per-group property.
+    """
+
+    replicated: bool
+    buffers: list[Buffer]
+
+    def __post_init__(self) -> None:
+        if len(self.buffers) == 0:
+            raise ValueError("KVCacheMemoryGroup must have at least one buffer")
+        for buffer in self.buffers:
+            _validate_is_2d_uint8_buffer(buffer)
+        first_shape = self.buffers[0].shape
+        for i, buffer in enumerate(self.buffers):
+            if buffer.shape != first_shape:
+                raise ValueError(
+                    f"All buffers in a KVCacheMemoryGroup must share a shape, "
+                    f"but shard {i} has shape {buffer.shape} vs shard 0's "
+                    f"{first_shape}. bytes_per_page/total_num_pages are read "
+                    f"off shard 0 and would silently report the wrong value "
+                    f"for a mismatched shard."
+                )
+        if self.replicated and len(self.buffers) <= 1:
+            raise ValueError(
+                "replicated=True requires at least 2 TP-shard buffers"
+            )
+
+    @property
+    def bytes_per_page(self) -> int:
+        """Returns the per-page byte stride shared by every shard."""
+        return self.buffers[0].shape[1]
+
+    @property
+    def total_num_pages(self) -> int:
+        """Returns the total number of pages (including the null block)."""
+        return self.buffers[0].shape[0]
+
+
 @runtime_checkable
 class KVCacheBufferInterface(Protocol):
     """Interface for a KV cache buffer (single leaf or a tree of leaves)."""
@@ -221,6 +297,10 @@ class KVCacheBufferInterface(Protocol):
 
     def to_memory(self) -> list[KVCacheMemory]:
         """Returns the offload-ready KV cache memory units."""
+        ...
+
+    def to_memory_groups(self) -> list[KVCacheMemoryGroup]:
+        """Returns the transfer-engine NIXL groups, one per ``(child, kind)``."""
         ...
 
 
@@ -255,6 +335,18 @@ class MultiKVCacheBuffer(KVCacheBufferInterface):
         for child in self.children.values():
             memories.extend(child.to_memory())
         return memories
+
+    def to_memory_groups(self) -> list[KVCacheMemoryGroup]:
+        """Returns the NIXL groups for all children, one per leaf ``(child, kind)``.
+
+        Children are aggregated child-major (mirroring :meth:`to_memory`), so a
+        nested tree — e.g. speculative-decode ``target``/``draft`` or
+        ``dense``/``sparse`` hybrids — yields one group per leaf cache per kind.
+        """
+        groups: list[KVCacheMemoryGroup] = []
+        for child in self.children.values():
+            groups.extend(child.to_memory_groups())
+        return groups
 
 
 @dataclass
@@ -394,16 +486,7 @@ class KVCacheBuffer(KVCacheBufferInterface):
         if self.scales is not None:
             shard_lists.append(self.scales)
         for shards in shard_lists:
-            viewed = [
-                b.view(
-                    dtype=DType.uint8,
-                    shape=[
-                        b.shape[0],
-                        b.num_elements * b.dtype.size_in_bytes // b.shape[0],
-                    ],
-                )
-                for b in shards
-            ]
+            viewed = [_view_as_uint8_pages(b) for b in shards]
             if self.replicates_kv_across_tp:
                 result.append(
                     ReplicatedKVCacheMemory(buffer=viewed[0], peers=viewed[1:])
@@ -411,6 +494,33 @@ class KVCacheBuffer(KVCacheBufferInterface):
             else:
                 result.extend(KVCacheMemory(buffer=v) for v in viewed)
         return result
+
+    def to_memory_groups(self) -> list[KVCacheMemoryGroup]:
+        """Convert to producer-authored NIXL groups, one per kind.
+
+        Emits a ``values`` group holding all its TP-shard views and, for a
+        quantized cache, a separate ``scales`` group. ``replicated`` is taken
+        from :attr:`replicates_kv_across_tp`. This is the group-preserving
+        analog of :meth:`to_memory`: it authors one group per kind rather than
+        one unit per shard, so the transfer engine never has to re-infer the
+        group boundary by comparing buffer shapes.
+
+        Returns:
+            One :class:`KVCacheMemoryGroup` per buffer kind (values, and scales
+            if present).
+        """
+        groups: list[KVCacheMemoryGroup] = []
+        shard_lists: list[list[Buffer]] = [self.values]
+        if self.scales is not None:
+            shard_lists.append(self.scales)
+        for shards in shard_lists:
+            groups.append(
+                KVCacheMemoryGroup(
+                    replicated=self.replicates_kv_across_tp,
+                    buffers=[_view_as_uint8_pages(b) for b in shards],
+                )
+            )
+        return groups
 
 
 @dataclass
@@ -713,6 +823,7 @@ class KVCacheParams(KVCacheParamInterface):
         if self.kv_connector in (
             KVConnectorType.local,
             KVConnectorType.tiered,
+            KVConnectorType.rust_tiered,
         ):
             if not self.enable_prefix_caching:
                 raise ValueError(
@@ -983,6 +1094,7 @@ class KVCacheParams(KVCacheParamInterface):
             if self.kv_connector in (
                 KVConnectorType.local,
                 KVConnectorType.tiered,
+                KVConnectorType.rust_tiered,
                 KVConnectorType.dkv,
             ):
                 # KVCacheBuffer.all_buffers / to_memory enumerate only the
@@ -1915,11 +2027,42 @@ class MultiKVCacheParams(KVCacheParamInterface):
         )
 
 
+def spec_decode_cache_slack(params: KVCacheParamInterface) -> int:
+    """Computes the extra KV positions a request may occupy past ``max_seq_len``.
+
+    A speculative-decode step can over-speculate past the per-request
+    ``max_seq_len`` cap into this slack (the KV pool reserves it beyond
+    ``max_seq_len``), so any per-request sizing derived from ``max_seq_len``
+    -- the pool's page budget, the sparse-indexer score scratch, etc. -- must
+    add it. Centralized here so ``_compute_seq_len``, pool sizing, and
+    ``OverlapTextGenerationPipeline._effective_max_cache_length`` stay in sync.
+
+    Args:
+        params: The KV cache parameters. The speculative-decoding fields
+            (``num_draft_tokens`` and ``num_draft_tokens_per_step``) determine
+            the slack.
+
+    Returns:
+        The number of extra KV positions to reserve past ``max_seq_len``, or
+        ``0`` when speculative decoding is off.
+    """
+    if params.num_draft_tokens <= 0:
+        return 0
+    # Worst case matching ``_compute_seq_len``: drafts verified and written next
+    # batch (2x), the prior overlap batch's drafts assumed accepted (1x), the
+    # DFlash block-draft slot, and the FUTURE_TOKEN placeholder.
+    block_draft_extra = (
+        1 if params.num_draft_tokens_per_step == params.num_draft_tokens else 0
+    )
+    return 3 * params.num_draft_tokens + block_draft_extra + 1
+
+
 def compute_num_device_blocks(
     params: KVCacheParamInterface,
     available_cache_memory: int,
     max_batch_size: int | None,
     max_seq_len: int | None,
+    require_max_seq_len_fits: bool = False,
 ) -> int:
     """Computes the number of blocks that can be allocated based on the available cache memory.
 
@@ -1930,15 +2073,25 @@ def compute_num_device_blocks(
         available_cache_memory: The amount of cache memory available across all devices.
         max_batch_size: The maximum batch size, or None.
         max_seq_len: The maximum sequence length, or None.
+        require_max_seq_len_fits: When True, raise instead of warn if a single
+            request at ``max_seq_len`` cannot fit in the allocable device
+            blocks. Memory estimation deliberately probes oversized configs,
+            so only the actual cache-allocation path should set this.
 
     Returns:
         The number of blocks that can be allocated for a single replica.
     """
-    # Compute upper bound of total number of pages required.
+    # Compute upper bound of total number of pages required. A speculative
+    # step can grow a request past max_seq_len into the pool's draft-token
+    # slack, so budget the per-request pages on that same bound; otherwise the
+    # pool caps short of what the scheduler is allowed to reserve.
     max_blocks_per_req: int | None = None
     max_total_blocks: int | None = None
     if max_seq_len is not None and max_batch_size is not None:
-        max_blocks_per_req = math.ceil(max_seq_len / params.page_size)
+        max_seq_len_with_slack = max_seq_len + spec_decode_cache_slack(params)
+        max_blocks_per_req = math.ceil(
+            max_seq_len_with_slack / params.page_size
+        )
         max_total_blocks = max_blocks_per_req * max_batch_size
 
     # Compute total number of blocks allocatable based on available memory.
@@ -1992,14 +2145,30 @@ def compute_num_device_blocks(
         memory_needed_str = to_human_readable_bytes(
             max_blocks_per_req * params.bytes_per_block
         )
-        logger.warning(
+        slack = spec_decode_cache_slack(params)
+        slack_str = (
+            f" (plus {slack} speculative-decode slack tokens)"
+            if slack > 0
+            else ""
+        )
+        msg = (
             "Insufficient cache memory to support a batch containing one"
-            f" request at the max sequence length of {max_seq_len} tokens. Need"
-            f" to allocate at least {max_blocks_per_req} pages"
+            f" request at the max sequence length of {max_seq_len} tokens"
+            f"{slack_str}. Need to allocate at least {max_blocks_per_req} pages"
             f" ({memory_needed_str}), but only have enough memory for"
             f" {num_allocable_blocks} pages"
             f" ({cache_memory_str}{across_x_devices_str})."
         )
+        if require_max_seq_len_fits:
+            raise RuntimeError(
+                msg + " A request approaching the max sequence length would"
+                " exhaust the KV cache and crash the model worker. Reduce"
+                " --max-length to at most"
+                f" {num_allocable_blocks * params.page_size} or increase the"
+                " available KV cache memory (e.g. raise"
+                " --device-memory-utilization)."
+            )
+        logger.warning(msg)
 
     return num_blocks
 
@@ -2053,7 +2222,16 @@ def compute_max_seq_len_fitting_in_cache(
         # Do not limit the sequence length.
         max_seq_len=None,
     )
-    return num_blocks * params.page_size
+    # Reserve the speculative-decode slack a request may occupy past its
+    # advertised max_seq_len (see spec_decode_cache_slack). Without this the
+    # auto-derived cap would equal the whole pool, so _effective_max_cache_length
+    # (min(max_seq_len + slack, pool)) collapses back to max_seq_len and
+    # over-speculation is silently disabled near the top of context. No-op when
+    # speculative decoding is off (slack == 0).
+    max_seq_len = num_blocks * params.page_size - spec_decode_cache_slack(
+        params
+    )
+    return max(1, max_seq_len)
 
 
 def compute_num_host_blocks(params: KVCacheParamInterface) -> int:
@@ -2072,6 +2250,7 @@ def compute_num_host_blocks(params: KVCacheParamInterface) -> int:
     if params.kv_connector not in (
         KVConnectorType.local,
         KVConnectorType.tiered,
+        KVConnectorType.rust_tiered,
     ):
         return 0
     assert params.host_kvcache_swap_space_gb is not None

@@ -27,7 +27,13 @@ from std.collections._asan_annotations import (
 from std.os import abort
 from std.sys import size_of
 
-from std.memory.alloc import alloc, dealloc, ThinAllocation, Layout
+from std.memory.alloc import (
+    alloc,
+    dealloc,
+    Allocation,
+    ThinAllocation,
+    Layout,
+)
 from std.memory import (
     Pointer,
     unsafe_destroy_n,
@@ -121,7 +127,7 @@ struct _ListIterOwned[T: Movable & ImplicitlyDeletable](
         # Destroy the remaining elements that have not yet been
         # iterated over.
         unsafe_destroy_n(
-            self._list.unsafe_ptr() + self._index,
+            self._list.unsafe_ptr().unsafe_offset(self._index),
             count=len(self._list) - self._index,
         )
         self._list._len = 0
@@ -134,7 +140,11 @@ struct _ListIterOwned[T: Movable & ImplicitlyDeletable](
         if self._index >= len(self._list):
             raise StopIteration()
         self._index += 1
-        return (self._list.unsafe_ptr() + self._index - 1).unsafe_take_pointee()
+        return (
+            self._list.unsafe_ptr()
+            .unsafe_offset(self._index - 1)
+            .unsafe_take_pointee()
+        )
 
     @always_inline
     def bounds(self) -> Tuple[Int, Optional[Int]]:
@@ -718,10 +728,11 @@ struct List[T: Movable, /](
         ), "List iteration requires the element to be `Copyable`."
         return _ListIter(
             0,
-            # TODO(MOCO-4326): Remove rebind
-            rebind[Pointer[downcast[Self.T, Copyable], origin_of(self)]](
-                self._data
-            ),
+            # `_data` points at untracked owned storage; the iterator borrows
+            # at this call's origin instead.
+            self._data.unsafe_mut_cast[
+                origin_of(self).mut
+            ]().unsafe_origin_cast[origin_of(self)](),
             self._len,
         )
 
@@ -737,10 +748,9 @@ struct List[T: Movable, /](
         """
         return _ListIter[forward=False](
             len(self),
-            # TODO(MOCO-4326): Remove rebind
-            rebind[Pointer[downcast[Self.T, Copyable], origin_of(self)]](
-                self._data
-            ),
+            self._data.unsafe_mut_cast[
+                origin_of(self).mut
+            ]().unsafe_origin_cast[origin_of(self)](),
             self._len,
         )
 
@@ -988,6 +998,7 @@ struct List[T: Movable, /](
             count=elements_len,
         )
 
+    @__allow_legacy_custom_self_type
     def extend[
         dtype: DType, //
     ](mut self: List[Scalar[dtype]], value: SIMD[dtype, _]):
@@ -1019,6 +1030,7 @@ struct List[T: Movable, /](
         self._unsafe_next_uninit_ptr().unsafe_store(value)
         self._len += value.size
 
+    @__allow_legacy_custom_self_type
     def extend[
         dtype: DType, //
     ](mut self: List[Scalar[dtype]], value: SIMD[dtype, _], *, count: Int):
@@ -1199,6 +1211,8 @@ struct List[T: Movable, /](
             With no new value provided, the new length must be smaller than or
             equal to the current one. Elements at the end are discarded.
 
+            Calls abort() if the new length is larger than the current length.
+
         Examples:
 
         ```mojo
@@ -1253,6 +1267,54 @@ struct List[T: Movable, /](
             earlier_idx += 1
             later_idx -= 1
 
+    def try_index(
+        ref self,
+        value: Self.T,
+        start: Int = 0,
+        stop: Optional[Int] = None,
+    ) -> Optional[Int] where conforms_to(Self.T, Equatable):
+        """Returns the index of the first occurrence of a value in a list
+        restricted by the range given the start and stop bounds.
+
+        Args:
+            value: The value to search for.
+            start: The starting index of the search, treated as a slice index
+                (defaults to 0).
+            stop: The ending index of the search, treated as a slice index
+                (defaults to None, which means the end of the list).
+
+        Returns:
+            The index of the first occurrence of the value in the list or `None` if the value is not found.
+
+        Examples:
+
+        ```mojo
+        var my_list = [1, 2, 3]
+        print(my_list.index(2)) # prints `1`
+        ```
+        """
+        var start_normalized = start
+
+        var stop_normalized: Int
+        if stop is None:
+            # Default end
+            stop_normalized = len(self)
+        else:
+            stop_normalized = stop.value()
+
+        if start_normalized < 0:
+            start_normalized += len(self)
+        if stop_normalized < 0:
+            stop_normalized += len(self)
+
+        start_normalized = _clip(start_normalized, 0, len(self))
+        stop_normalized = _clip(stop_normalized, 0, len(self))
+
+        for i in range(start_normalized, stop_normalized):
+            if self[i] == value:
+                return i
+        return None
+
     def index(
         ref self,
         value: Self.T,
@@ -1282,27 +1344,10 @@ struct List[T: Movable, /](
         print(my_list.index(2)) # prints `1`
         ```
         """
-        var start_normalized = start
-
-        var stop_normalized: Int
-        if stop is None:
-            # Default end
-            stop_normalized = len(self)
-        else:
-            stop_normalized = stop.value()
-
-        if start_normalized < 0:
-            start_normalized += len(self)
-        if stop_normalized < 0:
-            stop_normalized += len(self)
-
-        start_normalized = _clip(start_normalized, 0, len(self))
-        stop_normalized = _clip(stop_normalized, 0, len(self))
-
-        for i in range(start_normalized, stop_normalized):
-            if self[i] == value:
-                return i
-        raise "ValueError: Given element is not in list"
+        var result = self.try_index(value, start=start, stop=stop)
+        if result is None:
+            raise "ValueError: Given element is not in list"
+        return result.value()
 
     def clear(
         mut self,
@@ -1323,31 +1368,58 @@ struct List[T: Movable, /](
         self._len = 0
         self._annotate_shrink(old_size)
 
-    def steal_data(mut self) -> UnsafePointer[Self.T, MutUntrackedOrigin]:
-        """Take ownership of the underlying pointer from the list.
+    def unsafe_take_allocation(mut self) -> Allocation[Self.T]:
+        """Take ownership of the underlying storage from the list.
 
         Returns:
-            The underlying data.
+            The `Allocation` that owns the list's backing storage, carrying the
+            `Layout` it was allocated with.
+
+        Safety:
+
+        The list's elements are handed over still initialized, and deallocating
+        the storage does not run their destructors. Destroy any initialized
+        elements yourself (for example with `unsafe_destroy_n`) before
+        deallocating if `T` needs it.
+
+        A list that never allocated has no storage to hand over, so the
+        returned `Allocation` wraps a dangling pointer and a `Layout` with a
+        `count` of zero. Check `layout().count()` before deallocating it.
 
         Examples:
 
         ```mojo
         from std.collections import List
+        from std.memory.alloc import dealloc
 
         list: List[Int64] = [1, 2, 3, 4]
-        ptr = list.steal_data() # list is no longer available
+        var allocation = list.unsafe_take_allocation() # list is now empty
+        var ptr = allocation.unsafe_ptr()
         for idx in range(4):
-            print(ptr[idx], end=" ")
+            print(ptr[unsafe_offset=idx], end=" ")
         print() # Output: 1 2 3 4
-        # Free the pointer data
+        # Free the storage.
+        dealloc(allocation^)
         ```
         """
         self._annotate_delete()
+        var layout = Layout[Self.T](count=self._capacity)
         var ptr = self._data
         self._data = Self._PointerType.unsafe_dangling()
         self._len = 0
         self._capacity = 0
-        return ptr
+        return ThinAllocation(unsafe_assume_ownership=ptr).unsafe_with_layout(
+            layout
+        )
+
+    @deprecated(use=unsafe_take_allocation)
+    def steal_data(mut self) -> UnsafePointer[Self.T, MutUntrackedOrigin]:
+        """Take ownership of the underlying pointer from the list.
+
+        Returns:
+            The underlying data.
+        """
+        return self.unsafe_take_allocation().unsafe_leak()
 
     def __getitem__(
         self, slice: StridedSlice
@@ -1394,7 +1466,7 @@ struct List[T: Movable, /](
         """
         var start, end = slice.indices(len(self))
         return Span[Self.T, origin_of(self)._get_owned_interior["element"]](
-            unsafe_ptr=UnsafePointer(
+            unsafe_ptr=Pointer(
                 to=self.unsafe_ptr()
                 .unsafe_offset(start)
                 ._get_ref_with_unsafe_interior_origin[
@@ -1420,6 +1492,26 @@ struct List[T: Movable, /](
         comptime assert (
             IntLiteral[idx.value]() >= 0
         ), "negative indexing is not supported, use e.g. `x[len(x) - 1]`"
+        check_bounds(idx, len(self))
+        return self.unsafe_get(index(idx))
+
+    @__unsafe_nested_origins_read_only
+    @always_inline
+    def __getitem__(
+        ref self, idx: Int
+    ) -> ref[self.unsafe_get(index(idx))] Self.T:
+        """Gets the list element at the given index.
+
+        Unlike when subscripting using slices negative indices are
+        considered out of bounds. They will be checked in the same situations
+        as "off the end" indexing.
+
+        Args:
+            idx: The index of the element.
+
+        Returns:
+            A reference to the element at the given index.
+        """
         check_bounds(idx, len(self))
         return self.unsafe_get(index(idx))
 
@@ -1548,7 +1640,7 @@ struct List[T: Movable, /](
 
     def unsafe_ptr[
         origin: Origin, address_space: AddressSpace, //
-    ](ref[origin, address_space] self) -> UnsafePointer[
+    ](ref[origin, address_space] self) -> Pointer[
         Self.T, origin, address_space=address_space
     ]:
         """Retrieves a pointer to the underlying memory, or a dangling pointer

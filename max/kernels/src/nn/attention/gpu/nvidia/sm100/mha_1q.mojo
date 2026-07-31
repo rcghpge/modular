@@ -43,8 +43,8 @@ from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.host.info import B200
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from std.gpu.memory import external_memory, fence_async_view_proxy
-from std.gpu.compute.mma import MMAOperandDescriptor
-from std.gpu.compute.arch.mma_nvidia_sm100 import (
+from max.gpu.compute.mma import MMAOperandDescriptor
+from max.gpu.compute.arch.mma_nvidia_sm100 import (
     MMASmemDescriptor,
     UMMAInsDescriptor,
     UMMAKind,
@@ -52,7 +52,7 @@ from std.gpu.compute.arch.mma_nvidia_sm100 import (
     mma_arrive,
 )
 from std.gpu.sync import named_barrier
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_after,
@@ -597,7 +597,7 @@ struct TMemAccumulator[
                 tmem = self.tmem_addr + UInt32(tmem_offset)
                 frag = bitcast[DType.uint32, frag_size_b32](frags[mma_id, 0])
                 # 16 x 256b results in repeated 8x4 matrix of <1,2> vector pattern
-                var frag_st = InlineArray[Scalar[DType.uint32], frag_size_b32](
+                var frag_st = Array[Scalar[DType.uint32], frag_size_b32](
                     uninitialized=True
                 )
 
@@ -817,7 +817,7 @@ struct TMemOperand[
             )
             # 16 x 256b results in repeated 8x4<1x64b> pattern
             # 256b means 256 // 4 = 64b per thread
-            var frag_st2 = InlineArray[Scalar[DType.uint32], frag_size_b32](
+            var frag_st2 = Array[Scalar[DType.uint32], frag_size_b32](
                 uninitialized=True
             )
 
@@ -2417,12 +2417,14 @@ def _mha_sm100[
     )
     comptime q_or_out_kv_elems = size_of[output_type]() // size_of[kv_type]()
     comptime q_smem_size = BM * padded_depth * q_or_out_kv_elems
-    q_smem = external_memory[
-        Scalar[kv_type],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-        name="mha_dynamic_shared_memory",
-    ]()
+    q_smem = UnsafePointer(
+        external_memory[
+            Scalar[kv_type],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+            name="mha_dynamic_shared_memory",
+        ]()
+    )
 
     # P buffer in SMEM for depth=512 decoding (softmax writes P here for SS MMA)
     comptime p_smem_elems = BM * MMA_N0 if use_p_smem else 0

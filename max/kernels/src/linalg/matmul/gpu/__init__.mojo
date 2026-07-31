@@ -26,7 +26,9 @@ from std.sys import (
 )
 from std.sys.info import _accelerator_arch, _has_blackwell_tcgen05
 
-from std.algorithm.functional import elementwise, tile_and_unswitch
+from std.algorithm.functional import tile_and_unswitch
+
+from max.algorithm.functional import elementwise
 from std.gpu import (
     WARP_SIZE,
     barrier,
@@ -51,7 +53,7 @@ from layout import (
 from layout.layout import *
 from layout.tensor_core import get_mma_shape
 from std.logger import Logger
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.utils import Index, IndexList
 from std.utils.numerics import get_accum_type
 from ...gemv import (
@@ -156,16 +158,20 @@ def matmul_kernel[
     )
 
     # Allocate A, B tile in shared memory.
-    var a_shared = stack_allocation[
-        tile_size * tile_size,
-        a_type,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var b_shared = stack_allocation[
-        tile_size * tile_size,
-        b_type,
-        address_space=AddressSpace.SHARED,
-    ]()
+    var a_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            tile_size * tile_size,
+            a_type,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var b_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            tile_size * tile_size,
+            b_type,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     # Global index in C.
     # These are the same indices in A and B when loading to SRAM.
@@ -434,7 +440,7 @@ def _amdgpu_matmul_build_block_shape_list[N: Int]() -> List[IndexList[2]]:
     comptime len_block_sizes = len(block_sizes_alias)
 
     var block_sizes = materialize[block_sizes_alias]()
-    var emit_block_shape = InlineArray[Bool, len_block_sizes * len_block_sizes](
+    var emit_block_shape = Array[Bool, len_block_sizes * len_block_sizes](
         fill=False
     )
 

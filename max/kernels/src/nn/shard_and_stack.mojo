@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 """Implements shard-and-stack: shards a tensor across devices and stacks the shards into a higher-rank output."""
 
-from std.algorithm import parallelize, sync_parallelize
-from std.collections import InlineArray
+from max.algorithm import parallelize, sync_parallelize
+from std.collections import Array
 from std.gpu.host import DeviceBuffer, DeviceContext, DeviceContextArray
 from std.memory import unsafe_memcpy
 from extensibility import InputVariadicTensors, OutputVariadicTensors

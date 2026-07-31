@@ -13,11 +13,12 @@
 
 import extensibility
 
+from std.memory import UnsafePointer
 from std.gpu.host import DeviceContext
 from std.math import iota
 from std.sys import align_of, size_of
 
-from std.algorithm import parallelize_over_rows
+from max.algorithm import parallelize_over_rows
 from std.bit import log2_floor
 from std.gpu import (
     WARP_SIZE,
@@ -96,11 +97,13 @@ struct TopK:
             var tid = thread_idx.x
 
             # Get a pointer to shared memory for the indices and values
-            var top_k_sram = external_memory[
-                TopKElement[dtype],
-                address_space=AddressSpace.SHARED,
-                alignment=align_of[TopKElement[dtype]](),
-            ]()
+            var top_k_sram = UnsafePointer(
+                external_memory[
+                    TopKElement[dtype],
+                    address_space=AddressSpace.SHARED,
+                    alignment=align_of[TopKElement[dtype]](),
+                ]()
+            )
 
             # Threads put their corresponding index and value into shared memory
             top_k_sram[tid] = TopKElement(Int32(tid), in_vals[bid, tid][0])

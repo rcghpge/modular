@@ -25,8 +25,8 @@ from std.sys.info import (
     simd_width_of,
 )
 from linalg.fp8_quantization import naive_blockwise_scaled_fp8_matmul
-from std.algorithm import elementwise, sync_parallelize
-from std.algorithm.functional import _get_start_indices_of_nth_subvolume
+from max.algorithm import elementwise, sync_parallelize
+from max.algorithm.functional import _get_start_indices_of_nth_subvolume
 from std.gpu import MAX_THREADS_PER_BLOCK_METADATA, block_idx, global_idx
 from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -51,8 +51,8 @@ from layout.tile_layout import Layout as TileLayout
 from std.logger import Logger
 from std.memory import dealloc
 from std.memory.alloc import Layout as AllocLayout
-from std.runtime.asyncrt import parallelism_level
-from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
+from max.runtime.asyncrt import parallelism_level
+from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 from std.gpu.host.info import H100, _is_sm10x_gpu
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type
@@ -117,7 +117,7 @@ def _get_batch_dims[
 
 comptime _slice_types[
     stride_types: TypeList[Trait=CoordLike, ...], n_dims: Int
-] = stride_types.slice[stride_types.size - n_dims]
+] = stride_types.slice[stride_types.length - n_dims]
 
 
 comptime _shape_types_to_3d_get_first_dim[
@@ -134,7 +134,7 @@ comptime _shape_types_to_3d[
     TypeList.of[
         _shape_types_to_3d_get_first_dim[
             DType.int64,
-            *_slice_types[shape_types.reverse(), shape_types.size - 2](),
+            *_slice_types[shape_types.reverse(), shape_types.length - 2](),
         ]
     ].values,
     _slice_types[shape_types, 2]().values,

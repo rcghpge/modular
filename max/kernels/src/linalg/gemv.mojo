@@ -24,7 +24,7 @@ from std.sys import (
     simd_width_of,
 )
 from std.sys.info import _is_amd_mi250x, _is_sm_100x, size_of
-from std.gpu.compute.mma import ld_matrix, mma
+from max.gpu.compute.mma import ld_matrix, mma
 from std.gpu.sync import async_copy_arrive, named_barrier
 from layout.tma_async import SharedMemBarrier
 from structured_kernels.kernel_common import _to_batched_3d
@@ -33,7 +33,7 @@ from structured_kernels.tile_types import SMemTileArray2D
 from layout.swizzle import Swizzle, make_swizzle
 
 import std.gpu.primitives.warp as warp
-from std.algorithm.reduction import _reduce_generator
+from max.algorithm.reduction import _reduce_generator
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -71,7 +71,7 @@ from layout import (
     stack_allocation as tt_stack_allocation,
 )
 from std.logger import Logger
-from std.memory import bitcast, stack_allocation
+from std.memory import bitcast, unsafe_stack_allocation
 from std.utils import IndexList
 from std.utils.coord import Coord
 from std.utils.index import Index
@@ -167,8 +167,8 @@ def gemv_kernel[
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], AnyOrigin[mut=False]],
-    b: UnsafePointer[Scalar[b_type], AnyOrigin[mut=False]],
+    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int,
     n: Int,
     k: Int,
@@ -792,8 +792,8 @@ def gevm_kernel[
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], AnyOrigin[mut=False]],
-    b: UnsafePointer[Scalar[b_type], AnyOrigin[mut=False]],
+    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int,
     n: Int,
     k: Int,
@@ -828,11 +828,13 @@ def gevm_kernel[
     var col = block_idx.x * WARP_SIZE + lane_id
     var global_warp_id = global_idx.x // warps_per_block
 
-    var x_shared = stack_allocation[
-        tile_size,
-        accum_type,
-        address_space=AddressSpace.SHARED,
-    ]()
+    var x_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            tile_size,
+            accum_type,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     comptime if pdl_level > PDLLevel.OFF:
         wait_on_dependent_grids()
@@ -1655,8 +1657,8 @@ struct _MmaCpAsyncGmemLoaderA[
     var stage: Int
     var phase: UInt32
     var need_wait: Bool
-    var smem_offsets: InlineArray[Int, Self.vec_per_iter]
-    var preds: InlineArray[Bool, Self.vec_per_iter]
+    var smem_offsets: Array[Int, Self.vec_per_iter]
+    var preds: Array[Bool, Self.vec_per_iter]
 
     def __init__(
         out self,
@@ -1680,10 +1682,8 @@ struct _MmaCpAsyncGmemLoaderA[
         self.stage = 0
         self.phase = UInt32(1)
         self.need_wait = True
-        self.smem_offsets = InlineArray[Int, Self.vec_per_iter](
-            uninitialized=True
-        )
-        self.preds = InlineArray[Bool, Self.vec_per_iter](fill=False)
+        self.smem_offsets = Array[Int, Self.vec_per_iter](uninitialized=True)
+        self.preds = Array[Bool, Self.vec_per_iter](fill=False)
 
     def prepare(mut self):
         comptime for v in range(Self.vec_per_iter):
@@ -1799,8 +1799,8 @@ struct _MmaCpAsyncGmemLoaderB[
     var stage: Int
     var phase: UInt32
     var need_wait: Bool
-    var smem_offsets: InlineArray[Int, Self.vec_per_iter]
-    var preds: InlineArray[Bool, Self.vec_per_iter]
+    var smem_offsets: Array[Int, Self.vec_per_iter]
+    var preds: Array[Bool, Self.vec_per_iter]
 
     def __init__(
         out self,
@@ -1824,10 +1824,8 @@ struct _MmaCpAsyncGmemLoaderB[
         self.stage = 0
         self.phase = UInt32(1)
         self.need_wait = True
-        self.smem_offsets = InlineArray[Int, Self.vec_per_iter](
-            uninitialized=True
-        )
-        self.preds = InlineArray[Bool, Self.vec_per_iter](fill=False)
+        self.smem_offsets = Array[Int, Self.vec_per_iter](uninitialized=True)
+        self.preds = Array[Bool, Self.vec_per_iter](fill=False)
 
     def prepare(mut self):
         comptime for v in range(Self.vec_per_iter):
@@ -2086,8 +2084,8 @@ struct _MmaCpAsyncSmem[
     ]
     comptime Barriers = SMemArray[SharedMemBarrier, Self.stage_cnt * 2]
 
-    var a_storage: InlineArray[Scalar[Self.a_type], Self.SmemA.num_elements]
-    var b_storage: InlineArray[Scalar[Self.a_type], Self.SmemB.num_elements]
+    var a_storage: Array[Scalar[Self.a_type], Self.SmemA.num_elements]
+    var b_storage: Array[Scalar[Self.a_type], Self.SmemB.num_elements]
     var barrier_storage: Self.Barriers.Storage
 
     @always_inline
@@ -2201,11 +2199,13 @@ def gemm_mma_cpasync_kernel[
     comptime SmemType = _MmaCpAsyncSmem[
         a_type, tile_m, tile_n, tile_k, stage_cnt
     ]
-    ref smem = external_memory[
-        Scalar[DType.uint8],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-    ]().bitcast[SmemType]()[]
+    ref smem = UnsafePointer(
+        external_memory[
+            Scalar[DType.uint8],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+        ]()
+    ).bitcast[SmemType]()[]
     var smem_a = smem.a_tiles()
     var smem_b = smem.b_tiles()
     var smem_barrier = smem.barriers()

@@ -14,6 +14,7 @@
 Implements blockwise scaled FP8 matrix multiplication kernels targeting the
 NVIDIA SM100 (Blackwell) architecture using 1D A-scales and 2D B-scales.
 """
+from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv, gcd
 from std.math.uutils import umod, ufloordiv
@@ -25,8 +26,8 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu import block_idx, lane_id, warp_id as get_warp_id
 from std.gpu.memory import external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import Coord, TensorLayout, TileTensor, coord, row_major
 from layout.tensor_core_async import (
     tile_layout_k_major_typed,
@@ -200,12 +201,16 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime B_SCALING_BLOCK_K = K // b_scales_k
     comptime A_SCALING_BLOCK = K // a_scales_k
 
-    a_smem = external_memory[
-        Scalar[a_type],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-        name="tmem_test_dynamic_shared_memory",
-    ]().as_unsafe_any_origin()
+    a_smem = UnsafePointer[
+        Scalar[a_type], MutUntrackedOrigin, address_space=AddressSpace.SHARED
+    ](
+        external_memory[
+            Scalar[a_type],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+            name="tmem_test_dynamic_shared_memory",
+        ]()
+    ).as_unsafe_any_origin()
 
     comptime a_size = tile_layout_k_major_typed[
         a_type, BM, BK, swizzle_mode=a_swizzle
@@ -307,7 +312,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
 
     # final results accumulator regs for C
     comptime c_frag_size = MMA_M * MMA_N // num_threads
-    var c_frag = InlineArray[Scalar[accum_type], c_frag_size](
+    var c_frag = Array[Scalar[accum_type], c_frag_size](
         fill=Scalar[accum_type](0)
     )
 
@@ -319,7 +324,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime assert (
         total_repeat % repeat == 0
     ), "total_repeat must be divisible by repeat"
-    var c_frag_temp: InlineArray[Scalar[accum_type], temp_cfrags_size]
+    var c_frag_temp: Array[Scalar[accum_type], temp_cfrags_size]
 
     for k_iter in range(num_iters):
         if elect_one_thread:

@@ -16,7 +16,7 @@ from std.gpu import barrier, warp_id, lane_id
 from std.gpu.host import DeviceContext
 
 from std.gpu import thread_idx
-from std.gpu.compute.mma import (
+from max.gpu.compute.mma import (
     wgmma_async,
     wgmma_commit_group_sync,
     wgmma_fence_aligned,
@@ -246,7 +246,7 @@ def wgmma_e4m3_e4m3_f32[
 
     ctx.synchronize()
 
-    assert_equal(c_host.ptr, c_host_ref.ptr, c_host.num_elements())
+    assert_equal(c_host._storage, c_host_ref._storage, c_host.num_elements())
 
 
 def main() raises:

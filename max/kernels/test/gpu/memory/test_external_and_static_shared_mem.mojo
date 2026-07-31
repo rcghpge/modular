@@ -17,22 +17,26 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu import thread_idx
 from std.gpu.memory import external_memory
 from std.gpu.sync import barrier
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.testing import assert_equal
 
 
 def test_external_shared_mem(ctx: DeviceContext) raises:
     def dynamic_smem_kernel(data: UnsafePointer[Float32, MutAnyOrigin]):
-        var sram = stack_allocation[
-            16,
-            Float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-        var dynamic_sram = external_memory[
-            Float32,
-            address_space=AddressSpace.SHARED,
-            alignment=align_of[Float32](),
-        ]()
+        var sram = UnsafePointer(
+            unsafe_stack_allocation[
+                16,
+                Float32,
+                address_space=AddressSpace.SHARED,
+            ]()
+        )
+        var dynamic_sram = UnsafePointer(
+            external_memory[
+                Float32,
+                address_space=AddressSpace.SHARED,
+                alignment=align_of[Float32](),
+            ]()
+        )
         dynamic_sram[thread_idx.x] = Float32(thread_idx.x)
         sram[thread_idx.x] = Float32(thread_idx.x)
         barrier()
@@ -56,6 +60,7 @@ def test_external_shared_mem(ctx: DeviceContext) raises:
     )
 
     ctx.enqueue_copy(res_host_ptr, res_device)
+    ctx.synchronize()
 
     for i in range(16):
         assert_equal(res_host_ptr[i], Float32(2 * i))

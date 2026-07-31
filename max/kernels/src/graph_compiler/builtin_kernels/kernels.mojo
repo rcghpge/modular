@@ -26,7 +26,7 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
-from std.algorithm import mean
+from max.algorithm import mean
 from comm.allreduce import allreduce
 from internal_utils.fp8_utils import cast_saturating
 
@@ -122,7 +122,7 @@ from state_space.varlen_causal_conv1d import (
     causal_conv1d_varlen_fwd_gpu,
     causal_conv1d_varlen_fwd_seqparallel_gpu,
 )
-from std.runtime.tracing import trace_arg
+from max.runtime.tracing import trace_arg
 from extensibility import (
     InputTensor,
     InputVariadicTensors,
@@ -130,7 +130,6 @@ from extensibility import (
     ManagedTensorSlice,
     OutputTensor,
     VariadicTensors,
-    foreach,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
 )
@@ -1851,7 +1850,7 @@ def _execute_mha_ragged_paged_scalar_args[
         max_cache_length,
     )
     var input_row_offsets_lt = as_dynamic_row_major_1d(
-        input_row_offsets.to_layout_tensor().get_immutable()
+        input_row_offsets.to_layout_tensor().as_imm()
     )
 
     comptime if sink:
@@ -2705,13 +2704,11 @@ struct BundledAllReduceSum:
         comptime InputTensorType = type_of(
             inputs[0].to_tile_tensor[DType.int64]().as_immut()
         )
-        var in_tensors = InlineArray[InputTensorType, num_devices](
+        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
+        var out_buf = output.to_tile_tensor[DType.int64]()
+        var rank_sigs = Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS](
             uninitialized=True
         )
-        var out_buf = output.to_tile_tensor[DType.int64]()
-        var rank_sigs = InlineArray[
-            UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](uninitialized=True)
 
         comptime for i in range(num_devices):
             in_tensors[i] = rebind[InputTensorType](
@@ -2838,12 +2835,10 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         comptime InputTensorType = type_of(
             inputs[0].to_tile_tensor[DType.int64]().as_immut()
         )
-        var in_tensors = InlineArray[InputTensorType, num_devices](
+        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
+        var rank_sigs = Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS](
             uninitialized=True
         )
-        var rank_sigs = InlineArray[
-            UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](uninitialized=True)
 
         comptime for i in range(num_devices):
             in_tensors[i] = rebind[InputTensorType](
@@ -3004,15 +2999,15 @@ struct TPoolPatchMerger:
 
         nn_tpool_patch_merger[dtype](
             TileTensor(
-                out_tt.ptr.unsafe_origin_cast[MutAnyOrigin](),
+                out_tt._storage.unsafe_origin_cast[MutAnyOrigin](),
                 out_tt.layout,
             ),
             TileTensor(
-                in_tt.ptr.as_immutable().unsafe_origin_cast[ImmutAnyOrigin](),
+                in_tt._storage.as_imm().unsafe_origin_cast[ImmutAnyOrigin](),
                 in_tt.layout,
             ),
             TileTensor(
-                grid_tt.ptr.as_immutable().unsafe_origin_cast[ImmutAnyOrigin](),
+                grid_tt._storage.as_imm().unsafe_origin_cast[ImmutAnyOrigin](),
                 grid_tt.layout,
             ),
             Int(kH),

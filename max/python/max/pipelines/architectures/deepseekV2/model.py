@@ -32,6 +32,7 @@ from max.nn.kv_cache import (
 )
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import TextContext
+from max.pipelines.kv_cache import cache_dtype_for_encoding
 from max.pipelines.lib import (
     BatchProcessor,
     GraphPipelineModelWithKVCache,
@@ -40,6 +41,7 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
 )
+from max.pipelines.lib.config.model_config import _select_quantization_encoding
 from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from typing_extensions import override
 
@@ -185,7 +187,13 @@ class DeepseekV2Model(
             pipeline_config=self.pipeline_config,
             devices=[DeviceRef.from_device(d) for d in self.devices],
             kv_cache_config=self.kv_cache_config,
-            cache_dtype=self.pipeline_config.model.kv_cache.cache_dtype,
+            cache_dtype=cache_dtype_for_encoding(
+                _select_quantization_encoding(
+                    self.pipeline_config.model,
+                    DeepseekV2Config.DEFAULT_ENCODING,
+                ),
+                self.pipeline_config.model.kv_cache.kv_cache_format,
+            ),
         )
         symbolic_inputs = kv_params.unflatten_kv_inputs(iter(kv_inputs_flat))
         assert isinstance(symbolic_inputs, KVCacheInputs)

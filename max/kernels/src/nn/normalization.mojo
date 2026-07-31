@@ -11,17 +11,18 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory import UnsafePointer
 from std.math import align_down, ceildiv, clamp, rsqrt
 from std.math.uutils import umod, ufloordiv, uceildiv
 from std.sys.info import align_of, simd_width_of, size_of
 
 import std.gpu.primitives.warp as warp
-from std.algorithm import map_reduce, mean, variance, vectorize
-from std.algorithm.functional import (
+from std.algorithm import vectorize
+from max.algorithm import mean, variance
+from max.algorithm.functional import (
     _get_start_indices_of_nth_subvolume,
     sync_parallelize,
 )
-from std.algorithm.reduction import _simd_sum, _simd_sum_elementwise
 from std.bit import log2_floor
 from std.gpu import (
     WARP_SIZE,
@@ -55,10 +56,10 @@ from layout import (
 )
 from layout.coord import DynamicCoord
 from layout.tile_layout import Layout
-from std.memory import ThinAllocation, dealloc, stack_allocation
+from std.memory import ThinAllocation, dealloc, unsafe_stack_allocation
 from std.memory.alloc import Layout as AllocLayout
-from std.runtime.asyncrt import parallelism_level
-from std.runtime.tracing import Trace, TraceLevel, trace_arg
+from max.runtime.asyncrt import parallelism_level
+from max.runtime.tracing import Trace, TraceLevel, trace_arg
 
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
@@ -82,12 +83,14 @@ static shared memory which is 32k."""
 def block_reduce[
     dtype: DType, max_warps_per_block: Int
 ](val: Scalar[dtype]) -> Scalar[dtype]:
-    var m2_shared = stack_allocation[
-        max_warps_per_block, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var m2_broadcast = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
+    var m2_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            max_warps_per_block, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var m2_broadcast = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
 
     var warp_m2 = warp.sum(val)
 
@@ -123,18 +126,22 @@ def block_reduce_dual_sum[
     Scalar[dtype], Scalar[dtype]
 ]:
     """Combined block reduction for two sums using only 2 barriers."""
-    var shared0 = stack_allocation[
-        max_warps_per_block, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var shared1 = stack_allocation[
-        max_warps_per_block, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var broadcast0 = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var broadcast1 = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
+    var shared0 = UnsafePointer(
+        unsafe_stack_allocation[
+            max_warps_per_block, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var shared1 = UnsafePointer(
+        unsafe_stack_allocation[
+            max_warps_per_block, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var broadcast0 = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
+    var broadcast1 = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
 
     var warp_sum0 = warp.sum(val0)
     var warp_sum1 = warp.sum(val1)
@@ -238,24 +245,30 @@ def welford_block_all_reduce[
     mut res_m2: Scalar[dtype],
     mut res_count: Scalar[dtype],
 ):
-    var mean_shared = stack_allocation[
-        WARP_SIZE, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var m2_shared = stack_allocation[
-        WARP_SIZE, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var count_shared = stack_allocation[
-        WARP_SIZE, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var mean_broadcast = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var m2_broadcast = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
-    var count_broadcast = stack_allocation[
-        1, dtype, address_space=AddressSpace.SHARED
-    ]()
+    var mean_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            WARP_SIZE, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var m2_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            WARP_SIZE, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var count_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            WARP_SIZE, dtype, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var mean_broadcast = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
+    var m2_broadcast = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
+    var count_broadcast = UnsafePointer(
+        unsafe_stack_allocation[1, dtype, address_space=AddressSpace.SHARED]()
+    )
 
     var warp_idx = warp_id()
     var lane_idx = lane_id()
@@ -748,16 +761,6 @@ def layer_norm_cpu[
 
     for var row in range(num_rows):
 
-        @always_inline
-        @parameter
-        @__copy_capture(row)
-        def output_fn_1d[
-            dtype_: DType, simd_width: SIMDLength, alignment: Int
-        ](idx: Int, val: SIMD[dtype_, simd_width]):
-            output_fn[simd_width, alignment](
-                row, idx, rebind[SIMD[dtype, simd_width]](val)
-            )
-
         @__copy_capture(row)
         @parameter
         def input_gen_wrapper[
@@ -765,17 +768,16 @@ def layer_norm_cpu[
         ](col: Int) -> SIMD[dtype, simd_width]:
             return input_fn[simd_width, alignment=1](row, col).cast[dtype]()
 
-        var sum_val = map_reduce[
-            simd_width,
-            dtype,
-            dtype,
-            origin_of()._mlir_origin,
-            input_gen_wrapper,
-            origin_of()._mlir_origin,
-            _simd_sum_elementwise,
-            _simd_sum,
-            output_fn_1d,
-        ](num_cols, 0)
+        # map_reduce (used previously) also stores each value to output_fn as
+        # an aligned vector store, which faults on unaligned output buffers
+        # (KERN-3270). Sum it directly instead, like rms_norm_cpu below.
+        var simd_loop_end = align_down(num_cols, simd_width)
+        var sum_simd = SIMD[dtype, simd_width]()
+        for col in range(0, simd_loop_end, simd_width):
+            sum_simd += input_gen_wrapper[dtype, simd_width](col)
+        var sum_val = sum_simd.reduce_add()
+        for col in range(simd_loop_end, num_cols):
+            sum_val += input_gen_wrapper[dtype, 1](col)
 
         var mean_val = _sum_to_mean(sum_val, num_cols)
         var var_val = variance[dtype, input_gen_wrapper](
@@ -1161,7 +1163,7 @@ def rms_norm_gpu_warp_per_row[
     comptime if single_pass:
         # Register-cached input chunks (accum precision), carried across the warp
         # reduction so the normalize pass needs no re-read.
-        var vec_data = InlineArray[SIMD[accum_type, simd_width], chunks](
+        var vec_data = Array[SIMD[accum_type, simd_width], chunks](
             fill=SIMD[accum_type, simd_width](0)
         )
 
@@ -1333,10 +1335,10 @@ def rms_norm_gpu_warp_tiling[
 
     # Per-chunk register-cached input (in accum precision) and gamma weights,
     # carried across the reduction so the normalize pass needs no re-read.
-    var vec_data = InlineArray[SIMD[accum_type, simd_width], chunks_per_thread](
+    var vec_data = Array[SIMD[accum_type, simd_width], chunks_per_thread](
         fill=SIMD[accum_type, simd_width](0)
     )
-    var gamma_val = InlineArray[SIMD[dtype, simd_width], chunks_per_thread](
+    var gamma_val = Array[SIMD[dtype, simd_width], chunks_per_thread](
         fill=SIMD[dtype, simd_width](0)
     )
 
@@ -1865,6 +1867,8 @@ def rms_norm_gpu[
         else:
             _enqueue[False]()
 
+    # _rms_norm_input_alignment trusts gates like this one. Loosen or
+    # remove it and update that function too.
     if cols % simd_width == 0:
         # When the number of columns are less enough that they can be placed in
         # registers we do warp tiling which is a single pass to do mean/var
@@ -2192,10 +2196,28 @@ def rms_norm_cpu[
 
 
 @always_inline
+def _rms_norm_input_alignment[
+    dtype: DType, width: Int, target: StaticString
+]() -> Int:
+    """The alignment an rms_norm input_fn can claim for a load of `width`.
+
+    Sound only on GPU, whose dispatchers prove `cols % width == 0` before
+    requesting `width > 1`. CPU always claims 1: its vectorized loop runs
+    regardless of `num_cols % simd_width`.
+    """
+    comptime if is_cpu[target]():
+        return 1
+    else:
+        return align_of[SIMD[dtype, width]]()
+
+
+@always_inline
 def _rms_norm_impl[
     dtype: DType,
     rank: Int,
-    input_0_fn: def[width: Int](Coord) capturing -> SIMD[dtype, width],
+    input_0_fn: def[width: Int, alignment: Int](Coord) capturing -> SIMD[
+        dtype, width
+    ],
     output_fn: def[width: SIMDLength, alignment: Int](
         Coord, SIMD[dtype, width]
     ) capturing -> None,
@@ -2233,6 +2255,12 @@ def _rms_norm_impl[
         # Nothing to do.
         return
 
+    @parameter
+    @always_inline
+    def input_fn_target[width: Int](coords: Coord) -> SIMD[dtype, width]:
+        comptime align = _rms_norm_input_alignment[dtype, width, target]()
+        return input_0_fn[width, align](coords)
+
     comptime if is_cpu[target]():
         # The CPU path consumes n-D `IndexList`-form lambdas; wrap the Coord
         # public lambdas back to that interface.
@@ -2241,7 +2269,9 @@ def _rms_norm_impl[
         def input_fn_il[
             width: Int, _rank: Int
         ](indices: IndexList[_rank]) -> SIMD[dtype, width]:
-            return input_0_fn[width](Coord(rebind[IndexList[rank]](indices)))
+            return input_fn_target[width](
+                Coord(rebind[IndexList[rank]](indices))
+            )
 
         @parameter
         @always_inline
@@ -2262,7 +2292,7 @@ def _rms_norm_impl[
     elif is_gpu[target]():
         rms_norm_gpu[
             rank,
-            input_0_fn,
+            input_fn_target,
             output_fn,
             multiply_before_cast=multiply_before_cast,
         ](
@@ -2435,16 +2465,20 @@ def rms_norm_fused_residual_add_gpu_block[
     comptime align = align_of[SIMD[dtype, simd_width]]()
     comptime accum_type = get_accum_type[dtype]()
 
-    var shared_mem = stack_allocation[
-        _APPLE_STATIC_SHMEM_MAX_COUNT[Scalar[dtype]],
-        Scalar[dtype],
-        address_space=AddressSpace.SHARED,
-    ]() if comptime (is_apple_gpu()) else external_memory[
-        Scalar[dtype],
-        address_space=AddressSpace.SHARED,
-        alignment=align_of[SIMD[dtype, simd_width]](),
-        name="intermediate_shared_memory",
-    ]()
+    var shared_mem = UnsafePointer(
+        unsafe_stack_allocation[
+            _APPLE_STATIC_SHMEM_MAX_COUNT[Scalar[dtype]],
+            Scalar[dtype],
+            address_space=AddressSpace.SHARED,
+        ]()
+    ) if comptime (is_apple_gpu()) else UnsafePointer(
+        external_memory[
+            Scalar[dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=align_of[SIMD[dtype, simd_width]](),
+            name="intermediate_shared_memory",
+        ]()
+    )
 
     with PDL():
         var tid = thread_idx.x
@@ -2639,6 +2673,8 @@ def rms_norm_fused_residual_add_gpu[
         WARP_SIZE * max_warps_per_block,
     )
 
+    # _rms_norm_input_alignment trusts gates like this one. Loosen or
+    # remove it and update that function too.
     if cols % simd_width == 0:
         # When the number of columns are less enough that they can be placed in
         # registers we do warp tiling which is a single pass to do mean/var
@@ -2786,8 +2822,11 @@ def rms_norm_fused_residual_add_cpu[
     var intermediate_buffer_alloc = alloc(
         AllocLayout[Scalar[dtype]](count=shape.flattened_length())
     )
+    var intermediate_buffer_ptr: UnsafePointer[
+        Scalar[dtype], origin_of(intermediate_buffer_alloc._alloc)
+    ] = intermediate_buffer_alloc.unsafe_ptr()
     var intermediate_buffer = TileTensor(
-        intermediate_buffer_alloc.unsafe_ptr(),
+        intermediate_buffer_ptr,
         row_major(Coord(shape)),
     )
 
@@ -2875,12 +2914,14 @@ def _rms_norm_rope_gpu_warp_tiling[
     # it on-the-fly.  Storing raw input avoids the risk of exceeding the
     # shared-memory budget that could arise from storing normalized values in
     # a different precision.
-    var shared_input = external_memory[
-        Scalar[input_dtype],
-        address_space=AddressSpace.SHARED,
-        alignment=align_of[SIMD[input_dtype, simd_width]](),
-        name="rms_norm_rope_normed",
-    ]()
+    var shared_input = UnsafePointer(
+        external_memory[
+            Scalar[input_dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=align_of[SIMD[input_dtype, simd_width]](),
+            name="rms_norm_rope_normed",
+        ]()
+    )
 
     var eps_accum = epsilon.cast[accum_type]()
     var weight_offset_accum = weight_offset.cast[accum_type]()
@@ -3064,12 +3105,14 @@ def _rms_norm_rope_gpu_warp_tiling_128[
 
     # Raw input is stored here so each half-warp can read the paired column
     # (col ± half_cols) during the RoPE step without a second global load.
-    var shared_input = external_memory[
-        Scalar[input_dtype],
-        address_space=AddressSpace.SHARED,
-        alignment=align_of[SIMD[input_dtype, simd_width]](),
-        name="rms_norm_rope_normed_128",
-    ]()
+    var shared_input = UnsafePointer(
+        external_memory[
+            Scalar[input_dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=align_of[SIMD[input_dtype, simd_width]](),
+            name="rms_norm_rope_normed_128",
+        ]()
+    )
 
     var eps_accum = epsilon.cast[accum_type]()
     var weight_offset_accum = weight_offset.cast[accum_type]()
@@ -3546,7 +3589,9 @@ def rms_norm_rope_gpu[
 def rms_norm[
     dtype: DType,
     rank: Int,
-    input_0_fn: def[width: Int](Coord) capturing -> SIMD[dtype, width],
+    input_0_fn: def[width: Int, alignment: Int](Coord) capturing -> SIMD[
+        dtype, width
+    ],
     output_0_fn: def[width: SIMDLength, rank: Int, alignment: Int](
         idx: IndexList[rank], val: SIMD[dtype, width]
     ) capturing -> None,
@@ -4363,9 +4408,9 @@ def apply_qk_rms_norm[
 def _rms_norm_fused_residual_add_impl[
     dtype: DType,
     rank: Int,
-    input_0_fn: def[width: Int, rank: Int](IndexList[rank]) capturing -> SIMD[
-        dtype, width
-    ],
+    input_0_fn: def[width: Int, rank: Int, alignment: Int](
+        IndexList[rank]
+    ) capturing -> SIMD[dtype, width],
     input_1_fn: def[width: Int, rank: Int](IndexList[rank]) capturing -> SIMD[
         dtype, width
     ],
@@ -4414,9 +4459,17 @@ def _rms_norm_fused_residual_add_impl[
         # Nothing to do.
         return
 
+    @parameter
+    @always_inline
+    def input_fn_target[
+        width: Int, rank_: Int
+    ](indices: IndexList[rank_]) -> SIMD[dtype, width]:
+        comptime align = _rms_norm_input_alignment[dtype, width, target]()
+        return input_0_fn[width, rank_, align](indices)
+
     comptime if is_gpu[target]():
         rms_norm_fused_residual_add_gpu[
-            input_0_fn,
+            input_fn_target,
             input_1_fn,
             output_residual_fn,
             output_fn,
@@ -4433,7 +4486,7 @@ def _rms_norm_fused_residual_add_impl[
         )
     else:
         rms_norm_fused_residual_add_cpu[
-            input_0_fn,
+            input_fn_target,
             input_1_fn,
             output_residual_fn,
             output_fn,
@@ -4454,9 +4507,9 @@ def rms_norm_fused_residual_add[
     dtype: DType,
     rank: Int,
     //,
-    input_0_fn: def[width: Int, rank: Int](IndexList[rank]) capturing -> SIMD[
-        dtype, width
-    ],
+    input_0_fn: def[width: Int, rank: Int, alignment: Int](
+        IndexList[rank]
+    ) capturing -> SIMD[dtype, width],
     input_1_fn: def[width: Int, rank: Int](IndexList[rank]) capturing -> SIMD[
         dtype, width
     ],

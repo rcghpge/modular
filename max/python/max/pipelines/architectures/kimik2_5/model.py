@@ -47,6 +47,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
 )
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
+from max.pipelines.context import ImageMetadata
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
@@ -56,15 +57,15 @@ from max.pipelines.lib import (
     MultiGraphPipelineModelWithKVCache,
     PipelineConfig,
 )
+from max.pipelines.lib.config.model_config import _select_quantization_encoding
 from max.pipelines.lib.eplb_stats import (
     EplbPlacement,
     EplbStatsAccumulator,
     EplbStatsMetadata,
     EplbStatsSnapshot,
 )
-from max.pipelines.lib.vision_encoder_cache import VisionEncoderCache
+from max.pipelines.lib.vision_encoder_cache import VisionEncodeResult
 from max.pipelines.modeling.config_enums import is_float4_encoding
-from max.pipelines.request import RequestID
 from max.pipelines.weights.mxfp4_preshuffle import (
     preshuffle_mxfp4_b_experts,
     preshuffle_mxfp4_b_scales,
@@ -118,14 +119,6 @@ class KimiK2_5ModelInputs(DeepseekV3Inputs):
     vision_position_ids: list[Buffer] | None = None
     """Vision rotary position IDs per device."""
 
-    language_image_embeddings: list[Buffer] = field(default_factory=list)
-    """Per-device image embeddings for the language model graph.
-    Shape [0, hidden_size] during decode, [num_patches, hidden_size] during prefill."""
-
-    language_image_token_indices: list[Buffer] = field(default_factory=list)
-    """Per-device scatter indices for the language model graph.
-    Shape [0] during decode, [num_image_tokens] during prefill."""
-
     eplb_counter_buffers: list[Buffer] = field(default_factory=list)
     """Per-device EP counter buffers for the language model graph."""
 
@@ -139,8 +132,8 @@ class KimiK2_5ModelInputs(DeepseekV3Inputs):
         """Returns the language model input ABI tuple."""
         return (
             self.tokens,
-            *self.language_image_embeddings,
-            *self.language_image_token_indices,
+            *self.vision_embeddings,
+            *self.vision_scatter_indices,
             self.input_row_offsets,
             self.host_input_row_offsets,
             self.return_n_logits,
@@ -204,11 +197,6 @@ class KimiK2_5Model(
         self.session = session
         self._eplb_log2phy_buffers: list[Buffer] = []
         self._eplb_logcnt_buffers: list[Buffer] = []
-        self._ve_cache: VisionEncoderCache[KimiK2_5TextAndVisionContext] = (
-            VisionEncoderCache(
-                max_entries=pipeline_config.runtime.max_vision_cache_entries
-            )
-        )
         super().__init__(
             pipeline_config,
             session,
@@ -225,7 +213,6 @@ class KimiK2_5Model(
 
         if self._batch_processor is not None:
             assert isinstance(self._batch_processor, KimiK2_5BatchProcessor)
-            self._batch_processor.bind_vision_cache(self._ve_cache)
             assert self.model_config is not None
             self._batch_processor.bind_model_config(self.model_config)
             assert self.vision_model is not None
@@ -255,10 +242,11 @@ class KimiK2_5Model(
         kv_cache_config: KVCacheConfig,
         cache_dtype: DType,
     ) -> KVCacheParamInterface:
-        encoding = pipeline_config.model.quantization_encoding
+        encoding = _select_quantization_encoding(
+            pipeline_config.model, KimiK2_5Config.DEFAULT_ENCODING
+        )
         if (
-            encoding is not None
-            and is_float4_encoding(encoding)
+            is_float4_encoding(encoding)
             and kv_cache_config.kv_cache_format is None
         ):
             cache_dtype = DType.float8_e4m3fn
@@ -763,6 +751,50 @@ class KimiK2_5Model(
 
         return graph, {}
 
+    def pack_vision_inputs(
+        self,
+        selection: Sequence[
+            tuple[KimiK2_5TextAndVisionContext, Sequence[ImageMetadata]]
+        ],
+        devices: list[Device],
+    ) -> None:
+        """Kimi packs inline in :meth:`vision_execute` (chunked encode)."""
+        return None
+
+    def vision_execute(
+        self,
+        selection: Sequence[
+            tuple[KimiK2_5TextAndVisionContext, Sequence[ImageMetadata]]
+        ],
+        devices: list[Device],
+        packed: None,
+    ) -> VisionEncodeResult:
+        """Run the chunked vision encoder over the cache-selected images.
+
+        The chunked encode (packing + per-chunk graph runs + re-concatenation to
+        per-image order) stays encapsulated in the batch processor; the cache
+        only ever sees the per-image-ordered output.
+        """
+        assert isinstance(self._batch_processor, KimiK2_5BatchProcessor)
+        embeddings, token_counts = (
+            self._batch_processor.encode_uncached_chunked(selection)
+        )
+        return VisionEncodeResult(
+            embeddings=embeddings, per_image_token_counts=token_counts
+        )
+
+    def empty_vision_embeddings(self, devices: list[Device]) -> list[Buffer]:
+        """Per-device ``[0, hidden]`` image embeddings for non-vision steps.
+
+        Cached: this is hit on every text-only / decode step, so it must not
+        allocate per call.
+        """
+        if not hasattr(self, "_cached_empty_vision_embeddings"):
+            hidden_size = self.huggingface_config.text_config.hidden_size
+            host = Buffer.zeros(shape=[0, hidden_size], dtype=DType.bfloat16)
+            self._cached_empty_vision_embeddings = [host.to(d) for d in devices]
+        return self._cached_empty_vision_embeddings
+
     def execute(
         self,
         model_inputs: ModelInputs,
@@ -771,51 +803,6 @@ class KimiK2_5Model(
         assert model_inputs.kv_cache_inputs is not None, (
             "KimiK2_5 requires KV cache inputs"
         )
-        if model_inputs.has_vision_inputs:
-            assert self.vision_model is not None
-            assert model_inputs.image_token_indices is not None
-            assert model_inputs.pixel_values is not None
-            assert model_inputs.vision_position_ids is not None
-            assert model_inputs.cu_seqlens is not None
-            assert model_inputs.max_seqlen is not None
-            assert model_inputs.grid_thws is not None
-            assert self.model_config is not None
-
-            image_embeddings = self.vision_model.execute(
-                *model_inputs.pixel_values,
-                *model_inputs.grid_thws,
-                *model_inputs.cu_seqlens,
-                *model_inputs.max_seqlen,
-                *model_inputs.vision_position_ids,
-                *model_inputs.signal_buffers,
-            )
-
-            assert len(image_embeddings) == len(self.devices)
-            for output in image_embeddings:
-                assert isinstance(output, Buffer)
-                assert (
-                    output.shape[1]
-                    == self.huggingface_config.text_config.hidden_size
-                )
-            assert (
-                model_inputs.image_token_indices[0].shape[0]
-                == image_embeddings[0].shape[0]
-            ), (
-                f"The size of scatter indices must match the number of image embeddings. "
-                f"Got: {model_inputs.image_token_indices[0].shape[0]} != {image_embeddings[0].shape[0]}"
-            )
-
-            # Update language model placeholders with actual vision outputs.
-            model_inputs.language_image_embeddings = image_embeddings
-            model_inputs.language_image_token_indices = (
-                model_inputs.image_token_indices
-            )
-
-        if self._eplb_stats_accumulator is not None:
-            model_inputs.eplb_counter_buffers = (
-                self._eplb_stats_accumulator.device_buffers
-            )
-        model_inputs.ep_inputs = self._frozen_ep_inputs
         model_outputs = self.language_model.execute(*model_inputs.buffers)
         if self._eplb_stats_accumulator is not None:
             self._eplb_stats_accumulator.record_batch_total_tokens(
@@ -823,10 +810,6 @@ class KimiK2_5Model(
             )
         assert self.batch_processor is not None
         return self.batch_processor.process_outputs(model_outputs)
-
-    def release(self, request_id: RequestID) -> None:
-        """Release vision encoder cache entries for a completed request."""
-        self._ve_cache.release_request(request_id)
 
     @cached_property
     def _frozen_ep_inputs(self) -> tuple[Buffer, ...]:
@@ -846,7 +829,7 @@ class KimiK2_5Model(
     ) -> KimiK2_5ModelInputs:
         """Delegates to the batch processor; typed for Eagle subclasses."""
         if self._batch_processor is not None:
-            return cast(
+            model_inputs = cast(
                 KimiK2_5ModelInputs,
                 self._batch_processor.prepare_initial_token_inputs(
                     replica_batches,
@@ -854,6 +837,15 @@ class KimiK2_5Model(
                     return_n_logits=return_n_logits,
                 ),
             )
+            # Graph-capture warmup packs ``.buffers`` straight from prepared
+            # inputs, so the EP / EPLB inputs must be set here, not in
+            # ``execute()``.
+            if self._eplb_stats_accumulator is not None:
+                model_inputs.eplb_counter_buffers = (
+                    self._eplb_stats_accumulator.device_buffers
+                )
+            model_inputs.ep_inputs = self._frozen_ep_inputs
+            return model_inputs
         raise RuntimeError("No batch processor configured for KimiK2_5Model")
 
     def _eplb_stats_metadata(self) -> EplbStatsMetadata:

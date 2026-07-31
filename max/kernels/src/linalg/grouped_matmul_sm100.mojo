@@ -41,15 +41,15 @@ from std.gpu.memory import (
     fence_async_view_proxy,
     fence_mbarrier_init,
 )
-from std.gpu.compute.mma import st_matrix
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.mma import st_matrix
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from std.gpu.sync import (
     named_barrier,
     named_barrier_arrive,
     syncwarp,
     umma_arrive_leader_cta,
 )
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import (
     Coord,
     Idx,
@@ -669,7 +669,7 @@ def stsm_helper[
     vec_size: Int,
     transpose_c: Bool = False,
 ](
-    vec: InlineArray[Scalar[vec_dtype], vec_size],
+    vec: Array[Scalar[vec_dtype], vec_size],
     dst: LayoutTensor[_, _, address_space=AddressSpace.SHARED, ...],
 ):
     """Stores a register fragment to shared memory using the stmatrix instruction.
@@ -1448,11 +1448,13 @@ def blackwell_tma_umma_warp_specialized_kernel[
     comptime a_tma_rows = a_desc_shape[0]
     comptime b_tma_rows = b_desc_shape[0]
 
-    base_ptr_smem = external_memory[
-        Scalar[a_type],
-        address_space=AddressSpace.SHARED,
-        alignment=128,
-    ]()
+    base_ptr_smem = UnsafePointer(
+        external_memory[
+            Scalar[a_type],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+        ]()
+    )
 
     comptime a_smem_size = tile_layout_k_major_typed[
         a_type, BM, BK, swizzle_mode=a_swizzle

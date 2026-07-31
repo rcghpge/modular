@@ -35,7 +35,7 @@ from std.gpu.memory import (
 from std.gpu.sync import (
     named_barrier,
 )
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_before,
@@ -536,12 +536,14 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
                     _pdl_early_exit_all_q()
 
                 return  # This query position doesn't exist for this batch
-        q_smem = external_memory[
-            Scalar[Self.q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="mha_dynamic_shared_memory",
-        ]()
+        q_smem = UnsafePointer(
+            external_memory[
+                Scalar[Self.q_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="mha_dynamic_shared_memory",
+            ]()
+        )
         var kv_smem_bf16 = q_smem + Self.BlockElems * Self.NumQKBlocks
 
         # All-FP8 KV layout: TMA loads the full 576-byte row as FP8 into

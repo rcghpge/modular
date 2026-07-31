@@ -38,6 +38,7 @@ Key structured patterns:
 - Automatic wait/step in context manager __enter__/__exit__
 """
 
+from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv
 from std.memory import Pointer
@@ -54,14 +55,14 @@ from std.gpu.memory import (
     external_memory,
     fence_mbarrier_init,
 )
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from std.gpu.primitives.grid_controls import (
     launch_dependent_grids,
     PDLLevel,
     wait_on_dependent_grids,
 )
 from std.gpu.sync import syncwarp
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import Layout
 from layout.tensor_core_async import (
     tile_layout_k_major_typed,
@@ -615,11 +616,11 @@ struct BlackwellBlockScaledMatmulKernel[
 
                 # Peer CTA slice using TileTensor pattern (ptr + layout)
                 var a_peer_tile = type_of(a_tile)(
-                    a_tile.ptr + peer_m_rank * Self.a_tma_load_size,
+                    a_tile._storage + peer_m_rank * Self.a_tma_load_size,
                     a_tile.layout,
                 )
                 var b_peer_tile = type_of(b_tile)(
-                    b_tile.ptr + peer_rank_m * Self.b_tma_load_size,
+                    b_tile._storage + peer_rank_m * Self.b_tma_load_size,
                     b_tile.layout,
                 )
 
@@ -930,11 +931,19 @@ struct BlackwellBlockScaledMatmulKernel[
         Self.validate_config()
 
         # ===== Shared Memory Setup (structured pattern with typed accessors) =====
-        ref smem = external_memory[
+        ref smem = UnsafePointer[
             Scalar[DType.uint8],
+            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-            alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ](
+            external_memory[
+                Scalar[DType.uint8],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+            ]()
+        ).bitcast[
+            Self.SmemType
+        ]()[]
 
         # Get typed tile arrays from SMEM accessors
         var a_tiles = smem.a_tiles()

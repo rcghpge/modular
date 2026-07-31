@@ -17,6 +17,7 @@ TS tests exercise build_mma_ts -> bulk_mma (TS overload) with A in TMEM
 via tcgen05_cp and B in SMEM, validating the TMEM layout for pair-CTA.
 """
 
+from std.memory import UnsafePointer
 from std.math import align_up
 from std.math.uutils import umod, ufloordiv
 from std.sys import size_of
@@ -38,13 +39,13 @@ from std.gpu import (
     warp_id,
 )
 from std.gpu.memory import external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import (
+from max.gpu.compute.arch.mma_nvidia_sm100 import (
     MMASmemDescriptorPair,
     UMMAInsDescriptor,
     UMMAKind,
     mma_arrive_multicast,
 )
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_after,
@@ -127,9 +128,9 @@ def bulk_mma_pair_cta_kernel[
         ab_type, BN, BK, swizzle_mode=b_swizzle
     ]()
 
-    var smem = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=8
-    ]()
+    var smem = UnsafePointer(
+        external_memory[UInt8, address_space=AddressSpace.SHARED, alignment=8]()
+    )
 
     comptime a_smem_bytes = a_smem_layout.size() * size_of[ab_type]()
     comptime b_smem_bytes = b_smem_layout.size() * size_of[ab_type]()
@@ -423,9 +424,9 @@ def bulk_mma_pair_cta_ts_kernel[
         ab_type, BN, BK, swizzle_mode=b_swizzle
     ]()
 
-    var smem = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=8
-    ]()
+    var smem = UnsafePointer(
+        external_memory[UInt8, address_space=AddressSpace.SHARED, alignment=8]()
+    )
 
     comptime a_smem_bytes = a_smem_layout.size() * size_of[ab_type]()
     comptime b_smem_bytes = b_smem_layout.size() * size_of[ab_type]()
@@ -610,7 +611,7 @@ def bulk_mma_pair_cta_ts_kernel[
         # Compute the M-part of the offset once (invariant across K).
         var m_offset = (a_row % 8) * sw_K + (a_row // 8) * (8 * sw_K)
 
-        var a_data = InlineArray[Scalar[DType.float32], BK](uninitialized=True)
+        var a_data = Array[Scalar[DType.float32], BK](uninitialized=True)
         comptime for j in range(BK):
             var base = m_offset + (j % sw_K) + (j // sw_K) * outer_k_stride
             a_data[j] = a_smem[sw(base)].cast[DType.float32]()

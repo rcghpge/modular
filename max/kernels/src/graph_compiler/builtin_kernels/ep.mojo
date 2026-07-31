@@ -25,7 +25,7 @@ from std.memory.unsafe_pointer import pointer_to_int
 from layout.tile_tensor import row_major
 from std.utils.index import IndexList
 
-from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id
+from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 from std.sys.info import size_of, has_amd_gpu_accelerator
 from extensibility import (
     InputTensor,
@@ -1447,7 +1447,7 @@ struct DistributedEPDispatchBlockScaledNV:
                 gpu_ctxs[index],
             )
 
-        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs)
+        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs.copy())
 
 
 @extensibility.register("mo.distributed.ep.dispatch.mxfp4")
@@ -1597,7 +1597,7 @@ struct DistributedEPDispatchMXFP4:
                 gpu_ctxs[index],
             )
 
-        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs)
+        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs.copy())
 
 
 @extensibility.register("mo.distributed.ep.dispatch")
@@ -1719,7 +1719,7 @@ struct DistributedEPDispatch:
                 gpu_ctxs[index],
             )
 
-        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs)
+        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs.copy())
 
 
 @extensibility.register("mo.distributed.ep.dispatch.fp8")
@@ -1863,7 +1863,7 @@ struct DistributedEPDispatchFP8:
                 gpu_ctxs[index],
             )
 
-        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs)
+        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs.copy())
 
 
 @extensibility.register("mo.distributed.ep.combine")
@@ -2006,7 +2006,7 @@ struct DistributedEPCombine:
                 gpu_ctxs[index],
             )
 
-        _launch_device_collective[num_devices](launch_combine, gpu_ctxs)
+        _launch_device_collective[num_devices](launch_combine, gpu_ctxs.copy())
 
 
 @extensibility.register("ep.combine_async")
@@ -2494,9 +2494,7 @@ struct Struct_ep_combine_skip_a2a:
             recv_ptrs.to_tile_tensor[DType.int64](),
             recv_count_ptrs.to_tile_tensor[DType.int64](),
             context,
-            topk_ids._ptr.as_immutable().unsafe_origin_cast[
-                ImmUntrackedOrigin
-            ](),
+            topk_ids._ptr.as_imm().unsafe_origin_cast[ImmUntrackedOrigin](),
         )
 
 

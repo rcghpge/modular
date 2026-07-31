@@ -38,7 +38,7 @@ from layout import (
 )
 from layout._fillers import random
 from layout.tma_async import SharedMemBarrier, TMATensorTile, _idx_product
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from nn.attention.mha_operand import (
     KVCacheMHAOperand,
     MHAOperand,
@@ -93,12 +93,14 @@ def mha_operand_tma_copy_kernel[
     ].stack_allocation()
 
     # Initialize barrier
-    ref mbar = stack_allocation[
-        1,
-        SharedMemBarrier,
-        address_space=AddressSpace.SHARED,
-        alignment=8,
-    ]()[0]
+    ref mbar = UnsafePointer(
+        unsafe_stack_allocation[
+            1,
+            SharedMemBarrier,
+            address_space=AddressSpace.SHARED,
+            alignment=8,
+        ]()
+    )[0]
 
     if thread_idx.x == 0:
         mbar.init()
@@ -369,8 +371,8 @@ def test_continuous_kv_cache[
                         dtype, kv_params
                     ](
                         src_host_tensor.as_unsafe_any_origin(),
-                        cache_lengths_host_tensor.as_unsafe_any_origin().get_immutable(),
-                        lookup_host_tensor.as_unsafe_any_origin().get_immutable(),
+                        cache_lengths_host_tensor.as_unsafe_any_origin().as_imm(),
+                        lookup_host_tensor.as_unsafe_any_origin().as_imm(),
                         UInt32(max_seq_len),
                         UInt32(max_seq_len),
                     )
@@ -378,8 +380,8 @@ def test_continuous_kv_cache[
                         dtype, kv_params
                     ](
                         dst_host_tensor.as_unsafe_any_origin(),
-                        cache_lengths_host_tensor.as_unsafe_any_origin().get_immutable(),
-                        lookup_host_tensor.as_unsafe_any_origin().get_immutable(),
+                        cache_lengths_host_tensor.as_unsafe_any_origin().as_imm(),
+                        lookup_host_tensor.as_unsafe_any_origin().as_imm(),
                         UInt32(max_seq_len),
                         UInt32(max_seq_len),
                     )
@@ -552,8 +554,8 @@ def test_paged_kv_cache[
                         dtype, kv_params, page_size
                     ](
                         src_host_tensor.as_unsafe_any_origin(),
-                        cache_lengths_host_tensor.as_unsafe_any_origin().get_immutable(),
-                        paged_lut_host_tensor.as_unsafe_any_origin().get_immutable(),
+                        cache_lengths_host_tensor.as_unsafe_any_origin().as_imm(),
+                        paged_lut_host_tensor.as_unsafe_any_origin().as_imm(),
                         UInt32(max_seq_len),
                         UInt32(max_seq_len),
                     )
@@ -561,8 +563,8 @@ def test_paged_kv_cache[
                         dtype, kv_params, page_size
                     ](
                         dst_host_tensor.as_unsafe_any_origin(),
-                        cache_lengths_host_tensor.as_unsafe_any_origin().get_immutable(),
-                        paged_lut_host_tensor.as_unsafe_any_origin().get_immutable(),
+                        cache_lengths_host_tensor.as_unsafe_any_origin().as_imm(),
+                        paged_lut_host_tensor.as_unsafe_any_origin().as_imm(),
                         UInt32(max_seq_len),
                         UInt32(max_seq_len),
                     )

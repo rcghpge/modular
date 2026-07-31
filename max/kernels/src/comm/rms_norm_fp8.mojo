@@ -20,7 +20,7 @@ introducing a comm → nn → comm circular dependency.
 
 from std.math import rsqrt
 from std.sys import align_of, simd_width_of
-from std.algorithm.functional import _get_start_indices_of_nth_subvolume
+from max.algorithm.functional import _get_start_indices_of_nth_subvolume
 from std.gpu import WARP_SIZE, block_idx, thread_idx
 import std.gpu.primitives.warp as warp
 from std.gpu.host import DeviceContext, get_gpu_target
@@ -41,7 +41,7 @@ from layout import (
 from std.utils import IndexList, StaticTuple
 from std.utils.numerics import get_accum_type
 
-from std.runtime.tracing import Trace, TraceLevel, trace_arg
+from max.runtime.tracing import Trace, TraceLevel, trace_arg
 
 from internal_utils.fp8_utils import compute_dynamic_fp8_scale, fp8_quantize
 
@@ -225,10 +225,12 @@ def _rms_norm_fused_fp8_gpu[
         return input_fn[simd_width, rank](indices.canonicalize())
 
     # Create 2D output TileTensor view
-    var output_2d = TileTensor(output.ptr, row_major(Coord(rows, cols)))
+    var output_2d = TileTensor(output._storage, row_major(Coord(rows, cols)))
 
     # Create 1D view of scale_output for internal kernel use
-    var scale_output_1d = TileTensor(scale_output.ptr, row_major(Coord(rows)))
+    var scale_output_1d = TileTensor(
+        scale_output._storage, row_major(Coord(rows))
+    )
 
     # Dispatch based on column count (following rms_norm_gpu pattern)
     comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE

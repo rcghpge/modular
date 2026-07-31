@@ -23,12 +23,12 @@ Validates:
 - Bounded store with partial output region
 """
 
-from std.memory import AddressSpace, stack_allocation
+from std.memory import AddressSpace, unsafe_stack_allocation
 from std.random import random_si64
 from std.sys.info import _accelerator_arch
 
 from std.gpu import WARP_SIZE, barrier, lane_id
-from std.gpu.compute.arch.mma_apple import _apple_frag_layout
+from max.gpu.compute.arch.mma_apple import _apple_frag_layout
 from std.gpu.host import DeviceContext
 
 from layout import TileTensor
@@ -153,8 +153,8 @@ def fragment_load_kernel(
     var offset_lo = Int(rb) * row_stride + Int(cb)
     var offset_hi = offset_lo + 8 * row_stride
 
-    var lo = (tile.ptr + offset_lo).load[width=4]()
-    var hi = (tile.ptr + offset_hi).load[width=4]()
+    var lo = (tile._storage + offset_lo).load[width=4]()
+    var hi = (tile._storage + offset_hi).load[width=4]()
     var frag = lo.join(hi)
 
     # Write 8 elements to output at offset tid * 8
@@ -531,12 +531,16 @@ def mma_shared_kernel(
     better perf. This confirms the MMA path works when fragments come
     from an `AddressSpace.SHARED` TileTensor.
     """
-    var a_shared = stack_allocation[
-        _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
-    ]()
-    var b_shared = stack_allocation[
-        _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
-    ]()
+    var a_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var b_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
+        ]()
+    )
 
     # 32 threads cooperatively copy 256 elements (8 per lane, strided).
     var lid = Int(lane_id())

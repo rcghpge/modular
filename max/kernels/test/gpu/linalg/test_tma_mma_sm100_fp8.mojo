@@ -23,8 +23,8 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu import block_idx, lane_id, thread_idx, warp_id as get_warp_id
 from std.gpu.memory import external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import IntTuple, Layout, LayoutTensor
 from layout._fillers import random
 from layout._utils import ManagedLayoutTensor
@@ -151,12 +151,14 @@ def tma_umma_kernel_ss[
             UntrackedOrigin[mut=True],
         ]
     ](
-        external_memory[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="tmem_test_dynamic_shared_memory",
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[a_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="tmem_test_dynamic_shared_memory",
+            ]()
+        )
     )
     comptime a_smem_tile_t = LayoutTensor[
         a_type,
@@ -193,7 +195,7 @@ def tma_umma_kernel_ss[
     comptime accum_type = get_accum_type[a_type]()
 
     comptime c_frag_size = MMA_M * MMA_N // num_threads
-    var c_frag: InlineArray[Scalar[accum_type], c_frag_size]
+    var c_frag: Array[Scalar[accum_type], c_frag_size]
 
     comptime a_expected_bytes = a_size * size_of[a_type]()
     comptime b_expected_bytes = b_size * size_of[b_type]()
@@ -414,12 +416,14 @@ def tma_umma_kernel_ts_fp8[
             UntrackedOrigin[mut=True],
         ]
     ](
-        external_memory[
-            Scalar[b_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="tmem_test_dynamic_shared_memory",
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[b_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="tmem_test_dynamic_shared_memory",
+            ]()
+        )
     )
     comptime b_smem_tile_t = LayoutTensor[
         b_type,
@@ -441,7 +445,7 @@ def tma_umma_kernel_ts_fp8[
     var ptr_tmem_addr = (b_smem + b_size).bitcast[UInt32]()
 
     comptime c_frag_size = MMA_M * MMA_N // num_threads
-    var c_frag: InlineArray[Scalar[accum_type], c_frag_size]
+    var c_frag: Array[Scalar[accum_type], c_frag_size]
 
     comptime b_expected_bytes = b_size * size_of[b_type]()
     comptime expected_bytes = b_expected_bytes
@@ -505,9 +509,7 @@ def tma_umma_kernel_ts_fp8[
         warp_id = 2 * warp_id_r + warp_id_q
 
     comptime a_frag_size = BM * BK * size_of[a_type]() // 4 // num_threads
-    var a_frag = InlineArray[Scalar[DType.uint32], a_frag_size](
-        uninitialized=True
-    )
+    var a_frag = Array[Scalar[DType.uint32], a_frag_size](uninitialized=True)
 
     # FP8 elements are 1 byte each; load 8 elements per vector so each
     # SIMD vec is 8 bytes (== 2 uint32) and the split-into-uint32 pattern

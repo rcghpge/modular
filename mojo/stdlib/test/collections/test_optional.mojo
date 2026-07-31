@@ -22,7 +22,13 @@ from std.sys import size_of
 
 from std.testing import *
 from std.testing import TestSuite
-from test_utils import ExplicitDelOnly, MoveOnly, check_write_to
+from test_utils import (
+    DelCounter,
+    ExplicitDelOnly,
+    MoveOnly,
+    PinnedExplicitDelOnly,
+    check_write_to,
+)
 
 
 def test_basic() raises:
@@ -525,6 +531,107 @@ def test_optional_deinit_with_none_does_not_call_destroy() raises:
     var opt = Optional[Int](None)
     opt^.deinit_with(increment_counter)
     assert_equal(counter, 0)
+
+
+# `ImplicitlyDeletable` but explicitly not `Movable`: rejected at the parameter
+# bound under the old `Optional[T: Movable]`, admitted under the `AnyType` floor.
+struct _NotMovable(ImplicitlyDeletable, Movable where False):
+    var x: Int
+
+    def __init__(out self, x: Int):
+        self.x = x
+
+
+def test_optional_non_movable_element_type() raises:
+    # `Optional` of a non-`Movable` element type is now a valid type.
+    var empty = Optional[_NotMovable]()
+    assert_false(empty)
+    assert_equal(empty.bounds()[0], 0)
+
+
+def test_optional_non_movable_construct_in_place() raises:
+    # `call=` populates an `Optional` with a non-`Movable` value in place.
+    def make() -> _NotMovable:
+        return _NotMovable(7)
+
+    var opt = Optional[_NotMovable](call=make)
+    assert_true(opt)
+    assert_equal(opt.bounds()[0], 1)
+    assert_equal(opt.value().x, 7)
+
+
+def test_optional_pinned_linear_type_deinit_with() raises:
+    var counter = 0
+
+    def destroy(var value: PinnedExplicitDelOnly) {mut counter}:
+        counter += 1
+        value^.destroy()
+
+    def make() -> PinnedExplicitDelOnly:
+        return PinnedExplicitDelOnly(7)
+
+    var opt = Optional[PinnedExplicitDelOnly](call=make)
+    var is_some = opt.__bool__()
+    var data = opt.value().data
+    # Destroy before potentially raising after assert
+    opt^.deinit_with(destroy)
+    assert_true(is_some)
+    assert_equal(data, 7)
+    assert_equal(counter, 1)
+
+    # The empty case is destroyed without invoking `deinit_func`.
+    var empty = Optional[PinnedExplicitDelOnly](None)
+    empty^.deinit_with(destroy)
+    assert_equal(counter, 1)
+
+
+def test_optional_pinned_linear_type_deinit_assert_empty() raises:
+    var empty = Optional[PinnedExplicitDelOnly](None)
+    empty^.deinit_assert_empty()
+
+
+def test_optional_niched_storage_deinit_with() raises:
+    comptime PointerType = Pointer[Int, AnyOrigin[mut=True]]
+
+    var x = 42
+    var some = Optional[PointerType](
+        Pointer(to=x).unsafe_origin_cast[AnyOrigin[mut=True]]()
+    )
+    some^.deinit_with(PointerType.__del__)
+
+    var empty = Optional[PointerType](None)
+    empty^.deinit_with(PointerType.__del__)
+
+    var empty2 = Optional[PointerType](None)
+    empty2^.deinit_assert_empty()
+
+
+def test_optional_construct_in_place_calls_closure_once() raises:
+    var calls = 0
+
+    def make() {mut calls} -> Int:
+        calls += 1
+        return 7
+
+    var opt = Optional[Int](call=make)
+    assert_equal(opt.value(), 7)
+    assert_equal(calls, 1)
+
+
+def test_optional_construct_in_place_destroys_value_once() raises:
+    # `call=` marks the storage's active type by hand before emplacing, so check
+    # that teardown runs the element's destructor exactly once.
+    var del_count = 0
+    var counter_ptr = Pointer(to=del_count)
+    comptime Counter = DelCounter[origin_of(del_count)]
+
+    def make() {counter_ptr} -> Counter:
+        return Counter(counter_ptr)
+
+    var opt = Optional[Counter](call=make)
+    assert_true(opt)
+    _ = opt^
+    assert_equal(del_count, 1)
 
 
 def main() raises:

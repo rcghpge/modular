@@ -32,11 +32,9 @@ arches; only the pure-device run differs.  The indexer op is still SM100-only
 consumes `d_indices`.
 
 Each op takes the same arguments for prefill and decode and picks the kernel at
-runtime from `kv_collection.max_seq_length` (the max number of *new* query tokens
-in the batch): `== 1` is a single-token decode step, anything larger is a
-prefill / context-encoding step.  (Unlike the DeepSeek MLA indexer, the MSA
-prefill and decode paths take the same operands, so they need only one op each
-rather than separate prefill/decode entry points.)
+runtime from `kv_collection.max_seq_length` (the max number of *new* query
+tokens in the batch): `== 1` is a single-token decode step, `2-4` is
+speculative decode, and anything larger is a prefill / context-encoding step.
 
 The indexer op emits top-k *block* ids per (index head, token); the attention
 op consumes those block ids (`d_indices`) to gather a sparse band of KV blocks
@@ -58,17 +56,16 @@ Three attention routes, picked at runtime from `kv_collection.max_seq_length`
                         SM-fill split-K heuristic).  Causal is a no-op (the
                         single query sits at the sequence END, so every selected
                         past KV position is causal-valid and nothing is masked).
-  * `2 / 3 / 4`        -> sparse SPECULATIVE decode (`msa_sm100_decode` with
-                        `spec_max_seq_len` bound to the matched length, which
-                        derives the spec mode in-entry): one CTA per (draft
-                        token, split-K partition), in-kernel per-token causal,
-                        capture-stable over-launched grid (`batch * spec_max_seq_len`
-                        on the token axis, `max_num_partitions` on the partition
-                        axis).  Split-K is REAL (the SM-fill heuristic picks
-                        `num_partitions` from `batch * spec_max_seq_len`, NOT
-                        NoPartition); at np>1 the partials key on the RAGGED
-                        global query row and the shared `mha_splitk_reduce`
-                        combine writes the ragged output directly (Frame R).
+  * `2 / 3 / 4`        -> sparse SPECULATIVE decode (`msa_sm100_decode` on
+                        NVIDIA, `msa_amd_decode_dispatch` on AMD) with
+                        `spec_max_seq_len` bound to the matched length: one CTA
+                        per (draft token, split-K partition), in-kernel
+                        per-token causal, capture-stable over-launched grid
+                        (`batch * spec_max_seq_len` on the token axis,
+                        `max_num_partitions` on the partition axis).  At np>1
+                        the partials key on the ragged global query row and the
+                        shared `mha_splitk_reduce` combine writes the ragged
+                        output directly.
                         Causal is REAL (a draft token can precede some selected
                         KV); the kernel derives each slot's logical KV start
                         in-kernel as `d_idx_base[blk] * BN` and each token's
@@ -101,8 +98,14 @@ from nn.attention.mha_operand import KVCacheMHAOperand
 from nn.attention.mha_mask import NullMask
 from nn.attention.mha_utils import MHAConfig, StaticInt
 
-from msa.sparse_indexer_prefill import sparse_indexer_prefill
-from msa.sparse_indexer_decode import sparse_indexer_decode
+from msa.sparse_indexer_prefill import (
+    sparse_indexer_prefill,
+    sparse_indexer_prefill_topk,
+)
+from msa.sparse_indexer_decode import (
+    sparse_indexer_decode,
+    sparse_indexer_decode_score_mtp,
+)
 from msa.msa_1q import msa_sm100_decode
 from msa.msa_2q import msa_sm100_prefill_plan, msa_sm100_prefill_run
 from msa.amd.decode import msa_amd_decode_dispatch
@@ -264,6 +267,61 @@ struct Struct_msa_indexer_ragged_paged:
                 tt_row_major(num_index_heads, total_q, max_num_blocks),
             )
 
+            # AMD speculative widths use the decode-style scorer: each K vector
+            # is loaded once and reused across the compile-time query width.
+            # Selection remains the existing prefill top-k so this does not
+            # duplicate or fuse the KERN-3285 top-k work. Width one retains the
+            # established decode route; widths five through eight retain
+            # prefill until production enables wider AMD speculation.
+            comptime USE_AMD_MTP_SCORER = (
+                has_amd_gpu_accelerator()
+                and num_index_heads == 1
+                and idx_head_dim == 128
+                and block_size == 128
+                and type_of(k_operand).dtype == DType.bfloat16
+                and type_of(k_operand).page_size % block_size == 0
+            )
+            comptime if USE_AMD_MTP_SCORER:
+                var max_q_len = Int(k_collection.max_seq_length)
+                comptime for query_width in range(2, 5):
+                    if max_q_len == query_width:
+                        sparse_indexer_decode_score_mtp[
+                            DType.bfloat16,
+                            type_of(k_operand),
+                            query_width,
+                            num_index_heads,
+                            idx_head_dim,
+                            block_size,
+                        ](
+                            q.to_tile_tensor[DType.int64](),
+                            k_operand,
+                            prefix_lens.to_tile_tensor[DType.int64](),
+                            input_row_offsets.to_tile_tensor[DType.int64](),
+                            score,
+                            batch,
+                            total_q,
+                            max_num_blocks,
+                            init_blocks,
+                            local_blocks,
+                            scale,
+                            ctx,
+                        )
+                        sparse_indexer_prefill_topk[
+                            num_index_heads, block_size
+                        ](
+                            input_row_offsets.to_tile_tensor[DType.int64](),
+                            prefix_lens.to_tile_tensor[DType.int64](),
+                            score,
+                            out_idxs.to_tile_tensor[DType.int64](),
+                            batch,
+                            total_q,
+                            max_num_blocks,
+                            topk,
+                            ctx,
+                        )
+                        _ = score_buf^
+                        return
+
             sparse_indexer_prefill[
                 DType.bfloat16,
                 type_of(k_operand),
@@ -406,6 +464,12 @@ struct Struct_msa_attention_ragged_paged:
         # `num_rows` == total query tokens (== batch on decode, 1 token/seq).
         var num_rows = Int(q.dim_size[0]())
 
+        # A data-parallel replica with no assigned requests gets empty per-rank
+        # inputs. There is nothing to attend, and the routes below build a Q TMA
+        # descriptor, which rejects a zero global dim.
+        if num_rows == 0:
+            return
+
         # Non-owning DeviceBuffer views over the graph tensors.
         var out_lt = output.to_layout_tensor()
         var q_lt = q.to_layout_tensor()
@@ -416,12 +480,10 @@ struct Struct_msa_attention_ragged_paged:
             ctx, q_lt.ptr, num_rows * num_heads * head_dim, owning=False
         )
 
-        # Route purely on the runtime query length.  MAX speculative draft
-        # length is 4; `2/3/4` route to spec decode, `> 4` to prefill (a short
-        # 2-4 prefill is correctly served by the spec/prefill path).  Spec
-        # decode is SM100-only; on AMD the `2-4` case falls through to the
-        # paged prefill run (the AMD decode dispatch has no spec mode).
-        comptime MAX_SPEC_DRAFT = 4
+        # Route purely on the runtime query length.  AMD currently supports
+        # speculative widths through 4; other architectures support through 8.
+        # Larger query lengths use prefill.
+        comptime MAX_SPEC_DRAFT = 4 if has_amd_gpu_accelerator() else 8
         var max_q_len = Int(kv_collection.max_seq_length)
 
         # Decode == one query token per sequence (`max_q_len == 1`).
@@ -500,8 +562,8 @@ struct Struct_msa_attention_ragged_paged:
                     num_rows,  # batch_size
                     ctx,
                 )
-        elif (not has_amd_gpu_accelerator()) and max_q_len <= MAX_SPEC_DRAFT:
-            # ---- Sparse SPECULATIVE decode (`2 <= max_q_len <= 4`, SM100) ----
+        elif 1 < max_q_len <= MAX_SPEC_DRAFT:
+            # ---- Sparse SPECULATIVE decode ------------------------------
             # Each draft token runs on its OWN CTA via the per-token decode
             # kernel (`spec_max_seq_len > 1` derives the spec mode in-entry =>
             # per_token_index + causal + the over-launched
@@ -518,37 +580,53 @@ struct Struct_msa_attention_ragged_paged:
             # `cache_lengths[batch_of_token] + tok_in_seq` (no `q_positions`
             # array -- mirrors the prefill `use_causal` path, which derives the
             # diagonal from cu_seqlens + cache_lengths).  REAL split-K:
-            # `msa_sm100_decode` feeds `batch * spec_max_seq_len` to the decode
-            # partition heuristic so the partition axis fills the SM array at
-            # low batch, and launches the shared `mha_splitk_reduce` combine
-            # when np > 1 (the causal dead-partition salvage in the partial
-            # writeback keeps the combine NaN-free).  The partials key on the
-            # ragged global query row, so the combine writes the ragged output
-            # directly (no dense intermediate / gather).  SM100 only: AMD has
-            # no spec mode (the `2-4` case falls through to paged prefill).
-            # The inner `comptime if` keeps the tcgen05 `msa_1q` body from
-            # codegen'ing on gfx950 even though the outer `elif` is runtime.
-            comptime if not has_amd_gpu_accelerator():
-                var iro_lt = input_row_offsets.to_layout_tensor()
-                var valid_length = DeviceBuffer[DType.uint32](
-                    ctx,
-                    iro_lt.ptr,
-                    Int(input_row_offsets.dim_size[0]()),
-                    owning=False,
-                )
-                var d_indices_tt = TileTensor(
-                    d_indices.to_layout_tensor().ptr,
-                    row_major(Coord(d_indices.to_layout_tensor().size())),
-                ).as_immut()
-                var topk_tokens = topk * page_size
-                var batch = Int(input_row_offsets.dim_size[0]()) - 1
+            # Both architecture entries feed `batch * spec_max_seq_len` to the
+            # decode partition heuristic and key partials on the packed query
+            # row, so the shared combine writes ragged output directly.
+            var iro_lt = input_row_offsets.to_layout_tensor()
+            var valid_length = DeviceBuffer[DType.uint32](
+                ctx,
+                iro_lt.ptr,
+                Int(input_row_offsets.dim_size[0]()),
+                owning=False,
+            )
+            var d_indices_tt = TileTensor(
+                d_indices.to_layout_tensor().ptr,
+                row_major(Coord(d_indices.to_layout_tensor().size())),
+            ).as_immut()
+            var topk_tokens = topk * page_size
+            var batch = Int(input_row_offsets.dim_size[0]()) - 1
 
-                # The over-launch span `spec_max_seq_len` is a graph constant,
-                # so bind it to the matched runtime length per branch (one CTA
-                # per (draft token, partition) over `batch * spec_max_seq_len`).
-                # The entry derives the spec mode from `spec_max_seq_len > 1`.
-                comptime for n in range(2, MAX_SPEC_DRAFT + 1):
-                    if max_q_len == n:
+            # The over-launch span is a graph constant, so bind it to the
+            # matched runtime length per branch.
+            comptime for n in range(2, MAX_SPEC_DRAFT + 1):
+                if max_q_len == n:
+                    comptime if has_amd_gpu_accelerator():
+                        msa_amd_decode_dispatch[
+                            config=config,
+                            group=group,
+                            ragged=True,
+                            _is_cache_length_accurate=False,
+                            mask_unselected=True,
+                            spec_max_seq_len=n,
+                        ](
+                            output_buf,
+                            q_buf,
+                            k_op,
+                            v_op,
+                            d_indices_tt,
+                            topk,
+                            num_rows,
+                            NullMask(),
+                            valid_length,
+                            StaticInt[1](),
+                            topk_tokens,
+                            scale,
+                            None,
+                            batch,
+                            ctx,
+                        )
+                    else:
                         msa_sm100_decode[
                             config=config,
                             group=group,
@@ -583,7 +661,7 @@ struct Struct_msa_attention_ragged_paged:
                             # `causal`), not off the presence of a `q_positions`
                             # pointer.
                         )
-                        return
+                    return
         else:
             var batch = Int(input_row_offsets.dim_size[0]()) - 1
 

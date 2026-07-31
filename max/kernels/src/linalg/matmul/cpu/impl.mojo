@@ -21,7 +21,9 @@ from std.collections import Optional
 from std.math import align_up, ceildiv
 from std.sys.info import align_of, simd_width_of
 
-from std.algorithm import sync_parallelize, tile, vectorize
+from std.algorithm import tile, vectorize
+
+from max.algorithm import sync_parallelize
 from std.gpu.host import DeviceContext
 from layout import (
     Coord,
@@ -31,7 +33,7 @@ from layout import (
 from layout.tile_layout import TensorLayout, row_major
 from std.memory import alloc, dealloc, Allocation
 from std.memory.alloc import Layout as AllocLayout
-from std.runtime.asyncrt import parallelism_level
+from max.runtime.asyncrt import parallelism_level
 
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type
@@ -712,9 +714,12 @@ def matmul[
             AllocLayout[Scalar[scratch_type]](
                 count=scratch_m * scratch_n, alignment=scratch_align
             )
-        ).into_deletable()
+        ).into_managed()
+        var scratch_ptr: UnsafePointer[
+            Scalar[scratch_type], origin_of(scratch_alloc)
+        ] = scratch_alloc.unsafe_ptr()
         var scratch = TileTensor(
-            scratch_alloc.unsafe_ptr(), row_major(Coord(scratch_m, scratch_n))
+            scratch_ptr, row_major(Coord(scratch_m, scratch_n))
         )
 
         @parameter

@@ -72,6 +72,7 @@ Shapes: MMA_M=32, BN=256 keys (64/partition), bf16, MMA_K=16, num_k_mmas =
                  single-shot -- the BN=256/depth=128 target regime.
 """
 
+from std.memory import UnsafePointer
 from std.memory import bitcast
 from std.random import randn, seed
 from std.sys import size_of
@@ -81,11 +82,11 @@ from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.info import _is_sm10x_gpu
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.memory import AddressSpace, external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import (
+from max.gpu.compute.arch.mma_nvidia_sm100 import (
     UMMAKind,
     mma_arrive,
 )
-from std.gpu.compute.arch.tcgen05 import (
+from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
     tcgen05_fence_after,
@@ -236,9 +237,11 @@ def pv_ts_batched_kernel[
     ]
 
     # ---- Dynamic SMEM: `num_d_tiles` mn-major V regions + metadata ----
-    var smem_base = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=128
-    ]()
+    var smem_base = UnsafePointer(
+        external_memory[
+            UInt8, address_space=AddressSpace.SHARED, alignment=128
+        ]()
+    )
     var v_smem_ptr = smem_base.bitcast[Scalar[OP_TYPE]]()
 
     var metadata_ptr = (smem_base + v_bytes).bitcast[UInt32]()
@@ -313,7 +316,7 @@ def pv_ts_batched_kernel[
     # All 4 warps store to the SAME address a_tmem (datapaths=32); the hardware
     # subpartition routes warp g's store to quarter g (no per-warp offset). This
     # single packed P feeds ALL depth-tile MMAs (P is depth-independent).
-    var frag = InlineArray[Scalar[DType.uint32], P_FRAG_U32](uninitialized=True)
+    var frag = Array[Scalar[DType.uint32], P_FRAG_U32](uninitialized=True)
     for j in range(P_FRAG_U32):
         var pair = SIMD[OP_TYPE, 2]()
         pair[0] = p_input[row, g * PART_KEYS + 2 * j][0]

@@ -738,11 +738,35 @@ class OpenAIChatResponseGenerator(
                         n_reasoning_tokens += chunk.reasoning_token_count or 0
                         n_tokens += chunk.token_count
                         continue
-                    reasoning_kwargs = {self._reasoning_field: reasoning}
-                    choices = [
-                        ChatCompletionStreamResponseChoice(
-                            index=0,
-                            delta=ChatCompletionStreamResponseDelta(
+                    # CENG-892: never emit reasoning and content in the same
+                    # delta, and emit content only after the reasoning
+                    # fragment. A boundary chunk can carry both a reasoning
+                    # tail and the first content tokens; some downstream
+                    # consumers can't parse a delta with both fields set, so
+                    # split it into an ordered reasoning-then-content pair.
+                    deltas: list[ChatCompletionStreamResponseDelta] = []
+                    if reasoning:
+                        # Pass the non-reasoning fields explicitly so the
+                        # dynamic reasoning-key unpacking type-checks: with
+                        # them fixed, mypy can only route the dict into
+                        # reasoning / reasoning_content (both str | None).
+                        deltas.append(
+                            ChatCompletionStreamResponseDelta(
+                                role="assistant",
+                                content=None,
+                                function_call=None,
+                                refusal=None,
+                                tool_calls=None,
+                                **{self._reasoning_field: reasoning},
+                            )
+                        )
+                    # Content (with any tool-call fragment) is emitted last so
+                    # a terminal finish_reason / logprobs ride the content
+                    # delta. Emit it even when empty if there was no reasoning
+                    # delta, so a bare finish_reason chunk is still produced.
+                    if content or tool_call_chunks or not deltas:
+                        deltas.append(
+                            ChatCompletionStreamResponseDelta(
                                 content=content,
                                 function_call=None,
                                 role="assistant",
@@ -750,11 +774,23 @@ class OpenAIChatResponseGenerator(
                                 tool_calls=tool_call_chunks
                                 if tool_call_chunks
                                 else None,
-                                **reasoning_kwargs,
-                            ),
-                            logprobs=logprobs_response,
-                            finish_reason=finish_reason,
+                            )
                         )
+                    # finish_reason and logprobs belong on the final delta
+                    # only; the earlier reasoning delta is non-terminal.
+                    last_idx = len(deltas) - 1
+                    choices = [
+                        ChatCompletionStreamResponseChoice(
+                            index=0,
+                            delta=delta,
+                            logprobs=logprobs_response
+                            if i == last_idx
+                            else None,
+                            finish_reason=finish_reason
+                            if i == last_idx
+                            else None,
+                        )
+                        for i, delta in enumerate(deltas)
                     ]
                 elif chunk.status.is_done:
                     # Terminal chunk with no visible delta — emit the final
@@ -787,29 +823,34 @@ class OpenAIChatResponseGenerator(
                     n_tokens += chunk.token_count
                     continue
 
-                # Each chunk is expected to have the same id
-                # https://platform.openai.com/docs/api-reference/chat/streaming
-                # Don't include usage in regular chunks when streaming
-                # https://platform.openai.com/docs/api-reference/chat/create#chat_create-stream_options
-                response = CreateChatCompletionStreamResponse(
-                    id=str(request.request_id),
-                    choices=choices,
-                    created=int(datetime.now().timestamp()),
-                    model=request.model_name,
-                    object="chat.completion.chunk",
-                    system_fingerprint=None,
-                    usage=None,
-                    service_tier=None,
-                )
                 n_reasoning_tokens += chunk.reasoning_token_count or 0
                 n_tokens += chunk.token_count
-                # Omit unset (None) fields so each delta carries only what
-                # changed, matching the OpenAI streaming spec. Without this a
-                # delta serializes tool_calls/function_call/refusal as null on
-                # every chunk, so a client reading the first tool_calls-bearing
-                # delta sees null instead of the real tool-call fragment.
-                payload = response.model_dump_json(exclude_none=True)
-                yield payload
+                # A boundary chunk yields an ordered reasoning-then-content
+                # pair (see CENG-892 above); every other case yields one
+                # choice. Emit each as its own SSE chunk so a single delta
+                # never carries both reasoning and content.
+                for choice in choices:
+                    # Each chunk is expected to have the same id
+                    # https://platform.openai.com/docs/api-reference/chat/streaming
+                    # Don't include usage in regular chunks when streaming
+                    # https://platform.openai.com/docs/api-reference/chat/create#chat_create-stream_options
+                    response = CreateChatCompletionStreamResponse(
+                        id=str(request.request_id),
+                        choices=[choice],
+                        created=int(datetime.now().timestamp()),
+                        model=request.model_name,
+                        object="chat.completion.chunk",
+                        system_fingerprint=None,
+                        usage=None,
+                        service_tier=None,
+                    )
+                    # Omit unset (None) fields so each delta carries only what
+                    # changed, matching the OpenAI streaming spec. Without this
+                    # a delta serializes tool_calls/function_call/refusal as
+                    # null on every chunk, so a client reading the first
+                    # tool_calls-bearing delta sees null instead of the real
+                    # tool-call fragment.
+                    yield response.model_dump_json(exclude_none=True)
 
             # TODO: (MODELS-1117) determine whether to break out reasoning tokens into a separate metric
             logger.debug(
@@ -1671,7 +1712,14 @@ def _resolve_grammar_constraints(
     # When tools are forced, constrain to tool calls only.
     if response_format is not None and not tools_forced:
         if response_format.type == "json_schema":
-            response_format_schema = response_format.json_schema or None
+            # An explicit ``{}`` ("any valid JSON value") is a real schema to OR
+            # into the tool-call alternation, distinct from an absent schema;
+            # ``is not None`` preserves it where ``or None`` would drop it.
+            response_format_schema = (
+                response_format.json_schema
+                if response_format.json_schema is not None
+                else None
+            )
 
     # enforce_from_start: True for required/named OR auto+response_format
     # False for auto without response_format (conditional enforcement)
@@ -1823,7 +1871,7 @@ async def openai_create_chat_completion(
                 response_format = TextGenerationResponseFormat(
                     type="grammar",
                     grammar=grammar,
-                    json_schema={},
+                    json_schema=None,
                     grammar_enforced=enforce_from_start,
                     tools_forced=tools_forced,
                     requires_structured_output_flag=response_format_schema
@@ -2191,19 +2239,22 @@ def _create_response_format(
         else:
             _validate_json_schema(json_schema)
 
-    # Enforce grammar from the first token only when there is an actual
-    # schema to enforce. The json_schema can also be used to create a grammar,
-    # hence we need to specify that the grammar should constrain from the
-    # start if there's a json_schema present here.
+    # A json_schema/json_object response_format ALWAYS requests enforcement,
+    # even when the schema is an explicit ``{}`` / boolean ``true`` ("any valid
+    # JSON value"). Deriving enforcement from ``bool(json_schema)`` would treat
+    # that empty-but-present schema as "no schema" and leave the output
+    # unconstrained (trailing prose after a valid value). Take the intent from
+    # the request type instead; the empty schema compiles to xgrammar's
+    # any-value grammar, which forces exactly one well-formed JSON value.
     # TODO: improve the field naming here; grammar_enforced should be constrain_with_bitmask.
     return TextGenerationResponseFormat(
         type=response_type,
         json_schema=json_schema,
         grammar=None,
-        grammar_enforced=bool(json_schema),
+        grammar_enforced=True,
         tools_forced=False,
         requires_structured_output_flag=True,
-        has_json_schema=bool(json_schema),
+        has_json_schema=True,
     )
 
 

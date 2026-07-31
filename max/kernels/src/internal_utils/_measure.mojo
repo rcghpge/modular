@@ -15,7 +15,9 @@ from std.collections import Optional
 from std.math import inf, isnan, log, nan, sqrt
 from std.sys import simd_width_of
 
-from std.algorithm import elementwise, mean, sum, vectorize
+from std.algorithm import vectorize
+
+from max.algorithm import elementwise, mean, sum
 from std.algorithm.functional import unswitch
 from std.gpu.host import DeviceContext
 
@@ -157,7 +159,7 @@ def correlation[
     var uu_simd = SIMD[out_type, simd_width]()
     var vv_simd = SIMD[out_type, simd_width]()
 
-    var w_val = w_list.unsafe_ptr()
+    var w_val: UnsafePointer[w_list.T, origin_of(w_list)] = w_list.unsafe_ptr()
 
     @parameter
     def accumulate[weighted: Bool]():

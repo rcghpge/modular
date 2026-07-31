@@ -57,8 +57,8 @@ from std.gpu.primitives.cluster import block_rank_in_cluster
 from std.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
 from std.gpu.memory import external_memory
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.tcgen05 import *
 
 from layout import IntTuple, Layout, LayoutTensor
 from layout._fillers import arange
@@ -197,12 +197,14 @@ def pv_mma_kernel[
             UntrackedOrigin[mut=True],
         ]
     ](
-        external_memory[
-            Scalar[ab_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="pv_spike_dynamic_smem",
-        ]()
+        UnsafePointer(
+            external_memory[
+                Scalar[ab_type],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+                name="pv_spike_dynamic_smem",
+            ]()
+        )
     )
     comptime p_smem_tile_t = LayoutTensor[
         ab_type,
@@ -232,7 +234,7 @@ def pv_mma_kernel[
 
     comptime accum_type = get_accum_type[ab_type]()
     comptime c_frag_size = MMA_M * MMA_N // num_threads
-    var c_frag: InlineArray[Scalar[accum_type], c_frag_size]
+    var c_frag: Array[Scalar[accum_type], c_frag_size]
 
     comptime p_expected_bytes = p_size * size_of[ab_type]()
     comptime v_expected_bytes = v_size * size_of[ab_type]()

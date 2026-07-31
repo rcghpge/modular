@@ -33,6 +33,7 @@ different slot, hiding g2s latency behind S-1 iterations of work.
 
 from std.sys import get_defined_bool, get_defined_int, size_of
 
+from max.benchmark import bencher_iter_custom
 from std.benchmark import (
     Bench,
     Bencher,
@@ -98,9 +99,11 @@ def bulk_memcpy_kernel[
     comptime NUM_WARPS = NUM_THREADS // 32
     comptime DATA_BYTES = NUM_WARPS * S * BYTES_PER_COPY
 
-    var smem_base = external_memory[
-        UInt8, address_space=AddressSpace.SHARED, alignment=128
-    ]()
+    var smem_base = UnsafePointer(
+        external_memory[
+            UInt8, address_space=AddressSpace.SHARED, alignment=128
+        ]()
+    )
     var mbar_base = (smem_base + DATA_BYTES).bitcast[SharedMemBarrier]()
 
     var w = Int(warp_id())
@@ -246,7 +249,7 @@ def main() raises:
                     shared_mem_bytes=smem_bytes,
                 )
 
-            b.iter_custom[kernel_launch](ctx)
+            bencher_iter_custom[kernel_launch](b, ctx)
 
         m.bench_function[bench_func](
             BenchId(

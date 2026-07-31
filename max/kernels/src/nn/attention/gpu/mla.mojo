@@ -19,7 +19,7 @@ their platform-specific dispatch and kernel implementations targeting NVIDIA
 prediction (MTP) query folding, per-token scale, and sparse-attention support.
 """
 
-from std.collections import InlineArray, OptionalReg
+from std.collections import Array, OptionalReg
 from std.math import align_up, ceildiv, recip
 from std.math.uutils import umod, ufloordiv, udivmod
 from nn.attention.mha_utils import DynamicInt, MHA_PDL_LEVEL
@@ -46,9 +46,12 @@ from nn.attention.gpu.mha_decode_partition_heuristic import (
 import std.gpu.primitives.warp as warp
 from std.gpu.primitives.grid_controls import pdl_launch_attributes
 from std.algorithm.functional import (
-    _elementwise_impl_gpu,
     tile_and_unswitch,
     unswitch,
+)
+
+from max.algorithm.functional import (
+    _elementwise_impl_gpu,
 )
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -101,7 +104,7 @@ from layout.tensor_core import get_fragment_size, get_mma_shape
 from layout.tile_tensor import NullableTileTensor
 from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from nn._ragged_utils import get_batch_from_row_offsets
 from nn.attention.mha_mask import MHAMask, TileMaskStatus
 from nn.attention.mha_operand import (
@@ -117,7 +120,7 @@ from nn.attention.mha_utils import (
     _kernel_mask,
     DynamicInt,
 )
-from std.runtime.tracing import Trace, TraceLevel, trace_arg
+from max.runtime.tracing import Trace, TraceLevel, trace_arg
 
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type, min_or_neg_inf
@@ -1673,10 +1676,10 @@ def mla_splitk_reduce[
 
     if part_start_warp < num_partitions:
         var np_last_s2 = num_partitions - 1
-        var xs = InlineArray[SIMD[accum_type, elems_per_lane], parts_per_warp](
+        var xs = Array[SIMD[accum_type, elems_per_lane], parts_per_warp](
             fill=SIMD[accum_type, elems_per_lane](0)
         )
-        var scales_local = InlineArray[Scalar[accum_type], parts_per_warp](
+        var scales_local = Array[Scalar[accum_type], parts_per_warp](
             fill=Scalar[accum_type](0)
         )
         comptime for k in range(parts_per_warp):
@@ -2084,11 +2087,13 @@ def mla_decoding_single_batch[
     # The entire query block (BM x depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = BM * depth
-    var q_smem = external_memory[
-        Scalar[q_type],
-        address_space=AddressSpace.SHARED,
-        alignment=alignment,
-    ]()
+    var q_smem = UnsafePointer(
+        external_memory[
+            Scalar[q_type],
+            address_space=AddressSpace.SHARED,
+            alignment=alignment,
+        ]()
+    )
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -2195,8 +2200,12 @@ def mla_decoding_single_batch[
     comptime row_alignment = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = stack_allocation[WM, accum_type, alignment=row_alignment]()
-    var rowsum = stack_allocation[WM, accum_type, alignment=row_alignment]()
+    var rowmax = UnsafePointer(
+        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
+    )
+    var rowsum = UnsafePointer(
+        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
+    )
 
     comptime for i in range(WM):
         rowmax[i] = min_or_neg_inf[accum_type]()
@@ -3915,11 +3924,13 @@ def mla_prefill_single_batch[
     # The entire query block (BM x q_depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = BM * q_depth
-    var q_smem = external_memory[
-        Scalar[q_type],
-        address_space=AddressSpace.SHARED,
-        alignment=alignment,
-    ]()
+    var q_smem = UnsafePointer(
+        external_memory[
+            Scalar[q_type],
+            address_space=AddressSpace.SHARED,
+            alignment=alignment,
+        ]()
+    )
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -4043,8 +4054,12 @@ def mla_prefill_single_batch[
     comptime row_alignment = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = stack_allocation[WM, accum_type, alignment=row_alignment]()
-    var rowsum = stack_allocation[WM, accum_type, alignment=row_alignment]()
+    var rowmax = UnsafePointer(
+        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
+    )
+    var rowsum = UnsafePointer(
+        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
+    )
 
     comptime for i in range(0, WM, 2):
         rowmax.store(i, SIMD[accum_type, 2](min_or_neg_inf[accum_type]()))

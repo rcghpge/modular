@@ -514,6 +514,27 @@ struct ExplicitDelOnly(ImplicitlyDeletable where False, Movable):
 
 
 # ===----------------------------------------------------------------------=== #
+# PinnedExplicitDelOnly
+# ===----------------------------------------------------------------------=== #
+
+
+@fieldwise_init
+struct PinnedExplicitDelOnly(
+    ImplicitlyDeletable where False, Movable where False
+):
+    """Utility for testing container support for linear types that also
+    cannot be moved."""
+
+    var data: Int
+    """Test data payload."""
+
+    def destroy(deinit self):
+        """Explicitly destroy this linear type."""
+
+        pass
+
+
+# ===----------------------------------------------------------------------=== #
 # DelCounter
 # ===----------------------------------------------------------------------=== #
 
@@ -709,7 +730,7 @@ struct Observable[
     def write_niche[
         index: Int
     ](
-        memory: UnsafePointer[mut=True, UnsafeMaybeUninit[Self], _]
+        memory: Pointer[mut=True, UnsafeMaybeUninit[Self], _]
     ) where Self.opt_into_unsafe_niche:
         """Writes niche bit pattern `index` into storage.
 
@@ -722,11 +743,13 @@ struct Observable[
         comptime niche_offset = reflect[Self].field_offset[
             name="_always_zero"
         ]()
-        (memory.bitcast[Byte]() + niche_offset).store(Byte(index + 1))
+        memory.unsafe_bitcast[Byte]().unsafe_offset(niche_offset).unsafe_store(
+            Byte(index + 1)
+        )
 
     @staticmethod
     def classify_niche(
-        memory: UnsafePointer[mut=False, UnsafeMaybeUninit[Self], _]
+        memory: Pointer[mut=False, UnsafeMaybeUninit[Self], _]
     ) -> NicheIndex where Self.opt_into_unsafe_niche:
         """Classifies the bit pattern at `memory` as a niche or a live value.
 
@@ -740,7 +763,11 @@ struct Observable[
         comptime niche_offset = reflect[Self].field_offset[
             name="_always_zero"
         ]()
-        var value = (memory.bitcast[Byte]() + niche_offset).load()
+        var value = (
+            memory.unsafe_bitcast[Byte]()
+            .unsafe_offset(niche_offset)
+            .unsafe_load()
+        )
         if value == 0:
             return NicheIndex.NotANiche
         else:

@@ -39,7 +39,7 @@ from std.gpu.memory import (
     external_memory,
     fence_mbarrier_init,
 )
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from std.gpu.primitives.grid_controls import (
     launch_dependent_grids,
     pdl_launch_attributes,
@@ -54,7 +54,7 @@ from std.gpu.sync import (
     syncwarp,
     umma_arrive_leader_cta,
 )
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import (
     Coord,
     CoordLike,
@@ -265,49 +265,47 @@ struct B200BlockScaledMatmulSmem[
     )
 
     # AB pipelines
-    var a_smem: InlineArray[Self.AType, Self.a_smem_size]
-    var b_smem: InlineArray[Self.BType, Self.b_smem_size]
-    var c_smem: InlineArray[Self.CType, Self.c_smem_size]
-    var sfa_smem: InlineArray[Self.AScalesType, Self.sfa_smem_size]
-    var sfb_smem: InlineArray[Self.BScalesType, Self.sfb_smem_size]
+    var a_smem: Array[Self.AType, Self.a_smem_size]
+    var b_smem: Array[Self.BType, Self.b_smem_size]
+    var c_smem: Array[Self.CType, Self.c_smem_size]
+    var sfa_smem: Array[Self.AScalesType, Self.sfa_smem_size]
+    var sfb_smem: Array[Self.BScalesType, Self.sfb_smem_size]
 
-    var tma_mma_mbars: InlineArray[
+    var tma_mma_mbars: Array[
         SharedMemBarrier, Self.num_group_pipeline_stages * 2
     ]
 
     # ACCUM
-    var accum_mbars: InlineArray[
+    var accum_mbars: Array[
         SharedMemBarrier, Self.config.num_accum_pipeline_stages * 2
     ]
 
     # CLC
-    var clc_mbars_full: InlineArray[
+    var clc_mbars_full: Array[
         SharedMemBarrier, Self.config.num_clc_pipeline_stages
     ]
-    var clc_mbars_empty: InlineArray[
+    var clc_mbars_empty: Array[
         SharedMemBarrier, Self.config.num_clc_pipeline_stages
     ]
-    var clc_throttle_mbars: InlineArray[
+    var clc_throttle_mbars: Array[
         SharedMemBarrier, Self.config.num_clc_pipeline_stages * 2
     ]
-    var clc_response: InlineArray[UInt128, Self.config.num_clc_pipeline_stages]
+    var clc_response: Array[UInt128, Self.config.num_clc_pipeline_stages]
 
     # SFB pipeline (SfbLoad ↔ MMA)
-    var sfb_mbars: InlineArray[
-        SharedMemBarrier, Self.num_group_pipeline_stages * 2
-    ]
+    var sfb_mbars: Array[SharedMemBarrier, Self.num_group_pipeline_stages * 2]
 
     # Cross-CTA SFB readiness barrier (2CTA only).
     # SfbReady warp waits for sfb_pipeline then arrives here.
     # MMA warp waits here before tcgen05_cp[cta_group=2].
-    var sfb_ready_mbars: InlineArray[
+    var sfb_ready_mbars: Array[
         SharedMemBarrier,
         Self.num_group_pipeline_stages if Self.config.cta_group == 2 else 0,
     ]
 
     # TMEM
-    var tmem_dealloc_mbar: InlineArray[SharedMemBarrier, 1]
-    var tmem_addr: InlineArray[UInt32, 1]
+    var tmem_dealloc_mbar: Array[SharedMemBarrier, 1]
+    var tmem_addr: Array[UInt32, 1]
 
 
 @always_inline
@@ -1568,11 +1566,19 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
         config=config,
     ]
 
-    ref smem_storage = external_memory[
+    ref smem_storage = UnsafePointer[
         Scalar[DType.uint8],
+        MutUntrackedOrigin,
         address_space=AddressSpace.SHARED,
-        alignment=128,
-    ]().bitcast[SmemType]()[]
+    ](
+        external_memory[
+            Scalar[DType.uint8],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+        ]()
+    ).bitcast[
+        SmemType
+    ]()[]
 
     ref a_smem_storage = smem_storage.a_smem
     ref b_smem_storage = smem_storage.b_smem
@@ -1712,14 +1718,30 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
         sfb_mbars_storage.unsafe_ptr(),
     )
 
-    var ptr_tmem_addr = tmem_addr_storage.unsafe_ptr()
+    var ptr_tmem_addr: UnsafePointer[
+        UInt32,
+        origin_of(tmem_addr_storage),
+        address_space=AddressSpace.SHARED,
+    ] = tmem_addr_storage.unsafe_ptr()
 
     clc_response = clc_response_storage.unsafe_ptr()
-    clc_full_mbar = clc_mbars_full_storage.unsafe_ptr()
-    clc_empty_mbar = clc_mbars_empty_storage.unsafe_ptr()
+    var clc_full_mbar: UnsafePointer[
+        SharedMemBarrier,
+        origin_of(clc_mbars_full_storage),
+        address_space=AddressSpace.SHARED,
+    ] = clc_mbars_full_storage.unsafe_ptr()
+    var clc_empty_mbar: UnsafePointer[
+        SharedMemBarrier,
+        origin_of(clc_mbars_empty_storage),
+        address_space=AddressSpace.SHARED,
+    ] = clc_mbars_empty_storage.unsafe_ptr()
 
     tmem_dealloc_mbar = tmem_dealloc_mbar_storage.unsafe_ptr()
-    var sfb_ready_mbars = sfb_ready_mbars_storage.unsafe_ptr()
+    var sfb_ready_mbars: UnsafePointer[
+        SharedMemBarrier,
+        origin_of(sfb_ready_mbars_storage),
+        address_space=AddressSpace.SHARED,
+    ] = sfb_ready_mbars_storage.unsafe_ptr()
 
     var warp_id = get_warp_id()
     var elect_one_warp = warp_id == 0
@@ -1872,9 +1894,9 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
                     <= config.num_pipeline_stages // config.k_group_size
                 ), "prefetch_tiles_n must not exceed num_group_pipeline_stages"
 
-                var prefetch_stages = InlineArray[
-                    UInt32, config.prefetch_tiles_n
-                ](uninitialized=True)
+                var prefetch_stages = Array[UInt32, config.prefetch_tiles_n](
+                    uninitialized=True
+                )
                 var pf_work_coord = (
                     Int(work_info.m),
                     Int(work_info.n),

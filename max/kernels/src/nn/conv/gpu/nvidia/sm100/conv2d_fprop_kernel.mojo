@@ -34,6 +34,7 @@ Supported configurations (Flux VAE optimized):
 - BF16/FP16 data types
 """
 
+from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv
 
@@ -42,9 +43,9 @@ from std.sys import size_of
 from std.gpu import WARP_SIZE, barrier
 from std.gpu.primitives.cluster import cluster_sync, elect_one_sync
 from std.gpu.memory import AddressSpace, external_memory, fence_mbarrier_init
-from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from std.gpu.sync import syncwarp
-from std.gpu.compute.arch.tcgen05 import *
+from max.gpu.compute.arch.tcgen05 import *
 from layout import Layout as LegacyLayout
 from layout.tma_async import TMATensorTile
 from structured_kernels.tile_types import (
@@ -840,11 +841,13 @@ struct Conv2dFpropKernel[
             beta: Residual scale factor (only used when has_residual is True).
         """
         # Access shared memory
-        ref smem = external_memory[
-            Scalar[DType.uint8],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ref smem = UnsafePointer(
+            external_memory[
+                Scalar[DType.uint8],
+                address_space=AddressSpace.SHARED,
+                alignment=128,
+            ]()
+        ).bitcast[Self.SmemType]()[]
 
         # Create input pipeline with payload
         var tile_payload = Self.TilePayload(

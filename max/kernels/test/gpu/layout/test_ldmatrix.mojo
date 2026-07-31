@@ -17,12 +17,12 @@ from std.random import random_si64
 
 from std.gpu import WARP_SIZE, barrier, lane_id, thread_idx
 from std.gpu.host import DeviceContext
-from std.gpu.compute.mma import ld_matrix, mma
-from std.gpu.compute.mma_util import store_matrix_d
+from max.gpu.compute.mma import ld_matrix, mma
+from max.gpu.compute.mma_util import store_matrix_d
 from layout import Coord, Idx, TileTensor, row_major
 from layout.tensor_core import get_fragment_size, get_mma_shape
 from linalg.matmul.gpu import matmul_kernel_naive
-from std.memory import stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.testing import assert_almost_equal
 
 from std.utils.numerics import get_accum_type
@@ -42,18 +42,22 @@ def test_ldmatrix_fp32(
 
     var d_reg = SIMD[DType.float32, 4](0)
     var tid = thread_idx.x
-    var a_shared = stack_allocation[
-        mma_m * mma_k,
-        DType.float32,
-        alignment=32,
-        address_space=AddressSpace.SHARED,
-    ]()
-    var b_shared = stack_allocation[
-        mma_n * mma_k,
-        DType.float32,
-        alignment=32,
-        address_space=AddressSpace.SHARED,
-    ]()
+    var a_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            mma_m * mma_k,
+            DType.float32,
+            alignment=32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
+    var b_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            mma_n * mma_k,
+            DType.float32,
+            alignment=32,
+            address_space=AddressSpace.SHARED,
+        ]()
+    )
 
     for i in range(tid, mma_m * mma_k, WARP_SIZE):
         a_shared[i] = a_ptr[i]
@@ -96,12 +100,16 @@ def test_ldmatrix_transposed[
     var lane = lane_id()
     var d = SIMD[accum_type, c_frag_size](0)
 
-    var a_shared = stack_allocation[
-        M * K, input_type, alignment=32, address_space=AddressSpace.SHARED
-    ]()
-    var b_shared = stack_allocation[
-        N * K, input_type, alignment=32, address_space=AddressSpace.SHARED
-    ]()
+    var a_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            M * K, input_type, alignment=32, address_space=AddressSpace.SHARED
+        ]()
+    )
+    var b_shared = UnsafePointer(
+        unsafe_stack_allocation[
+            N * K, input_type, alignment=32, address_space=AddressSpace.SHARED
+        ]()
+    )
 
     for i in range(lane, M * K, WARP_SIZE):
         a_shared[i] = a_ptr[i]
@@ -344,6 +352,7 @@ def check_ldmatrix(
 
     ctx.synchronize()
     ctx.enqueue_copy(c_host_ref, c_device_ref)
+    ctx.synchronize()
 
     for i in range(M * N):
         var out_val = c_host[i]

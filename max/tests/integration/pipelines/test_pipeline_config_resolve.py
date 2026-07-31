@@ -18,6 +18,7 @@ SupportedArchitecture instances registered in PIPELINE_REGISTRY.
 No network access required.
 """
 
+import dataclasses
 import json
 import os
 import struct
@@ -36,11 +37,13 @@ from max.pipelines import PIPELINE_REGISTRY, PipelineConfig
 from max.pipelines.context import TextContext
 from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.pipelines.lib import MAXModelConfig, MemoryEstimator
+from max.pipelines.lib.config.model_config import _select_quantization_encoding
 from max.pipelines.lib.memory_estimation import _MemoryPlan
 from max.pipelines.lib.model_manifest import ModelManifest
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
 from max.pipelines.lib.registry import SupportedArchitecture
 from max.pipelines.modeling.types import PipelineTask
+from max.pipelines.sampling import SamplingConfig
 from test_common.pipeline_model_dummy import (
     DUMMY_GEMMA_ARCH,
     DUMMY_LLAMA_ARCH,
@@ -251,6 +254,13 @@ def _resolve_config(config: PipelineConfig) -> None:
             " model architecture to MAX."
         )
     config.resolve(arch)
+    # resolve() no longer mutates model_config.quantization_encoding — the
+    # field keeps the raw user value (often None). Mirror the resolved encoding
+    # back onto the config so tests can assert the effective encoding.
+    resolved_encoding = _select_quantization_encoding(
+        _model(config), arch.default_encoding
+    )
+    _model(config).quantization_encoding = resolved_encoding
     # Overlap-scheduler/DGC resolution now lives in the registry, after
     # memory planning. Tests that call resolve() directly must replicate it.
     from max.pipelines.lib.registry import _run_memory_planning
@@ -399,12 +409,13 @@ class TestDefaultEncodingFallback:
 
     @prepare_registry
     def test_default_encoding_used_when_ambiguous_on_cpu(self) -> None:
-        """When multiple non-quantized encodings are ambiguous on CPU,
-        the architecture default_encoding is used as the fallback.
+        """A mixed-dtype checkpoint on CPU resolves to the architecture default.
 
-        A repo with mixed BF16+F32 tensors on CPU is ambiguous for
-        MAXModelConfig.resolve(). The architecture validation then
-        falls back to the architecture's default_encoding.
+        The checkpoint's own weight dtype (bfloat16) is GPU-only, so inference
+        must not select it for a CPU target; resolution falls back to the
+        CPU-valid architecture default (float32). This holds regardless of
+        whether weight_path defaults have been discovered yet, so every
+        consumer resolves the same value.
         """
         from max.graph.weights import WeightsFormat
         from max.pipelines.context import TextContext
@@ -426,8 +437,8 @@ class TestDefaultEncodingFallback:
         )
         PIPELINE_REGISTRY.register(cpu_arch)
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Mixed BF16+F32 is ambiguous on CPU — encoding stays None
-            # after MAXModelConfig.resolve(), so arch default kicks in.
+            # Mixed BF16+F32 on CPU: bfloat16 is GPU-only, so resolution can't
+            # pick it and falls back to the arch default (float32).
             _make_local_repo(
                 tmpdir,
                 safetensors_files={
@@ -628,6 +639,50 @@ class TestRopeTypeResolution:
             assert _model(config).rope_type is None
 
 
+class TestStructuredOutputBackendResolution:
+    """Architecture default for ``sampling.structured_output_backend``."""
+
+    @prepare_registry
+    def test_backend_resolved_from_architecture(self) -> None:
+        """Arch's default_structured_output_backend applies when user is unset."""
+        arch = dataclasses.replace(
+            DUMMY_GEMMA_ARCH, default_structured_output_backend="xgrammar"
+        )
+        PIPELINE_REGISTRY.register(arch)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_local_repo(
+                tmpdir,
+                hf_config=_GEMMA_CONFIG,
+                safetensors_files={"model.safetensors": {"w": "BF16"}},
+            )
+            config = _make_pipeline_config(tmpdir)
+            with _pipeline_resolve_mocks():
+                _resolve_config(config)
+            assert config.sampling.structured_output_backend == "xgrammar"
+
+    @prepare_registry
+    def test_explicit_backend_value_wins(self) -> None:
+        """An explicit user backend is never overridden by the arch default."""
+        arch = dataclasses.replace(
+            DUMMY_GEMMA_ARCH, default_structured_output_backend="xgrammar"
+        )
+        PIPELINE_REGISTRY.register(arch)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_local_repo(
+                tmpdir,
+                hf_config=_GEMMA_CONFIG,
+                safetensors_files={"model.safetensors": {"w": "BF16"}},
+            )
+            config = _make_pipeline_config(tmpdir)
+            # Constructing with the field set records it in model_fields_set.
+            config.sampling = SamplingConfig(
+                structured_output_backend="llguidance"
+            )
+            with _pipeline_resolve_mocks():
+                _resolve_config(config)
+            assert config.sampling.structured_output_backend == "llguidance"
+
+
 # ---------------------------------------------------------------------------
 # Category G: Cache Dtype Resolution
 # ---------------------------------------------------------------------------
@@ -640,6 +695,7 @@ class TestCacheDtypeResolution:
     def test_cache_dtype_bf16_for_bf16_encoding(self) -> None:
         """BF16 encoding should result in bfloat16 cache dtype."""
         from max.dtype import DType
+        from max.pipelines.kv_cache import cache_dtype_for_encoding
 
         PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -650,7 +706,13 @@ class TestCacheDtypeResolution:
             config = _make_pipeline_config(tmpdir)
             with _pipeline_resolve_mocks():
                 _resolve_config(config)
-            assert _model(config).kv_cache._cache_dtype == DType.bfloat16
+            assert (
+                cache_dtype_for_encoding(
+                    _model(config).quantization_encoding,
+                    _model(config).kv_cache.kv_cache_format,
+                )
+                == DType.bfloat16
+            )
 
 
 # ---------------------------------------------------------------------------
