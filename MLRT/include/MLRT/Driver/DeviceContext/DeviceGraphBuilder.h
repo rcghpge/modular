@@ -80,6 +80,8 @@ struct DeviceGraphNode {
 /// \endcode
 class DeviceGraphBuilder : public ReferenceCounted<DeviceGraphBuilder> {
 public:
+  DeviceGraphBuilder(DeviceContextRef context);
+
   virtual ~DeviceGraphBuilder();
 
   /// Returns the DeviceContext that owns this graph builder.
@@ -196,6 +198,15 @@ public:
   /// ambient/region predecessors — as the recording chain's root.
   ErrorOr<DeviceContextRef> recordingContext(DeviceGraphNode initialDep);
 
+  /// Returns a newly allocated buffer, backed by pinned host memory when
+  /// `isHost`. Memory allocated through `DeviceGraphBuilder` has a lifetime
+  /// tied to the resulting `DeviceGraph`.
+  ///
+  /// Allocations are not recorded in the device graph in the current
+  /// implementation. Rather, allocations are stored into a separate memory pool
+  /// via DeviceGraphMemoryPool.
+  ErrorOr<DeviceBufferRef> createBuffer(size_t numBytes, bool isHost);
+
   /// Add an output to the device graph.
   void addOutput(AsyncRT::AnyAsyncValueRef output);
 
@@ -210,11 +221,19 @@ protected:
     return std::move(outputs);
   }
 
+  DeviceGraphMemoryPoolRef takeMemoryPool() { return std::move(memoryPool); }
+
 private:
   /// A device graph can produce zero or more outputs whose backing memory needs
   /// to be tracked so that it can be referenced when executing the device
   /// graph.
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
+
+  /// Memory pool for all allocations created during the recording process.
+  /// Because memory addresses are recorded as part of a device graph, all
+  /// memory used by the device graph must be reserved for the lifetime of the
+  /// device graph. Null once `instantiate()` has handed it to the graph.
+  DeviceGraphMemoryPoolRef memoryPool;
 };
 
 /// A `DeviceContext` facade that records enqueued operations into a

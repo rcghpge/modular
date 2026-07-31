@@ -973,6 +973,52 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
 }
 
 //
+// ===== DeviceGraphMemoryPool ===== //
+//
+
+DeviceGraphMemoryPool::DeviceGraphMemoryPool(DeviceContextRef context)
+    : context(context) {
+  Device &device = context->device();
+
+  static std::atomic<int64_t> counter = 0;
+
+  int64_t id = counter.fetch_add(1);
+  deviceFreeList = std::make_unique<MemoryManagerFreeList>(
+      context.getPointer(), device.memoryManager(),
+      device.memoryManager().freeList(),
+      /*disableFlush=*/true,
+      /*label=*/
+      (Twine("DeviceGraphMemoryPool(id=") + Twine(id) + ", device)").str());
+
+  hostFreeList = std::make_unique<MemoryManagerFreeList>(
+      context.getPointer(), device.hostMemoryManager(),
+      device.hostMemoryManager().freeList(),
+      /*disableFlush=*/true,
+      /*label=*/
+      (Twine("DeviceGraphMemoryPool(id=") + Twine(id) + ", host)").str());
+}
+
+DeviceGraphMemoryPool::~DeviceGraphMemoryPool() = default;
+
+ErrorOr<void *> DeviceGraphMemoryPool::allocate(size_t numBytes, bool isHost) {
+  // The pool's allocator rejects zero-size requests, and a Mojo `DeviceBuffer`
+  // cannot hold a null device pointer.
+  if (numBytes == 0)
+    return nullptr;
+
+  if (isHost)
+    return hostFreeList->allocate(numBytes, Device::AllocMode::HOST);
+  return deviceFreeList->allocate(numBytes, Device::AllocMode::SYNC);
+}
+
+void DeviceGraphMemoryPool::free(void *ptr, bool isHost) {
+  MemoryManagerFreeList &pool = isHost ? *hostFreeList : *deviceFreeList;
+  // Callers are `DeviceBuffer` destructors, which cannot propagate a failure,
+  // so surface it on the owning context like the non-pool free path does.
+  RECORD_PENDING_ERROR(*context, pool.free(ptr));
+}
+
+//
 // ===== DeviceGraph ===== //
 //
 /// Shared helper: begin capture on all streams and run the execute lambda.

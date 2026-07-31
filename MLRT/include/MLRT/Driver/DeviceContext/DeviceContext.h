@@ -180,6 +180,7 @@ class DeviceEvent;
 class DeviceFunction;
 class DeviceGraph;
 class DeviceGraphBuilder;
+class DeviceGraphMemoryPool;
 class DeviceFunctionCacheEntry;
 class DeviceMulticastBuffer;
 class DeviceStream;
@@ -194,6 +195,7 @@ using DeviceEventRef = RCRef<DeviceEvent>;
 using DeviceFunctionRef = RCRef<DeviceFunction>;
 using DeviceGraphRef = RCRef<DeviceGraph>;
 using DeviceGraphBuilderRef = RCRef<DeviceGraphBuilder>;
+using DeviceGraphMemoryPoolRef = RCRef<DeviceGraphMemoryPool>;
 using AsyncDeviceGraphRef = AsyncValueRef<DeviceGraphRef>;
 using DeviceMulticastBufferRef = RCRef<DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<DeviceStream>;
@@ -534,6 +536,7 @@ public:
 
 private:
   friend class DeviceContext;
+  friend class DeviceGraphBuilder;
 
   // Records that this host/pinned buffer was used as an async-copy source or
   // destination on `ctx`, a stream other than its owning `context_`, so the
@@ -662,6 +665,35 @@ private:
   SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
 };
 
+/// Allocator for buffers whose lifetime is tied to a device graph rather than
+/// to a single execution: allocations stay live for as long as the graph that
+/// references them, so a replay can reuse the recorded device pointers.
+class DeviceGraphMemoryPool : public ReferenceCounted<DeviceGraphMemoryPool> {
+public:
+  DeviceGraphMemoryPool(DeviceContextRef context);
+  ~DeviceGraphMemoryPool();
+
+  /// Allocates from the device pool, or from the pinned-host pool when
+  /// `isHost`. The same flag must be passed to `free`.
+  ErrorOr<void *> allocate(size_t numBytes, bool isHost);
+
+  /// Free the backing pointer. `isHost` must match the `allocate` call that
+  /// produced `ptr`: the two pools sit under different `MemoryManager`s, and a
+  /// free list cannot recognize a pointer belonging to another manager -- it
+  /// would fall through to the driver with the wrong host/device flag.
+  void free(void *ptr, bool isHost);
+
+private:
+  /// Backing device context. This type holds a reference to the backing
+  /// MemoryManager, which means the associated Device must be kept alive.
+  DeviceContextRef context;
+
+  /// The pools performing the allocations, derived from the device and host
+  /// memory managers respectively.
+  std::unique_ptr<MemoryManagerFreeList> deviceFreeList;
+  std::unique_ptr<MemoryManagerFreeList> hostFreeList;
+};
+
 /// A captured sequence of GPU operations that can be replayed.
 class DeviceGraph : public ReferenceCounted<DeviceGraph> {
 public:
@@ -723,6 +755,10 @@ public:
     return captureStream_.getPointer() != nullptr;
   }
 
+  void setMemoryPool(DeviceGraphMemoryPoolRef pool) {
+    memoryPool = std::move(pool);
+  }
+
 protected:
   explicit DeviceGraph(Device &device, DeviceStreamRef captureStream)
       : device_(DeviceRef::copy(&device)),
@@ -737,6 +773,9 @@ private:
   /// Outputs recorded on the builder whose stable backing memory must outlive
   /// this graph; transferred in by `DeviceGraphBuilder::instantiate()`.
   SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
+
+  /// Keeps the graph's pool allocations alive for as long as the graph itself.
+  DeviceGraphMemoryPoolRef memoryPool;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -1227,6 +1266,9 @@ private:
   friend class CompletionFlag;
   friend class MemoryManagerFreeList;
   friend class DeviceBuffer;
+  // Frees run from a `DeviceBuffer` destructor, so a failure can only be
+  // recorded as a pending error on the context.
+  friend class DeviceGraphMemoryPool;
   friend class DeviceContextScope;
   // The graph-recording context facade forwards allocation, memmap, and
   // driver-context queries to the builder's backing context, which requires

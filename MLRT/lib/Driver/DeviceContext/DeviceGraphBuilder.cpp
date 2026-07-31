@@ -14,6 +14,9 @@
 
 namespace M::Driver {
 
+DeviceGraphBuilder::DeviceGraphBuilder(DeviceContextRef context)
+    : memoryPool(DeviceGraphMemoryPoolRef::create(context)) {}
+
 DeviceGraphBuilder::~DeviceGraphBuilder() = default;
 
 void DeviceGraphBuilder::addOutput(AsyncRT::AnyAsyncValueRef output) {
@@ -24,6 +27,31 @@ ErrorOr<DeviceContextRef>
 DeviceGraphBuilder::recordingContext(DeviceGraphNode initialDep) {
   return DeviceContextRef(
       RCRef<RecordingDeviceContext>::create(*this, initialDep));
+}
+
+ErrorOr<DeviceBufferRef> DeviceGraphBuilder::createBuffer(size_t numBytes,
+                                                          bool isHost) {
+  if (!memoryPool)
+    return Error("cannot allocate from a device graph builder that has already "
+                 "been instantiated");
+
+  ErrorOr<void *> alloc = memoryPool->allocate(numBytes, isHost);
+  if (alloc)
+    return alloc.takeError();
+
+  void *ptr = alloc.takeValue();
+  auto result =
+      DeviceBufferRef::take(new DeviceBuffer(context(), ptr, numBytes, isHost));
+
+  // Ensure the pool lives at least as long as the buffer. `isHost` selects the
+  // pool the block came from; freeing it to the other one would reach the
+  // driver with the wrong host/device flag.
+  result->setDestructorFn([pool = memoryPool.copy(), ptr, isHost]() mutable {
+    pool->free(ptr, isHost);
+    pool.reset();
+  });
+
+  return result;
 }
 
 // ===== RecordingDeviceContext ===== //
@@ -111,16 +139,22 @@ ErrorOrSuccess RecordingDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                srcByteSize, currentDeps()));
 }
 
-// ----- Buffer creation: delegated so the backing context owns it ----- //
+// ----- Buffer creation: delegated to the builder's memory pool ----- //
 
 ErrorOr<DeviceBufferRef>
 RecordingDeviceContext::enqueueCreateBuffer(size_t byteSize) {
-  return builder_->context().enqueueCreateBuffer(byteSize);
+  return builder_->createBuffer(byteSize, /*isHost=*/false);
 }
 
 ErrorOr<DeviceBufferRef>
 RecordingDeviceContext::createHostBuffer(size_t byteSize) {
-  return builder_->context().createHostBuffer(byteSize);
+  // Recorded nodes bake in the host address just as they do a device one, so
+  // these go through the pool too. Note this trades the backing context's
+  // event-ordered host free for an immediate return to the pool: the block
+  // stays reserved for the graph, but a later allocation from the same pool can
+  // reuse the address, so it is only safe while recording order matches the
+  // graph's execution order.
+  return builder_->createBuffer(byteSize, /*isHost=*/true);
 }
 
 // ----- Forwarded to the backing context ----- //

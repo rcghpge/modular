@@ -7,7 +7,6 @@
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "Support/DeviceSpecs.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
@@ -203,30 +202,27 @@ LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
   return success();
 }
 
-/// Replace each device `mgp.buffer.alloc` in `staging` with
-/// `mgp.device_graph.alloc`.
-///
-/// Only device allocations are recorded into the graph. Host (CPU) allocations
-/// back planned host-side metadata (e.g. tensor specs) that is written on the
-/// host via `mgp.buffer.set_with_index`; routing them through the builder would
-/// place them in the graph's device memory, so the host write would fault on
-/// devices whose memory is not host-addressable. Those stay `mgp.buffer.alloc`.
+/// The builder recording the region that contains `op`: the body block argument
+/// of the innermost `mgp.device_graph.dependencies`, or the staged body's
+/// builder for an op sitting directly in the staging body.
+Value enclosingGraphBuilder(Operation *op) {
+  if (auto deps = op->getParentOfType<DeviceGraphDependenciesOp>())
+    return deps.getBuilderBlockArgument();
+  return op->getParentOfType<DeviceGraphStagingOp>().getBodyBuilder();
+}
+
+/// Replace each `mgp.buffer.alloc` in `staging` with `mgp.device_graph.alloc`,
+/// so every address the graph records comes from the builder's memory pool and
+/// stays reserved for the graph's lifetime.
 void rewriteBuilderAllocs(DeviceGraphStagingOp staging) {
   staging.getBody().walk([&](BufferAllocOp alloc) {
-    if (alloc.getDevice().getLabel() == M::kCPULabel)
-      return;
-
     IRRewriter rewriter(alloc);
-    auto graphBuilderType = rewriter.getType<DeviceGraphBuilderType>();
-    auto cast = UnrealizedConversionCastOp::create(
-        rewriter, alloc.getLoc(), graphBuilderType, alloc.getDeviceContext());
-
     rewriter.replaceOpWithNewOp<DeviceGraphAllocOp>(
         alloc,
         /*outBuffer=*/alloc.getOutBuffer().getType(),
         /*inChain=*/alloc.getInChain(),
         /*runtimeSize=*/alloc.getRuntimeSize(),
-        /*graphBuilder=*/cast.getResult(0),
+        /*graphBuilder=*/enclosingGraphBuilder(alloc),
         /*rawAlign=*/alloc.getRawAlign());
   });
 }

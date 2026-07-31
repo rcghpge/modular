@@ -20,6 +20,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include <cstdint>
+#include <cstring>
 
 using namespace M::Driver;
 using M::ErrorOr;
@@ -387,6 +388,153 @@ TEST(DeviceGraphBuilderTest, EmptyNodeAsSoleGraphRoot) {
   ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
   EXPECT_NO_ERR(graph->replay());
   EXPECT_NO_ERR(ctx->synchronize());
+}
+
+// Memory from the builder's pool is ordinary device memory: graph nodes can
+// write it and the recorded address stays valid across repeated replays.
+TEST(DeviceGraphBuilderTest, CreateBufferIsWritableAcrossReplays) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceBufferRef, poolBuf,
+                builder->createBuffer(byteSize, /*isHost=*/false));
+  EXPECT_EQ(poolBuf->byteSize(), byteSize);
+
+  EXPECT_NO_ERR(builder->addSetMemory(*poolBuf, /*val=*/0x5Au, /*valSize=*/1,
+                                      /*dependencies=*/{}));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  llvm::SmallVector<uint8_t> hostBuf(byteSize, 0);
+  for (int replayCount : llvm::seq(2)) {
+    EXPECT_NO_ERR(graph->replay());
+    EXPECT_NO_ERR(ctx->synchronize());
+
+    EXPECT_NO_ERR(poolBuf->copyTo(hostBuf.data()));
+    EXPECT_NO_ERR(ctx->synchronize());
+
+    for (size_t i : llvm::seq(byteSize))
+      EXPECT_EQ(hostBuf[i], 0x5Au)
+          << "at index " << i << " on replay " << replayCount;
+  }
+}
+
+// The reason DeviceGraphMemoryPool exists: a graph bakes the raw device
+// address of every allocation into its recorded nodes, so that address must
+// stay reserved for the graph's lifetime even after the last `DeviceBuffer`
+// handle is gone. Dropping the handle returns the block to the pool, which the
+// graph keeps alive, so a later replay must still write valid memory. If the
+// pool released the block to the parent free list (or to the driver), this
+// replay would clobber memory owned by someone else.
+TEST(DeviceGraphBuilderTest, PoolAllocationOutlivesBufferHandle) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceBufferRef, poolBuf,
+                builder->createBuffer(byteSize, /*isHost=*/false));
+
+  // The graph writes the pool buffer, then copies it back out, so verification
+  // does not need the buffer handle to survive.
+  llvm::SmallVector<uint8_t> hostBuf(byteSize, 0);
+  ASSIGN_NO_ERR(DeviceGraphNode, memsetNode,
+                builder->addSetMemory(*poolBuf, /*val=*/0xA5u, /*valSize=*/1,
+                                      /*dependencies=*/{}));
+  EXPECT_NO_ERR(builder->addCopyDeviceToHost(
+      hostBuf.data(), *poolBuf, llvm::ArrayRef<DeviceGraphNode>(memsetNode)));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  // Drop the only handle to the allocation while the graph still references it.
+  poolBuf = {};
+
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(hostBuf[i], 0xA5u) << "at index " << i;
+}
+
+// A host request comes from the pool's other memory manager, so the memory it
+// hands back must be writable by the host -- that is the whole reason a host
+// pool exists. As with the device case, the address must stay reserved once the
+// only `DeviceBuffer` handle is gone: the graph records it as a copy source, so
+// a replay after the handle dies must still read what the host wrote.
+TEST(DeviceGraphBuilderTest, HostPoolAllocationOutlivesBufferHandle) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceBufferRef, hostBuf,
+                builder->createBuffer(byteSize, /*isHost=*/true));
+  EXPECT_EQ(hostBuf->byteSize(), byteSize);
+  EXPECT_TRUE(hostBuf->isHost());
+
+  std::memset(hostBuf->ptr(), 0x3Cu, byteSize);
+
+  // Stage the host allocation into device memory, then back out to storage the
+  // test owns, so verification does not depend on either pool buffer surviving.
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf,
+                builder->createBuffer(byteSize, /*isHost=*/false));
+  llvm::SmallVector<uint8_t> result(byteSize, 0);
+  ASSIGN_NO_ERR(DeviceGraphNode, copyIn,
+                builder->addCopyHostToDevice(*devBuf, hostBuf->ptr(),
+                                             /*dependencies=*/{}));
+  EXPECT_NO_ERR(builder->addCopyDeviceToHost(
+      result.data(), *devBuf, llvm::ArrayRef<DeviceGraphNode>(copyIn)));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  // Drop the handles while the graph still references both addresses.
+  hostBuf = {};
+  devBuf = {};
+
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(result[i], 0x3Cu) << "at index " << i;
+}
+
+// A zero-byte request is a placeholder, not an allocation: the pool's allocator
+// rejects a zero size, so `createBuffer` must short-circuit the way
+// `enqueueCreateBuffer` does rather than reaching it. Neither pool is exempt.
+TEST(DeviceGraphBuilderTest, CreateBufferAcceptsZeroBytes) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf,
+                builder->createBuffer(0, /*isHost=*/false));
+  EXPECT_EQ(emptyBuf->byteSize(), 0u);
+  ASSIGN_NO_ERR(DeviceBufferRef, emptyHostBuf,
+                builder->createBuffer(0, /*isHost=*/true));
+  EXPECT_EQ(emptyHostBuf->byteSize(), 0u);
+
+  // Instantiate and replay to confirm the placeholder buffer does not disturb
+  // pool teardown when the graph and buffer are released.
+  EXPECT_NO_ERR(builder->addEmpty(/*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+}
+
+// The pool is handed to the graph at `instantiate()`, so the builder can no
+// longer serve allocations: `createBuffer` must report that rather than
+// dereferencing the moved-from pool.
+TEST(DeviceGraphBuilderTest, CreateBufferAfterInstantiateFails) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addEmpty(/*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  EXPECT_TRUE(builder->createBuffer(1024, /*isHost=*/false).isError());
 }
 
 } // namespace

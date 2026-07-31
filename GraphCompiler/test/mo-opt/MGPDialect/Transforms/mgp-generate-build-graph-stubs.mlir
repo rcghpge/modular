@@ -218,16 +218,23 @@ mgp.model @dg_view : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.
 
 // -----
 
-// `mgp.buffer.alloc` in the staged body: only *device* allocations may be
-// routed through the builder (`mgp.device_graph.alloc`, which allocates via the
-// builder's device context).
+// `mgp.buffer.alloc` in the staged body: host and device allocations alike are
+// routed through the builder (`mgp.device_graph.alloc`), which allocates from
+// the graph's memory pool so every recorded address stays reserved. The
+// allocation's device survives in the result buffer type, which is what selects
+// the host or device pool at emission time.
 
 // CHECK-LABEL: mgp.model @dg_host_alloc
-// The host allocation stays a host `mgp.buffer.alloc` (not routed through the
-// builder).
-// CHECK: mgp.buffer.alloc {{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
-// The device allocation is still rewritten to run through the builder.
-// CHECK: mgp.device_graph.alloc {{.*}} : !mgp.buffer<<"gpu", 0>>
+// Both allocations take the staged body's builder directly -- an alloc outside
+// any `dependencies` region has no enclosing region builder to source.
+// CHECK: ^bb0(%[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
+// CHECK-NOT: mgp.buffer.alloc
+// A `cpu` buffer type prints without its device, so the host alloc's result
+// type is a bare `!mgp.buffer`.
+// CHECK: %[[HOST:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[B]], align 16 : !mgp.buffer{{$}}
+// CHECK-NOT: mgp.buffer.alloc
+// CHECK: %[[DEV:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[B]], align 16 : !mgp.buffer<<"gpu", 0>>
+// CHECK: "test.sink"(%[[HOST]], %[[DEV]])
 mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -239,11 +246,41 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
     %size = "test.size"() : () -> index
     %cpu_ctx = "test.cpu_ctx"() : () -> !mgp.device_context<<"cpu", 0>>
     %gpu_ctx = "test.gpu_ctx"() : () -> !mgp.device_context<<"gpu", 0>>
-    // Host metadata allocation: must remain a host `mgp.buffer.alloc`.
+    // Host metadata allocation: served from the pool's host memory manager.
     %host_buf = mgp.buffer.alloc %chain, %size, %cpu_ctx, align 16 : !mgp.buffer<<"cpu", 0>>, !mgp.device_context<<"cpu", 0>>
-    // Device allocation: routed through the builder.
     %dev_buf = mgp.buffer.alloc %chain, %size, %gpu_ctx, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
     "test.sink"(%host_buf, %dev_buf) : (!mgp.buffer<<"cpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
+    mgp.device_graph.staging.yield
+  }
+  mef.output %ch0 : !mef.chain
+} {isDeviceGraph}
+
+// -----
+
+// An allocation nested in a `mgp.device_graph.dependencies` body takes *that*
+// body's builder block argument, keeping the body self-contained.
+
+// CHECK-LABEL: mgp.model @dg_alloc_in_dependencies
+// CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
+// CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
+// CHECK: %[[BUF:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[DB]], align 16 : !mgp.buffer{{$}}
+// CHECK: "test.sink"(%[[BUF]])
+mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
+  mgp.device_graph.staging inputs() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      %chain = "test.chain"() : () -> !mef.chain
+      %size = "test.size"() : () -> index
+      %cpu_ctx = "test.cpu_ctx"() : () -> !mgp.device_context<<"cpu", 0>>
+      %host_buf = mgp.buffer.alloc %chain, %size, %cpu_ctx, align 16 : !mgp.buffer<<"cpu", 0>>, !mgp.device_context<<"cpu", 0>>
+      "test.sink"(%host_buf) : (!mgp.buffer<<"cpu", 0>>) -> ()
+      mgp.device_graph.dependencies.yield
+    }
     mgp.device_graph.staging.yield
   }
   mef.output %ch0 : !mef.chain

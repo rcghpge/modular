@@ -250,24 +250,25 @@ LogicalResult DeviceGraphExecuteOp::verify() {
 // DeviceGraphAllocOp
 //===----------------------------------------------------------------------===//
 
-// Emits `var buf_N = mgp_device_graph_alloc(byteSize, builder)`. Mirrors
-// `BufferAllocOp::emitMojo`, but passes the device-graph builder as the
-// allocation handle instead of a raw device context.
 LogicalResult DeviceGraphAllocOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
   // The primitive's `sym_name` (set by ImportPackages) is the Mojo function to
   // call; look it up by the op name it registered under.
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MojoValue function(primDecl.getSymNameAttr().strref());
+
+  DeviceRefAttr hostDevice = M::getHostDevice(getContext());
+  // Pass the host parameter to differentiate device from host allocations.
+  MojoValue isHostParam(getOutBuffer().getType().getDevice() == hostDevice);
   MojoValue result = state.builder.var(function(
-      /*parameters=*/{},
+      /*parameters=*/{isHostParam},
       /*operands=*/{state.getMojoValueFor(getRuntimeSize()),
                     state.getMojoValueFor(getGraphBuilder())}));
   state.setMojoValueFor(getOutBuffer(), result);
   return success();
 }
 
-// The `mgp_device_graph_alloc` primitive raises (it allocates a device buffer).
+// The `mgp_device_graph_alloc` primitive raises (it allocates a buffer).
 bool DeviceGraphAllocOp::isThrows() { return true; }
 
 //===----------------------------------------------------------------------===//

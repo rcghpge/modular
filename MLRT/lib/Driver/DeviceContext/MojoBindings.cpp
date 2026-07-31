@@ -1171,6 +1171,18 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
   return checkSuccess(graph->replay());
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceGraph_createBuffer(DeviceBuffer **result, void **devicePtr,
+                                 DeviceGraphBuilder *builder, size_t len,
+                                 size_t elemSize, bool isHost) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_createBuffer", TRACY_COLOR_GRAY);
+  const char *errMsg =
+      checkRef(result, builder->createBuffer(len * elemSize, isHost));
+  if (errMsg == nullptr)
+    *devicePtr = (*result)->ptr();
+  return errMsg;
+}
+
 //
 // BinaryID
 //

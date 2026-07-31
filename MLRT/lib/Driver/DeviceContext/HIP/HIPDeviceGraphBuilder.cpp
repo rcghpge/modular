@@ -31,7 +31,8 @@ using namespace M::Driver;
 
 HIPDeviceGraphBuilder::HIPDeviceGraphBuilder(HIPDeviceContext &ctx,
                                              hipGraph_t graph)
-    : ctx_(HIPDeviceContextRef::copy(&ctx)), graph_(graph) {}
+    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx)),
+      ctx_(HIPDeviceContextRef::copy(&ctx)), graph_(graph) {}
 
 HIPDeviceGraphBuilder::~HIPDeviceGraphBuilder() {
   if (!graph_)
@@ -262,5 +263,6 @@ ErrorOr<DeviceGraphRef> HIPDeviceGraphBuilder::instantiate() {
   // Transfer the recorded outputs to the graph so their backing memory outlives
   // this builder.
   graph->setOutputs(takeOutputs());
+  graph->setMemoryPool(takeMemoryPool());
   return DeviceGraphRef(std::move(graph));
 }

@@ -32,7 +32,8 @@ using namespace M::Driver;
 
 CUDADeviceGraphBuilder::CUDADeviceGraphBuilder(CUDADeviceContext &ctx,
                                                CUgraph graph)
-    : ctx_(CUDADeviceContextRef::copy(&ctx)), graph_(graph) {}
+    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx)),
+      ctx_(CUDADeviceContextRef::copy(&ctx)), graph_(graph) {}
 
 CUDADeviceGraphBuilder::~CUDADeviceGraphBuilder() {
   if (!graph_)
@@ -294,5 +295,6 @@ ErrorOr<DeviceGraphRef> CUDADeviceGraphBuilder::instantiate() {
   // Transfer the recorded outputs to the graph so their backing memory outlives
   // this builder.
   graph->setOutputs(takeOutputs());
+  graph->setMemoryPool(takeMemoryPool());
   return DeviceGraphRef(std::move(graph));
 }

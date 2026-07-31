@@ -27,9 +27,11 @@
 // The allocation is a builder op: `mgp.device_graph.alloc` lowers to the
 // `mgp_device_graph_alloc` primitive taking the builder directly -- no
 // `builder.context()` extraction and no `mgp_buffer_alloc` in the work closure.
+// The `[False]` parameter picks the pool's device memory manager; a `cpu` result
+// buffer type emits `[True]` instead.
 // CHECK-NOT: builder.context()
 // CHECK-NOT: mgp_buffer_alloc
-// CHECK: {{.*}}mgp_device_graph_alloc({{.*}}, builder)
+// CHECK: {{.*}}mgp_device_graph_alloc[False]({{.*}}, builder)
 // CHECK: [[OUT]] =
 // CHECK: var [[NODE0:var[_0-9]+]] = builder.region([[WORK0]], dependencies = [])
 // CHECK: {{var[_0-9]+}} = [[OUT]].take()
