@@ -23,7 +23,7 @@ M_driver_status_t M_driver_event_create(M_driver_context_t context,
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (event == nullptr)
-    return M_DRIVER_STATUS_BAD_EVENT;
+    return M_DRIVER_STATUS_INVALID_ARG;
   // CPU events are always host-visible; reject only unknown flag bits.
   if (flags & ~M_DRIVER_EVENT_FLAGS_ALL)
     return M_DRIVER_STATUS_INVALID_ARG;

@@ -146,6 +146,24 @@ TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
   EXPECT_SUCCESS(bundle_unload(contexts[0], bundle));
 }
 
+TEST_F(DriverPluginContextTest, FunctionLoadNullOut) {
+  std::string fileType("ptx");
+  M_driver_static_bundle staticBundle{.mapped_data =
+                                          M_driver_slice_from(vecAddPtx),
+                                      .file_type = fileType.c_str(),
+                                      .file_type_len = fileType.size()};
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t bundle = nullptr;
+  ASSERT_SUCCESS(bundle_load(contexts[0], &staticBundle, &opts, &bundle));
+  auto bundleCleanup =
+      llvm::scope_exit([&]() { bundle_unload(contexts[0], bundle); });
+
+  std::string funcName("vec_add");
+  EXPECT_EQ(function_load(contexts[0], bundle, funcName.c_str(),
+                          funcName.size(), nullptr),
+            M_DRIVER_STATUS_INVALID_ARG);
+}
+
 TEST_F(DriverPluginContextTest, FunctionIntrospection) {
   std::string fileType("ptx");
   M_driver_static_bundle staticBundle{.mapped_data =

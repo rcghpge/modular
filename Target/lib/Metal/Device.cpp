@@ -15,7 +15,6 @@
 #include <IOKit/IOKitLib.h>
 #include <dlpack/dlpack.h>
 
-#include <cassert>
 #include <cstring>
 #include <filesystem>
 #include <limits>
@@ -187,8 +186,11 @@ M_driver_status_t M_driver_device::getProperty(llvm::StringRef name,
 
 extern "C" M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                                    int64_t *count) {
-  assert(count && "count must not be null");
-  if (!driver || driver->devices.size() == 0)
+  if (count == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_BAD_DRIVER;
+  if (driver->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
   *count = driver->devices.size();
   return M_DRIVER_STATUS_SUCCESS;
@@ -197,8 +199,11 @@ extern "C" M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
 extern "C" M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                                  int64_t id,
                                                  M_driver_device_t *device) {
-  assert(device && "device must not be null");
-  if (!driver || driver->devices.size() == 0)
+  if (device == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_BAD_DRIVER;
+  if (driver->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
   if (id < 0 || size_t(id) >= driver->devices.size())
     return M_DRIVER_STATUS_BAD_DEVICE;

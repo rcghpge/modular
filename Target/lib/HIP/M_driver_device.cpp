@@ -14,6 +14,8 @@ M_driver_status_t M_driver_device_count(M_driver_driver_t handle,
                                         int64_t *count) {
   if (handle == nullptr)
     return M_DRIVER_STATUS_BAD_DEVICE;
+  if (count == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
   DriverResult<int64_t> result = handle->deviceCount();
   if (!result)
     return result.error();
@@ -26,6 +28,8 @@ M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                       M_driver_device_t *device) {
   if (driver == nullptr)
     return M_DRIVER_STATUS_BAD_DEVICE;
+  if (device == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
   DriverResult<M_driver_device_t> result =
       M_driver_device::create(*driver, device_id);
   if (!result)

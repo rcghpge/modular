@@ -33,6 +33,10 @@ void M_driver_driver::destroy(M_driver_driver *driver) { delete driver; }
 
 M_driver_status_t M_driver_create(M_driver_version *version,
                                   M_driver_driver_t *outDriver) {
+  if (version == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (outDriver == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (version->major != M_DRIVER_INTERFACE_VERSION_MAJOR)
     return M_DRIVER_STATUS_INCOMPATIBLE_VERSION;
 

@@ -15,7 +15,7 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (memory == nullptr)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   DriverResult<M_driver_memory_t> result = context->allocPinned(size);
   if (!result)
@@ -40,7 +40,7 @@ M_driver_memory_alloc_sync([[maybe_unused]] M_driver_context_t context,
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (memory == nullptr)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   DriverResult<M_driver_memory_t> result = context->allocSync(size);
   if (!result)
@@ -69,7 +69,7 @@ M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (memory == nullptr)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   DriverResult<M_driver_memory_t> result =
       context->wrapSync(address, size, owning);
@@ -84,8 +84,10 @@ M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
                                          uint64_t *address) {
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
-  if (memory == nullptr || address == nullptr)
+  if (memory == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
+  if (address == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   memory->owning = false;
   *address = reinterpret_cast<uint64_t>(memory->ptr);
@@ -98,7 +100,7 @@ M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (memory == nullptr)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   DriverResult<M_driver_memory_t> result = queue->allocAsync(size);
   if (!result)

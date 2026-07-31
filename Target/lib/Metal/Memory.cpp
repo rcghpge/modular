@@ -31,7 +31,7 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (size == 0) {
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;
@@ -49,7 +49,7 @@ M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (size == 0) {
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;
@@ -85,7 +85,7 @@ M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (!address)
     return M_DRIVER_STATUS_INVALID_ARG;
   auto result = context->memoryWrap(address, size, owning);
@@ -100,8 +100,10 @@ M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
                                          uint64_t *address) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
-  if (!memory || !address)
+  if (!memory)
     return M_DRIVER_STATUS_BAD_MEMORY;
+  if (!address)
+    return M_DRIVER_STATUS_INVALID_ARG;
   *address = memory->mBuffer->gpuAddress() + memory->offset;
   return context->memoryUnwrap(memory);
 }

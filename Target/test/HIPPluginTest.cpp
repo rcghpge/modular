@@ -234,6 +234,24 @@ TEST_F(DriverPluginContextTest, FunctionLoadNullBundle) {
   EXPECT_EQ(func, nullptr);
 }
 
+TEST_F(DriverPluginContextTest, FunctionLoadNullOut) {
+  std::vector<char> hsaco = compileHIPKernel();
+  ASSERT_FALSE(hsaco.empty()) << "Failed to compile HIP kernel via HIPRTC";
+
+  std::string fileType("hsaco");
+  auto bundle = makeStaticBundle(hsaco, fileType);
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t runtime = nullptr;
+  ASSERT_SUCCESS(bundle_load(contexts[0], &bundle, &opts, &runtime));
+
+  std::string funcName("vec_add");
+  EXPECT_EQ(function_load(contexts[0], runtime, funcName.c_str(),
+                          funcName.size(), nullptr),
+            M_DRIVER_STATUS_INVALID_ARG);
+
+  EXPECT_SUCCESS(bundle_unload(contexts[0], runtime));
+}
+
 TEST_F(DriverPluginContextTest, BundleUnloadNullHandle) {
   M_driver_status_t status = bundle_unload(contexts[0], nullptr);
   EXPECT_EQ(status, M_DRIVER_STATUS_BAD_BUNDLE);

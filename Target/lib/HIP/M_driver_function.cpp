@@ -19,6 +19,8 @@ M_driver_status_t M_driver_function_load(M_driver_context_t context,
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (bundle == nullptr)
     return M_DRIVER_STATUS_BAD_BUNDLE;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
 
   DriverResult<M_driver_function_t> result = M_driver_function::load(
       *context, bundle, function_name, function_name_len);

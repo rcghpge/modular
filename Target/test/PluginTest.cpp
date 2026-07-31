@@ -100,6 +100,42 @@ TEST_F(DriverPluginTest, DeviceGet) {
   }
 }
 
+TEST_F(DriverPluginTest, DriverCreateNullOut) {
+  M_driver_version version = {.major = M_DRIVER_INTERFACE_VERSION_MAJOR,
+                              .minor = M_DRIVER_INTERFACE_VERSION_MINOR,
+                              .patch = M_DRIVER_INTERFACE_VERSION_PATCH};
+  EXPECT_EQ(this->create(&version, nullptr), M_DRIVER_STATUS_INVALID_ARG);
+
+  M_driver_driver_t noDriver = nullptr;
+  EXPECT_EQ(this->create(nullptr, &noDriver), M_DRIVER_STATUS_INVALID_ARG);
+  EXPECT_EQ(noDriver, nullptr);
+}
+
+TEST_F(DriverPluginTest, DeviceCountNullOut) {
+  EXPECT_EQ(device_count(driver, nullptr), M_DRIVER_STATUS_INVALID_ARG);
+}
+
+TEST_F(DriverPluginTest, DeviceGetNullOut) {
+  int64_t deviceCount = 0;
+  ASSERT_SUCCESS(device_count(driver, &deviceCount));
+  ASSERT_GT(deviceCount, 0);
+  EXPECT_EQ(device_get(driver, 0, nullptr), M_DRIVER_STATUS_INVALID_ARG);
+}
+
+TEST_F(DriverPluginTest, ContextCreateNullOut) {
+  int64_t deviceCount = 0;
+  ASSERT_SUCCESS(device_count(driver, &deviceCount));
+  ASSERT_GT(deviceCount, 0);
+  M_driver_device_t device = nullptr;
+  ASSERT_SUCCESS(device_get(driver, 0, &device));
+
+  EXPECT_EQ(context_create(device, nullptr), M_DRIVER_STATUS_INVALID_ARG);
+
+  M_driver_context_t context = nullptr;
+  EXPECT_EQ(context_create(nullptr, &context), M_DRIVER_STATUS_BAD_DEVICE);
+  EXPECT_EQ(context, nullptr);
+}
+
 TEST_F(DriverPluginTest, DeviceContext) {
   int64_t deviceCount = 0;
   EXPECT_SUCCESS(device_count(driver, &deviceCount));
@@ -233,9 +269,9 @@ TEST_F(DriverPluginContextTest, MemoryAllocBadContext) {
 TEST_F(DriverPluginContextTest, MemoryAllocNullOut) {
   for (M_driver_context_t context : contexts) {
     EXPECT_EQ(memory_alloc_sync(context, 128, nullptr),
-              M_DRIVER_STATUS_BAD_MEMORY);
+              M_DRIVER_STATUS_INVALID_ARG);
     EXPECT_EQ(memory_alloc_pinned(context, 128, nullptr),
-              M_DRIVER_STATUS_BAD_MEMORY);
+              M_DRIVER_STATUS_INVALID_ARG);
   }
 }
 
@@ -257,6 +293,14 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
     ASSERT_SUCCESS(queue_create(context, &queue));
     ASSERT_NE(nullptr, queue);
     ASSERT_SUCCESS(queue_destroy(context, queue));
+  }
+}
+
+TEST_F(DriverPluginContextTest, QueueCreateNullOut) {
+  // A null `queue` out-param must be rejected before any real queue
+  // allocation happens, not null-deref after doing the work.
+  for (M_driver_context_t context : contexts) {
+    EXPECT_EQ(queue_create(context, nullptr), M_DRIVER_STATUS_INVALID_ARG);
   }
 }
 
@@ -324,6 +368,13 @@ TEST_F(DriverPluginContextTest, QueueAsyncAllocSync) {
     ASSERT_SUCCESS(memory_free_async(queue, memory));
     ASSERT_SUCCESS(queue_synchronize(queue));
     ASSERT_SUCCESS(queue_destroy(context, queue));
+  }
+}
+
+TEST_F(DriverPluginContextTest, EventCreateNullOut) {
+  for (M_driver_context_t context : contexts) {
+    EXPECT_EQ(event_create(context, M_DRIVER_EVENT_FLAG_NONE, nullptr),
+              M_DRIVER_STATUS_INVALID_ARG);
   }
 }
 
@@ -823,7 +874,7 @@ TEST_F(DriverPluginContextTest, MemoryWrapUnwrapErrors) {
     EXPECT_EQ(memory_wrap(nullptr, address, 128, /*owning=*/false, &wrapped),
               M_DRIVER_STATUS_BAD_CONTEXT);
     EXPECT_EQ(memory_wrap(context, address, 128, /*owning=*/false, nullptr),
-              M_DRIVER_STATUS_BAD_MEMORY);
+              M_DRIVER_STATUS_INVALID_ARG);
     // A zero address has no valid region to wrap.
     EXPECT_EQ(
         memory_wrap(context, /*address=*/0, 128, /*owning=*/false, &wrapped),
@@ -835,7 +886,7 @@ TEST_F(DriverPluginContextTest, MemoryWrapUnwrapErrors) {
     EXPECT_EQ(memory_unwrap(context, nullptr, &out),
               M_DRIVER_STATUS_BAD_MEMORY);
     EXPECT_EQ(memory_unwrap(context, memory, nullptr),
-              M_DRIVER_STATUS_BAD_MEMORY);
+              M_DRIVER_STATUS_INVALID_ARG);
   }
 }
 

@@ -16,7 +16,6 @@
 #include "HAL/M_driver_context.h"
 #include "Memory.h"
 
-#include <cassert>
 #include <cerrno>
 #include <cstring>
 #include <sys/resource.h>
@@ -39,7 +38,8 @@ M_driver_status_t M_driver_context_create(M_driver_device_t device,
                                           M_driver_context_t *context) {
   if (device == nullptr)
     return M_DRIVER_STATUS_BAD_DEVICE;
-  assert(context && "context must not be null");
+  if (context == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
   M_driver_context_t result = M_driver_context::create(device);
   if (result == nullptr)
     return M_DRIVER_STATUS_OUT_OF_MEMORY;

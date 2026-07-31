@@ -10,6 +10,10 @@
 
 M_driver_status_t M_driver_create(M_driver_version *version,
                                   M_driver_driver_t *driver) {
+  if (version == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (version->major != M_DRIVER_INTERFACE_VERSION_MAJOR)
     return M_DRIVER_STATUS_INCOMPATIBLE_VERSION;
 

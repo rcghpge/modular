@@ -21,23 +21,24 @@ namespace AsyncRT = M::AsyncRT;
 #include <dlpack/dlpack.h>
 
 #include "llvm/ADT/StringRef.h"
-#include <cassert>
 #include <cstring>
 
 M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
-  assert(count && "count must not be null");
-  if (!driver)
-    return M_DRIVER_STATUS_NO_DEVICES;
+  if (count == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_BAD_DRIVER;
   *count = 1;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_device_get(M_driver_driver_t driver, int64_t id,
                                       M_driver_device_t *device) {
-  assert(device && "device must not be null");
-  if (!driver)
-    return M_DRIVER_STATUS_NO_DEVICES;
+  if (device == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_BAD_DRIVER;
   if (id != 0)
     return M_DRIVER_STATUS_BAD_DEVICE;
   *device = &driver->device;
