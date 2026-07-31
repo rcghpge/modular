@@ -27,6 +27,7 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
+#include "KGEN/Support/NameMangling.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
@@ -44,6 +45,22 @@
 
 using namespace M;
 using namespace MOGG;
+
+StringAttr M::MOGG::getKernelStubName(FusionInfoAttr fusionInfo, ABIKind abi) {
+  ASSERT_STREAM(fusionInfo, << "cannot name a kernel stub without fusion info");
+  MLIRContext *ctx = fusionInfo.getContext();
+  // Flatten to the same human-readable form used for trace labels (e.g.
+  // `Elementwise(relu, add)`), then sanitize into a symbol.
+  auto displayName = StringAttr::get(
+      ctx, fusionInfo.toString(/*includeLineNumbers=*/false, /*quote=*/false,
+                               /*stripDialectPrefixes=*/true));
+  auto sanitizedName = KGEN::sanitizeSymbolToUnderscores(displayName);
+
+  // Add the tag after sanitizing, which truncates long names and any tag.
+  return StringAttr::get(ctx, llvm::formatv("{0}_{1}", sanitizedName.getValue(),
+                                            stringifyABIKind(abi).lower())
+                                  .str());
+}
 
 template <typename T>
 static auto stringifyMLIRObject(T entity) {

@@ -53,13 +53,13 @@ mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3
 // CHECK: , tensor<3xsi32> [9, 0, 7]
 
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
-// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
+// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
+// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
-// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
+// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
+// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle {affinity_device_id = {{[0-9]+}} : i64}
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready

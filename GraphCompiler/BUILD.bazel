@@ -940,6 +940,7 @@ modular_cc_library(
         ":Support",
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
+        "//KGEN:Support",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/GRTDialect",
         "//Support:Context",

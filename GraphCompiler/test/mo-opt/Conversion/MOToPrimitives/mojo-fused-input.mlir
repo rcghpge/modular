@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-fuse-prologues --mogg-fuse-epilogues --mogg-fuse-consts -mogg-to-mgp -canonicalize | FileCheck %s
 
-// CHECK: mogg.kernel.stub @stub_0
+// CHECK: mogg.kernel.stub @Epilogue_Prologue_add_reduce_ad_{{[0-9a-f]+}}_mogg
 // CHECK:       [[IN:%.*]] = mogg.bind ({{.*}}, {{.*}}) input_lambda
 // CHECK:       [[EMPTY_BUFF:%.*]] = mogg.empty_buffer : !mgp.buffer
 // CHECK-NEXT:  [[EMPTY_TENSOR:%.*]] = mogg.tensor.__init__([[EMPTY_BUFF]]) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32, {io = 1 : i32, mut = false}>

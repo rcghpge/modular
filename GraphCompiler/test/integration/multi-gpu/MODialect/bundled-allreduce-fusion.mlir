@@ -56,32 +56,32 @@ mo.graph @bundled_allreduce_then_relu(
 // data).  The canonical arg ordering in nExpandBundledKernel makes these
 // structurally identical; MergeIdenticalKernelStubs (run later in EmitMojo)
 // will deduplicate them into a single stub definition.
-// CHECK-MGP-DAG: mogg.kernel.stub @[[AR0:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
-// CHECK-MGP-DAG: mogg.kernel.stub @[[AR1:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-MGP-DAG: mogg.kernel.stub @{{bundled_allreduce_sum_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-MGP-DAG: mogg.kernel.stub @{{bundled_allreduce_sum_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
 
 // Relu stubs (one per GPU, also structurally identical).
-// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU0:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
-// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU1:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
+// CHECK-MGP-DAG: mogg.kernel.stub @{{relu_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.relu"
+// CHECK-MGP-DAG: mogg.kernel.stub @{{relu_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.relu"
 
 // First compiled region dispatches the allreduce stubs async to each GPU.
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{stub_[0-9]+}}({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.call.stub.async @{{stub_[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @{{bundled_allreduce_sum_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @{{bundled_allreduce_sum_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
 // CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
 // CHECK-MGP:   mogg.async.ready
 
 // Second compiled region dispatches the relu stubs async to each GPU.
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{stub_[0-9]+}}({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.call.stub.async @{{stub_[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @{{relu_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @{{relu_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
 // CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
 // CHECK-MGP:   mogg.async.ready
 
 // After MergeIdenticalKernelStubs + SymbolDCE: exactly one allreduce stub
 // and one relu stub remain.  Stub definition order is not guaranteed, so
 // use DAG for the definitions.
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[AR:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[RELU:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
+// CHECK-DEDUP-DAG: mogg.kernel.stub @[[AR:bundled_allreduce_sum_mogg]] {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-DEDUP-DAG: mogg.kernel.stub @[[RELU:relu_mogg]] {{.*}}fusionInfo = "mo.relu"
 
 // No additional allreduce or relu stubs should exist.
 // CHECK-DEDUP-NOT: fusionInfo = "mo.bundled.allreduce.sum"

@@ -17,8 +17,8 @@ mo.graph @parallel_symbolic<N>(
 }
 
 // CHECK: mogg.generic.compiled.region
-// CHECK:   mogg.call.stub.async @stub_{{[0-9]+}}
-// CHECK:   mogg.call.stub.async @stub_{{[0-9]+}}
+// CHECK:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}
+// CHECK:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}
 // CHECK:   mogg.async.join
 // CHECK:   mogg.async.ready
 
@@ -40,7 +40,7 @@ mo.graph @parallel_symbolic_add_relu<N>(
 }
 
 // CHECK: mogg.generic.compiled.region
-// CHECK:   mogg.call.stub.async @stub_{{[0-9]+}}
-// CHECK:   mogg.call.stub.async @stub_{{[0-9]+}}
+// CHECK:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}
+// CHECK:   mogg.call.stub.async @{{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}
 // CHECK:   mogg.async.join
 // CHECK:   mogg.async.ready

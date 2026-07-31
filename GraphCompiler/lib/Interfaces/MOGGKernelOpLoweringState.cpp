@@ -234,8 +234,7 @@ MOGGKernelOpLoweringState::MOGGKernelOpLoweringState(
       device(MO::getDeviceOrDefaultAny(op)) {}
 
 FailureOr<KernelStubInfo>
-MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
-                                            StringRef stubNamePrefix) {
+MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp) {
   mlir::MLIRContext *ctx = kernelOp.getContext();
   auto loc = kernelOp.getLoc();
 
@@ -252,10 +251,9 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
   // Save the number of kernel inputs before we modify the body
   size_t numKernelInputs = kernelOp.getInputs().size();
 
-  // Create a unique stub name
-  static int stubCounter = 0;
-  auto stubName = StringAttr::get(
-      ctx, llvm::formatv("{}_{}", stubNamePrefix, stubCounter++).str());
+  // Create the preferred stub name.
+  auto stubName = MOGG::getKernelStubName(kernelOp.getFusionInfoAttr(),
+                                          MOGG::ABIKind::MOGG);
 
   // Create the stub outside of the model op to ensure it is properly registered
   // into the SymbolTable of the ModuleOp.
@@ -293,7 +291,7 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
   // pass manager, so a stub added only via the builder would be invisible to
   // downstream passes that read the cached table. `create` above linked the
   // stub at module-block start; re-insert it through the table to update the
-  // table's name map (the name is unique, so it is preserved).
+  // table's name map and resolve any collision.
   mlir::SymbolTable &moduleSymbolTable = loweringState.getModuleSymbolTable();
   stubName = moduleSymbolTable.insert(kernelStub);
 
@@ -797,8 +795,10 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     stubReturnType = regOutput;
   }
 
-  // Create the stub by outlining the kernel body.
-  auto stubInfoOr = createKernelStub(moggKernelOp, "stub");
+  // Create the stub by outlining the kernel body, naming it after the ops it
+  // fuses (e.g. "relu_add_mogg") so a kernel error points at the work it
+  // runs. `mogg.kernel` always carries fusionInfo.
+  auto stubInfoOr = createKernelStub(moggKernelOp);
   if (failed(stubInfoOr))
     return failure();
   auto stubInfo = *stubInfoOr;

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-fuse-epilogues --mogg-fuse-consts -mogg-to-mgp -canonicalize | FileCheck %s
 
-// CHECK: mogg.kernel.stub @stub_0
+// CHECK: mogg.kernel.stub @Affine_reduce_add_split_dim_mogg
 // CHECK:       [[LAMBDA:%.*]] = mogg.bind ({{.*}}) output_lambda
 // CHECK:       [[RESHAPE:%.*]] = mogg.tensor.reshape({{.*}}, {{.*}}) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32{{.*}}}>, !kgen.scalar<si64>) -> !mo.tensor<[A, 1], f32{{.*}}>
 // CHECK-NEXT:  [[FUSED:%.*]] = mogg.tensor.fused([[LAMBDA]], [[RESHAPE]]) : (!mo.tensor<[A, 1], f32{{.*}}>, !mo.tensor<[A, 1], f32{{.*}}>) -> !mo.tensor<[A, 1], f32{{.*}}>

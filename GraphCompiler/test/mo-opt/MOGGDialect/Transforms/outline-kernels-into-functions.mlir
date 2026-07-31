@@ -4,6 +4,11 @@
 // `mogg.kernel.stub` labeled with the `MAP` ABI (`abi = 2`), and replaces the
 // kernel body with a single `mogg.call.stub` forwarding the pointer / dim /
 // context block args. The `mogg._kernel` container is kept for `MOGGToMGP`.
+//
+// The stub is named after the ops it fuses with a trailing `_map` ABI tag (e.g.
+// `..._map`), not a bare `map_stub_<n>` counter; two kernels that fuse the same
+// ops share a preferred name, so the symbol table appends a numeric suffix to
+// the second (`..._map_0`), as `@dyn` and `@one_plain` show below.
 
 // Plain output: the kernel body becomes one `mogg.call.stub`; the shape/tensor
 // reconstruction + `mogg._call.opaque` move into the MAP-ABI stub.
@@ -12,7 +17,7 @@
 // CHECK:   inputs (%[[IP:.*]]: !mogg.pointer_)
 // CHECK:   outputs (%[[OP:.*]]: !mogg.pointer_)
 // CHECK:   context (%[[C:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK:     mogg.call.stub @[[STUB0:map_stub_[0-9]+]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.context
+// CHECK:     mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_map[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK-NOT: mogg._call.opaque
 // CHECK: mogg.kernel.stub @[[STUB0]] (%{{.*}}: !mogg.pointer_, %{{.*}}: !mogg.pointer_, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = 2 : i32,
 // CHECK:   %[[ISH:.*]] = mogg._shape.create() {{.*}} -> !mogg.shape
@@ -31,7 +36,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   inputs (%[[IP:.*]]: !mogg.pointer_)
 // CHECK:   outputs (%[[OP:.*]]: !mogg.pointer_)
 // CHECK:   context (%[[C:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK:     mogg.call.stub @[[STUB1:map_stub_[0-9]+]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.context
+// CHECK:     mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_map[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.kernel.stub @[[STUB1]] {{.*}} attributes {abi = 2 : i32,
 // CHECK:   %{{.*}} = mogg._tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {{.*}} {
 // CHECK:   ^bb0(%{{.*}}: f32, %{{.*}}: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
@@ -51,7 +56,7 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   outputs (%[[OP:.*]]: !mogg.pointer_)
 // CHECK:   context (%[[C:.*]]: !mogg.context)
 // CHECK:   dims (%[[D:.*]]: !mogg.dim_<batch>) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK:     mogg.call.stub @[[STUB2:map_stub_[0-9]+]] %[[IP]], %[[OP]], %[[D]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.dim_<batch>, !mogg.context
+// CHECK:     mogg.call.stub @[[STUB2:[A-Za-z0-9_]+_map[0-9_]*]] %[[IP]], %[[OP]], %[[D]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.dim_<batch>, !mogg.context
 // CHECK: mogg.kernel.stub @[[STUB2]] (%{{.*}}: !mogg.pointer_, %{{.*}}: !mogg.pointer_, %[[SD:.*]]: !mogg.dim_<batch>, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = 2 : i32,
 // CHECK:   mogg._shape.create(%[[SD]]) {{.*}} : (!mogg.dim_<batch>) -> !mogg.shape
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {

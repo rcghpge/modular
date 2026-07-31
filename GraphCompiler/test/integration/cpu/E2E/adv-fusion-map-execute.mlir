@@ -6,7 +6,7 @@
 // End-to-end execution of the advanced-fusion MAP-ABI path for plain
 // single-output opaque kernels across input arities. With
 // `MAX_GC_USE_ADV_FUSION=1` the `mo.custom` op lowers through the new MAP-ABI
-// pipeline (`mo.custom` -> `map.iter.opaque` -> `mogg.kernel.stub @map_stub_N`
+// pipeline (`mo.custom` -> `map.iter.opaque` -> `mogg.kernel.stub @<fused-ops>_map`
 // (MAP ABI) + a `mogg._kernel` container that `MOGGToMGP` turns into a
 // `mogg.generic.compiled.region`); without the env var it lowers through the
 // legacy MOGG path. Both runs are checked against the SAME FileCheck patterns:

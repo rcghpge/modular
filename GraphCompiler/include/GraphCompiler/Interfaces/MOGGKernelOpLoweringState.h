@@ -187,8 +187,7 @@ public:
 protected:
   // Create a kernel stub from a KernelOp, outlining its body.
   // Returns info about the created stub including placeholder ops.
-  FailureOr<KernelStubInfo> createKernelStub(MOGG::KernelOp kernelOp,
-                                             StringRef stubNamePrefix);
+  FailureOr<KernelStubInfo> createKernelStub(MOGG::KernelOp kernelOp);
 
   // Set up the operands mapping for kernel inputs (chain + tensor inputs).
   // Populates operandsMapping and tensorOperandInfos for the inputs.

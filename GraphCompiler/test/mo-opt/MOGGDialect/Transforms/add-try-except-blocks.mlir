@@ -15,9 +15,9 @@
 // CHECK-NOT:       mogg.raise
 // CHECK:         } except {
 
-// The MOGG ABI stub (@stub_0) has mogg.with_trace around the kernel
+// The MOGG ABI stub (@relu_mogg) has mogg.with_trace around the kernel
 // terminator and mogg.try/mogg.raise for error propagation.
-// CHECK-LABEL: mogg.kernel.stub @stub_0
+// CHECK-LABEL: mogg.kernel.stub @relu_mogg
 // CHECK:         mogg.try {
 // CHECK:           mogg.with_trace
 // CHECK:             mogg.call.foreach

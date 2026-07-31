@@ -2,7 +2,7 @@
 
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 
-// CHECK: def stub_0({{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}OutputTensor[dtype = DType.int32, rank = 1, ...]{{.*}}) raises:
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}OutputTensor[dtype = DType.int32, rank = 1, ...]{{.*}}) raises:
 // CHECK: var {{.*}} = std.utils.StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
 // CHECK: var {{.*}} = std.utils.StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
 // CHECK: comptime {{.*}} = ParameterList.of[{{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals()]()

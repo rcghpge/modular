@@ -58,7 +58,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // feeds a runtime `Scalar[DType.int]` Coord component instead of an
 // all-compile-time `layout.Idx` Coord; the fused-output functor/wrapper/
 // execute shape is otherwise identical to the static case above.
-// CHECK: def map_stub_{{[0-9]+}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[2])
 // CHECK:   var [[FD:.*]] = OutputStoreFunctor{{[0-9_]*}}[{{.*}}]({{.*}}._ptr, {{.*}})
 // CHECK:   var [[WD:.*]] = _MoggOutputStoreFusionTensor[{{.*}}, type_of([[FD]]), {{.*}}]([[FD]], {{.*}})

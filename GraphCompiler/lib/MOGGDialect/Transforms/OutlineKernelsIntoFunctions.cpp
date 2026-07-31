@@ -19,8 +19,9 @@
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/Builders.h"
-#include "llvm/ADT/Twine.h"
+#include "mlir/IR/SymbolTable.h"
 
 using namespace mlir;
 using namespace M;
@@ -34,8 +35,8 @@ namespace {
 
 // Outlines one `mogg._kernel`: its body moves into `stub`; the kernel's body is
 // rebuilt as a single `mogg.call.stub` forwarding fresh block args to `stub`.
-void outlineKernel(OpBuilder &builder, MOGG::KernelRegionOp kernel,
-                   uint64_t stubNumber) {
+void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
+                   MOGG::KernelRegionOp kernel) {
   MLIRContext *ctx = kernel.getContext();
   Location loc = kernel.getLoc();
 
@@ -45,7 +46,6 @@ void outlineKernel(OpBuilder &builder, MOGG::KernelRegionOp kernel,
   Block &body = kernel.getBody().front();
   SmallVector<Type> argTypes(body.getArgumentTypes());
   auto functionType = TypeAttr::get(FunctionType::get(ctx, argTypes, {}));
-  auto stubName = StringAttr::get(ctx, ("map_stub_" + Twine(stubNumber)).str());
 
   // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg._kernel`
   // from the source `map.iter.opaque`; fall back to a fresh leaf only if it's
@@ -53,6 +53,10 @@ void outlineKernel(OpBuilder &builder, MOGG::KernelRegionOp kernel,
   MOGG::FusionInfoAttr fusionInfo = kernel.getFusionInfoAttr();
   if (!fusionInfo)
     fusionInfo = MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(kernel));
+
+  // Name the stub after the ops it fuses, e.g. "relu_add_map"; the symbol table
+  // appends a numeric suffix below when two kernels fuse the same ops.
+  auto stubName = MOGG::getKernelStubName(fusionInfo, MOGG::ABIKind::MAP);
 
   // Place the stub just after the kernel's top-level ancestor for readable,
   // deterministic output.
@@ -68,6 +72,10 @@ void outlineKernel(OpBuilder &builder, MOGG::KernelRegionOp kernel,
       MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MAP),
       /*trait_stub_buffer_capture=*/nullptr, /*trait_stub_arg_bounds=*/nullptr);
   stub.setDeviceRef(MO::getDeviceOrDefaultAny(kernel));
+
+  // `create` already linked the stub into the module; registering it here
+  // resolves any name collision and returns the unique name for the call site.
+  stubName = symtab.insert(stub);
 
   // Move the body (block args + codegen ops) into the stub, then cap it with a
   // `mogg.output` terminator (the stub returns nothing).
@@ -97,7 +105,11 @@ struct OutlineKernelsIntoFunctionsPass
       return;
 
     OpBuilder builder(&getContext());
-    uint64_t stubNumber = 0;
+    // Register outlined stubs through the module's cached `SymbolTableAnalysis`
+    // so their names stay collision-free and the table stays consistent for
+    // downstream consumers.
+    SymbolTable &symtab =
+        getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
     SmallVector<MOGG::KernelRegionOp> kernels;
     getOperation().walk([&](MOGG::KernelRegionOp k) {
       kernels.push_back(k);
@@ -105,7 +117,7 @@ struct OutlineKernelsIntoFunctionsPass
       return WalkResult::skip();
     });
     for (MOGG::KernelRegionOp kernel : kernels)
-      outlineKernel(builder, kernel, stubNumber++);
+      outlineKernel(builder, symtab, kernel);
   }
 };
 

@@ -1,6 +1,6 @@
 // RUN: mo-opt --mogg-import-packages -mo-to-mogg -mogg-fuse-elementwise -mogg-fuse-epilogues -mogg-to-mgp %s | FileCheck %s
 
-// CHECK-LABEL: mogg.kernel.stub @stub_0
+// CHECK-LABEL: mogg.kernel.stub @Epilogue_matmul_Elementwise_add_{{[0-9a-f]+}}_mogg
 // CHECK:         mogg.bind
 // CHECK:         mogg.tensor.fused
 // CHECK:         mogg.call.execute["{{.*}}.Matmul"]
@@ -11,7 +11,7 @@
 // CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 1 : i32, mut = false}
 // CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 0 : i32, mut = true}
 // CHECK:         mogg.tensor.__init__(%{{.*}}) {io = 0 : i32, mut = true}
-// CHECK:         mogg.call.stub @stub_0
+// CHECK:         mogg.call.stub @Epilogue_matmul_Elementwise_add_{{[0-9a-f]+}}_mogg
 // CHECK:         mogg.async.ready : !mef.chain
 // CHECK:         mogg.output
 // CHECK:       }

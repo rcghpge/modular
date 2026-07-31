@@ -20,7 +20,7 @@
 
 // Plain output: static shape -> compile-time `Idx[N]` Coord, a raw-pointer
 // `mogg_tensor_init` per tensor, and a DPS execute call (output, input, ctx).
-// CHECK: def map_stub_0({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[PC:.*]]: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[PC:.*]]: {{.*}}DeviceContext) raises:
 // CHECK:   var [[PSHAPE:.*]] = layout.Coord(layout.Idx[2], layout.Idx[2])
 // CHECK:   var [[PLAYOUT:.*]] = layout.row_major([[PSHAPE]])
 // CHECK:   var [[PIN:.*]] = {{.*}}mogg_tensor_init[DType.float32, 2, False, extensibility.IO.Input, {{[0-9]+}}]({{.*}}.unsafe_bitcast[NoneType](), [[PLAYOUT]])
@@ -34,7 +34,7 @@ mo.graph @plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // Dynamic dim: the `!mogg.dim_` handle arrives as a trailing `Int` argument and
 // feeds a runtime `Scalar[DType.int]` Coord component.
-// CHECK: def map_stub_1({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[4])
 
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
@@ -44,7 +44,7 @@ mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
 
 // Scalar operand: `scalar.create` packs the single-element tensor into a scalar
 // via `mogg_as_scalar`, passed after the input in the DPS execute call.
-// CHECK: def map_stub_2(
+// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}(
 // CHECK:   var [[SC:.*]] = {{.*}}mogg_as_scalar({{.*}})
 // CHECK:   {{.*}}.MapLowerScalar.execute[target = "cpu"]({{.*}}, {{.*}}, [[SC]], {{.*}})
 
@@ -55,7 +55,7 @@ mo.graph @scalar(%a: !mo.tensor<[4], f32>, %s: !mo.tensor<[], f32>) -> !mo.tenso
 
 // Variadic operands: `tuple.create` packs the run of tensors into a
 // `VariadicTensors` (pointer + shape tuples plus a comptime static-spec list).
-// CHECK: def map_stub_3(
+// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}(
 // CHECK:   var {{.*}} = std.utils.StaticTuple[size = 2]({{.*}}._ptr, {{.*}}._ptr)
 // CHECK:   var {{.*}} = std.utils.StaticTuple[size = 2]({{.*}}.shape(), {{.*}}.shape())
 // CHECK:   var [[VT:.*]] = extensibility.VariadicTensors[{{.*}}static_specs = {{.*}}]({{.*}}, {{.*}})

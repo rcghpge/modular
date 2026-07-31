@@ -37,7 +37,7 @@
 // The dispatch is recorded in its own `imm`-capturing `region`, ordered after
 // the alloc's node via the `dependencies=` list, and calls the node-free stub.
 // CHECK: def [[WORK1:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
-// CHECK: [[STUB:stub_[0-9]+_build_graph]]({{.*}}, {{.*}}, builder)
+// CHECK: [[STUB:[A-Za-z0-9_]+_mogg(_[0-9]+)?_build_graph]]({{.*}}, {{.*}}, builder)
 // CHECK: builder.region([[WORK1]], dependencies = {{\[}}[[NODE0]]{{\]}})
 
 // The single graph output is registered on the builder: the yielded output
@@ -67,7 +67,7 @@ mo.graph @dg(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:
 // only `execute`. The `mgp.device_graph.recording_context` op views the builder
 // as a recording device context (`builder.recording_context()`), and the stub
 // dispatches the ordinary `execute` against it instead of calling `build_graph`.
-// CHECK: def stub_{{[0-9]+}}_build_graph({{.*}}: {{.*}}InputTensor[{{.*}}], {{.*}}: {{.*}}OutputTensor[{{.*}}], [[BUILDER:[a-z_0-9]+]]: {{.*}}DeviceGraphBuilder) raises:
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?_build_graph}}({{.*}}: {{.*}}InputTensor[{{.*}}], {{.*}}: {{.*}}OutputTensor[{{.*}}], [[BUILDER:[a-z_0-9]+]]: {{.*}}DeviceGraphBuilder) raises:
 // CHECK: [[CTX:var[_0-9]+]] = [[BUILDER]].recording_context()
 // CHECK-NOT: ExecuteOnly.build_graph(
 // CHECK: ExecuteOnly.execute({{.*}}, [[CTX]])
