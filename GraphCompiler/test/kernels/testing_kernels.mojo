@@ -254,8 +254,9 @@ def _gpu_negate_kernel[
 ](
     output: TileTensor[dtype, LayoutType, MutAnyOrigin],
     input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
-    num_elements: Int,
+    num_elements_dev: Int32,
 ):
+    var num_elements = Int(num_elements_dev)
     var linear_idx = global_idx.x
     if linear_idx >= num_elements:
         return
@@ -307,7 +308,7 @@ struct TraitNegate:
             ](
                 z,
                 x,
-                n,
+                Int32(n),
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
@@ -366,8 +367,9 @@ def _gpu_fused_load_negate_kernel[
 ](
     output: TileTensor[dtype, LayoutType, MutAnyOrigin],
     input: downcast[XHost.device_type, Loadable],
-    n: Int,
+    n_dev: Int32,
 ):
+    var n = Int(n_dev)
     var i = Int(global_idx.x)
     if i >= n:
         return
@@ -404,7 +406,7 @@ struct TraitFusedLoadNegate:
             ](
                 z,
                 x,
-                n,
+                Int32(n),
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
@@ -422,8 +424,9 @@ def _gpu_fused_store_double_kernel[
 ](
     output: downcast[ZHost.device_type, Storable],
     input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
-    n: Int,
+    n_dev: Int32,
 ):
+    var n = Int(n_dev)
     var i = Int(global_idx.x)
     if i >= n:
         return
@@ -461,7 +464,7 @@ struct TraitFusedStoreDouble:
             ](
                 z,
                 x,
-                n,
+                Int32(n),
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
@@ -474,7 +477,12 @@ def _gpu_fused_store_parameter_closure_kernel[
     store_adapter: def[OutT: Storable, width: Int](
         OutT, Coord, SIMD[OutT.dtype, width]
     ) capturing -> None,
-](output: ZDev, input: TileTensor[dtype, LayoutType, ImmutAnyOrigin], n: Int,):
+](
+    output: ZDev,
+    input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n_dev: Int32,
+):
+    var n = Int(n_dev)
     var i = Int(global_idx.x)
     if i >= n:
         return
@@ -506,7 +514,7 @@ def _launch_fused_store_parameter_closure[
     ](
         output,
         input,
-        n,
+        Int32(n),
         grid_dim=(ceildiv(n, block_size),),
         block_dim=(block_size,),
     )
@@ -571,8 +579,9 @@ def _gpu_fused_transform_bias_kernel[
 ](
     z: downcast[ZHost.device_type, Transformable & TileTensorable],
     x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
-    n: Int,
+    n_dev: Int32,
 ):
+    var n = Int(n_dev)
     var i = Int(global_idx.x)
     if i >= n:
         return
@@ -625,7 +634,7 @@ struct TraitFusedTransformBias:
             ](
                 z,
                 x,
-                n,
+                Int32(n),
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
