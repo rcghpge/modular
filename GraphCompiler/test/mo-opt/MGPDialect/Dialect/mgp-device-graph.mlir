@@ -98,9 +98,9 @@ func.func @device_graph_plain_args_ok(
   return %ch : !mef.chain
 }
 
-// The builder-taking ops (`get_context`, `alloc`) round-trip inside a build
-// body. The build body is `IsolatedFromAbove`, so the chain/size come from
-// in-body values.
+// The builder-taking ops (`alloc`, `recording_context`, `device_context`)
+// round-trip inside a build body. The build body is `IsolatedFromAbove`, so the
+// chain/size come from in-body values.
 
 // CHECK-LABEL: func.func @device_graph_builder_ops_round_trip
 func.func @device_graph_builder_ops_round_trip(
@@ -119,6 +119,9 @@ func.func @device_graph_builder_ops_round_trip(
           : !mgp.buffer<<"gpu", 0>>
       // CHECK: %{{.+}} = mgp.device_graph.recording_context %{{.+}} : !mogg.context
       %rec = mgp.device_graph.recording_context %builder : !mogg.context
+      // CHECK: %{{.+}} = mgp.device_graph.device_context %{{.+}} : !mgp.device_context<<"gpu", 0>>
+      %backing = mgp.device_graph.device_context %builder
+          : !mgp.device_context<<"gpu", 0>>
       mgp.device_graph.yield
   } : !mgp.device_context<<"gpu", 0>>
       -> !mgp.device_graph<() -> ()>

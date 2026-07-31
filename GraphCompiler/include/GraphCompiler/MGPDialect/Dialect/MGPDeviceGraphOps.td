@@ -291,6 +291,41 @@ def DeviceGraphRecordingContextOp : MGP_DeviceGraphOp<"recording_context", [
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphDeviceContextOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphDeviceContextOp : MGP_DeviceGraphOp<"device_context", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure,
+]> {
+  let summary = "Extracts the device context backing a device-graph builder.";
+  let description = [{
+    Reads the `!mgp.device_context` a `!mgp.device_graph.builder` was created
+    from, lowering to `DeviceGraphBuilder.context()`.
+
+    This is the *backing* context, not a recording view: work dispatched against
+    it runs eagerly while the graph is being built instead of being recorded as
+    a graph node. It is therefore only for in-body ops that need a real device
+    context to construct or register a host-side view of device memory -- e.g.
+    `mgp.buffer.bulk_slice`, which uses it for sub-buffer pointer math and
+    pointer registration and enqueues nothing. An op that must record its work
+    takes a `mgp.device_graph.recording_context` instead.
+
+    Example:
+    ```mlir
+      %ctx = mgp.device_graph.device_context %builder
+          : !mgp.device_context<<"gpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins MGP_DeviceGraphBuilderType:$graphBuilder);
+  let results = (outs MGP_DeviceContextType:$deviceContext);
+
+  let assemblyFormat =
+    "$graphBuilder attr-dict `:` qualified(type($deviceContext))";
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesOp
 //===----------------------------------------------------------------------===//
 

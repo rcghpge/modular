@@ -60,9 +60,7 @@ void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
         /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
         /*inOutSignature=*/M::InOutSignatureAttr::get(ctx, operandSemantics),
         /*fusionInfo=*/
-        FusionInfoAttr::get(
-            ctx, FusionLeafAttr::get(ctx, StringAttr::get(ctx, "mgp.guard"),
-                                     /*loc=*/{}, /*signature=*/{})),
+        FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(guard)),
         /*isAsync=*/builder.getBoolAttr(false),
         /*constantResources=*/builder.getArrayAttr({}),
         /*canFuseIntoOther=*/builder.getBoolAttr(false),

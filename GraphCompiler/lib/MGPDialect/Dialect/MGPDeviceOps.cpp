@@ -556,8 +556,12 @@ LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue result = state.builder.var(
       function({}, {baseArg, offsetsArray, sizesArray, deviceCtxVar}));
 
+  // Bind each slice to its own var rather than handing out the subscript
+  // expression: a consumer may transfer the value (a device-graph
+  // `mgp.device_graph.dependencies` body surfaces its results with `^`), and
+  // only a named value has an origin to transfer from.
   for (auto &&[i, outBuf] : llvm::enumerate(getOutBuffers()))
-    state.setMojoValueFor(outBuf, result[i]);
+    state.setMojoValueFor(outBuf, state.builder.var(result[i]));
 
   return success();
 }

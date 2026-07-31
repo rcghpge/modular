@@ -291,6 +291,22 @@ DeviceGraphRecordingContextOp::emitMojo(MOGG::EmitMojoState &state) {
 bool DeviceGraphRecordingContextOp::isThrows() { return true; }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphDeviceContextOp
+//===----------------------------------------------------------------------===//
+
+// Emits `var ctx_N = builder.context()`: the backing device context the builder
+// was created from. `context()` is a non-raising field read, so `isThrows`
+// keeps the interface default of false.
+LogicalResult DeviceGraphDeviceContextOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
+  MojoValue result =
+      state.builder.var(builder.get(kFnDeviceGraphBuilderContext)());
+  state.setMojoValueFor(getDeviceContext(), result);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceGraphDependenciesOp
 //===----------------------------------------------------------------------===//
 
