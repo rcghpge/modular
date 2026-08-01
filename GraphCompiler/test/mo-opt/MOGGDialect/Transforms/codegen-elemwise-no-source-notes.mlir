@@ -6,7 +6,7 @@
 // runtime correctly omits the traceback section when no traces are present.
 // See GEX-2678.
 //
-// Contrast with elemwise-fusion-source-notes.mlir, which tests the case where
+// Contrast with codegen-elemwise-source-notes.mlir, which tests the case where
 // source notes ARE present.
 
 // The outer MGP region wraps errors with the region name (mogg_format_region_error).

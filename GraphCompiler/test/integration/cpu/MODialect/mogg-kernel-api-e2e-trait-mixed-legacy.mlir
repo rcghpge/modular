@@ -9,7 +9,7 @@
 // captures in the same call. With all-ones inputs, `z[i] = x[i] + y[i]` must
 // return all 2, proving the two lanes compose and the emitted Mojo compiles
 // and runs with correct numerics -- a gap the lowering-only FileCheck in
-// lower-tensor-arg-traits.mlir does not cover.
+// infra-lower-tensor-arg-traits.mlir does not cover.
 
 // CHECK: 'trait_mixed_legacy_add_graph' returned tensor<4xf32> [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00]
 mo.graph @trait_mixed_legacy_add_graph(%x: !mo.tensor<[4], f32>, %y: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {

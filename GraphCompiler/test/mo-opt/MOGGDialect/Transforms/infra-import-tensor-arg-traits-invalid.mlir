@@ -5,7 +5,7 @@
 // validation must reject every one of them and report them all (not abort on
 // the first), so all of these diagnostics are present in one run. This is the
 // rejection half of the trait-lane distill matrix (the valid half is the
-// `IMPORT-DAG` set in lower-tensor-arg-traits.mlir); together they replace the
+// `IMPORT-DAG` set in infra-lower-tensor-arg-traits.mlir); together they replace the
 // deleted `TestTensorArgContract.cpp` gtest.
 
 // === Role errors ========================================================== //

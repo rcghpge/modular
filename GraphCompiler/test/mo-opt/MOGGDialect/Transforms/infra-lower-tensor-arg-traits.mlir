@@ -11,7 +11,7 @@
 // This is the import-time half of the trait-lane
 // distill matrix; it folds in (and replaces) the former
 // import-tensor-arg-traits.mlir, and together with the rejection cases in
-// import-tensor-arg-traits-invalid.mlir replaces the deleted gtest
+// infra-import-tensor-arg-traits-invalid.mlir replaces the deleted gtest
 // `TestTensorArgContract.cpp`. Non-trait args (the DeviceContext and the
 // implicit error/result refs) render as trailing `unit`.
 //

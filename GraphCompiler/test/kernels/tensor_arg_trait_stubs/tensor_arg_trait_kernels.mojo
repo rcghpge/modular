@@ -343,7 +343,7 @@ struct LegacyOnlyControl:
 # ===----------------------------------------------------------------------=== #
 # Distillation matrix (IMPORT-only): one kernel per remaining valid
 # `{role, fused, access, capabilities}` contract the distiller produces. These
-# back the `IMPORT-DAG` baked-contract assertions in lower-tensor-arg-traits.mlir
+# back the `IMPORT-DAG` baked-contract assertions in infra-lower-tensor-arg-traits.mlir
 # and replace the deleted gtest distill cases. The fused-store / fused-transform
 # / mutable-input-fused kernels import (distill) cleanly even though dense-only
 # lowering does not yet handle them, so they appear ONLY on the IMPORT run line,

@@ -54,7 +54,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 }
 
 // Dynamic dim: the `!mogg.dim_` handle arrives as a trailing `Int` argument
-// (mirroring the plain-stub handling in map-abi-stub-emit-mojo.mlir) and
+// (mirroring the plain-stub handling in codegen-map-abi-stub.mlir) and
 // feeds a runtime `Scalar[DType.int]` Coord component instead of an
 // all-compile-time `layout.Idx` Coord; the fused-output functor/wrapper/
 // execute shape is otherwise identical to the static case above.
