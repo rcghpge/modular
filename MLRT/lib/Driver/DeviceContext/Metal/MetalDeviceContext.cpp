@@ -51,16 +51,7 @@
 
 namespace M::Driver {
 
-void ensureThreadlocalAutoreleasePoolExists() {
-  thread_local NS::SharedPtr<NS::AutoreleasePool> autoreleasePool;
-  if (!autoreleasePool) {
-    autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  }
-}
-
 static ErrorOr<int> getComputeCapability(StringRef name) {
-  ensureThreadlocalAutoreleasePoolExists();
-
   if (name.empty())
     return 3;
 
@@ -169,6 +160,8 @@ ErrorOr<int> MetalDevice::computeCapability() const {
 ErrorOr<bool> MetalDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   // Constants pulled from the Metal feature set tables available in
   // PDF/Numbers spreadsheet at:
   // https://developer.apple.com/documentation/metal/
@@ -331,7 +324,8 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
                                        bool isHost) {
   assert(byteSize != 0);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   MTL::Device *metalDev = metalDevice();
   if (metalDev == nullptr)
@@ -394,7 +388,8 @@ ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) {
 }
 
 ErrorOr<DeviceContextRef> MetalDevice::createContext() {
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   NS::SharedPtr<MTL::CommandQueue> commandQueue =
       NS::TransferPtr(device_->newCommandQueue());
@@ -419,7 +414,8 @@ ErrorOr<MetalDevice &> MetalDevice::get(int id) {
   static RCRef<MetalDevice> metalDeviceInstance;
 
   if (!metalDeviceInstance) {
-    ensureThreadlocalAutoreleasePoolExists();
+    NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+        NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
     NS::SharedPtr<MTL::Device> device =
         NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -446,7 +442,8 @@ ErrorOr<MetalDevice &> MetalDevice::get(int id) {
 }
 
 ErrorOr<int> MetalDevice::numberOfGPUs() {
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   int count = 0;
   NS::SharedPtr<NS::Array> devices = NS::TransferPtr(MTL::CopyAllDevices());
   if (devices) {
@@ -533,7 +530,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   // Validate source
   if (src == nullptr)
@@ -599,7 +597,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   if (dst == nullptr)
     RETURN_ERROR("Destination pointer cannot be null");
@@ -685,7 +684,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   if (byteSize == 0)
     return success(); // no-op
@@ -884,7 +884,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   // Metal-specific kernel-launch payload travels via args[0]; per-arg
   // sizes and the buffers-to-mark-resident list live on mtlArgs.
@@ -1007,7 +1008,8 @@ ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
 ErrorOrSuccess MetalDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize", TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   // Check for any pending errors first, similar to CUDA's behavior
   RETURN_IF_ERROR(checkPendingError());
@@ -1020,13 +1022,15 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
     RETURN_ERROR("Failed to create command buffer for sync");
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
+
   return success();
 }
 
 ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (!cmdBuffer)
@@ -1086,7 +1090,8 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                             Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   if (ptr == nullptr)
     RETURN_ERROR("Invalid allocation parameters: ptr is null");
@@ -1186,7 +1191,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueMetalCopy",
                        TRACY_COLOR_PURPLE);
 
-  ensureThreadlocalAutoreleasePoolExists();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr) {
@@ -1304,8 +1310,14 @@ static bool sdkSupportsMSLVersion(int maj, int min) {
 }
 
 ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
-  ensureThreadlocalAutoreleasePoolExists();
-  MTL::Device *device = d ? d : MTL::CreateSystemDefaultDevice();
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  // CreateSystemDefaultDevice returns a +1 (Create-rule) reference that a
+  // pool cannot reclaim; own it so the nullptr-device path does not leak.
+  NS::SharedPtr<MTL::Device> createdDevice;
+  if (d == nullptr)
+    createdDevice = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+  MTL::Device *device = d ? d : createdDevice.get();
   if (device == nullptr)
     RETURN_ERROR("Failed to create Metal device.");
   std::string name = device->name()->cString(NS::UTF8StringEncoding);
@@ -1342,9 +1354,6 @@ ErrorOrSuccess MetalDeviceContext::startMetalTraceCapture(const char *path) {
   if (captureActive_)
     RETURN_ERROR("a Metal capture is already in progress");
 
-  // Local autorelease pool rather than the thread-local one: the thread-local
-  // pool drains at process exit, after Metal state has been torn down, which
-  // causes a SEGV when the autoreleased descriptor/URL objects dealloc.
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -1409,6 +1418,9 @@ MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {
   if (logState_)
     return logState_.get();
 
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
   MTL::Device *mtlDevice = metalDevice();
 
   NS::SharedPtr<MTL::LogStateDescriptor> desc =
@@ -1450,6 +1462,8 @@ MetalDeviceEvent::MetalDeviceEvent(MetalDevice &device,
 }
 
 ErrorOrSuccess MetalDeviceEvent::synchronize() {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   if (!cmdBuffer_)
     RETURN_ERROR("MetalDeviceEvent: null command buffer");
   cmdBuffer_->waitUntilCompleted();
@@ -1457,6 +1471,8 @@ ErrorOrSuccess MetalDeviceEvent::synchronize() {
 }
 
 ErrorOr<bool> MetalDeviceEvent::isReady() const {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   if (!cmdBuffer_)
     RETURN_ERROR("MetalDeviceEvent: null command buffer");
 
