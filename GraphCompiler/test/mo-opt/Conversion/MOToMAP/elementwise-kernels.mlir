@@ -83,3 +83,29 @@ mo.graph @select_ternary(%cond: !mo.tensor<[8, 8], bool>, %x: !mo.tensor<[8, 8],
   %output = mo.select(%cond, %x, %y) : (!mo.tensor<[8, 8], bool>, !mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   mo.output %output : !mo.tensor<[8, 8], f32>
 }
+
+// CHECK-LABEL: mo.graph @cast_unary
+// CHECK-SAME:  (%[[X7:.*]]: !mo.tensor<[8], f32>)
+// CHECK:       %[[OUT7:.*]] = map.iter.foreach<[8]>
+// CHECK-NEXT:  inputs  (%[[X7]]: !mo.tensor<[8], f32>)
+// CHECK:       index   (%[[IDX7:.*]]: !map.index<1>) -> !mo.tensor<[8], si32> {
+// CHECK-NEXT:  %[[X7V:.*]] = map.load %[[X7]][%[[IDX7]]] : !mo.tensor<[8], f32>
+// CHECK-NEXT:  map.call.elementwise @{{.*}}.Cast(%[[IDX7]], %[[X7V]]) : !map.index<1>, f32 -> si32
+// CHECK-NEXT:  map.store
+mo.graph @cast_unary(%x: !mo.tensor<[8], f32>) -> !mo.tensor<[8], si32> {
+  %output = mo.cast(%x) : (!mo.tensor<[8], f32>) -> !mo.tensor<[8], si32>
+  mo.output %output : !mo.tensor<[8], si32>
+}
+
+// CHECK-LABEL: mo.graph @custom_kernel_with_param
+// CHECK-SAME:  (%[[X8:.*]]: !mo.tensor<[4, 3], f32>)
+// CHECK:       %[[OUT8:.*]] = map.iter.foreach<[4, 3]>
+// CHECK-NEXT:  inputs  (%[[X8]]: !mo.tensor<[4, 3], f32>)
+// CHECK:       index   (%[[IDX8:.*]]: !map.index<2>) -> !mo.tensor<[4, 3], f32> {
+// CHECK-NEXT:  %[[X8V:.*]] = map.load %[[X8]][%[[IDX8]]] : !mo.tensor<[4, 3], f32>
+// CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam(%[[IDX8]], %[[X8V]]) {params = {bias = 1 : i64}} : !map.index<2>, f32 -> f32
+// CHECK-NEXT:  map.store
+mo.graph @custom_kernel_with_param(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
+  %output = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "elemwise_add_with_param", parameters = {"bias" = 1}}(%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  mo.output %output : !mo.tensor<[4, 3], f32>
+}

@@ -207,8 +207,11 @@ lowerElementwiseToForeach(Operation *op,
   // map.call.elementwise — kernel symbol from the fully resolved Mojo name.
   auto kernelSymbol =
       FlatSymbolRefAttr::get(ctx, adaptor.fullyResolvedName.strref());
+  DictionaryAttr params = inferParameters(op, builder);
+  if (params.empty())
+    params = nullptr;
   Value scalar = MAP::CallElementwiseOp::create(
-      bodyBuilder, loc, elemTy, kernelSymbol, idxArg, scalarLoads);
+      bodyBuilder, loc, elemTy, kernelSymbol, params, idxArg, scalarLoads);
 
   // map.store into the output block argument.
   BlockArgument outputArg =

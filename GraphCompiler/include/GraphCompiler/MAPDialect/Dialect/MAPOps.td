@@ -343,6 +343,10 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
     the index, and the result, must be scalar (non-tensor) types. Only valid
     inside a `map.iter.foreach` body.
 
+    `params` carries the kernel's compile-time parameters (e.g. a
+    custom kernel's `bias`), inferred from the originating MO op. Absent when
+    the kernel has none.
+
     Example:
     ```mlir
     %outv = map.call.elementwise @builtin_kernels.elementwise.Add(%idx, %xv, %yv)
@@ -350,8 +354,9 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
     ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$callee, MAP_AnyIndex:$index,
-                       Variadic<AnyType>:$args);
+  let arguments = (ins FlatSymbolRefAttr:$callee,
+                       OptionalAttr<DictionaryAttr>:$params,
+                       MAP_AnyIndex:$index, Variadic<AnyType>:$args);
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
