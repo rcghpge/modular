@@ -3127,9 +3127,8 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
         // 1. Inputs and DPS outputs
         // 2. Return values (chain and non DPS outputs)
         for (auto argument : kernelBody.getArguments()) {
-          state.setMojoValueFor(
-              argument,
-              runtimeArgument[std::to_string(argument.getArgNumber())]);
+          state.setMojoValueFor(argument, runtimeArgument.pointerOffsetGet(
+                                              argument.getArgNumber()));
         }
         // Return values, although in DPS form from the runtime's perspective,
         // are still in value semantics inside of the kernel. Therefore, there
@@ -3138,7 +3137,7 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
         uint64_t numArguments = getBodyBlock().getNumArguments();
         for (uint64_t i = 0; i < getNumResults(); ++i) {
           state.mojoReturnValues.emplace_back(
-              runtimeArgument[std::to_string(i + numArguments)]);
+              runtimeArgument.pointerOffsetGet(i + numArguments));
         }
 
         // After inputs and outputs, there are constant resources appended to
@@ -3146,12 +3145,12 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
         // handled here.
         for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
           uint64_t flatIndex = i * 2 + numArguments + getNumResults();
-          MOGG::MojoValue ptr = runtimeArgument[flatIndex];
+          MOGG::MojoValue ptr = runtimeArgument.pointerOffsetGet(flatIndex);
           // The ABI is that the bytecount is directly stored as an
           // OpaquePointer.
-          MOGG::MojoValue byteCount =
-              OpaquePointerRef(runtimeArgument)
-                  .bitcast(MojoValue(kStructInt))()[flatIndex + 1];
+          MOGG::MojoValue byteCount = OpaquePointerRef(runtimeArgument)
+                                          .bitcast(MojoValue(kStructInt))()
+                                          .pointerOffsetGet(flatIndex + 1);
           state.mojoConstantResources.emplace_back(
               std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
         }

@@ -49,12 +49,12 @@
 // CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
 // CHECK: [[STG0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: [[SRC0:var[_0-9]+]] = self.tile_0.tile[{{.*}}](
-// CHECK: copier.copy([[STG0]], [[SRC0]].address_space_cast[Copier.src_address_space]())
+// CHECK: copier.copy([[STG0]], [[SRC0]].unsafe_address_space_cast[Copier.src_address_space]())
 // CHECK: [[GEN0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}address_space_cast[{{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: stack_allocation[LayoutType.static_product, dtype, address_space = Copier.dst_address_space]()
 // CHECK: [[STG1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: [[SRC1:var[_0-9]+]] = self.tile_1.tile[{{.*}}](
-// CHECK: copier.copy([[STG1]], [[SRC1]].address_space_cast[Copier.src_address_space]())
+// CHECK: copier.copy([[STG1]], [[SRC1]].unsafe_address_space_cast[Copier.src_address_space]())
 // CHECK: [[GEN1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}address_space_cast[{{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: Add.elementwise([[GEN0]], [[GEN1]])
 // CHECK: return

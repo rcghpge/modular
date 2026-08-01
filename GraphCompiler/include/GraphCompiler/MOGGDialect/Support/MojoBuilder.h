@@ -69,6 +69,11 @@ public:
     return llvm::formatv("{}[{}]", text, idx.text).str();
   }
   MojoValue operator[](ArrayRef<MojoValue> values) const;
+  /// `value[unsafe_offset=idx]` — dereferences a pointer at `idx` using the
+  /// keyword form since the positional `ptr[idx]` form is deprecated.
+  MojoValue pointerOffsetGet(size_t idx) const {
+    return llvm::formatv("{}[unsafe_offset={}]", text, idx).str();
+  }
   MojoValue operator()(ArrayRef<MojoValue> parameters = {},
                        ArrayRef<MojoValue> operands = {}) const;
   MojoValue equal(const MojoValue &value) const {

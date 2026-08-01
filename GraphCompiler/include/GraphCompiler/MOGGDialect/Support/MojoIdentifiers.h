@@ -818,14 +818,15 @@ public:
   static constexpr llvm::StringLiteral kDstAddressSpace = "dst_address_space";
   static constexpr llvm::StringLiteral kSrcAddressSpace = "src_address_space";
   static constexpr llvm::StringLiteral kAddressSpace = "address_space";
-  static constexpr llvm::StringLiteral kAddressSpaceCast = "address_space_cast";
+  static constexpr llvm::StringLiteral kAddressSpaceCast =
+      "unsafe_address_space_cast";
   static constexpr llvm::StringLiteral kStaticProduct = "static_product";
 
   /// `val.layout` — the runtime tile layout.
   MojoValue layout() const { return value.get(kLayout); }
 
-  /// `value.address_space_cast[Copier.src_address_space]()` — casts a tile into
-  /// the copier's source address space so it matches the abstract
+  /// `value.unsafe_address_space_cast[Copier.src_address_space]()` — casts a
+  /// tile into the copier's source address space so it matches the abstract
   /// `Copier.copy` signature, whose `src` parameter requires
   /// `address_space = Copier.src_address_space`. The staging destination tile
   /// is already allocated in `Copier.dst_address_space` (see `makeStorage`), so
@@ -842,9 +843,9 @@ public:
   /// reads it through a GENERIC / `MutAnyOrigin` view. The pointer is cast to
   /// GENERIC *before* wrapping so the resulting tile's `linear_idx_type` is
   /// recomputed for the GENERIC address space (a whole-tile
-  /// `address_space_cast` would instead preserve the dst-space
+  /// `unsafe_address_space_cast` would instead preserve the dst-space
   /// `linear_idx_type` and fail to match):
-  ///   `TileTensor(storage.address_space_cast[AddressSpace.GENERIC]()
+  ///   `TileTensor(storage.unsafe_address_space_cast[AddressSpace.GENERIC]()
   ///               .unsafe_origin_cast[MutAnyOrigin](), layout)`
   static MojoValue fromGenericStorage(const MojoValue &storage,
                                       const MojoValue &layout) {

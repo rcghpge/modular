@@ -34,13 +34,13 @@
 // tile, then re-viewed as a GENERIC / `MutAnyOrigin` tile for the elementwise
 // chain.
 // CHECK: [[SRC0:var[_0-9]+]] = self.tile_0.tile[
-// CHECK: copier.copy({{.*}}, [[SRC0]].address_space_cast[Copier.src_address_space]())
+// CHECK: copier.copy({{.*}}, [[SRC0]].unsafe_address_space_cast[Copier.src_address_space]())
 // CHECK: [[T0:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: [[SRC1:var[_0-9]+]] = self.tile_1.tile[
-// CHECK: copier.copy({{.*}}, [[SRC1]].address_space_cast[Copier.src_address_space]())
+// CHECK: copier.copy({{.*}}, [[SRC1]].unsafe_address_space_cast[Copier.src_address_space]())
 // CHECK: [[T1:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 // CHECK: [[SRC2:var[_0-9]+]] = self.tile_2.tile[
-// CHECK: copier.copy({{.*}}, [[SRC2]].address_space_cast[Copier.src_address_space]())
+// CHECK: copier.copy({{.*}}, [[SRC2]].unsafe_address_space_cast[Copier.src_address_space]())
 // CHECK: [[T2:var[_0-9]+]] = {{.*}}TileTensor({{.*}}GENERIC]().unsafe_origin_cast[MutAnyOrigin](), dst.layout)
 
 // The chain: Add combines the first two tiles; Mul consumes the Add RESULT
