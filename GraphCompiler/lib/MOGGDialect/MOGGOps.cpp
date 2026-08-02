@@ -131,7 +131,7 @@ struct DenseFusionRenderer final : ElementwiseBodyRenderer {
                             StringRef /*indicesExpr*/) const override {
     // The functor captures each source as a bare pointer + layout (NOT a
     // `TileTensor` -- a `TileTensor` field would not translate to a device
-    // address, since the encoder bit-copies it; a bare `UnsafePointer`
+    // address, since the encoder bit-copies it; a bare `Pointer`
     // translates through its own `_to_device_type`). Rebuild the dense tile
     // here and load from it, so the same functor body serves CPU and GPU.
     auto ci = std::to_string(captureIdx);
@@ -169,16 +169,17 @@ addTensorCaptureField(SmallVectorImpl<std::pair<MojoValue, MojoValue>> &fields,
   auto ci = std::to_string(captureIdx);
   if (isTile) {
     // Capture the tensor as one `TileTensor` (built from `mts.to_tile_tensor()`
-    // at instantiation) instead of a raw `UnsafePointer` + shape/strides.
+    // at instantiation) instead of a raw `Pointer` + shape/strides.
     fields.push_back(
         {MojoValue("tile_" + ci),
          TileTensorRef::captureFieldType(dtypeText, "Self.spec_" + ci)});
     return;
   }
-  fields.push_back({MojoValue("ptr_" + ci),
-                    MojoValue(kStructUnsafePointer)[{
-                        MojoValue(kStructScalar)[{MojoValue(dtypeText)}],
-                        MojoValue(kComptimeMutAnyOrigin)}]});
+  fields.push_back(
+      {MojoValue("ptr_" + ci),
+       MojoValue(
+           kStructPointer)[{MojoValue(kStructScalar)[{MojoValue(dtypeText)}],
+                            MojoValue(kComptimeMutAnyOrigin)}]});
   fields.push_back(
       {MojoValue("shape_" + ci), MojoValue(kStructIndexList)[rank]});
   fields.push_back(
@@ -1629,11 +1630,11 @@ emitInputLoadFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
     parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
     // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
     // `TileTensor` field would not translate to a device address (the encoder
-    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // bit-copies it), whereas a bare `Pointer` translates through its own
     // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
     fields.push_back(
         {MojoValue("ptr_" + ci),
-         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+         MojoValue(llvm::formatv("Pointer[Scalar[Self.dtype_{0}], "
                                  "UntrackedOrigin[mut=Self.mut_{0}]]",
                                  ci)
                        .str())});
@@ -1811,11 +1812,11 @@ emitOutputStoreFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
     parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
     // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
     // `TileTensor` field would not translate to a device address (the encoder
-    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // bit-copies it), whereas a bare `Pointer` translates through its own
     // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
     fields.push_back(
         {MojoValue("ptr_" + ci),
-         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+         MojoValue(llvm::formatv("Pointer[Scalar[Self.dtype_{0}], "
                                  "UntrackedOrigin[mut=Self.mut_{0}]]",
                                  ci)
                        .str())});
@@ -1971,11 +1972,11 @@ emitTransformFusionFunctor(BindLambdaOp bindOp, EmitMojoState &state,
     parameters.push_back({MojoValue("mut_" + ci), MojoValue(kStructBool)});
     // Capture the source as a bare pointer + layout (NOT a `TileTensor`): a
     // `TileTensor` field would not translate to a device address (the encoder
-    // bit-copies it), whereas a bare `UnsafePointer` translates through its own
+    // bit-copies it), whereas a bare `Pointer` translates through its own
     // `_to_device_type`. The functor rebuilds the dense tile in `__call__`.
     fields.push_back(
         {MojoValue("ptr_" + ci),
-         MojoValue(llvm::formatv("UnsafePointer[Scalar[Self.dtype_{0}], "
+         MojoValue(llvm::formatv("Pointer[Scalar[Self.dtype_{0}], "
                                  "UntrackedOrigin[mut=Self.mut_{0}]]",
                                  ci)
                        .str())});
@@ -3107,13 +3108,12 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
   bool errOccurred = false;
   static const MOGG::MojoValue vMutAnyOrigin =
       MOGG::MojoValue(MOGG::kComptimeMutAnyOrigin);
-  static const MOGG::MojoValue vUnsafePointer = MOGG::kStructUnsafePointer;
+  static const MOGG::MojoValue vPointer = MOGG::kStructPointer;
   static const MOGG::MojoValue vOpaquePointer = MOGG::kComptimeOpaquePointer;
 
   state.builder.def(
       getSymNameAttr().strref(), {},
-      {MOGG::NamedMojoDef("arg",
-                          vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}])},
+      {MOGG::NamedMojoDef("arg", vPointer[{vOpaquePointer, vMutAnyOrigin}])},
       std::nullopt, /*exported=*/true, /*raises=*/false,
       /*isAlwaysInline=*/false, [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
@@ -3511,7 +3511,7 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
           MojoValue originType = MojoValue(kStructUntrackedOrigin)[{
               MojoValue(kParameterMut).equal(selfMut)}];
           MojoValue ptrField = state.structDefsBuilder.varDecl(
-              MojoValue(kStructUnsafePointer)[{scalarType, originType}]);
+              MojoValue(kStructPointer)[{scalarType, originType}]);
           MojoValue selfLayoutType = MojoValue("Self").get(layoutTypeName);
           MojoValue layoutField =
               state.structDefsBuilder.varDecl(selfLayoutType);
@@ -4755,16 +4755,16 @@ struct _MoggDenseTensorArg[
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
-    var handle: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+    var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
     var _layout: Self.LayoutType
 
     @always_inline
     def __init__(
         out self,
-        ptr: UnsafePointer[NoneType, MutAnyOrigin],
+        ptr: Pointer[NoneType, MutAnyOrigin],
         layout: Self.LayoutType,
     ):
-        self.handle = ptr.bitcast[Scalar[Self.dtype]]().mut_cast[
+        self.handle = ptr.unsafe_bitcast[Scalar[Self.dtype]]().mut_cast[
             Self.mut
         ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
         self._layout = layout
@@ -4787,11 +4787,11 @@ struct _MoggDenseTensorArg[
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._is_device_passable:
-        var device_ptr = UnsafePointer[
+        var device_ptr = Pointer[
             Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]
         ].unsafe_dangling()
         self.handle._to_device_type(
-            encoder, UnsafePointer(to=device_ptr).bitcast[NoneType]()
+            encoder, Pointer(to=device_ptr).unsafe_bitcast[NoneType]()
         )
         var device_value = TileTensor[
             dtype = Self.dtype,
@@ -4861,8 +4861,9 @@ static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
   }();
   MojoValue devicePassableParam(devicePassable);
   MojoValue ptrArg = state.builder.var(
-      llvm::formatv("{0}.handle.bitcast[NoneType]().as_unsafe_any_origin()",
-                    capName)
+      llvm::formatv(
+          "{0}.handle.unsafe_bitcast[NoneType]().as_unsafe_any_origin()",
+          capName)
           .str());
   MojoValue layoutArg =
       state.builder.var(llvm::formatv("{0}.layout()", capName).str());
@@ -4941,7 +4942,7 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
   MojoValue rawUnsafePtr =
       ManagedTensorSliceRef(state.getMojoValueFor(getBuffer())).unsafePtr();
   MojoValue ptr = state.builder.var(
-      llvm::formatv("{0}.bitcast[Scalar[{1}]]().mut_cast[True]()"
+      llvm::formatv("{0}.unsafe_bitcast[Scalar[{1}]]().mut_cast[True]()"
                     ".unsafe_origin_cast[MutUntrackedOrigin]()",
                     rawUnsafePtr.text, dTypeParam.text)
           .str());
@@ -5372,11 +5373,11 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
   // Represent the empty buffer with a dangling pointer.
   MojoValue danglingPointer =
-      MojoValue(kStructUnsafePointer)
-          [{MojoValue(
-                kStructScalar)[{MojoValue(kStructDType).get(kEnumDTypeInt8)}],
-            MojoValue(kComptimeMutAnyOrigin)}]
-              .get(OpaquePointerRef::kUnsafeDangling)();
+      MojoValue(
+          kStructPointer)[{MojoValue(kStructScalar)[{
+                               MojoValue(kStructDType).get(kEnumDTypeInt8)}],
+                           MojoValue(kComptimeMutAnyOrigin)}]
+          .get(OpaquePointerRef::kUnsafeDangling)();
   MojoValue zeroShape =
       MojoValue(kStructIndexList)({MojoValue("1")}, {MojoValue("0")});
   state.setMojoValueFor(getResult(),

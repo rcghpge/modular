@@ -1082,7 +1082,7 @@ def StringCreateOp : MGP_Op<"string.create", [Pure]> {
   let description = [{
     Creates a Mojo String from a compile-time string attribute.
     The returned value is an opaque pointer to a Mojo `String`,
-    created from a Mojo `UnsafePointer[String]`.
+    created from a Mojo `Pointer[String]`.
 
     Example:
     ```mlir

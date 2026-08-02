@@ -249,7 +249,7 @@ constexpr llvm::StringLiteral kMojoInternalStringSliceTypeName = "std::Origin";
 
 constexpr llvm::StringLiteral kStructIO = "extensibility.IO";
 constexpr llvm::StringLiteral kStructIndexList = "std.utils.IndexList";
-constexpr llvm::StringLiteral kStructUnsafePointer = "UnsafePointer";
+constexpr llvm::StringLiteral kStructPointer = "Pointer";
 /// Generic (parametrizable) origin struct, e.g. `UntrackedOrigin[mut=...]`.
 /// Distinct from the FIXED `kComptimeMutUntrackedOrigin`/
 /// `kComptimeMutAnyOrigin` aliases below, which bake in a specific
@@ -499,7 +499,7 @@ constexpr llvm::StringLiteral kParameterStorage = "Storage";
 constexpr llvm::StringLiteral kParameterTaskId = "task_id";
 constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
-/// `UnsafePointer.__init__(to=<value>)` kwarg.
+/// `Pointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
 /// Runtime kwargs of `foreach_fusion` (`tensor`/`elem`/`ctx`). Keep in sync
 /// with `max/kernels/src/graph_compiler/builtin_primitives/primitives.mojo`.
@@ -725,7 +725,7 @@ public:
   MojoValue view() const { return value.get(kView); }
 
   /// `val.unsafe_ptr()` — the view's raw device data pointer
-  /// (`UnsafePointer[Int8, MutAnyOrigin]`).
+  /// (`Pointer[Int8, MutAnyOrigin]`).
   MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
 
   MojoValue value;
@@ -754,9 +754,9 @@ class OpaquePointerRef {
 public:
   explicit OpaquePointerRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method symbol names on `UnsafePointer` / `OpaquePointer`. The
-  /// `unsafe_`-prefixed spellings are available on both the safe and unsafe
-  /// pointer flavors, while the unprefixed ones are gated to the unsafe flavor.
+  /// Mojo method symbol names on `Pointer` / `OpaquePointer`. The
+  /// `unsafe_`-prefixed spellings are the current API; the unprefixed ones
+  /// are deprecated aliases kept for source compatibility.
   static constexpr llvm::StringLiteral kBitcast = "unsafe_bitcast";
   static constexpr llvm::StringLiteral kTakePointee = "unsafe_take_pointee";
   /// Type-level constructor (`OpaquePointer.unsafe_dangling()`); invoked on the
@@ -811,7 +811,7 @@ public:
   explicit TileTensorRef(MojoValue v) : value(std::move(v)) {}
 
   /// Mojo field / method symbol names on `TileTensor` (and the
-  /// `UnsafePointer` it is built from).
+  /// `Pointer` it is built from).
   static constexpr llvm::StringLiteral kLayout = "layout";
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";

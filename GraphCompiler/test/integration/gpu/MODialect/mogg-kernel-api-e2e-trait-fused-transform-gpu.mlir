@@ -8,7 +8,7 @@
 // `_MoggTransformFusionTensor` wrapper with `device_passable = True` and
 // `access_enabled = False`: the host proxy can cross to the device but cannot
 // transform or project to a tile directly. It holds the real output buffer as a
-// bare `UnsafePointer` (so it translates to a device address; `to_tile_tensor`
+// bare `Pointer` (so it translates to a device address; `to_tile_tensor`
 // rebuilds the tile) and `_to_device_type` projects the transform functor
 // field-by-field. The kernel's GPU arm binds the projected value by
 // `downcast[ZHost.device_type, Transformable & TileTensorable]`, computes

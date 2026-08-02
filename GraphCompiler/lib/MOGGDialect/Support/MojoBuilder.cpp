@@ -452,7 +452,7 @@ void MojoBuilder::structDeclImpl(
   for (const auto &[fieldName, fieldType] : fields) {
     // A struct field that exposes AnyOrigin in its type is rejected by the
     // Mojo parser unless it opts into the legacy behavior. Generated structs
-    // capture tensor pointers as UnsafePointer[..., MutAnyOrigin], so emit the
+    // capture tensor pointers as Pointer[..., MutAnyOrigin], so emit the
     // opt-in decorator for any field whose type erases an origin.
     if (llvm::StringRef(fieldType.text).contains("AnyOrigin"))
       statement("@__allow_legacy_any_origin_fields");

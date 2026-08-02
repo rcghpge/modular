@@ -77,7 +77,7 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // __call__` that stores through a rebuilt `TileTensor`. NO `@parameter`, NO
 // `ManagedTensorSlice` field.
 // CHECK:      struct OutputStoreFunctor{{[0-9_]*}}[[[DTYPE:[a-zA-Z0-9_]+]]: DType, [[LAYOUT:[a-zA-Z0-9_]+]]: layout.TensorLayout, [[MUT:[a-zA-Z0-9_]+]]: Bool](OutputStoreFusion, TrivialRegisterPassable):
-// CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: UnsafePointer[Scalar[Self.[[DTYPE]]], UntrackedOrigin[mut = Self.[[MUT]]]]
+// CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[Self.[[DTYPE]]], UntrackedOrigin[mut = Self.[[MUT]]]]
 // CHECK-NEXT:     var [[LAYOUTF:[a-zA-Z0-9_]+]]: Self.[[LAYOUT]]
 // CHECK:          @always_inline
 // CHECK-NEXT:     def __call__[dtype : DType, rank : Int, width : Int, element_alignment : Int = 1](self, idx: layout.Coord, value: SIMD[dtype, width]):

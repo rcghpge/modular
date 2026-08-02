@@ -32,13 +32,13 @@ struct _MoggTensorBufferCapture[
 ](Copyable, Movable):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
-    var handle: UnsafePointer[Scalar[Self.dtype], MutUntrackedOrigin]
+    var handle: Pointer[Scalar[Self.dtype], MutUntrackedOrigin]
     var _layout: Self._LayoutType
 
     @always_inline
     def __init__(
         out self,
-        ptr: UnsafePointer[Scalar[Self.dtype], MutUntrackedOrigin],
+        ptr: Pointer[Scalar[Self.dtype], MutUntrackedOrigin],
         layout: Self.LayoutType,
     ):
         self.handle = ptr
@@ -72,7 +72,7 @@ struct _MoggTensorBufferCapture[
 // carry graph-visible access markers and project through `device_type` to the
 // access-enabled device view. `_to_device_type` still projects the functor
 // field-by-field for GPU launches. The functor's captured pointers (bare
-// `UnsafePointer`s) translate to device addresses through their own
+// `Pointer`s) translate to device addresses through their own
 // `_to_device_type`, exactly as `_MoggDenseTensorArg` forwards its handle. (A
 // `TileTensor` field would NOT translate -- the encoder bit-copies it -- which
 // is why the functor captures bare pointers and rebuilds the tile in
@@ -319,7 +319,7 @@ struct _MoggOutputStoreFusionTensor[
 // callable `Transformable` / `TileTensorable` surfaces are gated by
 // `_access_enabled` and the device kernel refines through `downcast[...,
 // Transformable & TileTensorable]`. The output buffer is held as a bare
-// `UnsafePointer` (NOT a `TileTensor`) so it translates to a device address;
+// `Pointer` (NOT a `TileTensor`) so it translates to a device address;
 // `to_tile_tensor` rebuilds the tile. Modeled on the mockup
 // `EmitMojoTransformFusionTensor`.
 static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
@@ -373,7 +373,7 @@ struct _MoggTransformFusionTensor[
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     var transform_fusion: Self._TransformFusion
     var _layout: Self.LayoutType
-    var handle: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+    var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
 
     comptime device_type: AnyType = _MoggTransformFusionTensor[
         Self._dtype,
@@ -390,7 +390,7 @@ struct _MoggTransformFusionTensor[
         out self,
         transform_fusion: Self._TransformFusion,
         layout: Self.LayoutType,
-        ptr: UnsafePointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]],
+        ptr: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]],
     ):
         self.transform_fusion = transform_fusion
         self._layout = layout
