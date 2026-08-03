@@ -4581,7 +4581,7 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
 
   // A `!mgp.tensor` value is a parametric `OwnedTensor[dtype, rank]`; its
   // MoggAsyncPackHelper constructor would lose overload resolution to the
-  // generic `Some[Movable & ImplicitlyDeletable]` ctor (mis-packing it as an
+  // generic `Some[Movable & Deinitable]` ctor (mis-packing it as an
   // opaque Mojo value). Call the dedicated pack function directly instead,
   // passing the true spec rank so a scalar (rank 0) is not packed as the
   // promoted rank-1 buffer view.
