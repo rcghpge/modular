@@ -20,25 +20,20 @@ namespace {
 /// Locate the producer dispatch in a kernel stub body: the `mogg.call.execute`
 /// (compute kernel) or `mogg.call.materialize` (view copy) terminating a
 /// `mogg.with_trace`.
-Operation *findProducerDispatch(KernelStubOp stub, WithTraceOp &withTrace) {
-  Operation *result = nullptr;
-  stub.walk([&](Operation *op) {
-    if (!isa<CallExecuteOp, CallMaterializeOp>(op))
+KernelTerminator findProducerDispatch(KernelStubOp stub,
+                                      WithTraceOp &withTrace) {
+  KernelTerminator result = nullptr;
+  stub.walk([&](KernelTerminator op) {
+    if (!isa<CallExecuteOp, CallForeachOp, CallMaterializeOp>(
+            op.getOperation()))
       return WalkResult::advance();
+
     result = op;
     withTrace = op->getParentOfType<WithTraceOp>();
     return WalkResult::interrupt();
   });
-  return result;
-}
 
-/// The launch context (`!mogg.context`) the producer dispatches against, or
-/// null if it takes none. Both producer ops expose it, but not through a shared
-/// interface.
-Value getProducerLaunchContext(Operation *producer) {
-  if (auto execute = dyn_cast<CallExecuteOp>(producer))
-    return execute.getDeviceContext();
-  return cast<CallMaterializeOp>(producer).getDeviceContext();
+  return result;
 }
 
 /// Build the sibling recording stub `@<original>_build_graph` from `original`
@@ -64,7 +59,7 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   OwningOpRef<KernelStubOp> clone = cast<KernelStubOp>(original->clone());
 
   WithTraceOp withTrace;
-  Operation *producer = findProducerDispatch(*clone, withTrace);
+  KernelTerminator producer = findProducerDispatch(*clone, withTrace);
   if (!producer) {
     return original.emitError(
         "device-graph recording stub generation: kernel stub has no "
@@ -75,7 +70,7 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   // The launch context the producer dispatches against must be the stub's last
   // block argument -- that is the slot the builder takes over.
   Block &body = clone->getBodyBlock();
-  Value context = getProducerLaunchContext(producer);
+  Value context = producer.getDeviceContext();
   if (body.getNumArguments() == 0 || context != body.getArguments().back()) {
     return original.emitError(
         "device-graph recording stub generation: expected the kernel stub's "
@@ -86,7 +81,7 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   // method records through `mogg.call.build_graph`. Everything else -- an
   // execute-only kernel or a `mogg.call.materialize` view copy -- records by
   // dispatching the producer against a recording device context.
-  auto execute = dyn_cast<CallExecuteOp>(producer);
+  auto execute = dyn_cast<CallExecuteOp>(producer.getOperation());
   bool useBuildGraph = false;
   if (execute) {
     auto decl =
