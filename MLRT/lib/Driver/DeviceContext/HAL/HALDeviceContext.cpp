@@ -16,6 +16,7 @@
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
 #include "Support/Configuration.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 
 #include <atomic>
@@ -418,10 +419,45 @@ ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id) {
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::getOrCreate(StringRef api, int id) {
-  // TODO: context caching belongs on the Mojo side of the exports; until
-  // a MojoHAL_DeviceContext_getOrCreate export exists, each call creates a
-  // fresh context over the same underlying device.
-  return create(api, id);
+  // Entries are released into the map and kept for process lifetime, so nothing
+  // here races Mojo runtime teardown.
+  static std::mutex mu;
+  static llvm::StringMap<DeviceContext *> contextMap;
+
+  auto keyFor = [id](StringRef apiName) {
+    return (apiName + "[" + llvm::Twine(id) + "]").str();
+  };
+
+  // Keyed on the api as requested, so a repeat call avoids reloading the plugin
+  // just to resolve the concrete api below.
+  const std::string requestedKey = keyFor(api);
+  {
+    std::lock_guard<std::mutex> lock(mu);
+    auto iter = contextMap.find(requestedKey);
+    if (iter != contextMap.end())
+      return DeviceContextRef::copy(iter->second);
+  }
+
+  // Resolve the concrete api from the driver so a requested "gpu" and "cuda"
+  // share one entry.
+  ErrorOr<DeviceRef> device = Device::create(api, id);
+  if (device.isError())
+    return device.takeError();
+  ErrorOrSuccess compatible = (*device)->isCompatible();
+  if (compatible.isError())
+    return compatible.takeError();
+  const std::string resolvedKey = keyFor((*device)->api());
+
+  std::lock_guard<std::mutex> lock(mu);
+  auto iter = contextMap.find(resolvedKey);
+  if (iter == contextMap.end()) {
+    ErrorOr<DeviceContextRef> ctx = (*device)->createContext();
+    if (ctx.isError())
+      return ctx.takeError();
+    iter = contextMap.insert({resolvedKey, ctx.takeValue().release()}).first;
+  }
+  contextMap.insert({requestedKey, iter->second});
+  return DeviceContextRef::copy(iter->second);
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::adoptMojoBox(void *mojoBox) {
