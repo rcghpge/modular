@@ -5115,7 +5115,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
   auto affinityId = getAffinityDeviceIdAttr();
   if (affinityId) {
     int64_t deviceId = affinityId.getInt();
-    // var worker_id_N = std.runtime.asyncrt.task_id_for_device(<deviceId>)
+    // var worker_id_N = max.runtime.asyncrt.task_id_for_device(<deviceId>)
     MojoValue workerIdVar =
         state.builder.var(MojoValue(kFnTaskIdForDevice)(
                               /*params=*/{}, /*args=*/{MojoValue(deviceId)}),

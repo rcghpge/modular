@@ -73,8 +73,8 @@ AsyncRT_AsyncValue_retainBufferStorage(AsyncRT::AnyAsyncValueRef *async) {
 // Device affinity
 //===----------------------------------------------------------------------===//
 
-// Compute the worker task ID for a GPU device. Called from the Mojo standard
-// library via external_call (std.runtime.asyncrt.task_id_for_device). Obtains
+// Compute the worker task ID for a GPU device. Called from the MAX accelerator
+// library via external_call (max.runtime.asyncrt.task_id_for_device). Obtains
 // the thread pool size internally from the current AsyncRT cpuDevice.
 MODULAR_EXPORT int32_t MLRT_TaskIdForDevice(int32_t deviceId) {
   auto *rt = AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull();

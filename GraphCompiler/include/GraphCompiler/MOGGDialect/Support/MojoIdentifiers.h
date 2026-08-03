@@ -399,11 +399,11 @@ constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
 
 /// Affinity-aware variant: `_create_task(handle, *, desired_worker_id=<id>)`.
 /// Only emitted for GPU-device launches; maps to the package-private function
-/// added alongside `task_id_for_device` in `std.runtime.asyncrt`.
+/// added alongside `task_id_for_device` in `max.runtime.asyncrt`.
 constexpr llvm::StringLiteral kFnCreateTaskWithAffinity =
     "std.runtime.asyncrt._create_task";
 constexpr llvm::StringLiteral kFnTaskIdForDevice =
-    "std.runtime.asyncrt.task_id_for_device";
+    "max.runtime.asyncrt.task_id_for_device";
 constexpr llvm::StringLiteral kFnGetSafeTaskId =
     "max.runtime.tracing.get_safe_task_id";
 
