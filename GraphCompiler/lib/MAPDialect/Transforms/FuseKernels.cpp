@@ -4,12 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Fuses MAP kernels by inlining producers into consumers. Scaffolding only.
+// Fuses MAP kernels by inlining producers into consumers.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
+#include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
+#include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 
 using namespace M;
 
@@ -27,8 +30,8 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
     if (!MO::useAdvancedFusion())
       return;
 
-    // TODO: run the advanced fusion patterns over the MAP dialect. No-op for
-    // now.
+    getOperation()->walk(
+        [&](MO::GraphOp graphOp) { ElementwiseFuser(graphOp).fuse(); });
   }
 };
 

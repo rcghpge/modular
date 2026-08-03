@@ -1569,8 +1569,14 @@ gentbl_modular_passes(
 
 modular_cc_library(
     name = "MAPTransforms",
-    srcs = glob(["lib/MAPDialect/Transforms/*.cpp"]),
-    hdrs = glob(["include/GraphCompiler/MAPDialect/Transforms/*.h"]),
+    srcs = glob([
+        "lib/MAPDialect/Transforms/*.cpp",
+        "lib/MAPDialect/Support/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/GraphCompiler/MAPDialect/Transforms/*.h",
+        "include/GraphCompiler/MAPDialect/Support/*.h",
+    ]),
     copts = ["-fvisibility=default"],
     deps = [
         ":MAPDialect",

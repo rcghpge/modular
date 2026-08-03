@@ -274,6 +274,13 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    // Insert a range of new inputs at `idx`, this updates both operands and
+    // body block arguments.
+    void insertInputsAt(unsigned idx, ValueRange vals);
+    // Remove a range of inputs at `[idx, idx + len)`, updating both operands
+    // and the corresponding body block arguments.
+    void eraseInputsAt(unsigned idx, size_t len = 1);
+
     // Returns the input chain operand, or null if this op has none.
     Value getInputChain() { return getChain(); }
     // Returns the output chain result, or null if the last result isn't a

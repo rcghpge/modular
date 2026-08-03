@@ -8,6 +8,7 @@
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
@@ -617,6 +618,29 @@ llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
         return {device};
   }
   return {M::DeviceRefAttr{}};
+}
+
+void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
+  ASSERT_STREAM(idx <= getInputs().size(),
+                << "idx (" << idx << ") must stay within the inputs ("
+                << getInputs().size() << "), before outputs/index block args");
+  SmallVector<Value> ops(getInputs());
+  ops.insert(ops.begin() + idx, vals.begin(), vals.end());
+  getInputsMutable().assign(ops);
+
+  for (auto v : llvm::reverse(vals))
+    getBody().insertArgument(idx, v.getType(), v.getLoc());
+}
+
+void IterForeachOp::eraseInputsAt(unsigned idx, size_t len) {
+  ASSERT_STREAM(idx + len <= getInputs().size(),
+                << "[idx, idx + len) = [" << idx << ", " << (idx + len)
+                << ") must stay within the inputs (" << getInputs().size()
+                << "), before outputs/index block args");
+  getInputsMutable().erase(idx, len);
+
+  for (unsigned i = 0; i < len; ++i)
+    getBody().eraseArgument(idx);
 }
 
 //===----------------------------------------------------------------------===//

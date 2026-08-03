@@ -15,12 +15,12 @@ def FuseKernels : Pass<"map-fuse-kernels", "mlir::ModuleOp"> {
     Runs the advanced fusion patterns over the MAP dialect, reducing the number
     of `map` kernels by inlining producers into consumers.
 
-    This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does
-    nothing.
+    Gated on `M::MO::useAdvancedFusion()`.
   }];
 
   let dependentDialects = [
     "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
   ];
 }
 
