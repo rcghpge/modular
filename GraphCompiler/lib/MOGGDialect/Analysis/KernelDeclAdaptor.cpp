@@ -41,7 +41,7 @@ static constexpr std::array<llvm::StringLiteral, 3>
 /// Check whether a symbol has the given root and leaf references, ignoring
 /// any intermediate nested references. This mirrors MOGG::isXType
 /// and is appropriate when the package path depth may vary (e.g.
-/// DeviceContext lives under std::gpu::host but can also be re-exported more
+/// DeviceContext lives under max::gpu::host but can also be re-exported more
 /// shallowly).
 static bool symbolMatchesRootAndLeaf(mlir::SymbolRefAttr symbol,
                                      llvm::StringLiteral root,
@@ -330,12 +330,12 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
     return KernelDeclTileTensorAdaptor{};
 
   // --- Device context ---
-  // Use root+leaf matching because DeviceContext lives under std::gpu::host
+  // Use root+leaf matching because DeviceContext lives under max::gpu::host
   // (depth varies across package exports).
-  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContext))
+  if (symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContext))
     return KernelDeclContextPtrAdaptor{};
 
-  if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafDeviceContextArray))
+  if (symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContextArray))
     return KernelDeclContextPtrListAdaptor{};
 
   // --- Device graph builder (launch arg of build_graph) ---

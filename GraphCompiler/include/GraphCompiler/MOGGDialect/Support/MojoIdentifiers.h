@@ -220,12 +220,12 @@ constexpr llvm::StringLiteral kMojoFusedOutputVariadicTensorsName =
 /// The stored Mojo type symbol name of device contexts in extensibility
 /// kernels.
 constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextTypeName =
-    "std::DeviceContext";
+    "max::DeviceContext";
 
 /// The stored Mojo type symbol name of device-context arrays in
 /// extensibility kernels (used by multi-device custom ops).
 constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextArrayTypeName =
-    "std::DeviceContextArray";
+    "max::DeviceContextArray";
 
 /// These type names can be confusing. Inside the Graph Compiler code, the
 /// types show up like this:
@@ -259,9 +259,9 @@ constexpr llvm::StringLiteral kStructUntrackedOrigin = "UntrackedOrigin";
 constexpr llvm::StringLiteral kStructOptional = "Optional";
 constexpr llvm::StringLiteral kStructString = "String";
 constexpr llvm::StringLiteral kStructDeviceContext =
-    "std.gpu.host.device_context.DeviceContext";
+    "max.gpu.host.device_context.DeviceContext";
 constexpr llvm::StringLiteral kStructDeviceContextArray =
-    "std.gpu.host.device_context.DeviceContextArray";
+    "max.gpu.host.device_context.DeviceContextArray";
 constexpr llvm::StringLiteral kStructDeviceGraph =
     "max.gpu.host.device_graph.DeviceGraph";
 constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
@@ -536,7 +536,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"builtin_kernels", "builtin_kernels"},
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
-        {"std.gpu.host.device_context", ""},
+        {"max.gpu.host.device_context", ""},
         {"max.gpu.host.device_graph", ""},
         {"std.utils", ""},
         {"std.utils.numerics", ""},
