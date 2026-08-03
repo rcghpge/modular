@@ -109,3 +109,22 @@ mo.graph @custom_kernel_with_param(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4
   %output = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "elemwise_add_with_param", parameters = {"bias" = 1}}(%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
   mo.output %output : !mo.tensor<[4, 3], f32>
 }
+
+// CHECK-LABEL: mo.graph @mutable_store
+// CHECK-SAME:  (%[[BUF9:.*]]: !mo.buffer<[2, 2], f32>, %[[A9:.*]]: !mo.tensor<[2, 2], f32>, %[[B9:.*]]: !mo.tensor<[2, 2], f32>)
+// CHECK:       %[[ADD9:.*]] = map.iter.foreach<[2, 2]>
+// CHECK:       map.call.elementwise @{{.*}}.Add(%{{.*}}, %{{.*}}, %{{.*}})
+// CHECK:       %[[OUT9:.*]] = map.iter.foreach<[2, 2]>
+// CHECK-NEXT:  inputs  (%[[ADD9]]: !mo.tensor<[2, 2], f32>, %[[BUF9]]: !mo.buffer<[2, 2], f32>)
+// CHECK-NEXT:  outputs ()
+// CHECK:       index   (%[[IDX9:.*]]: !map.index<2>) chain(%{{.*}}) -> !mo.chain {
+// CHECK-NEXT:  %[[ADD9V:.*]] = map.load %[[ADD9]][%[[IDX9]]] : !mo.tensor<[2, 2], f32>
+// CHECK-NEXT:  %[[STORED9:.*]] = map.call.elementwise @{{.*}}MutableStore(%[[IDX9]], %[[ADD9V]]) : !map.index<2>, f32 -> f32
+// CHECK-NEXT:  map.store %[[BUF9]][%[[IDX9]]] = %[[STORED9]] : !mo.buffer<[2, 2], f32>
+// CHECK:       hasWriteEffect = true
+mo.graph @mutable_store(%buf: !mo.buffer<[2, 2], f32>, %a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) {
+  %chain = mo.chain.create()
+  %res = mo.add(%a, %b) : !mo.tensor<[2, 2], f32>
+  %out_chain = mo.mutable.store(%buf, %res, %chain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
+  mo.output
+}

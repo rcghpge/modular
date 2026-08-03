@@ -181,6 +181,7 @@ lowerElementwiseToForeach(Operation *op,
       /*resultTypes=*/SmallVector<Type>{resultTensorTy},
       /*shape=*/shapeAttr,
       /*inputs=*/op->getOperands(),
+      /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
 
@@ -223,11 +224,88 @@ lowerElementwiseToForeach(Operation *op,
   return success();
 }
 
+// Lowers mo.mutable.store to a map.iter.foreach that writes directly into
+// its buffer operand (folded into `inputs`, per map.iter.foreach's "operands
+// shadowed as block args" convention) and threads a chain in and out. Its
+// elementwise function is a scalar identity (see gather_scatter.mojo's
+// MutableStore); the actual in-place write happens via `map.store` into the
+// buffer instead of a materialized tensor output.
+//
+// mo.mutable.store is the one op MOGG itself special-cases by identity for
+// this (MOToMOGGLowering.cpp's `isa<MO::MutableStoreOp>(moOp)`, TODO
+// GEX-2360 acknowledges there's no generic mechanism to generalize) --
+// mirrored here rather than generalized, for the same reason.
+LogicalResult
+lowerMutableStoreToForeach(MO::MutableStoreOp op,
+                           const MOGG::KernelDeclAdaptor &adaptor) {
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  MO::TensorType bufferAsTensorTy = op.getInBuffer().getType().toTensorType();
+  MOSH::ShapeAttr shapeAttr = bufferAsTensorTy.getTypedShapeAttr();
+  unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
+  Type elemTy = bufferAsTensorTy.getElementType();
+
+  // Carry mo.mutable.store's own memory effects forward onto the foreach, so
+  // downstream passes see accurate effects instead of the conservative
+  // "unknown" default (mirrors MOToMOGGLowering.cpp's
+  // kernelOp.setHasWriteEffect / setHasReadEffect, which reads the same
+  // interface off the original op).
+  bool hasReadEffect = false;
+  bool hasWriteEffect = false;
+  if (auto memEffectOp = dyn_cast<MemoryEffectOpInterface>(op.getOperation())) {
+    hasReadEffect = memEffectOp.hasEffect<MemoryEffects::Read>();
+    hasWriteEffect = memEffectOp.hasEffect<MemoryEffects::Write>();
+  }
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{MO::ChainType::get(ctx)},
+      /*shape=*/shapeAttr,
+      /*inputs=*/ValueRange{op.getInTensor(), op.getInBuffer()},
+      /*chain=*/op.getInChain(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)),
+      /*hasReadEffect=*/hasReadEffect,
+      /*hasWriteEffect=*/hasWriteEffect);
+
+  // Body block args: [tensor value, buffer, map.index<rank>]. No "outputs"
+  // block arg at all -- the buffer input itself is the store target, and
+  // the sole result (the output chain) has no body block argument.
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  BlockArgument valueArg = body->addArgument(op.getInTensor().getType(), loc);
+  BlockArgument bufferArg = body->addArgument(op.getInBuffer().getType(), loc);
+  BlockArgument idxArg = body->addArgument(MAP::IndexType::get(ctx, rank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  Value loaded =
+      MAP::LoadOp::create(bodyBuilder, loc, elemTy, valueArg, idxArg);
+
+  auto kernelSymbol =
+      FlatSymbolRefAttr::get(ctx, adaptor.fullyResolvedName.strref());
+  DictionaryAttr params = inferParameters(op, builder);
+  if (params.empty())
+    params = nullptr;
+  Value scalar =
+      MAP::CallElementwiseOp::create(bodyBuilder, loc, elemTy, kernelSymbol,
+                                     params, idxArg, ValueRange{loaded});
+
+  MAP::StoreOp::create(bodyBuilder, loc, bufferArg, idxArg, scalar);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
   if (adaptor.isError())
     return success();
+
+  if (auto mutableStoreOp = dyn_cast<MO::MutableStoreOp>(op))
+    return lowerMutableStoreToForeach(mutableStoreOp, *adaptor);
 
   // Elementwise kernels don't have an executeFunction (only
   // elementwiseFunction), so this must be checked before the executeFunction

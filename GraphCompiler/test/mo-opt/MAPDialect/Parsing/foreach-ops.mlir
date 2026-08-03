@@ -65,4 +65,31 @@ mo.graph @elementwiseAddDynamic<D0, D1>(
   mo.output %output : !mo.tensor<[D0, D1], f32>
 }
 
+// CHECK-LABEL: mo.graph @mutableStore
+// CHECK:         [[OUTCHAIN:%[^ ]+]] = map.iter.foreach<[2, 2]>
+// CHECK-NEXT:    inputs  ([[VAL:%[^ :,]+]]: !mo.tensor<[2, 2], f32>, [[BUF:%[^ :,]+]]: !mo.buffer<[2, 2], f32>)
+// CHECK-NEXT:    outputs ()
+// CHECK-NEXT:    index   ([[IDX3:%[^ :,]+]]: !map.index<2>) chain([[INCHAIN:%[^)]+]]) -> !mo.chain {
+// CHECK-NEXT:   [[VALV:%[^ ]+]] = map.load [[VAL]][[[IDX3]]] : !mo.tensor<[2, 2], f32>
+// CHECK-NEXT:   [[RES3:%[^ ]+]] = map.call.elementwise @builtin_kernels.gather_scatter.MutableStore([[IDX3]], [[VALV]]) : !map.index<2>, f32 -> f32
+// CHECK-NEXT:   map.store [[BUF]][[[IDX3]]] = [[RES3]] : !mo.buffer<[2, 2], f32>
+// CHECK-NEXT: } {hasWriteEffect = true}
+// CHECK-NEXT:   mo.output
+mo.graph @mutableStore(%val: !mo.tensor<[2, 2], f32>, %buf: !mo.buffer<[2, 2], f32>) {
+  %c = mo.chain.create()
+  %oc = map.iter.foreach<[2, 2]>
+      inputs  (%val: !mo.tensor<[2, 2], f32>, %buf: !mo.buffer<[2, 2], f32>)
+      outputs ()
+      index   (%idx: !map.index<2>)
+      chain   (%c)
+      -> !mo.chain
+  {
+    %valv = map.load %val[%idx] : !mo.tensor<[2, 2], f32>
+    %res = map.call.elementwise @builtin_kernels.gather_scatter.MutableStore(%idx, %valv)
+                : !map.index<2>, f32 -> f32
+    map.store %buf[%idx] = %res : !mo.buffer<[2, 2], f32>
+  } {hasWriteEffect = true}
+  mo.output
+}
+
 }

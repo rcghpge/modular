@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Support/MDialect/ParserUtils.h"
@@ -405,6 +406,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
       parseParenOperandListWithShadowing(parser, state, allArgInfo,
                                          /*isIsolatedFromAbove=*/true))
     return mlir::failure();
+  int32_t numInputOperands = static_cast<int32_t>(state.operands.size());
 
   // Parse outputs (block args only): outputs (%out: T)
   SmallVector<OpAsmParser::Argument> outputArgInfo;
@@ -423,6 +425,25 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
         parser.getCurrentLocation(),
         "'map.iter.foreach' expects exactly one index argument");
   allArgInfo.push_back(indexArgInfo.front());
+
+  // Parse optional chain (%c) clause -- a plain operand, never a block arg:
+  // nothing in the per-element body ever touches the chain (pure sequencing
+  // plumbing, mirrors mogg.kernel's `chain(...)`).
+  int32_t numChainOperands = 0;
+  if (succeeded(parser.parseOptionalKeyword("chain"))) {
+    OpAsmParser::UnresolvedOperand chainOperand;
+    if (parser.parseLParen() || parser.parseOperand(chainOperand) ||
+        parser.parseRParen())
+      return mlir::failure();
+    if (parser.resolveOperand(chainOperand,
+                              MO::ChainType::get(parser.getContext()),
+                              state.operands))
+      return mlir::failure();
+    numChainOperands = 1;
+  }
+  state.addAttribute(IterForeachOp::getOperandSegmentSizesAttrName(state.name),
+                     parser.getBuilder().getDenseI32ArrayAttr(
+                         {numInputOperands, numChainOperands}));
 
   // Parse result types: -> T or (T, T, ...)
   if (parser.parseArrowTypeList(state.types))
@@ -447,7 +468,10 @@ void IterForeachOp::print(OpAsmPrinter &p) {
 
   Block &body = getBody().front();
   unsigned numInputs = getInputs().size();
-  unsigned numOutputs = getResults().size();
+  // The output chain (if any) is always the last result and, like the input
+  // chain, never has a body block argument -- only tensor results do.
+  bool hasOutChain = getOutputChain() != nullptr;
+  unsigned numOutputs = getResults().size() - (hasOutChain ? 1 : 0);
 
   // inputs (%x: T, ...) — operands shadowed as block args
   p << "inputs  ";
@@ -465,6 +489,10 @@ void IterForeachOp::print(OpAsmPrinter &p) {
   p << "index   ";
   printBlockArgList(p, body.getArguments().slice(numInputs + numOutputs, 1));
   p << " ";
+
+  // chain (%c) — optional plain operand, no block arg.
+  if (Value chain = getInputChain())
+    p << "chain(" << chain << ") ";
 
   // -> result types (on same line as index, opening brace follows inline)
   p.printArrowTypeList(getResultTypes());
@@ -496,14 +524,26 @@ void IterForeachOp::print(OpAsmPrinter &p) {
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 
-  p.printOptionalAttrDict(getOperation()->getAttrs(),
-                          {"shape", "operand_segment_sizes"});
+  p.printOptionalAttrDict(
+      getOperation()->getAttrs(),
+      {"shape", getOperandSegmentSizesAttrName().getValue()});
 }
 
 LogicalResult IterForeachOp::verify() {
   Block &body = getBody().front();
   unsigned numInputs = getInputs().size();
-  unsigned numOutputs = getResults().size();
+
+  // A chain result, if present, is always last (mirrors
+  // MOGG::KernelOp::maybeGetOutChain()) and, like the input chain, never
+  // gets a body block argument -- only the preceding tensor results do.
+  ResultRange results = getResults();
+  for (unsigned i = 0; i < results.size(); ++i) {
+    bool isChain = llvm::isa<MO::ChainType>(results[i].getType());
+    if (isChain && i + 1 != results.size())
+      return emitOpError() << "only the last result may be a chain";
+  }
+  bool hasOutChain = getOutputChain() != nullptr;
+  unsigned numOutputs = results.size() - (hasOutChain ? 1 : 0);
   unsigned expectedArgs = numInputs + numOutputs + 1; // +1 for index
 
   if (body.getNumArguments() != expectedArgs)
@@ -519,9 +559,9 @@ LogicalResult IterForeachOp::verify() {
                            << " type mismatch with operand";
   }
 
-  // Output block arg types must match result types.
+  // Output block arg types must match the non-chain result types.
   for (unsigned i = 0; i < numOutputs; ++i) {
-    if (body.getArgument(numInputs + i).getType() != getResults()[i].getType())
+    if (body.getArgument(numInputs + i).getType() != results[i].getType())
       return emitOpError() << "output block argument " << i
                            << " type mismatch with result";
   }
@@ -538,6 +578,35 @@ LogicalResult IterForeachOp::verify() {
                          << getShape().getRank();
 
   return mlir::success();
+}
+
+Value IterForeachOp::getOutputChain() {
+  ResultRange results = getResults();
+  if (results.empty())
+    return nullptr;
+  Value last = results.back();
+  return llvm::isa<MO::ChainType>(last.getType()) ? last : Value();
+}
+
+// Mirrors MOGG::KernelOp::getEffects(): hasReadEffect/hasWriteEffect carry
+// forward the original MO op's memory effects (see lowerMutableStoreToForeach
+// in MOToMAP.cpp) so downstream passes see accurate effects instead of the
+// conservative "unknown" default.
+void IterForeachOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  bool addedEffect = false;
+  for (OpOperand &opOperand : getOperation()->getOpOperands()) {
+    if (!MO::isMutableOperand(opOperand.get()))
+      continue;
+    if (getHasWriteEffect())
+      effects.emplace_back(MemoryEffects::Write::get(), &opOperand);
+    if (getHasReadEffect())
+      effects.emplace_back(MemoryEffects::Read::get(), &opOperand);
+    addedEffect = true;
+  }
+
+  if (!addedEffect && (getHasReadEffect() || getHasWriteEffect()))
+    effects.emplace_back(MemoryEffects::Write::get());
 }
 
 llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
@@ -566,8 +635,8 @@ LogicalResult LoadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult StoreOp::verify() {
-  auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
-  if (!tensorTy)
-    return emitOpError() << "tensor operand must be !mo.tensor type";
+  if (!M::MO::dynCastFromTensorLike(getTensor().getType()))
+    return emitOpError()
+           << "tensor operand must be !mo.tensor or !mo.buffer type";
   return mlir::success();
 }

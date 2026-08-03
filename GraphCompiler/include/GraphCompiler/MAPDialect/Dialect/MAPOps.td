@@ -23,6 +23,7 @@ include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MAP_Op<string mnemonic, list<Trait> traits = []>
@@ -211,10 +212,12 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
 //===----------------------------------------------------------------------===//
 
 def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
+  AttrSizedOperandSegments,
   IsolatedFromAbove,
   SingleBlock,
   NoTerminator,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
 ]> {
   let summary = "Structured iteration over a tensor shape";
   let description = [{
@@ -224,9 +227,22 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
     expressions.
 
     Inputs are op operands that are also shadowed as body block arguments
-    (same convention as `mogg.kernel`). Outputs are extra body block arguments
-    with no corresponding op operand; their types match the op results. The
-    index is a single extra block argument of type `map.index<N>`.
+    (same convention as `mogg.kernel`) -- a tensor or, for in-place kernels,
+    a buffer. Outputs are extra body block arguments with no corresponding op
+    operand; their types match the non-chain op results. The index is a
+    single extra block argument of type `map.index<N>`.
+
+    The optional `chain` operand/result models in-place/mutating kernels
+    (e.g. `mo.mutable.store`), mirroring `mogg.kernel`'s chain support: it is
+    pure sequencing plumbing and never gets a body block argument on either
+    side. When present, the output chain is always the last entry of
+    `results` (same convention as `KernelOp::maybeGetOutChain()`).
+
+    `hasReadEffect`/`hasWriteEffect` mirror `mogg.kernel`'s fields of the same
+    name: they carry forward the memory effects of the original MO op this
+    kernel lowers, so downstream passes (DCE, CSE, invariant code motion) see
+    accurate effect information via `MemoryEffectsOpInterface` instead of the
+    conservative "unknown effects" default.
 
     Block arguments are ordered: [input_args..., output_args..., index_arg].
 
@@ -244,15 +260,26 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 
   let arguments = (ins
     MOSH_ShapeAttr:$shape,
-    Variadic<MO_Tensor>:$inputs,
-    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$inputs,
+    Optional<MO_Chain>:$chain,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // Returns the input chain operand, or null if this op has none.
+    Value getInputChain() { return getChain(); }
+    // Returns the output chain result, or null if the last result isn't a
+    // chain (mirrors MOGG::KernelOp::maybeGetOutChain()).
+    Value getOutputChain();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -297,23 +324,24 @@ def MAP_LoadOp : MAP_Op<"load", [
 //===----------------------------------------------------------------------===//
 
 def MAP_StoreOp : MAP_Op<"store", [
-  TypesMatchWith<"value type matches tensor element type",
+  TypesMatchWith<"value type matches tensor/buffer element type",
                  "tensor", "value",
-                 "::llvm::cast<::M::MO::TensorType>($_self).getElementType()">,
-  TypesMatchWith<"index type matches tensor rank",
+                 "::M::MO::castFromTensorLike($_self).getElementType()">,
+  TypesMatchWith<"index type matches tensor/buffer rank",
                  "tensor", "index",
                  "::M::MAP::IndexType::get($_self.getContext(), "
-                 "::llvm::cast<::M::MO::TensorType>($_self).getRank())">
+                 "::M::MO::castFromTensorLike($_self).getRank())">
 ]> {
-  let summary = "Store a value into a tensor at an N-D index";
+  let summary = "Store a value into a tensor (or buffer) at an N-D index";
   let description = [{
     Stores a value at an N-dimensional index into a tensor that is an output
-    block argument of the enclosing `map.iter.foreach`. Logically a single
-    scalar element per index; the actual lowering may store a wider vector
-    or tile instead, depending on the target hardware and how the
-    surrounding loop is vectorized/tiled. The tensor type is spelled out in
-    the assembly; the scalar type is inferred from the tensor's element type
-    (same convention as `memref.store`).
+    block argument of the enclosing `map.iter.foreach`, or, for in-place
+    kernels like `mo.mutable.store`, a buffer that is an input block
+    argument. Logically a single scalar element per index; the actual
+    lowering may store a wider vector or tile instead, depending on the
+    target hardware and how the surrounding loop is vectorized/tiled. The
+    tensor/buffer type is spelled out in the assembly; the scalar type is
+    inferred from its element type (same convention as `memref.store`).
 
     Example:
     ```mlir
@@ -321,7 +349,7 @@ def MAP_StoreOp : MAP_Op<"store", [
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$tensor, MAP_AnyIndex:$index, AnyType:$value);
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor, MAP_AnyIndex:$index, AnyType:$value);
 
   let assemblyFormat = [{ $tensor `[` $index `]` `=` $value `:` qualified(type($tensor)) attr-dict }];
   let hasVerifier = 1;
