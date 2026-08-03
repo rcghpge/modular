@@ -112,6 +112,15 @@ void M::MO::registerMoPipeline() {
       });
 }
 
+void M::MO::registerMapPipeline() {
+  mlir::PassPipelineRegistration<MapPipelineOptions>(
+      "map-pipeline",
+      "Passes between mo-to-map and mogg-to-mgp (both excluded).",
+      [](mlir::OpPassManager &pm, const MapPipelineOptions &opts) {
+        buildMapPipeline(pm, opts);
+      });
+}
+
 void M::MO::registerMoggPipeline() {
   mlir::PassPipelineRegistration<MoggPipelineOptions>(
       "mogg-pipeline",
@@ -140,6 +149,7 @@ void M::MO::registerPasses() {
   MO::registerGCPipeline();
   MO::registerGCPipelineThroughEmitMojo();
   MO::registerMoPipeline();
+  MO::registerMapPipeline();
   MO::registerMoggPipeline();
   MO::registerMgpPipeline();
   MO::registerJitPipeline();
@@ -337,6 +347,20 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
 }
 
 // ---------------------------------------------------------------------------
+// map-pipeline
+// ---------------------------------------------------------------------------
+
+void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
+                             const MapPipelineOptions &opts) {
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+
+  pm.addPass(MAP::createFuseKernels());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+}
+
+// ---------------------------------------------------------------------------
 // mogg-pipeline
 // ---------------------------------------------------------------------------
 
@@ -505,6 +529,9 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   moOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   moOpts.fuseJitKernels = opts.fuseJitKernels;
 
+  // --- map-pipeline options ---
+  MapPipelineOptions mapOpts;
+
   // --- mogg-pipeline options ---
   MoggPipelineOptions moggOpts;
   moggOpts.fuseJitKernels = opts.fuseJitKernels;
@@ -555,11 +582,14 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // --- mo-to-map ---
   buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
+  // --- map-pipeline: elementwise/prologue/epilogue fusion over MAP kernels ---
+  buildStage([&](auto &p) { buildMapPipeline(p, mapOpts); }, "map-pre-mgp");
+
   // --- advanced-fusion MAP lowering (gated on MAX_GC_USE_ADV_FUSION) ---
-  // Lower the `map` kernels emitted by mo-to-map toward `mogg` codegen ops:
-  // prep the MAP dialect, then cross MAP into MOGG. Finalizing the MOGG
-  // codegen form (package variadics/scalars) happens later, as part of the
-  // mogg-pre-mgp stage below.
+  // Lower the (now fused) `map` kernels toward `mogg` codegen ops: prep the
+  // MAP dialect, then cross MAP into MOGG. Finalizing the MOGG codegen form
+  // (package variadics/scalars) happens later, as part of the mogg-pre-mgp
+  // stage below.
 
   // --- map-pre-mogg: MAP-dialect prep before the conversion ---
   buildStage(

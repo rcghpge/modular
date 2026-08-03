@@ -244,6 +244,7 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
 void registerGCPipeline();
 void registerGCPipelineThroughEmitMojo();
 void registerMoPipeline();
+void registerMapPipeline();
 void registerMoggPipeline();
 void registerMgpPipeline();
 void registerJitPipeline();
@@ -381,6 +382,11 @@ struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
       llvm::cl::init(true)};
 };
 
+/// Options for `map-pipeline`: all passes between `mo-to-map` and
+/// `mogg-to-mgp` (both endpoints excluded).
+struct MapPipelineOptions
+    : public mlir::PassPipelineOptions<MapPipelineOptions> {};
+
 /// Options for `mogg-pipeline`: all passes between `mo-to-mogg` and
 /// `mogg-to-mgp` (both endpoints excluded).
 struct MoggPipelineOptions
@@ -434,6 +440,9 @@ struct MgpPipelineOptions
 
 /// Builds individual sub-pipelines.
 void buildMoPipeline(mlir::OpPassManager &pm, const MoPipelineOptions &opts);
+/// Passes between `mo-to-map` and `mogg-to-mgp`, run instead of
+/// `buildMoggPipeline` when advanced fusion (MAX_GC_USE_ADV_FUSION) is on.
+void buildMapPipeline(mlir::OpPassManager &pm, const MapPipelineOptions &opts);
 void buildMoggPipeline(mlir::OpPassManager &pm,
                        const MoggPipelineOptions &opts);
 void buildMgpPipeline(mlir::OpPassManager &pm, const MgpPipelineOptions &opts);
