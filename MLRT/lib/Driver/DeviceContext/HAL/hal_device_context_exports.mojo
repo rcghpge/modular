@@ -83,7 +83,7 @@ def _err_cstr(msg: String) -> _CString[]:
     Freed by the C++ caller via `MojoHAL_strfree`.
     """
     var n = msg.byte_length()
-    var p = alloc[UInt8](n + 1)
+    var p = alloc[UInt8]({count = n + 1}).unsafe_leak()
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
     p[unsafe_offset=n] = 0
     return CStringSlice(
@@ -163,7 +163,7 @@ def MojoHAL_DeviceContext_synchronize(
 
 def _alloc_cstr(msg: String) -> Pointer[c_char, MutUntrackedOrigin]:
     var n = msg.byte_length()
-    var p = alloc[UInt8](n + 1)
+    var p = alloc[UInt8]({count = n + 1}).unsafe_leak()
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
     p[unsafe_offset=n] = 0
     return p.unsafe_bitcast[c_char]()

@@ -51,9 +51,9 @@ def do_execute[
     var queue = ctx.create_queue()
 
     # Fill host buffers and copy to device.
-    var in0_host = alloc[Float32](length)
-    var in1_host = alloc[Float32](length)
-    var out_host = alloc[Float32](length)
+    var in0_host = alloc[Float32]({count = length}).unsafe_leak()
+    var in1_host = alloc[Float32]({count = length}).unsafe_leak()
+    var out_host = alloc[Float32]({count = length}).unsafe_leak()
     for i in range(length):
         in0_host[unsafe_offset=i] = Float32(i)
         in1_host[unsafe_offset=i] = Float32((i % 2) * -i * 2)
@@ -76,8 +76,10 @@ def do_execute[
     var length_val = Int(length)
 
     # Pack kernel arguments — order must match the kernel signature: a, b, result, n.
-    var args = alloc[OpaquePointer[MutUntrackedOrigin]](4)
-    var arg_sizes = alloc[UInt64](4)
+    var args = alloc[OpaquePointer[MutUntrackedOrigin]](
+        {count = 4}
+    ).unsafe_leak()
+    var arg_sizes = alloc[UInt64]({count = 4}).unsafe_leak()
 
     args[unsafe_offset=0] = rebind[OpaquePointer[MutUntrackedOrigin]](
         Pointer(to=in0_ptr)
@@ -126,7 +128,7 @@ def do_execute[
 
     # Also test out DtoD copies
     var out_dev_copy = ctx.alloc_sync(UInt64(buf_size))
-    var out_host_copy = alloc[Float32](length)
+    var out_host_copy = alloc[Float32]({count = length}).unsafe_leak()
     for i in range(length):
         out_host_copy[unsafe_offset=i] = Float32(0.0)
 
@@ -166,7 +168,7 @@ def do_offset_copy_test[
     var stream = ctx.create_stream()
     var device_buffer = ctx.alloc_sync(UInt64(n))
 
-    var src = alloc[UInt8](half)
+    var src = alloc[UInt8]({count = half}).unsafe_leak()
     for i in range(half):
         src[unsafe_offset=i] = UInt8(0xAB)
 
@@ -180,7 +182,7 @@ def do_offset_copy_test[
         rebind[Pointer[UInt8, MutAnyOrigin]](src),
     )
 
-    var host = alloc[UInt8](n)
+    var host = alloc[UInt8]({count = n}).unsafe_leak()
     stream[].copy_from_device(
         rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
     )
@@ -211,7 +213,7 @@ def do_fill_test[
         value_size=UInt64(4),
     )
 
-    var host = alloc[UInt8](n)
+    var host = alloc[UInt8]({count = n}).unsafe_leak()
     stream[].copy_from_device(
         rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
     )
