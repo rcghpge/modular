@@ -1025,7 +1025,7 @@ struct BasicInplace:
     def execute[
         dtype: DType,
     ](input: MutableInputTensor[dtype=dtype, rank=2, ...]):
-        x = input[0, 0]
+        var x = input[0, 0]
         x += 1
         input[0, 0] = x
 
@@ -1037,7 +1037,7 @@ struct BasicInplaceRaises:
     def execute[
         dtype: DType,
     ](input: MutableInputTensor[dtype=dtype, rank=2, ...]) raises:
-        x = input[0, 0]
+        var x = input[0, 0]
         x += 1
         input[0, 0] = x
 
