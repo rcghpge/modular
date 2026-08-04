@@ -1540,7 +1540,7 @@ struct TestSIMDInputSize1:
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
-        input: SIMD[dtype=dtype, size=1],
+        input: SIMD[dtype=dtype, length=1],
     ):
         output[0] = input[0]
 
@@ -1564,7 +1564,7 @@ struct TestSIMDInputSize2:
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
-        input: SIMD[dtype=dtype, size=2],
+        input: SIMD[dtype=dtype, length=2],
     ):
         output[0] = input[0]
 
