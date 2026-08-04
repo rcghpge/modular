@@ -21,7 +21,7 @@ TensorStateSlot::getOrCreateBuffer(CompactCPUDevicePtr cpuDevice, size_t size,
 }
 
 ErrorOr<TensorBufferRef> TensorStateSlot::getBuffer() {
-  if (!bufferCache.getBuffer())
+  if (!bufferCache.getBuffer() && !bufferCache.getMemStorageHandleRef())
     return Error("no buffer has been cached");
   // Return a borrowed reference to the cached buffer. Since it's in the
   // cache, and the compiler follows the 'one shot' rules for reallocating
@@ -30,7 +30,7 @@ ErrorOr<TensorBufferRef> TensorStateSlot::getBuffer() {
 }
 
 ErrorOr<TensorBufferRef &> TensorStateSlot::getBufferRef() {
-  if (!bufferCache.getBuffer())
+  if (!bufferCache.getBuffer() && !bufferCache.getMemStorageHandleRef())
     return Error("no buffer has been cached");
   return bufferCache;
 }

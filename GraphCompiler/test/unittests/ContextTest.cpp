@@ -77,3 +77,22 @@ TEST(ContextTest, getOrCreateBufferTest) {
     EXPECT_NE(buffer3.getSize(), 1UL);
   }
 }
+
+TEST(ContextTest, setZeroSizedBufferTest) {
+  auto cpuDevice = getCPUDevice();
+  {
+    // Add scope to make sure that the allocator outlives the context.
+    StateContext ctx(/*numSlots=*/1);
+    auto &tensorSlot = ctx.emplaceStateSlot<TensorStateSlot>(/*slotIndex=*/0);
+
+    // A zero-sized buffer may have a null data pointer while still tracking
+    // its storage.
+    TensorBufferRef owner =
+        TensorBufferRef::createOwned(*cpuDevice, /*size=*/1, /*alignment=*/{});
+    ErrorOrSuccess setOr = tensorSlot.setBuffer(TensorBufferRef::create(
+        /*buffer=*/nullptr, /*size=*/0, owner.getMemStorageHandle()));
+    ASSERT_FALSE(setOr.isError());
+
+    EXPECT_FALSE(tensorSlot.getBufferRef().isError());
+  }
+}
