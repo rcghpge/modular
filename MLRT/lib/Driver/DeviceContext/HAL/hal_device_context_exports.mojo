@@ -144,7 +144,7 @@ def MojoHAL_DeviceContext_release(ctx: _DeviceContextBoxPtr) abi("C"):
     var boxed = ctx
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[DeviceContext].single()
         )
     )
@@ -214,7 +214,7 @@ def MojoHAL_DeviceBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
     var boxed = buf
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[DeviceBuffer[DType.uint8]].single()
         )
     )
@@ -264,7 +264,7 @@ def MojoHAL_HostBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
     var boxed = buf.unsafe_bitcast[HostBuffer[DType.uint8]]()
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[HostBuffer[DType.uint8]].single()
         )
     )
@@ -602,7 +602,7 @@ def MojoHAL_MmapBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
     var length = boxed[].length
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[_MmapBox].single()
         )
     )
@@ -663,7 +663,7 @@ def MojoHAL_DeviceStream_release(stream: _DeviceStreamBoxPtr) abi("C"):
     var boxed = stream
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[DeviceStream].single()
         )
     )
@@ -755,7 +755,7 @@ def MojoHAL_DeviceEvent_release(event: _DeviceEventBoxPtr) abi("C"):
     var boxed = event
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[DeviceEvent].single()
         )
     )
@@ -840,7 +840,7 @@ def MojoHAL_DeviceContextScope_pop(scope: _DeviceContextScopeBoxPtr) abi("C"):
         print("warning: restoring driver context failed:", e)
     boxed.unsafe_deinit_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[_DeviceContextScopeHAL].single()
         )
     )
@@ -922,7 +922,7 @@ def MojoHAL_CompletionFlag_release(flag: _CompletionFlagBoxPtr) abi("C"):
     var boxed = flag
     var box = boxed.unsafe_take_pointee()
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=boxed).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
             Layout[_CompletionFlagBox].single()
         )
     )
