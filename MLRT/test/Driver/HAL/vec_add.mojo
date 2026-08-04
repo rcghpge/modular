@@ -6,7 +6,7 @@
 """``vec_add`` test kernel module — built as its own ``vec_add.so``."""
 
 from std.gpu import global_idx
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std.os import abort
 from std.python import PythonObject
 from std.python.bindings import PythonModuleBuilder
@@ -15,9 +15,9 @@ from _mojo_module.bundle import compile_to_python_bundle
 
 
 def vec_add_kernel(
-    a: UnsafePointer[Float32, MutAnyOrigin],
-    b: UnsafePointer[Float32, MutAnyOrigin],
-    result: UnsafePointer[Float32, MutAnyOrigin],
+    a: Pointer[Float32, MutAnyOrigin],
+    b: Pointer[Float32, MutAnyOrigin],
+    result: Pointer[Float32, MutAnyOrigin],
     n: Int,
 ):
     var tid = global_idx.x

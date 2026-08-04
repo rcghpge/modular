@@ -9,11 +9,11 @@ from std.os import getenv
 from _hal import Context, Driver
 from _hal.device import Device, DeviceSpec, get_device_spec
 from std.gpu import global_idx
-from std.memory import ArcPointer, UnsafePointer
+from std.memory import ArcPointer, Pointer
 from std.testing import assert_equal, assert_not_equal
 
 
-def scale_kernel(data: UnsafePointer[Float32, MutAnyOrigin], n: Int):
+def scale_kernel(data: Pointer[Float32, MutAnyOrigin], n: Int):
     var tid = global_idx.x
     if tid < n:
         data[unsafe_offset=tid] = data[unsafe_offset=tid] * 2.0

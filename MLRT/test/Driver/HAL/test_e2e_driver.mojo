@@ -9,15 +9,15 @@ from _hal.device import Device, DeviceSpec, get_device_spec
 from _hal.status import HALError
 from _hal.plugin import MemoryHandle
 from std.gpu import global_idx
-from std.memory import alloc, ArcPointer, OpaquePointer, UnsafePointer
+from std.memory import alloc, ArcPointer, OpaquePointer, Pointer
 from std.sys import size_of
 from std.testing import assert_equal
 
 
 def vec_add(
-    a: UnsafePointer[Float32, MutAnyOrigin],
-    b: UnsafePointer[Float32, MutAnyOrigin],
-    result: UnsafePointer[Float32, MutAnyOrigin],
+    a: Pointer[Float32, MutAnyOrigin],
+    b: Pointer[Float32, MutAnyOrigin],
+    result: Pointer[Float32, MutAnyOrigin],
     n: Int,
 ):
     var tid = global_idx.x
@@ -61,11 +61,11 @@ def do_execute[
 
     queue[].copy_to_device(
         in0_dev.view(),
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](in0_host),
+        rebind[Pointer[UInt8, MutAnyOrigin]](in0_host),
     )
     queue[].copy_to_device(
         in1_dev.view(),
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](in1_host),
+        rebind[Pointer[UInt8, MutAnyOrigin]](in1_host),
     )
     queue[].synchronize()
 
@@ -80,16 +80,16 @@ def do_execute[
     var arg_sizes = alloc[UInt64](4)
 
     args[unsafe_offset=0] = rebind[OpaquePointer[MutUntrackedOrigin]](
-        UnsafePointer(to=in0_ptr)
+        Pointer(to=in0_ptr)
     )
     args[unsafe_offset=1] = rebind[OpaquePointer[MutUntrackedOrigin]](
-        UnsafePointer(to=in1_ptr)
+        Pointer(to=in1_ptr)
     )
     args[unsafe_offset=2] = rebind[OpaquePointer[MutUntrackedOrigin]](
-        UnsafePointer(to=out_ptr)
+        Pointer(to=out_ptr)
     )
     args[unsafe_offset=3] = rebind[OpaquePointer[MutUntrackedOrigin]](
-        UnsafePointer(to=length_val)
+        Pointer(to=length_val)
     )
     arg_sizes[unsafe_offset=0] = UInt64(size_of[UInt64]())
     arg_sizes[unsafe_offset=1] = UInt64(size_of[UInt64]())
@@ -104,16 +104,16 @@ def do_execute[
         func,
         grid=(grid_dim, UInt32(1), UInt32(1)),
         block=(block_dim, UInt32(1), UInt32(1)),
-        args=rebind[
-            UnsafePointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]
-        ](args),
-        arg_sizes=rebind[UnsafePointer[UInt64, MutAnyOrigin]](arg_sizes),
+        args=rebind[Pointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]](
+            args
+        ),
+        arg_sizes=rebind[Pointer[UInt64, MutAnyOrigin]](arg_sizes),
         num_args=UInt32(4),
     )
 
     # Copy results back.
     queue[].copy_from_device(
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host),
+        rebind[Pointer[UInt8, MutAnyOrigin]](out_host),
         out_dev.view(),
     )
     queue[].synchronize()
@@ -133,7 +133,7 @@ def do_execute[
     queue[].copy_intra_device(out_dev_copy.view(), out_dev.view())
     queue[].synchronize()
     queue[].copy_from_device(
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host_copy),
+        rebind[Pointer[UInt8, MutAnyOrigin]](out_host_copy),
         out_dev_copy.view(),
     )
     queue[].synchronize()
@@ -177,12 +177,12 @@ def do_offset_copy_test[
     )
     stream[].copy_to_device(
         device_buffer.view(byte_offset=UInt64(half), byte_size=UInt64(half)),
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](src),
+        rebind[Pointer[UInt8, MutAnyOrigin]](src),
     )
 
     var host = alloc[UInt8](n)
     stream[].copy_from_device(
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
     )
     stream[].synchronize()
     for i in range(n):
@@ -213,7 +213,7 @@ def do_fill_test[
 
     var host = alloc[UInt8](n)
     stream[].copy_from_device(
-        rebind[UnsafePointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
     )
     stream[].synchronize()
 

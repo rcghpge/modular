@@ -41,7 +41,7 @@ from std.memory import (
     Layout,
     ThinAllocation,
     unsafe_memcpy,
-    UnsafePointer,
+    Pointer,
 )
 
 
@@ -55,28 +55,26 @@ from std.memory import (
 # by the create/release protocol across the ABI (Mojo allocates, the C++
 # shim's refcounted wrapper releases), not by Mojo's origin tracking.
 
-comptime _DeviceContextBoxPtr = UnsafePointer[DeviceContext, MutUntrackedOrigin]
+comptime _DeviceContextBoxPtr = Pointer[DeviceContext, MutUntrackedOrigin]
 # Buffer handles are layout-punned: `_MmapBox` and `_PinnedBox` keep a
 # `DeviceBuffer[DType.uint8]` as their leading field, so every buffer handle
 # reads as a pointer to that view; the release entries bitcast back to the
 # concrete box type.
-comptime _DeviceBufferBoxPtr = UnsafePointer[
+comptime _DeviceBufferBoxPtr = Pointer[
     DeviceBuffer[DType.uint8], MutUntrackedOrigin
 ]
-comptime _DeviceStreamBoxPtr = UnsafePointer[DeviceStream, MutUntrackedOrigin]
-comptime _DeviceEventBoxPtr = UnsafePointer[DeviceEvent, MutUntrackedOrigin]
-comptime _DeviceContextScopeBoxPtr = UnsafePointer[
+comptime _DeviceStreamBoxPtr = Pointer[DeviceStream, MutUntrackedOrigin]
+comptime _DeviceEventBoxPtr = Pointer[DeviceEvent, MutUntrackedOrigin]
+comptime _DeviceContextScopeBoxPtr = Pointer[
     _DeviceContextScopeHAL, MutUntrackedOrigin
 ]
-comptime _CompletionFlagBoxPtr = UnsafePointer[
-    _CompletionFlagBox, MutUntrackedOrigin
-]
+comptime _CompletionFlagBoxPtr = Pointer[_CompletionFlagBox, MutUntrackedOrigin]
 
 # Raw device or host memory crossing the ABI as untyped bytes.
-comptime _RawMemoryPtr = UnsafePointer[Byte, MutUntrackedOrigin]
+comptime _RawMemoryPtr = Pointer[Byte, MutUntrackedOrigin]
 
 # An out-parameter slot the export writes for the C++ caller.
-comptime _OutPtr[T: AnyType] = UnsafePointer[mut=True, T, MutUntrackedOrigin]
+comptime _OutPtr[T: AnyType] = Pointer[mut=True, T, MutUntrackedOrigin]
 
 
 def _err_cstr(msg: String) -> _CString[]:
@@ -102,14 +100,14 @@ def MojoHAL_strfree(s: _CString[]) abi("C"):
         # back a safe immutable pointer, so rebuild the matching mutable,
         # untracked `UInt8` allocation pointer from its address and free that.
         var addr = Int(s.unsafe_value().unsafe_ptr())
-        UnsafePointer[UInt8, MutUntrackedOrigin](
+        Pointer[UInt8, MutUntrackedOrigin](
             unsafe_from_address=addr
         ).unsafe_free()
 
 
 @export
 def MojoHAL_Device_numberOfDevices(
-    api: UnsafePointer[mut=False, c_char, ImmUntrackedOrigin],
+    api: Pointer[mut=False, c_char, ImmUntrackedOrigin],
 ) abi("C") -> Int32:
     return Int32(
         DeviceContext.number_of_devices(api=String(unsafe_from_utf8_ptr=api))
@@ -126,7 +124,7 @@ def MojoHAL_DeviceContext_enableAllPeerAccess() abi("C") -> _CString[]:
 @export
 def MojoHAL_DeviceContext_create(
     out_ctx: _OutPtr[_DeviceContextBoxPtr],
-    api: UnsafePointer[mut=False, c_char, ImmUntrackedOrigin],
+    api: Pointer[mut=False, c_char, ImmUntrackedOrigin],
     device_id: Int32,
 ) abi("C") -> _CString[]:
     try:
@@ -163,7 +161,7 @@ def MojoHAL_DeviceContext_synchronize(
         return _err_cstr(String(e))
 
 
-def _alloc_cstr(msg: String) -> UnsafePointer[c_char, MutUntrackedOrigin]:
+def _alloc_cstr(msg: String) -> Pointer[c_char, MutUntrackedOrigin]:
     var n = msg.byte_length()
     var p = alloc[UInt8](n + 1)
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
@@ -383,7 +381,7 @@ def MojoHAL_DeviceContext_enqueueSetMemory(
 
 @export
 def MojoHAL_DeviceContext_getArchName(
-    out_name: _OutPtr[UnsafePointer[c_char, MutUntrackedOrigin]],
+    out_name: _OutPtr[Pointer[c_char, MutUntrackedOrigin]],
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> _CString[]:
     try:
@@ -402,7 +400,7 @@ def MojoHAL_DeviceContext_isCompatible(
 
 @export
 def MojoHAL_DeviceContext_getName(
-    out_name: _OutPtr[UnsafePointer[c_char, MutUntrackedOrigin]],
+    out_name: _OutPtr[Pointer[c_char, MutUntrackedOrigin]],
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> _CString[]:
     try:
@@ -414,7 +412,7 @@ def MojoHAL_DeviceContext_getName(
 
 @export
 def MojoHAL_DeviceContext_getApi(
-    out_api: _OutPtr[UnsafePointer[c_char, MutUntrackedOrigin]],
+    out_api: _OutPtr[Pointer[c_char, MutUntrackedOrigin]],
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> _CString[]:
     # The concrete device API ("cuda"/"hip"/"metal"/"cpu"), as opposed to the
@@ -555,7 +553,7 @@ def MojoHAL_DeviceContext_memmapFile(
     out_ptr: _OutPtr[_RawMemoryPtr],
     out_size: _OutPtr[UInt64],
     ctx: _DeviceContextBoxPtr,
-    path: UnsafePointer[mut=False, c_char, ImmUntrackedOrigin],
+    path: Pointer[mut=False, c_char, ImmUntrackedOrigin],
 ) abi("C") -> _CString[]:
     # Mirrors CpuDeviceContext::memmapFileImpl: read-only mapping of the whole
     # file; the mapping is released (munmap) when the buffer box is released.
@@ -574,7 +572,7 @@ def MojoHAL_DeviceContext_memmapFile(
         _ = external_call["close", Int32](fd)
         return _err_cstr("failed to query file size")
     # NULL address hint, modeled as Optional's null niche.
-    var no_hint = OptionalUnsafePointer[NoneType, MutUntrackedOrigin](None)
+    var no_hint = OptionalPointer[NoneType, MutUntrackedOrigin](None)
     var base = external_call["mmap", _RawMemoryPtr](
         no_hint,
         UInt64(size),
