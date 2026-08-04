@@ -36,7 +36,8 @@ on the *structure* of the operations, but doesn't know "what they do". The MLIR
 syntax for the primitive has a directly corresponding runtime behavior:
 
 1. Each SSA value operand and result in MLIR is an
-   [`AsyncValue`](../AsyncRT/AsyncValue.md) operand or result to the primitive.
+   [`AsyncValue`](../../../AsyncRT/docs/AsyncValue.md) operand or result to the
+   primitive.
 2. Each MLIR attribute turns into a runtime pointer to static data of a
    corresponding C++ type. For example an MLIR `4 : i32` attribute will turn
    into a pointer to 32-bits of data containing a 4 (in little endian format).

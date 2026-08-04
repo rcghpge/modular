@@ -13,7 +13,7 @@ MLRT contains the following libraries:
 - GraphRT - Graph runtime infrastructure
 - Driver - Cross-vendor kernel execution runtime
 
-## [AsyncRT](./AsyncRT/README.md)
+## [AsyncRT](../../AsyncRT/docs/README.md)
 
 AsyncRT contains low level support for domain independent parallel CPU
 computation, including a thread pool implementation.

@@ -17,14 +17,14 @@ fresh pair of workspaces before following this guide.
 automates steps 1-6 below into one command: given a git ref, it pins both
 workspaces to the same commit, builds, launches, polls for ready, runs the
 always-on sanity probe, checks for the errors in
-[§5](#5-confirm-there-were-no-nixlefa-errors), and tears down — printing a PASS
+[§5](#5--confirm-there-were-no-nixlefa-errors), and tears down — printing a PASS
 / WARN / FAIL / BUILD-FAIL / INFRA-BLOCKED verdict. Pass
 `--bench-profile benchmark --bench-workload-config <yaml>` to also run a real
 load test — e.g. `utils/benchmarking/serving/workloads/synthetic-75k300.yaml`,
 the same workload YAML the Mammoth CI quick-test uses. Its own
 `max-concurrency`/`num-prompts`/`max-benchmark-duration-s` are the defaults,
 each overridable with the matching `--bench-*` flag; there's no equivalent for
-the inline-flag 300-prompt benchmark in [§4](#4-run-the-300-prompt-benchmark) —
+the inline-flag 300-prompt benchmark in [§4](#4--run-the-300-prompt-benchmark) —
 that one stays manual.
 
 ```bash
