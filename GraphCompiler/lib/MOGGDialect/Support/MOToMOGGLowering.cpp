@@ -576,7 +576,7 @@ static StringAttr maybeDemangleName(StringAttr name) {
 /// Return the "root::leaf" name of a parameter's declared struct type, or
 /// null if the type is not a recognisable struct (e.g. primitive scalars).
 /// Used by `validateCustomOpParameters` to dispatch on Mojo class names
-/// like `std::StaticString` vs `std::StringSlice` — information not carried
+/// like `std::StaticString` vs `std::StringSpan` — information not carried
 /// by the bare KGEN type alone.
 static StringAttr getParamTypeName(MLIRContext *ctx, Type paramType) {
   if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(paramType))
@@ -735,7 +735,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
         }
       } else {
         return Error(llvm::formatv(
-            "in custom op '{}' attribute '{}' uses type StringSlice. Use type "
+            "in custom op '{}' attribute '{}' uses type StringSpan. Use type "
             "StaticString instead to define a string parameter for a custom "
             "op.",
             customOp.getSymbol(), customParamDecl.getName()));
@@ -760,7 +760,7 @@ ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
                (typeName == MOGG::kMojoInternalStringSliceTypeName ||
                 typeName == MOGG::kMojoStringTypeName)) {
       std::string userTypeName =
-          typeName == MOGG::kMojoInternalStringSliceTypeName ? "StringSlice"
+          typeName == MOGG::kMojoInternalStringSliceTypeName ? "StringSpan"
                                                              : "String";
       return Error(llvm::formatv(
           "in custom op '{}' attribute '{}' uses type {}. Use type "

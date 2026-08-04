@@ -229,11 +229,11 @@ constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextArrayTypeName =
 
 /// These type names can be confusing. Inside the Graph Compiler code, the
 /// types show up like this:
-///   - StaticString -> std::StringSlice
+///   - StaticString -> std::StringSpan
 ///   - String -> std::String
-///   - StringSlice -> std::Origin
+///   - StringSpan -> std::Origin
 constexpr llvm::StringLiteral kMojoInternalStaticStringTypeName =
-    "std::StringSlice";
+    "std::StringSpan";
 constexpr llvm::StringLiteral kMojoStaticStringTypeName = "std::StaticString";
 
 /// In the emit-mojo path, DType parameters appear as LIT struct types with

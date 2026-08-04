@@ -221,11 +221,11 @@ getStringAttrFromStaticStringDecorator(mlir::TypedAttr operand) {
   operand = KGEN::ParamOperatorAttr::stripRebind(operand);
   auto initApply = KGEN::sugarDynCast<KGEN::ParamOperatorAttr>(operand);
   assert(initApply && initApply.getOpcode() == KGEN::POC::Apply &&
-         "Expected a call to StringSlice.__init__");
+         "Expected a call to StringSpan.__init__");
   auto callee =
       KGEN::sugarDynCast<KGEN::SymbolConstantAttr>(initApply.getOperand(0));
   assert(callee && callee.getParamValues().size() == 4 &&
-         "Expected a symbol reference to StringSlice.__init__");
+         "Expected a symbol reference to StringSpan.__init__");
   return mlir::cast<mlir::StringAttr>(callee.getParamValues()[3]);
 }
 
