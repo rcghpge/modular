@@ -849,29 +849,6 @@ modular_cc_library(
     alwayslink = True,
 )
 
-modular_cc_library(
-    name = "DriverHAL",
-    srcs = glob([
-        "lib/Driver/HAL/*.cpp",
-    ]),
-    hdrs = glob(["include/MLRT/Driver/HAL/*.h"]),
-    includes = ["include"],
-    target_compatible_with = select({
-        "//:plugin_enabled": [],
-        "//:nvidia_gpu": [],
-        "//:apple_gpu": [],
-        "//:amd_gpu": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//SDK:HAL",
-        "//Support:Base",
-        "@llvm-project//llvm:Support",
-    ],
-    alwayslink = True,
-)
-
 # ---------------------------------------------------------------------------
 # NIXL — sourced from upstream v1.1.0 via @nixl_upstream (Bazel http_archive).
 # All consumers point directly at @nixl_upstream//:… targets.

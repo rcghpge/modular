@@ -17,12 +17,12 @@ same.
 Each plugin implements the ABI-safe C API functions declared in
 `//SDK/include/HAL/*.h`. It must implement the bare minimum required to achieve
 the functionality mandated by these API; higher-level functions and features
-(reference-counting and caching, for example) must be done in the Driver HAL
-implementation itself (`MLRT/.../DriverHAL`) so as to apply uniformly to all
-supported devices. That is, plugins must only translate the functionality
-required by each `M_driver_` HAL API function to sequences of function calls to
-HW-vendor driver APIs (e.g., CUDA driver). The rest of the (pan-HW)
-intelligence must be developed inside **our** DriverHAL implementation.
+(reference-counting and caching, for example) must be done above the HAL so as
+to apply uniformly to all supported devices. That is, plugins must only
+translate the functionality required by each `M_driver_` HAL API function to
+sequences of function calls to HW-vendor driver APIs (e.g., CUDA driver). The
+rest of the (pan-HW) intelligence must be developed inside **our** HAL
+implementation, never in a plugin.
 
 We envision a day where hardware vendors could independently prototype custom
 Driver-implementations in order to hook into, and evaluate, the Modular stack.
@@ -36,8 +36,8 @@ within `//SDK` - a narrow, controlled aperture into our mono-repo.
 
 It can be tempting to argue for greater dependency on the mono-repo, say,
 on `//Support:Base`. But do plugins really need to reference-count or
-use mutexes and thread-pools? Even if they do, is this better done within
-DriverHAL uniformly across all hardware types? We depend on `//SDK` to
+use mutexes and thread-pools? Even if they do, is this better done above the
+HAL uniformly across all hardware types? We depend on `//SDK` to
 regulate (not constrain!) dependencies. We expect the SDK to grow over time;
 plugin-implementations can definitely source more dependencies from the
 mono-repo with time, via the SDK, after getting past the above key questions
