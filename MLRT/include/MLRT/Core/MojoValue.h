@@ -8,7 +8,6 @@
 #define MLRT_CORE_MOJOVALUE_H
 
 #include <cstddef>
-#include <cstdint>
 
 namespace M {
 
@@ -22,15 +21,7 @@ namespace M {
 /// the user must ensure that the function pointer is still valid. (for example
 /// if the mojo library is dynamically loaded).
 class MojoValue {
-
-  // Tag value for MojoValues containing a PythonObject.
-
 public:
-  enum Tag : uint8_t {
-    kDefault = 0,
-    kPython = 1,
-  };
-
   using DestructorFn = void (*)(void *);
 
   /// Create a new mojo object.
@@ -38,22 +29,20 @@ public:
   /// The underlying object isn't initialized.
   /// It's the user responsibility to initialize it properly.
   /// eg: `initialize_pointee_move(mojoValue.getData(), value^)`.
-  MojoValue(size_t size, size_t align, DestructorFn destructor,
-            Tag tag = Tag::kDefault);
+  MojoValue(size_t size, size_t align, DestructorFn destructor);
 
   /// Create a new mojo object.
   /// `data` points to the mojo struct.
   /// MojoValue owns the object and call `destructor` when it get destroyed.
   /// `data` is also owned and released by MojoValue (it must be allocated with
   /// malloc).
-  MojoValue(void *data, DestructorFn destructor, Tag tag = Tag::kDefault)
-      : data(data), destructor(destructor), owning(true), shouldFree(true),
-        tag(tag) {}
+  MojoValue(void *data, DestructorFn destructor)
+      : data(data), destructor(destructor), owning(true), shouldFree(true) {}
 
   /// Create a reference to an existing Mojo object. The object must outlive the
   /// lifetime of this MojoValue.
-  static MojoValue createRef(void *data, Tag tag = Tag::kDefault) {
-    return MojoValue(data, nullptr, false, false, tag);
+  static MojoValue createRef(void *data) {
+    return MojoValue(data, nullptr, /*owning=*/false, /*shouldFree=*/false);
   }
 
   /// Allows for values to be allocated within mojo
@@ -62,9 +51,8 @@ public:
   /// `data` is, itself, a `*T`/`UnsafePointer[T]` with a backing allocation
   /// originating in Mojo. It is expected that `destructor` free the backing
   /// allocation.
-  static MojoValue createOwningRef(void *data, DestructorFn destructor,
-                                   Tag tag = Tag::kDefault) {
-    return MojoValue(data, destructor, true, false, tag);
+  static MojoValue createOwningRef(void *data, DestructorFn destructor) {
+    return MojoValue(data, destructor, /*owning=*/true, /*shouldFree=*/false);
   }
 
   ~MojoValue();
@@ -83,23 +71,16 @@ public:
   /// Returns a pointer to the mojo object.
   void *getData() const { return data; }
 
-  /// Take ownership of the mojo object.
-  /// The caller is responsible for freeing the memory.
-  void *take();
-
   bool isOwned() const { return owning; }
-
-  Tag getTag() const { return tag; }
 
   /// Swap `*this` and `rhs` objects.
   /// Required for the AsyncValue API.
   void swap(MojoValue &rhs);
 
 private:
-  MojoValue(void *data, DestructorFn destructor, bool owning, bool shouldFree,
-            Tag tag)
+  MojoValue(void *data, DestructorFn destructor, bool owning, bool shouldFree)
       : data(data), destructor(destructor), owning(owning),
-        shouldFree(shouldFree), tag(tag) {}
+        shouldFree(shouldFree) {}
 
   void *data = nullptr;
   DestructorFn destructor = nullptr;
@@ -108,8 +89,6 @@ private:
   bool owning = false;
   /// Should the mojovalue free its pointer.
   bool shouldFree = false;
-  /// Type tag.
-  Tag tag;
 };
 
 } // namespace M

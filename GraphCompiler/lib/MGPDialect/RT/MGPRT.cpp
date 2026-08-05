@@ -276,30 +276,16 @@ MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
   fulfillReady<TensorShape>(value, dims);
 }
 
-static void
-createAsyncMojoValue(void *data, void (*destructorFn)(void *),
-                     AsyncRTWrapper<AnyAsyncValueRef> async,
-                     MojoValue::Tag tag = MojoValue::Tag::kDefault) {
-  AnyAsyncValueRef &value = unwrap(async);
-
-  fulfillReady<MojoValue>(value, data, destructorFn, tag);
-}
-
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateOwnedAsyncMojoValue(void *data, void (*destructorFn)(void *),
                                  AsyncRTWrapper<AnyAsyncValueRef> async) {
-  createAsyncMojoValue(data, destructorFn, async);
+  AnyAsyncValueRef &value = unwrap(async);
+  fulfillReady<MojoValue>(value, data, destructorFn);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 MGP_RT_MojoValueAllocateBuffer(size_t size, size_t align) {
   return MojoValue::allocateBuffer(size, align);
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateOwnedAsyncPythonMojoValue(void *data, void (*destructorFn)(void *),
-                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
-  createAsyncMojoValue(data, destructorFn, async, MojoValue::Tag::kPython);
 }
 
 //===----------------------------------------------------------------------===//

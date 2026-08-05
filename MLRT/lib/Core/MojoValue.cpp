@@ -5,16 +5,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Core/MojoValue.h"
+#include "Support/AlignedAlloc.h"
 
-#include "AsyncRT/Runtime/CPUDevice.h"
 #include <algorithm>
 #include <cstdlib>
 
 using namespace M;
 
-MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor,
-                     Tag tag)
-    : MojoValue(allocateBuffer(size, align), destructor, true, true, tag) {}
+MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor)
+    : MojoValue(allocateBuffer(size, align), destructor, /*owning=*/true,
+                /*shouldFree=*/true) {}
 
 MojoValue::~MojoValue() {
   if (owning && data) {
@@ -42,14 +42,4 @@ void MojoValue::swap(MojoValue &rhs) {
   std::swap(destructor, rhs.destructor);
   std::swap(owning, rhs.owning);
   std::swap(shouldFree, rhs.shouldFree);
-  std::swap(tag, rhs.tag);
-}
-
-void *MojoValue::take() {
-  void *ptr = data;
-  data = nullptr;
-  destructor = nullptr;
-  owning = false;
-  shouldFree = false;
-  return ptr;
 }
