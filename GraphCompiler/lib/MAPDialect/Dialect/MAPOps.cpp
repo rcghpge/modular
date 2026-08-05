@@ -644,6 +644,77 @@ void IterForeachOp::eraseInputsAt(unsigned idx, size_t len) {
 }
 
 //===----------------------------------------------------------------------===//
+// map.iter.foreach.body
+//===----------------------------------------------------------------------===//
+
+ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
+                                     OperationState &state) {
+  // Parse shape: <[d0, d1, ...]>
+  if (parser.parseLess())
+    return mlir::failure();
+  mlir::TypedAttr shapeTypedAttr;
+  auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
+  if (!shapeResult.has_value())
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected '[' for map.iter.foreach.body shape");
+  if (failed(*shapeResult))
+    return mlir::failure();
+  if (parser.parseGreater())
+    return mlir::failure();
+  state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
+
+  // Parse index (block arg only): index (%idx: map.index<N>)
+  SmallVector<OpAsmParser::Argument> indexArgInfo;
+  if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
+    return mlir::failure();
+  if (indexArgInfo.size() != 1)
+    return parser.emitError(
+        parser.getCurrentLocation(),
+        "'map.iter.foreach.body' expects exactly one index argument");
+
+  // Body region (not isolated; entry arg is just the index).
+  Region *body = state.addRegion();
+  if (parser.parseRegion(*body, indexArgInfo))
+    return mlir::failure();
+
+  return parser.parseOptionalAttrDict(state.attributes);
+}
+
+void IterForeachBodyOp::print(OpAsmPrinter &p) {
+  p << "<[";
+  MOSH::printShapeValue(p, getShape().getValues());
+  p << "]> ";
+
+  p.increaseIndent();
+  p.printNewline();
+  p << "index   ";
+  printBlockArgList(p, getBody().front().getArguments());
+  p << " ";
+  p.decreaseIndent();
+
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(getOperation()->getAttrs(), {"shape"});
+}
+
+LogicalResult IterForeachBodyOp::verify() {
+  Block &body = getBody().front();
+  if (body.getNumArguments() != 1)
+    return emitOpError() << "body expects exactly one block argument (the "
+                         << "index), got " << body.getNumArguments();
+
+  auto indexTy = llvm::dyn_cast<IndexType>(body.getArgument(0).getType());
+  if (!indexTy)
+    return emitOpError() << "index block argument must be map.index<N>";
+
+  if (indexTy.getRank() != getShape().getRank())
+    return emitOpError() << "index rank " << indexTy.getRank()
+                         << " does not match shape rank "
+                         << getShape().getRank();
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // map.load
 //===----------------------------------------------------------------------===//
 

@@ -31,11 +31,12 @@ def OutlineStructuredKernelBodies
   let description = [{
     Wraps each structured MAP loop (`map.iter.foreach`, and future reduce /
     rowwise) in a `map.iter.opaque` region so sequential setup (e.g. strided-view
-    lifting) can live outside the structured loop body. After outlining, nothing
-    inspects the inside of the `map.iter.opaque` again.
+    lifting) can live outside the structured loop body. The loop's own shape and
+    body move into a nested `map.iter.foreach.body`, which reaches the wrapper's
+    inputs/outputs by SSA dominance rather than by operand or block argument.
+    After outlining, nothing inspects the inside of the `map.iter.opaque` again.
 
-    This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does
-    nothing.
+    Gated on `M::MO::useAdvancedFusion()`.
   }];
 
   let dependentDialects = [

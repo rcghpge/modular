@@ -290,6 +290,52 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 }
 
 //===----------------------------------------------------------------------===//
+// map.iter.foreach.body
+//===----------------------------------------------------------------------===//
+
+def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
+  HasParent<"IterOpaqueOp">,
+  SingleBlock,
+  NoTerminator,
+]> {
+  let summary = "The per-index body of a structured MAP loop, wrapped for outlining.";
+  let description = [{
+    Holds the per-index computation of a `map.iter.foreach` after
+    `OutlineStructuredKernelBodies` has wrapped it in a `map.iter.opaque`.
+    Unlike the flat `map.iter.foreach`, this op carries no `inputs`/`outputs`
+    of its own: the enclosing `map.iter.opaque` owns those, and this op's body
+    reaches them by plain SSA dominance (neither the enclosing `map.iter.opaque`
+    nor this op's own body is isolated from above), not through operands or
+    block arguments. The only block argument is the index.
+
+    The `shape` attribute is copied unchanged from the wrapped
+    `map.iter.foreach`.
+
+    Example:
+    ```mlir
+    %r = map.iter.opaque
+        inputs (%x: !mo.tensor<[8, 16, 128], f32>, %y: !mo.tensor<[8, 16, 128], f32>)
+        outputs (%out: !mo.tensor<[8, 16, 128], f32>) {
+      map.iter.foreach.body<[8, 16, 128]>
+          index (%idx: !map.index<3>) {
+        %xv = map.load %x[%idx] : !mo.tensor<[8, 16, 128], f32>
+        %yv = map.load %y[%idx] : !mo.tensor<[8, 16, 128], f32>
+        %sum = map.call.elementwise @builtin_kernels.elementwise.Add(%idx, %xv, %yv)
+                  : !map.index<3>, f32, f32 -> f32
+        map.store %out[%idx] = %sum : !mo.tensor<[8, 16, 128], f32>
+      }
+    }
+    ```
+  }];
+
+  let arguments = (ins MOSH_ShapeAttr:$shape);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // map.load
 //===----------------------------------------------------------------------===//
 
@@ -367,16 +413,17 @@ def MAP_StoreOp : MAP_Op<"store", [
 //===----------------------------------------------------------------------===//
 
 def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
-  HasParent<"IterForeachOp">,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
   Pure,
 ]> {
   let summary = "Call a named pointwise kernel on the current index and scalar arguments";
   let description = [{
     Calls a named pointwise kernel identified by a flat symbol reference,
-    given the enclosing `map.iter.foreach`'s current index and the scalar
-    operands, and returns a single scalar result. All operands other than
-    the index, and the result, must be scalar (non-tensor) types. Only valid
-    inside a `map.iter.foreach` body.
+    given the enclosing loop's current index and the scalar operands, and
+    returns a single scalar result. All operands other than the index, and
+    the result, must be scalar (non-tensor) types. Only valid inside a
+    `map.iter.foreach` body, or, after outlining, inside a
+    `map.iter.foreach.body`.
 
     `params` carries the kernel's compile-time parameters (e.g. a
     custom kernel's `bias`), inferred from the originating MO op. Absent when
