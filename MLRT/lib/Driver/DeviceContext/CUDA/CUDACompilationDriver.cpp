@@ -10,146 +10,98 @@
 
 #include "CUDACompilationDriver.h"
 
+#include "Support/BazelRunfiles.h"
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
+
+#include <dlfcn.h>
 
 namespace M::Driver {
 
 #if MODULAR_LINUX
+const char nvptxLibName[] = "libNVPTX.so";
+#else
+const char nvptxLibName[] = "";
+#endif
 
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetVersion(unsigned int *major,
-                                               unsigned int *minor) {
-  auto result = ::nvPTXCompilerGetVersion(major, minor);
-  return static_cast<Result>(result);
+namespace {
+
+/// Opens the NVPTX compiler library.
+///
+/// Unlike libcuda / libnvidia-ml, which the NVIDIA driver installs into the
+/// loader's search path, libNVPTX.so is one of our own artifacts — it wraps
+/// NVIDIA's static libnvptxcompiler archive, which ships no shared object of
+/// its own. Nothing links against it any more either, so no RPATH points at
+/// it and a bare name does not resolve. It has to be located explicitly.
+void *openNVPTXLibrary() {
+  if (auto path = llvm::sys::Process::GetEnv("MODULAR_NVPTX_LIBRARY_PATH"))
+    return dlopen(path->c_str(), RTLD_NOW | RTLD_LOCAL);
+
+  // Under Bazel the library is staged in runfiles, whose layout only the
+  // runfiles library can decode.
+  if (auto runfilesPath = M::findConfigWithRunfiles("mojo-max.nvptx_path"))
+    if (void *lib = dlopen(runfilesPath->c_str(), RTLD_NOW | RTLD_LOCAL))
+      return lib;
+
+  // Installed layouts place it alongside the other shared libraries.
+  Dl_info info;
+  if (dladdr(reinterpret_cast<const void *>(&openNVPTXLibrary), &info) != 0 &&
+      info.dli_fname != nullptr) {
+    llvm::SmallString<128> moduleDir(info.dli_fname);
+    llvm::sys::path::remove_filename(moduleDir);
+    for (llvm::StringRef subdir : {".", "../lib"}) {
+      llvm::SmallString<128> candidate(moduleDir);
+      llvm::sys::path::append(candidate, subdir, nvptxLibName);
+      if (void *lib = dlopen(candidate.c_str(), RTLD_NOW | RTLD_LOCAL))
+        return lib;
+    }
+  }
+
+  // Last resort: let the loader search (LD_LIBRARY_PATH, ldconfig).
+  return dlopen(nvptxLibName, RTLD_NOW | RTLD_LOCAL);
 }
 
-CUDACompilationDriver::Result CUDACompilationDriver::NVPTXCompilerCreate(
-    ::nvPTXCompilerHandle *compiler, size_t ptxCodeLen, const char *ptxCode) {
-  auto result = ::nvPTXCompilerCreate(compiler, ptxCodeLen, ptxCode);
-  return static_cast<Result>(result);
+} // namespace
+
+ErrorOr<std::unique_ptr<CUDACompilationDriver>>
+CUDACompilationDriver::allocAndInitDriver() {
+  if (nvptxLibName[0] == '\0')
+    return Error("NVPTX compiler library is not available on this platform");
+
+  void *nvptxLib = openNVPTXLibrary();
+  if (nvptxLib == nullptr)
+    return Error(llvm::Twine("Failed to open library \"") + nvptxLibName +
+                 "\". Set MODULAR_NVPTX_LIBRARY_PATH to its location, or "
+                 "MODULAR_NVPTX_COMPILER_PATH to an external ptxas binary.");
+
+  auto driver = std::make_unique<CUDACompilationDriver>();
+
+#define NVPTX_FUNC(name, ...)                                                  \
+  driver->name##_ = reinterpret_cast<t##name *>(dlsym(nvptxLib, #name));       \
+  if (driver->name##_ == nullptr) {                                            \
+    return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
+                 "\" in \"" + nvptxLibName + "\"");                            \
+  }
+
+#include "CUDACompilationDriver.inc"
+#undef NVPTX_FUNC
+
+  return driver;
 }
 
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerDestroy(::nvPTXCompilerHandle *compiler) {
-  auto result = ::nvPTXCompilerDestroy(compiler);
-  return static_cast<Result>(result);
+ErrorOr<const CUDACompilationDriver &> CUDACompilationDriver::get() {
+  static ErrorOr<std::unique_ptr<CUDACompilationDriver>> errOrDriver =
+      allocAndInitDriver();
+
+  if (errOrDriver.isError()) {
+    return Error(errOrDriver.getError());
+  }
+  return *errOrDriver.get();
 }
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerCompile(::nvPTXCompilerHandle compiler,
-                                            int numCompileOptions,
-                                            const char *const *compileOptions) {
-  auto result =
-      ::nvPTXCompilerCompile(compiler, numCompileOptions, compileOptions);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetCompiledProgramSize(
-    ::nvPTXCompilerHandle compiler, size_t *binaryImageSize) {
-  auto result =
-      ::nvPTXCompilerGetCompiledProgramSize(compiler, binaryImageSize);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetCompiledProgram(
-    ::nvPTXCompilerHandle compiler, void *binaryImage) {
-  auto result = ::nvPTXCompilerGetCompiledProgram(compiler, binaryImage);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetErrorLogSize(
-    ::nvPTXCompilerHandle compiler, size_t *errorLogSize) {
-  auto result = ::nvPTXCompilerGetErrorLogSize(compiler, errorLogSize);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetErrorLog(::nvPTXCompilerHandle compiler,
-                                                char *errorLog) {
-  auto result = ::nvPTXCompilerGetErrorLog(compiler, errorLog);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetInfoLogSize(
-    ::nvPTXCompilerHandle compiler, size_t *infoLogSize) {
-  auto result = ::nvPTXCompilerGetInfoLogSize(compiler, infoLogSize);
-  return static_cast<Result>(result);
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetInfoLog(::nvPTXCompilerHandle compiler,
-                                               char *infoLog) {
-  auto result = ::nvPTXCompilerGetInfoLog(compiler, infoLog);
-  return static_cast<Result>(result);
-}
-
-#else // !MODULAR_LINUX
-
-// Stub implementations for non-Linux platforms
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetVersion(unsigned int *major,
-                                               unsigned int *minor) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result CUDACompilationDriver::NVPTXCompilerCreate(
-    ::nvPTXCompilerHandle *compiler, size_t ptxCodeLen, const char *ptxCode) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerDestroy(::nvPTXCompilerHandle *compiler) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerCompile(::nvPTXCompilerHandle compiler,
-                                            int numCompileOptions,
-                                            const char *const *compileOptions) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetCompiledProgramSize(
-    ::nvPTXCompilerHandle compiler, size_t *binaryImageSize) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetCompiledProgram(
-    ::nvPTXCompilerHandle compiler, void *binaryImage) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetErrorLogSize(
-    ::nvPTXCompilerHandle compiler, size_t *errorLogSize) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetErrorLog(::nvPTXCompilerHandle compiler,
-                                                char *errorLog) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetInfoLogSize(
-    ::nvPTXCompilerHandle compiler, size_t *infoLogSize) {
-  return ERROR;
-}
-
-CUDACompilationDriver::Result
-CUDACompilationDriver::NVPTXCompilerGetInfoLog(::nvPTXCompilerHandle compiler,
-                                               char *infoLog) {
-  return ERROR;
-}
-
-#endif // MODULAR_LINUX
 
 } // namespace M::Driver

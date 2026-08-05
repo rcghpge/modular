@@ -7,7 +7,7 @@
 // This file declares the CUDA compilation driver interface.
 //
 // CUDACompilationDriver provides access to NVPTX compiler functions
-// (libnvptxcompiler.so) without requiring GPU hardware or cuInit().
+// (libNVPTX.so) without requiring GPU hardware or cuInit().
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,22 +15,40 @@
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDACOMPILATIONDRIVER_H
 
 #include "Support/ErrorOr.h"
-#include "Support/PlatformUtils.h"
+#include "Support/Preprocessor.h"
+#include "Support/internal/Tracy/Tracy.h"
 
-#if MODULAR_LINUX
-#include "nvPTXCompiler.h"
-#else
-// Forward declare for non-Linux platforms (in global namespace)
+#include "llvm/Support/Process.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <memory>
+#include <stddef.h>
+
+// The opaque compiler handle. Declared here rather than pulled in from
+// nvPTXCompiler.h: the library is resolved at runtime, so nothing links
+// against it and its headers are not on the include path.
 using nvPTXCompilerHandle = struct nvPTXCompiler *;
-#endif
 
 namespace M::Driver {
 
+/// Check if NVPTX API logging is enabled at runtime via MLRT_CUDA_DEBUG env
+/// var.
+inline bool isNVPTXDebugLoggingEnabled() {
+  static const bool enabled =
+      llvm::sys::Process::GetEnv("MLRT_CUDA_DEBUG").has_value();
+  return enabled;
+}
+
+/// Runtime logging macro for NVPTX API calls.
+#define CUDA_NVPTX_CALL_LOG()                                                  \
+  if (isNVPTXDebugLoggingEnabled()) {                                          \
+    llvm::errs() << "[NVPTX] " << __FUNCTION__ << "\n";                        \
+  }
+
 /// CUDACompilationDriver provides access to NVPTX compiler functions.
 ///
-/// This class wraps the statically-linked nvPTXCompiler library and provides
-/// static methods to compile PTX to CUBIN without requiring GPU hardware or
-/// cuInit().
+/// This class dlopens the NVPTX compiler library and provides methods to
+/// compile PTX to CUBIN without requiring GPU hardware or cuInit().
 ///
 /// The NVPTX compiler library is standalone and does not depend on
 /// libcuda.so or any GPU driver initialization.
@@ -41,36 +59,30 @@ public:
     ERROR = 1,
   };
 
-  static Result NVPTXCompilerGetVersion(unsigned int *major,
-                                        unsigned int *minor);
+// Define wrapper member function with runtime logging.
+#define NVPTX_FUNC(name, ret, ...)                                             \
+  ret name(EXPAND_PARAMS(__VA_ARGS__)) const {                                 \
+    CUDA_NVPTX_CALL_LOG();                                                     \
+    TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_GREEN);                            \
+    ret result = name##_(EXPAND_ARGS(__VA_ARGS__));                            \
+    if (isNVPTXDebugLoggingEnabled()) {                                        \
+      llvm::errs() << "[NVPTX] " << #name << " -> " << result << "\n";         \
+    }                                                                          \
+    return result;                                                             \
+  }
+#include "CUDACompilationDriver.inc"
+#undef NVPTX_FUNC
 
-  static Result NVPTXCompilerCreate(::nvPTXCompilerHandle *compiler,
-                                    size_t ptxCodeLen, const char *ptxCode);
+  static ErrorOr<const CUDACompilationDriver &> get();
 
-  static Result NVPTXCompilerDestroy(::nvPTXCompilerHandle *compiler);
+private:
+  static ErrorOr<std::unique_ptr<CUDACompilationDriver>> allocAndInitDriver();
 
-  static Result NVPTXCompilerCompile(::nvPTXCompilerHandle compiler,
-                                     int numCompileOptions,
-                                     const char *const *compileOptions);
-
-  static Result
-  NVPTXCompilerGetCompiledProgramSize(::nvPTXCompilerHandle compiler,
-                                      size_t *binaryImageSize);
-
-  static Result NVPTXCompilerGetCompiledProgram(::nvPTXCompilerHandle compiler,
-                                                void *binaryImage);
-
-  static Result NVPTXCompilerGetErrorLogSize(::nvPTXCompilerHandle compiler,
-                                             size_t *errorLogSize);
-
-  static Result NVPTXCompilerGetErrorLog(::nvPTXCompilerHandle compiler,
-                                         char *errorLog);
-
-  static Result NVPTXCompilerGetInfoLogSize(::nvPTXCompilerHandle compiler,
-                                            size_t *infoLogSize);
-
-  static Result NVPTXCompilerGetInfoLog(::nvPTXCompilerHandle compiler,
-                                        char *infoLog);
+#define NVPTX_FUNC(name, ret, ...)                                             \
+  using t##name = ret(__VA_ARGS__);                                            \
+  t##name *name##_;
+#include "CUDACompilationDriver.inc"
+#undef NVPTX_FUNC
 };
 
 } // namespace M::Driver

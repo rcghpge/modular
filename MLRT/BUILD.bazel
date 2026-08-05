@@ -635,8 +635,15 @@ mojo_shared_library(
         "//:hal_device_context_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    # Depends on HAL's `max` directly rather than through //max:max_mojo. This target
+    # only builds under --config=hal-device-context, where that alias always
+    # selects this very target, so the two are equivalent here -- but the alias
+    # also names the non-HAL `max`, which now depends on
+    # Driver/DeviceContext, and Driver/DeviceContext selects this library back
+    # under the HAL branch. No single configuration closes that loop, yet it is
+    # a cycle in the unconfigured graph that `bazel query` reports.
     deps = [
-        "//max:max_mojo",
+        "//max/internal/driver/src:max",
         "@mojo//:std",
     ],
 )
@@ -768,6 +775,8 @@ modular_cc_library(
     visibility = [
         "//AsyncRT:__subpackages__",
         "//GraphCompiler:__subpackages__",
+        "//KGEN:__subpackages__",
+        "//Kernels:__subpackages__",
         "//MLRT:__subpackages__",
         "//max/python/max/_core/internal:__subpackages__",
         "@plugin//:__pkg__",
@@ -793,7 +802,6 @@ modular_cc_library(
         "@dlpack",
         "@llvm-project//llvm:Support",
     ] + select({
-        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
         "@platforms//os:macos": ["@metal-cpp//:metal-cpp"],
         "//conditions:default": [],
     }),
@@ -816,10 +824,18 @@ modular_cc_library(
     hdrs = [
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.h",
+        "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.inc",
         "lib/Driver/DeviceContext/CUDA/NVML.h",
         "lib/Driver/DeviceContext/CUDA/NVML.inc",
         "lib/Driver/DeviceContext/HIP/HIPCompilationDevice.h",
     ],
+    # NVPTX is dlopened at runtime by CUDACompilationDriver, so it ships in
+    # runfiles rather than becoming a NEEDED entry on everything that can
+    # compile PTX.
+    data = select({
+        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
+        "//conditions:default": [],
+    }),
     local_defines = select({
         "@platforms//os:linux": ["MODULAR_LINUX"],
         "//conditions:default": [],
@@ -835,6 +851,7 @@ modular_cc_library(
     deps = [
         ":Driver/DeviceContextAPI",
         "//Support:Base",
+        "//Support:BazelRunfiles",
         "//Support:Buffer",
         "//Support:Configuration",
         "//Support:Profiling",
@@ -842,10 +859,7 @@ modular_cc_library(
         "//Support:SymbolExport",
         "//Target:DriverPlugin",
         "@llvm-project//llvm:Support",
-    ] + select({
-        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
-        "//conditions:default": [],
-    }),
+    ],
     alwayslink = True,
 )
 

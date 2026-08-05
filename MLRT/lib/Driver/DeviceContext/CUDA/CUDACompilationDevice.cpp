@@ -76,10 +76,16 @@ CUDACompilationDevice::create(StringRef targetArch) {
 
 ErrorOr<int> CUDACompilationDevice::getApiVersion() const {
 #if MODULAR_LINUX
+  ErrorOr<const CUDACompilationDriver &> errOrDriver =
+      CUDACompilationDriver::get();
+  if (errOrDriver.isError()) {
+    return errOrDriver.takeError();
+  }
+
   // Get the NVPTX compiler version
   unsigned int majorVer, minorVer;
   auto versionResult =
-      CUDACompilationDriver::NVPTXCompilerGetVersion(&majorVer, &minorVer);
+      errOrDriver->nvPTXCompilerGetVersion(&majorVer, &minorVer);
   if (versionResult != CUDACompilationDriver::SUCCESS) {
     return Error("Failed to get NVPTX compiler version");
   }
@@ -235,20 +241,26 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
   // context or GPU to be present. This allows compilation in environments
   // without GPUs (e.g., compile-only mode with virtual devices).
 
+  ErrorOr<const CUDACompilationDriver &> errOrDriver =
+      CUDACompilationDriver::get();
+  if (errOrDriver.isError()) {
+    return errOrDriver.takeError();
+  }
+  const CUDACompilationDriver &driver = *errOrDriver;
+
   nvPTXCompilerHandle compiler = nullptr;
   size_t elfSize, infoSize, errorSize;
   unsigned int minorVer, majorVer;
 
   // Get NVPTX compiler version
-  auto versionResult =
-      CUDACompilationDriver::NVPTXCompilerGetVersion(&majorVer, &minorVer);
+  auto versionResult = driver.nvPTXCompilerGetVersion(&majorVer, &minorVer);
   if (versionResult != CUDACompilationDriver::SUCCESS) {
     return Error("Failed to get NVPTX compiler version");
   }
 
   // Create NVPTX compiler handle
-  auto createResult = CUDACompilationDriver::NVPTXCompilerCreate(
-      &compiler, (size_t)ptx.size(), (const char *)ptx.data());
+  auto createResult = driver.nvPTXCompilerCreate(&compiler, (size_t)ptx.size(),
+                                                 (const char *)ptx.data());
   if (createResult != CUDACompilationDriver::SUCCESS) {
     return Error("Failed to create NVPTX compiler");
   }
@@ -262,35 +274,33 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
 
   // Compile PTX to CUBIN
   CUDACompilationDriver::Result result =
-      CUDACompilationDriver::NVPTXCompilerCompile(compiler, options.size(),
-                                                  compileOptions);
+      driver.nvPTXCompilerCompile(compiler, options.size(), compileOptions);
 
   if (result != CUDACompilationDriver::SUCCESS) {
     // Get error log
-    CUDACompilationDriver::NVPTXCompilerGetErrorLogSize(compiler, &errorSize);
+    driver.nvPTXCompilerGetErrorLogSize(compiler, &errorSize);
 
     std::string errorLog;
     if (errorSize != 0) {
       errorLog.resize(errorSize + 1);
       CUDACompilationDriver::Result getErrorResult =
-          CUDACompilationDriver::NVPTXCompilerGetErrorLog(compiler,
-                                                          errorLog.data());
+          driver.nvPTXCompilerGetErrorLog(compiler, errorLog.data());
 
       if (getErrorResult != CUDACompilationDriver::SUCCESS) {
-        CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+        driver.nvPTXCompilerDestroy(&compiler);
         return Error("Compilation failed and could not retrieve error log");
       }
     }
 
-    CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+    driver.nvPTXCompilerDestroy(&compiler);
     return Error(errorLog + "\nCompilation to CUBIN failed");
   }
 
   // Get compiled program size
-  auto sizeResult = CUDACompilationDriver::NVPTXCompilerGetCompiledProgramSize(
-      compiler, &elfSize);
+  auto sizeResult =
+      driver.nvPTXCompilerGetCompiledProgramSize(compiler, &elfSize);
   if (sizeResult != CUDACompilationDriver::SUCCESS) {
-    CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+    driver.nvPTXCompilerDestroy(&compiler);
     return Error("Failed to get compiled program size");
   }
 
@@ -298,15 +308,15 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
   auto resultBuf = M::WriteableBuffer::get(elfSize);
 
   // Get compiled program
-  auto programResult = CUDACompilationDriver::NVPTXCompilerGetCompiledProgram(
+  auto programResult = driver.nvPTXCompilerGetCompiledProgram(
       compiler, (void *)resultBuf->getBufferStart());
   if (programResult != CUDACompilationDriver::SUCCESS) {
-    CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+    driver.nvPTXCompilerDestroy(&compiler);
     return Error("Failed to get compiled program");
   }
 
   // Check for warnings
-  CUDACompilationDriver::NVPTXCompilerGetInfoLogSize(compiler, &infoSize);
+  driver.nvPTXCompilerGetInfoLogSize(compiler, &infoSize);
 
   std::optional<std::string> printWarning =
       llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WARN");
@@ -317,16 +327,15 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
     std::string infoLog;
     infoLog.resize(infoSize + 1);
     CUDACompilationDriver::Result getLogResult =
-        CUDACompilationDriver::NVPTXCompilerGetInfoLog(compiler,
-                                                       infoLog.data());
+        driver.nvPTXCompilerGetInfoLog(compiler, infoLog.data());
 
     if (getLogResult != CUDACompilationDriver::SUCCESS) {
-      CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+      driver.nvPTXCompilerDestroy(&compiler);
       return Error("Compilation has warnings but could not retrieve info log");
     }
 
     if (werror) {
-      CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+      driver.nvPTXCompilerDestroy(&compiler);
       return Error(infoLog + "\nCompilation failed due to warnings");
     } else {
       llvm::errs() << infoLog << "\n";
@@ -334,7 +343,7 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
   }
 
   // Clean up compiler
-  CUDACompilationDriver::NVPTXCompilerDestroy(&compiler);
+  driver.nvPTXCompilerDestroy(&compiler);
 
   return resultBuf;
 #else  // MODULAR_LINUX
