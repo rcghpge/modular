@@ -1009,21 +1009,6 @@ public:
     return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
   }
 
-  /// Batched copy of equal-length (dst, src, size) pairs on this device.
-  /// One driver submit when available; otherwise loops enqueueCopyToDevice.
-  /// Callers group by device; mixed-device batches are rejected upstream.
-  virtual ErrorOrSuccess
-  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
-                           const std::vector<const void *> &srcs,
-                           const std::vector<size_t> &sizes) {
-    assert(dsts.size() == srcs.size() && dsts.size() == sizes.size());
-    for (size_t i = 0, n = dsts.size(); i < n; ++i) {
-      if (auto err = enqueueCopyToDevice(dsts[i], srcs[i], sizes[i]))
-        return err;
-    }
-    return success();
-  }
-
   virtual ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
                                                size_t byteSize) = 0;
   inline ErrorOrSuccess enqueueCopyFromDevice(void *dst,
@@ -1050,6 +1035,13 @@ public:
                                            size_t srcByteOffset,
                                            size_t srcByteSize,
                                            bool crossStreamSync = true);
+
+  // Batched `dsts[i] <- srcs[i]`, submitted on this context's stream. Every
+  // destination must belong to this context, because one submit can only order
+  // the writes it performs against one stream. Sources are unconstrained: host,
+  // pinned, this device's memory, or a peer's.
+  ErrorOrSuccess enqueueBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                                  llvm::ArrayRef<DeviceBuffer *> srcs);
 
   virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
                                           uint64_t val, size_t valSize) = 0;
@@ -1250,6 +1242,20 @@ protected:
   virtual ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
                                      size_t srcByteOffset, size_t srcByteSize,
                                      bool crossStreamSync) = 0;
+
+  // Backend hook for `enqueueBatchCopy`. The base loops the scalar path, which
+  // already resolves direction per pair; backends with a batched submit
+  // primitive override. Caller guarantees matching sizes and that every
+  // destination belongs to this context.
+  virtual ErrorOrSuccess memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                                      llvm::ArrayRef<DeviceBuffer *> srcs);
+
+  // `DeviceBuffer::recordUsedOnContext` is reachable only from `DeviceContext`,
+  // so backend overrides of the copy hooks go through here to order a host
+  // buffer's deferred free against the stream that actually DMA'd it.
+  static void recordBufferUsedOnContext(DeviceBuffer &buf, DeviceContext &ctx) {
+    buf.recordUsedOnContext(ctx);
+  }
 
   using MMapFileImplResult =
       ErrorOr<std::tuple<void *, size_t,

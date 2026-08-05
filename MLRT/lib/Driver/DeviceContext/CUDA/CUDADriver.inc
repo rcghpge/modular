@@ -214,8 +214,8 @@ CUDA_FUNC(cuOccupancyMaxActiveBlocksPerMultiprocessor, Result, int *,
 CUDA_FUNC(cuFuncGetParamInfo, Result, CUfunction, size_t, size_t *, size_t *)
 
 // cuMemcpyBatchAsync: introduced in CUDA 12.8. Loaded optionally so the
-// driver still initializes on CUDA < 12.8 hosts (falls back to per-copy
-// cuMemcpyHtoDAsync_v2 in CUDADeviceContext::enqueueBatchCopyToDevice).
+// driver still initializes on CUDA < 12.8 hosts (CUDADeviceContext::
+// memBatchCopy then falls back to the scalar per-pair loop).
 // Signature (CUDA 12.8): dsts, srcs, sizes, count, attrs, attrsIdxs, numAttrs,
 // failIdx (out: index of the failing copy), stream. The failIdx out-param sits
 // before the stream -- omitting it shifts the stream argument and yields

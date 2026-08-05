@@ -1547,6 +1547,29 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
                dstApi + "\"");
 }
 
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueBatchCopy(
+    llvm::ArrayRef<DeviceBuffer *> dsts, llvm::ArrayRef<DeviceBuffer *> srcs) {
+  if (dsts.size() != srcs.size())
+    RETURN_ERROR("batch copy requires dsts and srcs of equal length");
+  if (dsts.empty())
+    return success();
+
+  for (size_t i = 0, e = dsts.size(); i < e; ++i) {
+    if (dsts[i]->byteSize() != srcs[i]->byteSize())
+      RETURN_ERROR("batch copy requires matching byte sizes for each pair");
+    if (&dsts[i]->context() != this)
+      RETURN_ERROR("batch copy requires every destination on this context");
+  }
+  return memBatchCopy(dsts, srcs);
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::memBatchCopy(
+    llvm::ArrayRef<DeviceBuffer *> dsts, llvm::ArrayRef<DeviceBuffer *> srcs) {
+  for (size_t i = 0, e = dsts.size(); i < e; ++i)
+    RETURN_IF_ERROR(srcs[i]->copyTo(*dsts[i]));
+  return success();
+}
+
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceContext::enqueueEventHandler(std::function<void()> handler) {
   DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, this->enqueueEvent());

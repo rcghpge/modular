@@ -607,16 +607,20 @@ public:
     return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
   }
 
-  /// Batched copy of equal-length (dst, src, size) pairs on this device. The
-  /// HAL has no batched-submit primitive, so this loops like the legacy
-  /// default; callers group by device, so mixed-device batches never arrive.
-  inline ErrorOrSuccess
-  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
-                           const std::vector<const void *> &srcs,
-                           const std::vector<size_t> &sizes) {
-    assert(dsts.size() == srcs.size() && dsts.size() == sizes.size());
+  /// Batched `dsts[i] <- srcs[i]`. The HAL has no batched-submit primitive, so
+  /// this loops the scalar path, which resolves direction per pair.
+  inline ErrorOrSuccess enqueueBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                                         llvm::ArrayRef<DeviceBuffer *> srcs) {
+    if (dsts.size() != srcs.size())
+      RETURN_ERROR("batch copy requires dsts and srcs of equal length");
     for (size_t i = 0, n = dsts.size(); i < n; ++i) {
-      if (auto err = enqueueCopyToDevice(dsts[i], srcs[i], sizes[i]))
+      if (dsts[i]->byteSize() != srcs[i]->byteSize())
+        RETURN_ERROR("batch copy requires matching byte sizes for each pair");
+      if (&dsts[i]->context() != this)
+        RETURN_ERROR("batch copy requires every destination on this context");
+    }
+    for (size_t i = 0, n = dsts.size(); i < n; ++i) {
+      if (auto err = srcs[i]->copyTo(*dsts[i]))
         return err;
     }
     return success();

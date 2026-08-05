@@ -1748,44 +1748,6 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::enqueueBatchCopyToDevice(
-    const std::vector<void *> &dsts, const std::vector<const void *> &srcs,
-    const std::vector<size_t> &sizes) {
-  assert(dsts.size() == srcs.size() && dsts.size() == sizes.size() &&
-         "dst/src/size vectors must have equal length");
-  if (dsts.empty())
-    return success();
-
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueBatchCopyToDevice",
-                       TRACY_COLOR_PURPLE);
-  CUDA_WITH_CTX_ERR(*this);
-
-  // Same-device grouping is enforced upstream; pinned host destinations on
-  // this device are valid (they are not CU_MEMORYTYPE_DEVICE).
-
-  if (driver_.hasCuMemcpyBatchAsync()) {
-    // Stream-ordered WAR vs producers on this stream (graph-capture replay).
-    CUmemcpyAttributes attrs{};
-    attrs.srcAccessOrder = CU_MEMCPY_SRC_ACCESS_ORDER_STREAM;
-    // attrs[0] applies from copy index attrsIdx (= 0) through the batch.
-    size_t attrsIdx = 0;
-    // API wants mutable pointer arrays.
-    std::vector<void *> dstsMut(dsts.begin(), dsts.end());
-    std::vector<const void *> srcsMut(srcs.begin(), srcs.end());
-    std::vector<size_t> sizesMut(sizes.begin(), sizes.end());
-    size_t failIdx = 0; // first failing copy on error
-    CUDA_CHECK_ERR(driver_.cuMemcpyBatchAsync(
-        dstsMut.data(), srcsMut.data(), sizesMut.data(), dstsMut.size(), &attrs,
-        &attrsIdx, /*numAttrs=*/1, &failIdx, stream_));
-  } else {
-    for (size_t i = 0, n = dsts.size(); i < n; ++i)
-      CUDA_CHECK_ERR(
-          driver_.cuMemcpyHtoDAsync_v2(dsts[i], srcs[i], sizes[i], stream_));
-  }
-  MAYBE_SYNC(*this);
-  return success();
-}
-
 ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                                         const void *src,
                                                         size_t byteSize) {
@@ -1865,6 +1827,96 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(DeviceBuffer &dst,
         "cuMemcpyDtoD",
         hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize),
         KernelLaunchMetadata::MemcpyKind::DtoD, dstByteSize);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
+
+  MAYBE_SYNC(*this);
+  return success();
+}
+
+ErrorOrSuccess
+CUDADeviceContext::memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                                llvm::ArrayRef<DeviceBuffer *> srcs) {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memBatchCopy", TRACY_COLOR_PURPLE);
+  const size_t count = dsts.size();
+
+  // No cuMemcpyBatchAsync (pre-CUDA 12.8): use the scalar loop.
+  if (count == 0 || !driver_.hasCuMemcpyBatchAsync())
+    return DeviceContext::memBatchCopy(dsts, srcs);
+
+  CUDA_WITH_CTX_ERR(*this);
+
+  // A pointer can join the batch only if UVA resolves it from this context:
+  // host and pinned memory always do, a peer's memory only under peer access.
+  // Every source context running on another stream needs its own ordering
+  // bracket around the submit.
+  SmallVector<CUDADeviceContext *, 2> streamSrcCtxs;
+  SmallVector<DeviceBuffer *, 8> hostSrcs;
+  std::vector<void *> dstPtrs(count);
+  std::vector<const void *> srcPtrs(count);
+  std::vector<size_t> sizes(count);
+  size_t totalBytes = 0;
+  for (size_t i = 0; i < count; ++i) {
+    DeviceBuffer &src = *srcs[i];
+    if (src.isHost() || src.context().device().api() == Device::cpuAPI) {
+      hostSrcs.push_back(&src);
+    } else {
+      auto &srcCtx = CUDADeviceContext::cast(src.context());
+      if (srcCtx.cudaContext() != this->cudaContext()) {
+        DEFINE_OR_RETURN_ERROR(bool, peerEnabled,
+                               Device::allPeerAccessEnabled());
+        // Without a peer mapping the pointer is unreachable from here; the
+        // scalar loop reaches it with cuMemcpyPeerAsync.
+        if (!peerEnabled)
+          return DeviceContext::memBatchCopy(dsts, srcs);
+      }
+      if (srcCtx.cudaStream() != this->cudaStream() &&
+          !llvm::is_contained(streamSrcCtxs, &srcCtx))
+        streamSrcCtxs.push_back(&srcCtx);
+    }
+    dstPtrs[i] = dsts[i]->ptr();
+    srcPtrs[i] = src.ptr();
+    sizes[i] = dsts[i]->byteSize();
+    totalBytes += sizes[i];
+  }
+
+  // Mirror the scalar host path: a source owned by a CPU device context has to
+  // be settled up front because events cannot be awaited across device types,
+  // and any host source is DMA'd on our stream rather than its owning one, so
+  // its deferred free must be ordered against us too.
+  for (DeviceBuffer *src : hostSrcs) {
+    if (src->context().device().api() == Device::cpuAPI)
+      RETURN_IF_ERROR(src->context().synchronize());
+    recordBufferUsedOnContext(*src, *this);
+  }
+
+  // Match scalar memCopyDtoD: our stream waits for each source stream before
+  // the copy, and each source stream waits for the copy afterwards.
+  for (CUDADeviceContext *srcCtx : streamSrcCtxs) {
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx->enqueueEvent());
+    RETURN_IF_ERROR(this->enqueueWaitForEvent(*srcEvent));
+  }
+
+  CUmemcpyAttributes attrs{};
+  attrs.srcAccessOrder = CU_MEMCPY_SRC_ACCESS_ORDER_STREAM;
+  size_t attrsIdx = 0;
+  size_t failIdx = 0;
+  CUDA_CHECK_ERR(driver_.cuMemcpyBatchAsync(
+      dstPtrs.data(), srcPtrs.data(), sizes.data(), count, &attrs, &attrsIdx,
+      /*numAttrs=*/1, &failIdx, stream_));
+
+  if (!streamSrcCtxs.empty()) {
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, this->enqueueEvent());
+    for (CUDADeviceContext *srcCtx : streamSrcCtxs)
+      RETURN_IF_ERROR(srcCtx->enqueueWaitForEvent(*dstEvent));
+  }
+
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata(
+        "cuMemcpyBatch",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, totalBytes),
+        KernelLaunchMetadata::MemcpyKind::DtoD, totalBytes);
     registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
   }
 

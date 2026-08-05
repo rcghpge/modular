@@ -432,15 +432,12 @@ public:
   ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
                              size_t srcByteOffset, size_t srcByteSize,
                              bool crossStreamSync) override;
-
-  /// Batched copy of equal-length (dst, src, size) pairs on this stream.
-  /// Uses cuMemcpyBatchAsync (CUDA 12.8+) or per-pair cuMemcpyHtoDAsync_v2.
-  /// All destinations must target this device; callers group and reject
-  /// mixed-device batches upstream.
-  ErrorOrSuccess
-  enqueueBatchCopyToDevice(const std::vector<void *> &dsts,
-                           const std::vector<const void *> &srcs,
-                           const std::vector<size_t> &sizes) override;
+  /// Issues the whole batch as one `cuMemcpyBatchAsync` (CUDA 12.8+) on this
+  /// stream, letting UVA resolve each pointer. Falls back to the scalar loop
+  /// without that entry point, or when a peer source cannot be reached
+  /// directly.
+  ErrorOrSuccess memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                              llvm::ArrayRef<DeviceBuffer *> srcs) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;
