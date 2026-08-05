@@ -20,9 +20,9 @@ too.
 | Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                                           | remote execution, no GPU                             | pre-submit             | Yes                |
 | GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv                          | `validateNIXLSync`                                   | nightly                | Yes                |
 | Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                                                      | `nightlyMultiGPUTest` on B200 and MI355              | nightly                | Yes                |
-| Single-node perf smoke              | NVIDIA UCX + EFA-loopback and AMD UCX bandwidth floors — catches transport-selection regressions                                   | `modrunner-b200-efa-2x` + `-mi355-8x`                | nightly                | Yes                |
+| Single-node perf smoke              | NVIDIA UCX + EFA-loopback and AMD UCCL bandwidth floors — catches transport-selection regressions                                  | `modrunner-b200-efa-2x` + `-mi355-8x`                | nightly                | Yes                |
 | Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k27, deepseekv3.1)                                            | shared `mammoth-benchmark` B200 pod pool             | dispatched by the gate | No (informational) |
-| Shared-pool (AMD)                   | 4-row cross-node KV smoke on AMD (UCX, pod network)                                                                                | shared AMD (MI355) pod pool                          | dispatched by the gate | No (informational) |
+| Shared-pool (AMD)                   | 4-row cross-node RoCE KV smoke on AMD, UCCL backend                                                                                | shared AMD (MI355) pod pool                          | dispatched by the gate | No (informational) |
 | Client-driven                       | Same DI bring-up + benchmark as the shared-pool lane, via `run_dist_from_local.py`; substitute when the shared pool is unavailable | personal Coder workspace(s), cross-node or intranode | on demand              | No (informational) |
 
 ## The aggregate gate
@@ -54,24 +54,28 @@ two-node EFA smoke remains the guard for fabric-level regressions: weigh
 a red there against the captured pod diagnostics before treating it as a
 code bug.
 
-The AMD shared-pool lane is the same 4-row cross-node smoke on AMD GPUs,
-run from the ROCm serving image — the same `nixlKvSmokeTest.yaml` workflow
-as the EFA lane, dispatched with `gpu_vendor: amd` (which selects the
-`-amd` image, the `k8s/rocm` manifests, and the AMD pod pool). This UCX
-variant runs over the pod network: its pods request `amd.com/gpu` but no
-RDMA device, so it proves the ROCm image, plugin load, and cross-node
-transfer plumbing end to end — not the RoCE fabric. Its floor is low
-because UCX without an RDMA device rides TCP. Crossing the AMD RoCE fabric
-end to end — the pods additionally requesting `modular.com/rdma_ib_device`
-(the CI analog of the Coder "Enable RoCE networking" flag) — is layered on
-with the UCCL backend in the follow-up.
+The AMD shared-pool lane is the same 4-row cross-node smoke on AMD GPUs
+over the RoCE (Pensando) fabric, run from the ROCm serving image — the
+same `nixlKvSmokeTest.yaml` workflow as the EFA lane, dispatched with
+`gpu_vendor: amd` (which selects the `-amd` image, the `k8s/rocm`
+manifests, and the AMD pod pool). It is the AMD counterpart of the two-node EFA
+smoke and the only lane that crosses the AMD fabric end to end (the
+multi-GPU transfer-engine lane runs on MI355 but same-node). Its pods
+request `amd.com/gpu` plus `amd.com/nic` — the RoCE IB
+fabric, whose CI availability is the analog of the Coder "Enable RoCE
+networking" workspace flag. It uses UCCL, the default AMD backend, which
+saturates the RoCE fabric, so it carries the same bandwidth floors as the
+EFA smoke.
 
 ## Benchmarks
 
 The **drag race** (`//utils/benchmarking/nixl:drag_race`) is an
-on-demand bandwidth benchmark for a chosen backend and topology
-(intranode loopback or two nodes). It is not run in CI, but it builds in
-presubmit and has a host-DRAM micro-run that keeps it green.
+on-demand bandwidth benchmark for a chosen backend (`ucx`, `efa`, or
+`uccl`) and topology (intranode loopback or two nodes). It is not run in
+CI, but it builds in presubmit and has a host-DRAM micro-run that keeps
+it green. The `uccl` backend stages the AMD UCCL plugin flavor into the
+harness runfiles, so it can drive UCCL over an AMD RoCE fabric without an
+installed serving image.
 
 ## Related docs
 
