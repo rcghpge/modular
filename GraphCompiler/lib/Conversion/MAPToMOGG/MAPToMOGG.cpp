@@ -35,7 +35,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.h"
-#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/Interfaces/MAPToMOGGState.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
@@ -58,9 +57,6 @@ struct MAPToMOGGPass : public MAP::impl::MAPToMOGGBase<MAPToMOGGPass> {
   using Base::Base;
 
   void runOnOperation() override {
-    if (!MO::useAdvancedFusion())
-      return;
-
     MOGG::MojoRegistry registry(getOperation());
 
     SmallVector<MAP::IterOpaqueOp> worklist;

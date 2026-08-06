@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -101,9 +100,6 @@ struct OutlineKernelsIntoFunctionsPass
   using Base::Base;
 
   void runOnOperation() override {
-    if (!MO::useAdvancedFusion())
-      return;
-
     OpBuilder builder(&getContext());
     // Register outlined stubs through the module's cached `SymbolTableAnalysis`
     // so their names stay collision-free and the table stays consistent for

@@ -366,6 +366,11 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &opts) {
+  // Finalize the advanced-fusion MOGG codegen form: package variadics/
+  // scalars, then outline each mogg._kernel into a mogg.kernel.stub.
+  pm.addPass(MOGG::createPackageVariadicsAndScalars());
+  pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
+
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   if (opts.fuseJitKernels) {
@@ -582,18 +587,13 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // --- mo-to-map ---
   buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
-  // --- map-pipeline: elementwise/prologue/epilogue fusion over MAP kernels ---
-  buildStage([&](auto &p) { buildMapPipeline(p, mapOpts); }, "map-pre-mgp");
-
-  // --- advanced-fusion MAP lowering (gated on MAX_GC_USE_ADV_FUSION) ---
-  // Lower the (now fused) `map` kernels toward `mogg` codegen ops: prep the
-  // MAP dialect, then cross MAP into MOGG. Finalizing the MOGG codegen form
-  // (package variadics/scalars) happens later, as part of the mogg-pre-mgp
-  // stage below.
-
-  // --- map-pre-mogg: MAP-dialect prep before the conversion ---
+  // --- map-pre-mogg: elementwise/prologue/epilogue fusion over MAP kernels,
+  // then MAP-dialect prep before the MAP -> MOGG conversion ---
   buildStage(
-      [&](auto &p) { p.addPass(MAP::createOutlineStructuredKernelBodies()); },
+      [&](auto &p) {
+        buildMapPipeline(p, mapOpts);
+        p.addPass(MAP::createOutlineStructuredKernelBodies());
+      },
       "map-pre-mogg");
 
   // --- map-to-mogg: the MAP -> MOGG conversion ---
@@ -613,10 +613,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   // creates mo.custom ops and lowers them to MOGG kernels in-place.
   buildStage(
       [&](auto &p) {
-        // Finalize the advanced-fusion MOGG codegen form: package variadics/
-        // scalars, then outline each mogg._kernel into a mogg.kernel.stub.
-        p.addPass(MOGG::createPackageVariadicsAndScalars());
-        p.addPass(MOGG::createOutlineKernelsIntoFunctions());
         buildMoggPipeline(p, moggOpts);
         if (opts.nanCheck)
           p.addPass(MO::createNanCheckPass(opts.nanCheckStride));

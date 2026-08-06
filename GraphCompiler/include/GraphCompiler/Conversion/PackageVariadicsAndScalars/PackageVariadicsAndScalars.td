@@ -16,9 +16,6 @@ def PackageVariadicsAndScalars
     Inspects the signatures of `mogg` call ops and inserts the tuple (variadic)
     and scalar conversion ops they require. Deferred out of `MAPToMOGG` to keep
     the fusion IR simpler.
-
-    This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does
-    nothing.
   }];
 
   let dependentDialects = [

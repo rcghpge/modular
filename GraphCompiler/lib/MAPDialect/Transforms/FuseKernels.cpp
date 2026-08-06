@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MOOps.h"
@@ -27,9 +26,6 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
   using Base::Base;
 
   void runOnOperation() override {
-    if (!MO::useAdvancedFusion())
-      return;
-
     getOperation()->walk(
         [&](MO::GraphOp graphOp) { ElementwiseFuser(graphOp).fuse(); });
   }

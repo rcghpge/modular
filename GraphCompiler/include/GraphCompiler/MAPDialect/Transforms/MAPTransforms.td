@@ -14,8 +14,6 @@ def FuseKernels : Pass<"map-fuse-kernels", "mlir::ModuleOp"> {
   let description = [{
     Runs the advanced fusion patterns over the MAP dialect, reducing the number
     of `map` kernels by inlining producers into consumers.
-
-    Gated on `M::MO::useAdvancedFusion()`.
   }];
 
   let dependentDialects = [
@@ -35,8 +33,6 @@ def OutlineStructuredKernelBodies
     body move into a nested `map.iter.foreach.body`, which reaches the wrapper's
     inputs/outputs by SSA dominance rather than by operand or block argument.
     After outlining, nothing inspects the inside of the `map.iter.opaque` again.
-
-    Gated on `M::MO::useAdvancedFusion()`.
   }];
 
   let dependentDialects = [

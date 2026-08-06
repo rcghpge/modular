@@ -370,8 +370,6 @@ def OutlineKernelsIntoFunctions
 
     The `MAP` ABI label lets `EmitMojo` branch on the advanced-fusion path
     without touching the legacy MOGG/MGP emission.
-
-    This is gated on `M::MO::useAdvancedFusion()`.
   }];
 
   let dependentDialects = [

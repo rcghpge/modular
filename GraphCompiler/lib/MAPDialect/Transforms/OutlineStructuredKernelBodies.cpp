@@ -9,7 +9,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "mlir/IR/Builders.h"
@@ -73,9 +72,6 @@ struct OutlineStructuredKernelBodiesPass
   using Base::Base;
 
   void runOnOperation() override {
-    if (!MO::useAdvancedFusion())
-      return;
-
     SmallVector<IterForeachOp> worklist;
     getOperation()->walk([&](IterForeachOp op) {
       worklist.push_back(op);

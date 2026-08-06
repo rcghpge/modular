@@ -16,9 +16,6 @@ def MAPToMOGG : Pass<"map-to-mogg", "mlir::ModuleOp"> {
     SSA values, contexts are added, and tensors are built from pointers. This is
     where the fusion-focused `map` IR crosses into the code-generation-focused
     `mogg` IR.
-
-    This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does
-    nothing.
   }];
 
   let dependentDialects = [

@@ -11,6 +11,4 @@ glob in `GraphCompiler/test/mo-opt/BUILD.bazel`. The usual pattern is:
 // RUN: mo-opt %s --map-fuse-kernels | FileCheck %s
 ```
 
-Both passes are currently no-ops gated on the `MAX_GC_USE_ADV_FUSION`
-environment variable, so there is no behavior to check yet. Populate this
-directory as the passes gain functionality.
+Populate this directory as the passes gain functionality.

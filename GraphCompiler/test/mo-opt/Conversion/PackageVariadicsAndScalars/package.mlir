@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-package-variadics-and-scalars | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-package-variadics-and-scalars | FileCheck %s
 
 // PackageVariadicsAndScalars runs directly on the mogg codegen ops (the
 // post-MAPToMOGG form, with plain !mogg.tensor_ operands). It re-runs operand

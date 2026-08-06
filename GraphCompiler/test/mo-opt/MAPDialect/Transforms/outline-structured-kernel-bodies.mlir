@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --map-outline-structured-kernel-bodies | FileCheck %s
+// RUN: mo-opt %s --map-outline-structured-kernel-bodies | FileCheck %s
 
 !DType = !lit.struct<@std::@builtin::@dtype::@DType>
 !SIMDLength = !lit.struct<@std::@builtin::@simd_length::@SIMDLength>

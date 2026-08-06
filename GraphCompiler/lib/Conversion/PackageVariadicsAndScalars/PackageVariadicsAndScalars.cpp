@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h"
-#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
@@ -127,9 +126,6 @@ struct PackageVariadicsAndScalarsPass
   using Base::Base;
 
   void runOnOperation() override {
-    if (!MO::useAdvancedFusion())
-      return;
-
     MojoRegistry registry(getOperation());
     SmallVector<CallOpaqueOp> calls;
     getOperation().walk([&](CallOpaqueOp c) {
