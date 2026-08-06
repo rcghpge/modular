@@ -434,21 +434,6 @@ LogicalResult TensorSpecCreateOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// BufferRemoveCachedOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
-  /// TODO: Add error checking. The Mojo/C++ can return an error that we
-  auto primDecl = state.registry.lookupPrimitive(getOperationName());
-  MOGG::MojoValue mgpBufferRemoveCachedFunc(primitiveMojoName(primDecl));
-  state.builder.call(mgpBufferRemoveCachedFunc, {},
-                     {state.getMojoValueFor(getTheContext()),
-                      state.getMojoValueFor(getBufferSlot())});
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // BufferGetSizeOp
 //===----------------------------------------------------------------------===//
 

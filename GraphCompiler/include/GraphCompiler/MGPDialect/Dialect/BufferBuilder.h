@@ -310,11 +310,6 @@ public:
                           TypedValue<MEF::ChainType> inChain,
                           uint64_t bufferSlot, Type expectedBufferType) = 0;
 
-  virtual Value removeCached(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context,
-                             TypedValue<MEF::ChainType> inChain,
-                             uint64_t bufferSlot) = 0;
-
   /// Returns the join of all the given chain values, which must be all native
   /// to this builder.
   virtual Value chainCreate(OpBuilder &builder, Location loc,
@@ -450,11 +445,6 @@ public:
                   TypedValue<ContextType> context,
                   TypedValue<MEF::ChainType> inChain, uint64_t bufferSlot,
                   Type expectedBufferType) override;
-
-  Value removeCached(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context,
-                     TypedValue<MEF::ChainType> inChain,
-                     uint64_t bufferSlot) override;
 
   Value bufferConcat(OpBuilder &builder, Location loc,
                      TypedValue<DeviceContextType> deviceContext, Value inChain,

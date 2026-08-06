@@ -78,29 +78,25 @@ mgp.model @cache : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 }
 
 //
-// mgp.buffer.{cache, get_cached, remove_cached}
+// mgp.buffer.{cache, get_cached} over a `dense_array` constant, rather than the
+// `dense_resource` one above.
 //
 
-// CHECK-LABEL: --- Running 'remove_cache'
+// CHECK-LABEL: --- Running 'cache_dense_array'
 // CHECK-NEXT: tensor<6xui8> [1, 2, 3, 4, 5, 6]
-mgp.model @remove_cache : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+mgp.model @cache_dense_array : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 3
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute(%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.tensor<6xui8>) {
-  %buf0 = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
   %buf1 = mgp.buffer.constant #M.dense_array<1, 2, 3, 4, 5, 6> : !M.array<6xui8>
-  %ch1 = mgp.buffer.cache %ch0, %ctx[2], %buf0 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %idx = index.constant 2
-  %buf0_fromcache = mgp.buffer.get_cached %ch1, %ctx[%idx] : !mgp.buffer
-  %ch2 = grt.chain.create (%buf0_fromcache : !mgp.buffer)
-  %ch3 = mgp.buffer.remove_cached %ch2, %ctx[%idx]
-  %ch4 = mgp.buffer.cache %ch3, %ctx[2], %buf1 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
+  %ch4 = mgp.buffer.cache %ch0, %ctx[2], %buf1 : (!mef.chain, !mgp.context, !mgp.buffer) -> !mef.chain
   %buf1_fromcache = mgp.buffer.get_cached %ch4, %ctx[%idx] : !mgp.buffer
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<6xui8>
-  %tensor = mgp.tensor.create %ch1, %buf1_fromcache, %spec : !mgp.tensor<6xui8>
-  mef.output %ch1, %tensor : !mef.chain, !mgp.tensor<6xui8>
+  %tensor = mgp.tensor.create %ch4, %buf1_fromcache, %spec : !mgp.tensor<6xui8>
+  mef.output %ch4, %tensor : !mef.chain, !mgp.tensor<6xui8>
 }
 
 //
