@@ -420,7 +420,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  HasParent<"MOGG::BindLambdaOp">,
+  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp"]>,
   Pure,
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
@@ -447,7 +447,6 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     `[` $kernelSymName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` type($outputs)
   }];
 }
-
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -1969,6 +1968,91 @@ def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
   let results = (outs AnyType:$output);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `to` type($output)
+  }];
+}
+
+def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", []> {
+  let summary = "Load a scalar value from a codegen tensor at an index.";
+  let description = [{
+    New-path counterpart of `mogg.tensor.load`: the load half of a fusion
+    callback body, reading `$tensor` at `$index`. Mirrors
+    `mogg._tensor.store`'s shape minus the write side; not `Pure`, since a
+    load shouldn't be freely reordered relative to a store through the same
+    tensor any more than the store itself is.
+  }];
+  let arguments = (ins MOGG_Tensor:$tensor, AnyType:$index);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = [{
+    $tensor `[` $index `]` attr-dict `:`
+    qualified(type($tensor)) `,` qualified(type($index)) `->` qualified(type($result))
+  }];
+}
+
+def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
+  NoTerminator,
+]> {
+  let summary = "Drive a parallel foreach loop over a fused elementwise body.";
+  let description = [{
+    New-path counterpart of `mogg.call.foreach`: dispatches to the Mojo
+    foreach driver named by `$callee` (resolved once, at construction time,
+    from the registered `mogg._call.foreach` primitive -- there is no
+    per-kernel lookup the way `mogg._call.opaque` has, since this always
+    calls the same generic driver) over `$shape` many indices. Unlike the
+    opaque-kernel path, the region owns the full per-index computation
+    directly: its entry block
+    has one block argument per `$capturing` tensor (in order) followed by a
+    trailing index block argument, and the body does its own
+    load-compute-store round trip through `mogg._tensor.load` /
+    `mogg.call.elementwise` / `mogg._tensor.store`. `MAPToMOGG` lowers a
+    `map.iter.opaque` wrapping a `map.iter.foreach.body` into one of these.
+
+    Captured tensors may have a different shape than `$shape` (e.g. a
+    broadcast operand) and from each other, so this op deliberately has no
+    verifier enforcing shape agreement.
+  }];
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    MOGG_Shape:$shape,
+    MOGG_Context:$context,
+    Variadic<MOGG_Tensor>:$capturing
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    $callee `shape` `(` $shape `)` `context` `(` $context `)`
+            (`capturing` `(` $capturing^ `:` type($capturing) `)`)?
+            attr-dict-with-keyword $body
+  }];
+}
+
+def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp"]>,
+  Pure,
+]> {
+  let summary = "Call the registered `::elementwise` function for a particular kernel";
+  let description = [{
+    Like `mogg.call.elementwise`, but also takes the current iteration index
+    explicitly as an operand instead of relying on the kernel's registered
+    signature to conditionally request one.
+
+    Example:
+    ```mlir
+    mogg._call.elementwise["mo.add"](...)
+    ```
+  }];
+  let arguments = (ins
+    StrAttr:$kernelSymName,
+    StrAttr:$moOpName,
+    Variadic<AnyType>:$inputs,
+    Optional<AnyType>:$index,
+    OptionalAttr<DictionaryAttr>:$kernel_param
+  );
+  let results = (outs Variadic<AnyType>:$outputs);
+
+  let assemblyFormat = [{
+    `[` $kernelSymName `]` `(` $inputs (`,` $index^)? `)` attr-dict `:` type($inputs) (`,` type($index)^)? `->` type($outputs)
   }];
 }
 

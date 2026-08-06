@@ -5343,6 +5343,21 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// CallElementwiseV2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+CallElementwiseV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifySymbolUsesForKernelDeclCall(
+      *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
+        if (!decl.getElementwise())
+          return emitOpError("kernel '")
+                 << getKernelSymName() << "' has no 'elementwise' function";
+        return success();
+      });
+}
+
+//===----------------------------------------------------------------------===//
 // LoadTensorOp
 //===----------------------------------------------------------------------===//
 

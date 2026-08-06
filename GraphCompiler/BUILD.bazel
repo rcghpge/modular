@@ -295,6 +295,26 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "GraphCompilerLowerableToMOGGInterfaceIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GraphCompiler/Interfaces/LowerableToMOGGInterface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GraphCompiler/Interfaces/LowerableToMOGGInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/Interfaces/LowerableToMOGGInterface.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+    ],
+)
+
 modular_cc_library(
     name = "GraphCompilerInterfaces",
     srcs = glob(["lib/Interfaces/*.cpp"]),
@@ -304,10 +324,12 @@ modular_cc_library(
         ":GraphCompilerConvertibleInterfacesIncGen",
         ":GraphCompilerEmitsMojoInterfacesIncGen",
         ":GraphCompilerInterfacesIncGen",
+        ":GraphCompilerLowerableToMOGGInterfaceIncGen",
         ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialect.headers",
         ":MOGGFusionSupport",
+        ":MOSHDialect",
         "//MLRT:Driver/DeviceContext",
         "@llvm-project//llvm:Support",
     ],
@@ -1486,6 +1508,7 @@ td_library(
     srcs = glob(["include/GraphCompiler/MAPDialect/Dialect/*.td"]),
     includes = ["include"],
     deps = [
+        ":GraphCompilerInterfacesTdFiles",
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
         ":MOSHDialectTdFiles",
@@ -1499,6 +1522,7 @@ gentbl_mlir_dialect(
     dialect = "map",
     td_file = "include/GraphCompiler/MAPDialect/Dialect/MAP.td",
     deps = [
+        ":GraphCompilerInterfacesTdFiles",
         ":MAPDialectTdFiles",
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
@@ -1538,6 +1562,8 @@ modular_cc_library(
     hdrs = glob(["include/GraphCompiler/MAPDialect/Dialect/*.h"]),
     copts = ["-fvisibility=default"],
     deps = [
+        ":GraphCompilerInterfaces",
+        ":GraphCompilerLowerableToMOGGInterfaceIncGen",
         ":MAPDialectAttrsIncGen",
         ":MAPDialectIncGen",
         ":MODialect",

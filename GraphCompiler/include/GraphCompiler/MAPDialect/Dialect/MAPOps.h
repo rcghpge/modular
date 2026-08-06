@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_H
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_H
 
+#include "GraphCompiler/Interfaces/LowerableToMOGGInterface.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPTypes.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"

@@ -17,6 +17,7 @@ include "GraphCompiler/MODialect/MOTypes.td"
 include "GraphCompiler/MODialect/MOInterfaces.td"
 include "GraphCompiler/MOGGDialect/MOGGAttrs.td"
 include "GraphCompiler/MOSHDialect/MOSHAttrs.td"
+include "GraphCompiler/Interfaces/LowerableToMOGGInterface.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
@@ -42,6 +43,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     SingleBlock,
     NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+    DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
   let summary = "An opaque (hand-written) kernel with fusible load/store paths.";
   let description = [{
@@ -129,6 +131,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
     SingleBlock,
     NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+    DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
   let summary = "A store-path callback inlined into an opaque kernel's output.";
   let description = [{
@@ -183,6 +186,7 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
 def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+    DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
   let summary = "Invoke an opaque Mojo kernel by symbol.";
   let description = [{
@@ -297,6 +301,7 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
   HasParent<"IterOpaqueOp">,
   SingleBlock,
   NoTerminator,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "The per-index body of a structured MAP loop, wrapped for outlining.";
   let description = [{
@@ -347,7 +352,8 @@ def MAP_LoadOp : MAP_Op<"load", [
                  "tensor", "index",
                  "::M::MAP::IndexType::get($_self.getContext(), "
                  "::llvm::cast<::M::MO::TensorType>($_self).getRank())">,
-  Pure
+  Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Load a value from a tensor at an N-D index";
   let description = [{
@@ -383,7 +389,8 @@ def MAP_StoreOp : MAP_Op<"store", [
   TypesMatchWith<"index type matches tensor/buffer rank",
                  "tensor", "index",
                  "::M::MAP::IndexType::get($_self.getContext(), "
-                 "::M::MO::castFromTensorLike($_self).getRank())">
+                 "::M::MO::castFromTensorLike($_self).getRank())">,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Store a value into a tensor (or buffer) at an N-D index";
   let description = [{
@@ -415,6 +422,8 @@ def MAP_StoreOp : MAP_Op<"store", [
 def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
   ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
   Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
   let summary = "Call a named pointwise kernel on the current index and scalar arguments";
   let description = [{

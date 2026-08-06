@@ -76,6 +76,23 @@ CallOpaqueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 //===----------------------------------------------------------------------===//
+// map.call.elementwise
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  auto decl = symbolTable.lookupNearestSymbolFrom<M::MOGG::KernelDeclOp>(
+      *this, getCalleeAttr());
+  if (!decl)
+    return emitOpError("'")
+           << getCallee() << "' does not refer to a kernel.decl op";
+  if (!decl.getElementwise())
+    return emitOpError("kernel '")
+           << getCallee() << "' has no 'elementwise' function";
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // Shared parse/print helpers
 //===----------------------------------------------------------------------===//
 

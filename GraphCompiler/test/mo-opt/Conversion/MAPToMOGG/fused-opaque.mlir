@@ -12,8 +12,9 @@
 // CHECK-LABEL: mo.graph @one_fused
 // CHECK: mogg._kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK: %[[OT:.*]] = mogg._tensor.create(%{{.*}}, %[[OSH:.*]]) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[OSH]] capturing(%[[OT]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
+// CHECK: %[[OT:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[ESH:.*]] = mogg._shape.create()
+// CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
 // CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
 // CHECK:   mogg._tensor.store %[[CAP]][%[[I]]] = %[[V]] : !mogg.tensor_, !map.index<2>, f32
 // CHECK: mogg._call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%[[CTX]] : !mogg.context)
@@ -24,10 +25,12 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // Two fused outputs: two epilogue tensors, both written by the call.
 // CHECK-LABEL: mo.graph @two_fused
-// CHECK: %[[OT0:.*]] = mogg._tensor.create(%{{.*}}, %[[OSH0:.*]]) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: %[[OT1:.*]] = mogg._tensor.create(%{{.*}}, %[[OSH1:.*]]) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: %[[E0:.*]] = mogg._tensor.create.epilogue %[[OSH0]] capturing(%[[OT0]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
-// CHECK: %[[E1:.*]] = mogg._tensor.create.epilogue %[[OSH1]] capturing(%[[OT1]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
+// CHECK: %[[OT0:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[OT1:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[ESH0:.*]] = mogg._shape.create()
+// CHECK: %[[E0:.*]] = mogg._tensor.create.epilogue %[[ESH0]] capturing(%[[OT0]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
+// CHECK: %[[ESH1:.*]] = mogg._shape.create()
+// CHECK: %[[E1:.*]] = mogg._tensor.create.epilogue %[[ESH1]] capturing(%[[OT1]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
 // CHECK: mogg._call.opaque @{{.*}}MapLowerTwoFusedOutputs inputs(%{{.*}} : !mogg.tensor_) outputs(%[[E0]], %[[E1]] : !mogg.tensor_, !mogg.tensor_) context(%{{.*}} : !mogg.context)
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
