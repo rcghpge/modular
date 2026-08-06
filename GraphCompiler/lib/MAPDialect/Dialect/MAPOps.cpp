@@ -96,26 +96,6 @@ CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 // Shared parse/print helpers
 //===----------------------------------------------------------------------===//
 
-// Parses `( %v : type, ... )` as a list of already-defined operands with types.
-static ParseResult
-parseOperandGroup(OpAsmParser &parser,
-                  SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
-                  SmallVectorImpl<Type> &types) {
-  if (parser.parseLParen())
-    return mlir::failure();
-  if (succeeded(parser.parseOptionalRParen()))
-    return mlir::success();
-  do {
-    OpAsmParser::UnresolvedOperand operand;
-    Type type;
-    if (parser.parseOperand(operand) || parser.parseColonType(type))
-      return mlir::failure();
-    operands.push_back(operand);
-    types.push_back(type);
-  } while (succeeded(parser.parseOptionalComma()));
-  return parser.parseRParen();
-}
-
 // Prints `%v : type, ...` (no surrounding parens).
 static void printValuesWithTypes(OpAsmPrinter &p, ValueRange values) {
   llvm::interleaveComma(values, p,
@@ -127,13 +107,11 @@ static void printValuesWithTypes(OpAsmPrinter &p, ValueRange values) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
-  // inputs ( %A : tA, ... )
-  SmallVector<OpAsmParser::UnresolvedOperand> inputs;
-  SmallVector<Type> inputTypes;
+  // inputs ( %A : tA, ... ) -- shadowed as body block arguments (isolated).
+  SmallVector<OpAsmParser::Argument> allArgInfo;
   if (parser.parseKeyword("inputs") ||
-      parseOperandGroup(parser, inputs, inputTypes) ||
-      parser.resolveOperands(inputs, inputTypes, parser.getCurrentLocation(),
-                             result.operands))
+      parseParenOperandListWithShadowing(parser, result, allArgInfo,
+                                         /*isIsolatedFromAbove=*/true))
     return mlir::failure();
 
   // outputs ( %out : tOut, ... ) -> region entry args + op result types
@@ -142,12 +120,14 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseArgumentList(outArgs, OpAsmParser::Delimiter::Paren,
                                /*allowType=*/true))
     return mlir::failure();
-  for (const OpAsmParser::Argument &arg : outArgs)
+  for (const OpAsmParser::Argument &arg : outArgs) {
     result.addTypes(arg.type);
+    allArgInfo.push_back(arg);
+  }
 
-  // body region (entry block args are the outputs)
+  // body region (entry block args are ordered [inputs..., outputs...])
   Region *body = result.addRegion();
-  if (parser.parseRegion(*body, outArgs))
+  if (parseRegion(parser, allArgInfo, *body, /*isIsolatedFromAbove=*/true))
     return mlir::failure();
 
   return parser.parseOptionalAttrDict(result.attributes);
@@ -156,14 +136,35 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
 void IterOpaqueOp::print(OpAsmPrinter &p) {
   p.increaseIndent();
   p.printNewline();
-  p << "inputs (";
-  printValuesWithTypes(p, getInputs());
-  p << ")";
+  p << "inputs ";
+  printParenOperandListWithShadowing(p, getInputs(), getInputBlockArgs(),
+                                     /*isIsolatedFromAbove=*/true);
   p.printNewline();
   p << "outputs (";
   printValuesWithTypes(p, getOutputBlockArgs());
   p << ") ";
   p.decreaseIndent();
+
+  // Shadow the whole region so inner references to the inputs print with the
+  // outer operand's own SSA name (mirrors IterForeachOp::print); output block
+  // args keep whatever name getAsmBlockArgumentNames already assigned them,
+  // so shadowing them with themselves here is a no-op.
+  {
+    llvm::DenseSet<Value> seen;
+    bool inputsDistinct = true;
+    for (Value v : getInputs()) {
+      if (!seen.insert(v).second) {
+        inputsDistinct = false;
+        break;
+      }
+    }
+    if (inputsDistinct) {
+      SmallVector<Value> shadowValues(getInputs().begin(), getInputs().end());
+      for (BlockArgument arg : getOutputBlockArgs())
+        shadowValues.push_back(arg);
+      p.shadowRegionArgs(getBody(), shadowValues);
+    }
+  }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict((*this)->getAttrs());
 }
@@ -180,7 +181,7 @@ void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,
                                             OpAsmSetValueNameFn setNameFn) {
   if (region.empty())
     return;
-  auto args = region.front().getArguments();
+  auto args = region.front().getArguments().take_back(getNumResults());
   for (auto [i, arg] : llvm::enumerate(args))
     setNameFn(arg, args.size() == 1 ? "out" : ("out" + std::to_string(i)));
 }

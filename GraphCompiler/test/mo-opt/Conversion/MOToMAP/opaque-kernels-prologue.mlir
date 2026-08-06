@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: mo.graph @gather
 // CHECK: %[[G:.*]] = map.iter.opaque
-// CHECK: inputs (%[[DATA:.*]] : !mo.tensor<[3, 3], f32>, %[[INDICES:.*]] : !mo.tensor<[2, 2], si32>)
+// CHECK: inputs (%[[DATA:.*]]: !mo.tensor<[3, 3], f32>, %[[INDICES:.*]]: !mo.tensor<[2, 2], si32>)
 // CHECK: outputs (%[[OUT:.*]] : !mo.tensor<[2, 2, 3], f32>) {
 // CHECK:   %[[PD:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CD:.*]] = %[[DATA]] : !mo.tensor<[3, 3], f32>) {
 // CHECK:     %{{.*}} = map.load %[[CD]][%{{.*}}] : !mo.tensor<[3, 3], f32>
@@ -22,7 +22,7 @@ mo.graph @gather(%data: !mo.tensor<[3, 3], f32>, %indices: !mo.tensor<[2, 2], si
 
 // CHECK-LABEL: mo.graph @two_fused
 // CHECK: %[[MM:.*]] = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>, %[[B:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>, %[[B:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[PA:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CA:.*]] = %[[A]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:     %{{.*}} = map.load %[[CA]][%{{.*}}] : !mo.tensor<[2, 2], f32>
@@ -38,7 +38,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) ->
 
 // CHECK-LABEL: mo.graph @partial_fused
 // CHECK: %[[MM:.*]] = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>, %[[B:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>, %[[B:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[PA:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CA:.*]] = %[[A]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:     %{{.*}} = map.load %[[CA]][%{{.*}}] : !mo.tensor<[2, 2], f32>

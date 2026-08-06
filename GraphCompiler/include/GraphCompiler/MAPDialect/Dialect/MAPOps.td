@@ -40,6 +40,7 @@ def MAP_AnyIndex : Type<
 //===----------------------------------------------------------------------===//
 
 def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
+    IsolatedFromAbove,
     SingleBlock,
     NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
@@ -52,15 +53,16 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     (`map.iter.prologue` / `map.iter.epilogue`) plus the `map.call.opaque` that
     invokes the kernel; it is not a sequence of computation ops.
 
-    The `inputs` are the kernel's tensor operands. The `outputs` are the kernel
-    results; each becomes a block argument of the body so the callbacks and the
-    `map.call.opaque` can address it, and the op result of the same type
-    carries the filled tensor out. When every result is produced this way (the
-    common case today), the body has no terminator: the output block arguments
-    themselves are the results, the same destination-passing-style convention
-    `mogg._kernel` uses. A trailing `map.yield` is only needed if some
-    `map.call.opaque` in the body produces an actual (non-DPS) return value
-    that isn't already one of the output block arguments.
+    The region is isolated from above: both `inputs` and `outputs` are shadowed
+    as body block arguments (same convention as `map.iter.foreach`) so the
+    callbacks and the `map.call.opaque` address them without reaching outside
+    the op. The op result matching each output carries the filled tensor out.
+    When every result is produced this way (the common case today), the body
+    has no terminator: the output block arguments themselves are the results,
+    the same destination-passing-style convention `mogg._kernel` uses. A
+    trailing `map.yield` is only needed if some `map.call.opaque` in the body
+    produces an actual (non-DPS) return value that isn't already one of the
+    output block arguments.
 
     ```mlir
     %mm = map.iter.opaque
@@ -94,9 +96,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
 
     /// The subrange of body entry-block arguments shadowing `$inputs` --
-    /// whatever precedes the output block args. Today `$inputs` are not
-    /// themselves shadowed, so this is always empty; anchoring the split on
-    /// the (always known) result count rather than the input count keeps this
+    /// whatever precedes the output block args. Anchoring the split on the
+    /// (always known) result count rather than the input count keeps this
     /// correct either way.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
   }];
@@ -308,10 +309,10 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
     Holds the per-index computation of a `map.iter.foreach` after
     `OutlineStructuredKernelBodies` has wrapped it in a `map.iter.opaque`.
     Unlike the flat `map.iter.foreach`, this op carries no `inputs`/`outputs`
-    of its own: the enclosing `map.iter.opaque` owns those, and this op's body
-    reaches them by plain SSA dominance (neither the enclosing `map.iter.opaque`
-    nor this op's own body is isolated from above), not through operands or
-    block arguments. The only block argument is the index.
+    of its own: the enclosing `map.iter.opaque` owns those (shadowed as its own
+    body block arguments), and this op's body reaches them by plain SSA
+    dominance -- this op's own body is not isolated from above, even though
+    the enclosing `map.iter.opaque` is. The only block argument is the index.
 
     The `shape` attribute is copied unchanged from the wrapped
     `map.iter.foreach`.

@@ -201,7 +201,11 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
   auto iterOpaqueKernel = (*this)->getParentOfType<IterOpaqueOp>();
-  ValueRange inputs = iterOpaqueKernel.getInputs();
+  // `map.iter.opaque` is isolated from above, so nested ops (e.g. this
+  // body's own `map.load`s) reference its shadowed input block args, not
+  // its outer operands -- the same values `IterOpaqueOp::lowerToMOGG` keyed
+  // its mapping on.
+  Block::BlockArgListType inputs = iterOpaqueKernel.getInputBlockArgs();
   if (iterOpaqueKernel.getResults().size() != 1)
     return emitOpError(
         "MAPToMOGG: elementwise lowering supports exactly one output");
@@ -322,8 +326,12 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   builder.setInsertionPointToEnd(body);
 
+  // `map.iter.opaque` is isolated from above: nested ops reference its
+  // shadowed input block args, not `inputs` (its outer operands) directly,
+  // so the mapping must be keyed on the block args.
+  Block::BlockArgListType inputBlockArgs = getInputBlockArgs();
   for (auto [i, in] : llvm::enumerate(inputs))
-    state.mapping.map(in,
+    state.mapping.map(inputBlockArgs[i],
                       buildTensor(loc, inputPtrs[i], in.getType(),
                                   MO::IOKind::Input, /*isMut=*/false, state));
 

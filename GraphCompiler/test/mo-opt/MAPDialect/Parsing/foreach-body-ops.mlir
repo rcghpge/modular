@@ -13,7 +13,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 
 // CHECK-LABEL: mo.graph @foreachBodyStatic
 // CHECK:         [[RESULT:%[^ ]+]] = map.iter.opaque
-// CHECK-NEXT:    inputs ([[X:%[^ :,]+]] : !mo.tensor<[8, 16, 128], f32>, [[Y:%[^ :,]+]] : !mo.tensor<[8, 16, 128], f32>)
+// CHECK-NEXT:    inputs ([[X:%[^ :,]+]]: !mo.tensor<[8, 16, 128], f32>, [[Y:%[^ :,]+]]: !mo.tensor<[8, 16, 128], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[8, 16, 128], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[8, 16, 128]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<3>) {
@@ -44,7 +44,7 @@ mo.graph @foreachBodyStatic(%x: !mo.tensor<[8, 16, 128], f32>,
 
 // CHECK-LABEL: mo.graph @foreachBodyDynamic
 // CHECK:         [[RESULT2:%[^ ]+]] = map.iter.opaque
-// CHECK-NEXT:    inputs ([[X2:%[^ :,]+]] : !mo.tensor<[D0, D1], f32>, [[Y2:%[^ :,]+]] : !mo.tensor<[D0, D1], f32>)
+// CHECK-NEXT:    inputs ([[X2:%[^ :,]+]]: !mo.tensor<[D0, D1], f32>, [[Y2:%[^ :,]+]]: !mo.tensor<[D0, D1], f32>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[D0, D1], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[D0, D1]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>) {

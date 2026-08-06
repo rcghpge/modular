@@ -2173,6 +2173,24 @@ struct MapLowerPartialFusedOutputs:
         pass
 
 
+# Two plain inputs feeding a single fused output: exercises the opaque body's
+# output block arg (whose arg number is offset by the two leading input block
+# args) resolving to the right captured tensor.
+@extensibility.register("map_lower_two_inputs_one_fused_output")
+struct MapLowerTwoInputsOneFusedOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        has_epilogue_fusion: Bool,
+    ](
+        res: FusedOutputTensor,
+        a: InputTensor,
+        b: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
 @extensibility.register("map_lower_scalar")
 struct MapLowerScalar:
     @staticmethod

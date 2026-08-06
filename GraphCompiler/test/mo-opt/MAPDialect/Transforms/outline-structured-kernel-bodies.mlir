@@ -12,7 +12,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 
 // CHECK-LABEL: mo.graph @add
 // CHECK:         [[RESULT:%[^ ]+]] = map.iter.opaque
-// CHECK-NEXT:    inputs ([[X:%[^ :,]+]] : !mo.tensor<[256, 256], f32>, [[Y:%[^ :,]+]] : !mo.tensor<[256, 256], f32>)
+// CHECK-NEXT:    inputs ([[X:%[^ :,]+]]: !mo.tensor<[256, 256], f32>, [[Y:%[^ :,]+]]: !mo.tensor<[256, 256], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[256, 256], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[256, 256]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>) {
@@ -41,7 +41,7 @@ mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], 
 
 // CHECK-LABEL: mo.graph @addDynamic
 // CHECK:         [[RESULT2:%[^ ]+]] = map.iter.opaque
-// CHECK-NEXT:    inputs ([[X2:%[^ :,]+]] : !mo.tensor<[M, N], f32>, [[Y2:%[^ :,]+]] : !mo.tensor<[M, N], f32>)
+// CHECK-NEXT:    inputs ([[X2:%[^ :,]+]]: !mo.tensor<[M, N], f32>, [[Y2:%[^ :,]+]]: !mo.tensor<[M, N], f32>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[M, N], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[M, N]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>) {
@@ -71,7 +71,7 @@ mo.graph @addDynamic<M, N>(%arg0: !mo.tensor<[M, N], f32>, %arg1: !mo.tensor<[M,
 // map.iter.opaque is left untouched.
 // CHECK-LABEL: mo.graph @alreadyOpaque
 // CHECK:         [[RESULT3:%[^ ]+]] = map.iter.opaque
-// CHECK-NEXT:    inputs ([[X3:%[^ :,]+]] : !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    inputs ([[X3:%[^ :,]+]]: !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    outputs ([[OUT3:%[^ :,]+]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NEXT:  }
 // CHECK-NEXT:  mo.output [[RESULT3]] : !mo.tensor<[2, 2], f32>

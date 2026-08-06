@@ -106,13 +106,16 @@ LogicalResult lowerToOpaque(Operation *op,
       MOGG::FusionInfoAttr::get(op->getContext(), MOGG::createFusionLeaf(op)));
 
   Block *body = builder.createBlock(&opaque.getBody());
+  SmallVector<BlockArgument> ins;
+  for (Value operand : op->getOperands())
+    ins.push_back(body->addArgument(operand.getType(), loc));
   SmallVector<BlockArgument> outs;
   for (Type resultType : op->getResultTypes())
     outs.push_back(body->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(body);
   SmallVector<Value> callInputs;
-  for (auto [idx, operand] : llvm::enumerate(op->getOperands())) {
+  for (auto [idx, operand] : llvm::enumerate(ins)) {
     if (!inputFusible.lookup(idx)) {
       callInputs.push_back(operand);
       continue;

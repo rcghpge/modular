@@ -37,6 +37,20 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
+// Two inputs feeding one fused output: the epilogue's captured output block
+// arg number is offset by the two leading input block args, so this exercises
+// that the capture still resolves to the right (only) output tensor.
+// CHECK-LABEL: mo.graph @two_inputs_one_fused
+// CHECK: mogg._kernel (%{{.*}}, %{{.*}} : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK: %[[OT:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[ESH:.*]] = mogg._shape.create()
+// CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
+// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoInputsOneFusedOutput inputs(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
+  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_inputs_one_fused_output"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  mo.output %c : !mo.tensor<[2, 2], f32>
+}
+
 // Mixed: first output fused (epilogue tensor), second plain (raw output tensor).
 // CHECK-LABEL: mo.graph @two_partial
 // CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {

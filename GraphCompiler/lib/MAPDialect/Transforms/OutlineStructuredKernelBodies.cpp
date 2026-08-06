@@ -24,10 +24,10 @@ namespace M::MAP {
 namespace {
 
 // Wraps `foreachOp` in a `map.iter.opaque`, moving its shape and body into a
-// nested `map.iter.foreach.body`. The wrapper's own operands stay exactly
-// `foreachOp`'s inputs, unrenamed; the nested body reaches them -- and the
-// wrapper's output block args -- by plain SSA dominance, since neither the
-// wrapper nor the nested body is isolated from above.
+// nested `map.iter.foreach.body`. `map.iter.opaque` is isolated from above, so
+// its own inputs are shadowed as body block arguments; the nested body reaches
+// those -- and the opaque's output block args -- by plain SSA dominance, since
+// the nested body itself is not isolated from above.
 void outlineForeach(IterForeachOp foreachOp) {
   Location loc = foreachOp.getLoc();
   OpBuilder builder(foreachOp);
@@ -38,6 +38,9 @@ void outlineForeach(IterForeachOp foreachOp) {
     opaque.setFusionInfoAttr(fusionInfo);
 
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
+  SmallVector<Value> inputBlockArgs;
+  for (Value input : foreachOp.getInputs())
+    inputBlockArgs.push_back(opaqueBody->addArgument(input.getType(), loc));
   SmallVector<Value> outputBlockArgs;
   for (Type resultType : foreachOp.getResultTypes())
     outputBlockArgs.push_back(opaqueBody->addArgument(resultType, loc));
@@ -50,14 +53,13 @@ void outlineForeach(IterForeachOp foreachOp) {
 
   // Move the foreach's body block wholesale into the new op's region -- no
   // cloning -- then drop its input/output block args in favor of direct
-  // references to the values they'd otherwise have shadowed: `foreachOp`'s
-  // own input operands (now `opaque`'s inputs, dominating unchanged) and the
-  // new opaque body's own output block args. What's left is exactly the
-  // index block arg `map.iter.foreach.body` expects.
+  // references to the values they'd otherwise have shadowed: the new opaque
+  // body's own input and output block args. What's left is exactly the index
+  // block arg `map.iter.foreach.body` expects.
   body.getBody().takeBody(foreachOp.getBody());
   Block &movedBody = body.getBody().front();
   for (unsigned i = 0; i < numInputs; ++i)
-    movedBody.getArgument(i).replaceAllUsesWith(foreachOp.getInputs()[i]);
+    movedBody.getArgument(i).replaceAllUsesWith(inputBlockArgs[i]);
   for (unsigned i = 0; i < numOutputs; ++i)
     movedBody.getArgument(numInputs + i).replaceAllUsesWith(outputBlockArgs[i]);
   movedBody.eraseArguments(0, numInputs + numOutputs);

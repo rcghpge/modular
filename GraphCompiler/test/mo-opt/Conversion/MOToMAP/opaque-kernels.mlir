@@ -19,7 +19,7 @@
 
 // CHECK-LABEL: mo.graph @one_fused
 // CHECK: %[[MM:.*]] = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP:.*]] = %[[O]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:     map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
@@ -36,7 +36,7 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // CHECK-LABEL: mo.graph @one_plain
 // CHECK: %[[MM:.*]] = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
 // CHECK:   map.call.opaque @{{.*}}MapLowerOnePlainOutput[] inputs(%[[A]]) outputs(%[[O]]) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -50,7 +50,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // CHECK-LABEL: mo.graph @two_fused
 // CHECK: %[[MM:.*]]:2 = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI0:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O0]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI1:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O1]] : !mo.tensor<[2, 2], f32>) {
@@ -64,7 +64,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 
 // CHECK-LABEL: mo.graph @two_plain
 // CHECK: %[[MM:.*]]:2 = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
 // CHECK:   map.call.opaque @{{.*}}MapLowerTwoPlainOutputs[] inputs(%[[A]]) outputs(%[[O0]], %[[O1]]) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
@@ -79,7 +79,7 @@ mo.graph @two_plain(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 
 // CHECK-LABEL: mo.graph @two_partial
 // CHECK: %[[MM:.*]]:2 = map.iter.opaque
-// CHECK: inputs (%[[A:.*]] : !mo.tensor<[2, 2], f32>)
+// CHECK: inputs (%[[A:.*]]: !mo.tensor<[2, 2], f32>)
 // CHECK: outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:   %[[EPI0:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[O0]] : !mo.tensor<[2, 2], f32>) {
 // CHECK-NOT: map.iter.epilogue
