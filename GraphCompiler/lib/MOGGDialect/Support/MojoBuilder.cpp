@@ -193,7 +193,7 @@ MojoValue
 MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     ArrayRef<NamedMojoDef> arguments,
                     std::optional<MojoValue> returnType, bool isInline,
-                    bool isParameter, bool isAsync,
+                    bool isParameter, bool isAsync, bool raises,
                     llvm::StringRef captureConvention,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
   MojoValue lambdaParam = newVar(lambdaName.str());
@@ -204,12 +204,16 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   if (isInline)
     statement("@always_inline");
 
-  // A runtime closure that captures enclosing values must declare its capture
-  // convention (`raises {read}` / `raises {mut}`); Mojo cannot otherwise infer
-  // it. Empty convention emits no effects clause (e.g. `@parameter` closures).
+  // `raises` and the capture clause are independent -- a capturing closure
+  // still needs its blanket `{var}`-style clause regardless of `raises`.
   std::string effects;
-  if (!captureConvention.empty())
-    effects = (llvm::Twine("raises {") + captureConvention + "}").str();
+  if (raises)
+    effects = "raises";
+  if (!captureConvention.empty()) {
+    if (!effects.empty())
+      effects += " ";
+    effects += llvm::formatv("{{{0}}", captureConvention).str();
+  }
 
   statement(isAsync ? "async def " : "def ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, effects, body));

@@ -395,6 +395,10 @@ constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
 constexpr llvm::StringLiteral kFnGetKernelTileShape =
     "managed_tensor_slice.get_kernel_tile_shape";
 constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
+/// Converts a `layout.Coord` into an `IndexList[rank]`; `std.utils.coord` is
+/// not re-exported from `std.utils`, so this needs its own qualified name.
+constexpr llvm::StringLiteral kFnCoordToIndexList =
+    "std.utils.coord.coord_to_index_list";
 constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
 
 /// Affinity-aware variant: `_create_task(handle, *, desired_worker_id=<id>)`.

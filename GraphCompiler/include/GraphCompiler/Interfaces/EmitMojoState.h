@@ -127,6 +127,35 @@ struct EmitMojoState {
     FunctionBody savedFunctionBody;
   };
 
+  /// Context for an op recursively lowered inside a fused-tensor load/store
+  /// callback, kept separate from `FunctionBody` since most `FunctionBodyGuard`
+  /// callers have no tensor/width/alignment concept to populate.
+  struct MojoLambdaInfos {
+    MojoBuilder *lambdaBuilder = nullptr;
+    MojoValue widthParameter;
+    MojoValue alignmentParameter;
+  };
+  MojoLambdaInfos currentLambdaInfo;
+
+  /// RAII guard for `currentLambdaInfo`, mirroring `FunctionBodyGuard` but
+  /// kept separate since unrelated `FunctionBodyGuard` callers never need it.
+  class LambdaInfosGuard {
+  public:
+    LambdaInfosGuard(EmitMojoState &state, MojoLambdaInfos newInfo)
+        : state(state), savedLambdaInfo(std::move(state.currentLambdaInfo)) {
+      state.currentLambdaInfo = std::move(newInfo);
+    }
+    LambdaInfosGuard(const LambdaInfosGuard &) = delete;
+    LambdaInfosGuard &operator=(const LambdaInfosGuard &) = delete;
+    ~LambdaInfosGuard() {
+      state.currentLambdaInfo = std::move(savedLambdaInfo);
+    }
+
+  private:
+    EmitMojoState &state;
+    MojoLambdaInfos savedLambdaInfo;
+  };
+
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 

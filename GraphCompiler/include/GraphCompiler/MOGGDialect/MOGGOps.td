@@ -1971,7 +1971,9 @@ def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
   }];
 }
 
-def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", []> {
+def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
   let summary = "Load a scalar value from a codegen tensor at an index.";
   let description = [{
     New-path counterpart of `mogg.tensor.load`: the load half of a fusion
@@ -1990,6 +1992,7 @@ def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", []> {
 
 def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
   NoTerminator,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Drive a parallel foreach loop over a fused elementwise body.";
   let description = [{
@@ -1999,10 +2002,9 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
     per-kernel lookup the way `mogg._call.opaque` has, since this always
     calls the same generic driver) over `$shape` many indices. Unlike the
     opaque-kernel path, the region owns the full per-index computation
-    directly: its entry block
-    has one block argument per `$capturing` tensor (in order) followed by a
-    trailing index block argument, and the body does its own
-    load-compute-store round trip through `mogg._tensor.load` /
+    directly: its entry block has one block argument per `$capturing` tensor
+    (in order) followed by a trailing index block argument, and the body does
+    its own load-compute-store round trip through `mogg._tensor.load` /
     `mogg.call.elementwise` / `mogg._tensor.store`. `MAPToMOGG` lowers a
     `map.iter.opaque` wrapping a `map.iter.foreach.body` into one of these.
 
@@ -2026,6 +2028,7 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
 
 def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
   AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp"]>,

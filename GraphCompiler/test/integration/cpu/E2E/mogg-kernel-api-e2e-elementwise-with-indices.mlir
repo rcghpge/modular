@@ -1,6 +1,9 @@
 // RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t.mlir --model-inputs=ones --result-output-style=full | FileCheck %s
 
+// RUN: env MAX_GC_USE_ADV_FUSION=1 mo-opt %s -o %t.adv.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mt --execute %t.adv.mlir --model-inputs=ones --result-output-style=full | FileCheck %s
+
 // CHECK-LABEL: Running 'elemwise_add_with_index':
 // CHECK: 'elemwise_add_with_index' returned tensor<8xsi32> [1, 2, 3, 4, 5, 6, 7, 8]
 mo.graph @elemwise_add_with_index(%0 : !mo.tensor<[8], si32>) -> !mo.tensor<[8], si32> {

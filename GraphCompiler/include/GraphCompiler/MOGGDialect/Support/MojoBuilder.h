@@ -259,15 +259,16 @@ public:
   /// level when it goes out of scope.
   /// Returns the parameter name for the newly defined lambda.
   /// When isAsync is true, emits `async fn` instead of `fn`.
-  /// When `captureConvention` is non-empty (e.g. "read", "mut"), the lambda is
-  /// emitted as a raising runtime closure with that capture convention
-  /// (`... raises {<captureConvention>} ...`), which Mojo requires for runtime
-  /// closures that capture enclosing values. Empty means no convention is
-  /// emitted (e.g. `@parameter` closures, which capture at comptime).
+  /// `raises` and `captureConvention` are independent: `raises` controls
+  /// whether the lambda's own body can raise; do not infer one from the
+  /// other. When `captureConvention` is non-empty (e.g. "var"), the lambda
+  /// gets that blanket capture clause (`... {<captureConvention>} ...`),
+  /// which Mojo requires for closures capturing enclosing values by name.
+  /// Empty means no capture clause (e.g. `@parameter` closures).
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
                    std::optional<MojoValue> returnType, bool isInline,
-                   bool isParameter, bool isAsync,
+                   bool isParameter, bool isAsync, bool raises,
                    llvm::StringRef captureConvention,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
 

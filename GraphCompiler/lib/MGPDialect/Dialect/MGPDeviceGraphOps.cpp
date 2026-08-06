@@ -164,7 +164,7 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue buildClosure = state.builder.lambda(
       "build", /*parameters=*/{}, /*arguments=*/{builderParam},
       /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
-      /*isAsync=*/false, /*captureConvention=*/"imm",
+      /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"imm",
       [&](const FunctionBody &functionBody) {
         // Builder block arg -> the closure's parameter.
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
@@ -472,7 +472,7 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue workClosure = state.builder.lambda(
       "work", /*parameters=*/{}, /*arguments=*/{builderParam},
       /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
-      /*isAsync=*/false, /*captureConvention=*/workConvention,
+      /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/workConvention,
       [&](const FunctionBody &functionBody) {
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
         for (Operation &op : getBodyBlock().getOperations())
