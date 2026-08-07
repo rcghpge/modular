@@ -22,6 +22,11 @@
 // owns its captures, so it carries the `var` capture convention.
 // CHECK: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {var}:
 
+// Each device input is recorded against a graph-owned stable location rather
+// than the caller's buffer, so a replay does not depend on the caller's address
+// surviving. `mgp.device_graph.execute` copies the live input in before replay.
+// CHECK: var [[STABLE:var[_0-9]+]] = builder.add_input({{var[_0-9]+}})
+
 // The recording allocates the output buffer inside a `region` work closure. The
 // allocated buffer is a body result of the `mgp.device_graph.dependencies` op;
 // since `region` returns only the join node, the buffer is surfaced through a

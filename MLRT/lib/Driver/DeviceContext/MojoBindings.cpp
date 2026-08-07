@@ -1134,6 +1134,25 @@ AsyncRT_DeviceGraphBuilder_numOutputs(DeviceGraphBuilder *builder) {
   return static_cast<int64_t>(builder->numOutputs());
 }
 
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphBuilder_addInput(DeviceGraphBuilder *builder,
+                                    DeviceBuffer *input) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addInput", TRACY_COLOR_GRAY);
+  // COPY (addRef), unlike `addOutput`: the handle is borrowed rather than
+  // surrendered, because the Mojo caller keeps using the buffer it just
+  // allocated as the graph's stable input.
+  builder->addInput(DeviceBufferRef::copy(input));
+}
+
+// Returns the number of stable inputs registered on the device graph. Cannot
+// fail.
+MODULAR_EXPORT int64_t
+AsyncRT_DeviceGraphBuilder_numInputs(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_numInputs",
+                       TRACY_COLOR_GRAY);
+  return static_cast<int64_t>(builder->numInputs());
+}
+
 // Returns the id of the most recently added node, or -1 if no nodes have
 // been added yet. Cannot fail. The -1 sentinel mirrors the lower bound of
 // the Mojo-side scope helper which uses (start_id, end_id] to enumerate

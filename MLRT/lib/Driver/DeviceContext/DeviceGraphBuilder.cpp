@@ -23,6 +23,10 @@ void DeviceGraphBuilder::addOutput(AsyncRT::AnyAsyncValueRef output) {
   outputs.push_back(std::move(output));
 }
 
+void DeviceGraphBuilder::addInput(DeviceBufferRef input) {
+  inputs.push_back(std::move(input));
+}
+
 ErrorOr<DeviceContextRef>
 DeviceGraphBuilder::recordingContext(DeviceGraphNode initialDep) {
   return DeviceContextRef(

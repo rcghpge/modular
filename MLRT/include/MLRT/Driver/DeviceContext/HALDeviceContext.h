@@ -515,11 +515,20 @@ public:
   /// Replay the captured operations on the stored capture stream.
   ErrorOrSuccess replay() const;
 
+  /// Take ownership of the graph's input async values so their stable backing
+  /// memory lives as long as the graph that references it.
+  void setInputs(llvm::SmallVector<DeviceBufferRef> inputs) {
+    inputs_ = std::move(inputs);
+  }
+
   /// Take ownership of the graph's output async values so their stable backing
   /// memory lives as long as the graph that references it.
   void setOutputs(llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs) {
     outputs_ = std::move(outputs);
   }
+
+  /// Get the graph's input async values, in graph-signature result order.
+  llvm::ArrayRef<DeviceBufferRef> getInputs() const { return inputs_; }
 
   /// Get the graph's output async values, in graph-signature result order.
   llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const {
@@ -527,6 +536,7 @@ public:
   }
 
 private:
+  llvm::SmallVector<DeviceBufferRef> inputs_;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
 };
 

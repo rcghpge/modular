@@ -305,23 +305,89 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 // mgp.device_graph.execute
 //===----------------------------------------------------------------------===//
 
+/// Returns the raw data pointer and byte size of a graph input operand, or
+/// nullopt if the operand is not one (the device context and `!mgp.context`
+/// operands ride in the same list).
+///
+/// The two cases mirror the MLIR types the emitter selects on: `!mgp.tensor`
+/// arrives as a `Tensor` and `!mgp.buffer` as a `TensorBufferRef`, so this
+/// predicate must stay in step with `DeviceGraphCreateOp::emitMojo`, which
+/// decides which operands get an `add_input` stable location. If the two
+/// disagree, inputs pair with the wrong stable buffers.
+static std::optional<std::pair<void *, size_t>>
+graphInputData(const AnyAsyncValueRef &operand) {
+  if (auto *tensor = dyn_cast<MLRT::Tensor>(operand))
+    return std::pair{tensor->getMutableBuffer(), tensor->getSizeInBytes()};
+  if (auto *buffer = dyn_cast<TensorBufferRef>(operand))
+    return std::pair{buffer->getBuffer(), buffer->getSize()};
+  return std::nullopt;
+}
+
 // Replays a constructed device graph and surfaces its recorded outputs as the
 // op's results. Runtime counterpart of `mgp.device_graph.create` (which builds
 // the graph via the kernel path). Synchronous first cut: replay inline, then
 // forward each stored output `AnyAsyncValueRef` into the result slots.
 static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
-                                     RemainingArguments deviceContextAndInputs,
+                                     M::Driver::DeviceContextRef &context,
+                                     RemainingArguments inputs,
                                      Result<Chain> outChain,
                                      RemainingResults outputs,
                                      EncodedLocation loc) {
   TRACY_ZONE_SCOPED_NC("mgp_device_graph_execute", TRACY_COLOR_TEAL);
 
   // `graph` is operand 0 (packed as a `DeviceGraphRef` by the create region's
-  // pack helper). The device context and input operands land in
-  // `deviceContextAndInputs`; they are consumed only for async dependency
-  // ordering. In the stateless first cut the build baked the live input
-  // addresses into the graph, so replay needs no input copy.
-  (void)deviceContextAndInputs;
+  // pack helper); the device context and input operands land in
+  // `inputs`, device context first.
+  //
+  // A recorded graph reads the addresses it was built with, so the live inputs
+  // have to be copied into the stable buffers the build registered via
+  // `add_input` before replay can see them. Without this a cached graph would
+  // replay against whatever the building execution happened to pass.
+  ArrayRef<M::Driver::DeviceBufferRef> stableInputs = graph->getInputs();
+
+  if (!stableInputs.empty()) {
+    size_t inputIdx = 0;
+    for (const AnyAsyncValueRef &operand : inputs) {
+      std::optional<std::pair<void *, size_t>> data = graphInputData(operand);
+      if (!data)
+        continue;
+
+      // A mismatch means the build registered a different number of stable
+      // inputs than the op passes, so the pairing above is wrong. Fail loudly
+      // rather than copying into the wrong buffer.
+      assert(inputIdx < stableInputs.size() &&
+             "device graph input count must match execute operand count");
+
+      M::Driver::DeviceBuffer &dst = *stableInputs[inputIdx++];
+      auto [srcPtr, srcSize] = *data;
+
+      // Non-owning view so the copy can go through the `DeviceBuffer` API,
+      // which is the only one offering device-to-device. `copyTo` routes
+      // through the destination's context -- the one the graph was built from
+      // -- so the copy lands on the stream the graph replays on and is ordered
+      // before its first node.
+      //
+      // `createBufferOwning` labels the view device-resident, which is what
+      // selects the copy direction downstream (`enqueueCopyDeviceToDevice`
+      // branches on `isHost()`). Host-placed inputs are rejected by the op
+      // verifiers, so the label cannot be wrong for a declared-host input --
+      // but it is still wrong for a device-declared input whose runtime pointer
+      // is host memory, which is what `mt` hands us.
+      // TODO(GEX-4051): label the source from the input's real placement and
+      // let `copyTo` pick the direction.
+      M::Driver::DeviceBufferRef srcView =
+          context->createBufferOwning(srcPtr, srcSize, /*owning=*/false);
+
+      if (ErrorOrSuccess err = srcView->copyTo(dst)) {
+        Error msg = err.takeError();
+        std::move(outChain).setToError(msg.copy());
+        return std::move(outputs).setAllToError(std::move(msg), loc);
+      }
+    }
+
+    assert(inputIdx == stableInputs.size() &&
+           "device graph input count must match execute operand count");
+  }
 
   if (ErrorOrSuccess err = graph->replay()) {
     Error msg = err.takeError();

@@ -732,6 +732,18 @@ public:
   /// graph's outputs as its results after replay.
   ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const { return outputs_; }
 
+  /// Take ownership of the graph's stable input buffers, whose addresses the
+  /// recorded nodes read from. Transferred in by
+  /// `DeviceGraphBuilder::instantiate()`.
+  void setInputs(SmallVector<DeviceBufferRef> inputs) {
+    inputs_ = std::move(inputs);
+  }
+
+  /// Get the graph's stable input buffers, in graph-signature input order.
+  /// Consumed by the `mgp.device_graph.execute` primitive, which copies each
+  /// live input into the corresponding buffer before replaying.
+  ArrayRef<DeviceBufferRef> getInputs() const { return inputs_; }
+
   /// Get the baseline launch trace for this graph.
   ArrayRef<KernelLaunchMetadata> baselineLaunchTrace() const {
     return baselineLaunchTrace_;
@@ -773,6 +785,10 @@ private:
   /// Outputs recorded on the builder whose stable backing memory must outlive
   /// this graph; transferred in by `DeviceGraphBuilder::instantiate()`.
   SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
+
+  /// Stable input buffers the recorded nodes read from, in graph-signature
+  /// input order; transferred in by `DeviceGraphBuilder::instantiate()`.
+  SmallVector<DeviceBufferRef> inputs_;
 
   /// Keeps the graph's pool allocations alive for as long as the graph itself.
   DeviceGraphMemoryPoolRef memoryPool;

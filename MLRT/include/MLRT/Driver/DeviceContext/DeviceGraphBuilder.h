@@ -213,6 +213,21 @@ public:
   /// Return the number of outputs registered on the device graph.
   size_t numOutputs() const { return outputs.size(); }
 
+  /// Registers a buffer as the stable location of one of the graph's inputs.
+  ///
+  /// The graph records this address rather than the caller's, so replay can be
+  /// fed by copying the live input into it (see `mgp.device_graph.execute`).
+  /// The buffer must come from `createBuffer` so its address stays reserved for
+  /// the graph's lifetime, and the reference is retained: releasing it before
+  /// `instantiate()` would return the block to the pool, where a later
+  /// `createBuffer` could hand the same address out as a second input.
+  ///
+  /// Inputs are registered in graph-signature order.
+  void addInput(DeviceBufferRef input);
+
+  /// Return the number of stable inputs registered on the device graph.
+  size_t numInputs() const { return inputs.size(); }
+
 protected:
   /// Hands the recorded outputs to a subclass `instantiate()` so it can
   /// transfer their ownership to the instantiated `DeviceGraph`, whose stable
@@ -221,6 +236,9 @@ protected:
     return std::move(outputs);
   }
 
+  /// Counterpart of `takeOutputs` for the graph's stable inputs.
+  llvm::SmallVector<DeviceBufferRef> takeInputs() { return std::move(inputs); }
+
   DeviceGraphMemoryPoolRef takeMemoryPool() { return std::move(memoryPool); }
 
 private:
@@ -228,6 +246,10 @@ private:
   /// to be tracked so that it can be referenced when executing the device
   /// graph.
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
+
+  /// The graph's stable input locations, in graph-signature order. Held by
+  /// reference so the pool cannot reissue these addresses mid-recording.
+  llvm::SmallVector<DeviceBufferRef> inputs;
 
   /// Memory pool for all allocations created during the recording process.
   /// Because memory addresses are recorded as part of a device graph, all

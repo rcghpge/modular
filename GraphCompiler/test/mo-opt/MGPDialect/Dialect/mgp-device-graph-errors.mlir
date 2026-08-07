@@ -187,3 +187,77 @@ func.func @execute_bad_outputs(
         -> !mef.chain, !mgp.buffer<<"cpu", 0>>
   return %ch : !mef.chain
 }
+
+// -----
+
+//
+// mgp.device_graph.create: a host-placed input is rejected. `add_input`
+// allocates each input's stable location from the graph's device pool and the
+// replay copy treats its source as device memory, so a CPU operand cannot be
+// recorded (TODO(GEX-4051)).
+//
+
+func.func @create_host_input(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      inputs(%in : !mgp.buffer<<"cpu", 0>>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
+         %in_b: !mgp.buffer<<"cpu", 0>>):
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.buffer<<"cpu", 0>>) -> ()>
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.create: an omitted `#M.device_ref` defaults to the host, so
+// it is rejected for the same reason as an explicit `cpu`.
+//
+
+func.func @create_default_device_input(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.tensor<4xf32>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      inputs(%in : !mgp.tensor<4xf32>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
+         %in_b: !mgp.tensor<4xf32>):
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.tensor<4xf32>) -> ()>
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.execute: the same restriction on the replay side, where the
+// input copy would pick the wrong direction for host memory.
+//
+
+func.func @execute_host_input(
+    %ch: !mef.chain,
+    %graph: !mgp.device_graph<(!mgp.buffer<<"cpu", 0>>) -> ()>,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.execute' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
+  %chain = mgp.device_graph.execute
+      %graph, %dctx
+      inputs(%in : !mgp.buffer<<"cpu", 0>>)
+      : !mgp.device_graph<(!mgp.buffer<<"cpu", 0>>) -> ()>,
+        !mgp.device_context<<"gpu", 0>>
+        -> !mef.chain
+  return %ch : !mef.chain
+}

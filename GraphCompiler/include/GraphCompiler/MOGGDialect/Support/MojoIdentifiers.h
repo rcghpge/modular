@@ -270,17 +270,8 @@ constexpr llvm::StringLiteral kStructDeviceGraphNode =
     "max.gpu.host.device_graph.DeviceGraphNode";
 constexpr llvm::StringLiteral kStructDeviceGraphCache =
     "max.gpu.host.device_graph.DeviceGraphCache";
-// Device-graph builder methods / keyword args used by EmitMojo for the
-// `mgp.device_graph.create` and `mgp.device_graph.dependencies` ops.
-// `create` is the static `DeviceGraph.create(ctx, build)` factory.
-constexpr llvm::StringLiteral kFnDeviceGraphCreate = "create";
-constexpr llvm::StringLiteral kFnDeviceGraphRegion = "region";
-constexpr llvm::StringLiteral kFnDeviceGraphBuilderContext = "context";
-constexpr llvm::StringLiteral kFnDeviceGraphBuilderRecordingContext =
-    "recording_context";
-constexpr llvm::StringLiteral kFnDeviceGraphBuilderAddOutput = "add_output";
-constexpr llvm::StringLiteral kParameterDependencies = "dependencies";
-constexpr llvm::StringLiteral kParameterCache = "cache";
+// Device-graph method and keyword-argument names live on `DeviceGraphRef` and
+// `DeviceGraphBuilderRef` below, beside the accessors that emit them.
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
@@ -305,8 +296,6 @@ constexpr llvm::StringLiteral kStructMoggOutputStoreFusionTensor =
     "_MoggOutputStoreFusionTensor";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
-constexpr llvm::StringLiteral kFnStateContextGetDeviceGraphCache =
-    "get_device_graph_cache";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
 constexpr llvm::StringLiteral kStructMoggAsyncPackHelper =
@@ -754,6 +743,99 @@ public:
 
   /// `val.tensor` — the non-owning `DynamicTensor` view over the memory.
   MojoValue tensor() const { return value.get(kTensor); }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `DeviceGraphBuilder` value: the recorder handed to the
+/// build closure of `mgp.device_graph.create`, which every node in the graph is
+/// recorded into.
+class DeviceGraphBuilderRef {
+public:
+  explicit DeviceGraphBuilderRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo method / keyword-argument symbol names on `DeviceGraphBuilder`.
+  static constexpr llvm::StringLiteral kAddInput = "add_input";
+  static constexpr llvm::StringLiteral kAddOutput = "add_output";
+  static constexpr llvm::StringLiteral kRegion = "region";
+  static constexpr llvm::StringLiteral kContext = "context";
+  static constexpr llvm::StringLiteral kRecordingContext = "recording_context";
+  static constexpr llvm::StringLiteral kDependencies = "dependencies";
+
+  /// `builder.add_input(input)` — the graph-owned stable location the body
+  /// records against in place of the caller's buffer, so a replay does not
+  /// depend on the caller's address surviving.
+  MojoValue addInput(MojoValue input) const {
+    return value.get(kAddInput)(/*parameters=*/{}, {std::move(input)});
+  }
+
+  /// `builder.add_output` — the method handle, uncalled; the caller appends
+  /// `({}, args)` or hands it to `MojoBuilder::call`.
+  MojoValue addOutput() const { return value.get(kAddOutput); }
+
+  /// `builder.region(work, dependencies = deps)` — joins every node `work`
+  /// records into a single node usable as one downstream dependency.
+  MojoValue region(MojoValue work, MojoValue dependencies) const {
+    return value.get(kRegion)(
+        /*parameters=*/{},
+        {std::move(work),
+         MojoValue(kDependencies).equal(std::move(dependencies))});
+  }
+
+  /// `builder.context()` — the device context backing the graph.
+  MojoValue context() const { return value.get(kContext)(); }
+
+  /// `builder.recording_context()` — a context facade that records enqueued
+  /// work into this builder rather than executing it.
+  MojoValue recordingContext() const { return value.get(kRecordingContext)(); }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `DeviceGraph` value: an instantiated graph that can be
+/// replayed. Construction goes through the static `create` factory below rather
+/// than through a value.
+class DeviceGraphRef {
+public:
+  explicit DeviceGraphRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo static-method / keyword-argument symbol names on `DeviceGraph`.
+  static constexpr llvm::StringLiteral kCreate = "create";
+  static constexpr llvm::StringLiteral kCache = "cache";
+
+  /// `DeviceGraph.create(args...)` — the static factory that creates a builder,
+  /// runs the build closure and instantiates the recorded graph. `args` is the
+  /// device context, the build closure, then the cache key inputs.
+  static MojoValue create(llvm::ArrayRef<MojoValue> args) {
+    return MojoValue(kStructDeviceGraph).get(kCreate)(/*parameters=*/{}, args);
+  }
+
+  /// `cache = <value>` — the keyword argument selecting the caching overload of
+  /// `create`, which reuses a graph an earlier call built.
+  static MojoValue cacheArg(MojoValue cache) {
+    return MojoValue(kCache).equal(std::move(cache));
+  }
+
+  MojoValue value;
+};
+
+/// Wrapper around a Mojo `StateContext` value: the per-model state the execute
+/// block threads through, holding the cached buffers and the device graph
+/// cache.
+class StateContextRef {
+public:
+  explicit StateContextRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo method symbol name on `StateContext`.
+  static constexpr llvm::StringLiteral kGetDeviceGraphCache =
+      "get_device_graph_cache";
+
+  /// `ctx.get_device_graph_cache()` — a reference to the model's device graph
+  /// cache, created on first use. Not copyable, so callers take a pointer to
+  /// the result rather than binding it to a variable.
+  MojoValue getDeviceGraphCache() const {
+    return value.get(kGetDeviceGraphCache)();
+  }
 
   MojoValue value;
 };

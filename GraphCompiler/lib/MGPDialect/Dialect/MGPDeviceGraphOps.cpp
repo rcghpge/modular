@@ -24,9 +24,65 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
 using namespace MGP;
+
+/// The device a tensor/buffer graph input lives on. Both types default their
+/// `#M.device_ref` parameter to the host, so an omitted device reads as CPU.
+static DeviceRefAttr graphInputDevice(Value v) {
+  return llvm::TypeSwitch<Type, DeviceRefAttr>(v.getType())
+      .Case<MGP::DeviceTensorType, MGP::DeviceBufferType>(
+          [](auto type) { return type.getDevice(); })
+      .Default(nullptr);
+}
+
+/// Is `v` one of the graph's device-resident inputs, as opposed to a context
+/// operand? Device-graph finalization strips only chains from `inputs`, so
+/// `!mgp.context` and `!mgp.device_context` values ride along in there too.
+///
+/// This is the single definition of "graph input" for both the stable locations
+/// `emitMojo` requests and the cache key it derives. The runtime counterpart is
+/// `graphInputData` in MGPPrimitives.cpp, which selects the same operands by
+/// their runtime type; the two must agree or inputs pair with the wrong stable
+/// buffers at replay.
+static bool isDeviceGraphInput(Value v) {
+  return graphInputDevice(v) != nullptr;
+}
+
+/// Rejects host-placed tensor/buffer inputs, which the synthesis pathway cannot
+/// currently record.
+///
+/// `add_input` allocates each input's stable location from the graph's device
+/// pool, and the replay-time copy in `mgp_device_graph_execute` labels its
+/// source device-resident (`createBufferOwning` hardcodes `isHost=false`),
+/// which is what picks the copy direction. A host operand would therefore get
+/// device memory and be copied as device-to-device.
+///
+/// The check has to live here rather than in `isDeviceGraphInput`: narrowing
+/// that predicate would skip host operands at emission while the runtime
+/// counterpart -- which selects on runtime type and cannot see a device ref --
+/// still counted them, so every later input would pair with the wrong stable
+/// buffer. Rejecting up front keeps the two predicates in agreement.
+///
+/// TODO(GEX-4051): support host inputs by threading a host/device flag through
+/// `add_input` to the replay copy, and drop this restriction.
+static LogicalResult verifyInputsAreDeviceResident(Operation *op,
+                                                   OperandRange inputs) {
+  DeviceRefAttr host = M::getHostDevice(op->getContext());
+  for (auto [idx, input] : llvm::enumerate(inputs)) {
+    DeviceRefAttr device = graphInputDevice(input);
+    if (!device)
+      continue;
+
+    if (device.getLabel() == host.getLabel())
+      return op->emitOpError("input #")
+             << idx << " is on " << device.toString()
+             << ", but device graph inputs must be device-resident";
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // DeviceGraphCreateOp
@@ -97,7 +153,7 @@ LogicalResult DeviceGraphCreateOp::verify() {
     return emitOpError("result `!mgp.device_graph` signature results do not "
                        "match the build body's yielded value types");
 
-  return success();
+  return verifyInputsAreDeviceResident(*this, getInputs());
 }
 
 void DeviceGraphCreateOp::build(
@@ -179,10 +235,31 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
         // Context block arg -> the build-time context operand (captured).
         state.setMojoValueFor(contextArg,
                               state.getMojoValueFor(getTheContext()));
-        // Input block args -> their operands' values (captured).
+        // Input block args -> a stable location the graph owns, so a replay
+        // does not depend on the caller's buffer still living at the address
+        // the build saw. `add_input` allocates the twin from the graph's pool
+        // and registers it; `mgp.device_graph.execute` copies the live input in
+        // before replaying. Non-device operands (the contexts, which
+        // `nonChainValues` leaves in `inputs`) are captured directly.
+        //
+        // TODO(GEX-549): every device input is treated as immutable. A mutable
+        // buffer -- a KV cache -- must NOT be given a private location, because
+        // the graph writes it in place and those writes would be discarded;
+        // such inputs belong in the cache key by address instead. Mutability
+        // does not survive lowering today, so the two cannot be told apart
+        // here.
+        DeviceGraphBuilderRef builderValue(functionBody.arguments.front());
         for (auto [arg, operand] :
-             llvm::zip_equal(body.getArguments().drop_front(2), getInputs()))
-          state.setMojoValueFor(arg, state.getMojoValueFor(operand));
+             llvm::zip_equal(body.getArguments().drop_front(2), getInputs())) {
+          if (!isDeviceGraphInput(operand)) {
+            state.setMojoValueFor(arg, state.getMojoValueFor(operand));
+            continue;
+          }
+
+          MojoValue stable = state.builder.var(
+              builderValue.addInput(state.getMojoValueFor(operand)));
+          state.setMojoValueFor(arg, stable);
+        }
 
         // Emit the recording body (dependencies ops + hoisted plumbing). The
         // `mgp.device_graph.yield` terminator emits nothing.
@@ -209,17 +286,13 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   // called.
   if (Value cache = getCache()) {
     for (Value input : getInputs())
-      if (isa<MGP::DeviceTensorType, MGP::DeviceBufferType>(input.getType()))
+      if (isDeviceGraphInput(input))
         inputs.push_back(state.getMojoValueFor(input));
 
-    inputs.push_back(
-        MojoValue(kParameterCache).equal(state.getMojoValueFor(cache)));
+    inputs.push_back(DeviceGraphRef::cacheArg(state.getMojoValueFor(cache)));
   }
 
-  MojoValue graph = state.builder.var(MojoValue(kStructDeviceGraph)
-                                          .get(kFnDeviceGraphCreate)(
-                                              /*parameters=*/{},
-                                              /*operands=*/inputs));
+  MojoValue graph = state.builder.var(DeviceGraphRef::create(inputs));
   state.setMojoValueFor(getOutGraph(), graph);
   return success();
 }
@@ -238,8 +311,7 @@ LogicalResult DeviceGraphCacheOp::emitMojo(MOGG::EmitMojoState &state) {
       /*parameters=*/{},
       /*operands=*/{
           MojoValue(kParameterTo)
-              .equal(theContext.get(kFnStateContextGetDeviceGraphCache)(
-                  /*parameters=*/{}, /*operands=*/{}))}));
+              .equal(StateContextRef(theContext).getDeviceGraphCache())}));
   state.setMojoValueFor(getOutCache(), cache);
   return success();
 }
@@ -260,13 +332,13 @@ LogicalResult DeviceGraphYieldOp::emitMojo(MOGG::EmitMojoState &state) {
 
   // The builder is the first block argument of the enclosing `create` body.
   Value builderArg = getOperation()->getBlock()->getArgument(0);
-  MojoValue builder = state.getMojoValueFor(builderArg);
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(builderArg));
 
   for (Value output : getOutputs()) {
     MojoValue outVal = state.getMojoValueFor(output);
     MojoValue asyncValue =
         outVal.get(kFnAsyncPack)(/*parameters=*/{}, /*operands=*/{});
-    state.builder.call(builder.get(kFnDeviceGraphBuilderAddOutput),
+    state.builder.call(builder.addOutput(),
                        /*parameters=*/{}, /*operands=*/{asyncValue});
   }
   return success();
@@ -287,7 +359,7 @@ LogicalResult DeviceGraphExecuteOp::verify() {
     return emitOpError("`outputs` result types do not match the graph's "
                        "signature results");
 
-  return success();
+  return verifyInputsAreDeviceResident(*this, getInputs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -325,9 +397,8 @@ bool DeviceGraphAllocOp::isThrows() { return true; }
 LogicalResult
 DeviceGraphRecordingContextOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
-  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
-  MojoValue result =
-      state.builder.var(builder.get(kFnDeviceGraphBuilderRecordingContext)());
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
+  MojoValue result = state.builder.var(builder.recordingContext());
   state.setMojoValueFor(getContext(), result);
   return success();
 }
@@ -344,9 +415,8 @@ bool DeviceGraphRecordingContextOp::isThrows() { return true; }
 // keeps the interface default of false.
 LogicalResult DeviceGraphDeviceContextOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
-  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
-  MojoValue result =
-      state.builder.var(builder.get(kFnDeviceGraphBuilderContext)());
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
+  MojoValue result = state.builder.var(builder.context());
   state.setMojoValueFor(getDeviceContext(), result);
   return success();
 }
@@ -537,12 +607,9 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   SmallVector<MojoValue> depValues = state.getMojoValuesFor(getDependencies());
   MojoValue dependenciesList = state.builder.listLiteral(depValues);
 
-  MojoValue builder = state.getMojoValueFor(getGraphBuilder());
-  MojoValue node = state.builder.var(builder.get(kFnDeviceGraphRegion)(
-      /*parameters=*/{},
-      /*operands=*/{
-          workClosure,
-          MojoValue(kParameterDependencies).equal(dependenciesList)}));
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
+  MojoValue node =
+      state.builder.var(builder.region(workClosure, dependenciesList));
   state.setMojoValueFor(getNode(), node);
 
   // Bind the op's body results: unwrap each surfaced `Optional` via `.take()`.

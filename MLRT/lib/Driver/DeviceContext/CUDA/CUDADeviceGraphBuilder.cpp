@@ -292,8 +292,9 @@ ErrorOr<DeviceGraphRef> CUDADeviceGraphBuilder::instantiate() {
   auto graph =
       CUDADeviceGraphRef::create(cudaDevice, rawGraph, std::move(stream));
   RETURN_IF_ERROR(graph->instantiate());
-  // Transfer the recorded outputs to the graph so their backing memory outlives
-  // this builder.
+  // Transfer the recorded inputs and outputs to the graph so their backing
+  // memory outlives this builder.
+  graph->setInputs(takeInputs());
   graph->setOutputs(takeOutputs());
   graph->setMemoryPool(takeMemoryPool());
   return DeviceGraphRef(std::move(graph));
