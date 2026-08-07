@@ -9,7 +9,6 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Configuration.h"
 #include "Support/Threading/HWInfo.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -122,17 +121,35 @@ int taskIdForDevice(int deviceId, size_t numWorkers) {
 
   // Tier 1: explicit per-device CPU IDs from config/env.
   auto deviceTaskCpuIds = getDeviceTaskCpuIds();
-  if (deviceTaskCpuIds.size() > static_cast<size_t>(deviceId))
-    return deviceTaskCpuIds[deviceId];
+  if (deviceTaskCpuIds.size() > static_cast<size_t>(deviceId)) {
+    int taskId = deviceTaskCpuIds[deviceId];
+    // A worker ID indexes the worker array, so an out-of-range entry would
+    // read past it. This mapping is user-supplied, so an invalid entry is an
+    // ill-formed config: report it rather than silently placing the device
+    // somewhere else.
+    if (taskId >= static_cast<int>(numWorkers)) {
+      llvm::errs() << "runtime.device_task_cpu_ids[" << deviceId
+                   << "] = " << taskId
+                   << " is not a valid worker ID for a pool of " << numWorkers
+                   << " threads\n";
+      std::abort();
+    }
+    return taskId;
+  }
 
   // Tier 2: NUMA-inferred GPU-to-CPU core mapping.
   // Only use when numWorkers matches physical core count, indicating the
   // thread pool wasn't limited by cgroups or other means.
   if (numWorkers >= M::getNumPhysicalCores()) {
-    auto gpuToCpuCoreMapping = getGpuToCpuCoreMapping();
+    const auto &gpuToCpuCoreMapping = getGpuToCpuCoreMapping();
     if (!gpuToCpuCoreMapping.empty()) {
       auto it = gpuToCpuCoreMapping.find(deviceId);
-      if (it != gpuToCpuCoreMapping.end())
+      // The NUMA query reports raw /sys CPU IDs, which should not exceed the
+      // worker count but can, because there is no strong mapping from CPU core
+      // IDs to worker IDs. Fall through to the round-robin tier when it does.
+      // TODO(GEX-4049): drop this guard once that mapping exists.
+      if (it != gpuToCpuCoreMapping.end() &&
+          it->second < static_cast<int>(numWorkers))
         return it->second;
     }
   }
@@ -141,68 +158,71 @@ int taskIdForDevice(int deviceId, size_t numWorkers) {
   return 1 + (deviceId % static_cast<int>(numWorkers - 1));
 }
 
-static ArrayRef<int> getNonDeviceTaskIds() {
-  static SmallVector<int> nonDeviceIds = [] {
-    SmallVector<int> allDeviceTaskIds;
+/// Sorted, deduplicated worker IDs that taskIdForNonDevice must skip: worker
+/// 0 plus the tier 1 and tier 2 candidates, which can name any worker.
+///
+/// Tier 3 candidates are deliberately absent. That tier assigns devices
+/// contiguously upward from worker 1, and taskIdForNonDevice allocates
+/// downward from the top of the pool, so the two only meet once every other
+/// worker is spoken for.
+static ArrayRef<int> reservedTaskIds() {
+  static SmallVector<int> reserved = [] {
+    SmallVector<int> ids;
 
     // Treat taskID 0 as a device thread as well to avoid assigning to thread 0,
     // which is the MEF executor thread.
-    allDeviceTaskIds.push_back(0);
-    llvm::append_range(allDeviceTaskIds, getDeviceTaskCpuIds());
+    ids.push_back(0);
 
-    for (auto [_, v] : getGpuToCpuCoreMapping())
-      allDeviceTaskIds.push_back(v);
+    llvm::append_range(ids, getDeviceTaskCpuIds());
+    for (auto [_, cpuId] : getGpuToCpuCoreMapping())
+      ids.push_back(cpuId);
 
-    llvm::sort(allDeviceTaskIds);
-
-    allDeviceTaskIds.push_back(std::numeric_limits<int>::max());
-
-    int largestId = allDeviceTaskIds.back();
-    int counter = 0;
-
-    SmallVector<int> nextNonDeviceId;
-    for (int _ : llvm::seq(largestId)) {
-      int next = counter++;
-
-      // Find the next non-device ID entry.
-      while (llvm::binary_search(allDeviceTaskIds, next))
-        next = counter++;
-
-      nextNonDeviceId.push_back(next);
-    }
-
-    return nextNonDeviceId;
+    llvm::sort(ids);
+    // Two GPUs can share a NUMA-local core, so duplicates must collapse: each
+    // ID may displace the candidate only once.
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
   }();
 
-  return nonDeviceIds;
+  return reserved;
+}
+
+/// Returns the `n`-th (0-based) worker ID absent from sorted `reserved`,
+/// counting down from `numWorkers - 1`.
+static int nthNonReservedTaskId(int n, size_t numWorkers,
+                                ArrayRef<int> reserved) {
+  int candidate = static_cast<int>(numWorkers) - 1 - n;
+  // Each in-range reserved ID at or above the candidate displaces it down by
+  // one. Walk descending so one pass reaches the fixpoint.
+  for (int id : llvm::reverse(reserved)) {
+    if (id >= static_cast<int>(numWorkers))
+      continue;
+    if (id < candidate)
+      break;
+    --candidate;
+  }
+  return candidate;
 }
 
 int taskIdForNonDevice(int taskId, size_t numWorkers) {
-  ArrayRef<int> deviceTaskIds = getNonDeviceTaskIds();
+  if (numWorkers == 0)
+    return kDefaultTaskId;
 
-  auto getNextId = [&](int taskId) {
-    if (taskId >= (int)deviceTaskIds.size()) {
-      int diff = (taskId - (int)deviceTaskIds.size());
-      taskId = diff + deviceTaskIds.back();
-    } else {
-      taskId = deviceTaskIds[taskId];
-    }
+  ArrayRef<int> reserved = reservedTaskIds();
 
-    return taskId;
-  };
+  // Only reserved IDs below numWorkers consume a worker slot.
+  size_t reservedInRange = std::lower_bound(reserved.begin(), reserved.end(),
+                                            static_cast<int>(numWorkers)) -
+                           reserved.begin();
+  if (reservedInRange >= numWorkers)
+    return kDefaultTaskId; // Every worker is reserved for a device.
 
-  // Get the next available non-device task ID.
-  int nextId = getNextId(taskId % static_cast<int>(numWorkers));
-
-  // If it is outside the number of workers, try again from 0.
-  if (nextId >= (int)numWorkers)
-    nextId = getNextId(0);
-
-  // Give up if no valid ID was found.
-  if (nextId >= (int)numWorkers)
-    nextId = kDefaultTaskId;
-
-  return nextId;
+  // Modulus over the usable count (not numWorkers) is what keeps the result in
+  // range: counting down from numWorkers - 1, `usable` steps stay at or above
+  // worker 0.
+  size_t usable = numWorkers - reservedInRange;
+  size_t slot = static_cast<size_t>(taskId) % usable;
+  return nthNonReservedTaskId(static_cast<int>(slot), numWorkers, reserved);
 }
 
 } // namespace M::MLRT

@@ -278,6 +278,38 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "DeviceAffinityTest",
+    size = "small",
+    srcs = ["DeviceAffinityTest.cpp"],
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        "//MLRT:Driver/DeviceAffinity",
+        # DeviceAffinity's GPU-to-CPU-core inference calls into
+        # M::Driver::Device, whose definitions live in the impl library.
+        "//MLRT:Driver/DeviceContextImpl",
+    ],
+)
+
+modular_cc_test(
+    name = "DeviceAffinityConfigTest",
+    size = "small",
+    srcs = ["DeviceAffinityConfigTest.cpp"],
+    env = {
+        # Read once and cached, so it must be set before the process starts.
+        # Device 0 names a worker inside an 8-thread pool, device 1 does not.
+        "MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS": "3,9999",
+    },
+    deps = [
+        "//MLRT:Driver/DeviceAffinity",
+        "//MLRT:Driver/DeviceContextImpl",
+    ],
+)
+
+modular_cc_test(
     name = "DeviceContextTest",
     size = "small",
     srcs = [
