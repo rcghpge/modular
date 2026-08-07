@@ -128,3 +128,31 @@ func.func @device_graph_builder_ops_round_trip(
 
   return %ch : !mef.chain
 }
+
+// The cache is optional on `create`: the cases above omit it, this one supplies
+// it.
+
+// CHECK-LABEL: func.func @device_graph_cache_round_trip
+func.func @device_graph_cache_round_trip(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.buffer<<"gpu", 0>>) -> !mef.chain {
+
+  // CHECK: %[[CACHE:[a-zA-Z0-9_]+]] = mgp.device_graph.cache %{{.+}} : !mgp.device_graph.cache
+  %cache = mgp.device_graph.cache %ctx : !mgp.device_graph.cache
+
+  // CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} cache(%[[CACHE]] : !mgp.device_graph.cache) inputs(%{{.+}} : !mgp.buffer<<"gpu", 0>>) {
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      cache(%cache : !mgp.device_graph.cache)
+      inputs(%in : !mgp.buffer<<"gpu", 0>>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
+         %in_b: !mgp.buffer<<"gpu", 0>>):
+      mgp.device_graph.yield %in_b : !mgp.buffer<<"gpu", 0>>
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>
+
+  return %ch : !mef.chain
+}

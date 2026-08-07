@@ -256,6 +256,8 @@ public:
       return kStructDeviceGraphBuilder;
     } else if (isa<MGP::DeviceGraphNodeType>(mlirType)) {
       return kStructDeviceGraphNode;
+    } else if (isa<MGP::DeviceGraphCacheType>(mlirType)) {
+      return kStructDeviceGraphCache;
     } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
       if (integerTy.getWidth() == 1)
         return kStructBool;

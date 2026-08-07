@@ -14,9 +14,11 @@
 // graph as its single result.
 // CHECK: %[[GRAPH:[a-zA-Z0-9_]+]] = mogg.generic.compiled.region (%[[CTX]], %[[GPU]], %[[IN]]) : (%{{.+}}: !mgp.context, %{{.+}}: !mgp.device_context<<"gpu", 0>>, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>> {
 // CHECK: mogg.async.unpack
-// The stateless create op (no chain/slot); the `!mgp.context` is a build-time
-// block arg after the builder, not part of the signature.
-// CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+// The create op takes no chain/slot; the `!mgp.context` is a build-time block
+// arg after the builder, not part of the signature. The graph is cached in that
+// same context, so create takes the cache as an operand.
+// CHECK: %[[CACHE:[a-zA-Z0-9_]+]] = mgp.device_graph.cache %{{.+}} : !mgp.device_graph.cache
+// CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} cache(%[[CACHE]] : !mgp.device_graph.cache) inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
 // CHECK-NEXT: ^bb0(%[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder, %{{.+}}: !mgp.context, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>):
 // CHECK: %[[NODE:[a-zA-Z0-9_]+]], %[[R:[a-zA-Z0-9_]+]] = mgp.device_graph.dependencies builder(%[[B]]) dependencies() {
 // CHECK: mgp.device_graph.yield %[[R]] : !mgp.tensor<2x3xf32, <"gpu", 0>>

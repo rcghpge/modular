@@ -268,6 +268,8 @@ constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
     "max.gpu.host.device_graph.DeviceGraphBuilder";
 constexpr llvm::StringLiteral kStructDeviceGraphNode =
     "max.gpu.host.device_graph.DeviceGraphNode";
+constexpr llvm::StringLiteral kStructDeviceGraphCache =
+    "max.gpu.host.device_graph.DeviceGraphCache";
 // Device-graph builder methods / keyword args used by EmitMojo for the
 // `mgp.device_graph.create` and `mgp.device_graph.dependencies` ops.
 // `create` is the static `DeviceGraph.create(ctx, build)` factory.
@@ -278,6 +280,7 @@ constexpr llvm::StringLiteral kFnDeviceGraphBuilderRecordingContext =
     "recording_context";
 constexpr llvm::StringLiteral kFnDeviceGraphBuilderAddOutput = "add_output";
 constexpr llvm::StringLiteral kParameterDependencies = "dependencies";
+constexpr llvm::StringLiteral kParameterCache = "cache";
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
@@ -302,6 +305,8 @@ constexpr llvm::StringLiteral kStructMoggOutputStoreFusionTensor =
     "_MoggOutputStoreFusionTensor";
 constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
+constexpr llvm::StringLiteral kFnStateContextGetDeviceGraphCache =
+    "get_device_graph_cache";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
 constexpr llvm::StringLiteral kStructMoggAsyncPackHelper =

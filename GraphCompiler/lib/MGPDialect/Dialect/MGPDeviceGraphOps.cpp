@@ -33,7 +33,7 @@ using namespace MGP;
 //===----------------------------------------------------------------------===//
 
 LogicalResult DeviceGraphCreateOp::verify() {
-  Block &body = *getBodyBuilderBlock();
+  Block &body = getBodyBuilderBlock();
 
   // The body must terminate with a `mgp.device_graph.yield`. Because the op
   // uses `SingleBlock` rather than `SingleBlockImplicitTerminator`, the
@@ -102,42 +102,50 @@ LogicalResult DeviceGraphCreateOp::verify() {
 
 void DeviceGraphCreateOp::build(
     OpBuilder &builder, OperationState &result, Value theContext,
-    Value deviceContext, ValueRange inputs,
+    Value deviceContext, Value cache, ValueRange inputs,
     llvm::function_ref<void(OpBuilder &, Location, Value, Value, ValueRange)>
         bodyBuilder) {
   OpBuilder::InsertionGuard guard(builder);
 
-  // Operand order mirrors `arguments`: context, device context, inputs.
-  result.addOperands({theContext, deviceContext});
-  result.addOperands(inputs);
+  // The body is assembled in a detached region because the generated builder
+  // below needs the result type up front, and the graph signature's results are
+  // whatever the body ends up yielding.
+  Region bodyRegion;
 
-  // Create the body with the device-graph-builder block argument, then the
+  // The body takes the device-graph-builder block argument, then the
   // `!mgp.context` block argument, then one bare-`T` argument per input, and
-  // let the callback record nodes into the builder and yield the graph's output
+  // the callback records nodes into the builder and yields the graph's output
   // values. createBlock also positions the insertion point.
-  Region *bodyRegion = result.addRegion();
-  Block *body = builder.createBlock(bodyRegion);
+  Block *body = builder.createBlock(&bodyRegion);
   Value graphBuilder = body->addArgument(
       DeviceGraphBuilderType::get(builder.getContext()), result.location);
+
   Value contextArg = body->addArgument(theContext.getType(), result.location);
-  SmallVector<Value> inputArgs;
-  inputArgs.reserve(inputs.size());
-  for (Value input : inputs)
-    inputArgs.push_back(body->addArgument(input.getType(), result.location));
+
+  SmallVector<Location> locations(inputs.size(), result.location);
+  auto inputArgs = body->addArguments(TypeRange(inputs), locations);
+
   if (bodyBuilder)
-    bodyBuilder(builder, result.location, graphBuilder, contextArg, inputArgs);
+    bodyBuilder(builder, result.location, graphBuilder, contextArg,
+                ValueRange(inputArgs));
 
   // Supply the operandless `mgp.device_graph.yield` terminator (no graph
   // outputs) if the callback did not emit one.
   if (!body->mightHaveTerminator())
-    ensureTerminator(*bodyRegion, builder, result.location);
+    ensureTerminator(bodyRegion, builder, result.location);
 
   // The sole result is the device graph, whose signature is
   // `(type(inputs)) -> (type(yielded outputs))`.
   auto yieldOp = cast<DeviceGraphYieldOp>(body->getTerminator());
   auto signature = FunctionType::get(builder.getContext(), inputs.getTypes(),
                                      yieldOp.getOutputs().getTypes());
-  result.addTypes(DeviceGraphType::get(builder.getContext(), signature));
+
+  // Operands, operand segment sizes and the result type are all the generated
+  // builder's job; it also adds the (empty) build body region that the
+  // assembled body moves into.
+  build(builder, result, DeviceGraphType::get(builder.getContext(), signature),
+        theContext, deviceContext, cache, inputs);
+  result.regions.back()->takeBody(bodyRegion);
 }
 
 // Emits `var graph_N = <deviceContext>.create_device_graph(build_N)`, where
@@ -149,9 +157,9 @@ void DeviceGraphCreateOp::build(
 LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
-  Block &body = *getBodyBuilderBlock();
-  Value builderArg = body.getArgument(0);
-  Value contextArg = body.getArgument(1);
+  Block &body = getBodyBuilderBlock();
+  Value builderArg = getBodyBuilder();
+  Value contextArg = getBodyContext();
 
   // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
   NamedMojoDef builderParam =
@@ -164,7 +172,7 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue buildClosure = state.builder.lambda(
       "build", /*parameters=*/{}, /*arguments=*/{builderParam},
       /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
-      /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"imm",
+      /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"var",
       [&](const FunctionBody &functionBody) {
         // Builder block arg -> the closure's parameter.
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
@@ -184,6 +192,7 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
             return;
           }
       });
+
   if (errOccurred)
     return failure();
 
@@ -191,16 +200,51 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   // factory, which creates a builder, runs the build closure, and instantiates
   // the recorded graph.
   MojoValue deviceContext = state.getMojoValueFor(getDeviceContext());
-  MojoValue graph =
-      state.builder.var(MojoValue(kStructDeviceGraph)
-                            .get(kFnDeviceGraphCreate)(
-                                /*parameters=*/{},
-                                /*operands=*/{deviceContext, buildClosure}));
+
+  SmallVector<MojoValue> inputs = {deviceContext, buildClosure};
+
+  // The inputs exist only to key the cache, so they go along with it: the
+  // uncached `create` overload takes none. With a cache, `create` returns a
+  // previously built graph when the key hits and the build closure is never
+  // called.
+  if (Value cache = getCache()) {
+    for (Value input : getInputs())
+      if (isa<MGP::DeviceTensorType, MGP::DeviceBufferType>(input.getType()))
+        inputs.push_back(state.getMojoValueFor(input));
+
+    inputs.push_back(
+        MojoValue(kParameterCache).equal(state.getMojoValueFor(cache)));
+  }
+
+  MojoValue graph = state.builder.var(MojoValue(kStructDeviceGraph)
+                                          .get(kFnDeviceGraphCreate)(
+                                              /*parameters=*/{},
+                                              /*operands=*/inputs));
   state.setMojoValueFor(getOutGraph(), graph);
   return success();
 }
 
 bool DeviceGraphCreateOp::isThrows() { return true; }
+
+// Emits `var cache_N = Pointer(to=<ctx>.get_device_graph_cache())`. The Mojo
+// method hands back a reference to the cache the state context owns, and
+// `DeviceGraph.create` takes it by pointer; `DeviceGraphCache` is not copyable,
+// so the reference cannot be bound to a `var` directly.
+LogicalResult DeviceGraphCacheOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  MojoValue theContext = state.getMojoValueFor(getTheContext());
+  MojoValue cache = state.builder.var(MojoValue(kStructPointer)(
+      /*parameters=*/{},
+      /*operands=*/{
+          MojoValue(kParameterTo)
+              .equal(theContext.get(kFnStateContextGetDeviceGraphCache)(
+                  /*parameters=*/{}, /*operands=*/{}))}));
+  state.setMojoValueFor(getOutCache(), cache);
+  return success();
+}
+
+bool DeviceGraphCacheOp::isThrows() { return true; }
 
 void DeviceGraphYieldOp::build(OpBuilder &, OperationState &) {
   // No-operand stub for the parent's `SingleBlockImplicitTerminator`; operands

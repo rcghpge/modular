@@ -24,6 +24,9 @@ class MojoValue {
 public:
   using DestructorFn = void (*)(void *);
 
+  /// Create an empty MojoValue.
+  MojoValue() : MojoValue(nullptr, nullptr) {}
+
   /// Create a new mojo object.
   /// MojoValue owns the object and call `destructor` when it get destroyed.
   /// The underlying object isn't initialized.

@@ -202,15 +202,20 @@ LogicalResult finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
   Value deviceContextUnpacked = unpacked[1];
   ValueRange inputsUnpacked = ArrayRef<Value>(unpacked).drop_front(2);
 
-  // Build the stateless create op inside the region body, moving the staged
-  // body into its build body. The create builder makes the body block with
+  // The graph is cached in the state context, so an execution that hits reuses
+  // the graph a previous one built instead of recording it again.
+  Value cache = DeviceGraphCacheOp::create(rewriter, loc, contextUnpacked);
+
+  // Build the create op inside the region body, moving the staged body into its
+  // build body. The create builder makes the body block with
   // [builder, context, inputs...] args; the callback splices the staged ops in,
   // rebinds the staged block args, and yields the graph outputs (from which the
   // result graph signature is inferred). The `context` block arg is build-time
   // only (for the body's `get_cached` reads); the staged body in the first cut
   // does not reference it, so it is left unused here.
   auto createOp = DeviceGraphCreateOp::create(
-      rewriter, loc, contextUnpacked, deviceContextUnpacked, inputsUnpacked,
+      rewriter, loc, contextUnpacked, deviceContextUnpacked, cache,
+      inputsUnpacked,
       [&](OpBuilder &bodyBuilder, Location bodyLoc, Value graphBuilder,
           Value /*contextArg*/, ValueRange inputArgs) {
         Block *createBody = bodyBuilder.getInsertionBlock();

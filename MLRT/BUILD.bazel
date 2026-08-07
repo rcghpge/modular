@@ -67,6 +67,7 @@ modular_cc_library(
     srcs = glob(["lib/Core/Tensor/*.cpp"]),
     hdrs = glob(["include/MLRT/Core/Tensor/*.h"]),
     deps = [
+        ":Core",
         "//AsyncRT:Runtime",
         "//Support:ADT",
         "//Support:Base",

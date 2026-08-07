@@ -7,8 +7,10 @@
 #ifndef MLRT_CORE_TENSOR_STATECONTEXT_H
 #define MLRT_CORE_TENSOR_STATECONTEXT_H
 
+#include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/StateSlot.h"
 
+#include <mutex>
 #include <vector>
 
 namespace M::MLRT {
@@ -37,6 +39,9 @@ namespace M::MLRT {
 /// TODO: GEX-549
 class StateContext {
 public:
+  using CreateFn = void *(*)();
+  using DestroyFn = void (*)(void *);
+
   /// Constructs a new state context with numSlots uninitialized state slots.
   explicit StateContext(size_t numSlots) : stateSlots(numSlots) {}
 
@@ -100,8 +105,30 @@ public:
     return getStateSlot(slotIndex).get<T>();
   }
 
+  /// Returns the device graph cache, which is empty until Mojo creates it on
+  /// first use (see `MGP_RT_GetOrCreateDeviceGraphCache`).
+  ///
+  /// Callers must hold `lockDeviceGraphCache()` while deciding whether to
+  /// create the cache; this accessor does no locking of its own.
+  MojoValue &getDeviceGraphCache(CreateFn create, DestroyFn destroy) {
+    std::lock_guard<std::mutex> guard(deviceGraphCacheMutex);
+
+    // A default-constructed MojoValue reports `isOwned()`, so a null
+    // `getData()` is what distinguishes "not created yet".
+    if (!deviceGraphCache.getData())
+      deviceGraphCache = MojoValue::createOwningRef(create(), destroy);
+
+    return deviceGraphCache;
+  }
+
 private:
   std::vector<StateSlot> stateSlots;
+
+  /// Special slot designated for storing the device graph cache for the model.
+  /// This cache is special as there is a single graph cache per-model, so is
+  /// not indexed by a state slot.
+  MojoValue deviceGraphCache;
+  std::mutex deviceGraphCacheMutex;
 };
 
 } // namespace M::MLRT

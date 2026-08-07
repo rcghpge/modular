@@ -106,10 +106,15 @@ MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
   return ref.getMemStorageHandleRef();
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext *stateCtx) {
-  auto &stateSlot = stateCtx->getStateSlot(bufferSlot);
-  stateSlot.clear();
+/// This is the C++ implementation of mgp.device_graph.cache. The Mojo
+/// `DeviceGraphCache` is created on first use by calling back into Mojo:
+/// `createFn` allocates and initializes it in one step, and `destructorFn`
+/// destroys it and frees that allocation.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
+MGP_RT_GetOrCreateDeviceGraphCache(StateContext *stateCtx, void *(*createFn)(),
+                                   void (*destructorFn)(void *)) {
+  MojoValue &cache = stateCtx->getDeviceGraphCache(createFn, destructorFn);
+  return cache.getData();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void

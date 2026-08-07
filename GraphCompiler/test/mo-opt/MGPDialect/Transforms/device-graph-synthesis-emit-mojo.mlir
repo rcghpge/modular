@@ -13,9 +13,14 @@
 // library) exposes both `execute` and a node-free `build_graph`. A second
 // graph covers the fallback for kernels exposing only `execute`.
 
+// The graph cache comes from the state context. `DeviceGraphCache` is not
+// copyable, so the reference the state context hands back is taken by pointer
+// rather than bound to a `var` of its own.
+// CHECK: var [[CACHE:var[_0-9]+]] = Pointer(to = {{var[_0-9]+}}.get_device_graph_cache())
+
 // The build closure passed to `DeviceGraph.create` is a runtime closure that
-// reads its captures, so it carries the `imm` capture convention.
-// CHECK: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
+// owns its captures, so it carries the `var` capture convention.
+// CHECK: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {var}:
 
 // The recording allocates the output buffer inside a `region` work closure. The
 // allocated buffer is a body result of the `mgp.device_graph.dependencies` op;
@@ -47,8 +52,9 @@
 // `add_output`.
 // CHECK: builder.add_output({{var[_0-9]+}}.async_pack())
 
-// The graph is built via the static `DeviceGraph.create(deviceContext, build)`.
-// CHECK: {{.*}}DeviceGraph.create({{.*}}, [[BUILD]])
+// The graph is built via the static `DeviceGraph.create(deviceContext, build)`,
+// which is handed the graph inputs (to key the cache on) and the cache itself.
+// CHECK: {{.*}}DeviceGraph.create({{.*}}, [[BUILD]], {{.*}}, cache = [[CACHE]])
 
 // The recording stub is node-free (no result) and calls the kernel's
 // `build_graph` method with the builder as the launch argument.

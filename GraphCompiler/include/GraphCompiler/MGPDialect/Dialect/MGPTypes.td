@@ -245,6 +245,30 @@ def MGP_DeviceGraphNodeType : MGP_Type<"DeviceGraphNode", "device_graph.node",
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphCacheType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceGraphCacheType : MGP_Type<"DeviceGraphCache",
+  "device_graph.cache",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
+  let summary = "Opaque handle to a model's device-graph cache.";
+  let description = [{
+    An opaque handle to the cache of instantiated device graphs belonging to a
+    model. Produced by `mgp.device_graph.cache` from the model's `!mgp.context`
+    and consumed by `mgp.device_graph.create`, which reuses a cached graph
+    instead of rebuilding one when the key derived from its inputs hits.
+
+    There is one cache per model: it lives in the state context, so it is
+    created on first use and outlives any single execution.
+
+    Example:
+    ```mlir
+    !mgp.device_graph.cache
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 //
 // Device-generic types in the MGP dialect. All of these types accept an
 // #M.device_ref attribute indicating the specific type and 'virtual' device

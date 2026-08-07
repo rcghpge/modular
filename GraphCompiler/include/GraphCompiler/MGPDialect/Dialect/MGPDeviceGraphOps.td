@@ -39,16 +39,21 @@ class MGP_DeviceGraphOp<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
+  AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
 ]> {
   let summary = "Builds a device graph by recording into a builder.";
   let description = [{
-    Returns an `!mgp.device_graph` built by invoking the build body. The op is
-    stateless: it does no caching, takes no chain, and has no chain result -- the
-    produced graph value carries the downstream dependency
-    (`mgp.device_graph.execute` consumes it). (Caching is future work.)
+    Returns an `!mgp.device_graph` built by invoking the build body. The op takes
+    no chain and has no chain result -- the produced graph value carries the
+    downstream dependency (`mgp.device_graph.execute` consumes it).
+
+    When the optional `cache` operand is present, the graph is looked up in that
+    cache under a key derived from the `inputs`, and the build body runs only on
+    a miss; the newly built graph is then stored under the same key. Without the
+    operand the op is stateless and rebuilds the graph on every execution.
 
     The `inputs` operands are the read-only buffers/tensors the graph treats as
     frozen inputs at replay time; they form the input half of the result
@@ -94,6 +99,7 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
   let arguments = (ins
     MGP_ContextType:$theContext,
     MGP_DeviceContextType:$deviceContext,
+    Optional<MGP_DeviceGraphCacheType>:$cache,
     Variadic<AnyType>:$inputs
   );
   let results = (outs MGP_DeviceGraphType:$outGraph);
@@ -101,6 +107,7 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
 
   let assemblyFormat = [{
     $theContext `,` $deviceContext
+    (`cache` `(` $cache^ `:` qualified(type($cache)) `)`)?
     `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
     $buildBody attr-dict
     `:` qualified(type($deviceContext)) `->` qualified(type($outGraph))
@@ -117,22 +124,60 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
     // `(type(inputs)) -> (type(yielded outputs))` (the context is build-time and
     // is not part of the signature). If `bodyBuilder` is null or leaves the body
     // unterminated, an operandless `mgp.device_graph.yield` (no graph outputs) is
-    // supplied.
+    // supplied. A null `cache` builds the op without the cache operand.
     OpBuilder<(ins
       "Value":$theContext,
       "Value":$deviceContext,
+      "Value":$cache,
       "ValueRange":$inputs,
       CArg<"function_ref<void(OpBuilder &, Location, Value, Value, ValueRange)>",
            "nullptr">:$bodyBuilder)>
   ];
 
   let extraClassDeclaration = [{
-    Block *getBodyBuilderBlock() {
-      return &getBuildBody().front();
+    Block &getBodyBuilderBlock() {
+      return getBuildBody().front();
+    }
+
+    BlockArgument getBodyBuilder() {
+      return getBodyBuilderBlock().getArgument(0);
+    }
+
+    BlockArgument getBodyContext() {
+      return getBodyBuilderBlock().getArgument(1);
     }
   }];
 
   let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCacheOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCacheOp : MGP_DeviceGraphOp<"cache", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  Pure,
+]> {
+  let summary = "Returns a model's device-graph cache from its state context.";
+  let description = [{
+    Returns the `!mgp.device_graph.cache` held by the `!mgp.context`, for
+    `mgp.device_graph.create` to reuse graphs across executions. The cache is
+    created on first use and lives as long as the state context, so it is shared
+    by every execution of the model.
+
+    Example:
+    ```mlir
+      %cache = mgp.device_graph.cache %ctx : !mgp.device_graph.cache
+    ```
+  }];
+
+  let arguments = (ins MGP_ContextType:$theContext);
+  let results = (outs MGP_DeviceGraphCacheType:$outCache);
+
+  let assemblyFormat = [{
+    $theContext attr-dict `:` qualified(type($outCache))
+  }];
 }
 
 //===----------------------------------------------------------------------===//
