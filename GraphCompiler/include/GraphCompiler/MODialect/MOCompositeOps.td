@@ -607,6 +607,14 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
     raw gathered residual (`outResidual`); a gathered row is a verbatim copy, so
     the residual is bit-identical to a standalone all-gather (no f32 peer-sum).
     `multiply_before_cast=true`, bf16 in/out only (no quantization).
+
+    `group_size` matches `mo.distributed.allgather`: the devices split into
+    contiguous groups of that many, each gathering independently, so the op
+    works under TP-within-DP topologies and every output is the group's gathered
+    tensor rather than the whole world's. It must be at least 2 and must divide
+    the device count; `group_size == num_devices` is a full-world collective.
+    The builder always sets it -- the `0` attribute default is not a usable
+    value.
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -614,7 +622,8 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
     Variadic<MO_Tensor>:$gamma,
     Variadic<MO_RankedScalarFloatTensor>:$epsilon,
     Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
     Variadic<MO_Tensor>:$output,
