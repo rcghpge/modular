@@ -31,7 +31,13 @@ static bool setPluginDirFromRepoRoot(const std::filesystem::path &root) {
   std::error_code ec;
   if (!std::filesystem::exists(root, ec))
     return false;
-  if (auto vendorDir = M::resolveNixlPluginDir(root))
+  // Force the plain (non-verbs) flavor: these tests build two nixlAgents in one
+  // process, so on an IB host the verbs flavor would open two mlx5 contexts on
+  // the same HCA and crash in teardown (host rdma-core reserved-QPN mutex
+  // assertion). The verbs/rc path is validated cross-process by the cross-node
+  // smoke instead; see resolveNixlPluginDir's allowVerbsFlavor note.
+  if (auto vendorDir =
+          M::resolveNixlPluginDir(root, /*allowVerbsFlavor=*/false))
     setenv("NIXL_PLUGIN_DIR", vendorDir->c_str(), /*overwrite=*/0);
   return true;
 }
@@ -45,15 +51,16 @@ void configureNixlPluginDir() {
   // symbols are visible when nixlPluginManager calls
   //   dlopen(libplugin_UCX.so, RTLD_NOW)
   // libplugin_UCX.so is built with -Wl,-z,undefs — it has unresolved
-  // references to CUDA driver/NVML symbols (cuda flavor) or HSA symbols
-  // (rocm flavors). RTLD_NOW at dlopen time requires ALL symbols to be
-  // resolvable from currently loaded libraries. Pre-loading these with
-  // RTLD_GLOBAL makes them available. Failures are non-fatal: on CPU-only
-  // machines the plugin simply won't load.
+  // references to CUDA driver/NVML symbols (cuda flavor), HSA symbols (rocm
+  // flavors), or rdma-core symbols (the *-verbs flavors). RTLD_NOW at dlopen
+  // time requires ALL symbols to be resolvable from currently loaded
+  // libraries. Pre-loading these with RTLD_GLOBAL makes them available.
+  // Failures are non-fatal: on CPU-only machines the plugin simply won't load.
   const char *gpuLibs[] = {
       "libcuda.so.1",          "libcuda.so",
       "libnvidia-ml.so.1",     "libnvidia-ml.so",
       "libhsa-runtime64.so.1", "libhsa-runtime64.so",
+      "libibverbs.so.1",       "libmlx5.so.1",
   };
   for (const char *lib : gpuLibs) {
     dlopen(lib, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE);
