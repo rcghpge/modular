@@ -494,7 +494,8 @@ static OwningOpRef<ModuleOp> loadPackageModule(MLIRContext *ctx,
       packageMemBuf->getMemBufferRef(),
       /*ignoreIncompatiblePrecompiledFiles=*/false);
   if (mlirBufOrErr.isError()) {
-    parentModule.emitError("failed to load kernel package: " + path.str());
+    parentModule.emitError("failed to load kernel package: " + path.str() +
+                           ": " + mlirBufOrErr.getError());
     return {};
   }
   auto mlirResult = std::move(*mlirBufOrErr);
