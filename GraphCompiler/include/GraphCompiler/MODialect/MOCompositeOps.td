@@ -563,6 +563,13 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     reduce-scatter sum shard (`outResidual`, the residual stream). The norm is
     inherently `multiply_before_cast=true`: gamma is folded in f32 and the value
     is cast to the input dtype once, last. bf16 in/out only (no quantization).
+
+    `group_size` matches `mo.distributed.reducescatter.sum`: the devices split
+    into contiguous groups of that many, each reducing independently, so the op
+    works under TP-within-DP topologies. It must be at least 2 and must divide
+    the device count; `group_size == num_devices` is a full-world collective.
+    The builder always sets it -- the `0` attribute default is not a usable
+    value.
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -570,7 +577,8 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     Variadic<MO_Tensor>:$gamma,
     Variadic<MO_RankedScalarFloatTensor>:$epsilon,
     Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
     Variadic<MO_Tensor>:$output,
