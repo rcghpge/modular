@@ -116,10 +116,9 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },
-    gpu_constraints = select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
+    # VMM is forced off on AMD (HIP) regardless of this env, so the defrag
+    # behavior this test exercises only applies on NVIDIA.
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
         ":TestUtils",

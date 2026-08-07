@@ -64,7 +64,10 @@ TEST_F(MemoryManagerVMMDeviceCreateTest, DeviceCreatePathMatchesVmmConfig) {
   ASSERT_TRUE(device->vmmSupported());
   const bool requested =
       DeviceContext::configAsBool("memory_manager_vmm", false);
-  EXPECT_EQ(device->memoryManager().isVmmEnabled(), requested)
+  // VMM is forced off on AMD (HIP) regardless of config, due to known VRAM
+  // leaks.
+  const bool expected = requested && device->api() != Device::hipAPI;
+  EXPECT_EQ(device->memoryManager().isVmmEnabled(), expected)
       << "device's MemoryManager VMM state did not match the "
          "memory_manager_vmm "
          "config on the Device::create() path (GEX-3860 regression)";

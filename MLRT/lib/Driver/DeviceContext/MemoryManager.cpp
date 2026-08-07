@@ -2382,6 +2382,15 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
   bool vmmEnabled = device.vmmSupported() &&
                     DeviceContext::configAsBool("memory_manager_vmm",
                                                 device.vmmEnabledByDefault());
+  // VMM on AMD (HIP) is known to cause persistent VRAM leaks that can require
+  // a reboot, so force it off regardless of config/env, and warn if it was
+  // explicitly requested so the misconfiguration is visible.
+  if (vmmEnabled && device.api() == Device::hipAPI) {
+    llvm::errs() << "DeviceContext.MemoryManager: VMM was requested via "
+                    "memory_manager_vmm, but VMM is forced off on AMD GPUs "
+                    "due to known VRAM leaks. Ignoring request.\n";
+    vmmEnabled = false;
+  }
   size_t vmmPageSize = 0;
   if (vmmEnabled) {
     // vmmSupported() has already verified the granularity query succeeds, so
