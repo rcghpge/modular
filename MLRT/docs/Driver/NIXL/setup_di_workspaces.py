@@ -505,7 +505,7 @@ def main() -> None:
             export PREFILL_HOST={p_host}
 
             cd ~/code/modular
-            MODULAR_NIXL_LOG_LEVEL=DEBUG \\
+            NIXL_LOG_LEVEL=DEBUG \\
             MODULAR_PATH="$PWD" \\
             MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=95 \\
             MODULAR_NIXL_TRANSFER_BACKEND=libfabric \\

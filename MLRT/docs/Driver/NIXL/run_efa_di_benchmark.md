@@ -131,7 +131,7 @@ export PREFILL_HOST=<prefill-pod-hostname>    # printed by setup_di_workspaces.p
 
 cd ~/code/modular
 
-MODULAR_NIXL_LOG_LEVEL=DEBUG \
+NIXL_LOG_LEVEL=DEBUG \
 MODULAR_PATH="$PWD" \
 MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=95 \
 MODULAR_NIXL_TRANSFER_BACKEND=libfabric \
@@ -259,7 +259,7 @@ export DECODE_HOST=<decode-pod-hostname>
 export PREFILL_HOST=<prefill-pod-hostname>
 
 cd ~/code/modular
-MODULAR_NIXL_LOG_LEVEL=DEBUG \
+NIXL_LOG_LEVEL=DEBUG \
 MODULAR_PATH="$PWD" \
 MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=95 \
 MODULAR_NIXL_TRANSFER_BACKEND=libfabric \
