@@ -101,11 +101,13 @@ trait InputLoadFusion(TrivialRegisterPassable):
         ...
 
 
-# `LoadAccess` is graph-visible and stays present on both the host proxy and the
-# projected device value. `Loadable` is the callable dereference surface, so it is
-# gated by `_access_enabled`: CPU/non-device-passable wrappers enable it directly,
-# while accelerator host proxies disable it and project to `device_type` where
-# access is enabled.
+# `LoadAccess` and `Loadable` are UNCONDITIONAL so a closure that captures the
+# proxy can type-check a `.load()` call. The access gate is a `comptime assert
+# Self._access_enabled` in the `load` body: `_access_enabled` is False on the
+# device-passable HOST proxy and True on the projected `device_type` (device_type
+# flips it), so a direct host-side load is a compile error while a load on the
+# projected device value -- what the closure captures after projection -- is
+# allowed. Same context gate as the store proxy.
 struct _MoggInputLoadFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
@@ -119,7 +121,7 @@ struct _MoggInputLoadFusionTensor[
     Fused,
     Input,
     LoadAccess,
-    Loadable where _access_enabled,
+    Loadable,
     Movable,
     Tensor,
     TrivialRegisterPassable,
@@ -183,9 +185,17 @@ struct _MoggInputLoadFusionTensor[
     def load[
         width: Int,
         element_alignment: Int = 1,
-    ](self, idx: Coord) -> SIMD[
-        Self.dtype, width
-    ] where Self._access_enabled:
+    ](self, idx: Coord) -> SIMD[Self.dtype, width]:
+        # Context gate (see the store proxy): `Loadable`/`LoadAccess` are
+        # unconditional so a closure can type-check `.load()`; `_access_enabled`
+        # is False on the device-passable host proxy and True on the projected
+        # `device_type`, so a host-side load is a compile error while a load on
+        # the projected device value is allowed.
+        comptime assert Self._access_enabled, (
+            "fused load is only valid on an access-enabled tensor (the projected"
+            " device value); the device-passable host proxy cannot be loaded"
+            " from directly"
+        )
         return self.in_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx)
@@ -216,11 +226,15 @@ trait OutputStoreFusion(TrivialRegisterPassable):
         ...
 
 
-# `StoreAccess` is graph-visible and stays present on both the host proxy and the
-# projected device value. `Storable` is the callable dereference surface, so it is
-# gated by `_access_enabled`: CPU/non-device-passable wrappers enable it directly,
-# while accelerator host proxies disable it and project to `device_type` where
-# access is enabled.
+# `StoreAccess` and `Storable` are UNCONDITIONAL, so a closure that captures the
+# proxy can type-check a `.store()` call. The real access gate is a `comptime
+# assert Self._access_enabled` in the `store` body: `_access_enabled` is False on
+# the device-passable HOST proxy and True on the projected `device_type` (the
+# device_type flips it). So a direct host-side store on the host proxy is a
+# compile error, while a store on the projected device value -- which is what the
+# closure body captures/runs on after projection -- is allowed. This is the
+# context gate that denies host-side dereference of a device-passable proxy
+# without any target-triple inspection.
 struct _MoggOutputStoreFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
@@ -235,7 +249,7 @@ struct _MoggOutputStoreFusionTensor[
     Movable,
     Output,
     StoreAccess,
-    Storable where _access_enabled,
+    Storable,
     Tensor,
     TrivialRegisterPassable,
 ):
@@ -298,9 +312,18 @@ struct _MoggOutputStoreFusionTensor[
     def store[
         width: Int,
         element_alignment: Int = 1,
-    ](
-        self, idx: Coord, value: SIMD[Self.dtype, width]
-    ) where Self._access_enabled:
+    ](self, idx: Coord, value: SIMD[Self.dtype, width]):
+        # `Storable`/`StoreAccess` are unconditional so a host-created closure can
+        # type-check `.store()`; the real gate is here in the body. `_access_enabled`
+        # is False on the device-passable HOST proxy and True on the projected
+        # `device_type`, so a direct host-side store is a compile error while a
+        # store on the projected device value (the closure body runs there) is
+        # allowed.
+        comptime assert Self._access_enabled, (
+            "fused store is only valid on an access-enabled tensor (the"
+            " projected device value); the device-passable host proxy cannot be"
+            " stored to directly"
+        )
         self.out_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx, value)
@@ -338,11 +361,14 @@ trait TransformFusion(TrivialRegisterPassable):
         ...
 
 
-# `TransformAccess` is graph-visible and stays present on both the host proxy
-# and the projected device value. `Transformable` and `TileTensorable` are the
-# callable/device-dereference surfaces, so they are gated by `_access_enabled`.
-# CPU/non-device-passable wrappers enable them directly, while accelerator host
-# proxies disable them and project to `device_type` where access is enabled.
+# `TransformAccess`, `Transformable`, and `TileTensorable` are UNCONDITIONAL so a
+# closure that captures the proxy can type-check `.transform()` / `.to_tile_tensor()`.
+# The access gate is a `comptime assert Self._access_enabled` in each callable
+# body: `_access_enabled` is False on the device-passable HOST proxy and True on
+# the projected `device_type` (device_type flips it), so a direct host-side
+# transform/store is a compile error while access on the projected device value --
+# what the closure captures after projection -- is allowed. Same context gate as
+# the store proxy.
 struct _MoggTransformFusionTensor[
     _dtype: DType,
     _LayoutType: TensorLayout,
@@ -358,9 +384,9 @@ struct _MoggTransformFusionTensor[
     Fused,
     Movable,
     Output,
-    TileTensorable where _access_enabled,
+    TileTensorable,
     TransformAccess,
-    Transformable where _access_enabled,
+    Transformable,
     TrivialRegisterPassable,
 ):
     comptime dtype = Self._dtype
@@ -449,7 +475,12 @@ struct _MoggTransformFusionTensor[
         dtype = Self.dtype,
         LayoutType = Self.LayoutType,
         origin = UntrackedOrigin[mut = Self.mut],
-    ] where Self._access_enabled:
+    ]:
+        comptime assert Self._access_enabled, (
+            "fused transform output projection is only valid on an access-enabled"
+            " tensor (the projected device value); the device-passable host proxy"
+            " cannot be projected to a tile directly"
+        )
         return TileTensor[
             dtype = Self.dtype,
             LayoutType = Self.LayoutType,
@@ -462,7 +493,12 @@ struct _MoggTransformFusionTensor[
         element_alignment: Int = 1,
     ](self, idx: Coord, value: SIMD[Self.dtype, width]) -> SIMD[
         Self.dtype, width
-    ] where Self._access_enabled:
+    ]:
+        comptime assert Self._access_enabled, (
+            "fused transform is only valid on an access-enabled tensor (the"
+            " projected device value); the device-passable host proxy cannot be"
+            " transformed directly"
+        )
         return self.transform_fusion.__call__[
             Self.dtype, Self.rank, width, element_alignment
         ](idx, value)

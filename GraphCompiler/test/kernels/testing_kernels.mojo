@@ -314,6 +314,91 @@ struct TraitNegate:
             )
 
 
+# UNIFIED-closure fused-load variant: the device kernel binds the PROJECTED load
+# proxy (`downcast[XHost.device_type, Loadable]`, access-enabled) and reads it
+# through a unified closure that captures that projected value. Same context gate
+# as store: the closure captures `device_type` (created after projection), so the
+# load body's `comptime assert _access_enabled` passes; a host-side load is a
+# compile error (see `trait_fused_load_host_negative`).
+def _gpu_fused_load_negate_unified_closure_kernel[
+    XHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    output: TileTensor[dtype, LayoutType, MutAnyOrigin],
+    input: downcast[XHost.device_type, Loadable],
+    n_dev: Int32,
+):
+    var n = Int(n_dev)
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+
+    @always_inline
+    def load_fn(idx: Int) {imm input} -> SIMD[dtype, 1]:
+        return rebind[SIMD[dtype, 1]](input.load[1](Coord(idx)))
+
+    output.raw_store(i, -load_fn(i))
+
+
+@extensibility.register("trait_fused_load_negate_unified_closure")
+struct TraitFusedLoadNegateUnifiedClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & LoadAccess],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(x), Loadable)
+            var zt = to_tile_tensor(z)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                var v = x.load[1](Coord(i))
+                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_load_negate_unified_closure_kernel[
+                    type_of(x), type_of(z).dtype, type_of(z).LayoutType
+                ]
+            ](
+                z,
+                x,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# NEGATIVE control: loads DIRECTLY from the fused-load proxy at the host entry.
+# On a GPU device the emitted proxy is the device-passable HOST proxy
+# (`_access_enabled=False`), so the load body's `comptime assert _access_enabled`
+# fails at instantiation -- must NOT compile. Exercised (expecting failure) by
+# `mogg-kernel-api-e2e-trait-fused-load-host-negative.mlir`.
+@extensibility.register("trait_fused_load_host_negative")
+struct TraitFusedLoadHostNegative:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & LoadAccess],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(x), DevicePassable)
+        comptime assert conforms_to(type_of(x), Loadable)
+        # Direct host-side load on the device-passable proxy: the context gate
+        # (`comptime assert _access_enabled` in the load body) rejects this.
+        _ = x.load[1](Coord(0))
+
+
 # Trait-lane in-place mutable kernel: `x` is read and written through the same
 # buffer (`x[i] += 1`). Proves the emitted `_MoggDenseTensorArg[io=MUTABLE_INPUT]`
 # satisfies a `MutableInput & DenseTensor & TileTensorable` stub bound -- i.e.
@@ -561,6 +646,101 @@ struct TraitFusedStoreParameterClosure:
             ](z, x, Int(z.shape().product()), ctx)
 
 
+# Device entry for the UNIFIED-closure fused-store path. The device kernel binds
+# the PROJECTED store proxy by its `Storable` capability via
+# `downcast[ZHost.device_type, Storable]` -- the projected value has
+# `_access_enabled=True`. It then creates a unified closure that captures that
+# projected value and performs the store. This is the supported closure shape: the
+# closure is created AFTER projection, so it captures `device_type` and the store
+# body's `comptime assert _access_enabled` gate passes. A host-created closure
+# over the device-passable HOST proxy (or a direct host-side store) hits
+# `_access_enabled=False` and fails to compile -- see the negative test kernel.
+def _gpu_fused_store_unified_closure_kernel[
+    ZHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    output: downcast[ZHost.device_type, Storable],
+    input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n_dev: Int32,
+):
+    var n = Int(n_dev)
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    var v = rebind[SIMD[dtype, 1]](input.raw_load(i)) * 2
+
+    # Unified closure capturing the projected (access-enabled) store proxy.
+    @always_inline
+    def store_fn(idx: Int, val: SIMD[dtype, 1]) {imm output}:
+        output.store[1](Coord(idx), rebind[SIMD[type_of(output).dtype, 1]](val))
+
+    store_fn(i, v)
+
+
+@extensibility.register("trait_fused_store_unified_closure")
+struct TraitFusedStoreUnifiedClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & StoreAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), Storable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var xt = to_tile_tensor(x)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                z.store[1](
+                    Coord(i),
+                    rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2,
+                )
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_store_unified_closure_kernel[
+                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                ]
+            ](
+                z,
+                x,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# NEGATIVE control: stores DIRECTLY on the fused-store proxy from the host entry,
+# with no projection. On a GPU device the emitted proxy is the device-passable
+# HOST proxy (`_access_enabled=False`), so the store body's
+# `comptime assert Self._access_enabled` fails at instantiation -- this kernel must
+# NOT compile through the gc-pipeline. Exercised (expecting failure) by
+# `mogg-kernel-api-e2e-trait-fused-store-host-negative.mlir`.
+@extensibility.register("trait_fused_store_host_negative")
+struct TraitFusedStoreHostNegative:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & StoreAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), DevicePassable)
+        comptime assert conforms_to(type_of(z), Storable)
+        # Direct host-side store on the device-passable proxy: `store` resolves
+        # (Storable is unconditional) but the store body's context gate
+        # (`comptime assert _access_enabled`) rejects it at instantiation, because
+        # the emitted host proxy has `access_enabled = False`.
+        z.store[1](Coord(0), SIMD[type_of(z).dtype, 1](0))
+
+
 # Output-transform (compute-output) fusion: the kernel computes `x[i] + 1`,
 # applies the fused transform via `z.transform`, then performs the final dense
 # store itself (per the design, a transform operand transforms a computed value
@@ -638,6 +818,102 @@ struct TraitFusedTransformBias:
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),
             )
+
+
+# UNIFIED-closure fused-transform variant: the device kernel binds the PROJECTED
+# transform proxy (`downcast[ZHost.device_type, Transformable & TileTensorable]`,
+# access-enabled) and applies the transform + final store through a unified
+# closure that captures that projected value. Same context gate as store/load: the
+# closure captures `device_type`, so the `transform`/`to_tile_tensor` bodies'
+# `comptime assert _access_enabled` passes; a host-side transform is a compile
+# error (see `trait_fused_transform_host_negative`).
+def _gpu_fused_transform_bias_unified_closure_kernel[
+    ZHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    z: downcast[ZHost.device_type, Transformable & TileTensorable],
+    x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n_dev: Int32,
+):
+    var n = Int(n_dev)
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    var coord = Coord(i)
+    var raw = rebind[SIMD[type_of(z).dtype, 1]](
+        rebind[SIMD[dtype, 1]](x.raw_load(i)) + 1
+    )
+    comptime assert type_of(z).mut
+
+    @always_inline
+    def transform_and_store(c: Coord, r: SIMD[type_of(z).dtype, 1]) {imm z}:
+        var t = z.transform[1](c, r)
+        var zt = z.to_tile_tensor()
+        zt.store(c, rebind[SIMD[type_of(zt).dtype, 1]](t))
+
+    transform_and_store(coord, raw)
+
+
+@extensibility.register("trait_fused_transform_bias_unified_closure")
+struct TraitFusedTransformBiasUnifiedClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & TransformAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), Transformable)
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var zt = to_tile_tensor(z)
+            var xt = to_tile_tensor(x)
+            var n = Int(z.shape().product())
+            for i in range(n):
+                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
+                var t = z.transform[1](Coord(i), raw)
+                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
+        else:
+            comptime assert conforms_to(type_of(z), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime block_size = 64
+            var n = Int(z.shape().product())
+            ctx.enqueue_function[
+                _gpu_fused_transform_bias_unified_closure_kernel[
+                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                ]
+            ](
+                z,
+                x,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# NEGATIVE control: transforms DIRECTLY on the fused-transform proxy at the host
+# entry. On a GPU device the emitted proxy is the device-passable HOST proxy
+# (`_access_enabled=False`), so the transform body's `comptime assert
+# _access_enabled` fails at instantiation -- must NOT compile. Exercised
+# (expecting failure) by `mogg-kernel-api-e2e-trait-fused-transform-host-negative.mlir`.
+@extensibility.register("trait_fused_transform_host_negative")
+struct TraitFusedTransformHostNegative:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & TransformAccess],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(z), DevicePassable)
+        comptime assert conforms_to(type_of(z), Transformable)
+        # Direct host-side transform on the device-passable proxy: the context
+        # gate (`comptime assert _access_enabled` in the transform body) rejects it.
+        _ = z.transform[1](Coord(0), SIMD[type_of(z).dtype, 1](0))
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time

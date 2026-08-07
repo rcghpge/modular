@@ -26,3 +26,18 @@ mo.graph @trait_fused_transform_bias_graph(%x: !mo.tensor<[4], f32>) -> !mo.tens
     %z, %ch2 = mo.transfer[%ch1] %z_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
     mo.output %z : !mo.tensor<[4], f32>
 }
+
+// Same fused-transform boundary, but the transform + final store is performed by
+// a unified closure that captures the PROJECTED transform proxy
+// (`downcast[ZHost.device_type, Transformable & TileTensorable]`). The closure is
+// created after projection, so it captures the access-enabled `device_type` and
+// the transform/to_tile_tensor bodies' context gate passes; a host-side transform
+// fails to compile (see the host-negative test). Same `2` result.
+// CHECK: 'trait_fused_transform_bias_unified_closure_graph' returned tensor<4xf32> [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00]
+mo.graph @trait_fused_transform_bias_unified_closure_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
+    %ch0 = mo.chain.create()
+    %x_gpu, %ch1 = mo.transfer[%ch0] %x : !mo.tensor<[4], f32> to <"gpu", 0>
+    %z_gpu = mo.custom {symbol = "trait_fused_transform_bias_unified_closure", device = #M.device_ref<"gpu", 0>} (%x_gpu) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
+    %z, %ch2 = mo.transfer[%ch1] %z_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
+    mo.output %z : !mo.tensor<[4], f32>
+}
