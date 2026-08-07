@@ -18,8 +18,10 @@
 #include "Support/Configuration.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 
 extern "C" {
@@ -145,11 +147,22 @@ Error takeError(const char *err) {
   MojoHAL_strfree(err);
   return result;
 }
+
+Error virtualDeviceError(const char *what) {
+  return Error(llvm::Twine("virtual (compile-only) device does not support ") +
+               what);
+}
+
+/// Memory a virtual device reports, matching the legacy backend's constant.
+constexpr size_t kVirtualDeviceMemoryBytes = 192ULL * 1024 * 1024 * 1024;
 } // namespace
 
 // ===-- Device ----------------------------------------------------------=== //
 
 int Device::numberOfDevices(StringRef api) {
+  if (int virtualCount = AsyncRT::getVirtualDeviceCount();
+      virtualCount > 0 && api == gpuAPI)
+    return virtualCount;
   return MojoHAL_Device_numberOfDevices(std::string(api).c_str());
 }
 
@@ -169,9 +182,47 @@ Device::API mapAPI(StringRef api) {
   return Device::gpuAPI;
 }
 
+/// Maps a device API name to its vendor prefix for accelerator arch strings,
+/// mirroring the legacy backend's mapping of the same name.
+StringRef apiToVendorPrefix(StringRef api) {
+  if (api == Device::cudaAPI)
+    return "nvidia";
+  if (api == Device::hipAPI)
+    return "amdgpu";
+  if (api == Device::metalAPI)
+    return "metal";
+  return api;
+}
+
 } // namespace
 
 ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
+  if (AsyncRT::isVirtualDeviceMode() &&
+      (api == gpuAPI || api == cudaAPI || api == hipAPI || api == metalAPI)) {
+    std::string virtualAPI = AsyncRT::getVirtualDeviceAPI();
+    std::string targetArch = AsyncRT::getVirtualDeviceTargetArch();
+    if (virtualAPI.empty())
+      return Error(
+          "Virtual device API not set. "
+          "Call setVirtualDeviceAPI() with target API "
+          "(e.g., 'cuda', 'hip', 'metal') before creating virtual devices.");
+    if (targetArch.empty())
+      return Error(
+          "Virtual device target architecture not set. "
+          "Call setVirtualDeviceTargetArch() with target GPU architecture "
+          "(e.g., 'sm_80', 'sm_90') before creating virtual devices.");
+
+    ErrorOr<std::unique_ptr<CompilationDevice>> compilationDevice =
+        CompilationDevice::create(virtualAPI, targetArch);
+    if (compilationDevice.isError())
+      return compilationDevice.takeError();
+
+    const StringRef resolvedAPI = (*compilationDevice)->api();
+    return DeviceRef::take(new Device(
+        std::move(*compilationDevice), mapAPI(resolvedAPI),
+        std::string(resolvedAPI), id, "VirtualGPU-" + std::to_string(id)));
+  }
+
   // Each Device owns its own boxed Mojo HAL DeviceContext.
   MojoHALContextBox *ctx = nullptr;
   if (const char *err =
@@ -200,6 +251,9 @@ ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 }
 
 ErrorOr<DeviceContextRef> Device::createContext() {
+  if (isVirtual())
+    return DeviceContextRef::take(
+        new DeviceContext(/*mojoCtx=*/nullptr, DeviceRef::copy(this)));
   MojoHALContextBox *ctx = nullptr;
   if (const char *err =
           MojoHAL_DeviceContext_create(&ctx, apiStr_.c_str(), id_))
@@ -215,6 +269,12 @@ Device::~Device() {
 
 const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
+    if (std::string virtualArch = AsyncRT::getVirtualDeviceTargetArch();
+        !virtualArch.empty())
+      return (llvm::Twine(apiToVendorPrefix(AsyncRT::getVirtualDeviceAPI())) +
+              ":" + virtualArch)
+          .str();
+
     ErrorOr<DeviceRef> devOr = create(gpuAPI, 0);
     if (devOr.isError())
       return std::string();
@@ -244,6 +304,8 @@ const std::string &Device::getAcceleratorArchOrEmpty() {
 }
 
 ErrorOr<const char *> Device::getArchName() const {
+  if (isVirtual())
+    return compilationDevice_->getArchName();
   if (archName_.empty()) {
     char *name = nullptr;
     if (const char *err = MojoHAL_DeviceContext_getArchName(&name, mojoCtx_))
@@ -255,6 +317,8 @@ ErrorOr<const char *> Device::getArchName() const {
 }
 
 ErrorOrSuccess Device::isCompatible() const {
+  if (isVirtual())
+    return {};
   if (!MojoHAL_DeviceContext_isCompatible(mojoCtx_))
     return Error("device is not compatible with MAX");
   return {};
@@ -262,6 +326,11 @@ ErrorOrSuccess Device::isCompatible() const {
 
 ErrorOr<Device::MemInfo> Device::getMemoryInfo() const {
   MemInfo info;
+  if (isVirtual()) {
+    info.free = kVirtualDeviceMemoryBytes;
+    info.total = kVirtualDeviceMemoryBytes;
+    return info;
+  }
   uint64_t memFree = 0;
   uint64_t memTotal = 0;
   if (const char *err =
@@ -273,6 +342,8 @@ ErrorOr<Device::MemInfo> Device::getMemoryInfo() const {
 }
 
 ErrorOr<int> Device::getAttribute(Attribute attr) const {
+  if (isVirtual())
+    return virtualDeviceError("device attribute queries");
   int32_t value = 0;
   if (const char *err = MojoHAL_DeviceContext_getAttribute(
           &value, mojoCtx_, static_cast<int32_t>(attr)))
@@ -288,6 +359,8 @@ ErrorOr<size_t> Device::maxSingleAllocationSize() const {
 }
 
 ErrorOr<bool> Device::canAccess(const Device &other) const {
+  if (isVirtual() || other.isVirtual())
+    return false;
   return MojoHAL_DeviceContext_canAccess(mojoCtx_, other.mojoCtx_);
 }
 
@@ -396,6 +469,8 @@ ErrorOrSuccess DeviceBuffer::synchronize(void *external_stream) {
 }
 
 ErrorOrSuccess DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
+  if (ctx.device_->isVirtual())
+    return virtualDeviceError("buffer ownership transfer");
   if (const char *err =
           MojoHAL_DeviceContext_reassignWait(ctx.mojoCtx_, context_->mojoCtx_))
     return takeError(err);
@@ -406,16 +481,10 @@ ErrorOrSuccess DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
 // ===-- DeviceContext ---------------------------------------------------=== //
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id) {
-  MojoHALContextBox *ctx = nullptr;
-  if (const char *err =
-          MojoHAL_DeviceContext_create(&ctx, std::string(api).c_str(), id))
-    return takeError(err);
-  auto device = Device::create(api, id);
-  if (device.isError()) {
-    MojoHAL_DeviceContext_release(ctx);
+  ErrorOr<DeviceRef> device = Device::create(api, id);
+  if (device.isError())
     return device.takeError();
-  }
-  return DeviceContextRef::take(new DeviceContext(ctx, std::move(*device)));
+  return (*device)->createContext();
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::getOrCreate(StringRef api, int id) {
@@ -504,9 +573,21 @@ DeviceContext::DeviceContext(MojoHALContextBox *mojoCtx, DeviceRef device)
     streamPool_->base = std::move(*s);
 }
 
-DeviceContext::~DeviceContext() { MojoHAL_DeviceContext_release(mojoCtx_); }
+DeviceContext::~DeviceContext() {
+  if (mojoCtx_)
+    MojoHAL_DeviceContext_release(mojoCtx_);
+}
+
+void DeviceContext::reportNoMojoHandle() {
+  llvm::report_fatal_error(
+      "HAL DeviceContext::mojoHandle: a virtual (compile-only) device has no "
+      "Mojo DeviceContext. Kernel execution and the _kv_cache_ops / "
+      "_distributed_ops device-context handle require a real accelerator.");
+}
 
 ErrorOr<DeviceBufferRef> DeviceContext::enqueueCreateBuffer(size_t byteSize) {
+  if (device_->isVirtual())
+    return virtualDeviceError("memory allocation");
   MojoHALBufferBox *buf = nullptr;
   void *ptr = nullptr;
   if (const char *err =
@@ -518,6 +599,8 @@ ErrorOr<DeviceBufferRef> DeviceContext::enqueueCreateBuffer(size_t byteSize) {
 }
 
 ErrorOr<DeviceBufferRef> DeviceContext::createHostBuffer(size_t byteSize) {
+  if (device_->isVirtual())
+    return virtualDeviceError("host memory allocation");
   // Like the legacy implementation: an empty host buffer is non-pinned
   // (isHost=false), so it can stand in for a GPU graph input (a pinned one is
   // rejected).
@@ -535,6 +618,8 @@ ErrorOr<DeviceBufferRef> DeviceContext::createHostBuffer(size_t byteSize) {
 
 DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
                                                   bool owning) {
+  if (device_->isVirtual())
+    return DeviceBufferRef();
   MojoHALBufferBox *buf = nullptr;
   if (const char *err = MojoHAL_DeviceContext_createBufferOwning(
           &buf, mojoCtx_, ptr, byteSize, owning)) {
@@ -549,6 +634,9 @@ DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
 
 DeviceBufferRef
 DeviceContext::createHostBufferOwning(void *ptr, size_t byteSize, bool owning) {
+  // See createBufferOwning: an empty ref is the only available refusal.
+  if (device_->isVirtual())
+    return DeviceBufferRef();
   // Like the legacy implementation, a raw wrap of the caller's host pointer:
   // the same Mojo box as createBufferOwning, surfaced with isHost set.
   MojoHALBufferBox *buf = nullptr;
@@ -565,6 +653,8 @@ DeviceContext::createHostBufferOwning(void *ptr, size_t byteSize, bool owning) {
 
 ErrorOr<DeviceBufferRef>
 DeviceContext::memmapFile(const std::filesystem::path &filename) {
+  if (device_->isVirtual())
+    return virtualDeviceError("memory mapping");
   MojoHALBufferBox *buf = nullptr;
   void *ptr = nullptr;
   uint64_t size = 0;
@@ -578,6 +668,8 @@ DeviceContext::memmapFile(const std::filesystem::path &filename) {
 
 ErrorOrSuccess DeviceContext::enqueueCopyToDevice(void *dst, const void *src,
                                                   size_t byteSize) {
+  if (device_->isVirtual())
+    return virtualDeviceError("memory operations");
   // Host-to-device: `dst` is a device address, `src` a host pointer. Use the
   // direction-specific entry (cuMemcpyHtoD) so pageable host memory works.
   if (const char *err = MojoHAL_DeviceContext_enqueueCopyToDevice(
@@ -588,6 +680,8 @@ ErrorOrSuccess DeviceContext::enqueueCopyToDevice(void *dst, const void *src,
 
 ErrorOrSuccess DeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
                                                     size_t byteSize) {
+  if (device_->isVirtual())
+    return virtualDeviceError("memory operations");
   // Device-to-host: `dst` is a host pointer, `src` a device address
   // (cuMemcpyDtoH).
   if (const char *err = MojoHAL_DeviceContext_enqueueCopyFromDevice(
@@ -599,6 +693,8 @@ ErrorOrSuccess DeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
 ErrorOrSuccess DeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                uint64_t value,
                                                size_t valueSize) {
+  if (device_->isVirtual())
+    return virtualDeviceError("memory operations");
   if (const char *err = MojoHAL_DeviceContext_enqueueSetMemory(
           mojoCtx_, dst, byteSize, value, valueSize))
     return takeError(err);
@@ -609,12 +705,16 @@ ErrorOrSuccess DeviceContext::synchronize(void *external_stream) {
   if (external_stream != nullptr)
     return Error("HAL DeviceContext::synchronize: external streams are not "
                  "supported");
+  if (device_->isVirtual())
+    return {};
   if (const char *err = MojoHAL_DeviceContext_synchronize(mojoCtx_))
     return takeError(err);
   return {};
 }
 
 ErrorOr<Device::MemInfo> DeviceContext::getMemoryInfo() const {
+  if (device_->isVirtual())
+    return device_->getMemoryInfo();
   Device::MemInfo info;
   uint64_t memFree = 0;
   uint64_t memTotal = 0;
@@ -627,6 +727,8 @@ ErrorOr<Device::MemInfo> DeviceContext::getMemoryInfo() const {
 }
 
 ErrorOr<const char *> DeviceContext::getArchName() const {
+  if (device_->isVirtual())
+    return device_->getArchName();
   if (archName_.empty()) {
     char *name = nullptr;
     if (const char *err = MojoHAL_DeviceContext_getArchName(&name, mojoCtx_))
@@ -638,6 +740,8 @@ ErrorOr<const char *> DeviceContext::getArchName() const {
 }
 
 ErrorOrSuccess DeviceContext::isCompatible() const {
+  if (device_->isVirtual())
+    return {};
   if (!MojoHAL_DeviceContext_isCompatible(mojoCtx_))
     return Error("device is not compatible with MAX");
   return {};
@@ -647,6 +751,10 @@ ErrorOrSuccess DeviceContext::isCompatible() const {
 
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
     : mojoScope_(nullptr) {
+  if (ctx.device().isVirtual()) {
+    err_ = virtualDeviceError("making a driver context current");
+    return;
+  }
   if (const char *err =
           MojoHAL_DeviceContext_pushContext(&mojoScope_, ctx.mojoCtx_))
     err_ = takeError(err);
@@ -673,9 +781,14 @@ uint64_t CompletionFlag::load() const {
 
 // ===-- DeviceStream ----------------------------------------------------=== //
 
-DeviceStream::~DeviceStream() { MojoHAL_DeviceStream_release(mojoStream_); }
+DeviceStream::~DeviceStream() {
+  if (mojoStream_)
+    MojoHAL_DeviceStream_release(mojoStream_);
+}
 
 ErrorOrSuccess DeviceStream::synchronize() {
+  if (device_->isVirtual())
+    return {};
   if (const char *err = MojoHAL_DeviceStream_synchronize(mojoStream_))
     return takeError(err);
   return {};
@@ -689,6 +802,8 @@ ErrorOr<DeviceEventRef> DeviceStream::enqueueEvent() {
 }
 
 ErrorOrSuccess DeviceStream::enqueueWaitForEvent(DeviceEvent &event) {
+  if (device_->isVirtual())
+    return virtualDeviceError("events");
   if (const char *err =
           MojoHAL_DeviceStream_waitForEvent(mojoStream_, event.mojoEvent_))
     return takeError(err);
@@ -696,6 +811,8 @@ ErrorOrSuccess DeviceStream::enqueueWaitForEvent(DeviceEvent &event) {
 }
 
 void *DeviceStream::ptr() const {
+  if (device_->isVirtual())
+    return nullptr;
   void *handle = nullptr;
   if (const char *err =
           MojoHAL_DeviceStream_nativeHandle(&handle, mojoStream_)) {
@@ -707,6 +824,8 @@ void *DeviceStream::ptr() const {
 
 ErrorOrSuccess DeviceStream::enqueueWaitOnHostValue(const CompletionFlag &flag,
                                                     uint64_t value) const {
+  if (device_->isVirtual())
+    return virtualDeviceError("host-value waits");
   if (const char *err = MojoHAL_DeviceStream_waitOnHostValue(
           mojoStream_, flag.devicePtr(), value))
     return takeError(err);
@@ -738,6 +857,9 @@ ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
 // ===-- DeviceContext streams / events ----------------------------------=== //
 
 ErrorOr<DeviceStreamRef> DeviceContext::stream() const {
+  if (device_->isVirtual())
+    return DeviceStreamRef::take(
+        new DeviceStream(/*mojoStream=*/nullptr, device_.copy()));
   MojoHALStreamBox *stream = nullptr;
   if (const char *err = MojoHAL_DeviceContext_stream(&stream, mojoCtx_))
     return takeError(err);
@@ -745,6 +867,13 @@ ErrorOr<DeviceStreamRef> DeviceContext::stream() const {
 }
 
 ErrorOr<DeviceStreamRef> DeviceContext::createStream(int priority) {
+  if (device_->isVirtual()) {
+    DeviceStreamRef ref = DeviceStreamRef::take(
+        new DeviceStream(/*mojoStream=*/nullptr, device_.copy()));
+    std::lock_guard<std::mutex> lock(streamPool_->mu);
+    streamPool_->side.push_back(ref.copy());
+    return ref;
+  }
   MojoHALStreamBox *stream = nullptr;
   if (const char *err =
           MojoHAL_DeviceContext_createStream(&stream, mojoCtx_, priority))
@@ -771,6 +900,11 @@ unsigned DeviceContext::numStreams() const {
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::selectStream(unsigned streamId) {
+  if (device_->isVirtual()) {
+    if (streamId != 0)
+      return virtualDeviceError("side streams");
+    return DeviceContextRef::copy(this);
+  }
   DeviceStreamRef target;
   {
     std::lock_guard<std::mutex> lock(streamPool_->mu);
@@ -802,6 +936,8 @@ bool DeviceContext::operator==(const DeviceContext &other) const {
 }
 
 ErrorOr<DeviceEventRef> DeviceContext::enqueueEvent() {
+  if (device_->isVirtual())
+    return virtualDeviceError("events");
   MojoHALEventBox *event = nullptr;
   if (const char *err =
           MojoHAL_DeviceContext_eventCreate(&event, mojoCtx_, /*record=*/true))
@@ -811,6 +947,8 @@ ErrorOr<DeviceEventRef> DeviceContext::enqueueEvent() {
 }
 
 ErrorOrSuccess DeviceContext::enqueueEvent(const DeviceEvent &event) {
+  if (device_->isVirtual())
+    return virtualDeviceError("events");
   if (const char *err =
           MojoHAL_DeviceContext_enqueueEventRecord(mojoCtx_, event.mojoEvent_))
     return takeError(err);
@@ -819,6 +957,8 @@ ErrorOrSuccess DeviceContext::enqueueEvent(const DeviceEvent &event) {
 
 ErrorOr<DeviceEventRef> DeviceContext::eventCreate(bool enableTiming) {
   (void)enableTiming; // HAL events are always CPU-visible.
+  if (device_->isVirtual())
+    return virtualDeviceError("events");
   MojoHALEventBox *event = nullptr;
   if (const char *err = MojoHAL_DeviceContext_eventCreate(&event, mojoCtx_,
                                                           /*record=*/false))
@@ -828,6 +968,8 @@ ErrorOr<DeviceEventRef> DeviceContext::eventCreate(bool enableTiming) {
 }
 
 ErrorOrSuccess DeviceContext::enqueueWaitFor(DeviceEvent &event) {
+  if (device_->isVirtual())
+    return virtualDeviceError("events");
   if (const char *err =
           MojoHAL_DeviceContext_enqueueWaitForEvent(mojoCtx_, event.mojoEvent_))
     return takeError(err);
@@ -835,6 +977,8 @@ ErrorOrSuccess DeviceContext::enqueueWaitFor(DeviceEvent &event) {
 }
 
 ErrorOrSuccess DeviceContext::enqueueWaitFor(DeviceContext &ctx) {
+  if (device_->isVirtual() || ctx.device_->isVirtual())
+    return virtualDeviceError("events");
   // This context waits for all work currently enqueued on `ctx`.
   if (const char *err =
           MojoHAL_DeviceContext_reassignWait(mojoCtx_, ctx.mojoCtx_))
@@ -843,12 +987,16 @@ ErrorOrSuccess DeviceContext::enqueueWaitFor(DeviceContext &ctx) {
 }
 
 ErrorOrSuccess DeviceContext::bindToCurrentThread() const {
+  if (device_->isVirtual())
+    return virtualDeviceError("thread binding");
   if (const char *err = MojoHAL_DeviceContext_bindToCurrentThread(mojoCtx_))
     return takeError(err);
   return {};
 }
 
 std::optional<intptr_t> DeviceContext::getDLPackStream() const {
+  if (device_->isVirtual())
+    return std::nullopt;
   MojoHALStreamBox *stream = nullptr;
   if (!MojoHAL_DeviceContext_getDLPackStream(&stream, mojoCtx_))
     return std::nullopt;
@@ -862,6 +1010,8 @@ Error DeviceContext::formatError(const char *file, int line, const char *func,
 }
 
 ErrorOr<CompletionFlagRef> DeviceContext::allocateCompletionFlag() {
+  if (device_->isVirtual())
+    return virtualDeviceError("completion flags");
   MojoHALCompletionFlagBox *flag = nullptr;
   void *hostPtr = nullptr;
   uint64_t devAddr = 0;

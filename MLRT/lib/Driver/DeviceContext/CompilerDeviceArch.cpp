@@ -107,10 +107,34 @@ std::string queryAcceleratorArch() {
   return arch;
 }
 
+// Maps a device API name to its vendor prefix for accelerator arch strings.
+// Duplicated rather than shared: this TU exists precisely so the compiler
+// family links no DeviceContext runtime.
+StringRef apiToVendorPrefix(StringRef api) {
+  if (api == Device::cudaAPI)
+    return "nvidia";
+  if (api == Device::hipAPI)
+    return "amdgpu";
+  if (api == Device::metalAPI)
+    return "metal";
+  return api;
+}
+
 } // namespace
 
 const std::string &Device::getAcceleratorArchOrEmpty() {
-  static const std::string arch = queryAcceleratorArch();
+  static const std::string arch = [] {
+    // Virtual (compile-only) mode wins over plugin detection: with the knobs
+    // set, the target arch is the configured one and there is deliberately no
+    // accelerator to query. Without this the compiler would fall back to "" on
+    // a GPU-less host and silently compile for the wrong (or no) target.
+    if (std::string virtualArch = AsyncRT::getVirtualDeviceTargetArch();
+        !virtualArch.empty())
+      return (llvm::Twine(apiToVendorPrefix(AsyncRT::getVirtualDeviceAPI())) +
+              ":" + virtualArch)
+          .str();
+    return queryAcceleratorArch();
+  }();
   return arch;
 }
 

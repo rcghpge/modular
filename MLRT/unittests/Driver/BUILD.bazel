@@ -302,10 +302,46 @@ modular_cc_test(
     target_compatible_with = select({
         "@platforms//os:macos": ["@platforms//:incompatible"],
         "//conditions:default": [],
+    }) + select({
+        # Reaches into the legacy implementation's own headers
+        # (Virtual/VirtualDeviceContext.h, CUDA/CUDACompilationDevice.h), which
+        # only :Driver/DeviceContextImplCpp exports -- and under
+        # --config=hal-device-context the :Driver/DeviceContextImpl alias does
+        # not resolve to it. HALVirtualDeviceTest below is the backend-agnostic
+        # counterpart that does run in both lanes.
+        "//:hal_device_context_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
     }),
     deps = [
         ":TestUtils",
         "//MLRT:Driver/CompilationDeviceImpl",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# The virtual (compile-only) device contract, asserted through the public
+# Device/DeviceContext API so it holds against BOTH backends: the legacy
+# VirtualDeviceContext in the default config and the HAL shim's guards under
+# --config=hal-device-context. Needs no GPU and no driver plugin -- the virtual
+# branch fires before any plugin is opened.
+modular_cc_test(
+    name = "HALVirtualDeviceTest",
+    size = "small",
+    srcs = ["HALVirtualDeviceTest.cpp"],
+    # Virtual mode needs a CompilationDevice for the configured api, and CUDA's
+    # is the only one that exists (Metal hard-errors -- FIXME: MOCO-2411); its
+    # NVPTX compilation driver is Linux-only.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//AsyncRT:RuntimeGlobals",
+        "//MLRT:Driver/CompilationDeviceImpl",
+        "//MLRT:Driver/DeviceContextAPI",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@llvm-project//llvm:Support",

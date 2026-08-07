@@ -20,6 +20,7 @@
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
+#include "CompilationDevice.h"
 #include "ErrorMacros.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
@@ -133,6 +134,8 @@ public:
   /// the generic `gpuAPI`.
   API api() const { return api_; }
   int id() const { return id_; }
+  /// Whether this is a virtual (compile-only) device.
+  bool isVirtual() const { return compilationDevice_ != nullptr; }
   ErrorOr<const char *> getArchName() const;
   const std::string &name() const { return name_; }
   ErrorOrSuccess isCompatible() const;
@@ -172,12 +175,21 @@ private:
       : mojoCtx_(mojoCtx), api_(api), apiStr_(std::move(apiStr)), id_(id),
         name_(std::move(name)) {}
 
+  /// Virtual (compile-only) device: no Mojo HAL box, every device query
+  /// answered from `compilationDevice` or a constant.
+  Device(std::unique_ptr<CompilationDevice> compilationDevice, API api,
+         std::string apiStr, int id, std::string name)
+      : mojoCtx_(nullptr), api_(api), apiStr_(std::move(apiStr)), id_(id),
+        name_(std::move(name)),
+        compilationDevice_(std::move(compilationDevice)) {}
+
   MojoHALContextBox *mojoCtx_; // DeviceContext owned by this Device.
   API api_;
   std::string apiStr_; // Plugin api string as passed to create().
   int id_;
   std::string name_;
   mutable std::string archName_;
+  std::unique_ptr<CompilationDevice> compilationDevice_;
 };
 
 // Numeric device attributes, by CUDA-style `CUdevice_attribute` code. Mirrors
@@ -683,7 +695,11 @@ public:
   /// The heap-boxed Mojo HAL `DeviceContext` this object wraps. The graph
   /// runtime hands op code a C++ `DeviceContext*`; the Mojo side recovers its
   /// Mojo `DeviceContext` from this box.
-  void *mojoHandle() const { return mojoCtx_; }
+  void *mojoHandle() const {
+    if (!mojoCtx_)
+      reportNoMojoHandle();
+    return mojoCtx_;
+  }
 
   /// Adopts a heap-boxed Mojo `DeviceContext` produced by the Mojo
   /// a boxed Mojo `DeviceContext` (the reverse of `mojoHandle()`): the returned
@@ -715,6 +731,9 @@ private:
                 std::shared_ptr<StreamPool> pool)
       : mojoCtx_(mojoCtx), streamPool_(std::move(pool)),
         device_(std::move(device)) {}
+
+  /// Reports the `mojoHandle()` misuse above and aborts.
+  [[noreturn]] static void reportNoMojoHandle();
 
   MojoHALContextBox *mojoCtx_;
   std::shared_ptr<StreamPool> streamPool_;
