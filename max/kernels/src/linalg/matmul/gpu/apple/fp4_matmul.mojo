@@ -46,9 +46,9 @@ tail loop, cast/epilogue store). The dense fp16/bf16/fp32 path is untouched.
 """
 
 from std.collections import Optional
-from std.gpu import WARP_SIZE, barrier, block_idx, thread_idx
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
+from std.gpu import WARP_SIZE, block_idx, thread_idx
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from std.math import ceildiv
 from std.memory import unsafe_stack_allocation
 from std.sys import align_of
@@ -269,13 +269,11 @@ struct AppleM5Fp4MatMul[
         # Double-buffered (2, BN, BK) bf16 SMEM weight sub-tile. Wrapped in a
         # TileTensor view so both buffers are addressed by `(buf, nrow, col)`
         # indexing (in-bounds by construction) -- no raw SMEM pointer arithmetic.
-        var b_smem = UnsafePointer(
-            unsafe_stack_allocation[
-                2 * BN * BK,
-                Scalar[Self.in_type],
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var b_smem = unsafe_stack_allocation[
+            2 * BN * BK,
+            Scalar[Self.in_type],
+            address_space=AddressSpace.SHARED,
+        ]()
         var b_smem_view = TileTensor(
             b_smem,
             Layout(Coord(2, BN, BK), Coord(BN * BK, BK, Idx[1])),
@@ -290,13 +288,11 @@ struct AppleM5Fp4MatMul[
         # read on the `coalesce_scales` path.
         comptime NBLK = Self.NBLK_PER_STRIP
         comptime SCALE_SMEM = (2 * BN * NBLK) if Self.coalesce_scales else 1
-        var s_smem = UnsafePointer(
-            unsafe_stack_allocation[
-                SCALE_SMEM,
-                Scalar[DType.float32],
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var s_smem = unsafe_stack_allocation[
+            SCALE_SMEM,
+            Scalar[DType.float32],
+            address_space=AddressSpace.SHARED,
+        ]()
         var s_smem_view = TileTensor(
             s_smem,
             Layout(Coord(2, BN, NBLK), Coord(BN * NBLK, NBLK, Idx[1])),
@@ -773,7 +769,7 @@ def _enqueue_apple_fp4_materialize_dense[
     lowering (a post-matmul multiply), identically for both paths.
 
     Buffer lifetime (the correctness hinge): the dense GEMM reads `wdense` after
-    this function returns -- `enqueue_*` is async. `DeviceBuffer.__del__`
+    this function returns -- `enqueue_*` is async. `DeviceBuffer.__deinit__`
     schedules a STREAM-ORDERED free (`AsyncRT_DeviceBuffer_release`: "the actual
     deallocation may occur asynchronously after all operations using this buffer
     have completed", `device_context.mojo`), so the free cannot race the GEMM
@@ -818,9 +814,9 @@ def _enqueue_apple_fp4_materialize_dense[
             c,
             a,
             wdense_tt.as_immut(),
-            m,
-            n,
-            k,
+            Int32(m),
+            Int32(n),
+            Int32(k),
             grid_dim=(ceildiv(n, 64), ceildiv(m, 64)),
             block_dim=(4 * WARP_SIZE,),
         )

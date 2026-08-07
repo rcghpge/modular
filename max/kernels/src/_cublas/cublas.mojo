@@ -29,13 +29,13 @@ from std.ffi import _find_dylib
 from std.ffi import _get_dylib_function as _ffi_get_dylib_function
 from std.ffi import _CPointer, _Global, OwnedDLHandle
 
-from std.gpu.host._nvidia_cuda import CUstream
+from max.gpu.host._nvidia_cuda import CUstream
 
 from .dtype import DataType, Property
 from .result import Result
 
 comptime cublasContext = NoneType
-comptime cublasHandle_t = OptionalUnsafePointer[cublasContext, _]
+comptime cublasHandle_t = OptionalPointer[cublasContext, _]
 
 # ===-----------------------------------------------------------------------===#
 # Library Load
@@ -5535,7 +5535,7 @@ def cublasLoggerConfigure(
     log_is_on: Int16,
     log_to_std_out: Int16,
     log_to_std_err: Int16,
-    log_file_name: OptionalUnsafePointer[Int8, _],
+    log_file_name: OptionalPointer[Int8, _],
 ) raises -> Result:
     return _get_dylib_function[
         "cublasLoggerConfigure",

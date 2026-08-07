@@ -179,11 +179,13 @@ def call_eval(
             "deepseek-v3",
             "gemma-4",
             "gpt-oss",
+            "inkling",
             "internvl3_5",
             "qwen3",
             "kimi-k2",
             "minimax-m2",
             "minimax-m3",
+            "nemotron",
             "step-3.5",
             "glm-5",
         )

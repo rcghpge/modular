@@ -14,9 +14,8 @@
 from std.sys import size_of
 
 from std.gpu import thread_idx
-from std.gpu.host import DeviceContext
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.host import DeviceContext
+from max.gpu.memory import (
     async_copy,
     async_copy_commit_group,
     async_copy_wait_all,
@@ -33,11 +32,9 @@ def copy_via_shared(
     var thread_id = thread_idx.x
     var mem_buff: UnsafePointer[
         Float32, MutAnyOrigin, address_space=AddressSpace.SHARED
-    ] = UnsafePointer(
-        unsafe_stack_allocation[
-            16, Float32, address_space=AddressSpace.SHARED
-        ]()
-    ).as_unsafe_any_origin()
+    ] = unsafe_stack_allocation[
+        16, Float32, address_space=AddressSpace.SHARED
+    ]().as_unsafe_any_origin()
     var src_global: UnsafePointer[
         Float32, ImmutAnyOrigin, address_space=AddressSpace.GLOBAL
     ] = src.address_space_cast[AddressSpace.GLOBAL]()
@@ -90,13 +87,13 @@ def run_copy_via_shared(ctx: DeviceContext) raises:
 def copy_with_src_size(
     src: UnsafePointer[Float32, ImmutAnyOrigin],
     dst: UnsafePointer[Float32, MutAnyOrigin],
-    src_size: Int,
+    src_size_dev: Int32,
 ):
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            8, DType.float32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    # `Int` is not device-passable; widen the fixed-width arg.
+    var src_size = Int(src_size_dev)
+    var smem = unsafe_stack_allocation[
+        8, DType.float32, address_space=AddressSpace.SHARED
+    ]()
 
     for i in range(8):
         smem[i] = -1.0
@@ -124,11 +121,9 @@ def copy_with_non_zero_fill[
     src: UnsafePointer[BFloat16, ImmutAnyOrigin],
     dst: UnsafePointer[BFloat16, MutAnyOrigin],
 ):
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            smem_size, DType.bfloat16, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var smem = unsafe_stack_allocation[
+        smem_size, DType.bfloat16, address_space=AddressSpace.SHARED
+    ]()
 
     for i in range(smem_size):
         smem[i] = 0
@@ -174,7 +169,7 @@ def test_copy_with_src_size(ctx: DeviceContext) raises:
     ctx.enqueue_function[kernel](
         a_device,
         b_device,
-        src_size,
+        Int32(src_size),
         grid_dim=(1, 1, 1),
         block_dim=(1, 1, 1),
     )

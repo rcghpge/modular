@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv
 from std.math.uutils import ufloordiv, udivmod, uceildiv
@@ -22,14 +21,14 @@ from std.sys.info import align_of, simd_width_of
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_idx,
     grid_dim,
     lane_id,
     thread_idx,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.memory import external_memory
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.memory import external_memory
 from layout import Layout, LayoutTensor, UNKNOWN_VALUE
 from layout._utils import ManagedLayoutTensor
 from layout.layout import size
@@ -224,18 +223,16 @@ def b2b_gemm[
     ) if swizzle_block else Index(block_idx.x, block_idx.y)
 
     # Coordinates of the current warp.
-    warp_y, warp_x = udivmod(warp_id, num_warps_n)
+    var warp_y, warp_x = udivmod(warp_id, num_warps_n)
 
     # Prepare shared memory buffers for A, B, and C.
     # We load our entire local `A` block into shared
     # memory and reuse it on each iteration.
-    var a_smem = UnsafePointer(
-        external_memory[
-            Scalar[in_type],
-            address_space=AddressSpace.SHARED,
-            alignment=align_of[SIMD[in_type, simd_size]](),
-        ]()
-    )
+    var a_smem = external_memory[
+        Scalar[in_type],
+        address_space=AddressSpace.SHARED,
+        alignment=align_of[SIMD[in_type, simd_size]](),
+    ]()
     comptime a_smem_size = BM * K  # single block
     var a_smem_iter = LayoutTensorIter[
         in_type,
@@ -500,6 +497,7 @@ def b2b_gemm[
 
                 comptime dst_static_idx = type_of(d_gmem_frag).layout(i)
 
+                var dst_idx: Int
                 comptime if d_layout.all_dims_known():
                     dst_idx = dst_static_idx
                 else:
@@ -550,6 +548,7 @@ def b2b_gemm[
             comptime for i in range(type_of(d_gmem_frag).layout.size()):
                 comptime src_idx = d_reg_frag.layout(i)
 
+                var dst_idx: Int
                 comptime if d_layout.all_dims_known():
                     comptime dst_static_idx = type_of(d_gmem_frag).layout(i)
                     dst_idx = dst_static_idx

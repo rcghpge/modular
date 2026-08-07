@@ -27,8 +27,8 @@ import extensibility
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
-from std.gpu.host import DeviceContext, DeviceContextArray
-from std.gpu.host.info import is_cpu
+from max.gpu.host import DeviceContext, DeviceContextArray
+from max.gpu.host.info import is_cpu
 from layout import IntTuple, TileTensor, UNKNOWN_VALUE, coord_to_index_list
 from layout.int_tuple import _IntTupleToCoordLike
 from layout.coord import DynamicCoord
@@ -1220,7 +1220,7 @@ struct Transpose:
             ]()
         ],
     ):
-        shape, strides = Self.transpose_in_place(input, permutations)
+        var shape, strides = Self.transpose_in_place(input, permutations)
         return {input.unsafe_ptr(), shape, strides}
 
     @staticmethod
@@ -1263,7 +1263,7 @@ struct Transpose:
                     " rank)"
                 )
 
-        shape, _ = Self.transpose_in_place(input, permutations)
+        var shape, _ = Self.transpose_in_place(input, permutations)
         var out = IndexList[input.rank]()
 
         comptime for i in range(input.rank):

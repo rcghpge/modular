@@ -20,7 +20,7 @@ from std.memory import unsafe_stack_allocation
 ```
 """
 
-from std.collections.string.string_slice import _get_kgen_string
+from std.collections.string.string_span import _get_kgen_string
 from std.sys import align_of, is_gpu
 from std._plugin import CurrentPlugin
 
@@ -157,11 +157,7 @@ def stack_allocation[
     /,
     alignment: Int = align_of[dtype](),
     address_space: AddressSpace = AddressSpace.GENERIC,
-]() -> UnsafePointer[
-    Scalar[dtype],
-    MutUntrackedOrigin,
-    address_space=address_space,
-]:
+]() -> Pointer[Scalar[dtype], MutUntrackedOrigin, address_space=address_space,]:
     """Allocates data buffer space on the stack given a data type and number of
     elements.
 
@@ -175,14 +171,12 @@ def stack_allocation[
         A data pointer of the given type pointing to the allocated space.
     """
 
-    return UnsafePointer(
-        unsafe_stack_allocation[
-            count,
-            Scalar[dtype],
-            alignment=alignment,
-            address_space=address_space,
-        ]()
-    )
+    return unsafe_stack_allocation[
+        count,
+        Scalar[dtype],
+        alignment=alignment,
+        address_space=address_space,
+    ]()
 
 
 @always_inline
@@ -193,7 +187,7 @@ def stack_allocation[
     name: Optional[StaticString] = None,
     alignment: Int = align_of[type](),
     address_space: AddressSpace = AddressSpace.GENERIC,
-]() -> UnsafePointer[type, MutUntrackedOrigin, address_space=address_space]:
+]() -> Pointer[type, MutUntrackedOrigin, address_space=address_space]:
     """Allocates data buffer space on the stack given a data type and number of
     elements.
 
@@ -208,12 +202,10 @@ def stack_allocation[
         A data pointer of the given type pointing to the allocated space.
     """
 
-    return UnsafePointer(
-        unsafe_stack_allocation[
-            count,
-            type,
-            name=name,
-            alignment=alignment,
-            address_space=address_space,
-        ]()
-    )
+    return unsafe_stack_allocation[
+        count,
+        type,
+        name=name,
+        alignment=alignment,
+        address_space=address_space,
+    ]()

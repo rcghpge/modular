@@ -45,6 +45,7 @@ from max.pipelines.modeling.types.task import PipelineTask
 from max.pipelines.speculative.config import SpeculativeConfig
 from test_common.mocks import (
     mock_estimate_memory_footprint,
+    mock_hf_repo_access,
     mock_pipeline_config_resolve,
 )
 from test_common.pipeline_model_dummy import DUMMY_GEMMA_ARCH, DUMMY_LLAMA_ARCH
@@ -118,124 +119,17 @@ class TestPipelineConfigUtilityMethods:
     """Test suite for the refactored utility methods in PipelineConfig."""
 
     @mock_pipeline_config_resolve
-    def test_extract_kwargs_for_config_basic(self) -> None:
-        """Test basic kwargs extraction for a config class."""
-        PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
+    def test_lora_config_built_when_enabled(self) -> None:
+        """LoRA flags build a LoRAConfig when ``enable_lora`` is set."""
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                model_path="test/model",
+                enable_lora=True,
+                lora_paths=["/path/to/lora1", "/path/to/lora2"],
+                max_lora_rank=32,
+            )
         )
 
-        # Test extracting SamplingConfig kwargs
-        kwargs = {
-            "enable_structured_output": True,
-            "enable_penalties": True,
-            "enable_min_tokens": True,
-            "unrelated_param": "value",
-        }
-
-        extracted = PipelineConfig._extract_kwargs_for_config(
-            kwargs, SamplingConfig
-        )
-
-        # Should extract sampling-related kwargs
-        assert "enable_structured_output" in extracted
-        assert "enable_penalties" in extracted
-        assert "enable_min_tokens" in extracted
-        assert extracted["enable_structured_output"] is True
-        assert extracted["enable_penalties"] is True
-        assert extracted["enable_min_tokens"] is True
-
-        # Should not extract unrelated params
-        assert "unrelated_param" not in extracted
-
-        # Original kwargs should have extracted items removed
-        assert "enable_structured_output" not in kwargs
-        assert "enable_penalties" not in kwargs
-        assert "enable_min_tokens" not in kwargs
-        assert "unrelated_param" in kwargs
-
-    @mock_pipeline_config_resolve
-    def test_extract_kwargs_for_config_with_prefix(self) -> None:
-        """Test kwargs extraction with prefix filtering."""
-        PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
-
-        # Test extracting with draft_ prefix
-        kwargs = {
-            "draft_model_path": "/path/to/draft",
-            "draft_quantization_encoding": "float32",
-            "model_path": "/path/to/main",
-            "temperature": 0.8,
-        }
-
-        extracted = PipelineConfig._extract_kwargs_for_config(
-            kwargs, MAXModelConfig, key_prefix="draft_", strip_prefix=True
-        )
-
-        # Should extract draft-prefixed kwargs with prefix stripped
-        assert "model_path" in extracted
-        assert "quantization_encoding" in extracted
-        assert extracted["model_path"] == "/path/to/draft"
-        assert extracted["quantization_encoding"] == "float32"
-
-        # Should not extract non-prefixed items or unrelated items
-        assert "temperature" not in extracted
-
-        # Original kwargs should have draft items removed but others remain
-        assert "draft_model_path" not in kwargs
-        assert "draft_quantization_encoding" not in kwargs
-        assert "model_path" in kwargs  # Non-prefixed should remain
-        assert "temperature" in kwargs
-
-    @mock_pipeline_config_resolve
-    def test_extract_kwargs_for_config_empty_result(self) -> None:
-        """Test extraction when no matching kwargs exist."""
-        PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
-
-        kwargs = {
-            "unrelated_param1": "value1",
-            "unrelated_param2": "value2",
-        }
-
-        extracted = PipelineConfig._extract_kwargs_for_config(
-            kwargs, SamplingConfig
-        )
-
-        # Should return empty dict when no matches
-        assert extracted == {}
-
-        # Original kwargs should be unchanged
-        assert len(kwargs) == 2
-        assert "unrelated_param1" in kwargs
-        assert "unrelated_param2" in kwargs
-
-    @mock_pipeline_config_resolve
-    def test_create_lora_config_if_needed_with_lora_paths(self) -> None:
-        """Test LoRA config creation when lora_paths are provided."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
-
-        kwargs = {
-            "enable_lora": True,
-            "lora_paths": ["/path/to/lora1", "/path/to/lora2"],
-            "max_lora_rank": 32,
-            "other_param": "value",
-        }
-
-        config._create_lora_config_if_needed(kwargs)
-
-        # Should create LoRA config
         assert config.lora is not None
         assert config.lora.lora_paths == [
             "/path/to/lora1",
@@ -243,124 +137,60 @@ class TestPipelineConfigUtilityMethods:
         ]
         assert config.lora.max_lora_rank == 32
 
-        # Should remove LoRA-related kwargs
-        assert "lora_paths" not in kwargs
-        assert "max_lora_rank" not in kwargs
-        assert "other_param" in kwargs  # Non-LoRA params should remain
-
     @mock_pipeline_config_resolve
-    def test_create_lora_config_if_needed_error_on_incomplete_config(
-        self,
-    ) -> None:
-        """Test error when LoRA config detected but no lora_paths provided."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
+    def test_lora_config_absent_without_enable_lora(self) -> None:
+        """LoRA flags alone don't enable LoRA -- only ``enable_lora`` does.
 
-        kwargs = {
-            "max_lora_rank": 32,
-            "max_num_loras": 10,
-        }
-        config._create_lora_config_if_needed(kwargs)
-        # LoRA config should not be created if no lora_paths are provided.
+        The CLI supplies a default for every LoRA flag, so their presence
+        cannot be read as intent.
+        """
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                model_path="test/model",
+                max_lora_rank=32,
+                max_num_loras=10,
+            )
+        )
         assert config.lora is None
 
     @mock_pipeline_config_resolve
-    def test_create_and_set_config_basic(self) -> None:
-        """Test basic config creation and setting."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
+    def test_sampling_flags_route_through_from_args(self) -> None:
+        """Flat sampling flags land on the built config's sampling."""
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                model_path="test/model",
+                enable_structured_output=True,
+                enable_penalties=True,
+            )
         )
 
-        matched_kwargs: dict[str, Any] = {
-            "enable_structured_output": True,
-            "enable_penalties": True,
-        }
-
-        config._create_and_set_config(
-            "sampling", SamplingConfig, matched_kwargs
-        )
-
-        # Should create and set the config
         assert config.sampling is not None
         assert config.sampling.enable_structured_output is True
         assert config.sampling.enable_penalties is True
 
     @mock_pipeline_config_resolve
-    def test_create_and_set_config_sampling_with_echo_enabled(self) -> None:
-        """Test sampling config creation with echo enabled sets variable logits."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {
-                    "main": MAXModelConfig(
-                        model_path="test/model", enable_echo=True
-                    )
-                }
-            ),
+    def test_from_args_sampling_with_echo_enabled(self) -> None:
+        """``enable_echo`` forces variable logits on the built sampling."""
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                model_path="test/model",
+                enable_echo=True,
+                enable_min_tokens=True,
+            )
         )
 
-        matched_kwargs = {"enable_min_tokens": True}
-
-        config._create_and_set_config(
-            "sampling", SamplingConfig, matched_kwargs
-        )
-
-        # Should create sampling config with variable logits enabled
         assert config.sampling is not None
         assert config.sampling.enable_min_tokens is True
         assert config.sampling.enable_variable_logits is True
 
     @mock_pipeline_config_resolve
-    def test_process_remaining_config_classes(self) -> None:
-        """Test processing of remaining config classes."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
-
-        unmatched_kwargs = {
-            "enable_structured_output": True,  # SamplingConfig
-            "enable_penalties": True,  # SamplingConfig
-            "unknown_param": "value",  # Should remain unmatched
-        }
-
-        config._process_remaining_config_classes(unmatched_kwargs)
-
-        # Should process and remove matched kwargs
-        assert "enable_structured_output" not in unmatched_kwargs
-        assert "enable_penalties" not in unmatched_kwargs
-
-        # Should leave unmatched kwargs
-        assert "unknown_param" in unmatched_kwargs
-
-        # Should update configs
-        assert config.sampling.enable_structured_output is True
-        assert config.sampling.enable_penalties is True
-
-    @mock_pipeline_config_resolve
-    def test_process_remaining_config_classes_no_matches(self) -> None:
-        """Test processing when no config classes match."""
-        config = PipelineConfig(
-            models=ModelManifest(
-                {"main": MAXModelConfig(model_path="test/model")}
-            ),
-        )
-
-        unmatched_kwargs = {
-            "unknown_param1": "value1",
-            "unknown_param2": "value2",
-        }
-        original_kwargs = unmatched_kwargs.copy()
-
-        config._process_remaining_config_classes(unmatched_kwargs)
-
-        # Should leave all kwargs unchanged when no matches
-        assert unmatched_kwargs == original_kwargs
+    def test_unmatched_flat_kwargs_raise(self) -> None:
+        """Flat kwargs that route to no config field are rejected."""
+        with pytest.raises(ValueError, match="Unmatched kwargs"):
+            PipelineArgs.from_flat_kwargs(
+                model_path="test/model",
+                unknown_param="value",
+            )
 
     @mock_pipeline_config_resolve
     def test_integration_full_config_initialization(
@@ -384,7 +214,9 @@ class TestPipelineConfigUtilityMethods:
             "kv_cache_page_size": 512,
         }
 
-        config = PipelineConfig.from_flat_kwargs(**kwargs)
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        )
 
         # Should have created all configs correctly
         assert config.runtime.max_batch_size == 4
@@ -422,7 +254,9 @@ class TestPipelineConfigUtilityMethods:
             "kv_cache_page_size": 512,
         }
 
-        config = PipelineConfig.from_flat_kwargs(**kwargs)
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        )
         assert config.model.quantization_encoding == "float4_e2m1fnx2"
 
         assert config.draft_model is not None
@@ -465,7 +299,9 @@ class TestPipelineConfigUtilityMethods:
             "max_batch_size": 4,
         }
 
-        config = PipelineConfig.from_flat_kwargs(**kwargs)
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        )
 
         assert config.runtime.max_batch_size == 4
         assert config.runtime.denoising_cache.taylorseer is True
@@ -482,7 +318,9 @@ class TestPipelineConfigUtilityMethods:
             "max_batch_size": 4,
         }
 
-        config = PipelineConfig.from_flat_kwargs(**kwargs)
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        )
 
         assert config.runtime.max_batch_size == 4
         assert config.runtime.denoising_cache.first_block_caching is True
@@ -607,6 +445,22 @@ class TestSpeculativeArchitectureOverride:
         )
         assert self._resolved_arch(cfg) == "UnifiedMTPGemma4ForCausalLM"
 
+    def test_gemma4_unified_dspark(self) -> None:
+        cfg = self._make_config(
+            "Gemma4UnifiedForConditionalGeneration",
+            is_dflash=True,
+            draft_arch="Gemma4DSparkModel",
+        )
+        assert self._resolved_arch(cfg) == "UnifiedDSparkGemma4ForCausalLM"
+
+    def test_gemma4_unified_without_dspark_draft_is_noop(self) -> None:
+        cfg = self._make_config(
+            "Gemma4UnifiedForConditionalGeneration", draft_arch=None
+        )
+        assert (
+            self._resolved_arch(cfg) == "Gemma4UnifiedForConditionalGeneration"
+        )
+
     def test_no_speculative_is_noop(self) -> None:
         cfg = self._make_config(
             "DeepseekV3ForCausalLM", speculative=False, draft_arch=None
@@ -617,116 +471,103 @@ class TestSpeculativeArchitectureOverride:
 class TestDraftModelDefaultsInheritance:
     """Tests that draft model inherits certain defaults from the target model."""
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_inherits_trust_remote_code(
         self,
     ) -> None:
         """_apply_draft_model_defaults inherits trust_remote_code from target."""
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            trust_remote_code=True,
-        )
+        target_kwargs: dict[str, Any] = {"trust_remote_code": True}
         draft_kwargs: dict[str, Any] = {"model_path": "test/draft"}
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         assert draft_kwargs["trust_remote_code"] is True
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_does_not_inherit_false_trust_remote_code(
         self,
     ) -> None:
         """_apply_draft_model_defaults does not inherit trust_remote_code=False."""
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            trust_remote_code=False,
-        )
+        target_kwargs: dict[str, Any] = {"trust_remote_code": False}
         draft_kwargs: dict[str, Any] = {"model_path": "test/draft"}
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         # trust_remote_code should not be added when target has False
         assert "trust_remote_code" not in draft_kwargs
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_preserves_explicit_trust_remote_code(
         self,
     ) -> None:
         """Explicit draft trust_remote_code is not overridden."""
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            trust_remote_code=True,
-        )
+        target_kwargs: dict[str, Any] = {"trust_remote_code": True}
         draft_kwargs: dict[str, Any] = {
             "model_path": "test/draft",
             "trust_remote_code": False,
         }
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         # Explicit False should be preserved
         assert draft_kwargs["trust_remote_code"] is False
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_inherits_device_specs(self) -> None:
         """_apply_draft_model_defaults inherits device_specs from target."""
         target_devices = [DeviceSpec.cpu()]
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            device_specs=target_devices,
-        )
+        target_kwargs: dict[str, Any] = {"device_specs": target_devices}
         draft_kwargs: dict[str, Any] = {"model_path": "test/draft"}
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         assert draft_kwargs["device_specs"] == target_devices
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_preserves_explicit_device_specs(
         self,
     ) -> None:
         """Explicit draft device_specs is not overridden."""
         target_devices = [DeviceSpec.cpu()]
         draft_devices = [DeviceSpec.accelerator()]
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            device_specs=target_devices,
-        )
+        target_kwargs: dict[str, Any] = {"device_specs": target_devices}
         draft_kwargs: dict[str, Any] = {
             "model_path": "test/draft",
             "device_specs": draft_devices,
         }
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         assert draft_kwargs["device_specs"] == draft_devices
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_inherits_data_parallel_degree(
         self,
     ) -> None:
         """_apply_draft_model_defaults inherits data_parallel_degree from target."""
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            data_parallel_degree=8,
-        )
+        target_kwargs: dict[str, Any] = {"data_parallel_degree": 8}
         draft_kwargs: dict[str, Any] = {"model_path": "test/draft"}
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         assert draft_kwargs["data_parallel_degree"] == 8
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_preserves_explicit_data_parallel_degree(
         self,
     ) -> None:
         """Explicit draft data_parallel_degree is not overridden."""
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            data_parallel_degree=8,
-        )
+        target_kwargs: dict[str, Any] = {"data_parallel_degree": 8}
         draft_kwargs: dict[str, Any] = {
             "model_path": "test/draft",
             "data_parallel_degree": 4,
         }
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         assert draft_kwargs["data_parallel_degree"] == 4
 
+    @mock_hf_repo_access
     def test_apply_draft_model_defaults_does_not_inherit_quantization_encoding(
         self,
     ) -> None:
@@ -736,13 +577,12 @@ class TestDraftModelDefaultsInheritance:
         the target model's quantization. The draft model should auto-detect
         its encoding from its weights, not inherit from target.
         """
-        target_model = MAXModelConfig(
-            model_path="test/model",
-            quantization_encoding="float4_e2m1fnx2",
-        )
+        target_kwargs: dict[str, Any] = {
+            "quantization_encoding": "float4_e2m1fnx2"
+        }
         draft_kwargs: dict[str, Any] = {"model_path": "test/draft"}
 
-        PipelineConfig._apply_draft_model_defaults(draft_kwargs, target_model)
+        PipelineArgs._apply_draft_model_defaults(draft_kwargs, target_kwargs)
 
         # quantization_encoding should NOT be inherited
         assert "quantization_encoding" not in draft_kwargs
@@ -895,6 +735,7 @@ class TestFloat32WeightFallbackScoping:
         assert cast_from == "float32"
         assert cast_to == "bfloat16"
 
+    @mock_hf_repo_access
     def test_no_given_encoding_f32_only_repo_casts_to_bfloat16(self) -> None:
         """Architecture-level resolution alone still casts f32 -> bf16.
 
@@ -927,6 +768,7 @@ class TestFloat32WeightFallbackScoping:
         assert cast_from == "float32"
         assert cast_to == "bfloat16"
 
+    @mock_hf_repo_access
     def test_diffuser_subcomponent_f32_fallback_still_resolves(self) -> None:
         """A diffuser sub-component (``subfolder`` set) still gets the fallback.
 
@@ -1255,8 +1097,10 @@ def test_config__test_retrieve_factory_with_known_architecture(
         model_path=modular_ai_llama_3_1_local_path,
         quantization_encoding="bfloat16",
         max_length=1,
-        max_batch_size=1,
-        prefer_module_v3=True,
+        runtime=PipelineRuntimeConfig(
+            max_batch_size=1,
+            prefer_module_v3=True,
+        ),
     )
 
     _, _ = PIPELINE_REGISTRY.retrieve_factory(PipelineConfig.from_args(config))
@@ -2321,6 +2165,7 @@ def _backend_arch(default: str | None) -> SimpleNamespace:
     )
 
 
+@mock_hf_repo_access
 def test_resolve_backend__unset_normal_arch_defaults_to_xgrammar() -> None:
     """Unset + an arch with no backend preference resolves to the global
     default ``xgrammar``."""
@@ -2336,6 +2181,7 @@ def test_resolve_backend__unset_normal_arch_defaults_to_xgrammar() -> None:
     assert config.sampling.structured_output_backend == "xgrammar"
 
 
+@mock_hf_repo_access
 def test_resolve_backend__unset_pinned_arch_uses_arch_default() -> None:
     """Unset + an arch that pins ``llguidance`` (e.g. Gemma 3 / MiniMax-M2)
     resolves to the arch default."""
@@ -2350,6 +2196,7 @@ def test_resolve_backend__unset_pinned_arch_uses_arch_default() -> None:
     assert config.sampling.structured_output_backend == "llguidance"
 
 
+@mock_hf_repo_access
 def test_resolve_backend__explicit_xgrammar_overrides_pinned_arch() -> None:
     """Regression: an explicit ``xgrammar`` on a ``llguidance``-pinned arch is
     honored, not silently overwritten. This is the precedence bug this fix
@@ -2366,6 +2213,7 @@ def test_resolve_backend__explicit_xgrammar_overrides_pinned_arch() -> None:
     assert config.sampling.structured_output_backend == "xgrammar"
 
 
+@mock_hf_repo_access
 def test_resolve_backend__explicit_llguidance_on_normal_arch_is_honored() -> (
     None
 ):
@@ -2383,6 +2231,7 @@ def test_resolve_backend__explicit_llguidance_on_normal_arch_is_honored() -> (
     assert config.sampling.structured_output_backend == "llguidance"
 
 
+@mock_hf_repo_access
 def test_resolve_backend__unset_no_arch_defaults_to_xgrammar() -> None:
     """Unset + ``arch=None`` exercises the unconditional global fallback."""
     config = PipelineConfig(
@@ -2394,6 +2243,7 @@ def test_resolve_backend__unset_no_arch_defaults_to_xgrammar() -> None:
     assert config.sampling.structured_output_backend == "xgrammar"
 
 
+@mock_hf_repo_access
 def test_from_args__unset_backend_preserves_none_sentinel() -> None:
     """Regression: ``PipelineArgs`` with no ``--structured-output-backend``
     must carry the ``None`` sentinel into the built ``PipelineConfig``.
@@ -2404,7 +2254,7 @@ def test_from_args__unset_backend_preserves_none_sentinel() -> None:
     short-circuited ``_resolve_default_structured_output_backend`` and the
     global ``xgrammar`` default (and any arch pin) was never reached."""
     args = PipelineArgs(model_path="test/model")
-    assert args.structured_output_backend is None
+    assert args.sampling.structured_output_backend is None
 
     with patch("max.pipelines.lib.config.model_config.validate_hf_repo_access"):
         config = PipelineConfig.from_args(args)
@@ -2412,6 +2262,7 @@ def test_from_args__unset_backend_preserves_none_sentinel() -> None:
     assert config.sampling.structured_output_backend is None
 
 
+@mock_hf_repo_access
 def test_from_args__unset_backend_resolves_to_xgrammar() -> None:
     """End-to-end guard for the reported bug: a model launched without an
     explicit backend and no arch pin ends up on ``xgrammar``, not
@@ -2427,11 +2278,13 @@ def test_from_args__unset_backend_resolves_to_xgrammar() -> None:
     assert config.sampling.structured_output_backend == "xgrammar"
 
 
+@mock_hf_repo_access
 def test_from_args__explicit_backend_is_preserved() -> None:
     """An explicit ``--structured-output-backend`` value survives
     ``from_args`` and wins over resolution."""
     args = PipelineArgs(
-        model_path="test/model", structured_output_backend="llguidance"
+        model_path="test/model",
+        sampling=SamplingConfig(structured_output_backend="llguidance"),
     )
 
     with patch("max.pipelines.lib.config.model_config.validate_hf_repo_access"):

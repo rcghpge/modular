@@ -38,30 +38,28 @@ Key structured patterns:
 - Automatic wait/step in context manager __enter__/__exit__
 """
 
-from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv
 from std.memory import Pointer
 from std.sys import size_of
 
 from std.gpu import WARP_SIZE
-from std.gpu.primitives.cluster import (
+from max.gpu.primitives.cluster import (
     cluster_sync,
     elect_one_sync,
 )
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import (
     external_memory,
     fence_mbarrier_init,
 )
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     launch_dependent_grids,
     PDLLevel,
     wait_on_dependent_grids,
 )
-from std.gpu.sync import syncwarp
+from max.gpu.sync import syncwarp
 from max.gpu.compute.arch.tcgen05 import *
 from layout import Layout
 from layout.tensor_core_async import (
@@ -931,19 +929,11 @@ struct BlackwellBlockScaledMatmulKernel[
         Self.validate_config()
 
         # ===== Shared Memory Setup (structured pattern with typed accessors) =====
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SmemType
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SmemType]()[]
 
         # Get typed tile arrays from SMEM accessors
         var a_tiles = smem.a_tiles()

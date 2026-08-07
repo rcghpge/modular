@@ -35,13 +35,13 @@ from std.gpu import (
     grid_dim,
     thread_idx,
 )
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
     pdl_launch_attributes,
 )
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.host.info import _is_sm10x_gpu
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host.info import _is_sm10x_gpu
 from std.utils.coord import Coord, Idx, coord_to_index_list
 from layout import (
     Coord,
@@ -401,7 +401,7 @@ def fused_rope_rmsnorm_quantization_kernel[
                         rope_dim,
                     )
                 elif head_idx == num_q_heads:
-                    val = kv_input_fn[width=k_width](
+                    var val = kv_input_fn[width=k_width](
                         {global_token_idx, kv_norm_dim + head_dim_idx}
                     )
                     var roped_val = rope_value(val, f_c).cast[dtype]()

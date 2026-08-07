@@ -16,12 +16,11 @@ from std.math import align_up
 from std.math.uutils import udivmod, ufloordiv
 
 from max.algorithm.reduction import _get_nd_indices_from_flat_index
-from std.gpu.primitives.block import broadcast
-from std.gpu.host import DeviceContext
+from max.gpu.primitives.block import broadcast
+from max.gpu.host import DeviceContext
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_dim,
     block_idx,
     grid_dim,
@@ -29,14 +28,14 @@ from std.gpu import (
     lane_id,
     thread_idx,
     warp_id,
-    AddressSpace,
 )
-from std.gpu.primitives.grid_controls import (
+from max.gpu.sync import barrier
+from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
     pdl_launch_attributes,
 )
-from std.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext, get_gpu_target
 from std.gpu.primitives import warp
 from std.memory import unsafe_stack_allocation
 from std.atomic import Atomic
@@ -498,9 +497,9 @@ def small_reduce_kernel[
 
             # One row per warp, warp collectively reads from global
             if warp_id() < warps_per_block:
-                var val = InlineArray[
-                    SIMD[accum_type, simd_width], num_reductions
-                ](fill=0)
+                var val = Array[SIMD[accum_type, simd_width], num_reductions](
+                    fill=0
+                )
 
                 comptime for i in range(num_reductions):
                     val[i] = init[i].cast[accum_type]()
@@ -516,7 +515,7 @@ def small_reduce_kernel[
                     comptime for i in range(num_reductions):
                         val[i] = init[i].cast[accum_type]()
 
-                var result = InlineArray[
+                var result = Array[
                     SIMD[accum_type, simd_width], num_reductions
                 ](fill=0)
 
@@ -575,7 +574,8 @@ def twophase_reduce_kernel[
     # the buffers' `UnsafePointer` `device_type` at the enqueue boundary.
     partials: Pointer[Scalar[accum_type], MutAnyOrigin],
     counters: Pointer[Scalar[DType.int32], MutAnyOrigin],
-    blocks_per_row: Int,
+    # `Int` is not device-passable; use a fixed-width `Int32`.
+    blocks_per_row: Int32,
 ):
     """GPU kernel for reductions when there are too few rows to saturate the
     device at one block per row. Assigns multiple blocks per row and uses a
@@ -604,13 +604,14 @@ def twophase_reduce_kernel[
             Size: num_rows elements of int32, zero-initialized.
         blocks_per_row: The number of blocks assigned to each row.
     """
+    var _bpr = Int(blocks_per_row)
     comptime assert (
         simd_width == 1
     ), "twophase_reduce_kernel only currently supports simd_width == 1"
     var row_size = shape[axis]
     var num_rows = shape.flattened_length() // row_size
 
-    var row_idx, block_in_row = udivmod(block_idx.x, blocks_per_row)
+    var row_idx, block_in_row = udivmod(block_idx.x, _bpr)
 
     if row_idx >= num_rows:
         return
@@ -620,7 +621,7 @@ def twophase_reduce_kernel[
     # --- Phase 1: Each block reduces its portion of the row ---
     # Threads are striped across ALL blocks for this row to coalesce reads.
     var row_tid = block_in_row * BLOCK_SIZE + thread_idx.x
-    var row_total_threads = blocks_per_row * BLOCK_SIZE
+    var row_total_threads = _bpr * BLOCK_SIZE
 
     var accum = StaticTuple[SIMD[accum_type, simd_width], num_reductions]()
     var init_cast = StaticTuple[Scalar[accum_type], num_reductions]()
@@ -653,7 +654,7 @@ def twophase_reduce_kernel[
             var finished = Atomic[DType.int32].fetch_add(
                 counters.unsafe_offset(row_idx), Int32(1)
             )
-            is_last_block = finished == Int32(blocks_per_row - 1)
+            is_last_block = finished == Int32(_bpr - 1)
 
         # --- Phase 2: Last block reduces all partials for this row ---
         # Broadcast is_last_block from thread 0 to all threads via shared memory
@@ -666,8 +667,8 @@ def twophase_reduce_kernel[
             comptime for i in range(num_reductions):
                 thread_accum[i] = init_cast[i]
 
-            var row_base = row_idx * blocks_per_row * num_reductions
-            for b in range(thread_idx.x, blocks_per_row, BLOCK_SIZE):
+            var row_base = row_idx * _bpr * num_reductions
+            for b in range(thread_idx.x, _bpr, BLOCK_SIZE):
                 comptime for i in range(num_reductions):
                     thread_accum[i] = reduce_fn[accum_type, 1, i](
                         thread_accum[i],
@@ -757,7 +758,7 @@ def saturated_reduce_kernel[
             )
 
             # Declare & initialize registers
-            var val = InlineArray[SIMD[accum_type, simd_width], num_reductions](
+            var val = Array[SIMD[accum_type, simd_width], num_reductions](
                 uninitialized=True
             )
 
@@ -943,7 +944,7 @@ def reduce_launch[
             init,
             partials_buf,
             counter_buf,
-            blocks_per_row,
+            Int32(blocks_per_row),
             grid_dim=total_blocks,
             block_dim=BLOCK_SIZE,
             attributes=pdl_launch_attributes(_PDL_LEVEL),

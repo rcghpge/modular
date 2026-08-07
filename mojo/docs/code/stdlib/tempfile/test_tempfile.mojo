@@ -28,7 +28,7 @@ def test_mkdtemp() raises:
     from std.tempfile import mkdtemp
     import std.os
 
-    dir_path = mkdtemp()
+    var dir_path = mkdtemp()
     assert_true(std.os.path.exists(dir_path))
     assert_true(std.os.path.isdir(dir_path))
     std.os.rmdir(dir_path)
@@ -39,7 +39,7 @@ def test_rmtree() raises:
     from std.tempfile import mkdtemp
     import std.os
 
-    dir_path = mkdtemp()
+    var dir_path = mkdtemp()
     assert_true(std.os.path.exists(dir_path))
 
     std.os.rmdir(dir_path)
@@ -97,7 +97,7 @@ def test_file_read() raises:
         p = f.name.copy()
         f.write("Sample data")
         _ = f.seek(0)
-        content = f.read()
+        var content = f.read()
         assert_true(content == "Sample data")
     assert_false(p.exists())
 
@@ -107,7 +107,7 @@ def test_read_bytes() raises:
     from std.pathlib import Path
 
     var p: Path
-    var bytes = [Byte(0x48), 0x65, 0x6C, 0x6C, 0x6F]
+    var bytes: List[Byte] = [0x48, 0x65, 0x6C, 0x6C, 0x6F]
 
     with NamedTemporaryFile(mode="rw") as f:
         p = f.name.copy()
@@ -136,7 +136,7 @@ def test_write() raises:
 def test_write_bytes() raises:
     from std.tempfile import NamedTemporaryFile
 
-    var bytes = [Byte(0x48), 0x65, 0x6C, 0x6C, 0x6F]  # "Hello" in ASCII
+    var bytes: List[Byte] = [0x48, 0x65, 0x6C, 0x6C, 0x6F]  # "Hello" in ASCII
 
     with NamedTemporaryFile(mode="rw") as f:
         f.write_bytes(bytes[:])

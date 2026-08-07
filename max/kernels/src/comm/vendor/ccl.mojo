@@ -30,12 +30,12 @@ from std.collections.optional import Optional
 from layout import TensorLayout, TileTensor
 from std.memory.unsafe_pointer import unsafe_cast
 from std.memory.alloc import Layout as AllocLayout
-from std.gpu.host import DeviceContext, DeviceBuffer, get_gpu_target
-from std.gpu.host._amdgpu_hip import HIP
-from std.gpu.host._nvidia_cuda import CUDA
+from max.gpu.host import DeviceContext, DeviceBuffer, get_gpu_target
+from max.gpu.host._amdgpu_hip import HIP
+from max.gpu.host._nvidia_cuda import CUDA
 from comm import MAX_GPUS, Signal
 from comm.allreduce import elementwise_epilogue_type
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.primitives.grid_controls import PDLLevel
 from std.utils.coord import Coord
 
 comptime ncclComm_t = _CPointer[NoneType, MutUntrackedOrigin]
@@ -322,7 +322,8 @@ def _check_ccl_ok(status: ncclResult_t) raises:
 
 def _get_global_comms(ngpus: Int) raises -> Communicators:
     var NAME = String(t"COMM_VENDOR_CCL_{ngpus}")
-    if global_ptr := _get_global_or_null(NAME):
+    var global_ptr = _get_global_or_null(NAME)
+    if global_ptr:
         return global_ptr.value().unsafe_bitcast[Communicators]()[]
 
     if ngpus > MAX_GPUS:
@@ -339,9 +340,7 @@ def _get_global_comms(ngpus: Int) raises -> Communicators:
 
     var c = Communicators(ngpus=ngpus, comms=comms.copy())
 
-    var ptr = UnsafePointer(
-        alloc(AllocLayout[Communicators].single()).unsafe_leak()
-    )
+    var ptr = alloc(AllocLayout[Communicators].single()).unsafe_leak()
     ptr.unsafe_write(c)
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
         StringSlice(NAME), ptr.bitcast[NoneType]()

@@ -50,7 +50,7 @@ from comm.allreduce_residual_rmsnorm import (
 )
 from std.collections import Optional
 from comm.sync import enable_p2p, init_signal_buffer, is_p2p_enabled
-from std.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from internal_utils import CacheBustingBuffer, arg_parse
 
 from layout import Coord, TileTensor, coord_to_index_list, row_major
@@ -370,7 +370,7 @@ def _verify_add_results[
             _width: SIMDLength,
             *,
             _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, size=_width]) -> None:
+        ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
             var il = coord_to_index_list(coords)
             var flat_idx = il[0] * num_cols + il[1]
             var res = residual_ptr.load[width=_width, alignment=_alignment](
@@ -952,7 +952,7 @@ def bench_allreduce_rmsnorm_fp8[
                     _width: SIMDLength,
                     *,
                     _alignment: Int,
-                ](coords: Coord, val: SIMD[_dtype, size=_width]) -> None:
+                ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
                     var il = coord_to_index_list(coords)
                     var flat_idx = il[0] * num_cols + il[1]
                     var res = residual_ptr_base.load[

@@ -6,10 +6,6 @@ _TEST_DATA = [
     "asyncrt_test_utils.mojo",
 ]
 
-_EXTRA_DEPS = {
-    "test_elementwise.mojo": ["//max:max_mojo"],
-}
-
 _CPU_TESTS = [
     "test_smoke.mojo",
     "test_copies.mojo",
@@ -39,9 +35,6 @@ _EXTRA_CONSTRAINTS = {
     # Metal has no `create_stream` (MetalDeviceContext::streamCreate is
     # unimplemented), so the multi-stream select_stream test cannot run.
     "test_select_stream.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: DRIV-102
-    # Metal silently drops writes through a pointer obtained by
-    # reinterpreting a by-value kernel argument's first bytes.
-    "test_nested_device_pointer_kernel.mojo": _APPLE_GPU_INCOMPATIBLE,  # TODO(MOCO-4286)
 }
 
 # TODO(GEX-3549): asyncrt CPU `DeviceContext` memcpy path returns garbage
@@ -67,8 +60,9 @@ _CPU_EXTRA_CONSTRAINTS = {
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
+            "//max:max_mojo",
             "@mojo//:std",
-        ] + _EXTRA_DEPS.get(src, []),
+        ],
     )
     for src in glob(
         ["**/*.mojo"],
@@ -87,6 +81,7 @@ _CPU_EXTRA_CONSTRAINTS = {
         main = src,
         target_compatible_with = _CPU_EXTRA_CONSTRAINTS.get(src, []),
         deps = [
+            "//max:max_mojo",
             "@mojo//:std",
         ],
     )

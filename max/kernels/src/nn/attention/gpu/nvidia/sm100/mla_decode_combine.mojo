@@ -31,10 +31,10 @@ from std.math import ceildiv, exp2, log2, max, min
 from std.math.constants import log2e
 
 import std.gpu.primitives.warp as warp
-from std.gpu import WARP_SIZE, barrier, block_idx, lane_id, warp_id
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
-from std.gpu.primitives.grid_controls import (
+from std.gpu import WARP_SIZE, block_idx, lane_id, warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
+from max.gpu.primitives.grid_controls import (
     wait_on_dependent_grids,
     pdl_launch_attributes,
 )
@@ -705,27 +705,21 @@ def mla_combine_kernel_split_parallel[
     # Shared memory for tree reduction.
     # Layout: smem_result[warp][elem], smem_m[warp], smem_l[warp]
     # =========================================================================
-    var smem_result = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_WARPS * head_dim,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var smem_m = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_WARPS,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var smem_l = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_WARPS,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var smem_result = unsafe_stack_allocation[
+        NUM_WARPS * head_dim,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
+    var smem_m = unsafe_stack_allocation[
+        NUM_WARPS,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
+    var smem_l = unsafe_stack_allocation[
+        NUM_WARPS,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     # =========================================================================
     # Step 1: Determine this warp's split range (runtime).

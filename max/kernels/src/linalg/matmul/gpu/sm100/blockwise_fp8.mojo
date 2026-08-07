@@ -14,18 +14,18 @@
 Implements blockwise scaled FP8 matrix multiplication kernels targeting the
 NVIDIA SM100 (Blackwell) architecture using 1D A-scales and 2D B-scales.
 """
-from std.memory import UnsafePointer
 from std.collections import Optional
 from std.math import ceildiv, gcd
 from std.math.uutils import umod, ufloordiv
 from std.sys import align_of, size_of
 
-from std.gpu import WARP_SIZE, barrier
-from std.gpu.primitives.cluster import block_rank_in_cluster, elect_one_sync
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from std.gpu import WARP_SIZE
+from max.gpu.sync import barrier
+from max.gpu.primitives.cluster import block_rank_in_cluster, elect_one_sync
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu import block_idx, lane_id, warp_id as get_warp_id
-from std.gpu.memory import external_memory
+from max.gpu.memory import external_memory
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from max.gpu.compute.arch.tcgen05 import *
 from layout import Coord, TensorLayout, TileTensor, coord, row_major
@@ -96,70 +96,9 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
         a_scales_desc_shape,
     ],
     b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
-    num_iters: Int,
+    num_iters: Int32,
 ):
-    """
-    Performs a blockwise scaled FP8 matrix multiplication on SM100 using
-    1D A-scales and 2D B-scales with TMA-based asynchronous loads and TCgen05
-    tensor memory accumulation.
-
-    Loads tiles of A, B, and A-scales into shared memory via TMA, accumulates
-    the MMA products in tensor memory (TMEM), then applies the per-block A and
-    B scale factors to the partial accumulators before storing the result into
-    the output tile `c`.
-
-    Parameters:
-        a_type: Element dtype of the A operand.
-        b_type: Element dtype of the B operand.
-        c_type: Element dtype of the C output tile.
-        a_scales_type: Element dtype of the A scale factors.
-        b_scales_type: Element dtype of the B scale factors.
-        a_layout: Compile-time `TensorLayout` of the A operand.
-        c_layout: Compile-time `TensorLayout` of the C output tile.
-        a_scales_layout: Compile-time `TensorLayout` of the A scale factors.
-        b_scales_layout: Compile-time `TensorLayout` of the B scale factors.
-        a_tile_rank: Rank of the A TMA tile descriptor.
-        a_tile_shape: Shape of the A TMA tile.
-        a_desc_shape: Descriptor shape of the A TMA tile.
-        b_tile_rank: Rank of the B TMA tile descriptor.
-        b_tile_shape: Shape of the B TMA tile.
-        b_desc_shape: Descriptor shape of the B TMA tile.
-        a_scales_tile_rank: Rank of the A-scales TMA tile descriptor.
-        a_scales_tile_shape: Shape of the A-scales TMA tile.
-        a_scales_desc_shape: Descriptor shape of the A-scales TMA tile.
-        block_tile_shape: 3D block tile shape `(BM, BN, BK)` giving the
-            per-CTA tile dimensions along the M, N, and K axes.
-        mma_shape: 3D MMA instruction shape `(MMA_M, MMA_N, MMA_K)` used by
-            the TCgen05 tensor core operations.
-        transpose_b: Whether B is loaded transposed (defaults to `True` and
-            must be `True`; only the transposed-B path is supported).
-        cluster_shape: 3D thread block cluster shape used for the SM100
-            cluster launch (defaults to `(1, 1, 1)`).
-        a_swizzle: TMA swizzle mode applied to A shared memory loads
-            (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
-        b_swizzle: TMA swizzle mode applied to B shared memory loads
-            (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
-        num_threads: Number of threads per CTA (defaults to 128 and must
-            be 128).
-        elementwise_lambda_fn: Optional elementwise epilogue lambda applied
-            to each output element of `c` in place of a direct store
-            (defaults to `None`).
-        b_scaling_block_n: N-direction block size of the B scale factors
-            in elements (defaults to 128). Set to a smaller value, for
-            example 64, when the N-direction scale granularity is finer
-            than `BK`.
-
-    Args:
-        a_tma_op: TMA tile descriptor for asynchronous A tile loads.
-        b_tma_op: TMA tile descriptor for asynchronous B tile loads.
-        c: Output `TileTensor` accumulating the scaled GEMM result.
-        a_scales_tma_op: TMA tile descriptor for asynchronous A-scale
-            loads.
-        b_scales: `TileTensor` of B scale factors indexed by N- and
-            K-direction scale block.
-        num_iters: Number of K-direction iterations to perform, equal to
-            `ceildiv(K, BK)`.
-    """
+    var _num_iters = Int(num_iters)
     comptime assert transpose_b, "Only support transposed B"
     comptime assert num_threads == 128
 
@@ -201,16 +140,12 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime B_SCALING_BLOCK_K = K // b_scales_k
     comptime A_SCALING_BLOCK = K // a_scales_k
 
-    a_smem = UnsafePointer[
-        Scalar[a_type], MutUntrackedOrigin, address_space=AddressSpace.SHARED
-    ](
-        external_memory[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="tmem_test_dynamic_shared_memory",
-        ]()
-    ).as_unsafe_any_origin()
+    var a_smem = external_memory[
+        Scalar[a_type],
+        address_space=AddressSpace.SHARED,
+        alignment=128,
+        name="tmem_test_dynamic_shared_memory",
+    ]().as_unsafe_any_origin()
 
     comptime a_size = tile_layout_k_major_typed[
         a_type, BM, BK, swizzle_mode=a_swizzle
@@ -273,8 +208,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime a_scales_expected_bytes = a_scales_size * size_of[a_scales_type]()
     comptime expected_bytes = a_expected_bytes + b_expected_bytes + a_scales_expected_bytes
 
-    tma_mbar = (ptr_tmem_addr + 2).bitcast[SharedMemBarrier]()
-    mma_mbar = tma_mbar + 1
+    var tma_mbar = (ptr_tmem_addr + 2).bitcast[SharedMemBarrier]()
+    var mma_mbar = tma_mbar + 1
 
     var warp_id = get_warp_id()
     var elect_one_warp = warp_id == 0
@@ -295,7 +230,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     # wait for tensor memory to be allocated
     barrier()
 
-    tmem_addr = ptr_tmem_addr[0]
+    var tmem_addr = ptr_tmem_addr[0]
 
     var mma_op = MmaOpSM100_SS[
         c_type,
@@ -326,7 +261,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     ), "total_repeat must be divisible by repeat"
     var c_frag_temp: Array[Scalar[accum_type], temp_cfrags_size]
 
-    for k_iter in range(num_iters):
+    for k_iter in range(_num_iters):
         if elect_one_thread:
             tma_mbar[0].expect_bytes(Int32(expected_bytes))
 
@@ -461,7 +396,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime num_warps = num_threads // WARP_SIZE
     warp_id = get_warp_id()
 
-    ctile, ctile_coords, _ = c.tile_with_offset[BM, BN](
+    var ctile, ctile_coords, _ = c.tile_with_offset[BM, BN](
         Coord(block_idx.y, block_idx.x)
     )
     comptime c_coord_type = type_of(ctile_coords)
@@ -470,21 +405,25 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
         comptime for n_mma in range(num_n_mmas):
             comptime mma_id = n_mma * num_m_mmas + m_mma
 
-            c_gmem_warp_tile, _c_gmem_warp_tile_coords, _ = (
+            var c_gmem_warp_tile, _c_gmem_warp_tile_coords, _ = (
                 ctile.tile_with_offset[MMA_M // num_warps, MMA_N](
                     Coord(4 * m_mma + warp_id, n_mma)
                 )
             )
-            c_gmem_warp_tile_coords = ctile_coords + rebind[c_coord_type](
+            var c_gmem_warp_tile_coords = ctile_coords + rebind[c_coord_type](
                 _c_gmem_warp_tile_coords
             )
 
-            c_gmem_frag, _c_gmem_frag_coords, _ = c_gmem_warp_tile.vectorize[
-                1, 2
-            ]().distribute_with_offset[row_major[8, 4]()](lane_id())
-            new_c_gmem_frag_coords = rebind[c_coord_type](_c_gmem_frag_coords)
+            var c_gmem_frag, _c_gmem_frag_coords, _ = (
+                c_gmem_warp_tile.vectorize[1, 2]().distribute_with_offset[
+                    row_major[8, 4]()
+                ](lane_id())
+            )
+            var new_c_gmem_frag_coords = rebind[c_coord_type](
+                _c_gmem_frag_coords
+            )
             new_c_gmem_frag_coords[1] *= 2
-            c_gmem_frag_coords = (
+            var c_gmem_frag_coords = (
                 c_gmem_warp_tile_coords + new_c_gmem_frag_coords
             )
 
@@ -567,69 +506,11 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         a_scales_desc_shape,
     ],
     b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
-    num_iters: Int,
+    num_iters: Int32,
 ):
-    """
-    Wraps the blockwise scaled FP8 SM100 kernel with the LLVM metadata
-    decorators needed for cluster dimensions and TMA grid-constant arguments.
-
-    The decorators live on this wrapper rather than on the inner kernel so
-    that the batched blockwise scaling path can call the kernel directly
-    without reapplying the metadata.
-
-    Parameters:
-        a_type: Element dtype of the A operand.
-        b_type: Element dtype of the B operand.
-        c_type: Element dtype of the C output tile.
-        a_scales_type: Element dtype of the A scale factors.
-        b_scales_type: Element dtype of the B scale factors.
-        a_layout: Compile-time `TensorLayout` of the A operand.
-        c_layout: Compile-time `TensorLayout` of the C output tile.
-        a_scales_layout: Compile-time `TensorLayout` of the A scale factors.
-        b_scales_layout: Compile-time `TensorLayout` of the B scale factors.
-        a_tile_rank: Rank of the A TMA tile descriptor.
-        a_tile_shape: Shape of the A TMA tile.
-        a_desc_shape: Descriptor shape of the A TMA tile.
-        b_tile_rank: Rank of the B TMA tile descriptor.
-        b_tile_shape: Shape of the B TMA tile.
-        b_desc_shape: Descriptor shape of the B TMA tile.
-        a_scales_tile_rank: Rank of the A-scales TMA tile descriptor.
-        a_scales_tile_shape: Shape of the A-scales TMA tile.
-        a_scales_desc_shape: Descriptor shape of the A-scales TMA tile.
-        block_tile_shape: 3D block tile shape `(BM, BN, BK)` giving the
-            per-CTA tile dimensions along the M, N, and K axes.
-        mma_shape: 3D MMA instruction shape `(MMA_M, MMA_N, MMA_K)` used by
-            the TCgen05 tensor core operations.
-        transpose_b: Whether B is loaded transposed (defaults to `True` and
-            must be `True`; only the transposed-B path is supported).
-        cluster_shape: 3D thread block cluster shape used for the SM100
-            cluster launch (defaults to `(1, 1, 1)`).
-        a_swizzle: TMA swizzle mode applied to A shared memory loads
-            (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
-        b_swizzle: TMA swizzle mode applied to B shared memory loads
-            (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
-        num_threads: Number of threads per CTA (defaults to 128 and must
-            be 128).
-        elementwise_lambda_fn: Optional elementwise epilogue lambda applied
-            to each output element of `c` in place of a direct store
-            (defaults to `None`).
-        b_scaling_block_n: N-direction block size of the B scale factors
-            in elements (defaults to 128). Set to a smaller value, for
-            example 64, when the N-direction scale granularity is finer
-            than `BK`.
-
-    Args:
-        a_tma_op: TMA tile descriptor for asynchronous A tile loads.
-        b_tma_op: TMA tile descriptor for asynchronous B tile loads.
-        c: Output `TileTensor` accumulating the scaled GEMM result.
-        a_scales_tma_op: TMA tile descriptor for asynchronous A-scale
-            loads.
-        b_scales: `TileTensor` of B scale factors indexed by N- and
-            K-direction scale block.
-        num_iters: Number of K-direction iterations to perform, equal to
-            `ceildiv(K, BK)`.
-    """
-    # NOTE: This wrapper is necessary because batched blockwise scaling has a wrapper kernel
+    var _num_iters2 = Int(
+        num_iters
+    )  # NOTE: This wrapper is necessary because batched blockwise scaling has a wrapper kernel
     # for allocating matrices across the z index that kernel calls the function
     # `matmul_sm100_blockwise_scaled_fp8_1d2d_kernel` as well. That function requires the decroators
     # to not be present on the function so we moved it to this wrapper.
@@ -876,7 +757,7 @@ def matmul_sm100_blockwise_scaled_fp8[
         c_kernel,
         a_scales_tma_op,
         b_scales_kernel,
-        ceildiv(Int(K), BK),
+        Int32(ceildiv(Int(K), BK)),
         grid_dim=(ceildiv(Int(N), BN), ceildiv(Int(M), BM)),
         block_dim=(block_dim),
         shared_mem_bytes=smem_use,

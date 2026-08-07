@@ -37,7 +37,7 @@ from std.sys import simd_width_of, size_of
 from std.math.uutils import udivmod
 
 from std.bit import log2_floor
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 
 from .int_tuple import flatten, IntTuple
 from .layout import Layout
@@ -305,9 +305,7 @@ def shiftl(a: Scalar, s: Scalar[a.dtype]) -> Scalar[a.dtype]:
 # ===-----------------------------------------------------------------------===#
 
 
-struct Swizzle(
-    Copyable, ImplicitlyDeletable, TrivialRegisterPassable, Writable
-):
+struct Swizzle(Copyable, Deinitable, TrivialRegisterPassable, Writable):
     """Swizzle functor for memory access pattern optimization.
 
     Implements a swizzling pattern to reduce bank conflicts in shared
@@ -687,6 +685,7 @@ def eval_composed[
     comptime shape_a = flatten(composed_layout.layout_a.shape)
     comptime stride_a = flatten(composed_layout.layout_a.stride)
 
+    var coord_i: Int
     comptime for i in range(len(stride_a)):
         comptime s = shape_a[i].value()
         comptime st = stride_a[i].value()

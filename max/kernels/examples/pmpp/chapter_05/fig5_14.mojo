@@ -15,9 +15,9 @@
 # Handles matrix dimensions that are not divisible by tile width
 
 from std.math import ceildiv
-from std.gpu import block_idx, thread_idx, barrier
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
+from std.gpu import block_idx, thread_idx
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
 
 # ========================== KERNEL CODE ==========================
@@ -27,7 +27,7 @@ def matrix_mul_tiled_boundary_kernel(
     M: UnsafePointer[Float32, MutUntrackedOrigin],
     N: UnsafePointer[Float32, MutUntrackedOrigin],
     P: UnsafePointer[Float32, MutUntrackedOrigin],
-    Width: Int,
+    width_dev: Int32,
 ):
     """Tiled matrix multiplication kernel with boundary checking.
 
@@ -37,25 +37,23 @@ def matrix_mul_tiled_boundary_kernel(
         M: Input matrix M (device).
         N: Input matrix N (device).
         P: Output matrix P = M * N (device).
-        Width: Matrix dimension (Width x Width matrices).
+        width_dev: Matrix dimension (Width x Width matrices).
     """
+    # Int is not device-passable; widen the fixed-width arg.
+    var Width = Int(width_dev)
     comptime TILE_WIDTH = 16
 
     # Allocate shared memory tiles
-    var Mds = UnsafePointer(
-        unsafe_stack_allocation[
-            TILE_WIDTH * TILE_WIDTH,
-            Scalar[DType.float32],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var Nds = UnsafePointer(
-        unsafe_stack_allocation[
-            TILE_WIDTH * TILE_WIDTH,
-            Scalar[DType.float32],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var Mds = unsafe_stack_allocation[
+        TILE_WIDTH * TILE_WIDTH,
+        Scalar[DType.float32],
+        address_space=AddressSpace.SHARED,
+    ]()
+    var Nds = unsafe_stack_allocation[
+        TILE_WIDTH * TILE_WIDTH,
+        Scalar[DType.float32],
+        address_space=AddressSpace.SHARED,
+    ]()
 
     var tx = thread_idx.x
     var ty = thread_idx.y
@@ -145,7 +143,7 @@ def matmul_tiled_boundary(
         d_a,
         d_b,
         d_c,
-        width,
+        Int32(width),
         grid_dim=(grid_dim_x, grid_dim_y, 1),
         block_dim=(block_dim_x, block_dim_y, 1),
     )

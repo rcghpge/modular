@@ -26,10 +26,10 @@ from std.sys import (
 )
 
 from max.algorithm import elementwise
-from std.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.host.info import B200
+from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.info import B200
 from layout import (
     Coord,
     Idx,
@@ -183,9 +183,9 @@ def small_MN_gemms[
             c,
             a.as_immut(),
             b.as_immut(),
-            m,
-            n,
-            k,
+            Int32(m),
+            Int32(n),
+            Int32(k),
             grid_dim=(ceildiv(m, config.tile_m), ceildiv(n, config.tile_n)),
             block_dim=config.num_threads,
             attributes=pdl_launch_attributes(pdl_level),
@@ -1276,9 +1276,9 @@ def _vendor_blas_matmul_sm100[
                 c,
                 a,
                 b,
-                m,
-                n,
-                k,
+                Int32(m),
+                Int32(n),
+                Int32(k),
                 grid_dim=(ceildiv(m, BLOCK_DIM), ceildiv(n, BLOCK_DIM)),
                 block_dim=(BLOCK_DIM, BLOCK_DIM),
             )

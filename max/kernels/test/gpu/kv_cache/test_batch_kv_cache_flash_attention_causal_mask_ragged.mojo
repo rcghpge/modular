@@ -16,7 +16,7 @@ from std.math import rsqrt
 from std.memory import unsafe_memcpy
 from std.random import random_ui64, seed
 
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from kv_cache_test_utils import random_distinct
 from kv_cache.types import (
     ContinuousBatchingKVCacheCollection,
@@ -38,6 +38,12 @@ comptime llama_num_q_heads = 32
 # `group == num_heads` and the AMD decode query-token fold is eligible.
 comptime kv_params_single_kv = KVCacheStaticParams(num_heads=1, head_size=128)
 comptime fold_num_q_heads = 16
+
+# The EAGLE3 draft shape at TP4: 16 query heads over 16 KV heads (`group == 1`),
+# which folds on the token-strided Q/O path.
+comptime kv_params_one_q_per_kv = KVCacheStaticParams(
+    num_heads=16, head_size=128
+)
 
 
 def execute_ragged_flash_attention[
@@ -158,12 +164,12 @@ def execute_ragged_flash_attention[
     # copy over the ragged values to the padded tensor.
     # Don't worry about padded values, we won't read them.
     for bs in range(batch_size):
-        unpadded_seq_len = valid_lengths[bs]
-        ragged_start_idx = Int(input_row_offsets_host[bs])
-        padded_ptr = q_padded_host.ptr + (
+        var unpadded_seq_len = valid_lengths[bs]
+        var ragged_start_idx = Int(input_row_offsets_host[bs])
+        var padded_ptr = q_padded_host.ptr + (
             bs * max_prompt_length * num_q_heads * kv_params.head_size
         )
-        ragged_ptr = q_ragged_host.ptr + (
+        var ragged_ptr = q_ragged_host.ptr + (
             ragged_start_idx * num_q_heads * kv_params.head_size
         )
         unsafe_memcpy(
@@ -311,13 +317,13 @@ def execute_ragged_flash_attention[
         sink_weights=sink_weights_device_tensor,
     )
     # Verify results
-    row_offsets_tensor = input_row_offsets.tensor()
+    var row_offsets_tensor = input_row_offsets.tensor()
     var test_out_tensor = test_output.tensor()
     var ref_out_tensor = ref_output.tensor()
 
     for bs in range(batch_size):
-        prompt_len = valid_lengths[bs]
-        ragged_offset = Int(row_offsets_tensor[bs])
+        var prompt_len = valid_lengths[bs]
+        var ragged_offset = Int(row_offsets_tensor[bs])
         for s in range(prompt_len):
             for h in range(num_q_heads):
                 for hd in range(kv_params.head_size):
@@ -351,10 +357,10 @@ def execute_flash_attention_suite(ctx: DeviceContext) raises:
         comptime for dtype_idx in range(len(dtypes)):
             comptime dtype = dtypes[dtype_idx]
 
-            ce_cache_sizes = List[Int]()
-            ce_seq_lens = List[Int]()
-            tg_cache_sizes = List[Int]()
-            tg_seq_lens = List[Int]()
+            var ce_cache_sizes = List[Int]()
+            var ce_seq_lens = List[Int]()
+            var tg_cache_sizes = List[Int]()
+            var tg_seq_lens = List[Int]()
             for _ in range(bs):
                 tg_seq_lens.append(1)
                 tg_cache_sizes.append(Int(random_ui64(512, 1024)))
@@ -469,6 +475,35 @@ def test_speculative_decode_query_lengths(ctx: DeviceContext) raises:
     execute_ragged_flash_attention[
         fold_num_q_heads, DType.bfloat16, kv_params_single_kv
     ](one_seq, max_seq_len_cache, one_cache, 2, 0, ctx)
+
+    # `group == 1`: a folded CTA's rows are the S tokens, stepping by the BSHD
+    # token stride rather than by depth. S=5 is an EAGLE3 step-0 width at K=3.
+    for s in [2, 3, 4, 5]:
+        var one_q_seq_lens = List[Int]()
+        var one_q_cache_lens = List[Int]()
+        for _ in range(4):
+            one_q_seq_lens.append(s)
+            one_q_cache_lens.append(Int(random_ui64(512, 1000)))
+        execute_ragged_flash_attention[
+            fold_num_q_heads, DType.bfloat16, kv_params_one_q_per_kv
+        ](one_q_seq_lens, max_seq_len_cache, one_q_cache_lens, 2, 0, ctx)
+
+    # Non-uniform S at `group == 1` — the production case, since a step-0
+    # declares K+2 but feeds K+1 rows. Dispatching at S = max = 5 with four of
+    # the five sequences shorter exercises pad-row clamping on the token-strided
+    # path, where the dead rows sit `num_heads*depth` apart instead of adjacent.
+    var one_q_mixed_seq_lens: List[Int] = [5, 1, 4, 2, 3]
+    var one_q_mixed_cache_lens: List[Int] = [900, 512, 700, 1000, 613]
+    execute_ragged_flash_attention[
+        fold_num_q_heads, DType.bfloat16, kv_params_one_q_per_kv
+    ](
+        one_q_mixed_seq_lens,
+        max_seq_len_cache,
+        one_q_mixed_cache_lens,
+        2,
+        0,
+        ctx,
+    )
 
 
 def main() raises:

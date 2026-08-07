@@ -36,9 +36,9 @@ def _folded_multiply(lhs: UInt64, rhs: UInt64) -> UInt64:
         A value which is similar in its bitpattern to result of a folded multiply.
     """
     # Extend to 128 bits and multiply.
-    m = lhs.cast[DType.uint128]() * rhs.cast[DType.uint128]()
+    var m = lhs.cast[DType.uint128]() * rhs.cast[DType.uint128]()
     # Extract the high and low 64 bits.
-    res = bitcast[DType.uint64, 2](m)
+    var res = bitcast[DType.uint64, 2](m)
     return res[0] ^ res[1]
 
 
@@ -186,14 +186,14 @@ struct AHasher[key: U256](Defaultable, Hasher):
             # vector values are not bigger than 8 bytes each
             var u64 = new_data.to_bits[DType.uint64]()
 
-            comptime if u64.size == 1:
+            comptime if u64.length == 1:
                 self._update(u64[0])
             else:
-                comptime for i in range(0, u64.size, 2):
+                comptime for i in range(0, u64.length, 2):
                     self._large_update(U128(u64[i], u64[i + 1]))
         else:
             # vector values will contribute to hash in multiple rounds
-            comptime for i in range(new_data.size):
+            comptime for i in range(new_data.length):
                 var v = new_data[i]
                 comptime assert size_of[v.dtype]() > 8 and v.dtype.is_integral()
 

@@ -17,8 +17,8 @@ tensors (including paged KV caches) are laid out in GPU memory and how
 TMA (tensor memory accelerator) descriptors are constructed for them.
 """
 
-from std.gpu.host import DeviceContext
-from std.gpu.host.nvidia.tma import TensorMapL2Promotion, TensorMapSwizzle
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TensorMapL2Promotion, TensorMapSwizzle
 from kv_cache.types import (
     KVCacheT,
     PagedRowIndices,
@@ -1491,7 +1491,7 @@ struct RaggedMHAOperand[
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
     ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
-        global_token_idx = Int(
+        var global_token_idx = Int(
             self.cache_row_offsets[Int(batch_idx)] + start_tok_idx
         )
         var ret_ptr = self.buffer.ptr + self.buffer.layout[

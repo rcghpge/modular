@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from internal_utils import assert_almost_equal
 from layout import Coord, TileTensor, row_major
 from nn.rope import rope_ragged
@@ -104,7 +104,7 @@ def _test_rope_ragged_gpu_impl[
 
     # ===== Step 2: Fill host buffers with data =====
     # Fill query tensor
-    q_buffer = q_input[dtype]()
+    var q_buffer = q_input[dtype]()
     for i in range(len(q_buffer)):
         q_host_buffer[i] = q_buffer[i]
 
@@ -118,7 +118,7 @@ def _test_rope_ragged_gpu_impl[
     start_pos_host_buffer[1] = 5
 
     # Fill frequency table
-    freqs_cis_table_buffer = freqs_cis_table_input[dtype]()
+    var freqs_cis_table_buffer = freqs_cis_table_input[dtype]()
     for seq_idx in range(max_seq_len):
         for rope_idx in range(rope_dim):
             # Offset to last rope_dim elements in the original buffer
@@ -130,7 +130,7 @@ def _test_rope_ragged_gpu_impl[
             ] = freqs_cis_table_buffer[buffer_offset]
 
     # Fill explicit position ids
-    position_ids_buffer = position_ids_input[DType.uint32]()
+    var position_ids_buffer = position_ids_input[DType.uint32]()
     for i in range(len(position_ids_buffer)):
         position_ids_host_buffer[i] = position_ids_buffer[i]
 
@@ -223,6 +223,7 @@ def _test_rope_ragged_gpu_impl[
         q_layout.static_product
     )
     ctx.synchronize()
+    var expected_q_out_buffer: List[Scalar[dtype]]
     comptime if has_position_ids:
         expected_q_out_buffer = q_out_golden_with_position_ids[dtype]()
     else:
@@ -235,10 +236,10 @@ def _test_rope_ragged_gpu_impl[
         for seq_idx in range(seq_len):
             for head_idx in range(num_heads):
                 # Calculate global token index and offsets
-                global_token_idx = batch_idx * seq_len + seq_idx
+                var global_token_idx = batch_idx * seq_len + seq_idx
 
                 # Calculate base offset for current head
-                base_offset = (
+                var base_offset = (
                     global_token_idx * num_heads * head_dim  # token offset
                     + head_idx * head_dim  # head offset
                 )

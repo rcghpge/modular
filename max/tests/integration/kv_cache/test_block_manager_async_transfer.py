@@ -42,7 +42,6 @@ from max.pipelines.kv_cache.kv_connector import (
     KVConnectorTransfer,
     TransferDirection,
 )
-from max.pipelines.kv_cache.memory_tier import MemoryTier
 from max.pipelines.kv_cache.paged_kv_cache.block_manager import BlockManager
 from max.pipelines.kv_cache.paged_kv_cache.block_pool import BlockPool
 from max.pipelines.kv_cache.paged_kv_cache.block_utils import KVCacheBlock
@@ -123,7 +122,6 @@ class _AsyncConnector:
         self,
         block_ids: list[int],
         block_hashes: Sequence[bytes],
-        parent_seq_hash: bytes | None = None,
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
         event = _ControllableTransfer(
@@ -171,7 +169,6 @@ class _AsyncConnector:
 def _make_block_manager() -> tuple[BlockManager, _AsyncConnector]:
     connector = _AsyncConnector()
     bm = BlockManager(
-        device_memory_tier=MemoryTier.MEMORY_TIER_CPU,
         total_num_blocks=64,
         block_size=16,
         connector=connector,
@@ -309,7 +306,7 @@ def test_async_offload_pins_source_blocks_without_commit() -> None:
     blk1 = _commit_device_block(pool, 111)
     blk2 = _commit_device_block(pool, 222)
     assert blk1.ref_cnt == 0 and blk2.ref_cnt == 0
-    bm._pending_offloads = [[(None, [_b(111), _b(222)])]]
+    bm._pending_offloads = [[[_b(111), _b(222)]]]
 
     bm.offload()
 

@@ -28,21 +28,19 @@ Key differences from standard/block-scaled kernels:
 - BlockwiseFP8TileWriter for final register → SMEM → GMEM flow
 """
 
-from std.memory import UnsafePointer
 from std.sys import size_of
 
 from std.gpu import WARP_SIZE
-from std.gpu.primitives.cluster import (
+from max.gpu.primitives.cluster import (
     cluster_sync,
     elect_one_sync,
 )
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     external_memory,
     fence_mbarrier_init,
 )
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
-from std.gpu.sync import named_barrier
+from max.gpu.sync import named_barrier
 from max.gpu.compute.arch.tcgen05 import *
 from layout import Layout, TensorLayout, TileTensor
 
@@ -710,38 +708,20 @@ struct BlackwellBlockwiseFP8MatmulKernel[
         c_tma_op: Self.CTmaOp,
         a_scales_tma_op: Self.AScalesTmaOp,
         cluster_dim: StaticTuple[Int32, 3],
-        num_iters: Int,
+        num_iters: Int32,
         b_scales: Self.BScalesTile,
         problem_shape: StaticTuple[Int32, 3],
     ):
-        """Kernel entry point for blockwise FP8 matmul.
-
-        Args:
-            a_tma_op: TMA descriptor op for the A matrix tiles.
-            b_tma_op: TMA descriptor op for the B matrix tiles.
-            c_tma_op: TMA descriptor op for the C output tiles.
-            a_scales_tma_op: TMA descriptor op for the A-scales tiles.
-            cluster_dim: CTA cluster shape `(x, y, z)` for the tile scheduler.
-            num_iters: Number of K iterations per work tile.
-            b_scales: B-scales `TileTensor` for epilogue per-K scaling.
-            problem_shape: Full matmul shape `(M, N, K)` used by the epilogue.
-        """
+        """Kernel entry point for blockwise FP8 matmul."""
+        var _num_iters = Int(num_iters)
         Self.validate_config()
 
         # ===== Shared Memory Setup =====
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SmemType
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SmemType]()[]
 
         var a_tiles = smem.a_tiles()
         var b_tiles = smem.b_tiles()
@@ -818,7 +798,7 @@ struct BlackwellBlockwiseFP8MatmulKernel[
             for current in load_iter:
                 scheduler.throttle_signal(ctx.is_first_cta_in_cluster)
 
-                for i in range(num_iters):
+                for i in range(_num_iters):
                     # Acquire tiles (waits for consumer to free slot)
                     var tiles = producer.acquire_stage()
                     Self.load_input_tiles(
@@ -863,7 +843,7 @@ struct BlackwellBlockwiseFP8MatmulKernel[
 
             for _ in mma_iter:
                 if ctx.elect_one_cta:
-                    for _ in range(num_iters):
+                    for _ in range(_num_iters):
                         # Acquire MMA stage (waits for epilogue)
                         var mma_stage = mma_handle.acquire_k_stage_linear()
                         var accum = Self.AccumTensor(mma_stage.tmem_offset())
@@ -899,7 +879,7 @@ struct BlackwellBlockwiseFP8MatmulKernel[
 
                 # Per-K stages still use context manager for bundled sync
                 # (combines MMA→Epilogue and A-scales pipelines)
-                for k_iter in range(num_iters):
+                for k_iter in range(_num_iters):
                     with epi_handle.per_k_stage(input_pipeline) as epi_stage:
                         accum.promote(
                             b_scales,

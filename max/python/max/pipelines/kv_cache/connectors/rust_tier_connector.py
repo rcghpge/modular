@@ -46,6 +46,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import NamedTuple
 
 from max.driver import Buffer
@@ -59,12 +60,14 @@ from max.nn.kv_cache.metrics import KVCacheMetrics
 
 from ..kv_connector import KVConnectorTransfer
 from ..paged_kv_cache.block_copy_engine import (
+    _check_host_memory_capacity,
     _unsafe_alloc_fast_pinned_buffer,
     _unsafe_free_fast_pinned_buffer,
 )
 from ..paged_kv_cache.block_manager import (
     _resolve_only_use_kv_connector_last_level_cache,
 )
+from .disk_tier import _check_disk_capacity
 
 logger = logging.getLogger("max.pipelines")
 
@@ -139,7 +142,11 @@ class RustTierConnector:
         # The shared pinned host buffer the Rust lanes copy to/from. It is not
         # GC-managed (see `_unsafe_alloc_fast_pinned_buffer`), so it must be
         # explicitly freed in `shutdown`.
-        total_gib = total_num_host_blocks * bytes_per_page / (1024**3)
+        total_bytes = total_num_host_blocks * bytes_per_page
+        _check_host_memory_capacity(total_bytes)
+        Path(disk_cache_dir).mkdir(parents=True, exist_ok=True)
+        _check_disk_capacity(disk_cache_dir, int(max_disk_size_gb * (1024**3)))
+        total_gib = total_bytes / (1024**3)
         start = time.perf_counter()
         self._host_buffer = _unsafe_alloc_fast_pinned_buffer(
             DType.uint8, [total_num_host_blocks, bytes_per_page], gpu0
@@ -218,7 +225,6 @@ class RustTierConnector:
         self,
         block_ids: list[int],
         block_hashes: Sequence[bytes],
-        parent_seq_hash: bytes | None = None,
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
         return self._rust.offload(block_ids, list(block_hashes), replica_idx)

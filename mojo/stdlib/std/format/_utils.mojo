@@ -17,7 +17,6 @@ standard library for formatting and writing data. These utilities are not
 intended for public use and may change without notice.
 """
 
-from std.builtin.constrained import _constrained_conforms_to
 from std.io.io import _printf
 from std.os import abort
 from std.reflection.type_info import _unqualified_type_name
@@ -29,17 +28,6 @@ from std.ffi import CStringSlice
 from std.bit import byte_swap
 from std.memory import bitcast, unsafe_memcpy
 from std.collections import Span
-
-
-def constrained_conforms_to_writable[*Ts: AnyType, Parent: AnyType]():
-    comptime for i in range(Ts.length):
-        comptime T = Ts[i]
-        _constrained_conforms_to[
-            conforms_to(T, Writable),
-            Parent=Parent,
-            Element=T,
-            ParentConformsTo="Writable",
-        ]()
 
 
 struct _SequenceWriter[W: Writer, origin: MutOrigin](Movable, Writer):
@@ -522,7 +510,7 @@ struct _WriteBufferStack[
         self.pos = 0
 
     def write_string(mut self, string: StringSlice):
-        len_bytes = string.byte_length()
+        var len_bytes = string.byte_length()
         # If span is too large to fit in buffer, write directly and return
         if len_bytes > Int(Self.stack_buffer_bytes):
             self.flush()

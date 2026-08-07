@@ -21,7 +21,6 @@ from max.algorithm.functional import elementwise
 from std.bit import log2_floor
 from std.gpu import (
     WARP_SIZE,
-    barrier,
     thread_idx,
     block_dim,
     block_idx,
@@ -29,8 +28,9 @@ from std.gpu import (
     lane_id,
     warp_id,
 )
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.host.compile import _compile_code
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host.compile import _compile_code
 from std.memory import unsafe_memset_zero, unsafe_stack_allocation
 from std.testing import *
 
@@ -60,11 +60,11 @@ def _verify_parameterized_on_cuda(asm: StringSlice) raises -> None:
 
     # Now make sure that we have something like this:
     #     st.param.b64 	[func_retval0], 42;
-    instruction_start_loc = asm.find("st.param.b64")
+    var instruction_start_loc = asm.find("st.param.b64")
     assert_true(instruction_start_loc >= 0)  # Assert it's present
-    instruction_end_loc = asm.find(";", instruction_start_loc)
+    var instruction_end_loc = asm.find(";", instruction_start_loc)
     assert_true(instruction_end_loc >= 0)
-    instruction_str = asm[byte=instruction_start_loc:instruction_end_loc]
+    var instruction_str = asm[byte=instruction_start_loc:instruction_end_loc]
     # Make sure 42 appears somewhere in the instruction
     assert_true("42" in instruction_str)
 
@@ -193,11 +193,9 @@ def test_erf_kernel_sm90() raises:
 def test_shared_stack_allocation() -> (
     UnsafePointer[Int8, MutUntrackedOrigin, address_space=AddressSpace.SHARED]
 ):
-    return UnsafePointer(
-        unsafe_stack_allocation[
-            999, DType.int8, 8, address_space=AddressSpace.SHARED
-        ]()
-    )
+    return unsafe_stack_allocation[
+        999, DType.int8, 8, address_space=AddressSpace.SHARED
+    ]()
 
 
 @always_inline
@@ -292,22 +290,18 @@ def gemm(
         c[row + col * m] = val
 
     # Allocate B array into shared memory for tiling.
-    var b_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            TILE_SZ_RATIO * TILE_SZ_B,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var b_shared = unsafe_stack_allocation[
+        TILE_SZ_RATIO * TILE_SZ_B,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     # Thread indexing offsets.
     var row = global_idx.x
     var col = block_idx.y * TILE_SZ_B
 
     # Privatization of the C matrix.
-    var c_reg = UnsafePointer(
-        unsafe_stack_allocation[TILE_SZ_B, DType.float32]()
-    )
+    var c_reg = unsafe_stack_allocation[TILE_SZ_B, DType.float32]()
 
     unsafe_memset_zero(c_reg, TILE_SZ_B)
 
@@ -466,11 +460,9 @@ def test_warp_sum_reduce_sm90() raises:
 
 
 def block_reduce(val: Float32) -> Float32:
-    var shared = UnsafePointer(
-        unsafe_stack_allocation[
-            WARP_SIZE, DType.float32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var shared = unsafe_stack_allocation[
+        WARP_SIZE, DType.float32, address_space=AddressSpace.SHARED
+    ]()
 
     comptime warp_shift = log2_floor(WARP_SIZE)
 

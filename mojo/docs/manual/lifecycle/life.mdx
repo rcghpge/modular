@@ -11,7 +11,7 @@ page describes [how values are
 destroyed](/docs/manual/lifecycle/death).)
 
 All data types in Mojo—including basic types in the standard library such as
-[`Bool`](/docs/std/builtin/bool/Bool/), [`Int`](/docs/std/builtin/int/Int/),
+[`Bool`](/docs/std/builtin/bool/Bool/), [`Int`](/docs/std/builtin/simd/#int),
 and [`String`](/docs/std/collections/string/string/String/)—are defined as
 [structs](/docs/manual/structs/). This means the creation and destruction of any
 piece of data follows the same lifecycle rules, and you can define your own data
@@ -338,8 +338,8 @@ var yours = mine.copy()
 
 Technically, you *could* make a struct with a copy constructor and *not* add the
 `Copyable` trait, but this is not recommended. Mojo would be able to copy the
-value, but you couldn't use the struct with any generic containers or functions
-that require the `Copyable` trait.
+value, but you couldn't use the struct with any parameterized containers or
+functions that require the `Copyable` trait.
 
 :::
 
@@ -493,8 +493,8 @@ struct MyPair(ImplicitlyCopyable):
     var second: Int
 
 def main():
-    pair = MyPair(3, 4)
-    copy = pair
+    var pair = MyPair(3, 4)
+    var copy = pair
     print(pair.first, copy.second)
 ```
 
@@ -509,8 +509,8 @@ example, in the previous example, the compiler might generate code equivalent
 to:
 
 ```mojo
-pair = MyPair(3, 4)
-copy = pair.copy()
+var pair = MyPair(3, 4)
+var copy = pair.copy()
 ```
 
 A type should be implicitly copyable only if copying the type is inexpensive and

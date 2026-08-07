@@ -24,19 +24,20 @@ from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.sys import size_of
 
-from std.gpu import MAX_THREADS_PER_BLOCK_METADATA, barrier
-from std.gpu.primitives.cluster import (
+from std.gpu import MAX_THREADS_PER_BLOCK_METADATA
+from max.gpu.sync import barrier
+from max.gpu.primitives.cluster import (
     cluster_sync,
     cluster_sync_relaxed,
     elect_one_sync,
 )
 from std.gpu.globals import WARPGROUP_SIZE
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     PDLLevel,
     launch_dependent_grids,
     wait_on_dependent_grids,
 )
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu import (
     block_id_in_cluster,
     block_idx,
@@ -45,8 +46,7 @@ from std.gpu import (
     warp_id,
 )
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     external_memory,
     fence_mbarrier_init,
 )
@@ -930,19 +930,11 @@ struct HopperMatmulSM90Kernel[
 
         # Initialize WgmmaOp and SMem first
         var wgmma_op = Self.WgmmaOp()
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SMem
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SMem]()[]
 
         # Common initialization
         var (
@@ -1120,19 +1112,11 @@ struct HopperMatmulSM90Kernel[
 
         # Initialize WgmmaOp and SMem first
         var wgmma_op = Self.WgmmaOp()
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SMem
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SMem]()[]
 
         # Common initialization
         var (
@@ -1363,19 +1347,11 @@ struct HopperMatmulSM90Kernel[
 
         # Initialize WgmmaOp and SMem first
         var wgmma_op = Self.WgmmaOp()
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SMem
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SMem]()[]
 
         # Common initialization
         var (

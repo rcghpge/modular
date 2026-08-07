@@ -27,14 +27,14 @@ The SM100 epilogue pipeline flows as:
 from std.sys import align_of, size_of, simd_width_of
 
 from std.gpu import WARP_SIZE, lane_id, warp_id
-from std.gpu.primitives.cluster import elect_one_sync
-from std.gpu.memory import (
+from max.gpu.primitives.cluster import elect_one_sync
+from max.gpu.memory import (
     fence_async_view_proxy,
     cp_async_bulk_tensor_reduce_global_shared_cta,
     ReduceOp,
 )
-from std.gpu.sync import cp_async_bulk_commit_group
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.sync import cp_async_bulk_commit_group
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from structured_kernels.barriers import WarpGroupBarrier
 from layout import (
     Coord,
@@ -126,11 +126,11 @@ struct AccumBarrier[cta_group: Int](TrivialRegisterPassable):
         """Signal accumulator arrival on pipeline barrier."""
 
         comptime if Self.cta_group == 1:
-            from std.gpu.sync import mbarrier_arrive
+            from max.gpu.sync import mbarrier_arrive
 
             _ = mbarrier_arrive(rebind[MbarPtr](pipeline.consumer_mbar(stage)))
         else:
-            from std.gpu.sync import umma_arrive_leader_cta
+            from max.gpu.sync import umma_arrive_leader_cta
 
             umma_arrive_leader_cta(
                 rebind[MbarPtr](pipeline.consumer_mbar(stage))
@@ -953,14 +953,18 @@ struct EpilogueApplier[
                         )
             else:
                 comptime if is_in_bounds:
-                    elem01 = compute_lambda_fn[epilogue_dtype, 2, alignment=2](
+                    var elem01 = compute_lambda_fn[
+                        epilogue_dtype, 2, alignment=2
+                    ](
                         IndexList[2](Int(top_row), Int(top_col)),
                         SIMD[epilogue_dtype, 2](
                             elem0,
                             elem1,
                         ),
                     )
-                    elem23 = compute_lambda_fn[epilogue_dtype, 2, alignment=2](
+                    var elem23 = compute_lambda_fn[
+                        epilogue_dtype, 2, alignment=2
+                    ](
                         IndexList[2](Int(bot_row), Int(bot_col)),
                         SIMD[epilogue_dtype, 2](
                             elem2,
@@ -979,7 +983,7 @@ struct EpilogueApplier[
                     var valid_bot_row = bot_row < self.M
 
                     if valid_top_row:
-                        elem01 = compute_lambda_fn[
+                        var elem01 = compute_lambda_fn[
                             epilogue_dtype, 2, alignment=2
                         ](
                             IndexList[2](Int(top_row), Int(top_col)),
@@ -992,7 +996,7 @@ struct EpilogueApplier[
                         frag[offset + 1] = elem01[1]
 
                     if valid_bot_row:
-                        elem23 = compute_lambda_fn[
+                        var elem23 = compute_lambda_fn[
                             epilogue_dtype, 2, alignment=2
                         ](
                             IndexList[2](Int(bot_row), Int(bot_col)),
@@ -1250,8 +1254,6 @@ struct EpilogueApplier[
             src_ptr: Pointer to source C SMEM tile (same TMA swizzle as output).
             beta: Residual scale factor.
         """
-        from std.gpu.memory import AddressSpace
-
         var top = self.coords.top_upper if is_upper else self.coords.top_lower
         var bot = (
             self.coords.bottom_upper if is_upper else self.coords.bottom_lower
@@ -1462,7 +1464,9 @@ struct TMEMToSMemWriter[
                 )
                 var new_smem = c_smem_tile.reshape(logical_layout)
 
-                warp_j, warp_i = divmod(Int(self.warp_id), warps_per_swblock)
+                var warp_j, warp_i = divmod(
+                    Int(self.warp_id), warps_per_swblock
+                )
                 var tiled = new_smem.tile[1, Self.stageN, 1, tile_width](
                     Coord(warp_j, Idx[0], warp_i, Idx[0])
                 )
@@ -1517,7 +1521,9 @@ struct TMEMToSMemWriter[
                 )
                 var new_smem = c_smem_tile.reshape(logical_layout)
 
-                warp_j, warp_i = divmod(Int(self.warp_id), warps_per_swblock)
+                var warp_j, warp_i = divmod(
+                    Int(self.warp_id), warps_per_swblock
+                )
                 var tiled = new_smem.tile[1, Self.stageN, 1, tile_width](
                     Coord(warp_j, Idx[0], warp_i, Idx[0])
                 )
@@ -1774,7 +1780,7 @@ struct SMemEpilogueWriter[
             )
             var new_smem = c_smem_tile.reshape(logical_layout)
 
-            warp_j, warp_i = divmod(Int(self.warp_id), 2)
+            var warp_j, warp_i = divmod(Int(self.warp_id), 2)
             var tiled = new_smem.tile[1, Self.stageN, 1, tile_width](
                 Coord(warp_j, Idx[0], warp_i, Idx[0])
             )
@@ -1793,7 +1799,7 @@ struct SMemEpilogueWriter[
                 Self.stageN, Self.data_paths
             ](Coord(Idx[0], Idx[1]))
 
-            warp_offset = warp_i * tile_width
+            var warp_offset = warp_i * tile_width
             store_fragment_to_smem[
                 Self.swizzle, Self.stageN, transpose_c=Self.transpose_c
             ](upper_frag, c_smem_warp_tile_upper, UInt32(warp_offset))
@@ -1848,7 +1854,7 @@ struct SMemEpilogueWriter[
             )
             var c_smem_warp_tile = tiled.reshape(coalesced)
 
-            warp_offset = Int(self.warp_id) * tile_width
+            var warp_offset = Int(self.warp_id) * tile_width
             store_fragment_to_smem[
                 Self.swizzle, Self.stageN, transpose_c=Self.transpose_c
             ](upper_frag, c_smem_warp_tile, UInt32(warp_offset))

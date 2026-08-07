@@ -102,7 +102,7 @@ def test_optional_reg_basic() raises:
 
 
 def test_optional_is() raises:
-    a = Optional(1)
+    var a = Optional(1)
     assert_false(a is None)
 
     a = Optional[Int](None)
@@ -110,7 +110,7 @@ def test_optional_is() raises:
 
 
 def test_optional_isnot() raises:
-    a = Optional(1)
+    var a = Optional(1)
     assert_true(a is not None)
 
     a = Optional[Int](None)
@@ -118,7 +118,7 @@ def test_optional_isnot() raises:
 
 
 def test_optional_reg_is() raises:
-    a = OptionalReg(1)
+    var a = OptionalReg(1)
     assert_false(a is None)
 
     a = OptionalReg[Int](None)
@@ -126,7 +126,7 @@ def test_optional_reg_is() raises:
 
 
 def test_optional_reg_isnot() raises:
-    a = OptionalReg(1)
+    var a = OptionalReg(1)
     assert_true(a is not None)
 
     a = OptionalReg[Int](None)
@@ -165,7 +165,7 @@ def test_optional_conformance() raises:
 
 @fieldwise_init
 struct _NonWritable(Movable):
-    """A `Movable & ImplicitlyDeletable` type that is not `Writable`,
+    """A `Movable & Deinitable` type that is not `Writable`,
     `Copyable`, or `Hashable` — used to exercise the negative case of
     `Optional`'s conditional conformances."""
 
@@ -195,7 +195,7 @@ struct _NonTrivial(Copyable):
     def __init__(out self, *, deinit move: Self):
         pass
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         pass
 
 
@@ -249,8 +249,8 @@ def test_optional_hash() raises:
 
 
 def test_optional_equality() raises:
-    o = Optional(10)
-    n = Optional[Int]()
+    var o = Optional(10)
+    var n = Optional[Int]()
     assert_true(o == 10)
     assert_true(o != 11)
     assert_true(o != n)
@@ -472,7 +472,7 @@ def _unwrap_linear_opt(var x: ExplicitDelOnly) -> Optional[Int]:
 
 def test_map_linear_type() raises:
     # `map` moves the linear value out and consumes the `Optional`; the
-    # emptied `Optional` is destroyed without instantiating `Variant.__del__`.
+    # emptied `Optional` is destroyed without instantiating `Variant.__deinit__`.
     var opt = Optional(ExplicitDelOnly(5))
     var result = opt^.map(_unwrap_linear)
     assert_equal(result.value(), 5)
@@ -533,9 +533,9 @@ def test_optional_deinit_with_none_does_not_call_destroy() raises:
     assert_equal(counter, 0)
 
 
-# `ImplicitlyDeletable` but explicitly not `Movable`: rejected at the parameter
+# `Deinitable` but explicitly not `Movable`: rejected at the parameter
 # bound under the old `Optional[T: Movable]`, admitted under the `AnyType` floor.
-struct _NotMovable(ImplicitlyDeletable, Movable where False):
+struct _NotMovable(Deinitable, Movable where False):
     var x: Int
 
     def __init__(out self, x: Int):
@@ -550,11 +550,11 @@ def test_optional_non_movable_element_type() raises:
 
 
 def test_optional_non_movable_construct_in_place() raises:
-    # `call=` populates an `Optional` with a non-`Movable` value in place.
+    # `init_with=` populates an `Optional` with a non-`Movable` value in place.
     def make() -> _NotMovable:
         return _NotMovable(7)
 
-    var opt = Optional[_NotMovable](call=make)
+    var opt = Optional[_NotMovable](init_with=make)
     assert_true(opt)
     assert_equal(opt.bounds()[0], 1)
     assert_equal(opt.value().x, 7)
@@ -570,7 +570,7 @@ def test_optional_pinned_linear_type_deinit_with() raises:
     def make() -> PinnedExplicitDelOnly:
         return PinnedExplicitDelOnly(7)
 
-    var opt = Optional[PinnedExplicitDelOnly](call=make)
+    var opt = Optional[PinnedExplicitDelOnly](init_with=make)
     var is_some = opt.__bool__()
     var data = opt.value().data
     # Destroy before potentially raising after assert
@@ -597,10 +597,10 @@ def test_optional_niched_storage_deinit_with() raises:
     var some = Optional[PointerType](
         Pointer(to=x).unsafe_origin_cast[AnyOrigin[mut=True]]()
     )
-    some^.deinit_with(PointerType.__del__)
+    some^.deinit_with(PointerType.__deinit__)
 
     var empty = Optional[PointerType](None)
-    empty^.deinit_with(PointerType.__del__)
+    empty^.deinit_with(PointerType.__deinit__)
 
     var empty2 = Optional[PointerType](None)
     empty2^.deinit_assert_empty()
@@ -613,13 +613,13 @@ def test_optional_construct_in_place_calls_closure_once() raises:
         calls += 1
         return 7
 
-    var opt = Optional[Int](call=make)
+    var opt = Optional[Int](init_with=make)
     assert_equal(opt.value(), 7)
     assert_equal(calls, 1)
 
 
 def test_optional_construct_in_place_destroys_value_once() raises:
-    # `call=` marks the storage's active type by hand before emplacing, so check
+    # `init_with=` marks the storage's active type by hand before emplacing, so check
     # that teardown runs the element's destructor exactly once.
     var del_count = 0
     var counter_ptr = Pointer(to=del_count)
@@ -628,7 +628,7 @@ def test_optional_construct_in_place_destroys_value_once() raises:
     def make() {counter_ptr} -> Counter:
         return Counter(counter_ptr)
 
-    var opt = Optional[Counter](call=make)
+    var opt = Optional[Counter](init_with=make)
     assert_true(opt)
     _ = opt^
     assert_equal(del_count, 1)

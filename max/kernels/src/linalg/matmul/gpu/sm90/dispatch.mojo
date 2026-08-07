@@ -22,9 +22,9 @@ from std.math import ceildiv
 from std.sys import get_defined_bool, get_defined_int, size_of
 
 from layout import TileTensor
-from std.gpu.primitives.grid_controls import PDLLevel
-from std.gpu.host import DeviceContext
-from std.gpu.host.info import H100
+from max.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.host import DeviceContext
+from max.gpu.host.info import H100
 from internal_utils import Table
 from std.logger import Logger
 
@@ -191,7 +191,7 @@ def matmul_dispatch_sm90[
 
 # llama-405B-FP8 gemm shapes
 
-comptime llama_405b_fp8_list = [
+comptime llama_405b_fp8_list: List[TuningConfigSM90] = [
     ##############################
     # N=16384 and K=2048
     TuningConfigSM90(
@@ -492,7 +492,7 @@ comptime llama_405b_fp8_table = Table(llama_405b_fp8_list, "llama_405b_fp8")
 
 # llama-8B-FP8 gemm shapes
 
-comptime llama_8b_fp8_list = [
+comptime llama_8b_fp8_list: List[TuningConfigSM90] = [
     ##############################
     # ignore N and K for this table.
     TuningConfigSM90(

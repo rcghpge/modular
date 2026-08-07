@@ -27,19 +27,19 @@ from std.bit import pop_count, log2_floor
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_idx,
     warp_id,
     lane_id,
     thread_idx,
 )
-from std.gpu.host import DeviceContext
-from std.gpu.primitives.grid_controls import (
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
+from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
     pdl_launch_attributes,
 )
-from std.gpu.host.info import is_gpu
+from max.gpu.host.info import is_gpu
 from layout import (
     Coord,
     Idx,
@@ -56,7 +56,7 @@ from std.builtin.dtype import _uint_type_of_width
 from nn.topk import TopK_2
 
 
-from std.gpu.memory import (
+from max.gpu.memory import (
     async_copy,
     async_copy_commit_group,
     async_copy_wait_all,
@@ -903,18 +903,14 @@ def group_limited_router_kernel[
 
     var num_tokens = expert_scores.dim(0)
 
-    var shared_mem = UnsafePointer(
-        unsafe_stack_allocation[
-            topk_group * n_experts_per_tok,
-            TopK_2[scores_type],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var selected_group = UnsafePointer(
-        unsafe_stack_allocation[
-            topk_group, DType.int32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var shared_mem = unsafe_stack_allocation[
+        topk_group * n_experts_per_tok,
+        TopK_2[scores_type],
+        address_space=AddressSpace.SHARED,
+    ]()
+    var selected_group = unsafe_stack_allocation[
+        topk_group, DType.int32, address_space=AddressSpace.SHARED
+    ]()
     var thread_group_id, tid_in_group = divmod(tid, group_size)
 
     var thread_expert_bias = expert_bias.load[width=1](Coord(tid)).cast[
@@ -1215,13 +1211,11 @@ def single_group_router_kernel[
     var warp_id = warp_id()
     var lane_id = lane_id()
 
-    var shared_mem = UnsafePointer(
-        unsafe_stack_allocation[
-            total_smem,
-            TopK_2[scores_type],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var shared_mem = unsafe_stack_allocation[
+        total_smem,
+        TopK_2[scores_type],
+        address_space=AddressSpace.SHARED,
+    ]()
 
     var shared_mem_phase1 = shared_mem
     var shared_mem_phase2 = shared_mem + phase1_candidates
@@ -1434,13 +1428,11 @@ def single_group_router_eplb_kernel[
     var l_id = lane_id()
 
     # ---- existing TopK_2 SMEM ----
-    var shared_mem = UnsafePointer(
-        unsafe_stack_allocation[
-            total_smem,
-            TopK_2[scores_type],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var shared_mem = unsafe_stack_allocation[
+        total_smem,
+        TopK_2[scores_type],
+        address_space=AddressSpace.SHARED,
+    ]()
     var shared_mem_phase1 = shared_mem
     var shared_mem_phase2 = shared_mem + phase1_candidates
 
@@ -1888,21 +1880,17 @@ def eplb_remap_kernel[
 
     var tid = Int(thread_idx.x)
 
-    var smem_cnt = UnsafePointer(
-        unsafe_stack_allocation[
-            num_log,
-            DType.int32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var smem_cnt = unsafe_stack_allocation[
+        num_log,
+        DType.int32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
-    var smem_phy = UnsafePointer(
-        unsafe_stack_allocation[
-            num_log * max_replicas,
-            DType.int32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var smem_phy = unsafe_stack_allocation[
+        num_log * max_replicas,
+        DType.int32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     with PDL():
         # Broadcast scalar layer index. Every thread reads the same address →

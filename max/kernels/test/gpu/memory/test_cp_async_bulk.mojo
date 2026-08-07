@@ -13,10 +13,10 @@
 
 from std.sys import size_of
 
-from std.gpu import thread_idx, block_dim, barrier, warp_id
-from std.gpu.host import DeviceContext
-from std.gpu.memory import (
-    AddressSpace,
+from std.gpu import thread_idx, block_dim, warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
+from max.gpu.memory import (
     cp_async_bulk_global_shared_cta,
     cp_async_bulk_reduce_global_shared_cta,
     cp_async_bulk_shared_cluster_global,
@@ -24,8 +24,8 @@ from std.gpu.memory import (
     fence_mbarrier_init,
     ReduceOp,
 )
-from std.gpu.primitives import elect_one_sync
-from std.gpu.sync import (
+from max.gpu.primitives.cluster import elect_one_sync
+from max.gpu.sync import (
     cp_async_bulk_commit_group,
     cp_async_bulk_wait_group,
 )
@@ -48,16 +48,12 @@ def kernel_bulk_g2s[
 ):
     comptime BYTES = NUM_ELEMS * size_of[Float32]()
 
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
-        ]()
-    )
-    var mbar = UnsafePointer(
-        unsafe_stack_allocation[
-            1, SharedMemBarrier, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var smem = unsafe_stack_allocation[
+        NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
+    ]()
+    var mbar = unsafe_stack_allocation[
+        1, SharedMemBarrier, address_space=AddressSpace.SHARED
+    ]()
 
     var tid = thread_idx.x
 
@@ -118,11 +114,9 @@ def kernel_bulk_s2g[
 ](dst: UnsafePointer[Float32, MutAnyOrigin],):
     comptime BYTES = NUM_ELEMS * size_of[Float32]()
 
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var smem = unsafe_stack_allocation[
+        NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
+    ]()
 
     var tid = thread_idx.x
     smem[tid] = Float32(tid + 1)
@@ -168,11 +162,9 @@ def kernel_bulk_reduce_s2g[
 ](dst: UnsafePointer[Float32, MutAnyOrigin],):
     comptime BYTES = NUM_ELEMS * size_of[Float32]()
 
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var smem = unsafe_stack_allocation[
+        NUM_ELEMS, Float32, address_space=AddressSpace.SHARED
+    ]()
 
     var tid = thread_idx.x
     smem[tid] = Float32(tid + 1)

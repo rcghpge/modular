@@ -18,9 +18,9 @@ etc.).
 """
 
 from std.math import align_up
-from std.gpu.host import DeviceContext
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.primitives.grid_controls import PDLLevel
 from layout import Coord, Idx, PointerStorage, TileTensor, row_major
 from std.collections import OptionalReg
 

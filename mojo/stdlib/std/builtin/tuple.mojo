@@ -22,8 +22,6 @@ from std.format._utils import (
 )
 from std.hashlib.hasher import Hasher
 
-from std.reflection.type_info import _unqualified_type_name
-
 from std.utils._visualizers import lldb_formatter_wrapping_type
 
 # ===-----------------------------------------------------------------------===#
@@ -34,19 +32,17 @@ from std.utils._visualizers import lldb_formatter_wrapping_type
 @lldb_formatter_wrapping_type
 @explicit_destroy(
     "Use `deinit_with()` to explicitly destroy a `Tuple` with"
-    " non-`ImplicitlyDeletable` elements"
+    " non-`Deinitable` elements"
 )
 struct Tuple[*element_types: Movable](
     Comparable where element_types.all_conforms_to[Comparable](),
     Copyable where element_types.all_conforms_to[Copyable](),
     Defaultable where element_types.all_conforms_to[Defaultable](),
+    Deinitable where element_types.all_conforms_to[Deinitable](),
     Equatable where element_types.all_conforms_to[Equatable](),
     Hashable where element_types.all_conforms_to[Hashable](),
     ImplicitlyCopyable where element_types.all_conforms_to[
         ImplicitlyCopyable
-    ](),
-    ImplicitlyDeletable where element_types.all_conforms_to[
-        ImplicitlyDeletable
     ](),
     Movable,
     RegisterPassable where element_types.all_conforms_to[RegisterPassable](),
@@ -72,7 +68,9 @@ struct Tuple[*element_types: Movable](
     """The underlying storage for the tuple."""
 
     @always_inline("nodebug")
-    def __init__(out self):
+    def __init__(
+        out self,
+    ) where Self.element_types.all_conforms_to[Defaultable]():
         """Construct a tuple with default-initialized elements.
 
         Constraints:
@@ -88,16 +86,7 @@ struct Tuple[*element_types: Movable](
             __get_mvalue_as_litref(self._mlir_value)
         )
 
-        # TODO(MOCO-3791): Replace the per-element `comptime assert` below
-        # with `where Self.element_types.all_conforms_to[Defaultable]()`
-        # once the solver can prove reducer-based `where` clauses for
-        # generic callers that forward parameter packs.
         comptime for i in range(Self.__len__()):
-            comptime TUnknown = Self.element_types[i]
-            comptime assert conforms_to(TUnknown, Defaultable), (
-                "Tuple default-construction requires all element types to"
-                " conform to `Defaultable`"
-            )
             Pointer(to=self[i]).unsafe_write({})
 
     @always_inline("nodebug")
@@ -119,13 +108,13 @@ struct Tuple[*element_types: Movable](
 
         args^.consume_elements[init_elt]()
 
-    def __del__(
+    def __deinit__(
         deinit self,
-    ) where Self.element_types.all_conforms_to[ImplicitlyDeletable]():
+    ) where Self.element_types.all_conforms_to[Deinitable]():
         """Destructor that destroys all of the elements.
 
         Constraints:
-            All `element_types` must be `ImplicitlyDeletable`. When any element
+            All `element_types` must be `Deinitable`. When any element
             is not, the tuple has no implicit destructor and must be torn down
             with `deinit_with()`.
         """
@@ -140,7 +129,7 @@ struct Tuple[*element_types: Movable](
         """Consume the tuple, deinitializing each element with a closure.
 
         Use this to tear down a `Tuple` whose elements are not
-        `ImplicitlyDeletable`. Elements are visited in index order.
+        `Deinitable`. Elements are visited in index order.
 
         Parameters:
             deinit_func: A closure called once per element, receiving ownership
@@ -149,7 +138,9 @@ struct Tuple[*element_types: Movable](
         self^.consume_elements[deinit_func]()
 
     @always_inline("nodebug")
-    def __init__(out self, *, copy: Self):
+    def __init__(
+        out self, *, copy: Self
+    ) where Self.element_types.all_conforms_to[Copyable]():
         """Copy construct the tuple.
 
         Args:
@@ -161,7 +152,6 @@ struct Tuple[*element_types: Movable](
         )
 
         comptime for i in range(Self.__len__()):
-            comptime assert conforms_to(Self.element_types[i], Copyable)
             # TODO: We should not use self[i] as this returns a reference to
             # uninitialized memory.
             Pointer(to=self[i]).unsafe_write(copy=copy[i])
@@ -268,7 +258,6 @@ struct Tuple[*element_types: Movable](
             True if this tuple is equal to the other tuple, False otherwise.
         """
         comptime for i in range(type_of(self).__len__()):
-            comptime assert conforms_to(Self.element_types[i], Equatable)
             if self[i] != other[i]:
                 return False
         return True
@@ -285,7 +274,6 @@ struct Tuple[*element_types: Movable](
             hasher: The hasher instance.
         """
         comptime for i in range(type_of(self).__len__()):
-            comptime assert conforms_to(Self.element_types[i], Hashable)
             self[i].__hash__(hasher)
 
     @no_inline
@@ -305,7 +293,6 @@ struct Tuple[*element_types: Movable](
 
         @parameter
         def elements[i: Int](mut writer: Some[Writer]):
-            comptime assert conforms_to(Self.element_types[i], Writable)
             comptime if is_repr:
                 self[i].write_repr_to(writer)
             else:
@@ -372,7 +359,6 @@ struct Tuple[*element_types: Movable](
         comptime min_length = min(self_len, other_len)
 
         comptime for i in range(min_length):
-            comptime assert conforms_to(Self.element_types[i], Comparable)
             if self[i] < other[i]:
                 return -1
             if other[i] < self[i]:
@@ -556,7 +542,7 @@ struct Tuple[*element_types: Movable](
         t^.consume_elements[handler]()
         ```
         """
-        # `deinit self` disables `Tuple.__del__`; the underlying `!kgen.struct`
+        # `deinit self` disables `Tuple.__deinit__`; the underlying `!kgen.struct`
         # destructor is trivial, so moving every element out and letting `self`
         # die leaks nothing.
         comptime for i in range(Self.__len__()):

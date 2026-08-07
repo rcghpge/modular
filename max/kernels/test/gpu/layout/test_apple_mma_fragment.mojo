@@ -27,9 +27,10 @@ from std.memory import AddressSpace, unsafe_stack_allocation
 from std.random import random_si64
 from std.sys.info import _accelerator_arch
 
-from std.gpu import WARP_SIZE, barrier, lane_id
+from std.gpu import WARP_SIZE, lane_id
+from max.gpu.sync import barrier
 from max.gpu.compute.arch.mma_apple import _apple_frag_layout
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 
 from layout import TileTensor
 from layout.tile_layout import row_major, col_major
@@ -531,16 +532,12 @@ def mma_shared_kernel(
     better perf. This confirms the MMA path works when fragments come
     from an `AddressSpace.SHARED` TileTensor.
     """
-    var a_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
-        ]()
-    )
-    var b_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var a_shared = unsafe_stack_allocation[
+        _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
+    ]()
+    var b_shared = unsafe_stack_allocation[
+        _NUM_ELEMENTS, DType.float16, address_space=AddressSpace.SHARED
+    ]()
 
     # 32 threads cooperatively copy 256 elements (8 per lane, strided).
     var lid = Int(lane_id())
@@ -782,10 +779,12 @@ def bounded_mma_kernel(
     a_ptr: UnsafePointer[Scalar[DType.float16], MutAnyOrigin],
     b_ptr: UnsafePointer[Scalar[DType.float16], MutAnyOrigin],
     d_ptr: UnsafePointer[Scalar[DType.float32], MutAnyOrigin],
-    m_valid: Int,
-    k_valid: Int,
+    m_valid_dev: Int32,
+    k_valid_dev: Int32,
 ):
     """Bounded MMA: 16x16 @ 16x16 with partial valid region."""
+    var m_valid = Int(m_valid_dev)
+    var k_valid = Int(k_valid_dev)
     var a_tile = TileTensor(a_ptr, row_major[16, 16]())
     var b_tile = TileTensor(b_ptr, row_major[16, 16]())
     var d_tile = TileTensor(d_ptr, row_major[16, 16]())
@@ -806,10 +805,12 @@ def bounded_store_kernel(
     a_ptr: UnsafePointer[Scalar[DType.float16], MutAnyOrigin],
     b_ptr: UnsafePointer[Scalar[DType.float16], MutAnyOrigin],
     d_ptr: UnsafePointer[Scalar[DType.float32], MutAnyOrigin],
-    m_valid: Int,
-    n_valid: Int,
+    m_valid_dev: Int32,
+    n_valid_dev: Int32,
 ):
     """Bounded MMA + bounded store: partial valid output region."""
+    var m_valid = Int(m_valid_dev)
+    var n_valid = Int(n_valid_dev)
     var a_tile = TileTensor(a_ptr, row_major[16, 16]())
     var b_tile = TileTensor(b_ptr, row_major[16, 16]())
     var d_tile = TileTensor(d_ptr, row_major[16, 16]())
@@ -860,8 +861,8 @@ def test_bounded_mma(ctx: DeviceContext) raises:
         a_dev,
         b_dev,
         d_dev,
-        M_VALID,
-        K_VALID,
+        Int32(M_VALID),
+        Int32(K_VALID),
         grid_dim=(1),
         block_dim=(WARP_SIZE),
     )
@@ -948,8 +949,8 @@ def test_store_bounded(ctx: DeviceContext) raises:
         a_dev,
         b_dev,
         d_dev,
-        M_VALID,
-        N_VALID,
+        Int32(M_VALID),
+        Int32(N_VALID),
         grid_dim=(1),
         block_dim=(WARP_SIZE),
     )

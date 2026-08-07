@@ -13,12 +13,12 @@
 """Implements the core `String` type and related utilities."""
 
 from std.builtin.globals import global_constant
-from std.collections import KeyElement, Span
+from std.collections import KeyElement, Span, check_slice_bounds
 from std.collections.string import CodepointsIter
 from std.collections.string._parsing_numbers.parsing_floats import _atof
 from std.collections.string._utf8 import UTF8Chunks, _is_valid_utf8
 from std.collections.string.format import _FormatUtils
-from std.collections.string.string_slice import (
+from std.collections.string.string_span import (
     BytesIter,
     CodepointSliceIter,
     GraphemeIndicesIter,
@@ -28,6 +28,7 @@ from std.collections.string.string_slice import (
 )
 from std.builtin.builtin_slice import ContiguousSlice
 from std.hashlib.hasher import Hasher
+from std.reflection import call_location
 from std.format.tstring import TString
 from std.format._utils import (
     STACK_BUFFER_BYTES,
@@ -56,6 +57,7 @@ from std.python import ConvertibleFromPython, PythonObject
 # ===----------------------------------------------------------------------=== #
 
 
+@stable(since="1.0")
 struct String(
     Boolable,
     Comparable,
@@ -209,10 +211,10 @@ struct String(
 
     Related types:
 
-    - [`StringSlice`](/docs/std/collections/string/string_slice/StringSlice/): A non-owning
+    - [`StringSpan`](/docs/std/collections/string/string_span/StringSpan/): A non-owning
       view of string data, which can be either mutable or immutable.
-    - [`StaticString`](/docs/std/collections/string/string_slice/#StaticString): An
-      alias for an immutable constant `StringSlice`.
+    - [`StaticString`](/docs/std/collections/string/string_span/#StaticString): An
+      alias for an immutable constant `StringSpan`.
     - [`StringLiteral`](/docs/std/builtin/string_literal/StringLiteral/): A
       string literal. String literals are compile-time values.
     """
@@ -294,8 +296,9 @@ struct String(
     # Life cycle methods
     # ===------------------------------------------------------------------=== #
 
+    @stable(since="1.0")
     @always_inline("nodebug")
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Destroy the string data."""
         self._drop_ref()
 
@@ -324,8 +327,9 @@ struct String(
             self._set_ref_counted()
 
     @always_inline("nodebug")
+    @stable(since="1.0")
     @implicit  # does not allocate.
-    def __init__(out self, data: StaticString):
+    def __init__(out self, data: StaticString, /):
         """Construct a `String` from a `StaticString` without allocating.
 
         Args:
@@ -344,8 +348,9 @@ struct String(
         self._capacity_or_data = 0
 
     @always_inline("nodebug")
+    @stable(since="1.0")
     @implicit  # does not allocate.
-    def __init__(out self, data: StringLiteral):
+    def __init__(out self, data: StringLiteral, /):
         """Construct a `String` from a `StringLiteral` without allocating.
 
         Args:
@@ -397,6 +402,7 @@ struct String(
             count=length,
         )
 
+    @stable(since="1.0")
     def __init__(out self, *, from_utf8_lossy: Span[Byte, _]):
         """Construct a string from a span of bytes, including invalid UTF-8.
 
@@ -554,7 +560,7 @@ struct String(
         """Creates a string from a UTF-8 encoded nul-terminated pointer.
 
         Args:
-            unsafe_from_utf8_ptr: An `UnsafePointer[Byte]` of null-terminated bytes encoded in UTF-8.
+            unsafe_from_utf8_ptr: A `Pointer[Byte]` of null-terminated bytes encoded in UTF-8.
 
         Safety:
             - `unsafe_from_utf8_ptr` MUST be valid UTF-8 encoded data.
@@ -575,7 +581,7 @@ struct String(
         """Creates a string from a UTF-8 encoded nul-terminated pointer.
 
         Args:
-            unsafe_from_utf8_ptr: An `UnsafePointer[Byte]` of null-terminated bytes encoded in UTF-8.
+            unsafe_from_utf8_ptr: A `Pointer[Byte]` of null-terminated bytes encoded in UTF-8.
 
         Safety:
             - `unsafe_from_utf8_ptr` MUST be valid UTF-8 encoded data.
@@ -590,6 +596,7 @@ struct String(
             )
         )
 
+    @stable(since="1.0")
     @always_inline("nodebug")
     def __init__(out self, *, copy: Self):
         """Copy initialize the string from another string.
@@ -707,9 +714,7 @@ struct String(
             if refcount[].fetch_sub(1) == 1:
                 fence[Ordering.ACQUIRE]()
                 dealloc(
-                    ThinAllocation(
-                        unsafe_assume_ownership=ptr
-                    ).unsafe_with_layout(
+                    ThinAllocation(unsafe_owned_ptr=ptr).unsafe_with_layout(
                         Layout[Byte](
                             count=self.capacity() + Self.REF_COUNT_SIZE
                         )
@@ -790,6 +795,29 @@ struct String(
 
     @__unsafe_nested_origins_read_only
     @always_inline
+    def __getitem__(
+        self, *, byte: Int
+    ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
+        """Gets a single byte at the specified byte index.
+
+        This performs byte-level indexing, not character (codepoint) indexing.
+        For strings containing multi-byte UTF-8 characters `byte` must fall on
+        a codepoint boundary and an entire codepoint will be returned.
+        Aborts if `byte` does not fall on a codepoint boundary.
+
+        Args:
+            byte: The byte index (0-based).
+
+        Returns:
+            A StringSlice containing a single byte at the specified position.
+        """
+        var string_slice = self._interior_slice()
+        var idx = index(byte)
+        string_slice._check_valid_index(idx)
+        return string_slice._unchecked_get_byte(idx)
+
+    @__unsafe_nested_origins_read_only
+    @always_inline
     def __getitem__[
         I: Indexer, //
     ](self, *, byte: I) -> StringSlice[
@@ -843,6 +871,7 @@ struct String(
         return string_slice._unchecked_get_byte(byte)
 
     @__unsafe_nested_origins_read_only
+    @always_inline
     def __getitem__(
         self, *, byte: ContiguousSlice
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
@@ -853,12 +882,17 @@ struct String(
         multi-byte UTF-8 characters, slicing at byte positions that do not fall
         on codepoint boundaries will abort.
 
+        Aborts if `byte`'s start or end index is out of bounds (valid range
+        is `0` to `self.byte_length()`, inclusive), or if start is greater
+        than end. Negative indices are not supported and always abort.
+
         Args:
             byte: A slice that specifies byte positions of the new substring.
 
         Returns:
             A StringSlice containing the bytes in the specified range.
         """
+        _ = check_slice_bounds(byte, self.byte_length(), call_location())
         return self._interior_slice()[byte=byte]
 
     @__unsafe_nested_origins_read_only
@@ -913,6 +947,7 @@ struct String(
         """
         return self._interior_slice()[grapheme=grapheme]
 
+    @stable(since="1.0")
     def __eq__(self, rhs: String) -> Bool:
         """Compares two Strings if they have the same values.
 
@@ -936,6 +971,7 @@ struct String(
         return unsafe_memcmp(self_ptr, rhs_ptr, self_len) == 0
 
     @always_inline("nodebug")
+    @stable(since="1.0")
     def __eq__(self, other: StringSlice) -> Bool:
         """Compares two Strings if they have the same values.
 
@@ -948,6 +984,7 @@ struct String(
         return StringSlice(self) == other
 
     @always_inline("nodebug")
+    @stable(since="1.0")
     def __ne__(self, other: StringSlice) -> Bool:
         """Compares two Strings if they have the same values.
 
@@ -1490,7 +1527,7 @@ struct String(
             length=self.byte_length(),
         )
 
-    @deprecated("Use `StringSlice(str)` instead.")
+    @deprecated("Use `StringSpan(str)` instead.")
     @__unsafe_nested_origins_read_only
     def as_string_slice(
         ref self,

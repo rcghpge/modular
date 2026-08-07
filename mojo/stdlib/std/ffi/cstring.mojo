@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Implements C string interoperability utilities."""
 
-from std.collections.string.string_slice import _unsafe_strlen
+from std.collections.string.string_span import _unsafe_strlen
 from std.memory import UnsafeMaybeUninit
 from std.sys import size_of
 from std.utils._nicheable import UnsafeNicheable, NicheIndex
@@ -56,13 +56,13 @@ struct CStringSlice[origin: ImmOrigin](
         *,
         unsafe_from_ptr: Pointer[Int8, Self.origin],
     ):
-        """Construct a `CStringSlice` from an `UnsafePointer`.
+        """Construct a `CStringSlice` from a `Pointer`.
 
         Args:
-            unsafe_from_ptr: The `UnsafePointer` to construct the `CStringSlice` from.
+            unsafe_from_ptr: The `Pointer` to construct the `CStringSlice` from.
 
         Safety:
-            The `UnsafePointer` must be a valid nul-terminated C string.
+            The `Pointer` must be a valid nul-terminated C string.
             The pointer cannot be null. To represent nullability, use
             `Optional[CStringSlice]`.
 

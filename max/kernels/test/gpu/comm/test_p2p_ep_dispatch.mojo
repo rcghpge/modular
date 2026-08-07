@@ -27,7 +27,7 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from comm.sync import enable_p2p
-from std.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import TileTensor, Idx, row_major
 from std.math import ceildiv
 from shmem.ep import (
@@ -39,7 +39,7 @@ from shmem.ep_comm import (
     BlockwiseFP8TokenFormat,
     EP_DATA_READY_FLAG,
     EPLocalSyncCounters,
-    MXFP4TokenFormat,
+    MXTokenFormat,
     NVBlockScaledTokenFormat,
     TokenFormat,
 )
@@ -54,7 +54,7 @@ from linalg.fp4_utils import (
     SF_MN_GROUP_SIZE,
     get_scale_factor,
 )
-from std.gpu.host.info import _is_sm10x_gpu, MI355X
+from max.gpu.host.info import _is_sm10x_gpu, MI355X
 
 
 def legalize_topk_ids[
@@ -78,7 +78,7 @@ def legalize_topk_ids[
             duplicate_idx = is_duplicate()
 
 
-trait DispatchTestT(ImplicitlyDeletable):
+trait DispatchTestT(Deinitable):
     """Trait to unify the test dispatch logic for different token formats."""
 
     comptime hidden_size: Int
@@ -171,7 +171,7 @@ struct BF16DispatchTest[
                 )
             )
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         for i in range(Self.n_ranks):
             self.host_output_bufs_list[i].free()
 
@@ -211,7 +211,7 @@ struct BF16DispatchTest[
         hid_dim_idx: Int,
         expected_val: BFloat16,
     ) raises -> None:
-        device_val = self.host_output_bufs_list[dev_idx][
+        var device_val = self.host_output_bufs_list[dev_idx][
             slot_idx * Self.max_recv_num_tokens * Self.hidden_size
             + token_idx * Self.hidden_size
             + hid_dim_idx
@@ -320,7 +320,7 @@ struct BlockwiseFP8DispatchTest[
                 )
             )
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         for i in range(Self.n_ranks):
             self.host_output_bufs_list[i].free()
             self.host_output_scales_bufs_list[i].free()
@@ -531,7 +531,7 @@ struct NVFP4DispatchTest[
                 )
             )
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         for i in range(Self.n_ranks):
             self.host_output_bufs_list[i].free()
             self.host_output_scales_bufs_list[i].free()
@@ -699,8 +699,8 @@ struct MXFP4DispatchTest[
             Self.hidden_size // MXFP4_SF_VECTOR_SIZE,
         )
     )
-    comptime TokenFormatType = MXFP4TokenFormat[
-        fp4_dtype=Self.fp4_dtype,
+    comptime TokenFormatType = MXTokenFormat[
+        quant_dtype=Self.fp4_dtype,
         scales_dtype=Self.scales_dtype,
         output_layout=type_of(Self.output_layout),
         scales_layout=type_of(Self.output_scales_layout),
@@ -762,7 +762,7 @@ struct MXFP4DispatchTest[
                 )
             )
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         for i in range(Self.n_ranks):
             self.host_output_bufs_list[i].free()
             self.host_output_scales_bufs_list[i].free()

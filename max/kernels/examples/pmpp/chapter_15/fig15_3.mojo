@@ -14,9 +14,9 @@
 """Figure 15.3: Tiled matrix multiplication kernel combining all optimizations."""
 
 from std.math import ceildiv
-from std.gpu import barrier, block_idx, thread_idx
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
+from std.gpu import block_idx, thread_idx
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from std.itertools import product
 from std.memory import unsafe_stack_allocation
 
@@ -105,20 +105,16 @@ def mm_tiled_kernel(
     var Cr = SIMD[DType.float32, tM * tN](0.0)
 
     # Allocate shared memory
-    var A_s = UnsafePointer(
-        unsafe_stack_allocation[
-            bM * bK,
-            Scalar[DType.float32],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var B_s = UnsafePointer(
-        unsafe_stack_allocation[
-            bK * bN,
-            Scalar[DType.float32],
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var A_s = unsafe_stack_allocation[
+        bM * bK,
+        Scalar[DType.float32],
+        address_space=AddressSpace.SHARED,
+    ]()
+    var B_s = unsafe_stack_allocation[
+        bK * bN,
+        Scalar[DType.float32],
+        address_space=AddressSpace.SHARED,
+    ]()
 
     # Iterate over tiles
     for i in range(ceildiv(Int(K), bK)):

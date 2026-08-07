@@ -22,21 +22,20 @@ from std.collections import OptionalReg
 from std.math import exp2, recip, align_up, log2, ceildiv
 from std.math.constants import log2e
 from std.sys import size_of, _RegisterPackType
-from std.gpu import barrier, thread_idx, block_idx, warp_id
+from std.gpu import thread_idx, block_idx, warp_id
+from max.gpu.sync import barrier
 from std.gpu.globals import WARPGROUP_SIZE
-from std.gpu.host import DeviceContext
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.host.info import B200
-from std.gpu.memory import AddressSpace, fence_async_view_proxy
-from std.gpu.primitives.grid_controls import launch_dependent_grids
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.info import B200
+from max.gpu.memory import fence_async_view_proxy
+from max.gpu.primitives.grid_controls import launch_dependent_grids
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
     UMMAInsDescriptor,
     UMMAKind,
 )
 
-from std.gpu.sync import (
-    named_barrier,
-)
+from max.gpu.sync import named_barrier
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_fence_after,
     tcgen05_ld,
@@ -446,7 +445,7 @@ struct MLA_SM100_Decode_Config:
         self.dtype_size = dtype_size
         self.swizzle_mode = swizzle_mode
         self.kv_mma_swizzle_mode = kv_mma_swizzle_mode
-        swizzle_elems = swizzle_mode.bytes() // dtype_size
+        var swizzle_elems = swizzle_mode.bytes() // dtype_size
         self.padded_depth = align_up(depth, swizzle_elems)
         self.padded_q_depth = align_up(q_depth, swizzle_elems)
 
@@ -3129,7 +3128,7 @@ def hmul2_bf16x8_by_scalar[
     """
     var res = type_of(packed)()
 
-    comptime for i in range(packed.size):
+    comptime for i in range(packed.length):
         res[i] = inlined_assembly[
             "mul.rn.bf16x2 $0, $1, $2;",
             UInt32,
@@ -3686,6 +3685,7 @@ struct MLA_SM100_Decode_Common[
         # recovering the original `tiles_done > 0` semantics. For sliding
         # window it equals `tiles_done`'s initial value above.
         var first_processed_tile_sw: Int = tiles_done
+        var current_max: Scalar[Self.AccumType]
         while tiles_done < num_k_tiles:
             # Wait for an S slot to become ready
             var slot_idx: UInt32 = s_cons.wait()
@@ -4266,7 +4266,7 @@ struct MLA_SM100_Decode_Common[
             tcgen05_load_wait()
             c_cons.release()
             var scale_value = scale_value_tuple[0]
-            change = _vote_nvidia_helper(scale_value < 1.0) != 0
+            var change = _vote_nvidia_helper(scale_value < 1.0) != 0
             comptime num_o_tiles = Self.config.MMA_PV_N // (
                 Self.output_tile_width * 2
             )
@@ -4397,7 +4397,7 @@ struct MLA_SM100_Decode_Common[
         var out_cons = DecodeOutConsumer[Self.output_dtype, Self.config](
             out_pipeline, out_smem
         )
-        elect_mask = elect()
+        var elect_mask = elect()
         var is_leader = elect_mask != 0
         var row: Int = offset_position.out_row_offset
 

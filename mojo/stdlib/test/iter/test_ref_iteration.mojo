@@ -78,7 +78,7 @@ struct _RefIter[
 # ===-----------------------------------------------------------------------===#
 
 
-struct MoveOnlyList[T: Movable & ImplicitlyDeletable]:
+struct MoveOnlyList[T: Movable & Deinitable]:
     """A simple list that holds move-only types."""
 
     var _data: Pointer[Self.T, MutUntrackedOrigin]
@@ -90,7 +90,7 @@ struct MoveOnlyList[T: Movable & ImplicitlyDeletable]:
         self._len = 0
         self._capacity = 0
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         for i in range(self._len):
             self._data.unsafe_offset(i).unsafe_deinit_pointee()
         if self._capacity > 0:
@@ -103,8 +103,8 @@ struct MoveOnlyList[T: Movable & ImplicitlyDeletable]:
         if self._len >= self._capacity:
             var new_cap = self._capacity * 2 if self._capacity > 0 else 4
             var new_data: Pointer[Self.T, MutUntrackedOrigin] = alloc[Self.T](
-                new_cap
-            )
+                {count = new_cap}
+            ).unsafe_leak()
             for i in range(self._len):
                 new_data.unsafe_offset(i).unsafe_write(
                     self._data.unsafe_offset(i).unsafe_take_pointee()

@@ -278,6 +278,26 @@ class KernelLibrary:
         else:
             self._analysis.verify_custom_op(custom_op)
 
+    def has_shape_function(self, kernel: str) -> bool:
+        """Returns whether *kernel* registers a shape function.
+
+        A kernel that registers no shape function has no way to compute its
+        output shape at run time, so the graph compiler rejects a
+        data-dependent output dimension declared for it.
+
+        Args:
+            kernel: The registered name of the kernel to check.
+
+        Returns:
+            ``True`` if a shape function is registered for *kernel*.
+
+        Raises:
+            KeyError: If no kernel named *kernel* is in the library.
+        """
+        if kernel not in self:
+            raise KeyError(f"no kernel named {kernel!r} in the kernel library")
+        return self._analysis.has_shape_function(kernel)
+
 
 _default_custom_extensions: tuple[Path, ...] = ()
 
@@ -405,8 +425,9 @@ def _set_output_param_decls(op: Operation, params: dict[str, None]) -> None:
         )
     )
     names = [parameter.name for parameter in result_parameters]
-    # Track any newly declared parameters.
-    if new_params := dict.fromkeys(names - params.keys()):
+    # Track newly declared parameters. Not `names - params.keys()`: set order
+    # is per-process hash order and lands in the MEF cache key (MXF-584).
+    if new_params := dict.fromkeys(n for n in names if n not in params):
         params.update(new_params)
         si64 = kgen.SIMDType(1, kgen._KGENDType.get_int(64, True))
         # We can't overload the setter yet, so the interface annotation is wrong

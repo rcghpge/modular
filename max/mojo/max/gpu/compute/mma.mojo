@@ -13,8 +13,7 @@
 """This module includes utilities for working with the
 warp-matrix-matrix-multiplication (wmma) instructions."""
 
-from std.collections import InlineArray
-from std.collections.string.string_slice import _get_kgen_string
+from std.collections.string.string_span import _get_kgen_string
 from std.sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, size_of
 from std.sys._assembly import inlined_assembly
 from std.sys.info import (
@@ -34,7 +33,7 @@ from std.gpu._utils import (
     llvm_struct_to_simd,
     simd_to_llvm_struct,
 )
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.compute.mma_operand_descriptor import MMAOperandDescriptor
 from std.memory import bitcast
 
@@ -86,10 +85,10 @@ def _unsupported_mma_op(d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     # fmt: off
     comptime assert False, String(
         "no valid implementation of mma for a=",
-        Int(a.size), "x",  a.dtype,
-        ", b=",  Int(b.size), "x",  b.dtype,
-        ", c=",  Int(c.size), "x",  c.dtype,
-        ", and d=", Int(d.size), "x", d.dtype,
+        Int(a.length), "x",  a.dtype,
+        ", b=",  Int(b.length), "x",  b.dtype,
+        ", c=",  Int(c.length), "x",  c.dtype,
+        ", and d=", Int(d.length), "x", d.dtype,
     )
     # fmt: on
 
@@ -664,7 +663,7 @@ def wgmma_async[
         n: Number of columns in matrix B and output matrix.
         k: Number of columns in matrix A / rows in matrix B.
         c_dtype: Data type of the output matrix C.
-        width: Width of the InlineArray register for matrix C.
+        width: Width of the StaticTuple register for matrix C.
         a_type: Data type of matrix A.
         b_type: Data type of matrix B.
         accum_type: Accumulation data type (defaults to c_dtype).

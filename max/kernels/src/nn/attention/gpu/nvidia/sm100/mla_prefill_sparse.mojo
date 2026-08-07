@@ -29,27 +29,26 @@ from std.gpu import (
     warp_id,
     thread_idx,
     WARP_SIZE,
-    barrier,
 )
+from max.gpu.sync import barrier
 from std.math import ceildiv, exp2
 from std.math.constants import log2e
-from std.gpu.primitives import elect_one_sync
-from std.gpu.primitives.cluster import cluster_sync
+from max.gpu.primitives.cluster import elect_one_sync
+from max.gpu.primitives.cluster import cluster_sync
 import std.gpu.primitives.warp as warp
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     cp_async_bulk_tensor_shared_cluster_global,
     external_memory,
     fence_mbarrier_init,
     fence_async_view_proxy,
 )
-from std.gpu.sync import (
+from max.gpu.sync import (
     named_barrier,
     cp_async_bulk_commit_group,
     cp_async_bulk_wait_group,
 )
 from std.gpu.globals import WARPGROUP_SIZE
-from std.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host import DeviceContext, FuncAttribute
 from std.ffi import UnsafeUnion
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.compute.arch.tcgen05 import (
@@ -120,7 +119,7 @@ from layout.tma_async import (
     _gather4_box_width,
     _default_desc_shape,
 )
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.utils.numerics import min_or_neg_inf
 
 
@@ -350,11 +349,9 @@ struct MLAPrefillSparse[
             k_tma_op.prefetch_descriptor()
             v_tma_op.prefetch_descriptor()
 
-        ref smem = UnsafePointer(
-            external_memory[
-                UInt8, address_space=AddressSpace.SHARED, alignment=128
-            ]()
-        ).bitcast[Self.SMemType]()[]
+        ref smem = external_memory[
+            UInt8, address_space=AddressSpace.SHARED, alignment=128
+        ]().bitcast[Self.SMemType]()[]
         ref qkvo_union = smem.qkvo_union
 
         var full_q_ptr = qkvo_union.unsafe_get[Self.FULL_Q_TYPE]().unsafe_ptr()
@@ -1081,7 +1078,7 @@ struct MLAPrefillSparse[
         comptime col_dim = smem_tensor.static_shape[1]
         comptime num_col_tiles = col_dim // 64
         comptime row_dim = smem_tensor.static_shape[0]
-        tma_smem_tensor = TileTensor(
+        var tma_smem_tensor = TileTensor(
             smem_tensor.ptr,
             row_major[row_dim * num_col_tiles, 64](),
         )
@@ -1514,7 +1511,7 @@ def mla_prefill_sparse[
     # completes -> deadlock). For num_q_heads < 64 the kernel issues the
     # depth-tile sub-copies manually at the padded 64-row stride. NFC at
     # 64/128 (real == padded).
-    q_tma_op = create_tensor_tile[
+    var q_tma_op = create_tensor_tile[
         Index(1, config.num_q_heads // config.cta_group, q_depth),
         swizzle_mode=config.q_swizzle_mode,
     ](ctx, q)
@@ -1523,7 +1520,7 @@ def mla_prefill_sparse[
     # we load 64 tokens gathered from different kv blocks for each CTA
     # Both CTA in the pair load 64 into their peer
     # so each CTA will have 128 topk tokens
-    k_tma_op = kv_operand.create_gather4_tma_tile[
+    var k_tma_op = kv_operand.create_gather4_tma_tile[
         tile_width=config.qk_depth,
         tile_stride=config.qk_depth,
         swizzle_mode=config.k_swizzle_mode,
@@ -1541,7 +1538,7 @@ def mla_prefill_sparse[
     # V_SMEM_COLS_PER_CTA = MMA_N / cta_group; each CTA contributes its
     # slice of V to the cluster MMA, with `col_idx = cta_id *
     # V_SMEM_COLS_PER_CTA` selecting its V col range.
-    v_tma_op = kv_operand.create_gather4_tma_tile[
+    var v_tma_op = kv_operand.create_gather4_tma_tile[
         tile_width=config.v_depth // 2 // config.cta_group,
         tile_stride=config.qk_depth,
         swizzle_mode=TensorMapSwizzle.SWIZZLE_128B,
@@ -1555,7 +1552,7 @@ def mla_prefill_sparse[
         row_major(num_q_rows * config.num_q_heads, config.v_depth),
     )
 
-    o_tma_op = create_tensor_tile[
+    var o_tma_op = create_tensor_tile[
         Index(config.num_q_heads // config.cta_group, config.v_depth),
         swizzle_mode=TensorMapSwizzle.SWIZZLE_128B,
         __desc_shape=Index(config.num_q_heads // config.cta_group, 64),

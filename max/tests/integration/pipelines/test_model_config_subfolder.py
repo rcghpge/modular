@@ -16,9 +16,11 @@
 import os
 import struct
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
 from huggingface_hub import constants as hf_hub_constants
 from max.graph.weights import WeightsFormat
 from max.pipelines.lib import (
@@ -30,6 +32,26 @@ from max.pipelines.weights.hf_utils import HuggingFaceRepo
 from test_common.mocks import (
     mock_pipeline_config_resolve,
 )
+
+
+@pytest.fixture(autouse=True)
+def _skip_repo_access_check() -> Iterator[None]:
+    """These tests use placeholder repos. ``MAXModelConfig.__init__`` now runs
+    HF network calls at construction (the repo access check, and the
+    ``file_exists`` probe that gates eager config loading); no-op them so
+    construction stays offline. ``load_huggingface_config`` is intentionally
+    left unpatched: with the probe returning ``False`` the eager load is
+    skipped, and the tests that assert on config loading patch it themselves."""
+    with (
+        patch("max.pipelines.lib.config.model_config.validate_hf_repo_access"),
+        patch("max.pipelines.weights.hf_utils.validate_hf_repo_access"),
+        patch(
+            "max.pipelines.weights.hf_utils.generate_local_model_path",
+            side_effect=lambda repo_id, revision=None: f"/fake/cache/{repo_id}",
+        ),
+        patch("huggingface_hub.file_exists", return_value=False),
+    ):
+        yield
 
 
 class TestMAXModelConfigSubfolder:

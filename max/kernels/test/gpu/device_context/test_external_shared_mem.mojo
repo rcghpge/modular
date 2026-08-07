@@ -11,10 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.gpu import thread_idx
-from std.gpu.memory import external_memory
-from std.gpu.sync import barrier
+from max.gpu.memory import external_memory
+from max.gpu.sync import barrier
 from std.testing import assert_equal
 
 
@@ -22,11 +22,9 @@ def test_external_shared_mem(ctx: DeviceContext) raises:
     print("== test_external_shared_mem")
 
     def dynamic_smem_kernel(data: UnsafePointer[Float32, MutAnyOrigin]):
-        var dynamic_sram = UnsafePointer(
-            external_memory[
-                Float32, address_space=AddressSpace.SHARED, alignment=4
-            ]()
-        )
+        var dynamic_sram = external_memory[
+            Float32, address_space=AddressSpace.SHARED, alignment=4
+        ]()
         dynamic_sram[thread_idx.x] = Float32(thread_idx.x)
         barrier()
         data[thread_idx.x] = dynamic_sram[thread_idx.x]

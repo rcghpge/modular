@@ -29,7 +29,7 @@ from std.memory import (
     pack_bits,
     unsafe_uninit_copy_n,
 )
-from std.collections import check_bounds
+from std.collections import check_bounds, check_slice_bounds
 from std.builtin.rebind import downcast
 from std.sys import align_of
 from std.sys.info import simd_width_of
@@ -226,9 +226,11 @@ struct Span[
     comptime _is_generic_as = Self.address_space == AddressSpace.GENERIC
     """Whether this `Span` views the default (generic) address space.
 
-    Element-copying operations are only available on generic-address-space
-    spans: the compiler rejects copying a non-trivially-copyable value into or
-    out of a non-default address space.
+    Most element-copying operations are only available on
+    generic-address-space spans: the compiler rejects copying a value that is
+    not register passable into or out of a non-default address space. `fill()`
+    is the exception, accepting any address space when the element type
+    conforms to `TrivialRegisterPassable`.
     """
 
     # Fields
@@ -321,6 +323,20 @@ struct Span[
 
     @always_inline
     @implicit
+    def __init__(
+        out self: Span[Self.T, Self.origin],
+        ref[Self.origin] array: Array[downcast[Self.T, Movable], _],
+    ):
+        """Construct a `Span` from an `Array`.
+
+        Args:
+            array: The array to which the span refers.
+        """
+        self._data = rebind[type_of(self)._PointerType](array.unsafe_ptr())
+        self._len = array.length
+
+    @always_inline
+    @implicit
     def __init__[
         array_origin: Origin[mut=Self.mut],
         U: Copyable,
@@ -348,9 +364,10 @@ struct Span[
     # Operator dunders
     # ===------------------------------------------------------------------===#
 
+    @stable(since="1.0")
     @always_inline
     def __getitem__(
-        self, idx: Int
+        self, idx: Int, /
     ) -> ref[Self.origin, Self.address_space] Self.T:
         """Gets the span element at the given index.
 
@@ -401,18 +418,17 @@ struct Span[
     def __getitem__(self, slc: ContiguousSlice) -> Self:
         """Get a new span from a slice of the current span.
 
+        Aborts if `slc`'s start or end index is out of bounds (valid range is
+        `0` to `len(self)`, inclusive), or if start is greater than end.
+        Negative indices are not supported and always abort.
+
         Args:
             slc: The slice specifying the range of the new subslice.
 
         Returns:
             A new span that points to the same data as the current span.
-
-        Allocation:
-            This function allocates when the step is negative, to avoid a memory
-            leak, take ownership of the value.
         """
-        var start, end = slc.indices(len(self))
-
+        var start, end = check_slice_bounds(slc, len(self))
         return Self(
             unsafe_ptr=self._data.unsafe_offset(start), length=end - start
         )
@@ -677,7 +693,7 @@ struct Span[
     @__allow_legacy_custom_self_type
     def copy_from(
         self: Span[mut=True, Self.T, _], other: Span[Self.T, _]
-    ) where conforms_to(Self.T, Copyable & ImplicitlyDeletable):
+    ) where conforms_to(Self.T, Copyable & Deinitable):
         """
         Performs an element wise copy from all elements of `other` into all elements of `self`.
 
@@ -758,21 +774,37 @@ struct Span[
         """
         return not self == rhs
 
-    @__allow_legacy_custom_self_type
     def fill(
-        self: Span[mut=True, Self.T, _], value: Self.T
-    ) where conforms_to(Self.T, Copyable & ImplicitlyDeletable):
+        self, value: Self.T
+    ) where Self.mut and (
+        (Self._is_generic_as and conforms_to(Self.T, Copyable & Deinitable))
+        or conforms_to(Self.T, TrivialRegisterPassable)
+    ):
         """
         Fill the memory that a span references with a given value.
 
         Args:
             value: The value to assign to each element.
+
+        Constraints:
+            The span must be mutable. A register-passable element type works in
+            any address space. All other element types require the span
+            to view the default (generic) address space.
         """
-        for ref element in self:
-            # TODO(MOCO-4220) once fixed update body to:
-            # element = value.copy()
-            var p = Pointer(to=element).unsafe_mut_cast[True]()
-            p[] = value.copy()
+        comptime if conforms_to(Self.T, TrivialRegisterPassable):
+            for i in range(len(self)):
+                # TODO(MOCO-4220) once fixed update body to:
+                # self._data[unsafe_offset=i]= value
+                var p = self._data.unsafe_offset(i).unsafe_mut_cast[True]()
+                p[] = value
+        else:
+            comptime assert Self._is_generic_as
+            comptime assert conforms_to(Self.T, Copyable & Deinitable)
+            for ref element in self:
+                # TODO(MOCO-4220) once fixed update body to:
+                # element = value.copy()
+                var p = Pointer(to=element).unsafe_mut_cast[True]()
+                p[] = value.copy()
 
     @always_inline
     @__allow_legacy_custom_self_type
@@ -1015,12 +1047,9 @@ struct Span[
             This function does not do bounds checking and assumes the current
             span contains the specified subspan.
         """
-        debug_assert(
-            0 <= offset < len(self),
-            "offset out of bounds: ",
-            offset,
-        )
-        assert 0 <= offset + length <= len(self), "subspan out of bounds."
+        assert (
+            0 <= offset and 0 <= length and offset + length <= len(self)
+        ), "subspan out of bounds."
         return Self(unsafe_ptr=self._data.unsafe_offset(offset), length=length)
 
     @__allow_legacy_custom_self_type

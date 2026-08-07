@@ -16,7 +16,7 @@
 from std.collections import Optional
 
 from std.gpu.intrinsics import AMDBufferResource
-from std.gpu.memory import external_memory
+from max.gpu.memory import external_memory
 from layout import Layout, LayoutTensor
 from layout._utils import _get_bounds, make_amd_buffer_resource
 from layout.layout_tensor import (
@@ -203,14 +203,12 @@ struct NVIDIASharedMemoryBasePtr[
             Int8, MutUntrackedOrigin, address_space=AddressSpace.SHARED
         ]
     ):
-        return UnsafePointer(
-            external_memory[
-                Int8,
-                address_space=AddressSpace.SHARED,
-                alignment=Self.memory_alignment,
-                name=Self.name,
-            ]()
-        )
+        return external_memory[
+            Int8,
+            address_space=AddressSpace.SHARED,
+            alignment=Self.memory_alignment,
+            name=Self.name,
+        ]()
 
 
 struct SharedMemoryManager[SMBP: SharedMemoryBasePtr]:

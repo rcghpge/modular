@@ -72,16 +72,16 @@ Shapes: MMA_M=32, BN=256 keys (64/partition), bf16, MMA_K=16, num_k_mmas =
                  single-shot -- the BN=256/depth=128 target regime.
 """
 
-from std.memory import UnsafePointer
 from std.memory import bitcast
 from std.random import randn, seed
 from std.sys import size_of
 
-from std.gpu import barrier, thread_idx, warp_id as get_warp_id
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.info import _is_sm10x_gpu
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import AddressSpace, external_memory
+from std.gpu import thread_idx, warp_id as get_warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.info import _is_sm10x_gpu
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import external_memory
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
     UMMAKind,
     mma_arrive,
@@ -237,11 +237,9 @@ def pv_ts_batched_kernel[
     ]
 
     # ---- Dynamic SMEM: `num_d_tiles` mn-major V regions + metadata ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var v_smem_ptr = smem_base.bitcast[Scalar[OP_TYPE]]()
 
     var metadata_ptr = (smem_base + v_bytes).bitcast[UInt32]()

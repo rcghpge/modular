@@ -23,7 +23,7 @@ from std.sys.info import CompilationTarget
 from std.algorithm import tile, vectorize
 
 from max.algorithm import sync_parallelize
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from max.algorithm.reduction import (
     _simd_max,
     _simd_max_elementwise,
@@ -264,7 +264,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         # SIMD width has not been observed to improve performance and causes
         # code size to unnecessarily increase.
         comptime transpose_width = 4
-        comptime tile_sizes = [transpose_width, 1]
+        comptime tile_sizes: List[Int] = [transpose_width, 1]
 
         var transpose_buffer = tt_stack_allocation[dtype=Self.dtype,](
             row_major[transpose_width, transpose_width]()
@@ -743,20 +743,16 @@ struct _FlashAttention[
         )
         @parameter
         def task_func(task_id: Int):
-            var qk_block_ptr = UnsafePointer(
-                unsafe_stack_allocation[
-                    Self._config.block_m * Self._config.qk_block_n,
-                    Self.dtype,
-                    alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
-                ]()
-            )
-            var o_block_ptr = UnsafePointer(
-                unsafe_stack_allocation[
-                    Self._config.block_m * Self._config.o_block_n,
-                    Self.dtype,
-                    alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
-                ]()
-            )
+            var qk_block_ptr = unsafe_stack_allocation[
+                Self._config.block_m * Self._config.qk_block_n,
+                Self.dtype,
+                alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
+            ]()
+            var o_block_ptr = unsafe_stack_allocation[
+                Self._config.block_m * Self._config.o_block_n,
+                Self.dtype,
+                alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
+            ]()
             var max_vals_storage = Array[
                 Scalar[Self.dtype], Self._config.block_m
             ](uninitialized=True)

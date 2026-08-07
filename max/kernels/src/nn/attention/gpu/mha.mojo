@@ -37,7 +37,7 @@ from std.sys import (
 )
 from std.sys.info import _is_amd_rdna
 import std.gpu.primitives.warp as warp
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     PDLLevel,
     launch_dependent_grids,
     pdl_launch_attributes,
@@ -49,7 +49,6 @@ from std.bit import next_power_of_two
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_dim,
     block_idx,
     global_idx,
@@ -57,12 +56,12 @@ from std.gpu import (
     thread_idx,
     warp_id,
 )
-from std.gpu.host import DeviceContext, DeviceBuffer
-from std.gpu.host import Dim as LaunchDim
-from std.gpu.host import FuncAttribute
-from std.gpu.host.info import A100, H100, GPUInfo, _is_sm10x_gpu
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, DeviceBuffer
+from max.gpu.host import Dim as LaunchDim
+from max.gpu.host import FuncAttribute
+from max.gpu.host.info import A100, H100, GPUInfo, _is_sm10x_gpu
+from max.gpu.memory import (
     async_copy_commit_group,
     async_copy_wait_all,
     external_memory,
@@ -103,8 +102,8 @@ from .amd_rdna.attention import AttentionRDNA
 from .amd_rdna.mha_decode import AttentionRDNA
 from .amd_rdna.mha_prefill import AttentionRDNA
 from .apple.naive_fa_decode import (
-    NAIVE_FA_DECODE_APPLE_MAX_HEAD_DIM,
     naive_fa_decode_apple,
+    naive_fa_decode_apple_supports_depth,
 )
 from .apple.fa_prefill import (
     FA_PREFILL_APPLE_MAX_HEAD_DIM,
@@ -172,7 +171,7 @@ from nn.softmax import (
     _online_softmax_iter_for_mma_output,
     _online_softmax_iter_for_mma_output_split_warp_reduce,
     _softmax_gpu,
-    softmax,
+    softmax_inline,
 )
 
 # ===-----------------------------------------------------------------------===#
@@ -285,13 +284,21 @@ def flash_attention[
 
 
 # Speculative-decode token fold (AMD). A verify step has query length S > 1, so
-# decode's `seq_len == 1` gate would send it to prefill, which reads K/V once per
-# query head (S x group x the unique traffic). The fold instead packs the S tokens
-# into the MMA M dimension as heads-inner rows (row = token*num_heads + head,
-# BM = num_heads*S), so one CTA covers all S tokens of all heads and reads K/V
-# once. Each eligible S is its own instantiation, so this cap is a compile-time
-# budget, not a hardware limit.
-comptime _MHA_DECODE_FOLD_MAX_S = 4
+# decode's `seq_len == 1` gate would send it to prefill. The fold instead packs
+# the S tokens into the MMA M dimension as heads-inner rows
+# (row = token*group + head), so one CTA covers all S tokens of its KV head.
+# At `group > 1` that spares prefill's `group` re-reads of each KV head; at
+# `group == 1` it buys the key-dim split-K prefill lacks, which otherwise pins
+# parallelism at `num_heads*batch` CTAs (half-idle on 256 CUs below batch 16).
+#
+# Each eligible S is its own instantiation, so the cap is a compile-time budget,
+# not a hardware limit. It must clear the largest query length a caller
+# DECLARES: for a 1+K speculative cycle that is K+2, not K+1 — the target
+# verifies K+1 tokens and an EAGLE3 draft's step-0 catch-up declares that width
+# plus one, so K=3 needs 5. Only `group == 1` has an arm at S=5, since
+# `group == num_heads` needs `num_heads*S <= 4*WM`, which no multiple-of-16 head
+# count satisfies there.
+comptime _MHA_DECODE_FOLD_MAX_S = 5
 # One 16-row MFMA M-tile per warp.
 comptime _MHA_DECODE_FOLD_WM = 16
 
@@ -337,26 +344,23 @@ def _mha_decode_fold_ok[
         # fp16 shares the bf16 decode MMA shape and should work, but is untested
         # through the fold; widen once a test covers it.
         and dtype == DType.bfloat16
-        # Flat query-row addressing (`Attention._q_stride0 == depth`) resolves
-        # row = token*group + head only with a single KV head.
-        and group == num_heads
         # At WN == BN each warp's K and V register tiles span the whole depth,
         # so anything wider spills.
         and depth <= 128
         # The sink lookup `q_head_idx()` (= lane % MMA_M) is the folded head only
         # while num_heads == MMA_M.
-        # TODO(anand): derive the sink index from the absolute fold row instead.
+        # TODO: derive the sink index from the absolute fold row instead.
         and not sink
         # A PADDED batch can hold a sequence shorter than S, whose pad rows'
         # split-K stats are never written and which `mha_splitk_reduce` does not
         # skip — its `scale > 0` blend guard accepts uninitialized floats. Ragged
         # is exempt: pad rows are the next sequence's, written by its own CTA.
-        # TODO(anand): skip pad rows in `mha_splitk_reduce` to lift this.
+        # TODO: skip pad rows in `mha_splitk_reduce` to lift this.
         and not (use_valid_length and not ragged)
         # `Attention.mask_status` bases its S-row span at `num_keys - S`, which
         # underflows for a sequence holding fewer than S keys (a mixed ragged
         # batch can). Only `check_mask_during_decoding` masks consult it.
-        # TODO(anand): clamp that span to the runtime seq_len and widen this.
+        # TODO: clamp that span to the runtime seq_len and widen this.
         and not check_mask_during_decoding
         # `mha_decode_streaming` carries no fold geometry, and dispatch routes the
         # same `Attention` to it under this flag; instantiating a fold arm would
@@ -364,14 +368,36 @@ def _mha_decode_fold_ok[
         and not get_defined_bool["MHA_STREAMING_DECODE", False]()
         and S > 1
         and S <= _MHA_DECODE_FOLD_MAX_S
-        # BM = num_heads*S must tile whole 16-row warp M-tiles, and needs two of
-        # them: at num_warps_m == 1 P stops being warp-local
-        # (`Attention._warp_local_p`) and falls back to the register-resident P
-        # chain documented there as never exercised.
-        and (num_heads * S) % _MHA_DECODE_FOLD_WM == 0
-        and num_heads * S >= 2 * _MHA_DECODE_FOLD_WM
-        # At most 4 warps / 256 threads — the single-token decode block size.
-        and num_heads * S <= 4 * _MHA_DECODE_FOLD_WM
+        # A CTA owns `group*S` rows and addresses them with ONE Q/O row stride
+        # (`Attention._fold_token_strided` picks it), which admits only two
+        # groups. Each brings its own block geometry:
+        and (
+            (
+                # Single KV head: `num_heads*S` rows stack over 16-row warp
+                # M-tiles, so they must tile evenly and need two — at
+                # num_warps_m == 1 P stops being warp-local
+                # (`Attention._warp_local_p`) and falls back to the
+                # register-resident P chain never exercised there. The 4-tile
+                # ceiling is the single-token decode block size (256 threads).
+                group == num_heads
+                and (num_heads * S) % _MHA_DECODE_FOLD_WM == 0
+                and num_heads * S >= 2 * _MHA_DECODE_FOLD_WM
+                and num_heads * S <= 4 * _MHA_DECODE_FOLD_WM
+            )
+            or (
+                # One query head per KV head: a CTA owns just its S token rows,
+                # which fit one 16-row M-tile, so it keeps the single-token
+                # geometry (`_fold_narrow` below) instead of stacking tiles. No
+                # 2-warp floor: that geometry splits N across 4 warps, so P
+                # stays SMEM-backed via `BN != WN`. The row bound is redundant
+                # while the cap is <= WM; keep it so raising the cap past WM
+                # cannot silently overflow the tile. WM stands in for that
+                # geometry's BM here — the two coincide at 16, and a wider BM
+                # would only make the bound conservative.
+                group == 1
+                and S <= _MHA_DECODE_FOLD_WM
+            )
+        )
     )
 
 
@@ -526,6 +552,10 @@ def depth_supported_by_gpu[
         depth == 64
         and (is_sm90or100 or info == A100 or has_amd_gpu_accelerator())
     ) or (
+        depth == 80
+        and config.dtype == DType.bfloat16
+        and has_amd_gpu_accelerator()
+    ) or (
         depth == 256
         and (
             has_amd_gpu_accelerator()
@@ -648,30 +678,32 @@ def flash_attention[
         not ragged or q.rank == 3
     ), "only support rank 3 inputs for ragged inputs."
 
-    # Native FP8 SM100 path. K/V are FP8 in the paged cache.
-    # Q@K^T and P@V run as FP8 MMAs at tensorwise scale=1.
+    # Native FP8 path (SM100 tcgen05, or AMD MFMA on gfx950). K/V are FP8 in
+    # the paged cache.  Q@K^T and P@V run as FP8 MMAs at tensorwise scale=1.
     # Output is BF16.
-    comptime is_native_fp8_sm100 = (
+    comptime is_native_fp8_bf16_out = (
         q.dtype.is_float8()
         and cache_t.dtype.is_float8()
         and output.dtype == DType.bfloat16
-        and _is_sm10x_gpu(ctx.default_device_info)
+        and (
+            _is_sm10x_gpu(ctx.default_device_info) or has_amd_gpu_accelerator()
+        )
     )
 
     comptime assert (
-        q.dtype == cache_t.dtype == output.dtype or is_native_fp8_sm100
+        q.dtype == cache_t.dtype == output.dtype or is_native_fp8_bf16_out
     ), (
         "Q, K, V, output should have same dtype, or Q=K=V=float8,"
-        " output=bfloat16 for the native FP8 SM100 path."
+        " output=bfloat16 for the native FP8 path."
     )
     comptime assert (
         q.dtype == DType.float32
         or q.dtype.is_half_float()
         or (q.dtype.is_float8() and has_amd_gpu_accelerator())
-        or is_native_fp8_sm100
+        or is_native_fp8_bf16_out
     ), (
         "Only support single, half, float8 (AMD), and float8->bfloat16"
-        " (SM100) precision."
+        " (SM100 or AMD) precision."
     )
 
     # TODO docstring
@@ -979,7 +1011,7 @@ def flash_attention_dispatch[
                     or (is_sm100 and (q_fp8_depth512 or q_fp8_2q))
                 )
             ):
-                num_rows_q = q_num_matrix_view_rows(q)
+                var num_rows_q = q_num_matrix_view_rows(q)
 
                 comptime if is_sm90:
                     mha_sm90_dispatch[
@@ -1342,9 +1374,9 @@ def flash_attention_dispatch[
                     v,
                     output_device,
                     scale,
-                    batch_size,
-                    max_prompt_len,
-                    max_cache_valid_length,
+                    Int32(batch_size),
+                    Int32(max_prompt_len),
+                    Int32(max_cache_valid_length),
                     valid_length.value(),
                     kv_input_row_offsets,
                     sink_weights,
@@ -1392,12 +1424,13 @@ def flash_attention_dispatch[
                 # num warps in M and N, multiplied by warp size.
                 comptime num_threads = (BM // WM) * (BN // WN) * WARP_SIZE
 
-                # Key tile for the S > 1 fold arms below. The fold sets WN == BN
-                # (one warp owns the whole key tile, so softmax needs no
-                # cross-warp reduction), so this knob sets per-warp K/V register
-                # pressure and LDS footprint. 64 measured 0.9-8.2% slower: the
-                # kernel is HBM-bound, so a narrower tile only buys more,
-                # shorter bursts.
+                # Key tile for the single-KV-head fold arm below, the only one
+                # that sets WN == BN (one warp owns the whole key tile, so
+                # softmax needs no cross-warp reduction); the `group == 1` arm
+                # keeps the single-token BN/WN instead. So this knob sets that
+                # arm's per-warp K/V register pressure and LDS footprint. 64
+                # measured 0.9-8.2% slower: the kernel is HBM-bound, so a
+                # narrower tile only buys more, shorter bursts.
                 comptime fold_BN = 128
 
                 comptime accum_type = get_accum_type[q.dtype]()
@@ -1573,12 +1606,21 @@ def flash_attention_dispatch[
                                 check_mask_during_decoding=mask_t.check_mask_during_decoding,
                             ]():
                                 if max_prompt_len == S:
-                                    comptime BM_S = BM if S == 1 else num_heads * S
-                                    comptime BN_S = BN if S == 1 else fold_BN
-                                    comptime WM_S = (
-                                        WM if S == 1 else _MHA_DECODE_FOLD_WM
+                                    # `group == 1` folds only the S token rows,
+                                    # which fit one M-tile, so it keeps the
+                                    # S == 1 geometry; a single KV head stacks
+                                    # `num_heads*S` rows over warp M-tiles.
+                                    comptime _fold_narrow = S == 1 or group == 1
+                                    comptime BM_S = (
+                                        BM if _fold_narrow else num_heads * S
                                     )
-                                    comptime WN_S = WN if S == 1 else BN_S
+                                    comptime BN_S = (
+                                        BN if _fold_narrow else fold_BN
+                                    )
+                                    comptime WM_S = (
+                                        WM if _fold_narrow else _MHA_DECODE_FOLD_WM
+                                    )
+                                    comptime WN_S = WN if _fold_narrow else BN_S
                                     comptime num_threads_S = (
                                         (BM_S // WM_S)
                                         * (BN_S // WN_S)
@@ -1617,8 +1659,8 @@ def flash_attention_dispatch[
                                         exp_sum_buf,
                                         qk_max_buf,
                                         scale,
-                                        batch_size,
-                                        num_partitions_value,
+                                        Int32(batch_size),
+                                        Int32(num_partitions_value),
                                         valid_length.value(),
                                         sink_weights,
                                         mask_functor,
@@ -1643,7 +1685,7 @@ def flash_attention_dispatch[
 
                     if num_partitions_value == 1:
                         comptime if use_fa3_kernel:
-                            num_rows_q = q_num_matrix_view_rows(q)
+                            var num_rows_q = q_num_matrix_view_rows(q)
 
                             comptime if is_sm90:
                                 mha_sm90_dispatch[
@@ -1782,7 +1824,7 @@ def flash_attention_dispatch[
                         )
 
                         comptime if use_fa3_kernel:
-                            num_rows_q = q_num_matrix_view_rows(q)
+                            var num_rows_q = q_num_matrix_view_rows(q)
 
                             comptime if is_sm90:
                                 mha_sm90_dispatch[
@@ -1877,8 +1919,8 @@ def flash_attention_dispatch[
                             output_device,
                             exp_sum_device,
                             qk_max_device,
-                            num_q_rows,
-                            num_partitions_value,
+                            Int32(num_q_rows),
+                            Int32(num_partitions_value),
                             grid_dim=(
                                 1,
                                 num_heads,
@@ -1944,7 +1986,8 @@ def flash_attention_dispatch[
         # Assumes BSHD.
         comptime if has_apple_gpu_accelerator():
             # Apple attention. Decode (1 query row) -> `naive_fa_decode_apple`
-            # (head dim split across lanes, % WARP_SIZE gate). Prefill ->
+            # (head dim split across lanes; that kernel owns which head dims it
+            # can specialize). Prefill ->
             # MMA-based `fa_prefill_apple` when depth % 16 == 0 and KV is
             # contiguous or 16-aligned-paged; otherwise `mha_gpu_naive`. The KV
             # gate is COMPTIME because the prefill resolves a page per 16-row
@@ -1953,8 +1996,7 @@ def flash_attention_dispatch[
             if (
                 is_token_generation
                 and _apple_naive_fa_decode_enabled()
-                and depth <= NAIVE_FA_DECODE_APPLE_MAX_HEAD_DIM
-                and depth % WARP_SIZE == 0
+                and naive_fa_decode_apple_supports_depth(depth)
             ):
                 naive_fa_decode_apple[
                     ragged=ragged,
@@ -2583,9 +2625,9 @@ def mha[
     v: v_t,
     output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
     scale: Float32,
-    batch_size: Int,
-    seq_len_arg: Int,
-    num_keys_arg: Int,
+    batch_size: Int32,
+    seq_len_arg: Int32,
+    num_keys_arg: Int32,
     valid_length: LayoutTensor[
         DType.uint32,
         valid_length_layout,
@@ -2601,63 +2643,27 @@ def mha[
     ],
     mask: mask_t,
 ):
-    """Flash-attention prefill GPU kernel (FA2/FA3 algorithm).
-
-    One CTA processes one `(batch, head)` tile of the attention output.
-    Iterates over KV tiles in the outer loop, accumulates the online-softmax
-    numerator and denominator in registers, then writes the normalised output.
-    Supports GQA (`group > 1`), ragged batches, shared-KV layouts, and
-    attention sinks.
-
-    Parameters:
-        q_type: Element type of the query tensor.
-        k_t: Key operand type (dense or KV-cache).
-        v_t: Value operand type (dense or KV-cache).
-        output_type: Element type of the output tensor.
-        mask_t: Attention mask type.
-        valid_length_layout: Layout of the valid-length tensor.
-        config: Tile/pipeline configuration.
-        group: GQA group size (query heads per KV head).
-        ragged: `True` for ragged-batch (variable-length) inputs.
-        is_shared_kv: `True` when K and V share the same SMEM buffer.
-        sink: `True` to enable attention-sink mode.
-        _use_valid_length: `True` to read per-sequence valid lengths.
-        _is_cache_length_accurate: `True` when cache length already
-            accounts for the newest tokens.
-        _padded_ndbuffer: `True` for padded dense N-dimensional inputs.
-
-    Args:
-        q_ptr: Pointer to the query data.
-        k: Key operand.
-        v: Value operand.
-        output_ptr: Pointer to the output buffer.
-        scale: Softmax temperature scale.
-        batch_size: Number of sequences in the batch.
-        seq_len_arg: Maximum query sequence length.
-        num_keys_arg: Maximum key sequence length.
-        valid_length: Per-sequence valid lengths (or row offsets for ragged).
-        kv_input_row_offsets: Row offsets for cross-attention KV inputs.
-        sink_weights: Sink-token weights for attention-sink mode.
-        mask: Mask instance.
-    """
-
+    var _batch_size = Int(batch_size)
+    var _seq_len_arg = Int(seq_len_arg)
+    var _num_keys_arg = Int(num_keys_arg)
     var batch_idx = block_idx.z
 
     # mha inputs
     var seq_len: Int
-    var max_seq_len = seq_len_arg
+    var max_seq_len = _seq_len_arg
     var num_keys: Int
-    var mask_tensor_col = num_keys_arg
+    var mask_tensor_col = _num_keys_arg
     var start_pos: UInt32 = 0
 
     @always_inline
     def q_block_idx() -> Int:
         return block_idx.x if is_nvidia_gpu() else block_idx.y
 
+    var q_batch_offset: Int
     comptime if ragged:
         # treat valid_lengths as a input_row_offsets
-        start_of_seq = Int(valid_length[batch_idx])
-        end_of_seq = Int(valid_length[batch_idx + 1])
+        var start_of_seq = Int(valid_length[batch_idx])
+        var end_of_seq = Int(valid_length[batch_idx + 1])
         seq_len = end_of_seq - start_of_seq
 
         if seq_len < q_block_idx() * config.block_m():
@@ -2670,9 +2676,9 @@ def mha[
         # from kv_input_row_offsets. This is when num_keys != seq_len
         if kv_input_row_offsets:
             var kv_row_offsets = kv_input_row_offsets.value()
-            kv_seq_start = Int(kv_row_offsets[batch_idx])
-            kv_seq_end = Int(kv_row_offsets[batch_idx + 1])
-            cur_kv_len = kv_seq_end - kv_seq_start
+            var kv_seq_start = Int(kv_row_offsets[batch_idx])
+            var kv_seq_end = Int(kv_row_offsets[batch_idx + 1])
+            var cur_kv_len = kv_seq_end - kv_seq_start
             num_keys = cur_kv_len + Int(start_pos)
         else:
             num_keys = seq_len + Int(start_pos)
@@ -2701,8 +2707,8 @@ def mha[
             seq_len = Int(valid_length[batch_idx])
             num_keys = seq_len
         else:
-            seq_len = seq_len_arg
-            num_keys = num_keys_arg
+            seq_len = _seq_len_arg
+            num_keys = _num_keys_arg
 
         if seq_len < q_block_idx() * config.block_m():
             return
@@ -2913,13 +2919,11 @@ def mha_single_batch[
     # The entire query block (BM x depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = config.q_smem_size()
-    var q_smem = UnsafePointer(
-        external_memory[
-            Scalar[q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=alignment,
-        ]()
-    )
+    var q_smem = external_memory[
+        Scalar[q_type],
+        address_space=AddressSpace.SHARED,
+        alignment=alignment,
+    ]()
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -3039,12 +3043,12 @@ def mha_single_batch[
     comptime row_alignment = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
-    )
-    var rowsum = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
-    )
+    var rowmax = unsafe_stack_allocation[
+        WM, accum_type, alignment=row_alignment
+    ]()
+    var rowsum = unsafe_stack_allocation[
+        WM, accum_type, alignment=row_alignment
+    ]()
 
     comptime for i in range(0, WM, 2):
         comptime if sink:
@@ -3308,7 +3312,7 @@ def mha_single_batch[
                         )
                         var score_col = mask_frag_col
 
-                        score_row_with_start_pos = score_row + start_pos
+                        var score_row_with_start_pos = score_row + start_pos
 
                         comptime if masked:
                             p_reg_vec2[mma_id, i] = mask.mask(
@@ -3384,6 +3388,7 @@ def mha_single_batch[
             v_smem_iter.layout.stride[0].value() // simd_size,
         )
 
+        var v_tensor: type_of(v_gmem_iter[])
         # load V tile into smem
         comptime for v_id in range(BN // BK):
             var v_smem_tile = v_smem_iter.next_unsafe(
@@ -3669,13 +3674,11 @@ def mha_single_batch_pipelined[
     # The entire query block (BM x depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = config.q_smem_size()
-    var q_smem = UnsafePointer(
-        external_memory[
-            Scalar[q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=alignment,
-        ]()
-    )
+    var q_smem = external_memory[
+        Scalar[q_type],
+        address_space=AddressSpace.SHARED,
+        alignment=alignment,
+    ]()
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -3782,12 +3785,12 @@ def mha_single_batch_pipelined[
     comptime row_alignment = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
-    )
-    var rowsum = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_alignment]()
-    )
+    var rowmax = unsafe_stack_allocation[
+        WM, accum_type, alignment=row_alignment
+    ]()
+    var rowsum = unsafe_stack_allocation[
+        WM, accum_type, alignment=row_alignment
+    ]()
 
     comptime for i in range(0, WM, p_frag_simdwidth):
         comptime if sink:
@@ -4281,7 +4284,20 @@ def mha_single_batch_pipelined[
 
 
 # Entry point for mha_decoding with batch_size > 1.
-@__llvm_metadata(`rocdl.waves_per_eu`=SIMDLength(get_waves_per_eu(depth)))
+# A CTA's warps are dealt round-robin over the CU's 4 SIMDs, and a depth-128
+# decode CTA's ~80 KB of LDS holds the CU to 2 CTAs -- too few to even out a
+# short SIMD -- so 2 waves/EU needs a warp count that is a multiple of 4.
+# Hinting it on a 2- or 3-warp token fold makes the register allocator target an
+# occupancy it cannot reach: 7-27% slower. AMD single-token decode is 4 warps, so
+# its emitted amdgcn is unchanged; depth 64 fits 4 CTAs, where a 2-warp CTA could
+# reach 2 waves/EU and is merely hinted conservatively. NVIDIA sets BN == depth,
+# so its depth-64 decode is 2 warps and lands here too -- inert, since
+# `rocdl.waves_per_eu` is AMDGPU-only metadata.
+@__llvm_metadata(
+    `rocdl.waves_per_eu`=SIMDLength(
+        get_waves_per_eu(depth) if (num_threads // WARP_SIZE) % 4 == 0 else 1
+    )
+)
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
@@ -4320,8 +4336,8 @@ def mha_decoding[
     exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
-    batch_size: Int,
-    num_partitions: Int,
+    batch_size: Int32,
+    num_partitions: Int32,
     valid_length: LayoutTensor[
         DType.uint32,
         valid_length_layout,
@@ -4381,6 +4397,8 @@ def mha_decoding[
         mask: Mask instance.
     """
 
+    var _batch_size = Int(batch_size)
+    var _num_partitions = Int(num_partitions)
     comptime accum_type = get_accum_type[q_type]()
     var batch_idx = block_idx.z
 
@@ -4409,8 +4427,8 @@ def mha_decoding[
 
     comptime if ragged:
         # treat valid_lengths as a input_row_offsets
-        start_of_seq = Int(valid_length[batch_idx])
-        end_of_seq = Int(valid_length[batch_idx + 1])
+        var start_of_seq = Int(valid_length[batch_idx])
+        var end_of_seq = Int(valid_length[batch_idx + 1])
         seq_len = end_of_seq - start_of_seq
         q_batch_offset = start_of_seq * depth * num_heads
         # Rows are already packed by `input_row_offsets`, so this sequence's row
@@ -4418,18 +4436,18 @@ def mha_decoding[
         # no extra kernel argument needed. This is what makes a non-uniform batch
         # correct: each sequence writes exactly the rows it owns.
         row_base = start_of_seq
-        row_stride = Int(valid_length[batch_size])
+        row_stride = Int(valid_length[_batch_size])
     elif _use_valid_length:
         # treat valid_lengths as valid lengths
         q_batch_offset = depth * num_heads * q_seq_len * batch_idx
         seq_len = Int(valid_length[batch_idx])
         row_base = q_seq_len * batch_idx
-        row_stride = q_seq_len * batch_size
+        row_stride = q_seq_len * _batch_size
     else:
         seq_len = q_seq_len
         q_batch_offset = depth * num_heads * q_seq_len * batch_idx
         row_base = q_seq_len * batch_idx
-        row_stride = q_seq_len * batch_size
+        row_stride = q_seq_len * _batch_size
 
     # split-k offsets
     var partition_idx = block_idx.x
@@ -4442,13 +4460,13 @@ def mha_decoding[
     )
     var exp_sum_offset = qk_max_offset
 
-    # split-k intermediate buffers — only used when num_partitions > 1
+    # split-k intermediate buffers — only used when _num_partitions > 1
     var qk_max_batch_ptr = qk_max_ptr
-    if num_partitions > 1:
+    if _num_partitions > 1:
         qk_max_batch_ptr = qk_max_ptr + qk_max_offset
 
     var exp_sum_batch_ptr = exp_sum_ptr
-    if num_partitions > 1:
+    if _num_partitions > 1:
         exp_sum_batch_ptr = exp_sum_ptr + exp_sum_offset
 
     var num_keys = k.cache_length(batch_idx)
@@ -4480,7 +4498,7 @@ def mha_decoding[
                 qk_max_batch_ptr,
                 scale,
                 num_keys,
-                num_partitions,
+                _num_partitions,
                 sink_weights,
                 mask,
                 batch_idx,
@@ -4508,7 +4526,7 @@ def mha_decoding[
                 qk_max_batch_ptr,
                 scale,
                 num_keys,
-                num_partitions,
+                _num_partitions,
                 mask,
                 batch_idx,
                 sink_weights,
@@ -4560,7 +4578,7 @@ def mha_decoding[
             attention.mha_decode(
                 exp_sum_batch_ptr,
                 qk_max_batch_ptr,
-                num_partitions,
+                _num_partitions,
             )
         else:
             # The fold needs the runtime query length (it drives the per-token
@@ -4590,13 +4608,13 @@ def mha_decoding[
                 attention.mha_decode_streaming(
                     exp_sum_batch_ptr,
                     qk_max_batch_ptr,
-                    num_partitions,
+                    _num_partitions,
                 )
             else:
                 attention.mha_decode(
                     exp_sum_batch_ptr,
                     qk_max_batch_ptr,
-                    num_partitions,
+                    _num_partitions,
                 )
     else:
         CompilationTarget.unsupported_target_error[
@@ -4830,13 +4848,11 @@ def mha_decoding_single_batch[
     # The entire query block (BM x depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = BM * depth
-    var q_smem = UnsafePointer(
-        external_memory[
-            Scalar[q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=alignment,
-        ]()
-    )
+    var q_smem = external_memory[
+        Scalar[q_type],
+        address_space=AddressSpace.SHARED,
+        alignment=alignment,
+    ]()
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -4929,12 +4945,8 @@ def mha_decoding_single_batch[
     comptime row_align = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
-    )
-    var rowsum = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
-    )
+    var rowmax = unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
+    var rowsum = unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
 
     comptime for i in range(WM):
         comptime if sink:
@@ -5003,7 +5015,7 @@ def mha_decoding_single_batch[
     )
     var q_gmem_iter = q_gmem_block.tiled_iterator[BM, BK, axis=1](0, 0)
 
-    start, end = get_start_and_end_for_partitions[BN](
+    var start, end = get_start_and_end_for_partitions[BN](
         num_keys, num_partitions, block_idx.x
     )
 
@@ -5079,6 +5091,7 @@ def mha_decoding_single_batch[
             k_smem_iter.layout.stride[0].value() // simd_size,
         )
 
+        var k_tensor: type_of(k_gmem_iter[])
         # load K tile into smem
         comptime for k_id in range(depth // BK):
             var k_smem_tile = k_smem_iter.next_unsafe(
@@ -5209,6 +5222,7 @@ def mha_decoding_single_batch[
             BN // simd_size,
         )
 
+        var v_tensor: type_of(v_gmem_iter[])
         # load V tile into smem
         comptime for v_id in range(BN // BK):
             var v_smem_tile = v_smem_iter.next_unsafe(
@@ -5557,13 +5571,11 @@ def mha_decoding_single_batch_pipelined[
     # The entire query block (BM x depth) is tiled in shared memory.
     comptime alignment = align_of[SIMD[q_type, simd_size]]()
     comptime q_smem_size = BM * depth
-    var q_smem = UnsafePointer(
-        external_memory[
-            Scalar[q_type],
-            address_space=AddressSpace.SHARED,
-            alignment=alignment,
-        ]()
-    )
+    var q_smem = external_memory[
+        Scalar[q_type],
+        address_space=AddressSpace.SHARED,
+        alignment=alignment,
+    ]()
     comptime IteratorTypeQ = LayoutTensorIter[
         q_type,
         Layout.row_major(BM, BK),
@@ -5642,12 +5654,8 @@ def mha_decoding_single_batch_pipelined[
     comptime row_align = align_of[
         SIMD[accum_type, simd_width_of[accum_type]()]
     ]()
-    var rowmax = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
-    )
-    var rowsum = UnsafePointer(
-        unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
-    )
+    var rowmax = unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
+    var rowsum = unsafe_stack_allocation[WM, accum_type, alignment=row_align]()
 
     var partition_idx = block_idx.x
 
@@ -5734,7 +5742,7 @@ def mha_decoding_single_batch_pipelined[
     var q_gmem_iter = q_gmem_block.tiled_iterator[BM, BK, axis=1](0, 0)
 
     # Loop over Key and Value tiles
-    start, end = get_start_and_end_for_partitions[BN](
+    var start, end = get_start_and_end_for_partitions[BN](
         num_keys, num_partitions, block_idx.x
     )
 
@@ -5977,8 +5985,8 @@ def mha_splitk_reduce[
     qk_max_ptr: UnsafePointer[
         Scalar[get_accum_type[output_type]()], ImmutAnyOrigin
     ],
-    batch_size: Int,
-    num_partitions: Int,
+    batch_size: Int32,
+    num_partitions: Int32,
 ):
     """Single-warp reduction kernel that merges split-K partial attention outputs.
 
@@ -6011,6 +6019,8 @@ def mha_splitk_reduce[
     """
 
     # we only reduce over a warp so limit number of warps to 1
+    var _batch_size = Int(batch_size)
+    var _num_partitions = Int(num_partitions)
     comptime assert num_threads == WARP_SIZE, (
         "num_threads: "
         + String(num_threads)
@@ -6036,30 +6046,28 @@ def mha_splitk_reduce[
     var q_head_idx = block_idx.y
 
     assert (
-        num_partitions <= WARP_SIZE
+        _num_partitions <= WARP_SIZE
     ), "number of partitions should be less than or equal to the warp_size"
     var partition_idx = thread_idx.x
 
     var qk_max_offset = (
         num_heads * batch_idx
-        + num_heads * batch_size * partition_idx
+        + num_heads * _batch_size * partition_idx
         + q_head_idx
     )
     var l = min_or_neg_inf[accum_type]()
-    if partition_idx < num_partitions:
+    if partition_idx < _num_partitions:
         l = qk_max_ptr[qk_max_offset]
 
     var qk_max = warp.lane_group_max[WARP_SIZE](l)
 
-    # since num_partitions <= WARP_SIZE, allocate buffer using WARP_SIZE
+    # since _num_partitions <= WARP_SIZE, allocate buffer using WARP_SIZE
     var exp_sums = TileTensor(
-        UnsafePointer(
-            unsafe_stack_allocation[
-                WARP_SIZE,
-                Scalar[accum_type],
-                address_space=AddressSpace.SHARED,
-            ]()
-        ),
+        unsafe_stack_allocation[
+            WARP_SIZE,
+            Scalar[accum_type],
+            address_space=AddressSpace.SHARED,
+        ](),
         row_major[WARP_SIZE](),
     )
 
@@ -6071,20 +6079,20 @@ def mha_splitk_reduce[
     ](
         intermediate_ptr,
         RuntimeLayout[intermediate_layout].row_major(
-            Index(num_partitions, batch_size, num_heads, depth)
+            Index(_num_partitions, _batch_size, num_heads, depth)
         ),
     )
     comptime output_layout = Layout.row_major(UNKNOWN_VALUE, num_heads, depth)
     var output = LayoutTensor[output_type, output_layout](
         output_ptr,
         RuntimeLayout[output_layout].row_major(
-            Index(batch_size, num_heads, depth)
+            Index(_batch_size, num_heads, depth)
         ),
     )
 
     var rescaled_exp_sum: Scalar[accum_type] = 0
     comptime exp_fn = _exp2_concrete if use_exp2 else _exp_concrete
-    if partition_idx < num_partitions:
+    if partition_idx < _num_partitions:
         rescaled_exp_sum = exp_sum_ptr[qk_max_offset] * exp_fn(l - qk_max)
         exp_sums[partition_idx] = rescaled_exp_sum
 
@@ -6107,8 +6115,8 @@ def mha_splitk_reduce[
     var depth_idx = thread_idx.x * width
 
     # Precompute base pointer and partition stride to avoid ptr_at_offset in inner loop
-    # Layout is [num_partitions, batch_size, num_heads, depth] in row-major
-    var partition_stride = batch_size * num_heads * depth
+    # Layout is [_num_partitions, _batch_size, num_heads, depth] in row-major
+    var partition_stride = _batch_size * num_heads * depth
     var base_offset = (
         batch_idx * num_heads * depth + q_head_idx * depth + depth_idx
     )
@@ -6141,7 +6149,7 @@ def mha_splitk_reduce[
     if depth_idx < depth:
         # simd_width=8 is based on experimentation
         # we may want to use a lower value if number of partitions are lower
-        vectorize[8](num_partitions, accum_fn)
+        vectorize[8](_num_partitions, accum_fn)
 
         acc *= inv_global_exp_sum
 
@@ -6155,7 +6163,7 @@ def mha_splitk_reduce[
 
 # ===-----------------------------------------------------------------------===#
 # Naive GPU multihead attention supporting flexible dimensions and
-# batch_size > 1.
+# _batch_size > 1.
 # ===-----------------------------------------------------------------------===#
 
 comptime _NAIVE_BMM_BLOCK_DIM = LaunchDim(32, 16, 1)
@@ -6284,12 +6292,12 @@ def mha_gpu_naive[
         k,
         valid_length,
         scale,
-        batch_size,
-        max_prompt_len,
-        max_cache_size,
-        num_heads,
-        depth,
-        group,
+        Int32(batch_size),
+        Int32(max_prompt_len),
+        Int32(max_cache_size),
+        Int32(num_heads),
+        Int32(depth),
+        Int32(group),
         mask_functor,
         grid_dim=(
             ceildiv(num_keys, 32),
@@ -6328,11 +6336,11 @@ def mha_gpu_naive[
         p_device,
         v,
         valid_length,
-        max_prompt_len,
-        max_cache_size,
-        num_heads,
-        depth,
-        group,
+        Int32(max_prompt_len),
+        Int32(max_cache_size),
+        Int32(num_heads),
+        Int32(depth),
+        Int32(group),
         grid_dim=(
             ceildiv(depth, 32),
             ceildiv(max_prompt_len, 16),
@@ -6366,15 +6374,21 @@ def _bmm0_bs[
         ImmutAnyOrigin,
     ],
     scale: Float32,
-    batch_size: Int,
-    max_prompt_len: Int,
-    max_cache_size: Int,
-    num_heads: Int,
-    depth: Int,
-    group: Int,
+    batch_size: Int32,
+    max_prompt_len: Int32,
+    max_cache_size: Int32,
+    num_heads: Int32,
+    depth: Int32,
+    group: Int32,
     mask_functor: mask_t,
 ):
     # In the num_keys dim.
+    var _batch_size = Int(batch_size)
+    var _max_prompt_len = Int(max_prompt_len)
+    var _max_cache_size = Int(max_cache_size)
+    var _num_heads = Int(num_heads)
+    var _depth = Int(depth)
+    var _group = Int(group)
     var x = global_idx.x
     # In the prompt length dim.
     var y = global_idx.y
@@ -6382,27 +6396,27 @@ def _bmm0_bs[
     comptime k_type = k_t.dtype
 
     var batch_head = block_idx.z
-    var batch, head = udivmod(batch_head, num_heads)
+    var batch, head = udivmod(batch_head, _num_heads)
 
     var cur_query_len: Int
     var q_offset: Int
     var cur_cache_len: Int
-    var padded_num_keys = max_cache_size
-    var p_offset = batch_head * max_prompt_len * padded_num_keys
+    var padded_num_keys = _max_cache_size
+    var p_offset = batch_head * _max_prompt_len * padded_num_keys
     var start_pos: UInt32 = 0
 
     comptime if ragged:
         comptime if not _is_cache_length_accurate:
             start_pos = UInt32(k.cache_length(batch))
 
-        seq_start = Int(valid_length[batch])
-        seq_end = Int(valid_length[batch + 1])
+        var seq_start = Int(valid_length[batch])
+        var seq_end = Int(valid_length[batch + 1])
         cur_query_len = seq_end - seq_start
-        q_offset = depth * (seq_start * num_heads + head)
+        q_offset = _depth * (seq_start * _num_heads + head)
         cur_cache_len = Int(start_pos) + cur_query_len
     elif _use_valid_length:
         cur_query_len = Int(valid_length[batch])
-        q_offset = depth * (head + num_heads * max_prompt_len * batch)
+        q_offset = _depth * (head + _num_heads * _max_prompt_len * batch)
         comptime if _is_cache_length_accurate:
             cur_cache_len = cur_query_len
         else:
@@ -6410,20 +6424,20 @@ def _bmm0_bs[
     # When inputs are all dense tensors i.e. all sequences in batch have the same
     # length and same cache length
     else:
-        cur_query_len = max_prompt_len
-        q_offset = depth * (head + num_heads * max_prompt_len * batch)
-        cur_cache_len = max_cache_size
-        p_offset = batch_head * max_prompt_len * max_cache_size
+        cur_query_len = _max_prompt_len
+        q_offset = _depth * (head + _num_heads * _max_prompt_len * batch)
+        cur_cache_len = _max_cache_size
+        p_offset = batch_head * _max_prompt_len * _max_cache_size
 
-    assert cur_query_len <= max_prompt_len, "Invalid cur_query_len"
+    assert cur_query_len <= _max_prompt_len, "Invalid cur_query_len"
     assert cur_cache_len <= padded_num_keys, "Invalid cur_cache_len"
 
-    if x >= padded_num_keys or y >= max_prompt_len:
+    if x >= padded_num_keys or y >= _max_prompt_len:
         return
 
     var q = q_ptr + q_offset
 
-    var kv_head = ufloordiv(head, group)
+    var kv_head = ufloordiv(head, _group)
 
     var p = p_ptr + p_offset
 
@@ -6441,10 +6455,10 @@ def _bmm0_bs[
 
         def accum_fn[
             width: Int
-        ](offset: Int) {q, y, num_heads, depth, k_ptr, mut}:
+        ](offset: Int) {q, y, _num_heads, _depth, k_ptr, mut}:
             var q_val = q.load[
                 width=width, alignment=align_of[SIMD[q_type, width]]()
-            ](y * num_heads * depth + offset)
+            ](y * _num_heads * _depth + offset)
             var k_val = k_ptr.load[
                 width=width, alignment=align_of[SIMD[k_type, width]]()
             ](offset)
@@ -6455,11 +6469,11 @@ def _bmm0_bs[
             else:
                 accum_vec += rebind[type_of(accum_vec)](qk_val)
 
-        if depth % accum_width == 0:
-            vectorize[accum_width](depth, accum_fn)
+        if _depth % accum_width == 0:
+            vectorize[accum_width](_depth, accum_fn)
             accum += accum_vec.reduce_add()
         else:
-            vectorize[1](depth, accum_fn)
+            vectorize[1](_depth, accum_fn)
 
     var score_row = y + cur_cache_len - cur_query_len
     var score_col = x
@@ -6497,41 +6511,46 @@ def _bmm1_bs[
         valid_length_layout,
         ImmutAnyOrigin,
     ],
-    max_prompt_len: Int,
-    max_cache_size: Int,
-    num_heads: Int,
-    depth: Int,
-    group: Int,
+    max_prompt_len: Int32,
+    max_cache_size: Int32,
+    num_heads: Int32,
+    depth: Int32,
+    group: Int32,
 ):
+    var _max_prompt_len = Int(max_prompt_len)
+    var _max_cache_size = Int(max_cache_size)
+    var _num_heads = Int(num_heads)
+    var _depth = Int(depth)
+    var _group = Int(group)
     comptime v_type = v_t.dtype
 
-    # In the depth dim.
+    # In the _depth dim.
     var x = global_idx.x
     # IN the sequence length dim.
     var y = global_idx.y
 
     var batch_head = block_idx.z
-    var batch, head = udivmod(batch_head, num_heads)
+    var batch, head = udivmod(batch_head, _num_heads)
 
     var cur_query_len: Int
     var output_offset: Int
     var cur_cache_len: Int
-    var padded_num_keys = max_cache_size
-    var p_offset = batch_head * max_prompt_len * padded_num_keys
+    var padded_num_keys = _max_cache_size
+    var p_offset = batch_head * _max_prompt_len * padded_num_keys
     var start_pos: UInt32 = 0
 
     comptime if ragged:
         comptime if not _is_cache_length_accurate:
             start_pos = UInt32(v.cache_length(batch))
 
-        seq_start = Int(valid_length[batch])
-        seq_end = Int(valid_length[batch + 1])
+        var seq_start = Int(valid_length[batch])
+        var seq_end = Int(valid_length[batch + 1])
         cur_query_len = seq_end - seq_start
-        output_offset = (seq_start * num_heads + head) * depth
+        output_offset = (seq_start * _num_heads + head) * _depth
         cur_cache_len = cur_query_len + Int(start_pos)
     elif _use_valid_length:
         cur_query_len = Int(valid_length[batch])
-        output_offset = depth * (head + num_heads * max_prompt_len * batch)
+        output_offset = _depth * (head + _num_heads * _max_prompt_len * batch)
         comptime if _is_cache_length_accurate:
             cur_cache_len = cur_query_len
         else:
@@ -6539,19 +6558,19 @@ def _bmm1_bs[
     # When inputs are all dense tensors i.e. all sequences in batch have the same
     # length and same cache length
     else:
-        cur_query_len = max_prompt_len
-        output_offset = depth * (head + num_heads * max_prompt_len * batch)
-        cur_cache_len = max_cache_size
-        p_offset = batch_head * max_prompt_len * max_cache_size
+        cur_query_len = _max_prompt_len
+        output_offset = _depth * (head + _num_heads * _max_prompt_len * batch)
+        cur_cache_len = _max_cache_size
+        p_offset = batch_head * _max_prompt_len * _max_cache_size
 
-    assert cur_query_len <= max_prompt_len, "Invalid cur_query_len"
+    assert cur_query_len <= _max_prompt_len, "Invalid cur_query_len"
 
-    if x >= depth or y >= cur_query_len:
+    if x >= _depth or y >= cur_query_len:
         return
 
     var p = p_ptr + p_offset
 
-    var kv_head = ufloordiv(head, group)
+    var kv_head = ufloordiv(head, _group)
     var output = output_ptr + output_offset
 
     var accum = Float32(0.0)
@@ -6565,7 +6584,7 @@ def _bmm1_bs[
             * v_ptr[0].cast[DType.float32]()
         )
 
-    output[y * num_heads * depth + x] = accum.cast[output_type]()
+    output[y * _num_heads * _depth + x] = accum.cast[output_type]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -7242,7 +7261,9 @@ def _naive_attention[
     )
 
     # `as_unsafe_any_origin()` is used to avoid exclusivity violations
-    softmax[dtype, simd_size, 4](score, score.as_unsafe_any_origin(), axis=3)
+    softmax_inline[dtype, simd_size, 4](
+        score, score.as_unsafe_any_origin(), axis=3
+    )
 
     var output_tt = TileTensor(
         output.ptr,

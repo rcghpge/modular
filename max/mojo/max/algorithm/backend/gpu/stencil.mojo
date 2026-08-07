@@ -13,7 +13,7 @@
 """GPU implementation of stencil computation."""
 
 from std.gpu import block_dim, block_idx, thread_idx
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.utils.index import IndexList
@@ -30,12 +30,12 @@ def _stencil_impl_gpu[
     //,
     rank: Int,
     stencil_rank: Int,
-    stencil_axis: IndexList[stencil_rank, ...],
+    stencil_axis: IndexList[stencil_rank, element_type=_],
     simd_width: Int,
     dtype: DType,
     MapFnType: ImplicitlyCopyable
     & RegisterPassable
-    & def(IndexList[stencil_rank, ...]) -> Tuple[
+    & def(IndexList[stencil_rank, element_type=_]) -> Tuple[
         IndexList[stencil_rank],
         IndexList[stencil_rank],
     ],
@@ -44,23 +44,23 @@ def _stencil_impl_gpu[
     & def(dim: Int) -> Int,
     LoadFnType: ImplicitlyCopyable
     & RegisterPassable
-    & def[simd_width: Int, dtype: DType](IndexList[rank, ...]) -> SIMD[
-        dtype, simd_width
-    ],
+    & def[simd_width: Int, dtype: DType](
+        IndexList[rank, element_type=_]
+    ) -> SIMD[dtype, simd_width],
     ComputeInitFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[simd_width: Int]() -> SIMD[dtype, simd_width],
     ComputeFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[simd_width: SIMDLength](
-        IndexList[rank, ...],
+        IndexList[rank, element_type=_],
         SIMD[dtype, simd_width],
         SIMD[dtype, simd_width],
     ) -> SIMD[dtype, simd_width],
     ComputeFinalizeFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[simd_width: SIMDLength](
-        IndexList[rank, ...], SIMD[dtype, simd_width]
+        IndexList[rank, element_type=_], SIMD[dtype, simd_width]
     ) -> None,
 ](
     ctx: DeviceContext,

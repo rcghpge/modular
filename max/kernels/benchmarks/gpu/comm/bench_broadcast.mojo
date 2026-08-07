@@ -36,7 +36,7 @@ from comm.sync import enable_p2p
 from comm.broadcast import broadcast
 from comm import MAX_GPUS, Signal
 import comm.vendor.ccl as vendor_ccl
-from std.gpu.host import (
+from max.gpu.host import (
     DeviceBuffer,
     DeviceContext,
     DeviceMulticastBuffer,
@@ -128,7 +128,7 @@ def bench_broadcast[
 
     # Initialize output and signal buffers for each GPU
     comptime if use_multimem:
-        out_multicast_buf = DeviceMulticastBuffer[dtype](
+        var out_multicast_buf = DeviceMulticastBuffer[dtype](
             list_of_ctx.copy(), length
         )
         out_multicast_ptr = (

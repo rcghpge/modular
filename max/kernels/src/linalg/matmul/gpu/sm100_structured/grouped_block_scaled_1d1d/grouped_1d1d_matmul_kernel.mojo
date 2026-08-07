@@ -53,32 +53,31 @@ from std.gpu import (
     lane_id,
     warp_id as get_warp_id,
 )
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     async_copy,
     external_memory,
     fence_mbarrier_init,
 )
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     PDLLevel,
     launch_dependent_grids,
     wait_on_dependent_grids,
 )
 import std.gpu.primitives.warp as warp
-from std.gpu.primitives.cluster import (
+from max.gpu.primitives.cluster import (
     block_rank_in_cluster,
     cluster_sync,
     elect_one_sync,
     elect_one_sync_with_mask,
 )
-from std.gpu.sync import async_copy_arrive, syncwarp
+from max.gpu.sync import async_copy_arrive, syncwarp
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_fence_before,
     tcgen05_st,
     tcgen05_store_wait,
 )
 from layout.tma_async import PipelineState
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
     Idx,
@@ -487,7 +486,7 @@ struct RealSwiGLUOutput[
     """Carries the three GMEM destinations (packed output, 5D SF tile,
     per-expert input scales) as raw pointers + comptime shape info.
 
-    Raw `UnsafePointer`s rather than `TileTensor`s sidestep a callsite
+    Raw `Pointer`s rather than `TileTensor`s sidestep a callsite
     type mismatch (TileTensor has many implicit parameters). `set_sf`
     inlines the 5D SF index. Layout is the same for NVFP4 and MXFP8,
     only the SF_VECTOR_SIZE divisor differs.
@@ -1433,14 +1432,14 @@ struct Grouped1D1DMatmulKernel[
         # C tensor for bounds-checked stores (TileTensor)
         c_device: Self.CDeviceTile,
         # Number of active experts
-        num_active_experts: Int,
+        num_active_experts: Int32,
         # K dimension for iteration
         K: UInt32,
         # Raw SFB pointer and strides for cp.async path (MMA_N < 64 only).
         # When group_size < SF_MN_GROUP_SIZE, cp.async replaces TMA for SFB.
         sfb_global_ptr: UnsafePointer[Scalar[Self.sfb_dtype], ImmutAnyOrigin],
-        sfb_n_stride: Int,
-        sfb_k_tiles: Int,
+        sfb_n_stride: Int32,
+        sfb_k_tiles: Int32,
         # Fused-SwiGLU+quant output sink. Pass `NullSwiGLUOutput[]()` for
         # non-fused callers — zero-sized, contributes 0 bytes to the
         # kernel ABI when `SwiGLUOutputT=NullSwiGLUOutput`.
@@ -1506,22 +1505,17 @@ struct Grouped1D1DMatmulKernel[
                 timing; `NullTrace()` is zero-sized when
                 `swiglu_enable_trace=False`.
         """
+        var _num_active_experts = Int(num_active_experts)
+        var _sfb_n_stride = Int(sfb_n_stride)
+        var _sfb_k_tiles = Int(sfb_k_tiles)
         Self.validate_config()
 
         # ===== Shared Memory Setup =====
-        ref smem = UnsafePointer[
+        ref smem = external_memory[
             Scalar[DType.uint8],
-            MutUntrackedOrigin,
             address_space=AddressSpace.SHARED,
-        ](
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        ).bitcast[
-            Self.SmemType
-        ]()[]
+            alignment=128,
+        ]().bitcast[Self.SmemType]()[]
 
         # Get typed tile arrays from SMEM
         var a_tiles = smem.a_tiles()
@@ -1650,7 +1644,7 @@ struct Grouped1D1DMatmulKernel[
                 var sched_phase = UInt32(0)
                 # Iter 0: compute inline (no scheduler, no mbarrier).
                 var ctx = Self._compute_iter0_ctx(
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -1835,7 +1829,7 @@ struct Grouped1D1DMatmulKernel[
             with mma_ctx:
                 # Iter 0: compute inline (no scheduler, no mbarrier).
                 var ctx = Self._compute_iter0_ctx(
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -2015,7 +2009,7 @@ struct Grouped1D1DMatmulKernel[
             with epi_ctx:
                 # Iter 0: compute inline (no scheduler, no mbarrier).
                 var ctx = Self._compute_iter0_ctx(
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -2150,7 +2144,7 @@ struct Grouped1D1DMatmulKernel[
 
                 # Iter 0: compute inline (no scheduler, no mbarrier).
                 var ctx = Self._compute_iter0_ctx(
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -2249,7 +2243,7 @@ struct Grouped1D1DMatmulKernel[
                                         )
 
                                         var global_offset = (
-                                            sfb_n_coord * sfb_n_stride
+                                            sfb_n_coord * _sfb_n_stride
                                             + (k_tile_base + k_atom)
                                             * K_TILE_ELEMS
                                             + Int(cp_row_in_atom) * ROW_STRIDE
@@ -2266,7 +2260,7 @@ struct Grouped1D1DMatmulKernel[
                                         var is_valid = (
                                             lane_id() < sfb_active_lanes
                                             and k_tile_base + k_atom
-                                            < sfb_k_tiles
+                                            < _sfb_k_tiles
                                         )
                                         async_copy[
                                             size=copy_size,
@@ -2410,7 +2404,7 @@ struct Grouped1D1DMatmulKernel[
 
                 # Iter 0: compute inline (no scheduler, no mbarrier).
                 var ctx = Self._compute_iter0_ctx(
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -2444,7 +2438,7 @@ struct Grouped1D1DMatmulKernel[
         # slot = (it-1) % 2 to stay aligned with consumers reading slot = ci % 2.
         if Self.WarpRole.is_scheduler():
             var use_group_cache = (
-                num_active_experts <= Self.SmemType.SCHED_GROUP_CACHE_CAP
+                _num_active_experts <= Self.SmemType.SCHED_GROUP_CACHE_CAP
             )
             var cta_stride = UInt32(
                 ufloordiv(grid_dim.x, Self.config.cta_group)
@@ -2462,7 +2456,7 @@ struct Grouped1D1DMatmulKernel[
             if lane_id() == 0:
                 var slot0 = Self._compute_sched_slot(
                     smem,
-                    num_active_experts,
+                    _num_active_experts,
                     a_offsets,
                     expert_ids,
                     expert_scales,
@@ -2477,7 +2471,7 @@ struct Grouped1D1DMatmulKernel[
                 if slot0.expert_id >= 0:
                     var slot1 = Self._compute_sched_slot(
                         smem,
-                        num_active_experts,
+                        _num_active_experts,
                         a_offsets,
                         expert_ids,
                         expert_scales,
@@ -2500,9 +2494,9 @@ struct Grouped1D1DMatmulKernel[
                 var sched_expert_ids = smem.sched_expert_ids()
                 var sched_expert_scales = smem.sched_expert_scales()
                 var lane = Int(lane_id())
-                for i in range(lane, num_active_experts + 1, WARP_SIZE):
+                for i in range(lane, _num_active_experts + 1, WARP_SIZE):
                     sched_group_offsets[i] = a_offsets[i]
-                for i in range(lane, num_active_experts, WARP_SIZE):
+                for i in range(lane, _num_active_experts, WARP_SIZE):
                     var eid = expert_ids[i]
                     sched_expert_ids[i] = eid
                     sched_expert_scales[i] = expert_scales[
@@ -2526,7 +2520,7 @@ struct Grouped1D1DMatmulKernel[
 
                         var sched_slot = Self._compute_sched_slot(
                             smem,
-                            num_active_experts,
+                            _num_active_experts,
                             a_offsets,
                             expert_ids,
                             expert_scales,
@@ -3759,7 +3753,7 @@ struct Grouped1D1DMatmulKernel[
                     comptime for ci in range(BF16_LOAD_W):
                         pair_bf[li * BF16_LOAD_W + ci] = chunk[ci]
                 var pair = pair_bf.cast[DType.float32]()
-                gate, up = pair.deinterleave()
+                var gate, up = pair.deinterleave()
 
                 # silu(g) and the final SF reciprocal use `recip()`
                 # (`rcp.approx.ftz.f32`) rather than fp32 `/`: with only

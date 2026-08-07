@@ -24,7 +24,7 @@ from std.sys.info import align_of, simd_width_of
 from std.algorithm import tile, vectorize
 
 from max.algorithm import sync_parallelize
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from layout import (
     Coord,
     Idx,
@@ -67,7 +67,7 @@ from .vnni import Inner_matmul_vnni
 # - _run_inner_loop_i8mm()
 
 
-trait InnerMatmulKernel(ImplicitlyCopyable, ImplicitlyDeletable):
+trait InnerMatmulKernel(Deinitable, ImplicitlyCopyable):
     """Trait for CPU matmul microkernels operating on pre-packed tiles.
 
     Conforming types implement `__inner_matmul__`, which accumulates a
@@ -440,7 +440,7 @@ struct TiledMatmul[
         # if b is packed, the packing was performed offline using a single inner
         # size and tile_n.
         comptime if not Self.b_packed:
-            comptime secondary_tiles = [
+            comptime secondary_tiles: List[Int] = [
                 Self.config.kernel_cols,
                 2 * Self.config.simd_size,
                 Self.config.simd_size,
@@ -454,7 +454,9 @@ struct TiledMatmul[
                 primary_cleanup_tile=Self.config.simd_size,
             )
         else:
-            comptime secondary_tiles_packed_b = [Self.config.kernel_cols]
+            comptime secondary_tiles_packed_b: List[Int] = [
+                Self.config.kernel_cols
+            ]
             tile[secondary_tiles_packed_b, Self.config.kernel_cols, m_loop](
                 0, valid_col_count, tile_n, primary_cleanup_tile=tile_n
             )

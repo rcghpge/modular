@@ -32,7 +32,7 @@ paths — either by passing it to `dealloc` or by taking the raw pointer with
 
 For automatic cleanup, an `Allocation` can be converted into a
 `ManagedAllocation[T]` with `into_managed()`. Unlike the two explicitly
-destroyed handles, a `ManagedAllocation` implements `ImplicitlyDeletable`: it
+destroyed handles, a `ManagedAllocation` implements `Deinitable`: it
 deallocates its storage in its destructor, which Mojo runs automatically after
 the value's last use (ASAP destruction), so no explicit `dealloc` is needed.
 Like `dealloc`, this frees the storage without running the destructors of any
@@ -77,7 +77,7 @@ dealloc(thin^.unsafe_with_layout(layout))
 
 Memory safety:
 
-Because `Allocation` and `ThinAllocation` are non-`ImplicitlyDeletable types,
+Because `Allocation` and `ThinAllocation` are non-`Deinitable types,
 the compiler catches the three classic allocation bugs at compile time, instead
 of leaving them as runtime hazards.
 
@@ -134,7 +134,7 @@ from std.sys.intrinsics import unlikely
     " `unsafe_leak()` to take ownership of the underlying pointer."
 )
 struct Allocation[T: AnyType](
-    ImplicitlyDeletable where False, RegisterPassable, Writable
+    Deinitable where False, RegisterPassable, Writable
 ):
     """An owning handle to a heap allocation of `T` together with its `Layout`.
 
@@ -338,7 +338,7 @@ struct ManagedAllocation[T: AnyType](RegisterPassable, Writable):
 
     A `ManagedAllocation` wraps an `Allocation` and deallocates the storage in
     its destructor. It is the self-freeing counterpart to `Allocation`: where
-    `Allocation` is non-`ImplicitlyDeletable` and must be passed to `dealloc` on
+    `Allocation` is non-`Deinitable` and must be passed to `dealloc` on
     every path, a `ManagedAllocation` deallocates its storage automatically.
     Mojo runs the destructor after the value's last use, following its "as soon
     as possible" (ASAP) destruction policy — including on error paths, where the
@@ -389,7 +389,7 @@ struct ManagedAllocation[T: AnyType](RegisterPassable, Writable):
         """
         self._alloc = allocation^
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Deallocates the owned storage.
 
         Releases the storage owned by the wrapped `Allocation` by passing it to
@@ -459,7 +459,7 @@ struct ManagedAllocation[T: AnyType](RegisterPassable, Writable):
     " call `unsafe_leak()` to take ownership of the underlying pointer."
 )
 struct ThinAllocation[T: AnyType](
-    ImplicitlyDeletable where False, RegisterPassable, Writable
+    Deinitable where False, RegisterPassable, Writable
 ):
     """An owning handle to a heap allocation of `T`, without its `Layout`.
 
@@ -488,12 +488,12 @@ struct ThinAllocation[T: AnyType](
     def __init__(
         out self,
         *,
-        unsafe_assume_ownership: Pointer[Self.T, MutUntrackedOrigin],
+        unsafe_owned_ptr: Pointer[Self.T, MutUntrackedOrigin],
     ):
         """Initializes a `ThinAllocation` that takes ownership of a raw pointer.
 
         Args:
-            unsafe_assume_ownership: The raw pointer to take ownership of. The
+            unsafe_owned_ptr: The raw pointer to take ownership of. The
                 new `ThinAllocation` assumes responsibility for deallocating
                 this storage.
 
@@ -503,7 +503,7 @@ struct ThinAllocation[T: AnyType](
         (typically obtained from `alloc`), and no other value may own it.
         Otherwise, destroying the `ThinAllocation` causes a double-free.
         """
-        self._ptr = unsafe_assume_ownership
+        self._ptr = unsafe_owned_ptr
 
     def unsafe_with_layout(
         var self, layout: Layout[Self.T]
@@ -603,10 +603,36 @@ def _alloc_bytes(
     return pointer.unsafe_value()
 
 
+@deprecated(
+    "`alloc` without a `Layout` is deprecated, use the `Layout`-based `alloc`"
+    " instead; as a temporary migration step, use `unsafe_alloc`"
+)
 @always_inline
 def alloc[
     type: AnyType, /
-](count: Int, *, alignment: Int = align_of[type]()) -> UnsafePointer[
+](count: Int, *, alignment: Int = align_of[type]()) -> Pointer[
+    type, MutUntrackedOrigin
+]:
+    """Allocates contiguous storage for `count` elements of `type` with
+    alignment `alignment`.
+
+    Parameters:
+        type: The type of the elements to allocate storage for.
+
+    Args:
+        count: Number of elements to allocate.
+        alignment: The alignment of the allocation.
+
+    Returns:
+        A pointer to the newly allocated uninitialized array.
+    """
+    return unsafe_alloc[type](count, alignment=alignment)
+
+
+@always_inline
+def unsafe_alloc[
+    type: AnyType, /
+](count: Int, *, alignment: Int = align_of[type]()) -> Pointer[
     type, MutUntrackedOrigin
 ]:
     """Allocates contiguous storage for `count` elements of `type` with
@@ -634,13 +660,13 @@ def alloc[
     Example:
 
     ```mojo
-    var ptr = alloc[Int32](4)
+    var ptr = unsafe_alloc[Int32](4)
     ptr.store(0, Int32(42))
     ptr.store(1, Int32(7))
     ptr.store(2, Int32(9))
     var a = ptr.load(0)
     print(a[0], ptr.load(1)[0], ptr.load(2)[0])
-    ptr.free()
+    ptr.unsafe_free()
     ```
     """
     comptime size_of_t = size_of[type]()
@@ -701,13 +727,11 @@ def alloc[T: AnyType, /](layout: Layout[T], /) -> Allocation[T]:
 
     comptime if size_of_t == 0:
         return ThinAllocation(
-            unsafe_assume_ownership=Pointer[
-                T, MutUntrackedOrigin
-            ].unsafe_dangling()
+            unsafe_owned_ptr=Pointer[T, MutUntrackedOrigin].unsafe_dangling()
         ).unsafe_with_layout(layout)
     else:
         return ThinAllocation(
-            unsafe_assume_ownership=_alloc_bytes(
+            unsafe_owned_ptr=_alloc_bytes(
                 layout.as_byte_layout()
             ).unsafe_bitcast[T]()
         ).unsafe_with_layout(layout)

@@ -23,10 +23,10 @@ from std.math import align_up, ceildiv
 from std.sys import size_of
 
 from comm import MAX_GPUS, Signal
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.host.info import B200
-from std.gpu.primitives.grid_controls import pdl_launch_attributes, PDLLevel
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.info import B200
+from max.gpu.primitives.grid_controls import pdl_launch_attributes, PDLLevel
 from layout import (
     Coord,
     Idx,
@@ -223,7 +223,7 @@ def _blackwell_matmul_tma_umma_warp_specialized[
     comptime KernelType = type_of(matmul_kernel)
 
     comptime a_tma_tile_shape = Index(1, BM // cluster_shape[1], BK)
-    a_tma_op = create_tma_tile[
+    var a_tma_op = create_tma_tile[
         KernelType.ATileLayout,
         KernelType.ADescLayout,
         a_tma_tile_shape,
@@ -236,7 +236,7 @@ def _blackwell_matmul_tma_umma_warp_specialized[
     ) if transpose_b else Index(
         1, BK, BN // (cluster_shape[0] // config.cta_group)
     )
-    b_tma_op = create_tma_tile[
+    var b_tma_op = create_tma_tile[
         KernelType.BTileLayout,
         KernelType.BDescLayout,
         b_tma_tile_shape,
@@ -364,7 +364,7 @@ def _blackwell_matmul_tma_umma_warp_specialized[
         mnk,
         workspace,
         rank_sigs,
-        0,
+        Int32(0),
         grid_dim=grid_dim,
         block_dim=KernelType.NUM_THREADS,
         shared_mem_bytes=smem_size,
@@ -585,14 +585,14 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     # Create 2D TMA descriptors using kernel's _splitk layout types
     comptime KernelType = type_of(matmul_kernel)
 
-    a_tma_op = create_tma_tile[
+    var a_tma_op = create_tma_tile[
         KernelType.ATileLayout_splitk,
         KernelType.ADescLayout_splitk,
         Index(BM // cluster_shape[1], BK),
         swizzle_mode=config.a_swizzle,
     ](ctx, a_device)
 
-    b_tma_op = create_tma_tile[
+    var b_tma_op = create_tma_tile[
         KernelType.BTileLayout_splitk,
         KernelType.BDescLayout_splitk,
         Index(
@@ -927,13 +927,13 @@ def matmul_sm100_fallback[
     comptime kernel = fallback_kernel.run
 
     # Create TMA descriptors using kernel-derived layout types
-    a_tma_op = create_tma_tile[
+    var a_tma_op = create_tma_tile[
         FallbackKernelType.ATileLayout,
         FallbackKernelType.ADescLayout,
         Index(BM, BK),
         swizzle_mode=a_swizzle,
     ](ctx, a)
-    b_tma_op = create_tma_tile[
+    var b_tma_op = create_tma_tile[
         FallbackKernelType.BTileLayout,
         FallbackKernelType.BDescLayout,
         Index(BN, BK) if transpose_b else Index(BK, BN),
@@ -948,7 +948,7 @@ def matmul_sm100_fallback[
         a_tma_op,
         b_tma_op,
         c,
-        ceildiv(K, BK),
+        Int32(ceildiv(K, BK)),
         grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
         block_dim=(block_dim),
         shared_mem_bytes=smem_use,

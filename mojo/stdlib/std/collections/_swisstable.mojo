@@ -214,7 +214,7 @@ struct Group(Copyable, Movable):
 def _all_trivial_del[*Ts: AnyType]() -> Bool:
     """Return whether every type in `Ts` is trivially destructible.
 
-    Returns `False` for any type that is not `ImplicitlyDeletable` (for example
+    Returns `False` for any type that is not `Deinitable` (for example
     `@explicit_destroy` types) or that has a non-trivial destructor.
     """
     comptime for i in range(Ts.length):
@@ -226,7 +226,7 @@ def _all_trivial_del[*Ts: AnyType]() -> Bool:
 @fieldwise_init
 @explicit_destroy(
     "Use `deinit_with()` to explicitly destroy a `SwissTableEntry` with"
-    " non-`ImplicitlyDeletable` keys or values"
+    " non-`Deinitable` keys or values"
 )
 struct SwissTableEntry[
     K: KeyElement,
@@ -234,9 +234,7 @@ struct SwissTableEntry[
     H: Hasher,
 ](
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
-    ImplicitlyDeletable where conforms_to(
-        K, ImplicitlyDeletable
-    ) and conforms_to(V, ImplicitlyDeletable),
+    Deinitable where conforms_to(K, Deinitable) and conforms_to(V, Deinitable),
     Movable,
 ):
     """Store a key-value pair entry inside a Swiss Table-based collection.
@@ -251,7 +249,7 @@ struct SwissTableEntry[
 
     # TODO(MOCO-4228)
     comptime __del__is_trivial = _all_trivial_del[Self.K, Self.V]()
-    """The explicit `__del__` below would otherwise mark this type
+    """The explicit `__deinit__` below would otherwise mark this type
     non-trivially-destructible even when `K` and `V` are trivial."""
 
     var _hash: UInt64
@@ -292,15 +290,13 @@ struct SwissTableEntry[
         self.value = value^
 
     # TODO(MOCO-4228): Let the compiler synthesize this method
-    def __del__(
+    def __deinit__(
         deinit self,
-    ) where conforms_to(Self.K, ImplicitlyDeletable) and conforms_to(
-        Self.V, ImplicitlyDeletable
-    ):
+    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
         """Destroy the entry's key and value.
 
         Constraints:
-            Both `K` and `V` must be `ImplicitlyDeletable`. When either is not,
+            Both `K` and `V` must be `Deinitable`. When either is not,
             the entry has no implicit destructor and must be torn down with
             `deinit_with()`.
         """
@@ -319,11 +315,11 @@ struct SwissTableEntry[
 
     def reap_key(
         deinit self,
-    ) -> Self.K where conforms_to(Self.V, ImplicitlyDeletable):
+    ) -> Self.K where conforms_to(Self.V, Deinitable):
         """Take the key from an owned entry, discarding hash and value.
 
         Constraints:
-            `V` must be `ImplicitlyDeletable`, since the value is discarded.
+            `V` must be `Deinitable`, since the value is discarded.
 
         Returns:
             The key of the entry.
@@ -332,11 +328,11 @@ struct SwissTableEntry[
 
     def reap_value(
         deinit self,
-    ) -> Self.V where conforms_to(Self.K, ImplicitlyDeletable):
+    ) -> Self.V where conforms_to(Self.K, Deinitable):
         """Take the value from an owned entry.
 
         Constraints:
-            `K` must be `ImplicitlyDeletable`, since the key is discarded.
+            `K` must be `Deinitable`, since the key is discarded.
 
         Returns:
             The value of the entry.
@@ -351,7 +347,7 @@ struct SwissTableEntry[
 
 @explicit_destroy(
     "Use `deinit_with()` to explicitly destroy a `SwissTable` with"
-    " non-`ImplicitlyDeletable` keys or values"
+    " non-`Deinitable` keys or values"
 )
 struct SwissTable[
     K: KeyElement,
@@ -359,9 +355,7 @@ struct SwissTable[
     H: Hasher = default_hasher,
 ](
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
-    ImplicitlyDeletable where conforms_to(
-        K, ImplicitlyDeletable
-    ) and conforms_to(V, ImplicitlyDeletable),
+    Deinitable where conforms_to(K, Deinitable) and conforms_to(V, Deinitable),
     Movable,
 ):
     """Raw Swiss Table providing the hash table core for Dict and HashMap.
@@ -479,15 +473,13 @@ struct SwissTable[
                     copy=(copy._slots.unsafe_offset(i))[]
                 )
 
-    def __del__(
+    def __deinit__(
         deinit self,
-    ) where conforms_to(Self.K, ImplicitlyDeletable) and conforms_to(
-        Self.V, ImplicitlyDeletable
-    ):
+    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
         """Destroy all entries and free memory.
 
         Constraints:
-            Both `K` and `V` must be `ImplicitlyDeletable`. When either is not,
+            Both `K` and `V` must be `Deinitable`. When either is not,
             the table has no implicit destructor and must be torn down with
             `deinit_with()`.
         """
@@ -500,7 +492,7 @@ struct SwissTable[
         """Deinitializes all entries with a caller-provided closure, then free memory.
 
         Use this to tear down a `SwissTable` whose keys or values are not
-        `ImplicitlyDeletable`. The closure is called once per occupied entry.
+        `Deinitable`. The closure is called once per occupied entry.
 
         Args:
             deinit_func: A closure that consumes each entry's key and value.
@@ -512,26 +504,24 @@ struct SwissTable[
         """Free the control and slot arrays without touching entry contents.
 
         The caller must have already destroyed or moved out every occupied
-        entry (see `__del__` and `deinit_with`).
+        entry (see `__deinit__` and `deinit_with`).
         """
         if self._capacity > 0:
             dealloc(
-                ThinAllocation(
-                    unsafe_assume_ownership=self._ctrl
-                ).unsafe_with_layout({count = self._capacity + GROUP_WIDTH})
+                ThinAllocation(unsafe_owned_ptr=self._ctrl).unsafe_with_layout(
+                    {count = self._capacity + GROUP_WIDTH}
+                )
             )
             dealloc(
-                ThinAllocation(
-                    unsafe_assume_ownership=self._slots
-                ).unsafe_with_layout({count = self._capacity})
+                ThinAllocation(unsafe_owned_ptr=self._slots).unsafe_with_layout(
+                    {count = self._capacity}
+                )
             )
 
     @always_inline
     def _delete_occupied_entries(
         mut self,
-    ) where conforms_to(Self.K, ImplicitlyDeletable) and conforms_to(
-        Self.V, ImplicitlyDeletable
-    ):
+    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
         """Run destructors on every occupied slot.
 
         Skips the loop entirely when the entry type is trivially destructible.
@@ -539,10 +529,10 @@ struct SwissTable[
         This leaves `_ctrl`, `_len`, and `_capacity` unchanged, so the table is
         in an invalid state afterward: the caller must either reset the control
         bytes (see `clear`) or be about to free the backing storage (see
-        `__del__`).
+        `__deinit__`).
 
         Constraints:
-            Both `K` and `V` must be `ImplicitlyDeletable`, since entries are
+            Both `K` and `V` must be `Deinitable`, since entries are
             destroyed in place.
         """
         comptime if not is_trivially_deletable[
@@ -724,13 +714,11 @@ struct SwissTable[
 
     def clear(
         mut self,
-    ) where conforms_to(Self.K, ImplicitlyDeletable) and conforms_to(
-        Self.V, ImplicitlyDeletable
-    ):
+    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
         """Remove all elements, destroying occupied entries.
 
         Constraints:
-            Both `K` and `V` must be `ImplicitlyDeletable`, since every entry is
+            Both `K` and `V` must be `Deinitable`, since every entry is
             destroyed in place.
         """
         if self._capacity == 0:
@@ -815,14 +803,14 @@ struct SwissTable[
 
         if old_capacity > 0:
             dealloc(
-                ThinAllocation(
-                    unsafe_assume_ownership=old_ctrl
-                ).unsafe_with_layout({count = old_capacity + GROUP_WIDTH})
+                ThinAllocation(unsafe_owned_ptr=old_ctrl).unsafe_with_layout(
+                    {count = old_capacity + GROUP_WIDTH}
+                )
             )
             dealloc(
-                ThinAllocation(
-                    unsafe_assume_ownership=old_slots
-                ).unsafe_with_layout({count = old_capacity})
+                ThinAllocation(unsafe_owned_ptr=old_slots).unsafe_with_layout(
+                    {count = old_capacity}
+                )
             )
 
         return relocations^

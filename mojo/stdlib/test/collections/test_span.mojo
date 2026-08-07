@@ -16,11 +16,10 @@ from std.testing import assert_equal, assert_raises, assert_true, assert_false
 from test_utils import MoveOnly, check_write_to
 from std.math import iota
 from std.hashlib import Hasher
-from std.collections import ImmSpan, MutSpan
 
 
 def test_span_list_int() raises:
-    var l = [1, 2, 3, 4, 5, 6, 7]
+    var l: List = [1, 2, 3, 4, 5, 6, 7]
     var s = Span(list=l)
     assert_equal(len(s), len(l))
     for i in range(len(s)):
@@ -132,7 +131,7 @@ def test_span_slice() raises:
     var s = Span(l)
     var res = s[1:2]
     assert_equal(res[0], 2)
-    res = s[1:-1]
+    res = s[1 : len(l) - 1]
     assert_equal(res[0], 2)
     assert_equal(res[1], 3)
     assert_equal(res[2], 4)
@@ -157,8 +156,8 @@ def test_bool() raises:
 
 
 def test_contains() raises:
-    items: List[Byte] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-    span = Span(items)
+    var items: List[Byte] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    var span = Span(items)
     assert_true(0 not in span)
     assert_true(16 not in span)
     for item in items:
@@ -185,7 +184,7 @@ def test_equality() raises:
     # different pointer
     assert_true(sp == sp3)
     # different length
-    assert_true(sp != sp3[:-1])
+    assert_true(sp != sp3[0 : len(l2) - 1])
     # empty
     assert_true(sp[0:0] == sp3[0:0])
 
@@ -204,7 +203,7 @@ def test_fill() raises:
 def test_fill_bytes() raises:
     # Exercises the single-byte `memset` fast path in `Span.fill`: a non-zero
     # pattern, a length past the SIMD width (tail handling), and zeroing.
-    var a = InlineArray[Byte, 37](fill=0)
+    var a = Array[Byte, 37](fill=0)
     var s = Span(array=a)
 
     s.fill(0xAB)
@@ -217,7 +216,7 @@ def test_fill_bytes() raises:
 
 
 def test_fill_empty() raises:
-    var a = InlineArray[Byte, 4](fill=0)
+    var a = Array[Byte, 4](fill=0)
     var s = Span(array=a)
     var empty = s[0:0]
     # Filling a zero-length span is a no-op and must not touch memory.
@@ -229,7 +228,7 @@ def test_fill_empty() raises:
 
 def test_fill_multibyte() raises:
     # Exercises the element-wise (non-`memset`) branch for a wider element type.
-    var a = InlineArray[Int32, 5](fill=0)
+    var a = Array[Int32, 5](fill=0)
     var s = Span(array=a)
 
     s.fill(-1)
@@ -284,8 +283,8 @@ def test_swap_elements() raises:
 
 
 def test_merge() raises:
-    var a = [1, 2, 3]
-    var b = [4, 5, 6]
+    var a: List = [1, 2, 3]
+    var b: List = [4, 5, 6]
 
     def inner(cond: Bool, mut a: List[Int], mut b: List[Int]):
         var either = Span(a) if cond else Span(b)
@@ -327,9 +326,9 @@ def test_reverse() raises:
             2,
             1,
         ]
-        s = Span(forward)
+        var s = Span(forward)
         s.reverse()
-        i = 0
+        var i = 0
         for num in s:
             assert_equal(num, backward[i])
             i += 1
@@ -357,7 +356,7 @@ def test_apply() raises:
         return (x % 2).eq(0)
 
     def _test[D: DType]() raises:
-        items: List[Scalar[D]] = [
+        var items: List[Scalar[D]] = [
             1,
             2,
             3,
@@ -378,8 +377,8 @@ def test_apply() raises:
             18,
             19,
         ]
-        twice = items.copy()
-        span = Span(twice)
+        var twice = items.copy()
+        var span = Span(twice)
         span.apply[func=_twice[D, ...]]()
         for i, item in enumerate(items):
             assert_true(span[i] == item * 2)
@@ -413,7 +412,7 @@ def test_count_func() raises:
 
     var data = Span([Byte(0), 1, 2, 1, 2, 1, 2])
     assert_equal(3, Int(data.count(is_2)))
-    assert_equal(2, Int(data[:-1].count(is_2)))
+    assert_equal(2, Int(data[0 : len(data) - 1].count(is_2)))
     assert_equal(1, Int(data[:3].count(is_2)))
 
 
@@ -623,7 +622,7 @@ def test_span_hashable() raises:
 
 
 @fieldwise_init
-struct HashableOnly(Hashable, ImplicitlyDeletable, Movable):
+struct HashableOnly(Deinitable, Hashable, Movable):
     var value: Int
 
     def __hash__(self, mut hasher: Some[Hasher]):
@@ -631,23 +630,23 @@ struct HashableOnly(Hashable, ImplicitlyDeletable, Movable):
 
 
 def test_span_hashable_non_copyable() raises:
-    var ptr = alloc[HashableOnly](2)
+    var ptr = alloc[HashableOnly]({count = 2}).unsafe_leak()
     ptr.unsafe_write(HashableOnly(1))
-    (ptr + 1).unsafe_write(HashableOnly(2))
+    ptr.unsafe_offset(1).unsafe_write(HashableOnly(2))
     var span = Span(unsafe_ptr=ptr, length=2)
     _ = hash(span)
-    (ptr + 1).unsafe_deinit_pointee()
+    ptr.unsafe_offset(1).unsafe_deinit_pointee()
     ptr.unsafe_deinit_pointee()
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_span_with_move_only_type() raises:
-    var ptr = alloc[MoveOnly[Int]](1)
+    var ptr = alloc[MoveOnly[Int]]({count = 1}).unsafe_leak()
     ptr.unsafe_write(MoveOnly(42))
     var span = Span(unsafe_ptr=ptr, length=1)
     assert_equal(span[0].data, 42)
     ptr.unsafe_deinit_pointee()
-    ptr.free()
+    ptr.unsafe_free()
 
 
 struct NonMovable:
@@ -655,9 +654,9 @@ struct NonMovable:
 
 
 def test_span_with_non_movable_type() raises:
-    var ptr = alloc[NonMovable](1)
+    var ptr = alloc[NonMovable]({count = 1}).unsafe_leak()
     var _span = Span(unsafe_ptr=ptr, length=0)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_span_iter_owned() raises:

@@ -14,8 +14,9 @@
 from std.math import align_down, ceildiv
 
 from std.algorithm.functional import tile_and_unswitch
-from std.gpu import barrier, global_idx, thread_idx
-from std.gpu.host import DeviceContext
+from std.gpu import global_idx, thread_idx
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from layout import TileTensor, Coord, Idx, row_major
 from std.memory import unsafe_stack_allocation
 from std.testing import assert_false
@@ -30,9 +31,9 @@ def matmul_sram(
     a_ptr: UnsafePointer[Float32, MutAnyOrigin],
     b_ptr: UnsafePointer[Float32, MutAnyOrigin],
     c_ptr: UnsafePointer[Float32, MutAnyOrigin],
-    M: Int,
-    N: Int,
-    K: Int,
+    M_dev: Int32,
+    N_dev: Int32,
+    K_dev: Int32,
 ):
     """Matrix Multiplication using shared memory.
     This version loads blocks of size tile_size x tile_size from A and B
@@ -44,25 +45,25 @@ def matmul_sram(
     access.
     """
 
+    # `Int` is not device-passable; widen the fixed-width args.
+    var M = Int(M_dev)
+    var N = Int(N_dev)
+    var K = Int(K_dev)
     var a = TileTensor(a_ptr, row_major(Coord(M, K)))
     var b = TileTensor(b_ptr, row_major(Coord(K, N)))
     var c = TileTensor(c_ptr, row_major(Coord(M, N)))
 
     # Allocate A, B tile in shared memory.
-    var a_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            tile_size * tile_size,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
-    var b_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            tile_size * tile_size,
-            DType.float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var a_shared = unsafe_stack_allocation[
+        tile_size * tile_size,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
+    var b_shared = unsafe_stack_allocation[
+        tile_size * tile_size,
+        DType.float32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     # Global index in C.
     # These are the same indices in A and B when loading to SRAM.
@@ -162,9 +163,9 @@ def run_matmul(ctx: DeviceContext) raises:
         a_device,
         b_device,
         c_device,
-        M,
-        N,
-        K,
+        Int32(M),
+        Int32(N),
+        Int32(K),
         grid_dim=(ceildiv(N, tile_size), ceildiv(M, tile_size)),
         block_dim=(tile_size, tile_size),
     )

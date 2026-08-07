@@ -12,7 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 """Implements KV-cache kernels for ragged (variable-length) sequences used in continuous batching."""
 
-from std.sys.info import _current_target, simd_width_of
+from std.sys.info import (
+    _current_target,
+    has_amd_gpu_accelerator,
+    simd_width_of,
+)
 from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.memory import ThinAllocation, dealloc
@@ -22,9 +26,9 @@ from std.algorithm.functional import unswitch
 
 from max.algorithm.functional import elementwise
 from std.gpu import global_idx
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.host.info import is_cpu, is_gpu
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host.info import is_cpu, is_gpu
+from max.gpu.primitives.grid_controls import PDLLevel
 from std.collections import Optional, OptionalReg
 from kv_cache.types import (
     ContinuousBatchingKVCacheCollection,
@@ -53,6 +57,7 @@ from layout import (
 from linalg.matmul import elementwise_epilogue_type, matmul
 from linalg.fp8_quantization import blockwise_scaled_fp8_with_epilogue
 from linalg.fp4_quantization import block_scaled_matmul
+from linalg.matmul.gpu.amd import mxfp4_block_scaled_matmul_amd
 from internal_utils.fp8_utils import cast_saturating
 from nn._ragged_utils import get_batch_from_row_offsets
 from nn.attention.cpu.mha import (
@@ -68,6 +73,7 @@ from nn.attention.mha_utils import (
     MHAConfig,
     as_dynamic_row_major_1d,
     dispatch_mask,
+    dispatch_relative_logits_mask,
 )
 from nn.attention.gpu.mla import (
     _k_cache_to_buffer,
@@ -917,13 +923,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
             )
             return
 
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
 
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
         var h_idx: Int
         var hd_idx: Int
@@ -1056,13 +1064,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
             )
             return
 
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
 
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
         var h_idx: Int
         var hd_idx: Int
@@ -1236,13 +1246,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             )
             return
 
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
 
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
         var h_idx: Int
         var hd_idx: Int
@@ -1379,13 +1391,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
             )
             return
 
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
 
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
         var h_idx: Int
         var hd_idx: Int
@@ -2291,7 +2305,7 @@ def _matmul_common[
 
     comptime if is_cpu[target]():
         dealloc(
-            ThinAllocation(unsafe_assume_ownership=c_nd.ptr).unsafe_with_layout(
+            ThinAllocation(unsafe_owned_ptr=c_nd.ptr).unsafe_with_layout(
                 c_alloc_layout
             )
         )
@@ -2498,6 +2512,35 @@ def _matmul_blockwise_scaled_fp4_common[
     # before any dependent grid runs. The upstream RMSNorm-block-scaled and
     # downstream attention kernels already default `PDLLevel.ON`; keeping this
     # GEMM OFF forced a full serialization bubble on both sides.
+    # AMD reaches the same band-routing epilogue through its own block-scaled
+    # kernel: `block_scaled_matmul` is SM10x/SM12x only, and the AMD kernel
+    # consumes rank-2 E8M0 scales and raw byte operands rather than the SM100
+    # SF-atom layout. The per-block scales already carry the whole scaling, so
+    # there is no `tensor_sf` to apply.
+    #
+    # The callee bottoms out in `cdna4_block_scaled_mfma`, so this needs CDNA4
+    # (gfx950) in practice; the gate is any-AMD to match the predicate used
+    # across the rest of the AMD kernels.
+    comptime if has_amd_gpu_accelerator():
+        if tensor_sf != 1.0:
+            raise Error(
+                "CDNA4 block-scaled fused QKV+index expects a unit tensor"
+                " scale; MXFP8 carries all scaling in the E8M0 blocks."
+            )
+        comptime assert (
+            scales_dtype == DType.float8_e8m0fnu
+        ), "CDNA4 block-scaled fused QKV+index requires E8M0 scales"
+        return mxfp4_block_scaled_matmul_amd[
+            lane_bytes=32, elementwise_lambda_fn=elementwise_lambda_fn
+        ](
+            c_tt,
+            lt_to_tt(hidden_state).bitcast[DType.uint8](),
+            lt_to_tt(weight).bitcast[DType.uint8](),
+            a_scales_tt.bitcast[DType.float8_e8m0fnu](),
+            b_scales_tt.bitcast[DType.float8_e8m0fnu](),
+            context,
+        )
+
     block_scaled_matmul[
         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
         transpose_b=True,
@@ -2631,9 +2674,9 @@ def _matmul_kv_cache_ragged[
         context: Pointer containing the runtime context for the target device.
     """
     var cuda_ctx: Optional[DeviceContext] = None
-    layer_idx_cast = Int(layer_idx)
-    k_cache = kv_collection.get_key_cache(layer_idx_cast)
-    v_cache = kv_collection.get_value_cache(layer_idx_cast)
+    var layer_idx_cast = Int(layer_idx)
+    var k_cache = kv_collection.get_key_cache(layer_idx_cast)
+    var v_cache = kv_collection.get_value_cache(layer_idx_cast)
 
     comptime if is_gpu[target]():
         cuda_ctx = context
@@ -2696,11 +2739,11 @@ def _matmul_kv_cache_ragged_impl[
 
     comptime kv_params = cache_t.kv_params
 
-    batch_size = input_row_offsets.dim[0]() - 1
+    var batch_size = input_row_offsets.dim[0]() - 1
 
     # Set the matmul_common output lambda to write to K cache for the first N
     # elements and V cache for the next N.
-    k_offset = kv_params.head_size * kv_params.num_heads
+    var k_offset = kv_params.head_size * kv_params.num_heads
 
     @parameter
     @__copy_capture(input_row_offsets, k_offset, batch_size)
@@ -2720,13 +2763,18 @@ def _matmul_kv_cache_ragged_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
-        batch_idx = get_batch_from_row_offsets(
+        var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
+        var cache: cache_t
+        var h_idx: Int
+        var hd_idx: Int
         if idx[1] < k_offset:
             # Write this element to the K cache.
             cache = k_cache
@@ -2736,8 +2784,8 @@ def _matmul_kv_cache_ragged_impl[
             cache = v_cache
             h_idx, hd_idx = udivmod(idx[1] - k_offset, kv_params.head_size)
 
-        cache_length = cache.cache_length(batch_idx)
-        cache_token_idx = token_idx + cache_length
+        var cache_length = cache.cache_length(batch_idx)
+        var cache_token_idx = token_idx + cache_length
         cache.store(
             batch_idx,
             h_idx,
@@ -2747,8 +2795,8 @@ def _matmul_kv_cache_ragged_impl[
         )
 
     # Cast to a register passable dtype so the function closure works on GPU.
-    k_cache_reg = rebind[cache_t](k_cache)
-    v_cache_reg = rebind[cache_t](v_cache)
+    var k_cache_reg = rebind[cache_t](k_cache)
+    var v_cache_reg = rebind[cache_t](v_cache)
 
     @parameter
     @__copy_capture(k_cache_reg, v_cache_reg)
@@ -2881,8 +2929,8 @@ def _matmul_k_cache_ragged[
         context: Pointer containing the runtime context for the target device.
     """
     var cuda_ctx: Optional[DeviceContext] = None
-    layer_idx_cast = Int(layer_idx)
-    k_cache = kv_collection.get_key_cache(layer_idx_cast)
+    var layer_idx_cast = Int(layer_idx)
+    var k_cache = kv_collection.get_key_cache(layer_idx_cast)
 
     comptime if is_gpu[target]():
         cuda_ctx = context
@@ -2933,7 +2981,7 @@ def _matmul_k_cache_ragged_impl[
 
     comptime kv_params = cache_t.kv_params
 
-    batch_size = input_row_offsets.dim[0]() - 1
+    var batch_size = input_row_offsets.dim[0]() - 1
 
     @parameter
     @__copy_capture(batch_size)
@@ -2948,17 +2996,19 @@ def _matmul_k_cache_ragged_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
-        batch_idx = get_batch_from_row_offsets(
+        var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
-        h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+        var h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
 
-        cache_length = k_cache.cache_length(batch_idx)
-        cache_token_idx = token_idx + cache_length
+        var cache_length = k_cache.cache_length(batch_idx)
+        var cache_token_idx = token_idx + cache_length
         k_cache.store(
             batch_idx,
             h_idx,
@@ -3328,9 +3378,9 @@ def _unfused_qkv_matmul_ragged_paged_gguf_quantized_impl[
     ],
     context: DeviceContext,
 ) raises:
-    layer_idx_cast = Int(layer_idx)
-    k_cache = kv_collection.get_key_cache(layer_idx_cast)
-    v_cache = kv_collection.get_value_cache(layer_idx_cast)
+    var layer_idx_cast = Int(layer_idx)
+    var k_cache = kv_collection.get_key_cache(layer_idx_cast)
+    var v_cache = kv_collection.get_value_cache(layer_idx_cast)
 
     comptime cache_t = PagedKVCache[
         DType.float32,
@@ -3341,8 +3391,8 @@ def _unfused_qkv_matmul_ragged_paged_gguf_quantized_impl[
         kv_collection.lookup_table_origin,
         kv_collection.scales_origin,
     ]
-    k_cache_reg = rebind[cache_t](k_cache)
-    v_cache_reg = rebind[cache_t](v_cache)
+    var k_cache_reg = rebind[cache_t](k_cache)
+    var v_cache_reg = rebind[cache_t](v_cache)
 
     _matmul_kv_cache_ragged_gguf_quantized_impl[
         cache_t,
@@ -3449,7 +3499,7 @@ def _qmatmul_k_or_v_cache_ragged_gguf_quantized_impl[
 ) raises:
     comptime kv_params = cache_t.kv_params
 
-    batch_size = input_row_offsets.dim[0]() - 1
+    var batch_size = input_row_offsets.dim[0]() - 1
 
     @parameter
     @__copy_capture(input_row_offsets, batch_size)
@@ -3464,19 +3514,21 @@ def _qmatmul_k_or_v_cache_ragged_gguf_quantized_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        global_token_idx = idx[0]
+        var global_token_idx = idx[0]
 
-        batch_idx = get_batch_from_row_offsets(
+        var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
-        token_idx = Int(UInt32(global_token_idx) - input_row_offsets[batch_idx])
+        var token_idx = Int(
+            UInt32(global_token_idx) - input_row_offsets[batch_idx]
+        )
 
         # Write this element to the K or V cache.
-        cache = k_or_v_cache
-        h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+        var cache = k_or_v_cache
+        var h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
 
-        cache_length = cache.cache_length(batch_idx)
-        cache_token_idx = token_idx + cache_length
+        var cache_length = cache.cache_length(batch_idx)
+        var cache_token_idx = token_idx + cache_length
 
         cache.store(
             batch_idx,
@@ -3534,7 +3586,7 @@ def _qmatmul_gguf_quantized_alloc_output[
     ](hidden_state, weight, c_nd)
 
     dealloc(
-        ThinAllocation(unsafe_assume_ownership=c_ptr).unsafe_with_layout(
+        ThinAllocation(unsafe_owned_ptr=c_ptr).unsafe_with_layout(
             AllocLayout[Float32](count=TOTAL_SEQ_LEN * N)
         )
     )
@@ -3834,6 +3886,70 @@ def generic_flash_attention_kv_cache_ragged[
         )
 
 
+@always_inline
+def _launch_flash_attention_with_mask[
+    dtype: DType,
+    cache_t: KVCacheT,
+    mask_t: MHAMask,
+    //,
+    *,
+    target: StaticString,
+    output_dtype: DType = dtype,
+    sink: Bool = False,
+](
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
+    input_row_offsets: LayoutTensor[
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+    ],
+    k: cache_t,
+    v: cache_t,
+    mask: mask_t,
+    scale: Float32,
+    output: LayoutTensor[
+        mut=True, output_dtype, address_space=AddressSpace.GENERIC, ...
+    ],
+    context: DeviceContext,
+    decode_dispatch_metadata: MHADecodeDispatchMetadata,
+    sink_weights: OptionalReg[
+        LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
+    ] = None,
+) raises:
+    if q.dim[0]() == 0:
+        return
+
+    comptime if is_cpu[target]():
+        comptime assert output_dtype == dtype, (
+            "CPU flash attention requires output dtype == q dtype;"
+            " the distinct-output-dtype (fp8->bf16) path is GPU-only."
+        )
+        return flash_attention_kv_cache_cpu(
+            q,
+            input_row_offsets,
+            input_row_offsets,
+            k,
+            v,
+            mask,
+            scale,
+            output.bitcast[dtype](),
+            sink_weights,
+        )
+    else:
+        gpu_flash_attention[ragged=True, sink=sink](
+            output,
+            q,
+            k,
+            v,
+            mask,
+            input_row_offsets,
+            scale,
+            context,
+            sink_weights=sink_weights,
+            decode_dispatch_metadata=OptionalReg[MHADecodeDispatchMetadata](
+                decode_dispatch_metadata
+            ),
+        )
+
+
 def _flash_attention_dispatch[
     dtype: DType,
     collection_t: KVCollectionT,
@@ -3863,47 +3979,27 @@ def _flash_attention_dispatch[
     var k = kv_cache.get_key_cache(Int(layer_idx))
     var v = kv_cache.get_value_cache(Int(layer_idx))
 
-    var has_inputs = q.dim[0]() > 0
-    if not has_inputs:
-        # no-op if there are no inputs
-        return
-
     @parameter
     @__copy_capture(k, v)
     def _dispatch_flash_attention[mask_t: MHAMask](mask: mask_t) raises:
         @parameter
         def call_flash_attention[sink: Bool]() raises:
-            comptime if is_cpu[target]():
-                comptime assert output_dtype == dtype, (
-                    "CPU flash attention requires output dtype == q dtype;"
-                    " the distinct-output-dtype (fp8->bf16) path is GPU-only."
-                )
-                return flash_attention_kv_cache_cpu(
-                    q,
-                    input_row_offsets,
-                    input_row_offsets,
-                    k,
-                    v,
-                    mask,
-                    scale,
-                    output.bitcast[dtype](),
-                    sink_weights,
-                )
-            else:
-                gpu_flash_attention[ragged=True, sink=sink](
-                    output,
-                    q,
-                    k,
-                    v,
-                    mask,
-                    input_row_offsets,
-                    scale,
-                    context,
-                    sink_weights=sink_weights,
-                    decode_dispatch_metadata=OptionalReg[
-                        MHADecodeDispatchMetadata
-                    ](decode_dispatch_metadata),
-                )
+            return _launch_flash_attention_with_mask[
+                target=target,
+                output_dtype=output_dtype,
+                sink=sink,
+            ](
+                q,
+                input_row_offsets,
+                k,
+                v,
+                mask,
+                scale,
+                output,
+                context,
+                decode_dispatch_metadata,
+                sink_weights,
+            )
 
         unswitch[call_flash_attention](Bool(sink_weights))
 
@@ -3912,6 +4008,109 @@ def _flash_attention_dispatch[
         _dispatch_flash_attention,
         local_window_size,
     ]()
+
+
+@always_inline
+def generic_flash_attention_kv_cache_ragged_rel_logits[
+    collection_t: KVCollectionT,
+    dtype: DType,
+    //,
+    *,
+    target: StaticString,
+    local_window_size: Int = -1,
+    output_dtype: DType = dtype,
+](
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
+    input_row_offsets: LayoutTensor[
+        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    ],
+    kv_collection: collection_t,
+    layer_idx: UInt32,
+    scale: Float32,
+    bias: LayoutTensor[
+        mut=False, dtype, address_space=AddressSpace.GENERIC, ...
+    ],
+    cache_lengths: LayoutTensor[
+        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    ],
+    output: LayoutTensor[
+        mut=True, output_dtype, address_space=AddressSpace.GENERIC, ...
+    ],
+    context: DeviceContext,
+    decode_dispatch_metadata: MHADecodeDispatchMetadata,
+) raises:
+    """Flash attention over a ragged batch with a relative-position bias.
+
+    `bias` is gathered by `rel_dist = q_pos - k_pos` inside the kernel via
+    `RelativeLogitsMask`; `local_window_size` picks the visibility mask
+    (`-1` -> global causal). `cache_lengths` is the same tensor used to build
+    `kv_collection`, passed again so the mask can recover each query's
+    ragged-flat row into `bias` (the collection only exposes a per-sequence
+    scalar accessor, not the raw tensor).
+    """
+
+    @always_inline
+    @parameter
+    def description_fn() -> String:
+        var desc_parts = List[String]()
+        desc_parts.append(trace_arg("q", q.runtime_layout.shape.value))
+        desc_parts.append("scale=" + String(scale))
+        desc_parts.append("layer_idx=" + String(layer_idx))
+        desc_parts.append(
+            "num_heads=" + String(collection_t.kv_params.num_heads)
+        )
+        desc_parts.append(
+            "head_size=" + String(collection_t.kv_params.head_size)
+        )
+        desc_parts.append("local_window_size=" + String(local_window_size))
+        desc_parts.append("relative_position_bias=True")
+        return String(";").join(desc_parts)
+
+    comptime name = "mo.mha.ragged." + collection_t.name_str + ".rel_logits.nhead_" + String(
+        collection_t.kv_params.num_heads
+    ) + ".hdim_" + String(
+        collection_t.kv_params.head_size
+    )
+
+    var k = kv_collection.get_key_cache(Int(layer_idx))
+    var v = kv_collection.get_value_cache(Int(layer_idx))
+
+    @parameter
+    @__copy_capture(k, v)
+    def _dispatch_flash_attention[mask_t: MHAMask](mask: mask_t) raises:
+        return _launch_flash_attention_with_mask[
+            target=target,
+            output_dtype=output_dtype,
+        ](
+            q,
+            input_row_offsets,
+            k,
+            v,
+            mask,
+            scale,
+            output,
+            context,
+            decode_dispatch_metadata,
+        )
+
+    with Trace[TraceLevel.OP, target=target](
+        name,
+        Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.id()),
+    ):
+        return dispatch_relative_logits_mask[
+            _dispatch_flash_attention,
+            local_window_size,
+        ](
+            LayoutTensor[bias.dtype, bias.layout, bias.origin](
+                bias.ptr,
+                RuntimeLayout[bias.layout].row_major(
+                    bias.runtime_layout.shape.value.canonicalize()
+                ),
+            ),
+            cache_lengths,
+            input_row_offsets,
+        )
 
 
 @always_inline

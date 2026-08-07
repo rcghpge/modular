@@ -31,8 +31,8 @@ from std.math import align_down, align_up, ceildiv
 from std.itertools.itertools import product
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type
-from std.gpu.host.info import B200
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.info import B200
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.collections.set import Set
 
 from ...tile_scheduler import RasterOrder
@@ -572,14 +572,14 @@ def build_sm100_swiglu_heuristic_configs[
     var set = Set[config_t]()
 
     for m in range(8, 256, 8):
-        config = choose_swiglu_config[
+        var config = choose_swiglu_config[
             a_type, b_type, c_type, transpose_b, has_bias, register_swiglu
         ](m, N, K)
         if config not in set:
             set.add(config)
 
     for m in range(256, 8192 + 1, 64):
-        config = choose_swiglu_config[
+        var config = choose_swiglu_config[
             a_type, b_type, c_type, transpose_b, has_bias, register_swiglu
         ](m, N, K)
         if config not in set:

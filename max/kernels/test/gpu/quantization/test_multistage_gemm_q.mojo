@@ -19,13 +19,13 @@ from std.sys import align_of, argv, size_of
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_idx,
     thread_idx,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.intrinsics import lop
-from std.gpu.memory import external_memory
+from max.gpu.memory import external_memory
 
 from internal_utils import assert_almost_equal
 from std.random import rand
@@ -131,13 +131,11 @@ def repack_Q4_0_for_sm8x[
     )
 
     # We keep 128x2 Q4_0 GGUF blocks in smem
-    var smem = UnsafePointer(
-        external_memory[
-            UInt8,
-            address_space=AddressSpace.SHARED,
-            alignment=align_of[UInt8](),
-        ]()
-    )
+    var smem = external_memory[
+        UInt8,
+        address_space=AddressSpace.SHARED,
+        alignment=align_of[UInt8](),
+    ]()
     var qb_smem = LayoutTensor[
         DType.uint8,
         Layout.row_major(BN, 2 * group_bytes),
@@ -181,7 +179,9 @@ def repack_Q4_0_for_sm8x[
         )
         q_gmem_iter._incr()
         barrier()
-        q_warp_tile = qb_smem.tile[repack_tile[0], group_bytes](warp_x, warp_y)
+        var q_warp_tile = qb_smem.tile[repack_tile[0], group_bytes](
+            warp_x, warp_y
+        )
 
         if (BK_groups * block_idx[1] + i * 2 + warp_y) < K_groups:
             var frag_0: SIMD[DType.uint8, 16] = 0

@@ -37,12 +37,12 @@ from std.math.uutils import udivmod
 from std.sys import align_of, llvm_intrinsic, simd_width_of, size_of
 from std.sys._assembly import inlined_assembly
 
-from std.gpu.host import DeviceBuffer, DeviceContext
-from std.gpu.host._tensormap import (
+from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host._tensormap import (
     SwizzleMode as _SwizzleMode,
     create_tensormap_im2col as _create_tensormap_im2col,
 )
-from std.gpu.host.nvidia.tma import (
+from max.gpu.host.nvidia.tma import (
     TensorMapL2Promotion,
     TensorMapSwizzle,
     TMADescriptor,
@@ -50,7 +50,7 @@ from std.gpu.host.nvidia.tma import (
     prefetch_tma_descriptor,
 )
 from std.gpu.intrinsics import Scope
-from std.gpu.memory import (
+from max.gpu.memory import (
     ReduceOp,
     async_copy,
     cp_async_bulk_tensor_global_shared_cta,
@@ -64,7 +64,7 @@ from std.gpu.memory import (
     cp_async_bulk_tensor_2d_gather4,
     CacheEviction,
 )
-from std.gpu.sync import (
+from max.gpu.sync import (
     cp_async_bulk_commit_group,
     cp_async_bulk_wait_group,
     mbarrier_arrive,
@@ -5376,7 +5376,7 @@ struct TMATensorTileArray[
             index: Index of the TMA descriptor.
 
         Returns:
-            `UnsafePointer` to the `TMATensorTile` at the specified index.
+            `Pointer` to the `TMATensorTile` at the specified index.
         """
         return (
             (self.tensormaps_ptr + index * self.descriptor_bytes)
@@ -5534,10 +5534,10 @@ struct RaggedTMA3DTile[
         # (`depth` for group==1, `group*depth` for group>1), box 1. Each copy
         # issues coordinate `(ragged_idx + dynamic_dim)*middle_dim + middle_idx`
         # on it. This drops one descriptor rank everywhere.
-        merged_extent = Self.middle_dim * (rows + 1)
+        var merged_extent = Self.middle_dim * (rows + 1)
         comptime if Self.group > 1:
             # Fused GQA: gmem is 4D (rows, middle_dim, group, depth).
-            stride = Self.middle_dim * (Self.group * depth)
+            var stride = Self.middle_dim * (Self.group * depth)
             comptime if Self.tma_blocks_per_op > 0:
                 # Batched fused-GQA store: split `depth` into (n_blocks, K) and
                 # add a *blocks* box dim. Rank-5 dims (inner->outer) =
@@ -5593,7 +5593,7 @@ struct RaggedTMA3DTile[
                 )
         else:
             # group == 1: gmem is 3D (rows, middle_dim, depth).
-            stride = Self.middle_dim * depth
+            var stride = Self.middle_dim * depth
             comptime if Self.tma_blocks_per_op > 0:
                 # Batched store: split `depth` into (n_blocks, K) + blocks box.
                 # Rank-4 dims (inner->outer) = (K, BM, n_blocks, merged); the

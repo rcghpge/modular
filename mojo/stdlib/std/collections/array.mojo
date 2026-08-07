@@ -134,7 +134,7 @@ struct _ArrayIter[
         return (iter_len, {iter_len})
 
 
-struct _ArrayIterOwned[T: Movable & ImplicitlyDeletable, length: Int](
+struct _ArrayIterOwned[T: Movable & Deinitable, length: Int](
     IterableOwned, Iterator, Movable
 ):
     """An owning iterator for Array.
@@ -179,7 +179,7 @@ struct _ArrayIterOwned[T: Movable & ImplicitlyDeletable, length: Int](
         )
 
     @always_inline
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         # Move fields out of self so we can manage their lifetimes.
         var idx = self._index
         var array = self._array^
@@ -190,7 +190,7 @@ struct _ArrayIterOwned[T: Movable & ImplicitlyDeletable, length: Int](
             array.unsafe_ptr().unsafe_offset(idx), Self.length - idx
         )
 
-        # Mark the array as destroyed so Array.__del__ doesn't
+        # Mark the array as destroyed so Array.__deinit__ doesn't
         # double-destroy the elements we already handled.
         forget_deinit(array^)
 
@@ -216,21 +216,20 @@ struct _ArrayIterOwned[T: Movable & ImplicitlyDeletable, length: Int](
 
 @explicit_destroy(
     "Use `deinit_with()` to explicitly destroy an `Array` of"
-    " non-`ImplicitlyDeletable` elements"
+    " non-`Deinitable` elements"
 )
 @stable(since="1.0")
 struct Array[T: AnyType, length: Int](
     Copyable where conforms_to(T, Copyable),
-    Defaultable,
+    Deinitable where conforms_to(T, Deinitable),
     DevicePassable where conforms_to(T, DevicePassable) and conforms_to(
         T, Copyable
     ),
     Equatable where conforms_to(T, Equatable),
     Hashable where conforms_to(T, Hashable),
-    ImplicitlyDeletable where conforms_to(T, ImplicitlyDeletable),
     Iterable,
     # TODO(MOCO-4308): Remove redundant 'Movable' constraint
-    IterableOwned where conforms_to(T, Movable & ImplicitlyDeletable),
+    IterableOwned where conforms_to(T, Movable & Deinitable),
     Movable where conforms_to(T, Movable),
     Sized,
     Writable where conforms_to(T, Writable),
@@ -312,7 +311,7 @@ struct Array[T: AnyType, length: Int](
 
     # TODO(MOCO-4308): Remove redundant 'Movable' constraint
     comptime IteratorOwnedType: Iterator where conforms_to(
-        Self.T, Movable & ImplicitlyDeletable
+        Self.T, Movable & Deinitable
     ) = _ArrayIterOwned[Self.T, Self.length]
     """The owned iterator type for this array."""
 
@@ -350,17 +349,6 @@ struct Array[T: AnyType, length: Int](
     # ===------------------------------------------------------------------===#
     # Life cycle methods
     # ===------------------------------------------------------------------===#
-
-    @always_inline
-    def __init__(out self):
-        """This constructor will always cause a compile time error if used.
-        It is used to steer users away from uninitialized memory.
-        """
-        comptime assert False, (
-            "Initialize with either a variadic list of arguments, a default"
-            " fill element or pass the keyword argument"
-            " 'uninitialized=True'."
-        )
 
     @always_inline
     def __init__(out self, *, uninitialized: Bool):
@@ -582,9 +570,9 @@ struct Array[T: AnyType, length: Int](
                 )
 
     @stable(since="1.0")
-    def __del__(
+    def __deinit__(
         deinit self,
-    ) where conforms_to(Self.T, ImplicitlyDeletable):
+    ) where conforms_to(Self.T, Deinitable):
         """Destroys the array's elements."""
         unsafe_destroy_n(self.unsafe_ptr(), Self.length)
 
@@ -593,7 +581,7 @@ struct Array[T: AnyType, length: Int](
         closure.
 
         This can be used to deinitialize an `Array` of
-        non-`ImplicitlyDeletable` values.
+        non-`Deinitable` values.
 
         Args:
             deinit_func: The deinitializing closure called on each array
@@ -613,8 +601,9 @@ struct Array[T: AnyType, length: Int](
     # Operator dunders
     # ===------------------------------------------------------------------===#
 
+    @stable(since="1.0")
     @always_inline
-    def __getitem__(ref self, idx: Int) -> ref[self] Self.T:
+    def __getitem__(ref self, idx: Int, /) -> ref[self] Self.T:
         """Gets a reference to the element at the given index.
 
         Args:
@@ -656,9 +645,40 @@ struct Array[T: AnyType, length: Int](
         check_bounds(idx, len(self))
         return self._unchecked_get(idx)
 
+    @stable(since="1.0")
+    @always_inline
+    def __getitem_param__[idx: Int, /](ref self) -> ref[self] Self.T:
+        """Gets a reference to the element at the given index with compile-time
+        bounds checking.
+
+        Parameters:
+            idx: The compile-time constant index to access (0 to len-1).
+
+        Returns:
+            A reference to the element at the specified index.
+
+        Examples:
+
+        ```mojo
+        var arr: Array[Int, 3] = [1, 2, 3]
+        print(arr[0])            # Prints 1 - first element
+        print(arr[1])            # Prints 2 - second element
+        print(arr[len(arr) - 1]) # Prints 3 - last element
+        ```
+
+        Notes:
+            This overload provides array-style indexing with compile-time bounds
+            checking. The index must be a compile-time constant value.
+        """
+        comptime assert (
+            index(idx) >= 0
+        ), "negative indexing is not supported, use e.g. `x[len(x) - 1]`"
+        comptime assert index(idx) < Self.length, "index is out of bounds"
+        return self._unchecked_get(materialize[idx]())
+
     @always_inline
     def __getitem_param__[
-        idx: Some[Indexer & ImplicitlyDeletable]
+        idx: Some[Indexer & Deinitable]
     ](ref self) -> ref[self] Self.T:
         """Gets a reference to the element at the given index with compile-time
         bounds checking.
@@ -803,6 +823,7 @@ struct Array[T: AnyType, length: Int](
         return self._unchecked_get(idx)
 
     @always_inline
+    @stable(since="1.0")
     def unsafe_ptr[
         origin: Origin, address_space: AddressSpace, //
     ](ref[origin, address_space] self) -> Pointer[
@@ -927,9 +948,7 @@ struct Array[T: AnyType, length: Int](
     # TODO(MOCO-4308): Remove redundant 'Movable' constraint
     def __iter__(
         var self,
-    ) -> Self.IteratorOwnedType where conforms_to(
-        Self.T, Movable & ImplicitlyDeletable
-    ):
+    ) -> Self.IteratorOwnedType where conforms_to(Self.T, Movable & Deinitable):
         """Consume the array and return an iterator over its elements.
 
         Returns:

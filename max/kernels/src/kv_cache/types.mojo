@@ -14,7 +14,7 @@
 This module contains the types for the key-value cache APIs.
 
 The module includes structs implementing several different types of
-[KV caches](/glossary/ai/kv-cache).
+KV caches.
 
 This module defines two traits that define the roles of the different structs
 
@@ -23,9 +23,9 @@ This module defines two traits that define the roles of the different structs
 """
 
 from std.math import align_up
-from std.gpu.host import DeviceContext
-from std.gpu.host.nvidia.tma import TensorMapL2Promotion, TensorMapSwizzle
-from std.gpu.memory import (
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TensorMapL2Promotion, TensorMapSwizzle
+from max.gpu.memory import (
     CacheEviction,
     cp_async_bulk_tensor_shared_cluster_global_elect,
 )
@@ -1742,7 +1742,7 @@ struct ContinuousBatchingKVCache[
     @always_inline
     def row_idx(self, batch_idx: UInt32, tok_idx: UInt32) -> UInt32:
         """Returns the row idx when viewing the memory as a matrix."""
-        block_idx = self.lookup_table[Int(batch_idx)]
+        var block_idx = self.lookup_table[Int(batch_idx)]
         return block_idx * self._stride() + tok_idx
 
     @always_inline
@@ -2222,7 +2222,7 @@ struct PagedKVCache[
             " with lookup_table inner dim ",
             Int(self.lookup_table.dim[1]()),
         )
-        block_idx = self.lookup_table[Int(batch_idx), lut_block_index]
+        var block_idx = self.lookup_table[Int(batch_idx), lut_block_index]
         # alias row_stride = Int(num_heads * head_size * Self.collection_size)
         return block_idx * self._stride() + UInt32(tok_in_block_idx)
 
@@ -2648,7 +2648,7 @@ struct PagedKVCache[
             " with lookup_table inner dim ",
             Int(self.lookup_table.dim[1]()),
         )
-        block_idx = Int(self.lookup_table[bs, lut_block_idx])
+        var block_idx = Int(self.lookup_table[bs, lut_block_idx])
         return dyn_coord[DType.int64](
             (
                 block_idx,
@@ -2686,7 +2686,7 @@ struct PagedKVCache[
             " with lookup_table inner dim ",
             Int(self.lookup_table.dim[1]()),
         )
-        block_idx = Int(self.lookup_table[bs, lut_block_idx])
+        var block_idx = Int(self.lookup_table[bs, lut_block_idx])
         # floordiv: head_dim_idx is the *start* of the quantization block
         # (e.g. 0, 64, 128, …), so we want which block slot this maps to.
         # ceildiv would be wrong here: ceildiv(64, 64) == 1 (correct for the

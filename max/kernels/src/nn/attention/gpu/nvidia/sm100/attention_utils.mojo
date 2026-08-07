@@ -23,15 +23,14 @@ This module contains generic SM100 (Blackwell) GPU primitives including:
 
 from std.math import ceildiv, exp2, align_up, iota
 from std.math.constants import log2e
-from std.sys import size_of, _RegisterPackType
+from std.sys import size_of, _RegisterPackType, get_defined_bool
 from std.sys._assembly import inlined_assembly
 from std.sys.intrinsics import llvm_intrinsic
 from std.bit import prev_power_of_two, pop_count
 from std.gpu import block_idx
 from std.gpu.globals import WARP_SIZE
 from std.gpu.primitives.warp import broadcast
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import AddressSpace
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
     UMMAInsDescriptor,
     UMMAKind,
@@ -127,8 +126,8 @@ comptime MBarType = SharedMemPointer[SharedMemBarrier]
 def extract_power_of_two(N: Int, i: Int) -> Int:
     """Returns the `i`-th power-of-two component when decomposing `N` into decreasing powers of two.
     """
-    pt = prev_power_of_two(N)
-    rem = N
+    var pt = prev_power_of_two(N)
+    var rem = N
     for _ in range(i):
         rem -= pt
         pt = prev_power_of_two(rem)
@@ -138,10 +137,10 @@ def extract_power_of_two(N: Int, i: Int) -> Int:
 def cumulative_power_of_two(N: Int, i: Int) -> Int:
     """Returns the cumulative sum of the first `i` power-of-two components of `N`.
     """
-    acc = 0
-    rem = N
+    var acc = 0
+    var rem = N
     for _ in range(i):
-        pt = prev_power_of_two(rem)
+        var pt = prev_power_of_two(rem)
         acc += pt
         rem -= pt
     return acc
@@ -409,6 +408,30 @@ def pack_row[
 
 
 @always_inline
+def blasst_vote_unanimous(
+    blasst_vote: SharedMemPointer[UInt8], wg: UInt32, phase: UInt32
+) -> Bool:
+    """Reads the BLASST per-warp skip votes for `(wg, phase)` and ANDs them.
+
+    Shared by the softmax-side vote publisher (`blasst_observe`, which reads
+    back its own WG's vote right after publishing it) and the MMA-side
+    consumer (`blasst_should_skip`, which reads a vote published earlier by
+    the S-consumer pipeline's own synchronization). Only the read-back
+    itself is shared here -- each caller's surrounding synchronization
+    differs and stays local to that caller.
+    """
+    # One aligned 32-bit read replaces 4 byte reads + a short-circuit AND
+    # chain (which serializes the loads behind 3 branches). Legal because a
+    # `(wg, phase)` group's 4 slots are consecutive bytes at a 4-byte-aligned
+    # address (`blasst_vote_byte_offset` follows the UInt32 `tmem_addr`, and
+    # `base` is a multiple of 4) and every slot only ever holds 0 or 1
+    # (`kernel.mojo` zero-inits the region; `blasst_observe` writes 0/1), so
+    # "all four nonzero" == "the word is 0x01010101".
+    var base = (wg * UInt32(2) + phase) * UInt32(4)
+    return (blasst_vote + base).bitcast[UInt32]()[0] == UInt32(0x01010101)
+
+
+@always_inline
 def scale_pack_o_row[
     n: Int, //, output_type: DType, w: Int, start: Int = 0
 ](o_vals: Array[Scalar[DType.float32], n], inv_row_sum: Float32) -> SIMD[
@@ -531,8 +554,8 @@ def st_shared_v4_b32[
 
 @always_inline
 def _tmem_offset(dtype_size: Int, *, MMA_N: Int, m_mma: Int, n_mma: Int) -> Int:
-    row = 16 * m_mma
-    col = (MMA_N * n_mma * dtype_size) // 4
+    var row = 16 * m_mma
+    var col = (MMA_N * n_mma * dtype_size) // 4
     return (row << 16) + col
 
 
@@ -610,7 +633,7 @@ struct TMemTile[
         ].TensorType[Self.dtype],
     ):
         comptime assert Self.dtype_size <= 4
-        ptr = src.ptr.bitcast[UInt32]()
+        var ptr = src.ptr.bitcast[UInt32]()
         comptime st_mat_layout = STMatrixLayout[
             Self.BM,
             Self.BN,
@@ -634,7 +657,7 @@ struct TMemTile[
                         cumulative_repeat=offset,
                         m_mma=m_mma,
                     ]()
-                    tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
+                    var tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
                     var frag = Array[
                         Scalar[DType.uint32], offsets.local_frag_size_b32
                     ](uninitialized=True)
@@ -743,8 +766,8 @@ struct TMemTile[
                         cumulative_repeat=start_repeat + local_offset,
                         m_mma=m_mma,
                     ]()
-                    tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
-                    frag = tcgen05_ld[
+                    var tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
+                    var frag = tcgen05_ld[
                         datapaths=16,
                         bits=st_mat_layout.bits,
                         repeat=pow_two,
@@ -781,7 +804,7 @@ struct TMemTile[
         def load_fn[pow_two: Int, offset: Int]():
             comptime if pow_two > 0:
                 comptime if dtype == Self.dtype:
-                    frag0 = tcgen05_ld[
+                    var frag0 = tcgen05_ld[
                         datapaths=32,  # first dimension of the shape
                         bits=32,  # second dimension of the shape
                         repeat=pow_two,
@@ -793,7 +816,7 @@ struct TMemTile[
                     comptime for _i in range(pow_two):
                         dst[offset + _i] = frag0[_i]
                 else:
-                    frag1 = tcgen05_ld[
+                    var frag1 = tcgen05_ld[
                         datapaths=32,  # first dimension of the shape
                         bits=32,  # second dimension of the shape
                         repeat=pow_two,
@@ -1465,9 +1488,7 @@ def _build_mma[
     # Blocks use ABSOLUTE k-index `jj = k_start + k` (for full, `k_start=0`).
     #
     # Plain `if` (not `comptime if`) is used throughout: the whole function is
-    # comptime-evaluated, and plain `if` is function-scoped (Python-like) so
-    # bindings like `operands` survive past the branch -- a `comptime if` branch
-    # scope would hide them.
+    # comptime-evaluated, so a `comptime if` would add only a scope.
     # Pre-reserve so `mma` is heap-backed from the start: the comptime
     # interpreter cannot memcpy into a String's inline (SSO) buffer, so
     # appending a small fragment to a still-small string fails to interpret
@@ -1488,22 +1509,23 @@ def _build_mma[
     mma += "setp.eq.s32 %pj, $6, 0;\n"
 
     # Instruction mnemonic (no predicate prefix; that is applied per-block below).
-    instr = tcgen05_mma_type + kind if ws else (
+    var instr = tcgen05_mma_type + kind if ws else (
         "tcgen05.mma.cta_group::" + String(cta_group) + "." + kind
     )
     # Non-ws zero-column mask operand; absent for ws.
-    mask = (
+    var mask = (
         "{$1, $1, $1, $1}" if cta_group
         == 1 else "{$1, $1, $1, $1, $1, $1, $1, $1}"
     )
     # TMEM A column stride per k-mma (TS only).
-    a_stride = mma_k * operand_size // 4
+    var a_stride = mma_k * operand_size // 4
     # Operand slot holding the warp-uniform `valid_k_mmas` (partial only): A
     # consumes `$7,$8` for SS but only `$7` for TS, so the next free slot differs.
-    valid_op = 8 if a_tmem else 9
+    var valid_op = 8 if a_tmem else 9
 
+    var operands: String
     for k in range(num_k_mmas):
-        jj = k_start + k
+        var jj = k_start + k
         # Warp-uniform validity guard: true once an absolute k-index lands past
         # the loaded region. Block jj == 0 is always loaded (valid_k_mmas >= 1).
         if partial and jj != 0:
@@ -1517,16 +1539,18 @@ def _build_mma[
             # Absolute first block initializes the accumulator from c_scale ($3).
             mma += "setp.ne.b32 %ps, $3, 0;\n"
         else:
-            b_offset = (layout_b(IntTuple(0, mma_k * jj)) * operand_size) >> 4
+            var b_offset = (
+                layout_b(IntTuple(0, mma_k * jj)) * operand_size
+            ) >> 4
             if a_tmem:
-                a_offset = a_stride * jj
+                var a_offset = a_stride * jj
                 mma += String("add.s32 %ra, $7, ", a_offset, ";\n")
                 mma += "mov.b32 %rab, %ra;\n"
                 mma += String("add.s32 %rb, $4, ", b_offset, ";\n")
                 mma += "mov.b64 %rdb, {%rb, $5};\n"
             elif partial:
                 # SS-partial interleaving: A descriptor, then B descriptor.
-                a_offset = (
+                var a_offset = (
                     layout_a(IntTuple(0, mma_k * jj)) * operand_size
                 ) >> 4
                 mma += String("add.s32 %ra, $7, ", a_offset, ";\n")
@@ -1535,7 +1559,7 @@ def _build_mma[
                 mma += "mov.b64 %rdb, {%rb, $5};\n"
             else:
                 # SS-full interleaving: both `add`s first, then both `mov`s.
-                a_offset = (
+                var a_offset = (
                     layout_a(IntTuple(0, mma_k * jj)) * operand_size
                 ) >> 4
                 mma += String("add.s32 %ra, $7, ", a_offset, ";\n")
@@ -1549,7 +1573,7 @@ def _build_mma[
 
         # Result + operand list.
         if a_tmem:
-            a_op = "$7" if jj == 0 else "%rab"
+            var a_op = "$7" if jj == 0 else "%rab"
             operands = String(" [$0], [", a_op, "], %rdb, $2, ")
         else:
             operands = String(" [$0], %rda, %rdb, $2, ")
@@ -2549,17 +2573,17 @@ def exp2_emulation[
     """
     comptime if use_exp2_emulation:
         comptime fp32_round_int = SIMD[DType.float32, 2]((1 << 23) + (1 << 22))
-        clamped = max(x, -FP32_EXP_BIAS)
+        var clamped = max(x, -FP32_EXP_BIAS)
         # We want to round down here, so that the fractional part is in [0, 1)
-        rounded = add_ftz_rm(clamped, fp32_round_int)
-        rounded_back = sub_ftz(rounded, fp32_round_int)
-        frac = sub_ftz(clamped, rounded_back)
+        var rounded = add_ftz_rm(clamped, fp32_round_int)
+        var rounded_back = sub_ftz(rounded, fp32_round_int)
+        var frac = sub_ftz(clamped, rounded_back)
         # Degree-3 polynomial approximation of `2^x` on `x ∈ [0, 1)`.
         # Coefficients lifted from Tri Dao's FlashAttention-3
         # `exp2_emulated` (Dao-AILab/flash-attention, `flash_fwd_kernel*`)
         # — fit by minimax over the unit interval.
         # Tri Dao assumes x <= 127.0 and y <= 127.0
-        frac_ex2 = fma_ftz(
+        var frac_ex2 = fma_ftz(
             fma_ftz(
                 fma_ftz(
                     0.077119089663028717041015625,
@@ -2782,8 +2806,8 @@ def sum[
         x: Local tensor of `BN` elements to reduce.
     """
     comptime assert BN % width == 0
-    vx = x.vectorize[width]()
-    acc = vx[0]
+    var vx = x.vectorize[width]()
+    var acc = vx[0]
 
     # unroll (using SIMD) to break up dependency chain
     comptime for i in range(1, BN // width):
@@ -3046,7 +3070,7 @@ struct TMAProducerPipeline[dtype: DType, config: FA4Config, is_k: Bool = True](
             qk_stage: K-loading sub-stage whose TMA destination to return
                 (defaults to 0).
         """
-        p_mbar = self.pipeline.producer_mbar[qk_stage]()
+        var p_mbar = self.pipeline.producer_mbar[qk_stage]()
         var smem = Self.PairType.SmemType(
             self.get_smem[qk_stage=qk_stage](),
             tt_row_major[Self.PairType.smem_elems](),
@@ -3065,7 +3089,7 @@ struct TMAProducerPipeline[dtype: DType, config: FA4Config, is_k: Bool = True](
             e: `elect()` result; when nonzero, issues `expect_bytes` on
                 the producer mbarrier before returning.
         """
-        p_mbar = self.pipeline.producer_mbar[qk_stage]()
+        var p_mbar = self.pipeline.producer_mbar[qk_stage]()
         if e != 0:
             p_mbar[].expect_bytes(Int32(Self.tile_bytes))
         var smem = Self.PairType.SmemType(
@@ -3420,7 +3444,7 @@ struct RolePipeline[
     @always_inline("nodebug")
     def commit_mma(self):
         """Commit via MMA arrive using elected thread. Producer-only."""
-        mbar = self.producer_mbar()
+        var mbar = self.producer_mbar()
         elect_mma_arrive[cta_group=Self.cta_group](mbar, elect())
 
     @always_inline("nodebug")
@@ -3430,7 +3454,7 @@ struct RolePipeline[
         Args:
             elect: `elect()` result selecting the single arriving thread.
         """
-        mbar = self.producer_mbar()
+        var mbar = self.producer_mbar()
         elect_mma_arrive[cta_group=Self.cta_group](mbar, elect)
 
     # Consumer methods
@@ -3545,7 +3569,7 @@ def apply_oob_mask[
         score_col: Starting column index of the score pair; columns from
             this index onward are compared to `num_keys`.
     """
-    s: SIMD[DType.float32, 2] = s_arg
+    var s: SIMD[DType.float32, 2] = s_arg
 
     comptime if apply_log2e_after_mask:
         s = mul_ftz(s, log2e)
@@ -4096,6 +4120,7 @@ struct FA4MiscMBars[
     splitk_partitions: Int = 1,
     BM: Int = 128,
     use_ws: Bool = False,
+    crossp: Bool = False,
 ](TrivialRegisterPassable):
     """Manages all mbarrier resources for FA4.
 
@@ -4134,6 +4159,12 @@ struct FA4MiscMBars[
             `num_qk_stages` depth factor is already folded into the slot count).
             When False (default), the non-WS full-depth-tile count applies and
             the layout is byte-identical.
+        crossp: Whether cross-stage P applies to the config this type was
+            built from, i.e. `FA4Config.crossp_on()`. Threaded in rather than
+            read from the `FA4_TMEM_CROSS_P` define, because that define
+            defaults ON and this type cannot see the config fields that scope
+            it to the MHA 2Q shape. False (default) keeps the mbar layout
+            byte-identical to cross-P-off.
 
     Memory layout (count=128 first, then count=1):
         [S0_cons] [S1_cons] [C0] [C1] [Order*] | [S0_prod] [S1_prod] [Q1Sync**] [K] [V] [O_prod]
@@ -4190,8 +4221,25 @@ struct FA4MiscMBars[
         1 if (Self.num_q == 1 and Self.splitk_partitions > 1) else 0
     )
 
+    # Cross-stage P: 4 handshakes (sfree0/sfree1 + s0_p1/s1_p0, see the
+    # accessors below) appended after Publish, so OFF `size` is byte-identical.
+    # 2Q + non-WS only -- mutually exclusive with Publish (num_q==1 only), so
+    # appending after it never collides.
+    # `crossp` is `FA4Config.crossp_on()`, threaded in by whoever built this
+    # type, so this count and `FA4Config.smem_used` always agree. Do NOT read
+    # the `FA4_TMEM_CROSS_P` define here: it defaults ON, and this struct
+    # cannot see the config fields that scope it to the MHA 2Q shape.
+    comptime CrossP_enabled: Bool = (
+        Self.crossp and Self.num_q == 2 and not Self.use_ws
+    )
+    comptime CrossP_offset = Self.Publish_offset + Self.Publish_count
+    comptime InplaceDepth: Int = 4
+    comptime CrossP_count: Int = (
+        2 + 2 * Self.InplaceDepth
+    ) if Self.CrossP_enabled else 0
+
     # Total size includes all barriers
-    comptime size = Self.Publish_offset + Self.Publish_count
+    comptime size = Self.CrossP_offset + Self.CrossP_count
     comptime number_warpgroup_count = Self.S0_producer_offset
 
     @always_inline
@@ -4235,6 +4283,11 @@ struct FA4MiscMBars[
         comptime if Self.Publish_count > 0:
             if lane_idx == Int32(Self.Publish_offset):
                 return Int32(Self.BM * Self.splitk_partitions)
+        # Cross-stage P handshakes (appended after Publish): all WG-collective
+        # (softmax commit / softmax<->softmax), count=128.
+        comptime if Self.CrossP_enabled:
+            if lane_idx >= Int32(Self.CrossP_offset):
+                return 128
         return 1
 
     @always_inline
@@ -4310,7 +4363,7 @@ struct FA4MiscMBars[
 
     @always_inline
     def producer_c(self, wg_idx: UInt32) -> ProducerPipeline[1]:
-        base = UInt32(Self.C0_offset) + 2 * wg_idx
+        var base = UInt32(Self.C0_offset) + 2 * wg_idx
         return {self.mbar_base + base, self.mbar_base + base + 1}
 
     @always_inline
@@ -4357,6 +4410,51 @@ struct FA4MiscMBars[
                 barrier slot.
         """
         return self.mbar_base + UInt32(Self.num_pv_stages) * wg_idx
+
+    # ---- Cross-stage P handshake accessors (CrossP_enabled, 2Q, non-WS) ----
+    comptime CrossPProducer = RolePipeline[1, True, 1, 1]
+    comptime CrossPConsumer = RolePipeline[1, False, 1, 1]
+    # Inplace pipes are DEPTH-4 one-sided (only the full mbar side is wired):
+    # producer_mbar_base == consumer_mbar_base so both producer.commit() and
+    # consumer.wait() cycle the SAME 4 full mbars via state.index(); the empty
+    # side is never allocated/armed.
+    comptime InplaceProducer = RolePipeline[Self.InplaceDepth, True, 1, 1]
+    comptime InplaceConsumer = RolePipeline[Self.InplaceDepth, False, 1, 1]
+
+    # sfree{wg}: softmax commits "S{wg} scores consumed" (producer-only, 1
+    # mbar, consumer_mbar aliased/unused -- natural throttle); MMA QK{wg}
+    # acquires it (consumer .wait/.step) before overwriting S{wg}.
+    @always_inline
+    def sfree_producer(self, wg: UInt32) -> Self.CrossPProducer:
+        var m = self.mbar_base + UInt32(Self.CrossP_offset) + wg
+        return {m, m}
+
+    @always_inline
+    def sfree_consumer(self, wg: UInt32) -> Self.CrossPConsumer:
+        var m = self.mbar_base + UInt32(Self.CrossP_offset) + wg
+        return {m, m}
+
+    # inplace{k}: k=0 -> s0_p1 (softmax0 produces "S0 window free", softmax1
+    # consumes before storing P1 into S0's window); k=1 -> s1_p0 (mirror).
+    # DEPTH-4 one-sided: 4 full mbars at base; both producer and consumer
+    # cycle them via state.index() (producer_mbar_base == consumer_mbar_base).
+    @always_inline
+    def inplace_producer(self, k: UInt32) -> Self.InplaceProducer:
+        var base = (
+            self.mbar_base
+            + UInt32(Self.CrossP_offset + 2)
+            + k * UInt32(Self.InplaceDepth)
+        )
+        return {base, base}
+
+    @always_inline
+    def inplace_consumer(self, k: UInt32) -> Self.InplaceConsumer:
+        var base = (
+            self.mbar_base
+            + UInt32(Self.CrossP_offset + 2)
+            + k * UInt32(Self.InplaceDepth)
+        )
+        return {base, base}
 
     # O pipeline convenience methods
     @always_inline("nodebug")

@@ -39,7 +39,7 @@ from std.memory import alloc
 from std.atomic import Atomic
 from std.sys.info import num_physical_cores
 
-# Elements per ``alloc[Int](...)`` slab; ``black_box`` keeps the count opaque.
+# Elements per allocated slab; ``black_box`` keeps the count opaque.
 comptime ELEMENTS_PER_ALLOC = 4096
 # Total heap allocations per timed ``call_fn`` (split across parallel tasks).
 comptime ALLOCS_PER_ITER = 2048
@@ -67,22 +67,22 @@ def bench_heap_alloc_parallel(mut b: Bencher) raises:
                 if n_elems < 1:
                     n_elems = 1
 
-                var p = alloc[Int](n_elems)
+                var p = alloc[Int]({count = n_elems}).unsafe_leak()
                 var seed = Int(black_box(task_id + j))
 
                 var k = 0
                 while k < n_elems:
-                    p[k] = seed ^ k
+                    p[unsafe_offset=k] = seed ^ k
                     k += 1
 
                 var fold = Scalar[DType.int64](0)
                 k = 0
                 while k < n_elems:
-                    fold ^= Scalar[DType.int64](p[k])
+                    fold ^= Scalar[DType.int64](p[unsafe_offset=k])
                     k += 1
                 acc += fold
 
-                p.free()
+                p.unsafe_free()
                 j += 1
 
             _ = checksum.fetch_add(acc)

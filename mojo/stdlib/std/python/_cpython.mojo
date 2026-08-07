@@ -378,11 +378,9 @@ struct PyMethodDef(Defaultable, ImplicitlyCopyable):
         #   type, similar to `get_linkage_name()`?
 
         var with_kwargs = func.isa[PyCFunctionWithKeywords]()
-        var func_ptr = rebind[OpaquePointer[MutUntrackedOrigin]](
+        var func_ptr = _fn_ptr_as_opaque(
             func[PyCFunctionWithKeywords]
-        ) if with_kwargs else rebind[OpaquePointer[MutUntrackedOrigin]](
-            func[PyCFunction]
-        )
+        ) if with_kwargs else _fn_ptr_as_opaque(func[PyCFunction])
 
         var flags = c_int(
             METH_VARARGS
@@ -419,7 +417,7 @@ struct PyMethodDef(Defaultable, ImplicitlyCopyable):
         var flags = c_int(METH_FASTCALL | (METH_STATIC if static_method else 0))
         return PyMethodDef(
             func_name.as_c_string_slice().unsafe_ptr(),
-            rebind[OpaquePointer[MutUntrackedOrigin]](func),
+            _fn_ptr_as_opaque(func),
             flags,
             docstring.as_c_string_slice().unsafe_ptr(),
         )
@@ -429,6 +427,17 @@ def _null_fn_ptr[T: TrivialRegisterPassable]() -> T:
     return __mlir_op.`pop.pointer.bitcast`[_type=T](
         __mlir_attr.`#interp.pointer<0> : !kgen.pointer<none>`
     )
+
+
+def _fn_ptr_as_opaque[
+    T: TrivialRegisterPassable
+](func: T) -> OpaquePointer[MutUntrackedOrigin]:
+    """Reinterprets a C ABI function as the `void *` CPython stores it in."""
+    return {
+        _mlir_value = __mlir_op.`pop.pointer.bitcast`[
+            _type=OpaquePointer[MutUntrackedOrigin]._mlir_type
+        ](func)
+    }
 
 
 comptime PyTypeObjectPtr = _CPointer[PyTypeObject, MutUntrackedOrigin]
@@ -506,14 +515,12 @@ struct PyType_Slot(ImplicitlyCopyable, RegisterPassable):
     def tp_dealloc(func: destructor) -> Self:
         return PyType_Slot(
             Py_tp_dealloc,
-            rebind[OpaquePointer[MutUntrackedOrigin]](func),
+            _fn_ptr_as_opaque(func),
         )
 
     @staticmethod
     def tp_init(func: Typed_initproc) -> Self:
-        return PyType_Slot(
-            Py_tp_init, rebind[OpaquePointer[MutUntrackedOrigin]](func)
-        )
+        return PyType_Slot(Py_tp_init, _fn_ptr_as_opaque(func))
 
     @staticmethod
     def tp_methods(methods: _CPointer[PyMethodDef, MutUntrackedOrigin]) -> Self:
@@ -524,15 +531,11 @@ struct PyType_Slot(ImplicitlyCopyable, RegisterPassable):
 
     @staticmethod
     def tp_new(func: Typed_newfunc) -> Self:
-        return PyType_Slot(
-            Py_tp_new, rebind[OpaquePointer[MutUntrackedOrigin]](func)
-        )
+        return PyType_Slot(Py_tp_new, _fn_ptr_as_opaque(func))
 
     @staticmethod
     def tp_repr(func: reprfunc) -> Self:
-        return PyType_Slot(
-            Py_tp_repr, rebind[OpaquePointer[MutUntrackedOrigin]](func)
-        )
+        return PyType_Slot(Py_tp_repr, _fn_ptr_as_opaque(func))
 
     @staticmethod
     def null() -> Self:
@@ -1501,6 +1504,36 @@ struct GILReleased(Movable):
         self.python.cpython().PyEval_RestoreThread(self.thread_state)
 
 
+def _untracked_symbol[
+    result_type: AnyType
+](mut lib: OwnedDLHandle, name: StringSlice) -> Optional[
+    Pointer[result_type, MutUntrackedOrigin]
+]:
+    """Resolves a symbol and drops the borrow tying it to `lib`.
+
+    `OwnedDLHandle.get_symbol` hands back a pointer borrowed from the handle,
+    which is what stops the library being `dlclose`d underneath it. `CPython`
+    caches its symbols in fields alongside the handle itself, so the borrow
+    cannot be expressed — a field would have to name a sibling field's origin.
+    Dropping it is sound here because `lib` and the cached pointers are fields
+    of the same struct, so the library outlives every read of them.
+
+    Parameters:
+        result_type: The type of the symbol to return.
+
+    Args:
+        lib: The library to resolve the symbol in.
+        name: The name of the symbol to resolve.
+
+    Returns:
+        An optional pointer to the symbol, or `None` if not found.
+    """
+    var ptr = lib.get_symbol[result_type](name)
+    if not ptr:
+        return None
+    return ptr.unsafe_value().unsafe_origin_cast[MutUntrackedOrigin]()
+
+
 @fieldwise_init
 struct CPython(Defaultable, Movable):
     """Handle to the CPython interpreter present in the current process.
@@ -1854,26 +1887,28 @@ struct CPython(Defaultable, Movable):
         else:
             # PyObject *Py_None
             # TODO(MOCO-4435): remove this temporary variable.
-            var none_ptr = self.lib.get_symbol[PyObject]("_Py_NoneStruct")
+            var none_ptr = _untracked_symbol[PyObject](
+                self.lib, "_Py_NoneStruct"
+            )
             self._Py_None = PyObjectPtr(upcast_from=none_ptr)
         # Integer Objects
         # PyTypeObject PyLong_Type
-        self._PyLong_Type = self.lib.get_symbol[PyTypeObject](
-            "PyLong_Type"
+        self._PyLong_Type = _untracked_symbol[PyTypeObject](
+            self.lib, "PyLong_Type"
         ).value()
         self._PyLong_FromSsize_t = PyLong_FromSsize_t.load(self.lib.borrow())
         self._PyLong_FromSize_t = PyLong_FromSize_t.load(self.lib.borrow())
         self._PyLong_AsSsize_t = PyLong_AsSsize_t.load(self.lib.borrow())
         # Boolean Objects
         # PyTypeObject PyBool_Type
-        self._PyBool_Type = self.lib.get_symbol[PyTypeObject](
-            "PyBool_Type"
+        self._PyBool_Type = _untracked_symbol[PyTypeObject](
+            self.lib, "PyBool_Type"
         ).value()
         self._PyBool_FromLong = PyBool_FromLong.load(self.lib.borrow())
         # Floating-Point Objects
         # PyTypeObject PyFloat_Type
-        self._PyFloat_Type = self.lib.get_symbol[PyTypeObject](
-            "PyFloat_Type"
+        self._PyFloat_Type = _untracked_symbol[PyTypeObject](
+            self.lib, "PyFloat_Type"
         ).value()
         self._PyFloat_FromDouble = PyFloat_FromDouble.load(self.lib.borrow())
         self._PyFloat_AsDouble = PyFloat_AsDouble.load(self.lib.borrow())
@@ -1894,8 +1929,8 @@ struct CPython(Defaultable, Movable):
         self._PyList_SetItem = PyList_SetItem.load(self.lib.borrow())
         # Dictionary Objects
         # PyTypeObject PyDict_Type
-        self._PyDict_Type = self.lib.get_symbol[PyTypeObject](
-            "PyDict_Type"
+        self._PyDict_Type = _untracked_symbol[PyTypeObject](
+            self.lib, "PyDict_Type"
         ).value()
         self._PyDict_New = PyDict_New.load(self.lib.borrow())
         self._PyDict_SetItem = PyDict_SetItem.load(self.lib.borrow())
@@ -1929,7 +1964,7 @@ struct CPython(Defaultable, Movable):
         # Common Object Structures
         self._Py_Is = Py_Is.load(self.lib.borrow())
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         pass
 
     def destroy(mut self):

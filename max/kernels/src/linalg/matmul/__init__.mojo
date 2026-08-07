@@ -14,12 +14,12 @@
 
 
 from std.collections import OptionalReg
-from std.collections.string.string_slice import get_static_string
+from std.collections.string.string_span import get_static_string
 from std.math import align_up, ceildiv
 from std.sys.info import align_of, simd_width_of
 
-from std.gpu.host import DeviceContext
-from std.gpu.host.info import is_cpu, is_valid_target
+from max.gpu.host import DeviceContext
+from max.gpu.host.info import is_cpu, is_valid_target
 from layout import (
     Layout,
     LayoutTensor,

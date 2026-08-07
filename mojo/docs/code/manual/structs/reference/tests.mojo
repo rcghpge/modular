@@ -16,10 +16,8 @@ comptime Element = String  # Adapt for your type
 comptime ListNode = Node[Element]  # Constructing a LinkedList
 
 
-struct Node[ElementType: ImplicitlyCopyable & Writable & ImplicitlyDeletable](
-    Movable
-):
-    comptime NodePointer = UnsafePointer[Self, MutUntrackedOrigin]
+struct Node[ElementType: ImplicitlyCopyable & Writable & Deinitable](Movable):
+    comptime NodePointer = Pointer[Self, MutUntrackedOrigin]
 
     var value: Optional[Self.ElementType]  # The `Node`'s value
     var next: Optional[Self.NodePointer]  # Pointer to the next `Node`
@@ -34,7 +32,7 @@ struct Node[ElementType: ImplicitlyCopyable & Writable & ImplicitlyDeletable](
     # returns a pointer to the new `Node`.
     @staticmethod
     def make_node(value: Self.ElementType) -> Self.NodePointer:
-        var node_ptr = alloc[Self](1)
+        var node_ptr = alloc[Self]({count = 1}).unsafe_leak()
         node_ptr.unsafe_write(Self(value))
         return node_ptr
 
@@ -46,7 +44,7 @@ struct Node[ElementType: ImplicitlyCopyable & Writable & ImplicitlyDeletable](
             var next_ptr = self.next.value()
             next_ptr[].free_chain()
             next_ptr.unsafe_deinit_pointee()
-            next_ptr.free()
+            next_ptr.unsafe_free()
 
         self.next = Self.make_node(value)
 
@@ -59,7 +57,7 @@ struct Node[ElementType: ImplicitlyCopyable & Writable & ImplicitlyDeletable](
 
         var node_ptr = node.value()
 
-        current_value: Optional[Self.ElementType] = node_ptr[].value
+        var current_value: Optional[Self.ElementType] = node_ptr[].value
         if current_value:
             print(current_value.value(), end=" ")
 
@@ -73,9 +71,9 @@ struct Node[ElementType: ImplicitlyCopyable & Writable & ImplicitlyDeletable](
         var current = self.next
         while current:
             var current_ptr = current.value()
-            next_node = current_ptr[].next
+            var next_node = current_ptr[].next
             current_ptr.unsafe_deinit_pointee()
-            current_ptr.free()
+            current_ptr.unsafe_free()
             current = next_node
 
 
@@ -94,4 +92,4 @@ def main():
     # at exit
     list_head[].free_chain()
     list_head.unsafe_deinit_pointee()
-    list_head.free()
+    list_head.unsafe_free()

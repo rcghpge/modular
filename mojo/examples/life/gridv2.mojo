@@ -23,23 +23,23 @@ struct Grid[rows: Int, cols: Int](Copyable, Writable):
     # ===-------------------------------------------------------------------===#
 
     comptime num_cells = Self.rows * Self.cols
-    var data: UnsafePointer[Int8, MutUntrackedOrigin]
+    var data: Pointer[Int8, MutUntrackedOrigin]
 
     # ===-------------------------------------------------------------------===#
     # Life cycle methods
     # ===-------------------------------------------------------------------===#
 
     def __init__(out self):
-        self.data = alloc[Int8](self.num_cells)
+        self.data = alloc[Int8]({count = self.num_cells}).unsafe_leak()
         unsafe_memset_zero(self.data, self.num_cells)
 
     def __init__(out self, *, copy: Self):
-        self.data = alloc[Int8](self.num_cells)
+        self.data = alloc[Int8]({count = self.num_cells}).unsafe_leak()
         unsafe_memcpy(dest=self.data, src=copy.data, count=self.num_cells)
         # The lifetime of `existing` continues unchanged
 
-    def __del__(deinit self):
-        self.data.free()
+    def __deinit__(deinit self):
+        self.data.unsafe_free()
 
     # ===-------------------------------------------------------------------===#
     # Factory methods
@@ -52,7 +52,7 @@ struct Grid[rows: Int, cols: Int](Copyable, Writable):
         else:
             random.seed()
 
-        grid = Self()
+        var grid = Self()
         random.randint(grid.data, grid.num_cells, 0, 1)
 
         return grid^
@@ -62,10 +62,10 @@ struct Grid[rows: Int, cols: Int](Copyable, Writable):
     # ===-------------------------------------------------------------------===#
 
     def __getitem__(self, row: Int, col: Int) -> Int8:
-        return (self.data + row * Self.cols + col)[]
+        return self.data.unsafe_offset(row * Self.cols + col)[]
 
     def __setitem__(mut self, row: Int, col: Int, value: Int8) -> None:
-        (self.data + row * Self.cols + col)[] = value
+        self.data.unsafe_offset(row * Self.cols + col)[] = value
 
     # ===-------------------------------------------------------------------===#
     # Trait implementations
@@ -86,20 +86,20 @@ struct Grid[rows: Int, cols: Int](Copyable, Writable):
     # ===-------------------------------------------------------------------===#
 
     def evolve(self) -> Self:
-        next_generation = Self()
+        var next_generation = Self()
 
         for row in range(Self.rows):
             # Calculate neighboring row indices, handling "wrap-around"
-            row_above = (row - 1) % Self.rows
-            row_below = (row + 1) % Self.rows
+            var row_above = (row - 1) % Self.rows
+            var row_below = (row + 1) % Self.rows
 
             for col in range(Self.cols):
                 # Calculate neighboring column indices, handling "wrap-around"
-                col_left = (col - 1) % Self.cols
-                col_right = (col + 1) % Self.cols
+                var col_left = (col - 1) % Self.cols
+                var col_right = (col + 1) % Self.cols
 
                 # Determine number of populated cells around the current cell
-                num_neighbors = (
+                var num_neighbors = (
                     self[row_above, col_left]
                     + self[row_above, col]
                     + self[row_above, col_right]

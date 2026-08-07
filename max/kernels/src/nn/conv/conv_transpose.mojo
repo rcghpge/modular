@@ -46,7 +46,7 @@ from max.algorithm import (
     elementwise,
     sync_parallelize,
 )
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from layout import (
     Coord,
     TensorLayout,
@@ -1676,7 +1676,7 @@ def conv_transposed_cpu[
         comptime if not filter_packed:
             dealloc(
                 ThinAllocation(
-                    unsafe_assume_ownership=packed_filter_ptr
+                    unsafe_owned_ptr=packed_filter_ptr
                 ).unsafe_with_layout(packed_filter_alloc_layout)
             )
 
@@ -1754,7 +1754,7 @@ def conv_transposed_gpu[
         ](coords: Coord) {var}:
             comptime align = align_of[SIMD[output_type, _width]]()
             var idx = output_tmp.layout(coords)
-            vec = output_tmp.raw_load[width=_width, alignment=align](idx)
+            var vec = output_tmp.raw_load[width=_width, alignment=align](idx)
             epilogue(coord_to_index_list(coords), vec)
 
         elementwise[simd_width_of[output_type](), target="gpu"](

@@ -209,7 +209,7 @@ def _sqrt_nvvm(x: SIMD, out res: type_of(x)):
     comptime assert x.dtype == DType.float32, "must be DType.float32"
     res = {}
 
-    comptime for i in range(x.size):
+    comptime for i in range(x.length):
         res[i] = _llvm_unary_fn["llvm.nvvm.sqrt.approx.ftz.f"](x[i])
 
 
@@ -271,7 +271,7 @@ def _rsqrt_nvvm(x: SIMD, out res: type_of(x)):
     comptime instruction = "llvm.nvvm.rsqrt.approx.ftz.f" if x.dtype == DType.float32 else "llvm.nvvm.rsqrt.approx.d"
     res = {}
 
-    comptime for i in range(x.size):
+    comptime for i in range(x.length):
         res[i] = _llvm_unary_fn[instruction](x[i])
 
 
@@ -328,7 +328,7 @@ def _recip_nvvm(x: SIMD, out res: type_of(x)):
     comptime instruction = "llvm.nvvm.rcp.approx.ftz.f" if x.dtype == DType.float32 else "llvm.nvvm.rcp.approx.ftz.d"
     res = {}
 
-    comptime for i in range(x.size):
+    comptime for i in range(x.length):
         res[i] = _llvm_unary_fn[instruction](x[i])
 
 
@@ -454,7 +454,7 @@ def _exp2_float32(x: SIMD[DType.float32, _]) -> type_of(x):
         from_bits=r.to_bits[u32]()
         + (
             m.cast[u32]()
-            << SIMD[DType.uint32, x.size](
+            << SIMD[DType.uint32, x.length](
                 FPUtils[DType.float32].mantissa_width()
             )
         )
@@ -575,21 +575,23 @@ trait _Expable:
 def _exp_taylor[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    comptime coefficients = [
-        Scalar[dtype](1.0),
-        1.0,
-        0.5,
-        0.16666666666666666667,
-        0.041666666666666666667,
-        0.0083333333333333333333,
-        0.0013888888888888888889,
-        0.00019841269841269841270,
-        0.000024801587301587301587,
-        2.7557319223985890653e-6,
-        2.7557319223985890653e-7,
-        2.5052108385441718775e-8,
-        2.0876756987868098979e-9,
-    ]
+    comptime coefficients = List(
+        [
+            Scalar[dtype](1.0),
+            1.0,
+            0.5,
+            0.16666666666666666667,
+            0.041666666666666666667,
+            0.0083333333333333333333,
+            0.0013888888888888888889,
+            0.00019841269841269841270,
+            0.000024801587301587301587,
+            2.7557319223985890653e-6,
+            2.7557319223985890653e-7,
+            2.5052108385441718775e-8,
+            2.0876756987868098979e-9,
+        ]
+    )
     return polynomial_evaluate[
         coefficients[:] if dtype == DType.float64 else coefficients[:8],
     ](x)
@@ -2483,13 +2485,12 @@ def cbrt[
         return cbrt(x.cast[DType.float32]()).cast[dtype]()
     elif dtype == DType.float64:
         return _call_libm["cbrt"](x)
+    else:
+        var result = SIMD[DType.float32, width]()
+        for i in range(width):
+            result[i] = _cbrtf(rebind[Float32](x[i]))
 
-    var result = SIMD[DType.float32, width]()
-
-    for i in range(width):
-        result[i] = _cbrtf(rebind[Float32](x[i]))
-
-    return rebind[type_of(x)](result)
+        return rebind[type_of(x)](result)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2691,13 +2692,13 @@ def erfc[
         return erfc(x.cast[DType.float32]()).cast[dtype]()
     elif dtype == DType.float64:
         return _call_libm["erfc"](x)
+    else:
+        var result = SIMD[DType.float32, width]()
 
-    var result = SIMD[DType.float32, width]()
+        for i in range(width):
+            result[i] = _erfcf(rebind[Float32](x[i]))
 
-    for i in range(width):
-        result[i] = _erfcf(rebind[Float32](x[i]))
-
-    return rebind[type_of(x)](result)
+        return rebind[type_of(x)](result)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3054,7 +3055,8 @@ def lcm(m: Int, n: Int, /) -> Int:
     Returns:
         The least common multiple of the two integers.
     """
-    if d := gcd(m, n):
+    var d = gcd(m, n)
+    if d:
         return abs((m // d) * n if m > n else (n // d) * m)
     return 0
 
@@ -3491,7 +3493,7 @@ def _call_ptx_intrinsic[
 def _call_amdgcn_intrinsic[intrin: StaticString](x: SIMD, out res: type_of(x)):
     res = {}
 
-    comptime for i in range(x.size):
+    comptime for i in range(x.length):
         res[i] = _llvm_unary_fn[intrin](x[i])
 
 
@@ -3850,7 +3852,7 @@ def max[dtype: DType, //](x: SIMD[dtype, _], y: type_of(x), /) -> type_of(x):
 
 
 @always_inline
-def max[T: Copyable & Comparable & ImplicitlyDeletable](x: T, *ys: T) -> T:
+def max[T: Copyable & Comparable & Deinitable](x: T, *ys: T) -> T:
     """Gets the maximum value from a sequence of values.
 
     Parameters:
@@ -3904,7 +3906,7 @@ def min[dtype: DType, //](x: SIMD[dtype, _], y: type_of(x), /) -> type_of(x):
 
 
 @always_inline
-def min[T: Copyable & Comparable & ImplicitlyDeletable](x: T, *ys: T) -> T:
+def min[T: Copyable & Comparable & Deinitable](x: T, *ys: T) -> T:
     """Gets the minimum value from a sequence of values.
 
     Parameters:

@@ -18,7 +18,7 @@ import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import click
 import pytest
@@ -28,16 +28,30 @@ from max.config import ConfigFileModel
 from max.config.config_file_model import _resolve_config_file
 from max.driver import DeviceSpec
 from max.nn.kv_cache.cache_params import KVConnectorType
-from max.pipelines.lib import PipelineConfig
+from max.pipelines.lib import PipelineArgs, PipelineConfig
 from pydantic import Field
 from pytest import MonkeyPatch
 
 
 @pytest.fixture(autouse=True)
 def _skip_repo_access_check() -> Iterator[None]:
-    """These precedence tests use placeholder repos, so skip the HF
-    existence check that ``PipelineConfig`` construction now runs."""
-    with patch("max.pipelines.lib.config.model_config.validate_hf_repo_access"):
+    """These precedence tests use placeholder repos, so skip the HF network
+    calls that ``MAXModelConfig`` construction now runs: the existence check
+    (via both the ``model_config`` and ``hf_utils`` references) and the eager
+    ``load_huggingface_config``."""
+    with (
+        patch("max.pipelines.lib.config.model_config.validate_hf_repo_access"),
+        patch("max.pipelines.weights.hf_utils.validate_hf_repo_access"),
+        patch(
+            "max.pipelines.weights.hf_utils.generate_local_model_path",
+            side_effect=lambda repo_id, revision=None: f"/fake/cache/{repo_id}",
+        ),
+        patch("huggingface_hub.file_exists", return_value=False),
+        patch(
+            "max.pipelines.lib.config.model_config.load_huggingface_config",
+            return_value=MagicMock(),
+        ),
+    ):
         yield
 
 
@@ -216,11 +230,13 @@ def test_cli_overrides_yaml_recipe_values(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(config_path),
-        device_specs=[DeviceSpec(i, "gpu") for i in range(4)],
-        data_parallel_degree=4,
-        ep_size=4,
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(config_path),
+            device_specs=[DeviceSpec(i, "gpu") for i in range(4)],
+            data_parallel_degree=4,
+            ep_size=4,
+        )
     )
 
     main = config.models["main"]
@@ -245,9 +261,11 @@ def test_model_path_override_preserves_yaml_recipe_fields(
         encoding="utf-8",
     )
 
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(config_path),
-        model_path="fake/override-model",
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(config_path),
+            model_path="fake/override-model",
+        )
     )
 
     main = config.models["main"]
@@ -275,10 +293,12 @@ def test_kv_cache_flag_preserves_yaml_recipe_kv_cache_fields(
         encoding="utf-8",
     )
 
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(config_path),
-        kv_connector="local",
-        kv_connector_config={"host_kvcache_swap_space_gb": 1200},
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(config_path),
+            kv_connector="local",
+            kv_connector_config={"host_kvcache_swap_space_gb": 1200},
+        )
     )
 
     kv = config.models["main"].kv_cache
@@ -309,7 +329,11 @@ def test_kv_cache_flag_via_cli_preserves_config_file_fields(
     @click.command()
     @pipeline_config_options
     def cli(**kwargs: Any) -> None:
-        kv = PipelineConfig.from_flat_kwargs(**kwargs).models["main"].kv_cache
+        kv = (
+            PipelineConfig.from_args(PipelineArgs.from_flat_kwargs(**kwargs))
+            .models["main"]
+            .kv_cache
+        )
         assert kv.kv_connector is not None
         click.echo(
             f"{kv.kv_connector.value}|{kv.device_memory_utilization}"
@@ -332,6 +356,110 @@ def test_kv_cache_flag_via_cli_preserves_config_file_fields(
     assert result.output.strip() == "local|0.8|False"
 
 
+def test_speculative_flag_preserves_yaml_recipe_speculative_fields(
+    tmp_path: Path,
+) -> None:
+    """A speculative CLI flag must merge into (not be dropped by) a YAML-loaded
+    ``speculative`` config: --num-speculative-tokens overrides the recipe value
+    while the recipe's ``speculative_method`` survives (regression, MXF-594)."""
+    config_path = tmp_path / "recipe.yaml"
+    config_path.write_text(
+        "model:\n"
+        "  model_path: fake/model\n"
+        "speculative:\n"
+        "  speculative_method: mtp\n"
+        "  num_speculative_tokens: 3\n",
+        encoding="utf-8",
+    )
+
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(config_path),
+            num_speculative_tokens=2,
+        )
+    )
+
+    assert config.speculative is not None
+    assert config.speculative.num_speculative_tokens == 2
+    assert config.speculative.speculative_method == "mtp"
+
+
+def test_speculative_flag_via_cli_preserves_config_file_fields(
+    tmp_path: Path,
+) -> None:
+    """Same as above, but through Click so the default-stripping step the
+    flat-kwargs path skips is exercised for the exact reported invocation."""
+    config_path = tmp_path / "recipe.yaml"
+    config_path.write_text(
+        "model:\n"
+        "  model_path: fake/model\n"
+        "speculative:\n"
+        "  speculative_method: mtp\n"
+        "  num_speculative_tokens: 3\n",
+        encoding="utf-8",
+    )
+
+    @click.command()
+    @pipeline_config_options
+    def cli(**kwargs: Any) -> None:
+        spec = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        ).speculative
+        assert spec is not None
+        click.echo(f"{spec.speculative_method}|{spec.num_speculative_tokens}")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--config-file",
+            str(config_path),
+            "--num-speculative-tokens",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "mtp|2"
+
+
+def test_speculative_flag_alone_does_not_enable_speculative() -> None:
+    """A speculative tuning flag without a method leaves speculative disabled.
+
+    Only ``--speculative-method`` turns speculative decoding on; the other
+    flags merely tune it.
+    """
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            model_path="fake/model",
+            num_speculative_tokens=2,
+        )
+    )
+    assert config.speculative is None
+
+
+def test_recipe_speculative_intact_without_speculative_flags(
+    tmp_path: Path,
+) -> None:
+    """A recipe-only speculative config is preserved verbatim when no
+    speculative CLI flag is passed."""
+    config_path = tmp_path / "recipe.yaml"
+    config_path.write_text(
+        "model:\n"
+        "  model_path: fake/model\n"
+        "speculative:\n"
+        "  speculative_method: mtp\n"
+        "  num_speculative_tokens: 3\n",
+        encoding="utf-8",
+    )
+
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(config_file=str(config_path))
+    )
+
+    assert config.speculative is not None
+    assert config.speculative.speculative_method == "mtp"
+    assert config.speculative.num_speculative_tokens == 3
+
+
 def test_model_path_override_warns_about_mismatched_recipe(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
@@ -344,9 +472,11 @@ def test_model_path_override_warns_about_mismatched_recipe(
     )
 
     with caplog.at_level(logging.WARNING, logger="max.pipelines"):
-        PipelineConfig.from_flat_kwargs(
-            config_file=str(config_path),
-            model_path="fake/override-model",
+        PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                config_file=str(config_path),
+                model_path="fake/override-model",
+            )
         )
 
     assert any(
@@ -369,9 +499,11 @@ def test_model_path_matching_recipe_does_not_warn(
     )
 
     with caplog.at_level(logging.WARNING, logger="max.pipelines"):
-        PipelineConfig.from_flat_kwargs(
-            config_file=str(config_path),
-            model_path="fake/same-model",
+        PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(
+                config_file=str(config_path),
+                model_path="fake/same-model",
+            )
         )
 
     assert caplog.records == []
@@ -403,12 +535,14 @@ def test_kv_cache_dict_flag_replaces_only_named_field(tmp_path: Path) -> None:
     recipe's sibling fields (``kv_connector``, ``device_memory_utilization``)
     survive -- previously the override silently reset ``kv_connector`` to
     ``None``, disabling the tiered connector."""
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(_write_kv_recipe(tmp_path)),
-        kv_connector_config={
-            "host_kvcache_swap_space_gb": 50,
-            "disk_offload_max_gb": 50,
-        },
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(_write_kv_recipe(tmp_path)),
+            kv_connector_config={
+                "host_kvcache_swap_space_gb": 50,
+                "disk_offload_max_gb": 50,
+            },
+        )
     )
 
     kv = config.models["main"].kv_cache
@@ -427,9 +561,11 @@ def test_kv_cache_scalar_flag_preserves_recipe_dict_field(
 ) -> None:
     """A scalar KV-cache CLI flag leaves the recipe's dict-valued
     ``kv_connector_config`` (and other unnamed fields) untouched."""
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(_write_kv_recipe(tmp_path)),
-        device_memory_utilization=0.5,
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(_write_kv_recipe(tmp_path)),
+            device_memory_utilization=0.5,
+        )
     )
 
     kv = config.models["main"].kv_cache
@@ -444,9 +580,11 @@ def test_kv_cache_scalar_flag_preserves_recipe_dict_field(
 def test_kv_cache_flags_without_recipe_apply_to_defaults() -> None:
     """Without a recipe, KV-cache CLI flags land on top of KVCacheConfig
     defaults (the pre-existing behavior the merge must not change)."""
-    config = PipelineConfig.from_flat_kwargs(
-        model={"model_path": "fake/model"},
-        kv_connector_config={"host_kvcache_swap_space_gb": 50},
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            model={"model_path": "fake/model"},
+            kv_connector_config={"host_kvcache_swap_space_gb": 50},
+        )
     )
 
     kv = config.models["main"].kv_cache
@@ -459,8 +597,10 @@ def test_kv_cache_flags_without_recipe_apply_to_defaults() -> None:
 def test_recipe_kv_cache_intact_without_kv_flags(tmp_path: Path) -> None:
     """With no KV-cache CLI flags, the recipe's kv_cache section is loaded
     verbatim."""
-    config = PipelineConfig.from_flat_kwargs(
-        config_file=str(_write_kv_recipe(tmp_path)),
+    config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(
+            config_file=str(_write_kv_recipe(tmp_path)),
+        )
     )
 
     kv = config.models["main"].kv_cache

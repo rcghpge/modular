@@ -28,10 +28,9 @@ from std.memory.alloc import Layout as AllocLayout
 from std.os import getenv
 
 from std.gpu import WARP_SIZE
-from std.gpu.primitives.grid_controls import PDLLevel
-from std.gpu.host import DeviceContext
-from std.gpu.host.device_context import DeviceBuffer
-from std.gpu.host.info import A100
+from max.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host.info import A100
 from layout.tensor_core import get_mma_shape
 
 from std.utils.index import Index, IndexList

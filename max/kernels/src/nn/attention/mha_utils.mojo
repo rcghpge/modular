@@ -36,8 +36,7 @@ from std.sys.info import _accelerator_arch
 
 from std.bit import prev_power_of_two
 from std.gpu import WARP_SIZE, lane_id
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import AddressSpace
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from layout.layout_tensor import LayoutTensorIter
 from layout.swizzle import make_ldmatrix_swizzle
@@ -49,13 +48,14 @@ from nn.attention.mha_mask import (
     MaterializedMask,
     MHAMask,
     NullMask,
+    RelativeLogitsMask,
     SlidingWindowCausalMask,
     SlidingWindowNonCausalMask,
 )
 
 from std.utils.index import Index, IndexList
 from std.utils.numerics import min_or_neg_inf
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.primitives.grid_controls import PDLLevel
 
 # ===-----------------------------------------------------------------------===#
 # Multi-Head Attention
@@ -239,8 +239,8 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         return ufloordiv(self.swizzle_mode.bytes(), size_of[self.dtype]())
 
     def q_smem_size(self, fa3: Bool = False, persistent: Bool = False) -> Int:
-        q_size = self.block_m() * self.padded_depth
-        num_q = 2 if fa3 and persistent else 1
+        var q_size = self.block_m() * self.padded_depth
+        var num_q = 2 if fa3 and persistent else 1
         return num_q * q_size
 
     def kv_smem_size(self, fa3: Bool = False) -> Int:
@@ -259,7 +259,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         if fa3:
             return self.kv_smem_size(True)
         else:
-            BN = self.block_n()
+            var BN = self.block_n()
             return BN * BN
 
     def p_smem_size(self) -> Int:
@@ -278,8 +278,9 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         comptime persistent = (
             get_defined_int["USE_EXPERIMENTAL_KERNELS", 0]() != 0
         ) and sm_90
-        sm_90_fa3 = sm_90 and (self.algorithm == 3)
+        var sm_90_fa3 = sm_90 and (self.algorithm == 3)
 
+        var num_smem_elements: Int
         comptime if shared_kv:
             num_smem_elements = (
                 self.q_smem_size(sm_90_fa3, persistent)
@@ -297,7 +298,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         if self.num_warps_n() > 1 or has_amd_gpu_accelerator():
             num_smem_elements += self.p_smem_size()
 
-        num_smem_bytes = size_of[self.dtype]() * num_smem_elements
+        var num_smem_bytes = size_of[self.dtype]() * num_smem_elements
         if sm_90_fa3:
             comptime i64_size = size_of[DType.int64]()
             num_smem_bytes += (2 * self.num_pipeline_stages) * i64_size + (
@@ -342,7 +343,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         ):
             # BM
             self.num_queries_per_block = num_queries_per_block.or_else(128)
-            reg_per = 224 if self.num_queries_per_block > 64 else 256
+            var reg_per = 224 if self.num_queries_per_block > 64 else 256
             if num_keys_per_block:
                 self.num_keys_per_block = num_keys_per_block.value()
             # FIXME: for depth == 64, larger num_keys_per_block values currently
@@ -357,11 +358,11 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
                 # reg_per >= 16*BN//32 + 16*depth//32 + 16*BN//64 + 4
                 # (reg_per - depth//2 - 4) >= 3*BN//4
                 # BN <= (4*reg_per - 2*depth - 16)//3
-                reg_upper_bound = (4 * reg_per - 2 * depth - 16) // 3
+                var reg_upper_bound = (4 * reg_per - 2 * depth - 16) // 3
                 comptime persistent: Bool = (
                     get_defined_int["USE_EXPERIMENTAL_KERNELS", 0]() != 0
                 )
-                smem_total = 227000
+                var smem_total = 227000
                 # smem_total >= 2*(BN * depth * pipeline_stages + BM*depth*(1+persistent))
                 #                 + 16*pipeline_stages + 40*persistent
                 # smem_total - 2*BM*depth*(1+persistent) - 16*pipeline_stages - 40*persistent
@@ -799,6 +800,47 @@ def dispatch_materialized_mask[
 
     var mask = MaterializedMask(mask_nd, start_pos_nd)
     return callback_fn(mask)
+
+
+@always_inline
+def dispatch_relative_logits_mask[
+    dtype: DType,
+    layout: Layout,
+    //,
+    callback_fn: callback_fn_type,
+    local_window_size: Int = -1,
+](
+    bias_nd: LayoutTensor[mut=False, dtype, layout, _],
+    cache_lengths: LayoutTensor[
+        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    ],
+    input_row_offsets: LayoutTensor[
+        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    ],
+) raises -> None:
+    """Wrap `bias_nd` in a `RelativeLogitsMask` and invoke `callback_fn`.
+
+    Like `dispatch_materialized_mask`, this carries runtime state (the bias
+    table plus the tensors that recover its ragged-flat row), so it lives
+    outside `dispatch_mask`'s zero-arg string dispatch. `local_window_size`
+    picks the visibility mask: `<= 0` (canonically `-1`, the graph-level
+    "no window" value) -> `CausalMask`, else
+    `SlidingWindowCausalMask[local_window_size]`. The mask structs
+    themselves report "no window" as `sliding_window_size() == 0`; this
+    function is where the two conventions meet.
+    """
+    comptime if local_window_size <= 0:
+        return callback_fn(
+            RelativeLogitsMask[visibility=CausalMask()](
+                bias_nd, cache_lengths, input_row_offsets
+            )
+        )
+    else:
+        return callback_fn(
+            RelativeLogitsMask[
+                visibility=SlidingWindowCausalMask[local_window_size]()
+            ](bias_nd, cache_lengths, input_row_offsets)
+        )
 
 
 # The motivation here is to be able to pass `StaticInt[1]()`

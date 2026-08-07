@@ -35,14 +35,14 @@ from std.memory import UnsafePointer, alloc
 from std.random import rand, randn, seed
 from std.sys import size_of
 
-from std.gpu import barrier, thread_idx, warp_id as get_warp_id
-from std.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
-from std.gpu.host.nvidia.tma import (
+from std.gpu import thread_idx, warp_id as get_warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
+from max.gpu.host.nvidia.tma import (
     TensorMapSwizzle,
     prefetch_tma_descriptor,
 )
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     external_memory,
 )
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
@@ -226,11 +226,9 @@ def dense_mma_ws_ts_kernel[
     """
 
     # ---- Dynamic shared memory base pointer ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
 
     # ---- Q SMEM region ----
     var q_smem_ptr = smem_base.bitcast[Scalar[OP_TYPE]]()
@@ -507,11 +505,9 @@ def sparse_mma_ws_ts_kernel[
     comptime p_cols = mma_n
 
     # ---- Dynamic shared memory base pointer ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
 
     # ---- Q SMEM region ----
     var q_smem_ptr = smem_base.bitcast[Scalar[op_type]]()
@@ -821,9 +817,9 @@ def test_dense_mma_ws_ts(ctx: DeviceContext) raises:
         c_ref_tt,
         a_tt,
         b_tt,
-        P_REF_ROWS,  # m
-        P_REF_COLS,  # n
-        COLS,  # k
+        Int32(P_REF_ROWS),  # m
+        Int32(P_REF_COLS),  # n
+        Int32(COLS),  # k
         grid_dim=(
             ceildiv(P_REF_ROWS, NAIVE_BLOCK_DIM),
             ceildiv(P_REF_COLS, NAIVE_BLOCK_DIM),
@@ -1068,9 +1064,9 @@ def test_sparse_mma_ws_ts[
         c_ref_tt,
         a_tt,
         b_tt,
-        p_ref_rows,
-        p_ref_cols,
-        cols,
+        Int32(p_ref_rows),
+        Int32(p_ref_cols),
+        Int32(cols),
         grid_dim=(
             ceildiv(p_ref_rows, naive_block_dim),
             ceildiv(p_ref_cols, naive_block_dim),
@@ -1392,9 +1388,9 @@ def test_sparse_paged_mma_ws_ts[
         c_ref_tt,
         a_tt,
         b_tt,
-        p_ref_rows,
-        p_ref_cols,
-        cols,
+        Int32(p_ref_rows),
+        Int32(p_ref_cols),
+        Int32(cols),
         grid_dim=(
             ceildiv(p_ref_rows, naive_block_dim),
             ceildiv(p_ref_cols, naive_block_dim),

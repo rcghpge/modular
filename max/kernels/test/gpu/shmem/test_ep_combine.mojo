@@ -21,10 +21,10 @@ from std.math import sqrt
 from std.random import randint, randn, seed
 from std.sys import argv, size_of
 
-from std.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import TileTensor, Idx
 from layout.tile_layout import row_major
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from shmem import *
 from shmem.ep_comm import (
     BF16TokenFormat,
@@ -65,7 +65,7 @@ def welford_update(
 
 def legalize_topk_ids[
     n_experts: Int, top_k: Int
-](topk_ids: UnsafePointer[mut=True, Int32, _], n_tokens: Int):
+](topk_ids: Pointer[mut=True, Int32, _], n_tokens: Int):
     for tok_id in range(n_tokens):
         var topk_ids_for_token = topk_ids + tok_id * top_k
 
@@ -161,7 +161,7 @@ def test_combine[
         n_tokens_per_rank * n_ranks * n_local_experts * 2
     )
 
-    device_output_2_buf = ctx.enqueue_create_buffer[input_type](
+    var device_output_2_buf = ctx.enqueue_create_buffer[input_type](
         n_tokens_per_rank * top_k * hidden_size
     )
 
@@ -264,10 +264,8 @@ def test_combine[
     @parameter
     def run_full_dispatch(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-        var recv_buf_ptrs: Array[UnsafePointer[UInt8, MutAnyOrigin], 1] = [
-            recv_buf
-        ]
-        var recv_count_ptrs: Array[UnsafePointer[UInt64, MutAnyOrigin], 1] = [
+        var recv_buf_ptrs: Array[Pointer[UInt8, MutAnyOrigin], 1] = [recv_buf]
+        var recv_count_ptrs: Array[Pointer[UInt64, MutAnyOrigin], 1] = [
             recv_count
         ]
 
@@ -302,12 +300,12 @@ def test_combine[
     @parameter
     def run_combine_async(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-        var combine_recv_buf_ptrs: Array[
-            UnsafePointer[UInt8, MutAnyOrigin], 1
-        ] = [send_buf]
-        var combine_recv_count_ptrs: Array[
-            UnsafePointer[UInt64, MutAnyOrigin], 1
-        ] = [recv_count]
+        var combine_recv_buf_ptrs: Array[Pointer[UInt8, MutAnyOrigin], 1] = [
+            send_buf
+        ]
+        var combine_recv_count_ptrs: Array[Pointer[UInt64, MutAnyOrigin], 1] = [
+            recv_count
+        ]
 
         ctx.enqueue_function(
             func_combine_async,

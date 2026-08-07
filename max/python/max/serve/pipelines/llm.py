@@ -269,6 +269,11 @@ class TokenGeneratorPipeline(
         - Callers can amortize Pydantic/SSE overhead across the chunk
         """
         itl = StopWatch()
+        # TTFT runs from the arrival timestamp stamped by the HTTP middleware,
+        # so it covers body parse, validation and media resolution rather than
+        # starting here at pipeline entry. Offline callers leave timestamp_ns
+        # at its 0 default; those fall back to pipeline entry.
+        ttft_sw = StopWatch(start_ns=request.timestamp_ns or None)
         total_sw = StopWatch()
         decode_sw = StopWatch()
         decode_elapsed_ms = 0.0
@@ -457,9 +462,22 @@ class TokenGeneratorPipeline(
                                 # per-request report, so mirror the first-chunk
                                 # gating below and only emit it if no earlier
                                 # chunk already carried it.
+                                #
+                                # response.tokens (pre-strip) still holds the
+                                # delimiter token(s) that extract_content/
+                                # extract_reasoning stripped down to nothing.
+                                # They were genuinely generated and consumed
+                                # the token budget, so they must still be
+                                # billed -- as reasoning tokens, since that's
+                                # what they are -- or a max_tokens=1 request
+                                # that stops on a bare think-start delimiter
+                                # reports completion_tokens=0 (CENG-932).
                                 yield TokenGeneratorOutput(
                                     status=response.final_status,
                                     token_count=0,
+                                    reasoning_token_count=len(response.tokens)
+                                    if response.tokens
+                                    else 0,
                                     prompt_token_count=context.tokens.prompt_length,
                                     cached_token_count=response.num_cached_tokens
                                     if not first_chunk_yielded
@@ -537,7 +555,7 @@ class TokenGeneratorPipeline(
                         # Record metrics - one TTFT/ITL per chunk
                         is_first_chunk = not first_chunk_yielded
                         if is_first_chunk:
-                            METRICS.ttft(itl.elapsed_ms)
+                            METRICS.ttft(ttft_sw.elapsed_ms)
                             decode_sw.reset()
                             first_chunk_yielded = True
                         else:

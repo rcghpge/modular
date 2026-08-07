@@ -11,9 +11,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.gpu import barrier, block_idx, thread_idx, block_dim, WARP_SIZE
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
+from std.gpu import block_idx, thread_idx, block_dim, WARP_SIZE
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
 from std.gpu.primitives.warp import shuffle_down
 from std.gpu.primitives.id import (
@@ -71,13 +71,11 @@ def reduce_kernel(
     partial_sum = warp_reduce(partial_sum)
 
     # Allocate shared memory for partial sums from each warp
-    var partial_sums_s = UnsafePointer(
-        unsafe_stack_allocation[
-            BLOCK_DIM // WARP_SIZE,
-            Float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var partial_sums_s = unsafe_stack_allocation[
+        BLOCK_DIM // WARP_SIZE,
+        Float32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     # Store warp results to shared memory
     if lane_id() == 0:

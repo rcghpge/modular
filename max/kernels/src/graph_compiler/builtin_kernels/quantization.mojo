@@ -25,9 +25,9 @@ import extensibility
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from layout.tile_tensor import row_major
-from std.gpu.host.info import is_cpu, is_gpu
+from max.gpu.host.info import is_cpu, is_gpu
 from internal_utils.fp8_utils import fp8_quantize
 from builtin_primitives.primitives import foreach
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE, row_major

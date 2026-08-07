@@ -15,11 +15,11 @@
 A device graph captures a sequence of GPU operations (such as kernel launches,
 memory copies, and memsets) as a reusable graph that can be replayed at a lower
 overhead than re-enqueueing each operation individually. The main entry point
-is [`DeviceGraph.create()`](/docs/std/gpu/host/device_graph/DeviceGraph/#create),
-which hands a [`DeviceGraphBuilder`](/docs/std/gpu/host/device_graph/DeviceGraphBuilder/)
+is [`DeviceGraph.create()`](/api/mojo/max/gpu/host/device_graph/DeviceGraph/#create),
+which hands a [`DeviceGraphBuilder`](/api/mojo/max/gpu/host/device_graph/DeviceGraphBuilder/)
 to a scoped callback."""
 
-from std.gpu.host import (
+from max.gpu.host import (
     ConstantMemoryMapping,
     Dim,
     FuncAttribute,
@@ -35,7 +35,7 @@ from std.builtin.device_passable import DevicePassable
 
 from max.runtime.async_value import AnyAsyncValueRef
 
-from std.gpu.host.device_context import (
+from max.gpu.host.device_context import (
     DeviceBuffer,
     DeviceContext,
     DeviceExternalFunction,
@@ -106,7 +106,7 @@ struct DeviceGraphNode[arena_origin: ImmOrigin](
 
 @doc_hidden
 @fieldwise_init
-struct _GraphDepArgs(TrivialRegisterPassable):
+struct _GraphDepArgs[origin: ImmOrigin](TrivialRegisterPassable):
     """C ABI representation of the dependency list passed to the
     `AsyncRT_DeviceGraphBuilder_add*` exports.
 
@@ -115,7 +115,7 @@ struct _GraphDepArgs(TrivialRegisterPassable):
     side never dereferences it).
     """
 
-    var ids: Pointer[Int32, ImmUntrackedOrigin]
+    var ids: ImmPointer[Int32, Self.origin]
     var count: Int64
 
 
@@ -123,21 +123,20 @@ struct _GraphDepArgs(TrivialRegisterPassable):
 @always_inline
 def _pack_dep_args[
     o: ImmOrigin
-](deps: List[DeviceGraphNode[o]]) -> _GraphDepArgs:
+](deps: Span[DeviceGraphNode[o], _]) -> _GraphDepArgs[deps.origin]:
     """Packs an explicit dependency list into the (ids, count) pair used by
     the AsyncRT_DeviceGraphBuilder_add* C ABI exports.
 
-    `DeviceGraphNode` is a single-Int32 struct, so `List.unsafe_ptr()` can
+    `DeviceGraphNode` is a single-Int32 struct, so `Span.unsafe_ptr()` can
     be bitcast directly to `Pointer[Int32]`. The matching C++ side
     static_asserts this layout invariant in MojoBindings.cpp.
 
-    The returned `ids` pointer borrows from the input `deps` and is only
-    valid for as long as `deps` is alive at the call site.
+    The returned `_GraphDepArgs` carries `deps.origin`, so the borrow
+    checker keeps `deps` alive for as long as the packed `ids` pointer is
+    in use.
     """
-    return _GraphDepArgs(
-        ids=deps.unsafe_ptr()
-        .unsafe_bitcast[Int32]()
-        .unsafe_origin_cast[ImmUntrackedOrigin](),
+    return _GraphDepArgs[deps.origin](
+        ids=deps.unsafe_ptr().unsafe_bitcast[Int32](),
         count=Int64(len(deps)),
     )
 
@@ -151,7 +150,7 @@ struct DeviceGraph(ImplicitlyCopyable):
     lower overhead than re-enqueueing each operation individually.
 
     To obtain a `DeviceGraph`, use
-    [`DeviceGraph.create()`](/docs/std/gpu/host/device_context/DeviceGraph/#create).
+    [`DeviceGraph.create()`](/api/mojo/max/gpu/host/device_graph/DeviceGraph/#create).
     """
 
     var _handle: _DeviceGraphPtr[mut=True]
@@ -173,7 +172,7 @@ struct DeviceGraph(ImplicitlyCopyable):
         ](copy._handle)
         self._handle = copy._handle
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Releases resources associated with this device graph."""
         # void AsyncRT_DeviceGraph_release(DeviceGraph *graph)
         external_call[
@@ -204,7 +203,7 @@ struct DeviceGraph(ImplicitlyCopyable):
         Example:
 
         ```mojo
-        from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+        from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
         def kernel():
             print("replaying")
@@ -262,7 +261,7 @@ struct DeviceGraph(ImplicitlyCopyable):
         Example:
 
         ```mojo
-        from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+        from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
         def kernel(x: Int):
             print("Value:", x)
@@ -304,7 +303,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
     """Builder for explicit device graph construction.
 
     A `DeviceGraphBuilder` is handed to the callback passed to
-    [`DeviceGraph.create()`](/docs/std/gpu/host/device_context/DeviceGraph/#create).
+    [`DeviceGraph.create()`](/api/mojo/max/gpu/host/device_graph/DeviceGraph/#create).
     Callers add kernel nodes via `add_function()` from within that callback,
     which then instantiates a reusable `DeviceGraph`.
 
@@ -318,7 +317,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
     Example:
 
     ```mojo
-    from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+    from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
     def kernel(x: Int):
         print("Value:", x)
@@ -417,11 +416,11 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
             external_call[
                 "AsyncRT_DeviceGraphBuilder_recordingContext",
                 _CString[],
-                UnsafePointer[_DeviceContextPtr[mut=True], origin_of(result)],
+                Pointer[_DeviceContextPtr[mut=True], origin_of(result)],
                 _DeviceGraphBuilderPtr[mut=True],
                 Int32,
             ](
-                UnsafePointer(to=result),
+                Pointer(to=result),
                 self._handle,
                 seed.id,
             )
@@ -450,7 +449,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         dependencies.extend(Span(self._implicit_deps))
         return dependencies^
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Releases resources associated with this graph builder."""
         # void AsyncRT_DeviceGraphBuilder_release(DeviceGraphBuilder *builder)
         external_call[
@@ -706,7 +705,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
 
         ```mojo
         from std.gpu import global_idx
-        from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+        from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
         with DeviceContext() as ctx:
             var scale: Float32 = 2.0
@@ -795,7 +794,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         compiles it automatically using the `DeviceContext` that created this
         builder, so no separate `DeviceContext.compile_function()` step is
         needed. It mirrors the parameter-based
-        [`DeviceContext.enqueue_function()`](/docs/std/gpu/host/device_context/DeviceContext/#enqueue_function)
+        [`DeviceContext.enqueue_function()`](/api/mojo/max/gpu/host/device_context/DeviceContext/#enqueue_function)
         overload for the non-graph path.
 
         Parameters:
@@ -841,7 +840,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         it first:
 
         ```mojo
-        from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+        from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
         def kernel(x: Int):
             print("Value:", x)
@@ -930,7 +929,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         compiles it automatically using the `DeviceContext` that created this
         builder, so no separate `DeviceContext.compile_function()` step is
         needed. It mirrors the capturing parameter-based
-        [`DeviceContext.enqueue_function()`](/docs/std/gpu/host/device_context/DeviceContext/#enqueue_function)
+        [`DeviceContext.enqueue_function()`](/api/mojo/max/gpu/host/device_context/DeviceContext/#enqueue_function)
         overload for the non-graph path.
 
         Parameters:
@@ -1329,7 +1328,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         Example:
 
         ```mojo
-        from std.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
+        from max.gpu.host import DeviceContext, DeviceGraph, DeviceGraphBuilder
 
         with DeviceContext() as ctx:
             var buf_a = ctx.enqueue_create_buffer[DType.uint8](100)
@@ -1452,6 +1451,52 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
             )
         )
         return DeviceGraph(result)
+
+    def create_buffer[
+        dtype: DType
+    ](self, size: Int, is_host: Bool, out result: DeviceBuffer[dtype]) raises:
+        """Allocates a buffer for use in the current device graph.
+
+        Device graph allocations have lifetimes tied to the device graph that
+        creates this. All allocations created for a device graph should go
+        through this method rather than `DeviceContext.enqueue_create_buffer`.
+
+        Parameters:
+            dtype: The element type of the resulting buffer.
+
+        Args:
+            size: The number of elements to allocate for the buffer.
+            is_host: Allocate host-addressable memory instead of device memory.
+
+        Returns:
+            The newly allocated DeviceBuffer.
+
+        Raises:
+            If memory allocation fails.
+        """
+
+        comptime elem_size = size_of[dtype]()
+
+        var cpp_handle: _DeviceBufferPtr[mut=True] = {}
+        var device_ptr: Optional[result._DevicePtr] = {}
+
+        # const char * AsyncRT_DeviceGraph_createBuffer(DeviceBuffer **result, void **devicePtr, DeviceGraphBuilder *builder, size_t len, size_t elemSize, bool isHost)
+        _checked(
+            external_call[
+                "AsyncRT_DeviceGraph_createBuffer",
+                _CString[],
+            ](
+                Pointer(to=cpp_handle),
+                Pointer(to=device_ptr),
+                self._handle,
+                c_size_t(size),
+                c_size_t(elem_size),
+                is_host,
+            ),
+            location=call_location(),
+        )
+
+        result = {cpp_handle, device_ptr.value()}
 
 
 @doc_hidden

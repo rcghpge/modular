@@ -25,7 +25,6 @@ software-pipelined tensor-core GEMM.
   activation-order permutation).
 """
 
-from std.memory import UnsafePointer
 from std.math import ceildiv
 from std.math.uutils import umod, ufloordiv, udivmod, uceildiv
 
@@ -36,16 +35,15 @@ from std.collections import OptionalReg
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    barrier,
     block_idx,
     grid_dim,
     lane_id,
     thread_idx,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.info import is_gpu
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.info import is_gpu
+from max.gpu.memory import (
     async_copy,
     async_copy_commit_group,
     async_copy_wait_group,
@@ -757,13 +755,11 @@ def multistage_qgemm_kernel[
     # Prepare circular shared memory buffer for A and B.
     # Each pipeline stage has its own buffer.
     comptime alignment = align_of[SIMD[a_type, simd_size]]()
-    var a_smem = UnsafePointer(
-        external_memory[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            alignment=alignment,
-        ]()
-    )
+    var a_smem = external_memory[
+        Scalar[a_type],
+        address_space=AddressSpace.SHARED,
+        alignment=alignment,
+    ]()
     comptime a_smem_size = num_pipeline_stages * BM * BK
 
     comptime IteratorTypeA = LayoutTensorIter[
@@ -1250,13 +1246,11 @@ def repack_Q4_0_for_sm8x[
     )
 
     # We keep 128x2 Q4_0 GGUF blocks in smem
-    var smem = UnsafePointer(
-        external_memory[
-            UInt8,
-            address_space=AddressSpace.SHARED,
-            alignment=align_of[UInt8](),
-        ]()
-    )
+    var smem = external_memory[
+        UInt8,
+        address_space=AddressSpace.SHARED,
+        alignment=align_of[UInt8](),
+    ]()
     var qb_smem = LayoutTensor[
         DType.uint8,
         Layout.row_major(BN, 2 * group_bytes),
@@ -1299,7 +1293,9 @@ def repack_Q4_0_for_sm8x[
         )
         q_gmem_iter._incr()
         barrier()
-        q_warp_tile = qb_smem.tile[repack_tile[0], group_bytes](warp_x, warp_y)
+        var q_warp_tile = qb_smem.tile[repack_tile[0], group_bytes](
+            warp_x, warp_y
+        )
 
         if (BK_groups * block_idx[1] + i * 2 + warp_y) < K_groups:
             var frag_0: SIMD[DType.uint8, 16] = 0
@@ -1470,13 +1466,11 @@ def repack_GPTQ_for_sm8x[
     )
 
     # We keep 128x2 GPTQ blocks in smem
-    var smem = UnsafePointer(
-        external_memory[
-            UInt8,
-            address_space=AddressSpace.SHARED,
-            alignment=align_of[UInt8](),
-        ]()
-    )
+    var smem = external_memory[
+        UInt8,
+        address_space=AddressSpace.SHARED,
+        alignment=align_of[UInt8](),
+    ]()
     var weights_smem = LayoutTensor[
         DType.uint8,
         Layout.row_major(BN, 2 * weights_bytes_per_group),

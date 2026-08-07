@@ -17,9 +17,8 @@ transfers on NVIDIA Blackwell (SM100) GPUs using the Tensor Memory Accelerator.
 """
 
 from std.utils.index import IndexList
-from std.gpu.host._tensormap import TensorMap, SwizzleMode, create_tensormap
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.host._tensormap import TensorMap, SwizzleMode, create_tensormap
+from max.gpu.memory import (
     cp_async_bulk_tensor_shared_cluster_global,
 )
 from layout import (
@@ -32,7 +31,7 @@ from layout.int_tuple import depth, to_index_list, product
 from layout.runtime_tuple import to_index_list as runtime_tuple_to_index_list
 from layout.copy import CopyPolicy
 from layout.tma_async import SharedMemBarrier
-from std.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from std.sys import size_of
 from layout.swizzle import Swizzle
 from std.bit import log2_floor

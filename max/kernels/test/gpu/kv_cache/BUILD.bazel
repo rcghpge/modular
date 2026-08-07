@@ -1,4 +1,5 @@
 load("//bazel:api.bzl", "mojo_test")
+load("//max/kernels/src:deprecations.bzl", "IGNORED_POINTER_DEPRECATIONS_COPTS")
 
 package(default_visibility = ["//max:consumers"])
 
@@ -24,14 +25,7 @@ _APPLE_GPU_INCOMPATIBLE = select({
 
 _EXTRA_CONSTRAINTS = {
     "test_batch_kv_cache_flash_attention.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: PRDT-506
-    "test_kv_cache_matmul.mojo": select({
-        # KERN-3272: ~20min compile/test time on B200 (ASSERT=all + SM100
-        # matmul tactic explosion, same root cause as KERN-3210). Disabled on
-        # B200 until fixed forward or the test is split like the ragged variant.
-        "//:b200_gpu": ["@platforms//:incompatible"],
-        "//:apple_gpu": ["@platforms//:incompatible"],  # FIXME: PRDT-506
-        "//conditions:default": [],
-    }),
+    "test_kv_cache_matmul.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: PRDT-506
     "test_batch_kv_cache_flash_attention_causal_mask.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: PRDT-506
     "test_kv_cache_ragged_matmul_scale.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: KERN-2318
     "test_fused_qkv_index_matmul_scale_mxfp8.mojo": select({
@@ -90,6 +84,7 @@ _EXTRA_DEPS = {
             src,
             "kv_cache_test_utils.mojo",
         ],
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
         # KERN-2339: Several tests disabled due to bounds check failures
         enable_assertions = select({
             "//:b200_gpu": src not in [
@@ -152,7 +147,7 @@ _EXTRA_DEPS = {
             "kv_cache_test_utils.mojo",
             "test_kv_cache_ragged_matmul.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "test_dtype={}".format(test_dtype),
             "-D",
@@ -199,6 +194,7 @@ _EXTRA_DEPS = {
 #
 # head_size:
 #   64, 128: all GPUs (subject to page_size).
+#   80:      MI355 only.
 #   256:     depth512 kernel, H100 and B200 only.
 #   512:     depth512 kernel, B200 only.
 #
@@ -214,6 +210,12 @@ _PAGED_FA_GPU_MEMORY = {
 _PAGED_FA_CONFIGS = [
     # (page_size, head_size, pair_cta, extra_constraints)
     ("256", "64", False, _APPLE_GPU_INCOMPATIBLE),
+    (
+        "256",
+        "80",
+        False,
+        ["//:mi355_gpu"],
+    ),
     ("256", "128", False, _APPLE_GPU_INCOMPATIBLE),
     (
         "256",
@@ -427,7 +429,7 @@ _PAGED_FA_ALL_CONFIGS = [
             "kv_cache_test_utils.mojo",
             "test_batch_kv_cache_flash_attention_causal_mask_ragged_paged.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "page_size={}".format(page_size),
             "-D",
@@ -464,7 +466,7 @@ _PAGED_FA_ALL_CONFIGS = [
             "kv_cache_test_utils.mojo",
             "test_mha_inflight_batching_gemma3_hang.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "page_size={}".format(page_size),
         ],
@@ -539,7 +541,7 @@ _GEMMA4_SHAPES_CONFIGS = [
             "kv_cache_test_utils.mojo",
             "test_mha_gemma4_shapes.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "page_size={}".format(page_size),
             "-D",
@@ -580,7 +582,7 @@ _PAGED_LUT_GPU_MEMORY = {
             "kv_cache_test_utils.mojo",
             "test_paged_lut_load_boundary.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "page_size={}".format(page_size),
         ],
@@ -618,6 +620,7 @@ mojo_test(
         "kv_cache_test_utils.mojo",
         "test_paged_kv_null_block_sentinel.mojo",
     ],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
     enable_assertions = True,
     exec_properties = {
         "test.resources:gpu-memory": "2",
@@ -667,7 +670,7 @@ _OOB_CANARY_CONFIGS = [
             "kv_cache_test_utils.mojo",
             "test_mha_paged_kv_oob_canary.mojo",
         ],
-        copts = [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
             "-D",
             "page_size={}".format(page_size),
             "-D",

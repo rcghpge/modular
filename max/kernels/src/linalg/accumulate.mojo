@@ -64,11 +64,9 @@ struct _Accumulator[
             and (Self.simd_width > 0)
         )
         comptime alignment = align_of[SIMD[Self.dtype, Self.simd_width]]()
-        self._storage = UnsafePointer(
-            unsafe_stack_allocation[
-                Self._size, Self.dtype, alignment=alignment
-            ]()
-        )
+        self._storage = unsafe_stack_allocation[
+            Self._size, Self.dtype, alignment=alignment
+        ]()
 
     @always_inline
     def __init__(
@@ -445,7 +443,7 @@ struct _Accumulator[
             partial_load: Whether load input partially.
 
         Args:
-            input: UnsafePointer to input buffer.
+            input: Pointer to input buffer.
             input_stride: Stride between input segments of size `num_cols * simd_width`.
             partial_load_size: Size of partial load for input.
         """
@@ -481,7 +479,7 @@ struct _Accumulator[
             partial_store: Whether store output partially.
 
         Args:
-            output: UnsafePointer to output buffer.
+            output: Pointer to output buffer.
             output_stride: Stride between output segments of size `num_cols * simd_width`.
             partial_store_size: Size of partial store to the output.
         """

@@ -16,9 +16,9 @@ from std.random import rand, seed
 from std.sys import argv
 
 from std.gpu import *
-from std.gpu.host import DeviceContext
-from std.sys import Vendor, has_amd_gpu_accelerator
-from std.gpu.host.info import (
+from max.gpu.host import DeviceContext
+from std.sys import has_amd_gpu_accelerator
+from max.gpu.host.info import (
     A100,
     H100,
     GPUInfo,
@@ -51,11 +51,7 @@ def is_benchmark() -> Bool:
 
 
 def is_sm8(info: GPUInfo) -> Bool:
-    return (
-        info.vendor == Vendor.NVIDIA_GPU
-        and info.compute >= 8
-        and info.compute < 9
-    )
+    return info.api == "cuda" and info.compute >= 8 and info.compute < 9
 
 
 def test[
@@ -257,7 +253,7 @@ def test[
 
 
 def test_depth_supported_by_gpu(info: GPUInfo) -> List[Int]:
-    var depths = [64, 128, 512]
+    var depths: List = [64, 128, 512]
 
     if info == materialize[H100]() or _is_sm10x_gpu(info):
         depths.append(80)

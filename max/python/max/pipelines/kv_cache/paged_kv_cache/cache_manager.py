@@ -49,7 +49,6 @@ from max.pipelines.kv_cache.kv_connector import (
     KVConnector,
     KVConnectorTransfer,
 )
-from max.pipelines.kv_cache.memory_tier import MemoryTier
 from max.pipelines.modeling.types import RequestID
 from max.profiler import traced
 from max.support.math import ceildiv
@@ -303,12 +302,6 @@ class PagedKVCacheManager:
         )
         devices_per_replica = split_into_groups(devices, num_replicas)
 
-        device_memory_tier = (
-            MemoryTier.MEMORY_TIER_CPU
-            if devices[0].is_host
-            else MemoryTier.MEMORY_TIER_GPU
-        )
-
         # Allocate one extra page for the null block.
         self._kv_buffers: Sequence[KVCacheBufferInterface] = (
             params.allocate_buffers(total_num_pages + 1)
@@ -351,7 +344,6 @@ class PagedKVCacheManager:
         # A single block manager owns every replica's device block pool and the
         # single shared connector.
         self._block_manager = BlockManager(
-            device_memory_tier=device_memory_tier,
             total_num_blocks=total_num_pages,
             block_size=params.page_size,
             connector=self._connector,
@@ -377,35 +369,6 @@ class PagedKVCacheManager:
             )
             for replica_idx in range(num_replicas)
         ]
-
-    def get_pct_used_blocks_after_allocation(
-        self, ctx: TextContext, replica_idx: int
-    ) -> float:
-        """Gets the percentage of blocks used after allocating for a request.
-
-        Args:
-            ctx: The request context containing sequence information and token indices.
-            replica_idx: Index of the replica to query.
-
-        Returns:
-            The percentage of total blocks used after allocating for the request.
-        """
-        block_manager = self._block_manager
-        num_needed_blocks = (
-            self.get_num_used_pages(replica_idx)
-            + block_manager.num_blocks_to_allocate(
-                ctx,
-                self.params.num_draft_tokens,
-                self.params.num_draft_tokens_per_step,
-            )
-            - block_manager.count_full_blocks_from_prefix_caches(
-                ctx, replica_idx
-            )
-        )
-        return min(
-            1.0,
-            num_needed_blocks / self._total_num_pages,
-        )
 
     def get_prefix_cache_hit_counts(
         self, ctx: TextContext

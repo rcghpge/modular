@@ -16,8 +16,8 @@
 
 
 from std.math import ceildiv
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.primitives.grid_controls import PDLLevel
 from layout import Coord, Idx, Layout, TileTensor, row_major
 from layout.tile_tensor import NullableTileTensor
 from std.logger import Logger
@@ -30,7 +30,7 @@ from linalg.fp4_utils import (
     NVFP4_SF_DTYPE,
     get_scaling_kind,
 )
-from std.gpu.host.info import _is_sm10x_gpu
+from max.gpu.host.info import _is_sm10x_gpu
 from std.collections import Optional
 from linalg.utils import (
     elementwise_epilogue_type,
@@ -39,7 +39,7 @@ from linalg.utils import (
 from std.utils.index import Index, IndexList
 from linalg.matmul.vendor.blas import matmul
 from std.memory import UnsafePointer
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.sys import size_of, simd_width_of
 from max.algorithm import elementwise
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind

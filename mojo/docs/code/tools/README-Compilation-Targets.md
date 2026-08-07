@@ -56,15 +56,15 @@ Test 18 (GPU sidecar) requires a source file with a GPU kernel:
 ```mojo
 """Minimal GPU kernel for target testing."""
 
-from std.memory import UnsafePointer
-from std.gpu.host import DeviceContext
+from std.memory import Pointer
+from max.gpu.host import DeviceContext
 
 comptime `✅`: Int32 = 1
 comptime `❌`: Int32 = 0
 
 
 def kernel(
-    value: UnsafePointer[Scalar[DType.int32], MutAnyOrigin],
+    value: Pointer[Scalar[DType.int32], MutAnyOrigin],
 ):
     value[0] = `✅`
 

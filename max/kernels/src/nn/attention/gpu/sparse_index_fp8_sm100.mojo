@@ -68,17 +68,17 @@ match via `test_mla_index_fp8`.
 
 from std.gpu import (
     WARP_SIZE,
-    barrier,
     block_idx,
     grid_dim,
     lane_id,
     thread_idx,
     warp_id,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import AddressSpace, external_memory
-from std.gpu.sync import named_barrier
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import external_memory
+from max.gpu.sync import named_barrier
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
@@ -206,14 +206,12 @@ def _fp8_index_body[
 
     comptime k_elems = BM_key * depth
     comptime q_elems = MMA_N * depth
-    var smem = UnsafePointer(
-        external_memory[
-            Scalar[dtype],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="fp8_index_sm100_smem",
-        ]()
-    )
+    var smem = external_memory[
+        Scalar[dtype],
+        address_space=AddressSpace.SHARED,
+        alignment=128,
+        name="fp8_index_sm100_smem",
+    ]()
     var k_smem = smem
     var q_smem = smem + k_elems
     var qs_smem = (smem + k_elems + q_elems).bitcast[Float32]()
@@ -458,9 +456,11 @@ def _fp8_index_score_kernel_sm100[
     valid_length: TileTensor[DType.uint32, VLLT, ImmutAnyOrigin],
     q_s: TileTensor[DType.float32, QSLT, ImmutAnyOrigin],
     output: TileTensor[DType.float32, OutLT, MutAnyOrigin],
-    max_num_keys: Int,
-    causal: Int,
+    max_num_keys_dev: Int32,
+    causal_dev: Int32,
 ):
+    var max_num_keys = Int(max_num_keys_dev)
+    var causal = Int(causal_dev)
     var b = block_idx.x
     var key_start = Int(block_idx.y) * BM_key
     var start_of_seq = Int(valid_length[b])
@@ -526,9 +526,11 @@ def _fp8_index_score_kernel_sm100_split[
     valid_length: TileTensor[DType.uint32, VLLT, ImmutAnyOrigin],
     q_s: TileTensor[DType.float32, QSLT, ImmutAnyOrigin],
     output: TileTensor[DType.float32, OutLT, MutAnyOrigin],
-    max_num_keys: Int,
-    causal: Int,
+    max_num_keys_dev: Int32,
+    causal_dev: Int32,
 ):
+    var max_num_keys = Int(max_num_keys_dev)
+    var causal = Int(causal_dev)
     var b = block_idx.x
     var key_start = Int(block_idx.y) * BM_key
     var start_of_seq = Int(valid_length[b])
@@ -782,8 +784,8 @@ def fp8_index_score_sm100[
             valid_length.as_immut(),
             q_s,
             output,
-            max_num_keys,
-            Int(causal),
+            Int32(max_num_keys),
+            Int32(causal),
             grid_dim=(batch_size, ceildiv(max_num_keys, BM_key), num_slices),
             block_dim=128,
             shared_mem_bytes=smem_bytes_rt,
@@ -800,8 +802,8 @@ def fp8_index_score_sm100[
             valid_length.as_immut(),
             q_s,
             output,
-            max_num_keys,
-            Int(causal),
+            Int32(max_num_keys),
+            Int32(causal),
             grid_dim=(batch_size, ceildiv(max_num_keys, BM_key), 1),
             block_dim=128,
             shared_mem_bytes=smem_bytes_rt,

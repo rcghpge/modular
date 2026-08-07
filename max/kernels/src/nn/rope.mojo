@@ -17,8 +17,8 @@ from std.sys.info import _current_target, simd_width_of
 
 from max.algorithm.functional import elementwise
 from std.complex import ComplexSIMD
-from std.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.host.info import is_cpu
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host.info import is_cpu
 from layout import (
     Coord,
     CoordLike,
@@ -39,8 +39,8 @@ def _rope[
     freq_dtype: DType,
     width: SIMDLength,
 ](val: SIMD[dtype, width], freq: SIMD[freq_dtype, width]) -> SIMD[dtype, width]:
-    x_re, x_im = val.cast[freq_dtype]().deinterleave()
-    f_re, f_im = freq.deinterleave()
+    var x_re, x_im = val.cast[freq_dtype]().deinterleave()
+    var f_re, f_im = freq.deinterleave()
     var r = ComplexSIMD(x_re, x_im) * ComplexSIMD(f_re, f_im)
     return rebind[SIMD[dtype, width]](r.re.interleave(r.im).cast[dtype]())
 
@@ -110,7 +110,7 @@ def apply_rope[
     comptime if interleaved:
         output_fn[alignment=alignment](idx, res)
     else:
-        output_re, output_im = res.deinterleave()
+        var output_re, output_im = res.deinterleave()
         output_fn[alignment=alignment](pos_re, output_re)
         output_fn[alignment=alignment](pos_im, output_im)
 

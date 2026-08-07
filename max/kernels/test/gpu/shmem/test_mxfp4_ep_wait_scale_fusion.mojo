@@ -18,12 +18,12 @@ in the per-expert fixed-stride `scale_4d` slot layout
 kernel (`preshuffle_grouped_scale_4d_gpu`, traced
 `mxfp4_preshuffle_grouped_scale_4d_kernel_KS224`) that runs *serially* after
 `ep_wait` (dispatch_wait) writes the per-token scale row-major. The fusion
-(KS224/up-proj) has `MXFP4TokenFormat.copy_msg_to_output_tensor`
+(KS224/up-proj) has `MXTokenFormat.copy_msg_to_output_tensor`
 write the scale DIRECTLY in the slot layout behind a
 `comptime fuse_a_scale_preshuffle` flag, deleting the separate kernel from the
 decode critical path.
 
-This test drives the REAL `MXFP4TokenFormat.copy_msg_to_output_tensor` two ways
+This test drives the REAL `MXTokenFormat.copy_msg_to_output_tensor` two ways
 and asserts the produced slot buffers are byte-for-byte equal:
 
   reference (fuse_a_scale_preshuffle=False): copy writes raw [tokens, K/32]
@@ -57,8 +57,8 @@ shmem package — use bazel mojo):
 """
 
 from std.gpu import block_idx
-from std.gpu.host import DeviceContext, HostBuffer
-from std.gpu.host.info import MI355X
+from max.gpu.host import DeviceContext, HostBuffer
+from max.gpu.host.info import MI355X
 from std.gpu.primitives import warp_id
 from std.math import align_up
 from std.random import random_ui64, seed
@@ -68,7 +68,7 @@ from layout.tile_layout import TensorLayout
 from linalg.fp4_utils import MXFP4_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import Shuffler
 
-from shmem.ep_comm import MXFP4TokenFormat
+from shmem.ep_comm import MXTokenFormat
 
 from std.testing import assert_equal
 
@@ -116,12 +116,16 @@ def _ep_wait_copy_kernel[
     output_scales: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
     recv_buf: UnsafePointer[UInt8, MutUntrackedOrigin],
     a_offsets: TileTensor[DType.uint32, aoff_layout, ImmutAnyOrigin],
-    msg_bytes: Int,
-    num_active: Int,
-    total_tokens: Int,
-    max_padded_M: Int,
+    msg_bytes_dev: Int32,
+    num_active_dev: Int32,
+    total_tokens_dev: Int32,
+    max_padded_M_dev: Int32,
 ):
-    var fmt = MXFP4TokenFormat[
+    var msg_bytes = Int(msg_bytes_dev)
+    var num_active = Int(num_active_dev)
+    var total_tokens = Int(total_tokens_dev)
+    var max_padded_M = Int(max_padded_M_dev)
+    var fmt = MXTokenFormat[
         hidden_size, top_k, fuse_a_scale_preshuffle=fuse_a_scale_preshuffle
     ](output_tokens, output_scales, max_padded_M)
 
@@ -213,7 +217,7 @@ def _run_fusion_check[
     var dummy_scales_d = ctx.enqueue_create_buffer[DType.float8_e8m0fnu](
         scale_K
     )
-    var dummy_fmt = MXFP4TokenFormat[hidden_size, top_k](
+    var dummy_fmt = MXTokenFormat[hidden_size, top_k](
         out_tt,
         TileTensor[origin=MutAnyOrigin](
             dummy_scales_d, row_major(Coord(1, Idx[scale_K]))
@@ -282,10 +286,10 @@ def _run_fusion_check[
         raw_scales_tt,
         recv_d.unsafe_ptr(),
         a_off_tt,
-        msg_bytes,
-        num_active,
-        total_tokens,
-        max_padded_M,
+        Int32(msg_bytes),
+        Int32(num_active),
+        Int32(total_tokens),
+        Int32(max_padded_M),
         grid_dim=grid_blocks,
         block_dim=warps_per_block * WARP_SIZE,
     )
@@ -337,10 +341,10 @@ def _run_fusion_check[
         fused_slots_tt,
         recv_d.unsafe_ptr(),
         a_off_tt,
-        msg_bytes,
-        num_active,
-        total_tokens,
-        max_padded_M,
+        Int32(msg_bytes),
+        Int32(num_active),
+        Int32(total_tokens),
+        Int32(max_padded_M),
         grid_dim=grid_blocks,
         block_dim=warps_per_block * WARP_SIZE,
     )

@@ -10,9 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from std.gpu import barrier, thread_idx
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
+from std.gpu import thread_idx
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
 from std.random import random_float64
 from std.math import abs
@@ -34,13 +34,11 @@ def shared_memory_sum_reduction_kernel(
         output: Output scalar for the sum result.
     """
     # Allocate shared memory
-    var input_s = UnsafePointer(
-        unsafe_stack_allocation[
-            BLOCK_DIM,
-            Float32,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var input_s = unsafe_stack_allocation[
+        BLOCK_DIM,
+        Float32,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     var t = UInt32(thread_idx.x)
     # Load data into shared memory with initial reduction

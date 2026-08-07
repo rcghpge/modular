@@ -42,23 +42,22 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from std.gpu import (
-    barrier,
     block_idx,
     grid_dim as gpu_grid_dim,
     thread_idx,
     warp_id,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.memory import (
     cp_async_bulk_global_shared_cta,
     cp_async_bulk_prefetch,
     cp_async_bulk_shared_cluster_global,
     external_memory,
     fence_mbarrier_init,
 )
-from std.gpu.primitives import elect_one_sync
-from std.gpu.sync import (
+from max.gpu.primitives.cluster import elect_one_sync
+from max.gpu.sync import (
     cp_async_bulk_commit_group,
     cp_async_bulk_wait_group,
 )
@@ -94,16 +93,14 @@ def bulk_memcpy_kernel[
 ](
     src: UnsafePointer[UInt8, ImmutAnyOrigin],
     dst: UnsafePointer[UInt8, MutAnyOrigin],
-    total_chunks: Int,
+    total_chunks: Int32,
 ):
     comptime NUM_WARPS = NUM_THREADS // 32
     comptime DATA_BYTES = NUM_WARPS * S * BYTES_PER_COPY
 
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var mbar_base = (smem_base + DATA_BYTES).bitcast[SharedMemBarrier]()
 
     var w = Int(warp_id())
@@ -120,7 +117,7 @@ def bulk_memcpy_kernel[
 
     var first = Int(block_idx.x) * NUM_WARPS + w
     var stride = Int(gpu_grid_dim.x) * NUM_WARPS
-    var my_total = max(0, (total_chunks - first + stride - 1) // stride)
+    var my_total = max(0, (Int(total_chunks) - first + stride - 1) // stride)
 
     if not is_leader:
         return
@@ -243,7 +240,7 @@ def main() raises:
                 ](
                     src_dev,
                     dst_dev,
-                    total_chunks,
+                    Int32(total_chunks),
                     grid_dim=(grid,),
                     block_dim=(NUM_THREADS,),
                     shared_mem_bytes=smem_bytes,

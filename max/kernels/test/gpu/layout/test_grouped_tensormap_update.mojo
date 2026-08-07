@@ -34,11 +34,11 @@ This pattern is based on NVIDIA CuTe DSL's grouped block-scaled GEMM which uses
 
 from std.sys import size_of
 
-from std.gpu import barrier
-from std.gpu.host import DeviceContext
-from std.gpu.host.nvidia.tma import TMADescriptor
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TMADescriptor
 from std.gpu import block_idx, thread_idx
-from std.gpu.sync import syncwarp
+from max.gpu.sync import syncwarp
 from layout import Layout, LayoutTensor
 from layout._fillers import arange
 from layout._utils import ManagedLayoutTensor
@@ -122,7 +122,7 @@ def test_grouped_tensormap_update_kernel[
     ]()
 
     # Allocate SMEM for tiles
-    tile_a = LayoutTensor[
+    var tile_a = LayoutTensor[
         dtype,
         tile_layout,
         MutAnyOrigin,
@@ -130,7 +130,7 @@ def test_grouped_tensormap_update_kernel[
         alignment=128,
     ].stack_allocation()
 
-    tile_b = LayoutTensor[
+    var tile_b = LayoutTensor[
         dtype,
         tile_layout,
         MutAnyOrigin,
@@ -139,23 +139,17 @@ def test_grouped_tensormap_update_kernel[
     ].stack_allocation()
 
     # Allocate SMEM for tensormap descriptors
-    var smem_desc_a = UnsafePointer(
-        unsafe_stack_allocation[
-            1, TMADescriptor, alignment=128, address_space=AddressSpace.SHARED
-        ]()
-    )
-    var smem_desc_b = UnsafePointer(
-        unsafe_stack_allocation[
-            1, TMADescriptor, alignment=128, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var smem_desc_a = unsafe_stack_allocation[
+        1, TMADescriptor, alignment=128, address_space=AddressSpace.SHARED
+    ]()
+    var smem_desc_b = unsafe_stack_allocation[
+        1, TMADescriptor, alignment=128, address_space=AddressSpace.SHARED
+    ]()
 
     # Allocate barriers
-    var mbar = UnsafePointer(
-        unsafe_stack_allocation[
-            2, SharedMemBarrier, address_space=AddressSpace.SHARED, alignment=8
-        ]()
-    )
+    var mbar = unsafe_stack_allocation[
+        2, SharedMemBarrier, address_space=AddressSpace.SHARED, alignment=8
+    ]()
 
     barrier()  # Initial sync before entering loop
 

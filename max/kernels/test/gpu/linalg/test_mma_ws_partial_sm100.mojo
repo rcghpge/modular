@@ -122,12 +122,12 @@ from std.memory import UnsafePointer, alloc, bitcast
 from std.random import randn, seed
 from std.sys import size_of
 
-from std.gpu import barrier, thread_idx, warp_id as get_warp_id
-from std.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
-from std.gpu.host.info import _is_sm10x_gpu
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import (
-    AddressSpace,
+from std.gpu import thread_idx, warp_id as get_warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
+from max.gpu.host.info import _is_sm10x_gpu
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import (
     external_memory,
 )
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
@@ -253,11 +253,9 @@ def ss_qk_partial_kernel[
     """
 
     # ---- Dynamic SMEM ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var a_smem_ptr = (smem_base + QK_A_OFFSET).bitcast[Scalar[FP8_TYPE]]()
     var b_smem_ptr = (smem_base + QK_B_OFFSET).bitcast[Scalar[FP8_TYPE]]()
 
@@ -471,11 +469,9 @@ def ss_qk_multistage_kernel[
     `k == 0 or jj == 1` scale-predicate branch and the absolute-offset path
     with k_start>0.
     """
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var a_smem_ptr = (smem_base + QK_A_OFFSET).bitcast[Scalar[FP8_TYPE]]()
     var b_smem_ptr = (smem_base + QK_B_OFFSET).bitcast[Scalar[FP8_TYPE]]()
 
@@ -711,9 +707,9 @@ def _ss_naive_ref[
         c_ref_tt,
         a_tt,
         b_tt,
-        M,
-        QK_N,
-        k_valid,
+        Int32(M),
+        Int32(QK_N),
+        Int32(k_valid),
         grid_dim=(
             ceildiv(M, NAIVE_BLOCK_DIM),
             ceildiv(QK_N, NAIVE_BLOCK_DIM),
@@ -1322,11 +1318,9 @@ def ss_nonws_partial_kernel[
     """
 
     # ---- Dynamic SMEM ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var a_smem_ptr = (smem_base + NW_A_OFFSET).bitcast[Scalar[FP8_TYPE]]()
     var b_smem_ptr = (smem_base + NW_B_OFFSET).bitcast[Scalar[FP8_TYPE]]()
 
@@ -1929,11 +1923,9 @@ def ts_partial_kernel[
     (16 strips) + fold B descriptor (BK=256) are identical to
     `dense_mma_ws_ts_kernel`; only the MMA call differs.
     """
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
 
     var q_smem_ptr = smem_base.bitcast[Scalar[TS_OP_TYPE]]()
     var q_smem_tile = LayoutTensor[
@@ -2268,9 +2260,9 @@ def test_ts_partial(ctx: DeviceContext) raises:
         c_ref_tt,
         a_tt,
         b_tt,
-        TS_P_REF_ROWS,
-        TS_P_REF_COLS,
-        TS_COLS,
+        Int32(TS_P_REF_ROWS),
+        Int32(TS_P_REF_COLS),
+        Int32(TS_COLS),
         grid_dim=(
             ceildiv(TS_P_REF_ROWS, NAIVE_BLOCK_DIM),
             ceildiv(TS_P_REF_COLS, NAIVE_BLOCK_DIM),

@@ -21,22 +21,24 @@ from std.gpu import (
     block_idx,
     grid_dim,
     thread_idx,
+)
+from max.gpu.primitives.grid_controls import (
     launch_dependent_grids,
     wait_on_dependent_grids,
 )
-from std.gpu.primitives.grid_controls import pdl_launch_attributes
-from std.gpu.host import DeviceContext
+from max.gpu.primitives.grid_controls import pdl_launch_attributes
+from max.gpu.host import DeviceContext
 
 
 def copy1(
     a: UnsafePointer[Float32, ImmutAnyOrigin],
     b: UnsafePointer[Float32, MutAnyOrigin],
-    n: Int,
+    n: Int32,
 ):
     var tmp = Float32()
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         tmp += b[i]
@@ -45,7 +47,7 @@ def copy1(
 
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         b[i] = a[i] + tmp
@@ -55,12 +57,12 @@ def copy2(
     b: UnsafePointer[Float32, ImmutAnyOrigin],
     c: UnsafePointer[Float32, MutAnyOrigin],
     d: UnsafePointer[Float32, ImmutAnyOrigin],
-    n: Int,
+    n: Int32,
 ):
     var result = Float32()
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         result += d[i]
@@ -69,7 +71,7 @@ def copy2(
 
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         c[i] = b[i] + result + 2.0
@@ -78,19 +80,19 @@ def copy2(
 def copy1_n(
     a: UnsafePointer[Float32, ImmutAnyOrigin],
     b: UnsafePointer[Float32, MutAnyOrigin],
-    n: Int,
+    n: Int32,
 ):
     var tmp = Float32()
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         tmp += b[i]
 
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         b[i] = a[i] + tmp
@@ -100,19 +102,19 @@ def copy2_n(
     b: UnsafePointer[Float32, ImmutAnyOrigin],
     c: UnsafePointer[Float32, MutAnyOrigin],
     d: UnsafePointer[Float32, ImmutAnyOrigin],
-    n: Int,
+    n: Int32,
 ):
     var result = Float32()
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         result += d[i]
 
     for i in range(
         block_idx.x * block_dim.x + thread_idx.x,
-        n,
+        Int(n),
         block_dim.x * grid_dim.x,
     ):
         c[i] = b[i] + result + 2.0
@@ -151,7 +153,7 @@ def bench_pdl_copy(mut b: Bench, *, length: Int, context: DeviceContext) raises:
             context.enqueue_function[copy1](
                 a_device,
                 b_device,
-                length,
+                Int32(length),
                 grid_dim=(grid_dim),
                 block_dim=(block_dim),
                 attributes=pdl_launch_attributes(),
@@ -160,7 +162,7 @@ def bench_pdl_copy(mut b: Bench, *, length: Int, context: DeviceContext) raises:
                 b_device,
                 c_device,
                 d_device,
-                length,
+                Int32(length),
                 grid_dim=(grid_dim),
                 block_dim=(block_dim),
                 attributes=pdl_launch_attributes(),
@@ -222,7 +224,7 @@ def bench_copy(mut b: Bench, *, length: Int, context: DeviceContext) raises:
             context.enqueue_function[copy1_n](
                 a_device,
                 b_device,
-                length,
+                Int32(length),
                 grid_dim=(grid_dim),
                 block_dim=(block_dim),
             )
@@ -230,7 +232,7 @@ def bench_copy(mut b: Bench, *, length: Int, context: DeviceContext) raises:
                 b_device,
                 c_device,
                 d_device,
-                length,
+                Int32(length),
                 grid_dim=(grid_dim),
                 block_dim=(block_dim),
             )

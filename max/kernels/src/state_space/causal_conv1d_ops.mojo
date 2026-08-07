@@ -20,8 +20,8 @@ Provides compiler-registered operations for causal 1D convolution:
 from std.math import ceildiv
 
 import extensibility
-from std.gpu.host import DeviceContext
-from std.gpu.host.info import is_cpu, is_gpu
+from max.gpu.host import DeviceContext
+from max.gpu.host.info import is_cpu, is_gpu
 from std.memory import unsafe_memcpy
 
 
@@ -154,10 +154,10 @@ struct CausalConv1D[activation: StaticString]:
                 var silu_activation_int8 = Int8(silu_activation)
                 gpu_ctx.enqueue_function(
                     compiled_func,
-                    batch_size,
-                    dim,
-                    seqlen,
-                    width,
+                    Int32(batch_size),
+                    Int32(dim),
+                    Int32(seqlen),
+                    Int32(width),
                     X,
                     W,
                     O,
@@ -199,10 +199,10 @@ struct CausalConv1D[activation: StaticString]:
                 var silu_activation_int8 = Int8(silu_activation)
                 gpu_ctx.enqueue_function(
                     compiled_func,
-                    batch_size,
-                    dim,
-                    seqlen,
-                    width,
+                    Int32(batch_size),
+                    Int32(dim),
+                    Int32(seqlen),
+                    Int32(width),
                     X,
                     W,
                     O,
@@ -244,10 +244,10 @@ struct CausalConv1D[activation: StaticString]:
                 var silu_activation_int8 = Int8(silu_activation)
                 gpu_ctx.enqueue_function(
                     compiled_func,
-                    batch_size,
-                    dim,
-                    seqlen,
-                    width,
+                    Int32(batch_size),
+                    Int32(dim),
+                    Int32(seqlen),
+                    Int32(width),
                     X,
                     W,
                     O,
@@ -289,10 +289,10 @@ struct CausalConv1D[activation: StaticString]:
                 var silu_activation_int8 = Int8(silu_activation)
                 gpu_ctx.enqueue_function(
                     compiled_func,
-                    batch_size,
-                    dim,
-                    seqlen,
-                    width,
+                    Int32(batch_size),
+                    Int32(dim),
+                    Int32(seqlen),
+                    Int32(width),
                     X,
                     W,
                     O,
@@ -496,11 +496,11 @@ struct CausalConv1DUpdate[activation: StaticString]:
             var silu_activation_int8 = Int8(silu_activation)
             gpu_ctx.enqueue_function(
                 compiled_func,
-                batch_size,
-                dim,
-                seqlen,
-                width,
-                state_len,
+                Int32(batch_size),
+                Int32(dim),
+                Int32(seqlen),
+                Int32(width),
+                Int32(state_len),
                 X,
                 CS,
                 W,

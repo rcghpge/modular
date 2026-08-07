@@ -29,14 +29,13 @@ from max.algorithm.functional import (
     _get_start_indices_of_nth_subvolume,
     parallelize_over_rows,
 )
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.utils import IndexList
 from std.utils.index import Index
 
 from ...bmm import (
     elementwise_epilogue_type as batched_matmul_elementwise_epilogue_type,
 )
-from std.gpu.memory import AddressSpace
 from layout import Coord, Idx, TileTensor, row_major
 from ...packing import pack_b_ndbuffer
 from ...utils import (
@@ -83,7 +82,7 @@ def _on_error_msg() -> Error:
             "the XCode package is installed and that the library path is "
             "correctly set in one of the following paths ["
         ),
-        ", ".join(Span([LIB_ACC_PATH])),
+        ", ".join([LIB_ACC_PATH]),
         "].",
     )
 

@@ -13,7 +13,7 @@
 
 from std.collections import Optional
 from std.collections.string._utf8 import _is_valid_utf8
-from std.collections.string.string_slice import _split
+from std.collections.string.string_span import _split
 from std.os import abort
 from std.pathlib import _dir_of_current_file
 from std.random import seed
@@ -39,15 +39,19 @@ def make_string[
     """
 
     try:
-        directory = _dir_of_current_file() / "data"
+        var directory = _dir_of_current_file() / "data"
         var f = open(directory / filename, "r")
 
         comptime if length > 0:
             var items = f.read_bytes(length)
-            i = 0
+            var i = 0
             while length > len(items):
                 items.append(items[i])
                 i = i + 1 if i < len(items) - 1 else 0
+            # `length` can truncate mid-codepoint; drop trailing bytes until
+            # the buffer ends on a valid UTF-8 boundary again.
+            while len(items) > 0 and not _is_valid_utf8(Span(items)):
+                _ = items.pop()
             return String(unsafe_from_utf8=items)
         else:
             return String(unsafe_from_utf8=f.read_bytes())
@@ -122,6 +126,7 @@ def bench_string_split[
 # ===-----------------------------------------------------------------------===#
 @parameter
 def bench_string_join[short: Bool](mut b: Bencher) raises:
+    var count: Int
     comptime if short:
         count = 100
     else:

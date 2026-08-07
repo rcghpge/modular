@@ -41,7 +41,7 @@ from comm.broadcast import broadcast
 from comm.scatter import scatter
 from comm import MAX_GPUS, Signal
 import comm.vendor.ccl as vendor_ccl
-from std.gpu.host import DeviceContext, DeviceContextArray
+from max.gpu.host import DeviceContext, DeviceContextArray
 from layout.tile_tensor import row_major
 from layout import Coord, TileTensor, coord_to_index_list, row_major
 from extensibility import (
@@ -1080,12 +1080,10 @@ struct DistributedAllGatherRMSNorm:
         comptime InputTensorType = type_of(
             inputs[0].to_tile_tensor[DType.int64]().as_immut()
         )
-        var in_tensors = InlineArray[InputTensorType, num_devices](
+        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
+        var rank_sigs = Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS](
             uninitialized=True
         )
-        var rank_sigs = InlineArray[
-            UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](uninitialized=True)
 
         comptime for i in range(num_devices):
             in_tensors[i] = rebind[InputTensorType](
@@ -1130,7 +1128,7 @@ struct DistributedAllGatherRMSNorm:
                 comptime OutViewType = type_of(
                     TileTensor(base, row_major(cols_rt, cols_rt))
                 )
-                var out_views = InlineArray[OutViewType, num_devices](
+                var out_views = Array[OutViewType, num_devices](
                     uninitialized=True
                 )
                 var row_off = 0

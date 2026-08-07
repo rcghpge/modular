@@ -28,9 +28,9 @@ from max.algorithm.functional import elementwise
 
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.collections import Optional
-from std.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
-from std.gpu.host.info import is_cpu
-from std.gpu.host.info import is_gpu as _is_gpu
+from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host.info import is_cpu
+from max.gpu.host.info import is_gpu as _is_gpu
 from std.math import ceil, fma
 from std.memory import AddressSpace
 from std.sys import align_of, simd_width_of, size_of
@@ -1640,10 +1640,10 @@ struct ManagedTensorSlice[
         behavior. It should be used with caution.
 
         Parameters:
-            _dtype: The type of the `UnsafePointer` in this tensor slice.
+            _dtype: The type of the `Pointer` in this tensor slice.
 
         Returns:
-            The `UnsafePointer` which contains the data for this tensor slice.
+            The `Pointer` which contains the data for this tensor slice.
         """
         return rebind[UnsafePointer[Scalar[_dtype], MutAnyOrigin]](self._ptr)
 

@@ -15,7 +15,7 @@ from std.sys import size_of
 
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
-comptime uint_dtypes = [
+comptime uint_dtypes: List[DType] = [
     DType.uint8,
     DType.uint16,
     DType.uint32,
@@ -24,7 +24,7 @@ comptime uint_dtypes = [
     DType.uint256,
 ]
 
-comptime int_dtypes = [
+comptime int_dtypes: List[DType] = [
     DType.int8,
     DType.int16,
     DType.int32,
@@ -34,9 +34,11 @@ comptime int_dtypes = [
 ]
 
 comptime non_index_integral_dtypes = uint_dtypes + int_dtypes
-comptime integral_dtypes = [DType.int, DType.uint] + non_index_integral_dtypes
+comptime integral_dtypes = List(
+    [DType.int, DType.uint]
+) + non_index_integral_dtypes
 
-comptime float_dtypes = [
+comptime float_dtypes: List[DType] = [
     DType.float8_e3m4,
     DType.float8_e4m3fn,
     DType.float8_e4m3fnuz,
@@ -48,7 +50,7 @@ comptime float_dtypes = [
     DType.float64,
 ]
 
-comptime all_dtypes = [DType.bool] + integral_dtypes + float_dtypes
+comptime all_dtypes = List([DType.bool]) + integral_dtypes + float_dtypes
 
 
 def test_equality() raises:
@@ -77,7 +79,7 @@ def test_is_xxx() raises:
 
     # _is_category[DType.is_integral, integral_dtypes]()
     # _is_category[DType.is_floating_point, float_dtypes]()
-    _is_category[DType.is_unsigned, [DType.uint] + uint_dtypes]()
+    _is_category[DType.is_unsigned, List([DType.uint]) + uint_dtypes]()
     # _is_category[DType.is_signed, [DType.int] + int_dtypes + float_dtypes]()
 
 
@@ -105,6 +107,22 @@ def test_from_str() raises:
 
     comptime for dt in all_dtypes:
         assert_equal(DType._from_str(String(dt)), dt)
+
+
+def test_mantissa_width() raises:
+    """Mantissa widths must match each format's specification.
+
+    Sub-byte dtypes are the interesting case: `bit_width_of` rounds them up to
+    a whole byte, so a width derived from it reports a mantissa several bits
+    too wide.
+    """
+    assert_equal(DType.mantissa_width[DType.float4_e2m1fn](), 1)
+    assert_equal(DType.mantissa_width[DType.float8_e4m3fn](), 3)
+    assert_equal(DType.mantissa_width[DType.float8_e5m2](), 2)
+    assert_equal(DType.mantissa_width[DType.float16](), 10)
+    assert_equal(DType.mantissa_width[DType.bfloat16](), 7)
+    assert_equal(DType.mantissa_width[DType.float32](), 23)
+    assert_equal(DType.mantissa_width[DType.float64](), 52)
 
 
 def main() raises:

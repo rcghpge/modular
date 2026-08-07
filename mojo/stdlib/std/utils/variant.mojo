@@ -49,7 +49,7 @@ def _get_type_index[T: AnyType, *Ts: AnyType]() -> Int:
     return _InvalidTypeIndex
 
 
-trait _VariantStorage(Copyable, ImplicitlyDeletable):
+trait _VariantStorage(Copyable, Deinitable):
     """Internal storage backend for `Variant`.
 
     This trait abstracts over the two concrete storage strategies:
@@ -82,7 +82,7 @@ trait _VariantStorage(Copyable, ImplicitlyDeletable):
         untouched) immediately afterwards."""
         ...
 
-    def take[U: Movable](deinit self) -> U:
+    def unwrap[U: Movable](deinit self) -> U:
         """Consume this storage and return the held value as type `U`."""
         return self.unsafe_ptr[U]().unsafe_take_pointee()
 
@@ -104,7 +104,7 @@ trait _VariantStorage(Copyable, ImplicitlyDeletable):
         ...
 
 
-trait _NicheStorage(Defaultable, ImplicitlyCopyable, ImplicitlyDeletable):
+trait _NicheStorage(Defaultable, Deinitable, ImplicitlyCopyable):
     """Internal abstraction over niche backing storage backends."""
 
     def as_uninit[
@@ -248,8 +248,8 @@ struct _NichedOptionalStorage[
             self = Self()
 
     @always_inline
-    def __del__(deinit self):
-        comptime assert conforms_to(Self.T, ImplicitlyDeletable)
+    def __deinit__(deinit self):
+        comptime assert conforms_to(Self.T, Deinitable)
         if self.isa[Self.T]():
             self._memory.as_uninit[Self.T]()[].unsafe_assume_init_destroy()
 
@@ -343,10 +343,10 @@ struct _DefaultVariantStorage[*Ts: AnyType](
                 return
 
     @always_inline
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         comptime for i in range(Self.Ts.length):
             comptime T = Self.Ts[i]
-            comptime assert conforms_to(T, ImplicitlyDeletable)
+            comptime assert conforms_to(T, Deinitable)
 
             if self.get_discriminant() == UInt8(i):
                 self.unsafe_ptr[T]().unsafe_deinit_pointee()
@@ -420,10 +420,10 @@ when eligible, falling back to the general discriminant-tagged storage."""
 
 struct Variant[*Ts: AnyType](
     Copyable where Ts.all_conforms_to[Copyable](),
+    Deinitable where Ts.all_conforms_to[Deinitable](),
     Equatable where Ts.all_conforms_to[Equatable](),
     Hashable where Ts.all_conforms_to[Hashable](),
     ImplicitlyCopyable where Ts.all_conforms_to[ImplicitlyCopyable](),
-    ImplicitlyDeletable where Ts.all_conforms_to[ImplicitlyDeletable](),
     Movable where Ts.all_conforms_to[Movable](),
     RegisterPassable where Ts.all_conforms_to[RegisterPassable](),
     Writable where Ts.all_conforms_to[Writable](),
@@ -444,7 +444,7 @@ struct Variant[*Ts: AnyType](
     Tips:
 
     - use `isa[T]()` to check what type a variant is
-    - use `unsafe_take[T]()` to take a value from the variant
+    - use `unsafe_unwrap[T]()` to take a value from the variant
     - use `[T]` to get a value out of a variant
         - This currently does an extra copy/move until we have origins
         - It also temporarily requires the value to be mutable
@@ -574,16 +574,16 @@ struct Variant[*Ts: AnyType](
         Self._check[T]()
         self._storage = Self._Storage(value^)
 
-    def __init__[T: AnyType, //, F: def() -> T](out self, *, call: F):
+    def __init__[T: AnyType, //, F: def() -> T](out self, *, init_with: F):
         """Create a variant holding a `T` produced in place by a closure.
 
-        The value returned by `call` is constructed directly into the
+        The value returned by `init_with` is constructed directly into the
         variant's storage without being moved, so this is the only way to
         store a value whose type is not `Movable`.
 
-        The `call` keyword is required to disambiguate from the value
+        The `init_with` keyword is required to disambiguate from the value
         constructor: a closure is itself a storable value, so a positional
-        `Variant(f)` stores `f`, whereas `Variant(call=f)` calls `f` and
+        `Variant(f)` stores `f`, whereas `Variant(init_with=f)` calls `f` and
         stores its result.
 
         Parameters:
@@ -592,7 +592,7 @@ struct Variant[*Ts: AnyType](
             F: The type of the initializer closure.
 
         Args:
-            call: A closure returning the value to store. Called exactly once.
+            init_with: A closure returning the value to store. Called exactly once.
 
         Examples:
 
@@ -606,28 +606,28 @@ struct Variant[*Ts: AnyType](
         def make() -> Pinned:
             return Pinned(7)
 
-        var v = Variant[Pinned, Int](call=make)
+        var v = Variant[Pinned, Int](init_with=make)
         print(v[Pinned].value)  # => 7
         ```
         """
         Self._check[T]()
         self._storage = Self._Storage(unsafe_uninitialized=())
         self._storage.unsafe_set_active[T]()
-        # Placement-new: construct `call()`'s result directly into the
+        # Placement-new: construct `init_with()`'s result directly into the
         # storage slot without moving, so `T` need not be `Movable`.
         __get_address_as_uninit_lvalue(
             self._storage.unsafe_ptr[T]()._mlir_value
-        ) = call()
+        ) = init_with()
 
-    def __del__(
+    def __deinit__(
         deinit self,
-    ) where Self.Ts.all_conforms_to[ImplicitlyDeletable]():
+    ) where Self.Ts.all_conforms_to[Deinitable]():
         """Destroy the variant, running the destructor of the currently held value.
 
         Constraints:
-            All types in `Ts` must conform to `ImplicitlyDeletable`.
+            All types in `Ts` must conform to `Deinitable`.
         """
-        self._storage^.__del__()
+        self._storage^.__deinit__()
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -677,7 +677,6 @@ struct Variant[*Ts: AnyType](
         """
         comptime for i in range(Self.Ts.length):
             comptime T = Self.Ts[i]
-            comptime assert conforms_to(T, Equatable)
             if self.isa[T]():
                 if not other.isa[T]():
                     return False
@@ -712,7 +711,6 @@ struct Variant[*Ts: AnyType](
         """
         comptime for i in range(Self.Ts.length):
             comptime T = Self.Ts[i]
-            comptime assert conforms_to(T, Hashable)
             if self.isa[T]():
                 hasher.update(UInt8(i))
                 self.unsafe_get[T]().__hash__(hasher)
@@ -727,7 +725,6 @@ struct Variant[*Ts: AnyType](
     ](self, mut writer: Some[Writer]) where Self.Ts.all_conforms_to[Writable]():
         comptime for i in range(Self.Ts.length):
             comptime T = Self.Ts[i]
-            comptime assert conforms_to(T, Writable)
             if self.isa[T]():
                 ref value = self.unsafe_get[T]()
 
@@ -768,7 +765,7 @@ struct Variant[*Ts: AnyType](
         ]()
 
     @always_inline
-    def take[T: Movable](deinit self) -> T:
+    def unwrap[T: Movable](deinit self) -> T:
         """Take the current value of the variant with the provided type.
 
         The caller takes ownership of the underlying value.
@@ -786,10 +783,10 @@ struct Variant[*Ts: AnyType](
         if not self.isa[T]():
             abort("taking the wrong type!")
 
-        return self._storage^.take[T]()
+        return self._storage^.unwrap[T]()
 
     @always_inline
-    def unsafe_take[T: Movable](deinit self) -> T:
+    def unsafe_unwrap[T: Movable](deinit self) -> T:
         """Unsafely take the current value of the variant with the provided type.
 
         The caller takes ownership of the underlying value.
@@ -807,11 +804,37 @@ struct Variant[*Ts: AnyType](
         """
         Self._check[T]()
         assert self.isa[T](), "taking wrong type"
-        return self._storage^.take[T]()
+        return self._storage^.unwrap[T]()
+
+    @always_inline
+    @deprecated(use=unwrap)
+    def take[T: Movable](deinit self) -> T:
+        """Take the current value of the variant with the provided type.
+
+        Parameters:
+            T: The type to take out.
+
+        Returns:
+            The underlying data to be taken out as an owned value.
+        """
+        return self^.unwrap[T]()
+
+    @always_inline
+    @deprecated(use=unsafe_unwrap)
+    def unsafe_take[T: Movable](deinit self) -> T:
+        """Unsafely take the current value of the variant with the provided type.
+
+        Parameters:
+            T: The type to take out.
+
+        Returns:
+            The underlying data to be taken out as an owned value.
+        """
+        return self^.unsafe_unwrap[T]()
 
     @always_inline
     def replace[
-        Tin: Movable & ImplicitlyDeletable,
+        Tin: Movable & Deinitable,
         Tout: Movable,
     ](mut self, var value: Tin) -> Tout:
         """Replace the current value of the variant with the provided type.
@@ -862,15 +885,13 @@ struct Variant[*Ts: AnyType](
         """
         assert self.isa[Tout](), "taking out the wrong type!"
 
-        var x = self^.unsafe_take[Tout]()
+        var x = self^.unsafe_unwrap[Tout]()
         self = Self(value^)
         return x^
 
     def set[
         T: Movable
-    ](mut self, var value: T) where Self.Ts.all_conforms_to[
-        ImplicitlyDeletable
-    ]():
+    ](mut self, var value: T) where Self.Ts.all_conforms_to[Deinitable]():
         """Set the variant value.
 
         This will call the destructor on the old value, and update the variant's
@@ -884,7 +905,7 @@ struct Variant[*Ts: AnyType](
         """
         self = Self(value^)
 
-    def set[T: AnyType, //, F: def() -> T](mut self, *, call: F):
+    def set[T: AnyType, //, F: def() -> T](mut self, *, init_with: F):
         """Replace the variant's value with a `T` produced in place by a closure.
 
         Destroys the currently held value, then constructs the closure's return
@@ -892,9 +913,9 @@ struct Variant[*Ts: AnyType](
         only way to replace the contents with a value whose type is not
         `Movable`.
 
-        The `call` keyword is required to disambiguate from the value-taking
+        The `init_with` keyword is required to disambiguate from the value-taking
         `set`: a closure is itself a storable value, so a positional
-        `set(f)` stores `f`, whereas `set(call=f)` calls `f` and stores its
+        `set(f)` stores `f`, whereas `set(init_with=f)` calls `f` and stores its
         result.
 
         Parameters:
@@ -903,11 +924,11 @@ struct Variant[*Ts: AnyType](
             F: The type of the initializer closure.
 
         Args:
-            call: A closure returning the replacement value. Called exactly
+            init_with: A closure returning the replacement value. Called exactly
                 once.
 
         Constraints:
-            All types in `Ts` must conform to `ImplicitlyDeletable`, since the
+            All types in `Ts` must conform to `Deinitable`, since the
             outgoing value is destroyed in place.
 
         Examples:
@@ -923,24 +944,24 @@ struct Variant[*Ts: AnyType](
             return Pinned(7)
 
         var v = Variant[Pinned, Int](0)
-        v.set(call=make)
+        v.set(init_with=make)
         print(v[Pinned].value)  # => 7
         ```
         """
         comptime assert Self.Ts.all_conforms_to[
-            ImplicitlyDeletable
-        ](), "Cannot replace in place when a type is not `ImplicitlyDeletable`"
+            Deinitable
+        ](), "Cannot replace in place when a type is not `Deinitable`"
         Self._check[T]()
-        # Destroy-then-emplace is exception-safe only because `call` cannot
+        # Destroy-then-emplace is exception-safe only because `init_with` cannot
         # raise (closure types are not `raises`); a throw here would leave the
-        # discriminant set with no value written for `__del__` to destroy.
-        self._storage^.__del__()
+        # discriminant set with no value written for `__deinit__` to destroy.
+        self._storage^.__deinit__()
         self._storage = Self._Storage(unsafe_uninitialized=())
         self._storage.unsafe_set_active[T]()
         # Placement-new the replacement value directly into the storage slot.
         __get_address_as_uninit_lvalue(
             self._storage.unsafe_ptr[T]()._mlir_value
-        ) = call()
+        ) = init_with()
 
     def isa[T: AnyType](self) -> Bool:
         """Check if the variant contains the required type.
@@ -984,7 +1005,7 @@ struct Variant[*Ts: AnyType](
     # These internal primitives expose storage-level placement-new so a wrapper
     # that already knows which of the variant's types to store (for example
     # `Optional`, whose element floor is `AnyType`) can construct a
-    # non-`Movable` value in place. They sidestep the `call=` ctor, whose stored
+    # non-`Movable` value in place. They sidestep the `init_with=` ctor, whose stored
     # type is inferred from the closure return and so cannot be resolved when a
     # wrapper forwards an abstract closure through it. Use them together: build
     # with `unsafe_uninitialized`, mark the active type with
@@ -1059,7 +1080,7 @@ struct Variant[*Ts: AnyType](
         provided destructor function.
 
         This method can be used to deinitialize types that do not conform to
-        `ImplicitlyDeletable` in a `Variant` in-place.
+        `Deinitable` in a `Variant` in-place.
 
         This method will abort if this variant does not current contain an
         element of the specified type `T`.

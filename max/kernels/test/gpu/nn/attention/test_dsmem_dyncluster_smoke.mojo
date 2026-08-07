@@ -45,9 +45,8 @@ pattern, a `cluster_sync()` publishes it, every CTA reads **every** peer's smem
 
 from std.gpu import thread_idx
 from std.gpu.primitives.id import cluster_dim as rt_cluster_dim
-from std.gpu.host import DeviceContext, Dim
-from std.gpu.memory import AddressSpace
-from std.gpu.primitives.cluster import block_rank_in_cluster, cluster_sync
+from max.gpu.host import DeviceContext, Dim
+from max.gpu.primitives.cluster import block_rank_in_cluster, cluster_sync
 from std.memory import unsafe_stack_allocation
 from std.testing import assert_equal
 
@@ -68,11 +67,9 @@ def dyn_dsmem_kernel(
     cdim_out: UnsafePointer[UInt32, MutAnyOrigin],
     p_count: UInt32,
 ):
-    var smem = UnsafePointer(
-        unsafe_stack_allocation[
-            W, DType.uint32, address_space=AddressSpace.SHARED, alignment=16
-        ]()
-    )
+    var smem = unsafe_stack_allocation[
+        W, DType.uint32, address_space=AddressSpace.SHARED, alignment=16
+    ]()
 
     var me = block_rank_in_cluster()
 

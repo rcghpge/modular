@@ -103,10 +103,10 @@ from linalg.utils import (
     partial_simd_store,
 )
 from std.gpu import block_dim, block_idx, thread_idx
-from std.gpu.host import get_gpu_target, DeviceBuffer, DeviceContext
-from std.gpu.host._amdgpu_hip import HIP
-from std.gpu.host._nvidia_cuda import CUDA
-from std.gpu.host.info import _is_sm10x_gpu
+from max.gpu.host import get_gpu_target, DeviceBuffer, DeviceContext
+from max.gpu.host._amdgpu_hip import HIP
+from max.gpu.host._nvidia_cuda import CUDA
+from max.gpu.host.info import _is_sm10x_gpu
 from layout import (
     Coord,
     Idx,
@@ -660,9 +660,9 @@ struct ConvDirectNHWC[
                 ctx,
             )
             dealloc(
-                ThinAllocation(
-                    unsafe_assume_ownership=output_ptr
-                ).unsafe_with_layout({count = scratch_size})
+                ThinAllocation(unsafe_owned_ptr=output_ptr).unsafe_with_layout(
+                    {count = scratch_size}
+                )
             )
         else:
             # Use sync to work around #12624
@@ -3536,17 +3536,15 @@ def conv_nhwc_direct[
     @parameter
     def description_fn() -> String:
         return ";".join(
-            Span(
-                [
-                    trace_arg("input", input_lt.runtime_layout.shape.value),
-                    trace_arg("filter", filter_lt.runtime_layout.shape.value),
-                    trace_arg("output", output_lt.runtime_layout.shape.value),
-                    "group=" + String(num_groups),
-                    "stride=" + "x".join(Span([stride])),
-                    "padding_h=" + "x".join(Span([pad_h])),
-                    "padding_w=" + "x".join(Span([pad_w])),
-                ]
-            )
+            [
+                trace_arg("input", input_lt.runtime_layout.shape.value),
+                trace_arg("filter", filter_lt.runtime_layout.shape.value),
+                trace_arg("output", output_lt.runtime_layout.shape.value),
+                "group=" + String(num_groups),
+                "stride=" + "x".join([stride]),
+                "padding_h=" + "x".join([pad_h]),
+                "padding_w=" + "x".join([pad_w]),
+            ]
         )
 
     with Trace[TraceLevel.OP, target=StaticString("cpu")](
@@ -3629,7 +3627,7 @@ def conv2d_gpu_naive_nhwc_rscf[
     stride: IndexList[2],
     dilation: IndexList[2],
     padding: IndexList[2],
-    num_groups: Int,
+    num_groups: Int32,
 ):
     """Naive GPU kernel for 2D NHWC convolution with RSCF filter layout.
 
@@ -3661,6 +3659,7 @@ def conv2d_gpu_naive_nhwc_rscf[
         num_groups: Number of convolution groups for grouped
             convolution.
     """
+    var _num_groups = Int(num_groups)
     var N = input.dim[0]()
     var H = input.dim[1]()
     var W = input.dim[2]()
@@ -3671,7 +3670,7 @@ def conv2d_gpu_naive_nhwc_rscf[
     var H_out = output.dim[1]()
     var W_out = output.dim[2]()
     var C_out = output.dim[3]()  # channel_out or #F
-    var F_per_group = C_out // num_groups
+    var F_per_group = C_out // _num_groups
     var pad_h = padding[0]
     var pad_w = padding[1]
     var stride_h = stride[0]
@@ -3787,7 +3786,7 @@ struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
         self.ptr_conv_desc = ptr_conv_desc.value()
         self.ptr_output_desc = ptr_output_desc.value()
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         try:
             check_cudnn_error(
                 cudnnDestroyTensorDescriptor(self.ptr_output_desc)
@@ -3815,7 +3814,7 @@ def _get_cudnn_meta(
     IMPORTANT: this function _must_ be called with `ctx`'s CUcontext active via:
 
     ```mojo
-    from std.gpu.host import DeviceContext
+    from max.gpu.host import DeviceContext
     var ctx = DeviceContext()
     with ctx.push_context():
         ptr_meta = _get_cudnn_meta(ctx)
@@ -3833,7 +3832,8 @@ def _get_cudnn_meta(
     var cache_key = "CUDA_CUDNN_META_CACHE" + String(ctx.id())
 
     # Get or create the per-device cache dictionary.
-    if ptr_meta := _get_global_or_null(cache_key):
+    var ptr_meta = _get_global_or_null(cache_key)
+    if ptr_meta:
         var ptr = ptr_meta.unsafe_value().unsafe_bitcast[CuDNNConvMeta]()
         check_cudnn_error(cudnnSetStream(ptr[].ptr_handle, CUDA(ctx.stream())))
         return ptr.as_unsafe_any_origin()
@@ -3963,7 +3963,8 @@ def _get_cached_cudnn_meta_nhwc_full(
 ) raises -> UnsafePointer[CachedCuDNNMetaNHWCFull, AnyOrigin[mut=True]]:
     var cache_key = "CUDA_CUDNN_CACHED_META_NHWC_FULL_" + String(ctx.id())
 
-    if ptr_meta := _get_global_or_null(cache_key):
+    var ptr_meta = _get_global_or_null(cache_key)
+    if ptr_meta:
         var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
             CachedCuDNNMetaNHWCFull
         ]()
@@ -4341,7 +4342,8 @@ def _get_cached_miopen_meta[
         "MIOPEN_CACHED_META_", String(conv_rank), "D_", String(ctx.id())
     )
 
-    if ptr_meta := _get_global_or_null(cache_key):
+    var ptr_meta = _get_global_or_null(cache_key)
+    if ptr_meta:
         var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
             CachedMIOpenMeta[conv_rank]
         ]()
@@ -5555,7 +5557,7 @@ def conv_gpu[
                     _width: Int, alignment: Int = 1
                 ](coords: Coord) {var}:
                     var idx = rebind[IndexList[4]](coord_to_index_list(coords))
-                    vec = output_tmp_lt.load[width=_width](idx)
+                    var vec = output_tmp_lt.load[width=_width](idx)
                     epilogue(idx, vec)
 
                 elementwise[simd_width_of[output_type](), target="gpu"](
@@ -5602,7 +5604,7 @@ def conv_gpu[
                 stride,
                 dilation,
                 symmetric_padding,
-                num_groups,
+                Int32(num_groups),
                 grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
                 block_dim=(block_size, block_size),
             )
@@ -5779,7 +5781,7 @@ def conv_gpu[
                 stride,
                 dilation,
                 symmetric_padding,
-                num_groups,
+                Int32(num_groups),
                 grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
                 block_dim=(block_size, block_size),
             )
@@ -5804,7 +5806,7 @@ def conv3d_gpu_naive_ndhwc_qrscf[
     stride: IndexList[3],
     dilation: IndexList[3],
     padding: IndexList[3],
-    num_groups: Int,
+    num_groups: Int32,
 ):
     """Naive GPU kernel for 3D NDHWC convolution with QRSCF filter layout.
 
@@ -5836,6 +5838,7 @@ def conv3d_gpu_naive_ndhwc_qrscf[
             width)`.
         num_groups: Number of convolution groups for grouped convolution.
     """
+    var _num_groups = Int(num_groups)
     var N = input.dim[0]()
     var D = input.dim[1]()  # depth
     var H = input.dim[2]()
@@ -5845,13 +5848,13 @@ def conv3d_gpu_naive_ndhwc_qrscf[
     var Q = filter.dim[0]()
     var R = filter.dim[1]()
     var S = filter.dim[2]()
-    var C_per_group = filter.dim[3]()  # C_in / num_groups
+    var C_per_group = filter.dim[3]()  # C_in / _num_groups
 
     var D_out = output.dim[1]()  # depth
     var H_out = output.dim[2]()
     var W_out = output.dim[3]()
     var C_out = output.dim[4]()  # channel_output
-    var F_per_group = C_out // num_groups
+    var F_per_group = C_out // _num_groups
 
     var pad_d = padding[0]
     var pad_h = padding[1]
@@ -6442,7 +6445,8 @@ def _conv3d_cudnn[
     var algo: cudnnConvolutionFwdAlgo_t
     var workspace_size_var: Int
 
-    if ptr_cached := _get_global_or_null(cache_key):
+    var ptr_cached = _get_global_or_null(cache_key)
+    if ptr_cached:
         # Cache hit — reuse previously selected algorithm.
         var entry = ptr_cached.unsafe_value().unsafe_bitcast[
             _Conv3dAlgoCacheEntry

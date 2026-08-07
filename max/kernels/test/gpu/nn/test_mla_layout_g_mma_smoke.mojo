@@ -63,12 +63,12 @@ from std.memory import UnsafePointer, alloc
 from std.random import rand, randn, seed
 from std.sys import size_of
 
-from std.gpu import barrier, thread_idx, warp_id as get_warp_id
-from std.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
-from std.gpu.host.info import B200, _is_sm10x_gpu
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import (
-    AddressSpace,
+from std.gpu import thread_idx, warp_id as get_warp_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
+from max.gpu.host.info import B200, _is_sm10x_gpu
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import (
     external_memory,
 )
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
@@ -199,11 +199,9 @@ def qk_smoke_kernel[
     """SS .ws MMA: C [32,64] = A [32,576] x B [64,576]^T (FP8 e4m3)."""
 
     # ---- Dynamic SMEM ----
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var a_smem_ptr = (smem_base + QK_A_OFFSET).bitcast[Scalar[FP8_TYPE]]()
     var b_smem_ptr = (smem_base + QK_B_OFFSET).bitcast[Scalar[FP8_TYPE]]()
 
@@ -369,11 +367,9 @@ def pv_smoke_kernel[
 ):
     """SS .ws MMA: C [32,512] = A [32,64] x B [512,64] (mn-major B, FP8)."""
 
-    var smem_base = UnsafePointer(
-        external_memory[
-            UInt8, address_space=AddressSpace.SHARED, alignment=128
-        ]()
-    )
+    var smem_base = external_memory[
+        UInt8, address_space=AddressSpace.SHARED, alignment=128
+    ]()
     var a_smem_ptr = (smem_base + PV_A_OFFSET).bitcast[Scalar[FP8_TYPE]]()
     var b_smem_ptr = (smem_base + PV_B_OFFSET).bitcast[Scalar[FP8_TYPE]]()
 
@@ -653,9 +649,9 @@ def test_qk_smoke(ctx: DeviceContext) raises:
         c_ref_tt,
         a_tt,
         b_tt,
-        QK_M,
-        QK_N,
-        QK_K,
+        Int32(QK_M),
+        Int32(QK_N),
+        Int32(QK_K),
         grid_dim=(
             ceildiv(QK_M, NAIVE_BLOCK_DIM),
             ceildiv(QK_N, NAIVE_BLOCK_DIM),
@@ -845,9 +841,9 @@ def test_pv_smoke(ctx: DeviceContext) raises:
         c_ref_tt,
         a_tt,
         b_tt,
-        PV_M,
-        PV_N,
-        PV_K,
+        Int32(PV_M),
+        Int32(PV_N),
+        Int32(PV_K),
         grid_dim=(
             ceildiv(PV_M, NAIVE_BLOCK_DIM),
             ceildiv(PV_N, NAIVE_BLOCK_DIM),

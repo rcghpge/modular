@@ -35,9 +35,8 @@ V_lo and V_hi each occupy separate pipeline slots. These have equal element
 count when (BN//2)*BK0 == BK1*(ov_depth//4).
 """
 
-from std.memory import UnsafePointer
 from std.sys import size_of
-from std.gpu.memory import AddressSpace, external_memory
+from max.gpu.memory import external_memory
 from layout.tma_async import SharedMemBarrier
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
     SharedMemPointer,
@@ -145,14 +144,12 @@ struct Depth512AttentionSMem[
             Self.config.v_cols_per_cta
         ), "K slot and V half-tile must have equal element count for fused KV"
 
-        self.base = UnsafePointer(
-            external_memory[
-                Scalar[DType.uint8],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-                name="mha_dynamic_shared_memory",
-            ]()
-        ).as_unsafe_any_origin()
+        self.base = external_memory[
+            Scalar[DType.uint8],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+            name="mha_dynamic_shared_memory",
+        ]().as_unsafe_any_origin()
 
     # ---- accessors -----------------------------------------------------------
 

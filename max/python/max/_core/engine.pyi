@@ -18,6 +18,7 @@
 import enum
 import inspect
 import os
+import pathlib
 import types
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any, overload
@@ -83,6 +84,47 @@ class CompiledModels:
         Args:
             path: Filesystem path to write the MEF to.
         """
+
+def get_config_value(key: str) -> str:
+    """
+    Reads a config value.
+
+    Global overrides take priority, then the ``MODULAR_<KEY>``
+    environment variable, then ``modular.cfg``.
+
+    Raises:
+        KeyError: If the key is not set in any source.
+        RuntimeError: If the config fails to open.
+    """
+
+def get_global_value(key: str) -> str | None:
+    """
+    Returns the process-wide override for ``key``, or ``None`` if unset.
+
+    Ignores environment variables and ``modular.cfg``.
+    """
+
+def set_global_value(key: str, value: str) -> None:
+    """
+    Sets a process-wide config override.
+
+    Overrides take priority over environment variables and
+    ``modular.cfg`` for every consumer in the process. They are not
+    inherited by subprocesses.
+    """
+
+def unset_global_value(key: str) -> None:
+    """Removes an override set by :func:`set_global_value`."""
+
+def max_cache_dir() -> pathlib.Path | None:
+    """
+    Returns the directory the engine caches compiled models (``.mef``) in.
+
+    Resolved by the compiler itself.
+
+    Returns:
+        pathlib.Path | None: the cache directory, or None if unresolvable.
+    """
 
 @overload
 def read(path: str | os.PathLike) -> CompiledModels:

@@ -42,16 +42,16 @@ def test_erf_libm() raises:
     comptime test_dtype = DType.float32
 
     # generate input values and write them to file
-    var x32 = alloc[Scalar[test_dtype]](N)
+    var x32 = alloc[Scalar[test_dtype]]({count = N}).unsafe_leak()
     randn[test_dtype](x32, N, 0, 9.0)
     print("For N=", N, " randomly generated vals; mean=0.0, var=9.0")
 
     ####################
     # math.erf result
     ####################
-    var y32 = alloc[Scalar[test_dtype]](N)
+    var y32 = alloc[Scalar[test_dtype]]({count = N}).unsafe_leak()
     for i in range(N):
-        y32[i] = erf(x32[i])  # math.erf
+        y32[unsafe_offset=i] = erf(x32[unsafe_offset=i])  # math.erf
 
     ####################
     ## libm erf result
@@ -62,9 +62,9 @@ def test_erf_libm() raises:
     ](arg: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
         return libm_call["erff", "err"](arg)
 
-    var libm_out = alloc[Scalar[test_dtype]](N)
+    var libm_out = alloc[Scalar[test_dtype]]({count = N}).unsafe_leak()
     for i in range(N):
-        libm_out[i] = erf_libm(x32[i])
+        libm_out[unsafe_offset=i] = erf_libm(x32[unsafe_offset=i])
 
     # abs_rel_err = (abs_min, abs_max, rel_min, rel_max)
     var abs_rel_err = SIMD[test_dtype, 4](
@@ -77,9 +77,9 @@ def test_erf_libm() raises:
 
     assert_almost_equal(err, abs_rel_err)
 
-    x32.free()
-    y32.free()
-    libm_out.free()
+    x32.unsafe_free()
+    y32.unsafe_free()
+    libm_out.unsafe_free()
 
 
 def main() raises:

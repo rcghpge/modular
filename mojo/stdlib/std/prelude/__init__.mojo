@@ -31,12 +31,19 @@ from std.collections import (
     KeyElement,
     List,
     Optional,
+    ImmSpan,
+    MutSpan,
     Span,
 )
 from std.collections.string import (
     Codepoint,
+    ImmStringSpan,
+    ImmStringSlice,
+    MutStringSpan,
+    MutStringSlice,
     StaticString,
     String,
+    StringSpan,
     StringSlice,
     ascii,
     atof,
@@ -51,7 +58,6 @@ from std.io.file_descriptor import FileDescriptor
 from std.io.io import input, print
 
 from std.builtin.anytype import (
-    AnyType,
     Some,
     SomeTypeList,
     ImplicitlyDestructible,
@@ -129,35 +135,9 @@ from std.builtin.sort import partition, sort
 from std.builtin.string_literal import StringLiteral
 from std.builtin.swap import swap
 from std.builtin.tuple import Tuple
-from std.builtin.type_aliases import (
-    AnyOrigin,
-    ImmutAnyOrigin,
-    ImmOrigin,
-    ImmutOrigin,
-    MutAnyOrigin,
-    MutOrigin,
-    Never,
-    Origin,
-    OriginSet,
-    ImmStaticOrigin,
-    StaticConstantOrigin,
-    ExternalOrigin,
-    ImmutExternalOrigin,
-    MutExternalOrigin,
-    UntrackedOrigin,
-    ImmUntrackedOrigin,
-    ImmutUntrackedOrigin,
-    MutUntrackedOrigin,
-    UnsafeAnyOrigin,
-    MutUnsafeAnyOrigin,
-    ImmUnsafeAnyOrigin,
-    ImmutUnsafeAnyOrigin,
-)
+from std.builtin.type_aliases import Never
 from std.builtin.value import (
-    Copyable,
     Defaultable,
-    ImplicitlyCopyable,
-    Movable,
     materialize,
     RegisterPassable,
     TrivialRegisterPassable,
@@ -197,4 +177,34 @@ from std.memory import (
     MutUnsafePointer,
     UnsafePointer,
 )
+from std.origin import (
+    AnyOrigin,
+    ImmutAnyOrigin,
+    ImmOrigin,
+    ImmutOrigin,
+    MutAnyOrigin,
+    MutOrigin,
+    Origin,
+    OriginSet,
+    ImmStaticOrigin,
+    StaticConstantOrigin,
+    ExternalOrigin,
+    ImmutExternalOrigin,
+    MutExternalOrigin,
+    UntrackedOrigin,
+    ImmUntrackedOrigin,
+    ImmutUntrackedOrigin,
+    MutUntrackedOrigin,
+    UnsafeAnyOrigin,
+    MutUnsafeAnyOrigin,
+    ImmUnsafeAnyOrigin,
+    ImmutUnsafeAnyOrigin,
+)
 from std.reflection import reflect
+from std.traits import (
+    AnyType,
+    Copyable,
+    Deinitable,
+    ImplicitlyCopyable,
+    Movable,
+)

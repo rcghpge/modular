@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -61,6 +61,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    TypeAdapter,
     computed_field,
     field_validator,
 )
@@ -510,6 +511,63 @@ def _select_dtype_cast(
     return cast_from, cast_to
 
 
+def _downcast_device_specs_for_encoding(
+    device_specs: list[DeviceSpec],
+    quantization_encoding: SupportedEncoding,
+) -> list[DeviceSpec]:
+    """Returns ``device_specs`` downcast to CPU for a CPU-only encoding.
+
+    When *quantization_encoding* is only supported on CPU and every device in
+    *device_specs* is a GPU, returns ``[DeviceSpec.cpu()]``; otherwise returns
+    *device_specs* unchanged. Going the other way (CPU -> GPU) is not a downcast
+    and is rejected by the compatibility check at the call site. Read-only.
+    """
+    if supported_encoding_supported_devices(quantization_encoding) == (
+        "cpu",
+    ) and all(d.device_type == "gpu" for d in device_specs):
+        logger.warning(
+            f"Encoding '{quantization_encoding}' is only supported on CPU. Switching device_specs to CPU."
+        )
+        return [DeviceSpec.cpu()]
+    return device_specs
+
+
+def _discover_default_weight_paths(
+    weight_repo: HuggingFaceRepo,
+    quantization_encoding: SupportedEncoding,
+    applied_dtype_cast_from: SupportedEncoding | None,
+    default_weights_format: WeightsFormat,
+) -> list[Path]:
+    """Discovers the default weight files for an encoding in *weight_repo*.
+
+    Mirrors the fallback chain used when a config provides no explicit
+    ``weight_path``: the resolved encoding, then the load-time cast source, then
+    float32 (a float16/bfloat16 graph can load float32 weights cast at load
+    time). Prefers *default_weights_format*, else any available format. Returns
+    ``[]`` when nothing matches (the caller decides whether that is an error).
+    Read-only -- does not mutate any config.
+    """
+    weight_files = weight_repo.files_for_encoding(
+        encoding=quantization_encoding
+    )
+    if not weight_files and applied_dtype_cast_from:
+        # We allow ourselves to load float32 safetensors weights as bfloat16.
+        weight_files = weight_repo.files_for_encoding(
+            encoding=applied_dtype_cast_from
+        )
+    if not weight_files and quantization_encoding in ("float16", "bfloat16"):
+        # A float16/bfloat16 graph can load float32 weights cast at load time by
+        # the architecture's weight adapter.
+        weight_files = weight_repo.files_for_encoding(encoding="float32")
+
+    if default_weight_files := weight_files.get(default_weights_format, []):
+        return default_weight_files
+    if weight_files:
+        # Load any available weight file.
+        return next(iter(weight_files.values()))
+    return []
+
+
 class MAXModelConfigBase(ConfigFileModel):
     """Abstract base class for MAX model configuration.
 
@@ -735,6 +793,9 @@ class MAXModelConfig(MAXModelConfigBase):
     """Cached HuggingFaceRepo for the model. Avoids recreating instances
     (and redundant HF API calls) on every property access."""
 
+    _generation_config: GenerationConfig | None = PrivateAttr(default=None)
+    """Hugging Face ``GenerationConfig``, loaded once at construction."""
+
     _config_file_section_name: str = PrivateAttr(default="model_config")
     """The section name to use when loading this config from a MAXConfig file.
     This is used to differentiate between different config sections in a single
@@ -775,6 +836,14 @@ class MAXModelConfig(MAXModelConfigBase):
                 )
             )
 
+            # Build the HuggingFace repo handles once, here, so all repo
+            # setup (and the access check under ``HF_HUB_OFFLINE`` / local
+            # paths) is consolidated at construction rather than sprinkled
+            # across lazy property accesses.
+            self._populate_repo_handles()
+            self._populate_hf_config()
+            self._populate_generation_config()
+
     # TODO(SERVSYS-1085): Figure out a better way to avoid having to roll our
     # own custom __getstate__/__setstate__ methods.
     def __getstate__(self) -> dict[str, Any]:
@@ -797,6 +866,7 @@ class MAXModelConfig(MAXModelConfigBase):
             # (weight_files, info, etc.) that may not be picklable.
             private_state["_cached_weight_repo"] = None
             private_state["_cached_model_repo"] = None
+            private_state["_generation_config"] = None
             state["__pydantic_private__"] = private_state
         return state
 
@@ -815,8 +885,118 @@ class MAXModelConfig(MAXModelConfigBase):
         private_state.setdefault("_weights_repo_id", None)
         private_state.setdefault("_cached_weight_repo", None)
         private_state.setdefault("_cached_model_repo", None)
+        private_state.setdefault("_generation_config", None)
         private_state.setdefault("_config_file_section_name", "model_config")
         object.__setattr__(self, "__pydantic_private__", private_state)
+
+        # Rebuild the derived HF state from the restored identity fields.
+        # __getstate__ drops it (repo handles may cache non-picklable HF API
+        # responses; the HF config may hold remote-code-derived classes), so
+        # an unpickled config -- e.g. in a worker process -- gets it here
+        # rather than via a lazy write-back on first access. Reloading in the
+        # worker also correctly re-resolves trust_remote_code dynamic classes.
+        self._populate_repo_handles()
+        self._populate_hf_config()
+        self._populate_generation_config()
+
+    def _populate_repo_handles(self) -> None:
+        """Build the HuggingFace repo handles from the config's identity fields.
+
+        Called at construction (and on unpickle) to consolidate repo setup in
+        one place. Placeholder configs (no ``model_path`` and no external
+        weights repo) have no repo to build and are left unset.
+        """
+        if self.model_path:
+            self._cached_model_repo = self._make_model_repo()
+        if self.huggingface_weight_repo_id:
+            self._cached_weight_repo = self._make_weight_repo()
+
+    def _populate_hf_config(self) -> None:
+        """Load the HuggingFace config once, at construction (and on unpickle).
+
+        Skipped when already seeded (an explicit ``_huggingface_config`` passed
+        to the constructor, or one preserved across ``with_override``), for
+        placeholder configs with no ``model_path``, and for repos that carry no
+        loadable model config -- e.g. diffusion-manifest components such as the
+        feature extractor or scheduler, which ship only a preprocessor/
+        scheduler config. Those keep the lazy getter, which stays a no-op
+        unless the config is actually accessed.
+        """
+        if (
+            self._huggingface_config is None
+            and self.model_path
+            and self._has_loadable_hf_config()
+        ):
+            self._huggingface_config = load_huggingface_config(
+                self.huggingface_model_repo
+            )
+
+    def _populate_generation_config(self) -> None:
+        """Load the ``GenerationConfig`` once, at construction (and on unpickle).
+
+        Skipped for placeholder configs (no ``model_path``). Loading failures
+        are tolerated (a default ``GenerationConfig`` is used), so this never
+        raises at construction.
+        """
+        if self._generation_config is None and self.model_path:
+            self._generation_config = self._make_generation_config()
+
+    def _has_loadable_hf_config(self) -> bool:
+        """Whether the model repo exposes a loadable HuggingFace config.
+
+        Mirrors :func:`load_huggingface_config`'s lookup (``config.json``, then
+        the diffusers ``scheduler_config.json`` fallback) so eager loading is
+        skipped -- not raised -- for config-less components.
+        """
+        repo = self.huggingface_model_repo
+        prefix = f"{repo.subfolder}/" if repo.subfolder is not None else ""
+        return any(
+            repo.file_exists(f"{prefix}{name}")
+            for name in ("config.json", "scheduler_config.json")
+        )
+
+    def _make_model_repo(self) -> HuggingFaceRepo:
+        """Construct the model repo handle from the config's identity fields."""
+        return HuggingFaceRepo(
+            repo_id=self.model_path,
+            revision=self.huggingface_model_revision,
+            trust_remote_code=self.trust_remote_code,
+            subfolder=self.subfolder,
+        )
+
+    def _weight_repo_identity(self) -> tuple[str, str, str | None]:
+        """Return the ``(repo_id, revision, subfolder)`` weight-repo identity.
+
+        Weights served from an external repo have their own layout and
+        revision, distinct from the model repo.
+        """
+        weights_repo_id = self.huggingface_weight_repo_id
+        # When weights come from an external repo, don't apply the component
+        # subfolder -- the external repo has its own layout.
+        weights_from_external_repo = (
+            self._weights_repo_id is not None
+            and self._weights_repo_id != self.model_path
+        )
+        subfolder = None if weights_from_external_repo else self.subfolder
+        # A weight revision copied from the model revision names a commit in
+        # the model repo, not the external weights repo -- fall back to default.
+        revision = self.huggingface_weight_revision
+        if (
+            weights_from_external_repo
+            and revision == self.huggingface_model_revision
+        ):
+            revision = hf_hub_constants.DEFAULT_REVISION
+        return weights_repo_id, revision, subfolder
+
+    def _make_weight_repo(self) -> HuggingFaceRepo:
+        """Construct the weight repo handle from the config's identity fields."""
+        repo_id, revision, subfolder = self._weight_repo_identity()
+        return HuggingFaceRepo(
+            repo_id=repo_id,
+            revision=revision,
+            trust_remote_code=self.trust_remote_code,
+            subfolder=subfolder,
+        )
 
     @classmethod
     def from_pipeline_args(cls, args: PipelineArgs) -> Self:
@@ -960,73 +1140,26 @@ class MAXModelConfig(MAXModelConfigBase):
     def huggingface_weight_repo(self) -> HuggingFaceRepo:
         """Returns the Hugging Face repo handle for weight files.
 
-        The result is cached in a PrivateAttr to avoid recreating
-        ``HuggingFaceRepo`` instances (and triggering redundant HF API
-        calls for file listing, encoding detection, etc.) on every
-        access.  The cache is invalidated when the underlying config
-        fields change (e.g. after ``model_copy()``).
+        Built once at construction (see :meth:`_populate_repo_handles`) and
+        stored in a PrivateAttr; this getter returns it. Falls back to
+        building a fresh handle only for a never-populated config (e.g. a
+        placeholder with no ``model_path``) and never writes back.
         """
-        weights_repo_id = self.huggingface_weight_repo_id
-        # When weights come from an external repo, don't apply the
-        # component subfolder — the external repo has its own layout.
-        weights_from_external_repo = (
-            self._weights_repo_id is not None
-            and self._weights_repo_id != self.model_path
-        )
-        subfolder = None if weights_from_external_repo else self.subfolder
-        # A weight revision copied from the model revision names a commit in
-        # the model repo, not the external weights repo -- fall back to default.
-        revision = self.huggingface_weight_revision
-        if (
-            weights_from_external_repo
-            and revision == self.huggingface_model_revision
-        ):
-            revision = hf_hub_constants.DEFAULT_REVISION
-
         cached = self._cached_weight_repo
-        if (
-            cached is not None
-            and cached.repo_id == weights_repo_id
-            and cached.revision == revision
-            and cached.subfolder == subfolder
-        ):
-            return cached
-
-        repo = HuggingFaceRepo(
-            repo_id=weights_repo_id,
-            revision=revision,
-            trust_remote_code=self.trust_remote_code,
-            subfolder=subfolder,
-        )
-        self._cached_weight_repo = repo
-        return repo
+        return cached if cached is not None else self._make_weight_repo()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def huggingface_model_repo(self) -> HuggingFaceRepo:
         """Returns the Hugging Face repo handle for the model.
 
-        The result is cached in a PrivateAttr to avoid recreating
-        ``HuggingFaceRepo`` instances on every access.  The cache is
-        invalidated when the underlying config fields change.
+        Built once at construction (see :meth:`_populate_repo_handles`) and
+        stored in a PrivateAttr; this getter returns it. Falls back to
+        building a fresh handle only for a never-populated config and never
+        writes back.
         """
         cached = self._cached_model_repo
-        if (
-            cached is not None
-            and cached.repo_id == self.model_path
-            and cached.revision == self.huggingface_model_revision
-            and cached.subfolder == self.subfolder
-        ):
-            return cached
-
-        repo = HuggingFaceRepo(
-            repo_id=self.model_path,
-            revision=self.huggingface_model_revision,
-            trust_remote_code=self.trust_remote_code,
-            subfolder=self.subfolder,
-        )
-        self._cached_model_repo = repo
-        return repo
+        return cached if cached is not None else self._make_model_repo()
 
     @property
     def architecture_name(self) -> str | None:
@@ -1044,37 +1177,43 @@ class MAXModelConfig(MAXModelConfigBase):
 
     @property
     def huggingface_config(self) -> PretrainedConfig:
-        """Returns the Hugging Face model config (loaded on first access).
+        """Returns the Hugging Face model config.
 
-        For transformers models, returns the ``AutoConfig`` subclass.  For
-        non-transformers models (e.g. diffusers components), falls back to
-        loading the raw ``config.json`` and wrapping it in a
-        ``PretrainedConfig``.
+        Loaded once at construction (see :meth:`_populate_hf_config`) and
+        stored in a PrivateAttr; this getter returns it. Falls back to loading
+        on demand -- without caching -- for a never-populated config (e.g. a
+        placeholder with no ``model_path``).
+
+        For transformers models this is the ``AutoConfig`` subclass; for
+        non-transformers models (e.g. diffusers components) it is the raw
+        ``config.json`` wrapped in a ``PretrainedConfig``.
 
         Raises:
             FileNotFoundError: If no ``config.json`` can be found for the
                 model repo/subfolder.
         """
-        # Note: For multiprocessing, __getstate__ clears _huggingface_config
-        # before pickling. Each worker process reloads fresh, which correctly
-        # handles trust_remote_code dynamic class loading.
         if self._huggingface_config is None:
-            self._huggingface_config = load_huggingface_config(
-                self.huggingface_model_repo
-            )
+            return load_huggingface_config(self.huggingface_model_repo)
         return self._huggingface_config
 
-    @cached_property
+    @property
     def generation_config(self) -> GenerationConfig:
-        """Retrieves the Hugging Face ``GenerationConfig`` for this model.
+        """Returns the Hugging Face ``GenerationConfig`` for this model.
 
-        Lazily loads the ``GenerationConfig`` from the model repository
-        and caches it to avoid repeated remote fetches.
+        Loaded once at construction (see :meth:`_populate_generation_config`)
+        and stored in a PrivateAttr; this getter returns it, falling back to
+        loading on demand for a never-populated config (e.g. a placeholder).
+        Loading failures yield a default ``GenerationConfig``.
+        """
+        if self._generation_config is None:
+            return self._make_generation_config()
+        return self._generation_config
 
-        Returns:
-            The ``GenerationConfig`` for the model, containing generation parameters
-            including ``max_length``, ``temperature``, and ``top_p``. If loading
-            fails, returns a default ``GenerationConfig``.
+    def _make_generation_config(self) -> GenerationConfig:
+        """Load the ``GenerationConfig`` from the model repo (default on error).
+
+        Contains generation parameters including ``max_length``,
+        ``temperature``, and ``top_p``.
         """
         try:
             kwargs: dict[str, Any] = {
@@ -1096,7 +1235,7 @@ class MAXModelConfig(MAXModelConfigBase):
             return GenerationConfig()
 
     @computed_field  # type: ignore[prop-decorator]
-    @cached_property
+    @property
     def sampling_params_defaults(
         self,
     ) -> SamplingParamsGenerationConfigDefaults:
@@ -1178,17 +1317,11 @@ class MAXModelConfig(MAXModelConfigBase):
 
         Should only be called after the quantization encoding has been set.
         """
-        # If the current encoding is only supported on CPU, and all devices are
-        # GPU, switch to CPU automatically. This "downcast" is possible. Going
-        # the other way (CPU -> GPU) is not supported and will error out in the
-        # loop check below.
-        if supported_encoding_supported_devices(quantization_encoding) == (
-            "cpu",
-        ) and all(d.device_type == "gpu" for d in self.device_specs):
-            logger.warning(
-                f"Encoding '{quantization_encoding}' is only supported on CPU. Switching device_specs to CPU."
-            )
-            self.device_specs = [DeviceSpec.cpu()]
+        # Downcast GPU devices to CPU for a CPU-only encoding (see the free
+        # function); the incompatible CPU->GPU direction is rejected below.
+        self.device_specs = _downcast_device_specs_for_encoding(
+            self.device_specs, quantization_encoding
+        )
         # Check that the quantization encoding is supported on the specified
         # devices.
         for device_spec in self.device_specs:
@@ -1220,36 +1353,16 @@ class MAXModelConfig(MAXModelConfigBase):
                 time, or ``None`` when no cast applies.
             default_weights_format: The default weights format to use if no weight_path is provided.
         """
-        # If no weight_path is provided, we should grab the default.
+        # If no weight_path is provided, discover the default files (see the
+        # free function).
         if not self.weight_path:
-            # Retrieve the default files for each weights format.
-            weight_files = self.huggingface_weight_repo.files_for_encoding(
-                encoding=quantization_encoding
-            )
-
-            if not weight_files and applied_dtype_cast_from:
-                # We allow ourselves to load float32 safetensors weights as bfloat16.
-                weight_files = self.huggingface_weight_repo.files_for_encoding(
-                    encoding=applied_dtype_cast_from
-                )
-
-            if not weight_files and quantization_encoding in (
-                "float16",
-                "bfloat16",
+            if discovered := _discover_default_weight_paths(
+                self.huggingface_weight_repo,
+                quantization_encoding,
+                applied_dtype_cast_from,
+                default_weights_format,
             ):
-                # A float16/bfloat16 graph can load float32 weights cast at
-                # load time by the architecture's weight adapter.
-                weight_files = self.huggingface_weight_repo.files_for_encoding(
-                    encoding="float32"
-                )
-
-            if default_weight_files := weight_files.get(
-                default_weights_format, []
-            ):
-                self.weight_path = default_weight_files
-            elif weight_files:
-                # Load any available weight file.
-                self.weight_path = next(iter(weight_files.values()))
+                self.weight_path = discovered
 
         if not self.weight_path:
             raise ValueError(
@@ -1555,3 +1668,89 @@ def _format_config_entries(
     """
     max_key_len = max(len(key) for key, _ in entries)
     return [f"{indent}{key:<{max_key_len}} : {value}" for key, value in entries]
+
+
+def _parse_model_override(override_str: str) -> tuple[str, str, Any]:
+    """Parse ``component.field=value`` into ``(component, field, value)``.
+
+    The value is coerced to the target field's type via Pydantic's
+    ``TypeAdapter`` (JSON-first, raw-string fallback for scalars).
+
+    Raises:
+        ValueError: if the string is malformed or names an unknown
+            ``MAXModelConfig`` field.
+    """
+    dot_pos = override_str.find(".")
+    if dot_pos < 1:
+        raise ValueError(
+            f"Invalid --model-override format: {override_str!r}. "
+            f"Expected 'component.field=value'."
+        )
+    eq_pos = override_str.find("=", dot_pos)
+    if eq_pos < dot_pos + 2:
+        raise ValueError(
+            f"Invalid --model-override format: {override_str!r}. "
+            f"Expected 'component.field=value'."
+        )
+    component = override_str[:dot_pos]
+    field_name = override_str[dot_pos + 1 : eq_pos]
+    raw_value = override_str[eq_pos + 1 :]
+
+    if field_name not in MAXModelConfig.model_fields:
+        raise ValueError(
+            f"Unknown MAXModelConfig field: {field_name!r}. "
+            f"Valid fields: {sorted(MAXModelConfig.model_fields.keys())}"
+        )
+
+    # For compound types (list, dict) the raw CLI string is JSON, so try
+    # json.loads first; fall back to the raw string for plain scalars.
+    field_info = MAXModelConfig.model_fields[field_name]
+    adapter: TypeAdapter[Any] = TypeAdapter(field_info.annotation)
+    try:
+        parsed_value = json.loads(raw_value)
+    except (json.JSONDecodeError, ValueError):
+        parsed_value = raw_value
+    return component, field_name, adapter.validate_python(parsed_value)
+
+
+def _parse_component_overrides(
+    override_strs: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Group parsed ``--model-override`` entries by target component."""
+    component_overrides: dict[str, dict[str, Any]] = {}
+    for override_str in override_strs:
+        component, field_name, value = _parse_model_override(override_str)
+        component_overrides.setdefault(component, {})[field_name] = value
+    return component_overrides
+
+
+def _strip_default_model_kwargs(
+    model_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Return *model_kwargs* with entries that match MAXModelConfig defaults removed.
+
+    Fields declared with ``default_factory`` have ``field.default`` set to
+    ``PydanticUndefined``, so we must invoke the factory to obtain the
+    comparable default value.
+    """
+    from pydantic_core import PydanticUndefined
+
+    fields = MAXModelConfig.model_fields
+    non_default: dict[str, Any] = {}
+    for k, v in model_kwargs.items():
+        field = fields.get(k)
+        if field is None:
+            # Not a MAXModelConfig field — keep it.
+            non_default[k] = v
+            continue
+        if field.default is not PydanticUndefined:
+            if v == field.default:
+                continue
+        elif field.default_factory is not None:
+            try:
+                if v == field.default_factory():  # type: ignore[call-arg]
+                    continue
+            except Exception:
+                pass
+        non_default[k] = v
+    return non_default

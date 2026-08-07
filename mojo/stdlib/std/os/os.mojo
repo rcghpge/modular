@@ -22,7 +22,7 @@ from std.os import listdir
 
 from std._plugin import CurrentPlugin
 from std.collections import Array, List
-from std.collections.string.string_slice import _unsafe_strlen
+from std.collections.string.string_span import _unsafe_strlen
 from std.format.tstring import TString
 from std.io import FileDescriptor
 from std.ffi import c_char, c_int, external_call, get_errno, _CPointer
@@ -116,7 +116,7 @@ struct _DirHandle:
 
         self._handle = handle.value()
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Closes the handle opened via popen."""
         _ = external_call["closedir", Int32](self._handle)
 

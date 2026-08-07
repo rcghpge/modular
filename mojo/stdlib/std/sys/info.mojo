@@ -21,7 +21,7 @@ print(CompilationTarget.is_x86())
 ```
 """
 
-from std.collections.string.string_slice import _get_kgen_string
+from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
 
 comptime _TargetType = __mlir_type.`!kgen.target`
@@ -431,9 +431,14 @@ struct Vendor(Equatable, TrivialRegisterPassable, Writable):
     This struct provides identifiers for different GPU vendors and utility
     methods for comparison and string representation.
 
-    The Vendor struct defines constants for common GPU vendors (NVIDIA, AMD)
-    and includes a NO_GPU option for systems without GPU support. It provides
-    comparison operators and string conversion methods for vendor identification.
+    The struct defines a constant for each vendor the stdlib knows about and a
+    `NO_GPU` option for systems without an accelerator. It provides comparison
+    operators and string conversion methods for vendor identification.
+
+    It classifies the accelerator the compiler is targeting, which is what
+    `has_amd_gpu_accelerator()`, `has_nvidia_gpu_accelerator()` and
+    `has_apple_gpu_accelerator()` report. To identify a specific device, use
+    `GPUInfo.api`.
     """
 
     var _value: Int8
@@ -1181,6 +1186,10 @@ def stdlib_plugin[target: _TargetType = _current_target()]() -> StaticString:
 @always_inline("nodebug")
 def size_of[type: AnyType, target: _TargetType = _current_target()]() -> Int:
     """Returns the size of (in bytes) of the type.
+
+    The size includes any padding required by the type's alignment, so it is
+    always a multiple of `align_of[type]()` and always matches the stride
+    between adjacent elements of an array of the type.
 
     Parameters:
         type: The type in question.

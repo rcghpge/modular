@@ -40,17 +40,13 @@ mojo_library(
     srcs = [":std_srcs"],
     docs_hosted_on_mojolang = True,
     docs_title = "Mojo standard library",
+    show_stability_markers = "stable",
+    stability_doc_url = "/docs/api-docs/stability/",
     use_production_compiler_for_asan = True,
     validate_missing_docs = True,
-)
-
-# The stdlib every `@mojo//:std` consumer resolves to. Point this at a
-# `mojo_library` built from an overlaid source tree (see `mojo_overlay_srcs`) to
-# swap individual stdlib files for a build without touching the checked-in tree.
-label_flag(
-    name = "std_impl",
-    build_setting_default = ":std",
-    visibility = ["//visibility:public"],
+    deps = [
+        "//KGEN:CompilerRT",
+    ],
 )
 
 pkg_files(

@@ -18,10 +18,11 @@ from collections.abc import MutableSequence
 from typing import Any
 
 import numpy as np
-from max._core.dialects import builtin, mo
+from max._core.dialects import builtin, kgen, mo
 from max.driver import accelerator_api, accelerator_architecture_name
 from max.dtype import DType
 from max.graph import (
+    AlgebraicDim,
     BufferValue,
     BufferValueLike,
     DeviceKind,
@@ -1048,7 +1049,13 @@ def _fused_qkv_index_ragged_matmul_scaled_mxfp8(
         "IQ_DIM": iq_dim,
     }
 
-    op_name = "mo.fused_qkv_index_matmul.ragged.paged.scale.mxfp8"
+    # The two ops share every operand but the scale layout: SM100 takes the
+    # rank-5 SF-atom interleave, CDNA4 the checkpoint's rank-2 E8M0 scales.
+    op_name = (
+        "mo.fused_qkv_index_matmul.ragged.paged.scale.mxfp8.amd"
+        if _is_amd_gpu()
+        else "mo.fused_qkv_index_matmul.ragged.paged.scale.mxfp8"
+    )
     values = [
         input,
         input_row_offsets,
@@ -2795,6 +2802,12 @@ def msa_sparse_indexer(
         rank=3,
         device=index_q.device,
     )
+    scratch_heads = score_scratch.shape[0]
+    if int(scratch_heads) != num_index_heads:
+        raise ValueError(
+            "score_scratch must carry one plane per index head: expected "
+            f"shape[0] == {num_index_heads}, got {int(scratch_heads)}"
+        )
     if topk <= 0:
         raise ValueError(f"topk must be greater than 0, got {topk}")
 
@@ -3235,31 +3248,52 @@ def flash_attention_ragged(
     scale: float,
     local_window_size: int = -1,
     sink_weights: TensorValue | None = None,
+    rel_logits: TensorValue | None = None,
     output_dtype: DType | None = None,
 ) -> TensorValue:
-    """Computes flash (self) attention provided the `!mo.opaque` KV Cache.
+    """Computes flash (self) attention provided the ``!mo.opaque`` KV Cache.
 
-    Notably, this materializes the attention mask (dependent on MHAMaskVariant)
-    within the kernel.
-    `input` and `input_row_offsets` are used together to implement the ragged
-    tensor.
-    `input_row_offsets` indicates where each batch starts and ends in `input`
+    Notably, this materializes the attention mask (dependent on
+    :class:`MHAMaskVariant`) within the kernel. ``input`` and
+    ``input_row_offsets`` are used together to implement the ragged tensor.
+    ``input_row_offsets`` indicates where each batch starts and ends in
+    ``input``.
 
-    Note that this is self attention and the KV sequence length is
-    assumed to be equal to the Q sequence length.
-    For KV sequence length != Q sequence length, use `cross_attention_ragged`.
+    Note that this is self attention and the KV sequence length is assumed to
+    be equal to the Q sequence length. For KV sequence length != Q sequence
+    length, use :func:`cross_attention_ragged`.
+
+    When ``rel_logits`` is set, the kernel gathers an additive
+    relative-position bias by ``rel_dist = q_pos - k_pos`` from a
+    ``(total_q_tokens, heads, extent)`` table and adds it on every visible
+    position, selecting ``mo.mha.ragged.paged.rel_logits``. This path only
+    supports ``mask_variant`` values ``CAUSAL_MASK`` (with
+    ``local_window_size == -1``) and ``SLIDING_WINDOW_CAUSAL_MASK`` (with a
+    positive ``local_window_size``); ``sink_weights`` and ``rel_logits`` are
+    mutually exclusive.
 
     Args:
         kv_params: KVCacheParams object containing key-value cache parameters.
-        input: TensorValue representing the input tensor with shape [total_seq_len, hidden_dim].
-        input_row_offsets: TensorValue indicating the start and end of each batch in the input tensor with shape [batch_size + 1].
+        input: TensorValue representing the input tensor with shape
+            ``[total_seq_len, num_heads, head_dim]``.
+        input_row_offsets: TensorValue indicating the start and end of each
+            batch in the input tensor with shape ``[batch_size + 1]``.
         kv_collection: PagedCacheValues object for managing key-value cache.
-        layer_idx: TensorValue representing the layer index, expected to have dtype uint32.
-        mask_variant: MHAMaskVariant specifying the type of attention mask to use.
+        layer_idx: TensorValue representing the layer index, expected to have
+            dtype uint32.
+        mask_variant: MHAMaskVariant specifying the type of attention mask to
+            use. With ``rel_logits``, only ``CAUSAL_MASK`` and
+            ``SLIDING_WINDOW_CAUSAL_MASK`` are supported.
         scale: float value used to scale the attention scores.
-        local_window_size: int specifying the size of the local attention window, default is -1 for no local window.
-        sink_weights: Optional tensor of shape [num_heads] containing learnable sink weights for each attention head.
-        output_dtype: Dtype for the attention output. Defaults to ``input.dtype``.
+        local_window_size: int specifying the size of the local attention
+            window, default is -1 for no local window.
+        sink_weights: Optional tensor of shape ``[num_heads]`` containing
+            learnable sink weights for each attention head.
+        rel_logits: Optional relative-position bias table with shape
+            ``[total_seq_len, num_heads, extent]``; row ``r`` matches
+            ``input``'s own ragged-flat row convention.
+        output_dtype: Dtype for the attention output. Defaults to
+            ``input.dtype``.
     """
     input_rank_expected = 3
     if input.rank != input_rank_expected:
@@ -3281,6 +3315,11 @@ def flash_attention_ragged(
             f" {input_row_offsets.dtype}"
         )
 
+    if sink_weights is not None and rel_logits is not None:
+        raise ValueError(
+            "sink_weights and rel_logits are mutually exclusive; pass at most one"
+        )
+
     dispatch_metadata = kv_collection.attention_dispatch_metadata
     if dispatch_metadata is None:
         raise ValueError(
@@ -3296,13 +3335,52 @@ def flash_attention_ragged(
                 f"got {sink_weights.shape}"
             )
 
-    parameters = _mha_parameters(
-        mask_variant, local_window_size=local_window_size
-    )
+    if rel_logits is not None:
+        if mask_variant == MHAMaskVariant.CAUSAL_MASK:
+            if local_window_size != -1:
+                raise ValueError(
+                    "rel_logits with MHAMaskVariant.CAUSAL_MASK requires "
+                    f"local_window_size == -1, got {local_window_size}"
+                )
+        elif mask_variant == MHAMaskVariant.SLIDING_WINDOW_CAUSAL_MASK:
+            if local_window_size <= 0:
+                raise ValueError(
+                    "rel_logits with MHAMaskVariant.SLIDING_WINDOW_CAUSAL_MASK "
+                    "requires a positive local_window_size, got "
+                    f"{local_window_size}"
+                )
+        else:
+            raise ValueError(
+                "rel_logits requires mask_variant to be CAUSAL_MASK or "
+                f"SLIDING_WINDOW_CAUSAL_MASK, got {mask_variant}"
+            )
+        _check_rank(3, rel_logits=rel_logits)
+        _check_same_dtype(input=input, rel_logits=rel_logits)
+        if rel_logits.shape[0] != input.shape[0]:
+            raise ValueError(
+                f"expected rel_logits to hold {input.shape[0]} rows, matching "
+                f"input's ragged-flat rows, but got {rel_logits.shape[0]}"
+            )
+        if rel_logits.shape[1] != input.shape[1]:
+            raise ValueError(
+                f"expected rel_logits to hold {input.shape[1]} heads, matching "
+                f"input's, but got {rel_logits.shape[1]}"
+            )
 
-    op_name = "mo.mha.ragged.paged"
-    if sink_weights is not None:
-        op_name = "mo.mha.ragged.paged.sink_weights"
+        parameters: dict[str, int | str | DType] = (
+            {"local_window_size": local_window_size}
+            if local_window_size != -1
+            else {}
+        )
+        op_name = "mo.mha.ragged.paged.rel_logits"
+    else:
+        parameters = _mha_parameters(
+            mask_variant, local_window_size=local_window_size
+        )
+        op_name = "mo.mha.ragged.paged"
+        if sink_weights is not None:
+            op_name = "mo.mha.ragged.paged.sink_weights"
+
     values: MutableSequence[Value[Any]] = [
         input,
         input_row_offsets,
@@ -3311,7 +3389,9 @@ def flash_attention_ragged(
         # NOTE: The scale argument to flash attention is constrained to float32.
         ops.constant(scale, dtype=DType.float32, device=DeviceRef.CPU()),
     ]
-    if sink_weights is not None:
+    if rel_logits is not None:
+        values.append(rel_logits)
+    elif sink_weights is not None:
         values.append(sink_weights)
     values.append(dispatch_metadata.tensor)
 
@@ -5236,6 +5316,7 @@ def grouped_dynamic_scaled_mxfp4_matmul(
     a_scales_preshuffled: bool = False,
     a_scales_max_padded_m: int = 0,
     decode_grid_m_cap: int = 0,
+    decode_grid_m_rows: int = 0,
 ) -> TensorValue:
     """Performs grouped NVFP4 matmul for MoE layers.
 
@@ -5248,11 +5329,12 @@ def grouped_dynamic_scaled_mxfp4_matmul(
     tensor representation for variable-length expert inputs.
 
     Args:
-        hidden_states: The input activations with shape ``[total_tokens, K/2]``
-            where K is the unpacked hidden dimension. Dtype must be uint8
-            (packed MXFP4).
-        weight: The expert weights with shape ``[num_experts, N, K/2]``.
-            Dtype must be uint8 (packed MXFP4).
+        hidden_states: The input activations with shape
+            ``[total_tokens, K/2]`` at MXFP4 or ``[total_tokens, K]`` at MXFP8,
+            where K is the unpacked hidden dimension.
+        weight: The expert weights, shaped ``[num_experts, N, K/2]`` at MXFP4
+            or ``[num_experts, N, K]`` at MXFP8. Must share ``hidden_states``'
+            dtype: uint8 (packed MXFP4) or float8_e4m3fn (MXFP8).
         a_scales: Scaling factors for inputs with shape
             ``[num_scale_rows, K/32]``. Dtype must be float8_e8m0fnu.
         b_scales: Scaling factors for weights with shape
@@ -5264,9 +5346,10 @@ def grouped_dynamic_scaled_mxfp4_matmul(
             num_active_experts].
         out_type: Output dtype. Defaults to bfloat16.
         estimated_total_m: The estimated total number of tokens.
-        decode_grid_m_cap: Per-expert decode cap sizing the direct grid.y on
-            the AMD preb decode bands. 0 disables (full-stride fallback).
-            Ignored unless ``preshuffled_b``.
+        decode_grid_m_cap: Decode-band gate on the AMD preb path; 0 disables.
+            Selects the band; `decode_grid_m_rows` bounds the grid.
+        decode_grid_m_rows: Rows grid.y must cover per expert on the decode
+            bands. Ignored unless ``preshuffled_b``.
 
     Returns:
         The matmul result with shape ``[total_tokens, N]`` and dtype ``out_type``.
@@ -5287,9 +5370,15 @@ def grouped_dynamic_scaled_mxfp4_matmul(
             f"{hidden_k}] but got {weight.shape}"
         )
 
-    if (hidden_states.dtype != DType.uint8) or (weight.dtype != DType.uint8):
+    # The kernel infers the packing from the shapes, so both operands need only
+    # agree on one MX dtype: uint8 (MXFP4) or float8_e4m3fn (MXFP8).
+    if hidden_states.dtype != weight.dtype or hidden_states.dtype not in (
+        DType.uint8,
+        DType.float8_e4m3fn,
+    ):
         raise TypeError(
-            "hidden_states and weight dtypes must be uint8 for MXFP4, but got "
+            "hidden_states and weight must share one MX dtype, either uint8 "
+            "(MXFP4) or float8_e4m3fn (MXFP8), but got "
             f"{hidden_states.dtype}, {weight.dtype}"
         )
 
@@ -5329,8 +5418,12 @@ def grouped_dynamic_scaled_mxfp4_matmul(
 
     MXFP4_SF_VECTOR_SIZE = 32
 
+    # Shapes are in BYTES, so recover the element count before counting scale
+    # groups: MXFP4 stores two elements per byte, MXFP8 one.
+    elems_per_byte = 2 if hidden_states.dtype == DType.uint8 else 1
+
     a_scales_dim_1 = ceildiv(
-        hidden_states.shape[1] * 2, Dim(MXFP4_SF_VECTOR_SIZE)
+        hidden_states.shape[1] * elems_per_byte, Dim(MXFP4_SF_VECTOR_SIZE)
     )
     if a_scales.shape[1] != a_scales_dim_1:
         raise ValueError(
@@ -5339,7 +5432,9 @@ def grouped_dynamic_scaled_mxfp4_matmul(
             f" but got {a_scales.shape}"
         )
 
-    b_scales_dim_2 = ceildiv(weight.shape[2] * 2, Dim(MXFP4_SF_VECTOR_SIZE))
+    b_scales_dim_2 = ceildiv(
+        weight.shape[2] * elems_per_byte, Dim(MXFP4_SF_VECTOR_SIZE)
+    )
     if (
         b_scales.shape[0] != weight.shape[0]
         or b_scales.shape[1] != weight.shape[1]
@@ -5405,6 +5500,10 @@ def grouped_dynamic_scaled_mxfp4_matmul(
         decode_grid_m_cap, dtype=DType.uint32, device=DeviceRef.CPU()
     )
 
+    decode_grid_m_rows_arg = ops.constant(
+        decode_grid_m_rows, dtype=DType.uint32, device=DeviceRef.CPU()
+    )
+
     output = ops.custom(
         "mo.grouped.matmul.block.scaled.mxfp4",
         device=hidden_states.device,
@@ -5419,6 +5518,7 @@ def grouped_dynamic_scaled_mxfp4_matmul(
             expert_usage_stats_host[1],
             estimated_total_m_arg,
             decode_grid_m_cap_arg,
+            decode_grid_m_rows_arg,
         ],
         out_types=[
             TensorType(
@@ -5427,24 +5527,29 @@ def grouped_dynamic_scaled_mxfp4_matmul(
                 device=hidden_states.device,
             ),
         ],
-        parameters={"preshuffled_b": preshuffled_b},
+        parameters={
+            "preshuffled_b": preshuffled_b,
+            # Both formats reach the kernel as raw bytes, so this is what tells
+            # them apart: 16 bytes per lane at MXFP4, 32 at MXFP8.
+            "lane_bytes": 32 // elems_per_byte,
+        },
     )[0].tensor
 
     return output
 
 
 def grouped_matmul_block_scaled(
-    hidden_states: TensorValue,
-    weight: TensorValue,
-    a_scales: TensorValue,
-    b_scales: TensorValue,
-    expert_start_indices: TensorValue,
-    a_scale_offsets: TensorValue,
-    expert_ids: TensorValue,
-    expert_scales: TensorValue,
-    expert_usage_stats_host: TensorValue,
+    hidden_states: TensorValueLike,
+    weight: TensorValueLike,
+    a_scales: TensorValueLike,
+    b_scales: TensorValueLike,
+    expert_start_indices: TensorValueLike,
+    a_scale_offsets: TensorValueLike,
+    expert_ids: TensorValueLike,
+    expert_scales: TensorValueLike,
+    expert_usage_stats_host: TensorValueLike,
     out_type: DType = DType.bfloat16,
-    estimated_total_m: TensorValue | None = None,
+    estimated_total_m: TensorValueLike | None = None,
 ) -> TensorValue:
     """Performs grouped NVFP4 matmul for MoE layers.
 
@@ -5482,6 +5587,17 @@ def grouped_matmul_block_scaled(
     Returns:
         The matmul result with shape ``[total_tokens, N]`` and dtype ``out_type``.
     """
+    hidden_states = TensorValue(hidden_states)
+    weight = TensorValue(weight)
+    a_scales = TensorValue(a_scales)
+    b_scales = TensorValue(b_scales)
+    expert_start_indices = TensorValue(expert_start_indices)
+    a_scale_offsets = TensorValue(a_scale_offsets)
+    expert_ids = TensorValue(expert_ids)
+    expert_scales = TensorValue(expert_scales)
+    expert_usage_stats_host = TensorValue(expert_usage_stats_host)
+    if estimated_total_m:
+        estimated_total_m = TensorValue(estimated_total_m)
 
     _check_rank(2, hidden_states=hidden_states)
     _check_rank(3, weight=weight)
@@ -6907,11 +7023,37 @@ def dynamic_block_scaled_matmul_mxfp4(
             f"as do a and b scales dtypes {a_scales.dtype}, {b_scales.dtype}"
         )
 
-    if a.dtype != DType.uint8:
-        raise ValueError("A dtype must be uint8 (fp4-e2m1fnX2)")
+    # The kernel reads raw bytes and takes the packing as a parameter.
+    if a.dtype not in (DType.uint8, DType.float8_e4m3fn):
+        raise ValueError(
+            "A dtype must be uint8 (MXFP4) or float8_e4m3fn (MXFP8), got "
+            f"{a.dtype}"
+        )
 
     if a_scales.dtype != DType.float8_e8m0fnu:
-        raise ValueError("a_scales dtype must be float8_e4m3fn")
+        raise ValueError("a_scales dtype must be float8_e8m0fnu")
+
+    elems_per_byte = 2 if a.dtype == DType.uint8 else 1
+
+    # Validate the scale extents here rather than letting a mis-sized tensor
+    # reach the kernel, where it reads out of bounds instead of raising.
+    MX_SF_VECTOR_SIZE = 32
+    expected_a_scales_k = ceildiv(
+        a.shape[1] * elems_per_byte, Dim(MX_SF_VECTOR_SIZE)
+    )
+    if a_scales.shape[1] != expected_a_scales_k:
+        raise ValueError(
+            f"a_scales shape must be [*, {expected_a_scales_k}] but got "
+            f"{a_scales.shape}"
+        )
+    expected_b_scales_k = ceildiv(
+        b.shape[1] * elems_per_byte, Dim(MX_SF_VECTOR_SIZE)
+    )
+    if b_scales.shape[1] != expected_b_scales_k:
+        raise ValueError(
+            f"b_scales shape must be [*, {expected_b_scales_k}] but got "
+            f"{b_scales.shape}"
+        )
 
     result = ops.custom(
         "mo.matmul.dynamic.block.scaled.mxfp4",
@@ -6927,6 +7069,7 @@ def dynamic_block_scaled_matmul_mxfp4(
                 dtype=out_type, shape=[a.shape[0], b.shape[0]], device=a.device
             )
         ],
+        parameters={"lane_bytes": 32 // elems_per_byte},
     )[0].tensor
 
     return result
@@ -7018,6 +7161,14 @@ def _is_apple_gpu() -> bool:
     """Checks if the current accelerator is an Apple (Metal) GPU."""
     try:
         return accelerator_api() == "metal"
+    except Exception:
+        return False
+
+
+def _is_amd_gpu() -> bool:
+    """Checks if the current accelerator is an AMD (HIP) GPU."""
+    try:
+        return accelerator_api() == "hip"
     except Exception:
         return False
 
@@ -7209,7 +7360,13 @@ def grouped_quantize_dynamic_block_scaled(
     SF_K_GROUP_SIZE = SF_ATOM_K * sf_vector_size
 
     total_m_tiles = ceildiv(input.shape[0], Dim(SF_MN_GROUP_SIZE))
-    total_m_tiles += expert_ids.shape[0]  # add one padding tile for each group
+    # A row belongs to exactly one group, so the number of non-empty groups
+    # is bounded by both the group count and the row count; padding one tile
+    # per group beyond that bound is wasted work at low occupancy (e.g.
+    # single-token decode routed across hundreds of experts).
+    total_m_tiles += AlgebraicDim.apply(
+        kgen.POC.min, expert_ids.shape[0], input.shape[0]
+    )
     scales_shape: list[Dim | int] = [
         total_m_tiles,
         ceildiv(input.shape[1], Dim(SF_K_GROUP_SIZE)),

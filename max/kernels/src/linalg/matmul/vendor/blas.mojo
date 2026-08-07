@@ -94,9 +94,9 @@ from _rocblas.rocblas import (
     rocblas_create_handle,
     rocblas_destroy_handle,
 )
-from std.gpu.host import DeviceContext
-from std.gpu.host._amdgpu_hip import HIP
-from std.gpu.host._nvidia_cuda import CUDA
+from max.gpu.host import DeviceContext
+from max.gpu.host._amdgpu_hip import HIP
+from max.gpu.host._nvidia_cuda import CUDA
 from layout import (
     Coord,
     Idx,
@@ -111,7 +111,7 @@ from layout.tile_tensor import NullableTileTensor
 from std.memory.alloc import Layout as AllocLayout
 from std.utils import IndexList
 from std.utils.variant import Variant
-from std.gpu.host.info import B200, _is_sm10x_gpu, _is_sm12x_gpu
+from max.gpu.host.info import B200, _is_sm10x_gpu, _is_sm12x_gpu
 from std.collections import OptionalReg
 
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
@@ -214,12 +214,7 @@ struct Handle[backend: Backend = _resolve_backend[Backend.AUTOMATIC]()](
     """
 
     comptime resolved_backend = _resolve_backend[Self.backend]()
-    # TODO(MSTDL-2941): Restore `OpaquePointer` here once the generated
-    # cuBLAS typedefs use safe pointers. The flavors must match because
-    # implicit conversion does not lift through `Optional`.
-    comptime _cublas_type = Optional[
-        UnsafePointer[NoneType, AnyOrigin[mut=True]]
-    ]
+    comptime _cublas_type = Optional[OpaquePointer[MutAnyOrigin]]
     comptime _rocblas_type = _rocblas.Handle
     comptime _hipblaslt_type = hipblasLtHandle_t
     comptime type = Variant[
@@ -320,26 +315,26 @@ comptime _DEBUG_VENDOR_BLAS = False
 @always_inline
 def _ffi_void_ptr[
     T: AnyType, origin: Origin, addr: AddressSpace
-](ptr: UnsafePointer[T, origin, address_space=addr]) -> UnsafePointer[
-    NoneType, MutAnyOrigin
+](ptr: UnsafePointer[T, origin, address_space=addr]) -> OpaquePointer[
+    MutAnyOrigin
 ]:
     """Cast any pointer to a void pointer for vendor FFI calls."""
-    return rebind[UnsafePointer[NoneType, MutAnyOrigin]](ptr)
+    return rebind[OpaquePointer[MutAnyOrigin]](ptr)
 
 
 @always_inline
 def _ffi_void_ptr[
     T: AnyType, origin: Origin, addr: AddressSpace
-](ptr: Optional[UnsafePointer[T, origin, address_space=addr]]) -> Optional[
-    UnsafePointer[NoneType, MutAnyOrigin]
-]:
+](
+    ptr: Optional[UnsafePointer[T, origin, address_space=addr]]
+) -> OptionalPointer[NoneType, MutAnyOrigin]:
     """Cast an optional non-null pointer to a nullable void pointer for vendor
     FFI calls.
 
     Returns None when the optional is empty.
     """
     if ptr:
-        return rebind[UnsafePointer[NoneType, MutAnyOrigin]](ptr.unsafe_value())
+        return rebind[OpaquePointer[MutAnyOrigin]](ptr.unsafe_value())
     return None
 
 
@@ -356,7 +351,7 @@ def _attach_handle_to_stream(ctx: DeviceContext, handle: Handle) raises:
                         1,
                         1,
                         0,
-                        OptionalUnsafePointer[Int8, MutAnyOrigin](),
+                        OptionalPointer[Int8, MutAnyOrigin](),
                     )
                 )
             else:
@@ -373,15 +368,14 @@ def _get_global_handle[
     backend: Backend = _resolve_backend[Backend.AUTOMATIC, dtype=dtype](),
 ](ctx: DeviceContext) raises -> Handle[backend]:
     var HANDLE_NAME = String(t"LINALG_VENDOR_BLAS_{backend}_{ctx.id()}")
-    if global_ptr := _get_global_or_null(HANDLE_NAME):
+    var global_ptr = _get_global_or_null(HANDLE_NAME)
+    if global_ptr:
         var ptr = global_ptr.value().unsafe_bitcast[Handle[backend]]()
         _attach_handle_to_stream(ctx, ptr[])
         return ptr[]
 
     # Otherwise, we have not initialized the handle yet.
-    var handle_ptr = UnsafePointer(
-        alloc(AllocLayout[Handle[backend]].single()).unsafe_leak()
-    )
+    var handle_ptr = alloc(AllocLayout[Handle[backend]].single()).unsafe_leak()
     handle_ptr.unsafe_write(Handle[backend]())
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
         StringSlice(HANDLE_NAME),
@@ -672,7 +666,7 @@ def matmul[
         elif handle.resolved_backend is Backend.CUBLASLT:
             _cublasLt_matmul(
                 ctx,
-                _ffi_void_ptr(handle._get_cublas()),
+                handle._get_cublas(),
                 c_tensor,
                 a_tensor,
                 b_tensor,
@@ -963,9 +957,6 @@ def _rocblas_matmul[
         var a_lead = Int32(a.dynamic_stride(0))
         var b_lead = Int32(b.dynamic_stride(0))
         var c_lead = Int32(c.layout.stride[0]().value())
-        # TODO(MSTDL-2941): Inline this again once a call-result arg
-        # converts to a safe Optional pointer param (MOCO-4334).
-        var c_void = _ffi_void_ptr(c.ptr)
         return _rocblas.check_error(
             rocblas_gemm_ex(
                 handle,
@@ -982,10 +973,10 @@ def _rocblas_matmul[
                 _rocblas.DataType(a_type),
                 a_lead,
                 UnsafePointer(to=beta).bitcast[NoneType](),
-                c_void,
+                _ffi_void_ptr(c.ptr),
                 _rocblas.DataType(c_type),
                 c_lead,
-                c_void,
+                _ffi_void_ptr(c.ptr),
                 _rocblas.DataType(c_type),
                 c_lead,
                 compute_type,
@@ -995,7 +986,6 @@ def _rocblas_matmul[
             )
         )
     # Default column-major.
-    var c_void = _ffi_void_ptr(c.ptr)
     _rocblas.check_error(
         rocblas_gemm_ex(
             handle,
@@ -1012,10 +1002,10 @@ def _rocblas_matmul[
             _rocblas.DataType(b_type),
             Int32(N) if transpose_b else Int32(K),
             UnsafePointer(to=beta).bitcast[NoneType](),
-            c_void,
+            _ffi_void_ptr(c.ptr),
             _rocblas.DataType(c_type),
             Int32(M),
-            c_void,
+            _ffi_void_ptr(c.ptr),
             _rocblas.DataType(c_type),
             Int32(M),
             compute_type,
@@ -1161,8 +1151,8 @@ def _cublasLt_matmul[
         if a_scales or b_scales:
             if not (a_scales and b_scales):
                 raise Error("a_scales and b_scales must be provided together")
-            a_scale_tensor = a_scales.value()
-            b_scale_tensor = b_scales.value()
+            var a_scale_tensor = a_scales.value()
+            var b_scale_tensor = b_scales.value()
 
             comptime SF_VECTOR_SIZE = NVFP4_SF_VECTOR_SIZE if scales_type == NVFP4_SF_DTYPE else MXFP8_SF_VECTOR_SIZE
 
@@ -1603,8 +1593,8 @@ def _hipblasLt_matmul[
     if a_scales or b_scales:
         if not (a_scales and b_scales):
             raise Error("a_scales and b_scales must be provided together")
-        a_scale_tensor = a_scales.value()
-        b_scale_tensor = b_scales.value()
+        var a_scale_tensor = a_scales.value()
+        var b_scale_tensor = b_scales.value()
 
         if comptime (scales_type != MXFP8_SF_DTYPE):
             raise Error("Only float8_e8m0fnu(scale type: MXFP8) supported")

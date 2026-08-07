@@ -22,7 +22,7 @@ backing memory alive (for example, inside the `OwnedByteBuffer` and
 
 from std.ffi import _CPointer, external_call
 
-from std.gpu.host import DeviceBuffer
+from max.gpu.host import DeviceBuffer
 
 
 # Opaque stand-in for the C++ `AsyncValue` type -- the reference-counted payload
@@ -126,7 +126,7 @@ struct AnyAsyncValueRef(ImplicitlyCopyable, Movable):
         ](storage_buf^.take_handle())
         self._handle = handle
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Releases this reference to the underlying `AsyncValue`."""
         # void AsyncRT_AsyncValue_release(AsyncValue *value)
         external_call["AsyncRT_AsyncValue_release", NoneType](self._handle)

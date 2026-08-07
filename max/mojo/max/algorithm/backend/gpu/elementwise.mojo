@@ -14,15 +14,17 @@
 
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
-    PDL,
-    PDLLevel,
     WARP_SIZE,
-    barrier,
     block_idx,
     grid_dim,
     thread_idx,
 )
-from std.gpu.primitives.cluster import (
+from max.gpu.primitives.grid_controls import (
+    PDL,
+    PDLLevel,
+)
+from max.gpu.sync import barrier
+from max.gpu.primitives.cluster import (
     cluster_sync_acquire,
     cluster_sync_release,
     clusterlaunchcontrol_try_cancel,
@@ -30,12 +32,12 @@ from std.gpu.primitives.cluster import (
     clusterlaunchcontrol_query_cancel_get_first_ctaid,
     elect_one_sync_with_mask,
 )
-from std.gpu.primitives.grid_controls import (
+from max.gpu.primitives.grid_controls import (
     pdl_launch_attributes,
 )  # @doc_hidden
-from std.gpu.host import DeviceContext
-from std.gpu.host.info import B200
-from std.gpu.sync import mbarrier_init, mbarrier_arrive_expect_tx_relaxed
+from max.gpu.host import DeviceContext
+from max.gpu.host.info import B200
+from max.gpu.sync import mbarrier_init, mbarrier_arrive_expect_tx_relaxed
 from std.math import ceildiv, clamp
 from std.math.uutils import ufloordiv, uceildiv, udivmod
 from std.memory import unsafe_stack_allocation
@@ -86,7 +88,10 @@ def _mbarrier_wait_acquire_cta(
 @always_inline("nodebug")
 def _advance_indices[
     rank: Int
-](mut idx: IndexList[rank, ...], shape: IndexList[rank, ...]):
+](
+    mut idx: IndexList[rank, element_type=_],
+    shape: IndexList[rank, element_type=_],
+):
     """Advances a multi-dimensional index by one element in row-major order."""
     idx[rank - 1] += 1
     comptime for d in reversed(range(1, rank)):
@@ -276,7 +281,9 @@ def _elementwise_impl_gpu_clc[
     elems_per_thread: Int,
     *,
     trace_description: StaticString = "",
-](func: FuncType, shape: IndexList[rank, ...], ctx: DeviceContext) raises:
+](
+    func: FuncType, shape: IndexList[rank, element_type=_], ctx: DeviceContext
+) raises:
     """Executes `func` over `shape` on SM100+ GPUs using Cluster Launch Control
     work-stealing.
 
@@ -451,7 +458,9 @@ def _elementwise_impl_gpu_grid_stride[
     elems_per_thread: Int,
     *,
     trace_description: StaticString = "",
-](func: FuncType, shape: IndexList[rank, ...], ctx: DeviceContext) raises:
+](
+    func: FuncType, shape: IndexList[rank, element_type=_], ctx: DeviceContext
+) raises:
     """Executes `func` over `shape` using a grid-stride loop.
 
     Parameters:

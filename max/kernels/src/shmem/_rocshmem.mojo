@@ -10,10 +10,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from std.collections.string.string_slice import get_static_string
+from std.collections.string.string_span import get_static_string
 from std.ffi import _CPointer
-from std.gpu.host import DeviceContext
-from std.gpu.host._amdgpu_hip import hipStream_t, HIP
+from max.gpu.host import DeviceContext
+from max.gpu.host._amdgpu_hip import hipStream_t, HIP
 from std.os import abort, getenv
 from std.pathlib import Path
 from std.sys import size_of
@@ -57,7 +57,8 @@ def _init_rocshmem_dylib() -> OwnedDLHandle:
     #   export MODULAR_SHMEM_LIB_DIR="/path/to/venv/lib"
     # will dlopen the library from:
     #   /path/to/venv/lib/librocshmem.so
-    if dir_name := getenv("MODULAR_SHMEM_LIB_DIR"):
+    var dir_name = getenv("MODULAR_SHMEM_LIB_DIR")
+    if dir_name:
         lib = String(Path(dir_name) / lib)
     try:
         return OwnedDLHandle(

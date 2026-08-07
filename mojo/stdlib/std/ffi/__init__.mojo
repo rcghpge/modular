@@ -44,7 +44,8 @@ def main() raises:
 ```
 """
 
-from std.collections.string.string_slice import (
+from std.collections.optional import OptionalReg
+from std.collections.string.string_span import (
     _get_kgen_string,
     get_static_string,
 )
@@ -241,7 +242,7 @@ struct _DLCallable[
         #
         # The bitcast goes via `Pointer(to=self._opaque)` — taking the address
         # of the field, reinterpreting it as pointing to a function-pointer
-        # type, then loading — because an `UnsafePointer[NoneType]` value
+        # type, then loading — because a `Pointer[NoneType]` value
         # cannot be directly reinterpreted as a function-pointer value
         # (`.unsafe_bitcast` only changes the pointee type).
         var typed_fn = Pointer(to=self._opaque).unsafe_bitcast[
@@ -315,7 +316,7 @@ struct OwnedDLHandle(Movable):
     def __init__(out self, *, unsafe_uninitialized: Bool):
         self._handle = _DLHandle({})
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Unload the associated dynamic library.
 
         This automatically calls `dlclose()` on the underlying library handle.
@@ -410,7 +411,7 @@ struct OwnedDLHandle(Movable):
             " `get_function[Ret](name)`."
         )
         var ptr = self._handle.get_symbol[NoneType](
-            cstr_name=name.as_c_string_slice().unsafe_ptr()
+            cstr_name=name.as_c_string_slice()
         )
         if not ptr:
             raise Error(t"symbol not found: {name}")
@@ -438,7 +439,7 @@ struct OwnedDLHandle(Movable):
     @always_inline
     def _get_function[
         result_type: TrivialRegisterPassable
-    ](self, *, cstr_name: Pointer[mut=False, c_char, _]) -> result_type:
+    ](self, *, cstr_name: CStringSlice[_]) -> result_type:
         """Returns a handle to the function with the given name in the dynamic
         library.
 
@@ -454,14 +455,30 @@ struct OwnedDLHandle(Movable):
         return self._handle._get_function[result_type](cstr_name=cstr_name)
 
     def get_symbol[
-        result_type: AnyType,
-    ](self, name: StringSlice) -> Optional[
-        Pointer[result_type, MutUntrackedOrigin]
+        mut: Bool, origin: Origin[mut=mut], //, result_type: AnyType
+    ](ref[origin] self, name: StringSlice) -> Optional[
+        Pointer[result_type, origin]
     ]:
         """Returns a pointer to the symbol with the given name in the dynamic
         library, or `None` if the symbol is not found.
 
+        The returned pointer borrows `self`, so the library cannot be
+        `dlclose`d while the pointer is live. Its mutability follows the
+        handle's: a symbol resolved through an immutable handle is read-only.
+
+        Example:
+        ```mojo
+        from std.ffi import OwnedDLHandle, c_int
+
+        var lib = OwnedDLHandle("libcounters.so")
+        var counter = lib.get_symbol[c_int]("live_connections")
+        if counter:
+            print(counter.value()[])
+        ```
+
         Parameters:
+            mut: The mutability of self.
+            origin: The origin of self.
             result_type: The type of the symbol to return.
 
         Args:
@@ -470,17 +487,25 @@ struct OwnedDLHandle(Movable):
         Returns:
             An optional pointer to the symbol, or `None` if not found.
         """
-        return self._handle.get_symbol[result_type](name)
+        var name_copy = String(name)
+        return self.get_symbol[result_type](
+            cstr_name=name_copy.as_c_string_slice()
+        )
 
     def get_symbol[
-        result_type: AnyType
-    ](self, *, cstr_name: Pointer[mut=False, Int8, _]) -> Optional[
-        Pointer[result_type, MutUntrackedOrigin]
+        mut: Bool, origin: Origin[mut=mut], //, result_type: AnyType
+    ](ref[origin] self, *, cstr_name: CStringSlice[_]) -> Optional[
+        Pointer[result_type, origin]
     ]:
         """Returns a pointer to the symbol with the given name in the dynamic
         library, or `None` if the symbol is not found.
 
+        See the `name` overload for how the returned pointer's origin and
+        mutability relate to the handle.
+
         Parameters:
+            mut: The mutability of self.
+            origin: The origin of self.
             result_type: The type of the symbol to return.
 
         Args:
@@ -489,7 +514,17 @@ struct OwnedDLHandle(Movable):
         Returns:
             An optional pointer to the symbol, or `None` if not found.
         """
-        return self._handle.get_symbol[result_type](cstr_name=cstr_name)
+        var res = self._handle.get_symbol[result_type](cstr_name=cstr_name)
+        if not res:
+            return None
+        # `_DLHandle` is non-owning, so it can only hand back an untracked
+        # origin. Re-tie the pointer to this owning handle, which is the borrow
+        # `_DLHandle` has no way to express.
+        return (
+            res.unsafe_value()
+            .unsafe_mut_cast[mut]()
+            .unsafe_origin_cast[origin]()
+        )
 
     @always_inline
     def call[
@@ -672,20 +707,17 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
 
         Constraints:
             `result_type` must be a function pointer type annotated with
-            `abi("C")` (e.g. `def(Float64) abi("C") -> Float64`). Using a
+            `abi("C")` (e.g. `def(Float64) thin abi("C") -> Float64`). Using a
             plain Mojo function type causes silent ABI corruption for struct
             arguments and return values.
         """
-        # TODO(MOCO-3709): Re-enable this constraint once kgen-opt passes
-        # (e.g. mogg-annotate-kernels) can parse extern|cabi function types
-        # in prebuilt stdlib packages without failing with "expected '->'".
-        # comptime assert __fn_type_is_cabi[result_type](), (
-        #     'result_type must be a C-ABI function pointer type: use abi("C") on'
-        #     ' the function type, e.g. `def(Float64) abi("C") -> Float64`'
-        # )
+        comptime assert __fn_type_is_cabi[result_type](), (
+            'result_type must be a C-ABI function pointer type: use abi("C") on'
+            ' the function type, e.g. `def(Float64) thin abi("C") -> Float64`'
+        )
 
         return self._get_function[result_type](
-            cstr_name=name.as_c_string_slice().unsafe_ptr()
+            cstr_name=name.as_c_string_slice()
         )
 
     @always_inline
@@ -705,13 +737,13 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         # Force unique the func_name so we know that it is nul-terminated.
         comptime func_name_literal = get_static_string[func_name]()
         return self._get_function[result_type](
-            cstr_name=func_name_literal.unsafe_ptr().unsafe_bitcast[c_char](),
+            cstr_name=func_name_literal.as_c_string_slice(),
         )
 
     @always_inline
     def _get_function[
         result_type: TrivialRegisterPassable
-    ](self, *, cstr_name: Pointer[mut=False, c_char, _]) -> result_type:
+    ](self, *, cstr_name: CStringSlice[_]) -> result_type:
         """Returns a handle to the function with the given name in the dynamic
         library.
 
@@ -727,10 +759,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         var opaque_function_ptr = self.get_symbol[NoneType](cstr_name=cstr_name)
 
         if not opaque_function_ptr:
-            abort(
-                t"symbol not found: "
-                t"{StringSlice(unsafe_from_utf8=CStringSlice(unsafe_from_ptr=cstr_name))}"
-            )
+            abort(t"symbol not found: {cstr_name}")
 
         return Pointer(to=opaque_function_ptr.value()).unsafe_bitcast[
             result_type
@@ -753,14 +782,14 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         Returns:
             An optional pointer to the symbol, or `None` if not found.
         """
-        name_copy = String(name)
+        var name_copy = String(name)
         return self.get_symbol[result_type](
-            cstr_name=name_copy.as_c_string_slice().unsafe_ptr()
+            cstr_name=name_copy.as_c_string_slice()
         )
 
     def get_symbol[
         result_type: AnyType
-    ](self, *, cstr_name: Pointer[mut=False, Int8, _]) -> Optional[
+    ](self, *, cstr_name: CStringSlice[_]) -> Optional[
         Pointer[result_type, MutUntrackedOrigin]
     ]:
         """Returns a pointer to the symbol with the given name in the dynamic
@@ -778,9 +807,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         debug_assert(
             Bool(self.handle),
             "Dylib handle is null when loading symbol: ",
-            StringSlice(
-                unsafe_from_utf8=CStringSlice(unsafe_from_ptr=cstr_name)
-            ),
+            cstr_name,
         )
 
         # Follow the dance described in
@@ -796,7 +823,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
 
         var res: Optional[Pointer[result_type, MutUntrackedOrigin]] = dlsym[
             result_type
-        ](self.handle, cstr_name)
+        ](self.handle, cstr_name.unsafe_ptr())
 
         if not res:
             # Result is NULL — check if it's an error or a valid NULL symbol.
@@ -809,10 +836,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
             # Abort rather than returning a null pointer wrapped in Some,
             # which would be misleading. Callers who need to handle NULL
             # symbols should specify a nullable pointer as the result_type.
-            abort(
-                t"symbol resolved to NULL: "
-                t"{StringSlice(unsafe_from_utf8=CStringSlice(unsafe_from_ptr=cstr_name))}"
-            )
+            abort(t"symbol resolved to NULL: {cstr_name}")
 
         return res.value()
 
@@ -1018,7 +1042,8 @@ struct _Global[
         var ptr = OwnedPointer(Self.init_fn())
 
         var storage = ptr^.unsafe_take_allocation().unsafe_leak()
-        return storage.unsafe_bitcast[NoneType]()
+        var opaque = storage.unsafe_bitcast[NoneType]()
+        return opaque
 
     @staticmethod
     def _deinit_wrapper(
@@ -1028,7 +1053,7 @@ struct _Global[
         if opaque_ptr:
             dealloc(
                 ThinAllocation(
-                    unsafe_assume_ownership=opaque_ptr.unsafe_value().unsafe_bitcast[
+                    unsafe_owned_ptr=opaque_ptr.unsafe_value().unsafe_bitcast[
                         Self.StorageType
                     ]()
                 ).unsafe_with_layout({count = 1})
@@ -1109,7 +1134,7 @@ def _get_global_or_null(
 
 comptime _CPointer[
     mut: Bool, //, T: AnyType, origin: Origin[mut=mut]
-] = Optional[UnsafePointer[T, origin]]
+] = OptionalPointer[T, origin]
 
 
 @always_inline("nodebug")
@@ -1117,8 +1142,28 @@ def external_call[
     callee: StaticString,
     return_type: RegisterPassable,
     *types: AnyType,
+    num_fixed_args: OptionalReg[Int] = None,
 ](*args: *types) -> return_type:
     """Calls an external function.
+
+    By default every argument is a fixed argument of a non-variadic callee.
+    Pass `num_fixed_args` to call a C variadic function such as `open()` or
+    `snprintf()`, giving how many of the first arguments are fixed arguments of
+    the callee; the arguments after those are passed as variadic arguments.
+    This matters because ABIs such as AAPCS on ARM64 macOS pass variadic
+    arguments differently from fixed ones.
+
+    Examples:
+
+    ```mojo
+    from std.ffi import c_char, c_int, external_call
+
+    # int open(const char *path, int oflag, ...);
+    var path_str = path
+    var fd = external_call["open", c_int, num_fixed_args=2](
+        path_str.as_c_string_slice().unsafe_ptr(), c_int(flags), c_int(0o666)
+    )
+    ```
 
     Args:
         args: The arguments to pass to the external function.
@@ -1127,10 +1172,24 @@ def external_call[
         callee: The name of the external function.
         return_type: The return type.
         types: The argument types.
+        num_fixed_args: The number of fixed arguments of a C variadic callee,
+            or `None` for a non-variadic callee. A count of `0` declares a
+            callee whose every argument is variadic, which `None` cannot
+            express. An argument pack is flattened into one argument per
+            element, so the count must cover the elements rather than the
+            pack, and the fixed arguments must precede any pack.
+
+    Constraints:
+        `num_fixed_args` must not be negative.
 
     Returns:
         The external call result.
     """
+
+    comptime assert num_fixed_args.or_else(0) >= 0, (
+        "`num_fixed_args` counts the fixed arguments of the C variadic callee,"
+        " so it cannot be negative; use `None` for a non-variadic callee"
+    )
 
     comptime if types.contains[String]():
         comptime assert False, (
@@ -1147,16 +1206,47 @@ def external_call[
     var loaded_pack = args.get_loaded_kgen_pack()
     comptime callee_kgen_string = _get_kgen_string[callee]()
 
+    # The presence of the `numFixedArgs` attribute — not its value — is what
+    # declares the callee variadic, so `None` maps to the attribute being
+    # absent while `num_fixed_args=0` maps to a count of zero, which the op
+    # reads as a callee whose every argument is variadic. Hence the duplicated
+    # calls. A negative count takes the attribute-free path too, since the
+    # assert above has already failed the build and emitting the attribute
+    # would bury that message under the op verifier's error.
+    comptime declares_variadic = num_fixed_args.or_else(-1) >= 0
+    # The count is `OptionalReg`, not `Optional`, and is read through `or_else`
+    # rather than `value()`: allocation calls `external_call`, so anything this
+    # function's parameter domain reaches which allocates — `Optional`'s
+    # `Variant` storage, or the `String` that `value()`'s empty-case `abort()`
+    # formats — makes that domain recursively require itself. Elaboration
+    # deadlocks on such a cycle instead of reporting it, so the whole stdlib
+    # stops compiling under `-D ASSERT=all`.
+    comptime fixed_args = num_fixed_args.or_else(0)
+
     comptime if return_type == NoneType:
-        __mlir_op.`pop.external_call`[func=callee_kgen_string, _type=None](
-            loaded_pack
-        )
+        comptime if declares_variadic:
+            __mlir_op.`pop.external_call`[
+                func=callee_kgen_string,
+                numFixedArgs=fixed_args.__mlir_index__(),
+                _type=None,
+            ](loaded_pack)
+        else:
+            __mlir_op.`pop.external_call`[func=callee_kgen_string, _type=None](
+                loaded_pack
+            )
         return rebind_var[return_type](NoneType())
     else:
-        return __mlir_op.`pop.external_call`[
-            func=callee_kgen_string,
-            _type=return_type,
-        ](loaded_pack)
+        comptime if declares_variadic:
+            return __mlir_op.`pop.external_call`[
+                func=callee_kgen_string,
+                numFixedArgs=fixed_args.__mlir_index__(),
+                _type=return_type,
+            ](loaded_pack)
+        else:
+            return __mlir_op.`pop.external_call`[
+                func=callee_kgen_string,
+                _type=return_type,
+            ](loaded_pack)
 
 
 # ===-----------------------------------------------------------------------===#

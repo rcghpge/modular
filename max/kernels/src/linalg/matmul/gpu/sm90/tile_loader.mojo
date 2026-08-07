@@ -34,21 +34,20 @@ from layout import (
     TensorLayout,
     TileTensor,
 )
-from std.gpu.memory import (
-    AddressSpace,
+from max.gpu.memory import (
     async_copy,
 )
 from ....structuring import SMemBarrier
 from layout.swizzle import make_swizzle
 from std.gpu import thread_idx
 from std.gpu.globals import WARPGROUP_SIZE
-from std.gpu.sync import async_copy_arrive
+from max.gpu.sync import async_copy_arrive
 from structured_kernels.pipeline import (
     ProducerConsumerPipeline,
 )
 from std.sys import simd_width_of, size_of
 from std.utils.index import IndexList
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 
 
 trait TileLoader(TrivialRegisterPassable):

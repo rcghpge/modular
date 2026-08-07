@@ -27,8 +27,6 @@ from std.pathlib import Path
 from std.sys import get_defined_bool
 from std.sys.arg import argv
 
-from std.gpu.host import DeviceContext
-
 from std.utils.numerics import FlushDenormals
 
 from .benchmark import _run_impl, _run_impl_fixed, _RunOptions
@@ -558,7 +556,7 @@ struct Bench(Writable):
         Format,
     )
     from std.utils import IndexList
-    from std.gpu.host import DeviceContext
+    from max.gpu.host import DeviceContext
     from std.pathlib import Path
 
     def example_kernel():
@@ -686,11 +684,11 @@ struct Bench(Writable):
             var split = stem.split(".")
             if len(split) > 1:
                 current_suffix = String(split[len(split) - 1])
-                var new_stem = String(".".join(split[:-1]))
+                var new_stem = String(".".join(split[: len(split) - 1]))
                 stem = new_stem^
 
             self.config.out_file = Path(
-                ".".join(Span[String]([stem + suffix, current_suffix^]))
+                ".".join([stem + suffix, current_suffix^])
             )
 
     def bench_with_input[
@@ -1264,6 +1262,7 @@ struct Bench(Writable):
             ref result = run.result
 
             # TODO: remove when kbench adds the spec column
+            var name: String
             if self.config.format == Format.csv:
                 name = String(t'"{run.name}"')
             else:

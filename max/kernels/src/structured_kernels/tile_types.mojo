@@ -28,9 +28,8 @@ Usage:
 
 from std.sys import size_of
 
-from std.gpu.host import DeviceContext
-from std.gpu.memory import AddressSpace
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host import DeviceContext
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     ComptimeInt,
     Coord,
@@ -736,14 +735,12 @@ struct SMemTileArrayWithLayout[
         Returns:
             A new SMemTileArrayWithLayout backed by stack-allocated shared memory.
         """
-        var ptr = UnsafePointer(
-            unsafe_stack_allocation[
-                Self.storage_size,
-                Self.dtype,
-                alignment=Self.alignment,
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var ptr = unsafe_stack_allocation[
+            Self.storage_size,
+            Self.dtype,
+            alignment=Self.alignment,
+            address_space=AddressSpace.SHARED,
+        ]()
         return Self(ptr)
 
 
@@ -901,14 +898,12 @@ struct SMemTileArray[
         Returns:
             A new SMemTileArray backed by stack-allocated shared memory.
         """
-        var ptr = UnsafePointer(
-            unsafe_stack_allocation[
-                Self.storage_size,
-                Self.dtype,
-                alignment=Self.alignment,
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var ptr = unsafe_stack_allocation[
+            Self.storage_size,
+            Self.dtype,
+            alignment=Self.alignment,
+            address_space=AddressSpace.SHARED,
+        ]()
         return Self(ptr)
 
 
@@ -1099,14 +1094,12 @@ struct SMemTileArray2D[
         Returns:
             A new SMemTileArray2D backed by stack-allocated shared memory.
         """
-        var ptr = UnsafePointer(
-            unsafe_stack_allocation[
-                Self.storage_size,
-                Self.dtype,
-                alignment=Self.alignment,
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var ptr = unsafe_stack_allocation[
+            Self.storage_size,
+            Self.dtype,
+            alignment=Self.alignment,
+            address_space=AddressSpace.SHARED,
+        ]()
         return Self(ptr)
 
 
@@ -1244,12 +1237,10 @@ struct SMemTileArray2DRowMajor[
         Returns:
             A new SMemTileArray2DRowMajor backed by stack-allocated shared memory.
         """
-        var ptr = UnsafePointer(
-            unsafe_stack_allocation[
-                Self.storage_size,
-                Self.dtype,
-                alignment=Self.alignment,
-                address_space=AddressSpace.SHARED,
-            ]()
-        )
+        var ptr = unsafe_stack_allocation[
+            Self.storage_size,
+            Self.dtype,
+            alignment=Self.alignment,
+            address_space=AddressSpace.SHARED,
+        ]()
         return Self(ptr)

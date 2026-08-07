@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Implements gather and scatter operations for CPU and GPU, including indexed reductions."""
 
-from std.collections.string.string_slice import get_static_string
+from std.collections.string.string_span import get_static_string
 from std.math import align_down, ceildiv, iota
 from std.sys import align_of, bit_width_of, simd_width_of, size_of
 from std.sys.info import CompilationTarget, _current_target, is_apple_gpu
@@ -20,8 +20,8 @@ from std.sys.info import CompilationTarget, _current_target, is_apple_gpu
 from max.algorithm import elementwise, sync_parallelize, unsafe_parallel_memcpy
 from std.algorithm.functional import tile
 from std.atomic import Atomic
-from std.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
-from std.gpu.host.info import is_cpu, is_gpu
+from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host.info import is_cpu, is_gpu
 from layout import (
     Coord,
     Idx,
@@ -247,7 +247,7 @@ def gather_reduce[
         )
 
         # For multi-hot embeddings reduction, k is the embedding dim and j is the multi-hot dim
-        comptime k_tile_sizes = [
+        comptime k_tile_sizes: List[Int] = [
             2 * simd_width,
             1,
         ] if CompilationTarget.has_neon() else [
@@ -1758,9 +1758,9 @@ def gather_nd[
             data_idx[batch_dims + i] = Int(indices.load[width=1](indices_coord))
 
         # fill in the last slices in the input
-        num_tail_elems = data.rank - batch_dims - indices_last_dim
-        output_start = output.rank - num_tail_elems
-        src_start = indices_last_dim + batch_dims
+        var num_tail_elems = data.rank - batch_dims - indices_last_dim
+        var output_start = output.rank - num_tail_elems
+        var src_start = indices_last_dim + batch_dims
         for i in range(0, num_tail_elems):
             data_idx[src_start + i] = output_idx[output_start + i]
 

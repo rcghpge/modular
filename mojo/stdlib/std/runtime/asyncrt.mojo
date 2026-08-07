@@ -196,32 +196,6 @@ def create_task(
     _async_execute[handle.type](task._handle._handle, desired_worker_id=-1)
 
 
-@always_inline("nodebug")
-def task_id_for_device(device_id: Int) -> Int:
-    """Maps a device ID to a preferred AsyncRT worker thread ID for CPU affinity.
-
-    Delegates to the shared C++ implementation in DeviceAffinity.cpp which
-    handles explicit MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS config,
-    NUMA-inferred GPU-to-CPU core mapping, and round-robin fallback.
-
-    Intended for use by affinity-aware task launchers such as
-    `_create_task` and `_launch_device_collective`. Pass -1 when no affinity
-    hint is needed.
-
-    Args:
-        device_id: The integer device ID (e.g. the ordinal of a GPU device).
-
-    Returns:
-        An AsyncRT worker thread index to use as `desired_worker_id`, or -1
-        if no affinity mapping is configured.
-    """
-    return Int(
-        external_call["MLRT_TaskIdForDevice", Int32](
-            Int32(device_id),
-        )
-    )
-
-
 def _create_task(
     var handle: Coroutine[...],
     *,
@@ -272,7 +246,7 @@ def _run(var handle: Coroutine[...], out result: handle.type):
     _async_execute[handle.type](handle._handle, -1)
     _async_wait(_AsyncContext.get_chain(ctx))
     _del_asyncrt_chain(_AsyncContext.get_chain(ctx))
-    handle^.force_destroy()
+    handle^._unsafe_force_deinit()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -280,7 +254,7 @@ def _run(var handle: Coroutine[...], out result: handle.type):
 # ===-----------------------------------------------------------------------===#
 
 
-struct Task[type: ImplicitlyDeletable, origins: OriginSet]:
+struct Task[type: Deinitable, origins: OriginSet](Movable where False):
     """Represents an asynchronous task that will produce a value of the specified type.
 
     A Task encapsulates a coroutine that is executing asynchronously and will eventually
@@ -321,13 +295,13 @@ struct Task[type: ImplicitlyDeletable, origins: OriginSet]:
         """
         return self._result
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Destroy the memory associated with a task. This must be manually
         called when a task goes out of scope.
         """
         var ctx = self._handle._get_ctx[_AsyncContext]()
         _del_asyncrt_chain(_AsyncContext.get_chain(ctx))
-        self._handle^.force_destroy()
+        self._handle^._unsafe_force_deinit()
 
     @always_inline
     def __await__(self) -> ref[self.get()] Self.type:
@@ -405,7 +379,7 @@ def create_raising_task[
 
 
 struct RaisingTask[type: Movable, origins: OriginSet](
-    ImplicitlyDeletable where False,
+    Deinitable where False,
 ):
     """Represents an async task that may raise an error upon completion.
 
@@ -413,9 +387,9 @@ struct RaisingTask[type: Movable, origins: OriginSet](
     produces a result value or raises an error. The error is propagated
     to the caller when `wait()` is called.
 
-    This type does not conform to `ImplicitlyDeletable` because only one of the
+    This type does not conform to `Deinitable` because only one of the
     result or error slots is valid after completion. The caller must call
-    `wait()` or `force_destroy()` to consume the task.
+    `wait()` to consume the task.
 
     Parameters:
         type: The type of value produced on success.
@@ -478,7 +452,7 @@ struct RaisingTask[type: Movable, origins: OriginSet](
 
         var ctx = self._handle._get_ctx[_AsyncContext]()
         _del_asyncrt_chain(_AsyncContext.get_chain(ctx))
-        self._handle^.force_destroy()
+        self._handle^._unsafe_force_deinit()
 
         if has_error:
             var err = self._error_alloc.unsafe_ptr().unsafe_take_pointee()
@@ -534,7 +508,7 @@ struct RaisingTask[type: Movable, origins: OriginSet](
         result = self^._into_result()
 
     # TODO: Add force_destroy() when we have a trait that combines
-    # Movable and ImplicitlyDeletable. Currently, the caller must
+    # Movable and Deinitable. Currently, the caller must
     # call wait() to consume the task.
 
 
@@ -567,12 +541,10 @@ struct _TaskGroupBox(Copyable, RegisterPassable):
 
     var handle: AnyCoroutine
 
-    def __init__[
-        type: ImplicitlyDeletable
-    ](out self, var coro: Coroutine[type, ...]):
+    def __init__[type: Deinitable](out self, var coro: Coroutine[type, ...]):
         self.handle = coro^._take_handle()
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         __mlir_op.`co.destroy`(self.handle)
 
     # FIXME(MSTDL-573): `List` requires copyability. Just crash here because it
@@ -606,7 +578,7 @@ struct TaskGroup(Defaultable):
         self.chain = chain
         self.tasks = List[_TaskGroupBox](capacity=16)
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Clean up resources associated with the TaskGroup."""
         _del_asyncrt_chain(Pointer(to=self.chain))
 

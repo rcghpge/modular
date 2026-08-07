@@ -13,7 +13,7 @@
 
 from std.collections import Optional
 from std.collections.string._utf8 import _is_valid_utf8
-from std.collections.string.string_slice import _split
+from std.collections.string.string_span import _split
 from std.os import abort
 from std.pathlib import _dir_of_current_file
 from std.random import seed
@@ -33,11 +33,11 @@ struct NullWriter(Writer):
     @always_inline
     def write_string(mut self, string: StringSlice):
         var bytes = string.as_bytes()
-        var array_ptr: UnsafePointer[
+        var array_ptr: Pointer[
             Byte, origin_of(self.array)
         ] = self.array.unsafe_ptr()
         for i in range(len(bytes)):
-            (array_ptr + i).store(bytes.unsafe_get(i))
+            array_ptr.unsafe_offset(i).unsafe_store(bytes.unsafe_get(i))
         keep(self.array)
 
 

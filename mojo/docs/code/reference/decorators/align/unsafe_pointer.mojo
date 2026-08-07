@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys import align_of
-from std.memory import UnsafePointer
 
 
 @fieldwise_init
@@ -26,8 +25,8 @@ def use_aligned():
     var _ = CacheAligned(42)  # `stack_value`
 
     # Heap allocation
-    var heap_ptr = alloc[CacheAligned](1)
-    heap_ptr.free()
+    var heap_ptr = alloc[CacheAligned]({count = 1}).unsafe_leak()
+    heap_ptr.unsafe_free()
 
 
 def main():

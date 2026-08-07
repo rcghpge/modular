@@ -7,6 +7,7 @@ load(
     "pkg_files",
     "strip_prefix",
 )
+load("//max/kernels/src:deprecations.bzl", "IGNORED_POINTER_DEPRECATIONS_COPTS")
 
 package(default_visibility = ["//max:consumers"])
 
@@ -109,6 +110,7 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": [],
     }),  # Uses NVIDIA GPU barrier primitives.
     "gpu/nn/bench_conv2d_sm100.mojo": ["//:b200_gpu"],  # SM100-specific TMA im2col
+    "gpu/nn/bench_fused_qkv_index_matmul_mxfp8_amd.mojo": ["//:mi355_gpu"],  # CDNA4 block-scaled matmul + its fused KV-scatter epilogue
     "gpu/nn/bench_mha_prefill_v2.mojo": ["//:mi355_gpu"],  # gfx950 MFMA 32x32x16 BF16 + from_expcnt
     "gpu/nn/bench_mha_prefill_v2_paged.mojo": ["//:mi355_gpu"],  # gfx950 MFMA 32x32x16 BF16 + paged KV operand
     "gpu/linalg/bench_block_scaled_matmul.mojo": ["//:b200_gpu"],  # SM100-specific block-scaled matmul
@@ -153,6 +155,7 @@ _CPU_TESTS = glob(
     mojo_binary(
         name = src.split(".")[0],
         srcs = [src],
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
         enable_assertions = False,
         target_compatible_with = _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
@@ -180,6 +183,7 @@ _CPU_TESTS = glob(
         size = "enormous",
         srcs = [src],
         args = ["-t"],
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
         enable_assertions = False,
         target_compatible_with = _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
@@ -197,6 +201,7 @@ _CPU_TESTS = glob(
     mojo_binary(
         name = src.split(".")[0],
         srcs = [src],
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
         data = select({
             "//:nvidia_gpu": ["@nvshmem_prebuilt//:host"],
             "//conditions:default": [],
@@ -258,7 +263,7 @@ _CPU_TESTS = glob(
 mojo_binary(
     name = "gpu/nn/bench_mla_prefill_v2",
     srcs = ["gpu/nn/bench_mla_prefill_v2.mojo"],
-    copts = [
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS + [
         "-D",
         "fp32_scores=true",
         "-D",
@@ -290,6 +295,7 @@ mojo_test(
     name = "gpu/nn/bench_conv3d.mojo.run",
     size = "enormous",
     srcs = ["gpu/nn/bench_conv3d.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
     enable_assertions = False,
     exec_properties = {
         "test.resources:gpu-memory": "6",
@@ -317,6 +323,7 @@ mojo_test(
     name = "gpu/nn/bench_conv2d.mojo.run",
     size = "enormous",
     srcs = ["gpu/nn/bench_conv2d.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
     enable_assertions = False,
     exec_properties = {
         "test.resources:gpu-memory": "6",
@@ -339,6 +346,7 @@ mojo_test(
     name = "gpu/layout/bench_tile_io_copy.mojo.run",
     size = "enormous",
     srcs = ["gpu/layout/bench_tile_io_copy.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
     enable_assertions = False,
     exec_properties = {
         "test.resources:gpu-memory": "1",
@@ -499,7 +507,7 @@ _FA4_WS_DEPS = [
         name = "gpu/nn/bench_mha.mojo.%s_d%d" % (suffix, depth),
         size = "enormous",
         srcs = ["gpu/nn/bench_mha.mojo"],
-        copts = copts + [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + copts + [
             "-D",
             "depth=%d" % depth,
         ],
@@ -536,7 +544,7 @@ _FA4_WS_DEPS = [
         name = "gpu/nn/bench_kv_cache_ragged_flash_attention.mojo.%s_d%d" % (suffix, depth),
         size = "enormous",
         srcs = ["gpu/nn/bench_kv_cache_ragged_flash_attention.mojo"],
-        copts = copts + [
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + copts + [
             "-D",
             "head_dim=%d" % depth,
         ],

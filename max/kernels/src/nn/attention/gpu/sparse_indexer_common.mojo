@@ -27,8 +27,8 @@ which keeps it usable inside a CUDA-graph capture region. A register-heap fast
 path is a possible future optimization.
 """
 
-from std.gpu import barrier, block_dim, thread_idx
-from std.gpu.memory import AddressSpace
+from std.gpu import block_dim, thread_idx
+from max.gpu.sync import barrier
 from std.math import min
 from std.memory import unsafe_stack_allocation
 
@@ -86,9 +86,9 @@ def block_select_topk[
 
     # 1-element shared scratch to broadcast the winner index so every thread
     # reaches the same control-flow decision (and thus the same barriers).
-    var winner_sram = UnsafePointer(
-        unsafe_stack_allocation[1, Int, address_space=AddressSpace.SHARED]()
-    )
+    var winner_sram = unsafe_stack_allocation[
+        1, Int, address_space=AddressSpace.SHARED
+    ]()
 
     var n_written = k_batch
     for kk in range(k_batch):

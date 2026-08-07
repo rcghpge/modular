@@ -25,7 +25,7 @@ from std.gpu import (
     lane_id,
     MAX_THREADS_PER_BLOCK_METADATA,
 )
-from std.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
 from layout import (
     Coord,
     Idx,
@@ -40,8 +40,9 @@ from layout.tile_layout import TensorLayout
 from std.logger import Logger
 from std.gpu.primitives import warp
 from std.gpu.primitives.warp import lane_group_max, shuffle_xor
-from std.math import recip
+from std.math import isfinite, recip
 from .fp4_utils import (
+    E4M3_MAXABS_RECIP,
     cast_float_to_fp4e2m1_amd,
     cast_fp32_to_fp4e2m1,
     cast_f4e2m1x2_to_fp16x2,
@@ -59,7 +60,7 @@ from .fp4_utils import (
     get_scale_factor,
     get_scaling_kind,
 )
-from std.gpu.host.info import B200, MI355X, _is_sm10x_gpu, _is_sm12x_gpu
+from max.gpu.host.info import B200, MI355X, _is_sm10x_gpu, _is_sm12x_gpu
 from std.utils import StaticTuple
 from std.collections import Optional
 from linalg.utils import (
@@ -69,9 +70,9 @@ from linalg.utils import (
 from std.utils.index import Index, IndexList
 from linalg.matmul.vendor.blas import matmul
 from std.memory import bitcast
-from std.gpu.sync import named_barrier
+from max.gpu.sync import named_barrier
 from std.gpu.intrinsics import warpgroup_reg_dealloc
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout.tma_async import (
     SharedMemBarrier,
     TMATensorTile,
@@ -79,8 +80,8 @@ from layout.tma_async import (
     create_tensor_tile,
 )
 from layout.layout_tensor import LayoutTensorIter
-from std.gpu.memory import external_memory, fence_async_view_proxy
-from std.gpu import barrier
+from max.gpu.memory import external_memory, fence_async_view_proxy
+from max.gpu.sync import barrier
 from std.sys import size_of, align_of, simd_width_of, get_defined_int
 from layout.swizzle import make_swizzle
 from max.algorithm import elementwise
@@ -90,11 +91,11 @@ from std.sys.intrinsics import llvm_intrinsic
 from linalg.matmul.gpu.sm100.block_scaled_dispatch import (
     heuristic_and_outliers_dispatch,
 )
-from std.gpu.primitives.grid_controls import PDLLevel
+from max.gpu.primitives.grid_controls import PDLLevel
 from linalg.matmul.gpu.sm100_structured.default.dispatch import DISPATCH_HIT
-from std.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
+from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from max.runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
-from std.collections.string.string_slice import get_static_string
+from std.collections.string.string_span import get_static_string
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig, GEMMKind
 from linalg.matmul.gpu.sm100.tile_scheduler import RasterOrder
 from linalg.matmul.gpu.sm100.block_scaled_matmul import (
@@ -243,8 +244,8 @@ def quantize_dynamic_scaled_fp4fp8[
         output,
         scales,
         input,
-        num_cols,
-        num_cols_padded,
+        Int32(num_cols),
+        Int32(num_cols_padded),
         tensor_sf,
         block_dim=block_dim,
         grid_dim=grid_dim,
@@ -270,50 +271,12 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     output: LayoutTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: LayoutTensor[scales_dtype, scales_layout, MutAnyOrigin],
     input: LayoutTensor[in_dtype, input_layout, ImmutAnyOrigin],
-    num_cols: Int,
-    num_cols_padded: Int,
+    num_cols: Int32,
+    num_cols_padded: Int32,
     tensor_sf: Float32,
 ):
-    """GPU kernel that quantizes BF16 elements to NVFP4/MXFP4 or MXFP8 with per-block scale factors.
-
-    Each thread loads 8 elements, cooperatively reduces the per-group
-    maximum across warp lanes via shuffle, derives the scale factor, and
-    writes the quantized output and scales. Padded rows and columns are
-    zeroed out to satisfy tensor-core scale-factor expectations.
-
-    Parameters:
-        out_dtype: Element type of the quantized output tensor. Must
-            be `uint8` for NVFP4 or MXFP4, or `float8_e4m3fn` for MXFP8.
-        scales_dtype: Element type of the block scale-factor tensor.
-            Must be `float8_e4m3fn` for NVFP4 or `float8_e8m0fnu` for
-            MXFP4 and MXFP8.
-        in_dtype: Element type of the input activation tensor. Must
-            be `bfloat16`.
-        output_layout: Memory layout of the quantized output tensor.
-        scales_layout: Memory layout of the block scale-factor tensor.
-        input_layout: Memory layout of the input activation tensor.
-        SF_VECTOR_SIZE: Number of input elements covered by each block
-            scale factor: 16 for NVFP4 or MXFP4, 32 for MXFP8
-            (defaults to 16).
-        ELEMENTS_PER_THREAD: Number of input elements each thread loads
-            and quantizes per iteration (defaults to 8).
-        num_max_threads: Maximum number of threads per block for the
-            launch grid (defaults to 512).
-    Args:
-        output: Output tensor for the quantized elements of shape
-            `[num_rows, num_cols // 2]` for packed FP4 `uint8` or
-            `[num_rows, num_cols]` for MXFP8.
-        scales: Output tensor for the per-block scale factors.
-        input: Input `bfloat16` activation tensor of shape
-            `[num_rows, num_cols]`.
-        num_cols: Number of columns in the input tensor before
-            padding.
-        num_cols_padded: Number of columns in the input tensor after
-            padding to a multiple of `SF_VECTOR_SIZE`; padded columns
-            are zeroed in the output and scales.
-        tensor_sf: Tensor-wise scale factor applied to the
-            quantization.
-    """
+    var _num_cols = Int(num_cols)
+    var _num_cols_padded = Int(num_cols_padded)
     comptime assert SF_VECTOR_SIZE in (16, 32) and ELEMENTS_PER_THREAD == 8, (
         "Currently only supports NVFP4 (SF_VECTOR_SIZE = 16) and MXFP8"
         " (SF_VECTOR_SIZE = 32) with 8 elements per thread"
@@ -332,10 +295,10 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
 
     var num_rows = input.dim(0)
     var num_rows_padded = align_up(num_rows, SF_MN_GROUP_SIZE)
-    var num_sf_cols = align_up(num_cols_padded, SF_VECTOR_SIZE * SF_ATOM_K)
+    var num_sf_cols = align_up(_num_cols_padded, SF_VECTOR_SIZE * SF_ATOM_K)
 
-    var num_col_threads = num_cols // ELEMENTS_PER_THREAD
-    var num_padded_col_threads = num_cols_padded // ELEMENTS_PER_THREAD
+    var num_col_threads = _num_cols // ELEMENTS_PER_THREAD
+    var num_padded_col_threads = _num_cols_padded // ELEMENTS_PER_THREAD
     var num_sf_threads = num_sf_cols // ELEMENTS_PER_THREAD
 
     with PDL():
@@ -1052,13 +1015,11 @@ def quantize_dynamic_scaled_async_fp4_kernel[
             address_space=AddressSpace.SHARED,
         ]
     ](
-        UnsafePointer(
-            external_memory[
-                Scalar[input_dtype],
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ]()
-        )
+        external_memory[
+            Scalar[input_dtype],
+            address_space=AddressSpace.SHARED,
+            alignment=128,
+        ]()
     )
 
     comptime input_smem_tile_size = _idx_product[
@@ -1607,14 +1568,12 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     comptime scales_smem_tile_size = align_up(
         Int(Coord(scales_tile_shape).product()), 128
     )
-    var smem_ptr = UnsafePointer(
-        unsafe_stack_allocation[
-            scales_smem_tile_size,
-            Scalar[scales_dtype],
-            alignment=128,
-            address_space=AddressSpace.SHARED,
-        ]()
-    )
+    var smem_ptr = unsafe_stack_allocation[
+        scales_smem_tile_size,
+        Scalar[scales_dtype],
+        alignment=128,
+        address_space=AddressSpace.SHARED,
+    ]()
 
     var scales_smem = TileTensor(
         smem_ptr,
@@ -2506,6 +2465,23 @@ def quantize_dynamic_block_scaled[
                 num_cols_padded=Int(input_tensor.dim(1)),
                 tensor_sf=tensor_sf,
             )
+    elif (
+        out_dtype == DType.float8_e4m3fn
+        and SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE
+        and ctx.default_device_info == MI355X
+    ):
+        # AMD CDNA4 MXFP8 path: unpacked E4M3 output, rank-2 E8M0 scales.
+        comptime assert (
+            scales_device.rank == 2 and scales_device.flat_rank == 2
+        ), "MXFP8 requires rank-2 scales on CDNA4"
+        comptime assert (
+            static_input_N % MXFP8_SF_VECTOR_SIZE == 0
+        ), "input.dim(1) must be a multiple of 32 (MXFP8_SF_VECTOR_SIZE)"
+        comptime assert static_output_N == static_input_N, (
+            "MXFP8 output.dim(1) must equal input.dim(1): one e4m3 byte per"
+            " element, not the FP4 packed half-width"
+        )
+        quantize_mx_amd(ctx, output_tensor, scales_tensor, input_tensor)
     elif is_mxfp4 and ctx.default_device_info == MI355X:
         # AMD CDNA4 MXFP4 path: rank-2 scales.
         comptime assert (
@@ -2514,7 +2490,7 @@ def quantize_dynamic_block_scaled[
         comptime assert (
             static_input_N % MXFP4_SF_VECTOR_SIZE == 0
         ), "input.dim(1) must be a multiple of 32 (MXFP4_SF_VECTOR_SIZE)"
-        quantize_mxfp4_amd(ctx, output_tensor, scales_tensor, input_tensor)
+        quantize_mx_amd(ctx, output_tensor, scales_tensor, input_tensor)
     else:
         comptime assert False, (
             "Unsupported hardware/format combination for block-scaled"
@@ -2588,38 +2564,45 @@ def block_scales_interleave[
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
-@__name("quantize_mxfp4_amd_kernel")
-def _quantize_mxfp4_amd_kernel[
+@__name(t"quantize_mx_amd_kernel_{out_dtype}")
+def _quantize_mx_amd_kernel[
+    out_dtype: DType,
     output_layout: TensorLayout,
     scales_layout: TensorLayout,
     input_layout: TensorLayout,
     *,
     ELEMENTS_PER_THREAD: Int = 8,
-    SF_VECTOR_SIZE: Int = MXFP4_SF_VECTOR_SIZE,  # 32
+    SF_VECTOR_SIZE: Int = MXFP4_SF_VECTOR_SIZE,  # 32 for MXFP4 and MXFP8 alike
     num_max_threads: Int = 512,
 ](
-    output: TileTensor[DType.uint8, output_layout, MutAnyOrigin],
+    output: TileTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: TileTensor[DType.float8_e8m0fnu, scales_layout, MutAnyOrigin],
     input: TileTensor[DType.bfloat16, input_layout, MutAnyOrigin],
-    num_rows: Int,
-    num_cols: Int,
+    num_rows: Int32,
+    num_cols: Int32,
 ):
-    """AMD MXFP4 quantization kernel: BF16 -> packed uint8 + 2D E8M0 scales.
+    """AMD MX quantization kernel: BF16 -> MXFP4 or MXFP8 + 2D E8M0 scales.
 
     Each thread processes ELEMENTS_PER_THREAD (8) BF16 values. Four threads
     cooperate to compute one E8M0 block scale over SF_VECTOR_SIZE (32)
     elements via warp shuffle.
 
-    Uses V_CVT_SCALEF32_PK_FP4_BF16 (CDNA4+) for hardware FP4 packing.
+    `out_dtype` selects the format: `uint8` packs two FP4 nibbles per byte via
+    V_CVT_SCALEF32_PK_FP4_BF16 (CDNA4+), `float8_e4m3fn` stores one byte per
+    element. Only the scale derivation and the store width differ.
     """
+    # 2 for MXFP4 (nibble-packed), 1 for MXFP8 (one byte per element).
+    comptime elems_per_byte = 2 if out_dtype == DType.uint8 else 1
+    var _num_rows = Int(num_rows)
+    var _num_cols = Int(num_cols)
     comptime NUM_THREADS_PER_SF = SF_VECTOR_SIZE // ELEMENTS_PER_THREAD
     comptime assert (
         NUM_THREADS_PER_SF == 4
-    ), "MXFP4 requires 4 threads per scale factor group"
+    ), "MX quantization requires 4 threads per scale factor group"
 
-    var num_col_threads = num_cols // ELEMENTS_PER_THREAD
+    var num_col_threads = _num_cols // ELEMENTS_PER_THREAD
 
-    for global_row_idx in range(block_idx.x, num_rows, grid_dim.x):
+    for global_row_idx in range(block_idx.x, _num_rows, grid_dim.x):
         for col_thread_idx in range(thread_idx.x, num_col_threads, block_dim.x):
             var global_col_idx = col_thread_idx * ELEMENTS_PER_THREAD
 
@@ -2638,19 +2621,43 @@ def _quantize_mxfp4_amd_kernel[
 
             var group_max = thread_max.cast[DType.float32]()
 
-            # 4. Derive E8M0 scale with MXFP4 even-mode rounding.
-            var e8m0_scale = compute_mxfp4_even_scale(group_max)
-            var scale_f32 = e8m0_scale.cast[DType.float32]()
-
-            # 5. Pack 8 BF16 -> 8 FP4 nibbles using AMD hardware intrinsic.
-            var packed = cast_float_to_fp4e2m1_amd(input_vector, scale_f32)
-
-            # 6. Store packed output.
-            var packed_bytes = bitcast[DType.uint8, 4](packed)
-            output.store[width=4](
-                Coord(global_row_idx, col_thread_idx * 4),
-                packed_bytes,
-            )
+            # 4-6. Derive the E8M0 scale, convert, and store. MXFP4 rounds the
+            # scale even-mode and hands it to the packing intrinsic; MXFP8
+            # divides by 448 (E4M3 maxabs) and scales the data by the exact
+            # reciprocal of the resulting power of two.
+            var e8m0_scale: Scalar[DType.float8_e8m0fnu]
+            comptime if elems_per_byte == 1:
+                e8m0_scale = (group_max * E4M3_MAXABS_RECIP).cast[
+                    DType.float8_e8m0fnu
+                ]()
+                var out_scale = Float32(0.0)
+                if group_max != 0:
+                    out_scale = recip(e8m0_scale.cast[DType.float32]())
+                # `recip` is non-finite at both ends of E8M0's range: the
+                # 2^-127 floor is an fp32 subnormal that V_RCP_F32 flushes to
+                # inf, and a non-finite `group_max` casts to E8M0 NaN. Either
+                # way a zero lane would store `0 * inf = NaN`, so zero the
+                # block -- it is entirely outside E4M3's representable range.
+                var data = input_vector.cast[DType.float32]()
+                if not isfinite(out_scale):
+                    out_scale = Float32(0.0)
+                    e8m0_scale = bitcast[DType.float8_e8m0fnu](UInt8(0))
+                    # Zeroing the scale alone is not enough: a non-finite lane
+                    # would still store `inf * 0.0 = NaN`.
+                    data = type_of(data)(0.0)
+                output.store[width=ELEMENTS_PER_THREAD](
+                    Coord(global_row_idx, global_col_idx),
+                    (data * out_scale).cast[out_dtype](),
+                )
+            else:
+                e8m0_scale = compute_mxfp4_even_scale(group_max)
+                var packed = cast_float_to_fp4e2m1_amd(
+                    input_vector, e8m0_scale.cast[DType.float32]()
+                )
+                output.store[width=4](
+                    Coord(global_row_idx, col_thread_idx * 4),
+                    bitcast[out_dtype, 4](packed),
+                )
 
             # 7. First thread in the 4-thread group stores the scale.
             if global_col_idx % SF_VECTOR_SIZE == 0:
@@ -2659,7 +2666,7 @@ def _quantize_mxfp4_amd_kernel[
 
 
 @always_inline
-def quantize_mxfp4_amd[
+def quantize_mx_amd[
     out_dtype: DType = DType.uint8,
     scales_dtype: DType = DType.float8_e8m0fnu,
     in_dtype: DType = DType.bfloat16,
@@ -2678,18 +2685,18 @@ def quantize_mxfp4_amd[
         mut=False, in_dtype, address_space=AddressSpace.GENERIC, ...
     ],
 ) raises:
-    """Quantize BF16 activations to MXFP4 on AMD CDNA4 (MI355X).
+    """Quantize BF16 activations to MXFP4 or MXFP8 on AMD CDNA4 (MI355X).
 
-    Produces packed uint8 output and 2D E8M0 block scales compatible
-    with dequant_mxfp4() and V_MFMA_SCALE_F32_16X16X128_F8F6F4.
+    Produces 2D E8M0 block scales compatible with dequant_mxfp4() and
+    V_MFMA_SCALE_F32_16X16X128_F8F6F4.
 
     NOTE: The 2D scales layout is a stand-in. The optimized CDNA4 layout
     will likely be 6D (32x32 tiles) or 7D (16x16 tiles), mirroring how
     SM100 uses a 5D interleaved layout for its tensor core scale feed.
 
     Parameters:
-        out_dtype: Element type of the quantized output tensor. Must
-            be `uint8` for packed MXFP4 (inferred).
+        out_dtype: Element type of the quantized output tensor: `uint8` for
+            packed MXFP4 or `float8_e4m3fn` for MXFP8 (inferred).
         scales_dtype: Element type of the block scale-factor tensor.
             Must be `float8_e8m0fnu` (inferred).
         in_dtype: Element type of the input activation tensor. Must
@@ -2698,11 +2705,14 @@ def quantize_mxfp4_amd[
             launch grid (defaults to 512).
     Args:
         ctx: Device context.
-        output_tile: Output [M, K//2] uint8 (packed FP4).
+        output_tile: Output [M, K//2] uint8 (MXFP4) or [M, K] float8_e4m3fn
+            (MXFP8).
         scales_tile: Output [M, K//32] float8_e8m0fnu (block scales).
         input_tile: Input [M, K] bfloat16.
     """
-    comptime assert out_dtype == DType.uint8, "output must be uint8"
+    comptime assert (
+        out_dtype == DType.uint8 or out_dtype == DType.float8_e4m3fn
+    ), "output must be uint8 (MXFP4) or float8_e4m3fn (MXFP8)"
     comptime assert (
         scales_dtype == DType.float8_e8m0fnu
     ), "scales must be float8_e8m0fnu"
@@ -2738,7 +2748,8 @@ def quantize_mxfp4_amd[
         TileTensor[DType.bfloat16, type_of(input_tile).LayoutType, MutAnyOrigin]
     ](input_tile)
 
-    comptime kernel = _quantize_mxfp4_amd_kernel[
+    comptime kernel = _quantize_mx_amd_kernel[
+        out_dtype,
         type_of(output_tile).LayoutType,
         type_of(scales_tile).LayoutType,
         type_of(input_tt).LayoutType,
@@ -2750,8 +2761,8 @@ def quantize_mxfp4_amd[
         output_tile,
         scales_tile,
         input_tt,
-        num_rows,
-        num_cols,
+        Int32(num_rows),
+        Int32(num_cols),
         block_dim=block_dim_val,
         grid_dim=grid_dim_val,
     )
@@ -2766,33 +2777,13 @@ def quantize_dynamic_block_scaled_mxfp4_kernel[
     output_ptr: UnsafePointer[UInt8, MutAnyOrigin],
     output_scales_ptr: UnsafePointer[Float8_e8m0fnu, MutAnyOrigin],
     input_ptr: UnsafePointer[Scalar[in_dtype], ImmutAnyOrigin],
-    num_elements: Int,
+    num_elements: Int32,
 ):
-    """GPU kernel that quantizes BF16 elements to packed MXFP4 with E8M0 block scales on AMD CDNA4.
-
-    Each thread processes `elements_per_thread` elements, cooperatively
-    reduces the per-group maximum via warp shuffle, and uses the
-    `V_CVT_SCALEF32_PK_FP4_BF16` intrinsic for hardware FP4 packing.
-
-    Parameters:
-        in_dtype: Element type of the input activation tensor
-            (inferred). Must be `bfloat16`.
-        elements_per_thread: Number of input elements each thread
-            loads and quantizes per iteration.
-    Args:
-        output_ptr: Pointer to the output packed MXFP4 buffer of
-            `uint8` values, where each byte holds two FP4-E2M1 values.
-        output_scales_ptr: Pointer to the output E8M0 block
-            scale-factor buffer, with one scale per
-            `MXFP4_SF_VECTOR_SIZE` (32) elements.
-        input_ptr: Pointer to the input BF16 activation buffer.
-        num_elements: Total number of input elements to quantize,
-            must be a multiple of `MXFP4_SF_VECTOR_SIZE` (32).
-    """
+    var _num_elements = Int(num_elements)
     comptime threads_per_group = MXFP4_SF_VECTOR_SIZE // elements_per_thread
 
     var n = global_idx.x * elements_per_thread
-    if n >= num_elements:
+    if n >= _num_elements:
         return
 
     var loaded_vec = input_ptr.load[width=8](n)
@@ -2861,7 +2852,7 @@ def quantize_dynamic_block_scaled_mxfp4[
             output.ptr,
             output_scales.ptr,
             input.ptr,
-            num_elements,
+            Int32(num_elements),
             grid_dim=ceildiv(num_elements // elements_per_thread, BLOCK_DIM),
             block_dim=BLOCK_DIM,
         )
@@ -2954,48 +2945,28 @@ def matmul_dynamic_block_scaled_mxfp4_kernel[
     b_ptr: UnsafePointer[Scalar[DType.uint8], ImmutAnyOrigin],
     a_scales_ptr: UnsafePointer[Scalar[DType.float8_e8m0fnu], ImmutAnyOrigin],
     b_scales_ptr: UnsafePointer[Scalar[DType.float8_e8m0fnu], ImmutAnyOrigin],
-    M: Int,
-    N: Int,
-    K: Int,
+    M: Int32,
+    N: Int32,
+    K: Int32,
 ):
-    """GPU kernel that computes an MXFP4 block-scaled matmul on AMD CDNA4 using FP4 dot-product intrinsics.
-
-    Each thread computes `BLOCK_N` output elements for one row by
-    iterating over K in `MXFP4_SF_VECTOR_SIZE` groups, dequantizing FP4
-    pairs to BF16 and accumulating via the `llvm.amdgcn.fdot2` intrinsic.
-
-    Parameters:
-        out_dtype: Element type of the output matrix.
-        BLOCK_N: Number of output columns computed per thread.
-    Args:
-        c_ptr: Pointer to the output matrix of shape `[M, N]`.
-        a_ptr: Pointer to the LHS packed MXFP4 `uint8` matrix of shape
-            `[M, K//2]`.
-        b_ptr: Pointer to the RHS packed MXFP4 `uint8` matrix of shape
-            `[N, K//2]`.
-        a_scales_ptr: Pointer to the `float8_e8m0fnu` block scale
-            factors for `a`.
-        b_scales_ptr: Pointer to the `float8_e8m0fnu` block scale
-            factors for `b`.
-        M: Number of rows in the output matrix.
-        N: Number of columns in the output matrix.
-        K: Inner reduction dimension of the matmul.
-    """
+    var _M = Int(M)
+    var _N = Int(N)
+    var _K = Int(K)
     var n = global_idx.x * BLOCK_N
     var m = global_idx.y
 
-    if m >= M or n >= N:
+    if m >= _M or n >= _N:
         return
 
-    var k_groups = K // MXFP4_SF_VECTOR_SIZE
+    var k_groups = _K // MXFP4_SF_VECTOR_SIZE
 
     _mxfp4_dotprod[BLOCK_N](
-        c_ptr + m * N + n,
-        a_ptr + m * (K // 2),
-        b_ptr + n * (K // 2),
+        c_ptr + m * _N + n,
+        a_ptr + m * (_K // 2),
+        b_ptr + n * (_K // 2),
         a_scales_ptr + m * k_groups,
         b_scales_ptr + n * k_groups,
-        K,
+        _K,
     )
 
 
@@ -3054,9 +3025,9 @@ def matmul_dynamic_block_scaled_mxfp4[
             b.ptr,
             a_scales.ptr,
             b_scales.ptr,
-            M,
-            N,
-            K,
+            Int32(M),
+            Int32(N),
+            Int32(K),
             grid_dim=(ceildiv(N // BLOCK_N, BLOCK_DIM), ceildiv(M, BLOCK_DIM)),
             block_dim=(BLOCK_DIM, BLOCK_DIM),
         )
@@ -3073,68 +3044,40 @@ def grouped_matmul_block_scaled_mxfp4_kernel[
     b_scales_ptr: UnsafePointer[Scalar[DType.float8_e8m0fnu], ImmutAnyOrigin],
     row_offsets_ptr: UnsafePointer[Scalar[DType.uint32], ImmutAnyOrigin],
     expert_ids_ptr: UnsafePointer[Scalar[DType.int32], ImmutAnyOrigin],
-    num_active_experts: Int,
-    M: Int,
-    N: Int,
-    K: Int,
+    num_active_experts: Int32,
+    M: Int32,
+    N: Int32,
+    K: Int32,
 ):
-    """GPU kernel that computes a per-expert grouped MXFP4 block-scaled matmul on AMD CDNA4.
-
-    Each thread identifies its expert via linear search over
-    `row_offsets_ptr` and `expert_ids_ptr`, then dispatches to
-    `_mxfp4_dotprod` against the expert's weight slice.
-
-    Parameters:
-        out_dtype: Element type of the output matrix `c_ptr`.
-        BLOCK_N: Number of output columns computed per thread; must
-            divide `N` evenly or be 1.
-    Args:
-        c_ptr: Output matrix pointer of shape `[M, N]`.
-        a_ptr: LHS activation matrix of shape `[M, K//2]` as packed
-            MXFP4 `uint8`.
-        b_ptr: RHS expert weight matrix of shape `[E, N, K//2]` as
-            packed MXFP4 `uint8`, where `E` is the number of experts.
-        a_scales_ptr: Block scale factors for `a_ptr` of shape
-            `[M, K//32]` as `float8_e8m0fnu`.
-        b_scales_ptr: Block scale factors for `b_ptr` of shape
-            `[E, N, K//32]` as `float8_e8m0fnu`.
-        row_offsets_ptr: Contiguous row boundaries per expert of shape
-            `[num_active_experts + 1]` as `uint32`, where range `i`
-            spans rows `row_offsets_ptr[i]` through
-            `row_offsets_ptr[i + 1]`.
-        expert_ids_ptr: Expert ID for each active range of shape
-            `[num_active_experts]` as `int32`.
-        num_active_experts: Number of active experts to search over.
-        M: Number of rows in the output matrix.
-        N: Number of columns in the output matrix.
-        K: Inner contraction dimension in elements, must be a
-            multiple of `MXFP4_SF_VECTOR_SIZE` (32).
-    """
+    var _num_active_experts = Int(num_active_experts)
+    var _M = Int(M)
+    var _N = Int(N)
+    var _K = Int(K)
     var n = global_idx.x * BLOCK_N
     var m = global_idx.y
 
-    if m >= M or n >= N:
+    if m >= _M or n >= _N:
         return
 
     var expert_id = -1
-    for i in range(num_active_experts):
+    for i in range(_num_active_experts):
         if m >= Int(row_offsets_ptr[i]) and m < Int(row_offsets_ptr[i + 1]):
             expert_id = Int(expert_ids_ptr[i])
             break
 
     if expert_id == -1:
-        c_ptr.store(m * N + n, SIMD[out_dtype, BLOCK_N](0))
+        c_ptr.store(m * _N + n, SIMD[out_dtype, BLOCK_N](0))
         return
 
-    var k_groups = K // MXFP4_SF_VECTOR_SIZE
+    var k_groups = _K // MXFP4_SF_VECTOR_SIZE
 
     _mxfp4_dotprod[BLOCK_N](
-        c_ptr + m * N + n,
-        a_ptr + m * (K // 2),
-        b_ptr + (expert_id * N + n) * (K // 2),
+        c_ptr + m * _N + n,
+        a_ptr + m * (_K // 2),
+        b_ptr + (expert_id * _N + n) * (_K // 2),
         a_scales_ptr + m * k_groups,
-        b_scales_ptr + (expert_id * N + n) * k_groups,
-        K,
+        b_scales_ptr + (expert_id * _N + n) * k_groups,
+        _K,
     )
 
 
@@ -3204,10 +3147,10 @@ def grouped_matmul_block_scaled_mxfp4[
             b_scales.ptr,
             row_offsets.ptr,
             expert_ids.ptr,
-            num_active_experts,
-            M,
-            N,
-            K,
+            Int32(num_active_experts),
+            Int32(M),
+            Int32(N),
+            Int32(K),
             grid_dim=(ceildiv(N // BLOCK_N, BLOCK_DIM), ceildiv(M, BLOCK_DIM)),
             block_dim=(BLOCK_DIM, BLOCK_DIM),
         )

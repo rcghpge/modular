@@ -27,9 +27,9 @@ from layout import (
 )
 from layout.tile_layout import row_major
 from std.gpu import block_idx, thread_idx
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.sync import barrier
-from std.gpu.memory import external_memory
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.sync import barrier
+from max.gpu.memory import external_memory
 from nn.attention.mha_operand import RaggedMHAOperand, MHAOperand
 from nn.attention.gpu.nvidia.common import q_tma
 from nn.attention.gpu.sparse_index_fp8_sm100 import (
@@ -148,13 +148,11 @@ def fp8_index_kernel[
     if seq_offset >= Int(seq_len) or key_offset >= num_keys:
         return
 
-    ref smem_ptr = UnsafePointer(
-        external_memory[
-            Scalar[DType.uint8],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-        ]()
-    ).bitcast[IndexSmemStorage[dtype, num_heads, depth, BN]]()[]
+    ref smem_ptr = external_memory[
+        Scalar[DType.uint8],
+        address_space=AddressSpace.SHARED,
+        alignment=128,
+    ]().bitcast[IndexSmemStorage[dtype, num_heads, depth, BN]]()[]
 
     ref q_smem = smem_ptr.q_smem
     ref k_smem = smem_ptr.k_smem
@@ -285,10 +283,10 @@ def fp8_index_kernel[
             )
             k_s_reg = ks_ptr[0].cast[DType.float32]()
 
-        q_smem_frag = q_smem_tile.tile[num_heads // thread_dim_y, depth](
+        var q_smem_frag = q_smem_tile.tile[num_heads // thread_dim_y, depth](
             thread_idx.y, 0
         )
-        k_smem_frag = k_smem_tile.tile[BN // thread_dim_x, depth](
+        var k_smem_frag = k_smem_tile.tile[BN // thread_dim_x, depth](
             thread_idx.x, 0
         )
 
@@ -503,7 +501,7 @@ def _index_matmul_max[
         DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
     ],
     k_lut: k_type,
-    max_seq_len: Int,
+    max_seq_len: Int32,
 ):
     comptime num_heads = q_layout.shape[1].value()
     comptime depth = q_layout.shape[2].value()
@@ -751,7 +749,7 @@ def fp8_index_naive[
         k_lt,
         valid_length_lt,
         k_operand,
-        max_seq_len,
+        Int32(max_seq_len),
         grid_dim=(
             ceildiv(max_seq_len, 16),
             ceildiv(max_num_keys, 16),

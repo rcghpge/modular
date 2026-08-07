@@ -72,7 +72,6 @@ NVIDIA SM100 only (SS-UMMA / TMA / tcgen05). Verified against
 match via `test_mla_index_fp8`.
 """
 
-from std.memory import UnsafePointer
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -82,10 +81,10 @@ from std.gpu import (
     thread_idx,
     warp_id,
 )
-from std.gpu.host import DeviceContext, FuncAttribute
-from std.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.memory import AddressSpace, external_memory
-from std.gpu.sync import named_barrier
+from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host.nvidia.tma import TensorMapSwizzle
+from max.gpu.memory import external_memory
+from max.gpu.sync import named_barrier
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
@@ -177,8 +176,8 @@ def _fp8_index_score_prefill_kernel_sm100[
     valid_length: TileTensor[DType.uint32, VLLT, ImmutAnyOrigin],
     q_s: TileTensor[DType.float32, QSLT, ImmutAnyOrigin],
     output: TileTensor[DType.float32, OutLT, MutAnyOrigin],
-    max_num_keys: Int,
-    causal: Int,
+    max_num_keys_dev: Int32,
+    causal_dev: Int32,
 ):
     comptime assert valid_length.flat_rank == 1
     comptime MMA_N = N_TOKENS * num_heads
@@ -195,6 +194,9 @@ def _fp8_index_score_prefill_kernel_sm100[
     comptime TMA_WARP = 5
     comptime MMA_LANE = MMA_WARP * WARP_SIZE  # lane 0 of the MMA warp issues MMAs
 
+    # `Int` is not device-passable; widen the fixed-width args for use below.
+    var max_num_keys = Int(max_num_keys_dev)
+    var causal = Int(causal_dev)
     var tid = Int(thread_idx.x)
     var b = Int(block_idx.x)
     var token_block = Int(block_idx.y)
@@ -240,14 +242,12 @@ def _fp8_index_score_prefill_kernel_sm100[
 
     comptime k_elems = BM_key * depth
     comptime q_elems = MMA_N * depth
-    var smem = UnsafePointer(
-        external_memory[
-            Scalar[dtype],
-            address_space=AddressSpace.SHARED,
-            alignment=128,
-            name="fp8_index_sm100_prefill_smem",
-        ]()
-    )
+    var smem = external_memory[
+        Scalar[dtype],
+        address_space=AddressSpace.SHARED,
+        alignment=128,
+        name="fp8_index_sm100_prefill_smem",
+    ]()
     # Q resident (B operand, one token block) | K ring (A operand) | q_scale
     # resident | mbars: q(1) + k_full(NSTAGE) + k_empty(NSTAGE) +
     # accumulator(2*N_S) | tcgen05 TMEM base slot.
@@ -530,8 +530,8 @@ def fp8_index_score_sm100_prefill[
         valid_length.as_immut(),
         q_s,
         output,
-        max_num_keys,
-        causal,
+        Int32(max_num_keys),
+        Int32(causal),
         grid_dim=(batch_size, ceildiv(max_seq_len, N_TOKENS), 1),
         block_dim=_PREFILL_NTHREADS,
         shared_mem_bytes=smem_bytes,

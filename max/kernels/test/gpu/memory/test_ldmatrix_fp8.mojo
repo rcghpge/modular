@@ -14,8 +14,9 @@
 from std.math import ceildiv
 from std.math.uutils import umod, ufloordiv
 
-from std.gpu import WARP_SIZE, barrier, lane_id
-from std.gpu.host import DeviceContext
+from std.gpu import WARP_SIZE, lane_id
+from max.gpu.sync import barrier
+from max.gpu.host import DeviceContext
 from max.gpu.compute.mma import ld_matrix, mma
 from max.gpu.compute.mma_util import store_matrix_d
 from layout import (
@@ -51,16 +52,12 @@ def test_ldmatrix_fp8[
 
     var d = SIMD[accum_type, c_frag_size](0)
 
-    var a_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            M * K, input_type, alignment=32, address_space=AddressSpace.SHARED
-        ]()
-    )
-    var b_shared = UnsafePointer(
-        unsafe_stack_allocation[
-            N * K, input_type, alignment=32, address_space=AddressSpace.SHARED
-        ]()
-    )
+    var a_shared = unsafe_stack_allocation[
+        M * K, input_type, alignment=32, address_space=AddressSpace.SHARED
+    ]()
+    var b_shared = unsafe_stack_allocation[
+        N * K, input_type, alignment=32, address_space=AddressSpace.SHARED
+    ]()
 
     for i in range(lane_id(), M * K, WARP_SIZE):
         a_shared[i] = a_ptr[i]
@@ -177,9 +174,9 @@ def check_ldmatrix_fp8[
         c_ref_tt,
         a_tt,
         b_tt,
-        M,
-        N,
-        K,
+        Int32(M),
+        Int32(N),
+        Int32(K),
         grid_dim=(ceildiv(M, BLOCK_DIM), ceildiv(N, BLOCK_DIM), 1),
         block_dim=(BLOCK_DIM, BLOCK_DIM, 1),
     )
