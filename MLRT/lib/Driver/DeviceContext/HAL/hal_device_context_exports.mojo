@@ -902,7 +902,7 @@ def MojoHAL_DeviceContext_allocateCompletionFlag(
         ).unsafe_bitcast[Byte]()
         var device_addr = hal_ctx.memory_get_address(buffer)
         # Initialize the flag to zero so the first wait observes a clean state.
-        Atomic[DType.uint64].store[ordering=Ordering.RELAXED](
+        Atomic[UInt64].store[ordering=Ordering.RELAXED](
             host_ptr.unsafe_bitcast[UInt64](), 0
         )
         var boxed = alloc(Layout[_CompletionFlagBox].single())
@@ -947,7 +947,7 @@ def MojoHAL_CompletionFlag_signal(
 ) abi("C"):
     # Release pairs with the device-side wait (and `load`'s acquire), mirroring
     # CompletionFlag::signal.
-    Atomic[DType.uint64].store[ordering=Ordering.RELEASE](
+    Atomic[UInt64].store[ordering=Ordering.RELEASE](
         host_ptr.unsafe_bitcast[UInt64](), value
     )
 
@@ -956,7 +956,7 @@ def MojoHAL_CompletionFlag_signal(
 def MojoHAL_CompletionFlag_load(
     host_ptr: _RawMemoryPtr,
 ) abi("C") -> UInt64:
-    return Atomic[DType.uint64].load[ordering=Ordering.ACQUIRE](
+    return Atomic[UInt64].load[ordering=Ordering.ACQUIRE](
         host_ptr.unsafe_bitcast[UInt64]()
     )
 
@@ -965,7 +965,7 @@ def MojoHAL_CompletionFlag_load(
 def MojoHAL_CompletionFlag_reset(host_ptr: _RawMemoryPtr) abi("C"):
     # Relaxed, mirroring CompletionFlag::reset: stream-ordered enqueue of the
     # wait happens-after this store.
-    Atomic[DType.uint64].store[ordering=Ordering.RELAXED](
+    Atomic[UInt64].store[ordering=Ordering.RELAXED](
         host_ptr.unsafe_bitcast[UInt64](), 0
     )
 
