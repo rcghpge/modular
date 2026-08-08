@@ -456,4 +456,54 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// map.index.slice
+//===----------------------------------------------------------------------===//
+
+def MAP_SliceIndexOp : MAP_Op<"index.slice", [
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  Pure,
+]> {
+  let summary = "Project an output-shape index to the input-shape index for a slice view";
+  let description = [{
+    Used inside a `map.iter.foreach` (or, after outlining, a
+    `map.iter.foreach.body`) lowered from `mo.slice`. Takes the loop's
+    current (output-shape) index and the slice's `starts`/`stops`/`steps`
+    tensors, and produces the corresponding input-shape index:
+    `result[d] = index[d] * steps[d] + starts[d]` for each dimension `d`,
+    reading each of `starts`/`stops`/`steps` from `spec` when it's a
+    compile-time constant there, and from the corresponding operand tensor
+    at position `d` otherwise. `stops` isn't needed to compute the
+    projection itself but is carried for verification and by later passes.
+
+    Only valid inside a `map.iter.foreach` body, or, after outlining, inside
+    a `map.iter.foreach.body` — same restriction as `map.call.elementwise`.
+
+    Example:
+    ```mlir
+    %idx_ = map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>>
+        (%idx, %starts, %stops, %steps)
+        : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_SliceSpecAttr:$spec,
+    MAP_AnyIndex:$index,
+    MO_Tensor:$starts,
+    MO_Tensor:$stops,
+    MO_Tensor:$steps
+  );
+  let results = (outs MAP_AnyIndex:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $index `,` $starts `,` $stops `,` $steps `)` attr-dict
+    `:` `(` qualified(type($index)) `,` qualified(type($starts)) `,`
+        qualified(type($stops)) `,` qualified(type($steps)) `)` `->`
+    qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_TD

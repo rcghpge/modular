@@ -753,3 +753,40 @@ LogicalResult StoreOp::verify() {
            << "tensor operand must be !mo.tensor or !mo.buffer type";
   return mlir::success();
 }
+
+//===----------------------------------------------------------------------===//
+// map.index.slice
+//===----------------------------------------------------------------------===//
+
+// Shared by every view op's starts/stops/steps operands (map.index.slice,
+// map.index.slice.stride): each must be a rank-1 !mo.tensor.
+static LogicalResult verifySliceBoundsOperandsAreRank1(
+    Operation *op, ArrayRef<std::pair<StringRef, Value>> bounds) {
+  for (auto [name, value] : bounds) {
+    auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(value.getType());
+    if (!tensorTy || tensorTy.getRank() != 1)
+      return op->emitOpError()
+             << name << " operand must be a rank-1 !mo.tensor";
+  }
+  return mlir::success();
+}
+
+LogicalResult SliceIndexOp::verify() {
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  auto indexTy = llvm::cast<IndexType>(getIndex().getType());
+  if (indexTy.getRank() != signature.getOut().getRank())
+    return emitOpError() << "index rank " << indexTy.getRank()
+                         << " does not match spec's out-shape rank "
+                         << signature.getOut().getRank();
+
+  auto resultTy = llvm::cast<IndexType>(getResult().getType());
+  if (resultTy.getRank() != signature.getIn().getRank())
+    return emitOpError() << "result rank " << resultTy.getRank()
+                         << " does not match spec's in-shape rank "
+                         << signature.getIn().getRank();
+
+  return verifySliceBoundsOperandsAreRank1(getOperation(),
+                                           {std::pair{"starts", getStarts()},
+                                            {"stops", getStops()},
+                                            {"steps", getSteps()}});
+}

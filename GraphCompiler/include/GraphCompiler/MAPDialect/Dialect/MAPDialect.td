@@ -36,6 +36,7 @@ def MAPDialect : Dialect {
   ];
 
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPDIALECT_TD
