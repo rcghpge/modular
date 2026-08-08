@@ -358,6 +358,9 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addPass(MAP::createFuseKernels());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+
+  pm.addPass(MAP::createOutlineStructuredKernelBodies());
+  pm.addNestedPass<GraphOp>(MAP::createLoopInvariantViewMotion());
 }
 
 // ---------------------------------------------------------------------------
@@ -589,12 +592,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   // --- map-pre-mogg: elementwise/prologue/epilogue fusion over MAP kernels,
   // then MAP-dialect prep before the MAP -> MOGG conversion ---
-  buildStage(
-      [&](auto &p) {
-        buildMapPipeline(p, mapOpts);
-        p.addPass(MAP::createOutlineStructuredKernelBodies());
-      },
-      "map-pre-mogg");
+  buildStage([&](auto &p) { buildMapPipeline(p, mapOpts); }, "map-pre-mogg");
 
   // --- map-to-mogg: the MAP -> MOGG conversion ---
   buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG()); },

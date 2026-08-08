@@ -790,3 +790,40 @@ LogicalResult SliceIndexOp::verify() {
                                             {"stops", getStops()},
                                             {"steps", getSteps()}});
 }
+
+Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
+                                         inputTy.getElementType());
+  return SliceStrideOp::create(builder, getLoc(), resultTy, getSpec(), tensor,
+                               getStarts(), getStops(), getSteps());
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.slice.stride
+//===----------------------------------------------------------------------===//
+
+LogicalResult SliceStrideOp::verify() {
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  if (inputTy.getTypedShapeAttr() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+                         << " does not match spec's in-shape "
+                         << signature.getIn();
+
+  auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
+  if (resultTy.getTypedShapeAttr() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+                         << " does not match spec's out-shape "
+                         << signature.getOut();
+
+  if (resultTy.getElementType() != inputTy.getElementType())
+    return emitOpError() << "result element type " << resultTy.getElementType()
+                         << " does not match input element type "
+                         << inputTy.getElementType();
+
+  return verifySliceBoundsOperandsAreRank1(getOperation(),
+                                           {std::pair{"starts", getStarts()},
+                                            {"stops", getStops()},
+                                            {"steps", getSteps()}});
+}

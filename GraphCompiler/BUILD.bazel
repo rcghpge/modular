@@ -1556,6 +1556,30 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "MAPDialectOpInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/GraphCompiler/MAPDialect/Dialect/MAPOpInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/GraphCompiler/MAPDialect/Dialect/MAPOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/MAPDialect/Dialect/MAPOpInterfaces.td",
+    deps = [
+        ":MAPDialectTdFiles",
+    ],
+)
+
 modular_cc_library(
     name = "MAPDialect",
     srcs = glob(["lib/MAPDialect/Dialect/*.cpp"]),
@@ -1566,6 +1590,7 @@ modular_cc_library(
         ":GraphCompilerLowerableToMOGGInterfaceIncGen",
         ":MAPDialectAttrsIncGen",
         ":MAPDialectIncGen",
+        ":MAPDialectOpInterfacesIncGen",
         ":MODialect",
         ":MOGGDialect",
         ":MOSHDialect",

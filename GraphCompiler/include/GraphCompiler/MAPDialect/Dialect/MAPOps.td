@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_TD
 
 include "GraphCompiler/MAPDialect/Dialect/MAPDialect.td"
+include "GraphCompiler/MAPDialect/Dialect/MAPOpInterfaces.td"
 include "GraphCompiler/MAPDialect/Dialect/MAPTypes.td"
 include "GraphCompiler/MODialect/MOTypes.td"
 include "GraphCompiler/MODialect/MOInterfaces.td"
@@ -463,6 +464,7 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
 def MAP_SliceIndexOp : MAP_Op<"index.slice", [
   ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
   Pure,
+  DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a slice view";
   let description = [{
@@ -499,6 +501,52 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
   let assemblyFormat = [{
     `<` qualified($spec) `>` `(` $index `,` $starts `,` $stops `,` $steps `)` attr-dict
     `:` `(` qualified(type($index)) `,` qualified(type($starts)) `,`
+        qualified(type($stops)) `,` qualified(type($steps)) `)` `->`
+    qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.slice.stride
+//===----------------------------------------------------------------------===//
+
+def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
+  ParentOneOf<["IterOpaqueOp"]>,
+  Pure,
+]> {
+  let summary = "Materialize a slice view of `input`, addressable directly by the loop's own index";
+  let description = [{
+    Produces a single tensor value -- of the slice's *output* shape -- that a
+    `map.load` can address directly with the loop's own (untransformed)
+    index, instead of transforming the index on every iteration. Logically
+    still a view over `input`'s storage (nothing is copied).
+
+    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
+    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
+    loop body itself.
+
+    Example:
+    ```mlir
+    %strided = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>>
+        (%input, %starts, %stops, %steps)
+        : (!mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_SliceSpecAttr:$spec,
+    MO_Tensor:$input,
+    MO_Tensor:$starts,
+    MO_Tensor:$stops,
+    MO_Tensor:$steps
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $input `,` $starts `,` $stops `,` $steps `)` attr-dict
+    `:` `(` qualified(type($input)) `,` qualified(type($starts)) `,`
         qualified(type($stops)) `,` qualified(type($steps)) `)` `->`
     qualified(type($result))
   }];

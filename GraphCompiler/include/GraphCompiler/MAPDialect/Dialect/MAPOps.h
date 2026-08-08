@@ -14,6 +14,7 @@
 #include "GraphCompiler/Interfaces/LowerableToMOGGInterface.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPAttrs.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
+#include "GraphCompiler/MAPDialect/Dialect/MAPOpInterfaces.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPTypes.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MODialect/MOTypes.h"

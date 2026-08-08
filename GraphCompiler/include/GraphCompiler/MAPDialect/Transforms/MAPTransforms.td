@@ -40,4 +40,37 @@ def OutlineStructuredKernelBodies
   ];
 }
 
+def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "M::MAP::IterOpaqueOp"> {
+  let summary =
+      "Hoist chains of index-transform ops out of a structured loop body.";
+  let description = [{
+    Runs after `OutlineStructuredKernelBodies`, once per `map.iter.opaque`.
+    Scoping to a single `map.iter.opaque` (rather than the whole module)
+    relies on it being `IsolatedFromAbove`, and lets independent instances run
+    in parallel.
+
+    For each `map.load` inside a nested `map.iter.foreach.body`, walks
+    backward from its index operand through any chain of index-transform ops
+    (ops implementing `MAP::IndexTransformOpInterface`; today:
+    `map.index.slice`) back to the loop's own (untransformed) index. When
+    such a chain exists, hoists it, hop by hop, into a chain of "stride" ops
+    (today: `map.index.slice.stride`) placed in the enclosing
+    `map.iter.opaque`'s body -- outside the loop, so each transform runs once
+    per kernel invocation rather than once per index -- and rewrites the load
+    to read the fully-hoisted tensor with the chain's outermost
+    (untransformed) index directly.
+
+    Loads with no such chain (already indexing directly with the loop's own
+    index) are left untouched. Multiple loads that hoist the exact same chain
+    (SSA-identical, not just structurally similar) share one hoisted op.
+
+    Invariant enforced at the end of the pass: no index-transform op survives
+    inside any `map.iter.foreach.body`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPTRANSFORMS_TD
