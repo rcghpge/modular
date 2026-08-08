@@ -301,6 +301,75 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
   return success();
 }
 
+// Lowers mo.slice to a standalone (unfused) map.iter.foreach over the
+// *output* shape (the "pull" model: each output index computes the input
+// index it reads from, rather than each input index computing where it
+// writes): the body computes the corresponding input index via
+// map.index.slice, loads, and stores unchanged. One kernel per mo.slice,
+// same as lowerElementwiseToForeach's starting point.
+LogicalResult lowerSliceToForeach(MO::SliceOp op) {
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  auto inputTy = cast<MO::TensorType>(op.getInput().getType());
+  auto outputTy = cast<MO::TensorType>(op.getResult().getType());
+  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  if (inShape.getRank() != outShape.getRank())
+    return op->emitOpError("MOToMAP: slice must preserve rank");
+  int64_t rank = outShape.getRank();
+
+  // A bound is a compile-time constant only if the *whole* start/stop/step
+  // tensor operand is one: MO has no per-dimension constant tracking finer
+  // than "is this whole tensor a mo.constant".
+  auto boundsOrDynamic = [&](Value v) {
+    if (auto constVec = MO::tryGetConstantIntVector(cast<MO::TensorValue>(v)))
+      return mlir::DenseI64ArrayAttr::get(ctx, *constVec);
+    return mlir::DenseI64ArrayAttr::get(
+        ctx, SmallVector<int64_t>(rank, ShapedType::kDynamic));
+  };
+
+  auto spec = MAP::SliceSpecAttr::get(
+      ctx, inShape, outShape, boundsOrDynamic(op.getStart()).asArrayRef(),
+      boundsOrDynamic(op.getStop()).asArrayRef(),
+      boundsOrDynamic(op.getStep()).asArrayRef());
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{outputTy},
+      /*shape=*/outShape,
+      /*inputs=*/op->getOperands(),
+      /*chain=*/Value(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+
+  // Body block args: [input, start, stop, step, output, map.index<rank>].
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  for (Value operand : op->getOperands())
+    body->addArgument(operand.getType(), loc);
+  body->addArgument(outputTy, loc);
+  BlockArgument idxArg = body->addArgument(MAP::IndexType::get(ctx, rank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  BlockArgument inputArg = body->getArgument(0);
+  BlockArgument startsArg = body->getArgument(1);
+  BlockArgument stopsArg = body->getArgument(2);
+  BlockArgument stepsArg = body->getArgument(3);
+  BlockArgument outputArg = body->getArgument(4);
+
+  Value innerIdx = MAP::SliceIndexOp::create(
+      bodyBuilder, loc, MAP::IndexType::get(ctx, rank), spec, idxArg, startsArg,
+      stopsArg, stepsArg);
+  Value loaded = MAP::LoadOp::create(
+      bodyBuilder, loc, outputTy.getElementType(), inputArg, innerIdx);
+  MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, loaded);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
@@ -327,6 +396,8 @@ LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   if (isa<MO::InvokeShapeFuncOp>(op))
     return op->emitOpError(
         "MOToMAP: shape-function kernels are not yet supported");
+  else if (auto sliceOp = dyn_cast<MO::SliceOp>(op))
+    return lowerSliceToForeach(sliceOp);
   else if (adaptor->isViewKernel())
     return op->emitOpError("MOToMAP: view kernels are not yet supported");
   else
