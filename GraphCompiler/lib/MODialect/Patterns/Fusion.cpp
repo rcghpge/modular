@@ -3986,6 +3986,278 @@ struct ReduceRMSNormRoPEPattern
 };
 
 //===----------------------------------------------------------------------===//
+// LayerNorm + Ragged RoPE Fusion Pattern (mo.composite.layer_norm_rope_ragged)
+//===----------------------------------------------------------------------===//
+//
+// Fuses:
+//   normed      = layer_norm(input, gamma, beta, eps)
+//   roped_in    = static.reshape(normed)  // unsqueeze, full tensor
+//   roped_slice = slice(roped_in)[..., 0:rope_dim]  // prefix, last axis
+//   passthrough = slice(normed)[..., rope_dim:]  // suffix, last axis
+//   roped       = mo.composite.rope.ragged(roped_slice, row_offsets,
+//                                          start_pos, freqs_cis)
+//   result      = concat(static.reshape(roped), passthrough, axis=-1)
+//
+// into a single mo.composite.layer_norm_rope_ragged op.
+//
+// Confirmed against a real DeepSeekV3.2/GLM-5.2 Indexer graph: the unsqueeze
+// applies to the whole normed tensor, not just the roped half, so roped and
+// passthrough are two independent `mo.slice`s on different source values
+// rather than one `mo.split`'s two results. There's no even-split
+// assumption -- the rope width comes entirely from mo.composite.rope.ragged's
+// own freqsCis operand.
+//===----------------------------------------------------------------------===//
+
+/// True if `outTy` is `inTy` with one extra size-1 dimension inserted at
+/// axis 1, i.e. an unsqueeze.
+static bool insertsSingletonAtAxis1(MO::TensorType inTy, MO::TensorType outTy) {
+  int64_t inRank = static_cast<int64_t>(inTy.getRank());
+  if (static_cast<int64_t>(outTy.getRank()) != inRank + 1 || inRank < 1 ||
+      outTy.getIntDim(1) != 1)
+    return false;
+  if (outTy.getIntDim(0) != inTy.getIntDim(0))
+    return false;
+  for (int64_t i = 1; i < inRank; ++i) {
+    if (outTy.getIntDim(i + 1) != inTy.getIntDim(i))
+      return false;
+  }
+  return true;
+}
+
+/// True if `slice`'s result differs from its input only along the last axis
+/// (i.e. it narrows exactly one trailing dimension, leaving all others
+/// untouched).
+static bool sliceOnlyNarrowsLastAxis(MO::SliceOp slice) {
+  auto inTy = cast<MO::TensorType>(slice.getInput().getType());
+  auto outTy = cast<MO::TensorType>(slice.getResult().getType());
+  if (inTy.getRank() != outTy.getRank())
+    return false;
+  for (int64_t i = 0, rank = inTy.getRank(); i < rank - 1; ++i) {
+    if (inTy.getIntDim(i) != outTy.getIntDim(i))
+      return false;
+  }
+  return true;
+}
+
+/// Reads the constant scalar at `index` in the rank-1 integer tensor `v`, if
+/// `v` is produced by an MO::ConstantOp; otherwise returns nullopt.
+static std::optional<int64_t> getConstantIndexElement(Value v, int64_t index) {
+  auto constOp = v.getDefiningOp<MO::ConstantOp>();
+  if (!constOp)
+    return std::nullopt;
+  ElementsAttr elements = constOp.getValue();
+  if (index < 0 || index >= elements.getNumElements())
+    return std::nullopt;
+  // M::ArrayElementsAttr only supports element-wise iteration as `Attribute`
+  // (see MAttrs.td's `NonContiguousIterableTypesT = tuple<Attribute>`), not
+  // as `APInt`/`int64_t` directly.
+  auto values = elements.getValues<Attribute>();
+  auto intAttr = dyn_cast<IntegerAttr>(values[static_cast<size_t>(index)]);
+  if (!intAttr)
+    return std::nullopt;
+  return intAttr.getValue().getSExtValue();
+}
+
+struct ReduceLayerNormRopeRaggedPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::LayerNormOp> {
+  ReduceLayerNormRopeRaggedPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::LayerNormOp layerNormOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    Value normed = layerNormOp.getResult();
+    auto normedTy = cast<MO::TensorType>(normed.getType());
+    int64_t rank = static_cast<int64_t>(normedTy.getRank());
+    int64_t lastAxis = rank - 1;
+
+    // ---- 0. Step over a narrowing downcast between layer_norm and the ----
+    // roped/passthrough slices. Model code commonly computes LayerNorm "in
+    // float32" and casts back to the activation dtype before consuming it
+    // (see LayerNorm.__call__).
+    Value ropeRoot = normed;
+    MO::CastOp layerNormDowncast = nullptr;
+    if (normed.hasOneUse()) {
+      if (auto castOp = dyn_cast<MO::CastOp>(*normed.getUsers().begin())) {
+        auto castTy = cast<MO::TensorType>(castOp.getResult().getType());
+        auto from = normedTy.getDtype();
+        auto to = castTy.getDtype();
+        if (from.isFloat() && to.isFloat() &&
+            to.getSizeInBytes() < from.getSizeInBytes()) {
+          ropeRoot = castOp.getResult();
+          layerNormDowncast = castOp;
+        }
+      }
+    }
+
+    // ---- 1. Find the roped branch: ropeRoot -> unsqueeze -> slice --------
+    // (last-axis prefix) -> mo.composite.rope.ragged. The unsqueeze is a
+    // `mo.static.reshape` inserting a singleton dim at axis 1.
+    MO::Static::ReshapeOp unsqueezeOp = nullptr;
+    MO::SliceOp ropedSliceOp = nullptr;
+    MO::Composite::RopeRaggedOp ropeOp = nullptr;
+    for (Operation *user : ropeRoot.getUsers()) {
+      auto reshape = dyn_cast<MO::Static::ReshapeOp>(user);
+      if (!reshape)
+        continue;
+      auto inTy = cast<MO::TensorType>(reshape.getInput().getType());
+      auto outTy = cast<MO::TensorType>(reshape.getResult().getType());
+      if (!insertsSingletonAtAxis1(inTy, outTy) ||
+          !reshape.getResult().hasOneUse())
+        continue;
+      auto slice =
+          dyn_cast<MO::SliceOp>(*reshape.getResult().getUsers().begin());
+      if (!slice || !sliceOnlyNarrowsLastAxis(slice) ||
+          !slice.getResult().hasOneUse())
+        continue;
+      auto rope = dyn_cast<MO::Composite::RopeRaggedOp>(
+          *slice.getResult().getUsers().begin());
+      if (!rope || rope.getInput() != slice.getResult())
+        continue;
+      unsqueezeOp = reshape;
+      ropedSliceOp = slice;
+      ropeOp = rope;
+      break;
+    }
+    if (!ropeOp) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "no unsqueeze+slice branch feeds a rope.ragged op");
+    }
+    // The backing kernel only implements interleaved RoPE; leave a
+    // non-interleaved rope.ragged unfused.
+    if (!ropeOp.getInterleaved()) {
+      return rewriter.notifyMatchFailure(layerNormOp,
+                                         "rope.ragged is not interleaved");
+    }
+
+    // ---- 2. Find the passthrough branch: a direct last-axis slice on ----
+    // ropeRoot itself (not through the unsqueeze).
+    MO::SliceOp passthroughSliceOp = nullptr;
+    for (Operation *user : ropeRoot.getUsers()) {
+      if (user == unsqueezeOp.getOperation())
+        continue;
+      auto slice = dyn_cast<MO::SliceOp>(user);
+      if (!slice || !sliceOnlyNarrowsLastAxis(slice))
+        continue;
+      passthroughSliceOp = slice;
+      break;
+    }
+    if (!passthroughSliceOp) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp,
+          "no direct passthrough slice found on layer_norm output");
+    }
+
+    // ---- 3. Verify roped/passthrough are complementary, contiguous, ------
+    // roped-first partitions of ropeRoot's last axis. mo.slice carries no
+    // axis attr (its start/stop/step cover every dim), so this can't be read
+    // off a split-like attribute -- it's checked directly against the
+    // constant last-axis start of each slice.
+    auto ropedTy = cast<MO::TensorType>(ropedSliceOp.getResult().getType());
+    auto passthroughTy =
+        cast<MO::TensorType>(passthroughSliceOp.getResult().getType());
+    int64_t ropedWidth = ropedTy.getIntDim(ropedTy.getRank() - 1);
+    int64_t passthroughWidth =
+        passthroughTy.getIntDim(passthroughTy.getRank() - 1);
+    if (ropedWidth == ShapedType::kDynamic ||
+        passthroughWidth == ShapedType::kDynamic ||
+        ropedWidth + passthroughWidth != normedTy.getIntDim(lastAxis)) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "roped/passthrough widths are not complementary");
+    }
+    auto ropedStart =
+        getConstantIndexElement(ropedSliceOp.getStart(), ropedTy.getRank() - 1);
+    if (!ropedStart || *ropedStart != 0) {
+      return rewriter.notifyMatchFailure(layerNormOp,
+                                         "roped slice does not start at 0");
+    }
+    auto passthroughStart = getConstantIndexElement(
+        passthroughSliceOp.getStart(), passthroughTy.getRank() - 1);
+    if (!passthroughStart || *passthroughStart != ropedWidth) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp,
+          "passthrough slice does not start where the roped slice ends");
+    }
+
+    // ---- 4. rope.ragged's result feeds concat(reshape(roped), ------------
+    // passthrough).
+    Value ropeResult = ropeOp.getResult();
+    if (!ropeResult.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "rope.ragged result has multiple uses");
+    }
+    auto outputReshapeOp =
+        dyn_cast<MO::Static::ReshapeOp>(*ropeResult.getUsers().begin());
+    if (!outputReshapeOp) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "rope.ragged result not consumed by a static.reshape");
+    }
+    Value concatRopedOperand = outputReshapeOp.getResult();
+    if (!concatRopedOperand.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "reshaped rope.ragged result has multiple uses");
+    }
+    auto concatOp =
+        dyn_cast<MO::ConcatOp>(*concatRopedOperand.getUsers().begin());
+    if (!concatOp) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "reshaped rope.ragged result not consumed by concat");
+    }
+    if (normalizeAxis(concatOp.getAxisAttr().getInt(), rank) != lastAxis) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "concat axis differs from layer_norm axis");
+    }
+    // Verify operand order: concat(roped, passthrough) -- NOT
+    // concat(passthrough, roped). The fused op always emits roped columns
+    // first, so a reversed concat would silently transpose the output.
+    if (concatOp.getInputs().size() != 2 ||
+        concatOp.getInputs()[0] != concatRopedOperand ||
+        concatOp.getInputs()[1] != passthroughSliceOp.getResult()) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp,
+          "concat inputs are not in expected order (roped, passthrough)");
+    }
+
+    // ---- 5. Device consistency check --------------------------------------
+    *rewriter.pushOp() = unsqueezeOp;
+    *rewriter.pushOp() = ropedSliceOp;
+    *rewriter.pushOp() = passthroughSliceOp;
+    *rewriter.pushOp() = ropeOp;
+    *rewriter.pushOp() = outputReshapeOp;
+    *rewriter.pushOp() = concatOp;
+    if (layerNormDowncast)
+      *rewriter.pushOp() = layerNormDowncast;
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          layerNormOp, "matched ops have inconsistent devices");
+    }
+
+    // ---- 6. Create fused op and replace uses ------------------------------
+    auto outputTy = cast<MO::TensorType>(concatOp.getResult().getType());
+    auto fusedOp = rewriter.create<MO::Composite::LayerNormRopeRaggedOp>(
+        layerNormOp.getLoc(), outputTy, layerNormOp.getInput(),
+        layerNormOp.getGamma(), layerNormOp.getBeta(), layerNormOp.getEpsilon(),
+        ropeOp.getInputRowOffsets(), ropeOp.getStartPos(), ropeOp.getFreqsCis(),
+        ropeOp.getInterleaved(), layerNormOp.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(concatOp.getResult(), fusedOp.getResult());
+
+    // Erase ops from outermost (consumers) to innermost (producers).
+    rewriter.eraseOp(concatOp);
+    rewriter.eraseOp(outputReshapeOp);
+    rewriter.eraseOp(ropeOp);
+    rewriter.eraseOp(passthroughSliceOp);
+    rewriter.eraseOp(ropedSliceOp);
+    rewriter.eraseOp(unsqueezeOp);
+    if (layerNormDowncast)
+      rewriter.eraseOp(layerNormDowncast);
+    rewriter.eraseOp(layerNormOp);
+
+    return mlir::success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Matmul + Add Fusion Pattern (mo.matmul_add)
 //===----------------------------------------------------------------------===//
 //
@@ -4804,7 +5076,8 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
                ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                LayerNormPattern, RMSNormFusedResidualAddPattern,
                RMSNormResidualAddPattern, ReduceRMSNormRoPEPattern,
-               ConcatSlicePattern, MatmulFusedPartialRMSNormPattern>(ctx);
+               ReduceLayerNormRopeRaggedPattern, ConcatSlicePattern,
+               MatmulFusedPartialRMSNormPattern>(ctx);
 
   patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                RMSNormFusedQuantizeDynamicScaledFP8Pattern,

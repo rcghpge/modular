@@ -81,6 +81,108 @@ def MOComposite_ReduceRMSNormRoPEOp : MO_CompositeOp<"rms_norm_rope", [
 }
 
 //===----------------------------------------------------------------------===//
+// RopeRaggedOp
+//===----------------------------------------------------------------------===//
+
+def MOComposite_RopeRaggedOp : MO_CompositeOp<"rope.ragged", [
+  Pure,
+  MO_SingleDevice,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Applies Rotary Position Embedding to ragged, cache-position-aware input";
+  let description = [{
+    Applies Rotary Position Embedding (RoPE) to `input`, a ragged batch of
+    tokens. Per-token absolute positions are derived from `inputRowOffsets`
+    (the ragged batch boundaries) and `startPos` (each sequence's current
+    cache length) and used to index `freqsCis`. When `freqsCis`'s last
+    dimension is smaller than `input`'s, RoPE is applied only to the
+    trailing `freqsCis` columns of each head and the leading columns pass
+    through unrotated.
+
+    Example:
+
+    ```mlir
+      %result = mo.composite.rope.ragged(%input, %row_offsets, %start_pos,
+                                          %freqs_cis) {interleaved = false} :
+        (!mo.tensor<[8, 1, 64], bf16, gpu:0>, !mo.tensor<[batch_plus_one], ui32, gpu:0>,
+         !mo.tensor<[batch], ui32, gpu:0>, !mo.tensor<[1024, 64], f32, gpu:0>)
+        -> !mo.tensor<[8, 1, 64], bf16, gpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$inputRowOffsets,
+    MO_Tensor:$startPos,
+    MO_Tensor:$freqsCis,
+    BoolAttr:$interleaved,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `interleaved` `=` $interleaved `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// LayerNormRopeRaggedOp
+//===----------------------------------------------------------------------===//
+
+def MOComposite_LayerNormRopeRaggedOp : MO_CompositeOp<"layer_norm_rope_ragged", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["epsilon"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Fused LayerNorm with partial ragged Rotary Position Embedding";
+  let description = [{
+    Fused operation computing LayerNorm followed by ragged RoPE applied to a
+    leading slice of the normalized output, with the remaining columns passed
+    through unrotated:
+
+      normed = layer_norm(input, gamma, beta, epsilon)
+      roped, passthrough = split(normed, axis=-1)
+      roped = rope.ragged(roped, input_row_offsets, start_pos, freqs_cis)
+      result = concat(roped, passthrough, axis=-1)
+
+    The RoPE width is taken from `freqsCis`'s last dimension.
+
+    Example:
+
+    ```mlir
+      %result = mo.composite.layer_norm_rope_ragged(%input, %gamma, %beta,
+                                                     %epsilon, %row_offsets,
+                                                     %start_pos, %freqs_cis)
+        {interleaved = false} :
+        (!mo.tensor<[8, 128], bf16, gpu:0>, !mo.tensor<[128], f32, gpu:0>,
+         !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[], f32>,
+         !mo.tensor<[batch_plus_one], ui32, gpu:0>, !mo.tensor<[batch], ui32, gpu:0>,
+         !mo.tensor<[1024, 64], f32, gpu:0>)
+        -> !mo.tensor<[8, 128], bf16, gpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$gamma,
+    MO_Tensor:$beta,
+    MO_Tensor:$epsilon,
+    MO_Tensor:$inputRowOffsets,
+    MO_Tensor:$startPos,
+    MO_Tensor:$freqsCis,
+    BoolAttr:$interleaved,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `interleaved` `=` $interleaved `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceRMSNormFusedResidualAddOp
 //===----------------------------------------------------------------------===//
 
