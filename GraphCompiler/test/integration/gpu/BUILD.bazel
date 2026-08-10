@@ -8,10 +8,6 @@ package(default_visibility = ["//visibility:private"])
 _BROKEN_TESTS = [
     # TODO: fix the regex comparison for floating point numbers
     "Conversion/mogg-kernel-api-e2e-gpu-matmul.mlir",
-    # TODO(GEX-4057): a host pointer reaches cuMemcpyDtoDAsync_v2 in the
-    # device-graph input copy, so the run fails with CUDA_ERROR_INVALID_VALUE.
-    # Re-enable once the input copy places the pointer on the device.
-    "E2E/device-graph-execute-gpu.mlir",
 ]
 
 # Keep broken tests referenced so linter doesn't complain about unreferenced files.

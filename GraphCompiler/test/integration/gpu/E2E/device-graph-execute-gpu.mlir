@@ -20,11 +20,13 @@
 
 // CHECK-LABEL: --- Running 'main':
 // CHECK: 'main' returned tensor<2x3xui8> [8, 8, 8, 8, 8, 8]
-mo.graph @main(%x: !mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8> {
+mo.graph @main(%x: !mo.tensor<[2, 3], ui8>) -> !mo.tensor<[2, 3], ui8> {
   %ch0 = mo.chain.create()
-  %g = mo.call @device_graph_fill(%x)
+  %x_gpu, %ch1 = mo.transfer[%ch0] %x
+      : !mo.tensor<[2, 3], ui8> to <"gpu", 0>
+  %g = mo.call @device_graph_fill(%x_gpu)
       : (!mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8, gpu:0>
-  %h, %ch1 = mo.transfer[%ch0] %g
+  %h, %ch2 = mo.transfer[%ch1] %g
       : !mo.tensor<[2, 3], ui8, gpu:0> to <"cpu", 0>
   mo.output %h : !mo.tensor<[2, 3], ui8>
 }
