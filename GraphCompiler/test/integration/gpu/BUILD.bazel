@@ -5,8 +5,14 @@ load("//bazel:api.bzl", "lit_tests", "modular_py_test", "requirement")
 package(default_visibility = ["//visibility:private"])
 
 # Tests that are broken and need to be excluded from all targets.
-# TODO: fix the regex comparison for floating point numbers
-_BROKEN_TESTS = ["Conversion/mogg-kernel-api-e2e-gpu-matmul.mlir"]
+_BROKEN_TESTS = [
+    # TODO: fix the regex comparison for floating point numbers
+    "Conversion/mogg-kernel-api-e2e-gpu-matmul.mlir",
+    # TODO(GEX-4057): a host pointer reaches cuMemcpyDtoDAsync_v2 in the
+    # device-graph input copy, so the run fails with CUDA_ERROR_INVALID_VALUE.
+    # Re-enable once the input copy places the pointer on the device.
+    "E2E/device-graph-execute-gpu.mlir",
+]
 
 # Keep broken tests referenced so linter doesn't complain about unreferenced files.
 filegroup(
