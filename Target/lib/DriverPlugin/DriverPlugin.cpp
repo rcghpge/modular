@@ -13,6 +13,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
 #include <dlfcn.h>
@@ -298,7 +299,12 @@ MODULAR_CXX_EXPORT ErrorOr<int> loadPlugins() {
 
     auto driverIdOr = Driver::Create(path);
     if (driverIdOr.isError()) {
-      // Log but continue loading other plugins.
+      // Reported, not silent: a plugin named here was asked for explicitly, so
+      // its absence later surfaces as `Unsupported device api` from whichever
+      // API it would have registered -- an error that names neither this path
+      // nor the reason. Loading the remaining plugins still continues.
+      llvm::errs() << "Failed to load driver plugin: " << driverIdOr.getError()
+                   << "\n";
       continue;
     }
     loaded++;
