@@ -119,7 +119,7 @@ class ConcatInPlacePass
 
       auto loc = concatOp.getLoc();
 
-      BufferBuilder *bufferBuilder =
+      MGPBufferBuilder &bufferBuilder =
           builderContext.getBufferBuilder(concatBuffer.getType().getDevice());
       OpBuilder &builder = execState.builder;
 
@@ -141,7 +141,7 @@ class ConcatInPlacePass
         if (Operation *op = inBuffer.getDefiningOp())
           execState.builder.setInsertionPoint(op);
 
-        Value outSlice = bufferBuilder->bufferSlice(
+        Value outSlice = bufferBuilder.bufferSlice(
             builder, loc, concatBuffer, offset, sliceSize, concatOp.getCtx());
         outBuffers.push_back(outSlice);
       }

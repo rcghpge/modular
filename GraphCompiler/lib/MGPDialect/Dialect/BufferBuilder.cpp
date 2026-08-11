@@ -16,16 +16,6 @@ using namespace M;
 using namespace M::MGP;
 
 //===----------------------------------------------------------------------===//
-// BufferBuilder
-//===----------------------------------------------------------------------===//
-
-TypedValue<ContextType> BufferBuilder::getContextForOp(Operation *op) {
-  return getContextForBlock(op->getBlock());
-}
-
-void BufferBuilder::vtableAnchor() {}
-
-//===----------------------------------------------------------------------===//
 // MGPBufferBuilder
 //===----------------------------------------------------------------------===//
 
@@ -54,8 +44,6 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
   }
   return inChain;
 }
-
-DeviceRefAttr MGPBufferBuilder::getDevice() { return device; }
 
 void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
                                         MGPBufferBuilder *hostBufferBuilder) {
@@ -89,7 +77,7 @@ void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
 TypedValue<ContextType> MGPBufferBuilder::getContextForOp(Operation *op) {
   if (auto hasSlotOp = dyn_cast<MGPHasRuntimeSlotOpInterface>(op))
     return hasSlotOp.getTheContext();
-  return BufferBuilder::getContextForOp(op);
+  return getContextForBlock(op->getBlock());
 }
 
 Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
@@ -158,7 +146,7 @@ Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,
 Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                                                TypedValue<ContextType> context,
                                                Value inChain,
-                                               BufferBuilder *srcBuilder,
+                                               MGPBufferBuilder *srcBuilder,
                                                Value srcBuffer, Value dstBuffer,
                                                Value deviceContext) {
   Value copyChain =
@@ -194,7 +182,7 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
 Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
                                              TypedValue<ContextType> context,
                                              Value inChain, Value srcBuffer,
-                                             BufferBuilder *dstBuilder,
+                                             MGPBufferBuilder *dstBuilder,
                                              Value dstBuffer,
                                              Value deviceContext) {
   Value copyChain =
@@ -222,11 +210,10 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
 
 Value MGPBufferBuilder::bufferTransferDevice(
     OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-    Value inChain, Value srcBuffer, BufferBuilder *dstBufferBuilder,
+    Value inChain, Value srcBuffer, MGPBufferBuilder *dstBufferBuilder,
     Value dstBuffer, Value srcDeviceContext, Value dstDeviceContext) {
-  auto dstMGPBufferBuilder = static_cast<MGPBufferBuilder *>(dstBufferBuilder);
   DeviceRefAttr srcDevice = device;
-  DeviceRefAttr dstDevice = dstMGPBufferBuilder->device;
+  DeviceRefAttr dstDevice = dstBufferBuilder->device;
 
   // When the source and destination live on different (virtual) devices they
   // use different streams, so the copy (which runs on the destination stream)

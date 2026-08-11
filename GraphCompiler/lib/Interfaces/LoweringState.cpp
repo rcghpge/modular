@@ -105,8 +105,8 @@ TypedValue<MGP::TensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  return getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
-                                                           loweredTensor);
+  return getBufferBuilder(device).tensorExtractTensorSpec(builder, loc,
+                                                          loweredTensor);
 }
 
 MGP::TensorSpecGetDimOp MOGraphLoweringState::getDim(Location loc,
@@ -118,8 +118,8 @@ MGP::TensorSpecGetDimOp MOGraphLoweringState::getDim(Location loc,
   // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
-      getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
-                                                        loweredTensor);
+      getBufferBuilder(device).tensorExtractTensorSpec(builder, loc,
+                                                       loweredTensor);
   return MGP::TensorSpecGetDimOp::create(builder, loc, /*spec=*/tensorSpec,
                                          /*axis=*/axis);
 }
@@ -132,8 +132,8 @@ SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
   // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
-      getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
-                                                        loweredTensor);
+      getBufferBuilder(device).tensorExtractTensorSpec(builder, loc,
+                                                       loweredTensor);
   TensorSpecType specType = tensorSpec.getType();
   SmallVector<Value> dynDims;
 
@@ -878,10 +878,10 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   ASSERT_STREAM(loweredTensor, << "referenced SSA value has not been lowered");
 
   MO::TensorType ty = MO::castFromTensorLike(moTensor.getType());
-  BufferBuilder *bufferBuilder = getStorageBufferBuilder(ty);
-  auto buffer = bufferBuilder->tensorExtractBuffer(builder, loc, loweredTensor);
+  MGPBufferBuilder &bufferBuilder = getStorageBufferBuilder(ty);
+  auto buffer = bufferBuilder.tensorExtractBuffer(builder, loc, loweredTensor);
   auto tensorSpec =
-      bufferBuilder->tensorExtractTensorSpec(builder, loc, loweredTensor);
+      bufferBuilder.tensorExtractTensorSpec(builder, loc, loweredTensor);
 
   // we are extracting a buffer from a tensor, so the buffer needs to be guarded
   // by the same chain as the tensor
@@ -952,21 +952,21 @@ MOOpLoweringState::createOutputTensorSpecs() {
 
 FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value inChain, TypedValue<TensorSpecType> tensorSpec, Type tensorType) {
-  BufferBuilder *bufferBuilder = getStorageBufferBuilder(tensorType);
+  MGPBufferBuilder &bufferBuilder = getStorageBufferBuilder(tensorType);
   MO::TensorType moTensorType = MO::dynCastFromTensorLike(tensorType);
   ASSERT_STREAM(moTensorType, << "input is not a !mo.tensor or !mo.buffer");
 
   Value numBytes = bufferSizeBytes(tensorSpec, moTensorType);
 
-  auto bufferDevice = bufferBuilder->getDevice();
+  auto bufferDevice = bufferBuilder.getDevice();
   auto preferredAlignment =
       M::Driver::getPreferredAlignment(bufferDevice.getLabel().str());
   if (bufferDevice.getLabel() == M::kCPULabel)
     preferredAlignment = std::gcd(preferredAlignment, minimumCpuAlignment);
   auto deviceContext = loweringState.getExecuteDevice(bufferDevice);
   return BufferizedTensor(
-      bufferBuilder->bufferAlloc(builder, loc, context, inChain, numBytes,
-                                 deviceContext, preferredAlignment),
+      bufferBuilder.bufferAlloc(builder, loc, context, inChain, numBytes,
+                                deviceContext, preferredAlignment),
       tensorSpec);
 }
 
@@ -975,7 +975,7 @@ void MOOpLoweringState::createOutputTensor(
     TypedValue<MGP::TensorSpecType> tensorSpec) {
   Value loweredTensor =
       getStorageBufferBuilder(moTensor.getType())
-          ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+          .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
   loweringState.emplaceExecuteLoweredBufferValue(moTensor, loweredTensor,
                                                  inChain);
 }
@@ -989,7 +989,8 @@ void MOOpLoweringState::createOutputTensors(
                        tensorSpec);
 }
 
-BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
+MGPBufferBuilder &
+MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   auto type = MO::dynCastFromTensorLike(moTensorType);
   ASSERT_STREAM(type, << "expecting a !mo.tensor or !mo.buffer type");
   return loweringState.getBufferBuilder(MO::getDeviceOrDefault(type));

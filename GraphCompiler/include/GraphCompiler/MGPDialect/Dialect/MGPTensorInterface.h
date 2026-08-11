@@ -40,13 +40,13 @@ struct TensorBufferDialectInterface
   /// Returns the buffer builder appropriate for the device which will execute
   /// op. Returns the builder for the 'host' device for ops which don't have
   /// a specific device.
-  static BufferBuilder *
+  static MGPBufferBuilder *
   getBuilderForOpExecution(const BufferBuilderContext &builderContext,
                            Operation *op);
 
   /// Returns the buffer builder appropriate for the device which will store
   /// values of type.
-  static BufferBuilder *
+  static MGPBufferBuilder *
   getBuilderForTypeStorage(const BufferBuilderContext &builderContext,
                            Type type);
 

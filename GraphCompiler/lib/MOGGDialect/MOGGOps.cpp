@@ -342,9 +342,9 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
 LogicalResult
 LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   OpBuilder &builder = loweringState.getInitOpBuilder();
-  MGP::BufferBuilder *bufferBuilder =
+  MGP::MGPBufferBuilder &bufferBuilder =
       loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(*this));
-  Value outChain = bufferBuilder->moduleLoad(
+  Value outChain = bufferBuilder.moduleLoad(
       builder, getLoc(), loweringState.getInitMgpContext(),
       // DANGER: init chain is the result of device context creation which is a
       // result of runtime creation. Module load does not actually depend on the

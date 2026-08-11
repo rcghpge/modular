@@ -38,26 +38,26 @@ TensorBufferDialectInterface::getAllBufferBuilders(ModelOp modelOp) {
   return builderContext;
 }
 
-BufferBuilder *TensorBufferDialectInterface::getBuilderForOpExecution(
+MGPBufferBuilder *TensorBufferDialectInterface::getBuilderForOpExecution(
     const BufferBuilderContext &builderContext, Operation *op) {
   if (auto interface =
           dyn_cast_if_present<TensorBufferDialectInterface>(op->getDialect())) {
     DeviceRefAttr device = interface->getExecutionDevice(builderContext, op);
-    return builderContext.getBufferBuilder(device);
+    return &builderContext.getBufferBuilder(device);
   }
 
-  return builderContext.getHostBufferBuilder();
+  return &builderContext.getHostBufferBuilder();
 }
 
-BufferBuilder *TensorBufferDialectInterface::getBuilderForTypeStorage(
+MGPBufferBuilder *TensorBufferDialectInterface::getBuilderForTypeStorage(
     const BufferBuilderContext &builderContext, Type type) {
   if (auto interface =
           dyn_cast<TensorBufferDialectInterface>(&type.getDialect())) {
     DeviceRefAttr device = interface->getStorageDevice(builderContext, type);
-    return builderContext.getBufferBuilder(device);
+    return &builderContext.getBufferBuilder(device);
   }
 
-  return builderContext.getHostBufferBuilder();
+  return &builderContext.getHostBufferBuilder();
 }
 
 void TensorBufferDialectInterface::vtableAnchor() {}

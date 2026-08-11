@@ -346,7 +346,7 @@ void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
 /// creating a new op if it is non-null.
 static Value waitForChainsReusing(
     OpBuilder &builder, mlir::Location loc, TypedValue<ContextType> context,
-    BufferBuilder *optBufferBuilder,
+    MGPBufferBuilder *optBufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
   assert(!chains.empty());
@@ -366,7 +366,7 @@ static Value waitForChainsReusing(
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
                             TypedValue<ContextType> context,
-                            BufferBuilder *optBufferBuilder,
+                            MGPBufferBuilder *optBufferBuilder,
                             ArrayRef<Value> chains) {
   return waitForChainsReusing(builder, loc, context, optBufferBuilder,
                               /*existingUniqueChainCreateOp=*/{}, chains);
@@ -396,7 +396,7 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     Value inChain = inChainOpOperand->get();
 
     // The builder for inChain, or null if it's a !mef.chain.
-    BufferBuilder *optChainBufferBuilder = nullptr;
+    MGPBufferBuilder *optChainBufferBuilder = nullptr;
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
     // simple syntactic tests can avoid unnecessary changes.

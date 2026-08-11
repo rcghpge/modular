@@ -203,7 +203,7 @@ class DynamicMemoryPlanningPass
           allocs, [](const AllocInfo &alloc) { return alloc.alloc->getLoc(); });
 
       auto loc = execBuilder.getFusedLoc(locations);
-      auto bufferBuilder = builderContext.getBufferBuilder(device);
+      MGPBufferBuilder &bufferBuilder = builderContext.getBufferBuilder(device);
 
       std::optional<Value> deviceContext =
           getDeviceContext(device, modelOp.getExecuteDevices());
@@ -217,7 +217,7 @@ class DynamicMemoryPlanningPass
       TypedValue<IndexType> poolSize = bufferPlanOp.getHighWatermark();
 
       // Allocate a larger buffer.
-      Value alloc = bufferBuilder->bufferAlloc(
+      Value alloc = bufferBuilder.bufferAlloc(
           execBuilder, loc, execState.getContext(), execState.getRootChain(),
           poolSize, deviceContext.value(), totalAlignment);
 

@@ -861,7 +861,7 @@ class ExecInvariantCodeMotionPass
           // Cache the buffer in the 'init' block, but only once all the
           // chains associated with side effects on all the buffers have
           // completed.
-          BufferBuilder *bufferBuilder =
+          MGPBufferBuilder *bufferBuilder =
               TensorBufferDialectInterface::getBuilderForTypeStorage(
                   *builderContext, oldBuffer.getType());
           auto [bufferCacheOutChain, currBufferSlot] = bufferBuilder->cache(

@@ -140,8 +140,8 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
 
 /// An MGPTypeBuilder provides methods for building device-specific tensor
 /// types. It is only needed during lowering when lowered types must be
-/// provided ahead of lowering itself. Otherwise the BufferBuilder constructs
-/// types as it goes.
+/// provided ahead of lowering itself. Otherwise the MGPBufferBuilder
+/// constructs types as it goes.
 class MGPTypeBuilder {
 public:
   DeviceRefAttr device;
@@ -155,180 +155,24 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// BufferBuilder
+// MGPBufferBuilder
 //===----------------------------------------------------------------------===//
 
-/// A BufferBuilder provides methods for building device-dependent buffer,
-/// tensor, chain and kernel ops. Since an instance of this class is created
-/// for each device in the model, derived classes may accumulate device-specific
-/// lowering state therein.
+/// An MGPBufferBuilder provides methods for building device-dependent buffer,
+/// tensor, chain and kernel ops. An instance of this class is created for
+/// each device in the model and accumulates device-specific lowering state.
 ///
 /// All values representing buffers and tensors must be in the 'native' form
 /// understood by this device. However, as a convenience, chains may be in
 /// either 'native' form, or be host !mef.chain chains.
-class BufferBuilder {
-public:
-  virtual ~BufferBuilder() = default;
-
-  /// Returns the device in the BufferBuilder
-  virtual DeviceRefAttr getDevice() = 0;
-
-  /// Returns the !mgp.context appropriate for op, or null if none can be found.
-  virtual TypedValue<ContextType> getContextForOp(Operation *op);
-
-  /// Returns the constant buffer with given attribute as its contents.
-  virtual Value bufferConstant(OpBuilder &builder, Location loc,
-                               TypedValue<MEF::ChainType> inChain,
-                               TypedValue<ContextType> context,
-                               ElementsAttr value) = 0;
-
-  /// Returns an undefined, external constant with the given name.
-  /// The name is an SSA value of type !mgp.opaque<"mojo_string">.
-  virtual Value
-  bufferConstantExternal(OpBuilder &builder, Location loc,
-                         TypedValue<MEF::ChainType> inChain,
-                         TypedValue<ContextType> context,
-                         TypedValue<MGP::OpaqueType> weightsRegistry,
-                         TypedValue<MGP::OpaqueType> name, uint64_t size,
-                         uint64_t align, bool hasAlias, bool isPlaceholder) = 0;
-
-  /// Returns the buffer held by tensor.
-  virtual Value tensorExtractBuffer(OpBuilder &builder, Location loc,
-                                    Value tensor) = 0;
-
-  /// Returns the tensor spec of the given tensor.
-  virtual TypedValue<TensorSpecType>
-  tensorExtractTensorSpec(OpBuilder &builder, Location loc, Value tensor) = 0;
-
-  /// Return the tensor constructed from buffer and tensor spec. If necessary
-  /// the buffer will be 'unsized' or 'resized' to match the tensorSpec type.
-  virtual Value tensorCreate(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inChain,
-                             Value buffer,
-                             TypedValue<TensorSpecType> tensorSpec) = 0;
-
-  /// Returns the buffer of size. The alignment may be ignored for some devices.
-  virtual Value bufferAlloc(OpBuilder &builder, Location loc,
-                            TypedValue<ContextType> context, Value inChain,
-                            Value size, Value deviceContext,
-                            uint64_t alignment) = 0;
-
-  /// Returns the chain indicating when srcBuffer on the host device has been
-  /// transferred to dstBuffer on this builder's device.
-  virtual Value bufferTransferFromHost(OpBuilder &builder, Location loc,
-                                       TypedValue<ContextType> context,
-                                       Value inChain, BufferBuilder *srcBuilder,
-                                       Value srcBuffer, Value dstBuffer,
-                                       Value deviceContext) = 0;
-
-  /// Returns the !mef.chain indicating when srcBuffer on this builder's
-  /// device has been transferred to dstBuffer on the host.
-  virtual Value bufferTransferToHost(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
-                                     Value inChain, Value srcBuffer,
-                                     BufferBuilder *dstBuilder, Value dstBuffer,
-                                     Value deviceContext) = 0;
-
-  /// Returns the chain indicating when srcBuffer on this builder's device has
-  /// been transferred to dstBuffer (which resides on a different device).
-  /// inChain is a device specific chain on the srcBuffer's device.
-  virtual Value bufferTransferDevice(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
-                                     Value inChain, Value srcBuffer,
-                                     BufferBuilder *dstBufferBuilder,
-                                     Value dstBuffer, Value srcDeviceContext,
-                                     Value dstDeviceContext) = 0;
-
-  /// Get the runtime size of the buffer
-  virtual Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
-                              Value inBuffer) = 0;
-
-  /// Return the chain indicating the debug string has been printed.
-  virtual Value debugPrint(OpBuilder &builder, Location loc,
-                           TypedValue<ContextType> context, Value inChain,
-                           StringAttr debugString, StringAttr label) = 0;
-
-  /// Return the chain indicating tensor, in the form of buffer and tensor spec,
-  /// has been printed.
-  virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
-                                 TypedValue<ContextType> context, Value inChain,
-                                 Value buffer, TypedValue<TensorSpecType> spec,
-                                 StringAttr label) = 0;
-
-  /// Returns the chain indicating the given module image with given function
-  /// and constant names has been loaded into the runtime.
-  virtual TypedValue<MEF::ChainType>
-  moduleLoad(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-             TypedValue<MEF::ChainType> inChain, ElementsAttr image,
-             ArrayAttr functionSymbols, ArrayAttr constantSymbols) = 0;
-
-  /// Places the given buffer into a freshly allocated slot within the
-  /// given !mgp.context. Returns the chain which indicates when the buffer
-  /// has been placed, and the index of the slot from which the buffer may
-  /// later be retrieved. Note that the input and output chains are always
-  /// !mef.chain, irrespective of the native chain type for this builder.
-  ///
-  /// Generally this is only appropriate within the 'init' block of an
-  /// mgp.model op.
-  virtual std::pair<TypedValue<MEF::ChainType>, uint64_t>
-  cache(OpBuilder &initBuilder, Location loc, TypedValue<ContextType> context,
-        TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
-        Value buffer) = 0;
-
-  /// Retrieves a buffer of the expected type from the given slot of the given
-  /// !mgp.context. Note that the input chain is always a !mef.chain,
-  /// irrespective of the native chain type for this builder.
-  virtual Value getCached(OpBuilder &builder, Location loc,
-                          TypedValue<ContextType> context,
-                          TypedValue<MEF::ChainType> inChain,
-                          uint64_t bufferSlot, Type expectedBufferType) = 0;
-
-  /// Returns the join of all the given chain values, which must be all native
-  /// to this builder.
-  virtual Value chainCreate(OpBuilder &builder, Location loc,
-                            ArrayRef<Value> inChains) = 0;
-
-  /// Returns a chain indicating when the given input buffers have been
-  /// copied into the output buffer.
-  virtual Value bufferConcat(OpBuilder &builder, Location loc,
-                             TypedValue<DeviceContextType> deviceContext,
-                             Value inChain, Value outBuffer,
-                             ArrayRef<Value> inBuffers) = 0;
-
-  virtual Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
-                            Value offset, Value size, Value deviceContext) = 0;
-
-  /// Returns the bool contents of a single-byte buffer.
-  virtual Value bufferToBool(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inChain,
-                             Value inBuffer) = 0;
-
-  /// Returns the chain indicating the given index values have been assigned
-  /// into the given buffer.
-  virtual Value bufferSetWithIndex(OpBuilder &builder, Location loc,
-                                   TypedValue<ContextType> context,
-                                   Value buffer, ArrayRef<Value> values) = 0;
-
-  /// Adds a device specific sync. Returns a ready chain once the device has
-  /// synchronized.
-  virtual Value sync(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context,
-                     TypedValue<DeviceContextType> deviceContext,
-                     Value chain) = 0;
-
-  virtual void vtableAnchor();
-};
-
-//===----------------------------------------------------------------------===//
-// MGPBufferBuilder
-//===----------------------------------------------------------------------===//
-
-class MGPBufferBuilder : public BufferBuilder {
+class MGPBufferBuilder {
 public:
   DeviceRefAttr device;
 
   MGPBufferBuilder(DeviceRefAttr device) : device(device) {}
-  ~MGPBufferBuilder() override = default;
+
+  MGPBufferBuilder(const MGPBufferBuilder &) = delete;
+  MGPBufferBuilder &operator=(const MGPBufferBuilder &) = delete;
 
   /// Set up the state for emitting ops into a ModelOp. Returns the chain
   /// indicating when the runtime has been established.
@@ -340,102 +184,143 @@ public:
   /// Recover the state from modelOp for this device-specific buffer builder.
   void recoverFromModel(ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder);
 
-  TypedValue<ContextType> getContextForOp(Operation *op) override;
+  /// Returns the !mgp.context appropriate for op, or null if none can be
+  /// found.
+  TypedValue<ContextType> getContextForOp(Operation *op);
 
-  DeviceRefAttr getDevice() override;
+  /// Returns this builder's device.
+  DeviceRefAttr getDevice() { return device; }
 
+  /// Returns the constant buffer with given attribute as its contents.
   Value bufferConstant(OpBuilder &builder, Location loc,
                        TypedValue<MEF::ChainType> inChain,
-                       TypedValue<ContextType> context,
-                       ElementsAttr value) override;
+                       TypedValue<ContextType> context, ElementsAttr value);
 
+  /// Returns an undefined, external constant with the given name.
+  /// The name is an SSA value of type !mgp.opaque<"mojo_string">.
   Value bufferConstantExternal(OpBuilder &builder, Location loc,
                                TypedValue<MEF::ChainType> inChain,
                                TypedValue<ContextType> context,
                                TypedValue<MGP::OpaqueType> weightsRegistry,
                                TypedValue<MGP::OpaqueType> name, uint64_t size,
                                uint64_t align, bool hasAlias,
-                               bool isPlaceholder) override;
+                               bool isPlaceholder);
 
-  Value tensorExtractBuffer(OpBuilder &builder, Location loc,
-                            Value tensor) override;
+  /// Returns the buffer held by tensor.
+  Value tensorExtractBuffer(OpBuilder &builder, Location loc, Value tensor);
 
-  TypedValue<TensorSpecType> tensorExtractTensorSpec(OpBuilder &builder,
-                                                     Location loc,
-                                                     Value tensor) override;
+  /// Returns the tensor spec of the given tensor.
+  TypedValue<TensorSpecType>
+  tensorExtractTensorSpec(OpBuilder &builder, Location loc, Value tensor);
 
+  /// Return the tensor constructed from buffer and tensor spec. If necessary
+  /// the buffer will be 'unsized' or 'resized' to match the tensorSpec type.
   Value tensorCreate(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,
-                     Value buffer,
-                     TypedValue<TensorSpecType> tensorSpec) override;
+                     Value buffer, TypedValue<TensorSpecType> tensorSpec);
 
+  /// Returns the buffer of size. The alignment may be ignored for some
+  /// devices.
   Value bufferAlloc(OpBuilder &builder, Location loc,
                     TypedValue<ContextType> context, Value inChain, Value size,
-                    Value deviceContext, uint64_t alignment) override;
+                    Value deviceContext, uint64_t alignment);
 
+  /// Returns the chain indicating when srcBuffer on the host device has been
+  /// transferred to dstBuffer on this builder's device.
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<ContextType> context, Value inChain,
-                               BufferBuilder *srcBuilder, Value srcBuffer,
-                               Value dstBuffer, Value deviceContext) override;
+                               MGPBufferBuilder *srcBuilder, Value srcBuffer,
+                               Value dstBuffer, Value deviceContext);
 
+  /// Returns the !mef.chain indicating when srcBuffer on this builder's
+  /// device has been transferred to dstBuffer on the host.
   Value bufferTransferToHost(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context, Value inChain,
-                             Value srcBuffer, BufferBuilder *dstBuilder,
-                             Value dstBuffer, Value deviceContext) override;
+                             Value srcBuffer, MGPBufferBuilder *dstBuilder,
+                             Value dstBuffer, Value deviceContext);
 
+  /// Returns the chain indicating when srcBuffer on this builder's device has
+  /// been transferred to dstBuffer (which resides on a different device).
+  /// inChain is a device specific chain on the srcBuffer's device.
   Value bufferTransferDevice(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context, Value inChain,
-                             Value srcBuffer, BufferBuilder *dstBufferBuilder,
+                             Value srcBuffer,
+                             MGPBufferBuilder *dstBufferBuilder,
                              Value dstBuffer, Value srcDeviceContext,
-                             Value dstDeviceContext) override;
+                             Value dstDeviceContext);
 
+  /// Get the runtime size of the buffer
   Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
-                      Value inBuffer) override;
+                      Value inBuffer);
 
+  /// Return the chain indicating the debug string has been printed.
   Value debugPrint(OpBuilder &builder, Location loc,
                    TypedValue<ContextType> context, Value inChain,
-                   StringAttr debugString, StringAttr label) override;
+                   StringAttr debugString, StringAttr label);
 
+  /// Return the chain indicating tensor, in the form of buffer and tensor
+  /// spec, has been printed.
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<ContextType> context, Value inChain,
                          Value buffer, TypedValue<TensorSpecType> spec,
-                         StringAttr label) override;
+                         StringAttr label);
 
+  /// Returns the chain indicating the given module image with given function
+  /// and constant names has been loaded into the runtime.
   TypedValue<MEF::ChainType>
   moduleLoad(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
              TypedValue<MEF::ChainType> inChain, ElementsAttr image,
-             ArrayAttr functionSymbols, ArrayAttr constantSymbols) override;
+             ArrayAttr functionSymbols, ArrayAttr constantSymbols);
 
-  Value chainCreate(OpBuilder &builder, Location loc,
-                    ArrayRef<Value> inChains) override;
+  /// Returns the join of all the given chain values, which must be all native
+  /// to this builder.
+  Value chainCreate(OpBuilder &builder, Location loc, ArrayRef<Value> inChains);
 
+  /// Places the given buffer into a freshly allocated slot within the
+  /// given !mgp.context. Returns the chain which indicates when the buffer
+  /// has been placed, and the index of the slot from which the buffer may
+  /// later be retrieved. Note that the input and output chains are always
+  /// !mef.chain, irrespective of the native chain type for this builder.
+  ///
+  /// Generally this is only appropriate within the 'init' block of an
+  /// mgp.model op.
   std::pair<TypedValue<MEF::ChainType>, uint64_t>
   cache(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
         TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
-        Value buffer) override;
+        Value buffer);
 
+  /// Retrieves a buffer of the expected type from the given slot of the given
+  /// !mgp.context. Note that the input chain is always a !mef.chain,
+  /// irrespective of the native chain type for this builder.
   Value getCached(OpBuilder &builder, Location loc,
                   TypedValue<ContextType> context,
                   TypedValue<MEF::ChainType> inChain, uint64_t bufferSlot,
-                  Type expectedBufferType) override;
+                  Type expectedBufferType);
 
+  /// Returns a chain indicating when the given input buffers have been
+  /// copied into the output buffer.
   Value bufferConcat(OpBuilder &builder, Location loc,
                      TypedValue<DeviceContextType> deviceContext, Value inChain,
-                     Value outBuffer, ArrayRef<Value> inBuffers) override;
+                     Value outBuffer, ArrayRef<Value> inBuffers);
 
   Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
-                    Value offset, Value size, Value deviceContext) override;
+                    Value offset, Value size, Value deviceContext);
 
+  /// Returns the bool contents of a single-byte buffer.
   Value bufferToBool(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,
-                     Value inBuffer) override;
+                     Value inBuffer);
 
+  /// Returns the chain indicating the given index values have been assigned
+  /// into the given buffer.
   Value bufferSetWithIndex(OpBuilder &builder, Location loc,
                            TypedValue<ContextType> context, Value buffer,
-                           ArrayRef<Value> values) override;
+                           ArrayRef<Value> values);
 
+  /// Adds a device specific sync. Returns a ready chain once the device has
+  /// synchronized.
   Value sync(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-             TypedValue<DeviceContextType> deviceContext, Value chain) override;
+             TypedValue<DeviceContextType> deviceContext, Value chain);
 
   std::pair<uint64_t, uint64_t> getFunction(StringRef name) {
     auto itr = functionToIndexPair.find(name);
@@ -536,7 +421,7 @@ public:
 
   /// Register the given buffer builder for the given device.
   void registerBufferBuilder(DeviceRefAttr device,
-                             std::unique_ptr<BufferBuilder> bufferBuilder) {
+                             std::unique_ptr<MGPBufferBuilder> bufferBuilder) {
     [[maybe_unused]] bool inserted =
         bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
     ASSERT_STREAM(inserted,
@@ -545,17 +430,17 @@ public:
 
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
-  BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
+  MGPBufferBuilder &getBufferBuilder(DeviceRefAttr device) const {
     assert(device);
     auto itr = bufferBuilderMap.find(device);
     ASSERT_STREAM(itr != bufferBuilderMap.end(),
                   << "no buffer builder has been registered for device "
                   << device);
-    return itr->second.get();
+    return *itr->second;
   }
 
   /// Returns the buffer builder to use for the 'host' device.
-  BufferBuilder *getHostBufferBuilder() const {
+  MGPBufferBuilder &getHostBufferBuilder() const {
     return getBufferBuilder(hostDevice);
   }
 
@@ -564,7 +449,7 @@ private:
   llvm::DenseMap<DeviceRefAttr, MGPTypeBuilder> typeBuilderMap;
 
   /// The buffer builder to use for each device.
-  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>
+  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<MGPBufferBuilder>>
       bufferBuilderMap;
 };
 

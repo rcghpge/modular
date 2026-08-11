@@ -131,7 +131,7 @@ void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
 /// of the given buffer builder, or !mef.chain if the buffer builder is null.
 Value waitForChains(OpBuilder &builder, mlir::Location loc,
                     TypedValue<ContextType> context,
-                    BufferBuilder *optBufferBuilder, ArrayRef<Value> chains);
+                    MGPBufferBuilder *optBufferBuilder, ArrayRef<Value> chains);
 
 /// Mutates op in-place to ensure its input chain is ready only when all of
 /// additionalChains are also ready. Returns failure if op doesn't have any

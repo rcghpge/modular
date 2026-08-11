@@ -468,14 +468,15 @@ public:
   }
 
   /// Register the given buffer builder for the given device.
-  void registerBufferBuilder(DeviceRefAttr device,
-                             std::unique_ptr<BufferBuilder> bufferBuilder) {
+  void
+  registerBufferBuilder(DeviceRefAttr device,
+                        std::unique_ptr<MGP::MGPBufferBuilder> bufferBuilder) {
     builderContext.registerBufferBuilder(device, std::move(bufferBuilder));
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
-  BufferBuilder *getBufferBuilder(DeviceRefAttr device) {
+  MGP::MGPBufferBuilder &getBufferBuilder(DeviceRefAttr device) {
     return builderContext.getBufferBuilder(device);
   }
 
@@ -483,7 +484,7 @@ public:
   DeviceRefAttr getHostDevice() { return builderContext.hostDevice; }
 
   /// Returns the buffer builder to use for the 'host' device.
-  BufferBuilder *getHostBufferBuilder() {
+  MGP::MGPBufferBuilder &getHostBufferBuilder() {
     return builderContext.getHostBufferBuilder();
   }
 
@@ -668,22 +669,23 @@ struct MOOpLoweringState {
 
   /// Returns the buffer builder appropriate for the device on which the
   /// given !mo.tensor should be stored.
-  BufferBuilder *getStorageBufferBuilder(Type moTensorType);
+  MGP::MGPBufferBuilder &getStorageBufferBuilder(Type moTensorType);
 
   //
-  // These all redirect to the similarly named BufferBuilder method using
+  // These all redirect to the similarly named MGPBufferBuilder method using
   // the builder appropriate for the storage device of the given moTensorType.
   //
 
   std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(Value loweredTensor, Type moTensorType) {
-    BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
+    MGP::MGPBufferBuilder &bufferBuilder =
+        getStorageBufferBuilder(moTensorType);
     // Be careful the evaluation order of the function args is unspecified
     // in the c++ standard. Define them separately to enforce the op order.
     auto buffer =
-        bufferBuilder->tensorExtractBuffer(builder, loc, loweredTensor);
+        bufferBuilder.tensorExtractBuffer(builder, loc, loweredTensor);
     auto spec =
-        bufferBuilder->tensorExtractTensorSpec(builder, loc, loweredTensor);
+        bufferBuilder.tensorExtractTensorSpec(builder, loc, loweredTensor);
     loweringState.guardValueWithChain(
         buffer, loweringState.getChainGuardingValueOrNull(loweredTensor));
     return std::make_pair(buffer, spec);
@@ -693,7 +695,7 @@ struct MOOpLoweringState {
                      TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
     Value tensor =
         getStorageBufferBuilder(moTensorType)
-            ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+            .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
     loweringState.guardValueWithChain(
         tensor, loweringState.getChainGuardingValueOrNull(buffer));
     return tensor;
@@ -701,7 +703,7 @@ struct MOOpLoweringState {
 
   Value hostBufferConstant(TypedValue<MEF::ChainType> inChain,
                            ElementsAttr value, Type moTensorType) {
-    return loweringState.getHostBufferBuilder()->bufferConstant(
+    return loweringState.getHostBufferBuilder().bufferConstant(
         builder, loc, inChain, context, value);
   }
 
@@ -709,7 +711,7 @@ struct MOOpLoweringState {
                                    TypedValue<MGP::OpaqueType> name,
                                    uint64_t size, uint64_t align, bool hasAlias,
                                    bool isPlaceholder) {
-    return loweringState.getHostBufferBuilder()->bufferConstantExternal(
+    return loweringState.getHostBufferBuilder().bufferConstantExternal(
         builder, loc, inChain, context, weightsRegistry, name, size, align,
         hasAlias, isPlaceholder);
   }
@@ -719,13 +721,13 @@ struct MOOpLoweringState {
                                      TypedValue<MGP::OpaqueType> name,
                                      uint64_t size, uint64_t align,
                                      bool hasAlias, bool isPlaceholder) {
-    return loweringState.getBufferBuilder(device)->bufferConstantExternal(
+    return loweringState.getBufferBuilder(device).bufferConstantExternal(
         builder, loc, inChain, context, weightsRegistry, name, size, align,
         hasAlias, isPlaceholder);
   }
 
   Value hostDebugPrint(Value inChain, StringAttr data, StringAttr label) {
-    return loweringState.getHostBufferBuilder()->debugPrint(
+    return loweringState.getHostBufferBuilder().debugPrint(
         builder, loc, context, inChain, data, label);
   }
 
@@ -733,38 +735,38 @@ struct MOOpLoweringState {
                          TypedValue<TensorSpecType> tensorSpec,
                          StringAttr label, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
-        ->debugTensorPrint(builder, loc, context, inChain, buffer, tensorSpec,
-                           label);
+        .debugTensorPrint(builder, loc, context, inChain, buffer, tensorSpec,
+                          label);
   }
   Value hostDebugTensorPrint(Value inChain, Value buffer,
                              TypedValue<TensorSpecType> tensorSpec,
                              StringAttr label) {
-    return loweringState.getHostBufferBuilder()->debugTensorPrint(
+    return loweringState.getHostBufferBuilder().debugTensorPrint(
         builder, loc, context, inChain, buffer, tensorSpec, label);
   }
 
   Value bufferTransferFromHost(Value inChain,
                                TypedValue<MGP::DeviceBufferType> srcBuffer,
                                Value dstBuffer, Type dstMoTensorType) {
-    auto deviceRef = getStorageBufferBuilder(dstMoTensorType)->getDevice();
+    auto deviceRef = getStorageBufferBuilder(dstMoTensorType).getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     auto chain =
         getStorageBufferBuilder(dstMoTensorType)
-            ->bufferTransferFromHost(builder, loc, context, inChain,
-                                     loweringState.getHostBufferBuilder(),
-                                     srcBuffer, dstBuffer, deviceContext);
+            .bufferTransferFromHost(builder, loc, context, inChain,
+                                    &loweringState.getHostBufferBuilder(),
+                                    srcBuffer, dstBuffer, deviceContext);
     loweringState.guardValueWithChain(dstBuffer, chain);
     return chain;
   }
   Value bufferTransferToHost(Value inChain, Value srcBuffer,
                              TypedValue<MGP::DeviceBufferType> dstBuffer,
                              Type srcMoTensorType) {
-    auto deviceRef = getStorageBufferBuilder(srcMoTensorType)->getDevice();
+    auto deviceRef = getStorageBufferBuilder(srcMoTensorType).getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(srcMoTensorType)
-        ->bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
-                               loweringState.getHostBufferBuilder(), dstBuffer,
-                               deviceContext);
+        .bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
+                              &loweringState.getHostBufferBuilder(), dstBuffer,
+                              deviceContext);
   }
   Value bufferTransferDevice(Value inChain, Value srcBuffer, Value dstBuffer,
                              Type srcMoTensorType, Type dstMoTensorType) {
@@ -778,16 +780,16 @@ struct MOOpLoweringState {
     // to enable compute overlap.
 
     DeviceRefAttr srcDeviceRef =
-        getStorageBufferBuilder(srcMoTensorType)->getDevice();
+        getStorageBufferBuilder(srcMoTensorType).getDevice();
     DeviceRefAttr dstDeviceRef =
-        getStorageBufferBuilder(dstMoTensorType)->getDevice();
+        getStorageBufferBuilder(dstMoTensorType).getDevice();
     auto dstDeviceContext = loweringState.getExecuteDevice(dstDeviceRef);
     auto srcDeviceContext = loweringState.getExecuteDevice(srcDeviceRef);
 
     return getStorageBufferBuilder(srcMoTensorType)
-        ->bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
-                               getStorageBufferBuilder(dstMoTensorType),
-                               dstBuffer, srcDeviceContext, dstDeviceContext);
+        .bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
+                              &getStorageBufferBuilder(dstMoTensorType),
+                              dstBuffer, srcDeviceContext, dstDeviceContext);
   }
 
   Value bufferConcat(Value inChain, Value outBuffer, ArrayRef<Value> inBuffers,
@@ -795,44 +797,44 @@ struct MOOpLoweringState {
     auto ty = cast<MO::TensorType>(outMoTensorType);
     auto deviceContext = loweringState.getExecuteDevice(ty.getDeviceRef());
     return getStorageBufferBuilder(outMoTensorType)
-        ->bufferConcat(builder, loc, deviceContext, inChain, outBuffer,
-                       inBuffers);
+        .bufferConcat(builder, loc, deviceContext, inChain, outBuffer,
+                      inBuffers);
   }
 
   Value bufferSlice(Value inBuffer, Value offset, Value size,
                     Type outMoTensorType) {
-    auto deviceRef = getStorageBufferBuilder(outMoTensorType)->getDevice();
+    auto deviceRef = getStorageBufferBuilder(outMoTensorType).getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(outMoTensorType)
-        ->bufferSlice(builder, loc, inBuffer, offset, size, deviceContext);
+        .bufferSlice(builder, loc, inBuffer, offset, size, deviceContext);
   }
 
   Value bufferToBool(Value inChain, Value buffer, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
-        ->bufferToBool(builder, loc, context, inChain, buffer);
+        .bufferToBool(builder, loc, context, inChain, buffer);
   }
 
   Value bufferSetWithIndex(Value buffer, ArrayRef<Value> values,
                            Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
-        ->bufferSetWithIndex(builder, loc, context, buffer, values);
+        .bufferSetWithIndex(builder, loc, context, buffer, values);
   }
 
   Value hostBufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
                         uint64_t align) {
     auto deviceContext =
         loweringState.getExecuteDevice(loweringState.getHostDevice());
-    return loweringState.getHostBufferBuilder()->bufferAlloc(
+    return loweringState.getHostBufferBuilder().bufferAlloc(
         builder, loc, context, inChain, size, deviceContext, align);
   }
 
   Value bufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
                     uint64_t align, Type moTensorType) {
-    auto deviceRef = getStorageBufferBuilder(moTensorType)->getDevice();
+    auto deviceRef = getStorageBufferBuilder(moTensorType).getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(moTensorType)
-        ->bufferAlloc(builder, loc, context, inChain, size, deviceContext,
-                      align);
+        .bufferAlloc(builder, loc, context, inChain, size, deviceContext,
+                     align);
   }
 
   Value bufferSizeBytes(TypedValue<TensorSpecType> tensorSpec,
@@ -854,9 +856,8 @@ struct MOOpLoweringState {
   Value sync(Value chain) {
     auto device = loweringState.getHostDevice();
     auto deviceContext = loweringState.getExecuteDevice(device);
-    auto bufferBuilder = loweringState.getBufferBuilder(device);
-
-    return bufferBuilder->sync(builder, loc, context, deviceContext, chain);
+    return loweringState.getBufferBuilder(device).sync(builder, loc, context,
+                                                       deviceContext, chain);
   }
 };
 

@@ -71,11 +71,11 @@ class VerifyModelArgumentsPass
       if (tensorArg.getNumDynamicDims() == (size_t)tensorArg.getRank())
         continue;
 
-      BufferBuilder *bufferBuilder =
+      MGPBufferBuilder &bufferBuilder =
           builderContext.getBufferBuilder(tensorArg.getDevice());
       TensorSpecType expectedTensorSpec = tensorArg.getTensorSpec();
       auto runtimeTensorSpec =
-          bufferBuilder->tensorExtractTensorSpec(builder, loc, arg);
+          bufferBuilder.tensorExtractTensorSpec(builder, loc, arg);
 
       Value areEqual;
       for (size_t i = 0; i < expectedTensorSpec.getRank(); ++i) {

@@ -267,12 +267,7 @@ CompileDiagnosticOrSuccess MOGraphLowering::setupBufferBuildersForAllDevices() {
     if (hostDevice == targetDevice) {
       hostBufferBuilder = bufferBuilder.get();
     } else {
-      hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
-          loweringState.getBufferBuilder(hostDevice));
-      ASSERT_STREAM(
-          hostBufferBuilder,
-          << "no buffer builder has been created for the host device '"
-          << hostDevice << "'");
+      hostBufferBuilder = &loweringState.getBufferBuilder(hostDevice);
     }
     auto inChain =
         cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain());
@@ -1366,7 +1361,7 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
   uint64_t valueBits = *valueBitsOr;
 
   DeviceRefAttr device = MO::getDeviceOrDefault(resTensorType);
-  MGP::BufferBuilder *bufferBuilder = loweringState.getBufferBuilder(device);
+  MGP::MGPBufferBuilder &bufferBuilder = loweringState.getBufferBuilder(device);
 
   Location loc = bufferCreateOp.getLoc();
 
@@ -1388,7 +1383,7 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
   Value sizeVal = mlir::index::ConstantOp::create(
       initBuilder, loc, static_cast<int64_t>(sizeInBytes));
 
-  Value allocBuffer = bufferBuilder->bufferAlloc(
+  Value allocBuffer = bufferBuilder.bufferAlloc(
       initBuilder, loc, initContext, /*inChain=*/initChain, /*size=*/sizeVal,
       /*deviceContext=*/initDevCtx, alignment);
 
@@ -1398,7 +1393,7 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
                          /*valueBits=*/valueBits, /*elemSize=*/sizeOfDtype)
                          .getOutChain();
 
-  auto [cacheChain, slot] = bufferBuilder->cache(
+  auto [cacheChain, slot] = bufferBuilder.cache(
       initBuilder, loc, initContext, /*inChain=*/memsetChain,
       /*contextCreateOp=*/loweringState.getInitMgpContext(),
       /*buffer=*/allocBuffer);
@@ -1410,7 +1405,7 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
   Value execChain = loweringState.getCurrentExecuteChain();
   execChain = opLoweringState.getGuardChain(execChain);
 
-  Value cachedBuffer = bufferBuilder->getCached(
+  Value cachedBuffer = bufferBuilder.getCached(
       execBuilder, loc, /*context=*/loweringState.getExecuteMgpContext(),
       /*inChain=*/cast<TypedValue<MEF::ChainType>>(execChain), slot,
       /*expectedBufferType=*/allocBuffer.getType());
