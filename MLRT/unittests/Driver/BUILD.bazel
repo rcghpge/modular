@@ -387,6 +387,7 @@ modular_cc_test(
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContext",
+        "//MLRT:Driver/DeviceContextAPI",
         "//MLRT:Driver/DeviceContextImpl",
         "@llvm-project//llvm:Support",
     ],

@@ -11,6 +11,7 @@
 
 #include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 #include "Support/HashUtils.h"
+#include "Support/SymbolExport.h"
 #include "llvm/ADT/Sequence.h"
 
 #include <cassert>
@@ -28,6 +29,8 @@ LaunchTraceRegistry &M::Driver::launchTraceRegistry() {
 
 bool M::Driver::LaunchTraceRegistry::isLaunchTraceEnabled(void *stream) {
   std::lock_guard<std::mutex> lock(mu);
+  if (globalEnabled)
+    return true;
   auto it = states.find(stream);
   return it != states.end() && it->second.enabled;
 }
@@ -35,6 +38,11 @@ bool M::Driver::LaunchTraceRegistry::isLaunchTraceEnabled(void *stream) {
 void M::Driver::LaunchTraceRegistry::appendLaunchTraceEntry(
     void *stream, const KernelLaunchMetadata &metadata) {
   std::lock_guard<std::mutex> lock(mu);
+  if (globalEnabled) {
+    KernelLaunchMetadata entry = metadata;
+    entry.streamIndex = streamIndexForLocked(stream);
+    globalEntries.push_back(std::move(entry));
+  }
   auto it = states.find(stream);
   if (it == states.end() || !it->second.enabled)
     return;
@@ -87,9 +95,9 @@ void M::Driver::LaunchTraceRegistry::recordLaunchTrace(
       hasher.write(reinterpret_cast<const char *>(paramPtr), size);
   }
 
-  // Create metadata with kernel name, hash, and launch parameters
-  // Note: streamIndex is set to 0 for now (could be enhanced to track actual
-  // stream index in multi-stream captures)
+  // Create metadata with kernel name, hash, and launch parameters. streamIndex
+  // is assigned at append time for global traces (see appendLaunchTraceEntry);
+  // the per-stream path leaves it 0.
   KernelLaunchMetadata metadata(kernelName, hasher.hash(), gridX, gridY, gridZ,
                                 blockX, blockY, blockZ, sharedMemBytes,
                                 numAttrs, /*streamIndex=*/0);
@@ -113,6 +121,39 @@ M::Driver::LaunchTraceRegistry::takeTraceForStream(void *stream) {
   std::vector<KernelLaunchMetadata> result = std::move(it->second.entries);
   states.erase(it);
   return result;
+}
+
+void M::Driver::LaunchTraceRegistry::beginGlobalTrace() {
+  std::lock_guard<std::mutex> lock(mu);
+  globalEnabled = true;
+  globalEntries.clear();
+  streamIndices.clear();
+  nextStreamIndex = 0;
+}
+
+std::vector<KernelLaunchMetadata>
+M::Driver::LaunchTraceRegistry::takeGlobalTrace() {
+  std::lock_guard<std::mutex> lock(mu);
+  globalEnabled = false;
+  return std::move(globalEntries);
+}
+
+uint32_t M::Driver::LaunchTraceRegistry::streamIndexForLocked(void *stream) {
+  auto [it, inserted] = streamIndices.try_emplace(stream, nextStreamIndex);
+  if (inserted)
+    ++nextStreamIndex;
+  return it->second;
+}
+
+// Exported from libmax: the Python `_core` extension links the DeviceContext
+// headers only and resolves these at load time (see the DriverPython target).
+MODULAR_CXX_EXPORT void M::Driver::beginGlobalLaunchTrace() {
+  launchTraceRegistry().beginGlobalTrace();
+}
+
+MODULAR_CXX_EXPORT std::vector<KernelLaunchMetadata>
+M::Driver::takeGlobalLaunchTrace() {
+  return launchTraceRegistry().takeGlobalTrace();
 }
 
 uint64_t M::Driver::hashMemcpyTrace(LaunchTraceKind kind, size_t byteSize) {

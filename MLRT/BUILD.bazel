@@ -480,6 +480,8 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
         "include/MLRT/Driver/DeviceContext/HALDeviceContext.h",
+        "include/MLRT/Driver/DeviceContext/LaunchTraceEntry.h",
+        "include/MLRT/Driver/DeviceContext/LaunchTraceRegistry.h",
     ],
     # Switches DeviceContext.h to the HAL shim declarations. Propagated from the
     # target that provides the header rather than a global `--copt`, which would
@@ -692,6 +694,25 @@ modular_shared_library(
     deps = [":Driver/MojoRuntimeBindingsImpl"],
 )
 
+# The launch-trace registry the device backends record into, and that
+# `max.driver.begin_launch_trace` reads. Split out of
+# Driver/DeviceContextImplCpp so both DeviceContext implementations carry it:
+# the entry type and the registry are backend-independent, and the Python
+# driver bindings reference them under either flag setting (the HAL shim simply
+# never records, leaving the trace empty).
+modular_cc_library(
+    name = "Driver/LaunchTraceRegistry",
+    srcs = ["lib/Driver/DeviceContext/LaunchTraceRegistry.cpp"],
+    deps = [
+        ":Driver/DeviceContextAPI",
+        "//Support:Base",
+        "//Support:HashUtils",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
 modular_cc_library(
     name = "Driver/DeviceContextImplHAL",
     srcs = ["lib/Driver/DeviceContext/HAL/HALDeviceContext.cpp"],
@@ -707,6 +728,7 @@ modular_cc_library(
         ":Driver/CompilationDeviceImpl",
         ":Driver/DeviceContextAPI",
         ":Driver/HALDeviceContextExports",
+        ":Driver/LaunchTraceRegistry",
         "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:BinaryID",
@@ -729,7 +751,6 @@ modular_cc_library(
         "lib/Driver/DeviceContext/HIP/HIPDeviceContext.cpp",
         "lib/Driver/DeviceContext/HIP/HIPDeviceGraphBuilder.cpp",
         "lib/Driver/DeviceContext/HIP/HIPDriver.cpp",
-        "lib/Driver/DeviceContext/LaunchTraceRegistry.cpp",
         "lib/Driver/DeviceContext/MemoryManager.cpp",
         "lib/Driver/DeviceContext/Metal/MetalDeviceContext.cpp",
         "lib/Driver/DeviceContext/Metal/MetalDriver.cpp",
@@ -741,7 +762,6 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
-        "include/MLRT/Driver/DeviceContext/LaunchTraceRegistry.h",
         "lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h",
         "lib/Driver/DeviceContext/CUDA/CUDADeviceGraphBuilder.h",
         "lib/Driver/DeviceContext/CUDA/CUDADriver.h",
@@ -786,6 +806,7 @@ modular_cc_library(
         ":Driver/CompilationDeviceImpl",
         ":Driver/DeviceAffinity",
         ":Driver/DeviceContextAPI",
+        ":Driver/LaunchTraceRegistry",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",
         "//AsyncRT:Support",

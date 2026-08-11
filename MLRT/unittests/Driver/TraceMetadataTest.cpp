@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
@@ -548,6 +549,78 @@ TEST_F(TraceMetadataTest, LaunchTraceDiffJSONMultipleTypes) {
   EXPECT_NE(json.find("\"kind\":\"KernelLaunch\""), std::string::npos);
   EXPECT_NE(json.find("\"kind\":\"Memcpy\""), std::string::npos);
   EXPECT_NE(json.find("\"kind\":\"Memset\""), std::string::npos);
+}
+
+// ===== Global launch-trace registry tests =====
+//
+// These exercise the process-global trace directly, using fake stream handles
+// so no GPU is required. They pin the two properties the per-stream API could
+// not provide: cross-stream enqueue ordering in one list, and a stable
+// per-stream index.
+
+class LaunchTraceRegistryTest : public ::testing::Test {};
+
+// A global trace records operations from multiple streams into one list in
+// enqueue order, tagging each with a first-seen stream index.
+TEST_F(LaunchTraceRegistryTest, GlobalTraceOrdersAcrossStreams) {
+  auto *streamA = reinterpret_cast<void *>(0x1);
+  auto *streamB = reinterpret_cast<void *>(0x2);
+  auto &registry = launchTraceRegistry();
+
+  registry.beginGlobalTrace();
+  registry.appendLaunchTraceEntry(streamA, KernelLaunchMetadata("a0", 1));
+  registry.appendLaunchTraceEntry(streamB, KernelLaunchMetadata("b0", 2));
+  registry.appendLaunchTraceEntry(streamA, KernelLaunchMetadata("a1", 3));
+  std::vector<KernelLaunchMetadata> trace = registry.takeGlobalTrace();
+
+  ASSERT_EQ(trace.size(), 3u);
+  // Enqueue order is preserved across streams.
+  EXPECT_EQ(trace[0].kernelName, "a0");
+  EXPECT_EQ(trace[1].kernelName, "b0");
+  EXPECT_EQ(trace[2].kernelName, "a1");
+  // Stream index is assigned in first-seen order and is stable per stream.
+  EXPECT_EQ(trace[0].streamIndex, 0u);
+  EXPECT_EQ(trace[1].streamIndex, 1u);
+  EXPECT_EQ(trace[2].streamIndex, 0u);
+}
+
+// Taking the trace stops recording; a stream is enabled only while the global
+// trace is active.
+TEST_F(LaunchTraceRegistryTest, GlobalTraceStopsAndClears) {
+  auto *stream = reinterpret_cast<void *>(0x10);
+  auto &registry = launchTraceRegistry();
+
+  EXPECT_FALSE(registry.isLaunchTraceEnabled(stream));
+  registry.beginGlobalTrace();
+  EXPECT_TRUE(registry.isLaunchTraceEnabled(stream));
+
+  registry.appendLaunchTraceEntry(stream, KernelLaunchMetadata("k", 1));
+  EXPECT_EQ(registry.takeGlobalTrace().size(), 1u);
+
+  // Recording has stopped: further work is dropped and nothing is retained.
+  EXPECT_FALSE(registry.isLaunchTraceEnabled(stream));
+  registry.appendLaunchTraceEntry(stream, KernelLaunchMetadata("k", 1));
+  EXPECT_TRUE(registry.takeGlobalTrace().empty());
+}
+
+// Re-beginning without an intervening take discards the previous trace and
+// restarts first-seen stream indexing from zero.
+TEST_F(LaunchTraceRegistryTest, BeginGlobalTraceClearsPrevious) {
+  auto *streamA = reinterpret_cast<void *>(0x20);
+  auto *streamB = reinterpret_cast<void *>(0x21);
+  auto &registry = launchTraceRegistry();
+
+  registry.beginGlobalTrace();
+  registry.appendLaunchTraceEntry(streamA, KernelLaunchMetadata("stale", 1));
+  registry.beginGlobalTrace();
+  registry.appendLaunchTraceEntry(streamB, KernelLaunchMetadata("fresh", 2));
+  std::vector<KernelLaunchMetadata> trace = registry.takeGlobalTrace();
+
+  // Only the second trace's entry survives, and streamB is index 0 despite
+  // streamA having been seen first in the discarded trace.
+  ASSERT_EQ(trace.size(), 1u);
+  EXPECT_EQ(trace[0].kernelName, "fresh");
+  EXPECT_EQ(trace[0].streamIndex, 0u);
 }
 
 } // namespace

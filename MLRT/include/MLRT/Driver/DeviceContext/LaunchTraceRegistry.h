@@ -12,7 +12,7 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_LAUNCHTRACEREGISTRY_H
 #define MLRT_DRIVER_DEVICECONTEXT_LAUNCHTRACEREGISTRY_H
 
-#include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/LaunchTraceEntry.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -82,13 +82,42 @@ public:
   // Take (retrieve and clear) trace entries for a stream
   std::vector<KernelLaunchMetadata> takeTraceForStream(void *stream);
 
+  // Begin a process-global trace that records operations across ALL streams
+  // into a single list in enqueue order (clearing any previous global trace).
+  // Unlike the per-stream API, no stream handle is required, so work enqueued
+  // on streams the caller has no handle to (e.g. a graph's internal stream) is
+  // still captured. Each entry's streamIndex identifies its stream, assigned
+  // in first-seen order.
+  void beginGlobalTrace();
+
+  // End the global trace and return its entries in enqueue order.
+  std::vector<KernelLaunchMetadata> takeGlobalTrace();
+
 private:
+  // Assigns a stable, first-seen index to a stream handle for the active
+  // global trace. Must be called with `mu` held.
+  uint32_t streamIndexForLocked(void *stream);
+
   std::mutex mu;
   llvm::DenseMap<void *, LaunchTraceState> states;
+
+  // Process-global trace state: while `globalEnabled`, every stream's
+  // operations are appended to `globalEntries` in enqueue order, each tagged
+  // with a first-seen `streamIndices` value.
+  bool globalEnabled = false;
+  std::vector<KernelLaunchMetadata> globalEntries;
+  llvm::DenseMap<void *, uint32_t> streamIndices;
+  uint32_t nextStreamIndex = 0;
 };
 
 // Get the global launch trace registry singleton
 LaunchTraceRegistry &launchTraceRegistry();
+
+// Begin/end a process-global launch trace on the singleton registry. Thin
+// wrappers so callers outside MLRT reach the same registry instance the device
+// backends record into.
+void beginGlobalLaunchTrace();
+std::vector<KernelLaunchMetadata> takeGlobalLaunchTrace();
 
 // Hash a memory copy operation for launch tracing.
 // Excludes pointer addresses - only includes size and direction.
