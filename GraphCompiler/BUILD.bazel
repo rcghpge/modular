@@ -153,6 +153,7 @@ modular_cc_library(
     hdrs = glob(["include/GraphCompiler/Driver/Execution/*.h"]),
     deps = [
         ":CommonDriver",
+        ":DeviceDriver",
         ":MEFModel",
         ":Support",
         "//Support:Base",

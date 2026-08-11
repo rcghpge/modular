@@ -7,26 +7,15 @@
 // recording it again. Both must produce all 8s.
 // REPLAY-COUNT-2: 'main' returned tensor<2x3xui8> [8, 8, 8, 8, 8, 8]
 
-// End-to-end device-graph synthesis + replay. The `device_graph_fill` subgraph
-// is an `isDeviceGraph` graph whose two custom ops record real compiled kernels
-// (via `DeviceGraphBuilder.add_function`): a fill (all 7s) chained into an
-// increment (+1). Synthesis lowers the graph to a `mgp.device_graph.create`
-// (build the graph once, allocating the intermediate buffer between the two ops
-// with `mgp.device_graph.alloc`) + `mgp.device_graph.execute` (replay it). The
-// device graph is all-or-nothing for a graph, so the entry graph `main` calls it
-// and transfers the GPU result to the host before returning -- a device graph
-// cannot itself contain the host transfer. Replaying the recorded fill +
-// increment must produce all 8s.
+// End-to-end device-graph synthesis + replay.
 
 // CHECK-LABEL: --- Running 'main':
 // CHECK: 'main' returned tensor<2x3xui8> [8, 8, 8, 8, 8, 8]
-mo.graph @main(%x: !mo.tensor<[2, 3], ui8>) -> !mo.tensor<[2, 3], ui8> {
+mo.graph @main(%x: !mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8> {
   %ch0 = mo.chain.create()
-  %x_gpu, %ch1 = mo.transfer[%ch0] %x
-      : !mo.tensor<[2, 3], ui8> to <"gpu", 0>
-  %g = mo.call @device_graph_fill(%x_gpu)
+  %g = mo.call @device_graph_fill(%x)
       : (!mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8, gpu:0>
-  %h, %ch2 = mo.transfer[%ch1] %g
+  %h, %ch1 = mo.transfer[%ch0] %g
       : !mo.tensor<[2, 3], ui8, gpu:0> to <"cpu", 0>
   mo.output %h : !mo.tensor<[2, 3], ui8>
 }

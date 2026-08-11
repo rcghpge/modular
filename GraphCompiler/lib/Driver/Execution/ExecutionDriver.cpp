@@ -6,6 +6,8 @@
 
 #include "GraphCompiler/Driver/Execution/ExecutionDriver.h"
 #include "AsyncRT/Runtime/Algorithms.h"
+#include "GraphCompiler/Driver/Device/DeviceExecution.h"
+#include "GraphCompiler/Driver/Device/Driver.h"
 #include "GraphCompiler/Driver/Execution/DriverCLOptions.h"
 #include "GraphCompiler/Driver/Execution/DriverInternals.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
@@ -13,6 +15,7 @@
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/Error.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Profiling/TimeProfiler.h"
@@ -351,19 +354,209 @@ static LogicalResult outputResults(const ExecutableModel *model,
   return failure(hasError);
 }
 
+namespace {
+/// The driver Devices backing a model's device-placed inputs and results.
+/// Generators produce every input on the host; an input placed on an
+/// accelerator is then staged onto its device through these handles, and a
+/// result placed on an accelerator is copied back to the host before it is
+/// printed. `deviceMap` is passed to `Model::setup` so the model executes on
+/// the same device contexts the staged buffers live on.
+struct ModelDeviceState {
+  GraphCompiler::Driver::DeviceMap deviceMap;
+  /// Parallel to the model's inputs; null for host-placed inputs.
+  SmallVector<RCRef<GraphCompiler::Driver::Device>> inputDevices;
+  /// Parallel to the model's *placement-carrying* results (its tensors and
+  /// buffers; chains carry no placement); null for host-placed results.
+  SmallVector<RCRef<GraphCompiler::Driver::Device>> outputDevices;
+  /// Host endpoint of the staging copies; null when every placement is host.
+  RCRef<GraphCompiler::Driver::Device> hostDevice;
+};
+} // namespace
+
+/// Creates a driver Device for every accelerator the model places an input or
+/// result on. Returns a state with an empty device map when every placement
+/// is the host.
+static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
+  ModelDeviceState state;
+  auto isHost = [](const DeviceRef &ref) { return ref.label == kCPULabel; };
+  if (llvm::all_of(model->getInputDevices(), isHost) &&
+      llvm::all_of(model->getOutputDevices(), isHost))
+    return state;
+
+  auto materialize =
+      [&](ArrayRef<DeviceRef> placements,
+          SmallVector<RCRef<GraphCompiler::Driver::Device>> &devices,
+          StringRef kind) -> ErrorOrSuccess {
+    for (const DeviceRef &ref : placements) {
+      if (isHost(ref)) {
+        devices.emplace_back();
+        continue;
+      }
+      if (auto it = state.deviceMap.find(ref); it != state.deviceMap.end()) {
+        devices.push_back(it->second.copy());
+        continue;
+      }
+      GraphCompiler::Driver::Status status;
+      auto deviceId = static_cast<ssize_t>(ref.id);
+      GraphCompiler::Driver::Device *device =
+          ref.label == kNPULabel ? M_createNPUDevice(deviceId, &status)
+                                 : M_createAcceleratorDevice(deviceId, &status);
+      if (!device)
+        return Error(Twine("failed to create device '") + ref.toString() +
+                     "' for a device-placed " + kind + " of model '" +
+                     model->getName() +
+                     "': " + Twine(status.errorOr.getError()));
+      auto owned = RCRef<GraphCompiler::Driver::Device>::take(device);
+      state.deviceMap.try_emplace(ref, owned.copy());
+      devices.push_back(std::move(owned));
+    }
+    return success();
+  };
+
+  // Inputs pair positionally with the generated tensors, so a device-placed
+  // input can only be staged when the placements cover every input. (The
+  // placement array skips non-tensor entries, which entry inputs in practice
+  // never contain.)
+  ArrayRef<DeviceRef> inputPlacements = model->getInputDevices();
+  if (!llvm::all_of(inputPlacements, isHost)) {
+    if (inputPlacements.size() != model->getInputSpecs().size())
+      return Error(llvm::formatv(
+          "model '{}' has device-placed inputs, but its placements do not "
+          "cover every input, so they cannot be staged"));
+
+    if (auto err = materialize(inputPlacements, state.inputDevices, "input"))
+      return err.takeError();
+  }
+
+  // Result placements cover only the placement-carrying results, in order;
+  // `stageResultsToHost` pairs them with the data-carrying result values.
+  if (auto err =
+          materialize(model->getOutputDevices(), state.outputDevices, "result"))
+    return err.takeError();
+
+  GraphCompiler::Driver::Status status;
+  GraphCompiler::Driver::Device *host = M_createCPUDevice(0, &status);
+  if (!host)
+    return Error(Twine("failed to create the host device for staging model "
+                       "inputs and results: ") +
+                 Twine(status.errorOr.getError()));
+  state.hostDevice = RCRef<GraphCompiler::Driver::Device>::take(host);
+  return state;
+}
+
 // Returns a ready AsyncValueRef<Tensor> for every given
-// generator, ready to be passed to the model's execute function. Each tensor
-// will borrow, at 'execute' scope, from the underlying generotar's 'next'
-// tensor.
-static SmallVector<AnyAsyncValueRef, 3>
-buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators) {
-  SmallVector<AnyAsyncValueRef, 3> args;
+// generator, ready to be passed to the model's execute function. A
+// host-placed input borrows, at 'execute' scope, the underlying generator's
+// 'next' tensor. A device-placed input is staged onto its device via a fresh
+// allocation and a host-to-device copy; the copy is enqueued on the device
+// context the model executes on, so it is ordered before the model's kernels.
+static ErrorOr<SmallVector<AnyAsyncValueRef>>
+buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators,
+          const ModelDeviceState &deviceState) {
+  SmallVector<AnyAsyncValueRef> args;
   args.reserve(generators.size());
-  for (const auto &generator : generators) {
-    args.emplace_back(AsyncValueRef<Tensor>::createReady(
-        cpuDevice, generator->getNextTensor().borrow()));
+  for (const auto &[i, generator] : llvm::enumerate(generators)) {
+    const Tensor &generated = generator->getNextTensor();
+    GraphCompiler::Driver::Device *device =
+        i < deviceState.inputDevices.size()
+            ? deviceState.inputDevices[i].getPointer()
+            : nullptr;
+    if (!device) {
+      args.push_back(
+          AsyncValueRef<Tensor>::createReady(cpuDevice, generated.borrow()));
+      continue;
+    }
+
+    auto memoryOr = device->createDeviceMemory(generated.getSpec());
+    if (memoryOr.isError())
+      return memoryOr.takeError();
+    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> memory(*memoryOr);
+
+    // Wrap the generator's buffer with a no-op destructor: the generator
+    // keeps the buffer alive past the enqueued copy, and stays the owner.
+    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> hostView(
+        deviceState.hostDevice->createDeviceMemory(
+            const_cast<void *>(generated.getBuffer()), generated.getSpec(),
+            /*destructor=*/[]() {}));
+    if (ErrorOrSuccess err = hostView->copyTo(*memory))
+      return err.takeError();
+
+    // `prepareInput` takes ownership of the device memory and frees it once
+    // the model releases the argument.
+    args.push_back(GraphCompiler::Driver::prepareInput(
+        cpuDevice, memory.release(), generated.getSpec()));
   }
   return args;
+}
+
+static bool isTensorOrBuffer(AnyAsyncValueRef &value) {
+  return value.isType<Tensor>() || value.isType<TensorBufferRef>();
+}
+
+/// Replaces every device-placed tensor result with a host copy of its data,
+/// so result printing reads host memory. The device-to-host copy is enqueued
+/// on the device context the model executed on, ordering it after the
+/// model's kernels; the device is then drained before the host read.
+static ErrorOrSuccess
+stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
+                   MutableArrayRef<AnyAsyncValueRef> results) {
+  // The first result is the model's chain, which carries no placement;
+  // `outputResults` drops it the same way before pairing results with their
+  // output names.
+  if (!results.empty() && isa<Chain>(results.front()))
+    results = results.drop_front();
+
+  // The placement array has one entry per placement-carrying result (tensors
+  // and buffers), so a placement is consumed only when the value is one;
+  // chains and other placement-free values pass through.
+  size_t placementIdx = 0;
+  for (AnyAsyncValueRef &result : results) {
+    if (placementIdx >= deviceState.outputDevices.size())
+      break;
+    // An errored result has no recoverable type, so how the remaining
+    // placements pair up is unknown; leave the rest for the printer's error
+    // reporting.
+    if (result.getDiagnosticIfPresent())
+      break;
+
+    if (!isTensorOrBuffer(result))
+      continue;
+
+    GraphCompiler::Driver::Device *device =
+        deviceState.outputDevices[placementIdx++].getPointer();
+    if (!device)
+      continue;
+
+    const M::MLRT::Tensor *tensor = dyn_cast<Tensor>(std::as_const(result));
+    // A bare buffer result prints as metadata only (pointer, no data read),
+    // so it needs no host copy.
+    if (!tensor)
+      continue;
+
+    TensorSpec spec = tensor->getSpec();
+    // Wrap the device-resident result without taking ownership; the result
+    // value keeps it alive across the copy.
+    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> deviceView(
+        device->createDeviceMemory(const_cast<void *>(tensor->getBuffer()),
+                                   spec, /*destructor=*/[]() {}));
+    auto hostOr = deviceState.hostDevice->createDeviceMemory(spec);
+    if (hostOr.isError())
+      return hostOr.takeError();
+
+    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> hostMemory(
+        hostOr.takeValue());
+    if (ErrorOrSuccess err = deviceView->copyTo(*hostMemory))
+      return err.takeError();
+
+    if (ErrorOrSuccess err = device->synchronize())
+      return err.takeError();
+
+    // `prepareInput` takes ownership of the host memory and frees it once the
+    // result is released.
+    result = GraphCompiler::Driver::prepareInput(cpuDevice,
+                                                 hostMemory.release(), spec);
+  }
+  return success();
 }
 
 /// Call executableModel->execute(args), await the results, and return them.
@@ -404,18 +597,25 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
 
   TimeTraceScope scope(DriverProfilerEntry::create("executeModel"));
 
+  // Create the devices any device-placed input is staged onto. Their map is
+  // handed to `setup` so the model shares the staging buffers' contexts.
+  auto deviceStateOr = createModelDeviceState(model);
+  if (deviceStateOr.isError())
+    return deviceStateOr.takeError();
+  ModelDeviceState deviceState = deviceStateOr.takeValue();
+
   // Set up once.
   std::unique_ptr<ExecutableModel> executableModel;
   {
     TimeTraceScope scope(DriverProfilerEntry::create("executeModel.setup"));
-    auto executableModel1Or = model->setup(cpuDevice);
+    auto executableModel1Or =
+        model->setup(cpuDevice, /*weightsRegistry=*/{}, deviceState.deviceMap);
     if (executableModel1Or.isError())
       return executableModel1Or.takeError().getMessage().copy();
-    auto executableModel1 = executableModel1Or.takeValue();
-    auto errorOrSuccess = executableModel1->waitForModelSetup();
-    if (errorOrSuccess.isError())
-      return errorOrSuccess.takeError();
-    executableModel = std::move(executableModel1);
+
+    executableModel = executableModel1Or.takeValue();
+    if (ErrorOrSuccess error = executableModel->waitForModelSetup())
+      return error.takeError();
   }
 
   // Establish a tensor generator for each model input as per command line
@@ -437,7 +637,10 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
   }
   for (unsigned i = 0; i < numWarmup; ++i) {
     TimeTraceScope scope(DriverProfilerEntry::create("executeModel.warmup"));
-    auto args = buildArgs(cpuDevice, inputTensorGenerators);
+    auto argsOr = buildArgs(cpuDevice, inputTensorGenerators, deviceState);
+    if (argsOr.isError())
+      return argsOr.takeError();
+    auto args = std::move(*argsOr);
 
     // Execute the model synchronously. Propagate any error back to caller.
     auto resultsOr =
@@ -458,7 +661,12 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
   }
 
   for (unsigned i = 0; i < numRuns; ++i) {
-    auto args = buildArgs(cpuDevice, inputTensorGenerators);
+    ErrorOr<SmallVector<AnyAsyncValueRef>> argsOr =
+        buildArgs(cpuDevice, inputTensorGenerators, deviceState);
+    if (argsOr.isError())
+      return argsOr.takeError();
+
+    SmallVector<AnyAsyncValueRef> args = argsOr.takeValue();
 
     if (i > 0 && i % 100 == 0)
       llvm::outs() << "--- Run " << i << "...\n";
@@ -482,6 +690,12 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
     std::move(entry).record();
 
     if (options.resultOutputStyle != ResultOutputStyle::kNone) {
+      // Result printing reads host memory, so bring device-placed results
+      // back to the host first.
+      if (ErrorOrSuccess err =
+              stageResultsToHost(cpuDevice, deviceState, results))
+        return err.takeError();
+
       // Convert and print the result tensors. This is the one place where
       // AsyncValue errors are printed to stdout and a generic
       // "repeated model execution failed" is returned to the caller instead
