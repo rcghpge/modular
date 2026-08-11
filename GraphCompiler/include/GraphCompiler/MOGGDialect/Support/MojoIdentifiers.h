@@ -393,13 +393,16 @@ constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
 /// not re-exported from `std.utils`, so this needs its own qualified name.
 constexpr llvm::StringLiteral kFnCoordToIndexList =
     "std.utils.coord.coord_to_index_list";
-constexpr llvm::StringLiteral kFnCreateTask = "std.runtime.asyncrt.create_task";
+/// The async task primitives are package-private: `std.runtime` does not
+/// re-export them, so these need the qualified `_asyncrt` module name.
+constexpr llvm::StringLiteral kFnCreateTask =
+    "std.runtime._asyncrt.create_task";
 
 /// Affinity-aware variant: `_create_task(handle, *, desired_worker_id=<id>)`.
 /// Only emitted for GPU-device launches; maps to the package-private function
 /// added alongside `task_id_for_device` in `max.runtime.asyncrt`.
 constexpr llvm::StringLiteral kFnCreateTaskWithAffinity =
-    "std.runtime.asyncrt._create_task";
+    "std.runtime._asyncrt._create_task";
 constexpr llvm::StringLiteral kFnTaskIdForDevice =
     "max.runtime.asyncrt.task_id_for_device";
 constexpr llvm::StringLiteral kFnGetSafeTaskId =
@@ -540,7 +543,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"std.utils.numerics", ""},
         {"std.math", ""},
         {"std.runtime", ""},
-        {"std.runtime.asyncrt", ""},
+        {"std.runtime._asyncrt", ""},
         {"std.memory", ""},
         {"std.collections", ""},
         {"max.runtime.tracing", ""},

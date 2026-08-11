@@ -5287,7 +5287,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
         state.builder.var(MojoValue(kFnTaskIdForDevice)(
                               /*params=*/{}, /*args=*/{MojoValue(deviceId)}),
                           /*cache=*/false);
-    // var task_N = std.runtime.asyncrt._create_task(
+    // var task_N = std.runtime._asyncrt._create_task(
     //     wrapper_N(), desired_worker_id=worker_id_N)
     // MojoBuilder has no built-in keyword-argument support, so we construct
     // the call text directly.
@@ -5298,7 +5298,7 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
                       .str()),
         /*cache=*/false);
   } else {
-    // var task_N = std.runtime.asyncrt.create_task(wrapper_N())
+    // var task_N = std.runtime._asyncrt.create_task(wrapper_N())
     taskVar = state.builder.var(MojoValue(kFnCreateTask)({}, {wrapper({}, {})}),
                                 /*cache=*/false);
   }
