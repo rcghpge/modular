@@ -230,7 +230,7 @@ struct Foo:
         y: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
@@ -630,7 +630,7 @@ struct TraitFusedStoreParameterClosure:
             comptime assert conforms_to(type_of(x), DevicePassable)
             comptime dtype = type_of(x).dtype
 
-            @parameter
+            @__parameter
             @always_inline
             def store_adapter[
                 OutT: Storable, width: Int
@@ -941,7 +941,7 @@ struct FooWithStructParam[flip: Bool]:
         x: InputTensor[dtype=dtype, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             var v = rebind[SIMD[z.dtype, width]](x.load[width](idx))
@@ -1023,7 +1023,7 @@ struct PrintTensorSpecOp:
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
@@ -1044,7 +1044,7 @@ struct PrintTensor:
     ](outp: OutputTensor, input: InputTensor, ctx: DeviceContext) raises:
         print(input)
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
@@ -1073,7 +1073,7 @@ struct PrintTensorSpecViewOp:
     ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext) raises:
         Self.print_spec(x)
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
@@ -1101,7 +1101,7 @@ struct PrintTensorSpecFusedOp:
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
@@ -1129,7 +1129,7 @@ struct PrintOutputShapeStridesFusedOp:
         print("output._runtime_shape = ", output.shape())
         print("output._runtime_strides = ", output.strides())
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             return (
@@ -1166,7 +1166,7 @@ struct AddFuseLHS:
         y: InputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
@@ -1187,7 +1187,7 @@ struct ImposterHasPrologueFusion:
         x: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             return rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
@@ -1206,7 +1206,7 @@ struct AddFuseInputs:
         y: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
@@ -1234,7 +1234,7 @@ struct MatmulFuseOut:
         comptime b_dtype = b.dtype
         comptime c_dtype = c.dtype
 
-        @parameter
+        @__parameter
         @always_inline
         def out_func[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
@@ -1330,7 +1330,7 @@ struct VariadicAdd:
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
@@ -1411,7 +1411,7 @@ struct ElementwisePrintShape:
         x: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
@@ -1437,7 +1437,7 @@ struct CustomOpThatRaises:
         if x.shape()[0] == 10:
             raise ("input_shape[0] == 10")
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
@@ -1491,7 +1491,7 @@ struct MONNXAbsOverload:
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
@@ -1510,7 +1510,7 @@ struct MTorchAbsOverload:
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
@@ -1662,7 +1662,7 @@ struct TraitMetadataShapeOp:
         input: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             return input.load[width](idx)
@@ -1930,7 +1930,7 @@ struct MutableStore:
         tensor: FusedInputTensor[dtype=DType.float32, rank=2, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[
             width: Int
@@ -1939,7 +1939,7 @@ struct MutableStore:
                 tensor._fused_load[width](idx)
             )
 
-        @parameter
+        @__parameter
         @always_inline
         def out_func[width: Int](index: IndexList[tensor.rank]) capturing:
             var idx = rebind[IndexList[tensor.rank]](index)
@@ -1990,7 +1990,7 @@ struct InplaceNoOutFunc:
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
             var val = input._fused_load[width](idx)
@@ -2178,7 +2178,7 @@ struct DeviceGraphFill:
         x: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
             output._fused_store[element_alignment=alignment](
@@ -2237,7 +2237,7 @@ struct DeviceGraphIncrement:
         x: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
             var val = rebind[SIMD[dtype, width]](x.load[width](idx)) + (
@@ -2288,7 +2288,7 @@ struct AddOneCPU:
     ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         print("AddOne CPU kernel")
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
@@ -2314,7 +2314,7 @@ struct AddOneGPU:
     ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         print("AddOne GPU kernel")
 
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
@@ -2506,7 +2506,7 @@ struct MapLowerAddOne:
     def execute[
         target: StaticString,
     ](res: OutputTensor, a: InputTensor, ctx: DeviceContext,) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
             return rebind[SIMD[res.dtype, width]](a.load[width](idx)) + 1
@@ -2535,7 +2535,7 @@ struct MapLowerAdd3:
         c: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
             return (
@@ -2560,14 +2560,14 @@ struct MapLowerTwoOutputs:
         a: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def add_one[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
             return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + 1
 
         foreach[add_one](res0, ctx)
 
-        @parameter
+        @__parameter
         @always_inline
         def times_two[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
             return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) * 2
@@ -2588,7 +2588,7 @@ struct MapLowerAddSub:
         b: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def add[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
             return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + rebind[
@@ -2597,7 +2597,7 @@ struct MapLowerAddSub:
 
         foreach[add, target=target](res0, ctx)
 
-        @parameter
+        @__parameter
         @always_inline
         def sub[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
             return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) - rebind[
@@ -2621,7 +2621,7 @@ struct MapLowerScale:
         s: Scalar[dtype],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
             return rebind[SIMD[res.dtype, width]](a.load[width](idx)) * rebind[
@@ -2646,7 +2646,7 @@ struct MapLowerVarSum:
         inputs: InputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
         ctx: DeviceContext,
     ) raises:
-        @parameter
+        @__parameter
         @always_inline
         def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
             var acc = SIMD[res.dtype, width](0)

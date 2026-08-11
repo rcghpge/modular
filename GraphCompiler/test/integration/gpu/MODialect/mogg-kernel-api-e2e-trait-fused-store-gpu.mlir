@@ -25,7 +25,7 @@ mo.graph @trait_fused_store_double_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor
 }
 
 // Same fused-store boundary, but the custom kernel wraps the store operation in
-// a host-authored `@parameter` closure adapter before launching the device
+// a host-authored `@__parameter` closure adapter before launching the device
 // kernel. The `mo.negative` consumer is the epilogue that should be fused into the
 // generated `_MoggOutputStoreFusionTensor`. A constant input of 5 should be
 // copied by the custom op, then negated by the fused store.

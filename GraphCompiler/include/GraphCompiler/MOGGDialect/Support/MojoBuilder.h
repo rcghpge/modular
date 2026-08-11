@@ -264,7 +264,7 @@ public:
   /// other. When `captureConvention` is non-empty (e.g. "var"), the lambda
   /// gets that blanket capture clause (`... {<captureConvention>} ...`),
   /// which Mojo requires for closures capturing enclosing values by name.
-  /// Empty means no capture clause (e.g. `@parameter` closures).
+  /// Empty means no capture clause (e.g. `@__parameter` closures).
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
                    std::optional<MojoValue> returnType, bool isInline,

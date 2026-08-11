@@ -16,7 +16,7 @@
 // becomes `__call__`'s store statement), wraps it in
 // `_MoggOutputStoreFusionTensor(functor, layout)`, and forces the kernel's
 // `has_epilogue_fusion` parameter True on the DPS execute call. The whole path
-// is `@parameter`-free (NOPARAM below).
+// is `@__parameter`-free (NOPARAM below).
 //
 // The pipeline runs through `mogg-to-mgp` (so the region consumes the outlined
 // stub), then emits; `mogg-emit-mojo` still erases the stub, so
@@ -74,7 +74,7 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // body ops (`TensorCreateEpilogueOp::emitMojo` / `TensorStoreOp::emitMojo`)
 // instead of substituted into a fixed Mojo template: per-capture (dtype,
 // LayoutType, mut) params, bare (ptr, layout) fields, and an `@always_inline
-// __call__` that stores through a rebuilt `TileTensor`. NO `@parameter`, NO
+// __call__` that stores through a rebuilt `TileTensor`. NO `@__parameter`, NO
 // `ManagedTensorSlice` field.
 // CHECK:      struct OutputStoreFunctor{{[0-9_]*}}[[[DTYPE:[a-zA-Z0-9_]+]]: DType, [[LAYOUT:[a-zA-Z0-9_]+]]: layout.TensorLayout, [[MUT:[a-zA-Z0-9_]+]]: Bool](OutputStoreFusion, TrivialRegisterPassable):
 // CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[Self.[[DTYPE]]], UntrackedOrigin[mut = Self.[[MUT]]]]
@@ -84,5 +84,5 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // CHECK-NEXT:         var [[TILE:[a-zA-Z0-9_]+]] = layout.TileTensor[dtype = Self.[[DTYPE]], LayoutType = Self.[[LAYOUT]], origin = UntrackedOrigin[mut = Self.[[MUT]]]](ptr = self.[[PTRF]], layout = self.[[LAYOUTF]])
 // CHECK-NEXT:         [[TILE]].store[width = width, alignment = element_alignment](idx, rebind[SIMD[type_of([[TILE]]).dtype, width]](value))
 
-// The advanced-fusion emit path must be entirely `@parameter`-free.
-// NOPARAM-NOT: @parameter
+// The advanced-fusion emit path must be entirely `@__parameter`-free.
+// NOPARAM-NOT: @__parameter

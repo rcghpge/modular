@@ -200,7 +200,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   FunctionBody body;
 
   if (isParameter)
-    statement("@parameter");
+    statement("@__parameter");
   if (isInline)
     statement("@always_inline");
 

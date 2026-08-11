@@ -511,7 +511,7 @@ static int64_t getPackDataSize(const TargetQueries &target, Type type) {
   int64_t sizeOfType = type.getIntOrFloatBitWidth() / CHAR_BIT;
 
   // TODO: How to implement this case?
-  // @parameter
+  // @__parameter
   // if is_debug_build():
   //     # Only use the large cache size for release build as debug build may
   //     # contain additional data could cause stack overflow.
