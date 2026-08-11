@@ -4242,6 +4242,18 @@ void Composite::DistributedAllGatherRMSNormOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedAllGatherRMSNormQuantMXFP8Op
+//===----------------------------------------------------------------------===//
+
+void Composite::DistributedAllGatherRMSNormQuantMXFP8Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceRMSNormRoPEOp
 //===----------------------------------------------------------------------===//
 

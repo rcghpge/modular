@@ -737,6 +737,42 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
   }];
 }
 
+def MOComposite_DistributedAllGatherRMSNormQuantMXFP8Op : MO_DistributedOp<"composite.distributed.allgather_rms_norm_quant_mxfp8", [
+  MO_MultiDevice,
+  MO_CompositeOpTrait
+]> {
+  string cppNamespace = MODialect.cppNamespace # "::Composite";
+  let summary = "Fused AllGather + RMSNorm + MXFP8 quant across N devices for a single device.";
+  let description = [{
+    `mo.composite.distributed.allgather_rms_norm` plus an MXFP8 copy of the
+    normed `output`: `outQuant` (float8_e4m3fn, same shape) and `outScale`
+    (float8_e8m0fnu, `[rows, cols / 32]`, plain rank-2 row-major -- what
+    `block_scaled_matmul_amd` takes as `a_scales`, NOT the SM100 SF-atom
+    interleave and NOT the preshuffled atom order `block_scaled_matmul_amd_preb`
+    requires). Quantized from the bf16 written to `output`, so byte-identical
+    to a standalone quantize. Same `group_size` contract.
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    Variadic<MO_Tensor>:$gamma,
+    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
+    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$output,
+    Variadic<MO_Tensor>:$outQuant,
+    Variadic<MO_Tensor>:$outScale,
+    Variadic<MO_Tensor>:$outResidual,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 // Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
 //===----------------------------------------------------------------------===//
 //
