@@ -994,9 +994,3 @@ BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   ASSERT_STREAM(type, << "expecting a !mo.tensor or !mo.buffer type");
   return loweringState.getBufferBuilder(MO::getDeviceOrDefault(type));
 }
-
-TypeBuilder *MOOpLoweringState::getStorageTypeBuilder(Type moTensorType) {
-  auto type = dyn_cast<MO::TensorType>(moTensorType);
-  ASSERT_STREAM(type, << "expecting !mo.tensor type");
-  return loweringState.getTypeBuilder(MO::getDeviceOrDefault(type));
-}

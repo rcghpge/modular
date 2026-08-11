@@ -58,15 +58,13 @@ public:
     typeConverter.addConversion(
         [this](MO::TensorType type) -> std::optional<Type> {
           return getTypeBuilder(MO::getDeviceOrDefault(type))
-              ->tensorType(this->graph.getContext(),
-                           MGP::createTensorSpecType(type));
+              .tensorType(MGP::createTensorSpecType(type));
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {
           auto type = MO::BufferType::toTensorType(bufferType);
           return getTypeBuilder(MO::getDeviceOrDefault(type))
-              ->tensorType(this->graph.getContext(),
-                           MGP::createTensorSpecType(type));
+              .tensorType(MGP::createTensorSpecType(type));
         });
     typeConverter.addConversion([this](
                                     MO::ListType type) -> std::optional<Type> {
@@ -77,9 +75,9 @@ public:
       MLIRContext *ctx = type.getContext();
       MGP::TensorSpecType tensorSpecTy = MGP::createTensorSpecType(tensorTy);
       DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(tensorTy);
-      MGP::TypeBuilder *typeBuilder = getTypeBuilder(tensorDeviceRef);
-      auto mgpTensorTy = typeBuilder->tensorType(ctx, tensorSpecTy);
-      return cast<Type>(MGP::ListType::get(ctx, mgpTensorTy));
+      auto mgpTensorTy =
+          getTypeBuilder(tensorDeviceRef).tensorType(tensorSpecTy);
+      return MGP::ListType::get(ctx, mgpTensorTy);
     });
     typeConverter.addConversion([](MO::ScalarType type) -> std::optional<Type> {
       auto errOrDtype = MO::toMLIRType(type.getContext(), type.getDtype());
@@ -459,15 +457,13 @@ public:
     return builderContext;
   }
 
-  /// Register the given type builder for the given device.
-  void registerTypeBuilder(DeviceRefAttr device,
-                           std::unique_ptr<TypeBuilder> typeBuilder) {
-    builderContext.registerTypeBuilder(device, std::move(typeBuilder));
+  /// Register a type builder for the given device.
+  void registerTypeBuilder(DeviceRefAttr device) {
+    builderContext.registerTypeBuilder(device);
   }
 
-  /// Returns the type builder to use for device. The builder is owned by
-  /// this object.
-  TypeBuilder *getTypeBuilder(DeviceRefAttr device) {
+  /// Returns the type builder to use for device.
+  MGP::MGPTypeBuilder getTypeBuilder(DeviceRefAttr device) {
     return builderContext.getTypeBuilder(device);
   }
 
@@ -673,10 +669,6 @@ struct MOOpLoweringState {
   /// Returns the buffer builder appropriate for the device on which the
   /// given !mo.tensor should be stored.
   BufferBuilder *getStorageBufferBuilder(Type moTensorType);
-
-  /// Returns the type builder appropriate for the device on which the
-  /// given !mo.tensor should be stored.
-  TypeBuilder *getStorageTypeBuilder(Type moTensorType);
 
   //
   // These all redirect to the similarly named BufferBuilder method using

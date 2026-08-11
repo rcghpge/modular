@@ -251,10 +251,8 @@ static SmallVector<DeviceRefAttr> getAllDevicesUsedInGraph(MO::GraphOp graph) {
 
 LogicalResult
 MOGraphLowering::setupTypeBuildersForAllDevices(MO::GraphOp graph) {
-  for (DeviceRefAttr device : getAllDevicesUsedInGraph(graph)) {
-    loweringState.registerTypeBuilder(
-        device, std::make_unique<MGP::MGPTypeBuilder>(device));
-  }
+  for (DeviceRefAttr device : getAllDevicesUsedInGraph(graph))
+    loweringState.registerTypeBuilder(device);
   return success();
 }
 
@@ -467,8 +465,8 @@ MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   MGP::TensorSpecType outputTensorSpecTy =
       MGP::createTensorSpecType(outputTensorTy);
   DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(outputTensorTy);
-  MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
-  auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
+  auto mgpOutputTensorTy = loweringState.getTypeBuilder(tensorDeviceRef)
+                               .tensorType(outputTensorSpecTy);
   return MGP::ListType::get(ctx, mgpOutputTensorTy);
 }
 

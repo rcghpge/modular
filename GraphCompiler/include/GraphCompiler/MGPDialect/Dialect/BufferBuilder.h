@@ -135,50 +135,23 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
 }
 
 //===----------------------------------------------------------------------===//
-// TypeBuilder
-//===----------------------------------------------------------------------===//
-
-/// A TypeBuilder provides methods for building device-specific chain, buffer
-/// and tensor types. It is only needed during lowering when lowered types must
-/// be provided ahead of lowering itself. Otherwise the BufferBuilder constructs
-/// types as it goes.
-class TypeBuilder {
-public:
-  virtual ~TypeBuilder() = default;
-
-  /// Returns Type representing device-specific tensor with given tensor spec
-  /// type.
-  virtual Type tensorType(MLIRContext *ctx, TensorSpecType tensorSpecType) = 0;
-
-  /// Returns Type representing device-specific buffer.
-  virtual Type bufferType(MLIRContext *ctx) = 0;
-
-  /// Returns Type representing device-specific chain.
-  virtual Type chainType(MLIRContext *ctx) = 0;
-
-  virtual void vtableAnchor();
-};
-
-//===----------------------------------------------------------------------===//
 // MGPTypeBuilder
 //===----------------------------------------------------------------------===//
 
-class MGPTypeBuilder : public TypeBuilder {
+/// An MGPTypeBuilder provides methods for building device-specific tensor
+/// types. It is only needed during lowering when lowered types must be
+/// provided ahead of lowering itself. Otherwise the BufferBuilder constructs
+/// types as it goes.
+class MGPTypeBuilder {
 public:
   DeviceRefAttr device;
 
   MGPTypeBuilder(DeviceRefAttr device) : device(device) {}
-  ~MGPTypeBuilder() override = default;
 
-  Type tensorType(MLIRContext *ctx, TensorSpecType tensorSpecType) override {
+  /// Returns the device-specific tensor type with the given tensor spec.
+  DeviceTensorType tensorType(TensorSpecType tensorSpecType) {
     return DeviceTensorType::get(device, tensorSpecType);
   }
-
-  Type bufferType(MLIRContext *ctx) override {
-    return DeviceBufferType::get(device);
-  }
-
-  Type chainType(MLIRContext *ctx) override { return MEF::ChainType::get(ctx); }
 };
 
 //===----------------------------------------------------------------------===//
@@ -544,23 +517,21 @@ public:
 
   BufferBuilderContext() = default;
 
-  /// Register the given type builder for the given device.
-  void registerTypeBuilder(DeviceRefAttr device,
-                           std::unique_ptr<TypeBuilder> typeBuilder) {
+  /// Register a type builder for the given device.
+  void registerTypeBuilder(DeviceRefAttr device) {
     [[maybe_unused]] bool inserted =
-        typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
+        typeBuilderMap.insert({device, MGPTypeBuilder(device)}).second;
     ASSERT_STREAM(inserted,
                   << "a type builder has already been registered for device");
   }
 
-  /// Returns the type builder to use for device. The builder is owned by
-  /// this object.
-  TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
+  /// Returns the type builder to use for device.
+  MGPTypeBuilder getTypeBuilder(DeviceRefAttr device) const {
     auto itr = typeBuilderMap.find(device);
     ASSERT_STREAM(itr != typeBuilderMap.end(),
                   << "no type builder has been registered for device: "
                   << device);
-    return itr->second.get();
+    return itr->second;
   }
 
   /// Register the given buffer builder for the given device.
@@ -583,8 +554,6 @@ public:
     return itr->second.get();
   }
 
-  TypeBuilder *getHostTypeBuilder() const { return getTypeBuilder(hostDevice); }
-
   /// Returns the buffer builder to use for the 'host' device.
   BufferBuilder *getHostBufferBuilder() const {
     return getBufferBuilder(hostDevice);
@@ -592,7 +561,7 @@ public:
 
 private:
   /// The type builder to use for each device.
-  llvm::DenseMap<DeviceRefAttr, std::unique_ptr<TypeBuilder>> typeBuilderMap;
+  llvm::DenseMap<DeviceRefAttr, MGPTypeBuilder> typeBuilderMap;
 
   /// The buffer builder to use for each device.
   llvm::DenseMap<DeviceRefAttr, std::unique_ptr<BufferBuilder>>

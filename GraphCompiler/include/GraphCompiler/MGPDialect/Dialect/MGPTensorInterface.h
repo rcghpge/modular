@@ -37,12 +37,6 @@ struct TensorBufferDialectInterface
   /// Adds to builderContext builder for all the devices in the given model.
   static BufferBuilderContext getAllBufferBuilders(ModelOp modelOp);
 
-  /// Returns the type builder appropriate for the device which will store
-  /// values of type. Returns the builder for the 'host' device for types
-  /// which don't have a specific device.
-  static TypeBuilder *getTypeBuilder(const BufferBuilderContext &builderContext,
-                                     Type type);
-
   /// Returns the buffer builder appropriate for the device which will execute
   /// op. Returns the builder for the 'host' device for ops which don't have
   /// a specific device.

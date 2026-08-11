@@ -38,17 +38,6 @@ TensorBufferDialectInterface::getAllBufferBuilders(ModelOp modelOp) {
   return builderContext;
 }
 
-TypeBuilder *TensorBufferDialectInterface::getTypeBuilder(
-    const BufferBuilderContext &builderContext, Type type) {
-  if (auto interface =
-          dyn_cast<TensorBufferDialectInterface>(&type.getDialect())) {
-    DeviceRefAttr device = interface->getStorageDevice(builderContext, type);
-    return builderContext.getTypeBuilder(device);
-  }
-
-  return builderContext.getHostTypeBuilder();
-}
-
 BufferBuilder *TensorBufferDialectInterface::getBuilderForOpExecution(
     const BufferBuilderContext &builderContext, Operation *op) {
   if (auto interface =
@@ -85,8 +74,7 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
   auto hostBufferBuilder = std::make_unique<MGPBufferBuilder>(hostDevice);
   MGPBufferBuilder *hostBufferBuilderPtr = hostBufferBuilder.get();
   hostBufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
-  builderContext.registerTypeBuilder(
-      hostDevice, std::make_unique<MGPTypeBuilder>(hostDevice));
+  builderContext.registerTypeBuilder(hostDevice);
   builderContext.registerBufferBuilder(hostDevice,
                                        std::move(hostBufferBuilder));
 
@@ -101,8 +89,7 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
   for (auto device : otherDevices) {
     auto bufferBuilder = std::make_unique<MGPBufferBuilder>(device);
     bufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
-    builderContext.registerTypeBuilder(
-        device, std::make_unique<MGPTypeBuilder>(device));
+    builderContext.registerTypeBuilder(device);
     builderContext.registerBufferBuilder(device, std::move(bufferBuilder));
   }
 
