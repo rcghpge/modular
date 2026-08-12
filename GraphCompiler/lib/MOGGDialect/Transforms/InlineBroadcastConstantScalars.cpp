@@ -69,6 +69,16 @@ recoverBroadcastConstant(KernelOp kernel, CallViewOp view) {
   if (srcTy.getNumElements() != 1)
     return std::nullopt;
 
+  // A host constant moved onto the device (`ops.constant(...).to(device)`)
+  // reaches the kernel through an `mo.transfer`, which the identity chain below
+  // does not see through. Transfers preserve value, dtype, and rank, and the
+  // literal is inlined into the kernel body, so placement is irrelevant here.
+  // FuseViews already fused this view in on the assumption that this pass
+  // inlines it, so failing to look through leaves a zero-strided operand the
+  // Trainium tile-fusion path cannot express.
+  while (auto transfer = srcTensor.getDefiningOp<MO::TransferOp>())
+    srcTensor = cast<MO::TensorValue>(transfer.getInput());
+
   // Recover the constant ops feeding the source (handles constant /
   // rebind / reshape chains). We require exactly one constant.
   SmallVector<MO::ConstantOp> constantOps =

@@ -33,6 +33,22 @@ mo.graph @scalar_add_si32(%arg0: !mo.tensor<[6], si32>) -> !mo.tensor<[6], si32>
 // CHECK: mogg.constant.scalar {value = 3 : si32} : !mo.scalar<si32>
 // CHECK: mogg.call.elementwise["{{.*}}.Add"] (%{{.*}}, %{{.*}}) {{.*}} : si32, !mo.scalar<si32> -> si32
 
+// A broadcast scalar constant reached through an intervening `mo.transfer`
+// (as `ops.constant(...).to(device)` lowers) is inlined too.
+mo.graph @scalar_add_transferred_const(%arg0: !mo.tensor<[6], f32>) -> !mo.tensor<[6], f32> {
+  %ch0 = mo.chain.create()
+  %s = mo.constant {value = #M.dense_array<7.500000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %st, %ch1 = mo.transfer[%ch0] %s : !mo.tensor<[], f32> to <"cpu", 0> {alwaysElideSameDeviceCopy = false}
+  %b = mo.static.broadcast_to(%st) : !mo.tensor<[], f32> -> !mo.tensor<[6], f32>
+  %r = mo.add(%arg0, %b) : !mo.tensor<[6], f32>
+  mo.output %r : !mo.tensor<[6], f32>
+}
+// CHECK-LABEL: mo.graph @scalar_add_transferred_const
+// CHECK: mogg.kernel(%{{.*}}: !mo.tensor<[6], f32>) -> !mo.tensor<[6], f32>
+// CHECK-NOT: mogg.call.view
+// CHECK: mogg.constant.scalar {value = 7.500000e-01 : f32} : !mo.scalar<f32>
+// CHECK: mogg.call.elementwise["{{.*}}.Add"] (%{{.*}}, %{{.*}}) {{.*}} : f32, !mo.scalar<f32> -> f32
+
 // A broadcast constant captured as a fusible operand of an input (prologue)
 // lambda is inlined too. Here `mul(arg0, broadcast(0.5))` fuses as a prologue
 // into the softmax kernel, so the broadcast is the second fusible operand.
