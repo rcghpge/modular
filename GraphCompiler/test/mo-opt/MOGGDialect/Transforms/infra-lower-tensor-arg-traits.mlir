@@ -114,6 +114,16 @@
 // EMIT-DAG: _MoggTensorBufferCapture[DType.float32, type_of(
 // EMIT-DAG: unsafe_origin_cast[MutUntrackedOrigin]()
 //
+// Dynamic captures infer layout types from arguments because runtime extents
+// are unavailable in the stub signature.
+// EMIT-DAG: __trait_capture_layout_type_{{[0-9]+}} : layout.TensorLayout
+// EMIT-DAG: _MoggTensorBufferCapture[DType.float32, __trait_capture_layout_type_
+//
+// Keep each capture paired with its corresponding layout parameter.
+// EMIT-DAG: __trait_capture_layout_type_2 : layout.TensorLayout](arg__0: _MoggTensorBufferCapture[DType.float32, __trait_capture_layout_type_0], arg__1: _MoggTensorBufferCapture[DType.float32, __trait_capture_layout_type_1], arg__2: _MoggTensorBufferCapture[DType.float32, __trait_capture_layout_type_2]
+//
+// EMIT-DAG: layout.Coord(layout.Idx[2], Scalar[DType.int](
+//
 // Stub assembles dense execute args from capture before `execute`.
 // EMIT-DAG: _MoggDenseTensorArg[type_of(arg__
 // EMIT-DAG: _MoggTensorIO.OUTPUT
@@ -249,6 +259,16 @@ mo.graph @mixed_legacy_fused(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3],
 mo.graph @trait_fused_store(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %0 = mo.custom {symbol = "trait_fused_store_double", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
+}
+
+// Mixed static/dynamic shapes exercise layout inference for three captures.
+// CHECK-LABEL: mgp.model @trait_dense_dyn
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+mo.graph @trait_dense_dyn<D0>(%x: !mo.tensor<[2, D0], f32>, %y: !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32> {
+  %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, D0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+  mo.output %0 : !mo.tensor<[2, D0], f32>
 }
 
 // A pure-legacy control kernel (`legacy_only_control`): a legacy `OutputTensor`

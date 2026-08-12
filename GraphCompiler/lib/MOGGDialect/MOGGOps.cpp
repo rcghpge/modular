@@ -2633,18 +2633,21 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     Value input = inputs[i];
     MojoValue inputValue = state.getMojoValueFor(input);
 
-    if (stub && i < execFnAdaptor.inputArguments.size()) {
-      if (std::optional<TensorArgContract> contract =
-              execFnAdaptor.inputArguments[i].getTraitContract())
-        inputValue = maybeAssembleDenseTraitArgFromCapture(state, input,
-                                                           *contract, stub);
+    bool isTraitArg = i < execFnAdaptor.inputArguments.size() &&
+                      execFnAdaptor.inputArguments[i].isTraitTensorType();
+    if (stub && isTraitArg) {
+      inputValue = maybeAssembleDenseTraitArgFromCapture(
+          state, input, *execFnAdaptor.inputArguments[i].getTraitContract(),
+          stub);
     }
 
     // Transform mutable inputs if kernel expects InputTensor.
     // Skip for variadic kernel args (e.g., bundled collectives with
     // N-expanded inputs) where the adaptor entry is a
     // KernelDeclVariadicTensorAdaptor, not a KernelDeclTensorAdaptor.
-    if (isMutableInputTensor(input) &&
+    // Trait args are already assembled with their contract's IO role; the
+    // legacy conversion expects a `ManagedTensorSlice`.
+    if (!isTraitArg && isMutableInputTensor(input) &&
         i < execFnAdaptor.inputArguments.size()) {
       const auto *tensorInfo = std::get_if<KernelDeclTensorAdaptor>(
           &execFnAdaptor.inputArguments[i].underlyingType);
@@ -3044,16 +3047,16 @@ from extensibility import DenseTensor
     if (DictionaryAttr captureDict = traitCaptureDictFor(i)) {
       StringRef dtypeExpr =
           cast<StringAttr>(captureDict.get("dtype")).getValue();
-      auto tensorTy = MO::dynCastFromTensorLike(arg.getType());
-      if (!tensorTy)
-        return emitOpError("buffer-capture stub arg must be tensor-like");
-      MojoValue shapeCoord =
-          state.getShapeAsCoordMojoValue(tensorTy.getTypedShapeAttr());
-      MojoValue layoutExpr = MojoValue(kFnRowMajor)({}, {shapeCoord});
-      MojoValue layoutType = MojoValue("type_of")({}, {layoutExpr});
+      // Dynamic extents exist only in the caller's runtime layout, so infer the
+      // capture's layout type from the argument.
+      std::string layoutTypeParamName =
+          llvm::formatv("__trait_capture_layout_type_{}", i).str();
+      stubParams.push_back(MOGG::NamedMojoDef::asVerbatim(
+          layoutTypeParamName, MojoValue(kStructTensorLayout)));
       MojoValue captureType("_MoggTensorBufferCapture");
       inputTypes.push_back(MOGG::NamedMojoDef(
-          "arg", captureType[{MojoValue(dtypeExpr), layoutType}]));
+          "arg",
+          captureType[{MojoValue(dtypeExpr), MojoValue(layoutTypeParamName)}]));
     } else {
       StringRef bound = traitBoundFor(i);
       if (!bound.empty()) {

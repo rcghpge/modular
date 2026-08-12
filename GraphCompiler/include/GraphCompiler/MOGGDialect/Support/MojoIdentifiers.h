@@ -117,13 +117,10 @@ constexpr llvm::StringLiteral kInputTensorArgContractsAttrName =
 constexpr llvm::StringLiteral kOutputTensorArgContractsAttrName =
     "mogg.output_tensor_arg_contracts";
 
-/// Per-stub-argument buffer-capture comptime metadata stamped on the MOGG-ABI
-/// `mogg.kernel.stub` for trait tensor operands. Entry `i` is a
-/// `DictionaryAttr` `{dtype, layout_type}` (Mojo type expressions as strings)
-/// when stub argument `i` is a `_MoggTensorBufferCapture`, or an empty string
-/// otherwise. Emit types the stub parameter as
-/// `_MoggTensorBufferCapture[dtype, layout_type]`; execute-facing trait args
-/// are assembled inside the stub body from the capture + contract.
+/// Per-stub-argument buffer-capture metadata. A trait tensor entry is
+/// `{dtype}`; other entries are empty strings. Stub emission infers
+/// `_MoggTensorBufferCapture[dtype, L]`'s `L` from the argument because dynamic
+/// extents cannot be encoded in shape-only metadata.
 constexpr llvm::StringLiteral kTraitStubBufferCaptureAttrName =
     "mogg.trait_stub_buffer_capture";
 
