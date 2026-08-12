@@ -515,7 +515,7 @@ def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
     FnTypeGeneratorType signatures.
 
     Two input modes are supported:
-    - mojo-pkg-paths: paths to compiled .mojopkg files (production use).
+    - mojo-pkg-paths: paths to compiled .mojoc files (production use).
     - lit-mlir-paths: paths to MLIR text files produced by kgen-translate
       -import-mojo; no built-in packages are loaded, making this mode suitable
       for self-contained lit tests.
@@ -526,7 +526,7 @@ def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
   }];
   let options = [
     ListOption<"mojoPkgPaths", "mojo-pkg-paths", "std::string",
-      "Paths to compiled .mojopkg files containing kernel definitions.">,
+      "Paths to compiled .mojoc files containing kernel definitions.">,
     ListOption<"litMlirPaths", "lit-mlir-paths", "std::string",
       "Paths to MLIR files (kgen-translate -import-mojo output) for testing. "
       "Built-in packages are not loaded when this option is used alone.">,

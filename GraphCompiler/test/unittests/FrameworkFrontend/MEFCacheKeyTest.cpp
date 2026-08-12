@@ -115,14 +115,14 @@ private:
 };
 
 /// Create a self-cleaning temp directory containing a fake Mojo binary
-/// package `pkg.mojopkg` with the given bytes.
+/// package `pkg.mojoc` with the given bytes.
 std::optional<TempDir> makePackageDir(llvm::StringRef contents) {
   auto dirOr = TempDir::create("mef-import-path-test.%%%%%%");
   EXPECT_FALSE(dirOr.isError()) << "failed to create temp dir";
   if (dirOr.isError())
     return std::nullopt;
   TempDir dir = dirOr.takeValue();
-  std::ofstream out(dir.getPath() / "pkg.mojopkg", std::ios::binary);
+  std::ofstream out(dir.getPath() / "pkg.mojoc", std::ios::binary);
   out << contents.str();
   return dir;
 }
@@ -276,7 +276,7 @@ TEST_F(MEFCacheKeyTest, ImportPathPackageContentInvalidatesKey) {
     GTEST_SKIP() << "kernel packages unavailable; skip";
 
   {
-    std::ofstream out(pkgDir->getPath() / "pkg.mojopkg", std::ios::binary);
+    std::ofstream out(pkgDir->getPath() / "pkg.mojoc", std::ios::binary);
     out << "import-path package bytes v2";
   }
   auto after = tryBuild();

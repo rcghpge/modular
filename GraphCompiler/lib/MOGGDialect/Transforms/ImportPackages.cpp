@@ -472,7 +472,7 @@ static mlir::LogicalResult scanForKernelDecls(
   return result;
 }
 
-/// Load the post-elaboration primary body from a `.mojopkg` file by fully
+/// Load the post-elaboration primary body from a `.mojoc` file by fully
 /// materializing the bytecode IR. No dependency packages are loaded: decorator
 /// matching uses the callee namespace instead of a symbol lookup into dep
 /// packages.
@@ -972,7 +972,7 @@ struct ImportPackagesPass
     }
 
     // lit-mlir-paths mode: parse pre-compiled MLIR files (kgen-translate
-    // -import-mojo output) directly, without going through .mojopkg format.
+    // -import-mojo output) directly, without going through .mojoc format.
     for (const auto &path : litMlirPaths) {
       OwningOpRef<ModuleOp> litModule =
           mlir::parseSourceFile<ModuleOp>(path, ctx);
