@@ -4934,7 +4934,7 @@ struct _MoggDenseTensorArg[
         ptr: Pointer[NoneType, MutAnyOrigin],
         layout: Self.LayoutType,
     ):
-        self.handle = ptr.unsafe_bitcast[Scalar[Self.dtype]]().mut_cast[
+        self.handle = ptr.unsafe_bitcast[Scalar[Self.dtype]]().unsafe_mut_cast[
             Self.mut
         ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
         self._layout = layout
@@ -5112,7 +5112,7 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
   MojoValue rawUnsafePtr =
       ManagedTensorSliceRef(state.getMojoValueFor(getBuffer())).unsafePtr();
   MojoValue ptr = state.builder.var(
-      llvm::formatv("{0}.unsafe_bitcast[Scalar[{1}]]().mut_cast[True]()"
+      llvm::formatv("{0}.unsafe_bitcast[Scalar[{1}]]().unsafe_mut_cast[True]()"
                     ".unsafe_origin_cast[MutUntrackedOrigin]()",
                     rawUnsafePtr.text, dTypeParam.text)
           .str());
