@@ -15,7 +15,6 @@ include "GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPAttrs.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPDeviceGraphOps.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
-include "GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 
 include "GraphCompiler/Interfaces/EmitsMojoInterface.td"

@@ -14,30 +14,6 @@
 
 include "mlir/IR/OpBase.td"
 
-def MGP_TensorTypeInterface : TypeInterface<"MGPTensorTypeInterface"> {
-  let description = [{
-    Interface for types which represent runtime tensors.
-  }];
-  let cppNamespace = "::M::MGP";
-  let methods = [
-    InterfaceMethod<
-      "Get the tensor spec", "::M::MGP::TensorSpecType", "getTensorSpec", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_type.getTensorSpec();
-      }]
-    >
-  ];
-}
-
-def MGP_BufferTypeInterface : TypeInterface<"MGPBufferTypeInterface"> {
-  let description = [{
-    Types that represent runtime buffers.
-  }];
-  let cppNamespace = "::M::MGP";
-}
-
-
 def MGP_HasDeviceTypeInterface : TypeInterface<"MGPHasDeviceTypeInterface"> {
   let description = [{
     Types which carry an `#M.device_ref` attribute.

@@ -1049,12 +1049,6 @@ gentbl_cc_library(
             ],
             "include/GraphCompiler/MGPDialect/Dialect/MGPDialect.cpp.inc",
         ),
-        # Carry over from CMake. Original comment:
-        # Type declarations need to be generated for MGPTypes.td directly so that
-        # MGPTensorSpec is declared in its own include file (which is needed by
-        # TensorTypeInterface). Type definitions for all types and TensorSpec need
-        # to be generated in the same file so that there is only one copy of the type
-        # parser.
         (
             [
                 "-gen-typedef-defs",
@@ -1121,25 +1115,6 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "MGPDialectTensorSpecIncGen",
-    includes = ["include"],
-    tbl_outs = [
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=mgp",
-            ],
-            "include/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td",
-    deps = [
-        ":MGPDialectTdFiles",
-    ],
-)
-
-gentbl_cc_library(
     name = "MGPDialectTypeInterfacesIncGen",
     includes = ["include"],
     tbl_outs = [
@@ -1199,7 +1174,6 @@ modular_cc_library(
         ":MGPDialectAttrsIncGen",
         ":MGPDialectIncGen",
         ":MGPDialectOpInterfacesIncGen",
-        ":MGPDialectTensorSpecIncGen",
         ":MGPDialectTypeInterfacesIncGen",
         ":MGPDialectTypesIncGen",
         "//KGEN:KGENDialect",
@@ -1217,7 +1191,6 @@ modular_cc_library(
         ":MGPDialectAttrsIncGen",
         ":MGPDialectIncGen",
         ":MGPDialectOpInterfacesIncGen",
-        ":MGPDialectTensorSpecIncGen",
         ":MGPDialectTypeInterfacesIncGen",
         ":MGPDialectTypesIncGen",
         ":MOSHDialect",
