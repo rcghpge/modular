@@ -189,6 +189,16 @@ void IterOpaqueOp::insertInputsAt(unsigned idx, ValueRange vals) {
     getBody().front().insertArgument(idx, v.getType(), v.getLoc());
 }
 
+void IterOpaqueOp::eraseInputsAt(unsigned idx, size_t len) {
+  ASSERT_STREAM(idx + len <= getInputs().size(), << "[idx, idx + len) = ["
+                                                 << idx << ", " << (idx + len)
+                                                 << "), before outputs");
+  getInputsMutable().erase(idx, len);
+
+  for (unsigned i = 0; i < len; ++i)
+    getBody().front().eraseArgument(idx);
+}
+
 void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,
                                             OpAsmSetValueNameFn setNameFn) {
   if (region.empty())

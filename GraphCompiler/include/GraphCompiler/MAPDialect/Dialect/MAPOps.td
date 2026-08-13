@@ -105,6 +105,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// Inserts `vals` as new inputs starting at `idx`, updating both operands
     /// and the corresponding shadowed body block arguments.
     void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);
+
+    /// Erases a range of inputs at `[idx, idx + len)`, updating both operands
+    /// and the corresponding shadowed body block arguments.
+    void eraseInputsAt(unsigned idx, size_t len = 1);
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -436,7 +440,7 @@ def MAP_StoreOp : MAP_Op<"store", [
 //===----------------------------------------------------------------------===//
 
 def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp", "IterPrologueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
@@ -448,7 +452,8 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
     returns a single scalar result. All operands other than the index, and
     the result, must be scalar (non-tensor) types. Only valid inside a
     `map.iter.foreach` body, or, after outlining, inside a
-    `map.iter.foreach.body`.
+    `map.iter.foreach.body`, or inside a `map.iter.prologue` /
+    `map.iter.epilogue` callback that has had such a body fused into it.
 
     `params` carries the kernel's compile-time parameters (e.g. a
     custom kernel's `bias`), inferred from the originating MO op. Absent when
