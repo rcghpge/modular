@@ -31,7 +31,7 @@ DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
   SmallVector<NamedAttribute> params;
   for (NamedAttribute attr : op->getAttrs()) {
     Attribute value = attr.getValue();
-    if (isa<M::DeviceRefAttr>(value))
+    if (isa<M::DeviceRefAttr, KGEN::ParamDeclArrayAttr>(value))
       continue;
     if (auto typeAttr = dyn_cast<TypeAttr>(value)) {
       params.push_back(NamedAttribute(

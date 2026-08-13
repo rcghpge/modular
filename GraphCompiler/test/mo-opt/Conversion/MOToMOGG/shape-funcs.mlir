@@ -9,7 +9,7 @@
 // CHECK-SAME: (%[[INPUT]], %[[FILTER]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]]
 // CHECK-SAME: : !mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mogg.shape_func_result<4>
 // CHECK-SAME: {isThrows, kernel_param = {output_rank = 4 : index}}
-// CHECK: } fusionInfo = "shapeof(mo.avg_pool)":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[F1 : !kgen.scalar<si64>, D4 : !kgen.scalar<si64>, D5 : !kgen.scalar<si64>, F2 : !kgen.scalar<si64>]>}
+// CHECK: } fusionInfo = "shapeof(mo.avg_pool)":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[F1 : !kgen.scalar<si64>, D4 : !kgen.scalar<si64>, D5 : !kgen.scalar<si64>, F2 : !kgen.scalar<si64>]> : !kgen.non_struct_type}
 mo.graph @avg_pool_mixed_dims<() -> D1, D2>(
   %input: !mo.tensor<[32, 10, 20, 3], f32>,
   %filter_shape: !mo.tensor<[2], si64>,
@@ -33,7 +33,7 @@ mo.graph @avg_pool_mixed_dims<() -> D1, D2>(
 // CHECK-SAME: inputs(%{{.*}}, %{{.*}}, %{{.*}} : !mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>, !mogg.context)
 // CHECK-SAME: outputs(%{{.*}} : !mo.tensor<[D1, 20, D0], f32>)
 // CHECK-SAME: {isThrows, kernel_param = {axis = 0 : index}, moOpName = "mo.gather"}
-// CHECK: } fusionInfo = "mo.gather":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[]>}
+// CHECK: } fusionInfo = "mo.gather":{{[0-9]+}} {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[]> : !kgen.non_struct_type}
 mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   %input : !mo.tensor<[10, D0], f32>,
   %indices : !mo.tensor<[D1, 20], si32>
