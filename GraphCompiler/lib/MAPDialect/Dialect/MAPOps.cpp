@@ -177,6 +177,18 @@ Block::BlockArgListType IterOpaqueOp::getInputBlockArgs() {
   return getBody().front().getArguments().drop_back(getNumResults());
 }
 
+void IterOpaqueOp::insertInputsAt(unsigned idx, ValueRange vals) {
+  ASSERT_STREAM(idx <= getInputs().size(),
+                << "idx (" << idx << ") must stay within the inputs ("
+                << getInputs().size() << "), before outputs");
+  SmallVector<Value> ops(getInputs());
+  ops.insert(ops.begin() + idx, vals.begin(), vals.end());
+  getInputsMutable().assign(ops);
+
+  for (auto v : llvm::reverse(vals))
+    getBody().front().insertArgument(idx, v.getType(), v.getLoc());
+}
+
 void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,
                                             OpAsmSetValueNameFn setNameFn) {
   if (region.empty())

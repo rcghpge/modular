@@ -101,6 +101,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// (always known) result count rather than the input count keeps this
     /// correct either way.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
+
+    /// Inserts `vals` as new inputs starting at `idx`, updating both operands
+    /// and the corresponding shadowed body block arguments.
+    void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -432,7 +436,7 @@ def MAP_StoreOp : MAP_Op<"store", [
 //===----------------------------------------------------------------------===//
 
 def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,

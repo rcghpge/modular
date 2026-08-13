@@ -9,11 +9,16 @@
 
 include "mlir/Pass/PassBase.td"
 
-def FuseKernels : Pass<"map-fuse-kernels", "mlir::ModuleOp"> {
+def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels by inlining producers into consumers.";
   let description = [{
     Runs the advanced fusion patterns over the MAP dialect, reducing the number
     of `map` kernels by inlining producers into consumers.
+
+    Anchored on `mo.graph` (which is `IsolatedFromAbove` and always a direct
+    child of the module), so the pass never walks the imported kernel decls or
+    the insides of kernels it already visited, and independent graphs run in
+    parallel.
   }];
 
   let dependentDialects = [
