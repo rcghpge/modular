@@ -5915,7 +5915,8 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
     I64Attr:$n_nodes,
     BoolAttr:$fused_shared_expert,
     BoolAttr:$fuse_a_scale_preshuffle,
-    I64Attr:$max_padded_m
+    I64Attr:$max_padded_m,
+    DefaultValuedAttr<StrAttr, "\"auto\"">:$mx_format
   );
   let results = (outs
     Variadic<MO_Tensor>:$outputTokens,
