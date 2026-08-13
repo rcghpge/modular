@@ -197,10 +197,20 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     kernel parameters (e.g. `packed_b`, `transpose_b`) are carried in brackets
     immediately after the callee symbol, e.g.
     `@...Matmul[packed_b = false, transpose_b = false]`.
+
+    `kernelName` is the name the callee is registered under -- the
+    `registration` on its `mogg.kernel.decl`, e.g. `mo.matmul`. It cannot be
+    derived from `callee`: that is the Mojo struct's own symbol, and several
+    structs may register under the same name. Passes that must know which MO op
+    a kernel implements (e.g. to decline fusing into an accumulating kernel)
+    match on `kernelName`, so renaming a Mojo struct cannot silently change
+    their behavior. `mogg.call.execute` carries the same name in its
+    `moOpName` attribute.
   }];
 
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
+    StrAttr:$kernelName,
     DictionaryAttr:$params,
     Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs

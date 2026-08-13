@@ -14,7 +14,7 @@
 // CHECK:   %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<3>) capturing (%[[CO:.*]] = %[[OUT]] : !mo.tensor<[2, 2, 3], f32>) {
 // CHECK:     map.store %[[CO]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2, 3], f32>
 // CHECK:   } : !mo.tensor<[2, 2, 3], f32>
-// CHECK:   map.call.opaque @{{.*}}Gather[axis = 0 : index] inputs(%[[PD]], %[[PI]]) outputs(%[[EPI]]) : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+// CHECK:   map.call.opaque @{{.*}}Gather[axis = 0 : index] inputs(%[[PD]], %[[PI]]) outputs(%[[EPI]]) {kernelName = "mo.gather"} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
 mo.graph @gather(%data: !mo.tensor<[3, 3], f32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32> {
   %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out : !mo.tensor<[2, 2, 3], f32>
@@ -30,7 +30,7 @@ mo.graph @gather(%data: !mo.tensor<[3, 3], f32>, %indices: !mo.tensor<[2, 2], si
 // CHECK:   %[[PB:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CB:.*]] = %[[B]] : !mo.tensor<[2, 2], f32>) {
 // CHECK:     %{{.*}} = map.load %[[CB]][%{{.*}}] : !mo.tensor<[2, 2], f32>
 // CHECK:   } : !mo.tensor<[2, 2], f32>
-// CHECK:   map.call.opaque @{{.*}}MapLowerTwoFusedInputs[] inputs(%[[PA]], %[[PB]]) outputs(%[[O]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK:   map.call.opaque @{{.*}}MapLowerTwoFusedInputs[] inputs(%[[PA]], %[[PB]]) outputs(%[[O]]) {kernelName = "map_lower_two_fused_inputs"} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_inputs"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -44,7 +44,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) ->
 // CHECK:     %{{.*}} = map.load %[[CA]][%{{.*}}] : !mo.tensor<[2, 2], f32>
 // CHECK:   } : !mo.tensor<[2, 2], f32>
 // CHECK-NOT: map.iter.prologue
-// CHECK:   map.call.opaque @{{.*}}MapLowerPartialFusedInputs[] inputs(%[[PA]], %[[B]]) outputs(%[[O]]) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK:   map.call.opaque @{{.*}}MapLowerPartialFusedInputs[] inputs(%[[PA]], %[[B]]) outputs(%[[O]]) {kernelName = "map_lower_partial_fused_inputs"} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_inputs"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>

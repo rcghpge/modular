@@ -143,7 +143,7 @@ LogicalResult lowerToOpaque(Operation *op,
       builder, loc,
       FlatSymbolRefAttr::get(op->getContext(),
                              adaptor.fullyResolvedName.strref()),
-      inferParameters(op, builder),
+      adaptor.registeredOpName, inferParameters(op, builder),
       /*inputs=*/callInputs,
       /*outputs=*/callOutputs);
 
