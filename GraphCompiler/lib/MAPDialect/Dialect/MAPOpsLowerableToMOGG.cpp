@@ -20,6 +20,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Support/AssertStream.h"
 
 using namespace mlir;
 
@@ -172,6 +173,73 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   state.builder.setInsertionPointAfter(epilogueOp);
   state.mapping.map(getResult(), epilogueOp.getTensor());
+  return success();
+}
+
+// map.iter.prologue -> mogg._tensor.create.prologue. Load-side mirror of
+// `IterEpilogueOp::lowerToMOGG`: the body is lowered via
+// `state.lowerRegionBody` and the resulting tensor is mapped into
+// `state.mapping` under the prologue's own result, so `CallOpaqueOp` resolves
+// it exactly like a plain kernel input.
+LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
+  MLIRContext *ctx = getContext();
+  Location loc = getLoc();
+  Block &proBody = getBody().front();
+  Block::BlockArgListType proArgs = proBody.getArguments();
+  size_t numCaptures = getCaptures().size();
+  // The index, then one arg per capture.
+  ASSERT_STREAM(
+      proArgs.size() == 1 + numCaptures,
+      << "prologue body takes the index plus one arg per capture, got "
+      << proArgs.size() << " args for " << numCaptures << " captures");
+
+  SmallVector<Value> moggCaptures;
+  for (Value cap : getCaptures()) {
+    // Captures are the kernel's own inputs, already mapped by
+    // `IterOpaqueOp::lowerToMOGG`.
+    ASSERT_STREAM(isa<BlockArgument>(cap) && state.mapping.contains(cap),
+                  << "prologue capture is not a kernel input: " << cap);
+    moggCaptures.push_back(state.mapping.lookup(cap));
+  }
+
+  // Shape / element type come from the prologue's own RESULT -- the tensor the
+  // kernel believes it is reading -- not from a capture: after fusion the
+  // captures are the producer's operands, which need not be the value the
+  // consumer sees.
+  auto resultTy = cast<MO::TensorType>(getResult().getType());
+  auto prologueOp = MOGG::TensorCreatePrologueOp::create(
+      state.builder, loc, /*tensor=*/MOGG::TensorType::get(ctx),
+      /*shape=*/buildShape(loc, resultTy.getTypedShapeAttr(), state),
+      /*captures=*/moggCaptures, /*device=*/state.device,
+      /*elementType=*/TypeAttr::get(resultTy.getElementType()),
+      /*mut=*/state.builder.getBoolAttr(false),
+      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
+
+  // New block args mirror the old ones 1:1.
+  Block *body = state.builder.createBlock(&prologueOp.getBody());
+  for (auto [i, arg] : llvm::enumerate(proArgs)) {
+    // Arg 0 is the index and carries over; each capture is retyped to the
+    // rebuilt `!mogg.tensor_`.
+    Type argTy = i == 0 ? arg.getType() : moggCaptures[i - 1].getType();
+    state.mapping.map(arg, body->addArgument(argTy, arg.getLoc()));
+  }
+
+  // Lower the region body.
+  state.builder.setInsertionPointToEnd(body);
+  for (Operation &op : proBody.without_terminator())
+    if (failed(state.lowerOp(&op)))
+      return failure();
+
+  // Replace the final yield with MOGG::YieldOp.
+  auto yieldOp = cast<YieldOp>(proBody.getTerminator());
+  SmallVector<Value> yielded;
+  for (Value v : yieldOp.getOperands())
+    yielded.push_back(state.mapping.lookup(v));
+  MOGG::YieldOp::create(state.builder, yieldOp.getLoc(), yielded);
+
+  // Remap the op output.
+  state.builder.setInsertionPointAfter(prologueOp);
+  state.mapping.map(getResult(), prologueOp.getTensor());
   return success();
 }
 

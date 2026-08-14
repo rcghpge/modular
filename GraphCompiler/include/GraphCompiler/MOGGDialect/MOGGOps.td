@@ -1387,12 +1387,14 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  HasParent<"MOGG::TryOp">,
+  ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp"]>,
   Terminator,
 ]> {
   let summary = "MOGG yield operation";
   let description = [{
-    The "mogg.yield" operation specifies the output values for a mogg.try / except statement.
+    The "mogg.yield" operation specifies the output values for a mogg.try /
+    except statement, or the value a `mogg._tensor.create.prologue` body hands
+    back to the kernel reading through it.
     ```
   }];
 
@@ -1871,6 +1873,39 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   }];
 }
 
+def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
+  SingleBlock,
+]> {
+  let summary = "A fused-input tensor bound to its own prologue body.";
+  let description = [{
+    Load-side counterpart of `mogg._tensor.create.epilogue`: produces a
+    `!mogg.tensor_` (of `$shape`) the consuming kernel reads through its own
+    prologue body, rather than from a separately materialized tensor. The
+    body's entry-block arguments are the index the callback is evaluated at
+    followed by one rebuilt tile per captured tensor, and it hands back the
+    value the kernel should see via `mogg.yield`. `MAPToMOGG` lowers a
+    `map.iter.prologue` into one of these. Element type / mutability / io-kind
+    are attributes, and `$device` records the device kind (cpu vs gpu) so emit
+    can pick the preferred alignment locally instead of reaching out to the
+    enclosing kernel stub.
+  }];
+  let arguments = (ins
+    MOGG_Shape:$shape,
+    Variadic<MOGG_Tensor>:$captures,
+    M_DeviceRefAttr:$device,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MO_IOKind:$io
+  );
+  let results = (outs MOGG_Tensor:$tensor);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
+    `:` type($shape) `->` type($tensor)
+    attr-dict-with-keyword $body
+  }];
+}
+
 def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -2031,7 +2066,7 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp", "MOGG::TensorCreateEpilogueOp"]>,
+  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
   Pure,
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";

@@ -199,6 +199,7 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
     IsolatedFromAbove,
     SingleBlock,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+    DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
   let summary = "A load-path callback inlined into an opaque kernel's input.";
   let description = [{
