@@ -78,4 +78,19 @@ def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "M::MAP::It
   ];
 }
 
+def FuseMutableLoads : Pass<"map-fuse-mutable-loads", "MO::GraphOp"> {
+  let summary = "'Fuse' mo.mutable.load ops with map.iter.foreach ops.";
+  let description = [{
+    Will perform 'fusion' of a mo.mutable.load op with a map.iter.foreach op.
+    This amounts to:
+      1. Replacing the value semantic tensor created by the mutable.load op
+         with the buffer semantic tensor
+      2. Making the input chain of the load op an input of the
+         map.iter.foreach op
+      3. Adding the output chain of the mutable.load op to the output of the
+         map.iter.foreach op
+  }];
+  let dependentDialects = ["M::MAP::MAPDialect"];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPTRANSFORMS_TD

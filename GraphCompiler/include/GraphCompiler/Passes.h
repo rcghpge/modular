@@ -385,7 +385,14 @@ struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
 /// Options for `map-pipeline`: all passes between `mo-to-map` and
 /// `mogg-to-mgp` (both endpoints excluded).
 struct MapPipelineOptions
-    : public mlir::PassPipelineOptions<MapPipelineOptions> {};
+    : public mlir::PassPipelineOptions<MapPipelineOptions> {
+  Option<bool> fuseMutableLoadStore{
+      *this, "fuse-mutable-load-store",
+      llvm::cl::desc("If set to false will disable the creation of in-place "
+                     "kernels, instead lowering to explicit copies into and "
+                     "out of mo.buffer values. Primarily used for testing."),
+      llvm::cl::init(true)};
+};
 
 /// Options for `mogg-pipeline`: all passes between `mo-to-mogg` and
 /// `mogg-to-mgp` (both endpoints excluded).

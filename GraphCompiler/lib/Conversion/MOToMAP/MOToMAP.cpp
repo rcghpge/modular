@@ -86,6 +86,17 @@ MAP::IterPrologueOp buildLoadPrologue(OpBuilder &builder, Location loc,
   return prologue;
 }
 
+// Reads the memory effects of an op about to be replaced by a kernel, so the
+// kernel can carry them forward and downstream passes see accurate effects
+// instead of the conservative "unknown" default.
+std::pair<bool, bool> getReadWriteEffects(Operation *op) {
+  auto memEffectOp = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!memEffectOp)
+    return {false, false};
+  return {memEffectOp.hasEffect<MemoryEffects::Read>(),
+          memEffectOp.hasEffect<MemoryEffects::Write>()};
+}
+
 LogicalResult lowerToOpaque(Operation *op,
                             const MOGG::KernelDeclAdaptor &adaptor,
                             const MOGG::KernelDeclOperandMapping &mapping) {
@@ -104,6 +115,9 @@ LogicalResult lowerToOpaque(Operation *op,
                                           op->getOperands());
   opaque.setFusionInfoAttr(
       MOGG::FusionInfoAttr::get(op->getContext(), MOGG::createFusionLeaf(op)));
+  auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);
+  opaque.setHasReadEffect(hasReadEffect);
+  opaque.setHasWriteEffect(hasWriteEffect);
 
   Block *body = builder.createBlock(&opaque.getBody());
   SmallVector<BlockArgument> ins;
@@ -250,17 +264,7 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
   unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
   Type elemTy = bufferAsTensorTy.getElementType();
 
-  // Carry mo.mutable.store's own memory effects forward onto the foreach, so
-  // downstream passes see accurate effects instead of the conservative
-  // "unknown" default (mirrors MOToMOGGLowering.cpp's
-  // kernelOp.setHasWriteEffect / setHasReadEffect, which reads the same
-  // interface off the original op).
-  bool hasReadEffect = false;
-  bool hasWriteEffect = false;
-  if (auto memEffectOp = dyn_cast<MemoryEffectOpInterface>(op.getOperation())) {
-    hasReadEffect = memEffectOp.hasEffect<MemoryEffects::Read>();
-    hasWriteEffect = memEffectOp.hasEffect<MemoryEffects::Write>();
-  }
+  auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);
 
   auto foreachOp = MAP::IterForeachOp::create(
       builder, loc,

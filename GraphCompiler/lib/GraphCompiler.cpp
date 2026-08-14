@@ -356,6 +356,8 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   pm.addNestedPass<GraphOp>(MAP::createFuseKernels());
+  if (opts.fuseMutableLoadStore)
+    pm.addPass(MAP::createFuseMutableLoads());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
@@ -539,6 +541,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   // --- map-pipeline options ---
   MapPipelineOptions mapOpts;
+  mapOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
 
   // --- mogg-pipeline options ---
   MoggPipelineOptions moggOpts;

@@ -46,6 +46,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     NoTerminator,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
     DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   ]> {
   let summary = "An opaque (hand-written) kernel with fusible load/store paths.";
   let description = [{
@@ -77,6 +78,17 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     }
     ```
 
+    A kernel that mutates memory takes an `!mo.chain` as an ordinary `inputs`
+    entry and returns one as a result: the wrapped call consumes and produces
+    the chain like any other operand, so unlike `map.iter.foreach` there is no
+    dedicated chain operand. `getInputChain()`/`getOutputChain()` find it by
+    type.
+
+    `hasReadEffect`/`hasWriteEffect` carry forward the memory effects of the
+    original op this kernel lowers, so downstream passes (DCE, CSE, invariant
+    code motion) see accurate effect information via `MemoryEffectsOpInterface`
+    instead of the conservative "unknown effects" default.
+
     `fusionInfo` records the fusion-tree provenance of the kernel (a
     `mogg.fusion` attribute), taking over the role the attribute of the same
     name played on `mogg.kernel`. It is typed as `AnyAttr` here so the `map`
@@ -85,7 +97,9 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 
   let arguments = (ins
     Variadic<AnyType>:$inputs,
-    OptionalAttr<AnyAttr>:$fusionInfo
+    OptionalAttr<AnyAttr>:$fusionInfo,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -109,6 +123,20 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// Erases a range of inputs at `[idx, idx + len)`, updating both operands
     /// and the corresponding shadowed body block arguments.
     void eraseInputsAt(unsigned idx, size_t len = 1);
+
+    /// Returns the chain-typed entry of `inputs`, or null when there is none --
+    /// or more than one, which leaves the intended sequencing operand
+    /// ambiguous.
+    ::mlir::Value getInputChain();
+
+    /// Returns the chain-typed result, or null when there is none or more than
+    /// one.
+    ::mlir::Value getOutputChain();
+
+    /// Points the chain input at `chain`. The shadowed block argument is
+    /// untouched, so the body keeps consuming the same value. Requires a chain
+    /// input to exist; no-op when `chain` is null.
+    void setChain(::mlir::Value chain);
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -310,6 +338,9 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
     // Returns the output chain result, or null if the last result isn't a
     // chain (mirrors MOGG::KernelOp::maybeGetOutChain()).
     Value getOutputChain();
+    // Sets the input chain operand. No-op when null (mirrors
+    // MOGG::KernelOp::setChain).
+    void setChain(Value chain);
   }];
 }
 
@@ -367,22 +398,23 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
 def MAP_LoadOp : MAP_Op<"load", [
   TypesMatchWith<"result type matches tensor element type",
                  "tensor", "result",
-                 "::llvm::cast<::M::MO::TensorType>($_self).getElementType()">,
+                 "::M::MO::castFromTensorLike($_self).getElementType()">,
   TypesMatchWith<"index type matches tensor rank",
                  "tensor", "index",
                  "::M::MAP::IndexType::get($_self.getContext(), "
-                 "::llvm::cast<::M::MO::TensorType>($_self).getRank())">,
+                 "::M::MO::castFromTensorLike($_self).getRank())">,
   Pure,
-  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>
 ]> {
   let summary = "Load a value from a tensor at an N-D index";
   let description = [{
-    Loads the value at an N-dimensional index from a tensor that is a block
-    argument of the enclosing `map.iter.foreach`. Logically a single scalar
-    element per index; the actual lowering may load a wider vector or tile
-    instead, depending on the target hardware and how the surrounding loop
-    is vectorized/tiled. The tensor type is spelled out in the assembly; the
-    result type is inferred as the tensor's element type (same convention as
+    Loads the value at an N-dimensional index from a tensor (or, for a load
+    fused into an in-place kernel body, a buffer) that is a block argument of
+    the enclosing `map.iter.foreach`. Logically a single scalar element per
+    index; the actual lowering may load a wider vector or tile instead,
+    depending on the target hardware and how the surrounding loop is
+    vectorized/tiled. The tensor/buffer type is spelled out in the assembly;
+    the result type is inferred as its element type (same convention as
     `memref.load`).
 
     Example:
@@ -391,11 +423,10 @@ def MAP_LoadOp : MAP_Op<"load", [
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$tensor, MAP_AnyIndex:$index);
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor, MAP_AnyIndex:$index);
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{ $tensor `[` $index `]` `:` qualified(type($tensor)) attr-dict }];
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

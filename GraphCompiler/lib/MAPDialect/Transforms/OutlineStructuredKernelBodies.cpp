@@ -36,6 +36,8 @@ void outlineForeach(IterForeachOp foreachOp) {
                                      foreachOp.getInputs());
   if (Attribute fusionInfo = foreachOp.getFusionInfoAttr())
     opaque.setFusionInfoAttr(fusionInfo);
+  opaque.setHasReadEffect(foreachOp.getHasReadEffect());
+  opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
 
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
   SmallVector<Value> inputBlockArgs;

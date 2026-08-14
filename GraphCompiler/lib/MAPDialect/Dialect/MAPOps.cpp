@@ -199,6 +199,70 @@ void IterOpaqueOp::eraseInputsAt(unsigned idx, size_t len) {
     getBody().front().eraseArgument(idx);
 }
 
+// The chain of an opaque kernel is an ordinary `inputs` entry -- the wrapped
+// call consumes it like any other operand -- so it is found by type rather
+// than through a dedicated accessor. More than one chain leaves the intended
+// sequencing operand ambiguous, which callers treat as "no chain".
+static Value findUniqueChain(ValueRange values) {
+  Value chain;
+  for (Value value : values) {
+    if (!llvm::isa<MO::ChainType>(value.getType()))
+      continue;
+    if (chain)
+      return Value();
+    chain = value;
+  }
+  return chain;
+}
+
+Value IterOpaqueOp::getInputChain() { return findUniqueChain(getInputs()); }
+
+Value IterOpaqueOp::getOutputChain() { return findUniqueChain(getResults()); }
+
+void IterOpaqueOp::setChain(Value chain) {
+  if (!chain)
+    return;
+
+  Value oldChain = getInputChain();
+  ASSERT_STREAM(oldChain, "map.iter.opaque has no chain input to point at a "
+                          "new chain");
+
+  for (auto [idx, input] : llvm::enumerate(getInputs())) {
+    if (input != oldChain)
+      continue;
+    getInputsMutable().slice(idx, 1).assign(chain);
+    return;
+  }
+}
+
+// hasReadEffect/hasWriteEffect carry forward the memory effects of the original
+// op a kernel lowers. Report them per mutable operand so downstream passes see
+// *which* memory is touched, falling back to an unattributed write for a kernel
+// that mutates something no operand names.
+static void
+collectKernelEffects(Operation *op, bool hasReadEffect, bool hasWriteEffect,
+                     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  bool addedEffect = false;
+  for (OpOperand &opOperand : op->getOpOperands()) {
+    if (!MO::isMutableOperand(opOperand.get()))
+      continue;
+    if (hasWriteEffect)
+      effects.emplace_back(MemoryEffects::Write::get(), &opOperand);
+    if (hasReadEffect)
+      effects.emplace_back(MemoryEffects::Read::get(), &opOperand);
+    addedEffect = true;
+  }
+
+  if (!addedEffect && (hasReadEffect || hasWriteEffect))
+    effects.emplace_back(MemoryEffects::Write::get());
+}
+
+void IterOpaqueOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  collectKernelEffects(getOperation(), getHasReadEffect(), getHasWriteEffect(),
+                       effects);
+}
+
 void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,
                                             OpAsmSetValueNameFn setNameFn) {
   if (region.empty())
@@ -629,25 +693,10 @@ Value IterForeachOp::getOutputChain() {
   return llvm::isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-// Mirrors MOGG::KernelOp::getEffects(): hasReadEffect/hasWriteEffect carry
-// forward the original MO op's memory effects (see lowerMutableStoreToForeach
-// in MOToMAP.cpp) so downstream passes see accurate effects instead of the
-// conservative "unknown" default.
 void IterForeachOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  bool addedEffect = false;
-  for (OpOperand &opOperand : getOperation()->getOpOperands()) {
-    if (!MO::isMutableOperand(opOperand.get()))
-      continue;
-    if (getHasWriteEffect())
-      effects.emplace_back(MemoryEffects::Write::get(), &opOperand);
-    if (getHasReadEffect())
-      effects.emplace_back(MemoryEffects::Read::get(), &opOperand);
-    addedEffect = true;
-  }
-
-  if (!addedEffect && (getHasReadEffect() || getHasWriteEffect()))
-    effects.emplace_back(MemoryEffects::Write::get());
+  collectKernelEffects(getOperation(), getHasReadEffect(), getHasWriteEffect(),
+                       effects);
 }
 
 llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
@@ -681,6 +730,11 @@ void IterForeachOp::eraseInputsAt(unsigned idx, size_t len) {
 
   for (unsigned i = 0; i < len; ++i)
     getBody().eraseArgument(idx);
+}
+
+void IterForeachOp::setChain(Value chain) {
+  if (chain)
+    getChainMutable().assign(chain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -751,17 +805,6 @@ LogicalResult IterForeachBodyOp::verify() {
                          << " does not match shape rank "
                          << getShape().getRank();
 
-  return mlir::success();
-}
-
-//===----------------------------------------------------------------------===//
-// map.load
-//===----------------------------------------------------------------------===//
-
-LogicalResult LoadOp::verify() {
-  auto tensorTy = llvm::dyn_cast<M::MO::TensorType>(getTensor().getType());
-  if (!tensorTy)
-    return emitOpError() << "tensor operand must be !mo.tensor type";
   return mlir::success();
 }
 
