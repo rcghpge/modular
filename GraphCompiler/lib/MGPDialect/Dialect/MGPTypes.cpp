@@ -435,16 +435,6 @@ std::optional<uint64_t> TensorSpecType::getNumElements() const {
   return prod;
 }
 
-uint64_t TensorSpecType::getPreScaledNumElements() const {
-  uint64_t prod = 1;
-  for (const std::optional<uint64_t> &dim : getDims()) {
-    if (!dim)
-      continue;
-    prod *= *dim;
-  }
-  return prod;
-}
-
 std::optional<uint64_t> TensorSpecType::getSizeInBytes() const {
   std::optional<DType> optDType = getOptDType();
   if (!optDType)
@@ -454,16 +444,6 @@ std::optional<uint64_t> TensorSpecType::getSizeInBytes() const {
     return {}; // dynamic rank or dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
   ASSERT_STREAM(bytes >= 0, << "overflow in getSizeInBytes");
-  return static_cast<uint64_t>(bytes);
-}
-
-std::optional<uint64_t> TensorSpecType::getPreScaledSizeInBytes() const {
-  std::optional<DType> optDType = getOptDType();
-  if (!optDType)
-    return {}; // dynamic dtype
-  uint64_t numElems = getPreScaledNumElements();
-  ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(numElems));
-  ASSERT_STREAM(bytes >= 0, << "overflow in getPreScaledSizeInBytes");
   return static_cast<uint64_t>(bytes);
 }
 

@@ -389,22 +389,11 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
     /// Dynamic ranked safe.
     std::optional<uint64_t> getNumElements() const;
 
-    /// Returns the number of elements for the known dimensions of this spec.
-    /// The actual number of elements will be this value multiplied by the
-    /// runtime dimensions of all dynamic dimensions.
-    /// Requires hasRank().
-    uint64_t getPreScaledNumElements() const;
-
     /// Returns the size of the buffer needed to represent a tensor
     /// of this spec, or nullopt if the tensor spec is not fully static
     /// (ie dynamic rank, at least one dynamic dimension, or dynamic dtype).
     /// Dynamic ranked safe.
     std::optional<uint64_t> getSizeInBytes() const;
-
-    /// Returns the byte size needed to represent getNumPreScaledElements(),
-    /// or nullopt if the tensor spec does not have a statically known dtype.
-    /// Requires hasRank().
-    std::optional<uint64_t> getPreScaledSizeInBytes() const;
 
     /// Returns the dimensions of this tensor spec in 'raw form'.
     /// Each element of the result will be an UI64Int, with ~0 denoting
