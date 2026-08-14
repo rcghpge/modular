@@ -268,7 +268,6 @@ def test_range_reversed() raises:
     )
 
     # Test a reversed range's sum and length compared to the original
-    @parameter
     def test_sum_reversed(start: Int, end: Int, step: Int) raises:
         var forward = range(start, end, step)
         var iforward = forward.__iter__()
@@ -364,6 +363,58 @@ def test_range_float_zero_step() raises:
     for _ in reversed(range(5.0, 0.0, 0.0)):
         reverse_count += 1
     assert_equal(reverse_count, 0)
+
+
+def _test_range_int_zero_step[dtype: DType]() raises:
+    comptime scalar = Scalar[dtype]
+
+    # A zero step has no direction, so the range is empty whichever way the
+    # bounds point. `start > end` used to step in place forever for signed
+    # dtypes, and `start < end` for unsigned ones.
+    var forward = 0
+    for _ in range(scalar(0), scalar(3), scalar(0)):
+        forward += 1
+    assert_equal(forward, 0)
+
+    var backward = 0
+    for _ in range(scalar(3), scalar(0), scalar(0)):
+        backward += 1
+    assert_equal(backward, 0)
+
+    # `len()` and `bounds()` used to divide by the zero step.
+    assert_equal(range(scalar(3), scalar(0), scalar(0)).__len__(), 0)
+    assert_equal(range(scalar(0), scalar(3), scalar(0)).__len__(), 0)
+    var lower, upper = range(scalar(3), scalar(0), scalar(0)).bounds()
+    assert_equal(lower, 0)
+    assert_equal(upper.value(), 0)
+
+
+def test_range_int_zero_step() raises:
+    comptime for dtype in DTYPES:
+        _test_range_int_zero_step[dtype]()
+
+    var count = 0
+    for _ in range(3, 0, 0):
+        count += 1
+    assert_equal(count, 0)
+
+    # `__reversed__` used to take the modulus of the zero step.
+    var reverse_count = 0
+    for _ in reversed(range(3, 0, 0)):
+        reverse_count += 1
+    assert_equal(reverse_count, 0)
+
+
+def test_range_int_zero_step_comptime() raises:
+    # Unrolling a zero-step range used to hang the compiler forever.
+    var count = 0
+    comptime for _ in range(3, 0, 0):
+        count += 1
+    assert_equal(count, 0)
+
+    comptime for _ in range(0, 3, 0):
+        count += 1
+    assert_equal(count, 0)
 
 
 def test_range_float_grid() raises:

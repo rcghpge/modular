@@ -261,7 +261,7 @@ def test_combine[
     var e2e_stat_m2: Float64 = 0
 
     @always_inline
-    @parameter
+    @__parameter
     def run_full_dispatch(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
         var recv_buf_ptrs: Array[Pointer[UInt8, MutAnyOrigin], 1] = [recv_buf]
@@ -297,7 +297,7 @@ def test_combine[
         shmem_barrier_all_on_stream(ctx.stream())
 
     @always_inline
-    @parameter
+    @__parameter
     def run_combine_async(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
         var combine_recv_buf_ptrs: Array[Pointer[UInt8, MutAnyOrigin], 1] = [
@@ -321,7 +321,7 @@ def test_combine[
         )
 
     @always_inline
-    @parameter
+    @__parameter
     def run_combine_async_wait(ctx: DeviceContext) raises:
         ctx.enqueue_function(
             func_combine_async_wait,
@@ -335,7 +335,7 @@ def test_combine[
         )
 
     @always_inline
-    @parameter
+    @__parameter
     def run_e2e(ctx: DeviceContext) raises:
         run_combine_async(ctx)
         run_combine_async_wait(ctx)
@@ -436,7 +436,7 @@ def main() raises:
     comptime test_gpu_counts = (8,)
 
     comptime for gpu_idx in range(len(test_gpu_counts)):
-        comptime num_gpus = test_gpu_counts[gpu_idx]
+        comptime num_gpus = rebind[Int](test_gpu_counts[gpu_idx])
         if DeviceContext.number_of_devices() != num_gpus:
             continue
 

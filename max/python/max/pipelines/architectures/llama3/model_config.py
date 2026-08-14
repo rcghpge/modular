@@ -21,7 +21,7 @@ from typing import ClassVar, Literal
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
-from max.graph.weights import WeightData, WeightsFormat, weights_format
+from max.graph.weights import WeightData
 from max.nn.kv_cache import KVCacheParams
 from max.nn.quant_config import QuantConfig
 from max.nn.rotary_embedding import (
@@ -40,6 +40,7 @@ from max.pipelines.lib import (
     parse_quant_config,
 )
 from max.pipelines.lib.config.model_config import (
+    _interleaved_rope_weights,
     _select_quantization_encoding,
 )
 from max.pipelines.lib.interfaces.arch_config import (
@@ -198,7 +199,9 @@ class Llama3Config(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
             speculative_method=pipeline_config.speculative.speculative_method
             if pipeline_config.speculative
             else None,
-            num_draft_tokens=pipeline_config.speculative.num_speculative_tokens
+            num_draft_tokens=(
+                pipeline_config.speculative.num_speculative_tokens or 0
+            )
             if pipeline_config.speculative
             else 0,
         )
@@ -242,17 +245,14 @@ class Llama3Config(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
         cache_dtype = cache_dtype_for_encoding(
             quantization_encoding, model_config.kv_cache.kv_cache_format
         )
-        n_devices = len(pipeline_config.model.device_specs)
+        device_specs = model_config.device_specs
+        n_devices = len(device_specs)
 
-        _weights_format = weights_format(model_config.weight_path)
-        interleaved_rope_weights = (
-            _weights_format == WeightsFormat.gguf
-            and (model_config.rope_type or "normal") == "normal"
-        )
+        interleaved_rope_weights = _interleaved_rope_weights(model_config)
 
         device_refs = [
             DeviceRef(spec.device_type, spec.id)
-            for spec in model_config.device_specs[:n_devices]
+            for spec in device_specs[:n_devices]
         ]
 
         embedding_multiplier = getattr(

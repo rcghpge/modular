@@ -62,13 +62,12 @@ since a captured accumulator can't be mutated through a value closure.
 
 `computationally_expensive` is a GPU-only author hint, forwarded to the
 GPU backend and ignored by the CPU backend. `BLOCK_SIZE` /
-`TILED_BLOCK_SIZE` / `COOPERATIVE_BLOCK_SIZE` / `WARP_BLOCK_WARPS` are
-GPU launch-geometry constants private to `launch` — no caller has ever
-needed to override them, so they are not part of its public signature
-(see the tier-dispatch notes above `launch` for what they do). The CPU
-backend runs `sync_parallelize` over output rows / slices (no
-`DeviceContext`); the GPU backend launches kernels through the provided
-`DeviceContext`.
+`COOPERATIVE_BLOCK_SIZE` / `WARP_BLOCK_WARPS` are GPU launch-geometry
+constants private to `launch` — no caller has ever needed to override
+them, so they are not part of its public signature (see the
+tier-dispatch notes above `launch` for what they do). The CPU backend
+runs `sync_parallelize` over output rows / slices (no `DeviceContext`);
+the GPU backend launches kernels through the provided `DeviceContext`.
 """
 
 from algorithm.cpu.rowwise import (
@@ -93,7 +92,7 @@ from algorithm.rowwise_types import (
     tile_alignment,
 )
 from algorithm.reduce_op import ReduceOp, Reducer
-from std.collections import InlineArray, Optional
+from std.collections import Optional
 from std.gpu import (
     WARP_SIZE,
     lane_id,
@@ -104,7 +103,7 @@ from max.gpu import barrier, syncwarp
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.memory import external_memory
 from std.gpu.host.info import is_cpu, is_gpu
-from std.math import iota
+from std.math import ceildiv, iota
 from std.memory import bitcast, stack_allocation
 from std.memory.unsafe_pointer import UnsafePointer
 from std.sys.info import (
@@ -446,11 +445,11 @@ def strided_load[
 # `num_phases > 1`), so `associative` (reduce-shaped's CPU-only accumulator
 # knob) and `dtype_size` (normalize-shaped's split-K byte gate) are each
 # meaningless — and simply left at their defaults — for the other shape.
-# (`BLOCK_SIZE` / `TILED_BLOCK_SIZE` / `COOPERATIVE_BLOCK_SIZE` /
-# `WARP_BLOCK_WARPS` are internal GPU launch-geometry constants, not part of
-# the public signature — no caller anywhere in the repo has ever overridden
-# them. `supports_tiled` is likewise hardcoded per shape: every real
-# reduction body, `row_mean_of_squares` included, supports the tiled tier.)
+# (`BLOCK_SIZE` / `COOPERATIVE_BLOCK_SIZE` / `WARP_BLOCK_WARPS` are internal
+# GPU launch-geometry constants, not part of the public signature — no caller
+# anywhere in the repo has ever overridden them. `supports_tiled` is likewise
+# hardcoded per shape: every real reduction body, `row_mean_of_squares`
+# included, supports the tiled tier.)
 #
 # GPU tier-dispatch decision tree — which tier actually runs, and why.
 # A body author never picks a tier directly; the launch heuristic below
@@ -464,13 +463,18 @@ def strided_load[
 #     +-- NO (non-inner axis) --------------------------------------------
 #     |     |
 #     |     +-- simd_width > 1 AND row/col counts are SIMD-aligned AND
-#     |     |   enough rows to saturate the device
+#     |     |   ((short reduce axis AND enough rows for the per-SM
+#     |     |   floor) OR enough rows to saturate the device)
 #     |     |                                   --> TILED tier
 #     |     |   (one thread per output row; each thread's `w` SIMD lanes
 #     |     |   are `w` adjacent output columns, not partials of one row
 #     |     |   — the body's terminal decides what those `w` lanes mean:
 #     |     |   `emit` collapses each to one value, `elementwise` re-walks
 #     |     |   each of the `w` rows per-element)
+#     |     |
+#     |     +-- simd_width > 1 AND short reduce axis AND enough rows
+#     |     |   for the same floor, SIMD-misaligned
+#     |     |                                   --> TILED tier, scalar W=1
 #     |     |
 #     |     +-- otherwise            --------------------------------------
 #     |                                         --> BLOCK (cooperative) tier
@@ -524,12 +528,11 @@ def strided_load[
 #     under-occupied row earns split-K; a small row stays on warp/block).
 #
 # `ReduceTier` (`rowwise_types.mojo`) defines a fourth value, `Serial`,
-# that `Context.reduce` branches on — but no tier picker above currently
-# constructs a `ContextParams` with `tier=ReduceTier.Serial`; it is
-# reserved for a future genuinely-serial fallback, not part of today's
-# reachable dispatch. CPU ignores `_tier` altogether (always the
-# `ReduceTier.Block` default) and picks its own split-axis-vs-cooperative
-# tiering independently in `cpu/rowwise.mojo`.
+# used by the non-inner tiled tier's scalar (`emit_tile_width == 1`)
+# fallback: one thread per output, no cross-thread join. CPU ignores
+# `_tier` altogether (always the `ReduceTier.Block` default) and picks
+# its own split-axis-vs-cooperative tiering independently in
+# `cpu/rowwise.mojo`.
 # ===-----------------------------------------------------------------------===#
 
 # ===-----------------------------------------------------------------------===#
@@ -686,7 +689,6 @@ def launch[
             # block/warp size than these, so they are internal to this
             # function rather than forwarded from the public signature.
             comptime BLOCK_SIZE = 256
-            comptime TILED_BLOCK_SIZE = 32
             comptime COOPERATIVE_BLOCK_SIZE = 128
             comptime WARP_BLOCK_WARPS = 4
             _gpu_launch[
@@ -695,7 +697,6 @@ def launch[
                 supports_splitk=True,
                 computationally_expensive=computationally_expensive,
                 BLOCK_SIZE=BLOCK_SIZE,
-                TILED_BLOCK_SIZE=TILED_BLOCK_SIZE,
                 COOPERATIVE_BLOCK_SIZE=COOPERATIVE_BLOCK_SIZE,
                 WARP_BLOCK_WARPS=WARP_BLOCK_WARPS,
             ](body, shape, ctx.value())
@@ -722,7 +723,6 @@ def launch[
                 supports_splitk=False,
                 computationally_expensive=computationally_expensive,
                 BLOCK_SIZE=BLOCK_SIZE,
-                TILED_BLOCK_SIZE=32,
                 COOPERATIVE_BLOCK_SIZE=COOPERATIVE_BLOCK_SIZE,
                 WARP_BLOCK_WARPS=WARP_BLOCK_WARPS,
                 num_phases=num_phases,
@@ -799,7 +799,7 @@ struct RowCache[
         shared: Whether the row is also published to shared memory.
     """
 
-    var _owned: InlineArray[SIMD[Self.T, Self.W], Self.NCH]
+    var _owned: Array[SIMD[Self.T, Self.W], Self.NCH]
     """This participant's cached tiles (valid when `fuse`)."""
 
     var _shmem_addr: Int
@@ -813,7 +813,7 @@ struct RowCache[
 
     @always_inline
     def __init__(out self, *, copy: Self):
-        """Explicit copy constructor: `InlineArray` lost `ImplicitlyCopyable`
+        """Explicit copy constructor: `Array` lost `ImplicitlyCopyable`
         conformance, so `_owned` can't be auto-derived and needs `.copy()`.
 
         Args:
@@ -831,7 +831,7 @@ struct RowCache[
             row_il: The row's coords.
         """
         self.row_il = row_il
-        self._owned = InlineArray[SIMD[Self.T, Self.W], Self.NCH](
+        self._owned = Array[SIMD[Self.T, Self.W], Self.NCH](
             fill=SIMD[Self.T, Self.W](0)
         )
         # Seed from a runtime value (never a literal): on `shared=False`
@@ -1023,7 +1023,7 @@ struct Row[
     ) * Self._W
     comptime _cols = Self.AxisSize.static_value if Self.AxisSize.is_static_value else 0
     # Per-participant chunk count if we staged the row strip.
-    comptime _chunks = (Self._cols + Self._PSTRIDE - 1) // Self._PSTRIDE
+    comptime _chunks = ceildiv(Self._cols, Self._PSTRIDE)
     # Register-residency budget: only keep registers when the staged strip fits
     # a small per-thread footprint. Beyond it (very large cols) the cache
     # would spill, so fall back to streaming (always correct). Scaffolder-
@@ -1055,7 +1055,7 @@ struct Row[
     var row_il: IndexList[Self.rank]
     var axis_size: Self.AxisSize
     var ctx: Context[Self.params]
-    var _row_regs: InlineArray[SIMD[Self.dtype, Self._W], Self._NCH]
+    var _row_regs: Array[SIMD[Self.dtype, Self._W], Self._NCH]
     # 0-based order index of the next `reduce` call, incremented per call.
     # Only read on the pointwise-split-K tier (to pick combine / partial /
     # no-op against `ctx._phase`); unused and DCE'd on every other tier.
@@ -1098,7 +1098,7 @@ struct Row[
         )
         self.axis_size = axis_size
         self.ctx = ctx
-        self._row_regs = InlineArray[SIMD[Self.dtype, Self._W], Self._NCH](
+        self._row_regs = Array[SIMD[Self.dtype, Self._W], Self._NCH](
             fill=SIMD[Self.dtype, Self._W](0)
         )
         self._reduce_index = 0
@@ -1106,7 +1106,7 @@ struct Row[
         comptime if Self._fuse:
             var participant = Self._participant()
             var base = self.row_il
-            comptime al = ctx.alignment[Self.dtype, Self._W]()
+            comptime al = ctx.element_alignment[Self.dtype, Self._W]()
 
             comptime for chunk in range(Self._NCH):
                 var pos = participant * Self._W + chunk * Self._PSTRIDE
@@ -1211,7 +1211,7 @@ struct Row[
             ](mut state: M, coords: IndexList[_r]) {
                 var input_fn, var contribute, var ctx
             }:
-                comptime al = ctx.alignment[Self.dtype, ws]()
+                comptime al = ctx.element_alignment[Self.dtype, ws]()
                 var idx = rebind[IndexList[Self.rank]](coords)
                 var pos = Int(coords[Self.axis])
                 state.accumulate[Self.accum, ws](
@@ -1254,7 +1254,7 @@ struct Row[
             ](mut state: M, coords: IndexList[_r]) {
                 var input_fn, var contribute, var ctx
             }:
-                comptime al = ctx.alignment[Self.dtype, ws]()
+                comptime al = ctx.element_alignment[Self.dtype, ws]()
                 var idx = rebind[IndexList[Self.rank]](coords)
                 var pos = Int(coords[Self.axis])
                 state.accumulate[Self.accum, ws](
@@ -1331,7 +1331,7 @@ struct Row[
                 def splitk_emit_tile[
                     ws: Int, _r: Int
                 ](coords: IndexList[_r]) {var input_fn, var g, var ctx}:
-                    comptime al = ctx.alignment[Self.dtype, ws]()
+                    comptime al = ctx.element_alignment[Self.dtype, ws]()
                     var idx = rebind[IndexList[Self.rank]](coords)
                     g[ws](input_fn[ws, al, Self.rank](idx), idx)
 
@@ -1362,7 +1362,7 @@ struct Row[
             def emit_tile[
                 ws: Int, _r: Int
             ](coords: IndexList[_r]) {var input_fn, var g, var ctx}:
-                comptime al = ctx.alignment[Self.dtype, ws]()
+                comptime al = ctx.element_alignment[Self.dtype, ws]()
                 var idx = rebind[IndexList[Self.rank]](coords)
                 g[ws](input_fn[ws, al, Self.rank](idx), idx)
 

@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from io import StringIO
 from typing import TYPE_CHECKING, cast
 
-from max.driver import Device, is_virtual_device_mode
+from max.driver import Device, DeviceSpec, is_virtual_device_mode
+from max.dtype import DType
 from max.nn.kv_cache import (
     KVCacheParamInterface,
     compute_max_seq_len_fitting_in_cache,
@@ -37,6 +38,10 @@ from .config.model_config import MAXModelConfig
 from .interfaces import (
     ArchConfig,
     ArchConfigWithKVCache,
+)
+from .vision_encoder_cache import (
+    DEFAULT_VISION_CACHE_BLOCK_TOKENS,
+    VisionCachePlan,
 )
 
 logger = logging.getLogger("max.pipelines")
@@ -91,6 +96,24 @@ class _MemoryPlan:
     available_cache_memory: int | None = None
     """Committed KV-cache byte budget; ``None`` when not computed (virtual-device
     early-outs and non-KV models)."""
+
+    device_specs: tuple[DeviceSpec, ...] | None = None
+    """The device specs this plan was computed against, attached by the
+    registry. Specs rather than ``Device`` objects because the plan is
+    pickled into the model-worker process. ``None`` until attached (and for
+    pixel-generation plans, which don't consume a memory plan)."""
+
+    def require_device_specs(self) -> tuple[DeviceSpec, ...]:
+        """Returns the device specs, which must be attached.
+
+        Pipeline constructors call this: it requires a plan built by the
+        registry (or a test plan that sets ``device_specs``).
+        """
+        assert self.device_specs is not None, (
+            "memory plan lacks device specs; pipelines require a "
+            "plan built by the registry's memory-planning step"
+        )
+        return self.device_specs
 
 
 # Vision encoder cache and paged token KV share the same pre-KV memory pool
@@ -838,10 +861,15 @@ class MemoryEstimator:
 
         Returns:
             Bytes to reserve for the vision encoder cache (0 for non-VLM
-            models or when ``max_vision_cache_entries`` is 0).
+            models, or when caching is disabled: ``max_vision_cache_entries``
+            is 0 and ``experimental_vision_cache_utilization`` is unset).
         """
         max_entries = pipeline_config.runtime.max_vision_cache_entries
-        if max_entries <= 0:
+        if (
+            max_entries <= 0
+            and pipeline_config.runtime.experimental_vision_cache_utilization
+            <= 0
+        ):
             return 0
 
         hf_config = model_config.huggingface_config
@@ -856,6 +884,16 @@ class MemoryEstimator:
         per_entry_bytes = planner.estimate_vision_cache_entry_bytes(hf_config)
         if per_entry_bytes <= 0:
             return 0
+
+        row_spec = planner.get_vision_cache_row_spec(hf_config)
+        if (
+            row_spec is not None
+            and pipeline_config.runtime.experimental_vision_cache_utilization
+            > 0
+        ):
+            return cls._reserve_vision_cache_blocks(
+                pipeline_config, row_spec, available_memory, len(devices)
+            )
 
         n_devices = len(devices)
         per_replica_bytes = per_entry_bytes * n_devices
@@ -902,6 +940,66 @@ class MemoryEstimator:
             to_human_readable_bytes(total_bytes),
         )
 
+        return total_bytes
+
+    @classmethod
+    def _reserve_vision_cache_blocks(
+        cls,
+        pipeline_config: PipelineConfig,
+        row_spec: tuple[int, DType],
+        available_memory: int,
+        n_devices: int,
+    ) -> int:
+        """Reserve a block-mode byte budget for the vision encoder cache.
+
+        ``experimental_vision_cache_utilization`` requests a fraction of
+        the device KV cache pool budget. The request is rounded down to
+        whole fixed-size blocks and recorded as a
+        :class:`~max.pipelines.lib.vision_encoder_cache.VisionCachePlan`
+        that pipeline construction hands to :class:`VisionEncoderCache`.
+        Unlike the entry-count mode, capacity is bytes — a video simply
+        spans more blocks than an image.
+
+        Returns:
+            Total bytes reserved across devices.
+
+        Raises:
+            ValueError: If the requested fraction is too small to fit a
+                single block.
+        """
+        hidden_size, dtype = row_spec
+        utilization = (
+            pipeline_config.runtime.experimental_vision_cache_utilization
+        )
+        requested_bytes = int(available_memory * utilization)
+        block_bytes = (
+            DEFAULT_VISION_CACHE_BLOCK_TOKENS
+            * hidden_size
+            * dtype.size_in_bytes
+            * n_devices
+        )
+        num_blocks = requested_bytes // block_bytes
+        if num_blocks == 0:
+            raise ValueError(
+                f"experimental_vision_cache_utilization={utilization} "
+                f"reserves {to_human_readable_bytes(requested_bytes)} of "
+                "the KV cache pool, too small to fit one "
+                f"{DEFAULT_VISION_CACHE_BLOCK_TOKENS}-token block "
+                f"({to_human_readable_bytes(block_bytes)}). Increase the "
+                "fraction or set 0 to disable the vision encoder cache."
+            )
+        total_bytes = num_blocks * block_bytes
+        pipeline_config.runtime._vision_cache_plan = VisionCachePlan(
+            bytes_per_device=total_bytes // n_devices,
+            hidden_size=hidden_size,
+            dtype=dtype,
+        )
+        logger.info(
+            "Vision encoder cache: %d blocks x %d tokens, %s reserved.",
+            num_blocks,
+            DEFAULT_VISION_CACHE_BLOCK_TOKENS,
+            to_human_readable_bytes(total_bytes),
+        )
         return total_bytes
 
     @classmethod

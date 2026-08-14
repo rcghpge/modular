@@ -314,16 +314,17 @@ struct Counter[
             writer: The object to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_counter_body[
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_counter_body[
                 f_key=fmt.write_repr_to[Self.V],
                 f_val=fmt.write_repr_to[Int],
             ](w)
 
         fmt.FormatStruct(writer, "Counter").params(
             fmt.TypeNames[Self.V](),
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     # ===------------------------------------------------------------------=== #
     # Comparison operators
@@ -898,7 +899,9 @@ struct Counter[
             n: The number of most common elements to return.
 
         Returns:
-            A list of the `n` most common elements and their counts.
+            A list of the `n` most common elements and their counts. If the
+            counter has fewer than `n` unique elements, all of them are
+            returned; if `n` is negative, the list is empty.
 
         Example:
 
@@ -917,12 +920,11 @@ struct Counter[
             var t = CountTuple[Self.V](item.key, item.value)
             items.append(t^)
 
-        @parameter
         def comparator(a: CountTuple[Self.V], b: CountTuple[Self.V]) -> Bool:
             return a < b
 
-        sort[comparator](items)
-        items.shrink(Int(n))
+        sort(items, comparator)
+        items.shrink(max(0, min(n, len(items))))
         return items^
 
     def elements(self) -> List[Self.V]:

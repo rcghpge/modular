@@ -430,7 +430,7 @@ def pjoin[
         var counter_ptr = ctx._counters_base + row_idx_
         # `fetch_add` returns the prior value; `prev + 1 == num_splits`
         # means this worker arrived last.
-        var prev = Atomic[DType.int32].fetch_add(counter_ptr, Int32(1))
+        var prev = Atomic[Int32].fetch_add(counter_ptr, Int32(1))
         var is_last = Int(prev) + 1 == num_splits
         ctx._is_last_block = is_last
         if is_last:
@@ -594,7 +594,7 @@ def launch[
             unsafe_memset_zero(counters_buf, num_outputs)
 
             @always_inline
-            @parameter
+            @__parameter
             @__copy_capture(partials_buf, counters_buf, num_splits, body)
             def split_worker(w: Int):
                 var row_idx = w // num_splits
@@ -627,10 +627,10 @@ def launch[
             var chunk = ceildiv(num_outputs, actual_workers)
 
             @always_inline
-            @parameter
+            @__parameter
             def run_coop[params: ContextParams]():
                 @always_inline
-                @parameter
+                @__parameter
                 @__copy_capture(body)
                 def row_worker(w: Int):
                     var start = w * chunk
@@ -703,7 +703,7 @@ def launch[
         )
 
         @always_inline
-        @parameter
+        @__parameter
         @__copy_capture(body)
         def slice_worker(w: Int):
             var s_start = w * chunk

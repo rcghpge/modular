@@ -26,6 +26,7 @@ from max.driver import DeviceSpec
 from max.graph.weights import (
     WeightsFormat,
     load_weights,
+    weights_format,
 )
 from max.nn.kv_cache.cache_params import KVConnectorType
 from max.pipelines.context import SamplingParamsGenerationConfigDefaults
@@ -220,6 +221,8 @@ def _infer_quantization_encoding(
             # GPU preference: most-specific quantized format first.
             if "float4_e2m1fnx2" in supported:
                 encoding = "float4_e2m1fnx2"
+            elif "float6_e2m3fn" in supported:
+                encoding = "float6_e2m3fn"
             elif "float8_e4m3fn" in supported:
                 encoding = "float8_e4m3fn"
             elif "bfloat16" in supported:
@@ -232,9 +235,9 @@ def _infer_quantization_encoding(
     # stable regardless of whether weight_path defaults have been discovered
     # yet — the filename/repo branches above otherwise disagree with the
     # supported-encodings branch on which encoding to pick. Scoped to the CPU
-    # target only: a CPU-only encoding on a GPU target is handled downstream by
-    # the device-downcast in _validate_quantization_encoding_device_compatibility,
-    # and an explicit user encoding is validated separately.
+    # target only: a CPU-only encoding on a GPU target is handled by the CPU
+    # override in _populate_weights_and_encoding, and an explicit user
+    # encoding is validated separately.
     if (
         config.quantization_encoding is None
         and encoding is not None
@@ -300,14 +303,10 @@ def _infer_weight_path(
         #
         # Scoped to diffuser sub-components (``subfolder`` set): they skip
         # architecture validation, so this best-effort pass is their only
-        # resolution step. Architecture-validated models (LLMs and
-        # speculative-decoding draft models) must NOT bind weight_path to
-        # the float32 checkpoint here -- the downstream given-encoding
+        # resolution step. Architecture-validated models must NOT bind
+        # weight_path to the float32 checkpoint here -- the given-encoding
         # validation would then flip quantization_encoding to float32 and
-        # drop the requested bfloat16 (breaking e.g. Kimi-K2.6 Eagle3). For
-        # those, the identical float32->bfloat16 fallback in
-        # ``_resolve_weight_path`` runs after the cast bookkeeping is
-        # recorded and resolves it correctly.
+        # drop the requested bfloat16 (broke Kimi-K2.6 Eagle3).
         weight_files = config.huggingface_weight_repo.files_for_encoding(
             encoding="float32"
         )
@@ -456,6 +455,15 @@ def _select_encoding_and_dtype_cast(
         ``(encoding, cast_from, cast_to)``. The cast fields are ``None`` unless
         a cast was resolved.
     """
+    # Gate on isinstance, not `is not None`: objects that bypass __init__
+    # lack the PrivateAttr and MagicMock auto-attributes are truthy
+    # non-tuples; both must fall through to derivation.
+    resolved_cast = getattr(config, "_resolved_dtype_cast", None)
+    if isinstance(resolved_cast, tuple):
+        assert config.quantization_encoding is not None
+        cast_from, cast_to = resolved_cast
+        return config.quantization_encoding, cast_from, cast_to
+
     if config.quantization_encoding is not None:
         return _resolve_given_quantization_encoding(config)
 
@@ -511,23 +519,44 @@ def _select_dtype_cast(
     return cast_from, cast_to
 
 
-def _downcast_device_specs_for_encoding(
+def _interleaved_rope_weights(config: MAXModelConfig) -> bool:
+    """Returns whether RoPE weights use the GGUF interleaved layout.
+
+    GGUF checkpoints store rotary weights interleaved; other formats
+    (safetensors, pytorch) store them split. An unset ``rope_type`` means
+    the model default, which is ``normal``; only a non-``normal`` override
+    opts a GGUF checkpoint out of the interleaved layout. Read-only --
+    does not mutate *config*.
+    """
+    return (
+        weights_format(config.weight_path) == WeightsFormat.gguf
+        and (config.rope_type or "normal") == "normal"
+    )
+
+
+def _device_specs_for_encoding(
     device_specs: list[DeviceSpec],
     quantization_encoding: SupportedEncoding,
+    warn: bool = False,
 ) -> list[DeviceSpec]:
-    """Returns ``device_specs`` downcast to CPU for a CPU-only encoding.
+    """Returns the device specs an encoding can actually run on.
 
-    When *quantization_encoding* is only supported on CPU and every device in
-    *device_specs* is a GPU, returns ``[DeviceSpec.cpu()]``; otherwise returns
-    *device_specs* unchanged. Going the other way (CPU -> GPU) is not a downcast
-    and is rejected by the compatibility check at the call site. Read-only.
+    An encoding that cannot run on GPU (GGUF q4) overrides all-GPU
+    *device_specs* and runs on CPU: returns ``[DeviceSpec.cpu()]``. Any
+    other combination is returned unchanged (an invalid one, e.g. a
+    GPU-only encoding on CPU, is rejected by the caller's compatibility
+    check). Read-only.
+
+    Set *warn* only where the downcast is applied
+    (:func:`_populate_weights_and_encoding`) so it fires once per model.
     """
     if supported_encoding_supported_devices(quantization_encoding) == (
         "cpu",
     ) and all(d.device_type == "gpu" for d in device_specs):
-        logger.warning(
-            f"Encoding '{quantization_encoding}' is only supported on CPU. Switching device_specs to CPU."
-        )
+        if warn:
+            logger.warning(
+                f"Encoding '{quantization_encoding}' is only supported on CPU. Switching device_specs to CPU."
+            )
         return [DeviceSpec.cpu()]
     return device_specs
 
@@ -566,6 +595,61 @@ def _discover_default_weight_paths(
         # Load any available weight file.
         return next(iter(weight_files.values()))
     return []
+
+
+def _populate_weights_and_encoding(
+    config: MAXModelConfig,
+    *,
+    default_encoding: SupportedEncoding,
+    supported_encodings: set[SupportedEncoding],
+    default_weights_format: WeightsFormat,
+) -> None:
+    """Assigns encoding, weight paths, and devices for an architecture.
+
+    Discovers default weight files when no explicit ``weight_path`` was
+    given, and records any load-time dtype cast on the config. Assigns the
+    effective ``device_specs`` (a CPU-only encoding downcasts all-GPU
+    devices to CPU, warning once per model).
+
+    Raises:
+        ValueError: If the resolved encoding is unsupported by the
+            architecture or the effective devices, or no compatible weight
+            files exist in the repo.
+    """
+    encoding, cast_from, cast_to = _select_encoding_and_dtype_cast(
+        config, default_encoding
+    )
+    if encoding not in supported_encodings:
+        raise ValueError(
+            f"quantization_encoding of '{encoding}' not supported by MAX engine."
+        )
+    config.quantization_encoding = encoding
+    config._resolved_dtype_cast = (cast_from, cast_to)
+    if not config.weight_path:
+        discovered = _discover_default_weight_paths(
+            config.huggingface_weight_repo,
+            encoding,
+            cast_from,
+            default_weights_format,
+        )
+        if not discovered:
+            raise ValueError(
+                f"compatible weights cannot be found for '{encoding}', in the provided repo: '{config.huggingface_weight_repo.repo_id}'"
+            )
+        config.weight_path = discovered
+    config._validate_final_architecture_model_path_weight_path()
+    config.device_specs = _device_specs_for_encoding(
+        config.device_specs, encoding, warn=True
+    )
+    for spec in config.device_specs:
+        if not supported_encoding_supported_on(encoding, spec):
+            raise ValueError(
+                f"The encoding '{encoding}' is not compatible with the selected device type '{spec.device_type}'.\n\n"
+                f"You have two options to resolve this:\n"
+                f"1. Use a different device\n"
+                f"2. Use a different encoding (encodings available for this model: {', '.join(sorted(str(e) for e in supported_encodings))})\n\n"
+                f"Please use the --help flag for more information."
+            )
 
 
 class MAXModelConfigBase(ConfigFileModel):
@@ -796,6 +880,14 @@ class MAXModelConfig(MAXModelConfigBase):
     _generation_config: GenerationConfig | None = PrivateAttr(default=None)
     """Hugging Face ``GenerationConfig``, loaded once at construction."""
 
+    _resolved_dtype_cast: (
+        tuple[SupportedEncoding | None, SupportedEncoding | None] | None
+    ) = PrivateAttr(default=None)
+    """Dtype cast ``(cast_from, cast_to)`` recorded at construction;
+    ``None`` when never resolved, ``(None, None)`` when resolved with no
+    cast. Persisted because re-deriving against the populated
+    ``weight_path`` gives a different answer for casted checkpoints."""
+
     _config_file_section_name: str = PrivateAttr(default="model_config")
     """The section name to use when loading this config from a MAXConfig file.
     This is used to differentiate between different config sections in a single
@@ -886,6 +978,7 @@ class MAXModelConfig(MAXModelConfigBase):
         private_state.setdefault("_cached_weight_repo", None)
         private_state.setdefault("_cached_model_repo", None)
         private_state.setdefault("_generation_config", None)
+        private_state.setdefault("_resolved_dtype_cast", None)
         private_state.setdefault("_config_file_section_name", "model_config")
         object.__setattr__(self, "__pydantic_private__", private_state)
 
@@ -1093,9 +1186,13 @@ class MAXModelConfig(MAXModelConfigBase):
         total_weights_size = 0
         repo = self.huggingface_weight_repo
 
+        repo_root = (
+            repo.local_path if repo.repo_type == "local" else repo.repo_id
+        )
+
         for file_path in self.weight_path:
             file_path_str = str(file_path)
-            full_file_path = Path(repo.repo_id) / file_path
+            full_file_path = Path(repo_root) / file_path
 
             # 1. Check if the file exists locally (direct path, local repo, or cache)
             if local_file_location := self._local_weight_path(full_file_path):
@@ -1106,7 +1203,7 @@ class MAXModelConfig(MAXModelConfigBase):
             if repo.repo_type == "local":
                 if not self._local_weight_path(full_file_path):
                     raise FileNotFoundError(
-                        f"Weight file '{file_path_str}' not found within the local repository path '{repo.repo_id}'"
+                        f"Weight file '{file_path_str}' not found within the local repository path '{repo_root}'"
                     )
             # If it was an online repo, we need to check the API.
             elif repo.repo_type == "online":
@@ -1268,107 +1365,6 @@ class MAXModelConfig(MAXModelConfigBase):
                 f"Multiple GPU inference is currently not supported for {self.model_path}."
             )
 
-    def validate_lora_compatibility(self) -> None:
-        """Validates that LoRA configuration is compatible with model settings.
-
-        Raises:
-            ValueError: If LoRA is enabled but incompatible with current model configuration.
-        """
-        if self.kv_cache.enable_prefix_caching:
-            raise ValueError(
-                "LoRA is not compatible with prefix caching. "
-                "Please disable prefix caching by using the --no-enable-prefix-caching flag."
-            )
-
-    def validate_and_resolve_with_resolved_quantization_encoding(
-        self,
-        resolved_encoding: SupportedEncoding,
-        applied_dtype_cast_from: SupportedEncoding | None,
-        supported_encodings: set[SupportedEncoding],
-        default_weights_format: WeightsFormat,
-    ) -> None:
-        """Validates model path and weight path against resolved quantization encoding.
-
-        Args:
-            resolved_encoding: The encoding the model will actually run with, as
-                resolved by :func:`_select_quantization_encoding`.
-            applied_dtype_cast_from: The encoding weights are cast from at load
-                time, or ``None`` when no cast applies.
-            supported_encodings: A dictionary of supported encodings and their corresponding KV cache strategies.
-            default_weights_format: The default weights format to use if no weights format is provided.
-        """
-        self._validate_quantization_encoding_device_compatibility(
-            quantization_encoding=resolved_encoding,
-            supported_encodings_list=list(supported_encodings),
-        )
-        self._resolve_weight_path(
-            quantization_encoding=resolved_encoding,
-            applied_dtype_cast_from=applied_dtype_cast_from,
-            default_weights_format=default_weights_format,
-        )
-        self._validate_final_architecture_model_path_weight_path()
-
-    def _validate_quantization_encoding_device_compatibility(
-        self,
-        quantization_encoding: SupportedEncoding,
-        supported_encodings_list: list[SupportedEncoding],
-    ) -> None:
-        """Validates that the quantization encoding is supported on the specified devices.
-
-        Should only be called after the quantization encoding has been set.
-        """
-        # Downcast GPU devices to CPU for a CPU-only encoding (see the free
-        # function); the incompatible CPU->GPU direction is rejected below.
-        self.device_specs = _downcast_device_specs_for_encoding(
-            self.device_specs, quantization_encoding
-        )
-        # Check that the quantization encoding is supported on the specified
-        # devices.
-        for device_spec in self.device_specs:
-            if not supported_encoding_supported_on(
-                quantization_encoding, device_spec
-            ):
-                raise ValueError(
-                    f"The encoding '{quantization_encoding}' is not compatible with the selected device type '{device_spec.device_type}'.\n\n"
-                    f"You have two options to resolve this:\n"
-                    f"1. Use a different device\n"
-                    f"2. Use a different encoding (encodings available for this model: {', '.join(str(enc) for enc in supported_encodings_list)})\n\n"
-                    f"Please use the --help flag for more information."
-                )
-
-    def _resolve_weight_path(
-        self,
-        quantization_encoding: SupportedEncoding,
-        applied_dtype_cast_from: SupportedEncoding | None,
-        default_weights_format: WeightsFormat,
-    ) -> None:
-        """Resolves the weight path.
-
-        This method should only be called after the quantization encoding has
-        been set.
-
-        Args:
-            quantization_encoding: The resolved encoding the model runs with.
-            applied_dtype_cast_from: The encoding weights are cast from at load
-                time, or ``None`` when no cast applies.
-            default_weights_format: The default weights format to use if no weight_path is provided.
-        """
-        # If no weight_path is provided, discover the default files (see the
-        # free function).
-        if not self.weight_path:
-            if discovered := _discover_default_weight_paths(
-                self.huggingface_weight_repo,
-                quantization_encoding,
-                applied_dtype_cast_from,
-                default_weights_format,
-            ):
-                self.weight_path = discovered
-
-        if not self.weight_path:
-            raise ValueError(
-                f"compatible weights cannot be found for '{quantization_encoding}', in the provided repo: '{self.huggingface_weight_repo.repo_id}'"
-            )
-
     def _validate_final_architecture_model_path_weight_path(self) -> None:
         # Assume at this point, an architecture,
         # a model_path and weight_paths are available.
@@ -1383,10 +1379,10 @@ class MAXModelConfig(MAXModelConfigBase):
 
             # File not found locally.
             if repo.repo_type == "local":
-                if not self._local_weight_path(Path(repo.repo_id) / path):
+                if not self._local_weight_path(Path(repo.local_path) / path):
                     # Helper returning None for local repo means not found.
                     raise FileNotFoundError(
-                        f"weight file '{path_str}' not found within the local repository path '{repo.repo_id}'"
+                        f"weight file '{path_str}' not found within the local repository path '{repo.local_path}'"
                     )
             elif repo.repo_type == "online":
                 # Verify that it exists on Huggingface.
@@ -1491,7 +1487,7 @@ class MAXModelConfig(MAXModelConfigBase):
                 force_download=self.force_download,
             )
         else:
-            local_path = Path(weight_repo.repo_id)
+            local_path = Path(weight_repo.local_path)
             return [local_path / x for x in weight_path]
 
     def loader(self) -> WeightLoader:
@@ -1605,7 +1601,7 @@ class MAXModelConfig(MAXModelConfigBase):
         cfg = kv_config.kv_connector_config
         if (
             kv_config.kv_connector
-            in (KVConnectorType.local, KVConnectorType.tiered)
+            in (KVConnectorType.tiered, KVConnectorType.rust_tiered)
             and cfg
         ):
             entries.append(

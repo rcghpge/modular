@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -312,9 +313,11 @@ class UnifiedSpecDecodeInputs(ModelInputs):
             assert self.in_thinking_phase is not None
             tail += (self.in_thinking_phase,)
         # Gate the bitmask triple on two compile-time flags, not a runtime
-        # pinned_bitmask is not None check: supports_structured_output
-        # is False for dflash (sets pinned_bitmask but declares no bitmask graph
-        # inputs); structured_output mirrors needs_bitmask_constraints.
+        # pinned_bitmask is not None check: supports_structured_output is False
+        # for the dflash Llama3 graph, which still declares no bitmask graph
+        # inputs even though the pipeline may set pinned_bitmask;
+        # structured_output mirrors needs_bitmask_constraints, the same value
+        # that gates the triple in build_spec_decode_input_types.
         if supports_structured_output and self.structured_output:
             assert self.pinned_bitmask is not None
             assert self.wait_payload is not None
@@ -435,6 +438,36 @@ class PipelineModel(ABC, Generic[BaseContextType]):
     def batch_processor(self) -> BatchProcessor[Any, Any] | None:
         """Returns the batch processor when configured."""
         return self._batch_processor
+
+    def _maybe_release_host_weights(self, *models: Any) -> None:
+        """Releases the host copies of the weights after the model is loaded.
+
+        Gated on ``MODULAR_MAX_RELEASE_HOST_WEIGHTS=1``. Once the compiled
+        model holds its device copy, drops the references that pin host
+        weight memory: the engine registry (:meth:`Model.release_weights`),
+        the retained state dicts, and the weight loader's file mappings.
+
+        GPU deployments only: a CPU-resident weight is read in place on
+        every execution, and releasing it is undefined behavior. ModuleV3
+        compiled callables do not support the release.
+        """
+        if os.environ.get("MODULAR_MAX_RELEASE_HOST_WEIGHTS") != "1":
+            return
+        for model in models:
+            release_weights = getattr(model, "release_weights", None)
+            if release_weights is not None:
+                release_weights()
+        for attr in (
+            "state_dict",
+            "_vision_weights_dict",
+            "_language_weights_dict",
+        ):
+            if hasattr(self, attr):
+                setattr(self, attr, {})
+        close = getattr(self.weights, "close", None)
+        if close is not None:
+            close()
+        logger.info("Released host weight memory after model load.")
 
     @property
     def huggingface_config(self) -> AutoConfig:
@@ -682,6 +715,7 @@ class GraphPipelineModel(PipelineModel[BaseContextType]):
             self.state_dict = weights_registry
             model = session.load(graph, weights_registry=weights_registry)
 
+        self._maybe_release_host_weights(model)
         self._wire_batch_processor(model, model_config)
         return model
 
@@ -924,6 +958,7 @@ class GraphPipelineModelWithKVCache(PipelineModelWithKVCache[BaseContextType]):
             self.state_dict = weights_registry
             model = session.load(graph, weights_registry=weights_registry)
 
+        self._maybe_release_host_weights(model)
         self._wire_batch_processor(model, model_config)
         return model
 
@@ -1007,6 +1042,7 @@ class MultiGraphPipelineModelWithKVCache(
                 weights_registry={**vision_registry, **language_registry},
             )
 
+        self._maybe_release_host_weights(*models.values())
         vision_model = (
             models[vision_graph.name] if vision_graph is not None else None
         )

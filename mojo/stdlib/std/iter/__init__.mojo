@@ -628,8 +628,8 @@ def zip[
     """
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(res))
 
-    @parameter
-    def init_elt[idx: Int](var elt: iterables.element_types[idx]):
+    @__parameter
+    def init_elt[idx: Int](var elt: iterables.Ts[idx]):
         Pointer(to=res._values[idx]).unsafe_write(
             rebind_var[type_of(res._values[idx])](iter(elt^))
         )
@@ -868,9 +868,7 @@ comptime _all_yield_same_ref_condition[
     T0: Movable, origin: Origin, T: Iterable
 ] = T.IteratorType[origin].Element == T0
 
-comptime _all_yield_same_ref[
-    origin: Origin, *Ts: Iterable
-]: Bool = Ts.all_satisfies[
+comptime _all_yield_same_ref[origin: Origin, *Ts: Iterable]: Bool = Ts.all[
     _all_yield_same_ref_condition[Ts[0].IteratorType[origin].Element, origin, _]
 ]()
 
@@ -878,7 +876,7 @@ comptime _all_yield_same_owned_condition[
     T0: Movable, T: IterableOwned
 ] = T.IteratorOwnedType.Element == T0
 
-comptime _all_yield_same_owned[*Ts: IterableOwned]: Bool = Ts.all_satisfies[
+comptime _all_yield_same_owned[*Ts: IterableOwned]: Bool = Ts.all[
     _all_yield_same_owned_condition[Ts[0].IteratorOwnedType.Element, _]
 ]()
 
@@ -983,8 +981,8 @@ def chain[
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(res))
     res._idx = 0
 
-    @parameter
-    def init_elt[idx: Int](var elt: iterables.element_types[idx]):
+    @__parameter
+    def init_elt[idx: Int](var elt: iterables.Ts[idx]):
         Pointer(to=res._iterators[idx]).unsafe_write(
             rebind_var[type_of(res._iterators[idx])](iter(elt^))
         )

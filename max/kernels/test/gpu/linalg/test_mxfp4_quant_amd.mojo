@@ -22,7 +22,7 @@ from std.random import random_float64, seed
 from std.testing import assert_true
 from max.gpu.host import DeviceContext
 from layout import Idx, TileTensor, row_major
-from linalg.fp4_quantization import quantize_mx_amd
+from linalg.block_scaled_quantization import quantize_mx_amd
 from linalg.fp4_utils import E2M1_TO_FLOAT32, MXFP4_SF_VECTOR_SIZE
 from linalg.mxfp4_dequant import dequant_mxfp4
 
@@ -244,7 +244,7 @@ def test_quantize_known_scales(ctx: DeviceContext) raises:
     ctx.enqueue_copy(scales_host, scales_dev)
     ctx.synchronize()
 
-    @parameter
+    @__parameter
     def _check_block(
         blk: Int, expected_e8m0: Int, expected_val: Float32
     ) raises:

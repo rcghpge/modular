@@ -28,6 +28,7 @@ from std.sys import (
     align_of,
     get_defined_bool,
     has_amd_gpu_accelerator,
+    has_amd_rdna_gpu_accelerator,
     has_apple_gpu_accelerator,
     has_nvidia_gpu_accelerator,
     is_amd_gpu,
@@ -110,6 +111,7 @@ from .apple.fa_prefill import (
     fa_prefill_apple,
 )
 from .amd_structured.attention import Attention
+from .amd_structured.config import decode_mma_shape
 from .amd_structured.mha_prefill_v2 import (
     MhaConfigV2,
     MhaPrefillV2,
@@ -234,7 +236,7 @@ def flash_attention[
     """
 
     @always_inline
-    @parameter
+    @__parameter
     def description_fn() -> String:
         return String(";").join(
             Span(
@@ -295,10 +297,8 @@ def flash_attention[
 # not a hardware limit. It must clear the largest query length a caller
 # DECLARES: for a 1+K speculative cycle that is K+2, not K+1 — the target
 # verifies K+1 tokens and an EAGLE3 draft's step-0 catch-up declares that width
-# plus one, so K=3 needs 5. Only `group == 1` has an arm at S=5, since
-# `group == num_heads` needs `num_heads*S <= 4*WM`, which no multiple-of-16 head
-# count satisfies there.
-comptime _MHA_DECODE_FOLD_MAX_S = 5
+# plus one, so K <= 7 needs 9.
+comptime _MHA_DECODE_FOLD_MAX_S = 9
 # One 16-row MFMA M-tile per warp.
 comptime _MHA_DECODE_FOLD_WM = 16
 
@@ -338,12 +338,22 @@ def _mha_decode_fold_ok[
         `True` when the token fold applies to this shape.
     """
 
+    # Warp M-tiles the single-KV-head arm may stack, one warp each. 8 fits a
+    # 16-query-head 1+7 verify (128 rows, 512 threads); its 96 KiB of LDS drops
+    # the CU to one CTA, but at twice the warps, so waves per CU hold.
+    comptime max_m_tiles = 8
+
     return (
         has_amd_gpu_accelerator()
-        and not _is_amd_rdna()
-        # fp16 shares the bf16 decode MMA shape and should work, but is untested
-        # through the fold; widen once a test covers it.
-        and dtype == DType.bfloat16
+        and not has_amd_rdna_gpu_accelerator()
+        # fp16 shares bf16's decode MMA shape and fp32 has its own, but neither
+        # is tested through the fold; widen once a test covers them.
+        and (dtype == DType.bfloat16 or dtype.is_float8())
+        # The fold stacks query rows over `_MHA_DECODE_FOLD_WM`-row warp
+        # M-tiles, so it needs a decode MFMA that tall. bf16 always is; fp8
+        # picks between a 16-row and a 32-row shape by depth.
+        and decode_mma_shape[dtype, depth, num_heads]()[0]
+        == _MHA_DECODE_FOLD_WM
         # At WN == BN each warp's K and V register tiles span the whole depth,
         # so anything wider spills.
         and depth <= 128
@@ -377,12 +387,11 @@ def _mha_decode_fold_ok[
                 # M-tiles, so they must tile evenly and need two — at
                 # num_warps_m == 1 P stops being warp-local
                 # (`Attention._warp_local_p`) and falls back to the
-                # register-resident P chain never exercised there. The 4-tile
-                # ceiling is the single-token decode block size (256 threads).
+                # register-resident P chain never exercised there.
                 group == num_heads
                 and (num_heads * S) % _MHA_DECODE_FOLD_WM == 0
                 and num_heads * S >= 2 * _MHA_DECODE_FOLD_WM
-                and num_heads * S <= 4 * _MHA_DECODE_FOLD_WM
+                and num_heads * S <= max_m_tiles * _MHA_DECODE_FOLD_WM
             )
             or (
                 # One query head per KV head: a CTA owns just its S token rows,
@@ -708,7 +717,7 @@ def flash_attention[
 
     # TODO docstring
     @always_inline
-    @parameter
+    @__parameter
     def description_fn() -> String:
         return String(";").join(
             Span(
@@ -959,9 +968,16 @@ def flash_attention_dispatch[
         ctx: GPU device context.
         valid_length: Per-sequence valid lengths for masked output.
         kv_input_row_offsets: Row offsets for ragged KV inputs.
-        num_partitions: Override split-K partition count; `None` for auto.
+        num_partitions: Override split-K partition count; `None` for auto. On
+            the SM100 FA4 route (`depth <= 128` half-float/fp8) the count is
+            honored exactly, and supplying one additionally forces a BM < 256
+            tile because the 2Q config has no split-K mechanism. It is
+            unsatisfiable, and asserts, for a mask that reports `UNKNOWN_MASK`
+            (`MaterializedMask`, `AndMask`), which has split-K comptime-pruned.
         sink_weights: Optional sink-token weight tensor.
-        decode_dispatch_metadata: Pre-computed decode dispatch metadata.
+        decode_dispatch_metadata: Pre-computed decode dispatch metadata. Only
+            `max_cache_valid_length` is consumed on the SM100 FA4 route; its
+            `num_partitions` field is unused there.
     """
 
     comptime num_heads = config.num_heads
@@ -997,6 +1013,96 @@ def flash_attention_dispatch[
     comptime if _is_flash_attention_applicable:
         comptime is_sm90 = ctx.default_device_info == H100
         comptime is_sm100 = _is_sm10x_gpu(ctx.default_device_info)
+        # ---- SM100 FA4: one route for prefill AND decode ----
+        # `sm100/dispatch.mojo` owns tile choice (warp-specialized BM=32/64 at
+        # depth 64/128, else the BM=128 1Q carve) and split-K (cluster/DSMEM, or
+        # workspace + `fa4_splitk_combine`) internally, so the kernel decision
+        # happens BEFORE the prefill/decode split and `mha.mojo` never computes
+        # a partition count for these shapes. A single-token prompt is just the
+        # shortest prefill: it arrives as a dynamic `max_prompt_len` and lands
+        # on the smallest tile that single-tiles it.
+        #
+        # `mask_safe_out_of_bounds` here is NOT an out-of-bounds-safety
+        # requirement -- FA4 masks OOB keys itself via `MHAMask.mask_bits()`. It
+        # is a split-K availability proxy: `MaterializedMask` is the only mask
+        # that declares it `False`, and it also reports `UNKNOWN_MASK`, so
+        # split-K is comptime-pruned for it inside FA4 (`ws_mask_ok` /
+        # `ws1q_mask_ok`). Excluding it here leaves it on the tree below, which
+        # keeps its prefill on FA4 and its decode on the FA2 `mha_decoding`
+        # kernel -- where it still gets split-K instead of being pinned to P == 1.
+        #
+        # The proxy is one-way, not an equivalence: `AndMask` reports
+        # `UNKNOWN_MASK` unconditionally (AND visibility is a union, so its
+        # non-full region can be discontiguous) yet inherits
+        # `mask_safe_out_of_bounds` from its children, so an `AndMask` of two
+        # geometric masks PASSES this gate, reaches FA4, and runs at P == 1.
+        # That is correct, just unaccelerated -- and an explicit
+        # `num_partitions` on such a mask is unsatisfiable and asserts in
+        # `sm100/dispatch.mojo` rather than silently degrading.
+        comptime fa4_route = (
+            is_sm100
+            and depth <= 128
+            and mask_t.mask_safe_out_of_bounds
+            and (
+                (
+                    q_half_float
+                    and (ragged or not _use_valid_length)
+                    and config.algorithm == FlashAttentionAlgorithm(3)
+                )
+                or q_fp8_2q
+            )
+        )
+        comptime if fa4_route:
+            # Decode callers supply a graph-computed cache length; prefill does
+            # not. This mirrors what the decode path below consumed
+            # (`dispatch_metadata.max_cache_valid_length`) while leaving prefill
+            # on the raw argument. The `is_token_generation` guard is what keeps
+            # prefill byte-identical: `kv_cache_ragged.mojo` passes
+            # `decode_dispatch_metadata` unconditionally.
+            var fa4_max_cache_len = max_cache_valid_length
+            if is_token_generation:
+                if decode_dispatch_metadata:
+                    fa4_max_cache_len = (
+                        decode_dispatch_metadata.value().max_cache_valid_length
+                    )
+            # An explicit `num_partitions` is forwarded as FA4's exact partition
+            # count (`0` == auto). FA4 honors it verbatim rather than snapping it
+            # to its `_bucket_ws` ladder, and honoring it also forces a BM < 256
+            # route, because the 2Q config has no split-K mechanism at all. Note
+            # this does NOT flow through `dispatch_metadata.num_partitions`: that
+            # field stays unused on this route (FA4 sizes its own auto P), only
+            # the caller's explicit override is honored.
+            var fa4_num_partitions: Int = 0
+            if num_partitions:
+                fa4_num_partitions = num_partitions.value()
+            mha_sm100_2q_dispatch[
+                config=config,
+                group=group,
+                ragged=ragged,
+                sink=sink,
+                _is_cache_length_accurate=_is_cache_length_accurate,
+            ](
+                output.to_device_buffer(ctx),
+                q.to_device_buffer(ctx).unsafe_ptr(),
+                k,
+                rebind[k_t](v),
+                q_num_matrix_view_rows(q),
+                mask_functor,
+                valid_length.value().to_device_buffer(ctx).unsafe_ptr(),
+                DynamicInt(max_prompt_len),
+                fa4_max_cache_len,
+                scale,
+                _optional_lt_to_tt(kv_input_row_offsets),
+                batch_size,
+                ctx,
+                _optional_lt_to_tt(sink_weights),
+                num_partitions_override=fa4_num_partitions,
+            )
+            # Early return rather than wrapping everything below in an `else:`.
+            # Semantically identical -- this `comptime if` is the last statement
+            # in the enclosing block -- but it keeps the legacy tree at its
+            # original indentation instead of re-indenting ~815 lines.
+            return
         if not is_token_generation:
             # TODO note that we have to handle mask tensor alignment here.
             # Choose matmul parameters based on dtype.
@@ -1064,45 +1170,17 @@ def flash_attention_dispatch[
                             NoPartition[get_accum_type[q.dtype]()](),
                             ctx,
                         )
-                    elif not get_defined_bool["ENABLE_FA4", True]():
-                        mha_sm100_1q_dispatch[
-                            config=config,
-                            group=group,
-                            ragged=ragged,
-                            sink=sink,
-                            _is_cache_length_accurate=_is_cache_length_accurate,
-                        ](
-                            output.to_device_buffer(ctx),
-                            q.to_device_buffer(ctx),
-                            k,
-                            rebind[k_t](v),
-                            num_rows_q,
-                            mask_functor,
-                            valid_length.value().to_device_buffer(ctx),
-                            DynamicInt(max_prompt_len),
-                            max_cache_valid_length,
-                            scale,
-                            _optional_lt_to_tt(kv_input_row_offsets),
-                            batch_size,
-                            NoPartition[get_accum_type[q.dtype]()](),
-                            ctx,
-                            _optional_lt_to_tt(sink_weights),
-                        )
                     else:
-                        comptime use_pair_cta = (
-                            depth > 64
-                            and depth <= 128
-                            and get_defined_bool[
-                                "ENABLE_MHA_PREFILL_PAIR_CTA", False
-                            ]()
-                        )
+                        # Only reachable for a `depth <= 128` mask that the
+                        # `fa4_route` gate above excluded, i.e.
+                        # `MaterializedMask`; every other `depth <= 128`
+                        # half-float/fp8 shape returned there.
                         mha_sm100_2q_dispatch[
                             config=config,
                             group=group,
                             ragged=ragged,
                             sink=sink,
                             _is_cache_length_accurate=_is_cache_length_accurate,
-                            pair_cta=use_pair_cta,
                         ](
                             output.to_device_buffer(ctx),
                             q.to_device_buffer(ctx).unsafe_ptr(),
@@ -1150,7 +1228,7 @@ def flash_attention_dispatch[
                     # and output.dtype == DType.bfloat16
                     # and (config.depth == 64 or config.depth == 128)
                     # and has_amd_gpu_accelerator()
-                    # and not _is_amd_rdna()
+                    # and not has_amd_rdna_gpu_accelerator()
                     # and (k_t.page_size == 0 or k_t.page_size >= 64)
                 )
 
@@ -1540,6 +1618,11 @@ def flash_attention_dispatch[
                     "max_num_partitions must be >= num_partitions",
                 )
 
+                # On SM100 this now admits only depth 256/512 -- every
+                # `depth <= 128` half-float/fp8 shape with an FA4-eligible
+                # mask returned via the `fa4_route` branch above.
+                # `MaterializedMask` is excluded by `mask_safe_out_of_bounds`,
+                # so it keeps the FA2 `mha_decoding` split-K path below.
                 comptime use_fa3_kernel = (
                     (is_sm90 or is_sm100)
                     and mask_t.mask_safe_out_of_bounds
@@ -1584,7 +1667,7 @@ def flash_attention_dispatch[
                     # the split-K launch go through this one ladder, so their
                     # instantiation sets cannot drift. Returns whether a launch
                     # happened.
-                    @parameter
+                    @__parameter
                     def launch_mha_decoding[
                         out_dtype: DType
                     ](
@@ -3140,7 +3223,7 @@ def mha_single_batch[
     # Only the last iteration is doing boundary check.
     @__copy_capture(seq_len, max_seq_len, num_keys, start_pos)
     @always_inline
-    @parameter
+    @__parameter
     def loop_over_kvcache[
         tile_size: Int, not_last_iter: Bool
     ](kv_tile_start_row: Int, end: Int):
@@ -3208,7 +3291,7 @@ def mha_single_batch[
         _ = p_reg_tile.fill(0)
 
         @always_inline
-        @parameter
+        @__parameter
         def _mask_tensor_row(
             tensor: LayoutTensor, num_rows: Int, out result: type_of(tensor)
         ):
@@ -3277,7 +3360,7 @@ def mha_single_batch[
         # Vectorize by 2.
         var p_reg_vec2 = p_reg_tile.vectorize[1, p_frag_simdwidth]()
 
-        @parameter
+        @__parameter
         def _apply_mask[masked: Bool]():
             var scale_log2e: Scalar[accum_type] = (
                 scale.cast[
@@ -3863,7 +3946,7 @@ def mha_single_batch_pipelined[
     #   ```
     # Only the last iteration is doing boundary check.
     @always_inline
-    @parameter
+    @__parameter
     def loop_over_kvcache[
         tile_size: Int, not_last_iter: Bool
     ](kv_tile_start_row: Int, end: Int):
@@ -4007,7 +4090,7 @@ def mha_single_batch_pipelined[
         # Vectorize by 2.
         var p_reg_vec2 = p_reg_tile.vectorize[1, p_frag_simdwidth]()
 
-        @parameter
+        @__parameter
         def _apply_mask[masked: Bool]():
             var scale_log2e: Scalar[accum_type] = (
                 scale.cast[
@@ -5027,7 +5110,7 @@ def mha_decoding_single_batch[
     )
 
     @always_inline
-    @parameter
+    @__parameter
     def _mask_tensor_row(
         tensor: LayoutTensor, num_rows: Int
     ) -> type_of(tensor):
@@ -5062,7 +5145,7 @@ def mha_decoding_single_batch[
     )
 
     @always_inline
-    @parameter
+    @__parameter
     def loop_over_kvcache[
         tile_size: Int, not_last_iter: Bool
     ](kv_tile_start_row: Int, end: Int):
@@ -5754,7 +5837,7 @@ def mha_decoding_single_batch_pipelined[
     )
 
     @always_inline
-    @parameter
+    @__parameter
     def loop_over_kvcache[
         tile_size: Int, not_last_iter: Bool
     ](kv_tile_start_row: Int, seq_len: Int):
@@ -6307,7 +6390,7 @@ def mha_gpu_naive[
         block_dim=_NAIVE_BMM_BLOCK_DIM,
     )
 
-    @parameter
+    @__parameter
     @__copy_capture(p_buffer)
     def input_fn_device[
         _simd_width: Int

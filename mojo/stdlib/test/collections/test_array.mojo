@@ -15,11 +15,11 @@ from std.sys.info import size_of
 
 from std.compile import compile_info
 from std.hashlib import hash
-from std.memory import (
-    UnsafeMaybeUninit,
-    is_trivially_copyable,
-    is_trivially_deletable,
-    is_trivially_movable,
+from std.memory import MaybeUninit
+from std.traits import (
+    IsTriviallyCopyable,
+    IsTriviallyDeinitable,
+    IsTriviallyMovable,
 )
 from test_utils import (
     CopyCounter,
@@ -94,20 +94,18 @@ def test_array_int() raises:
     var arr3: Array[Int, 1] = [5]
     assert_equal(arr3[0], 5)
 
-    @parameter
     def test_init_fill[
         size: Int, batch_size: Int, dt: DType
-    ](arg: Scalar[dt]) raises:
+    ](arg: Scalar[dt]) raises {imm}:
         var arr = Array[Scalar[dt], size].__init__[batch_size=batch_size](
             fill=arg
         )
         for i in range(size):
             assert_equal(arr[i], arg)
 
-    @parameter
     def test_init_fill_scalars[
         *dts: DType, sizes: List[Int], batch_sizes: List[Int]
-    ]() raises:
+    ]() raises {imm}:
         comptime for current_batch_size in range(len(batch_sizes)):
             comptime for current_size in range(len(sizes)):
                 comptime for current_type in range(dts.size):
@@ -167,6 +165,16 @@ def test_array_String() raises:
     assert_equal(arr3[0], "hi")
 
 
+def test_array_default_init() raises:
+    var arr = Array[Int, 5]()
+    for i in range(5):
+        assert_equal(arr[i], Int())
+
+    var arr2 = Array[String, 3]()
+    for i in range(3):
+        assert_equal(arr2[i], String())
+
+
 def test_array_int_pointer() raises:
     var arr: Array[Int, 3] = [0, 10, 20]
 
@@ -192,12 +200,12 @@ def test_array_int_pointer() raises:
 
 
 def test_array_unsafe_assume_initialized_constructor_string() raises:
-    var maybe_uninitialized_arr = Array[UnsafeMaybeUninit[String], 3](
+    var maybe_uninitialized_arr = Array[MaybeUninit[String], 3](
         uninitialized=True
     )
-    maybe_uninitialized_arr[0].init_from("hello")
-    maybe_uninitialized_arr[1].init_from("mojo")
-    maybe_uninitialized_arr[2].init_from("world")
+    maybe_uninitialized_arr[0].unsafe_write("hello")
+    maybe_uninitialized_arr[1].unsafe_write("mojo")
+    maybe_uninitialized_arr[2].unsafe_write("world")
 
     var initialized_arr = Array[String, 3](
         unsafe_assume_initialized=maybe_uninitialized_arr^
@@ -383,13 +391,13 @@ def test_write_repr_to() raises:
 
 
 def test_inline_array_triviality() raises:
-    assert_true(is_trivially_deletable[Array[Int, 1]]())
-    assert_true(is_trivially_copyable[Array[Int, 1]]())
-    assert_true(is_trivially_movable[Array[Int, 1]]())
+    assert_true(IsTriviallyDeinitable[Array[Int, 1]])
+    assert_true(IsTriviallyCopyable[Array[Int, 1]])
+    assert_true(IsTriviallyMovable[Array[Int, 1]])
 
-    assert_false(is_trivially_deletable[Array[String, 1]]())
-    assert_false(is_trivially_copyable[Array[String, 1]]())
-    assert_true(is_trivially_movable[Array[String, 1]]())
+    assert_false(IsTriviallyDeinitable[Array[String, 1]])
+    assert_false(IsTriviallyCopyable[Array[String, 1]])
+    assert_true(IsTriviallyMovable[Array[String, 1]])
 
 
 def _return_array[copy: Bool = False]() -> Array[Int32, 4]:
@@ -475,6 +483,19 @@ struct LinearNonMovable(Deinitable where False, Movable where False):
     var value: Int
 
 
+struct NonDefaultable:
+    pass
+
+
+struct DefaultableNonMovable(Defaultable, Movable where False):
+    """A `Defaultable` type that is not `Movable`."""
+
+    var value: Int
+
+    def __init__(out self):
+        self.value = 0
+
+
 def test_inline_array_eq() raises:
     var a: Array[Int, 3] = [1, 2, 3]
     var b: Array[Int, 3] = [1, 2, 3]
@@ -551,6 +572,10 @@ def test_inline_array_conditional_conformances() raises:
     # yields an array that is likewise neither.
     assert_false(conforms_to(Array[LinearNonMovable, 3], Movable))
     assert_false(conforms_to(Array[LinearNonMovable, 3], Deinitable))
+
+    assert_true(conforms_to(Array[Int, 3], Defaultable))
+    assert_true(conforms_to(Array[DefaultableNonMovable, 3], Defaultable))
+    assert_false(conforms_to(Array[NonDefaultable, 3], Defaultable))
 
 
 def test_inline_array_iter_bounds() raises:

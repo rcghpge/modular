@@ -36,6 +36,7 @@ from std.sys.info import _accelerator_arch
 
 from std.bit import prev_power_of_two
 from std.gpu import WARP_SIZE, lane_id
+from max.gpu.host import DeviceBuffer
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from layout.layout_tensor import LayoutTensorIter
@@ -432,6 +433,30 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
 
 
 @always_inline
+def indexer_key_bound(
+    num_keys: Int, seq_len: Int, tok_local: Int, causal: Int
+) -> Int:
+    """Keys the sparse indexer defines for token `tok_local` of a row.
+
+    `num_keys` is the row's total key count (`cache_len + seq_len`); the
+    result is all of them without a causal mask, `cache_len + tok_local + 1`
+    with one. Branchless multiply form: a branch in the scorer
+    epilogues' unrolled token loop measured +4-9% on the non-causal path from
+    codegen alone.
+
+    Read side of the indexer's write/read contract: the SM100 scorers
+    (`sparse_index_fp8_sm100[_prefill].mojo`) write score slots `[0, bound)`
+    for each token and nothing else, computing this same bound inline in
+    their store guards (their operands are `Int32`), and the bounded top-k
+    (`topk_row_bounds_kernel` in `mla_index_fp8.mojo` feeding
+    `persistent_topk_block_split`) reads exactly that range with no `-inf`
+    prefill between them. If either side drifts, the top-k reads score slots
+    the scorer never wrote.
+    """
+    return num_keys - (seq_len - 1 - tok_local) * causal
+
+
+@always_inline
 def _kernel_mask[
     dtype: DType, width: SIMDLength
 ](
@@ -731,7 +756,7 @@ def dispatch_mask[
     """
 
     @always_inline
-    @parameter
+    @__parameter
     def outer_wrapper[mask_t: MHAMask](mask: mask_t) raises:
         return callback_fn(mask)
 
@@ -922,6 +947,91 @@ def _is_decoding[int_t: OptionallyStaticInt]() -> Bool:
     return int_t.static_value.or_else(0) == 1
 
 
+trait OptionalPointer(Copyable, TrivialRegisterPassable):
+    """Abstracts over nullable pointers, providing a uniform interface for `NonNullPointer` and `NullPointer`.
+    """
+
+    comptime dtype: DType
+    comptime is_null: Bool
+    comptime address_space: AddressSpace
+
+    @always_inline
+    def value(
+        self,
+    ) -> UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]:
+        ...
+
+
+struct NonNullPointer[
+    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
+](OptionalPointer):
+    """A pointer with a compile-time guarantee of being non-null.
+
+    Parameters:
+        dtype_: Element type of the pointed-to values.
+        address_space_: GPU address space of the pointer (defaults to
+            `AddressSpace.GENERIC`).
+    """
+
+    comptime dtype: DType = Self.dtype_
+    comptime is_null: Bool = False
+    comptime address_space: AddressSpace = Self.address_space_
+    comptime PtrType = UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]
+
+    @__allow_legacy_any_origin_fields
+    var ptr: Self.PtrType
+
+    @always_inline
+    def __init__(out self, ptr: Self.PtrType):
+        self.ptr = ptr
+
+    @always_inline
+    def __init__(out self, ptr: DeviceBuffer[Self.dtype]):
+        comptime assert Self.address_space == AddressSpace.GENERIC
+        self.ptr = rebind[Self.PtrType](ptr.unsafe_ptr())
+
+    @always_inline
+    def value(self) -> Self.PtrType:
+        assert Int(self.ptr) != 0, (
+            "NonNullPointer is supposed to provide a compile-time guarantee"
+            " of being non-null"
+        )
+        return self.ptr
+
+
+struct NullPointer[
+    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
+](OptionalPointer):
+    """A pointer known at compile time to be null, used when an optional pointer argument is absent.
+
+    Parameters:
+        dtype_: Element type of the pointed-to values.
+        address_space_: GPU address space of the pointer (defaults to
+            `AddressSpace.GENERIC`).
+    """
+
+    comptime dtype: DType = Self.dtype_
+    comptime is_null: Bool = True
+    comptime address_space: AddressSpace = Self.address_space_
+    comptime PtrType = UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]
+
+    @always_inline
+    def __init__(out self):
+        pass
+
+    @always_inline
+    def value(self) -> Self.PtrType:
+        # NullPointer.value() should never be called at runtime — it exists
+        # only for trait conformance. Return dangling as a safe sentinel.
+        return Self.PtrType.unsafe_dangling()
+
+
 trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
     """Trait describing how the key-value sequence is partitioned for split-K decoding.
 
@@ -934,6 +1044,9 @@ trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
 
     comptime do_partition: Bool
     comptime accum_dtype: DType
+    # Null exactly when `do_partition` is False, so a scheme that owns no
+    # partial-statistics buffer cannot hand out a pointer to one.
+    comptime LSEPointerType: OptionalPointer
 
     @always_inline
     def num_partitions(self) -> UInt32:
@@ -948,10 +1061,12 @@ trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
     def max_num_partitions(self) -> UInt32:
         ...
 
+    # Base of the partial softmax statistics buffer. Callers that need to write
+    # through it must first establish `do_partition` (see
+    # `MHAPosition.exp_sum_qk_max_ptr`), which is what makes the mutability
+    # laundering at those sites sound.
     @always_inline
-    def get_exp_sum_qk_max_pointer(
-        self,
-    ) -> UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin]:
+    def lse_pointer(self) -> Self.LSEPointerType:
         ...
 
 
@@ -970,6 +1085,7 @@ struct NoPartition[dtype: DType](
 
     comptime do_partition: Bool = False
     comptime accum_dtype: DType = Self.dtype
+    comptime LSEPointerType = NullPointer[Self.accum_dtype]
 
     @always_inline
     def __init__(out self):
@@ -984,12 +1100,8 @@ struct NoPartition[dtype: DType](
         return 1
 
     @always_inline
-    def get_exp_sum_qk_max_pointer(
-        self,
-    ) -> UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin]:
-        return UnsafePointer[
-            Scalar[Self.accum_dtype], MutAnyOrigin
-        ].unsafe_dangling()
+    def lse_pointer(self) -> Self.LSEPointerType:
+        return {}
 
 
 struct SplitKPartition[dtype: DType](
@@ -1010,6 +1122,7 @@ struct SplitKPartition[dtype: DType](
 
     comptime do_partition: Bool = True
     comptime accum_dtype: DType = Self.dtype
+    comptime LSEPointerType = NonNullPointer[Self.accum_dtype]
 
     @__allow_legacy_any_origin_fields
     var ptr: UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin]
@@ -1036,7 +1149,5 @@ struct SplitKPartition[dtype: DType](
         return self.max_num_partitions_value
 
     @always_inline
-    def get_exp_sum_qk_max_pointer(
-        self,
-    ) -> UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin]:
-        return self.ptr
+    def lse_pointer(self) -> Self.LSEPointerType:
+        return {self.ptr.as_imm().as_unsafe_any_origin()}

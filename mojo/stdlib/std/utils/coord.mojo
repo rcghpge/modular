@@ -15,6 +15,7 @@
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.os import abort
 from std.reflection import reflect
+from std.collections import Array
 from std.utils import IndexList
 from std.math.uutils import umod, ufloordiv
 
@@ -345,6 +346,28 @@ struct Coord[*element_types: CoordLike](
             Pointer(to=self[i]).unsafe_write(
                 rebind[type_of(self[i])](Scalar[dtype](index_list[i]))
             )
+
+    def __init__[
+        rank: Int, dtype: DType
+    ](
+        out self: Coord[
+            *TypeList.splat[Trait=CoordLike, rank, Scalar[dtype]]()
+        ],
+        array: Array[Scalar[dtype], rank],
+    ):
+        """Construct an all-dynamic `Coord` from an `Array`.
+
+        Parameters:
+            rank: The number of elements in the array.
+            dtype: The data type of the array elements.
+
+        Args:
+            array: The `Array` to convert to a `Coord`.
+        """
+        self = type_of(self)()
+
+        comptime for i in range(rank):
+            Pointer(to=self[i]).unsafe_write(rebind[type_of(self[i])](array[i]))
 
     @staticmethod
     @always_inline("nodebug")
@@ -1377,7 +1400,7 @@ comptime _IsStaticPredicate[T: CoordLike] = T.is_static_value
 
 comptime _IsNotTuplePredicate[T: CoordLike] = not T.is_tuple
 
-comptime _IsFlat[*element_types: CoordLike] = element_types.all_satisfies[
+comptime _IsFlat[*element_types: CoordLike] = element_types.all[
     _IsNotTuplePredicate,
 ]()
 """True iff no element in the variadic is a tuple. Single-pass; lets
@@ -1385,9 +1408,7 @@ comptime _IsFlat[*element_types: CoordLike] = element_types.all_satisfies[
 on the (typical) flat path."""
 
 
-comptime _AllStaticFlat[
-    *element_types: CoordLike
-] = element_types.all_satisfies[
+comptime _AllStaticFlat[*element_types: CoordLike] = element_types.all[
     _IsStaticPredicate,
 ]()
 
@@ -1400,9 +1421,7 @@ compile-time-known dim."""
 
 comptime _AllEqualPredicate[T1: AnyType, T2: type_of(T1)] = T1 == T2
 
-comptime _AllEqual[
-    T: AnyType, *element_types: AnyType
-] = element_types.all_satisfies[
+comptime _AllEqual[T: AnyType, *element_types: AnyType] = element_types.all[
     _AllEqualPredicate[T, _],
 ]()
 
@@ -1675,7 +1694,7 @@ struct _RegTuple[*element_types: CoordLike](
         )
 
         # Move each element into the tuple storage.
-        @parameter
+        @__parameter
         def init_elt[idx: Int](var elt: Self.element_types[idx]):
             Pointer(to=self[idx]).unsafe_write(elt)
 

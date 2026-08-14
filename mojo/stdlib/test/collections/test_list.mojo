@@ -231,7 +231,6 @@ def test_list_resize() raises:
 
 # TODO: Rework to use property testing framework.
 def test_list_reverse_property_test() raises:
-    @parameter
     def properties(forward: List[Scalar[DType.int]]) raises:
         var rev = forward.copy()
         rev.reverse()
@@ -1149,7 +1148,7 @@ def _test_copyinit_trivial_types[dt: DType]() raises:
     var test_current_size = 1
 
     comptime for sizes_index in range(len(sizes)):
-        comptime current_size = sizes[sizes_index]
+        comptime current_size = rebind[Int](sizes[sizes_index])
         var x = List[Scalar[dt]]()
         for i in range(current_size):
             x.append(Scalar[dt](i))
@@ -1176,7 +1175,7 @@ def test_copyinit_trivial_types_dtypes() raises:
     )
 
     comptime for index_dtype in range(len(dtypes)):
-        _test_copyinit_trivial_types[dtypes[index_dtype]]()
+        _test_copyinit_trivial_types[rebind[DType](dtypes[index_dtype])]()
 
 
 def test_list_comprehension() raises:

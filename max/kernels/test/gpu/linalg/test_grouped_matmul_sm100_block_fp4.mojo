@@ -14,7 +14,7 @@ from std.math import align_up
 from std.sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
-from linalg.fp4_quantization import naive_block_scaled_matmul
+from linalg.block_scaled_quantization import naive_block_scaled_matmul
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from internal_utils import assert_almost_equal
@@ -719,7 +719,7 @@ def run_grouped_matmul_sm100_block_fp4_suite[
 
         # Wrapper which forwards suite-level scales_dtype, SF_VECTOR_SIZE,
         # and scaling_kind, so call sites don't have to pass them explicitly.
-        @parameter
+        @__parameter
         @always_inline
         def _test_kernel_impl[
             kernel_type: String,

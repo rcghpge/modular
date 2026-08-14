@@ -213,8 +213,6 @@ def test_basic() raises:
     assert_equal(1, dict["a"])
     assert_equal(2, dict["b"])
 
-    # TODO(MOCO-4374): use `var` here; a bare (implicit) declaration of a
-    # `Pointer` to an interior reference false-positives in CheckLifetimes.
     var ptr = Pointer(to=dict["a"])
     assert_equal(1, ptr[])
     ptr[] = 17
@@ -718,6 +716,46 @@ def test_owned_kwargs_dict() raises:
     owned_kwargs._insert("fruit", 8)
     owned_kwargs._insert("dessert", 9)
     _test_taking_owned_kwargs_dict(**owned_kwargs^)
+
+
+def test_string_dict_string_span_getitem() raises:
+    var kwargs = StringDict[Int]()
+    kwargs._insert("fruit", 8)
+    kwargs._insert("dessert", 9)
+
+    # Index with a plain `StringSpan`, no `String` allocation required.
+    assert_equal(kwargs[StringSpan("fruit")], 8)
+    assert_equal(kwargs[StringSpan("dessert")], 9)
+
+    # A view into a larger buffer resolves to the same entry as the `String`.
+    var buffer = StringSpan("fruitcake")
+    assert_equal(kwargs[buffer[byte=0:5]], kwargs[String("fruit")])
+
+    # A missing key still raises `DictKeyError`.
+    with assert_raises(contains="KeyError"):
+        _ = kwargs[StringSpan("salad")]
+
+
+def test_string_dict_write_to() raises:
+    var kwargs = StringDict[Int]()
+    kwargs._insert("a", 1)
+    kwargs._insert("b", 2)
+    check_write_to(kwargs, expected="{a: 1, b: 2}", is_repr=False)
+    check_write_to(
+        kwargs,
+        expected="StringDict[SIMD[DType.int, 1]]({'a': Int(1), 'b': Int(2)})",
+        is_repr=True,
+    )
+
+
+def test_string_dict_write_to_empty() raises:
+    var kwargs = StringDict[Int]()
+    check_write_to(kwargs, expected="{}", is_repr=False)
+    check_write_to(
+        kwargs,
+        expected="StringDict[SIMD[DType.int, 1]]({})",
+        is_repr=True,
+    )
 
 
 def test_find_get() raises:

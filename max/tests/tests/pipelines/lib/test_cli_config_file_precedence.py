@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -47,9 +48,12 @@ def _skip_repo_access_check() -> Iterator[None]:
             side_effect=lambda repo_id, revision=None: f"/fake/cache/{repo_id}",
         ),
         patch("huggingface_hub.file_exists", return_value=False),
+        # architectures=None keeps the architecture name undeterminable, so
+        # construction-time resolution skips instead of rejecting the
+        # placeholder repo as an unknown architecture.
         patch(
             "max.pipelines.lib.config.model_config.load_huggingface_config",
-            return_value=MagicMock(),
+            return_value=MagicMock(architectures=None),
         ),
     ):
         yield
@@ -189,6 +193,51 @@ def test_explicit_devices_inherited_by_draft_devices(
     assert result.output.strip() == "device_specs|draft_device_specs"
 
 
+def test_unset_num_speculative_tokens_reaches_config_as_none() -> None:
+    """A ``--num-speculative-tokens`` the user never passed reaches the
+    constructed config as ``None``, so each speculative method resolves its
+    own default (eagle/mtp use 2; DSpark/DFlash drafters derive the trained
+    width from the draft checkpoint), while an explicit value is honored."""
+
+    @click.command()
+    @pipeline_config_options
+    def cli(**kwargs: Any) -> None:
+        config = PipelineConfig.from_args(
+            PipelineArgs.from_flat_kwargs(**kwargs)
+        )
+        assert config.speculative is not None
+        click.echo(f"{config.speculative.num_speculative_tokens}")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--model-path", "fake/model", "--speculative-method", "dflash"],
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "None"
+
+    result = runner.invoke(
+        cli,
+        [
+            "--model-path",
+            "fake/model",
+            "--speculative-method",
+            "dflash",
+            "--num-speculative-tokens",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "5"
+
+    result = runner.invoke(
+        cli,
+        ["--model-path", "fake/model", "--speculative-method", "eagle"],
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "2"
+
+
 def test_resolve_config_file_passthrough_for_plain_paths() -> None:
     """Non-prefixed paths are returned unchanged."""
     assert _resolve_config_file("/tmp/my_config.yaml") == "/tmp/my_config.yaml"
@@ -296,14 +345,14 @@ def test_kv_cache_flag_preserves_yaml_recipe_kv_cache_fields(
     config = PipelineConfig.from_args(
         PipelineArgs.from_flat_kwargs(
             config_file=str(config_path),
-            kv_connector="local",
+            kv_connector="rust_tiered",
             kv_connector_config={"host_kvcache_swap_space_gb": 1200},
         )
     )
 
     kv = config.models["main"].kv_cache
     # The CLI flags override the connector fields they name...
-    assert kv.kv_connector == KVConnectorType.local
+    assert kv.kv_connector == KVConnectorType.rust_tiered
     assert kv.kv_connector_config is not None
     assert kv.kv_connector_config.host_kvcache_swap_space_gb == 1200
     # ...but the recipe's other kv_cache fields survive the override.
@@ -346,14 +395,14 @@ def test_kv_cache_flag_via_cli_preserves_config_file_fields(
             "--config-file",
             str(config_path),
             "--kv-connector",
-            "local",
+            "rust_tiered",
             "--kv-connector-config",
             '{"host_kvcache_swap_space_gb": 1200}',
         ],
     )
     assert result.exit_code == 0, result.output
     # CLI overrides the connector; the recipe's other kv_cache fields survive.
-    assert result.output.strip() == "local|0.8|False"
+    assert result.output.strip() == "rust_tiered|0.8|False"
 
 
 def test_speculative_flag_preserves_yaml_recipe_speculative_fields(
@@ -622,3 +671,33 @@ def test_config_file_with_builtin_recipe_prefix() -> None:
     with open(resolved) as f:
         data = yaml.safe_load(f)
     assert data["model"]["model_path"] == "meta-llama/Llama-3.2-1B-Instruct"
+
+
+def test_synthetic_acceptance_rejected_with_constrained_decoding() -> None:
+    """Synthetic acceptance ignores token bitmasks, so a config where
+    constrained decoding can fire must be rejected at resolution instead of
+    silently serving unenforced grammars.
+
+    Invoked unbound on a stand-in exposing only what the validator reads
+    (the pattern used for the arch-rewrite tests): ``needs_bitmask_constraints``
+    is a property on the real config, a plain attribute here.
+    """
+    validate = (
+        PipelineConfig._validate_synthetic_acceptance_with_constrained_decoding
+    )
+
+    def _cfg(
+        synthetic_rate: float | None, needs_bitmask: bool
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            speculative=SimpleNamespace(
+                synthetic_acceptance_rate=synthetic_rate
+            ),
+            needs_bitmask_constraints=needs_bitmask,
+        )
+
+    validate(_cfg(None, True))  # type: ignore[arg-type]
+    validate(_cfg(0.8, False))  # type: ignore[arg-type]
+    validate(SimpleNamespace(speculative=None))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="synthetic_acceptance_rate"):
+        validate(_cfg(0.8, True))  # type: ignore[arg-type]

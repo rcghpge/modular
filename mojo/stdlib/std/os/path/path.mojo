@@ -305,15 +305,15 @@ def realpath[
     # through the libc_realpath call (avoids use-after-free).
     var fspath = path.__fspath__()
     var returned_path_ptr = libc_realpath(
-        fspath.as_c_string_slice().unsafe_ptr(),
-        string.unsafe_ptr_mut().unsafe_bitcast[c_char](),
+        fspath.as_c_string_slice(),
+        string.unsafe_as_bytes_mut().unsafe_ptr().unsafe_bitcast[c_char](),
     )
     if not returned_path_ptr:
         raise Error("realpath failed to resolve: ", get_errno())
 
     # We wrote the data directly into the String buffer
     # now we need to figure out the length
-    string.set_byte_length(Int(_unsafe_strlen(string.unsafe_ptr())))
+    string.set_byte_length(Int(_unsafe_strlen(string.as_bytes().unsafe_ptr())))
     string._set_nul_terminated()
 
     return string^
@@ -456,12 +456,12 @@ def join(var path: String, *paths: String) -> String:
     print(join("a", "/b", "c")) # "/b/c" (absolute resets)
     ```
     """
-    var joined_path = path
+    var joined_path = path^
 
     for cur_path in paths:
         if cur_path.startswith(sep):
             joined_path = cur_path
-        elif not joined_path or path.endswith(sep):
+        elif not joined_path or joined_path.endswith(sep):
             joined_path += cur_path
         else:
             joined_path += sep + cur_path

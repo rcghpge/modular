@@ -31,9 +31,9 @@ from std.memory import (
     unsafe_memcpy,
     unsafe_memset,
     pack_bits,
-    is_trivially_deletable,
 )
 from std.memory.alloc import Layout
+from std.traits import IsTriviallyDeinitable
 from std.sys.intrinsics import likely
 
 # ===-----------------------------------------------------------------------===#
@@ -211,18 +211,6 @@ struct Group(Copyable, Movable):
 # ===-----------------------------------------------------------------------===#
 
 
-def _all_trivial_del[*Ts: AnyType]() -> Bool:
-    """Return whether every type in `Ts` is trivially destructible.
-
-    Returns `False` for any type that is not `Deinitable` (for example
-    `@explicit_destroy` types) or that has a non-trivial destructor.
-    """
-    comptime for i in range(Ts.length):
-        if not is_trivially_deletable[Ts[i]]():
-            return False
-    return True
-
-
 @fieldwise_init
 @explicit_destroy(
     "Use `deinit_with()` to explicitly destroy a `SwissTableEntry` with"
@@ -246,11 +234,6 @@ struct SwissTableEntry[
             entry copy construction.
         H: The type of the hasher used to hash the key.
     """
-
-    # TODO(MOCO-4228)
-    comptime __del__is_trivial = _all_trivial_del[Self.K, Self.V]()
-    """The explicit `__deinit__` below would otherwise mark this type
-    non-trivially-destructible even when `K` and `V` are trivial."""
 
     var _hash: UInt64
     """`key.__hash__()`, stored so hashing isn't re-computed during lookup."""
@@ -288,20 +271,6 @@ struct SwissTableEntry[
         self._hash = unsafe_hash
         self.key = key^
         self.value = value^
-
-    # TODO(MOCO-4228): Let the compiler synthesize this method
-    def __deinit__(
-        deinit self,
-    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
-        """Destroy the entry's key and value.
-
-        Constraints:
-            Both `K` and `V` must be `Deinitable`. When either is not,
-            the entry has no implicit destructor and must be torn down with
-            `deinit_with()`.
-        """
-        # The key and value are destroyed member-wise; `hash` is trivial.
-        pass
 
     def deinit_with(
         deinit self, deinit_func: Some[def(var Self.K, var Self.V)]
@@ -535,9 +504,9 @@ struct SwissTable[
             Both `K` and `V` must be `Deinitable`, since entries are
             destroyed in place.
         """
-        comptime if not is_trivially_deletable[
+        comptime if not IsTriviallyDeinitable[
             SwissTableEntry[Self.K, Self.V, Self.H]
-        ]():
+        ]:
             for i in range(self._capacity):
                 if is_occupied(self._ctrl[unsafe_offset=i]):
                     (self._slots.unsafe_offset(i)).unsafe_deinit_pointee()
@@ -591,6 +560,33 @@ struct SwissTable[
             matching slot. If not found, slot_index is the first EMPTY slot
             suitable for insertion.
         """
+
+        return self.find_slot_matching(
+            hash,
+            lambda (stored_key: Self.K) {imm key} -> Bool: (stored_key == key),
+        )
+
+    @always_inline
+    def find_slot_matching(
+        self, hash: UInt64, key_matches: Some[def(Self.K) -> Bool]
+    ) -> Tuple[Bool, Int]:
+        """Find a slot whose stored key satisfies `key_matches`.
+
+        Like `find_slot`, but probes with a predicate instead of a concrete
+        `Self.K`, so callers can look up a heterogeneous key (such as a
+        `StringSpan` against `String` keys) without building a `Self.K`.
+
+        Args:
+            hash: The hash of the lookup key, from `Self.H`. Any key that
+                `key_matches` accepts must hash to this value.
+            key_matches: Returns `True` when the stored key equals the lookup
+                key.
+
+        Returns:
+            A tuple of (found, slot_index). If found, slot_index is the
+            matching slot. If not found, slot_index is the first EMPTY slot
+            suitable for insertion.
+        """
         # Lazy state: no buffers allocated yet. Slot index is meaningless but
         # safe for lookups (callers check `found`). Insert paths must go
         # through `_ensure_capacity` first, which allocates; callers assert
@@ -610,7 +606,7 @@ struct SwissTable[
                 if (
                     self._slots.unsafe_offset(slot_idx)
                 )[]._hash == hash and likely(
-                    (self._slots.unsafe_offset(slot_idx))[].key == key
+                    key_matches((self._slots.unsafe_offset(slot_idx))[].key)
                 ):
                     return (True, slot_idx)
                 match_mask &= match_mask - 1

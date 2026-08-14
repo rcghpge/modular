@@ -156,6 +156,7 @@ from max.profiler import Tracer, traced
 from ..memory_estimation import _MemoryPlan
 from .structured_output_overlap import StructuredOutputOverlapState
 from .text_generation import TextGenerationPipelineInterface, load_kv_manager
+from .unified_spec_decode_model import _UnifiedSpecDecodeModelMixin
 from .utils import (
     StructuredOutputHelper,
     update_context_and_prepare_responses,
@@ -411,9 +412,18 @@ class SpecDecodeState:
             available_cache_memory=available_cache_memory,
         )
 
-        num_speculative_tokens = (
-            pipeline_config.speculative.num_speculative_tokens
-        )
+        # Dflash-style block drafters resolve the draft width from the
+        # draft checkpoint at model construction and expose it on the
+        # model; eagle/mtp resolve theirs at SpeculativeConfig construction.
+        num_speculative_tokens: int | None = None
+        if isinstance(model, _UnifiedSpecDecodeModelMixin):
+            num_speculative_tokens = model.resolved_num_speculative_tokens
+        if num_speculative_tokens is None:
+            assert pipeline_config.speculative is not None
+            num_speculative_tokens = (
+                pipeline_config.speculative.num_speculative_tokens
+            )
+        assert num_speculative_tokens is not None
         total_max_batch = (
             max_batch_size * pipeline_config.model.data_parallel_degree
         )
@@ -1558,7 +1568,7 @@ class OverlapTextGenerationPipeline(
                 "Please ensure the model repository contains a valid config.json file."
             )
 
-        self._devices = load_devices(model_config.device_specs)
+        self._devices = load_devices(list(memory_plan.require_device_specs()))
         if self._devices[0].is_host:
             raise ValueError(
                 "OverlapTextGenerationPipeline does not support CPU models."
@@ -1694,7 +1704,8 @@ class OverlapTextGenerationPipeline(
         if isinstance(self._pipeline_model, SupportsVisionEncoding):
             self._encoder_cache = VisionEncoderCache[TextAndVisionContext](
                 max_entries=pipeline_config.runtime.max_vision_cache_entries,
-                n_devices=len(self._devices),
+                plan=pipeline_config.runtime._vision_cache_plan,
+                devices=self._devices,
             )
 
         # Load sampler(s) for the non-spec-decode path. The bitmask-aware
@@ -2200,45 +2211,6 @@ class OverlapTextGenerationPipeline(
         logger.info("Starting serve device graph capture warmup.")
         graph_capture_runner.warmup_pre_ready()
         logger.info("Completed serve device graph capture warmup.")
-
-        self._warmup_structured_output_kickoff()
-
-    def _warmup_structured_output_kickoff(self) -> None:
-        """Service one async-bitmask kickoff host node before serving.
-
-        The first ``cuLaunchHostFunc`` kickoff serviced on the stream stalls
-        ~7-9s once per server lifetime (MXSERV-189); driving one here, while the
-        GPU is active, moves that one-time cost off the first real request.
-        """
-        spec_state = self._spec_decode_state
-        if spec_state is None or spec_state.overlap_state is None:
-            return
-        if not self._pipeline_config.needs_bitmask_constraints:
-            return
-
-        overlap_state = spec_state.overlap_state
-        device0 = self._devices[0]
-
-        def _warmup_callback() -> None:
-            overlap_state.pinned_bitmask.to_numpy()[...] = -1
-
-        logger.info("Priming structured-output async bitmask kickoff path.")
-        overlap_state.enqueue_async_callback(_warmup_callback)
-        # Synchronize so the kickoff host node is serviced now, during warmup,
-        # not on the first real request.
-        device0.synchronize()
-        # Restore the clean cold-start flag/buffer state.
-        prime_np = np.full(
-            (
-                overlap_state.max_batch_size,
-                overlap_state.num_positions,
-                overlap_state.packed_vocab_size,
-            ),
-            -1,
-            dtype=np.int32,
-        )
-        overlap_state.prime(prime_np)
-        logger.info("Structured-output async bitmask kickoff path primed.")
 
     def _build_spec_decode_sampling_buffers(
         self,
@@ -3852,7 +3824,8 @@ class OverlapTextGenerationPipeline(
 
         # Commit the new KV blocks into the prefix cache, ignoring the trailing
         # placeholder future tokens (one per pending forward).
-        self._kv_manager.step(inputs.batches)
+        for ctx in inputs.flat_batch:
+            self._kv_manager.step(ctx)
 
         if curr_batch is not None:
             if self._disable_overlap:

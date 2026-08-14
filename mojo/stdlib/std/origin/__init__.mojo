@@ -31,11 +31,6 @@ For the full picture, see the
 comptime ImmOrigin = Origin[mut=False]
 """Immutable origin reference type."""
 
-
-@doc_hidden
-@deprecated(use=ImmOrigin)
-comptime ImmutOrigin = ImmOrigin
-
 comptime MutOrigin = Origin[mut=True]
 """Mutable origin reference type."""
 
@@ -91,31 +86,11 @@ comptime ImmUnsafeAnyOrigin = UnsafeAnyOrigin[mut=False]
 This is an unsafe escape hatch slated for removal. See `UnsafeAnyOrigin`.
 """
 
-
-@doc_hidden
-@deprecated(use=ImmUnsafeAnyOrigin)
-comptime ImmutUnsafeAnyOrigin = ImmUnsafeAnyOrigin
-
 comptime MutUnsafeAnyOrigin = UnsafeAnyOrigin[mut=True]
 """The mutable universal origin that might alias any memory value.
 
 This is an unsafe escape hatch slated for removal. See `UnsafeAnyOrigin`.
 """
-
-
-@doc_hidden
-@deprecated(use=UntrackedOrigin)
-comptime ExternalOrigin[*, mut: Bool] = UntrackedOrigin[mut=mut]
-
-
-@doc_hidden
-@deprecated(use=ImmUntrackedOrigin)
-comptime ImmutExternalOrigin = ImmUntrackedOrigin
-
-
-@doc_hidden
-@deprecated(use=MutUntrackedOrigin)
-comptime MutExternalOrigin = MutUntrackedOrigin
 
 comptime UntrackedOrigin[*, mut: Bool] = Origin[
     _mlir_origin=__mlir_attr[
@@ -141,11 +116,6 @@ Mojo-owned value.
 comptime ImmUntrackedOrigin = UntrackedOrigin[mut=False]
 """An immutable origin the lifetime checker does not track."""
 
-
-@doc_hidden
-@deprecated(use=ImmUntrackedOrigin)
-comptime ImmutUntrackedOrigin = ImmUntrackedOrigin
-
 comptime MutUntrackedOrigin = UntrackedOrigin[mut=True]
 """A mutable origin the lifetime checker does not track."""
 
@@ -158,11 +128,6 @@ comptime ImmStaticOrigin = Origin[
     ]
 ]()
 """An origin for strings and other always-immutable static constants."""
-
-
-@doc_hidden
-@deprecated(use=ImmStaticOrigin)
-comptime StaticConstantOrigin = ImmStaticOrigin
 
 comptime OriginSet = __mlir_type.`!lit.origin.set`
 """A set of origin parameters."""
@@ -271,4 +236,23 @@ struct Origin[mut: Bool, _mlir_origin: _lit_origin_type_of_mut[mut], //](
     Parameters:
         name: A compile-time string that identifies the interior object in
             diagnostics and invalidation tracking.
+    """
+
+    comptime _subtree = Origin[
+        _mlir_origin=__mlir_attr[
+            `#lit.origin.subtree<`,
+            Self._mlir_origin,
+            `> : `,
+            type_of(Self._mlir_origin),
+        ]
+    ]()
+    """Returns a subtree view over this origin and every origin derived from
+    it.
+
+    A subtree origin is an experimental feature that does not name one
+    specific storage location. Instead, it represents a reference that could
+    point to storage governed by this origin itself, or by any origin formed
+    by applying field or interior origin projections beneath it. This lets an
+    API abstract over the precise interior region being referenced while
+    still preserving ownership and invalidation semantics.
     """

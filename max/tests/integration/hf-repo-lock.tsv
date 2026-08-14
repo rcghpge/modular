@@ -12,7 +12,6 @@ Inferact/MiniMax-M3-EAGLE3	44cafa5ace418d8b22e2958df0c6aa1f2476842c
 LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct	7f15baedd46858153d817445aff032f4d6cf4939
 LiquidAI/LFM2.5-1.2B-Instruct	6314d2b7cf28a6ae9de9d3e77dcfcd9c9f281c77
 MiniMaxAI/MiniMax-M2.7	d494266a4affc0d2995ba1fa35c8481cbd84294b
-MiniMaxAI/MiniMax-M3	f0e1c1e04d40177e4673a22097036854f536e9c0
 MiniMaxAI/MiniMax-M3-MXFP8	1c4e6a69f3278df8dd6c9693fcca241efe439b7d
 OpenGVLab/InternVL3-14B-Instruct	c79f4d5c3b2dc432cf9a379ba803c67b45f1c55f
 OpenGVLab/InternVL3-1B-Instruct	932ac63da048e4b73ebf819beaab175146ff4ca9
@@ -44,6 +43,7 @@ RedHatAI/Meta-Llama-3.1-405B-Instruct-FP8-dynamic	f4dbba5848122daa32a44a30978c0c
 RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8	12fd6884d2585dd4d020373e7f39f74507b31866
 RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic	b0b04ce47ca8f21386149cf613f64dd611808c05
 RedHatAI/gemma-3-27b-it-FP8-dynamic	306078afe860ef87821018f28078ecf762f31455
+RedHatAI/gemma-4-31B-it-speculator.dspark	0026c7d1899651ca3c45ede471712f04849723ac
 TinyLlama/TinyLlama-1.1B-Chat-v1.0	fe8a4ea1ffedaf415f4da2f062534de366a451e6
 Wan-AI/Wan2.1-T2V-14B-Diffusers	38ec498cb3208fb688890f8cc7e94ede2cbd7f68
 allenai/OLMo-1B-hf	aee7752d9c08ee4775e9b0091426d8410e8f6a89

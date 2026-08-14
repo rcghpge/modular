@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Direct kernel-level tests for `MXFP4MatmulAMD_PreB` at `lane_bytes=32` (MXFP8).
+"""Direct kernel-level tests for `BlockScaledMatmulAMD_PreB` at `matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3` (MXFP8).
 
 MXFP8 sibling of `test_mxfp4_matmul_amd_preb.mojo`: same 16x16x128 f8f6f4 MFMA and
 the same preshuffled layouts, but one byte per element (so `K_BYTES == K`) and the
@@ -34,11 +34,12 @@ from std.utils import StaticTuple
 
 from internal_utils import assert_almost_equal
 from layout import Coord, Idx, TensorLayout, TileTensor, row_major
+from linalg.arch.amd.block_scaled_mma import CDNA4F8F6F4MatrixFormat
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import (
-    MXFP4MatmulAMD_PreB,
+    BlockScaledMatmulAMD_PreB,
     Shuffler,
-    mxfp4_grouped_matmul_amd_preb,
+    block_scaled_grouped_matmul_amd_preb,
 )
 
 comptime FP8_LANE_BYTES = 32
@@ -108,13 +109,13 @@ def block_scaled_matmul_fp8_ref(
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](
         Int32(
-            MXFP4MatmulAMD_PreB[
+            BlockScaledMatmulAMD_PreB[
                 BM=BM,
                 BN=BN,
                 BK_ELEMS=BK_ELEMS,
                 WN=WN,
                 b_prefetch=b_prefetch,
-                lane_bytes=FP8_LANE_BYTES,
+                matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3,
             ].num_threads
         )
     )
@@ -140,13 +141,13 @@ def _preb_fp8_grid_kernel[
     sfa: TileTensor[DType.float8_e8m0fnu, LayoutSFA, ImmutAnyOrigin],
     sfb: TileTensor[DType.float8_e8m0fnu, LayoutSFB, ImmutAnyOrigin],
 ):
-    MXFP4MatmulAMD_PreB[
+    BlockScaledMatmulAMD_PreB[
         BM=BM,
         BN=BN,
         BK_ELEMS=BK_ELEMS,
         WN=WN,
         b_prefetch=b_prefetch,
-        lane_bytes=FP8_LANE_BYTES,
+        matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3,
     ].run[
         out_dtype,
         LayoutC,
@@ -280,7 +281,7 @@ def _test_case[
     ctx.enqueue_copy(sfa_pre_d, sfa_pre_h)
     ctx.enqueue_copy(sfb_pre_d, sfb_pre_h)
 
-    # ---- GPU preshuffle B -> b_pre_d (lane_bytes=32 strides) ----
+    # ---- GPU preshuffle B -> b_pre_d (matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3 strides) ----
     var b_raw_tt = TileTensor[mut=False](b_d, row_major[1, N_static, K_BYTES]())
     var b_pre_dst_tt = TileTensor[mut=True](
         b_pre_d,
@@ -346,13 +347,13 @@ def _test_case[
         sfa_tt,
         sfb_tt,
         grid_dim=(N_static // BN, ceildiv(M_static, BM)),
-        block_dim=MXFP4MatmulAMD_PreB[
+        block_dim=BlockScaledMatmulAMD_PreB[
             BM=BM,
             BN=BN,
             BK_ELEMS=BK_ELEMS,
             WN=WN,
             b_prefetch=b_prefetch,
-            lane_bytes=FP8_LANE_BYTES,
+            matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3,
         ].num_threads,
     )
     ctx.synchronize()
@@ -547,7 +548,7 @@ def _test_grouped_case[
             block_dim=(BLOCK_DIM, BLOCK_DIM),
         )
 
-    # Public dispatcher at lane_bytes=32.
+    # Public dispatcher at matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3.
     var c_tt = TileTensor[mut=True](c_d, row_major(Coord(total_tokens, Idx[N])))
     var a_tt = TileTensor[mut=False](
         a_d, row_major(Coord(total_tokens, Idx[K_BYTES]))
@@ -568,7 +569,7 @@ def _test_grouped_case[
     )
     var eid_tt = TileTensor[mut=False](eid_d, row_major(Coord(num_active)))
 
-    mxfp4_grouped_matmul_amd_preb[lane_bytes=32](
+    block_scaled_grouped_matmul_amd_preb[lane_bytes=FP8_LANE_BYTES](
         c_tt,
         a_tt,
         b_pre_flat,
@@ -620,7 +621,11 @@ def main() raises:
         ctx.default_device_info == MI355X
     ), "test_mxfp8_matmul_amd_preb requires MI355X"
 
-    print("===> MXFP4MatmulAMD_PreB at lane_bytes=32 (MXFP8) — correctness")
+    print(
+        "===> BlockScaledMatmulAMD_PreB at"
+        " matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3 (MXFP8) —"
+        " correctness"
+    )
 
     _test_case[M_static=64, N_static=128, K_static=512]("base", ctx)
     _test_case[M_static=128, N_static=256, K_static=512]("multi-tile", ctx)
@@ -646,7 +651,10 @@ def main() raises:
         b_prefetch=True,
     ]("decode-bm16-prefetch", ctx)
 
-    print("===> grouped dispatcher at lane_bytes=32")
+    print(
+        "===> grouped dispatcher at"
+        " matrix_format=CDNA4F8F6F4MatrixFormat.FLOAT8_E4M3"
+    )
     _test_grouped_case[num_experts=4, N=128, K=512](
         "grouped-small", [16, 32, 7, 48], ctx
     )

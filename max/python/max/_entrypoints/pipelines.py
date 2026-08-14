@@ -19,13 +19,13 @@ import logging
 import os
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from datetime import timedelta
 from typing import Any, TypeVar
 
 import click
 from click import shell_completion
 from max import _eager_policy
-from tqdm import tqdm
 from typing_extensions import ParamSpec
 
 # Please keep all max imports inside their respective functions.
@@ -39,7 +39,11 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 # Subcommands that should not configure/emit telemetry.
-_TELEMETRY_OPT_OUT_COMMANDS = {"benchmark", "list"}
+_TELEMETRY_OPT_OUT_COMMANDS = {
+    "benchmark",
+    "list",
+    "warm-interpreter-cache",
+}
 
 
 def check_model_flag_conflict(args: list[str]) -> None:
@@ -206,7 +210,10 @@ def main(ctx: click.Context, log_level: str = "INFO") -> None:
 def configure_telemetry(subcommand: str) -> None:
     try:
         from max.serve.config import Settings
-        from max.serve.telemetry.common import configure_metrics
+        from max.serve.telemetry.common import (
+            configure_metrics,
+            configure_tracing,
+        )
     except ImportError as e:
         # Note: most commands import main(), and thus run this, so this catches most subcommands.
         _handle_import_error(
@@ -218,6 +225,7 @@ def configure_telemetry(subcommand: str) -> None:
 
     settings = Settings()
     configure_metrics(settings)
+    configure_tracing(settings)
 
 
 def common_server_options(func: Callable[_P, _R]) -> Callable[_P, _R]:
@@ -585,6 +593,54 @@ def cli_warm_cache(target: str | None, **config_kwargs) -> None:
     PIPELINE_REGISTRY.retrieve(PipelineConfig.from_args(pipeline_args))
 
 
+def _render_warm_progress(
+    events: Iterator[tuple[str, int]], family_names: Sequence[str]
+) -> int:
+    """Renders warm progress, one spinner row per op family still compiling.
+
+    Each completion retires its row into a permanent check-mark line above
+    the live display, so the live region shrinks to what is still in flight.
+    On a non-terminal stdout rich suppresses the live region, so the output
+    degrades to the same per-completion lines plus a final summary row.
+    Returns the total op count.
+    """
+    # Lazy import to keep it off the startup path of every other CLI command.
+    from rich.progress import (
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,
+    )
+
+    total_ops = 0
+    with Progress(
+        SpinnerColumn(finished_text="[green]✓[/green]"),
+        TextColumn("{task.description}"),
+        TimeElapsedColumn(),
+    ) as progress:
+        began = progress.get_time()
+        overall = progress.add_task(
+            f"0/{len(family_names)} op families", total=len(family_names)
+        )
+        rows = {name: progress.add_task(name, total=1) for name in family_names}
+        for done, (name, op_count) in enumerate(events, start=1):
+            total_ops += op_count
+            plural = "" if op_count == 1 else "s"
+            finished_at = timedelta(seconds=int(progress.get_time() - began))
+            progress.remove_task(rows[name])
+            progress.console.print(
+                f"[green]✓[/green] {name} ({op_count} op{plural})"
+                f" [yellow]{finished_at}[/yellow]",
+                highlight=False,
+            )
+            progress.update(
+                overall,
+                advance=1,
+                description=f"{done}/{len(family_names)} op families",
+            )
+    return total_ops
+
+
 @main.command(name="warm-interpreter-cache")
 @click.option(
     "--check",
@@ -628,7 +684,7 @@ def cli_warm_interpreter_cache(
             " promise of compiling nothing"
             if check_only
             else "moves the compile sweep into the import instead of this"
-            " command's tracked loop, losing the progress bar and summary"
+            " command's tracked loop, losing the progress display and summary"
         )
         raise click.ClickException(
             f"{var}=1 {detail}. Unset it:"
@@ -675,7 +731,7 @@ def cli_warm_interpreter_cache(
 
     devices = gc_compile.DISCOVERED_DEVICES
     click.echo(
-        f"Warming eager interpreter cache for {len(devices)} device(s):"
+        f"Compiling interpreter ops for {len(devices)} device(s):"
         f" {', '.join(gc_compile.device_class_of(d) for d in devices)}"
     )
 
@@ -685,27 +741,22 @@ def cli_warm_interpreter_cache(
     if jobs is None:
         jobs = min(len(families), os.cpu_count() or 1)
     start = time.perf_counter()
-    total_models = 0
-    bar = tqdm(total=len(families), unit="family")
     try:
-        for family_name, model_count in warm.warm_families(jobs):
-            bar.set_description(family_name)
-            total_models += model_count
-            bar.update()
+        total_ops = _render_warm_progress(
+            warm.warm_families(jobs), [f.name for f in families]
+        )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
-    finally:
-        bar.close()
     elapsed = time.perf_counter() - start
 
     if gc_compile.write_warm_stamp():
         click.echo(
-            f"Warmed {total_models} models in {elapsed:.1f}s\n"
+            f"Compiled {total_ops} ops in {elapsed:.1f}s\n"
             f"Stamp: {cache_dir / gc_compile._WARM_STAMP_NAME}"
         )
     else:
         click.echo(
-            f"Warmed {total_models} models in {elapsed:.1f}s, but the stamp"
+            f"Compiled {total_ops} ops in {elapsed:.1f}s, but the stamp"
             " could not be written, so later processes will not adopt this"
             " warm."
         )

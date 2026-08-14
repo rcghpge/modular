@@ -86,10 +86,6 @@ struct TypeList[
     )
     """The number of types in the list."""
 
-    @deprecated("`TypeList.size` is deprecated, use `TypeList.length`.")
-    comptime size = Self.length
-    """The number of types in the list. Deprecated alias for `length`."""
-
     comptime __getitem_param__[idx: SIMDLength] = __mlir_attr[
         `#kgen.param_list.get<:`,
         Self._mlir_type,
@@ -162,14 +158,14 @@ struct TypeList[
         """Constructs a TypeList."""
         pass
 
-    comptime of[Trait: type_of(AnyType), //, *values: Trait] = TypeList[
-        Trait=Trait, values.values
+    comptime of[Trait: type_of(AnyType), //, *Ts: Trait] = TypeList[
+        Trait=Trait, Ts.values
     ]
     """Form a compile-time list of types with some elements, uninstantiated.
 
     Parameters:
         Trait: The type of the elements in the list.
-        values: The values in the list.
+        Ts: The types in the list.
 
     Examples:
         ```mojo
@@ -353,7 +349,7 @@ struct TypeList[
 
     @always_inline("builtin")
     @staticmethod
-    def any_satisfies[
+    def any[
         predicate: __generator_type[Type: Self.Trait] Bool,
     ]() -> Bool:
         """Returns true if `predicate` holds for at least one type in this list.
@@ -391,7 +387,7 @@ struct TypeList[
 
     @always_inline("builtin")
     @staticmethod
-    def all_satisfies[
+    def all[
         predicate: __generator_type[Type: Self.Trait] Bool,
     ]() -> Bool:
         """Returns true if `predicate` holds for every type in this list.
@@ -425,7 +421,7 @@ struct TypeList[
         Returns:
             True if the type is contained in this type list, False otherwise.
         """
-        return Self.any_satisfies[Self._ContainsTypePredicate[type, ...],]()
+        return Self.any[Self._ContainsTypePredicate[type, ...],]()
 
     # ===-------------------------------------------------------------------===#
     # Mappings
@@ -884,10 +880,8 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
 
     @always_inline("builtin")
     @staticmethod
-    def any_satisfies[
-        predicate: __generator_type[Elt: Self.type] Bool
-    ]() -> Bool:
-        """'any_satisfies' applies a function to each element and returns true if
+    def any[predicate: __generator_type[Elt: Self.type] Bool]() -> Bool:
+        """'any' applies a function to each element and returns true if
         the function returns True for any element.
 
         Parameters:
@@ -909,10 +903,8 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
 
     @always_inline("builtin")
     @staticmethod
-    def all_satisfies[
-        predicate: __generator_type[Elt: Self.type] Bool
-    ]() -> Bool:
-        """'all_satisfies' applies a function to each element and returns true if
+    def all[predicate: __generator_type[Elt: Self.type] Bool]() -> Bool:
+        """'all' applies a function to each element and returns true if
         the function returns True for all elements.
 
         Parameters:
@@ -954,7 +946,7 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
         Returns:
             True if the value is contained in the list, False otherwise.
         """
-        return Self.any_satisfies[Self._ContainsValuePredicate[value, ...]]()
+        return Self.any[Self._ContainsValuePredicate[value, ...]]()
 
     # ===-------------------------------------------------------------------===#
     # Mappings
@@ -1029,13 +1021,14 @@ struct ParameterList[type: AnyType, //, values: _MLIR.KGENParamListType[type]](
             writer: The object to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_elements[is_repr=True](w)
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_elements[is_repr=True](w)
 
         FormatStruct(writer, "ParameterList").params(
             TypeNames[Self.type](),
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     # We can only support iteration when the elements are Copyable, because
     # iterators currently need to return the elements by value.
@@ -1200,7 +1193,9 @@ struct VariadicList[
 
             for i in reversed(range(len(self))):
                 # Safety: We own the elements in this list.
-                Pointer(to=self[i]).mut_cast[True]().unsafe_deinit_pointee()
+                Pointer(to=self[i]).unsafe_mut_cast[
+                    True
+                ]().unsafe_deinit_pointee()
 
     def consume_elements(
         deinit self,
@@ -1315,13 +1310,14 @@ struct VariadicList[
             writer: The object to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_elements[is_repr=True](w)
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_elements[is_repr=True](w)
 
         FormatStruct(writer, "VariadicList").params(
             TypeNames[Self.element_type](),
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     def __iter__[
         self_origin: ImmOrigin
@@ -1352,7 +1348,7 @@ struct VariadicPack[
     element_trait: type_of(AnyType),
     //,
     is_owned: Bool,
-    *element_types: element_trait,
+    *Ts: element_trait,
 ](
     Copyable where (not is_owned, "Cannot copy an owned variadic pack."),
     RegisterPassable,
@@ -1406,14 +1402,19 @@ struct VariadicPack[
         element_trait: The trait that each element of the pack conforms to.
         is_owned: Whether the elements are owned by the pack. If so, the pack
                   will release the elements when it is destroyed.
-        element_types: The list of types held by the argument pack.
+        Ts: The list of types held by the argument pack.
+    """
+
+    @deprecated(use=Ts)
+    comptime element_types = Self.Ts
+    """The list of types held by the argument pack. Deprecated alias for `Ts`.
     """
 
     comptime _mlir_type = __mlir_type[
         `!lit.ref.pack<:param_list<`,
         Self.element_trait,
         `> `,
-        Self.element_types.values,
+        Self.Ts.values,
         `, `,
         Self.origin._mlir_origin,
         `>`,
@@ -1463,7 +1464,7 @@ struct VariadicPack[
 
         comptime if Self.is_owned:
             comptime for i in reversed(range(Self.__len__())):
-                comptime element_type = Self.element_types[i]
+                comptime element_type = Self.Ts[i]
                 _constrained_conforms_to[
                     conforms_to(element_type, Deinitable),
                     Parent=Self,
@@ -1473,10 +1474,12 @@ struct VariadicPack[
                 comptime assert conforms_to(element_type, Deinitable)
 
                 # Safety: We own the elements in this pack.
-                Pointer(to=self[i]).mut_cast[True]().unsafe_deinit_pointee()
+                Pointer(to=self[i]).unsafe_mut_cast[
+                    True
+                ]().unsafe_deinit_pointee()
 
     def consume_elements[
-        elt_handler: def[idx: Int](var elt: Self.element_types[idx]) capturing
+        elt_handler: def[idx: Int](var elt: Self.Ts[idx]) capturing
     ](deinit self) where (
         Self.is_owned,
         "consume_elements may only be called on owned variadic packs",
@@ -1510,7 +1513,7 @@ struct VariadicPack[
         Returns:
             The number of elements in the variadic pack.
         """
-        return Self.element_types.length
+        return Self.Ts.length
 
     @always_inline
     def __len__(self) -> Int:
@@ -1526,9 +1529,7 @@ struct VariadicPack[
     # ===-------------------------------------------------------------------===#
 
     @always_inline
-    def __getitem_param__[
-        index: Int
-    ](self) -> ref[Self.origin] Self.element_types[index]:
+    def __getitem_param__[index: Int](self) -> ref[Self.origin] Self.Ts[index]:
         """Return a reference to an element of the pack.
 
         Parameters:
@@ -1550,7 +1551,7 @@ struct VariadicPack[
     # FIXME: bound by AnyType
     comptime _kgen_element_types = rebind[
         _MLIR.KGENParamListType[__mlir_type.`!kgen.type`]
-    ](Self.element_types.values)
+    ](Self.Ts.values)
     """This is the element_types list lowered to `variadic<type>` type for kgen.
     """
 
@@ -1616,7 +1617,7 @@ struct VariadicPack[
         start: StringSlice[O1] = StaticString(""),
         end: StringSlice[O2] = StaticString(""),
         sep: StringSlice[O3] = StaticString(", "),
-    ) where Self.element_types.all_conforms_to[Writable]():
+    ) where Self.Ts.all_conforms_to[Writable]():
         """Writes a sequence of writable values from a pack to a writer with
         delimiters.
 
@@ -1652,7 +1653,7 @@ struct VariadicPack[
     def write_to(
         self,
         mut writer: Some[Writer],
-    ) where Self.element_types.all_conforms_to[Writable]():
+    ) where Self.Ts.all_conforms_to[Writable]():
         """Writes the elements of this pack to a writer.
 
         Args:
@@ -1668,7 +1669,7 @@ struct VariadicPack[
     def write_repr_to(
         self,
         mut writer: Some[Writer],
-    ) where Self.element_types.all_conforms_to[Writable]():
+    ) where Self.Ts.all_conforms_to[Writable]():
         """Writes the repr of the elements of this pack to a writer.
 
         Args:

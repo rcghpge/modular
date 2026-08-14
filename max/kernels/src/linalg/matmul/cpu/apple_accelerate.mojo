@@ -316,11 +316,9 @@ def apple_gemv[
             {count = b.num_elements()}
         ).into_managed()
         transposed_b = TileTensor(
-            UnsafePointer(
-                transposed_b_alloc.unsafe_value()
-                .unsafe_ptr()
-                .unsafe_origin_cast[MutUntrackedOrigin]()
-            ),
+            transposed_b_alloc.unsafe_value()
+            .unsafe_ptr()
+            .unsafe_origin_cast[MutUntrackedOrigin](),
             row_major(
                 Coord(Int(transposed_b_shape[0]), Int(transposed_b_shape[1]))
             ),
@@ -344,7 +342,7 @@ def apple_gemv[
 
     @always_inline
     @__copy_capture(c, a, b, K)
-    @parameter
+    @__parameter
     def process_rows(start_row: Int, end_row: Int):
         for var n in range(start_row, end_row):
             var acc_vector = SIMD[c.dtype, simd_width]()
@@ -593,7 +591,7 @@ def apple_batched_matmul[
             batch, c_shape_idx
         )
 
-        @parameter
+        @__parameter
         @__copy_capture(batch_coords)
         def elementwise_lambda_2d[
             c_type: DType, width: SIMDLength, *, alignment: Int = 1

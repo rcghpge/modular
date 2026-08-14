@@ -798,6 +798,37 @@ class ExtensionAttr(max._core.Attribute):
     @property
     def extensions(self) -> Sequence[max._core.dialects.builtin.TypedAttr]: ...
 
+class FnMetadataAttr(max._core.Attribute):
+    """
+    The `#kgen.fn_metadata` attribute aggregates everything a `!kgen.func` type
+    describes on top of its value signature: the calling convention of each
+    input argument, the effects of the function, and the dialect-specific
+    metadata implementing `FnMetadataAttrInterface` (for example
+    `#lit.fn_meta_origin_data`).
+
+    Every `!kgen.func` type carries exactly one of these, so it is not printed
+    on its own in the sugared function type syntax.
+
+    Example:
+
+    ```mlir
+    #kgen.fn_metadata<[read, mut], "throws">
+    ```
+    """
+
+    def __init__(
+        self,
+        arg_conventions: Sequence[ArgConvention],
+        fn_effects: FnEffects,
+        metadata: FnMetadataAttrInterface,
+    ) -> None: ...
+    @property
+    def arg_conventions(self) -> Sequence[ArgConvention]: ...
+    @property
+    def fn_effects(self) -> FnEffects: ...
+    @property
+    def metadata(self) -> FnMetadataAttrInterface: ...
+
 class FnTypeIsCABIAttr(max._core.Attribute):
     """
     The `#kgen.fn_type_is_cabi` attribute returns true if the given type value
@@ -1405,6 +1436,40 @@ class ParamDeclRefAttr(max._core.Attribute):
     @property
     def type(self) -> max._core.Type | None: ...
 
+class ParamIdenticalAttr(max._core.Attribute):
+    """
+    The `#kgen.param.identical` attribute is the proposition that its operands
+    all denote the same parameter value (as considered post-elaboration).
+    Its result is always `!kgen.scalar<bool>`.
+
+    Important: This is categorically different from `POC::EQ`, which is a
+    *lane-wise numeric* comparison whose result inherits the operand lane count.
+
+    Example:
+
+    ```mlir
+    #kgen.param.identical<#kgen.param.decl.ref<"T"> : !kgen.type,
+                          #kgen.param.decl.ref<"U"> : !kgen.type>
+    ```
+    """
+
+    @overload
+    def __init__(
+        self, operands: Sequence[max._core.dialects.builtin.TypedAttr]
+    ) -> None: ...
+    @overload
+    def __init__(
+        self, operands: Sequence[max._core.dialects.builtin.TypedAttr]
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        lhs: max._core.dialects.builtin.TypedAttr,
+        rhs: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @property
+    def operands(self) -> Sequence[max._core.dialects.builtin.TypedAttr]: ...
+
 class ParamIndexRefAttr(max._core.Attribute):
     """
     The `#kgen.param.index.ref` attribute is a reference to an input
@@ -1854,6 +1919,20 @@ class SIMDSplatAttr(max._core.Attribute):
     def arg(self) -> max._core.dialects.builtin.TypedAttr: ...
     @property
     def type(self) -> SIMDType: ...
+
+class SingletonAttr(max._core.Attribute):
+    """
+    The `#kgen.singleton` attribute is the value of a type that has exactly one
+    inhabitant, so there is nothing left to represent once the type is known.
+    This covers structs with no stored fields such as literal types.
+    """
+
+    @overload
+    def __init__(self, type: max._core.Type) -> None: ...
+    @overload
+    def __init__(self, type: max._core.Type) -> None: ...
+    @property
+    def type(self) -> max._core.Type | None: ...
 
 class StructAttr(max._core.Attribute):
     """
@@ -4537,6 +4616,57 @@ class DeferredType(max._core.Type):
 
     def __init__(self) -> None: ...
 
+class FuncGeneratorTypeBuilderType(max._core.Type):
+    """
+    The `!kgen.func_gen_type_builder` type constructs a `FuncTypeGeneratorType`
+    from its components: the parameters declared by the generator (an array of
+    `param.decl`s), the argument types (a `param_list` of `kgen.type`), the
+    result type (a `kgen.type`), and the function metadata (a `fn_metadata`).
+    It folds into the generator type itself once all of its components are
+    constant.
+
+    Every component is a parameter expression, so a still-symbolic piece (e.g.
+    an argument pack referenced by name) can be represented before elaboration.
+
+    NOTE: the builder constructs a bare FuncTypeGeneratorType, poglist for
+    param/arg should be attached later.
+
+    Example:
+
+    ```mlir
+    !kgen.func_gen_type_builder<
+      #kgen<param.decls[T : !kgen.type]>,
+      #kgen.param.decl.ref<"Ts"> : !kgen.param_list<!kgen.type>,
+      #kgen.param.decl.ref<"T"> : !kgen.type,
+      #kgen.fn_metadata<[read], "none">>
+    ```
+    """
+
+    @overload
+    def __init__(
+        self,
+        param_decls: max._core.dialects.builtin.TypedAttr,
+        arg_types: max._core.dialects.builtin.TypedAttr,
+        result_type: max._core.dialects.builtin.TypedAttr,
+        metadata: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        param_decls: max._core.dialects.builtin.TypedAttr,
+        arg_types: max._core.dialects.builtin.TypedAttr,
+        result_type: max._core.dialects.builtin.TypedAttr,
+        metadata: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @property
+    def param_decls(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def arg_types(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def result_type(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def metadata(self) -> max._core.dialects.builtin.TypedAttr: ...
+
 class FuncLiteralType(max._core.Type):
     """
     This type describes the type of a literal function in KGEN, in additional to
@@ -4559,10 +4689,8 @@ class FuncType(max._core.Type):
     This type describes the type of a function KGEN, which can have input/output
     value arguments and results.
 
-    The metadata attribute is used to store additional information about a
-    function, such as its argument calling conventions and the effects of the
-    function itself. When the metadata only contains default values, it isn't
-    printed in the textual MLIR format.
+    The metadata attribute holds the argument calling conventions, the effects
+    of the function itself, and the dialect-specific function metadata.
     """
 
     @overload
@@ -4575,28 +4703,22 @@ class FuncType(max._core.Type):
     def __init__(
         self,
         values: max._core.dialects.builtin.FunctionType,
-        arg_convs: Sequence[ArgConvention] = [],
-        effects: FnEffects = FnEffects.none,
-        metadata: max._core.Attribute = ...,
-        arg_list_attrs: max._core.Attribute = ...,
+        metadata_attr: FnMetadataAttr,
+        arg_list_attrs: PogListAttr,
     ) -> None: ...
     @overload
     def __init__(
         self,
         values: max._core.dialects.builtin.FunctionType,
-        arg_conventions: Sequence[ArgConvention],
-        fn_effects: FnEffects,
-        metadata: FnMetadataAttrInterface,
-        arg_list_attrs: PogListAttr,
+        arg_convs: Sequence[ArgConvention] = [],
+        effects: FnEffects = FnEffects.none,
+        metadata: max._core.Attribute = ...,
+        arg_list_attrs: max._core.Attribute = ...,
     ) -> None: ...
     @property
     def values(self) -> max._core.dialects.builtin.FunctionType: ...
     @property
-    def arg_conventions(self) -> Sequence[ArgConvention]: ...
-    @property
-    def fn_effects(self) -> FnEffects: ...
-    @property
-    def metadata(self) -> FnMetadataAttrInterface: ...
+    def metadata_attr(self) -> FnMetadataAttr: ...
     @property
     def arg_list_attrs(self) -> PogListAttr: ...
 
@@ -4612,21 +4734,21 @@ class GeneratorType(max._core.Type):
         self,
         input_param_types: Sequence[max._core.Type],
         body: max._core.Type,
-        metadata: max._core.Attribute = ...,
+        param_list_attrs: max._core.Attribute = ...,
     ) -> None: ...
     @overload
     def __init__(
         self,
         input_param_types: Sequence[max._core.Type],
         body: max._core.Type,
-        metadata: PogListAttr,
+        param_list_attrs: PogListAttr,
     ) -> None: ...
     @property
     def input_param_types(self) -> Sequence[max._core.Type]: ...
     @property
     def body(self) -> max._core.Type | None: ...
     @property
-    def metadata(self) -> PogListAttr: ...
+    def param_list_attrs(self) -> PogListAttr: ...
 
 class MLIRDeferredType(max._core.Type):
     """

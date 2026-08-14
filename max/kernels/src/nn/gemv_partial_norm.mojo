@@ -348,7 +348,7 @@ def gemv_partial_norm_kernel[
             # before the counter increment; the acquire half in the
             # global-last arriver's fetch_add makes every peer's
             # writes visible when it reads normed_output back below.
-            var prev_global = Atomic[DType.int32, scope=DEVICE_SCOPE].fetch_add[
+            var prev_global = Atomic[Int32, scope=DEVICE_SCOPE].fetch_add[
                 ordering=Ordering.ACQUIRE_RELEASE
             ](finish_counter, Int32(1))
             comptime if enable_trace:
@@ -603,14 +603,14 @@ def _gemv_partial_norm_unfused_with_scratch[
 
     @always_inline
     @__copy_capture(y)
-    @parameter
+    @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[c_type, width]:
         var idx = y.layout(coords)
         return y.ptr.load[width=width](idx)
 
     @always_inline
     @__copy_capture(normed_output)
-    @parameter
+    @__parameter
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[c_type, width]) -> None:

@@ -42,27 +42,20 @@ import std.format._utils as fmt
 from std.reflection import reflect
 from std.hashlib.hasher import Hasher
 from std.memory import (
-    UnsafeMaybeUninit,
+    MaybeUninit,
     forget_deinit,
-    is_trivially_copyable,
-    is_trivially_deletable,
-    is_trivially_movable,
     unsafe_destroy_n,
     unsafe_uninit_move_n,
 )
-from std.memory.unsafe_maybe_uninit import (
-    _is_trivially_copyable,
-    _is_trivially_movable,
+from std.traits import (
+    IsTriviallyCopyable,
+    IsTriviallyDeinitable,
+    IsTriviallyMovable,
 )
 
 # ===-----------------------------------------------------------------------===#
 # Array
 # ===-----------------------------------------------------------------------===#
-
-comptime InlineArray = Array
-"""
-A comptime alias to `std.collections.Array` to enable migration.
-"""
 
 
 def _array_construction_checks[length: Int]():
@@ -221,6 +214,7 @@ struct _ArrayIterOwned[T: Movable & Deinitable, length: Int](
 @stable(since="1.0")
 struct Array[T: AnyType, length: Int](
     Copyable where conforms_to(T, Copyable),
+    Defaultable where conforms_to(T, Defaultable),
     Deinitable where conforms_to(T, Deinitable),
     DevicePassable where conforms_to(T, DevicePassable) and conforms_to(
         T, Copyable
@@ -259,18 +253,17 @@ struct Array[T: AnyType, length: Int](
     # Create array filled with value
     var filled = Array[Int, 5](fill=42)
 
+    # Create array of defaulted elements
+    var defaulted = Array[Int, 5]()  # [0, 0, 0, 0, 0]
+
     # Access elements
     print(arr[0])  # Prints 1
     ```
     """
 
-    @deprecated("`Array.size` is deprecated, use `Array.length`.")
-    comptime size = Self.length
-    """The number of elements in the array. Deprecated alias for `length`."""
-
-    comptime __del__is_trivial: Bool = is_trivially_deletable[Self.T]()
-    comptime __copy_ctor_is_trivial: Bool = _is_trivially_copyable[Self.T]()
-    comptime __move_ctor_is_trivial: Bool = _is_trivially_movable[Self.T]()
+    comptime __del__is_trivial: Bool = IsTriviallyDeinitable[Self.T]
+    comptime __copy_ctor_is_trivial: Bool = IsTriviallyCopyable[Self.T]
+    comptime __move_ctor_is_trivial: Bool = IsTriviallyMovable[Self.T]
 
     # Fields
     comptime type = __mlir_type[
@@ -376,15 +369,13 @@ struct Array[T: AnyType, length: Int](
     def __init__(
         out self,
         *,
-        var unsafe_assume_initialized: Array[
-            UnsafeMaybeUninit[Self.T], Self.length
-        ],
+        var unsafe_assume_initialized: Array[MaybeUninit[Self.T], Self.length],
     ) where conforms_to(Self.T, Movable):
         """Constructs an `Array` from an `Array` of
-        `UnsafeMaybeUninit`.
+        `MaybeUninit`.
 
         Args:
-            unsafe_assume_initialized: The array of `UnsafeMaybeUninit`
+            unsafe_assume_initialized: The array of `MaybeUninit`
                 elements. All elements must be initialized.
 
         Warning:
@@ -402,6 +393,27 @@ struct Array[T: AnyType, length: Int](
         for i in range(Self.length):
             self.unsafe_ptr().unsafe_offset(i).unsafe_write_move_from(
                 unsafe_assume_initialized[i].unsafe_ptr()
+            )
+        std.memory.forget_deinit(unsafe_assume_initialized^)
+
+    @always_inline
+    def __init__(
+        out self,
+    ) where conforms_to(Self.T, Defaultable):
+        """Constructs an array with each element set to its default value.
+
+        Examples:
+
+        ```mojo
+        var arr = Array[Int, 5]()  # [0, 0, 0, 0, 0]
+        ```
+        """
+        _array_construction_checks[Self.length]()
+        self = Self(uninitialized=True)
+        var ptr = self.unsafe_ptr()
+        for i in range(Self.length):
+            ptr.unsafe_offset(i).unsafe_write(
+                init_with=lambda () -> Self.T: Self.T()
             )
 
     @always_inline
@@ -538,7 +550,7 @@ struct Array[T: AnyType, length: Int](
         var copy = arr.copy()  # Creates new array [1, 2, 3]
         ```
         """
-        comptime if is_trivially_copyable[Self.T]():
+        comptime if IsTriviallyCopyable[Self.T]:
             self._array = copy._array
         else:
             self = Self(uninitialized=True)
@@ -559,7 +571,7 @@ struct Array[T: AnyType, length: Int](
             Moves the elements from the source array into this array.
         """
 
-        comptime if is_trivially_movable[Self.T]():
+        comptime if IsTriviallyMovable[Self.T]:
             self._array = move._array
         else:
             self = Self(uninitialized=True)
@@ -907,14 +919,17 @@ struct Array[T: AnyType, length: Int](
     ](self, mut writer: Some[Writer]) where conforms_to(Self.T, Writable):
         var index = 0
 
-        @parameter
-        def iterate(mut w: Some[Writer]) raises StopIteration:
+        var self_ptr = Pointer(to=self)
+
+        def iterate(
+            mut w: Some[Writer],
+        ) raises StopIteration {mut index, self_ptr}:
             if index >= Self.length:
                 raise StopIteration()
-            f(self.unsafe_get(index), w)
+            f(self_ptr[].unsafe_get(index), w)
             index += 1
 
-        fmt.write_sequence_to[ElementFn=iterate](writer)
+        fmt.write_sequence_to(writer, iterate)
         _ = index
 
     def write_to(
@@ -936,14 +951,15 @@ struct Array[T: AnyType, length: Int](
             writer: The object to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_self_to[f=fmt.write_repr_to[Self.T]](w)
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_self_to[f=fmt.write_repr_to[Self.T]](w)
 
         fmt.FormatStruct(writer, "Array").params(
             fmt.TypeNames[Self.T](),
             Self.length,
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     # TODO(MOCO-4308): Remove redundant 'Movable' constraint
     def __iter__(
@@ -954,8 +970,7 @@ struct Array[T: AnyType, length: Int](
         Returns:
             An iterator that owns the array's elements.
         """
-        # TODO(MOCO-4309): return Self.IteratorOwnedType(self^)
-        return _ArrayIterOwned(self^)
+        return Self.IteratorOwnedType(self^)
 
     def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
         """Iterate over elements of the array, returning immutable references.

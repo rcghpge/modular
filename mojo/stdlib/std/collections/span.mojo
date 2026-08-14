@@ -24,8 +24,6 @@ from std.reflection import call_location, reflect
 from std.bit.mask import splat
 from std.bit import pop_count
 from std.memory import (
-    is_trivially_copyable,
-    is_trivially_deletable,
     pack_bits,
     unsafe_uninit_copy_n,
 )
@@ -33,6 +31,7 @@ from std.collections import check_bounds, check_slice_bounds
 from std.builtin.rebind import downcast
 from std.sys import align_of
 from std.sys.info import simd_width_of
+from std.traits import IsTriviallyCopyable, IsTriviallyDeinitable
 
 from std.algorithm import vectorize
 from std.hashlib import Hasher
@@ -72,11 +71,6 @@ Parameters:
     origin: The origin of the span.
     address_space: The address space of the span.
 """
-
-
-@doc_hidden
-@deprecated(use=ImmSpan)
-comptime ImmutSpan = ImmSpan
 
 
 @fieldwise_init
@@ -564,11 +558,10 @@ struct Span[
     ](self, mut writer: Some[Writer]) where Self._is_generic_as:
         var iterator = self.__iter__()
 
-        @parameter
-        def iterate(mut w: Some[Writer]) raises StopIteration:
+        def iterate(mut w: Some[Writer]) raises StopIteration {mut iterator}:
             f(iterator.__next__(), w)
 
-        fmt.write_sequence_to[ElementFn=iterate](writer)
+        fmt.write_sequence_to(writer, iterate)
         _ = iterator^
 
     @no_inline
@@ -592,14 +585,15 @@ struct Span[
             writer: The object to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_self_to[f=fmt.write_repr_to[Self.T]](w)
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_self_to[f=fmt.write_repr_to[Self.T]](w)
 
         fmt.FormatStruct(writer, "Span").params(
             fmt.Named("mut", Self.mut),
             fmt.TypeNames[Self.T](),
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     def __hash__[
         H: Hasher
@@ -633,12 +627,6 @@ struct Span[
             An immutable version of the same `Span`.
         """
         return rebind[Self.Immutable](self)
-
-    @doc_hidden
-    @always_inline
-    @deprecated(use=as_imm)
-    def get_immutable(self) -> Self.Immutable:
-        return self.as_imm()
 
     @always_inline
     def unsafe_get(
@@ -705,9 +693,9 @@ struct Span[
         # needed). For non-trivial types, we keep the single-pass assignment
         # loop rather than unsafe_destroy_n + unsafe_uninit_copy_n, which would
         # be two passes over memory with worse cache locality.
-        comptime if is_trivially_copyable[Self.T]() and is_trivially_deletable[
+        comptime if IsTriviallyCopyable[Self.T] and IsTriviallyDeinitable[
             Self.T
-        ]():
+        ]:
             unsafe_uninit_copy_n[overlapping=False](
                 # TODO(MOCO-4220) once fixed remove the unsafe_mut_cast
                 dest=self.unsafe_ptr().unsafe_mut_cast[True](),
@@ -909,7 +897,7 @@ struct Span[
         var processed = 0
 
         comptime for i in range(len(widths)):
-            comptime w = widths[i]
+            comptime w = rebind[Int](widths[i])
 
             comptime if simd_width_of[dtype]() >= w:
                 for _ in range((middle - processed) // w):
@@ -934,12 +922,16 @@ struct Span[
     def apply[
         dtype: DType,
         //,
-        func: def[w: SIMDLength](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
-    ](self: Span[mut=True, Scalar[dtype], _]):
+    ](
+        self: Span[mut=True, Scalar[dtype], _],
+        func: Some[def[w: SIMDLength](SIMD[dtype, w]) -> SIMD[dtype, w]],
+    ):
         """Apply the function to the `Span` inplace.
 
         Parameters:
             dtype: The DType.
+
+        Args:
             func: The function to evaluate.
         """
 
@@ -949,7 +941,7 @@ struct Span[
         var processed = 0
 
         comptime for i in range(len(widths)):
-            comptime w = widths[i]
+            comptime w = rebind[Int](widths[i])
 
             comptime if simd_width_of[dtype]() >= w:
                 for _ in range((length - processed) // w):
@@ -966,17 +958,19 @@ struct Span[
     def apply[
         dtype: DType,
         //,
-        func: def[w: SIMDLength](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
+    ](
+        self: Span[mut=True, Scalar[dtype], _],
+        func: Some[def[w: SIMDLength](SIMD[dtype, w]) -> SIMD[dtype, w]],
         *,
-        cond: def[w: SIMDLength](SIMD[dtype, w]) capturing -> SIMD[
-            DType.bool, w
-        ],
-    ](self: Span[mut=True, Scalar[dtype], _]):
+        cond: Some[def[w: SIMDLength](SIMD[dtype, w]) -> SIMD[DType.bool, w]],
+    ):
         """Apply the function to the `Span` inplace where the condition is
         `True`.
 
         Parameters:
             dtype: The DType.
+
+        Args:
             func: The function to evaluate.
             cond: The condition to apply the function.
         """
@@ -987,7 +981,7 @@ struct Span[
         var processed = 0
 
         comptime for i in range(len(widths)):
-            comptime w = widths[i]
+            comptime w = rebind[Int](widths[i])
 
             comptime if simd_width_of[dtype]() >= w:
                 for _ in range((length - processed) // w):

@@ -69,8 +69,9 @@ def _argsort_cpu[
         DeviceContext(api="cpu"),
     )
 
-    @parameter
-    def cmp_fn(a: Scalar[indices.dtype], b: Scalar[indices.dtype]) -> Bool:
+    def cmp_fn(
+        a: Scalar[indices.dtype], b: Scalar[indices.dtype]
+    ) {input} -> Bool:
         comptime assert a.dtype.is_integral()
         comptime assert b.dtype.is_integral()
         comptime if ascending:
@@ -78,11 +79,12 @@ def _argsort_cpu[
         else:
             return input[a] > input[b]
 
-    sort[cmp_fn](
+    sort(
         Span[
             Scalar[indices.dtype],
             indices.origin,
-        ](unsafe_ptr=indices.ptr, length=indices.num_elements())
+        ](unsafe_ptr=indices.ptr, length=indices.num_elements()),
+        cmp_fn,
     )
 
 
@@ -292,7 +294,7 @@ def _argsort_gpu_impl[
     comptime BLOCK_SIZE = 256
 
     # Global merge step kernel (nested: simple enough, no shared memory).
-    @parameter
+    @__parameter
     @__llvm_metadata(
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](BLOCK_SIZE)
     )

@@ -36,6 +36,7 @@ from typing import (
     overload,
 )
 
+import opentelemetry.trace as otel_trace
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from jinja2.exceptions import UndefinedError
@@ -130,6 +131,7 @@ from max.serve.schemas.openai import (
     TopLogprob,
     UnloadLoraRequest,
 )
+from max.serve.telemetry.common import request_trace_ctx
 from max.serve.telemetry.metrics import METRICS
 from max.serve.telemetry.stopwatch import StopWatch
 from max.serve.worker_interface import RequestQueueFull
@@ -150,6 +152,7 @@ from openai.types.chat.chat_completion_stream_options_param import (
     ChatCompletionStreamOptionsParam,
 )
 from openai.types.create_embedding_response import Usage as EmbeddingUsage
+from opentelemetry import propagate as otel_propagate
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 from sse_starlette.sse import EventSourceResponse
@@ -159,8 +162,7 @@ _T = TypeVar("_T")
 
 router = APIRouter(prefix="/v1")
 logger = logging.getLogger("max.serve")
-
-_CLIENT_DISCONNECTED_STATUS_CODE = 499
+_tracer = otel_trace.get_tracer("max.serve")
 
 # Default tool-name charset (OpenAI's); a parser may widen it via VALID_TOOL_NAME_RE.
 _DEFAULT_VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -239,10 +241,6 @@ def _merge_tool_call_deltas(
         if delta.arguments is not None:
             acc.arguments.append(delta.arguments)
     return [acc.to_chunk() for acc in merged.values()]
-
-
-class _ClientDisconnectedError(RuntimeError):
-    """Raised when a non-streaming request disconnects before completion."""
 
 
 def record_request_start() -> None:
@@ -563,6 +561,14 @@ class OpenAIChatResponseGenerator(
     ) -> AsyncGenerator[str | JSONResponse, None]:
         self.logger.debug("Streaming: Start: %s", request)
         record_request_start()
+        request_span = _tracer.start_span(
+            "max.request",
+            context=request_trace_ctx.get(),
+            attributes={
+                "gen_ai.request.model": request.model_name,
+                "max.request_id": str(request.request_id),
+            },
+        )
         request_timer = StopWatch(start_ns=request.timestamp_ns)
         n_reasoning_tokens = 0
         n_tokens = 0
@@ -924,6 +930,17 @@ class OpenAIChatResponseGenerator(
             )
             yield error_response.model_dump_json()
         finally:
+            request_span.set_attribute(
+                "gen_ai.usage.output_tokens", n_reasoning_tokens + n_tokens
+            )
+            request_span.set_attribute(
+                "gen_ai.usage.input_tokens", n_prompt_tokens
+            )
+            if final_finish_reason is not None:
+                request_span.set_attribute(
+                    "gen_ai.response.finish_reasons", [final_finish_reason]
+                )
+            request_span.end()
             record_request_end(
                 request.request_path,
                 request_timer.elapsed_ms,
@@ -941,6 +958,14 @@ class OpenAIChatResponseGenerator(
             )
         request = requests[0]
         record_request_start()
+        request_span = _tracer.start_span(
+            "max.request",
+            context=request_trace_ctx.get(),
+            attributes={
+                "gen_ai.request.model": request.model_name,
+                "max.request_id": str(request.request_id),
+            },
+        )
         n_reasoning_tokens = 0
         n_tokens = 0
         n_prompt_tokens = 0
@@ -1130,6 +1155,13 @@ class OpenAIChatResponseGenerator(
 
             return response
         finally:
+            request_span.set_attribute(
+                "gen_ai.usage.output_tokens", n_reasoning_tokens + n_tokens
+            )
+            request_span.set_attribute(
+                "gen_ai.usage.input_tokens", n_prompt_tokens
+            )
+            request_span.end()
             record_request_end(
                 request.request_path,
                 request_timer.elapsed_ms,
@@ -1236,6 +1268,14 @@ class OpenAIEmbeddingsResponseGenerator:
 
         record_request_start()
         metrics_req = requests[0]
+        request_span = _tracer.start_span(
+            "max.request",
+            context=request_trace_ctx.get(),
+            attributes={
+                "gen_ai.request.model": self.pipeline.model_name,
+                "max.request_id": str(metrics_req.request_id),
+            },
+        )
         request_timer = StopWatch(start_ns=metrics_req.timestamp_ns)
 
         try:
@@ -1263,6 +1303,7 @@ class OpenAIEmbeddingsResponseGenerator:
             )
             return response
         finally:
+            request_span.end()
             record_request_end(
                 metrics_req.request_path,
                 request_timer.elapsed_ms,
@@ -1736,6 +1777,7 @@ async def openai_create_chat_completion(
     request: Request,
 ) -> CreateChatCompletionResponse | EventSourceResponse | Response:
     request_id = request.state.request_id
+    request_trace_ctx.set(otel_propagate.extract(request.headers))
     try:
         completion_request = await _parse_openai_request_body(
             request, request_id, CreateChatCompletionRequest
@@ -1794,7 +1836,10 @@ async def openai_create_chat_completion(
                 completion_request.tools, valid_tool_name_re
             )
 
-        response_format = _create_response_format(
+        # Off the event loop: validation compiles the schema, which can take
+        # seconds and would freeze in-flight streaming responses.
+        response_format = await asyncio.to_thread(
+            _create_response_format,
             completion_request.response_format,
             enable_response_format_schema=pipeline_config.sampling.enable_structured_output,
             grammar_validator=request.app.state.grammar_validator,
@@ -1892,7 +1937,10 @@ async def openai_create_chat_completion(
             and response_format.grammar is not None
         ):
             try:
-                grammar_validator.check_tool_grammar(response_format.grammar)
+                await asyncio.to_thread(
+                    grammar_validator.check_tool_grammar,
+                    response_format.grammar,
+                )
             except InputError:
                 METRICS.structured_output_grammar_rejection("tool_grammar")
                 raise
@@ -2048,9 +2096,6 @@ async def openai_create_chat_completion(
 
         response = await response_generator.complete([token_request])
         return response
-    except _ClientDisconnectedError:
-        logger.info("Client disconnected for request %s", request_id)
-        return Response(status_code=_CLIENT_DISCONNECTED_STATUS_CODE)
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
@@ -2259,6 +2304,7 @@ async def openai_create_embeddings(
     request: Request,
 ) -> CreateEmbeddingResponse | Response:
     request_id = request.state.request_id
+    request_trace_ctx.set(otel_propagate.extract(request.headers))
 
     # First try-catch: request parsing (client fault → 400)
     try:
@@ -2299,9 +2345,6 @@ async def openai_create_embeddings(
             )
             for idx, input_text in enumerate(embedding_inputs)
         ]
-    except _ClientDisconnectedError:
-        logger.info("Client disconnected for request %s", request_id)
-        return Response(status_code=_CLIENT_DISCONNECTED_STATUS_CODE)
     except JSONDecodeError as e:
         logger.warning("JSONDecodeError in request %s: %s", request_id, e)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e
@@ -2329,9 +2372,6 @@ async def openai_create_embeddings(
     try:
         response = await response_generator.encode(embedding_requests)
         return response
-    except _ClientDisconnectedError:
-        logger.info("Client disconnected for request %s", request_id)
-        return Response(status_code=_CLIENT_DISCONNECTED_STATUS_CODE)
     except RequestQueueFull:
         # Admission was rejected (full worker queue); let the central handler
         # map it to HTTP 429 rather than the generic 500 below.
@@ -2535,11 +2575,20 @@ class OpenAICompletionResponseGenerator(
     ) -> AsyncGenerator[str | ErrorResponse | JSONResponse, None]:
         logger.debug("Streaming: Start: %s", request)
         record_request_start()
+        request_span = _tracer.start_span(
+            "max.request",
+            context=request_trace_ctx.get(),
+            attributes={
+                "gen_ai.request.model": request.model_name,
+                "max.request_id": str(request.request_id),
+            },
+        )
         request_timer = StopWatch(start_ns=request.timestamp_ns)
         n_reasoning_tokens = 0
         n_tokens = 0
         n_prompt_tokens = 0
         n_cached_prompt_tokens = 0
+        final_finish_reason: str | None = None
         try:
             async for chunk in token_generator:
                 chunk_total_tokens = (
@@ -2577,13 +2626,14 @@ class OpenAICompletionResponseGenerator(
                         )
                     ]
                 elif chunk.status.is_done:
+                    final_finish_reason = get_finish_reason_from_status(
+                        chunk.status, allow_none=False
+                    )
                     choices = [
                         CompletionResponseStreamChoice(
                             index=0,
                             text="",
-                            finish_reason=get_finish_reason_from_status(
-                                chunk.status, allow_none=False
-                            ),
+                            finish_reason=final_finish_reason,
                         )
                     ]
                 else:
@@ -2666,6 +2716,17 @@ class OpenAICompletionResponseGenerator(
                 content={"detail": "Value error", "message": str(e)},
             )
         finally:
+            request_span.set_attribute(
+                "gen_ai.usage.output_tokens", n_reasoning_tokens + n_tokens
+            )
+            request_span.set_attribute(
+                "gen_ai.usage.input_tokens", n_prompt_tokens
+            )
+            if final_finish_reason is not None:
+                request_span.set_attribute(
+                    "gen_ai.response.finish_reasons", [final_finish_reason]
+                )
+            request_span.end()
             record_request_end(
                 request.request_path,
                 request_timer.elapsed_ms,
@@ -2679,6 +2740,14 @@ class OpenAICompletionResponseGenerator(
         # we assume that all entries in `requests` came from the same http
         # request and timestamp, request id, path should all be the same.
         record_request_start()
+        request_span = _tracer.start_span(
+            "max.request",
+            context=request_trace_ctx.get(),
+            attributes={
+                "gen_ai.request.model": requests[0].model_name,
+                "max.request_id": str(requests[0].request_id),
+            },
+        )
         n_reasoning_tokens = 0
         n_tokens = 0
         n_prompt_tokens = 0
@@ -2745,6 +2814,13 @@ class OpenAICompletionResponseGenerator(
             )
             return response
         finally:
+            request_span.set_attribute(
+                "gen_ai.usage.output_tokens", n_reasoning_tokens + n_tokens
+            )
+            request_span.set_attribute(
+                "gen_ai.usage.input_tokens", n_prompt_tokens
+            )
+            request_span.end()
             record_request_end(
                 requests[0].request_path,
                 request_timer.elapsed_ms,
@@ -2803,6 +2879,7 @@ async def openai_create_completion(
     Public benchmarking such as vLLM use this endpoint.
     """
     http_req_id = request.state.request_id
+    request_trace_ctx.set(otel_propagate.extract(request.headers))
     try:
         completion_request = await _parse_openai_request_body(
             request, http_req_id, CreateCompletionRequest
@@ -2928,9 +3005,6 @@ async def openai_create_completion(
         # the wrong id.  Overwrite with the http id.
         resp.id = http_req_id
         return resp
-    except _ClientDisconnectedError:
-        logger.info("Client disconnected for request %s", http_req_id)
-        return Response(status_code=_CLIENT_DISCONNECTED_STATUS_CODE)
     except JSONDecodeError as e:
         logger.exception("JSONDecodeError for request %s", http_req_id)
         raise HTTPException(status_code=400, detail="Missing JSON.") from e

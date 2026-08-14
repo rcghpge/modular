@@ -180,7 +180,7 @@ class TextGenerationPipeline(
                 "Please ensure the model repository contains a valid config.json file."
             )
 
-        self._devices = load_devices(model_config.device_specs)
+        self._devices = load_devices(list(memory_plan.require_device_specs()))
         self._tokenizer = tokenizer
 
         self.batch_info_output_fname = environ.get(
@@ -251,7 +251,8 @@ class TextGenerationPipeline(
         if isinstance(self._pipeline_model, SupportsVisionEncoding):
             self._encoder_cache = VisionEncoderCache[TextAndVisionContext](
                 max_entries=pipeline_config.runtime.max_vision_cache_entries,
-                n_devices=len(self._devices),
+                plan=pipeline_config.runtime._vision_cache_plan,
+                devices=self._devices,
             )
 
         # Device the sampler runs on. ``sample_on_host`` routes sampling to the
@@ -627,7 +628,8 @@ class TextGenerationPipeline(
 
         # Update the cache lengths in our kv_cache manager.
         # This should be done after the contexts are updated.
-        self._kv_manager.step(inputs.batches)
+        for ctx in inputs.flat_batch:
+            self._kv_manager.step(ctx)
 
         return res
 

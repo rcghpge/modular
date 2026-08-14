@@ -296,7 +296,7 @@ def test_fused_allreduce_rmsnorm_fp8[
 
     @__copy_capture(ref_sum_ptr)
     @always_inline
-    @parameter
+    @__parameter
     def ref_input_fn[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
@@ -669,7 +669,7 @@ def test_fused_allreduce_residual_rmsnorm_fp8[
 
     @__copy_capture(ref_sum_ptr)
     @always_inline
-    @parameter
+    @__parameter
     def ref_input_fn[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
@@ -1043,7 +1043,7 @@ def main() raises:
     print("FP8 output dtype:", out_fp8_dtype)
 
     comptime for gpu_idx in range(len(test_gpu_counts)):
-        comptime num_gpus = test_gpu_counts[gpu_idx]
+        comptime num_gpus = rebind[Int](test_gpu_counts[gpu_idx])
         if num_devices < num_gpus:
             continue
 

@@ -63,7 +63,7 @@ def test_constructors() raises:
 def test_copy() raises:
     var s0 = "find"
     var s1 = String(s0)
-    s1.unsafe_ptr_mut()[unsafe_offset=3] = Byte(ord("e"))
+    s1.unsafe_as_bytes_mut().unsafe_ptr()[unsafe_offset=3] = Byte(ord("e"))
     assert_equal("find", s0)
     assert_equal("fine", s1)
 
@@ -1017,6 +1017,20 @@ def test_strip() raises:
     assert_true(str6.strip("Ò") == "ÑeeeeÑ")
 
 
+def test_strip_mutable_chars() raises:
+    # `chars` is read-only, so a mutable argument must not be borrowed mutably;
+    # otherwise it can't alias `self`, which is an interior slice of the string.
+    var chars = String("hi")
+    assert_equal(String("himojohi").lstrip(chars), "mojohi")
+    assert_equal(String("himojohi").rstrip(chars), "himojo")
+    assert_equal(String("himojohi").strip(chars), "mojo")
+
+    var self_aliasing = String("aabbaa")
+    assert_equal(self_aliasing.lstrip(self_aliasing), "")
+    assert_equal(self_aliasing.rstrip(self_aliasing), "")
+    assert_equal(self_aliasing.strip(self_aliasing), "")
+
+
 def test_hash() raises:
     def assert_hash_equals_literal_hash[s: StaticString]() raises:
         assert_equal(hash(s), hash(String(s)))
@@ -1193,7 +1207,7 @@ def test_string_char_slices_iter() raises:
     var items_amount_characters = [5, 12, 9, 5, 7, 6, 5, 5, 2, 3, 12]
     for item_idx in range(len(items)):
         var item = items[item_idx]
-        var ptr = item.unsafe_ptr()
+        var ptr = item.as_bytes().unsafe_ptr()
         var amnt_characters = 0
         var byte_idx = 0
         for v in item.codepoint_slices():
@@ -1201,7 +1215,7 @@ def test_string_char_slices_iter() raises:
             for i in range(byte_len):
                 assert_equal(
                     ptr[unsafe_offset=byte_idx + i],
-                    v.unsafe_ptr()[unsafe_offset=i],
+                    v.as_bytes().unsafe_ptr()[unsafe_offset=i],
                 )
             byte_idx += byte_len
             amnt_characters += 1
@@ -1428,8 +1442,8 @@ def test_uninit_ctor() raises:
     var hello_len = "hello".byte_length()
     var s = String(unsafe_uninit_length=hello_len)
     unsafe_memcpy(
-        dest=s.unsafe_ptr_mut(),
-        src=StaticString("hello").unsafe_ptr(),
+        dest=s.unsafe_as_bytes_mut().unsafe_ptr(),
+        src=StaticString("hello").as_bytes().unsafe_ptr(),
         count=hello_len,
     )
     assert_equal(s, "hello")
@@ -1438,8 +1452,8 @@ def test_uninit_ctor() raises:
     var s2 = String()
     s2.resize(unsafe_uninit_length=hello_len)
     unsafe_memcpy(
-        dest=s2.unsafe_ptr_mut(),
-        src=StaticString("hello").unsafe_ptr(),
+        dest=s2.unsafe_as_bytes_mut().unsafe_ptr(),
+        src=StaticString("hello").as_bytes().unsafe_ptr(),
         count=hello_len,
     )
     assert_equal(s2, "hello")
@@ -1449,8 +1463,8 @@ def test_uninit_ctor() raises:
     var long: StaticString = "hellohellohellohellohellohellohellohellohellohel"
     s3.resize(unsafe_uninit_length=long.byte_length())
     unsafe_memcpy(
-        dest=s3.unsafe_ptr_mut(),
-        src=long.unsafe_ptr(),
+        dest=s3.unsafe_as_bytes_mut().unsafe_ptr(),
+        src=long.as_bytes().unsafe_ptr(),
         count=long.byte_length(),
     )
     assert_equal(s3, long)
@@ -1463,7 +1477,9 @@ def test_as_c_string_slice_empty() raises:
     assert_equal(string.byte_length(), 0)
     assert_true(string.capacity() > 0)
     # Safe to index `string.byte_length()` as this has a nul terminator
-    assert_equal(string.unsafe_ptr()[unsafe_offset=string.byte_length()], 0)
+    assert_equal(
+        string.as_bytes().unsafe_ptr()[unsafe_offset=string.byte_length()], 0
+    )
     assert_true(string.as_bytes() == cslice.as_bytes())
 
 
@@ -1471,7 +1487,9 @@ def test_as_c_string_slice_inlined() raises:
     var string = String("a")
     var cslice = string.as_c_string_slice()
     # Safe to index `string.byte_length()` as this has a nul terminator
-    assert_equal(string.unsafe_ptr()[unsafe_offset=string.byte_length()], 0)
+    assert_equal(
+        string.as_bytes().unsafe_ptr()[unsafe_offset=string.byte_length()], 0
+    )
     assert_true(string.as_bytes() == cslice.as_bytes())
 
 
@@ -1479,7 +1497,9 @@ def test_as_c_string_slice_heap() raises:
     var string = String("abcdefghijlmnopqrstuvwxyz")
     var cslice = string.as_c_string_slice()
     # Safe to index `string.byte_length()` as this has a nul terminator
-    assert_equal(string.unsafe_ptr()[unsafe_offset=string.byte_length()], 0)
+    assert_equal(
+        string.as_bytes().unsafe_ptr()[unsafe_offset=string.byte_length()], 0
+    )
     assert_true(string.as_bytes() == cslice.as_bytes())
 
 
@@ -1503,7 +1523,7 @@ def test_sso() raises:
     assert_equal(s.byte_length(), 5)
     assert_equal(s._is_inline(), False)
     assert_equal(s._has_nul_terminator(), True)
-    assert_equal(s.unsafe_ptr()[unsafe_offset=s.byte_length()], 0)
+    assert_equal(s.as_bytes().unsafe_ptr()[unsafe_offset=s.byte_length()], 0)
 
     # Adding a single char should remove the nul terminator and inline it.
     s += "f"
@@ -1520,7 +1540,7 @@ def test_sso() raises:
     assert_equal(s.capacity(), 55)
     assert_equal(s._is_inline(), False)
     assert_equal(s._has_nul_terminator(), True)
-    assert_equal(s.unsafe_ptr()[unsafe_offset=s.byte_length()], 0)
+    assert_equal(s.as_bytes().unsafe_ptr()[unsafe_offset=s.byte_length()], 0)
 
     # Modifying it should remove the nul terminator.
     s += "f"
@@ -1572,7 +1592,7 @@ def test_copyinit() raises:
     var test_current_size = 1
 
     comptime for sizes_index in range(len(sizes)):
-        comptime current_size = sizes[sizes_index]
+        comptime current_size = rebind[Int](sizes[sizes_index])
         var x = ""
         for i in range(current_size):
             x += String(i)[byte=0]
@@ -1779,6 +1799,13 @@ def test_append_codepoint() raises:
     s.append(Codepoint.ord("🔥"))
     assert_equal(s, "a€🔥")
     assert_equal(s.byte_length(), 8)
+
+
+def test_string_zero_init() raises:
+    var s = String()
+    assert_equal(Int(s._ptr_or_data), 0)
+    assert_equal(s._len_or_data, 0)
+    assert_equal(s._capacity_or_data, String.FLAG_IS_INLINE)
 
 
 def main() raises:

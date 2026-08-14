@@ -26,7 +26,7 @@ from std.format._utils import (
     TypeNames,
 )
 from std.hashlib.hasher import Hasher
-from std.memory.unsafe_maybe_uninit import UnsafeMaybeUninit
+from std.memory.maybe_uninit import MaybeUninit
 from std.memory.alloc import (
     alloc,
     dealloc,
@@ -37,16 +37,18 @@ from std.memory.alloc import (
 
 
 @doc_hidden
-struct _ArcPointerInner[T: Movable & Deinitable]:
+struct _ArcPointerInner[T: Movable & Deinitable](
+    Movable where False,
+):
     """
     The backing _shared_ piece of an ArcPointer.
     Referenced by all Arc and Weak for a given value.
     Carries the atomic refcounts and the T itself.
     """
 
-    var strong: Atomic[DType.uint64]
-    var weak: Atomic[DType.uint64]
-    var payload: UnsafeMaybeUninit[Self.T]
+    var strong: Atomic[UInt64]
+    var weak: Atomic[UInt64]
+    var payload: MaybeUninit[Self.T]
 
     @doc_hidden
     def __init__(out self, var value: Self.T):
@@ -57,7 +59,13 @@ struct _ArcPointerInner[T: Movable & Deinitable]:
         """
         self.strong = Atomic(UInt64(1))
         self.weak = Atomic(UInt64(1))
-        self.payload = UnsafeMaybeUninit[Self.T](value^)
+        self.payload = MaybeUninit[Self.T](value^)
+
+    def __deinit__(deinit self):
+        # Safety:
+        # The payload has already been destroyed from the
+        # final ref-count drop.
+        self.payload^.unsafe_forget()
 
     def add_strong(mut self):
         """Atomically increment the strong refcount."""
@@ -129,11 +137,11 @@ struct _ArcPointerInner[T: Movable & Deinitable]:
     def destroy_payload(mut self):
         """Run the destructor of the held value. Caller must ensure this
         runs exactly once, on the last strong drop."""
-        self.payload.unsafe_assume_init_destroy()
+        self.payload.unsafe_ptr().unsafe_deinit_pointee()
 
-    def payload_ref(ref self) -> ref[self.payload._array] Self.T:
+    def payload_ref(ref self) -> ref[self.payload] Self.T:
         """Return a reference to the (assumed-initialized) payload."""
-        return self.payload.unsafe_assume_init_ref()
+        return self.payload.unsafe_assume_init()
 
 
 struct ArcPointer[T: Movable & Deinitable](
@@ -197,7 +205,8 @@ struct ArcPointer[T: Movable & Deinitable](
             value: The value to manage.
         """
         self._inner = alloc(Layout[Self._inner_type].single()).unsafe_leak()
-        # Cannot use init_pointee_move as _ArcPointerInner isn't movable.
+        # TODO(MOCO-4591)
+        # Cannot use unsafe_write as closure do not support consuming move-only types.
         __get_address_as_uninit_lvalue(
             self._inner._get_kgen_pointer()
         ) = Self._inner_type(value^)
@@ -315,7 +324,7 @@ struct ArcPointer[T: Movable & Deinitable](
         # TODO: consider removing this method.
         return (
             Pointer(to=self._inner[].payload_ref())
-            .mut_cast[mut]()
+            .unsafe_mut_cast[mut]()
             .unsafe_origin_cast[origin]()
         )
 

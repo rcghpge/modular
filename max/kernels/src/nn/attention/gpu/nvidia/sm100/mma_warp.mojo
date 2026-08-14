@@ -14,7 +14,6 @@
 
 from std.math import align_up, ceildiv
 from std.sys import size_of, get_defined_bool
-from std.gpu.primitives.id import cluster_dim
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
     MMASmemDescriptorPair,
     UMMAKind,
@@ -36,6 +35,7 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
     MBarType,
     splitk_window,
     splitk_partition_idx,
+    splitk_num_partitions,
 )
 from nn.attention.mha_mask import MHAMask
 from linalg.arch.sm100.mma import smem_descriptor
@@ -49,6 +49,10 @@ def fa4_mma[
     config: FA4Config,
     *,
     page_size: Int,
+    # Workspace (traditional/unfused) split-K: window the KV by a RUNTIME
+    # partition count even at `config.splitk_partitions == 1`. Defaulted so
+    # every non-workspace caller is byte-identical.
+    workspace_split: Bool = False,
     # Effective cross-stage-P switch, computed once at the kernel level where
     # config, MaskType and the store shape are all visible. Defaults True so
     # the config-level gate alone decides for callers that do not thread it;
@@ -61,6 +65,7 @@ def fa4_mma[
     score_row: UInt32,
     num_keys: UInt32,
     mask: MaskType,
+    ws_num_partitions: UInt32 = 1,
 ):
     """Executes the FA4 MMA warp loop for SM100 Flash Attention.
 
@@ -78,6 +83,8 @@ def fa4_mma[
         score_row: Row offset of the query tile within the sequence.
         num_keys: Number of valid key columns to attend to.
         mask: Attention mask controlling tile iteration and masking bounds.
+        ws_num_partitions: Runtime split-K partition count that windows the
+            KV range when `workspace_split` is `True`; `1` disables windowing.
     """
     comptime accum_type = DType.float32
     comptime BM = config.BM
@@ -124,7 +131,7 @@ def fa4_mma[
     # `BN // m_pack` @ m_pack=4 -- a coincidence of today's depth-128 numbers,
     # not an identity that holds generally). This is exactly the V TMA box's
     # KEY-row count, so it reads from that one definition.
-    comptime pv_bk_chunk = config.v_e_box_rows()
+    comptime pv_bk_chunk = config.v_e_chunk_rows()
     comptime pv_bk = (
         pv_bk_chunk if is_reduction_split else (
             BN // config.m_pack
@@ -274,12 +281,12 @@ def fa4_mma[
 
     # Called after consumer_s[*].wait(phase), which orders the vote write
     # (softmax) before this read. Peel writes no vote -> reads 0 -> never skips.
-    @parameter
+    @__parameter
     @always_inline
     def blasst_should_skip(wg: UInt32, phase: UInt32) -> Bool:
         return blasst_vote_unanimous(blasst_vote, wg, phase)
 
-    @parameter
+    @__parameter
     @always_inline
     def _commit(
         mbar: UnsafePointer[address_space=AddressSpace.SHARED, ...],
@@ -300,7 +307,7 @@ def fa4_mma[
     # sub-tiles). Each call site keeps its own `comptime if PARTIAL_K [and
     # num_q == 2]` gate and `valid_k_mmas` computation; only the duplicated
     # loop body lives here.
-    @parameter
+    @__parameter
     @always_inline
     def _pv_full(
         s_tmem: UInt32,
@@ -355,7 +362,7 @@ def fa4_mma[
                             c_scale=c_scale,
                         )
 
-    @parameter
+    @__parameter
     @always_inline
     def _pv_partial(
         s_tmem: UInt32,
@@ -430,6 +437,10 @@ def fa4_mma[
     # V pages the producer never loaded (`0 * stale-NaN = NaN`). For causal
     # `start_column == 0`, so `v_eff_keys == num_keys` and every `vkm` site
     # below is bit-identical to before.
+    #
+    # 1Q split-K narrows the frame again: the `vkm` sites count tiles from
+    # the partition's own window, so `v_eff_keys` is rebased by the window
+    # start where split-K slices it below.
     var v_start_col: UInt32 = mask.start_column[BM_mask, BN, page_size](
         seq_id, score_row
     )
@@ -528,12 +539,10 @@ def fa4_mma[
         # `total_iters == last_masked_set_end` for check_mask==False masks
         # (mha_mask.mojo:510-513/641-644/...), so all four warps derive the
         # same window.
-        comptime if config.num_q == 1 and config.splitk_partitions > 1:
-            var _np: UInt32
-            comptime if config.dynamic_cluster_dim:
-                _np = UInt32(cluster_dim.x)
-            else:
-                _np = UInt32(config.splitk_partitions)
+        comptime if config.num_q == 1 and (
+            config.splitk_partitions > 1 or workspace_split
+        ):
+            var _np = splitk_num_partitions[config](ws_num_partitions)
             var _w = splitk_window(
                 total_iters_runtime,
                 _np,
@@ -547,6 +556,8 @@ def fa4_mma[
             # kernel terminal `cluster_sync()` still runs after this return.
             if total_iters_runtime == 0:
                 return
+            # Rebase into this partition's tile window (see the `vkm` note).
+            v_eff_keys -= _w[0] * UInt32(BN)
         # All-masked row (valid_length 0): total_iters == 0, so the
         # `- (3 - num_q)` below underflows and the MMA warp spins, hanging the
         # pipeline. Split-K is guarded above; guard the non-split path here.
@@ -559,7 +570,7 @@ def fa4_mma[
         # release/step/wait/capture idiom repeated across the 1Q path.
         # `consumer_mbar(idx)` with the current index is identical to the
         # no-arg `consumer_mbar()` (which forwards `state.index()`).
-        @parameter
+        @__parameter
         @always_inline
         def _advance_kv(release_idx: UInt32) -> UInt32:
             _commit(kv_pipeline.consumer_mbar(release_idx))
@@ -695,7 +706,7 @@ def fa4_mma[
         # K/Q bases and c_scale 0->1 -- NOT `mma[stage_idx=1]`, which adds an
         # internal +BK0 offset assuming one contiguous tile (would read OOB).
         # Empty (no-op) when num_qk_stages==1.
-        @parameter
+        @__parameter
         @always_inline
         def _qk_extra(q_base: MMASmemDescriptorPair, s_tmem: UInt32):
             comptime for d in range(1, config.num_qk_stages):
@@ -711,7 +722,7 @@ def fa4_mma[
         # `_v_wait_rest`: wait the remaining num_d_tiles-1 V depth-tile sub-slots
         # (produced consecutively right after the first). Leaves the ring state
         # at the last of them. Empty when num_d_tiles==1.
-        @parameter
+        @__parameter
         @always_inline
         def _v_wait_rest():
             comptime for d in range(1, num_d_tiles):
@@ -720,7 +731,7 @@ def fa4_mma[
 
         # `_v_release_rest`: release the num_d_tiles-1 V sub-slots after v_idx0
         # (ring-adjacent). Empty when num_d_tiles==1.
-        @parameter
+        @__parameter
         @always_inline
         def _v_release_rest(v_idx0: UInt32):
             comptime for d in range(1, num_d_tiles):
@@ -747,7 +758,7 @@ def fa4_mma[
         # `c_scale`; later chunks always accumulate (scale=1), composing with
         # `UMMA1Type`'s own per-`p_stage` internal `stage_idx==0 -> c_scale
         # else 1` handling.
-        @parameter
+        @__parameter
         @always_inline
         def _pv_ws[
             partial: Bool
@@ -1149,12 +1160,10 @@ def fa4_mma[
         # `total_iters == last_masked_set_end` for check_mask==False masks
         # (mha_mask.mojo:510-513/641-644/...), so all four warps derive the
         # same window.
-        comptime if config.num_q == 1 and config.splitk_partitions > 1:
-            var _np: UInt32
-            comptime if config.dynamic_cluster_dim:
-                _np = UInt32(cluster_dim.x)
-            else:
-                _np = UInt32(config.splitk_partitions)
+        comptime if config.num_q == 1 and (
+            config.splitk_partitions > 1 or workspace_split
+        ):
+            var _np = splitk_num_partitions[config](ws_num_partitions)
             var _w = splitk_window(
                 total_iters_runtime,
                 _np,
@@ -1168,6 +1177,8 @@ def fa4_mma[
             # kernel terminal `cluster_sync()` still runs after this return.
             if total_iters_runtime == 0:
                 return
+            # Rebase into this partition's tile window (see the `vkm` note).
+            v_eff_keys -= _w[0] * UInt32(BN)
         # All-masked row (valid_length 0): total_iters == 0, so the
         # `- (3 - num_q)` below underflows and the MMA warp spins, hanging the
         # pipeline. Split-K is guarded above; guard the non-split path here.

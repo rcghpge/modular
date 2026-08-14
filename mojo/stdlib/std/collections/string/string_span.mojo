@@ -1055,12 +1055,6 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         """
         return rebind[Self.Immutable](self)
 
-    @doc_hidden
-    @always_inline
-    @deprecated(use=as_imm)
-    def get_immutable(self) -> Self.Immutable:
-        return self.as_imm()
-
     def replace(self, old: StringSpan, new: StringSpan) -> String:
         """Return a copy of the string with all occurrences of substring `old`
         if replaced by `new`.
@@ -1116,7 +1110,7 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
             res += codepoint
         return res^
 
-    def _strip[forward: Bool](self, chars: StringSpan) -> Self:
+    def _strip[forward: Bool](self, chars: ImmStringSpan) -> Self:
         var iter = CodepointSliceIter[forward=forward](self)
         while True:
             try:
@@ -1130,8 +1124,8 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         return iter._slice
 
     @always_inline
-    def strip(self, chars: StringSpan) -> Self:
-        """Return a copy of the string with leading and trailing characters
+    def strip(self, chars: ImmStringSpan) -> Self:
+        """Returns a view of the string with leading and trailing characters
         removed. Note character is defined as a single unicode code-point,
         not any kind of displayed character, and strip can break apart
         graphemes.
@@ -1140,7 +1134,7 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no leading or trailing characters.
+            A view of the string with no leading or trailing characters.
 
         Example:
 
@@ -1153,12 +1147,12 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
 
     @always_inline
     def strip(self) -> Self:
-        """Return a copy of the string with leading and trailing whitespaces
+        """Returns a view of the string with leading and trailing whitespaces
         removed. This only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no leading or trailing whitespaces.
+            A view of the string with no leading or trailing whitespaces.
 
         Example:
 
@@ -1169,14 +1163,14 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         return self.lstrip().rstrip()
 
     @always_inline
-    def rstrip(self, chars: StringSpan) -> Self:
-        """Return a copy of the string with trailing characters removed.
+    def rstrip(self, chars: ImmStringSpan) -> Self:
+        """Returns a view of the string with trailing characters removed.
 
         Args:
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no trailing characters.
+            A view of the string with no trailing characters.
 
         Example:
 
@@ -1189,12 +1183,12 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
 
     @always_inline
     def rstrip(self) -> Self:
-        """Return a copy of the string with trailing whitespaces removed. This
+        """Returns a view of the string with trailing whitespaces removed. This
         only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no trailing whitespaces.
+            A view of the string with no trailing whitespaces.
 
         Example:
 
@@ -1215,14 +1209,14 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         return Self(unsafe_from_utf8=self.as_bytes()[:r_idx])
 
     @always_inline
-    def lstrip(self, chars: StringSpan) -> Self:
-        """Return a copy of the string with leading characters removed.
+    def lstrip(self, chars: ImmStringSpan) -> Self:
+        """Returns a view of the string with leading characters removed.
 
         Args:
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no leading characters.
+            A view of the string with no leading characters.
 
         Example:
 
@@ -1235,12 +1229,12 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
 
     @always_inline
     def lstrip(self) -> Self:
-        """Return a copy of the string with leading whitespaces removed. This
+        """Returns a view of the string with leading whitespaces removed. This
         only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no leading whitespaces.
+            A view of the string with no leading whitespaces.
 
         Example:
 
@@ -1767,14 +1761,15 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         ).endswith(suffix)
 
     def removeprefix(self, prefix: StringSpan, /) -> Self:
-        """Returns a new string with the prefix removed if it was present.
+        """Returns a view of the string with the prefix removed if it was
+        present.
 
         Args:
             prefix: The prefix to remove from the string.
 
         Returns:
             `string[byte=prefix.byte_length():]` if the string starts with the
-            prefix string, or a copy of the original string otherwise.
+            prefix string, or a view of the whole string otherwise.
 
         Examples:
 
@@ -1788,14 +1783,15 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         return self
 
     def removesuffix(self, suffix: StringSpan, /) -> Self:
-        """Returns a new string with the suffix removed if it was present.
+        """Returns a view of the string with the suffix removed if it was
+        present.
 
         Args:
             suffix: The suffix to remove from the string.
 
         Returns:
             `string[byte=:(self.byte_length()-suffix.byte_length())]` if the string ends with the
-            suffix string, or a copy of the original string otherwise.
+            suffix string, or a view of the whole string otherwise.
 
         Examples:
 
@@ -2154,8 +2150,7 @@ struct StringSpan[mut: Bool, //, origin: Origin[mut=mut]](
         var prev_b0 = Byte(0)
 
         @always_inline
-        @parameter
-        def _splitlines[keep: Bool]():
+        def _splitlines[keep: Bool]() {mut}:
             while line_start < length:
                 var line_end = line_start
                 var is_new_line = False

@@ -125,12 +125,11 @@ def bench_memcpy(
         length_in_elements if config.direction == Config.DToD else 0
     )
 
-    @parameter
+    @__parameter
     @always_inline
     def bench_func(mut b: Bencher):
-        @parameter
         @always_inline
-        def kernel_launch(ctx: DeviceContext) raises:
+        def kernel_launch(ctx: DeviceContext) raises {imm}:
             if config.direction == Config.DToH:
                 context.enqueue_copy(mem_host, mem_device)
             elif config.direction == Config.HToD:
@@ -140,7 +139,7 @@ def bench_memcpy(
             else:
                 raise Error("Unexpected transfer direction")
 
-        bencher_iter_custom[kernel_launch](b, context)
+        bencher_iter_custom(b, kernel_launch, context)
 
     # For D2D transfers, we're reading the entire buffer into gpu cache/sharedmem,
     # then writing it back to a new address in vram. This means we're really
@@ -190,15 +189,14 @@ def bench_p2p(
     ctx1.enqueue_copy(src_buf, host_ptr)
     ctx1.synchronize()
 
-    @parameter
+    @__parameter
     @always_inline
     def bench_func(mut b: Bencher):
-        @parameter
         @always_inline
-        def kernel_launch(ctx: DeviceContext) raises:
+        def kernel_launch(ctx: DeviceContext) raises {imm}:
             ctx2.enqueue_copy(dst_buf, src_buf)
 
-        bencher_iter_custom[kernel_launch](b, ctx1)
+        bencher_iter_custom(b, kernel_launch, ctx1)
 
     # Create list of throughput measures
     var measures: List = [
@@ -219,7 +217,7 @@ def bench_p2p(
     ctx2.synchronize()
 
     # Parallel verification
-    @parameter
+    @__parameter
     def verify_chunk(start: Int, end: Int):
         for i in range(start, end):
             try:

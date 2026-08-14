@@ -58,6 +58,97 @@ from .block_utils import (
 
 logger = logging.getLogger("max.pipelines")
 
+SALT_DROPPED_WARNED: bool = False
+
+
+def compute_block_hashes(
+    ctx: TextContext,
+    existing_hashes: Sequence[bytes],
+    block_size: int,
+    kv_hash_algo: KVHashAlgo,
+    kv_hash_seed: bytes | None,
+) -> list[bytes]:
+    """Computes block hashes for the request beyond ``existing_hashes``.
+
+    Unlike :meth:`compute_hashes_for_request`, this reads and writes no
+    per-request state, so it is safe to call for requests that are not
+    (and may never be) claimed on this replica — e.g. when computing
+    prefix-cache overlap for data-parallel routing.
+
+    Args:
+        ctx: The request context.
+        existing_hashes: Hashes already computed for the request's leading
+            blocks; new hashes chain onto the last entry. Pass an empty
+            sequence to hash from the start of the prompt.
+        block_size: How many tokens one block holds.
+        kv_hash_algo: Which hash the keys are built with.
+        kv_hash_seed: Seed isolating one deployment's keys from another's, or
+            ``None`` for the unseeded default.
+
+    Returns:
+        Hashes for the newly hashed full blocks; empty if no additional
+        full block is hashable.
+    """
+    num_hashed_tokens = len(existing_hashes) * block_size
+    # We do not compute the hash for the last token because it is ineligible
+    # for prefix caching. This is because 100% prefix cache hit is illegal
+    # and will result in a 0 input tokens for the request. Hence the minus 1.
+    # When the request carries pending future-token placeholders, all of
+    # them are excluded instead: a placeholder value must never be hashed
+    # into a block key, or the committed block's content would desync from
+    # its key. (With one placeholder pending, this coincides with the
+    # classic minus 1.)
+    num_hashable_tokens = len(ctx.tokens) - max(1, ctx.pending_future_count)
+    num_unhashed_tokens = num_hashable_tokens - num_hashed_tokens
+    if num_unhashed_tokens < block_size:
+        return []
+
+    parent_hash_value: bytes | None = None
+    if len(existing_hashes) > 0:
+        parent_hash_value = existing_hashes[-1]
+
+    unhashed_tokens = ctx.tokens[num_hashed_tokens:num_hashable_tokens]
+
+    token_hash_overrides: list[TokenHashOverride] = []
+    if isinstance(ctx, TextAndVisionContext):
+        for img in ctx.images:
+            if img.image_hash is None:
+                raise ValueError(
+                    "hash_request_tokens requires `image_hash` to be present. Found None."
+                )
+            token_hash_overrides.append(
+                TokenHashOverride(
+                    token_idx=img.start_idx,
+                    token_hash=img.image_hash,
+                    source="image",
+                )
+            )
+        token_hash_overrides.extend(ctx.token_hash_overrides)
+
+    cache_salt = ctx.cache_salt
+    if cache_salt is not None and kv_hash_algo == "ahash64":
+        global SALT_DROPPED_WARNED
+        if not SALT_DROPPED_WARNED:
+            logger.warning(
+                "cache_salt was supplied on a request but "
+                "kv_cache_hash_algo=ahash64; salt is being dropped. Set "
+                "kv_cache_hash_algo=sha256 to enable per-request "
+                "prefix-cache isolation."
+            )
+            SALT_DROPPED_WARNED = True
+        cache_salt = None
+
+    return hash_request_tokens(
+        token_ids=unhashed_tokens,
+        block_size=block_size,
+        parent_hash=parent_hash_value,
+        prefix_length=num_hashed_tokens,
+        token_hash_overrides=token_hash_overrides,
+        algo=kv_hash_algo,
+        seed=kv_hash_seed,
+        salt=cache_salt,
+    )
+
 
 @dataclass
 class _PendingTransfer:
@@ -82,6 +173,7 @@ def _compute_seq_len(
     ctx: TextContext,
     num_draft_tokens: int,
     num_draft_tokens_per_step: int = 1,
+    max_num_input_tokens: int | None = None,
 ) -> int:
     # Each term accounts for one category of tokens that need a KV slot:
     #
@@ -110,9 +202,14 @@ def _compute_seq_len(
     block_draft_extra = (
         1 if num_draft_tokens_per_step == num_draft_tokens else 0
     )
-    seq_len = (
-        len(ctx.tokens)
-        + len(ctx.spec_decoding_state.maybe_accepted_draft_tokens)
+    # Avoid allocating blocks for the entire sequence when chunked prefill is used.
+    # This is critically important for SWA.
+    active_length = ctx.tokens.active_length
+    if max_num_input_tokens is not None:
+        active_length = min(active_length, max_num_input_tokens)
+    seq_len = ctx.tokens.processed_length + active_length
+    seq_len += (
+        len(ctx.spec_decoding_state.maybe_accepted_draft_tokens)
         + 2 * num_draft_tokens
         + 1
         + block_draft_extra
@@ -218,7 +315,6 @@ class BlockManager:
 
         self.kv_hash_algo: KVHashAlgo = kv_hash_algo
         self.kv_hash_seed: bytes | None = kv_hash_seed
-        self._salt_dropped_warned: bool = False
 
         if kv_hash_algo not in connector.supported_hash_algos:
             raise ValueError(
@@ -319,22 +415,32 @@ class BlockManager:
         """The replica-0 device block pool (single-replica convenience)."""
         return self.device_block_pools[0]
 
-    def _register_replica(
-        self, request_id: RequestID, replica_idx: int
-    ) -> None:
-        """Records the replica a request is assigned to (idempotent)."""
+    @traced
+    def claim(self, ctx: TextContext, replica_idx: int = 0) -> None:
+        """Pins a request to one replica, which owns it until it is released."""
+        request_id = ctx.request_id
         existing = self.req_to_replica.get(request_id)
-        if existing is not None and existing != replica_idx:
+        if existing is not None:
             raise ValueError(
-                f"Request {request_id} is already assigned to replica "
-                f"{existing}, cannot reassign to {replica_idx}"
+                f"Request is already claimed, on replica {existing}: "
+                f"{request_id}"
             )
         self.req_to_replica[request_id] = replica_idx
 
+    def _replica_of(self, ctx: TextContext) -> int:
+        """Returns the replica the request was claimed on."""
+        replica_idx = self.req_to_replica.get(ctx.request_id)
+        if replica_idx is None:
+            raise ValueError(
+                f"Request is not claimed, so it holds no pages to work with: "
+                f"{ctx.request_id}"
+            )
+        return replica_idx
+
     @traced
-    def step(self, ctx: TextContext, replica_idx: int = 0) -> None:
+    def step(self, ctx: TextContext) -> None:
         """Step the block manager by committing blocks into prefix cache."""
-        self.assert_runtime_invariants(ctx, replica_idx)
+        self.assert_runtime_invariants(ctx)
 
         if not self.enable_prefix_caching:
             return
@@ -344,9 +450,9 @@ class BlockManager:
 
         # Now that we generated new tokens, we can possibly commit additional
         # blocks into prefix cache.
-        self.commit_to_prefix_cache(ctx, replica_idx)
+        self.commit_to_prefix_cache(ctx)
 
-        self.assert_runtime_invariants(ctx, replica_idx)
+        self.assert_runtime_invariants(ctx)
 
     @traced
     def compute_hashes_for_request(
@@ -355,96 +461,19 @@ class BlockManager:
     ) -> None:
         """Computes the block hashes for the request."""
         hashes = self.req_to_hashes[ctx.request_id]
-        new_hashes = self.compute_block_hashes(ctx, hashes)
-        hashes.extend(new_hashes)
-
-    @traced
-    def compute_block_hashes(
-        self,
-        ctx: TextContext,
-        existing_hashes: Sequence[bytes],
-    ) -> list[bytes]:
-        """Computes block hashes for the request beyond ``existing_hashes``.
-
-        Unlike :meth:`compute_hashes_for_request`, this reads and writes no
-        per-request state, so it is safe to call for requests that are not
-        (and may never be) claimed on this replica — e.g. when computing
-        prefix-cache overlap for data-parallel routing.
-
-        Args:
-            ctx: The request context.
-            existing_hashes: Hashes already computed for the request's leading
-                blocks; new hashes chain onto the last entry. Pass an empty
-                sequence to hash from the start of the prompt.
-
-        Returns:
-            Hashes for the newly hashed full blocks; empty if no additional
-            full block is hashable.
-        """
-        num_hashed_tokens = len(existing_hashes) * self.block_size
-        # We do not compute the hash for the last token because it is ineligible
-        # for prefix caching. This is because 100% prefix cache hit is illegal
-        # and will result in a 0 input tokens for the request. Hence the minus 1.
-        # When the request carries pending future-token placeholders, all of
-        # them are excluded instead: a placeholder value must never be hashed
-        # into a block key, or the committed block's content would desync from
-        # its key. (With one placeholder pending, this coincides with the
-        # classic minus 1.)
-        num_hashable_tokens = len(ctx.tokens) - max(1, ctx.pending_future_count)
-        num_unhashed_tokens = num_hashable_tokens - num_hashed_tokens
-        if num_unhashed_tokens < self.block_size:
-            return []
-
-        parent_hash_value: bytes | None = None
-        if len(existing_hashes) > 0:
-            parent_hash_value = existing_hashes[-1]
-
-        unhashed_tokens = ctx.tokens[num_hashed_tokens:num_hashable_tokens]
-
-        token_hash_overrides: list[TokenHashOverride] = []
-        if isinstance(ctx, TextAndVisionContext):
-            for img in ctx.images:
-                if img.image_hash is None:
-                    raise ValueError(
-                        "hash_request_tokens requires `image_hash` to be present. Found None."
-                    )
-                token_hash_overrides.append(
-                    TokenHashOverride(
-                        token_idx=img.start_idx,
-                        token_hash=img.image_hash,
-                        source="image",
-                    )
-                )
-            token_hash_overrides.extend(ctx.token_hash_overrides)
-
-        cache_salt = ctx.cache_salt
-        if cache_salt is not None and self.kv_hash_algo == "ahash64":
-            if not self._salt_dropped_warned:
-                logger.warning(
-                    "cache_salt was supplied on a request but "
-                    "kv_cache_hash_algo=ahash64; salt is being dropped. Set "
-                    "kv_cache_hash_algo=sha256 to enable per-request "
-                    "prefix-cache isolation."
-                )
-                self._salt_dropped_warned = True
-            cache_salt = None
-
-        return hash_request_tokens(
-            token_ids=unhashed_tokens,
-            block_size=self.block_size,
-            parent_hash=parent_hash_value,
-            prefix_length=num_hashed_tokens,
-            token_hash_overrides=token_hash_overrides,
-            algo=self.kv_hash_algo,
-            seed=self.kv_hash_seed,
-            salt=cache_salt,
+        new_hashes = compute_block_hashes(
+            ctx,
+            hashes,
+            self.block_size,
+            self.kv_hash_algo,
+            self.kv_hash_seed,
         )
+        hashes.extend(new_hashes)
 
     @traced
     def reuse_blocks_from_prefix_cache(
         self,
         ctx: TextContext,
-        replica_idx: int = 0,
     ) -> tuple[int, KVConnectorTransfer]:
         """Reuses blocks from prefix cache.
 
@@ -453,7 +482,6 @@ class BlockManager:
 
         Args:
             ctx: The request context.
-            replica_idx: Index of the replica the request is assigned to.
 
         Returns:
             ``(skip_amount, event)`` where ``skip_amount`` is the number of
@@ -463,8 +491,10 @@ class BlockManager:
             was onloaded asynchronously (the common case: device hits and
             synchronous connectors), so callers can just poll ``is_complete()``.
         """
-        self._register_replica(ctx.request_id, replica_idx)
-        self.assert_runtime_invariants(ctx, replica_idx)
+        # Reject an unclaimed request here rather than deeper in: the early
+        # returns below skip every other call that would resolve its replica.
+        self._replica_of(ctx)
+        self.assert_runtime_invariants(ctx)
 
         if not self.enable_prefix_caching or ctx.tokens.active_length == 1:
             return 0, CompletedTransfer(TransferDirection.LOAD)
@@ -480,7 +510,7 @@ class BlockManager:
 
         # Query prefix cache for full blocks.
         prefix_cache_blocks, load_event = (
-            self.get_full_blocks_from_prefix_cache(ctx, replica_idx)
+            self.get_full_blocks_from_prefix_cache(ctx)
         )
 
         if len(prefix_cache_blocks) > 0:
@@ -490,7 +520,7 @@ class BlockManager:
             )
 
             # Since we got cache hits, clear out existing uncommitted blocks
-            self.release_uncommitted_blocks(ctx, replica_idx)
+            self.release_uncommitted_blocks(ctx)
 
             # Append them to the request's blocks.
             req_blocks.extend(prefix_cache_blocks)
@@ -756,7 +786,7 @@ class BlockManager:
             return [], CompletedTransfer(TransferDirection.LOAD)
 
         if event.is_complete():
-            # Synchronous / stream-ordered connector (host, tiered, dKV): the
+            # Synchronous / stream-ordered connector (dKV): the
             # H2D is already ordered ahead of the forward, so commit into the
             # device prefix cache now.
             for block, block_hash in zip(
@@ -830,7 +860,7 @@ class BlockManager:
 
     @traced
     def get_full_blocks_from_prefix_cache(
-        self, ctx: TextContext, replica_idx: int = 0
+        self, ctx: TextContext
     ) -> tuple[list[KVCacheBlock], KVConnectorTransfer]:
         """Gets the computed (cached) blocks for the request.
 
@@ -844,6 +874,7 @@ class BlockManager:
         """
         assert self.enable_prefix_caching
 
+        replica_idx = self._replica_of(ctx)
         req_hashes = self.req_to_hashes[ctx.request_id]
         num_committed_blocks = (
             self.req_to_committed_idx[ctx.request_id] // self.block_size
@@ -890,9 +921,9 @@ class BlockManager:
         # dKV touches the resident subset and tolerates
         # missing keys. The num_host_blocks early-return above gates on "has
         # host blocks," NOT "has an external tier": it skips only a connector
-        # with no host blocks (NullConnector); CPU/disk (local/tiered)
-        # connectors pass the gate and call their no-op touch -- only
-        # DKVConnector does real touch work.
+        # with no host blocks (NullConnector); the host/disk tiered connector
+        # passes the gate and calls its no-op touch -- only DKVConnector does
+        # real touch work.
         if device_blocks or host_blocks:
             cached_hashes = req_hashes[
                 : num_committed_blocks + len(device_blocks) + len(host_blocks)
@@ -908,7 +939,6 @@ class BlockManager:
     def commit_to_prefix_cache(
         self,
         ctx: TextContext,
-        replica_idx: int = 0,
     ) -> None:
         """Commits all blocks whose hashes are known for prefix caching.
 
@@ -916,8 +946,8 @@ class BlockManager:
 
         Args:
             ctx: TextContext.
-            replica_idx: Index of the replica the request is assigned to.
         """
+        replica_idx = self._replica_of(ctx)
         pool = self.device_block_pools[replica_idx]
         req_blocks = self.req_to_blocks[ctx.request_id]
         req_hashes = self.req_to_hashes[ctx.request_id]
@@ -1056,9 +1086,16 @@ class BlockManager:
         """Returns whether any async transfer is in flight on the replica."""
         return bool(self._pending_transfers[replica_idx])
 
-    def release(self, request_id: RequestID, replica_idx: int = 0) -> None:
-        """Release the blocks for the request."""
-        pool = self.device_block_pools[replica_idx]
+    def release(self, ctx: TextContext) -> None:
+        """Release the blocks for the request.
+
+        Raises:
+            ValueError: If the request is not claimed, which includes a second
+                release: the claim is what names the pool the pages return to,
+                so there is no such thing as releasing without one.
+        """
+        request_id = ctx.request_id
+        pool = self.device_block_pools[self._replica_of(ctx)]
         blocks = self.req_to_blocks[request_id]
         ordered_blocks: Iterable[KVCacheBlock] = blocks
         if self.enable_prefix_caching:
@@ -1084,7 +1121,6 @@ class BlockManager:
         ctx: TextContext,
         num_draft_tokens: int = 0,
         num_draft_tokens_per_step: int = 1,
-        replica_idx: int = 0,
     ) -> None:
         """Allocate new blocks for a request to accommodate additional tokens.
 
@@ -1104,13 +1140,12 @@ class BlockManager:
                 ``_compute_seq_len`` to size the cache for block drafts,
                 whose ``forward_block`` writes one extra position past the
                 bonus token.
-            replica_idx: Index of the replica the request is assigned to.
 
         Raises:
             InsufficientBlocksError: If there are insufficient free blocks to
             satisfy the allocation.
         """
-        self._register_replica(ctx.request_id, replica_idx)
+        replica_idx = self._replica_of(ctx)
         pool = self.device_block_pools[replica_idx]
 
         # It is impossible to schedule this request, even if it was the only req
@@ -1212,10 +1247,9 @@ class BlockManager:
     def release_uncommitted_blocks(
         self,
         ctx: TextContext,
-        replica_idx: int = 0,
     ) -> None:
         """Release the uncommitted blocks for the request."""
-        pool = self.device_block_pools[replica_idx]
+        pool = self.device_block_pools[self._replica_of(ctx)]
         req_blocks = self.req_to_blocks[ctx.request_id]
         num_committed_blocks = (
             self.req_to_committed_idx[ctx.request_id] // self.block_size
@@ -1234,22 +1268,19 @@ class BlockManager:
         elif delta < 0:
             ctx.tokens.skip_processing(-delta)
 
-    def register_dummy_request(
-        self, request_id: RequestID, replica_idx: int = 0
-    ) -> None:
+    def register_dummy_request(self, ctx: TextContext) -> None:
         """Maps a dummy request to the replica pool's reserved null block."""
+        request_id = ctx.request_id
         assert self.req_to_blocks[request_id] == []
-        self._register_replica(request_id, replica_idx)
         self.req_to_blocks[request_id] = [
-            self.device_block_pools[replica_idx].null_block
+            self.device_block_pools[self._replica_of(ctx)].null_block
         ]
 
     @traced
-    def get_req_blocks(
-        self, request_id: RequestID, replica_idx: int = 0
-    ) -> list[int]:
+    def get_req_blocks(self, ctx: TextContext) -> list[int]:
         """Get the block ids for a request."""
-        return [block.bid for block in self.req_to_blocks[request_id]]
+        self._replica_of(ctx)
+        return [block.bid for block in self.req_to_blocks[ctx.request_id]]
 
     @traced
     def reset_prefix_cache(self) -> None:
@@ -1271,9 +1302,7 @@ class BlockManager:
         self.connector.reset_metrics()
 
     @traced
-    def assert_runtime_invariants(
-        self, ctx: TextContext, replica_idx: int = 0
-    ) -> None:
+    def assert_runtime_invariants(self, ctx: TextContext) -> None:
         """Asserts runtime invariants when runtime checks are enabled."""
         if not self.enable_runtime_checks:
             return
@@ -1289,6 +1318,17 @@ class BlockManager:
                 active_block_ids_by_replica[req_replica].append(block.bid)
                 # Check that all active blocks have a ref_cnt > 0
                 assert block.ref_cnt > 0
+
+        # Blocks pinned by an in-flight async transfer are held out of the free
+        # queue while their copy lands, and an offload's sources outlive the
+        # request that owned them, so they are neither free nor request-active.
+        # Count them here or the pool's free + active == total check trips
+        # whenever an asynchronous connector has a transfer in flight.
+        for replica_idx_, pending_list in enumerate(self._pending_transfers):
+            for pending in pending_list:
+                for block in pending.blocks:
+                    active_block_ids_by_replica[replica_idx_].append(block.bid)
+                    assert block.ref_cnt > 0
 
         # Check that each block pool is consistent
         for pool, active_block_ids in zip(

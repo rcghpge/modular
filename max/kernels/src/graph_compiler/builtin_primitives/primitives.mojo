@@ -13,7 +13,7 @@
 
 from std.logger import Logger
 from std.math import fma
-from std.ffi import external_call, c_size_t, _CPointer
+from std.ffi import external_call, c_size_t
 from std.sys import size_of, align_of
 
 from max.algorithm.functional import elementwise
@@ -35,10 +35,13 @@ from max.gpu.host import DeviceContext, DeviceBuffer
 from max.gpu.host import (
     DeviceGraph,
     DeviceGraphBuilder,
+    DeviceGraphCache,
+    DeviceGraphInput,
 )
 from max.gpu.host.device_context import _DeviceBufferPtr, _DeviceContextPtr
 from max.gpu.host.info import is_accelerator, is_cpu, is_gpu
-from std.memory import UnsafeMaybeUninit
+from std.memory import Layout, ThinAllocation, MaybeUninit, alloc, dealloc
+from std.os import abort
 from layout import (
     Coord,
     Idx,
@@ -86,7 +89,7 @@ comptime logger = Logger()
 
 
 def pack_string_res(
-    str_ptr: UnsafePointer[mut=False, Byte, _], str_len: Int
+    str_ptr: Pointer[mut=False, Byte, _], str_len: Int
 ) raises -> String:
     var span = Span(unsafe_ptr=str_ptr, length=str_len)
     # We can not free the resource ptr embedded in MEF, create a copy
@@ -119,7 +122,7 @@ def create_i1_async(
     external_call["MGP_RT_CreateAsync_bool", NoneType](value, async_ptr)
 
 
-struct OwnedByteBuffer(ImplicitlyCopyable, Movable):
+struct OwnedByteBuffer(DeviceGraphInput, ImplicitlyCopyable, Movable):
     """Owning composite for an `mgp.buffer` value: a non-owning `MutByteBuffer`
     view (precomputed pointer + shape) plus an `AnyAsyncValueRef` storage handle
     that keeps the backing memory alive.
@@ -164,7 +167,7 @@ struct OwnedByteBuffer(ImplicitlyCopyable, Movable):
         self.view = copy.view
         self.storage = copy.storage
 
-    def unsafe_ptr(self) -> UnsafePointer[Scalar[DType.int8], MutAnyOrigin]:
+    def unsafe_ptr(self) -> Pointer[Scalar[DType.int8], MutAnyOrigin]:
         """Returns the view's raw device data pointer.
 
         Returns:
@@ -226,8 +229,24 @@ struct OwnedByteBuffer(ImplicitlyCopyable, Movable):
             self.unsafe_ptr(), Index(self.size())
         ).to_device_buffer(ctx)
 
+    def write_graph_key(self, mut writer: Some[Writer]):
+        writer.write(t"Buffer({self.size()})")
 
-struct OwnedTensor[dtype: DType, rank: Int](ImplicitlyCopyable, Movable):
+    def allocate_stable(self, mut builder: DeviceGraphBuilder) raises -> Self:
+        # An `mgp.buffer` graph input is a mutable buffer the graph writes in
+        # place (a KV cache, say), so giving it a private stable location would
+        # silently discard those writes. Such inputs must instead contribute
+        # their address to the cache key, so a moved buffer forces a rebuild.
+        #
+        # Reaching here means lowering routed a buffer through `add_input`,
+        # which it must not do until mutability survives synthesis and the two
+        # cases can be told apart.
+        abort("device graph inputs of buffer type are not supported yet")
+
+
+struct OwnedTensor[dtype: DType, rank: Int](
+    DeviceGraphInput, ImplicitlyCopyable, Movable
+):
     """Owning composite for an `mgp.tensor` value: a non-owning `DynamicTensor`
     view (precomputed pointer + shape) plus an `AnyAsyncValueRef` storage handle
     that keeps the backing memory alive.
@@ -263,7 +282,7 @@ struct OwnedTensor[dtype: DType, rank: Int](ImplicitlyCopyable, Movable):
         self.tensor = copy.tensor
         self.storage = copy.storage
 
-    def unsafe_ptr(self) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    def unsafe_ptr(self) -> Pointer[Scalar[Self.dtype], MutAnyOrigin]:
         """Returns the view's raw device data pointer.
 
         Returns:
@@ -320,10 +339,33 @@ struct OwnedTensor[dtype: DType, rank: Int](ImplicitlyCopyable, Movable):
             ptr.unsafe_bitcast[NoneType](),
             n,
             Self.rank,
-            UnsafePointer(to=shape.data),
+            Pointer(to=shape.data),
             self.dtype,
         )
         return AnyAsyncValueRef(handle)
+
+    def write_graph_key(self, mut writer: Some[Writer]):
+        writer.write(t"Tensor({self.dtype}, {self.shape()})")
+
+    def allocate_stable(self, mut builder: DeviceGraphBuilder) raises -> Self:
+        var shape = self.shape()
+
+        # Device memory: a graph input is read by recorded kernels, so it lives
+        # where they run. The op verifiers reject host-placed inputs, so this
+        # cannot silently mismatch the input's declared placement.
+        # TODO(GEX-4051): take the placement from the input once a host/device
+        # flag reaches here.
+        var buffer = builder.create_input_buffer[Self.dtype](
+            shape.flattened_length(), is_host=False
+        )
+
+        var view = DynamicTensor[Self.dtype, Self.rank](
+            buffer.unsafe_ptr(), shape
+        )
+
+        # Storage is the pool buffer, never `self.storage` -- retaining the
+        # caller's handle would pin its memory for the graph's lifetime.
+        return Self(view, AnyAsyncValueRef(storage_buf=buffer^))
 
 
 @no_inline
@@ -344,7 +386,7 @@ def create_tensor_spec_async[
 
 
 @export
-def empty_destructor(ptr: UnsafePointer[UInt8, MutUntrackedOrigin]) abi("Mojo"):
+def empty_destructor(ptr: Pointer[UInt8, MutUntrackedOrigin]) abi("Mojo"):
     pass
 
 
@@ -380,7 +422,7 @@ def unpack_buffer_ref(
     var data_ptr = external_call[
         "MGP_RT_GetDataFromBuffer",
         OpaquePointer[MutAnyOrigin],
-    ](async_ptr, UnsafePointer(to=size))
+    ](async_ptr, Pointer(to=size))
     var shape = IndexList[1](Int(size))
     var view = MutByteBuffer(data_ptr.unsafe_bitcast[Int8](), shape)
     # Retain the backing storage of the source async value so this composite
@@ -408,7 +450,7 @@ def unpack_tensor[
         "MGP_RT_GetShapeAndDataFromTensor",
         OpaquePointer[MutAnyOrigin],
     ](
-        UnsafePointer(to=shapes.data),
+        Pointer(to=shapes.data),
         tensor_async_ptr,
     )
 
@@ -445,7 +487,7 @@ def unpack_tensor_spec[
 @always_inline
 def get_buffer_data(
     buffer: MutByteBuffer,
-) -> UnsafePointer[Int8, MutAnyOrigin]:
+) -> Pointer[Int8, MutAnyOrigin]:
     return buffer.unsafe_ptr()
 
 
@@ -737,16 +779,24 @@ def mgp_buffer_bulk_slice[
     Raises:
         If any slice does not fit within the pool buffer.
     """
-    var result = Array[UnsafeMaybeUninit[OwnedByteBuffer], N](
-        uninitialized=True
-    )
+    var result = Array[MaybeUninit[OwnedByteBuffer], N](uninitialized=True)
 
     # Placement-initialize each uninitialized slot to avoid running the
     # destructor.
-    for i in range(N):
-        result[i].init_from(
-            mgp_buffer_slice(base, offsets[i], sizes[i], dev_context)
-        )
+    var initialized = 0
+    try:
+        for i in range(N):
+            result[i].unsafe_write(
+                mgp_buffer_slice(base, offsets[i], sizes[i], dev_context)
+            )
+            initialized += 1
+    except e:
+        # Need to destroy any previously created `OwnedByteBuffer` to not
+        # leak resources if `mpg_buffer_slice()` raises an error.
+        for i in range(initialized):
+            result[i].unsafe_ptr().unsafe_deinit_pointee()
+        result^.deinit_with(MaybeUninit[OwnedByteBuffer].unsafe_forget)
+        raise e
 
     return {unsafe_assume_initialized = result^}
 
@@ -797,7 +847,7 @@ def mgp_buffer_plan[
         - offsets: Offsets for each allocation (static_sizes first, then runtime_sizes).
     """
 
-    @parameter
+    @__parameter
     def compute_static_allocations(
         out result: BufferPlanState[
             alignments,
@@ -1138,14 +1188,14 @@ def mgp_debug_tensor_print[
 ](
     buffer: OwnedByteBuffer,
     shape: IndexList[spec_rank],
-    label_ptr: UnsafePointer[mut=False, Byte, _],
+    label_ptr: Pointer[mut=False, Byte, _],
     label_len: Int,
 ) raises:
     external_call["MGP_RT_DebugTensorPrint", NoneType](
         label_ptr,
         c_size_t(label_len),
         dtype,
-        UnsafePointer(to=shape.data),
+        Pointer(to=shape.data),
         spec_rank,
         buffer.unsafe_ptr(),
         buffer.size(),
@@ -1177,8 +1227,8 @@ def get_simd_width_for_dtypes[
 def to_managed_tensor_slice[
     dtype: DType, rank: Int, mut: Bool, input: IO
 ](
-    data: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    shape: UnsafePointer[Int, ImmutAnyOrigin],
+    data: Pointer[Scalar[dtype], MutAnyOrigin],
+    shape: Pointer[Int, ImmutAnyOrigin],
 ) -> ManagedTensorSlice[
     io_spec=IOSpec[mut, input](),
     static_spec=StaticTensorSpec[dtype, rank, ...].get_unknown(),
@@ -1309,7 +1359,7 @@ comptime TensorBufferRefPtr[
     mut: Bool,
     //,
     origin: Origin[mut=mut] = UntrackedOrigin[mut=mut],
-] = _CPointer[_TensorBufferRefCpp, origin]
+] = OptionalPointer[_TensorBufferRefCpp, origin]
 
 
 # Opaque stand-in for the C++ `M::MLRT::StateContext` type. Mojo never sees the
@@ -1326,7 +1376,7 @@ comptime _StateContextPtr[
     mut: Bool,
     //,
     origin: Origin[mut=mut] = UntrackedOrigin[mut=mut],
-] = _CPointer[_StateContextCpp, origin]
+] = OptionalPointer[_StateContextCpp, origin]
 
 # `StateContextRef` is the pointer representation passed across the FFI boundary;
 # Mojo never dereferences it directly.
@@ -1399,8 +1449,8 @@ struct StateContext(ImplicitlyCopyable, RegisterPassable):
         ](
             slot,
             self._handle,
-            UnsafePointer(to=buffer_size),
-            UnsafePointer(to=buffer_data),
+            Pointer(to=buffer_size),
+            Pointer(to=buffer_data),
         )
 
         var buffer = MutByteBuffer(
@@ -1411,13 +1461,43 @@ struct StateContext(ImplicitlyCopyable, RegisterPassable):
         return {buffer, mem_handle}
 
     @always_inline
-    def remove_cached_buffer(self, slot: Int):
-        """Removes the buffer cached in the state slot at the given index.
+    def get_device_graph_cache(
+        self,
+    ) -> ref[MutUntrackedOrigin] DeviceGraphCache:
+        """Returns the device graph cache, creating it on first use.
 
-        Args:
-            slot: The index of the state slot to clear.
+        Unlike the state slots, the cache is not indexed: there is a single
+        device graph cache per model. The state context holds it and outlives
+        every execution, so the returned reference is untracked.
+
+        Returns:
+            A mutable reference to the model's device graph cache.
         """
-        external_call["MGP_RT_RemoveCachedBuffer", NoneType](slot, self._handle)
+
+        # Allocating and initializing in one step keeps creation indivisible, so
+        # the state context can never publish storage that is not yet a usable
+        # `DeviceGraphCache`.
+        def create() -> Pointer[DeviceGraphCache, MutUntrackedOrigin]:
+            # Leaked because the state context takes over ownership; `destroy`
+            # below pairs the pointer back up with this layout to release it.
+            var cache = alloc(Layout[DeviceGraphCache].single()).unsafe_leak()
+            cache.unsafe_write(DeviceGraphCache())
+            return cache
+
+        # Paired with `create`: the state context adopts the allocation without
+        # taking over freeing it, so this both destroys and frees.
+        def destroy(cache: Pointer[DeviceGraphCache, MutUntrackedOrigin]):
+            cache.unsafe_deinit_pointee()
+            dealloc(
+                ThinAllocation(unsafe_owned_ptr=cache).unsafe_with_layout(
+                    Layout[DeviceGraphCache].single()
+                )
+            )
+
+        return external_call[
+            "MGP_RT_GetOrCreateDeviceGraphCache",
+            Pointer[DeviceGraphCache, MutUntrackedOrigin],
+        ](self._handle, create, destroy)[]
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1434,7 +1514,7 @@ def mogg_as_scalar(tensor: ManagedTensorSlice) -> Scalar[tensor.dtype]:
 @register_internal("mogg.async.__del__")
 @no_inline
 def mogg_async_del(
-    async_ptr: UnsafePointer[AnyAsyncValueRefPtr, MutAnyOrigin], size: Int
+    async_ptr: Pointer[AnyAsyncValueRefPtr, MutAnyOrigin], size: Int
 ):
     """
     Decrement the AnyAsyncValueRef. Typically called at the end of a kernel for
@@ -1548,12 +1628,12 @@ struct MoggAsyncPackHelper:
 
         # MGP_RT_CreateOwnedAsyncMojoValue expects a type erased destructor
         @always_inline("nodebug")
-        def erased_destructor(ptr: UnsafePointer[UInt8, MutUntrackedOrigin]):
+        def erased_destructor(ptr: Pointer[UInt8, MutUntrackedOrigin]):
             ptr.unsafe_bitcast[Type]().unsafe_deinit_pointee()
 
         var dst_ptr = external_call[
             "MGP_RT_MojoValueAllocateBuffer",
-            UnsafePointer[UInt8, MutUntrackedOrigin],
+            Pointer[UInt8, MutUntrackedOrigin],
         ](size_of[Type](), align_of[Type]())
 
         dst_ptr.unsafe_bitcast[Type]().unsafe_write(data^)
@@ -1602,7 +1682,7 @@ def mogg_async_pack_owned_tensor[
         ptr.unsafe_bitcast[NoneType](),
         n,
         spec_rank,
-        UnsafePointer(to=shape.data),
+        Pointer(to=shape.data),
         data.dtype,
         async_ptr,
     )
@@ -1633,7 +1713,7 @@ def mogg_tensor_init[
     input: IO,
     alignment: Int,
 ](
-    ptr: UnsafePointer[mut=True, NoneType, _],
+    ptr: Pointer[mut=True, NoneType, _],
     layout: LayoutType,
 ) -> ManagedTensorSlice[
     io_spec=IOSpec[mut, input](),
@@ -1783,16 +1863,10 @@ def mgp_buffer_get_cached(
     return OwnedByteBuffer(cached[0], AnyAsyncValueRef(retain_handle=cached[1]))
 
 
-@register_internal("mgp.buffer.remove_cached")
-@no_inline
-def mgp_buffer_remove_cached(ctx: StateContext, buffer_slot: Int):
-    ctx.remove_cached_buffer(buffer_slot)
-
-
 @register_internal("mgp.assert")
 @no_inline
 def mgp_assert(
-    cond: Bool, msg_ptr: UnsafePointer[mut=False, Byte, _], msg_len: Int
+    cond: Bool, msg_ptr: Pointer[mut=False, Byte, _], msg_len: Int
 ) raises:
     """
     Raises an error when the input condition is not true.
@@ -2121,7 +2195,7 @@ def foreach_fusion[
     # resolve (see functional.mojo `_IndexListToCoordAdapter`); the adapter is
     # a concrete register-passable type, so passing it by value to
     # `elementwise` sends `elem`'s decomposed ptr/shape/strides through
-    # `crossDeviceCaptures` by value — which the host-stack `@parameter
+    # `crossDeviceCaptures` by value — which the host-stack `@__parameter
     # capturing` form did not.
     var adapter = _ElementwiseFusionAdapter[E](elem, tensor)
 
@@ -2130,6 +2204,42 @@ def foreach_fusion[
         target=target,
         _trace_description=_trace_name,
     ](adapter, Coord(tensor.shape()), ctx)
+
+
+@register_internal("mogg._call.foreach")
+def _foreach[
+    Lambda: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, alignment: Int = 1](Coord) -> None,
+    //,
+    *,
+    simd_width: Int,
+    target: StaticString = "cpu",
+    _trace_name: StaticString = "mogg.foreach",
+](shape: Coord, lambda_: Lambda, ctx: DeviceContext,) raises:
+    """Call `lambda_` once per index in `shape`; `lambda_` does its own store.
+
+    Unlike `foreach_fusion`, this forwards straight to `elementwise[...]`
+    with no intermediate adapter: the closure already captures its own
+    tensors and does its own load-compute-store round trip.
+
+    Parameters:
+        Lambda: The per-index closure's concrete type.
+        simd_width: The SIMD width to use.
+        target: Indicates the type of the target device (e.g. "cpu", "gpu").
+        _trace_name: Name of the executed operation displayed in the trace.
+
+    Args:
+        shape: The iteration domain; `lambda_` is called once per index.
+        lambda_: The per-index closure, capturing its own input/output
+            tensors.
+        ctx: The call context (forward this from the custom operation).
+    """
+    elementwise[
+        simd_width=simd_width,
+        target=target,
+        _trace_description=_trace_name,
+    ](lambda_, shape, ctx)
 
 
 @fieldwise_init

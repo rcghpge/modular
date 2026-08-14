@@ -37,13 +37,15 @@ from layout import (
     ComptimeInt,
     Coord,
     Idx,
+    PointerStorage,
     TensorLayout,
+    TensorStorage,
     TileTensor,
     coord_to_index_list,
     row_major,
 )
 from layout.tile_layout import Layout
-from std.math import ceildiv, gcd, exp
+from std.math import align_up, ceildiv, gcd, exp
 from std.math.uutils import ufloordiv
 from std.memory import unsafe_stack_allocation
 from std.atomic import Atomic
@@ -89,7 +91,7 @@ def _block_minmax[
     """
 
     @always_inline
-    @parameter
+    @__parameter
     def _reduce_fn[
         dtype: DType, width: SIMDLength, reduction_idx: Int
     ](v: SIMD[dtype, width]) -> Scalar[dtype]:
@@ -127,7 +129,7 @@ def _block_reduce_pivot_bounds[
     """
 
     @always_inline
-    @parameter
+    @__parameter
     def _reduce_fn[
         dtype: DType, width: SIMDLength, reduction_idx: Int
     ](v: SIMD[dtype, width]) -> Scalar[dtype]:
@@ -412,7 +414,7 @@ def topk_mask_logits[
     var batch_size = shape[0]
     var d = shape[1]
 
-    @parameter
+    @__parameter
     def trace_information() -> String:
         return String(";").join(
             Span(
@@ -444,7 +446,7 @@ def topk_mask_logits[
         if top_k_arr:
             top_k_ptr = top_k_arr.value().ptr
 
-        @parameter
+        @__parameter
         def launch_kernel[vec_size: Int]() raises:
             comptime kernel = TopKMaskLogitsKernel[
                 block_size,
@@ -1164,7 +1166,7 @@ def topk_sampling_from_prob[
     var batch_size = shape[0]
     var d = shape[1]
 
-    @parameter
+    @__parameter
     def trace_information() -> String:
         return String(";").join(
             Span(
@@ -1202,7 +1204,7 @@ def topk_sampling_from_prob[
         if top_k_arr:
             top_k_ptr = top_k_arr.value().ptr
 
-        @parameter
+        @__parameter
         def launch_kernel[vec_size: Int, deterministic: Bool]() raises:
             comptime kernel = TopKSamplingFromProbKernel[
                 probs.LayoutType,
@@ -1230,7 +1232,7 @@ def topk_sampling_from_prob[
             )
 
         # Runtime dispatch to compile-time parameter.
-        @parameter
+        @__parameter
         def dispatch_vec_size[deterministic: Bool]() raises:
             comptime for param_vec_size in [16, 8, 4, 2, 1]:
                 if vec_size == param_vec_size:
@@ -1308,9 +1310,15 @@ def TopKTopPSamplingFromProbKernel[
     out_idx_type: DType,
     deterministic: Bool,
     from_logits: Bool = False,
+    ProbsStorageType: TensorStorage = PointerStorage[element_width=1],
+    OutputStorageType: TensorStorage = PointerStorage[element_width=1],
 ](
-    probs: TileTensor[dtype, ProbsLayoutType, probs_origin],
-    output: TileTensor[out_idx_type, OutputLayoutType, output_origin],
+    probs: TileTensor[
+        dtype, ProbsLayoutType, probs_origin, Storage=ProbsStorageType
+    ],
+    output: TileTensor[
+        out_idx_type, OutputLayoutType, output_origin, Storage=OutputStorageType
+    ],
     indices: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
     top_k_arr: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
     top_k_val: Int32,
@@ -1357,6 +1365,8 @@ def TopKTopPSamplingFromProbKernel[
         from_logits: If True, `probs` holds raw logits and softmax with
             per-row temperature scaling and min-p masking is fused into the
             kernel (defaults to False).
+        ProbsStorageType: Storage type of the input `probs` tile.
+        OutputStorageType: Storage type of the output `output` tile.
 
     Args:
         probs: Input probability distribution [batch_size, _d].
@@ -1451,7 +1461,7 @@ def TopKTopPSamplingFromProbKernel[
                 thread_sum += exp((v - row_max) * inv_temp).reduce_add()
             z = block.sum[block_size=block_size, broadcast=True](thread_sum)
 
-        @parameter
+        @__parameter
         @always_inline
         def load_dist[width: Int](offset: Int) -> SIMD[DType.float32, width]:
             # Load `width` elements of the sampling distribution at `offset`.
@@ -1762,6 +1772,12 @@ def topk_topp_sampling_from_prob[
         shape_types=Coord[Int64].element_types,
         stride_types=Coord[ComptimeInt[1]].element_types,
     ],
+    TopKArrStorageType: TensorStorage = PointerStorage[element_width=1],
+    IndicesStorageType: TensorStorage = PointerStorage[element_width=1],
+    TopPArrStorageType: TensorStorage = PointerStorage[element_width=1],
+    SeedStorageType: TensorStorage = PointerStorage[element_width=1],
+    TemperatureStorageType: TensorStorage = PointerStorage[element_width=1],
+    MinPStorageType: TensorStorage = PointerStorage[element_width=1],
 ](
     ctx: DeviceContext,
     probs: TileTensor[mut=False, dtype, ...],
@@ -1770,23 +1786,53 @@ def topk_topp_sampling_from_prob[
     top_p_val: Float32 = 1.0,
     deterministic: Bool = False,
     rng_seed: Optional[
-        TileTensor[DType.uint64, SeedLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            DType.uint64,
+            SeedLayoutType,
+            ImmutAnyOrigin,
+            Storage=SeedStorageType,
+        ]
     ] = None,
     rng_offset: UInt64 = 0,
     indices: Optional[
-        TileTensor[out_idx_type, IndicesLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            out_idx_type,
+            IndicesLayoutType,
+            ImmutAnyOrigin,
+            Storage=IndicesStorageType,
+        ]
     ] = None,
     top_k_arr: Optional[
-        TileTensor[out_idx_type, TopKArrLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            out_idx_type,
+            TopKArrLayoutType,
+            ImmutAnyOrigin,
+            Storage=TopKArrStorageType,
+        ]
     ] = None,
     top_p_arr: Optional[
-        TileTensor[DType.float32, TopPArrLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            DType.float32,
+            TopPArrLayoutType,
+            ImmutAnyOrigin,
+            Storage=TopPArrStorageType,
+        ]
     ] = None,
     temperature: Optional[
-        TileTensor[DType.float32, TemperatureLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            DType.float32,
+            TemperatureLayoutType,
+            ImmutAnyOrigin,
+            Storage=TemperatureStorageType,
+        ]
     ] = None,
     min_p: Optional[
-        TileTensor[DType.float32, MinPLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            DType.float32,
+            MinPLayoutType,
+            ImmutAnyOrigin,
+            Storage=MinPStorageType,
+        ]
     ] = None,
 ) raises:
     """Joint top-k + top-p sampling from probability distribution.
@@ -1814,6 +1860,13 @@ def topk_topp_sampling_from_prob[
         TemperatureLayoutType: Memory layout of the optional `temperature`
             tensor.
         MinPLayoutType: Memory layout of the optional `min_p` tensor.
+        TopKArrStorageType: Storage type of the optional `top_k_arr` tensor.
+        IndicesStorageType: Storage type of the optional `indices` tensor.
+        TopPArrStorageType: Storage type of the optional `top_p_arr` tensor.
+        SeedStorageType: Storage type of the optional `rng_seed` tensor.
+        TemperatureStorageType: Storage type of the optional `temperature`
+            tensor.
+        MinPStorageType: Storage type of the optional `min_p` tensor.
 
     Args:
         ctx: Device context for kernel execution.
@@ -1845,7 +1898,7 @@ def topk_topp_sampling_from_prob[
     var batch_size = shape[0]
     var d = shape[1]
 
-    @parameter
+    @__parameter
     def trace_information() -> String:
         return String(";").join(
             Span(
@@ -1902,7 +1955,7 @@ def topk_topp_sampling_from_prob[
         if min_p:
             min_p_ptr = min_p.unsafe_value().ptr
 
-        @parameter
+        @__parameter
         def launch_kernel[vec_size: Int, deterministic: Bool]() raises:
             comptime kernel = TopKTopPSamplingFromProbKernel[
                 probs.LayoutType,
@@ -1915,6 +1968,8 @@ def topk_topp_sampling_from_prob[
                 out_idx_type,
                 deterministic,
                 from_logits,
+                ProbsStorageType=probs.Storage,
+                OutputStorageType=output.Storage,
             ]
             ctx.enqueue_function[kernel](
                 probs.as_immut(),
@@ -1934,7 +1989,7 @@ def topk_topp_sampling_from_prob[
                 attributes=pdl_launch_attributes(PDLLevel.ON),
             )
 
-        @parameter
+        @__parameter
         def dispatch_vec_size[deterministic: Bool]() raises:
             comptime for param_vec_size in [16, 8, 4, 2, 1]:
                 if vec_size == param_vec_size:
@@ -1992,7 +2047,7 @@ def topk_softmax_sample_kernel[
 
     # Allocate shared memory for caching top-k elements.
     # Round up to ensure proper alignment for Int array.
-    var k_rounded = ceildiv(k, WARP_SIZE) * WARP_SIZE
+    var k_rounded = align_up(k, WARP_SIZE)
 
     # On Apple the cache is a static allocation. Reserve headroom below the 32K
     # threadgroup limit for the kernel's auxiliary SMEM (`s_count` + the block
@@ -2251,7 +2306,7 @@ def topk_softmax_sample[
     var batch_size = shape[0]
     var d = shape[1]
 
-    @parameter
+    @__parameter
     def trace_information() -> String:
         return String(";").join(
             Span(
@@ -2279,7 +2334,7 @@ def topk_softmax_sample[
         # per-element idx < d guard handles non-aligned tails correctly.
         var vec_size = gcd(8, d)
 
-        var k_rounded = ceildiv(top_k_val, WARP_SIZE) * WARP_SIZE
+        var k_rounded = align_up(top_k_val, WARP_SIZE)
         var shared_mem_bytes = k_rounded * (size_of[Float32]() + size_of[Int]())
         comptime if has_apple_gpu_accelerator():
             if shared_mem_bytes > _APPLE_STATIC_SHMEM_CACHE_BYTES:
@@ -2308,7 +2363,7 @@ def topk_softmax_sample[
         if seed:
             seed_ptr = seed.unsafe_value().ptr
 
-        @parameter
+        @__parameter
         def launch_kernel[vec_size: Int]() raises:
             comptime kernel = topk_softmax_sample_kernel[
                 block_size,

@@ -320,7 +320,10 @@ def test_string_substring() raises:
     assert_equal(sub5.byte_length(), 0)
 
     # Empty slices still have a pointer value
-    assert_equal(Int(sub5.unsafe_ptr()) - Int(sub4.unsafe_ptr()), 2)
+    assert_equal(
+        Int(sub5.as_bytes().unsafe_ptr()) - Int(sub4.as_bytes().unsafe_ptr()),
+        2,
+    )
 
 
 def test_slice_len() raises:
@@ -867,6 +870,26 @@ def test_strip() raises:
     # Ñ and Ò share the leading utf-8 byte of 0xc3
     var str6 = "ÑeeeeÑ"
     assert_true(str6.strip("Ò") == "ÑeeeeÑ")
+
+
+def test_strip_mutable_chars() raises:
+    # `chars` is read-only, so a mutable argument must not be borrowed mutably;
+    # otherwise it can't alias `self` and it can't be a mutable local at all
+    # once `self` is an interior slice of it.
+    var chars = String("hi")
+    assert_equal(StringSlice("himojohi").lstrip(chars), "mojohi")
+    assert_equal(StringSlice("himojohi").rstrip(chars), "himojo")
+    assert_equal(StringSlice("himojohi").strip(chars), "mojo")
+
+    var mut_chars = MutStringSpan(chars)
+    assert_equal(StringSlice("himojohi").lstrip(mut_chars), "mojohi")
+    assert_equal(StringSlice("himojohi").rstrip(mut_chars), "himojo")
+    assert_equal(StringSlice("himojohi").strip(mut_chars), "mojo")
+
+    var self_aliasing = StaticString("aabbaa")
+    assert_equal(self_aliasing.lstrip(self_aliasing), "")
+    assert_equal(self_aliasing.rstrip(self_aliasing), "")
+    assert_equal(self_aliasing.strip(self_aliasing), "")
 
 
 def test_startswith() raises:

@@ -13,7 +13,13 @@
 
 """KV cache management for MAX pipelines."""
 
-from .config import KVCacheConfig, KVConnectorConfig, cache_dtype_for_encoding
+from max.nn.kv_cache import KVCacheGroupId
+
+from .config import (
+    KVCacheConfig,
+    KVConnectorConfig,
+    cache_dtype_for_encoding,
+)
 from .memory_planner import (
     MemoryPlanner,
     ModelConfig,
@@ -35,6 +41,7 @@ __all__ = [
     "DummyKVCache",
     "InsufficientBlocksError",
     "KVCacheConfig",
+    "KVCacheGroupId",
     "KVConnectorConfig",
     "KVTransferEngine",
     "KVTransferEngineMetadata",

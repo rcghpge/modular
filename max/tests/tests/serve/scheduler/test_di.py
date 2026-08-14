@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from max.driver import CPU, Device
-from max.nn.kv_cache import KVConnectorType
+from max.nn.kv_cache import KVConnectorType, MultiKVCacheParams
 from max.pipelines.context import (
     GenerationStatus,
     TextContext,
@@ -236,6 +236,16 @@ def create_di_scheduler(
 
     effective_prefill_dp = prefill_dp if prefill_dp is not None else dp
     effective_decode_dp = decode_dp if decode_dp is not None else dp
+    # Draft tokens only flow when spec_decode_prefill populates them; this is
+    # the single source of truth for "is this a spec-decode topology", used for
+    # both the scheduler config and the KV cache shape below.
+    effective_num_spec_tokens = (
+        num_speculative_tokens if spec_decode_prefill else 0
+    )
+    # Production pairs spec decode with a target+draft MultiKVCacheParams tree,
+    # so the test fixture does too — otherwise the multi-cache path through
+    # KVTransferEngine.from_paged_kv_cache goes untested.
+    multi_kv = effective_num_spec_tokens > 0
 
     def _create_prefill_kv_cache() -> PagedKVCacheManager:
         return create_kv_cache(
@@ -247,8 +257,10 @@ def create_di_scheduler(
             kv_connector=kv_connector,
             dp=effective_prefill_dp,
             device=device,
+            num_speculative_tokens=effective_num_spec_tokens,
             is_mla=prefill_is_mla,
             tp_per_replica=prefill_tp_per_replica,
+            multi_kv=multi_kv,
         )
 
     def _create_decode_kv_cache() -> PagedKVCacheManager:
@@ -261,10 +273,12 @@ def create_di_scheduler(
             kv_connector=kv_connector,
             dp=effective_decode_dp,
             device=device,
+            num_speculative_tokens=effective_num_spec_tokens,
             # Decode must use the same KV layout as prefill so bytes_per_page
             # matches at connect() time. For heterogeneous MLA DI the model
             # is MLA on both sides; decode's TP=1 naturally so no flatten.
             is_mla=prefill_is_mla,
+            multi_kv=multi_kv,
         )
 
     def _make_scheduler_config(
@@ -277,9 +291,7 @@ def create_di_scheduler(
             enable_chunked_prefill=enable_chunked_prefill,
             enable_in_flight_batching=enable_in_flight_batching,
             data_parallel_degree=dp_value,
-            num_speculative_tokens=num_speculative_tokens
-            if spec_decode_prefill
-            else 0,
+            num_speculative_tokens=effective_num_spec_tokens,
         )
 
     # For heterogeneous-MLA DI (prefill DP=1/TP>1, decode DP=N/TP=1), the
@@ -328,9 +340,7 @@ def create_di_scheduler(
             kv_cache_prefill,
             max_seq_len=max_seq_len,
             start_token_id=99,
-            num_speculative_tokens=(
-                num_speculative_tokens if spec_decode_prefill else 0
-            ),
+            num_speculative_tokens=effective_num_spec_tokens,
             disable_overlap=not overlap_prefill,
         )
     else:
@@ -1369,6 +1379,51 @@ def test_overlap_prefill_cancel_between_defer_and_resolve() -> None:
             break
 
 
+def test_overlap_prefill_pending_first_token_defers_insufficient_blocks() -> (
+    None
+):
+    """A CE-complete request parked in _pending_first_token still holds its
+    KV blocks and frees them via the same path as active_transfers, so a
+    new CE request hitting InsufficientBlocksError at that moment must
+    requeue as transient rather than raise (SERVOPT-1551)."""
+    decode, prefill, server_addr, q = create_di_scheduler(
+        overlap_prefill=True, num_blocks=2, page_size=128
+    )
+    assert isinstance(prefill.pipeline, FakeOverlapPipeline)
+
+    ctx1 = create_text_context(
+        target_endpoint=server_addr, prompt_len=200, output_len=5
+    )
+    q.request_queue.put(ctx1)
+
+    # Iteration 1: req1 completes CE and is deferred into
+    # _pending_first_token, pinning both KV blocks. It is not yet promoted to
+    # active_transfers, and clear_tg_reqs() has emptied the TG queue.
+    decode.run_iteration()
+    prefill.run_iteration()
+    assert ctx1.request_id in prefill._pending_first_token
+    assert len(prefill.active_transfers) == 0
+    assert prefill.kv_cache.num_free_blocks(0) == 0
+    assert prefill.batch_constructor._is_anything_inflight(0)
+
+    # A new CE request arrives while req1 pins every block.
+    ctx2 = create_text_context(
+        target_endpoint=server_addr, prompt_len=200, output_len=5
+    )
+    prefill.batch_constructor.enqueue_new_request(ctx2)
+
+    # Iteration 2: batch construction hits InsufficientBlocksError for req2
+    # with an empty batch and no TG work. The pending-first-token request
+    # counts as an in-flight transfer, so the error is transient: req2 is
+    # requeued instead of crashing the worker.
+    prefill.run_iteration()
+    assert ctx2.request_id in prefill.batch_constructor.all_ce_reqs
+
+    # The flush in iteration 2 resolved req1 into a real transfer.
+    assert len(prefill._pending_first_token) == 0
+    assert ctx1.request_id in prefill.active_transfers
+
+
 # E2E tests for DI with overlap scheduling on decode, prefill, or both
 
 
@@ -1650,6 +1705,44 @@ def test_overlap_di_both_sides_minimal_output() -> None:
     # match 42 as decode start_token_id
     assert all_tokens == [99, 42]
     assert FUTURE_TOKEN not in all_tokens
+
+
+def test_spec_decode_fixture_builds_multi_kv_topology() -> None:
+    """Drift guard: the spec-decode fixture must build a real target+draft
+    MultiKVCacheParams tree on both DI sides.
+
+    Every other spec-decode test in this file relies on this to reach the
+    multi-cache path in ``KVTransferEngine.from_paged_kv_cache``. If the
+    fixture silently regresses to a flat single cache, those tests keep
+    passing while covering nothing, so assert the topology directly.
+    """
+    decode, prefill, _server_addr, _q = create_di_scheduler(
+        spec_decode_prefill=True,
+        num_speculative_tokens=3,
+    )
+
+    for scheduler in (prefill, decode):
+        params = scheduler.kv_cache.params
+        assert isinstance(params, MultiKVCacheParams)
+        assert set(params.children) == {"target", "draft"}
+
+    # The engine must split the tree into one NIXL group per child, and the
+    # groups must be shape-heterogeneous — a uniform split would not exercise
+    # the per-child validation that the real Eagle target/draft layout needs.
+    bytes_per_group = prefill.transfer_engine.bytes_per_group
+    assert len(bytes_per_group) == 2
+    assert bytes_per_group[0] != bytes_per_group[1]
+    assert prefill.transfer_engine.bytes_per_page == sum(bytes_per_group)
+
+
+def test_non_spec_decode_fixture_stays_single_kv() -> None:
+    """The multi-KV gate must not leak into the non-spec-decode tests, which
+    still cover the flat single-cache transfer path."""
+    decode, prefill, _server_addr, _q = create_di_scheduler()
+
+    for scheduler in (prefill, decode):
+        assert not isinstance(scheduler.kv_cache.params, MultiKVCacheParams)
+    assert len(prefill.transfer_engine.bytes_per_group) == 1
 
 
 # Spec decode + disable_overlap=True: covers the PrefillScheduler's
@@ -2332,6 +2425,73 @@ def test_decode_run_iteration_evicts_stuck_prefill_request_end_to_end(
         if isinstance(msg, CancelRequest) and msg.id == req_id:
             saw_cancel_to_prefill = True
     assert saw_cancel_to_prefill
+
+
+# ---------------------------------------------------------------------------
+# prefill_reqs is counted as in-flight KV work (SERVOPT-1551): a request
+# awaiting prefill converts into a tg_reqs reservation on the same blocks
+# rather than releasing them, but that reservation is then preemptible like
+# any other TG request, so its presence still means an InsufficientBlocksError
+# isn't necessarily a dead end.
+# ---------------------------------------------------------------------------
+
+
+def _setup_tg_alloc_deferred_with_pending_prefill() -> DecodeScheduler:
+    """Drives a decode scheduler into a TG deficit alongside a pending
+    prefill reservation.
+
+    With num_blocks=2 and page_size=128: req1 (100-token prompt) completes
+    prefill, holds one page, and generates until the page fills, at which
+    point its next-token alloc needs a second page. req2's decode-side
+    reservation pins that last page while it waits for a PrefillResponse
+    that never arrives (prefill is not pumped after req2 is sent).
+    """
+    decode, prefill, server_addr, q = create_di_scheduler(
+        num_blocks=2, page_size=128
+    )
+
+    ctx1 = create_text_context(
+        target_endpoint=server_addr, prompt_len=100, output_len=200
+    )
+    q.request_queue.put(ctx1)
+    decode.run_iteration()
+    prefill.run_iteration()
+    run_until(
+        lambda: decode.batch_constructor.contains(ctx1.request_id),
+        decode,
+        prefill,
+    )
+
+    ctx2 = create_text_context(
+        target_endpoint=server_addr, prompt_len=100, output_len=5
+    )
+    q.request_queue.put(ctx2)
+    decode.reserve_memory_and_send_to_prefill()
+    assert ctx2.request_id in decode.prefill_reqs
+    assert len(decode.pending_reqs) == 0
+
+    # The upcoming InsufficientBlocksError must be attributable solely to
+    # req2's pending-prefill reservation: no local KV transfers and no
+    # cordoned onloads that would already make the failure non-fatal.
+    assert not decode.kv_cache.pending_transfers_exist(0)
+    assert len(decode.batch_constructor._onloading_reqs) == 0
+
+    return decode
+
+
+def test_decode_insufficient_blocks_defers_with_pending_prefill() -> None:
+    """A TG alloc failure racing against a pending-prefill reservation
+    defers rather than raising: once req2's PrefillResponse lands, its
+    reservation converts into a preemptible TG request, so the deficit
+    isn't necessarily permanent."""
+    decode = _setup_tg_alloc_deferred_with_pending_prefill()
+    assert len(decode.prefill_reqs) == 1
+
+    # Generate until req1 fills its page; the next alloc needs a second
+    # block, which only req2's pending-prefill reservation holds. Must not
+    # raise -- prefill_reqs counts as in-flight work.
+    for _ in range(40):
+        decode.run_iteration()
 
 
 # ---------------------------------------------------------------------------

@@ -105,7 +105,6 @@ def test_assert_almost_equal() raises:
     comptime _inf = inf[float_type]()
     comptime _nan = nan[float_type]()
 
-    @parameter
     def _should_succeed[
         dtype: DType, size: SIMDLength
     ](
@@ -140,7 +139,6 @@ def test_assert_almost_equal() raises:
         rtol=0.10,
     )
 
-    @parameter
     def _should_fail[
         dtype: DType, size: SIMDLength
     ](
@@ -227,17 +225,17 @@ def test_assert_equal_stringslice() raises:
     def _build(value: StaticString, start: Int, end: Int) -> StaticString:
         return StaticString(
             unsafe_from_utf8=Span[Byte, ImmStaticOrigin](
-                unsafe_ptr=value.unsafe_ptr().unsafe_offset(start),
+                unsafe_ptr=value.as_bytes().unsafe_ptr().unsafe_offset(start),
                 length=end - start,
             )
         )
 
     def _build(
         imm value: String, start: Int, end: Int
-    ) -> StringSlice[origin_of(value)]:
-        return StringSlice[origin_of(value)](
-            unsafe_from_utf8=Span[Byte, origin_of(value)](
-                unsafe_ptr=value.unsafe_ptr().unsafe_offset(start),
+    ) -> StringSlice[origin_of(value)._get_owned_interior["bytes"]]:
+        return StringSlice(
+            unsafe_from_utf8=Span(
+                unsafe_ptr=value.as_bytes().unsafe_ptr().unsafe_offset(start),
                 length=end - start,
             )
         )

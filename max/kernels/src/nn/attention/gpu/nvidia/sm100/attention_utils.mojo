@@ -29,6 +29,7 @@ from std.sys.intrinsics import llvm_intrinsic
 from std.bit import prev_power_of_two, pop_count
 from std.gpu import block_idx
 from std.gpu.globals import WARP_SIZE
+from std.gpu.primitives.id import cluster_dim
 from std.gpu.primitives.warp import broadcast
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.compute.arch.mma_nvidia_sm100 import (
@@ -642,7 +643,7 @@ struct TMemTile[
         ]
         comptime assert st_mat_layout.bits == 128 or st_mat_layout.bits == 256
 
-        @parameter
+        @__parameter
         @always_inline
         def store_fn[pow_two: Int, offset: Int]():
             # pow_two is current repeat, offset total so far
@@ -751,7 +752,7 @@ struct TMemTile[
             ]
         ](dst.ptr)
 
-        @parameter
+        @__parameter
         @always_inline
         def load_fn[pow_two: Int, local_offset: Int]():
             comptime assert pow_two + local_offset <= num_repeats
@@ -799,7 +800,7 @@ struct TMemTile[
         comptime repeat = Self.dtype_size * Self.BN // 4
         comptime dtype = Self.dtype if Self.dtype_size == 4 else DType.uint32
 
-        @parameter
+        @__parameter
         @always_inline
         def load_fn[pow_two: Int, offset: Int]():
             comptime if pow_two > 0:
@@ -834,7 +835,7 @@ struct TMemTile[
     def store_async[
         src_type: DType
     ](self, src: LocalTensor[src_type, row_major[Self.BN]()]):
-        @parameter
+        @__parameter
         @always_inline
         def store_fn[pow_two: Int, offset: Int]():
             comptime if pow_two > 0:
@@ -893,7 +894,7 @@ struct TMemTile[
         src_len: Int,
         src_offset: Int = 0,
     ](self, src: Array[Scalar[src_type], src_len]):
-        @parameter
+        @__parameter
         @always_inline
         def store_fn[pow_two: Int, offset: Int]():
             comptime if pow_two > 0:
@@ -2685,10 +2686,84 @@ def expect_bytes_pred(
 
 
 @always_inline
+def store_global_pred[
+    dtype: DType,
+    address_space: AddressSpace,
+    //,
+](
+    ptr: UnsafePointer[mut=True, Scalar[dtype], _, address_space=address_space],
+    value: Scalar[dtype],
+    pred: Int32,
+):
+    """Issue a global store predicated on `pred != 0`.
+
+    Equivalent to:
+
+        if pred != 0:
+            ptr[] = value
+
+    but folds the guard into a PTX `@%p` predicate on the store, so ptxas emits
+    a single predicated `STG` instead of the `BSSY`/`BRA`/`NOP`/`BSYNC`
+    reconvergence quartet an `if` costs.
+
+    That is a real trade, not a free win. The `if` form gives ptxas a basic
+    block boundary, which caps the scheduling region; this form does not, so
+    ptxas may hoist the producers of `value` across neighbouring code and spill.
+    Measure spill counts, not just the instruction count, when switching a site
+    to this helper.
+
+    There is no `~{memory}` clobber, matching `expect_bytes_pred` and the
+    `st.shared.v4.b32` helper above: adding one would force LLVM to reload every
+    value it has cached from memory at each call site. Callers must therefore
+    not read back what they store here without an explicit fence.
+
+    Parameters:
+        dtype: Element dtype of the store; must be 4 or 8 bytes (inferred).
+        address_space: Address space of `ptr` (inferred).
+
+    Args:
+        ptr: Destination address. Must point into global memory -- the
+            instruction is `st.global`, so a generic pointer into shared or
+            local memory is undefined behaviour rather than a compile error.
+        value: The value to store when `pred` is nonzero.
+        pred: Runtime predicate; the store is skipped when this is 0.
+    """
+    comptime assert (
+        address_space == AddressSpace.GENERIC
+        or address_space == AddressSpace.GLOBAL
+    ), "store_global_pred emits `st.global`; the pointer must address gmem"
+    comptime size = size_of[dtype]()
+    comptime assert size in (4, 8), (
+        "store_global_pred handles 4- and 8-byte scalars; got a "
+        + String(size)
+        + "-byte dtype"
+    )
+    comptime bits = "b32" if size == 4 else "b64"
+    # Bitcast to the same-width unsigned integer so one `.bXX`/register-class
+    # pair covers float and integer dtypes alike; `st.global.bXX` is
+    # bit-preserving.
+    comptime word_type = DType.uint32 if size == 4 else DType.uint64
+    comptime word_constraint = "r" if size == 4 else "l"
+
+    inlined_assembly[
+        """{
+        .reg .pred %p;
+        setp.ne.s32 %p, $2, 0;
+        @%p st.global."""
+        + bits
+        + """ [$0], $1;
+        }""",
+        NoneType,
+        constraints="l," + word_constraint + ",r",
+    ](ptr, bitcast[word_type](value), pred)
+
+
+@always_inline
 def maximum[
     BN: Int, //, *, width: Int = 4
 ](x: Array[Scalar[DType.float32], BN], out res: StaticTuple[Float32, width],):
     """Reduces `BN` float32 scores into `width` lane-maxima using FTZ max."""
+    comptime assert 3 * width <= BN
     res = {}
 
     comptime for w in range(width):
@@ -3795,6 +3870,66 @@ def clusters_per_wave[cluster_size: Int, sm_count: Int]() -> Int:
 
 
 @always_inline
+def splitk_p_ladder[sm_count: Int]() -> List[Int]:
+    """The rung ladder of split-K partition counts `P`, shared by the producer
+    and the consumer of a workspace split-K launch.
+
+    Single source of truth for two consumers that MUST agree:
+
+    * `dispatch.mojo`'s `_bucket_ws` snaps a desired count UP to a rung (then
+      caps it), so every `P` the production auto-route picks is a rung of this
+      list or the cap.
+    * `fa4_splitk_combine`'s launcher compiles one comptime-unrolled combine
+      specialization per rung, and falls back to a generic runtime-`P` kernel
+      for anything off it.
+
+    Keeping them as two hand-copied lists silently costs the specialization
+    whenever one side gains a rung the other does not (which is exactly what
+    happened to the sub-12 rungs).
+
+    `sm_count` is the top rung: `_bucket_ws` reaches it exactly when
+    `raw_grid == 1`.
+    """
+    return [2, 4, 6, 8, 10, 12, 16, 18, 20, 24, 32, 48, 64, 96, sm_count]
+
+
+@always_inline
+def splitk_num_partitions[
+    config: FA4Config
+](ws_num_partitions: UInt32) -> UInt32:
+    """The split-K partition count `P` this CTA must divide its KV range by.
+
+    Single source of truth for the two split-K mechanisms. All four FA4 warps
+    (`load`, `mma`, `softmax`, `correction`) feed this to `splitk_window` and
+    MUST derive the same window: a disagreement makes the producer over- or
+    under-fill relative to its consumers, which HANGS rather than producing a
+    wrong number.
+
+    * Cluster/DSMEM split-K bakes `P` into the launch cluster, so it is the
+      comptime `config.splitk_partitions` (or `cluster_dim.x` once the cluster
+      dimension becomes dynamic).
+    * Workspace (traditional/unfused) split-K keeps `config.splitk_partitions
+      == 1` -- no launch cluster -- and carries `P` at runtime by over-launching
+      `grid.x`; `ws_num_partitions` is that count.
+
+    Parameters:
+        config: The FA4 config, supplying the comptime cluster partition count.
+
+    Args:
+        ws_num_partitions: Runtime partition count for the workspace scheme.
+            Ignored when `config.splitk_partitions > 1`. Its `1` default makes
+            this a no-op for a caller with no split-K at all.
+    """
+    comptime if config.splitk_partitions > 1:
+        comptime if config.dynamic_cluster_dim:
+            return UInt32(cluster_dim.x)
+        else:
+            return UInt32(config.splitk_partitions)
+    else:
+        return ws_num_partitions
+
+
+@always_inline
 def splitk_partition_idx(splitk_partitions: UInt32) -> UInt32:
     """This CTA's split-K partition index `[0, splitk_partitions)`.
 
@@ -3837,9 +3972,11 @@ def splitk_window(
     weights them to zero. M6 routes idle CTAs (`partition_idx >=
     num_partitions`) through that same neutral path.
 
-    `T` is a tile count (small) and `num_partitions <= 16`, so the products
-    cannot overflow `UInt32`. `num_partitions` is comptime at every call
-    site, so the `//`/`%` lower to multiply-shift, not real divides.
+    `T` is a tile count (small) and `num_partitions <= sm_count`, so the
+    products cannot overflow `UInt32`. On the cluster split-K path
+    `num_partitions` is comptime and the `//`/`%` lower to multiply-shift; the
+    workspace (unfused) path passes a runtime `P`, so it pays one real `divmod`
+    -- once per warp per kernel, outside every key-tile loop.
 
     Args:
         T: Total number of K-tiles to divide across partitions.

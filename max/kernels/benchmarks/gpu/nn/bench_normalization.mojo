@@ -104,36 +104,36 @@ def bench_layer_norm_gpu[
         out_buf.raw_store[width=width, alignment=alignment](idx, val)
 
     @always_inline
-    @__copy_capture(shape_coord, gamma, beta, epsilon, input_fn, output_fn)
-    @parameter
-    def bench_fn(mut b: Bencher) raises:
-        @parameter
-        @always_inline
-        def kernel_launch(ctx: DeviceContext) raises:
-            comptime if static_shape:
-                layer_norm[dtype, rank, target="gpu"](
-                    input_fn,
-                    output_fn,
-                    shape_coord,
-                    ComptimeInt[cols](),
-                    gamma,
-                    beta,
-                    epsilon,
-                    ctx,
-                )
-            else:
-                layer_norm[dtype, rank, target="gpu"](
-                    input_fn,
-                    output_fn,
-                    shape_coord,
-                    Scalar[DType.int](cols),
-                    gamma,
-                    beta,
-                    epsilon,
-                    ctx,
-                )
+    def kernel_launch(
+        ctx: DeviceContext,
+    ) raises {imm}:
+        comptime if static_shape:
+            layer_norm[dtype, rank, target="gpu"](
+                input_fn,
+                output_fn,
+                shape_coord,
+                ComptimeInt[cols](),
+                gamma,
+                beta,
+                epsilon,
+                ctx,
+            )
+        else:
+            layer_norm[dtype, rank, target="gpu"](
+                input_fn,
+                output_fn,
+                shape_coord,
+                Scalar[DType.int](cols),
+                gamma,
+                beta,
+                epsilon,
+                ctx,
+            )
 
-        bencher_iter_custom[kernel_launch](b, ctx)
+    @always_inline
+    @__parameter
+    def bench_fn(mut b: Bencher) raises:
+        bencher_iter_custom(b, kernel_launch, ctx)
 
     comptime shape_tag = "static" if static_shape else "dynamic"
     b.bench_function[bench_fn](
@@ -186,7 +186,7 @@ def bench_rms_norm_gpu[
     # `rms_norm_gpu` migrated to a `Coord` shape boundary (softmax PR #88203).
     @__copy_capture(data_buf)
     @always_inline
-    @parameter
+    @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[dtype, width]:
         var idx = data_buf.layout(coords)
 
@@ -199,7 +199,7 @@ def bench_rms_norm_gpu[
 
     @always_inline
     @__copy_capture(data_buf)
-    @parameter
+    @__parameter
     def identity_output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) -> None:
@@ -207,23 +207,21 @@ def bench_rms_norm_gpu[
         data_buf.raw_store[width=width, alignment=alignment](idx, val)
 
     @always_inline
-    @__copy_capture(shape, gamma, epsilon, weight_offset)
-    @parameter
-    def bench_fn(mut b: Bencher) raises:
-        @parameter
-        @always_inline
-        def kernel_launch(ctx: DeviceContext) raises:
-            rms_norm_gpu[
-                rank, input_fn, identity_output_fn, multiply_before_cast=True
-            ](
-                Coord(shape),
-                gamma,
-                epsilon,
-                weight_offset,
-                ctx,
-            )
+    def kernel_launch(ctx: DeviceContext) raises {mut data_d, imm}:
+        rms_norm_gpu[
+            rank, input_fn, identity_output_fn, multiply_before_cast=True
+        ](
+            Coord(shape),
+            gamma,
+            epsilon,
+            weight_offset,
+            ctx,
+        )
 
-        bencher_iter_custom[kernel_launch](b, ctx)
+    @always_inline
+    @__parameter
+    def bench_fn(mut b: Bencher) raises:
+        bencher_iter_custom(b, kernel_launch, ctx)
 
     b.bench_function[bench_fn](
         BenchId("rms_norm", input_id=String(fn_name, "/", dtype, "/", shape)),

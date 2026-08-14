@@ -84,7 +84,7 @@ struct TopK:
         var out_idxs_tensor = out_idxs.to_layout_tensor()
         var in_vals_tensor = in_vals.to_layout_tensor()
 
-        @parameter
+        @__parameter
         def top_k_gpu[
             K: Int,
         ](
@@ -151,26 +151,28 @@ struct TopK:
             )
         else:
 
-            @parameter
+            @__parameter
             def top_k_cpu(start_idx: Int, end_idx: Int):
                 for row_idx in range(start_idx, end_idx):
                     var offset = row_idx * K
                     iota(out_idxs.unsafe_ptr().unsafe_offset(offset), K)
 
-                    @parameter
-                    def val_greater_than(lhs: Int32, rhs: Int32) -> Bool:
+                    def val_greater_than(
+                        lhs: Int32, rhs: Int32
+                    ) {in_vals, row_idx} -> Bool:
                         return (
                             in_vals[row_idx, Int(lhs)]
                             > in_vals[row_idx, Int(rhs)]
                         )
 
-                    sort[val_greater_than](
+                    sort(
                         Span(
                             unsafe_ptr=out_idxs.unsafe_ptr().unsafe_offset(
                                 offset
                             ),
                             length=K,
-                        )
+                        ),
+                        val_greater_than,
                     )
 
                     for i in range(K):

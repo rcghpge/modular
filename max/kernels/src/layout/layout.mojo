@@ -55,6 +55,7 @@ var tiled = blocked_product(layout^, Layout([2, 2]))
 """
 
 import std.sys
+from std.math import ceildiv
 from std.collections.string.string import _calc_initial_buffer_size_int32
 from std.os import abort
 
@@ -1157,7 +1158,7 @@ def complement(layout: Layout, size: Int = 1) -> Layout:
         result_shape.replace_entry(i, int_value=UNKNOWN_VALUE)
     else:
         result_shape.replace_entry(
-            i, int_value=(size + current_idx - 1) // current_idx
+            i, int_value=ceildiv(size, current_idx)
         )  # ceil_div
     result_stride.replace_entry(i, int_value=current_idx)
     i += 1
@@ -1638,7 +1639,7 @@ def format_layout[W: Writer](layout: Layout, mut writer: W):
         writer: The writer to output the formatted layout to.
     """
 
-    @parameter
+    @__parameter
     def _write_divider(column_count: Int, cell_width: Int):
         for _ in range(column_count):
             writer.write("+")

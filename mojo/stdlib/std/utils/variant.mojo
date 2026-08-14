@@ -17,14 +17,14 @@ from std.format._utils import (
     FormatStruct,
     TypeNames,
 )
-from std.memory import (
-    UnsafeMaybeUninit,
-    is_trivially_copyable,
-    is_trivially_deletable,
-    is_trivially_movable,
-)
+from std.memory import MaybeUninit
 from std.hashlib.hasher import Hasher
 from std.reflection import call_location
+from std.traits import (
+    IsTriviallyCopyable,
+    IsTriviallyDeinitable,
+    IsTriviallyMovable,
+)
 from ._nicheable import (
     UnsafeNicheable,
     NicheIndex,
@@ -104,33 +104,38 @@ trait _VariantStorage(Copyable, Deinitable):
         ...
 
 
-trait _NicheStorage(Defaultable, Deinitable, ImplicitlyCopyable):
+trait _NicheStorage(Defaultable, Deinitable):
     """Internal abstraction over niche backing storage backends."""
 
     def as_uninit[
         T: AnyType
-    ](ref self) -> Pointer[UnsafeMaybeUninit[T], origin_of(self)]:
+    ](ref self) -> Pointer[MaybeUninit[T], origin_of(self)]:
         ...
 
 
-struct _DefaultNicheStorage[T: AnyType](Defaultable, _NicheStorage):
-    """Default niche backing: stores the value in `UnsafeMaybeUninit[T]`
+struct _DefaultNicheStorage[T: AnyType](
+    Defaultable, Movable where False, _NicheStorage
+):
+    """Default niche backing: stores the value in `MaybeUninit[T]`
     (lowers to `pop.array<1, T>`)."""
 
-    var _memory: UnsafeMaybeUninit[Self.T]
+    var _memory: MaybeUninit[Self.T]
 
     @always_inline
     def __init__(out self):
         self._memory = {}
 
+    def __deinit__(deinit self):
+        self._memory^.unsafe_forget()
+
     @always_inline
     def as_uninit[
         U: AnyType
-    ](ref self) -> Pointer[UnsafeMaybeUninit[U], origin_of(self)]:
+    ](ref self) -> Pointer[MaybeUninit[U], origin_of(self)]:
         comptime assert Self.T == U
         return (
             Pointer(to=self._memory)
-            .unsafe_bitcast[UnsafeMaybeUninit[U]]()
+            .unsafe_bitcast[MaybeUninit[U]]()
             .unsafe_origin_cast[origin_of(self)]()
         )
 
@@ -151,18 +156,16 @@ struct _CustomNicheStorage[Storage: UnsafeCustomNicheStorage](
     @always_inline
     def as_uninit[
         T: AnyType
-    ](ref self) -> Pointer[UnsafeMaybeUninit[T], origin_of(self)]:
+    ](ref self) -> Pointer[MaybeUninit[T], origin_of(self)]:
         comptime assert (
-            size_of[Self.Storage.NicheStorage]()
-            == size_of[UnsafeMaybeUninit[T]]()
+            size_of[Self.Storage.NicheStorage]() == size_of[MaybeUninit[T]]()
         ), "Custom storage must be the same size as Self"
         comptime assert (
-            align_of[Self.Storage.NicheStorage]()
-            == align_of[UnsafeMaybeUninit[T]]()
+            align_of[Self.Storage.NicheStorage]() == align_of[MaybeUninit[T]]()
         ), "Custom storage must have the the same alignment as Self"
         return (
             Pointer(to=self._memory)
-            .unsafe_bitcast[UnsafeMaybeUninit[T]]()
+            .unsafe_bitcast[MaybeUninit[T]]()
             .unsafe_origin_cast[origin_of(self)]()
         )
 
@@ -186,9 +189,9 @@ struct _NichedOptionalStorage[
     pattern) is repurposed to encode the "empty" state, eliminating the extra
     byte of overhead that `_DefaultVariantStorage` would require."""
 
-    comptime __del__is_trivial = _all_trivial_del[Self.T]()
-    comptime __copy_ctor_is_trivial = _all_trivial_copyinit[Self.T]()
-    comptime __move_ctor_is_trivial = _all_trivial_moveinit[Self.T]()
+    comptime __del__is_trivial = IsTriviallyDeinitable[Self.T]
+    comptime __copy_ctor_is_trivial = IsTriviallyCopyable[Self.T]
+    comptime __move_ctor_is_trivial = IsTriviallyMovable[Self.T]
 
     var _memory: _NicheStorageFor[Self.T]
 
@@ -209,7 +212,7 @@ struct _NichedOptionalStorage[
         Self._check[U]()
         comptime if U == Self.T:
             self._memory = {}
-            self._memory.as_uninit[U]()[].init_from(value^)
+            self._memory.as_uninit[U]()[].unsafe_write(value^)
         else:
             # This is the empty "none" type. `U` is refined to
             # `TrivialRegisterPassable` above, so an explicit `^` transfer of
@@ -251,7 +254,9 @@ struct _NichedOptionalStorage[
     def __deinit__(deinit self):
         comptime assert conforms_to(Self.T, Deinitable)
         if self.isa[Self.T]():
-            self._memory.as_uninit[Self.T]()[].unsafe_assume_init_destroy()
+            self._memory.as_uninit[
+                Self.T
+            ]()[].unsafe_ptr().unsafe_deinit_pointee()
 
     @always_inline
     def isa[U: AnyType](self) -> Bool:
@@ -287,9 +292,9 @@ struct _DefaultVariantStorage[*Ts: AnyType](
     tracks the active type via an integer discriminant. Used whenever the
     variant types do not qualify for the niche-optimized path."""
 
-    comptime __del__is_trivial = _all_trivial_del[*Self.Ts]()
-    comptime __copy_ctor_is_trivial = _all_trivial_copyinit[*Self.Ts]()
-    comptime __move_ctor_is_trivial = _all_trivial_moveinit[*Self.Ts]()
+    comptime __del__is_trivial = Self.Ts.all[IsTriviallyDeinitable]()
+    comptime __copy_ctor_is_trivial = Self.Ts.all[IsTriviallyCopyable]()
+    comptime __move_ctor_is_trivial = Self.Ts.all[IsTriviallyMovable]()
 
     comptime _mlir_type = __mlir_type[
         `!kgen.variant<[rebind(:`,
@@ -542,9 +547,9 @@ struct Variant[*Ts: AnyType](
 
     comptime _Storage: _VariantStorage = _VariantStorageFor[*Self.Ts]
 
-    comptime __del__is_trivial = is_trivially_deletable[Self._Storage]()
-    comptime __copy_ctor_is_trivial = is_trivially_copyable[Self._Storage]()
-    comptime __move_ctor_is_trivial = is_trivially_movable[Self._Storage]()
+    comptime __del__is_trivial = IsTriviallyDeinitable[Self._Storage]
+    comptime __copy_ctor_is_trivial = IsTriviallyCopyable[Self._Storage]
+    comptime __move_ctor_is_trivial = IsTriviallyMovable[Self._Storage]
 
     # Fields
     var _storage: Self._Storage
@@ -613,11 +618,7 @@ struct Variant[*Ts: AnyType](
         Self._check[T]()
         self._storage = Self._Storage(unsafe_uninitialized=())
         self._storage.unsafe_set_active[T]()
-        # Placement-new: construct `init_with()`'s result directly into the
-        # storage slot without moving, so `T` need not be `Movable`.
-        __get_address_as_uninit_lvalue(
-            self._storage.unsafe_ptr[T]()._mlir_value
-        ) = init_with()
+        self._storage.unsafe_ptr[T]().unsafe_write(init_with=init_with)
 
     def __deinit__(
         deinit self,
@@ -756,13 +757,14 @@ struct Variant[*Ts: AnyType](
             writer: The object to write to.
         """
 
-        @parameter
-        def write_field(mut w: Some[Writer]):
-            self._write_value_to[is_repr=True](w)
+        var self_ptr = Pointer(to=self)
 
-        FormatStruct(writer, "Variant").params(TypeNames[*Self.Ts]()).fields[
-            FieldsFn=write_field
-        ]()
+        def write_field(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_value_to[is_repr=True](w)
+
+        FormatStruct(writer, "Variant").params(TypeNames[*Self.Ts]()).fields(
+            write_field
+        )
 
     @always_inline
     def unwrap[T: Movable](deinit self) -> T:
@@ -805,32 +807,6 @@ struct Variant[*Ts: AnyType](
         Self._check[T]()
         assert self.isa[T](), "taking wrong type"
         return self._storage^.unwrap[T]()
-
-    @always_inline
-    @deprecated(use=unwrap)
-    def take[T: Movable](deinit self) -> T:
-        """Take the current value of the variant with the provided type.
-
-        Parameters:
-            T: The type to take out.
-
-        Returns:
-            The underlying data to be taken out as an owned value.
-        """
-        return self^.unwrap[T]()
-
-    @always_inline
-    @deprecated(use=unsafe_unwrap)
-    def unsafe_take[T: Movable](deinit self) -> T:
-        """Unsafely take the current value of the variant with the provided type.
-
-        Parameters:
-            T: The type to take out.
-
-        Returns:
-            The underlying data to be taken out as an owned value.
-        """
-        return self^.unsafe_unwrap[T]()
 
     @always_inline
     def replace[
@@ -958,10 +934,9 @@ struct Variant[*Ts: AnyType](
         self._storage^.__deinit__()
         self._storage = Self._Storage(unsafe_uninitialized=())
         self._storage.unsafe_set_active[T]()
-        # Placement-new the replacement value directly into the storage slot.
-        __get_address_as_uninit_lvalue(
-            self._storage.unsafe_ptr[T]()._mlir_value
-        ) = init_with()
+        self._storage.unsafe_ptr[T]().unsafe_write(
+            init_with=lambda () {ref} -> T: init_with()
+        )
 
     def isa[T: AnyType](self) -> Bool:
         """Check if the variant contains the required type.
@@ -1099,36 +1074,3 @@ struct Variant[*Ts: AnyType](
 
         self._storage.unsafe_ptr[T]().unsafe_deinit_pointee_with(deinit_func)
         self._storage^.unsafe_discard()
-
-
-# ===-------------------------------------------------------------------===#
-# Helper functions
-# ===-------------------------------------------------------------------===#
-
-
-def _all_trivial_del[*Ts: AnyType]() -> Bool:
-    comptime for i in range(Ts.length):
-        if not is_trivially_deletable[Ts[i]]():
-            return False
-    return True
-
-
-def _all_trivial_copyinit[*Ts: AnyType]() -> Bool:
-    comptime for i in range(Ts.length):
-        comptime if conforms_to(Ts[i], Copyable):
-            if not is_trivially_copyable[Ts[i]]():
-                return False
-        else:
-            return False
-
-    return True
-
-
-def _all_trivial_moveinit[*Ts: AnyType]() -> Bool:
-    comptime for i in range(Ts.length):
-        comptime if conforms_to(Ts[i], Movable):
-            if not is_trivially_movable[Ts[i]]():
-                return False
-        else:
-            return False
-    return True

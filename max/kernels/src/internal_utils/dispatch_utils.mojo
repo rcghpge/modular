@@ -106,7 +106,7 @@ struct Table[type: TuningConfig](Writable):
         var result = List[ret_type]()
 
         @always_inline
-        @parameter
+        @__parameter
         def _get_search_domain() -> List[Int]:
             if len(materialize[domain]()):
                 return materialize[domain]()
@@ -120,11 +120,10 @@ struct Table[type: TuningConfig](Writable):
             if value not in result:
                 result.append(value)
 
-        @parameter
         def _cmp(lsh: ret_type, rhs: ret_type) -> Bool:
             return lsh < rhs
 
-        _quicksort[_cmp](result)
+        _quicksort(result, _cmp)
         return result^
 
     def find[

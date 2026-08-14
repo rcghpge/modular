@@ -195,6 +195,31 @@ struct Allocation[T: AnyType](
         """
         self = managed^._into_allocation()
 
+    def __init__(
+        out self,
+        *,
+        unsafe_owned_ptr: Pointer[Self.T, MutUntrackedOrigin],
+        layout: Layout[Self.T],
+    ):
+        """Initializes a `Allocation` that takes ownership of a raw pointer.
+
+        Args:
+            unsafe_owned_ptr: The raw pointer to take ownership of. The
+                new `Allocation` assumes responsibility for deallocating
+                this storage.
+            layout: The associated layout.
+
+        Safety:
+
+        - The pointer must own storage that was previously created though
+        `alloc`, and no other value may own it.
+        - The provided `layout` must also exactly match the layout initially
+        passed to `alloc` which created this `Allocation`.
+
+        """
+        self._alloc = ThinAllocation(unsafe_owned_ptr=unsafe_owned_ptr)
+        self._layout = layout
+
     def unsafe_leak(
         deinit self,
     ) -> Pointer[Self.T, MutUntrackedOrigin]:
@@ -232,7 +257,7 @@ struct Allocation[T: AnyType](
 
         `alloc` returns uninitialized storage, so the returned pointer may point
         to uninitialized memory. Initialize an element (for example with
-        `init_pointee_move`) before reading it.
+        `unsafe_write`) before reading it.
         """
         return self._alloc.unsafe_ptr()
 
@@ -419,7 +444,7 @@ struct ManagedAllocation[T: AnyType](RegisterPassable, Writable):
 
         `alloc` returns uninitialized storage, so the returned pointer may point
         to uninitialized memory. Initialize an element (for example with
-        `init_pointee_move`) before reading it.
+        `unsafe_write`) before reading it.
         """
         return self._alloc.unsafe_ptr().unsafe_origin_cast[origin_of(self)]()
 
@@ -706,7 +731,7 @@ def alloc[T: AnyType, /](layout: Layout[T], /) -> Allocation[T]:
 
     Constraints:
         `size_of[T]()` must be greater than zero. `layout.count()` must be
-        greater than zero.
+        `>= 0`.
 
     Example:
 
@@ -722,8 +747,8 @@ def alloc[T: AnyType, /](layout: Layout[T], /) -> Allocation[T]:
     """
     comptime size_of_t = size_of[T]()
 
-    # TODO: Cannot use t-string as is causes a recursive reference to `alloc`
-    debug_assert(layout.count() > 0, "alloc(", layout, "): count must be > 0")
+    if unlikely(layout.count() < 0):
+        abort("alloc: `Layout.count()` must be > 0")
 
     comptime if size_of_t == 0:
         return ThinAllocation(

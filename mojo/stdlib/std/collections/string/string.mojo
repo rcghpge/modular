@@ -289,7 +289,7 @@ struct String(
 
     # This is the size to offset the pointer by, to get access to the
     # atomic reference count prepended to the UTF-8 data.
-    comptime REF_COUNT_SIZE = size_of[Atomic[DType.int]]()
+    comptime REF_COUNT_SIZE = size_of[Atomic[Int]]()
     """Size of the reference count prefix for heap strings."""
 
     # ===------------------------------------------------------------------=== #
@@ -305,8 +305,11 @@ struct String(
     @always_inline("nodebug")
     def __init__(out self):
         """Construct an empty string."""
+        # this is UB if we ever touch the pointer, but so is
+        # an uninitialized pointer
+        self._ptr_or_data = {unsafe_from_address = Int(0)}
+        self._len_or_data = 0
         self._capacity_or_data = Self.FLAG_IS_INLINE
-        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(self))
 
     @always_inline("nodebug")
     def __init__(out self, *, capacity: Int):
@@ -316,10 +319,7 @@ struct String(
             capacity: The capacity of the string to allocate.
         """
         if capacity <= Self.INLINE_CAPACITY:
-            self._capacity_or_data = Self.FLAG_IS_INLINE
-            __mlir_op.`lit.ownership.mark_initialized`(
-                __get_mvalue_as_litref(self)
-            )
+            self = Self()
         else:
             self._capacity_or_data = (capacity + 7) >> 3
             self._ptr_or_data = Self._alloc(self._capacity_or_data << 3)
@@ -673,11 +673,11 @@ struct String(
     # out-of-line strings, which is stored before the UTF-8 data.
 
     @always_inline("nodebug")
-    def _refcount(self) -> ref[self._ptr_or_data.origin] Atomic[DType.int]:
+    def _refcount(self) -> ref[self._ptr_or_data.origin] Atomic[Int]:
         # The header is stored before the string data.
         return self._ptr_or_data.unsafe_offset(
             -Self.REF_COUNT_SIZE
-        ).unsafe_bitcast[Atomic[DType.int]]()[]
+        ).unsafe_bitcast[Atomic[Int]]()[]
 
     @always_inline("nodebug")
     def _is_unique(mut self) -> Bool:
@@ -710,7 +710,7 @@ struct String(
         # If indirect or inline we don't need to do anything.
         if self._capacity_or_data & Self.FLAG_IS_REF_COUNTED:
             var ptr = self._ptr_or_data.unsafe_offset(-Self.REF_COUNT_SIZE)
-            var refcount = ptr.unsafe_bitcast[Atomic[DType.int]]()
+            var refcount = ptr.unsafe_bitcast[Atomic[Int]]()
             if refcount[].fetch_sub(1) == 1:
                 fence[Ordering.ACQUIRE]()
                 dealloc(
@@ -729,9 +729,9 @@ struct String(
         ).unsafe_leak()
 
         # Initialize the Atomic refcount into the header.
-        __get_address_as_uninit_lvalue(
-            ptr.unsafe_bitcast[Atomic[DType.int]]()._get_kgen_pointer()
-        ) = Atomic[DType.int](1)
+        ptr.unsafe_bitcast[Atomic[Int]]().unsafe_write(
+            init_with=lambda () -> Atomic[Int]: Atomic[Int](1)
+        )
 
         # Return a pointer to right after the header, which is where the string
         # data will be stored.
@@ -1527,18 +1527,6 @@ struct String(
             length=self.byte_length(),
         )
 
-    @deprecated("Use `StringSpan(str)` instead.")
-    @__unsafe_nested_origins_read_only
-    def as_string_slice(
-        ref self,
-    ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Returns a string slice of the data owned by this string.
-
-        Returns:
-            A string slice pointing to the data owned by this string.
-        """
-        return self._interior_slice()
-
     def byte_length(self) -> Int:
         """Get the string length in bytes.
 
@@ -1821,16 +1809,17 @@ struct String(
         return StringSlice(self).replace(old, new)
 
     def strip(
-        self, chars: StringSlice
+        self, chars: ImmStringSlice
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with leading and trailing characters
+        """Returns a view of the string with leading and trailing characters
         removed.
 
         Args:
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no leading or trailing characters.
+            A `StringSlice` into this string with no leading or trailing
+            characters.
         """
 
         return self.lstrip(chars).rstrip(chars)
@@ -1838,25 +1827,26 @@ struct String(
     def strip(
         self,
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with leading and trailing whitespaces
+        """Returns a view of the string with leading and trailing whitespaces
         removed. This only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no leading or trailing whitespaces.
+            A `StringSlice` into this string with no leading or trailing
+            whitespaces.
         """
         return self.lstrip().rstrip()
 
     def rstrip(
-        self, chars: StringSlice
+        self, chars: ImmStringSlice
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with trailing characters removed.
+        """Returns a view of the string with trailing characters removed.
 
         Args:
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no trailing characters.
+            A `StringSlice` into this string with no trailing characters.
         """
 
         return self._interior_slice().rstrip(chars)
@@ -1864,25 +1854,25 @@ struct String(
     def rstrip(
         self,
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with trailing whitespaces removed. This
+        """Returns a view of the string with trailing whitespaces removed. This
         only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no trailing whitespaces.
+            A `StringSlice` into this string with no trailing whitespaces.
         """
         return self._interior_slice().rstrip()
 
     def lstrip(
-        self, chars: StringSlice
+        self, chars: ImmStringSlice
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with leading characters removed.
+        """Returns a view of the string with leading characters removed.
 
         Args:
             chars: A set of characters to be removed. Defaults to whitespace.
 
         Returns:
-            A copy of the string with no leading characters.
+            A `StringSlice` into this string with no leading characters.
         """
 
         return self._interior_slice().lstrip(chars)
@@ -1890,12 +1880,12 @@ struct String(
     def lstrip(
         self,
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Return a copy of the string with leading whitespaces removed. This
+        """Returns a view of the string with leading whitespaces removed. This
         only takes ASCII whitespace into account:
         `" \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e"`.
 
         Returns:
-            A copy of the string with no leading whitespaces.
+            A `StringSlice` into this string with no leading whitespaces.
         """
         return self._interior_slice().lstrip()
 
@@ -1971,14 +1961,16 @@ struct String(
     def removeprefix(
         self, prefix: StringSlice, /
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Returns a new string with the prefix removed if it was present.
+        """Returns a view of the string with the prefix removed if it was
+        present.
 
         Args:
             prefix: The prefix to remove from the string.
 
         Returns:
+            A `StringSlice` into this string:
             `string[byte=prefix.byte_length():]` if the string starts with
-            the prefix string, or a copy of the original string otherwise.
+            the prefix string, or the whole string otherwise.
 
         Examples:
 
@@ -1992,14 +1984,16 @@ struct String(
     def removesuffix(
         self, suffix: StringSlice, /
     ) -> StringSlice[origin_of(self)._get_owned_interior["bytes"]]:
-        """Returns a new string with the suffix removed if it was present.
+        """Returns a view of the string with the suffix removed if it was
+        present.
 
         Args:
             suffix: The suffix to remove from the string.
 
         Returns:
+            A `StringSlice` into this string:
             `string[byte=:(self.byte_length()-suffix.byte_length())]` if the string ends with the suffix string,
-            or a copy of the original string otherwise.
+            or the whole string otherwise.
 
         Examples:
 

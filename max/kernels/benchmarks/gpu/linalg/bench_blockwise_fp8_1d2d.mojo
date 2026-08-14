@@ -284,7 +284,7 @@ def bench_blockwise_fp8_1d2d[
         k_group_size=1,
     )
 
-    @parameter
+    @__parameter
     @__copy_capture(
         a_tt,
         b_tt,
@@ -296,9 +296,8 @@ def bench_blockwise_fp8_1d2d[
     )
     @always_inline
     def bench_legacy(mut bencher: Bencher):
-        @parameter
         @always_inline
-        def kernel_launch(ctx: DeviceContext, iteration: Int) raises:
+        def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
             grouped_matmul_sm100_blockwise_scaled_fp8_persistent[
                 config=config,
             ](
@@ -314,7 +313,7 @@ def bench_blockwise_fp8_1d2d[
                 ctx,
             )
 
-        bencher_iter_custom[kernel_launch](bencher, ctx)
+        bencher_iter_custom(bencher, kernel_launch, ctx)
 
     bench.bench_function[bench_legacy](
         BenchId(run_name_prefix + " legacy"),
@@ -322,7 +321,7 @@ def bench_blockwise_fp8_1d2d[
     )
 
     # ===== Benchmark Structured Kernel =====
-    @parameter
+    @__parameter
     @__copy_capture(
         a_struct,
         b_struct,
@@ -335,9 +334,8 @@ def bench_blockwise_fp8_1d2d[
     )
     @always_inline
     def bench_structured(mut bencher: Bencher):
-        @parameter
         @always_inline
-        def kernel_launch(ctx: DeviceContext, iteration: Int) raises:
+        def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
             grouped_matmul_dynamic_scaled_fp8_1d2d[
                 a_scales_type=DType.float32,
                 b_scales_type=DType.float32,
@@ -355,7 +353,7 @@ def bench_blockwise_fp8_1d2d[
                 ctx,
             )
 
-        bencher_iter_custom[kernel_launch](bencher, ctx)
+        bencher_iter_custom(bencher, kernel_launch, ctx)
 
     bench.bench_function[bench_structured](
         BenchId(run_name_prefix + " structured"),

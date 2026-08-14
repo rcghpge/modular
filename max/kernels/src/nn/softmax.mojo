@@ -56,6 +56,7 @@ from layout import (
     Idx,
     Layout,
     LayoutTensor,
+    PointerStorage,
     RowMajorLayout,
     TensorLayout,
     TensorStorage,
@@ -503,7 +504,7 @@ def _softmax_3_pass_base[
     # Use _reduce_generator to fuse input lambda with max-reduction
     # Reduce function
     @always_inline
-    @parameter
+    @__parameter
     def reduce_impl[
         ty: DType, width: SIMDLength
     ](v1: SIMD[ty, width], v2: SIMD[ty, width]) -> SIMD[ty, width]:
@@ -512,7 +513,7 @@ def _softmax_3_pass_base[
     # Input function
     # Translate the given input lambda from 1D to n-D because _reduce_generator
     # needs n-D.
-    @parameter
+    @__parameter
     @always_inline
     def input_fn[
         _dtype: DType, _width: Int, _rank: Int
@@ -521,7 +522,7 @@ def _softmax_3_pass_base[
         return rebind[SIMD[_dtype, _width]](input_fn_1d[_width](coords[0]))
 
     # Output function
-    @parameter
+    @__parameter
     @always_inline
     def output_fn[
         _dtype: DType, _width: SIMDLength, _rank: Int
@@ -708,7 +709,7 @@ def logsoftmax_inline[
         context: Optional device context for GPU execution.
     """
 
-    @parameter
+    @__parameter
     @always_inline
     def input_fn[_simd_width: Int](coords: Coord) -> SIMD[dtype, _simd_width]:
         return input.load[width=_simd_width, alignment=1](coords)
@@ -757,7 +758,7 @@ def _softmax_cpu[
     var chunk_size = ceildiv(outer_dim, num_workers)
 
     @__copy_capture(chunk_size, inner_dim, outer_dim)
-    @parameter
+    @__parameter
     @always_inline
     def task_func(task_id: Int) raises:
         var start_offset = task_id * chunk_size
@@ -770,7 +771,7 @@ def _softmax_cpu[
             )
             var indices = _get_nd_indices_from_flat_index(i, shape_il, rank - 1)
 
-            @parameter
+            @__parameter
             @always_inline
             # Given input lambda accepts N-dimensional coordinates, but the
             # softmax base routines operate on 1D buffers. Here we wrap the
@@ -817,7 +818,7 @@ def softmax_inline[
         axis: The axis along which to compute the softmax.
     """
 
-    @parameter
+    @__parameter
     @always_inline
     def input_fn[_simd_width: Int](coords: Coord) -> SIMD[dtype, _simd_width]:
         return input.load[width=_simd_width, alignment=1](coords)
@@ -894,14 +895,14 @@ def softmax_kernel[
         dtype=accum_type, address_space=AddressSpace.SHARED
     ](row_major[1]())
 
-    @parameter
+    @__parameter
     @always_inline
     def _max[
         dtype: DType, width: SIMDLength
     ](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return max(x, y)
 
-    @parameter
+    @__parameter
     @always_inline
     def _sum[
         dtype: DType, width: SIMDLength
@@ -1112,7 +1113,7 @@ def _softmax_gpu[
         raise Error("softmax not supported on non-inner axis yet")
 
     @always_inline
-    @parameter
+    @__parameter
     def input_fn_wrapper[
         _dtype: DType, width: Int, rank: Int
     ](idx: IndexList[rank]) -> SIMD[_dtype, width]:
@@ -1132,7 +1133,7 @@ def _softmax_gpu[
         # Short inner axes (<32) use a warp-local kernel with one
         # element per lane for coalesced loads. Longer rows stay on the
         # block/online path below.
-        @parameter
+        @__parameter
         @__copy_capture(num_rows, shape_il, output, sm_count)
         def dispatch_warp_or_block[use_warp: Bool]() raises:
             comptime if use_warp:
@@ -1187,7 +1188,7 @@ def _softmax_gpu[
                 # per row to amortise the wider tile dispatch. Otherwise downgrade
                 # to scalar; `unswitch` lifts the predicate so each kernel variant
                 # has one inner-loop shape.
-                @parameter
+                @__parameter
                 @__copy_capture(num_blocks, shape_il, output, num_splits)
                 def dispatch[use_vectorized: Bool]() raises:
                     comptime kernel_simd_width = (
@@ -1345,7 +1346,7 @@ def softmax_inline[
     """
     var shape_il = rebind[IndexList[rank]](coord_to_index_list(shape))
 
-    @parameter
+    @__parameter
     def trace_information() -> String:
         return trace_arg("input", shape_il, dtype)
 
@@ -1742,13 +1743,16 @@ def softmax_with_temperature[
     dtype: DType,
     temp_dtype: DType = DType.float32,
     TempLayoutType: TensorLayout = RowMajorLayout[Int64],
+    TempStorageType: TensorStorage = PointerStorage[element_width=1],
 ](
     ctx: DeviceContext,
     input: TileTensor[mut=False, dtype, ...],
     output: TileTensor[mut=True, dtype, ...],
     temperature: Scalar[temp_dtype] = Float32(1.0),
     temperature_arr: Optional[
-        TileTensor[temp_dtype, TempLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            temp_dtype, TempLayoutType, ImmutAnyOrigin, Storage=TempStorageType
+        ]
     ] = None,
 ) raises:
     """GPU softmax with per-row temperature scaling.
@@ -1761,6 +1765,7 @@ def softmax_with_temperature[
         dtype: The data type of the input and output tensors.
         temp_dtype: The data type for temperature values (default float32).
         TempLayoutType: The layout type for the optional temperature array.
+        TempStorageType: The storage type for the optional temperature array.
 
     Args:
         ctx: Device context for kernel execution.
@@ -1794,7 +1799,7 @@ def softmax_with_temperature[
     var input_immut = input.as_immut()
 
     @always_inline
-    @parameter
+    @__parameter
     @__copy_capture(input_immut)
     def input_load_fn[
         _dtype: DType, width: Int, _rank: Int
@@ -3031,7 +3036,7 @@ def softmax[
             var output,
             var ctx_p,
         }:
-            comptime alignment = ctx_p.alignment[dtype, width]()
+            comptime alignment = ctx_p.element_alignment[dtype, width]()
             var tile_accum = tile.cast[accum]()
 
             comptime if logsoftmax:

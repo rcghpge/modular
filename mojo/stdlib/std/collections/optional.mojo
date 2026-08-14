@@ -40,7 +40,7 @@ from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.builtin.rebind import downcast, rebind_var
 from std.format._utils import FormatStruct, TypeNames, write_to, write_repr_to
 from std.hashlib import Hasher
-from std.memory import UnsafeMaybeUninit
+from std.memory import MaybeUninit
 from std.memory.unsafe_pointer import unsafe_cast
 from std.reflection import call_location, reflect
 from std.utils import StaticTuple
@@ -241,17 +241,7 @@ struct Optional[T: AnyType](
         print(opt.value().value)  # Output: 7
         ```
         """
-        # MOCO-4408: forwarding the closure into `Variant`'s `init_with=` ctor, which
-        # infers the stored type from the closure return, cannot resolve that
-        # type from an abstract `def() -> Self.T`. `Self.T` is fixed here, so
-        # pass it explicitly to the storage primitives and init_with `init_with()` at the
-        # emplacement site instead.
-        self._value = Self._type(unsafe_uninitialized=())
-        self._value._unsafe_set_active[Self.T]()
-        # TODO(MSTDL-2924): Replace with `Pointer.unsafe_write(init_with=)`.
-        __get_address_as_uninit_lvalue(
-            self._value._unsafe_ptr[Self.T]()._mlir_value
-        ) = init_with()
+        self._value = Self._type(init_with=init_with)
 
     # TODO(MSTDL-715):
     #   This initializer should not be necessary, we should need
@@ -507,13 +497,14 @@ struct Optional[T: AnyType](
             writer: The object to write to.
         """
 
-        @parameter
-        def fields(mut w: Some[Writer]):
-            self._write_to[is_repr=True](w)
+        var self_ptr = Pointer(to=self)
 
-        FormatStruct(writer, "Optional").params(TypeNames[Self.T]()).fields[
-            FieldsFn=fields
-        ]()
+        def fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_to[is_repr=True](w)
+
+        FormatStruct(writer, "Optional").params(TypeNames[Self.T]()).fields(
+            fields
+        )
 
     def __hash__[
         H: Hasher
@@ -793,11 +784,7 @@ struct Optional[T: AnyType](
         """
         if self:
             return self._value^.unsafe_unwrap[Self.T]()
-        # TODO(MOCO-4141): Replace with `return default^`. That transfer is
-        # rejected today because the `where`-clause `Movable` evidence isn't
-        # visible at the return slot, so route it through Variant's
-        # `Movable`-bounded value constructor, which does see the evidence.
-        return Variant[_NoneType, Self.T](default^).unsafe_unwrap[Self.T]()
+        return default^
 
     @__allow_legacy_custom_self_type
     def copied[
@@ -1070,9 +1057,7 @@ struct _NicheableOptionalRegStorage[
     @always_inline
     def __init__(out self):
         __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(self))
-        var ptr = Pointer(to=self.storage).unsafe_bitcast[
-            UnsafeMaybeUninit[Self.T]
-        ]()
+        var ptr = Pointer(to=self.storage).unsafe_bitcast[MaybeUninit[Self.T]]()
         Self.T.write_niche[index=0](ptr)
 
     @always_inline
@@ -1089,9 +1074,7 @@ struct _NicheableOptionalRegStorage[
 
     @always_inline
     def __bool__(self) -> Bool:
-        var ptr = Pointer(to=self.storage).unsafe_bitcast[
-            UnsafeMaybeUninit[Self.T]
-        ]()
+        var ptr = Pointer(to=self.storage).unsafe_bitcast[MaybeUninit[Self.T]]()
         return Self.T.classify_niche(ptr) == NicheIndex.NotANiche
 
 

@@ -81,11 +81,14 @@ def _warm_parallel(
     pooled: list[tuple[GCOpFamily, Module, list[DeviceSpec]]] = []
     local: list[GCOpFamily] = []
     for family in families:
+        devices = family.sweep_devices()
+        if not devices:
+            # The pool rejects an empty device_specs (MXF-599).
+            yield family.name, 0
+            continue
         module = family.build_sweep_module()
         if _roundtrips_stably(module.mlir_module.bytecode):
-            specs = [
-                gc_compile.device_spec_of(d) for d in family.sweep_devices()
-            ]
+            specs = [gc_compile.device_spec_of(d) for d in devices]
             pooled.append((family, module, specs))
         else:
             local.append(family)
@@ -101,7 +104,7 @@ def _warm_parallel(
         for family in local:
             yield family.name, _compile_in_process(family)
         for warmed, future in enumerate(as_completed(futures)):
-            name, model_count = futures[future]
+            name, op_count = futures[future]
             try:
                 future.result()
             except BrokenProcessPool as e:
@@ -119,13 +122,13 @@ def _warm_parallel(
                 raise RuntimeError(
                     f"compiling the {name} op family failed: {e}"
                 ) from e
-            yield name, model_count
+            yield name, op_count
 
 
 def warm_families(jobs: int) -> Iterator[tuple[str, int]]:
     """Compiles every registered GC family's sweep into the on-disk cache.
 
-    Yields ``(family_name, models_compiled)`` as each family finishes, in
+    Yields ``(family_name, ops_compiled)`` as each family finishes, in
     completion order, so the caller can render progress. Does not write the
     warm stamp — that stays with the caller, which must only stamp after
     every family succeeds.

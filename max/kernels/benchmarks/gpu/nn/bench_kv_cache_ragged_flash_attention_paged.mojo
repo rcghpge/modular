@@ -382,7 +382,7 @@ def execute_kv_cache_ragged_flash_attention[
 
     if run_benchmark:
 
-        @parameter
+        @__parameter
         @__copy_capture(
             q_device_tensor,
             k_cache_device,
@@ -394,9 +394,8 @@ def execute_kv_cache_ragged_flash_attention[
         )
         @always_inline
         def bench_func(mut b: Bencher):
-            @parameter
             @always_inline
-            def kernel_launch(ctx: DeviceContext) raises:
+            def kernel_launch(ctx: DeviceContext) raises {imm}:
                 comptime if local_window_size > 0:
                     comptime assert (
                         not sink
@@ -470,7 +469,7 @@ def execute_kv_cache_ragged_flash_attention[
                             ctx,
                         )
 
-            bencher_iter_custom[kernel_launch](b, ctx)
+            bencher_iter_custom(b, kernel_launch, ctx)
 
         var flop_count = flops(
             batch_size,

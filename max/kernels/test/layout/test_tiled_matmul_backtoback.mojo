@@ -343,7 +343,7 @@ def strided_load[
     comptime if X == 1:
         return p.load[width=W](i)
     else:
-        return (p + i * X).strided_load[width=W](X)
+        return (p + i * X).unsafe_strided_load[width=W](X)
 
 
 @always_inline
@@ -353,7 +353,7 @@ def strided_store[
     comptime if X == 1:
         p.store(i, x)
     else:
-        (p + i * X).strided_store(x, X)
+        (p + i * X).unsafe_strided_store(x, X)
 
 
 @always_inline
@@ -461,7 +461,7 @@ def copy_to[
     src: LayoutTensor[elt_src, layout_src, MutAnyOrigin],
 ):
     @always_inline
-    @parameter
+    @__parameter
     def copy[
         width: Int, stride_a: Int, stride_b: Int
     ](
@@ -495,7 +495,7 @@ def check_approx_equal[
     var fail: Bool = False
 
     @always_inline
-    @parameter
+    @__parameter
     def check[
         width: Int, stride_a: Int, stride_b: Int
     ](

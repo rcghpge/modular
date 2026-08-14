@@ -696,7 +696,7 @@ struct LayoutTensor[
         """
         self = Self.GenericLayoutTensorType(
             device_buffer.unsafe_ptr()
-            .mut_cast[Self.mut]()
+            .unsafe_mut_cast[Self.mut]()
             .unsafe_origin_cast[Self.origin]()
         )
 
@@ -756,7 +756,7 @@ struct LayoutTensor[
         """
         self = Self.GenericLayoutTensorType(
             device_buffer.unsafe_ptr()
-            .mut_cast[Self.mut]()
+            .unsafe_mut_cast[Self.mut]()
             .unsafe_origin_cast[Self.origin](),
             runtime_layout,
         )
@@ -807,7 +807,7 @@ struct LayoutTensor[
         """
         self = Self.GenericLayoutTensorType(
             device_buffer.unsafe_ptr()
-            .mut_cast[Self.mut]()
+            .unsafe_mut_cast[Self.mut]()
             .unsafe_origin_cast[Self.origin](),
             runtime_layout,
             element_runtime_layout,
@@ -918,7 +918,9 @@ struct LayoutTensor[
             A tensor merged with the specified `other_type`.
         """
         return {
-            self.ptr.mut_cast[result.mut]().unsafe_origin_cast[result.origin](),
+            self.ptr.unsafe_mut_cast[result.mut]().unsafe_origin_cast[
+                result.origin
+            ](),
             self.runtime_layout,
             self.runtime_element_layout,
         }
@@ -1206,7 +1208,7 @@ struct LayoutTensor[
 
         comptime for i in range(self.layout.size()):
             comptime idx = self.layout(i)
-            self.ptr.mut_cast[True]().store(
+            self.ptr.unsafe_mut_cast[True]().store(
                 idx, func(self.ptr.load[width=Self.element_size](idx))
             )
         return self
@@ -1306,7 +1308,7 @@ struct LayoutTensor[
                 comptime lhs_idx = self.layout(i)
                 comptime rhs_idx = other.layout(i % other_size)
 
-                self.ptr.mut_cast[True]().store(
+                self.ptr.unsafe_mut_cast[True]().store(
                     lhs_idx,
                     func(
                         self.ptr.load[width=Self.element_size](lhs_idx),
@@ -1318,7 +1320,7 @@ struct LayoutTensor[
         comptime for i in range(self.layout.size()):
             comptime lhs_idx = self.layout(i)
             comptime rhs_idx = other.layout(i)
-            self.ptr.mut_cast[True]().store(
+            self.ptr.unsafe_mut_cast[True]().store(
                 lhs_idx,
                 func(
                     self.ptr.load[width=Self.element_size](lhs_idx),
@@ -1351,7 +1353,7 @@ struct LayoutTensor[
             operator).
         """
 
-        @parameter
+        @__parameter
         def add_val(val: Self.element_type) -> Self.element_type:
             return Self.element_type(other) + val
 
@@ -1372,7 +1374,7 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @parameter
+        @__parameter
         def add_val(val: Self.element_type) -> Self.element_type:
             return Self.element_type(other) + val
 
@@ -1493,7 +1495,7 @@ struct LayoutTensor[
             (`*=` operator).
         """
 
-        @parameter
+        @__parameter
         def mul_val(val: Self.element_type) -> Self.element_type:
             return Self.element_type(other) * val
 
@@ -1568,7 +1570,7 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @parameter
+        @__parameter
         def mul_val(val: Self.element_type) -> Self.element_type:
             return Self.element_type(other) * val
 
@@ -1642,7 +1644,7 @@ struct LayoutTensor[
             operator).
         """
 
-        @parameter
+        @__parameter
         def sub_val(val: Self.element_type) -> Self.element_type:
             return val - Self.element_type(other)
 
@@ -1713,7 +1715,7 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @parameter
+        @__parameter
         def sub_val(val: Self.element_type) -> Self.element_type:
             return val - Self.element_type(other)
 
@@ -1790,7 +1792,7 @@ struct LayoutTensor[
         - For integer dtypes, this performs integer division.
         """
 
-        @parameter
+        @__parameter
         def div_val(val: Self.element_type) -> Self.element_type:
             return val / Self.element_type(other)
 
@@ -1869,7 +1871,7 @@ struct LayoutTensor[
         - For integer dtypes, this performs integer division.
         """
 
-        @parameter
+        @__parameter
         def div_val(val: Self.element_type) -> Self.element_type:
             return val / Self.element_type(other)
 
@@ -1935,14 +1937,14 @@ struct LayoutTensor[
             Self.dtype.is_floating_point()
         ), "dtype must be floating point"
 
-        @parameter
+        @__parameter
         def exp_func(val: Self.element_type) -> Self.element_type:
             return exp(val)
 
         return {
             self._stack_copy()
             ._elementwise_unary[exp_func]()
-            .ptr.mut_cast[Self.mut]()
+            .ptr.unsafe_mut_cast[Self.mut]()
             .unsafe_origin_cast[Self.origin](),
             self.runtime_layout,
             self.runtime_element_layout,
@@ -2169,7 +2171,7 @@ struct LayoutTensor[
 
         Element[index_type=Self.linear_idx_type](
             val, self.runtime_element_layout
-        ).store(self.ptr.mut_cast[True]() + offset)
+        ).store(self.ptr.unsafe_mut_cast[True]() + offset)
 
     @always_inline("nodebug")
     def load[
@@ -2738,7 +2740,7 @@ struct LayoutTensor[
             copy = self.stack_allocation()
         else:
             copy = Self.StackTensorType(
-                self.ptr.mut_cast[True]().as_unsafe_any_origin(),
+                self.ptr.unsafe_mut_cast[True]().as_unsafe_any_origin(),
                 self.runtime_layout,
             )
 
@@ -5534,9 +5536,9 @@ struct LayoutTensor[
         ```
 
         The copy operation is asynchronous, so you must call
-        [`async_copy_wait_all()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_all/)
+        [`async_copy_wait_all()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_all/)
         or
-        [`async_copy_wait_group()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_group/)
+        [`async_copy_wait_group()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_group/)
         to ensure the copy has completed before using the data.
 
         Constraints:
@@ -5653,7 +5655,7 @@ struct LayoutTensor[
 
         var dst_ptr = self.ptr.address_space_cast[
             AddressSpace.SHARED
-        ]().mut_cast[True]()
+        ]().unsafe_mut_cast[True]()
         var src_ptr = src.ptr.address_space_cast[AddressSpace.GLOBAL]()
 
         # Coalesce element layouts to simplify vectorization condition.
@@ -6511,9 +6513,9 @@ def cp_async_k_major[
     - The destination tensor must be in SHARED address space (SRAM).
     - Both tensors must have the same data type.
     - This function is asynchronous, so you must call
-        [`async_copy_wait_all()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_all/)
+        [`async_copy_wait_all()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_all/)
         or
-        [`async_copy_wait_group()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_group/)
+        [`async_copy_wait_group()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_group/)
         to ensure the copy has completed before using the data.
     - K-major layout is particularly beneficial for matrix multiplication
         operations where the inner dimension (K) is accessed contiguously.
@@ -6759,9 +6761,9 @@ def copy_dram_to_sram_async[
     - The destination tensor must be in SHARED address space (SRAM).
     - Both tensors must have the same data type.
     - This function is asynchronous, so you must call
-        [`async_copy_wait_all()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_all/)
+        [`async_copy_wait_all()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_all/)
         or
-        [`async_copy_wait_group()`](https://mojolang.org/docs/std/gpu/memory/memory/async_copy_wait_group/)
+        [`async_copy_wait_group()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_group/)
         to ensure the copy has completed before using the data.
     - The maximum size of each element that can be copied is 16 bytes.
     """
@@ -7495,7 +7497,7 @@ def _copy_dram_to_local[
     ), "src_fragments must have known layout."
 
     @always_inline
-    @parameter
+    @__parameter
     def offset_helper(offset_val: Int):
         var src_frag_offset = Int32(
             src_fragments.distance(src.ptr)

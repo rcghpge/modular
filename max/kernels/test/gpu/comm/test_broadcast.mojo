@@ -28,7 +28,7 @@ from comm.sync import enable_p2p, init_signal_buffer
 
 
 @always_inline
-@parameter
+@__parameter
 def _input_value[dtype: DType](root: Int, j: Int) -> Scalar[dtype]:
     """Generate position-based input value that includes root rank.
 
@@ -61,6 +61,8 @@ comptime test_lengths = (
 )
 
 # Test hyperparameters.
+# uint8 is what the byte-oriented callers (distributed_ops, block_offload_ops)
+# instantiate.
 comptime test_dtypes = (DType.bfloat16, DType.float32, DType.uint8)
 comptime test_gpu_counts = (2, 4, 8)
 
@@ -159,7 +161,7 @@ def broadcast_test[
     # Launch broadcast per device
     comptime for i in range(ngpus):
         broadcast[ngpus](
-            in_tile, out_tiles[i], rank_sigs, list_of_ctxs[i], root
+            in_tile, out_tiles[i], rank_sigs, list_of_ctxs[i], root, rank=i
         )
 
     # Synchronize all GPUs
@@ -188,7 +190,7 @@ def broadcast_test[
                 )
 
 
-@parameter
+@__parameter
 def run_broadcast_sweep[]() raises:
     # Run tests for each configuration.
     comptime for gpu_idx, dtype_idx, length_idx, root_self_copy in product(
@@ -197,7 +199,7 @@ def run_broadcast_sweep[]() raises:
         range(len(test_lengths)),
         [True, False],
     ):
-        comptime num_gpus = test_gpu_counts[gpu_idx]
+        comptime num_gpus = rebind[Int](test_gpu_counts[gpu_idx])
         if DeviceContext.number_of_devices() < num_gpus:
             continue
 
@@ -206,8 +208,8 @@ def run_broadcast_sweep[]() raises:
         for i in range(num_gpus):
             list_of_ctxs.append(DeviceContext(device_id=i))
 
-        comptime dtype = test_dtypes[dtype_idx]
-        comptime length = test_lengths[length_idx]
+        comptime dtype = rebind[DType](test_dtypes[dtype_idx])
+        comptime length = rebind[Int](test_lengths[length_idx])
 
         # Test with each GPU as root
         for root in range(num_gpus):

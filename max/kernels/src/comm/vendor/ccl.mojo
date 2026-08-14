@@ -22,7 +22,7 @@ from std.sys import has_amd_gpu_accelerator, simd_width_of, size_of
 from std.pathlib import Path
 from max.algorithm import elementwise
 from std.utils import IndexList
-from std.ffi import _CPointer, _get_global_or_null, external_call
+from std.ffi import _get_global_or_null, external_call
 from std.ffi import _find_dylib
 from std.ffi import _get_dylib_function as _ffi_get_dylib_function
 from std.ffi import OwnedDLHandle, _Global
@@ -38,7 +38,7 @@ from comm.allreduce import elementwise_epilogue_type
 from max.gpu.primitives.grid_controls import PDLLevel
 from std.utils.coord import Coord
 
-comptime ncclComm_t = _CPointer[NoneType, MutUntrackedOrigin]
+comptime ncclComm_t = OptionalPointer[NoneType, MutUntrackedOrigin]
 
 
 @fieldwise_init
@@ -275,7 +275,7 @@ def _ccl_broadcast(
 @always_inline
 def _ccl_stream_ptr(
     ctx: DeviceContext,
-) raises -> _CPointer[NoneType, UntrackedOrigin[mut=True]]:
+) raises -> OptionalPointer[NoneType, UntrackedOrigin[mut=True]]:
     comptime if has_amd_gpu_accelerator():
         return unsafe_cast[Type=NoneType](HIP(ctx.stream()))
     else:
@@ -372,7 +372,7 @@ def wait_for_comms(ngpus: Int):
         pass
 
 
-@parameter
+@__parameter
 def allreduce[
     dtype: DType,
     in_layout: TensorLayout,
@@ -450,7 +450,7 @@ def allreduce[
         ](epilogue_wrapper, Coord(output_tensor.num_elements()), ctx)
 
 
-@parameter
+@__parameter
 def _is_ccl_symbol_available[name: StaticString]() -> Bool:
     # Resolve a CCL symbol by name from the appropriate vendor DSO.
     # We intentionally cast to a trivial signature and do not call it.
@@ -500,7 +500,7 @@ def is_broadcast_available() -> Bool:
     return _is_ccl_symbol_available["ncclBroadcast"]()
 
 
-@parameter
+@__parameter
 def allgather[
     dtype: DType,
     in_layout: TensorLayout,
@@ -595,7 +595,7 @@ def allgather[
             ctx.enqueue_copy(dest_db, src_db)
 
 
-@parameter
+@__parameter
 def broadcast[
     dtype: DType,
     in_layout: TensorLayout,

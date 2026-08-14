@@ -15,13 +15,17 @@
 You can import these APIs from the `memory` package. For example:
 
 ```mojo
-from std.memory import memcmp
+from std.memory import unsafe_memcmp
 ```
 """
 
-
 from std.math import iota
 from std.memory.unsafe_pointer import unsafe_cast
+from std.traits import (
+    IsTriviallyCopyable,
+    IsTriviallyDeinitable,
+    IsTriviallyMovable,
+)
 from std.sys import _libc as libc
 from std.ffi import external_call
 from std.sys import (
@@ -156,34 +160,6 @@ def unsafe_memcmp[
     )
 
 
-@always_inline
-@deprecated(use=unsafe_memcmp)
-def memcmp[
-    type: AnyType, address_space: AddressSpace
-](
-    s1: Pointer[mut=False, type, _, address_space=address_space],
-    s2: Pointer[mut=False, type, _, address_space=address_space],
-    count: Int,
-) -> Int:
-    """Compares two buffers. Both strings are assumed to be of the same length.
-
-    Parameters:
-        type: The element type.
-        address_space: The address space of the pointer.
-
-    Args:
-        s1: The first buffer address.
-        s2: The second buffer address.
-        count: The number of elements in the buffers.
-
-    Returns:
-        Returns 0 if the bytes strings are identical, 1 if s1 > s2, and -1 if
-        s1 < s2. The comparison is performed by the first different byte in the
-        byte strings.
-    """
-    return unsafe_memcmp(s1, s2, count)
-
-
 # ===-----------------------------------------------------------------------===#
 # memcpy
 # ===-----------------------------------------------------------------------===#
@@ -307,39 +283,6 @@ def unsafe_memcpy[
         _memcpy_impl(dest_bytes, src_bytes, n)
 
 
-@always_inline
-@deprecated(use=unsafe_memcpy)
-def memcpy[
-    T: AnyType
-](
-    *,
-    dest: OptionalPointer[mut=True, T, _],
-    src: OptionalPointer[T, _],
-    count: Int,
-):
-    """Copy `count * size_of[T]()` bytes from src to dest.
-
-    The dest and src memory must **not** overlap. For potentially
-    overlapping memory regions, use `unsafe_memmove`.
-
-    Parameters:
-        T: The element type.
-
-    Args:
-        dest: The destination pointer.
-        src: The source pointer.
-        count: The number of elements to copy.
-
-    Safety:
-        `dest` and `src` must be valid for at least `count * size_of[T]()`
-        bytes. `dest` or `src` can only be `None` when `count == 0`.
-    """
-    if count == 0:
-        return
-
-    unsafe_memcpy(dest=dest.unsafe_value(), src=src.unsafe_value(), count=count)
-
-
 # ===-----------------------------------------------------------------------===#
 # memmove
 # ===-----------------------------------------------------------------------===#
@@ -429,19 +372,6 @@ def unsafe_memset(ptr: Pointer[mut=True, ...], value: Byte, count: Int):
     _memset_impl(ptr.unsafe_bitcast[Byte](), value, count * size_of[ptr.T]())
 
 
-@always_inline
-@deprecated(use=unsafe_memset)
-def memset(ptr: Pointer[mut=True, ...], value: Byte, count: Int):
-    """Fills memory with the given value.
-
-    Args:
-        ptr: Pointer to the beginning of the memory block to fill.
-        value: The value to fill with.
-        count: Number of elements to fill (in elements, not bytes).
-    """
-    unsafe_memset(ptr, value, count)
-
-
 # ===-----------------------------------------------------------------------===#
 # memset_zero
 # ===-----------------------------------------------------------------------===#
@@ -484,35 +414,6 @@ def unsafe_memset_zero[
         ptr.unsafe_store(offset, SIMD[dtype, width](0))
 
     vectorize[simd_width_of[dtype]()](count, fill)
-
-
-@always_inline
-@deprecated(use=unsafe_memset_zero)
-def memset_zero(ptr: Pointer[mut=True, ...], count: Int):
-    """Fills memory with zeros.
-
-    Args:
-        ptr: Pointer to the beginning of the memory block to fill.
-        count: Number of elements to fill (in elements, not bytes).
-    """
-    unsafe_memset_zero(ptr, count)
-
-
-@always_inline
-@deprecated(use=unsafe_memset_zero)
-def memset_zero[
-    dtype: DType, //, *, count: Int
-](ptr: Pointer[mut=True, Scalar[dtype], ...]):
-    """Fills memory with zeros.
-
-    Parameters:
-        dtype: The element type.
-        count: Number of elements to fill (in elements, not bytes).
-
-    Args:
-        ptr: Pointer to the beginning of the memory block to fill.
-    """
-    unsafe_memset_zero[count=count](ptr)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -596,6 +497,7 @@ def _free(ptr: OptionalPointer[mut=True, ...]):
 
 
 @always_inline("nodebug")
+@deprecated(use=IsTriviallyMovable)
 def is_trivially_movable[T: Movable]() -> Bool:
     """Returns whether `T` has a trivial move constructor.
 
@@ -614,6 +516,7 @@ def is_trivially_movable[T: Movable]() -> Bool:
 
 
 @always_inline("nodebug")
+@deprecated(use=IsTriviallyCopyable)
 def is_trivially_copyable[T: Copyable]() -> Bool:
     """Returns whether `T` has a trivial copy constructor.
 
@@ -632,6 +535,7 @@ def is_trivially_copyable[T: Copyable]() -> Bool:
 
 
 @always_inline("nodebug")
+@deprecated(use=IsTriviallyDeinitable)
 def is_trivially_deletable[T: AnyType]() -> Bool:
     """Returns whether `T` has a trivial destructor.
 
@@ -705,7 +609,7 @@ def unsafe_uninit_move_n[
         behavior.
     """
 
-    comptime if is_trivially_movable[T]():
+    comptime if IsTriviallyMovable[T]:
         comptime if overlapping:
             unsafe_memmove(dest=dest, src=src, count=count)
         else:
@@ -713,60 +617,6 @@ def unsafe_uninit_move_n[
     else:
         for i in range(count):
             dest.unsafe_offset(i).unsafe_write_move_from(src.unsafe_offset(i))
-
-
-@always_inline
-@deprecated(use=unsafe_uninit_move_n)
-def uninit_move_n[
-    T: Movable,
-    //,
-    *,
-    overlapping: Bool,
-](*, dest: Pointer[mut=True, T, _], src: Pointer[mut=True, T, _], count: Int,):
-    """Move `count` values from `src` into memory at `dest`.
-
-    This function transfers ownership of `count` values from the source memory
-    to the destination memory. After this call, the source values should be
-    treated as uninitialized, and the destination values are valid and
-    initialized.
-
-    For types with trivial move constructors, this is optimized to a single
-    `unsafe_memcpy` (or `memmove` when `overlapping=True`) operation. Otherwise,
-    it manually moves each element.
-
-    The destination memory is treated as a raw span of bits to write to. Any
-    existing values at `dest` are silently overwritten without being destroyed.
-    For types with non-trivial destructors, this can cause memory leaks. Call
-    `unsafe_destroy_n()` on the destination region first if it contains
-    initialized values that need cleanup. For trivial types like `Int`, this is
-    not a concern.
-
-    Parameters:
-        T: The type of values to move, which must be `Movable`.
-        overlapping: If False, the function assumes `src` and `dest` do not
-            overlap and uses `unsafe_memcpy`. If True, the function assumes
-            `src` and `dest` may overlap and uses `memmove` to handle this
-            safely.
-
-    Args:
-        dest: Pointer to the destination memory region.
-        src: Pointer to the source memory region. Must point to initialized
-            values.
-        count: The number of elements to move.
-
-    Safety:
-
-    - `dest` must point to a valid memory region with space for at least
-        `count` elements of type `T`.
-    - `src` must point to a valid memory region containing at least `count`
-        **initialized** elements of type `T`.
-    - If `overlapping=False`, the `src` and `dest` memory regions must **not**
-        overlap. Overlapping regions with `overlapping=False` is undefined
-        behavior.
-    """
-    unsafe_uninit_move_n[overlapping=overlapping](
-        dest=dest, src=src, count=count
-    )
 
 
 @always_inline
@@ -817,7 +667,7 @@ def unsafe_uninit_copy_n[
         behavior.
     """
 
-    comptime if is_trivially_copyable[T]():
+    comptime if IsTriviallyCopyable[T]:
         comptime if overlapping:
             unsafe_memmove(dest=dest, src=src, count=count)
         else:
@@ -825,59 +675,6 @@ def unsafe_uninit_copy_n[
     else:
         for i in range(count):
             dest.unsafe_offset(i).unsafe_write(copy=src.unsafe_offset(i)[])
-
-
-@always_inline
-@deprecated(use=unsafe_uninit_copy_n)
-def uninit_copy_n[
-    T: Copyable,
-    //,
-    *,
-    overlapping: Bool,
-](*, dest: Pointer[mut=True, T, _], src: Pointer[mut=False, T, _], count: Int,):
-    """Copy `count` values from `src` into memory at `dest`.
-
-    This function creates copies of `count` values from the source memory in the
-    destination memory. After this call, both source and destination values are
-    valid and initialized.
-
-    For types with trivial copy constructors, this is optimized to a single
-    `unsafe_memcpy` (or `memmove` when `overlapping=True`) operation. Otherwise,
-    it calls `unsafe_write()` on each element.
-
-    The destination memory is treated as a raw span of bits to write to. Any
-    existing values at `dest` are silently overwritten without being destroyed.
-    For types with non-trivial destructors, this can cause memory leaks. Call
-    `unsafe_destroy_n()` on the destination region first if it contains
-    initialized values that need cleanup. For trivial types like `Int`, this is
-    not a concern.
-
-    Parameters:
-        T: The type of values to copy, which must be `Copyable`.
-        overlapping: If False, the function assumes `src` and `dest` do not
-            overlap and uses `unsafe_memcpy`. If True, the function assumes
-            `src` and `dest` may overlap and uses `memmove` to handle this
-            safely.
-
-    Args:
-        dest: Pointer to the destination memory region.
-        src: Pointer to the source memory region. Must point to initialized
-            values.
-        count: The number of elements to copy.
-
-    Safety:
-
-    - `dest` must point to a valid memory region with space for at least
-        `count` elements of type `T`.
-    - `src` must point to a valid memory region containing at least `count`
-        **initialized** elements of type `T`.
-    - If `overlapping=False`, the `src` and `dest` memory regions must **not**
-        overlap. Overlapping regions with `overlapping=False` is undefined
-        behavior.
-    """
-    unsafe_uninit_copy_n[overlapping=overlapping](
-        dest=dest, src=src, count=count
-    )
 
 
 @always_inline
@@ -907,41 +704,12 @@ def unsafe_destroy_n[
         must not be read or destroyed again until re-initialized.
     """
 
-    comptime if is_trivially_deletable[T]():
+    comptime if IsTriviallyDeinitable[T]:
         # Trivial destructors don't need to be called!
         pass
     else:
         for i in range(count):
             pointer.unsafe_offset(i).unsafe_deinit_pointee()
-
-
-@always_inline
-@deprecated(use=unsafe_destroy_n)
-def destroy_n[T: Deinitable](pointer: Pointer[mut=True, T, _], count: Int):
-    """Destroy `count` initialized values at `pointer`.
-
-    This function runs the destructor for each of the `count` values, leaving
-    the memory uninitialized.
-
-    For types with trivial destructors, this is a no-op and generates no code.
-    Otherwise, it calls `unsafe_deinit_pointee()` on each element.
-
-    Parameters:
-        T: The type of values to destroy, which must be `Deinitable`.
-
-    Args:
-        pointer: Pointer to the memory region containing values to destroy.
-        count: The number of elements to destroy.
-
-    Safety:
-
-    - `pointer` must point to a valid memory region containing at least `count`
-        **initialized** elements of type `T`.
-    - After this call, the values at `pointer[0:count]` are uninitialized and
-        must not be read or destroyed again until re-initialized.
-    """
-
-    unsafe_destroy_n(pointer, count)
 
 
 # ===-----------------------------------------------------------------------===#

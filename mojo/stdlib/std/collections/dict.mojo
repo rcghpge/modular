@@ -870,21 +870,6 @@ struct Dict[
         self._table = SwissTable[Self.K, Self.V, Self.H](copy=copy._table)
         self._order = copy._order.copy()
 
-    # TODO(MOCO-4228): remove this __deinit__
-    def __deinit__(
-        deinit self,
-    ) where conforms_to(Self.K, Deinitable) and conforms_to(Self.V, Deinitable):
-        """Destroy all keys and values in the dictionary and free memory.
-
-        Constraints:
-            Both `K` and `V` must be `Deinitable`. When either is not,
-            the dictionary has no implicit destructor and must be torn down with
-            `deinit_with()`.
-        """
-        # _table.__deinit__ handles destroying occupied slots and freeing memory.
-        # _order is cleaned up by List destructor.
-        pass
-
     def deinit_with(
         deinit self, deinit_func: Some[def(var Self.K, var Self.V)], /
     ):
@@ -1211,16 +1196,17 @@ struct Dict[
             writer: The value to write to.
         """
 
-        @parameter
-        def write_fields(mut w: Some[Writer]):
-            self._write_dict_body[
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._write_dict_body[
                 f_key=fmt.write_repr_to[Self.K],
                 f_val=fmt.write_repr_to[Self.V],
             ](w)
 
         fmt.FormatStruct(writer, "Dict").params(
             fmt.TypeNames[Self.K, Self.V](),
-        ).fields[FieldsFn=write_fields]()
+        ).fields(write_fields)
 
     # ===-------------------------------------------------------------------===#
     # Methods
@@ -1288,6 +1274,42 @@ struct Dict[
             assert is_occupied(
                 self._table._ctrl[unsafe_offset=slot_idx]
             ), "_find_slot returned found=True but ctrl byte is not occupied"
+            return Pointer(
+                to=(self._table._slots.unsafe_offset(slot_idx))[].value
+            )._get_ref_with_unsafe_interior_origin["value", origin_of(self)]()
+
+        raise DictKeyError[Self.K]()
+
+    @__unsafe_nested_origins_read_only
+    def _find_ref_matching(
+        ref self, hash: UInt64, key_matches: Some[def(Self.K) -> Bool]
+    ) raises DictKeyError[Self.K] -> ref[
+        origin_of(self)._get_owned_interior["value"]
+    ] Self.V:
+        """Find a value by a key predicate and a precomputed hash.
+
+        Like `_find_ref`, but probes with `key_matches` instead of a concrete
+        `Self.K`, so callers can look up a heterogeneous key (such as a
+        `StringSpan` against a `String` key) without building a `Self.K`.
+
+        Args:
+            hash: The hash of the lookup key, from `Self.H`. Any key that
+                `key_matches` accepts must hash to this value.
+            key_matches: Returns `True` when a stored key equals the lookup key.
+
+        Returns:
+            A reference to the value if the key is present.
+
+        Raises:
+            `DictKeyError` if no matching key is present.
+        """
+        var found, slot_idx = self._table.find_slot_matching(hash, key_matches)
+
+        if found:
+            assert is_occupied(self._table._ctrl[unsafe_offset=slot_idx]), (
+                "find_slot_matching returned found=True but ctrl byte is not"
+                " occupied"
+            )
             return Pointer(
                 to=(self._table._slots.unsafe_offset(slot_idx))[].value
             )._get_ref_with_unsafe_interior_origin["value", origin_of(self)]()
@@ -1960,6 +1982,7 @@ struct StringDict[V: Movable](
     Iterable,
     Movable,
     Sized,
+    Writable where conforms_to(V, Writable),
 ):
     """Container used to pass owned variadic keyword arguments to functions.
 
@@ -2002,18 +2025,6 @@ struct StringDict[V: Movable](
         """Initialize an empty keyword dictionary."""
         self._dict = Dict[Self.key_type, Self.V, default_comp_time_hasher]()
 
-    # TODO(MOCO-4228): remove this __deinit__ once an explicit __deinit__ is synthesized
-    def __deinit__(deinit self) where conforms_to(Self.V, Deinitable):
-        """Destroy all values in the dictionary and free memory.
-
-        Constraints:
-            `V` must be `Deinitable`. When it is not, the dictionary has
-            no implicit destructor and must be torn down with `deinit_with()`.
-        """
-        # `_dict`'s conditional destructor handles the
-        # occupied entries and frees memory.
-        pass
-
     def deinit_with(
         deinit self, deinit_func: Some[def(var String, var Self.V)], /
     ):
@@ -2027,13 +2038,7 @@ struct StringDict[V: Movable](
                 value.
         """
 
-        # TODO(MOCO-4295): forwarding this *existential* (`Some[def(...)]`)
-        # closure straight to `Dict.deinit_with` doesn't compile — its `K`
-        # won't bind to `String`. Drop this wrapper once fixed.
-        def forward(var key: String, var value: Self.V) {imm deinit_func}:
-            deinit_func(key^, value^)
-
-        self._dict^.deinit_with(forward)
+        self._dict^.deinit_with(deinit_func)
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -2056,6 +2061,32 @@ struct StringDict[V: Movable](
             `DictKeyError` if the key isn't present.
         """
         return self._dict[key]
+
+    @__unsafe_nested_origins_read_only
+    @always_inline
+    def __getitem__(
+        ref self, key: ImmStringSpan
+    ) raises DictKeyError[Self.key_type] -> ref[
+        origin_of(self._dict)._get_owned_interior["value"]
+    ] Self.V:
+        """Retrieve a value by string view, without allocating a `String`.
+
+        Args:
+            key: The key to retrieve, as a string view.
+
+        Returns:
+            The value associated with the key, if it's present.
+
+        Raises:
+            `DictKeyError` if the key isn't present.
+        """
+
+        return self._dict._find_ref_matching(
+            hash[default_comp_time_hasher](key),
+            lambda (stored_key: Self.key_type) {imm key} -> Bool: (
+                stored_key == key
+            ),
+        )
 
     @always_inline
     def __setitem__(
@@ -2099,6 +2130,39 @@ struct StringDict[V: Movable](
             The number of elements currently stored in the keyword dictionary.
         """
         return len(self._dict)
+
+    @no_inline
+    def write_to(
+        self, mut writer: Some[Writer]
+    ) where conforms_to(Self.V, Writable):
+        """Write this `StringDict` to the writer.
+
+        Args:
+            writer: The value to write to.
+        """
+        self._dict.write_to(writer)
+
+    @no_inline
+    def write_repr_to(
+        self, mut writer: Some[Writer]
+    ) where conforms_to(Self.V, Writable):
+        """Write this `StringDict`'s representation to the writer.
+
+        Args:
+            writer: The value to write to.
+        """
+
+        var self_ptr = Pointer(to=self)
+
+        def write_fields(mut w: Some[Writer]) {self_ptr}:
+            self_ptr[]._dict._write_dict_body[
+                f_key=fmt.write_repr_to[Self.key_type],
+                f_val=fmt.write_repr_to[Self.V],
+            ](w)
+
+        fmt.FormatStruct(writer, "StringDict").params(
+            fmt.TypeNames[Self.V](),
+        ).fields(write_fields)
 
     # ===-------------------------------------------------------------------===#
     # Methods

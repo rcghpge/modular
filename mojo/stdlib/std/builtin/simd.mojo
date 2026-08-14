@@ -246,8 +246,29 @@ comptime UInt = Scalar[DType.uint]
 
 
 @always_inline("builtin")
+def _simd_dtype_checks[dtype: DType]() -> Bool:
+    """Checks that the SIMD element dtype can be held in a value.
+
+    The sub-byte float formats are storage-only: no target registers a
+    `pop.cast` for them, so such a value can neither be produced from nor read
+    back into another float type.
+
+    Parameters:
+      dtype: The data type of SIMD vector elements.
+
+    Returns:
+        Whether a SIMD value may be constructed with this element dtype.
+    """
+    return (
+        dtype != DType.float4_e2m1fn
+        and dtype != DType.float6_e2m3fn
+        and dtype != DType.float6_e3m2fn
+    )
+
+
+@always_inline("builtin")
 def _simd_construction_checks[dtype: DType, size: SIMDLength]():
-    """Checks if the SIMD size is valid.
+    """Checks if the SIMD dtype and size are valid.
 
     The SIMD size is valid if it is a power of two and is positive.
 
@@ -255,6 +276,10 @@ def _simd_construction_checks[dtype: DType, size: SIMDLength]():
       dtype: The data type of SIMD vector elements.
       size: The number of elements in the SIMD vector. The size must not be greater than 2**15.
     """
+    comptime assert _simd_dtype_checks[dtype](), (
+        "cannot construct a SIMD value with a sub-byte float dtype; these are"
+        " storage-only formats with no conversion support on any target."
+    )
     comptime assert size.is_power_of_two(), "simd width must be power of 2"
     # MOCO-1388: Until LLVM's issue #122571 is fixed, LLVM's SelectionDAG has
     # a limit of 2^15 for the number of operands of the instruction.
@@ -581,10 +606,6 @@ struct SIMD[dtype: DType, length: SIMDLength](
     # ===-------------------------------------------------------------------===#
     # Aliases
     # ===-------------------------------------------------------------------===#
-
-    @deprecated(use=length)
-    comptime size = Self.length
-    """A temporary deprecated alias while renaming SIMD's parameter `size`."""
 
     comptime MAX = Self(_max_or_inf[Self.dtype]())
     """Gets the maximum value for the SIMD value, potentially +inf."""
@@ -2115,7 +2136,11 @@ struct SIMD[dtype: DType, length: SIMDLength](
 
         comptime if Self.dtype.is_signed():
             return -(self // -denominator)
-        return (self + denominator - 1) // denominator
+        # Biasing the numerator (`self + denominator - 1`) overflows and wraps
+        # when `self` is near the unsigned type's max, so correct the floor
+        # division with the remainder instead.
+        var quotient, remainder = divmod(self, denominator)
+        return quotient + remainder.ne(Self(0)).cast[Self.dtype]()
 
     # ===------------------------------------------------------------------=== #
     # Methods
@@ -2753,7 +2778,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         ), "output width must be a positive integer less than simd size"
 
         @always_inline
-        @parameter
+        @__parameter
         def slice_body() -> SIMD[Self.dtype, output_width]:
             var tmp = SIMD[Self.dtype, output_width]()
 
@@ -2930,7 +2955,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         """
 
         @always_inline
-        @parameter
+        @__parameter
         def body[
             width: SIMDLength
         ](lhs: Self._T[width], rhs: Self._T[width]) -> Self._T[width]:
@@ -2960,7 +2985,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         """
 
         @always_inline
-        @parameter
+        @__parameter
         def body[w: Int](lhs: Self._T[w], rhs: Self._T[w]) -> Self._T[w]:
             return func(lhs, rhs)
 
@@ -2987,7 +3012,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         """
 
         @always_inline
-        @parameter
+        @__parameter
         def body[
             width: SIMDLength
         ](lhs: Self._T[width], rhs: Self._T[width]) -> Self._T[width]:
@@ -3758,7 +3783,6 @@ def _convert_float8_to_f32[
     else:
 
         @always_inline
-        @parameter
         def wrapper_fn[
             input_dtype: DType, result_dtype: DType
         ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
@@ -3814,7 +3838,6 @@ def _convert_f32_to_float8[
     else:
 
         @always_inline
-        @parameter
         def wrapper_fn[
             input_dtype: DType, result_dtype: DType
         ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
@@ -3831,7 +3854,7 @@ def _convert_f32_to_float8_scalar[
 ](x: Scalar[dtype]) -> Scalar[target]:
     # software implementation rounds toward nearest even
 
-    @parameter
+    @__parameter
     def max_finite_byte() -> UInt8:
         comptime if target == DType.float8_e4m3fn:
             return UInt8(0x7E)
@@ -4019,7 +4042,6 @@ def _convert_f32_to_float8_ue8m0[
     else:
 
         @always_inline
-        @parameter
         def wrapper_fn[
             input_dtype: DType, result_dtype: DType
         ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
@@ -4126,10 +4148,9 @@ def _bfloat16_to_f32[
     size: SIMDLength
 ](val: SIMD[DType.bfloat16, size]) -> SIMD[DType.float32, size]:
     @always_inline
-    @parameter
     def wrapper_fn[
         input_dtype: DType, result_dtype: DType
-    ](val: Scalar[input_dtype]) capturing -> Scalar[result_dtype]:
+    ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
         return _bfloat16_to_f32_scalar(
             val._refine[DType.bfloat16](),
         )._refine[result_dtype]()
@@ -4149,7 +4170,7 @@ def _simd_apply[
     //,
     func: def[input_dtype: DType, result_dtype: DType](
         Scalar[input_dtype]
-    ) capturing -> Scalar[result_dtype],
+    ) thin -> Scalar[result_dtype],
     *,
     result_dtype: DType = input_dtype,
 ](x: SIMD[input_dtype, simd_width]) -> SIMD[result_dtype, simd_width]:
@@ -4182,7 +4203,7 @@ def _simd_apply[
     //,
     func: def[lhs_dtype: DType, rhs_dtype: DType, result_dtype: DType](
         Scalar[lhs_dtype], Scalar[rhs_dtype]
-    ) capturing -> Scalar[result_dtype],
+    ) thin -> Scalar[result_dtype],
     *,
     result_dtype: DType,
 ](x: SIMD[_, simd_width], y: SIMD[_, simd_width]) -> SIMD[
