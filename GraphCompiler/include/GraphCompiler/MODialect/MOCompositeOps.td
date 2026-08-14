@@ -673,6 +673,16 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     inherently `multiply_before_cast=true`: gamma is folded in f32 and the value
     is cast to the input dtype once, last. bf16 in/out only (no quantization).
 
+    When `has_residual` is true, `residuals` is added to the sum in f32 before
+    the pre-norm round, each device adding only its own row shard. It must be
+    REPLICATED -- bit-identical on every rank of a group -- which is what lets
+    a per-rank add reproduce the leader-side pre-add it replaces.
+
+    When false it is ignored and the op is a plain reduce-scatter + norm. The
+    operands stay present and group-sized (the variadic groups must all match
+    in size), filled with the inputs and never indexed -- the same convention
+    as `has_residual` on `mo.composite.distributed.matmul_reduce_scatter.sum`.
+
     `group_size` matches `mo.distributed.reducescatter.sum`: the devices split
     into contiguous groups of that many, each reducing independently, so the op
     works under TP-within-DP topologies. It must be at least 2 and must divide
@@ -686,8 +696,10 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     Variadic<MO_Tensor>:$gamma,
     Variadic<MO_RankedScalarFloatTensor>:$epsilon,
     Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    Variadic<MO_Tensor>:$residuals,
     MO_Chain:$inChain,
-    DefaultValuedAttr<I64Attr, "0">:$group_size
+    DefaultValuedAttr<I64Attr, "0">:$group_size,
+    DefaultValuedAttr<BoolAttr, "false">:$has_residual
   );
   let results = (outs
     Variadic<MO_Tensor>:$output,
