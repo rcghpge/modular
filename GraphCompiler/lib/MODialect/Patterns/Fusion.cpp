@@ -4129,6 +4129,13 @@ struct ReduceLayerNormRopeRaggedPattern
       return rewriter.notifyMatchFailure(layerNormOp,
                                          "rope.ragged is not interleaved");
     }
+    // The fused kernel derives the roped region from `freqs_cis`'s width
+    // alone and always rotates the leading columns, so it cannot express a
+    // rope that passes some of its own input through.
+    if (ropeOp.getRopeFirst()) {
+      return rewriter.notifyMatchFailure(layerNormOp,
+                                         "rope.ragged already ropes a prefix");
+    }
 
     // ---- 2. Find the passthrough branch: a direct last-axis slice on ----
     // ropeRoot itself (not through the unsqueeze).
@@ -4252,6 +4259,157 @@ struct ReduceLayerNormRopeRaggedPattern
     if (layerNormDowncast)
       rewriter.eraseOp(layerNormDowncast);
     rewriter.eraseOp(layerNormOp);
+
+    return mlir::success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Split + Ragged RoPE + Concat Fusion Pattern
+//===----------------------------------------------------------------------===//
+//
+// Fuses:
+//   roped, passthrough = split(input, axis=-1)  // roped first
+//   roped'             = mo.composite.rope.ragged(roped, row_offsets,
+//                                                 start_pos, freqs_cis)
+//   result             = concat(roped', passthrough, axis=-1)
+//
+// into a single full-width `mo.composite.rope.ragged` carrying
+// `rope_first = true`, which rotates the leading `freqs_cis`-width columns
+// of each head and passes the rest through -- exactly what the split/concat
+// pair spelled out, minus the concat's copy and the fusion barrier it puts
+// between the RoPE and whatever consumes the result.
+//
+// The model spells this as two `ops.chunk` slices, not a split; PatternFusion
+// runs SliceToSplitPattern over the graph before this pass's own patterns
+// (and SplitToSlicePattern after), so by the time this pattern runs, a pair
+// of slices that partitions the last axis has already become one `mo.split`.
+//
+// This is the DeepSeekV3.2/GLM-5.2 Indexer Q path, where the model chunks
+// the wq_b output as `q_pe, q_nope` and concatenates it back in the same
+// order. The K path in that same block runs through a LayerNorm and is
+// fused by ReduceLayerNormRopeRaggedPattern into a strictly better op. The
+// two patterns cannot collide over one subgraph: that one requires the
+// rope result's single use to be a `mo.static.reshape` (K is unsqueezed to
+// rank 3 for the RoPE and squeezed back), while this one requires it to be
+// the concat itself. K also keeps two independent `mo.slice`s rather than a
+// split, since its halves are sliced off two different values.
+//===----------------------------------------------------------------------===//
+
+struct RopeRaggedSplitConcatPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::Composite::RopeRaggedOp> {
+  RopeRaggedSplitConcatPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::Composite::RopeRaggedOp ropeOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    if (ropeOp.getRopeFirst()) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "rope.ragged already ropes a prefix");
+    }
+    // `rope_first` only has an interleaved (adjacent re/im) implementation:
+    // the non-interleaved rotate-half pairing spans the whole head, so with
+    // a leading roped region it would pair roped columns against
+    // passthrough ones.
+    if (!ropeOp.getInterleaved()) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "rope.ragged is not interleaved");
+    }
+
+    // ---- 1. The roped operand is the leading half of a 2-way split. ------
+    auto splitOp = ropeOp.getInput().getDefiningOp<MO::SplitOp>();
+    if (!splitOp) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "rope input is not a split result");
+    }
+    if (splitOp.getNumResults() != 2) {
+      return rewriter.notifyMatchFailure(ropeOp, "split is not two-way");
+    }
+    // Split results are ordered by ascending start, so result 0 is the
+    // leading region -- which is the only one `rope_first` can rotate.
+    if (ropeOp.getInput() != splitOp.getResult(0)) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "rope does not consume the leading "
+                                         "half of the split");
+    }
+    if (!splitOp.getResult(0).hasOneUse() ||
+        !splitOp.getResult(1).hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          ropeOp, "split halves are used outside this subgraph");
+    }
+
+    Value source = splitOp.getInput();
+    auto sourceTy = cast<MO::TensorType>(source.getType());
+    int64_t rank = static_cast<int64_t>(sourceTy.getRank());
+    int64_t lastAxis = rank - 1;
+    if (normalizeAxis(splitOp.getAxisAttr().getInt(), rank) != lastAxis) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "split axis is not the last axis");
+    }
+
+    // ---- 2. The RoPE must cover the whole half it is given. --------------
+    // `rope.ragged` already passes columns through when `freqs_cis` is
+    // narrower than its input, and it does so at the *front* of the head.
+    // Folding that into a `rope_first` op would relocate those columns to
+    // the back, so only a half that is rotated end to end can be fused.
+    auto ropedTy = cast<MO::TensorType>(splitOp.getResult(0).getType());
+    int64_t ropedWidth = ropedTy.getIntDim(lastAxis);
+    auto freqsTy = cast<MO::TensorType>(ropeOp.getFreqsCis().getType());
+    int64_t freqsWidth = freqsTy.getIntDim(freqsTy.getRank() - 1);
+    if (ropedWidth == ShapedType::kDynamic ||
+        freqsWidth == ShapedType::kDynamic || freqsWidth != ropedWidth) {
+      return rewriter.notifyMatchFailure(
+          ropeOp, "rope does not span the whole roped half");
+    }
+
+    // ---- 3. The RoPE result feeds concat(roped, passthrough). ------------
+    Value ropeResult = ropeOp.getResult();
+    if (!ropeResult.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          ropeOp, "rope.ragged result has multiple uses");
+    }
+    auto concatOp = dyn_cast<MO::ConcatOp>(*ropeResult.getUsers().begin());
+    if (!concatOp) {
+      return rewriter.notifyMatchFailure(
+          ropeOp, "rope.ragged result is not consumed by a concat");
+    }
+    if (normalizeAxis(concatOp.getAxisAttr().getInt(), rank) != lastAxis) {
+      return rewriter.notifyMatchFailure(ropeOp,
+                                         "concat axis is not the roped axis");
+    }
+    // Operand order matters: the fused op emits roped columns first, so a
+    // concat(passthrough, roped) would silently transpose the two halves.
+    if (concatOp.getInputs().size() != 2 ||
+        concatOp.getInputs()[0] != ropeResult ||
+        concatOp.getInputs()[1] != splitOp.getResult(1)) {
+      return rewriter.notifyMatchFailure(
+          ropeOp,
+          "concat inputs are not in expected order (roped, passthrough)");
+    }
+
+    // ---- 4. Device consistency check -------------------------------------
+    *rewriter.pushOp() = splitOp;
+    *rewriter.pushOp() = concatOp;
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          ropeOp, "matched ops have inconsistent devices");
+    }
+
+    // ---- 5. Create the fused op and replace uses -------------------------
+    auto outputTy = cast<MO::TensorType>(concatOp.getResult().getType());
+    auto fusedOp = rewriter.create<MO::Composite::RopeRaggedOp>(
+        ropeOp.getLoc(), outputTy, source, ropeOp.getInputRowOffsets(),
+        ropeOp.getStartPos(), ropeOp.getFreqsCis(), ropeOp.getInterleaved(),
+        /*rope_first=*/true, ropeOp.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(concatOp.getResult(), fusedOp.getResult());
+
+    // Erase from consumers to producers.
+    rewriter.eraseOp(concatOp);
+    rewriter.eraseOp(ropeOp);
+    rewriter.eraseOp(splitOp);
 
     return mlir::success();
   }
@@ -5076,8 +5234,8 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
                ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                LayerNormPattern, RMSNormFusedResidualAddPattern,
                RMSNormResidualAddPattern, ReduceRMSNormRoPEPattern,
-               ReduceLayerNormRopeRaggedPattern, ConcatSlicePattern,
-               MatmulFusedPartialRMSNormPattern>(ctx);
+               ReduceLayerNormRopeRaggedPattern, RopeRaggedSplitConcatPattern,
+               ConcatSlicePattern, MatmulFusedPartialRMSNormPattern>(ctx);
 
   patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                RMSNormFusedQuantizeDynamicScaledFP8Pattern,

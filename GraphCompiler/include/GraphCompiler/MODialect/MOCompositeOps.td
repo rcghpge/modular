@@ -95,15 +95,20 @@ def MOComposite_RopeRaggedOp : MO_CompositeOp<"rope.ragged", [
     tokens. Per-token absolute positions are derived from `inputRowOffsets`
     (the ragged batch boundaries) and `startPos` (each sequence's current
     cache length) and used to index `freqsCis`. When `freqsCis`'s last
-    dimension is smaller than `input`'s, RoPE is applied only to the
-    trailing `freqsCis` columns of each head and the leading columns pass
-    through unrotated.
+    dimension is smaller than `input`'s, RoPE is applied to only
+    `freqsCis`-many columns of each head and the rest pass through
+    unrotated: the trailing columns are rotated by default (the MLA
+    layout), or the leading ones when `rope_first` is set (the
+    DeepSeekV3.2/GLM Indexer layout, where Q and K are chunked as
+    `pe, nope`). `rope_first` is meaningless -- and must be false -- when
+    `freqsCis` is as wide as `input`, since then no column passes through.
 
     Example:
 
     ```mlir
       %result = mo.composite.rope.ragged(%input, %row_offsets, %start_pos,
-                                          %freqs_cis) {interleaved = false} :
+                                          %freqs_cis)
+        {interleaved = false, rope_first = false} :
         (!mo.tensor<[8, 1, 64], bf16, gpu:0>, !mo.tensor<[batch_plus_one], ui32, gpu:0>,
          !mo.tensor<[batch], ui32, gpu:0>, !mo.tensor<[1024, 64], f32, gpu:0>)
         -> !mo.tensor<[8, 1, 64], bf16, gpu:0>
@@ -116,12 +121,14 @@ def MOComposite_RopeRaggedOp : MO_CompositeOp<"rope.ragged", [
     MO_Tensor:$startPos,
     MO_Tensor:$freqsCis,
     BoolAttr:$interleaved,
+    BoolAttr:$rope_first,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
-    `{` `interleaved` `=` $interleaved `}` attr-dict `:`
+    `{` `interleaved` `=` $interleaved `,` `rope_first` `=` $rope_first `}`
+    attr-dict `:`
     functional-type(operands, results)
   }];
 }
