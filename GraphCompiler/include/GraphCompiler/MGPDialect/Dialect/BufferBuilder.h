@@ -373,12 +373,6 @@ struct BufferizedTensor {
 
   /// The mgp.tensor_spec describing the shape and dtype of tensor
   /// at runtime.
-  ///
-  /// TODO(#17379): Avoid committing to a tensor spec, and instead just
-  /// capture the index-typed values holding dynamic dimensions, or the
-  /// 'shape' (ie a spec with unknown dtype) if the tensor has dynamic rank.
-  /// I think this change is best done when finishing support for dynamic
-  /// ranked MO tensors.
   TypedValue<TensorSpecType> tensorSpec;
 
   BufferizedTensor() = default;

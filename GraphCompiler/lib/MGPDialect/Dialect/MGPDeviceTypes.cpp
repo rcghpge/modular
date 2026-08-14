@@ -83,7 +83,7 @@ ShapedType DeviceTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return DeviceTensorType::get(getDevice(), tensorSpec);
 }
 
-bool DeviceTensorType::hasRank() const { return getTensorSpec().hasRank(); }
+bool DeviceTensorType::hasRank() const { return true; }
 
 ArrayRef<int64_t> DeviceTensorType::getShape() const {
   return getTensorSpec().getShape();
@@ -96,11 +96,4 @@ Type DeviceTensorType::getElementType() const {
 DeviceTensorType DeviceTensorType::get(DeviceRefAttr device,
                                        TensorSpecType tensorSpecType) {
   return DeviceTensorType::get(device.getContext(), device, tensorSpecType);
-}
-
-TensorSpecType DeviceTensorType::getTensorSpec(bool isShapeOnly) {
-  if (isShapeOnly)
-    return TensorSpecType::get(getContext(), getTensorSpec().getOptDims(),
-                               std::optional<DType>());
-  return getTensorSpec();
 }

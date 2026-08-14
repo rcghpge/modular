@@ -31,14 +31,6 @@ func.func @spec_create_unknown_elem_type(%dim : index) -> !mgp.tensor_spec<?x64x
 
 // -----
 
-func.func @spec_create_dynamic_rank(%dim : index) -> !mgp.tensor_spec<*xf32> {
-  // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected !mgp.tensor_spec type to have a statically known rank.}}
-  %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<*xf32>
-  mef.output %0 : !mgp.tensor_spec<*xf32>
-}
-
-// -----
-
 //
 // mgp.tensor_spec.get_dim
 //
@@ -46,14 +38,6 @@ func.func @spec_create_dynamic_rank(%dim : index) -> !mgp.tensor_spec<*xf32> {
 func.func @spec_get_dim_oob(%spec : !mgp.tensor_spec<?x64x?xf32>) -> index {
   // expected-error@+1 {{'mgp.tensor_spec.get_dim' op expected axis 4 to be less than the rank of the tensor spec 3}}
   %dim0 = mgp.tensor_spec.get_dim[4] %spec : !mgp.tensor_spec<?x64x?xf32>
-  mef.output %dim0 : index
-}
-
-// -----
-
-func.func @spec_get_dim_unranked(%spec : !mgp.tensor_spec<*xf32>) -> index {
-  // expected-error@+1 {{'mgp.tensor_spec.get_dim' op expected tensor spec to have known rank}}
-  %dim0 = mgp.tensor_spec.get_dim[0] %spec : !mgp.tensor_spec<*xf32>
   mef.output %dim0 : index
 }
 

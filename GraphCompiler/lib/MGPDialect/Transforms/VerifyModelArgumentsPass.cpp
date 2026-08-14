@@ -65,9 +65,6 @@ class VerifyModelArgumentsPass
       if (!tensorArg)
         continue;
 
-      if (!tensorArg.hasRank())
-        continue;
-
       if (tensorArg.getNumDynamicDims() == (size_t)tensorArg.getRank())
         continue;
 

@@ -14,21 +14,11 @@
 namespace M::MGP {
 
 inline MGP::TensorSpecType createTensorSpecType(MO::TensorType tensor) {
-  if (tensor.hasRank()) {
-    SmallVector<int64_t> shape{}; // Defaults to empty shape
-    if (isa<MOSH::ShapeAttr>(tensor.getShapeAttr()))
-      shape = tensor.getIntDims();
-    return MGP::TensorSpecType::get(shape, tensor.getElementType());
-  } else {
-    return MGP::TensorSpecType::get(tensor.getElementType());
-  }
-}
+  SmallVector<int64_t> shape{}; // Defaults to empty shape
 
-inline MGP::TensorSpecType createTensorSpecType(mlir::ShapedType tensor) {
-  if (tensor.hasRank())
-    return MGP::TensorSpecType::get(tensor.getShape(), tensor.getElementType());
-  else
-    return MGP::TensorSpecType::get(tensor.getElementType());
+  if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensor.getShapeAttr()))
+    shape = shapeAttr.getIntDims();
+  return MGP::TensorSpecType::get(shape, tensor.getElementType());
 }
 
 } // namespace M::MGP

@@ -279,15 +279,14 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
   let description = [{
     `!mgp.tensor_spec` represents the shape and dtype of a tensor.
 
-    Both static and dynamic (aka unknown) aspects are supported:
-     - The rank may be static (implied by the number of dimensions, ie the
-       number of `x` delimiters) or dynamic (denoted by `*`). Only ranks up to
-       kMaxRank are supported (currently 8). A rank of zero denotes 'scalars',
-       though in practice this has the same runtime representation as rank 1,
-       dimension 1.
-     - For static ranks, each dimension may be static (an unsigned integer
-       literal) or dynamic (denoted by `?`). Symbolic dimensions are not
-       expressible in MGP.
+    The rank is always static, implied by the number of dimensions (ie the
+    number of `x` delimiters). Only ranks up to kMaxRank are supported
+    (currently 8). A rank of zero denotes 'scalars', though in practice this
+    has the same runtime representation as rank 1, dimension 1.
+
+    Dynamic (aka unknown) dimensions and dtypes are supported:
+     - Each dimension may be static (an unsigned integer literal) or dynamic
+       (denoted by `?`). Symbolic dimensions are not expressible in MGP.
      - The dtype may be static (using the DType::getFromString syntax) or
        dynamic (denoted by`unk`).
 
@@ -313,8 +312,7 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
         - 'raw' form: uint64_t, where ~0 denotes a dynamic dimension. Used
           when dimensions need to be encoded into MEF ops via attributes.
      - For shapes:
-        - 'optional' form: std::optional<ArrayRef<std::optional<uint64_t>>>,
-          where nullopt denotes a dynamic rank.
+        - 'optional' form: ArrayRef<std::optional<uint64_t>>.
         - 'shaped type' form: ArrayRef<int64_t>, as used by ShapedTypeInterface.
         - 'raw' form: IntArrayElementsAttr of UI64Ints.
      - For dtypes:
@@ -335,70 +333,53 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
     !mgp.tensor_spec<4x16xf32>
     // Spec with one dynamic dimension and dynamic dtype.
     !mgp.tensor_spec<?x3xunk>
-    // Dynamically ranked spec.
-    !mgp.tensor_spec<*xi32>
     ```
   }];
 
   // NOTE: To support the ShapedTypeInterface::getShape() method we maintain
   // 'optional' (dimsOrEmpty) and 'shaped type' (shapeOrEmpty) forms.
   // See the builders for the smart constructors.
-  let parameters = (ins "bool":$hasRank,
-                        ArrayRefParameter<"std::optional<uint64_t>">:$dimsOrEmpty,
+  let parameters = (ins ArrayRefParameter<"std::optional<uint64_t>">:$dimsOrEmpty,
                         "std::optional<DType>":$optDType,
                         ArrayRefParameter<"int64_t">:$shapeOrEmpty);
-  let assemblyFormat = "`<` custom<DimsAndDType>($hasRank, $dimsOrEmpty, $optDType, $shapeOrEmpty) `>`";
+  let assemblyFormat = "`<` custom<DimsAndDType>($dimsOrEmpty, $optDType, $shapeOrEmpty) `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
     /// For the ShapedTypeInterface we implement:
-    ///   bool hasRank();
+    ///   bool hasRank(); // always true.
     ///   ShapedType cloneWith(std::optional<ArrayRef<int64_t>> shape,
     ///                        Type elementType);
     ///   Type getElementType();
-    ///   ArrayRef<int64_t> getShape(); // requires hasRank().
-    /// CAUTION: Most of the following methods require hasRank() and will
-    ///          assert fail otherwise. Take care.
-
-    /// Returns the dimensions of this tensor spec, or nullopt if dynamic
-    /// ranked.
-    /// Dynamic ranked safe.
-    std::optional<llvm::ArrayRef<std::optional<uint64_t>>> getOptDims() const;
+    ///   ArrayRef<int64_t> getShape();
 
     /// Returns the dimensions of this tensor spec.
-    /// Requires hasRank().
     llvm::ArrayRef<std::optional<uint64_t>> getDims() const;
 
     /// Returns the rank of this tensor spec.
-    /// Requires hasRank().
     size_t getRank() const;
 
     /// Returns the number of unknown, aka 'dynamic' dimensions in
     /// this tensor spec.
-    /// Requires hasRank().
     size_t getNumDynamicDims() const;
 
     /// Return the dimension at index i in this spec, or nullopt if the
     /// dimension is dynamic.
-    /// Requires hasRank().
     std::optional<uint64_t> operator[](size_t i) const;
 
     /// Returns the number of elements in a tensor of this spec, or
-    /// nullopt if the tensor shape is not fully static (ie dynamic rank,
-    /// or at least one dynamic dimension).
-    /// Dynamic ranked safe.
+    /// nullopt if the tensor shape is not fully static (ie at least one
+    /// dynamic dimension).
     std::optional<uint64_t> getNumElements() const;
 
     /// Returns the size of the buffer needed to represent a tensor
     /// of this spec, or nullopt if the tensor spec is not fully static
-    /// (ie dynamic rank, at least one dynamic dimension, or dynamic dtype).
-    /// Dynamic ranked safe.
+    /// (ie at least one dynamic dimension, or dynamic dtype).
     std::optional<uint64_t> getSizeInBytes() const;
 
     /// Returns the dimensions of this tensor spec in 'raw form'.
     /// Each element of the result will be an UI64Int, with ~0 denoting
     /// an unknown dimension.
-    /// Requires hasRank().
     IntArrayElementsAttr getRawDims() const;
 
     /// Returns the dtype of this tensor spec in 'raw form'.
@@ -409,25 +390,20 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
 
   let builders = [
     /// Constructs a tensor spec from its components in 'optional' form.
-    TypeBuilder<(ins "std::optional<llvm::ArrayRef<std::optional<uint64_t>>>":$optDims,
+    TypeBuilder<(ins "llvm::ArrayRef<std::optional<uint64_t>>":$dims,
                      "std::optional<DType>":$optDType)>,
 
     /// Constructs a tensor spec from its components in 'shaped type' form.
-    /// Only supports statically known ranks.
     TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<int64_t>":$shape,
                                         "mlir::Type":$elementType)>,
 
-    /// Constructs a dynamically ranked tensor spec with the given element type.
-    TypeBuilderWithInferredContext<(ins "mlir::Type":$elementType)>,
-
     /// Construct a tensor spec from its components in 'raw form',
-    /// using underlying integer values. Only supports statically known ranks.
+    /// using underlying integer values.
     TypeBuilder<(ins "llvm::ArrayRef<uint64_t>":$rawDims, "uint8_t":$rawDType)>,
 
     /// Construct a tensor spec from its components in 'raw form', using
     /// actual attributes. As a convenience, the null dtype attribute is taken
-    /// to denote the unknown element type. Only supports statically known
-    /// ranks.
+    /// to denote the unknown element type.
     TypeBuilderWithInferredContext<(ins "IntArrayElementsAttr":$rawDims,
                                         "mlir::IntegerAttr":$rawDTypeOrNull)>,
   ];
@@ -570,12 +546,6 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
                                         "M::MGP::TensorSpecType":$tensorSpecType)>,
   ];
-
-  let extraClassDeclaration = [{
-     /// Return the tensor spec for tensor. If isShapeOnly is true, the tensor
-     /// spec will have an unknown dtype.
-     M::MGP::TensorSpecType getTensorSpec(bool isShapeOnly);
-  }];
 }
 
 #endif  // GENERICML_MGPDIALECT_MGPTYPES_TD

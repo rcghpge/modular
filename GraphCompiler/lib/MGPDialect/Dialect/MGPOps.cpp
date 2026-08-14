@@ -360,9 +360,6 @@ LogicalResult TensorSpecCreateOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 void TensorSpecCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                                TensorSpecType spec, ValueRange runtimeDims) {
-  ASSERT_STREAM(spec.hasRank(),
-                << "can only construct an mgp.tensor_spec.create "
-                   "for tensor specs of statically known rank");
   TensorSpecCreateOp::build(odsBuilder, odsState,
                             /*runtimeDims=*/runtimeDims,
                             /*rawDims=*/spec.getRawDims(),
@@ -381,9 +378,6 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   auto tensorSpec = dyn_cast<TensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.tensor_spec type.";
-  if (!tensorSpec.hasRank())
-    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
-                               "statically known rank.";
   if (!tensorSpec.getOptDType())
     return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "known element type.";
@@ -407,7 +401,6 @@ LogicalResult TensorSpecCreateOp::verify() {
                                  getContext(), getRawDims(), getRawDType());
   if (impliedSpecType == nullptr)
     return failure();
-  assert(impliedSpecType.hasRank());
   TensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError()
@@ -482,9 +475,7 @@ LogicalResult TensorSpecGetDimOp::emitMojo(MOGG::EmitMojoState &state) {
 
 LogicalResult TensorSpecGetDimOp::verify() {
   TensorSpecType specType = getSpec().getType();
-  if (!specType.hasRank())
-    return emitOpError() << "expected tensor spec to have known rank";
-  if (specType.hasRank() && getAxis() >= specType.getRank())
+  if (getAxis() >= specType.getRank())
     return emitOpError() << "expected axis " << getAxis()
                          << " to be less than the rank of the tensor spec "
                          << specType.getRank();
@@ -494,8 +485,6 @@ LogicalResult TensorSpecGetDimOp::verify() {
 OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
   Operation *specProducer = getSpec().getDefiningOp();
   TensorSpecType specType = getSpec().getType();
-  if (!specType.hasRank())
-    return {};
   if (getAxis() >= specType.getRank())
     return {};
   if (!specType.isDynamicDim(getAxis())) {
@@ -701,8 +690,6 @@ LogicalResult TensorExtractTensorSpecOp::verify() {
                        "implied by the tensor type (")
            << getOutSpec().getType() << " vs " << expectedSpecType << ").";
   }
-  if (!expectedSpecType.hasRank())
-    return emitError() << "Expected to have rank information";
   if (!expectedSpecType.getOptDType().has_value())
     return emitError() << "Expected to have DType information for operand";
   return success();

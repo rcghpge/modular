@@ -631,7 +631,7 @@ struct MOOpLoweringState {
   BufferizedTensor getBufferizedInput(Value moTensor);
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting
-  /// for any dynamic ranks or dimensions.
+  /// for any dynamic dimensions.
   FailureOr<TypedValue<MGP::TensorSpecType>>
   createTensorSpec(MO::TensorType moTensorType);
 

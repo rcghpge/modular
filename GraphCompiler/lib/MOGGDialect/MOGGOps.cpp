@@ -4643,9 +4643,6 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
     MojoValue asyncUnpackFunc{kFnUnpackTensor};
     MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
-    if (!tensorSpec.hasRank())
-      return emitError() << "Expected Tensor operand to have known rank";
-
     auto tensorRank = tensorSpec.getRank();
     auto bufferRank = tensorRank == 0 ? 1 : tensorRank;
     std::optional<DType> maybeDType = tensorSpec.getOptDType();
@@ -4757,8 +4754,6 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   // promoted rank-1 buffer view.
   if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(getInput().getType())) {
     MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
-    if (!tensorSpec.hasRank())
-      return emitError() << "Expected Tensor output to have known rank";
     MojoValue specRankParam(static_cast<uint64_t>(tensorSpec.getRank()));
     MojoValue tensorPackFunc(kFnMoggAsyncPackOwnedTensor);
 

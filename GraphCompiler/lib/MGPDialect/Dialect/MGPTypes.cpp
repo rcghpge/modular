@@ -58,33 +58,24 @@ static void printDType(AsmPrinter &p, std::optional<DType> optDType) {
   p << (optDType ? optDType->getAsString() : kUnknownDType);
 }
 
-/// Parses (((<int> | '?') 'x')* | '*' 'x') (<dtype> | 'unk')
-static ParseResult
-parseDimsAndDType(AsmParser &p, bool &hasRank,
-                  SmallVector<std::optional<uint64_t>> &dimsOrEmpty,
-                  std::optional<DType> &optDType,
-                  SmallVector<int64_t> &shapeOrEmpty) {
+/// Parses ((<int> | '?') 'x')* (<dtype> | 'unk')
+static ParseResult parseDimsAndDType(
+    AsmParser &p, SmallVector<std::optional<uint64_t>> &dimsOrEmpty,
+    std::optional<DType> &optDType, SmallVector<int64_t> &shapeOrEmpty) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc))
     return failure();
 
-  if (succeeded(p.parseOptionalStar())) {
-    if (p.parseXInDimensionList())
-      return failure();
-    hasRank = false;
-  } else if (succeeded(p.parseDimensionList(shapeOrEmpty, /*allowDynamic=*/true,
-                                            /*withTrailingX=*/true))) {
-    hasRank = true;
-    dimsOrEmpty.reserve(shapeOrEmpty.size());
-    for (int64_t dim : shapeOrEmpty) {
-      if (!isValidRawSignedSize(dim))
-        return p.emitError(loc)
-               << "shape dimensions must be non-negative or the "
-                  "distinguished '?' unknown dimension.";
-      dimsOrEmpty.emplace_back(rawSignedSizeToOptSize(dim));
-    }
-  } else {
+  if (p.parseDimensionList(shapeOrEmpty, /*allowDynamic=*/true,
+                           /*withTrailingX=*/true))
     return failure();
+
+  dimsOrEmpty.reserve(shapeOrEmpty.size());
+  for (int64_t dim : shapeOrEmpty) {
+    if (!isValidRawSignedSize(dim))
+      return p.emitError(loc) << "shape dimensions must be non-negative or the "
+                                 "distinguished '?' unknown dimension.";
+    dimsOrEmpty.push_back(rawSignedSizeToOptSize(dim));
   }
 
   if (p.getCurrentLocation(&loc) || parseDType(p, optDType))
@@ -95,43 +86,36 @@ parseDimsAndDType(AsmParser &p, bool &hasRank,
 
 /// Prints a list of dimensions followed by a DType, printing an empty
 /// dimension as the '?' and an empty DType as 'unk'. The shape is ignored.
-static void printDimsAndDType(AsmPrinter &p, bool hasRank,
+static void printDimsAndDType(AsmPrinter &p,
                               ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
                               std::optional<DType> optDType,
                               ArrayRef<int64_t> shapeOrEmpty) {
-  if (hasRank) {
-    for (const auto &dim : dimsOrEmpty)
-      p.getStream() << (dim ? std::to_string(*dim) : "?") << "x";
-  } else {
-    p.getStream() << "*x";
-  }
+  for (const auto &dim : dimsOrEmpty)
+    p.getStream() << (dim ? std::to_string(*dim) : "?") << "x";
   printDType(p, optDType);
 }
 
 ParseResult M::MGP::parseTensorSpec(AsmParser &p, TensorSpecType &tensorSpec) {
-  bool hasRank;
   SmallVector<std::optional<uint64_t>> dims;
   std::optional<DType> optDType;
   SmallVector<int64_t> shape;
   llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseDimsAndDType(p, hasRank, dims, optDType, shape))
+  if (p.getCurrentLocation(&loc) || parseDimsAndDType(p, dims, optDType, shape))
     return failure();
 
   // Though the following get calls will invoke verify, the resulting errors
   // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, hasRank,
-                                    dims, optDType, shape)))
+  if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, dims,
+                                    optDType, shape)))
     return failure();
 
-  tensorSpec =
-      TensorSpecType::get(p.getContext(), hasRank, dims, optDType, shape);
+  tensorSpec = TensorSpecType::get(p.getContext(), dims, optDType, shape);
   return success();
 }
 
 void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
-  printDimsAndDType(p, tensorSpec.getHasRank(), tensorSpec.getDimsOrEmpty(),
-                    tensorSpec.getOptDType(), tensorSpec.getShapeOrEmpty());
+  printDimsAndDType(p, tensorSpec.getDimsOrEmpty(), tensorSpec.getOptDType(),
+                    tensorSpec.getShapeOrEmpty());
 }
 
 //===----------------------------------------------------------------------===//
@@ -224,36 +208,29 @@ std::optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
-LogicalResult TensorSpecType::verify(
-    function_ref<InFlightDiagnostic()> emitError, bool hasRank,
-    ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
-    std::optional<DType> optDType, ArrayRef<int64_t> shapeOrEmpty) {
-  if (hasRank) {
-    if (dimsOrEmpty.size() > kMaxRank)
-      return emitError() << "tensor spec must have a rank between 0 and "
-                         << kMaxRank << ".";
+LogicalResult
+TensorSpecType::verify(function_ref<InFlightDiagnostic()> emitError,
+                       ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
+                       std::optional<DType> optDType,
+                       ArrayRef<int64_t> shapeOrEmpty) {
+  if (dimsOrEmpty.size() > kMaxRank)
+    return emitError() << "tensor spec must have a rank between 0 and "
+                       << kMaxRank << ".";
 
-    if (dimsOrEmpty.size() != shapeOrEmpty.size())
+  if (dimsOrEmpty.size() != shapeOrEmpty.size())
+    return emitError() << "tensor spec dims and shape must have the same rank.";
+
+  for (const std::optional<uint64_t> &dim : dimsOrEmpty) {
+    if (!isValidOptSize(dim))
+      return emitError() << "tensor spec dimensions must be non-negative or "
+                            "the distinguished '?' unknown dimension.";
+  }
+
+  for (size_t i = 0; i < dimsOrEmpty.size(); ++i) {
+    int64_t rawSignedDim = optSizeToRawSignedSize(dimsOrEmpty[i]);
+    if (shapeOrEmpty[i] != rawSignedDim)
       return emitError()
-             << "tensor spec dims and shape must have the same rank.";
-
-    for (const std::optional<uint64_t> &dim : dimsOrEmpty) {
-      if (!isValidOptSize(dim))
-        return emitError()
-               << "tensor spec dimensions must be non-negative or the "
-                  "distinguished '?' unknown dimension.";
-    }
-
-    for (size_t i = 0; i < dimsOrEmpty.size(); ++i) {
-      int64_t rawSignedDim = optSizeToRawSignedSize(dimsOrEmpty[i]);
-      if (shapeOrEmpty[i] != rawSignedDim)
-        return emitError()
-               << "tensor spec dims and shape must have the same dimensions.";
-    }
-  } else {
-    if (!dimsOrEmpty.empty() || !shapeOrEmpty.empty())
-      return emitError() << "dynamically ranked tensor spec must have empty "
-                            "dims and shape.";
+             << "tensor spec dims and shape must have the same dimensions.";
   }
 
   // Caution: can't inline into if since ErrorOrSuccess is temporary.
@@ -264,27 +241,20 @@ LogicalResult TensorSpecType::verify(
   return success();
 }
 
-TensorSpecType
-TensorSpecType::get(MLIRContext *context,
-                    std::optional<ArrayRef<std::optional<uint64_t>>> optDims,
-                    std::optional<DType> optDType) {
-  if (optDims) {
-    SmallVector<int64_t> shape;
-    shape.reserve(optDims->size());
-    for (const std::optional<uint64_t> &dim : *optDims)
-      shape.emplace_back(optSizeToRawSignedSize(dim));
-    return TensorSpecType::get(context, /*hasRank=*/true, *optDims, optDType,
-                               shape);
-  } else {
-    return TensorSpecType::get(context, /*hasRank=*/false, {}, optDType, {});
-  }
+TensorSpecType TensorSpecType::get(MLIRContext *context,
+                                   ArrayRef<std::optional<uint64_t>> dims,
+                                   std::optional<DType> optDType) {
+  SmallVector<int64_t> shape;
+  shape.reserve(dims.size());
+  for (const std::optional<uint64_t> &dim : dims)
+    shape.push_back(optSizeToRawSignedSize(dim));
+  return TensorSpecType::get(context, dims, optDType, shape);
 }
 
 TensorSpecType TensorSpecType::getChecked(
     function_ref<::mlir::InFlightDiagnostic()> emitError, MLIRContext *context,
-    std::optional<ArrayRef<std::optional<uint64_t>>> optDims,
-    std::optional<DType> optDType) {
-  return TensorSpecType::get(context, optDims, optDType);
+    ArrayRef<std::optional<uint64_t>> dims, std::optional<DType> optDType) {
+  return TensorSpecType::get(context, dims, optDType);
 }
 
 TensorSpecType TensorSpecType::get(ArrayRef<int64_t> shape, Type elementType) {
@@ -297,10 +267,10 @@ TensorSpecType TensorSpecType::get(ArrayRef<int64_t> shape, Type elementType) {
   SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(shape.size());
   for (auto dim : shape)
-    dims.emplace_back(rawSignedSizeToOptSize(dim));
+    dims.push_back(rawSignedSizeToOptSize(dim));
 
-  return TensorSpecType::get(elementType.getContext(),
-                             /*hasRank=*/true, dims, *errOrDType, shape);
+  return TensorSpecType::get(elementType.getContext(), dims, *errOrDType,
+                             shape);
 }
 
 TensorSpecType
@@ -315,28 +285,6 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
   return TensorSpecType::get(shape, elementType);
 }
 
-TensorSpecType TensorSpecType::get(Type elementType) {
-  ErrorOr<std::optional<DType>> errOrDType =
-      DTypeType::fromMlirType(elementType);
-  ASSERT_STREAM(!errOrDType.isError(),
-                << "element type is not representable as a DType: "
-                << errOrDType.takeError());
-  return TensorSpecType::get(elementType.getContext(),
-                             /*hasRank=*/false, {}, *errOrDType, {});
-}
-
-TensorSpecType
-TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
-                           Type elementType) {
-  ErrorOr<std::optional<DType>> errOrDType =
-      DTypeType::fromMlirType(elementType);
-  if (const auto *err = errOrDType.getError()) {
-    emitError() << err;
-    return {};
-  }
-  return get(elementType);
-}
-
 TensorSpecType TensorSpecType::get(MLIRContext *context,
                                    ArrayRef<uint64_t> rawDims,
                                    uint8_t rawDType) {
@@ -344,9 +292,9 @@ TensorSpecType TensorSpecType::get(MLIRContext *context,
   SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(rawDims.size());
   for (auto dim : rawDims)
-    dims.emplace_back(rawSizeToOptSize(dim));
+    dims.push_back(rawSizeToOptSize(dim));
 
-  return TensorSpecType::get(context, std::optional(dims), dtype);
+  return TensorSpecType::get(context, dims, dtype);
 }
 
 TensorSpecType
@@ -373,8 +321,8 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
   return TensorSpecType::get(rawShape, rawDTypeOrNull);
 }
 
-/// ShapedTypeInterface::hasRank.
-bool TensorSpecType::hasRank() const { return getHasRank(); }
+/// ShapedTypeInterface::hasRank. Tensor specs are always ranked.
+bool TensorSpecType::hasRank() const { return true; }
 
 /// ShapedTypeInterface::cloneWith.
 /// Returns clone with given element type, which must be representable as a
@@ -394,21 +342,9 @@ Type TensorSpecType::getElementType() const {
 }
 
 /// ShapedTypeInterface::getShape.
-ArrayRef<int64_t> TensorSpecType::getShape() const {
-  ASSERT_STREAM(getHasRank(), << "tensor spec is dynamically ranked");
-  return getShapeOrEmpty();
-}
-
-std::optional<ArrayRef<std::optional<uint64_t>>>
-TensorSpecType::getOptDims() const {
-  if (getHasRank())
-    return getDimsOrEmpty();
-  else
-    return std::nullopt;
-}
+ArrayRef<int64_t> TensorSpecType::getShape() const { return getShapeOrEmpty(); }
 
 ArrayRef<std::optional<uint64_t>> TensorSpecType::getDims() const {
-  ASSERT_STREAM(getHasRank(), << "tensor spec is dynamically ranked");
   return getDimsOrEmpty();
 }
 
@@ -424,8 +360,6 @@ std::optional<uint64_t> TensorSpecType::operator[](size_t i) const {
 }
 
 std::optional<uint64_t> TensorSpecType::getNumElements() const {
-  if (!getHasRank())
-    return {}; // dynamic rank
   uint64_t prod = 1;
   for (const std::optional<uint64_t> &dim : getDims()) {
     if (!dim)
@@ -441,7 +375,7 @@ std::optional<uint64_t> TensorSpecType::getSizeInBytes() const {
     return {}; // dynamic dtype
   std::optional<uint64_t> numElems = getNumElements();
   if (!numElems)
-    return {}; // dynamic rank or dimension
+    return {}; // dynamic dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
   ASSERT_STREAM(bytes >= 0, << "overflow in getSizeInBytes");
   return static_cast<uint64_t>(bytes);

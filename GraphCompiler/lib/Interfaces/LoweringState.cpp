@@ -185,10 +185,10 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       /* no-op */
     } else if (auto inShapeParam =
                    dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShapeAttr())) {
-      // Argument has dynamic rank. The parameter needs to be represented by
-      // the runtime MGP 'shape' of the tensor, ie a tensor_spec with unknown
-      // dtype. However, we only need to capture the mapping for the first
-      // occurrence of the parameter.
+      // The argument's whole shape is a single parameter. The parameter needs
+      // to be represented by the runtime MGP 'shape' of the tensor, ie a
+      // tensor_spec with unknown dtype. However, we only need to capture the
+      // mapping for the first occurrence of the parameter.
       hasParams = true;
       if (!params.lookupLowered(parentRegion, inShapeParam))
         params.emplaceLowered(parentRegion, inShapeParam,
@@ -893,9 +893,6 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
 
 FailureOr<TypedValue<MGP::TensorSpecType>>
 MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
-  if (!moTensorType.hasRank())
-    return opBeingLowered->emitOpError(
-        "dynamically ranked MO tensors are not yet supported");
   MGP::TensorSpecType tensorSpecType = MGP::createTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
     // Statically shaped.
