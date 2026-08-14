@@ -59,15 +59,17 @@ mo.graph @custom_op_shape_func<D0, D1 -> D2, D3>(
 }
 
 // A trait-typed, metadata-only shape function (`trait_metadata_shape_op_shape`,
-// `Some[DenseTensor]` with no io-role). The shape kernel carries the no-role
-// trait contract, so its tensor operand is lowered on the trait lane (emitted
-// as a `_MoggDenseTensorArg` rather than rebound to `InputTensor` -- the emitted
-// Mojo is exercised by the CPU e2e `mogg-kernel-api-e2e-trait-shape-func.mlir`).
+// `Some[DenseTensor]` with no io-role). The no-role trait contract is derived
+// from the shape-function declaration at lowering (GEX-4071; no positional
+// contract array is stamped on the kernel op), so its tensor operand is
+// lowered on the trait lane (emitted as a `_MoggDenseTensorArg` rather than
+// rebound to `InputTensor` -- the emitted Mojo is exercised by the CPU e2e
+// `mogg-kernel-api-e2e-trait-shape-func.mlir`).
 // CHECK-LABEL: mo.graph @trait_metadata_shape_func
 // CHECK: mogg.kernel
 // CHECK:   mogg.call.shape["{{.*}}.trait_metadata_shape_op_shape"]
 // CHECK-SAME: -> !mogg.shape_func_result<2>
-// CHECK: mogg.input_tensor_arg_contracts = [#mogg.tensor_arg<{role = none, fused = false, access = none, capabilities = none}>]
+// CHECK-NOT: mogg.input_tensor_arg_contracts
 mo.graph @trait_metadata_shape_func<D0, D1 -> D2, D3>(
   %input: !mo.tensor<[D0, D1], f32>
 ) -> !mo.tensor<[D2, D3], f32> {

@@ -55,10 +55,14 @@ bool MojoRegistry::containsKernel(llvm::StringRef name) const {
 
 KernelDeclOp
 MojoRegistry::lookupKernelBySymName(llvm::StringRef symName) const {
-  auto it = kernelBySymName.find(symName);
-  ASSERT_STREAM(it != kernelBySymName.end(),
-                "no kernel registered for '" << symName << "'");
-  return it->second;
+  KernelDeclOp decl = lookupKernelBySymNameOrNull(symName);
+  ASSERT_STREAM(decl, "no kernel registered for '" << symName << "'");
+  return decl;
+}
+
+KernelDeclOp
+MojoRegistry::lookupKernelBySymNameOrNull(llvm::StringRef symName) const {
+  return kernelBySymName.lookup(symName);
 }
 
 PrimitiveDeclOp MojoRegistry::lookupPrimitive(llvm::StringRef name) const {
@@ -90,11 +94,15 @@ MojoRegistry::lookupShapeFunction(llvm::StringRef name) const {
 
 ShapeFunctionDeclOp
 MojoRegistry::lookupShapeFunctionBySymName(llvm::StringRef symName) const {
-  auto it = shapeFuncBySymName.find(symName);
-  ASSERT_STREAM(it != shapeFuncBySymName.end(),
-                "no shape function registered for sym_name '" << symName
-                                                              << "'");
-  return it->second;
+  ShapeFunctionDeclOp decl = lookupShapeFunctionBySymNameOrNull(symName);
+  ASSERT_STREAM(decl, "no shape function registered for sym_name '" << symName
+                                                                    << "'");
+  return decl;
+}
+
+ShapeFunctionDeclOp MojoRegistry::lookupShapeFunctionBySymNameOrNull(
+    llvm::StringRef symName) const {
+  return shapeFuncBySymName.lookup(symName);
 }
 
 bool MojoRegistry::containsShapeFunction(llvm::StringRef name) const {

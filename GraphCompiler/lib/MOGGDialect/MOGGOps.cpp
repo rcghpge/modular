@@ -18,6 +18,7 @@
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
+#include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
@@ -1556,14 +1557,15 @@ inputLoadFusionContract(EmitMojoState &state, MOGG::TensorFusedOp fusedOp) {
   }
   if (!inputIdx)
     return std::nullopt;
-  KernelDeclAdaptor adaptor(
-      state.registry.lookupKernelBySymName(executeOp.getKernelSymName()));
+  KernelDeclOp decl =
+      state.registry.lookupKernelBySymNameOrNull(executeOp.getKernelSymName());
+  if (!decl)
+    return std::nullopt;
+  KernelDeclAdaptor adaptor(decl);
   if (!adaptor.executeFunction.has_value())
     return std::nullopt;
-  const auto &inArgs = adaptor.executeFunction->inputArguments;
-  if (*inputIdx >= inArgs.size())
-    return std::nullopt;
-  return inArgs[*inputIdx].getTraitContract();
+  return declaredExecuteOperandContract(*adaptor.executeFunction, *inputIdx,
+                                        /*isOutput=*/false);
 }
 
 /// Comptime `mut` for a trait fusion capture. `_MoggDenseTensorArg` exposes
@@ -1762,14 +1764,15 @@ outputFusionContract(EmitMojoState &state, MOGG::TensorFusedOp fusedOp) {
   }
   if (!outputIdx)
     return std::nullopt;
-  KernelDeclAdaptor adaptor(
-      state.registry.lookupKernelBySymName(executeOp.getKernelSymName()));
+  KernelDeclOp decl =
+      state.registry.lookupKernelBySymNameOrNull(executeOp.getKernelSymName());
+  if (!decl)
+    return std::nullopt;
+  KernelDeclAdaptor adaptor(decl);
   if (!adaptor.executeFunction.has_value())
     return std::nullopt;
-  const auto &outArgs = adaptor.executeFunction->outputArguments;
-  if (*outputIdx >= outArgs.size())
-    return std::nullopt;
-  return outArgs[*outputIdx].getTraitContract();
+  return declaredExecuteOperandContract(*adaptor.executeFunction, *outputIdx,
+                                        /*isOutput=*/true);
 }
 
 /// Emit a trait-lane output-store fusion FUNCTOR for a trait `mogg.bind` output

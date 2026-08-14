@@ -8,8 +8,8 @@
 
 #include "GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
+#include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
@@ -25,49 +25,6 @@ static Type getAsyncElementOrSelf(Type type) {
   if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
     return asyncType.getElementType();
   return type;
-}
-
-/// Ordinal of `ti` among fused trait tensor operands with the same io
-/// direction.
-static unsigned fusedTraitOperandOrdinal(
-    ArrayRef<MOGGKernelOpLoweringState::TensorOperandInfos> tensorOperandInfos,
-    const MOGGKernelOpLoweringState::TensorOperandInfos &ti) {
-  unsigned ordinal = 0;
-  for (const auto &other : tensorOperandInfos) {
-    if (&other == &ti)
-      return ordinal;
-    if (!other.traitContract || !other.traitContract.getFused())
-      continue;
-    if (other.isOutput == ti.isOutput)
-      ++ordinal;
-  }
-  llvm_unreachable("tensor operand info not found in fused-trait list");
-}
-
-/// Find the `mogg.tensor.fused` feeding the trait kernel's `execute` call for
-/// the fused trait operand described by `ti`.
-static MOGG::TensorFusedOp findFusedOpForTraitTensor(
-    MOGG::CallExecuteOp executeOp,
-    ArrayRef<MOGGKernelOpLoweringState::TensorOperandInfos> tensorOperandInfos,
-    const MOGGKernelOpLoweringState::TensorOperandInfos &ti) {
-  unsigned want = fusedTraitOperandOrdinal(tensorOperandInfos, ti);
-  unsigned seen = 0;
-  if (ti.isOutput) {
-    for (Value out : executeOp.getOutputs()) {
-      if (auto fused = out.getDefiningOp<MOGG::TensorFusedOp>()) {
-        if (seen++ == want)
-          return fused;
-      }
-    }
-    return nullptr;
-  }
-  for (Value in : executeOp.getInputs()) {
-    if (auto fused = in.getDefiningOp<MOGG::TensorFusedOp>()) {
-      if (seen++ == want)
-        return fused;
-    }
-  }
-  return nullptr;
 }
 
 void KernelOperandsMapping::addOperand(Value operandValue,
@@ -299,8 +256,9 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp) {
                         outputPlaceholdersOp, scratchPlaceholdersOp};
 }
 
-void MOGGKernelOpLoweringState::setupInputOperandsMapping(
-    Value chain, ArrayRef<Value> loweredInputOperands) {
+LogicalResult MOGGKernelOpLoweringState::setupInputOperandsMapping(
+    Value chain, ArrayRef<Value> loweredInputOperands,
+    MOGG::KernelIOContractDeriver &contractDeriver) {
   // 1. Add the chain with the input signature. (Only pass it to the region, not
   // the stub)
   operandsMapping.addOperand(chain, /*isMGPRegionOperand=*/true,
@@ -309,42 +267,29 @@ void MOGGKernelOpLoweringState::setupInputOperandsMapping(
 
   // 2. Add the inputs with the input or mutable input signature.
   //
-  // The per-input trait contracts (trait lane, D1/D5) are stamped on the
-  // KernelOp in exec-body-argument order by `stampTensorArgContracts`; that is
-  // exactly the order this loop zips its inputs in, so we index the array by
-  // the running input position.
-  ArrayAttr inputContracts =
-      moggOp->getAttrOfType<ArrayAttr>(MOGG::kInputTensorArgContractsAttrName);
-  // The stamp side (`stampTensorArgContracts`) sizes the array by the KernelOp
-  // exec-body argument count, which is exactly the body whose arguments this
-  // loop walks. If a future change ever reorders or filters exec-body args vs
-  // the stamped array, this assert fires before a misaligned contract can be
-  // silently applied to the wrong arg.
-  assert((!inputContracts ||
-          inputContracts.size() == kernelStub.getBody().getNumArguments()) &&
-         "input trait-contract array must align with the kernel-stub body "
-         "argument list");
-  size_t inputIdx = 0;
+  // The per-input trait contract is derived from the kernel declaration
+  // through each stub argument's use by the kernel call, so
+  // operand-list transforms (fusion, dedup) cannot invalidate it (GEX-4071).
   for (auto &&[origOperand, loweredInputOperand] : llvm::zip_first(
            kernelStub.getBody().getArguments(), loweredInputOperands)) {
-    size_t thisInputIdx = inputIdx++;
     auto sig = isa<MO::BufferType>(origOperand.getType())
                    ? InOutSignatureAttr::kMut
                    : InOutSignatureAttr::kIn;
     operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
                                /*isKernelStubOperand=*/true, sig);
     if (MO::dynCastFromTensorLike(origOperand.getType())) {
-      MOGG::TensorArgContractAttr contract;
-      if (inputContracts && thisInputIdx < inputContracts.size())
-        contract =
-            dyn_cast<MOGG::TensorArgContractAttr>(inputContracts[thisInputIdx]);
+      FailureOr<MOGG::TensorArgContractAttr> contract =
+          contractDeriver.derive(origOperand);
+      if (failed(contract))
+        return failure();
       tensorOperandInfos.push_back(
           TensorOperandInfos{.stubValue = origOperand,
                              .operandIdx = operandsMapping.getNumOperands() - 1,
                              .isOutput = false,
-                             .traitContract = contract});
+                             .traitContract = *contract});
     }
   }
+  return success();
 }
 
 Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
@@ -365,16 +310,14 @@ Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
   auto mutAttr = BoolAttr::get(ctx, mut);
   MO::TensorType newTensorTy = asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr);
 
-  // Trait lane (D1/D4/D5): a trait-bound argument carries an
-  // `#mogg.tensor_arg` contract. Build `mogg.tensor_arg.__init__` carrying that
-  // contract instead of the legacy `mogg.tensor.__init__`. Per D4 the contract
-  // is the trait-lane single source of truth for the role: nothing downstream
-  // re-derives the role from the result tensor type's `{io, mut}`. The result
-  // type is still the same io/mut-cloned `newTensorTy` as the legacy lane
-  // (identical SSA type for both lanes); the `{io, mut}` carried on the trait
-  // result type is vestigial -- do not read it back as the role. The
-  // `$device_context` operand is left unpopulated this slice (Slice 3 / Phase 4
-  // wires it for the GPU emit path).
+  // A trait-bound argument carries an `#mogg.tensor_arg` contract. Build
+  // `mogg.tensor_arg.__init__` carrying that contract instead of the legacy
+  // `mogg.tensor.__init__`. The contract is the single source of truth for the
+  // role: nothing downstream re-derives the role from the result tensor type's
+  // `{io, mut}`. Both representations use the same io/mut-cloned `newTensorTy`;
+  // the `{io, mut}` carried on the trait result type is vestigial -- do not
+  // read it back as the role. The `$device_context` operand is left
+  // unpopulated here; the GPU emit path wires it later.
   if (tensorInfos.traitContract) {
     return MOGG::TensorArgInitOp::create(
                builder, loc, newTensorTy, bufferValue, dynamicDimensions,
@@ -382,14 +325,15 @@ Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
         .getResult();
   }
 
-  // Legacy `ManagedTensorSlice` lane -- unchanged.
+  // Legacy `ManagedTensorSlice` representation.
   return MOGG::TensorInitOp::create(builder, loc, newTensorTy, bufferValue,
                                     dynamicDimensions, mutAttr, ioAttr)
       .getResult();
 }
 
 LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
-    Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters) {
+    Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters,
+    MOGG::KernelIOContractDeriver &contractDeriver) {
   llvm::DenseSet<StringAttr> paramsInKernelStub;
   auto markTensorDimsInStub = [&](MO::TensorType asTensor) {
     for (auto dim : asTensor.getDims())
@@ -459,29 +403,25 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
     if (failed(loweredOutputsStorageOr))
       return failure();
     loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
-    // Per-output trait contracts (trait lane, D1/D5) are stamped on the
-    // KernelOp in DPS-output order, matching the output-placeholder order this
-    // loop iterates.
-    ArrayAttr outputContracts = moggOp->getAttrOfType<ArrayAttr>(
-        MOGG::kOutputTensorArgContractsAttrName);
-    size_t outputIdx = 0;
+    // Per-output trait contracts are derived from the kernel declaration
+    // through each output placeholder's use of the kernel call terminator
+    // (GEX-4071).
     for (auto [outputStorage, value] :
          llvm::zip(loweredOutputsStorage, outputPlaceholdersOp.getResults())) {
-      size_t thisOutputIdx = outputIdx++;
       // Add the kernel operand for the output buffer.
       operandsMapping.addOperand(outputStorage.buffer,
                                  /*isMGPRegionOperand=*/true,
                                  /*isKernelStubOperand=*/true,
                                  InOutSignatureAttr::kOut, /*keyValue=*/value);
-      MOGG::TensorArgContractAttr contract;
-      if (outputContracts && thisOutputIdx < outputContracts.size())
-        contract = dyn_cast<MOGG::TensorArgContractAttr>(
-            outputContracts[thisOutputIdx]);
+      FailureOr<MOGG::TensorArgContractAttr> contract =
+          contractDeriver.derive(value);
+      if (failed(contract))
+        return failure();
       tensorOperandInfos.push_back(
           TensorOperandInfos{.stubValue = value,
                              .operandIdx = operandsMapping.getNumOperands() - 1,
                              .isOutput = true,
-                             .traitContract = contract});
+                             .traitContract = *contract});
     }
   }
 
@@ -714,34 +654,35 @@ void MOGGKernelOpLoweringState::materializeInStubTensorFusedOps() {
 }
 
 void MOGGKernelOpLoweringState::wireTraitFusedCapturesToStubArgs() {
-  MOGG::CallExecuteOp executeOp = nullptr;
-  kernelStub.walk([&](MOGG::CallExecuteOp op) { executeOp = op; });
-  if (!executeOp)
-    return;
+  llvm::DenseMap<Value, const TensorOperandInfos *> infoByStubValue;
+  for (const TensorOperandInfos &tensorInfos : tensorOperandInfos)
+    infoByStubValue[tensorInfos.stubValue] = &tensorInfos;
 
-  for (const auto &tensorInfos : tensorOperandInfos) {
-    if (!tensorInfos.traitContract || !tensorInfos.traitContract.getFused())
-      continue;
-    MOGG::TensorFusedOp fusedOp =
-        findFusedOpForTraitTensor(executeOp, tensorOperandInfos, tensorInfos);
-    if (!fusedOp)
-      continue;
+  // Wire each fused trait operand through its own kernel I/O value: a bind
+  // lambda's fusible that maps to a fused trait contract is rewired to that
+  // operand's in-stub buffer capture. Keying on the fusible's identity (not
+  // an ordinal among fused operands) keeps every fusible of a multi-operand
+  // producer on its own capture.
+  kernelStub.walk([&](MOGG::TensorFusedOp fusedOp) {
     MOGG::BindLambdaOp bindOp = fusedOp.getBindLambdaOp();
     if (!bindOp)
-      continue;
-
-    Value stubCapture =
-        operandsMapping.get(tensorInfos.operandIdx, /*isInsideStub=*/true);
-
-    if (bindOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda)
-      fusedOp.getTensorMutable().assign(stubCapture);
-
+      return;
     for (Value fusible : bindOp.getFusibleTensors()) {
+      const TensorOperandInfos *info = infoByStubValue.lookup(fusible);
+      if (!info || !info->traitContract || !info->traitContract.getFused())
+        continue;
+
+      Value stubCapture =
+          operandsMapping.get(info->operandIdx, /*isInsideStub=*/true);
+
+      if (bindOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda)
+        fusedOp.getTensorMutable().assign(stubCapture);
+
       fusible.replaceUsesWithIf(stubCapture, [&](OpOperand &use) {
         return use.getOwner() == bindOp.getOperation();
       });
     }
-  }
+  });
 }
 
 void MOGGKernelOpLoweringState::lowerKernelStub() {
@@ -817,12 +758,21 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   }
   chain = opLoweringState.getGuardChain(chain);
 
-  // Set up operands mapping for the chain and inputs.
-  setupInputOperandsMapping(chain, loweredInputOperands);
+  // Set up operands mapping for the chain and inputs. One deriver serves
+  // both the input and the output contract derivations below: its
+  // constructor builds a symbol table over the whole module, and its
+  // declaration-adaptor cache is shared across all kernel I/O values of the
+  // kernel.
+  MOGG::KernelIOContractDeriver contractDeriver(
+      moggKernelOp->getParentOfType<mlir::ModuleOp>());
+  if (failed(setupInputOperandsMapping(chain, loweredInputOperands,
+                                       contractDeriver)))
+    return failure();
 
   // 3. Pass and map all other kernel arguments (dynamic dimensions, device
   // context, etc).
-  if (failed(findExtraKernelArguments(chain, usedKernelParameters)))
+  if (failed(findExtraKernelArguments(chain, usedKernelParameters,
+                                      contractDeriver)))
     return failure();
 
   // 4. Add a chain to the result types.
@@ -908,10 +858,10 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   assert(stubCallOperands.size() ==
          (kernelStub.getBodyBlock().getNumArguments()));
 
-  // Trait lane: stamp per-stub-arg buffer-capture comptime metadata for tensor
-  // operands (region passes `_MoggTensorBufferCapture`; execute-facing trait
-  // args are assembled inside the stub). Shape-function no-role args keep the
-  // legacy generic `DenseTensor` stub parameter via
+  // For trait-based arguments, stamp per-stub-arg buffer-capture comptime
+  // metadata for tensor operands (region passes `_MoggTensorBufferCapture`;
+  // execute-facing trait args are assembled inside the stub). Shape-function
+  // no-role args keep the legacy generic `DenseTensor` stub parameter via
   // `mogg.trait_stub_arg_bounds`.
   {
     size_t numStubArgs = kernelStub.getBodyBlock().getNumArguments();

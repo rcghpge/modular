@@ -14,6 +14,10 @@
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 
+namespace M::MOGG {
+class KernelIOContractDeriver;
+} // namespace M::MOGG
+
 namespace M::MGP {
 
 // Helper class to keep track of the mapping between top-level value, and the
@@ -176,11 +180,10 @@ public:
     Value stubValue;   // Tensor value inside the KernelStub
     size_t operandIdx; // Argument index for the OperandsMapping.
     bool isOutput;
-    // Trait lane (D1/D5): the distilled `#mogg.tensor_arg` contract for a
-    // trait-bound argument, or null for a legacy `ManagedTensorSlice`
-    // argument. When set, `buildMojoIOTensorObject` builds
-    // `mogg.tensor_arg.__init__` carrying this contract instead of the legacy
-    // `mogg.tensor.__init__`.
+    // The distilled `#mogg.tensor_arg` contract for a trait-bound argument, or
+    // null for a legacy `ManagedTensorSlice` argument. When set,
+    // `buildMojoIOTensorObject` builds `mogg.tensor_arg.__init__` carrying this
+    // contract instead of the legacy `mogg.tensor.__init__`.
     MOGG::TensorArgContractAttr traitContract = nullptr;
   };
 
@@ -190,9 +193,12 @@ protected:
   FailureOr<KernelStubInfo> createKernelStub(MOGG::KernelOp kernelOp);
 
   // Set up the operands mapping for kernel inputs (chain + tensor inputs).
-  // Populates operandsMapping and tensorOperandInfos for the inputs.
-  void setupInputOperandsMapping(Value chain,
-                                 ArrayRef<Value> loweredInputOperands);
+  // Populates operandsMapping and tensorOperandInfos for the inputs. Fails
+  // when a tensor input's trait contract cannot be derived from the kernel
+  // declaration (diagnostic already emitted).
+  LogicalResult
+  setupInputOperandsMapping(Value chain, ArrayRef<Value> loweredInputOperands,
+                            MOGG::KernelIOContractDeriver &contractDeriver);
 
   /// Build a ManagedTensorSlice object corresponding to the KernelStubOp
   /// argument `stubArgument` from the buffer pointer `bufferValue`.
@@ -200,7 +206,8 @@ protected:
                                 const TensorOperandInfos &tensorInfos);
 
   LogicalResult findExtraKernelArguments(
-      Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
+      Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters,
+      MOGG::KernelIOContractDeriver &contractDeriver);
 
   void findExtraKernelStubOnlyArguments();
 

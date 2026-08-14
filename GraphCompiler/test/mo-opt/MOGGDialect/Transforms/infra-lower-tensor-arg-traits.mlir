@@ -137,14 +137,13 @@
 // EMIT-DAG: _MoggOutputStoreFusionTensor[
 // EMIT-DAG: TraitFusedStoreDouble.execute[target = "cpu"]
 
-// Slice 2 (Phase 3): a trait kernel's tensor arguments lower to
-// `mogg.tensor_arg.__init__` carrying the distilled `#mogg.tensor_arg`
-// contract, while a legacy `ManagedTensorSlice` kernel still lowers to
-// `mogg.tensor.__init__`. The op + its attribute must be observable in the
-// dumped IR after MOGG->MGP lowering (the stage where `buildMojoIOTensorObject`
-// runs) but BEFORE emit-mojo (the stub emit is Slice 3). The contracts are
-// stamped onto the `mogg.kernel` op during MO->MOGG lowering, so they appear on
-// both the kernel and the per-arg init ops.
+// A trait kernel's tensor arguments lower to `mogg.tensor_arg.__init__`
+// carrying the distilled `#mogg.tensor_arg` contract, while a legacy
+// `ManagedTensorSlice` kernel still lowers to `mogg.tensor.__init__`. The op
+// + its attribute must be observable in the dumped IR after MOGG->MGP
+// lowering (the stage where `buildMojoIOTensorObject` runs) but before
+// emit-mojo. The contract is derived from the kernel declaration at boundary
+// lowering (GEX-4071), so it appears only on the per-arg init ops.
 
 // A pure trait kernel: a dense output and two dense inputs (`trait_add_some`).
 // Each tensor arg builds a `mogg.tensor_arg.__init__` carrying the role-bearing
@@ -169,8 +168,9 @@ mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f3
 // dense output `z` and a mutable input `x`. A mutable input crosses as an
 // `!mo.buffer` operand, so its contract carries the `mutable_input` role. Both
 // the output and the mutable input build `mogg.tensor_arg.__init__`. This case
-// also exercises index alignment with TWO DIFFERENT input/output contracts
-// (output vs mutable_input), so a swapped contract array would be caught.
+// also exercises per-arg derivation with TWO DIFFERENT input/output contracts
+// (output vs mutable_input), so a swapped operand-position lookup would be
+// caught.
 // CHECK-LABEL: mgp.model @trait_mutable
 // CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: #mogg.tensor_arg<{role = mutable_input, fused = false, access = none, capabilities = none}>
@@ -182,10 +182,10 @@ mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
 }
 
 // A multi-output trait kernel (`trait_multi_output`): two dense trait outputs
-// `a`, `b` followed by a dense trait input `x`. This exercises the DPS-output
-// contract array stamping for MORE THAN ONE output: two `role = output`
-// contracts must each lower, plus one `role = input`. A single output-order
-// entry would not catch a >1-output mis-stamp.
+// `a`, `b` followed by a dense trait input `x`. This exercises DPS-output
+// contract derivation for MORE THAN ONE output: two `role = output` contracts
+// must each lower, plus one `role = input`. A single output would not catch a
+// >1-output position mixup.
 // CHECK-LABEL: mgp.model @trait_multi
 // CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>

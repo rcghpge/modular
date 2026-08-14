@@ -323,6 +323,21 @@ struct TraitMixedLegacyFused:
         pass
 
 
+# A trait-bound fused output with a legacy input. This combination exercises
+# contract conflicts when epilogue fusion captures the input.
+@extensibility.register("trait_fused_store_legacy_input")
+struct TraitFusedStoreLegacyInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & StoreAccess],
+        x: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
 # Pure-legacy control: no trait args at all. A regression guard that this change
 # leaves the legacy `[out]`/`[in]`/`mut` split byte-for-byte unchanged. The
 # `MutableInputTensor` here pins `mut=true` on the legacy lane too.

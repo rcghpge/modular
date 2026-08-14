@@ -38,7 +38,14 @@ public:
   /// `name`.
   bool containsKernel(llvm::StringRef name) const;
 
+  /// Returns the `mogg.kernel.decl` op whose `sym_name` matches `symName`.
+  /// Asserts that it exists; use the `OrNull` variant when absence is a
+  /// condition the caller handles.
   KernelDeclOp lookupKernelBySymName(llvm::StringRef symName) const;
+
+  /// Returns the `mogg.kernel.decl` op whose `sym_name` matches `symName`,
+  /// or a null op if none exists.
+  KernelDeclOp lookupKernelBySymNameOrNull(llvm::StringRef symName) const;
 
   /// Returns the `mogg.primitive.decl` op whose `registration` matches
   /// `name`. Asserts that the primitive exists; use `containsPrimitive` for
@@ -55,9 +62,15 @@ public:
   ShapeFunctionDeclOp lookupShapeFunction(llvm::StringRef name) const;
 
   /// Returns the `mogg.shape_func.decl` op whose `sym_name` matches
-  /// `symName`. Asserts that it exists.
+  /// `symName`. Asserts that it exists; use the `OrNull` variant when absence
+  /// is a condition the caller handles.
   ShapeFunctionDeclOp
   lookupShapeFunctionBySymName(llvm::StringRef symName) const;
+
+  /// Returns the `mogg.shape_func.decl` op whose `sym_name` matches
+  /// `symName`, or a null op if none exists.
+  ShapeFunctionDeclOp
+  lookupShapeFunctionBySymNameOrNull(llvm::StringRef symName) const;
 
   /// Returns true if a `mogg.shape_func.decl` op exists for `name`.
   bool containsShapeFunction(llvm::StringRef name) const;

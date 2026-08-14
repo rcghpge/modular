@@ -105,18 +105,6 @@ constexpr llvm::StringLiteral kMoggOutputRankParameterName = "output_rank";
 /// The number of DPS (Destination Passing Style) output operands there are.
 constexpr llvm::StringLiteral kMoggNumDpsOutputs = "mogg.num_dps_outputs";
 
-/// Discardable attributes carrying the trait-lane per-argument tensor-trait
-/// contracts (`#mogg.tensor_arg<...>` or `unit`) on a `mogg.kernel` op. The
-/// input array is indexed in exec-body-argument (operand) space, the output
-/// array in result space. Set only when at least one argument is a trait arg;
-/// absent for pure legacy `ManagedTensorSlice` kernels (so their lowering and
-/// printing are unchanged). Read in `buildMojoIOTensorObject` to route trait
-/// args to `mogg.tensor_arg.__init__`.
-constexpr llvm::StringLiteral kInputTensorArgContractsAttrName =
-    "mogg.input_tensor_arg_contracts";
-constexpr llvm::StringLiteral kOutputTensorArgContractsAttrName =
-    "mogg.output_tensor_arg_contracts";
-
 /// Per-stub-argument buffer-capture metadata. A trait tensor entry is
 /// `{dtype}`; other entries are empty strings. Stub emission infers
 /// `_MoggTensorBufferCapture[dtype, L]`'s `L` from the argument because dynamic

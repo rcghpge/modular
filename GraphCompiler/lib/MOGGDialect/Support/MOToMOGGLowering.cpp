@@ -1080,64 +1080,7 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
   kernelOp.setAllocIndicesAttr(
       builder.getIndexArrayAttr(moResultIndicesAllocatedInPlace));
 
-  // Trait lane (D1/D5): stamp the per-argument tensor-trait contracts onto the
-  // KernelOp as discardable attributes so lowering can route trait args to
-  // `mogg.tensor_arg.__init__`. Legacy `ManagedTensorSlice` kernels carry no
-  // trait contract on any arg, so neither attribute is set for them and their
-  // lowering / printing is byte-for-byte unchanged. The arrays are indexed in
-  // the operand-mapping / result-mapping space (the KernelOp exec-body argument
-  // and result positions); a non-trait entry is a `UnitAttr` placeholder.
-  stampTensorArgContracts(kernelOp, operandMapping);
-
   return kernelOp;
-}
-
-void MOGGKernelBuilder::stampTensorArgContracts(
-    KernelOp kernelOp, const KernelDeclOperandMapping &operandMapping) {
-  mlir::MLIRContext *ctx = kernelOp.getContext();
-
-  // Inputs: indexed in exec-body-argument space. The `operandMapping` keys
-  // index `execBody->getArguments()`, exactly the order
-  // `setupInputOperandsMapping` zips its inputs in, so the array aligns with
-  // the per-input `TensorOperandInfos` built during lowering.
-  {
-    size_t numInputs = kernelOp.getExecBody().front().getNumArguments();
-    bool anyTrait = false;
-    SmallVector<Attribute> entries(numInputs, UnitAttr::get(ctx));
-    for (const auto &[idx, arg] : operandMapping.operandMapping) {
-      if (idx >= numInputs)
-        continue;
-      if (std::optional<TensorArgContract> contract = arg.getTraitContract()) {
-        entries[idx] = tensorArgContractToAttr(ctx, *contract);
-        anyTrait = true;
-      }
-    }
-    if (anyTrait)
-      kernelOp->setAttr(kInputTensorArgContractsAttrName,
-                        ArrayAttr::get(ctx, entries));
-  }
-
-  // Outputs: indexed in DPS-output order (the order `dpsReturns` /
-  // `OutputPlaceholdersOp` results are built in `buildKernelOpImpl`, which is
-  // the `resultMapping` iteration order filtered to DPS outputs). This aligns
-  // with how `findExtraKernelArguments` zips the output placeholders.
-  {
-    SmallVector<Attribute> entries;
-    bool anyTrait = false;
-    for (const auto &[idx, arg] : operandMapping.resultMapping) {
-      if (!arg.isDpsOutput())
-        continue;
-      if (std::optional<TensorArgContract> contract = arg.getTraitContract()) {
-        entries.push_back(tensorArgContractToAttr(ctx, *contract));
-        anyTrait = true;
-      } else {
-        entries.push_back(UnitAttr::get(ctx));
-      }
-    }
-    if (anyTrait)
-      kernelOp->setAttr(kOutputTensorArgContractsAttrName,
-                        ArrayAttr::get(ctx, entries));
-  }
 }
 
 ErrorOr<KernelOp> MOGGKernelBuilder::lowerToKernel() {
