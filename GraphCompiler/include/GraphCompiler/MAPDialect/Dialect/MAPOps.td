@@ -140,6 +140,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   }];
 
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -187,6 +188,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -215,6 +217,7 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

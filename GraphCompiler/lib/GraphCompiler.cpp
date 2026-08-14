@@ -362,6 +362,10 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   pm.addPass(MAP::createOutlineStructuredKernelBodies());
+  // Fires the MAP canonicalizations that unique `map.iter.opaque` inputs and
+  // prologue/epilogue captures, so the lowered kernel's parameter list (built
+  // from `inputs`) is minimal by the time MAPToMOGG runs.
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(MAP::createLoopInvariantViewMotion());
 }
 
