@@ -1,7 +1,7 @@
 // RUN: mo-opt --gc-pipeline %s | FileCheck %s
 
-// CHECK: mef.callable @buffer_output$exec({{.*}}[[BUFFER:%.*]]: !mgp.tensor<2x2xf32>) -> (!mef.chain, !mgp.tensor<2x2xf32>)
-// CHECK: mef.output %{{.*}}, [[BUFFER]] : !mef.chain, !mgp.tensor<2x2xf32>
+// CHECK: mef.callable @buffer_output$exec({{.*}}[[BUFFER:%.*]]: !mgp.tensor<2x2xf32, mut>) -> (!mef.chain, !mgp.tensor<2x2xf32, mut>)
+// CHECK: mef.output %{{.*}}, [[BUFFER]] : !mef.chain, !mgp.tensor<2x2xf32, mut>
 mo.graph @buffer_output(%buffer: !mo.buffer<[2, 2], f32>) -> !mo.buffer<[2, 2], f32>
 {
   mo.output %buffer : !mo.buffer<[2, 2], f32>

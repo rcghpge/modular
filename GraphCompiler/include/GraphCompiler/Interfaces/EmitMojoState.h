@@ -240,6 +240,20 @@ public:
       // Every `!mgp.buffer` value lowers to the storage-carrying composite;
       // producers build it and consumers unwrap its `.view` internally.
       return kStructOwnedByteBuffer;
+    } else if (auto deviceTensorType =
+                   dyn_cast<MGP::DeviceTensorType>(mlirType)) {
+      // `!mgp.tensor` values are usually inferred from the producing call and
+      // never spelled; this branch covers the rare type-annotation sites.
+      // Scalars are stored as a rank-1 buffer view, matching `unpack_tensor`.
+      MGP::TensorSpecType tensorSpec = deviceTensorType.getTensorSpec();
+      auto bufferRank =
+          int64_t(tensorSpec.getRank() == 0 ? 1 : tensorSpec.getRank());
+      SmallVector<MojoValue> params = {
+          mlirDTypeToMojoType(tensorSpec.getOptDType().value()),
+          MojoValue(bufferRank)};
+      if (deviceTensorType.getMut())
+        params.push_back(MojoValue(kParameterMut).equal(true));
+      return MojoValue(kStructOwnedTensor)[params];
     } else if (isa<MEF::ChainType>(mlirType)) {
       return kComptimeOpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {

@@ -146,6 +146,10 @@ def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
     BlockArgument getBodyContext() {
       return getBodyBuilderBlock().getArgument(1);
     }
+
+    MutableArrayRef<BlockArgument> getBodyInputs() {
+      return getBodyBuilderBlock().getArguments().drop_front(2);
+    }
   }];
 
   let hasVerifier = 1;

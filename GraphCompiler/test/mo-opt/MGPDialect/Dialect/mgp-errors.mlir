@@ -285,3 +285,23 @@ mgp.model @multiple_context_create_ops : tf devices [#M.device_ref<"cpu", 0>] in
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
   mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
+
+// -----
+
+//
+// mgp.tensor.create with mismatched `mut`
+//
+
+func.func @tensor_create_missing_mut_attr(%ch: !mef.chain, %buf: !mgp.buffer<<"gpu", 0>>, %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>, mut> {
+  // expected-error@+1 {{expected output tensor type does not match actual output tensor type}}
+  %0 = mgp.tensor.create %ch, %buf, %spec : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
+  mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
+}
+
+// -----
+
+func.func @tensor_create_spurious_mut_attr(%ch: !mef.chain, %buf: !mgp.buffer<<"gpu", 0>>, %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>> {
+  // expected-error@+1 {{expected output tensor type does not match actual output tensor type}}
+  %0 = mgp.tensor.create %ch, %buf, %spec {mut} : !mgp.tensor<3x5xf32, <"gpu", 0>>
+  mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>>
+}

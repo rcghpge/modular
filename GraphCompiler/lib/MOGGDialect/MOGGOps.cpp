@@ -4649,9 +4649,11 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
     if (!maybeDType)
       return emitError() << "Expected Tensor operand to have DType";
 
-    unpackedValue = asyncUnpackFunc(
-        {bufferRank, tensorRank, state.mlirDTypeToMojoType(*maybeDType)},
-        state.getMojoValueFor(input));
+    SmallVector<MojoValue> params = {bufferRank, tensorRank,
+                                     state.mlirDTypeToMojoType(*maybeDType)};
+    if (tensorType.getMut())
+      params.push_back(MojoValue(kParameterMut).equal(MojoValue(true)));
+    unpackedValue = asyncUnpackFunc(params, state.getMojoValueFor(input));
 
   } else if (isa<MGP::DeviceBufferType>(inputType)) {
 

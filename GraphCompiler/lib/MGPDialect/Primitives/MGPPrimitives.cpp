@@ -358,6 +358,15 @@ static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
       assert(inputIdx < stableInputs.size() &&
              "device graph input count must match execute operand count");
 
+      // A null entry marks an in-place input (a mutable tensor such as a KV
+      // cache): the graph recorded the caller's live address and keys the
+      // cache on it, so there is no stable twin and nothing to copy. Consume
+      // the position to keep the pairing aligned.
+      if (!stableInputs[inputIdx]) {
+        ++inputIdx;
+        continue;
+      }
+
       M::Driver::DeviceBuffer &dst = *stableInputs[inputIdx++];
       auto [srcPtr, srcSize] = *data;
 

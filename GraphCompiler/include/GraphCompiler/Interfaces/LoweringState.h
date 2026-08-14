@@ -62,9 +62,11 @@ public:
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {
+          // Buffers lower to mutable tensors: the `mut` marker is the only
+          // record of in-place semantics past this boundary.
           auto type = MO::BufferType::toTensorType(bufferType);
           return getTypeBuilder(MO::getDeviceOrDefault(type))
-              .tensorType(MGP::createTensorSpecType(type));
+              .tensorType(MGP::createTensorSpecType(type), /*mut=*/true);
         });
     typeConverter.addConversion([this](
                                     MO::ListType type) -> std::optional<Type> {
@@ -693,9 +695,12 @@ struct MOOpLoweringState {
 
   Value tensorCreate(Value inChain, Value buffer,
                      TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
+    bool isMut = isa<MO::BufferType>(moTensorType);
+
     Value tensor =
         getStorageBufferBuilder(moTensorType)
-            .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+            .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec,
+                          /*mut=*/isMut);
     loweringState.guardValueWithChain(
         tensor, loweringState.getChainGuardingValueOrNull(buffer));
     return tensor;

@@ -91,3 +91,25 @@ mo.graph @dg_execute_only(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 
       (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   mo.output %0 : !mo.tensor<[2, 3], f32, gpu:0>
 }
+
+// -----
+
+// A `!mo.buffer` graph input written in place (the KV-cache shape). The buffer
+// lowers to a mut-marked `!mgp.tensor`, so its unpack carries `mut = True` and
+// the Mojo-side `OwnedTensor[.., mut=True].allocate_stable` registers an
+// in-place marker instead of allocating a stable twin. The emitter loop is
+// unchanged: every device input still routes through `builder.add_input` and
+// is passed to `DeviceGraph.create` as a cache-key input (the mutable one
+// contributes its address to the key via `write_graph_key`).
+// CHECK-DAG: unpack_tensor[{{[0-9]+}}, {{[0-9]+}}, DType.float32, mut = True]
+// CHECK-DAG: builder.add_input({{var[_0-9]+}})
+// CHECK-DAG: DeviceGraph.create(
+
+mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.chain
+    attributes {isDeviceGraph} {
+  %ch0 = mo.chain.create()
+  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+      (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
+  %ch1 = mo.mutable.store(%buf, %0, %ch0) : (!mo.buffer<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>, !mo.chain) -> (!mo.chain)
+  mo.output %ch1 : !mo.chain
+}

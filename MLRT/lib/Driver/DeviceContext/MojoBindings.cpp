@@ -1144,6 +1144,16 @@ AsyncRT_DeviceGraphBuilder_addInput(DeviceGraphBuilder *builder,
   builder->addInput(DeviceBufferRef::copy(input));
 }
 
+// Registers an in-place input marker: the graph records the caller's live
+// address at this position and replay must not copy into it. See
+// `DeviceGraphBuilder::addInPlaceInput`. Cannot fail.
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphBuilder_addInPlaceInput(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addInPlaceInput",
+                       TRACY_COLOR_GRAY);
+  builder->addInPlaceInput();
+}
+
 // Returns the number of stable inputs registered on the device graph. Cannot
 // fail.
 MODULAR_EXPORT int64_t

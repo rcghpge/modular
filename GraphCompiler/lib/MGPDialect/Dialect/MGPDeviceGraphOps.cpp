@@ -46,7 +46,9 @@ static DeviceRefAttr graphInputDevice(Value v) {
 /// `emitMojo` requests and the cache key it derives. The runtime counterpart is
 /// `graphInputData` in MGPPrimitives.cpp, which selects the same operands by
 /// their runtime type; the two must agree or inputs pair with the wrong stable
-/// buffers at replay.
+/// buffers at replay. Mutable inputs preserve that pairing by registering an
+/// in-place marker (a null entry) instead of a stable buffer, so every device
+/// input still occupies exactly one position in `graph->getInputs()`.
 static bool isDeviceGraphInput(Value v) {
   return graphInputDevice(v) != nullptr;
 }
@@ -216,6 +218,7 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   Block &body = getBodyBuilderBlock();
   Value builderArg = getBodyBuilder();
   Value contextArg = getBodyContext();
+  MutableArrayRef<BlockArgument> bodyInputs = getBodyInputs();
 
   // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
   NamedMojoDef builderParam =
@@ -235,22 +238,16 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
         // Context block arg -> the build-time context operand (captured).
         state.setMojoValueFor(contextArg,
                               state.getMojoValueFor(getTheContext()));
-        // Input block args -> a stable location the graph owns, so a replay
-        // does not depend on the caller's buffer still living at the address
-        // the build saw. `add_input` allocates the twin from the graph's pool
-        // and registers it; `mgp.device_graph.execute` copies the live input in
-        // before replaying. Non-device operands (the contexts, which
-        // `nonChainValues` leaves in `inputs`) are captured directly.
-        //
-        // TODO(GEX-549): every device input is treated as immutable. A mutable
-        // buffer -- a KV cache -- must NOT be given a private location, because
-        // the graph writes it in place and those writes would be discarded;
-        // such inputs belong in the cache key by address instead. Mutability
-        // does not survive lowering today, so the two cannot be told apart
-        // here.
+        // Input block args -> what the graph records against. Every device
+        // input routes through `builder.add_input` uniformly; the input's
+        // Mojo type decides what that means. An immutable tensor gets a
+        // stable twin from the graph's pool and `mgp.device_graph.execute`
+        // copies the live input in before replaying. A mutable tensor
+        // (`OwnedTensor[.., mut=True]`, the lowered form of `!mo.buffer` --
+        // a KV cache) must NOT be given a private location because the graph
+        // writes it in place.
         DeviceGraphBuilderRef builderValue(functionBody.arguments.front());
-        for (auto [arg, operand] :
-             llvm::zip_equal(body.getArguments().drop_front(2), getInputs())) {
+        for (auto [arg, operand] : llvm::zip_equal(bodyInputs, getInputs())) {
           if (!isDeviceGraphInput(operand)) {
             state.setMojoValueFor(arg, state.getMojoValueFor(operand));
             continue;

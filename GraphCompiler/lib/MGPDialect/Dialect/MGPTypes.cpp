@@ -118,6 +118,40 @@ void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
                     tensorSpec.getShapeOrEmpty());
 }
 
+ParseResult M::MGP::parseOptDeviceAndMut(AsmParser &p, DeviceRefAttr &device,
+                                         UnitAttr &mut) {
+  device = DeviceRefAttr::getDefault(p.getContext());
+  mut = UnitAttr();
+  if (p.parseOptionalComma())
+    return success();
+
+  // The device precedes `mut` when both are present.
+  if (p.parseOptionalKeyword("mut")) {
+    FailureOr<DeviceRefAttr> parsedDevice =
+        mlir::FieldParser<DeviceRefAttr>::parse(p);
+    if (failed(parsedDevice))
+      return p.emitError(p.getCurrentLocation(),
+                         "expected `mut` or a device reference");
+    device = *parsedDevice;
+    if (p.parseOptionalComma())
+      return success();
+    if (p.parseKeyword("mut"))
+      return failure();
+  }
+  mut = UnitAttr::get(p.getContext());
+  return success();
+}
+
+void M::MGP::printOptDeviceAndMut(AsmPrinter &p, DeviceRefAttr device,
+                                  UnitAttr mut) {
+  if (device != DeviceRefAttr::getDefault(device.getContext())) {
+    p << ", ";
+    p.printStrippedAttrOrType(device);
+  }
+  if (mut)
+    p << ", mut";
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceGraphType
 //===----------------------------------------------------------------------===//

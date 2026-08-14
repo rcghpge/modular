@@ -150,7 +150,7 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
     KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
 
   FailureOr<Type> targetType = previousValue.getType();
-  // TODO: cast?
+  // TODO: cast?loweringstate.cpp
   Value isEqual = KGEN::POP::CmpOp::create(builder, loc, KGEN::CmpPredicate::EQ,
                                            previousValue, newValue);
 
@@ -970,9 +970,12 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
 void MOOpLoweringState::createOutputTensor(
     Value moTensor, Value inChain, Value buffer,
     TypedValue<MGP::TensorSpecType> tensorSpec) {
+  bool isMut = isa<MO::BufferType>(moTensor.getType());
+
   Value loweredTensor =
       getStorageBufferBuilder(moTensor.getType())
-          .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+          .tensorCreate(builder, loc, context, inChain, buffer, tensorSpec,
+                        /*mut=*/isMut);
   loweringState.emplaceExecuteLoweredBufferValue(moTensor, loweredTensor,
                                                  inChain);
 }

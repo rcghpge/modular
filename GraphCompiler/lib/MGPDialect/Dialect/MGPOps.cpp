@@ -15,6 +15,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITOps.h"
@@ -755,9 +756,13 @@ LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue tensorDtypeParam =
       state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
 
+  SmallVector<MojoValue> params = {tensorRankParam, bufferRankParam,
+                                   tensorDtypeParam};
+  if (getMut())
+    params.push_back(MojoValue(MOGG::kParameterMut).equal(MojoValue(true)));
+
   MojoValue result = state.builder.var(
-      function({tensorRankParam, bufferRankParam, tensorDtypeParam},
-               state.getMojoValuesFor(getOperands().drop_front())));
+      function(params, state.getMojoValuesFor(getOperands().drop_front())));
   state.setMojoValueFor(getOutTensor(), result);
 
   return success();
@@ -804,8 +809,8 @@ LogicalResult TensorSliceOp::inferReturnTypes(
   if (!specType)
     return mlir::emitError(location.value_or(UnknownLoc::get(context)),
                            "expected tensor spec operand");
-  inferredReturnTypes.emplace_back(
-      DeviceTensorType::get(inputType.getDevice(), specType));
+  inferredReturnTypes.emplace_back(DeviceTensorType::get(
+      context, inputType.getDevice(), specType, inputType.getMut()));
   return success();
 }
 

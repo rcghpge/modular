@@ -123,12 +123,14 @@ MGPBufferBuilder::tensorExtractTensorSpec(OpBuilder &builder, Location loc,
 Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value buffer,
-                                     TypedValue<TensorSpecType> tensorSpec) {
+                                     TypedValue<TensorSpecType> tensorSpec,
+                                     bool mut) {
   auto deviceBuffer = cast<TypedValue<DeviceBufferType>>(buffer);
   return TensorCreateOp::create(builder, loc,
                                 /*inChain=*/inChain,
                                 /*buffer=*/deviceBuffer,
-                                /*tensorSpec=*/tensorSpec);
+                                /*tensorSpec=*/tensorSpec,
+                                /*mut=*/mut);
 }
 
 Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,

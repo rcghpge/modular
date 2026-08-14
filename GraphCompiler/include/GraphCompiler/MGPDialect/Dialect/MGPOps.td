@@ -177,7 +177,10 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
   let arguments = (ins
     ChainType:$inChain,
     MGP_DeviceBufferType:$buffer,
-    MGP_TensorSpecType:$tensorSpec
+    MGP_TensorSpecType:$tensorSpec,
+    // Mirrors the `mut` marker on the result type: the type parameter is not
+    // derivable from the operands, allowing the use of InferTypeOpAdaptor.
+    UnitAttr:$mut
   );
   let results = (outs MGP_DeviceTensorType:$outTensor);
   let assemblyFormat = [{

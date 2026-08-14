@@ -339,9 +339,12 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
   // NOTE: To support the ShapedTypeInterface::getShape() method we maintain
   // 'optional' (dimsOrEmpty) and 'shaped type' (shapeOrEmpty) forms.
   // See the builders for the smart constructors.
-  let parameters = (ins ArrayRefParameter<"std::optional<uint64_t>">:$dimsOrEmpty,
-                        "std::optional<DType>":$optDType,
-                        ArrayRefParameter<"int64_t">:$shapeOrEmpty);
+  let parameters = (ins
+    ArrayRefParameter<"std::optional<uint64_t>">:$dimsOrEmpty,
+    "std::optional<DType>":$optDType,
+    ArrayRefParameter<"int64_t">:$shapeOrEmpty
+  );
+
   let assemblyFormat = "`<` custom<DimsAndDType>($dimsOrEmpty, $optDType, $shapeOrEmpty) `>`";
   let genVerifyDecl = 1;
 
@@ -502,25 +505,27 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
 ]> {
   let summary = "Type of tensors respecting a tensor spec.";
   let description = [{
-    `!mgp.tensor`s are immutable tensors consisting of a buffer and a tensor
-    spec, where the buffer resides on the device given by the `#M.device_ref`
-    attribute. The elements in the buffer are generally in dense row-major
-    order according to the runtime tensor spec, with endianness according to
-    the device's architecture.
+    `!mgp.tensor`s are tensors consisting of a buffer and a tensor spec, where
+    the buffer resides on the device given by the `#M.device_ref` attribute.
+    The elements in the buffer are generally in dense row-major order
+    according to the runtime tensor spec, with endianness according to the
+    device's architecture.
 
-    Tensors are immutable. When a tensor is created from a buffer, the buffer
-    must be copied if it could still be written. When a buffer is extracted
-    from a tensor, the buffer must be copied if the tensor could still be read.
+    Tensors are immutable unless marked `mut`. When an immutable tensor is
+    created from a buffer, the buffer must be copied if it could still be
+    written. When a buffer is extracted from an immutable tensor, the buffer
+    must be copied if the tensor could still be read.
 
-    `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the
-    host-side C++ runtime. Some devices, such as CUDA, may need to include
-    additional data with the tensor, such as synchronization streams. The
-    tensor's underlying byte-array buffer may also be passed around as a
-    raw `void*` pointer.
+    The `mut` marker is the lowered form of `!mo.buffer`: a tensor the model
+    writes in place through explicitly chained ops (a KV cache, for example).
+
+    `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the host-side
+    C++ runtime. The tensor's underlying byte-array buffer may also be passed
+    around as a raw `void*` pointer.
 
     `!mgp.tensors`s are represented by (subclasses of)
-    `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
-    such as CUDA, may need to include additional data to control device-side
+    `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices, such as
+    CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 
     Examples:
@@ -531,20 +536,35 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     !mgp.tensor<?x?xf32, <"cpu", 0>>
     // Abbreviation for the above.
     !mgp.tensor<?x?xf32>
+    // A mutable tensor (lowered from !mo.buffer) on GPU 0.
+    !mgp.tensor<464x4800xf16, <"gpu", 0>, mut>
     ```
   }];
 
   let parameters = (ins
     MGP_OptDeviceRefParam:$device,
-    "M::MGP::TensorSpecType":$tensorSpec
+    "M::MGP::TensorSpecType":$tensorSpec,
+    OptionalParameter<"mlir::UnitAttr">:$mut
   );
 
-  let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) ( `,` $device^ )? `>`";
+  // The device and mut tail share one custom directive: both optional groups
+  // would otherwise start with `,`, which the generated parser cannot
+  // disambiguate.
+  let assemblyFormat = [{
+    `<` custom<TensorSpec>($tensorSpec) `` custom<OptDeviceAndMut>($device, $mut) `>`
+  }];
 
   let builders = [
-    /// Constructs a tensor type from the given device and tensor spec.
+    /// Constructs an immutable tensor type from the given device and tensor
+    /// spec.
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
                                         "M::MGP::TensorSpecType":$tensorSpecType)>,
+
+    /// Constructs a tensor type from the given device, tensor spec, and
+    /// mutability.
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
+                                        "M::MGP::TensorSpecType":$tensorSpecType,
+                                        "bool":$mut)>,
   ];
 }
 

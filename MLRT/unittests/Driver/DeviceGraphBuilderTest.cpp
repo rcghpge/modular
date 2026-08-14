@@ -537,4 +537,40 @@ TEST(DeviceGraphBuilderTest, CreateBufferAfterInstantiateFails) {
   EXPECT_TRUE(builder->createBuffer(1024, /*isHost=*/false).isError());
 }
 
+// In-place input markers (mutable inputs the graph writes through the
+// caller's live address) occupy a position in the inputs list as null entries,
+// interleaved with stable-buffer entries in registration order. The replay
+// copy in `mgp_device_graph_execute` relies on that positional pairing to
+// skip exactly the in-place positions.
+TEST(DeviceGraphBuilderTest, AddInPlaceInputInterleavesWithStableInputs) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, stable0,
+                builder->createBuffer(1024, /*isHost=*/false));
+  builder->addInput(stable0.copy());
+  EXPECT_EQ(builder->numInputs(), 1u);
+
+  builder->addInPlaceInput();
+  EXPECT_EQ(builder->numInputs(), 2u);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, stable2,
+                builder->createBuffer(512, /*isHost=*/false));
+  builder->addInput(stable2.copy());
+  EXPECT_EQ(builder->numInputs(), 3u);
+
+  EXPECT_NO_ERR(builder->addEmpty(/*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  llvm::ArrayRef<DeviceBufferRef> inputs = graph->getInputs();
+  ASSERT_EQ(inputs.size(), 3u);
+  EXPECT_TRUE(inputs[0]);
+  EXPECT_EQ(inputs[0]->ptr(), stable0->ptr());
+  EXPECT_FALSE(inputs[1]);
+  EXPECT_TRUE(inputs[2]);
+  EXPECT_EQ(inputs[2]->ptr(), stable2->ptr());
+}
+
 } // namespace

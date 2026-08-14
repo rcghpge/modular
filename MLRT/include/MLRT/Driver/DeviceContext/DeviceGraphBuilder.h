@@ -225,7 +225,19 @@ public:
   /// Inputs are registered in graph-signature order.
   void addInput(DeviceBufferRef input);
 
-  /// Return the number of stable inputs registered on the device graph.
+  /// Registers an in-place input at the current position: the graph records
+  /// the caller's live address directly and replay must NOT copy into it.
+  ///
+  /// Used for mutable inputs (e.g. a KV cache) the graph writes in place —
+  /// a private stable copy would discard those writes. Such inputs contribute
+  /// their address to the graph cache key instead, so a moved buffer forces a
+  /// rebuild rather than replaying stale addresses. Stored as a null entry in
+  /// `inputs` so the positional pairing with the execute op's operands is
+  /// preserved.
+  void addInPlaceInput() { inputs.push_back(DeviceBufferRef()); }
+
+  /// Return the number of stable inputs registered on the device graph,
+  /// including in-place (null) entries.
   size_t numInputs() const { return inputs.size(); }
 
 protected:
@@ -248,7 +260,9 @@ private:
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
 
   /// The graph's stable input locations, in graph-signature order. Held by
-  /// reference so the pool cannot reissue these addresses mid-recording.
+  /// reference so the pool cannot reissue these addresses mid-recording. A
+  /// null entry marks an in-place input: the graph records the caller's live
+  /// address and replay must not copy into that position.
   llvm::SmallVector<DeviceBufferRef> inputs;
 
   /// Memory pool for all allocations created during the recording process.

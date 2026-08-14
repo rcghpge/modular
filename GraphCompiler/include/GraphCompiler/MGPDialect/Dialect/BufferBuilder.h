@@ -149,8 +149,9 @@ public:
   MGPTypeBuilder(DeviceRefAttr device) : device(device) {}
 
   /// Returns the device-specific tensor type with the given tensor spec.
-  DeviceTensorType tensorType(TensorSpecType tensorSpecType) {
-    return DeviceTensorType::get(device, tensorSpecType);
+  /// `mut` marks the tensor as mutable (the lowered form of `!mo.buffer`).
+  DeviceTensorType tensorType(TensorSpecType tensorSpecType, bool mut = false) {
+    return DeviceTensorType::get(device, tensorSpecType, mut);
   }
 };
 
@@ -215,9 +216,12 @@ public:
 
   /// Return the tensor constructed from buffer and tensor spec. If necessary
   /// the buffer will be 'unsized' or 'resized' to match the tensorSpec type.
+  /// `mut` marks the result type as mutable (the lowered form of
+  /// `!mo.buffer`).
   Value tensorCreate(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,
-                     Value buffer, TypedValue<TensorSpecType> tensorSpec);
+                     Value buffer, TypedValue<TensorSpecType> tensorSpec,
+                     bool mut = false);
 
   /// Returns the buffer of size. The alignment may be ignored for some
   /// devices.
