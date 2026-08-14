@@ -172,7 +172,7 @@ struct TensorArgContract {
 /// the shape-fn execution plan, Slice 5). When `isShapeFunc` is false (the
 /// `execute` lane) exactly one io-role is required, as before.
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
-    llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
+    llvm::ArrayRef<M::KGEN::TraitSymbolAttr> writtenSymbols,
     llvm::function_ref<void(const llvm::Twine &)> emitError,
     bool isShapeFunc = false);
 

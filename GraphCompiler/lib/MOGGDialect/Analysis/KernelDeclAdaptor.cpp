@@ -569,7 +569,8 @@ static_assert(accessFormsArePaired(),
 // "tensor_arg_traits" -- so a same-named trait from another module is
 // rejected. The leaf is matched exactly so that, e.g., `Input` does not
 // spuriously match `MutableInput`.
-static const VocabEntry *classifyVocabTrait(mlir::SymbolRefAttr sym) {
+static const VocabEntry *classifyVocabTrait(TraitSymbolAttr traitSymbol) {
+  mlir::SymbolRefAttr sym = traitSymbol.getSymbol();
   if (!sym.getRootReference().strref().contains("extensibility"))
     return nullptr;
   bool inModule = false;
@@ -913,14 +914,14 @@ bool isFusableIOSpec(IOSpec spec) {
 bool isMutableIOSpec(IOSpec spec) { return spec == IOSpec::MutableInputTensor; }
 
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
-    llvm::ArrayRef<mlir::SymbolRefAttr> writtenSymbols,
+    llvm::ArrayRef<M::KGEN::TraitSymbolAttr> writtenSymbols,
     llvm::function_ref<void(const llvm::Twine &)> emitError, bool isShapeFunc) {
   // Per-row presence over the vocabulary table. Presence is idempotent, so a
   // trait surfacing more than once (e.g. both as written and as another
   // trait's ancestor) counts once.
   bool present[std::size(kTensorArgVocab)] = {};
-  for (mlir::SymbolRefAttr sym : writtenSymbols) {
-    if (const VocabEntry *entry = classifyVocabTrait(sym)) {
+  for (TraitSymbolAttr traitSymbol : writtenSymbols) {
+    if (const VocabEntry *entry = classifyVocabTrait(traitSymbol)) {
       present[entry - kTensorArgVocab] = true;
       continue;
     }
@@ -933,6 +934,7 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     // `Loadable: LoadAccess`, ...). So accept `AnyType` and reject anything
     // else as a genuinely foreign trait (which the author had to write
     // explicitly; it is not implied by the vocabulary).
+    mlir::SymbolRefAttr sym = traitSymbol.getSymbol();
     if (sym.getLeafReference() == "AnyType")
       continue;
     emitError("trait-bound tensor argument references '" +
@@ -1087,7 +1089,7 @@ KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType) {
   // a generic arg bound purely by stdlib/other traits (e.g. a primitive's
   // `[T: ImplicitlyCopyable]`) is not a tensor arg. Require at least one
   // tensor-argument vocabulary trait before distilling.
-  for (mlir::SymbolRefAttr sym : traitType.getSymbols())
+  for (TraitSymbolAttr sym : traitType.getSymbols())
     if (classifyVocabTrait(sym))
       return traitType;
   return {};
