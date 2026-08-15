@@ -97,6 +97,7 @@ def semantic_hash(scc: SCC, node: Node):
     # The bytecodes of the Node's backing function.
     return hash(scc.inputs, scc.position(node), node.get_bytecode())
 
+
 def add_semantic_hash(module):
     # Compute the SCC of the module's callgraph (needed to handle recursive functions)
     SCCs = compute_strongly_connected_components(module)
@@ -105,15 +106,15 @@ def add_semantic_hash(module):
 
     for SCC in dfs_postorder(SCCs):
         for node in SCC:
-          # Compute the bytecode hash of all functions in the SCC
-          # All functions referred to by the SCC are either in the
-          # SCC or have been processed already.
-          hash = str(semantic_hash(SCC, node))
+            # Compute the bytecode hash of all functions in the SCC
+            # All functions referred to by the SCC are either in the
+            # SCC or have been processed already.
+            hash = str(semantic_hash(SCC, node))
 
-          # Append the hash to all functions in the SCC and update
-          # any callers
-          for func in SCC:
-              func.set_attr("semantic_hash", hash)
+            # Append the hash to all functions in the SCC and update
+            # any callers
+            for func in SCC:
+                func.set_attr("semantic_hash", hash)
 ```
 
 The high-level idea is to treat the compilation process in `JitCompileKernels`
