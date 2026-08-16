@@ -37,7 +37,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
 
     golden_value = []
 
-    inputs = None
+    inputs: int | None = None
     num_inputs = None
 
     sizes_to_test = testCase.input_sizes_to_test()
@@ -49,9 +49,9 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
         # Create list lazily so we know how many to create.
         if inputs is None:
             num_inputs = len(ins)
-            inputs = [[] for _ in range(num_inputs)]
+            inputs = [[] for _ in range(num_inputs)]  # type: ignore[assignment]
 
-        for i in range(num_inputs):
+        for i in range(num_inputs):  # type: ignore[arg-type]
             inputs[i].append(ins[i])  # type: ignore
         golden_value.append(testCase.run(ins, NumpyImpl()))
 
@@ -60,7 +60,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
         exit(0)
 
     # Concat all the test data into one numpy array for each input and save out to a file which mt can load.
-    inputs_as_numpy = [np.array(inputs[i]) for i in range(num_inputs)]
+    inputs_as_numpy = [np.array(inputs[i]) for i in range(num_inputs)]  # type: ignore[index]
 
     input_launch_line = ""
 
@@ -74,7 +74,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
         tmp.flush()
 
         shape = inputs_as_numpy[i].shape
-        shape = "x".join([str(s) for s in shape[1:]])
+        shape = "x".join([str(s) for s in shape[1:]])  # type: ignore[assignment]
 
         # Add the input to the MT command.
         input_launch_line += (
@@ -170,7 +170,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
 
         if val_to_compare.dtype == bool:
             for i, val in enumerate(raw_out):
-                raw_out[i] = val == "True"
+                raw_out[i] = val == "True"  # type: ignore[call-overload]
 
         mo_out = np.array(list(raw_out), dtype=val_to_compare.dtype).reshape(
             val_to_compare.shape
