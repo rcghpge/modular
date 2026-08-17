@@ -31,7 +31,7 @@ that one stays manual.
 # cross-node (two Coder workspaces, EFA)
 python3 max/examples/internal/di/run_dist_from_local.py <prefill-ws> <decode-ws> \
   --ref <branch-or-pr/N> \
-  --config max/examples/internal/di/configs/kimi-k2_7-ep-tp-dp-fp4-synthetic-75k300-eagle3-d3-internode-efa.yaml
+  --config max/examples/internal/di/configs/kimi-k2_7-ep-tp-dp-fp4-eagle3-d3-internode-efa.yaml
 
 # intranode (one workspace, no EFA needed)
 python3 max/examples/internal/di/run_dist_from_local.py <workspace> \
@@ -265,7 +265,7 @@ MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=95 \
 MODULAR_NIXL_TRANSFER_BACKEND=libfabric \
 FI_EFA_USE_DEVICE_RDMA=1 \
 ./bazelw run //max/examples/internal/di:run_dist -- \
-  --config-yaml="$PWD/max/examples/internal/di/configs/kimi-k2_7-ep-tp-dp-fp4-metagross-synthetic-multi-turn-ms-delay-eagle3-d3-internode-efa.yaml" \
+  --config-yaml="$PWD/max/examples/internal/di/configs/kimi-k2_7-ep-tp-dp-fp4-eagle3-d3-internode-efa.yaml" \
   --start-proxy-server --proxy-port 9999 \
   --hosts "$DECODE_HOST,$PREFILL_HOST"
 ```
