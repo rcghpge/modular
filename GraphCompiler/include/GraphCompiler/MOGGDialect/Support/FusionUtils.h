@@ -67,23 +67,6 @@ GenericCompiledRegionOp
 fuseAndReplaceCompiledRegions(bool allowDuplication,
                               ArrayRef<Operation *> toFuse);
 
-/// Fuse small constant inputs to `kernel` into the kernel, and erase the
-/// original constant op if it has no remaining users.
-///
-/// Example:
-///   %const = mo.constant ...
-///   %res   = mogg.kernel(%const, ...) {
-///     ...
-///   }
-///
-/// ===>
-///
-///   %res = mogg.kernel(...) {
-///     %const = mo.constant ...
-///     ...
-///   }
-void fuseConstant(MOGG::KernelOp kernel);
-
 /// Callback type to intercept inlining on a specific operation.
 /// Return true if the operation is handled by the callback, false otherwise.
 ///

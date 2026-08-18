@@ -5044,9 +5044,8 @@ static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
                  {ptrArg, layoutArg}));
 }
 
-/// If `val` is a trait stub buffer-capture block argument, assemble the dense
-/// execute-facing arg implied by `contract`; otherwise return the existing mojo
-/// value unchanged.
+/// If `val` is represented by a trait buffer capture, assemble the dense
+/// execute-facing arg implied by `contract`.
 static MojoValue
 maybeAssembleDenseTraitArgFromCapture(EmitMojoState &state, Value val,
                                       const TensorArgContract &contract,
@@ -5054,9 +5053,11 @@ maybeAssembleDenseTraitArgFromCapture(EmitMojoState &state, Value val,
   if (contract.fused || contract.role == TensorArgRole::none)
     return state.getMojoValueFor(val);
   auto blockArg = dyn_cast<BlockArgument>(val);
-  if (!blockArg || blockArg.getOwner() != &stub.getBodyBlock())
+  bool isCapture = val.getDefiningOp<TensorArgInitOp>() ||
+                   (blockArg && blockArg.getOwner() == &stub.getBodyBlock());
+  if (!isCapture)
     return state.getMojoValueFor(val);
-  auto tensorTy = MO::dynCastFromTensorLike(blockArg.getType());
+  auto tensorTy = MO::dynCastFromTensorLike(val.getType());
   if (!tensorTy)
     return state.getMojoValueFor(val);
   bool devicePassable = !MO::isOnHost(stub.getOperation());

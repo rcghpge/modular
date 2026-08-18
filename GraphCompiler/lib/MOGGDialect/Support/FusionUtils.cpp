@@ -13,7 +13,6 @@
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MojoParameters.h"
-#include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GraphCompiler/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
@@ -63,88 +62,6 @@ FusionLeafAttr createFusionLeaf(Operation *op) {
   signature = TypeAttr::get(funcType);
 
   return FusionLeafAttr::get(ctx, StringAttr::get(ctx, name), loc, signature);
-}
-
-// The max number of elements in a constant that we will allow to be fused into
-// the body of a kernel.
-constexpr int64_t kMaxConstantSize = 2048;
-
-/// Try to get the original constant op that produced `val`, with optional
-/// rebind (i.e., reinterpret cast) in the way.
-static MO::ConstantOp tryGetConstantOp(Value val) {
-  // Look through potential rebind op
-  if (auto rebindOp = val.getDefiningOp<MO::RebindOp>())
-    val = rebindOp.getInput();
-
-  return val.getDefiningOp<MO::ConstantOp>();
-}
-
-/// Check whether the `index`-th operand of `kernel` is a fusable constant op.
-static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
-  // Don't fuse constants into non-host (device) kernels: device constant
-  // lowering is still incorrect (removing this guard crashes real GPU kernels
-  // with illegal memory accesses). See
-  // https://linear.app/modularml/issue/GEX-3839.
-  if (!MO::isOnHost(kernel))
-    return false;
-
-  MO::ConstantOp cst = tryGetConstantOp(kernel.getOperand(index));
-  if (!cst)
-    return false;
-
-  if (!MO::isOnHost(cst))
-    return false;
-
-  // Check it is a small constant with a attribute we understand.
-  ElementsAttr elems = cst.getValueAttr();
-  if (elems.getNumElements() > kMaxConstantSize)
-    return false;
-
-  Type dtype = elems.getElementType();
-  if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
-    return false;
-
-  if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))
-    return false;
-
-  return true;
-
-  return false;
-}
-
-/// Fold the constant at `idx`-th operand of `kernel` into the kernel body.
-static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
-  Value inputVal = kernel.getOperand(idx);
-  MO::ConstantOp cst = tryGetConstantOp(inputVal);
-
-  Block *block = kernel.getBody();
-
-  mlir::OpBuilder builder{kernel->getContext()};
-  builder.setInsertionPointToStart(block);
-
-  // Clone the constant and add it to the kernel.
-  MO::ConstantOp newOp = cst.clone();
-
-  builder.insert(newOp);
-
-  // Replace all uses of it with the now in-kernel constant.
-  block->getArgument(idx).replaceAllUsesWith(newOp.getResult());
-
-  // Remove the argument.
-  kernel.eraseInputsAt(idx);
-
-  // Kill the constant if that was the last use.
-  if (cst->use_empty())
-    cst->erase();
-}
-
-void fuseConstant(MOGG::KernelOp kernel) {
-  // Traverse from the back to simplify removing operands.
-  int32_t preFuseNumOperands = kernel.getNumOperands();
-  for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
-    if (canFuseOperand(kernel, index))
-      fuseInputAtIndex(kernel, index);
-  }
 }
 
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {

@@ -92,8 +92,20 @@ public:
   /// uses derive conflicting contracts.
   mlir::FailureOr<TensorArgContractAttr> derive(mlir::Value kernelIOValue);
 
+  /// Derive the trait contract a single use-edge reaches.
+  ///
+  /// Same walk as `derive`, but only `use` of the used value votes -- its
+  /// sibling uses do not. Lane is a property of the use-edge, not the op:
+  /// CSE may merge equal constants across a legacy and a trait operand, and
+  /// each edge can then be materialized on its own lane instead of the
+  /// merged value being rejected as a conflict.
+  mlir::FailureOr<TensorArgContractAttr> deriveUse(mlir::OpOperand &use);
+
 private:
   class ContractEvidence;
+
+  mlir::FailureOr<TensorArgContractAttr> deriveImpl(mlir::Value kernelIOValue,
+                                                    mlir::OpOperand *seedUse);
 
   mlir::FailureOr<bool> recordCallContract(mlir::OpOperand &use,
                                            ContractEvidence &evidence);

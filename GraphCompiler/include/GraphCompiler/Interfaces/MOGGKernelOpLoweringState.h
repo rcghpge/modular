@@ -218,7 +218,9 @@ protected:
   /// the region passed in (after `setupKernelStubArgs`).
   void wireTraitFusedCapturesToStubArgs();
 
-  void lowerKernelStub();
+  // Fails when an in-stub constant's trait contract cannot be derived
+  // (diagnostic already emitted).
+  LogicalResult lowerKernelStub(MOGG::KernelIOContractDeriver &contractDeriver);
 
   // Keep track all inputs / output / scratchpad operands;
   SmallVector<TensorOperandInfos> tensorOperandInfos;
@@ -250,8 +252,9 @@ private:
   // Lower the BindLambdaOp to be compatible with the MGP region.
   void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
 
-  // Lower the ConstantOp to be compatible with the MGP region.
-  void lowerConstantOp(MO::ConstantOp constantOp);
+  // Lower an in-stub constant to a legacy slice and/or trait capture.
+  LogicalResult lowerConstant(MO::ConstantOp constantOp,
+                              MOGG::KernelIOContractDeriver &contractDeriver);
 
   // Lower the GetDimOp to be compatible with the MGP region.
   void lowerGetDimOp(MOGG::GetDimOp getDimOp);

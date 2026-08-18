@@ -338,6 +338,20 @@ struct TraitFusedStoreLegacyInput:
         pass
 
 
+@extensibility.register("trait_dense_and_fused_inputs")
+struct TraitDenseAndFusedInputs:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & DenseTensor],
+        y: Some[Input & Fused & Loadable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
 # Pure-legacy control: no trait args at all. A regression guard that this change
 # leaves the legacy `[out]`/`[in]`/`mut` split byte-for-byte unchanged. The
 # `MutableInputTensor` here pins `mut=true` on the legacy lane too.

@@ -482,7 +482,6 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
 }
 
 void MOGGKernelOpLoweringState::findExtraKernelStubOnlyArguments() {
-
   SmallVector<Attribute> newKernelResources;
 
   kernelStub.walk([&](MO::ConstantOp constantOp) {
@@ -588,28 +587,56 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   lambdaVal.replaceAllUsesExcept(fusedTensorOp.getResult(), fusedTensorOp);
 }
 
-void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
+LogicalResult MOGGKernelOpLoweringState::lowerConstant(
+    MO::ConstantOp constantOp, MOGG::KernelIOContractDeriver &contractDeriver) {
   mlir::MLIRContext *ctx = moggOp->getContext();
   auto loc = moggOp->getLoc();
+  Value result = constantOp.getResult();
+
+  // Per-use contract; see KernelIOContractDeriver::deriveUse.
+  SmallVector<OpOperand *> traitUses, legacyUses;
+  for (OpOperand &use : result.getUses()) {
+    FailureOr<MOGG::TensorArgContractAttr> contract =
+        contractDeriver.deriveUse(use);
+    if (failed(contract))
+      return failure();
+    (*contract ? traitUses : legacyUses).push_back(&use);
+  }
 
   // Replace the op with the corresponding kernel arguments.
-  Value bufferValue =
-      operandsMapping.get(constantOp.getResult(), /*isInsideStub=*/true);
+  Value bufferValue = operandsMapping.get(result, /*isInsideStub=*/true);
 
-  // Exclusive is True unless it's used by a view kernel.
   builder.setInsertionPoint(constantOp);
-  SmallVector<Value> dynamicDimensions;
-  MO::TensorType tensorType =
-      MO::castFromTensorLike(constantOp.getResult().getType());
+  MO::TensorType tensorType = MO::castFromTensorLike(result.getType());
   tensorType = tensorType.cloneWith(MO::IOKindAttr::get(ctx, MO::IOKind::Input))
                    .cloneWithMut(BoolAttr::get(ctx, false));
-  Value constantValue = MOGG::TensorInitOp::create(
-      builder, loc, tensorType, bufferValue,
-      /*dynamicDimensions=*/ArrayRef<Value>{},
-      /*mut=*/BoolAttr::get(ctx, false),
-      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
-  constantOp.getResult().replaceAllUsesWith(constantValue);
+  assert(tensorType.hasStaticShape() &&
+         "in-stub constants materialize no runtime dimensions");
+
+  if (!traitUses.empty()) {
+    // Neutral input capture: the execute declaration, not this init, selects
+    // the dense vs fused wrapper.
+    auto captureContract = MOGG::TensorArgContractAttr::get(
+        ctx, MOGG::TensorArgRoleKind::input, /*fused=*/false,
+        MOGG::TensorArgAccessKind::none, MOGG::TensorArgAccessKind::none);
+    Value capture = MOGG::TensorArgInitOp::create(
+        builder, loc, tensorType, bufferValue,
+        /*dynamicDimensions=*/ArrayRef<Value>{},
+        /*device_context=*/Value(), captureContract);
+    for (OpOperand *use : traitUses)
+      use->set(capture);
+  }
+  if (!legacyUses.empty()) {
+    Value slice = MOGG::TensorInitOp::create(
+        builder, loc, tensorType, bufferValue,
+        /*dynamicDimensions=*/ArrayRef<Value>{},
+        /*mut=*/BoolAttr::get(ctx, false),
+        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
+    for (OpOperand *use : legacyUses)
+      use->set(slice);
+  }
   constantOp->erase();
+  return success();
 }
 
 void MOGGKernelOpLoweringState::lowerGetDimOp(MOGG::GetDimOp getDimOp) {
@@ -685,21 +712,25 @@ void MOGGKernelOpLoweringState::wireTraitFusedCapturesToStubArgs() {
   });
 }
 
-void MOGGKernelOpLoweringState::lowerKernelStub() {
+LogicalResult MOGGKernelOpLoweringState::lowerKernelStub(
+    MOGG::KernelIOContractDeriver &contractDeriver) {
   // Walk through the IR and lower some ops to MGP.
-  kernelStub.walk([&](mlir::Operation *op) {
+  auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
     if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
       lowerBindLambdaOp(bindOp);
-    else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
-      lowerConstantOp(constantOp);
-    else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op))
+    else if (auto constantOp = dyn_cast<MO::ConstantOp>(op)) {
+      if (failed(lowerConstant(constantOp, contractDeriver)))
+        return WalkResult::interrupt();
+    } else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op))
       lowerTensorGetShapeOp(tensorGetShapeOp);
     else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(op))
       lowerGetDimOp(getDimOp);
     else if (isa<MOGG::OutputPlaceholdersOp, MOGG::ScratchPlaceholdersOp,
                  MOGG::DeviceContextPlaceholderOp>(op))
       lowerKernelOpWithOperandsMapping(op);
+    return WalkResult::advance();
   });
+  return failure(walkResult.wasInterrupted());
 }
 
 LogicalResult
@@ -758,11 +789,8 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   }
   chain = opLoweringState.getGuardChain(chain);
 
-  // Set up operands mapping for the chain and inputs. One deriver serves
-  // both the input and the output contract derivations below: its
-  // constructor builds a symbol table over the whole module, and its
-  // declaration-adaptor cache is shared across all kernel I/O values of the
-  // kernel.
+  // One deriver serves inputs, outputs, and in-stub constants so declaration
+  // adaptors are decoded once during this lowering.
   MOGG::KernelIOContractDeriver contractDeriver(
       moggKernelOp->getParentOfType<mlir::ModuleOp>());
   if (failed(setupInputOperandsMapping(chain, loweredInputOperands,
@@ -940,7 +968,8 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   MOGG::OutputOp::create(builder, loc, outputs);
 
   // Lower remaining stub ops (placeholders, constants, etc.) for EmitMojo.
-  lowerKernelStub();
+  if (failed(lowerKernelStub(contractDeriver)))
+    return failure();
 
   // The following is to inform the lowering state of the values we have
   // created.

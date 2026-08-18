@@ -27,8 +27,10 @@ public:
       return mlir::success();
 
     // TODO(GEX-4071): a value reaching two operand positions with different
-    // contracts needs one init op per distinct contract from a shared buffer;
-    // reject until kernel I/O lowering supports that split.
+    // contracts needs one init op per distinct contract from a shared buffer.
+    // In-stub constants already get that split (per-use lanes via
+    // `deriveUse`); boundary kernel I/O lowered through `derive` does not
+    // yet, so reject the conflict.
     return emitConflict(source, contract, *firstSource, merged);
   }
 
@@ -183,6 +185,16 @@ KernelIOContractDeriver::recordCallContract(OpOperand &use,
 
 FailureOr<TensorArgContractAttr>
 KernelIOContractDeriver::derive(Value kernelIOValue) {
+  return deriveImpl(kernelIOValue, /*seedUse=*/nullptr);
+}
+
+FailureOr<TensorArgContractAttr>
+KernelIOContractDeriver::deriveUse(OpOperand &use) {
+  return deriveImpl(use.get(), &use);
+}
+
+FailureOr<TensorArgContractAttr>
+KernelIOContractDeriver::deriveImpl(Value kernelIOValue, OpOperand *seedUse) {
   struct UseTraversal {
     llvm::SmallVector<Value, 4> worklist;
     llvm::DenseSet<Value> processed;
@@ -194,8 +206,47 @@ KernelIOContractDeriver::derive(Value kernelIOValue) {
   // than the captured value, reaches the call. Explicit uses determine the
   // exact contract, so process them before captured uses.
   UseTraversal explicitUses;
-  explicitUses.worklist.push_back(kernelIOValue);
   UseTraversal capturedUses;
+
+  auto handleUse = [&](OpOperand &use, UseTraversal &current) -> LogicalResult {
+    Operation *owner = use.getOwner();
+    FailureOr<bool> recorded = recordCallContract(use, current.evidence);
+    if (failed(recorded))
+      return failure();
+    if (*recorded)
+      return success();
+
+    // Value-forwarding ops: the contract belongs to wherever the forwarded
+    // value lands.
+    if (isa<MOGG::BindLambdaOp, MOGG::TensorFusedOp, MOGG::CallViewOp,
+            MOGG::CallAffineOp, MOGG::AsScalarOp, MOGG::AsTupleOp,
+            MOGG::TensorReshapeOp>(owner)) {
+      for (Value result : owner->getResults())
+        current.worklist.push_back(result);
+      return success();
+    }
+
+    // Defer the lambda output until all explicit uses are processed.
+    if (auto bindOp = owner->getParentOfType<MOGG::BindLambdaOp>()) {
+      capturedUses.worklist.push_back(bindOp.getOutput());
+      return success();
+    }
+
+    owner->emitError()
+        << "cannot derive a tensor-arg contract through this use of a kernel "
+           "I/O value ('"
+        << owner->getName() << "' is not a recognized kernel-body op)";
+    return failure();
+  };
+
+  // `deriveUse`: only `seedUse` of `kernelIOValue` votes.
+  if (seedUse) {
+    explicitUses.processed.insert(kernelIOValue);
+    if (failed(handleUse(*seedUse, explicitUses)))
+      return failure();
+  } else {
+    explicitUses.worklist.push_back(kernelIOValue);
+  }
 
   while (!explicitUses.worklist.empty() || !capturedUses.worklist.empty()) {
     bool processingExplicitUse = !explicitUses.worklist.empty();
@@ -207,36 +258,9 @@ KernelIOContractDeriver::derive(Value kernelIOValue) {
     if (!current.processed.insert(value).second)
       continue;
 
-    for (OpOperand &use : value.getUses()) {
-      Operation *owner = use.getOwner();
-      FailureOr<bool> recorded = recordCallContract(use, current.evidence);
-      if (failed(recorded))
+    for (OpOperand &use : value.getUses())
+      if (failed(handleUse(use, current)))
         return failure();
-      if (*recorded)
-        continue;
-
-      // Value-forwarding ops: the contract belongs to wherever the forwarded
-      // value lands.
-      if (isa<MOGG::BindLambdaOp, MOGG::TensorFusedOp, MOGG::CallViewOp,
-              MOGG::CallAffineOp, MOGG::AsScalarOp, MOGG::AsTupleOp,
-              MOGG::TensorReshapeOp>(owner)) {
-        for (Value result : owner->getResults())
-          current.worklist.push_back(result);
-        continue;
-      }
-
-      // Defer the lambda output until all explicit uses are processed.
-      if (auto bindOp = owner->getParentOfType<MOGG::BindLambdaOp>()) {
-        capturedUses.worklist.push_back(bindOp.getOutput());
-        continue;
-      }
-
-      owner->emitError()
-          << "cannot derive a tensor-arg contract through this use of a kernel "
-             "I/O value ('"
-          << owner->getName() << "' is not a recognized kernel-body op)";
-      return failure();
-    }
   }
 
   // If both explicit and captured uses reach calls, both must be trait-based
