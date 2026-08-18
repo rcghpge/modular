@@ -172,6 +172,8 @@ public:
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;
 
+  ErrorOr<void *> getHostAccessiblePointer(const void *devicePtr) override;
+
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,

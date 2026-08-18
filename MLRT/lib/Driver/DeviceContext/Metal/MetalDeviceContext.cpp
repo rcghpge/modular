@@ -1215,6 +1215,32 @@ MetalDeviceContext::getMetalBufferWithOffset(const void *ptr) const {
   return MetalDevice::cast(device()).findContainingBuffer(ptr);
 }
 
+ErrorOr<void *>
+MetalDeviceContext::getHostAccessiblePointer(const void *devicePtr) {
+  if (devicePtr == nullptr)
+    RETURN_ERROR("getHostAccessiblePointer: pointer is null");
+
+  // The range map is keyed by whatever address `memAlloc`/`chunkAlloc` handed
+  // out, so this resolves device (`gpuAddress`) pointers, host (`contents`)
+  // pointers, sub-buffers, and interior pointers alike. Feeding a host pointer
+  // back in is idempotent: its base is already `contents()`.
+  MetalDevice::BufferLookupResult found =
+      MetalDevice::cast(device()).findContainingBuffer(devicePtr);
+  if (!found.isValid())
+    RETURN_ERROR(
+        "getHostAccessiblePointer: pointer was not allocated by this device");
+
+  // Null `contents()` means the buffer was created without host (shared)
+  // access; `getStorageMode` only hands out `StorageModeShared` today, so this
+  // guards a future private-storage allocation path.
+  void *contents = found.buffer->contents();
+  if (contents == nullptr)
+    RETURN_ERROR("getHostAccessiblePointer: Metal buffer was not created with "
+                 "host (shared) access");
+
+  return static_cast<char *>(contents) + found.offset;
+}
+
 //
 // Helper methods for buffer management
 //

@@ -186,6 +186,10 @@ public:
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
+  /// CPU "device" memory is ordinary host memory, so a device pointer is
+  /// already the host-visible address and is returned unchanged.
+  ErrorOr<void *> getHostAccessiblePointer(const void *devicePtr) override;
+
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
   /// Returns the AsyncRT CPUDevice that backs this context's worker

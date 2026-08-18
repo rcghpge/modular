@@ -573,6 +573,13 @@ ErrorOr<Device::MemInfo> CpuDeviceContext::getDeviceMemoryInfo() const {
   return device().getMemoryInfo();
 }
 
+ErrorOr<void *>
+CpuDeviceContext::getHostAccessiblePointer(const void *devicePtr) {
+  if (devicePtr == nullptr)
+    RETURN_ERROR("getHostAccessiblePointer: pointer is null");
+  return const_cast<void *>(devicePtr);
+}
+
 MODULAR_CXX_EXPORT const CpuDeviceContext &
 CpuDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CpuDeviceContext &>(ctx);

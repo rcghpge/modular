@@ -242,6 +242,18 @@ TEST_F(HALVirtualDeviceTest, CompletionFlagsAreRejected) {
   EXPECT_ERR(ctx->allocateCompletionFlag());
 }
 
+// A virtual device has no memory at all, so nothing can be resolved to a host
+// address. Both backends report the query as unsupported rather than guessing.
+TEST_F(HALVirtualDeviceTest, HostAccessiblePointerIsRejected) {
+  DeviceRef device = virtualDevice();
+  ASSERT_NE(device.getPointer(), nullptr);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  uint64_t host = 0;
+  EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(&host),
+                 "getHostAccessiblePointer is not supported on this device");
+}
+
 #if MODULAR_HAL_DEVICE_CONTEXT
 // The legacy backend pairs an assert(false) with each of the errors below, so a
 // debug build there aborts instead of returning. The HAL shim deliberately

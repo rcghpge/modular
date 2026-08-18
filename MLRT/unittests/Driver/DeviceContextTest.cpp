@@ -246,6 +246,15 @@ TEST(DeviceContextTest, SubBuffer) {
   free(aPtr);
 }
 
+// CPU device memory is host memory, so the pointer resolves to itself.
+TEST(DeviceContextTest, GetHostAccessiblePointerIsIdentityOnCPU) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx->enqueueCreateBuffer(64));
+  ASSIGN_NO_ERR(void *, hostPtr, ctx->getHostAccessiblePointer(buf->ptr()));
+  EXPECT_EQ(hostPtr, buf->ptr());
+  EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(nullptr), "pointer is null");
+}
+
 TEST(DeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 

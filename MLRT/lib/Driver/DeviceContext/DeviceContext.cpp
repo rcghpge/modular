@@ -1812,6 +1812,10 @@ ErrorOr<DeviceEventRef> DeviceContext::eventCreate(bool enableTiming) {
   RETURN_ERROR("eventCreate is not supported on this device");
 }
 
+ErrorOr<void *> DeviceContext::getHostAccessiblePointer(const void *devicePtr) {
+  RETURN_ERROR("getHostAccessiblePointer is not supported on this device");
+}
+
 ErrorOrSuccess DeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
     int *numBlocks, DeviceFunction &func, int blockSize,
     size_t dynamicSharedMemSize) {

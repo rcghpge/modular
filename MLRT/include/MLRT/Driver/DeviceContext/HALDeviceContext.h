@@ -679,10 +679,19 @@ public:
   /// disabled.
   bool isDebugAllocatorEnabled(StringRef name) const { return false; }
 
+  // ===-- Host memory / addressing --------------------------------------=== //
+
   /// Whether `ptr` is a device address owned by this context. The legacy
   /// default ("residency unknown -- caller should stage") is the conservative
   /// answer; a driver-backed residency query is a future optimization.
   bool ownsDeviceAddress(const void *ptr) const { return false; }
+
+  /// Resolves a device pointer to its host-visible address on unified-memory
+  /// devices. The HAL API exposes no such query yet, so this reports the
+  /// legacy "unsupported" default.
+  ErrorOr<void *> getHostAccessiblePointer(const void *devicePtr) {
+    return Error("getHostAccessiblePointer is not supported on this device");
+  }
 
   /// Pins an existing host allocation for fast DMA. The HAL API has no
   /// host-register support yet, so this reports the legacy "unsupported"
@@ -694,6 +703,8 @@ public:
   ErrorOrSuccess unregisterHostMemory(void *ptr) {
     return Error("unregisterHostMemory is not supported on this device");
   }
+
+  // ===-- Identity / Mojo interop ---------------------------------------=== //
 
   /// Contexts compare equal when they drive the same underlying stream,
   /// mirroring the legacy implementation.

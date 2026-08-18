@@ -270,6 +270,13 @@ MODULAR_EXPORT int64_t AsyncRT_DeviceBuffer_bytesize(DeviceBuffer *buffer) {
   return buffer->byteSize();
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_hostPtr(void **result,
+                                                        DeviceBuffer *buffer) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceBuffer_hostPtr", TRACY_COLOR_GRAY);
+  return checkVal(result, static_cast<void *>(nullptr),
+                  buffer->context().getHostAccessiblePointer(buffer->ptr()));
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_stream(DeviceStream **result,
                                                         DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_stream", TRACY_COLOR_GRAY);

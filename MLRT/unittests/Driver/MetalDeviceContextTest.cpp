@@ -992,4 +992,65 @@ TEST_F(MetalDeviceContextTestBase,
   EXPECT_GT(actual, 0u);
 }
 
+// Metal device allocations are `MTLStorageModeShared`, so the host can read the
+// bytes a blit wrote once the queue has drained -- no device-to-host copy.
+TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_ReadsDeviceWrites) {
+  ASSERT_TRUE(ctx_);
+  constexpr size_t length = 64;
+
+  ASSIGN_NO_ERR(DeviceBufferRef, buf,
+                ctx_->enqueueCreateBuffer(length * sizeof(uint32_t)));
+
+  std::vector<uint32_t> src(length);
+  for (size_t i = 0; i < length; ++i)
+    src[i] = static_cast<uint32_t>(i * 3 + 1);
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*buf, src.data()));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  ASSIGN_NO_ERR(void *, hostPtr, ctx_->getHostAccessiblePointer(buf->ptr()));
+  ASSERT_NE(hostPtr, nullptr);
+  const uint32_t *observed = static_cast<const uint32_t *>(hostPtr);
+  for (size_t i = 0; i < length; ++i)
+    EXPECT_EQ(observed[i], src[i]) << "mismatch at index " << i;
+}
+
+// The range map resolves interior pointers, so a sub-buffer and a hand-computed
+// interior address must both land at the parent's host address plus the offset.
+TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_ResolvesOffsets) {
+  ASSERT_TRUE(ctx_);
+  constexpr size_t byteSize = 4096;
+  constexpr size_t offset = 256;
+
+  ASSIGN_NO_ERR(DeviceBufferRef, parent, ctx_->enqueueCreateBuffer(byteSize));
+  ASSIGN_NO_ERR(void *, parentHost,
+                ctx_->getHostAccessiblePointer(parent->ptr()));
+
+  ASSIGN_NO_ERR(DeviceBufferRef, sub,
+                parent->createSubBuffer(offset, byteSize - offset));
+  ASSIGN_NO_ERR(void *, subHost, ctx_->getHostAccessiblePointer(sub->ptr()));
+  EXPECT_EQ(static_cast<char *>(subHost),
+            static_cast<char *>(parentHost) + offset);
+
+  const void *interior = static_cast<const char *>(parent->ptr()) + offset;
+  ASSIGN_NO_ERR(void *, interiorHost, ctx_->getHostAccessiblePointer(interior));
+  EXPECT_EQ(interiorHost, subHost);
+}
+
+// Host allocations already hand out `contents()`, so feeding one back in must
+// return the same address rather than shifting it.
+TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_HostBufferIsSame) {
+  ASSERT_TRUE(ctx_);
+  ASSIGN_NO_ERR(DeviceBufferRef, host, ctx_->createHostBuffer(1024));
+  ASSIGN_NO_ERR(void *, hostPtr, ctx_->getHostAccessiblePointer(host->ptr()));
+  EXPECT_EQ(hostPtr, host->ptr());
+}
+
+TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_UnknownPointer) {
+  ASSERT_TRUE(ctx_);
+  uint32_t onStack = 0;
+  EXPECT_ERR_MSG(ctx_->getHostAccessiblePointer(&onStack),
+                 "was not allocated by this device");
+  EXPECT_ERR_MSG(ctx_->getHostAccessiblePointer(nullptr), "pointer is null");
+}
+
 } // namespace M::Driver

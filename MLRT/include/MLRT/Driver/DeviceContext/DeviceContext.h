@@ -923,6 +923,20 @@ public:
   /// residency (e.g. CUDA) override this.
   virtual bool ownsDeviceAddress(const void *ptr) const { return false; }
 
+  /// Resolves a device pointer previously returned by this context's allocator
+  /// to its host-visible address, so the CPU can read or write those bytes
+  /// without a staging copy. `devicePtr` may point into the interior of an
+  /// allocation; the returned address carries the same offset.
+  ///
+  /// Only implemented on backends where device allocations are CPU-addressable:
+  /// unified memory (e.g. Metal), and the CPU device, whose allocations are
+  /// host memory to begin with. Other backends return an error, as does a
+  /// pointer this context did not allocate.
+  ///
+  /// The caller owns the ordering: bytes written by device work are only valid
+  /// to read once that work has completed.
+  virtual ErrorOr<void *> getHostAccessiblePointer(const void *devicePtr);
+
   // DeviceBuffer copies.
   virtual ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
                                              size_t byteSize) = 0;
