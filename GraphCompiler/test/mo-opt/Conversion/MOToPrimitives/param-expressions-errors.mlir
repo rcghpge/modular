@@ -14,7 +14,7 @@ mo.graph @unsupported_expr() {
 // -----
 
 mo.graph @unsupported_poc<X>(%arg0: !mo.tensor<[X], f32>) {
-  // expected-error@+1 {{unsupported POC 'in'}}
-  kgen.param.declare x: scalar<bool> = <in(:scalar<si64> X, [2, 4])>
+  // expected-error@+1 {{unsupported POC 'ceil_div_s'}}
+  kgen.param.declare x: scalar<si64> = <ceil_div_s(:scalar<si64> X, 2)>
   mo.output
 }
