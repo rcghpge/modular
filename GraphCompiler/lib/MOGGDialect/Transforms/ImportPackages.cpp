@@ -21,6 +21,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/Filesystem/Paths.h"
 #include "Support/MDialect/MAttrs.h"
+#include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/AttrTypeSubElements.h"
 #include "mlir/IR/Builders.h"
@@ -637,19 +638,20 @@ struct ImportPackagesPass
   // attribute on emitted KernelDeclOps; MojoRegistry::getResolvedKernel uses
   // this flag to apply override semantics.
   using RegistrationKey = std::pair<llvm::StringRef, DeviceInfoAttr>;
-  void emitDecls(OpBuilder &builder, ModuleOp module, ModuleOp pkg,
+  void emitDecls(OpBuilder &builder, SymbolTable &symbolTable, ModuleOp pkg,
                  llvm::DenseSet<RegistrationKey> &seenRegistrations,
                  llvm::StringSet<> &seenPrimitives,
                  llvm::StringSet<> &seenShapeFunctions,
                  llvm::StringMap<std::string> &opaqueTypeMapping,
                  bool isUserDefined) {
-    MLIRContext *ctx = module.getContext();
+    Operation *module = symbolTable.getOp();
+    MLIRContext *ctx = module->getContext();
 
     SmallVector<ScannedKernel> kernels;
     SmallVector<ScannedPrimitiveFunction> primitives;
     SmallVector<ScannedShapeFunction> shapeFunctions;
     if (failed(scanForKernelDecls(pkg, kernels, primitives, shapeFunctions))) {
-      module.emitError("failed to scan kernel package");
+      module->emitError("failed to scan kernel package");
       signalPassFailure();
       return;
     }
@@ -832,12 +834,13 @@ struct ImportPackagesPass
         }
       }
 
-      KernelDeclOp::create(builder, mlir::FusedLoc::get(ctx, fnLocs),
-                           kernel.mojoName, kernel.registration,
-                           kernel.deviceInfo, *executeAttr, *elementwiseAttr,
-                           *tileElementwiseAttr, *updateViewAttr,
-                           *buildGraphAttr, structParams,
-                           mlir::BoolAttr::get(ctx, isUserDefined));
+      auto declOp = KernelDeclOp::create(
+          builder, mlir::FusedLoc::get(ctx, fnLocs), kernel.mojoName,
+          kernel.registration, kernel.deviceInfo, *executeAttr,
+          *elementwiseAttr, *tileElementwiseAttr, *updateViewAttr,
+          *buildGraphAttr, structParams,
+          mlir::BoolAttr::get(ctx, isUserDefined));
+      symbolTable.insert(declOp);
     }
 
     // Emit mogg.shape_func.decl ops. At most one per registration is allowed
@@ -862,8 +865,9 @@ struct ImportPackagesPass
         sawFailure = true;
         continue;
       }
-      ShapeFunctionDeclOp::create(builder, sf.func.getLoc(), sf.funcSymName,
-                                  sf.registration, *sfFunctionAttr);
+      symbolTable.insert(
+          ShapeFunctionDeclOp::create(builder, sf.func.getLoc(), sf.funcSymName,
+                                      sf.registration, *sfFunctionAttr));
     }
 
     for (auto &prim : primitives) {
@@ -891,9 +895,9 @@ struct ImportPackagesPass
         sawFailure = true;
         continue;
       }
-      PrimitiveDeclOp::create(builder, prim.func.getLoc(), symName,
-                              mlir::StringAttr::get(ctx, registration),
-                              *primFunctionAttr);
+      symbolTable.insert(PrimitiveDeclOp::create(
+          builder, prim.func.getLoc(), symName,
+          mlir::StringAttr::get(ctx, registration), *primFunctionAttr));
     }
 
     if (sawFailure)
@@ -906,6 +910,12 @@ struct ImportPackagesPass
 
     OpBuilder builder(ctx);
     builder.setInsertionPointToEnd(module.getBody());
+
+    // The pass manager's cached SymbolTableAnalysis is never invalidated, so
+    // every decl op emitted below must also be registered in the cached table
+    // or it stays invisible to downstream passes that read it.
+    SymbolTable &symbolTable =
+        getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
     // Separate deduplication sets let user packages override built-ins;
     // MojoRegistry::getResolvedKernel applies override semantics at lookup
@@ -952,7 +962,7 @@ struct ImportPackagesPass
           signalPassFailure();
           return;
         }
-        emitDecls(builder, module, *pkg, seenBuiltinRegistrations,
+        emitDecls(builder, symbolTable, *pkg, seenBuiltinRegistrations,
                   seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
                   /*isUserDefined=*/false);
       }
@@ -967,8 +977,9 @@ struct ImportPackagesPass
         signalPassFailure();
         return;
       }
-      emitDecls(builder, module, *pkg, seenUserRegistrations, seenPrimitives,
-                seenShapeFunctions, opaqueTypeMapping, /*isUserDefined=*/true);
+      emitDecls(builder, symbolTable, *pkg, seenUserRegistrations,
+                seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
+                /*isUserDefined=*/true);
     }
 
     // lit-mlir-paths mode: parse pre-compiled MLIR files (kgen-translate
@@ -981,7 +992,7 @@ struct ImportPackagesPass
         signalPassFailure();
         return;
       }
-      emitDecls(builder, module, *litModule, seenUserRegistrations,
+      emitDecls(builder, symbolTable, *litModule, seenUserRegistrations,
                 seenPrimitives, seenShapeFunctions, opaqueTypeMapping,
                 /*isUserDefined=*/true);
     }
@@ -997,6 +1008,11 @@ struct StripKernelDeclsPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
+    // Erase through the cached SymbolTableAnalysis table (never invalidated
+    // by the pass manager) so removed decls don't linger as dangling entries.
+    SymbolTable &symbolTable =
+        getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
+
     // Collect every kernel sym_name still referenced in the module.
     llvm::DenseSet<mlir::StringAttr> usedSymNames;
     module.walk([&](KernelCallInterface op) {
@@ -1005,15 +1021,15 @@ struct StripKernelDeclsPass
 
     for (auto decl : llvm::make_early_inc_range(module.getOps<KernelDeclOp>()))
       if (!usedSymNames.contains(decl.getSymNameAttr()))
-        decl.erase();
+        symbolTable.erase(decl);
     for (auto decl :
          llvm::make_early_inc_range(module.getOps<PrimitiveDeclOp>()))
       if (!usedSymNames.contains(decl.getSymNameAttr()))
-        decl.erase();
+        symbolTable.erase(decl);
     for (auto decl :
          llvm::make_early_inc_range(module.getOps<ShapeFunctionDeclOp>()))
       if (!usedSymNames.contains(decl.getSymNameAttr()))
-        decl.erase();
+        symbolTable.erase(decl);
   }
 };
 
