@@ -969,6 +969,51 @@ AsyncRT_DeviceContext_createGraphBuilder(DeviceGraphBuilder **result,
   return checkRef(result, ctx->createGraphBuilder());
 }
 
+// Creates a graph memory pool bound to `ctx`'s device. Infallible; ownership
+// of the returned pool (refcount 1) transfers to Mojo, released via
+// AsyncRT_DeviceGraphMemoryPool_release.
+MODULAR_EXPORT DeviceGraphMemoryPool *
+AsyncRT_DeviceContext_createGraphMemoryPool(DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_createGraphMemoryPool",
+                       TRACY_COLOR_GRAY);
+  return DeviceGraphMemoryPoolRef::create(DeviceContextRef::copy(ctx))
+      .release();
+}
+
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphMemoryPool_retain(DeviceGraphMemoryPool *pool) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphMemoryPool_retain",
+                       TRACY_COLOR_GRAY);
+  DeviceGraphMemoryPoolRef::lowLevelAddRef(pool);
+}
+
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphMemoryPool_release(DeviceGraphMemoryPool *pool) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphMemoryPool_release",
+                       TRACY_COLOR_GRAY);
+  DeviceGraphMemoryPoolRef::lowLevelDropRef(pool);
+}
+
+// Variant of createGraphBuilder that allocates from an existing shared pool
+// instead of a builder-private one, so multiple graphs share activation
+// memory. `pool` is borrowed: the builder takes its own reference, and the
+// Mojo caller keeps its handle (typically stored in the device graph cache).
+// Graphs sharing a pool must replay serially in recording order.
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_createGraphBuilderWithPool(DeviceGraphBuilder **result,
+                                                 DeviceContext *ctx,
+                                                 DeviceGraphMemoryPool *pool) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_createGraphBuilderWithPool",
+                       TRACY_COLOR_GRAY);
+  if (&pool->device() != &ctx->device()) {
+    *result = nullptr;
+    return raiseError("device graph memory pool belongs to a different device "
+                      "than the context");
+  }
+  return checkRef(
+      result, ctx->createGraphBuilder(DeviceGraphMemoryPoolRef::copy(pool)));
+}
+
 // Returns a DeviceContext facade that records operations enqueued through it
 // into `builder` instead of executing them eagerly. `seedNodeId` is the node
 // that recorded operations chain after — the Mojo layer seeds it with the

@@ -591,6 +591,12 @@ public:
   /// would fall through to the driver with the wrong host/device flag.
   void free(void *ptr, bool isHost);
 
+  /// The device this pool allocates from. Pool compatibility is a device
+  /// property, not a context-identity one: stream views of a context (see
+  /// `DeviceContext::selectStream`) share the device's memory managers, so a
+  /// pool created against any view serves them all.
+  Device &device() const;
+
 private:
   /// Backing device context. This type holds a reference to the backing
   /// MemoryManager, which means the associated Device must be kept alive.
@@ -1068,7 +1074,14 @@ public:
   // stream.
   virtual ErrorOr<DeviceContextRef> selectStream(unsigned streamId);
 
-  virtual ErrorOr<DeviceGraphBuilderRef> createGraphBuilder();
+  /// \param pool optional externally owned memory pool the builder allocates
+  /// from instead of creating a private one, letting multiple graphs share
+  /// activation memory. The pool must belong to this context's device. Graphs
+  /// sharing a pool must replay serially in recording order and must not rely
+  /// on transient allocations persisting across replays (see
+  /// `DeviceGraphBuilder::memoryPool`).
+  virtual ErrorOr<DeviceGraphBuilderRef>
+  createGraphBuilder(DeviceGraphMemoryPoolRef pool = {});
 
   virtual ErrorOrSuccess synchronize() = 0;
 

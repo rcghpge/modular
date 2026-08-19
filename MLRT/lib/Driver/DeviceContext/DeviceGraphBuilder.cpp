@@ -10,12 +10,18 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 
+#include <cassert>
 #include <utility>
 
 namespace M::Driver {
 
-DeviceGraphBuilder::DeviceGraphBuilder(DeviceContextRef context)
-    : memoryPool(DeviceGraphMemoryPoolRef::create(context)) {}
+DeviceGraphBuilder::DeviceGraphBuilder(DeviceContextRef context,
+                                       DeviceGraphMemoryPoolRef pool) {
+  assert((!pool || &pool->device() == &context->device()) &&
+         "shared device graph memory pool belongs to a different device");
+  memoryPool = pool ? std::move(pool)
+                    : DeviceGraphMemoryPoolRef::create(std::move(context));
+}
 
 DeviceGraphBuilder::~DeviceGraphBuilder() = default;
 

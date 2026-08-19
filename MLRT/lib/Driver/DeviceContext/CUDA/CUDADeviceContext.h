@@ -463,7 +463,8 @@ public:
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
   ErrorOr<DeviceContextRef> selectStream(unsigned streamId) override;
-  ErrorOr<DeviceGraphBuilderRef> createGraphBuilder() override;
+  ErrorOr<DeviceGraphBuilderRef>
+  createGraphBuilder(DeviceGraphMemoryPoolRef pool) override;
 
   ErrorOrSuccess synchronize() override;
 

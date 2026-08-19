@@ -29,11 +29,13 @@ class HIPDeviceGraphBuilder : public DeviceGraphBuilder {
 public:
   /// Construct a builder that takes ownership of an already-created \p graph.
   /// Prefer create() to allocate both together.
-  HIPDeviceGraphBuilder(HIPDeviceContext &ctx, hipGraph_t graph);
+  HIPDeviceGraphBuilder(HIPDeviceContext &ctx, hipGraph_t graph,
+                        DeviceGraphMemoryPoolRef pool = {});
   ~HIPDeviceGraphBuilder() override;
 
   /// Allocate a new empty hipGraph_t and return a builder for it.
-  static ErrorOr<DeviceGraphBuilderRef> create(HIPDeviceContext &ctx);
+  static ErrorOr<DeviceGraphBuilderRef>
+  create(HIPDeviceContext &ctx, DeviceGraphMemoryPoolRef pool = {});
 
   DeviceContext &context() const override;
 

@@ -1779,8 +1779,9 @@ ErrorOrSuccess HIPDeviceContext::streamPriorityRange(int *leastPriority,
   return success();
 }
 
-ErrorOr<DeviceGraphBuilderRef> HIPDeviceContext::createGraphBuilder() {
-  return HIPDeviceGraphBuilder::create(*this);
+ErrorOr<DeviceGraphBuilderRef>
+HIPDeviceContext::createGraphBuilder(DeviceGraphMemoryPoolRef pool) {
+  return HIPDeviceGraphBuilder::create(*this, std::move(pool));
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) {

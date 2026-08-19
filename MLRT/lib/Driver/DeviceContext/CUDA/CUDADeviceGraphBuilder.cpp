@@ -31,8 +31,9 @@ using namespace M::Driver;
   } while (0)
 
 CUDADeviceGraphBuilder::CUDADeviceGraphBuilder(CUDADeviceContext &ctx,
-                                               CUgraph graph)
-    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx)),
+                                               CUgraph graph,
+                                               DeviceGraphMemoryPoolRef pool)
+    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx), std::move(pool)),
       ctx_(CUDADeviceContextRef::copy(&ctx)), graph_(graph) {}
 
 CUDADeviceGraphBuilder::~CUDADeviceGraphBuilder() {
@@ -44,14 +45,15 @@ CUDADeviceGraphBuilder::~CUDADeviceGraphBuilder() {
 }
 
 ErrorOr<DeviceGraphBuilderRef>
-CUDADeviceGraphBuilder::create(CUDADeviceContext &ctx) {
+CUDADeviceGraphBuilder::create(CUDADeviceContext &ctx,
+                               DeviceGraphMemoryPoolRef pool) {
   DeviceContextScope scope(ctx);
   RETURN_IF_ERROR(scope.err());
 
   CUgraph graph = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx.cudaDriver().cuGraphCreate(&graph, 0));
 
-  return CUDADeviceGraphBuilderRef::create(ctx, graph);
+  return CUDADeviceGraphBuilderRef::create(ctx, graph, std::move(pool));
 }
 
 DeviceContext &CUDADeviceGraphBuilder::context() const { return *ctx_; }

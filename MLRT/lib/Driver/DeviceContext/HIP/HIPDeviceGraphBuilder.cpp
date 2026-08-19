@@ -30,8 +30,9 @@ using namespace M::Driver;
 // ===== HIPDeviceGraphBuilder ===== //
 
 HIPDeviceGraphBuilder::HIPDeviceGraphBuilder(HIPDeviceContext &ctx,
-                                             hipGraph_t graph)
-    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx)),
+                                             hipGraph_t graph,
+                                             DeviceGraphMemoryPoolRef pool)
+    : DeviceGraphBuilder(DeviceContextRef::copy(&ctx), std::move(pool)),
       ctx_(HIPDeviceContextRef::copy(&ctx)), graph_(graph) {}
 
 HIPDeviceGraphBuilder::~HIPDeviceGraphBuilder() {
@@ -43,14 +44,15 @@ HIPDeviceGraphBuilder::~HIPDeviceGraphBuilder() {
 }
 
 ErrorOr<DeviceGraphBuilderRef>
-HIPDeviceGraphBuilder::create(HIPDeviceContext &ctx) {
+HIPDeviceGraphBuilder::create(HIPDeviceContext &ctx,
+                              DeviceGraphMemoryPoolRef pool) {
   DeviceContextScope scope(ctx);
   RETURN_IF_ERROR(scope.err());
 
   hipGraph_t graph = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx.hipDriver().hipGraphCreate(&graph, 0));
 
-  return HIPDeviceGraphBuilderRef::create(ctx, graph);
+  return HIPDeviceGraphBuilderRef::create(ctx, graph, std::move(pool));
 }
 
 DeviceContext &HIPDeviceGraphBuilder::context() const { return *ctx_; }

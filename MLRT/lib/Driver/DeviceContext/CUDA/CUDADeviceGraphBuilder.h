@@ -29,11 +29,13 @@ class CUDADeviceGraphBuilder : public DeviceGraphBuilder {
 public:
   /// Construct a builder that takes ownership of an already-created \p graph.
   /// Prefer create() to allocate both together.
-  CUDADeviceGraphBuilder(CUDADeviceContext &ctx, CUgraph graph);
+  CUDADeviceGraphBuilder(CUDADeviceContext &ctx, CUgraph graph,
+                         DeviceGraphMemoryPoolRef pool = {});
   ~CUDADeviceGraphBuilder() override;
 
   /// Allocate a new empty CUgraph and return a builder for it.
-  static ErrorOr<DeviceGraphBuilderRef> create(CUDADeviceContext &ctx);
+  static ErrorOr<DeviceGraphBuilderRef>
+  create(CUDADeviceContext &ctx, DeviceGraphMemoryPoolRef pool = {});
 
   DeviceContext &context() const override;
 

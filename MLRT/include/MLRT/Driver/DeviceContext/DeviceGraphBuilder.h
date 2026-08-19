@@ -80,7 +80,11 @@ struct DeviceGraphNode {
 /// \endcode
 class DeviceGraphBuilder : public ReferenceCounted<DeviceGraphBuilder> {
 public:
-  DeviceGraphBuilder(DeviceContextRef context);
+  /// \param pool optional shared memory pool to allocate from; when null the
+  /// builder creates a private one. Must belong to `context`'s device. See the
+  /// `memoryPool` member for the sharing contract.
+  DeviceGraphBuilder(DeviceContextRef context,
+                     DeviceGraphMemoryPoolRef pool = {});
 
   virtual ~DeviceGraphBuilder();
 
@@ -269,6 +273,16 @@ private:
   /// Because memory addresses are recorded as part of a device graph, all
   /// memory used by the device graph must be reserved for the lifetime of the
   /// device graph. Null once `instantiate()` has handed it to the graph.
+  ///
+  /// The pool may be shared across builders (passed in at construction) so
+  /// their graphs share activation memory: a block freed during builder A's
+  /// recording -- or after A instantiates -- can be reissued to builder B, so
+  /// graph A's replay writes memory graph B also uses. This is sound only
+  /// while graphs sharing a pool replay serially in recording order and do
+  /// not rely on transient allocations persisting across replays (the same
+  /// assumption `RecordingDeviceContext::createHostBuffer` documents). Stable
+  /// inputs and outputs are unaffected: the graph holds references to them,
+  /// so their blocks never return to the pool while the graph lives.
   DeviceGraphMemoryPoolRef memoryPool;
 };
 

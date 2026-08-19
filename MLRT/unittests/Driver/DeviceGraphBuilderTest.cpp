@@ -573,4 +573,98 @@ TEST(DeviceGraphBuilderTest, AddInPlaceInputInterleavesWithStableInputs) {
   EXPECT_EQ(inputs[2]->ptr(), stable2->ptr());
 }
 
+// A builder can allocate from an externally owned pool instead of a private
+// one. The graph still takes the builder's pool reference at `instantiate()`,
+// but the external owner's reference keeps the pool usable for further
+// builders -- that is what lets multiple graphs share one pool.
+TEST(DeviceGraphBuilderTest, BuilderWithExternalPoolReplays) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  DeviceGraphMemoryPoolRef pool = DeviceGraphMemoryPoolRef::create(ctx.copy());
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder,
+                ctx->createGraphBuilder(pool.copy()));
+  ASSIGN_NO_ERR(DeviceBufferRef, poolBuf,
+                builder->createBuffer(byteSize, /*isHost=*/false));
+
+  llvm::SmallVector<uint8_t> hostBuf(byteSize, 0);
+  ASSIGN_NO_ERR(DeviceGraphNode, memsetNode,
+                builder->addSetMemory(*poolBuf, /*val=*/0xA5u, /*valSize=*/1,
+                                      /*dependencies=*/{}));
+  EXPECT_NO_ERR(builder->addCopyDeviceToHost(
+      hostBuf.data(), *poolBuf, llvm::ArrayRef<DeviceGraphNode>(memsetNode)));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+
+  // Drop the only handle to the allocation while the graph still references
+  // it, as PoolAllocationOutlivesBufferHandle does for a private pool.
+  poolBuf = {};
+
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(hostBuf[i], 0xA5u) << "at index " << i;
+
+  // `instantiate()` consumed only the builder's reference: the external one
+  // still serves a second builder.
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder2,
+                ctx->createGraphBuilder(pool.copy()));
+  ASSIGN_NO_ERR(DeviceBufferRef, poolBuf2,
+                builder2->createBuffer(byteSize, /*isHost=*/false));
+  EXPECT_EQ(poolBuf2->byteSize(), byteSize);
+}
+
+// The point of sharing a pool: a block freed by one builder is reissued to the
+// next, so their graphs overlay the same transient memory. Graph A's replay
+// then writes memory graph B also uses, which is sound exactly because graphs
+// sharing a pool replay serially in recording order.
+TEST(DeviceGraphBuilderTest, SharedPoolReissuesFreedTransientAcrossBuilders) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  DeviceGraphMemoryPoolRef pool = DeviceGraphMemoryPoolRef::create(ctx.copy());
+
+  const size_t byteSize = 1024;
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builderA,
+                ctx->createGraphBuilder(pool.copy()));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufA,
+                builderA->createBuffer(byteSize, /*isHost=*/false));
+  void *sharedAddr = bufA->ptr();
+  EXPECT_NO_ERR(builderA->addSetMemory(*bufA, /*val=*/0x11u, /*valSize=*/1,
+                                       /*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphRef, graphA, builderA->instantiate());
+
+  // Return the block to the shared pool; the graph keeps it reserved, but the
+  // free list may now reissue the address.
+  bufA = {};
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builderB,
+                ctx->createGraphBuilder(pool.copy()));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufB,
+                builderB->createBuffer(byteSize, /*isHost=*/false));
+  EXPECT_EQ(bufB->ptr(), sharedAddr)
+      << "same-size allocation from the shared pool should reuse the freed "
+         "block";
+
+  llvm::SmallVector<uint8_t> hostBuf(byteSize, 0);
+  ASSIGN_NO_ERR(DeviceGraphNode, memsetB,
+                builderB->addSetMemory(*bufB, /*val=*/0x22u, /*valSize=*/1,
+                                       /*dependencies=*/{}));
+  EXPECT_NO_ERR(builderB->addCopyDeviceToHost(
+      hostBuf.data(), *bufB, llvm::ArrayRef<DeviceGraphNode>(memsetB)));
+  ASSIGN_NO_ERR(DeviceGraphRef, graphB, builderB->instantiate());
+
+  // Serial replay in recording order: A writes the shared block, then B
+  // overwrites it and copies its own value out.
+  EXPECT_NO_ERR(graphA->replay());
+  EXPECT_NO_ERR(graphB->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (size_t i : llvm::seq(byteSize))
+    EXPECT_EQ(hostBuf[i], 0x22u) << "at index " << i;
+}
+
 } // namespace

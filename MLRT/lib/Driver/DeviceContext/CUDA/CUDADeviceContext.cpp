@@ -2136,8 +2136,9 @@ ErrorOrSuccess CUDADeviceContext::streamPriorityRange(int *leastPriority,
   return success();
 }
 
-ErrorOr<DeviceGraphBuilderRef> CUDADeviceContext::createGraphBuilder() {
-  return CUDADeviceGraphBuilder::create(*this);
+ErrorOr<DeviceGraphBuilderRef>
+CUDADeviceContext::createGraphBuilder(DeviceGraphMemoryPoolRef pool) {
+  return CUDADeviceGraphBuilder::create(*this, std::move(pool));
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {

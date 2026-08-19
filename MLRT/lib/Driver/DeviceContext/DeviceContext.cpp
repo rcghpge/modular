@@ -1000,6 +1000,8 @@ DeviceGraphMemoryPool::DeviceGraphMemoryPool(DeviceContextRef context)
 
 DeviceGraphMemoryPool::~DeviceGraphMemoryPool() = default;
 
+Device &DeviceGraphMemoryPool::device() const { return context->device(); }
+
 ErrorOr<void *> DeviceGraphMemoryPool::allocate(size_t numBytes, bool isHost) {
   // The pool's allocator rejects zero-size requests, and a Mojo `DeviceBuffer`
   // cannot hold a null device pointer.
@@ -1786,7 +1788,8 @@ void DeviceContext::decSyncMode() {
 
 bool DeviceContext::isGraphCapturing() const { return false; }
 
-ErrorOr<DeviceGraphBuilderRef> DeviceContext::createGraphBuilder() {
+ErrorOr<DeviceGraphBuilderRef>
+DeviceContext::createGraphBuilder(DeviceGraphMemoryPoolRef) {
   RETURN_ERROR("createGraphBuilder() not supported on this device context");
 }
 
