@@ -7,6 +7,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 from tempfile import NamedTemporaryFile
 
 import numpy as np
@@ -57,7 +58,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
 
     if not num_inputs or not inputs:
         print("No inputs to test!")
-        exit(0)
+        sys.exit(0)
 
     # Concat all the test data into one numpy array for each input and save out to a file which mt can load.
     inputs_as_numpy = [np.array(inputs[i]) for i in range(num_inputs)]  # type: ignore[index]
@@ -141,7 +142,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
                     "MO returned more tensors than numpy expected for output"
                     f" {output_index}"
                 )
-                exit(0)
+                sys.exit(0)
             val_to_compare = val_to_compare[tensor_within_output]
 
         # Check the dimensions match.
@@ -161,7 +162,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
                         f"On output {output_index} dimensions don't match! Mo"
                         f" {mo_shape} vs np {val_to_compare.shape}"
                     )
-                    exit(0)
+                    sys.exit(0)
 
         # The raw output data returned by the test
         raw_out = line_as_str[
@@ -178,7 +179,7 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
 
         if not testCase.compare_results(mo_out, val_to_compare):
             print(f"Output at {output_index} does not match!")
-            exit(0)
+            sys.exit(0)
 
     print("All MO values match numpy")
 
