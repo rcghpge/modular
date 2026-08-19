@@ -1554,7 +1554,8 @@ unsigned CUDAStreamPool::emplace_back(CUstream stream) {
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
                                      CUstream stream)
-    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+    : DeviceContext(device, TypeID::get<CUDADeviceContext>()),
+      driver_(device.cudaDriver()), context_(context),
       streamPool_(
           CUDAStreamPoolRef::create(device.cudaDriver(), context, stream)),
       stream_(stream) {
@@ -1573,7 +1574,8 @@ CUDADeviceContext::~CUDADeviceContext() {}
 CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
                                      CUDAStreamPoolRef streamPool,
                                      unsigned activeStreamId)
-    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+    : DeviceContext(device, TypeID::get<CUDADeviceContext>()),
+      driver_(device.cudaDriver()), context_(context),
       streamPool_(std::move(streamPool)),
       stream_(streamPool_->get(activeStreamId)) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
@@ -2356,19 +2358,16 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeIm2col(
 }
 
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
-  return static_cast<const CUDADeviceContext &>(ctx);
+  return DeviceContext::cast<CUDADeviceContext>(ctx);
 }
 
 CUDADeviceContext &CUDADeviceContext::cast(DeviceContext &ctx) {
-  return static_cast<CUDADeviceContext &>(ctx);
+  return DeviceContext::cast<CUDADeviceContext>(ctx);
 }
 
 const CUDADeviceContext *
 CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
-  if (ctx->device().api() != CUDADevice::api) {
-    return nullptr;
-  }
-  return static_cast<const CUDADeviceContext *>(ctx);
+  return DeviceContext::cast<CUDADeviceContext>(ctx);
 }
 
 ErrorOr<std::string> CUDADevice::getFirstArchName() {

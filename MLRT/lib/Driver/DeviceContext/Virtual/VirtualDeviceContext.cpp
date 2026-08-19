@@ -174,7 +174,7 @@ VirtualDeviceStream::verified_cast(const DeviceStream *stream) {
 //===----------------------------------------------------------------------===//
 
 VirtualDeviceContext::VirtualDeviceContext(VirtualDevice &device)
-    : DeviceContext(device) {}
+    : DeviceContext(device, TypeID::get<VirtualDeviceContext>()) {}
 
 VirtualDeviceContext::~VirtualDeviceContext() = default;
 
@@ -290,16 +290,12 @@ ErrorOr<Device::MemInfo> VirtualDeviceContext::getDeviceMemoryInfo() const {
 
 const VirtualDeviceContext &
 VirtualDeviceContext::cast(const DeviceContext &ctx) {
-  // Virtual device contexts can have any API based on their backing device.
-  return static_cast<const VirtualDeviceContext &>(ctx);
+  return DeviceContext::cast<VirtualDeviceContext>(ctx);
 }
 
 const VirtualDeviceContext *
 VirtualDeviceContext::verified_cast(const DeviceContext *ctx) {
-  if (!ctx)
-    return nullptr;
-  // Virtual device contexts can have any API based on their backing device.
-  return static_cast<const VirtualDeviceContext *>(ctx);
+  return DeviceContext::cast<VirtualDeviceContext>(ctx);
 }
 
 ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,

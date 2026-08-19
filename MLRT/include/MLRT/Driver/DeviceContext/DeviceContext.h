@@ -38,6 +38,7 @@
 #include "Support/LogicalResult.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include "Support/TypeID.h"
 #include <dlpack/dlpack.h>
 
 #include "llvm/ADT/BitVector.h"
@@ -1183,7 +1184,34 @@ public:
   bool isDebugAllocatorEnabled(StringRef name) const;
 
 protected:
-  explicit DeviceContext(Device &device);
+  explicit DeviceContext(Device &device, TypeID typeID);
+
+  template <typename T>
+  static const T *cast(const DeviceContext *ctx) {
+    if (ctx && ctx->typeID == TypeID::get<T>())
+      return static_cast<const T *>(ctx);
+    return nullptr;
+  }
+
+  template <typename T>
+  static T *cast(DeviceContext *ctx) {
+    if (ctx && ctx->typeID == TypeID::get<T>())
+      return static_cast<T *>(ctx);
+    return nullptr;
+  }
+
+  // Unchecked in release builds; debug builds assert on a type mismatch.
+  template <typename T>
+  static const T &cast(const DeviceContext &ctx) {
+    ctx.typeID.assertEqual(TypeID::get<T>(), "DeviceContext::cast");
+    return static_cast<const T &>(ctx);
+  }
+
+  template <typename T>
+  static T &cast(DeviceContext &ctx) {
+    ctx.typeID.assertEqual(TypeID::get<T>(), "DeviceContext::cast");
+    return static_cast<T &>(ctx);
+  }
 
   // Device-specific memory information (raw hardware memory)
   virtual ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const = 0;
@@ -1248,6 +1276,8 @@ private:
   class PendingEventHandler;
 
   DeviceRef device_;
+
+  TypeID typeID;
 
   std::unique_ptr<MemoryManagerFreeList> freeList_;
   std::unique_ptr<MemoryManagerFreeList> hostFreeList_;

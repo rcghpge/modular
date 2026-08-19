@@ -1222,8 +1222,8 @@ static std::mutex &getGlobalMutex() {
   return mu;
 }
 
-DeviceContext::DeviceContext(Device &device)
-    : device_(DeviceRef::copy(&device)),
+DeviceContext::DeviceContext(Device &device, TypeID typeID)
+    : device_(DeviceRef::copy(&device)), typeID(typeID),
       freeList_(std::make_unique<MemoryManagerFreeList>(
           this, device.memoryManager(), device.memoryManager().freeList(),
           /*disableFlush=*/false, /*label=*/"freeList")),

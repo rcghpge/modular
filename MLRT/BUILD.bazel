@@ -501,6 +501,7 @@ modular_cc_library(
         "//Support:Buffer",
         "//Support:Configuration",
         "//Support:SymbolExport",
+        "//Support:TypeID",
         "@dlpack",
         "@llvm-project//llvm:Support",
     ],
@@ -592,6 +593,7 @@ modular_shared_library(
         # (rocprofiler tool registration must precede the first HIP call).
         "//Support:ProfilerHostGlue",
         "//Support:SymbolExport",
+        "//Support:TypeID",
         "@dlpack",
         "@llvm-project//llvm:Support",
     ] + select({
@@ -820,6 +822,7 @@ modular_cc_library(
         "//Support:ProfilingRanges",
         "//Support:SymbolExport",
         "//Support:TimeProfiler",
+        "//Support:TypeID",
         "//Target:DriverPlugin",
         "@dlpack",
         "@llvm-project//llvm:Support",

@@ -1362,8 +1362,8 @@ unsigned HIPStreamPool::emplace_back(hipStream_t stream) {
 
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(HIPDevice &device, hipStream_t stream)
-    : DeviceContext(device), driver_(device.hipDriver()),
-      device_(device.hipDevice()),
+    : DeviceContext(device, TypeID::get<HIPDeviceContext>()),
+      driver_(device.hipDriver()), device_(device.hipDevice()),
       streamPool_(HIPStreamPoolRef::create(device.hipDriver(),
                                            device.hipDevice(), stream)),
       stream_(stream) {
@@ -1381,8 +1381,9 @@ HIPDeviceContext::~HIPDeviceContext() {}
 HIPDeviceContext::HIPDeviceContext(HIPDevice &device,
                                    HIPStreamPoolRef streamPool,
                                    unsigned activeStreamId)
-    : DeviceContext(device), driver_(device.hipDriver()),
-      device_(device.hipDevice()), streamPool_(std::move(streamPool)),
+    : DeviceContext(device, TypeID::get<HIPDeviceContext>()),
+      driver_(device.hipDriver()), device_(device.hipDevice()),
+      streamPool_(std::move(streamPool)),
       stream_(streamPool_->get(activeStreamId)) {
   M::initTracyRocm();
 }
@@ -1955,19 +1956,16 @@ hipDevice_t HIPDeviceContext::hipDevice() const { return device_; }
 hipStream_t HIPDeviceContext::hipStream() const { return stream_; }
 
 HIPDeviceContext &HIPDeviceContext::cast(DeviceContext &ctx) {
-  return static_cast<HIPDeviceContext &>(ctx);
+  return DeviceContext::cast<HIPDeviceContext>(ctx);
 }
 
 const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
-  return static_cast<const HIPDeviceContext &>(ctx);
+  return DeviceContext::cast<HIPDeviceContext>(ctx);
 }
 
 const HIPDeviceContext *
 HIPDeviceContext::verified_cast(const DeviceContext *ctx) {
-  if (ctx->device().api() != HIPDevice::api) {
-    return nullptr;
-  }
-  return static_cast<const HIPDeviceContext *>(ctx);
+  return DeviceContext::cast<HIPDeviceContext>(ctx);
 }
 
 } // namespace M::Driver

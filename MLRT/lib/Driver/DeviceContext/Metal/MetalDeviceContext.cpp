@@ -516,7 +516,8 @@ void MetalDevice::forEachTrackedBuffer(
 
 MetalDeviceContext::MetalDeviceContext(
     MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {
+    : DeviceContext(device, TypeID::get<MetalDeviceContext>()),
+      commandQueue_(std::move(commandQueue)) {
   // Seed printDisabled_ from env so callers that can't call
   // setMetalPrintEnabled (e.g. launched subprocesses) can disable GPU print
   // process-wide.
@@ -1273,15 +1274,11 @@ MetalDeviceContext::getResourceOptions(Device::AllocMode mode) const {
 
 const MetalDeviceContext *
 MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
-  if (ctx->device().api() != MetalDevice::api)
-    return nullptr;
-  return static_cast<const MetalDeviceContext *>(ctx);
+  return DeviceContext::cast<MetalDeviceContext>(ctx);
 }
 
 MetalDeviceContext *MetalDeviceContext::verified_cast(DeviceContext *ctx) {
-  if (ctx->device().api() != MetalDevice::api)
-    return nullptr;
-  return static_cast<MetalDeviceContext *>(ctx);
+  return DeviceContext::cast<MetalDeviceContext>(ctx);
 }
 
 /// Returns true if the installed SDK supports the indicated Major.Minor

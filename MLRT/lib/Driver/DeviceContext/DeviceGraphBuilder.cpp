@@ -68,7 +68,8 @@ ErrorOr<DeviceBufferRef> DeviceGraphBuilder::createBuffer(size_t numBytes,
 
 RecordingDeviceContext::RecordingDeviceContext(DeviceGraphBuilder &builder,
                                                DeviceGraphNode initialDep)
-    : DeviceContext(builder.context().device()),
+    : DeviceContext(builder.context().device(),
+                    TypeID::get<RecordingDeviceContext>()),
       builder_(DeviceGraphBuilderRef::copy(&builder)),
       // Recorded operations chain after `initialDep`, which the Mojo layer
       // seeds with the ambient/region dependencies (this builder does not

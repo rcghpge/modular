@@ -217,7 +217,8 @@ ErrorOr<bool> CpuDeviceEvent::isReady() const { return value.isReady(); }
 //
 // ===== CpuDeviceContext === //
 //
-CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
+CpuDeviceContext::CpuDeviceContext(CpuDevice &device)
+    : DeviceContext(device, TypeID::get<CpuDeviceContext>()) {
   // Get or create the cpuDevice. Request mainWillDonate=false if this is the
   // only cpuDevice user, but allow using the existing cpuDevice options if they
   // are set. This is safe as the other cpuDevice users are guaranteeing they
@@ -582,7 +583,7 @@ CpuDeviceContext::getHostAccessiblePointer(const void *devicePtr) {
 
 MODULAR_CXX_EXPORT const CpuDeviceContext &
 CpuDeviceContext::cast(const DeviceContext &ctx) {
-  return static_cast<const CpuDeviceContext &>(ctx);
+  return DeviceContext::cast<CpuDeviceContext>(ctx);
 }
 
 } // namespace M::Driver
