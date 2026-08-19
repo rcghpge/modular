@@ -866,6 +866,13 @@ public:
 
   Device &device() const;
 
+  // The driver-backed context this context ultimately executes against.
+  // This accessor allows operations to get at the device context backing
+  // the RecordingDeviceContext, which can flow into operations expecting the
+  // backend-specific device context type (e.g. CUDADeviceContext).
+  virtual DeviceContext &backendContext() { return *this; }
+  virtual const DeviceContext &backendContext() const { return *this; }
+
   // DeviceBuffer allocation. Virtual so a decorating context (e.g. the
   // graph-recording `RecordingDeviceContext`) can delegate creation to the
   // context that should own the buffer, rather than tagging the buffer with

@@ -75,6 +75,14 @@ RecordingDeviceContext::RecordingDeviceContext(DeviceGraphBuilder &builder,
       // model dependencies itself).
       lastNode_(initialDep) {}
 
+DeviceContext &RecordingDeviceContext::backendContext() {
+  return builder_->context();
+}
+
+const DeviceContext &RecordingDeviceContext::backendContext() const {
+  return builder_->context();
+}
+
 RecordingDeviceContext::~RecordingDeviceContext() = default;
 
 llvm::SmallVector<DeviceGraphNode, 1>

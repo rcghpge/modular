@@ -356,6 +356,12 @@ public:
   ErrorOr<int> getAttribute(Attribute attr) const override;
   ErrorOr<DeviceStreamRef> stream() const override;
 
+  // Accessors to get at the underlying device context. This accessor allows
+  // operations to get to the true device context backing the
+  // RecordingDeviceContext.
+  DeviceContext &backendContext() override;
+  const DeviceContext &backendContext() const override;
+
   // ----- Hard-error (non-recordable host-visible waits) ----- //
 
   ErrorOrSuccess synchronize() override;

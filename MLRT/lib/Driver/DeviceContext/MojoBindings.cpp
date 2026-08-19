@@ -859,11 +859,15 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
     const uint32_t *elementStrides, int32_t interleave, int32_t swizzle,
     int32_t l2Promotion, int32_t oobFill) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_cuda_tensorMapEncodeTiled", TRACY_COLOR_GRAY);
-  // Extract the device context from the device buffer.
-  if (CUDADeviceContext::verified_cast(&globalAddress->context()) == nullptr) {
+  // Extract the device context from the device buffer. Resolve through
+  // backendContext() so a buffer wrapped by a decorating context (e.g. a
+  // device-graph RecordingDeviceContext) encodes against the driver-backed
+  // context it decorates; downcasting the decorator itself is UB.
+  DeviceContext &bufCtx = globalAddress->context().backendContext();
+  if (CUDADeviceContext::verified_cast(&bufCtx) == nullptr) {
     return raiseError("Not a CUDADeviceBuffer");
   }
-  CUDADeviceContext &ctx = CUDADeviceContext::cast(globalAddress->context());
+  CUDADeviceContext &ctx = CUDADeviceContext::cast(bufCtx);
   return checkSuccess(ctx.cudaTensorMapEncodeTiled(
       tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
       *globalAddress, globalDim, globalStrides, boxDim, elementStrides,
@@ -881,11 +885,14 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeIm2col(
     uint32_t pixelsPerColumn, const uint32_t *elementStrides,
     int32_t interleave, int32_t swizzle, int32_t l2Promotion, int32_t oobFill) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_cuda_tensorMapEncodeIm2col", TRACY_COLOR_GRAY);
-  // Extract the device context from the device buffer.
-  if (CUDADeviceContext::verified_cast(&globalAddress->context()) == nullptr) {
+  // Extract the device context from the device buffer. See
+  // AsyncRT_cuda_tensorMapEncodeTiled for why this resolves through
+  // backendContext().
+  DeviceContext &bufCtx = globalAddress->context().backendContext();
+  if (CUDADeviceContext::verified_cast(&bufCtx) == nullptr) {
     return raiseError("Not a CUDADeviceBuffer");
   }
-  CUDADeviceContext &ctx = CUDADeviceContext::cast(globalAddress->context());
+  CUDADeviceContext &ctx = CUDADeviceContext::cast(bufCtx);
   return checkSuccess(ctx.cudaTensorMapEncodeIm2col(
       tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
       *globalAddress, globalDim, globalStrides, pixelBoxLowerCorner,
