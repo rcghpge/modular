@@ -2071,6 +2071,19 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
   return allocateDesc(size);
 }
 
+std::optional<MemoryManagerFreeList::RedzoneInfo>
+MemoryManagerFreeList::takeRedzoneInfo(void *ptr) {
+  if (!redzoneEnable_)
+    return std::nullopt;
+
+  auto it = redzoneDeviceAllocSizeMap_.find(ptr);
+  assert(it != redzoneDeviceAllocSizeMap_.end() &&
+         "redzoned allocation is missing its bookkeeping");
+  std::optional<RedzoneInfo> info(std::move(it->second));
+  redzoneDeviceAllocSizeMap_.erase(it);
+  return info;
+}
+
 ErrorOrSuccess
 MemoryManagerFreeList::validateRedzones(void *wrappedPtr,
                                         const RedzoneInfo &info) {
@@ -2206,20 +2219,36 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
     LOG_MSG("Starting free of " + TWINE_PTR(ptr) +
             " with free id: " + TWINE(primaryFreeBuffers_));
 
-    std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-    selfCheck();
+    // The allocating free list gets lost through the different layers of MLRT
+    // and MGP, meaning that the pointer being free'ed did not come from the
+    // current free list, so the descriptor carries the freelist to dispatch to.
+    MemoryManager::Desc *desc = nullptr;
+    MemoryManagerFreeList *owner = nullptr;
+    std::optional<RedzoneInfo> redzone;
+    {
+      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+      selfCheck();
 
-    MemoryManager::Desc *desc =
-        memoryManager_.allocatedMap_.remove(unwrappedPtr);
+      desc = memoryManager_.allocatedMap_.remove(unwrappedPtr);
+      if (desc != nullptr) {
+        owner = desc->allocatedBy_;
+        assert(owner && "desc freed without a valid allocatedBy_ - was it ever "
+                        "allocated via allocateDesc?");
+        redzone = owner->takeRedzoneInfo(ptr);
+      }
+    }
 
     if (desc != nullptr) {
-      // The allocating free list gets lost through the different layers of
-      // MLRT and MGP, meaning that the pointer being free'ed did not come from
-      // the current free list. Dispatch to the allocating freelist to free
-      // the descriptor.
-      MemoryManagerFreeList *owner = desc->allocatedBy_;
-      assert(owner && "desc freed without a valid allocatedBy_ - was it ever "
-                      "allocated via allocateDesc?");
+      // Check the redzones with `mu_` released. validateRedzones reads them
+      // back with a device copy and a synchronize, and synchronize polls
+      // pending events, whose handlers take `mu_` on this same thread.
+      if (redzone.has_value()) {
+        if (auto result = owner->validateRedzones(desc->ptr_, *redzone);
+            result.isError())
+          return result;
+      }
+
+      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
       return owner->freeAllocatedDesc(desc, ptr);
     }
   }
@@ -2247,13 +2276,6 @@ ErrorOrSuccess
 MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
   assert(desc->allocatedBy_ == this &&
          "descriptor must be allocated by the current free list");
-
-  if (redzoneEnable_) {
-    RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
-    redzoneDeviceAllocSizeMap_.erase(ptr);
-    if (auto result = validateRedzones(desc->ptr_, info); result.isError())
-      return result;
-  }
 
   freeDesc(desc);
 

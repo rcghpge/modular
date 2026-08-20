@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace llvm {
@@ -306,8 +307,9 @@ public:
   // Enable poisoning: fill each allocation body with a NaN-ish pattern on
   // alloc, so uninitialized device reads propagate NaN/garbage into outputs and
   // are caught by existing differential tests (a complement to initcheck that
-  // does not suffer its device->host-copy false positives). Piggybacks on the
-  // redzone wrap path, so it also enables out-of-bounds checks.
+  // does not suffer its device->host-copy false positives). Independent of
+  // redzones: no padding is added and no check runs on free. Combine with
+  // `out-of-bounds` to also get OOB-write detection.
   void enablePoison();
 
   void logLargestBlocksInfo(size_t wrappedSize, std::string missReason) const;
@@ -367,6 +369,12 @@ private:
   // Apply redzone wrapping (if enabled) and/or body poisoning (if enabled) to a
   // freshly-allocated block; returns the pointer handed to the caller.
   ErrorOr<void *> finalizeDebugAlloc(void *unwrappedPtr, size_t size);
+  // Remove and return the bookkeeping recorded for `ptr` at allocation, or
+  // nullopt when redzones are disabled. Caller holds `mu_`.
+  std::optional<RedzoneInfo> takeRedzoneInfo(void *ptr);
+  // Verify both redzones still hold their fill pattern, aborting with a
+  // hexdump and the allocation-time stack trace if either was overwritten.
+  // The caller must NOT hold `mu_`.
   ErrorOrSuccess validateRedzones(void *wrappedPtr, const RedzoneInfo &size);
   void printRedzone(const uint8_t *dataPtr, const uint8_t *displayPtr);
 

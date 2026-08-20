@@ -394,6 +394,31 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "RedzoneFreeDeadlockTest",
+    # This is a regression test for a deadlock.
+    # Treat a timeout as a failure, not a flake.
+    size = "small",
+    srcs = ["RedzoneFreeDeadlockTest.cpp"],
+    env = {
+        # Redzone checks are what force the device read-back and synchronize.
+        "MODULAR_DEBUG_DEVICE_ALLOCATOR": "out-of-bounds",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+    ],
+)
+
+modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
     srcs = ["GPUDeviceContextTest.cpp"],
