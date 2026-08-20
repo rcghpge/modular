@@ -18,7 +18,7 @@ from pathlib import Path
 import mojo.importer  # noqa: F401  # registers Mojo .so importer hook
 import numpy as np
 import pytest
-from max.sys._hal import (
+from max_private.sys._hal import (
     Array,
     Buffer,
     Bundle,

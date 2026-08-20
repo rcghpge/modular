@@ -98,7 +98,7 @@ mojo_shared_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/python/max/sys/_hal:_mojo_module",
+        "//max_private/sys/_hal:_mojo_module",
         "@mojo//:std",
     ],
 )
@@ -152,7 +152,7 @@ modular_py_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/python/max/sys/_hal",
+        "//max_private/sys/_hal",
         requirement("numpy"),
     ],
 )
