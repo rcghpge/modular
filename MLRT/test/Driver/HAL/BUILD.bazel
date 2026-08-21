@@ -39,7 +39,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/internal/driver/src/_hal",
+        "//max:max_mojo",
         "@mojo//:std",
         "@mojo//:test_utils",
     ],
@@ -77,7 +77,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/internal/driver/src/_hal",
+        "//max:max_mojo",
         "@mojo//:std",
         "@mojo//:test_utils",
     ],
@@ -190,7 +190,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/internal/driver/src/_hal",
+        "//max:max_mojo",
         "@mojo//:std",
     ],
 )
@@ -227,7 +227,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/internal/driver/src/_hal",
+        "//max:max_mojo",
         "@mojo//:std",
     ],
 )
@@ -261,7 +261,7 @@ mojo_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//max/internal/driver/src/_hal",
+        "//max:max_mojo",
         "@mojo//:std",
     ],
 )

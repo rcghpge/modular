@@ -606,6 +606,51 @@ modular_shared_library(
     }),
 )
 
+# The non-HAL-only DeviceContext runtime shared library, for Mojo consumers
+# (principally //max/internal/driver/src:max) that must depend on the
+# `AsyncRT_Device*` C-ABI DSO WITHOUT closing the
+# `max -> Driver/DeviceContext -> DeviceContextImplHAL ->
+# HALDeviceContextExports -> max` cycle that the select-bearing
+# `//MLRT:Driver/DeviceContext` would create in the unconfigured graph
+# (`bazel_diff` walks the union of all `select()` arms, so the HAL arm of
+# `Driver/DeviceContext` reaches `HALDeviceContextExports`, which depends on
+# `max`). This target carries only the legacy `AsyncRTMojoBindings` arm
+# (`MojoBindings.cpp` + `DeviceContextImplCpp`), whose subgraph never reaches
+# `max`, so `:max`'s dep on it is acyclic under every configuration. The
+# select-bearing `//MLRT:Driver/DeviceContext` remains for the C++/packaging
+# consumers (GraphCompiler, the wheel) that require both arms under their
+# respective configs. `output_name` differs from `Driver/DeviceContext`'s
+# (`AsyncRTMojoBindings`) so the two never clash as conflicting action outputs
+# when a single build pulls both (e.g. GraphCompiler depends on the
+# select-bearing `Driver/DeviceContext` AND, transitively via `:max`, on this
+# `DeviceContextDefault`).
+modular_shared_library(
+    name = "Driver/DeviceContextDefault",
+    srcs = [],
+    hdrs = [
+        "include/MLRT/Driver/DeviceContext/BinaryID.h",
+        "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceContext.h",
+    ],
+    output_name = "AsyncRTMojoBindingsDefault",
+    tags = [ALLOW_UNUSED_TAG],
+    deps = [
+        ":Driver/AsyncRTMojoBindings",
+        ":Driver/DeviceContextAPI",
+        ":Driver/MojoRuntimeBindingsImpl",
+        "//AsyncRT:Runtime",
+        "//Support:Base",
+        "//Support:BinaryID",
+        "//Support:Buffer",
+        "//Support:Configuration",
+        "//Support:ProfilerHostGlue",
+        "//Support:SymbolExport",
+        "//Support:TypeID",
+        "@dlpack",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 alias(
     name = "Driver/DeviceContextImpl",
     actual = select({
@@ -640,13 +685,16 @@ mojo_shared_library(
         "//:hal_device_context_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    # Depends on HAL's `max` directly rather than through //max:max_mojo. This target
-    # only builds under --config=hal-device-context, where that alias always
-    # selects this very target, so the two are equivalent here -- but the alias
-    # also names the non-HAL `max`, which now depends on
-    # Driver/DeviceContext, and Driver/DeviceContext selects this library back
-    # under the HAL branch. No single configuration closes that loop, yet it is
-    # a cycle in the unconfigured graph that `bazel query` reports.
+    # Depends on HAL's `max` directly rather than through //max:max_mojo. This
+    # target only builds under --config=hal-device-context, where that alias
+    # always selects this very target, so the two are equivalent here. The
+    # `max` it depends on pulls only `//MLRT:Driver/DeviceContextDefault` (the
+    # non-HAL-only DeviceContext DSO), NOT the select-bearing
+    # `//MLRT:Driver/DeviceContext`, so this back-edge alone does not close a
+    # cycle in the unconfigured graph: the loop
+    # `max -> Driver/DeviceContext -> DeviceContextImplHAL ->
+    # HALDeviceContextExports -> max` requires `:max` to reach the select-
+    # bearing `Driver/DeviceContext`, which it never does.
     deps = [
         "//max/internal/driver/src:max",
         "@mojo//:std",
