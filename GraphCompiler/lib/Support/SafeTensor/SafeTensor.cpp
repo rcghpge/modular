@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Preprocessor.h"
 
@@ -141,9 +140,8 @@ llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
 //===----------------------------------------------------------------------===//
 
 /// Load and parse a SafeTensor file from the given data.
-ErrorOr<SafeTensor>
-SafeTensor::get(RCRef<M::GraphCompiler::Driver::Device> device,
-                M::Driver::DeviceBufferRef parentBuffer) {
+ErrorOr<SafeTensor> SafeTensor::get(M::Driver::DeviceContextRef device,
+                                    M::Driver::DeviceBufferRef parentBuffer) {
   // Get the buffer size.
   size_t bufferSize = parentBuffer->byteSize();
 
@@ -219,9 +217,8 @@ SafeTensor::get(RCRef<M::GraphCompiler::Driver::Device> device,
 }
 
 /// Load and parse a SafeTensor file from the given path.
-ErrorOr<SafeTensor>
-SafeTensor::get(const std::filesystem::path &path,
-                RCRef<M::GraphCompiler::Driver::Device> device) {
+ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path,
+                                    M::Driver::DeviceContextRef device) {
   // TODO: On the CPU path, can read just once.
   // On the GPU path, read the file twice: first for the metadata (tensor
   // names, etc) and second to send the data to the GPU.
@@ -244,15 +241,14 @@ SafeTensor::getTensorInfo(StringRef name) const {
 }
 
 /// Gets a tensor from given info.
-std::shared_ptr<M::GraphCompiler::Driver::DeviceMemory>
+M::Driver::DeviceBufferRef
 SafeTensor::getTensorMemory(const TensorInfo &info) const {
   auto subBuffer = parentBuffer->createSubBuffer(
       8 + headerLength + info.offsets.first, info.getSizeInBytes());
   assert(!subBuffer.isError() &&
          "sub-buffer dimensions should already have been validated");
 
-  return std::make_shared<M::GraphCompiler::Driver::DeviceMemory>(
-      device, std::move(*subBuffer), TensorSpec{info.shape, info.dtype});
+  return std::move(*subBuffer);
 }
 
 //===----------------------------------------------------------------------===//
@@ -261,7 +257,7 @@ SafeTensor::getTensorMemory(const TensorInfo &info) const {
 
 ErrorOr<SafeTensorBundle>
 SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths,
-                      RCRef<M::GraphCompiler::Driver::Device> ctx) {
+                      M::Driver::DeviceContextRef ctx) {
   DenseMap<std::string, size_t> tensorNameToIndex;
   SmallVector<SafeTensor> files;
   files.reserve(files.size());
@@ -278,7 +274,7 @@ SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths,
   return SafeTensorBundle(std::move(tensorNameToIndex), std::move(files));
 }
 
-ErrorOr<std::shared_ptr<M::GraphCompiler::Driver::DeviceMemory>>
+ErrorOr<M::Driver::DeviceBufferRef>
 SafeTensorBundle::getTensorMemory(StringRef name) const {
   auto it = tensorNameToIndex.find(name.str());
   if (it == tensorNameToIndex.end())

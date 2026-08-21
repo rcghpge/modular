@@ -14,7 +14,7 @@
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Support/Diagnostic.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
-#include "GraphCompiler/Driver/Device/Driver.h"
+#include "GraphCompiler/Driver/Device/DeviceMap.h"
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "Kernels/WeightsRegistry.h"
@@ -36,6 +36,15 @@ namespace M {
 class MEFInvokable;
 class PrimitiveDescriptor;
 class ModelSpec;
+
+/// A device-resident input buffer paired with the tensor spec describing it.
+/// This is the native currency at the capture/replay/execute boundary now
+/// that callers hold MLRT DeviceBufferRefs directly, instead of wrapping them
+/// in the legacy GenericML DeviceMemory (see GEX-4081/DRIV-399).
+struct ModelInputBuffer {
+  Driver::DeviceBufferRef buffer;
+  TensorSpec spec;
+};
 
 //===----------------------------------------------------------------------===//
 // ExecutableModel
@@ -75,18 +84,16 @@ public:
   /// one key per graph-capture device (typically one per participating
   /// device).
   ErrorOr<SmallVector<AnyAsyncValueRef>>
-  capture(ArrayRef<uint64_t> graphKeys,
-          ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs);
+  capture(ArrayRef<uint64_t> graphKeys, ArrayRef<ModelInputBuffer> inputs);
 
   /// Replay a previously captured graph collection for per-device keys.
   ErrorOrSuccess replay(ArrayRef<uint64_t> graphKeys,
-                        ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs);
+                        ArrayRef<ModelInputBuffer> inputs);
 
   /// Execute eagerly and compare launch trace against captured graph collection
   /// for per-device keys.
-  ErrorOrSuccess
-  debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
-                    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs);
+  ErrorOrSuccess debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
+                                   ArrayRef<ModelInputBuffer> inputs);
 
   /// Await all pending device graph instantiations across every captured
   /// per-device graph entry.  Call this after a capture loop to ensure all
@@ -122,8 +129,8 @@ private:
 
   struct CapturedPerDeviceGraphEntry;
 
-  ErrorOr<SmallVector<AnyAsyncValueRef>> executeWithDeviceMemoryInputs(
-      ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) const;
+  ErrorOr<SmallVector<AnyAsyncValueRef>>
+  executeWithInputs(ArrayRef<ModelInputBuffer> inputs) const;
 
   ErrorOrSuccess
   validateCapturedPerDeviceKeys(ArrayRef<uint64_t> graphKeys) const;

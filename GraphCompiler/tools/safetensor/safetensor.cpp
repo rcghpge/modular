@@ -10,16 +10,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "GraphCompiler/Driver/Device/Driver.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
-#include "Support/RCRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <filesystem>
 
 using namespace M;
-using namespace M::GraphCompiler::Driver;
 
 namespace {
 
@@ -64,11 +62,11 @@ int main(int argc, char **argv) {
   if (opts.inputFilename == "-")
     return reportError("stdin not supported, please specify an input file");
 
-  auto device = M::GraphCompiler::Driver::makeCPUDevice();
+  auto device = M::Driver::DeviceContext::create(M::Driver::Device::cpuAPI);
   if (device.isError())
     return reportError(device.getError());
   ErrorOr<SafeTensor> safeTensorOr =
-      SafeTensor::get(opts.inputFilename, RCRef<Device>::copy(&(**device)));
+      SafeTensor::get(opts.inputFilename, std::move(*device));
   if (safeTensorOr.isError())
     return reportError(safeTensorOr.getError());
 

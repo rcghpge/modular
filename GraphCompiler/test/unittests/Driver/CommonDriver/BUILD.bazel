@@ -6,26 +6,12 @@ modular_cc_test(
     name = "CommonDriverTests",
     srcs = glob(
         ["*.cpp"],
-        exclude = [
-            "CreateViewTest.cpp",
-            "DebugAllocPoisonTest.cpp",
-        ],
+        exclude = ["DebugAllocPoisonTest.cpp"],
     ),
     deps = [
         "//GraphCompiler:CommonDriver",
         "//GraphCompiler:Support",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-modular_cc_test(
-    name = "CreateViewTest",
-    size = "small",
-    srcs = ["CreateViewTest.cpp"],
-    deps = [
-        "//GraphCompiler:DeviceDriver",
-        "//MLRT/unittests/Driver:TestUtils",
-        "//Support:ML",
     ],
 )
 

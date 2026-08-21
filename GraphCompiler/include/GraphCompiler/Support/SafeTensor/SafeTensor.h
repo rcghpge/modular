@@ -11,7 +11,6 @@
 #ifndef RUNTIME_SAFETENSOR_H
 #define RUNTIME_SAFETENSOR_H
 
-#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
@@ -47,13 +46,12 @@ struct MODULAR_CXX_EXPORT SafeTensor {
   };
 
   /// Loads and parses a SafeTensor file from the given data.
-  static ErrorOr<SafeTensor> get(RCRef<M::GraphCompiler::Driver::Device> device,
+  static ErrorOr<SafeTensor> get(M::Driver::DeviceContextRef device,
                                  M::Driver::DeviceBufferRef data);
 
   /// Loads and parses a SafeTensor file from the given path.
-  static ErrorOr<SafeTensor>
-  get(const std::filesystem::path &path,
-      RCRef<M::GraphCompiler::Driver::Device> device);
+  static ErrorOr<SafeTensor> get(const std::filesystem::path &path,
+                                 M::Driver::DeviceContextRef device);
 
   /// Serialize the SafeTensor to a JSON object.
   llvm::json::Value toJSON() const;
@@ -70,13 +68,11 @@ struct MODULAR_CXX_EXPORT SafeTensor {
   ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
 
   /// Gets a tensor from given info.
-  std::shared_ptr<M::GraphCompiler::Driver::DeviceMemory>
-  getTensorMemory(const TensorInfo &info) const;
+  M::Driver::DeviceBufferRef getTensorMemory(const TensorInfo &info) const;
 
 private:
   /// Constructs a SafeTensor from parsed metadata and tensor information.
-  SafeTensor(uint64_t headerLength,
-             RCRef<M::GraphCompiler::Driver::Device> &&device,
+  SafeTensor(uint64_t headerLength, M::Driver::DeviceContextRef &&device,
              M::Driver::DeviceBufferRef &&parentBuffer,
              llvm::json::Object &&metadata,
              llvm::DenseMap<std::string, TensorInfo> &&tensorInfo)
@@ -86,7 +82,7 @@ private:
 
   uint64_t headerLength;
   // The device the parent buffer lives on
-  RCRef<M::GraphCompiler::Driver::Device> device;
+  M::Driver::DeviceContextRef device;
   // Parent buffer for all subbuffers created.
   M::Driver::DeviceBufferRef parentBuffer;
   llvm::json::Object metadata;
@@ -100,13 +96,11 @@ struct SafeTensorBundle {
         files(std::move(files)) {}
 
   /// Loads and parses a SafeTensorBundle from the given paths.
-  static ErrorOr<SafeTensorBundle>
-  get(ArrayRef<std::filesystem::path> paths,
-      RCRef<M::GraphCompiler::Driver::Device> ctx);
+  static ErrorOr<SafeTensorBundle> get(ArrayRef<std::filesystem::path> paths,
+                                       M::Driver::DeviceContextRef ctx);
 
   /// Gets a tensor from given info.
-  ErrorOr<std::shared_ptr<M::GraphCompiler::Driver::DeviceMemory>>
-  getTensorMemory(StringRef name) const;
+  ErrorOr<M::Driver::DeviceBufferRef> getTensorMemory(StringRef name) const;
 
 private:
   DenseMap<std::string, size_t> tensorNameToIndex;

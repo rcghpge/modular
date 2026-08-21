@@ -5,19 +5,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "GraphCompiler/Driver/Device/Driver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
-using namespace M::GraphCompiler::Driver;
 
 template <size_t N>
-M::Driver::DeviceBufferRef getDeserializedBuffer(const char (&data)[N],
-                                                 const RCRef<Device> &device) {
+M::Driver::DeviceBufferRef
+getDeserializedBuffer(const char (&data)[N],
+                      const M::Driver::DeviceContextRef &ctx) {
   // There's got to be an easier way to do this
-  auto ctx = device->tmpGetDeviceContext();
   auto buffer = ctx->enqueueCreateBuffer(N);
   assert(!buffer.isError());
   auto copyResult = (*buffer)->copyFrom(data);
@@ -38,10 +36,10 @@ static std::string toString(const SafeTensor::TensorInfo &info) {
   return toString(info.toJSON());
 }
 
-static RCRef<Device> makeCPU() {
-  auto device = M::GraphCompiler::Driver::makeCPUDevice();
-  assert(!device.isError());
-  return RCRef<Device>::copy(&(**device));
+static M::Driver::DeviceContextRef makeCPU() {
+  auto ctx = M::Driver::DeviceContext::create(M::Driver::Device::cpuAPI);
+  assert(!ctx.isError());
+  return *ctx;
 }
 
 TEST(SafeTensor, CanReadMetadata) {

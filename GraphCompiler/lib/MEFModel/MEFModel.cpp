@@ -400,26 +400,33 @@ ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   return success();
 }
 
+// A buffer is host-resident either because the buffer itself is pinned host
+// memory, or because the owning context's device is the CPU. Mirrors
+// GenericML DeviceMemory::isHost.
+static bool isHostResident(const Driver::DeviceBufferRef &buffer) {
+  return buffer->isHost() ||
+         buffer->context().device().api() == Driver::Device::cpuAPI;
+}
+
 // Compute a stable device-local input-signature hash
 // (input index + memory address + shape + dtype).
 //
 // Only non-host inputs resident on the same cpuDevice device are included. This
 // keeps per-device safety checks compatible with replay that mixes device keys
 // from different capture sessions.
-static uint64_t
-computeInputKeyForDevice(ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs,
-                         const Driver::Device &device) {
+static uint64_t computeInputKeyForDevice(ArrayRef<ModelInputBuffer> inputs,
+                                         const Driver::Device &device) {
   raw_xxhash64_stream hasher;
 
   uint64_t deviceId = static_cast<uint64_t>(device.id());
   hasher.write(reinterpret_cast<const char *>(&deviceId), sizeof(deviceId));
 
   for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex) {
-    const GraphCompiler::Driver::DeviceMemory *memory = inputs[inputIndex];
-    if (memory->isHost())
+    const ModelInputBuffer &input = inputs[inputIndex];
+    if (isHostResident(input.buffer))
       continue;
 
-    const Driver::Device &inputDevice = memory->getBuffer()->context().device();
+    const Driver::Device &inputDevice = input.buffer->context().device();
     if (inputDevice.id() != device.id() || inputDevice.api() != device.api())
       continue;
 
@@ -427,11 +434,11 @@ computeInputKeyForDevice(ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs,
     hasher.write(reinterpret_cast<const char *>(&stableInputIndex),
                  sizeof(stableInputIndex));
 
-    void *bufferAddress = memory->getBuffer().getPointer()->ptr();
+    void *bufferAddress = input.buffer->ptr();
     hasher.write(reinterpret_cast<const char *>(&bufferAddress),
                  sizeof(bufferAddress));
 
-    const TensorSpec &spec = memory->getSpec();
+    const TensorSpec &spec = input.spec;
     uint64_t rank = spec.getRank();
     hasher.write(reinterpret_cast<const char *>(&rank), sizeof(rank));
     for (int64_t dim : spec)
@@ -443,9 +450,9 @@ computeInputKeyForDevice(ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs,
   return hasher.hash();
 }
 
-static SmallVector<uint64_t> computePerDeviceInputSignatures(
-    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs,
-    ArrayRef<Driver::DeviceStreamRef> streams) {
+static SmallVector<uint64_t>
+computePerDeviceInputSignatures(ArrayRef<ModelInputBuffer> inputs,
+                                ArrayRef<Driver::DeviceStreamRef> streams) {
   SmallVector<uint64_t> signatures;
   signatures.reserve(streams.size());
   for (const Driver::DeviceStreamRef &stream : streams)
@@ -518,18 +525,12 @@ captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
 }
 
 ErrorOr<SmallVector<AnyAsyncValueRef>>
-ExecutableModel::executeWithDeviceMemoryInputs(
-    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) const {
+ExecutableModel::executeWithInputs(ArrayRef<ModelInputBuffer> inputs) const {
   SmallVector<AnyAsyncValueRef> inputValues;
   inputValues.reserve(inputs.size());
-  for (GraphCompiler::Driver::DeviceMemory *memory : inputs) {
-    ErrorOr<GraphCompiler::Driver::DeviceMemory *> viewOrErr =
-        memory->createView(memory->getSpec());
-    if (viewOrErr.isError())
-      return viewOrErr.takeError();
-    GraphCompiler::Driver::DeviceMemory *view = viewOrErr.takeValue();
+  for (const ModelInputBuffer &input : inputs) {
     inputValues.push_back(GraphCompiler::Driver::prepareInput(
-        getCPUDevice(), view, view->getSpec()));
+        getCPUDevice(), input.buffer, input.spec));
   }
 
   SmallVector<AnyAsyncValueRef> results = execute(inputValues);
@@ -539,9 +540,9 @@ ExecutableModel::executeWithDeviceMemoryInputs(
   return results;
 }
 
-ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
-    ArrayRef<uint64_t> graphKeys,
-    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) {
+ErrorOr<SmallVector<AnyAsyncValueRef>>
+ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
+                         ArrayRef<ModelInputBuffer> inputs) {
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
       captureStreams(extraArgs);
 
@@ -586,7 +587,7 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
   ErrorOr<Driver::DeviceGraphCollection> graphOrErr =
       Driver::DeviceGraph::capture(
           cpuDevice, *streamsOr, [&]() -> ErrorOrSuccess {
-            auto maybeResult = executeWithDeviceMemoryInputs(inputs);
+            auto maybeResult = executeWithInputs(inputs);
             if (maybeResult.isError())
               return maybeResult.takeError();
 
@@ -716,9 +717,8 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
   return success();
 }
 
-ErrorOrSuccess ExecutableModel::replay(
-    ArrayRef<uint64_t> graphKeys,
-    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) {
+ErrorOrSuccess ExecutableModel::replay(ArrayRef<uint64_t> graphKeys,
+                                       ArrayRef<ModelInputBuffer> inputs) {
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
       captureStreams(extraArgs);
 
@@ -741,9 +741,9 @@ ErrorOrSuccess ExecutableModel::replay(
   return launchDeviceGraphs(normalizedKeys);
 }
 
-ErrorOrSuccess ExecutableModel::debugVerifyReplay(
-    ArrayRef<uint64_t> graphKeys,
-    ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) {
+ErrorOrSuccess
+ExecutableModel::debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
+                                   ArrayRef<ModelInputBuffer> inputs) {
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
       captureStreams(extraArgs);
 
@@ -775,7 +775,7 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
 
   Driver::DeviceGraphCollection graphs(std::move(selectedGraphs));
   return graphs.debugVerifyReplay([&]() -> ErrorOrSuccess {
-    auto result = executeWithDeviceMemoryInputs(inputs);
+    auto result = executeWithInputs(inputs);
     if (result.isError())
       return result.takeError();
     return success();

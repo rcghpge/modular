@@ -6,32 +6,66 @@
 
 #include "GraphCompiler/Driver/Device/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
+#include "GraphCompiler/Driver/Device/DebugAllocPoison.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 
 using M::AnyAsyncValueRef;
 using M::ErrorOr;
-using M::GraphCompiler::Driver::Device;
-using M::GraphCompiler::Driver::DeviceMemory;
+using M::Driver::DeviceBufferRef;
+using M::Driver::DeviceContextRef;
 using M::MLRT::Tensor;
 using M::MLRT::TensorBufferRef;
-namespace {
 
-// A managed memory block used to transfer device memory to graph execution.
-// Once all the uses are complete the graph will call destructor of this and
-// free memory.
-struct OwnedDeviceMemoryBlock {
-  OwnedDeviceMemoryBlock() = delete;
-  OwnedDeviceMemoryBlock(DeviceMemory *memory) : deviceMemory(memory) {}
-  ~OwnedDeviceMemoryBlock() { delete deviceMemory; }
+ErrorOr<DeviceBufferRef> M::GraphCompiler::Driver::allocateDeviceBuffer(
+    const DeviceContextRef &device, const M::TensorSpec &spec, bool hostAlloc) {
+  ErrorOr<DeviceBufferRef> bufOrErr =
+      hostAlloc ? device->createHostBuffer(spec.getSizeInBytes())
+                : device->enqueueCreateBuffer(spec.getSizeInBytes());
+  if (bufOrErr.isError())
+    return bufOrErr.takeError();
+  DeviceBufferRef buf = bufOrErr.takeValue();
 
-  DeviceMemory *deviceMemory;
-};
-} // namespace
+  // Debug allocation poisoning: fills newly allocated memory with default
+  // patterns to help detect use of uninitialized memory. Host and device
+  // fills use the same per-type pattern (see DebugAllocPoison.h) so the Mojo
+  // stdlib uninit-read check has a single value to look for.
+  // Enable via: MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
+  if (device->isDebugAllocatorEnabled("uninitialized-poison")) {
+    if (hostAlloc) {
+      M::GraphCompiler::Driver::poisonUninitializedMemory(buf->ptr(), spec);
+    } else if (std::optional<M::GraphCompiler::Driver::PoisonPattern> pattern =
+                   M::GraphCompiler::Driver::getPoisonPattern(spec)) {
+      llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << spec.getEltType()
+                   << " allocation (" << spec.getSizeInBytes()
+                   << " bytes) with " << pattern->patternKind << " pattern ";
+      (llvm::errs().changeColor(llvm::raw_ostream::RED)
+       << "0x"
+       << llvm::format_hex_no_prefix(pattern->bits, pattern->patternBytes * 2))
+          .resetColor();
+      llvm::errs() << "\n";
 
-// Construct on-device memory to hold a provided tensor.
-ErrorOr<DeviceMemory *>
-M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
-                                                          Device *device,
-                                                          Tensor tensor) {
+      if (M::ErrorOrSuccess err = device->enqueueSetMemory(
+              *buf, pattern->bits, pattern->patternBytes))
+        return err.takeError();
+      if (M::ErrorOrSuccess err = device->synchronize())
+        return err.takeError();
+    }
+  }
+
+  return buf;
+}
+
+M::Driver::DeviceBufferRef
+M::GraphCompiler::Driver::borrowBuffer(const DeviceContextRef &device,
+                                       void *ptr, size_t byteSize) {
+  return device->createBufferOwning(ptr, byteSize, /*owning=*/false);
+}
+
+// Construct an on-device buffer to hold a provided tensor.
+ErrorOr<DeviceBufferRef>
+M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(
+    M::ContextRef context, DeviceContextRef device, Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
@@ -39,24 +73,23 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
 
   // We can have situations where the graph is attempting to return a value that
   // will not outlive it. In these cases, we need to explicitly copy this value
-  // to a DeviceMemory object.
+  // to a device buffer.
   if (!storageRef) {
     // If we hit a situation where we're returning a null storage ref on a GPU,
     // we should just error out, since this situation should be impossible.
-    if (!device->isHost())
+    if (device->device().api() != M::Driver::Device::cpuAPI)
       return Error("Execution returned a null result on a GPU.");
 
-    ErrorOr<DeviceMemory *> memoryOr =
-        device->createDeviceMemory(tensor.getSpec());
-    if (memoryOr.isError())
-      return memoryOr.takeError();
-    DeviceMemory *memory = memoryOr.get();
+    ErrorOr<DeviceBufferRef> bufferOr =
+        allocateDeviceBuffer(device, tensor.getSpec());
+    if (bufferOr.isError())
+      return bufferOr.takeError();
+    DeviceBufferRef buffer = bufferOr.takeValue();
 
     void *tensorBuffer = bufferRef.getBuffer();
-    std::memcpy(memory->data(), tensorBuffer,
-                tensor.getSpec().getSizeInBytes());
+    std::memcpy(buffer->ptr(), tensorBuffer, tensor.getSpec().getSizeInBytes());
 
-    return memory;
+    return buffer;
   }
 
   AsyncRT::await(storageRef);
@@ -76,21 +109,26 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
 
   void *outputData = bufferRef.getBuffer();
 
-  // Create a device memory from the pointer.
-  return device->createDeviceMemory(outputData, tensor.getSpec(),
-                                    std::move(destructor));
+  // Create a device buffer from the pointer.
+  DeviceBufferRef buffer = device->createBufferOwning(
+      outputData, tensor.getSpec().getSizeInBytes(), /*owning=*/true);
+  buffer->setDestructorFn(std::move(destructor));
+  return buffer;
 }
 
 AnyAsyncValueRef M::GraphCompiler::Driver::prepareInput(
-    CPUDevice &cpuDevice, DeviceMemory *inputMemory, TensorSpec inputSpec) {
-  // Convert inputs from device memory we received to AsyncValue of tensor as
-  // expected by graph. We take ownership of inputs here.
-  AnyAsyncValueRef storageRef =
-      storageRef.createReady<OwnedDeviceMemoryBlock>(cpuDevice, inputMemory);
+    CPUDevice &cpuDevice, DeviceBufferRef inputBuffer, TensorSpec inputSpec) {
+  // Convert inputs from the device buffer we received to AsyncValue of tensor
+  // as expected by graph. Wrapping the refcounted buffer itself as the
+  // storage handle (rather than a manually-`delete`d wrapper) means it stays
+  // alive for exactly as long as this AsyncValueRef needs it.
+  void *ptr = inputBuffer->ptr();
+  size_t byteCount = inputBuffer->byteSize();
+  AnyAsyncValueRef storageRef = AnyAsyncValueRef::createReady<DeviceBufferRef>(
+      cpuDevice, std::move(inputBuffer));
   // FIXME: Get alignment of device memory.
-  Tensor tensor(TensorBufferRef::create(
-                    inputMemory->data(), inputMemory->bytecount(),
-                    std::move(storageRef), llvm::MaybeAlign(std::nullopt)),
+  Tensor tensor(TensorBufferRef::create(ptr, byteCount, std::move(storageRef),
+                                        llvm::MaybeAlign(std::nullopt)),
                 std::move(inputSpec));
 
   return AnyAsyncValueRef::createReady<Tensor>(cpuDevice, std::move(tensor));

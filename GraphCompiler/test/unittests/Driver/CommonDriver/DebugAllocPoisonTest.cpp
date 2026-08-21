@@ -8,7 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Driver/Device/Driver.h"
+#include "GraphCompiler/Driver/Device/DeviceExecution.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/unittests/Driver/TestUtils.h"
 #include "Support/ML/DType.h"
 #include "Support/ML/TensorSpec.h"
@@ -17,8 +18,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <iostream>
-#include <memory>
 
 using namespace M;
 using namespace M::GraphCompiler::Driver;
@@ -27,18 +26,14 @@ namespace {
 
 class DebugAllocPoisonTest : public ::testing::Test {
 protected:
-  static ErrorOr<RCRef<Device>> makeGPU() {
-    Status status;
-    Device *dev = M_createAcceleratorDevice(0, &status);
-    if (status.errorOr.isError())
-      return status.errorOr.takeError();
-    return M::takeRCRef(dev);
+  static ErrorOr<M::Driver::DeviceContextRef> makeGPU() {
+    return M::Driver::DeviceContext::getOrCreate(M::Driver::Device::gpuAPI, 0);
   }
 
-  static RCRef<Device> makeCPU() {
-    auto deviceOrErr = M::GraphCompiler::Driver::makeCPUDevice();
-    assert(!deviceOrErr.isError());
-    return RCRef<Device>::copy((*deviceOrErr).get());
+  static M::Driver::DeviceContextRef makeCPU() {
+    auto ctxOrErr = M::Driver::DeviceContext::create(M::Driver::Device::cpuAPI);
+    assert(!ctxOrErr.isError());
+    return ctxOrErr.takeValue();
   }
 
   static void check16BitPattern(const void *data, size_t count,
@@ -67,28 +62,25 @@ TEST_F(DebugAllocPoisonTest, BFloat16) {
   if (!gpuOrErr.isError()) {
     auto gpu = gpuOrErr.takeValue();
 
-    ASSIGN_NO_ERR(DeviceMemory *, gpuMem,
-                  gpu->createDeviceMemory(spec, /*hostAlloc=*/false));
-    std::unique_ptr<DeviceMemory> gpuMemGuard(gpuMem);
+    ASSIGN_NO_ERR(M::Driver::DeviceBufferRef, gpuBuf,
+                  allocateDeviceBuffer(gpu, spec, /*hostAlloc=*/false));
 
     // Create host memory for verification
-    ASSIGN_NO_ERR(DeviceMemory *, hostMemPtr,
-                  gpu->createDeviceMemory(spec, /*hostAlloc=*/true));
-    std::unique_ptr<DeviceMemory> hostMem(hostMemPtr);
+    ASSIGN_NO_ERR(M::Driver::DeviceBufferRef, hostBuf,
+                  allocateDeviceBuffer(gpu, spec, /*hostAlloc=*/true));
 
     // Copy from GPU to host and synchronize
-    EXPECT_NO_ERR(gpuMem->copyTo(*hostMem));
+    EXPECT_NO_ERR(gpuBuf->copyTo(*hostBuf));
     EXPECT_NO_ERR(gpu->synchronize());
 
-    check16BitPattern(hostMem->data(), numElements, expectedPattern);
+    check16BitPattern(hostBuf->ptr(), numElements, expectedPattern);
   } else {
     auto cpu = makeCPU();
 
-    ASSIGN_NO_ERR(DeviceMemory *, hostMem,
-                  cpu->createDeviceMemory(spec, /*hostAlloc=*/true));
-    std::unique_ptr<DeviceMemory> hostMemGuard(hostMem);
+    ASSIGN_NO_ERR(M::Driver::DeviceBufferRef, hostBuf,
+                  allocateDeviceBuffer(cpu, spec, /*hostAlloc=*/true));
 
-    check16BitPattern(hostMem->data(), numElements, expectedPattern);
+    check16BitPattern(hostBuf->ptr(), numElements, expectedPattern);
   }
 }
 

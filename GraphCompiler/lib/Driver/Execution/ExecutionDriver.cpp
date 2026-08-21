@@ -7,7 +7,7 @@
 #include "GraphCompiler/Driver/Execution/ExecutionDriver.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "GraphCompiler/Driver/Device/DeviceExecution.h"
-#include "GraphCompiler/Driver/Device/Driver.h"
+#include "GraphCompiler/Driver/Device/DeviceMap.h"
 #include "GraphCompiler/Driver/Execution/DriverCLOptions.h"
 #include "GraphCompiler/Driver/Execution/DriverInternals.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
@@ -364,16 +364,16 @@ namespace {
 struct ModelDeviceState {
   GraphCompiler::Driver::DeviceMap deviceMap;
   /// Parallel to the model's inputs; null for host-placed inputs.
-  SmallVector<RCRef<GraphCompiler::Driver::Device>> inputDevices;
+  SmallVector<M::Driver::DeviceContextRef> inputDevices;
   /// Parallel to the model's *placement-carrying* results (its tensors and
   /// buffers; chains carry no placement); null for host-placed results.
-  SmallVector<RCRef<GraphCompiler::Driver::Device>> outputDevices;
+  SmallVector<M::Driver::DeviceContextRef> outputDevices;
   /// Host endpoint of the staging copies; null when every placement is host.
-  RCRef<GraphCompiler::Driver::Device> hostDevice;
+  M::Driver::DeviceContextRef hostDevice;
 };
 } // namespace
 
-/// Creates a driver Device for every accelerator the model places an input or
+/// Creates a device context for every accelerator the model places an input or
 /// result on. Returns a state with an empty device map when every placement
 /// is the host.
 static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
@@ -383,32 +383,32 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
       llvm::all_of(model->getOutputDevices(), isHost))
     return state;
 
-  auto materialize =
-      [&](ArrayRef<DeviceRef> placements,
-          SmallVector<RCRef<GraphCompiler::Driver::Device>> &devices,
-          StringRef kind) -> ErrorOrSuccess {
+  // `state.deviceMap` doubles as the memo for this loop, so an input and a
+  // result placed on the same accelerator resolve it once.
+  auto materialize = [&](ArrayRef<DeviceRef> placements,
+                         SmallVector<M::Driver::DeviceContextRef> &devices,
+                         StringRef kind) -> ErrorOrSuccess {
     for (const DeviceRef &ref : placements) {
       if (isHost(ref)) {
         devices.emplace_back();
         continue;
       }
       if (auto it = state.deviceMap.find(ref); it != state.deviceMap.end()) {
-        devices.push_back(it->second.copy());
+        devices.push_back(it->second);
         continue;
       }
-      GraphCompiler::Driver::Status status;
-      auto deviceId = static_cast<ssize_t>(ref.id);
-      GraphCompiler::Driver::Device *device =
-          ref.label == kNPULabel ? M_createNPUDevice(deviceId, &status)
-                                 : M_createAcceleratorDevice(deviceId, &status);
-      if (!device)
-        return Error(Twine("failed to create device '") + ref.toString() +
-                     "' for a device-placed " + kind + " of model '" +
-                     model->getName() +
-                     "': " + Twine(status.errorOr.getError()));
-      auto owned = RCRef<GraphCompiler::Driver::Device>::take(device);
-      state.deviceMap.try_emplace(ref, owned.copy());
-      devices.push_back(std::move(owned));
+      // NPUs are reached through the same gpuAPI as GPUs; only the placement
+      // label distinguishes them. `getOrCreate` runs isCompatible() itself
+      // before handing back a context, so there is no gate to repeat here.
+      ErrorOr<M::Driver::DeviceContextRef> ctxOr =
+          M::Driver::DeviceContext::getOrCreate(M::Driver::Device::gpuAPI,
+                                                ref.id);
+      if (ctxOr.isError())
+        return ctxOr.takeError();
+      M::Driver::DeviceContextRef ctx = ctxOr.takeValue();
+
+      state.deviceMap.try_emplace(ref, ctx);
+      devices.push_back(std::move(ctx));
     }
     return success();
   };
@@ -434,13 +434,13 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
           materialize(model->getOutputDevices(), state.outputDevices, "result"))
     return err.takeError();
 
-  GraphCompiler::Driver::Status status;
-  GraphCompiler::Driver::Device *host = M_createCPUDevice(0, &status);
-  if (!host)
+  ErrorOr<M::Driver::DeviceContextRef> hostOr =
+      M::Driver::DeviceContext::create(M::Driver::Device::cpuAPI);
+  if (hostOr.isError())
     return Error(Twine("failed to create the host device for staging model "
                        "inputs and results: ") +
-                 Twine(status.errorOr.getError()));
-  state.hostDevice = RCRef<GraphCompiler::Driver::Device>::take(host);
+                 Twine(hostOr.takeError().get()));
+  state.hostDevice = hostOr.takeValue();
   return state;
 }
 
@@ -457,34 +457,32 @@ buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators,
   args.reserve(generators.size());
   for (const auto &[i, generator] : llvm::enumerate(generators)) {
     const Tensor &generated = generator->getNextTensor();
-    GraphCompiler::Driver::Device *device =
-        i < deviceState.inputDevices.size()
-            ? deviceState.inputDevices[i].getPointer()
-            : nullptr;
+    M::Driver::DeviceContextRef device = i < deviceState.inputDevices.size()
+                                             ? deviceState.inputDevices[i]
+                                             : M::Driver::DeviceContextRef();
     if (!device) {
       args.push_back(
           AsyncValueRef<Tensor>::createReady(cpuDevice, generated.borrow()));
       continue;
     }
 
-    auto memoryOr = device->createDeviceMemory(generated.getSpec());
-    if (memoryOr.isError())
-      return memoryOr.takeError();
-    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> memory(*memoryOr);
+    ErrorOr<M::Driver::DeviceBufferRef> bufferOr =
+        GraphCompiler::Driver::allocateDeviceBuffer(device,
+                                                    generated.getSpec());
+    if (bufferOr.isError())
+      return bufferOr.takeError();
+    M::Driver::DeviceBufferRef buffer = bufferOr.takeValue();
 
     // Wrap the generator's buffer with a no-op destructor: the generator
     // keeps the buffer alive past the enqueued copy, and stays the owner.
-    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> hostView(
-        deviceState.hostDevice->createDeviceMemory(
-            const_cast<void *>(generated.getBuffer()), generated.getSpec(),
-            /*destructor=*/[]() {}));
-    if (ErrorOrSuccess err = hostView->copyTo(*memory))
+    M::Driver::DeviceBufferRef hostView = GraphCompiler::Driver::borrowBuffer(
+        deviceState.hostDevice, const_cast<void *>(generated.getBuffer()),
+        generated.getSpec().getSizeInBytes());
+    if (ErrorOrSuccess err = hostView->copyTo(*buffer))
       return err.takeError();
 
-    // `prepareInput` takes ownership of the device memory and frees it once
-    // the model releases the argument.
-    args.push_back(GraphCompiler::Driver::prepareInput(
-        cpuDevice, memory.release(), generated.getSpec()));
+    args.push_back(GraphCompiler::Driver::prepareInput(cpuDevice, buffer,
+                                                       generated.getSpec()));
   }
   return args;
 }
@@ -522,8 +520,8 @@ stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
     if (!isTensorOrBuffer(result))
       continue;
 
-    GraphCompiler::Driver::Device *device =
-        deviceState.outputDevices[placementIdx++].getPointer();
+    const M::Driver::DeviceContextRef &device =
+        deviceState.outputDevices[placementIdx++];
     if (!device)
       continue;
 
@@ -536,25 +534,23 @@ stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
     TensorSpec spec = tensor->getSpec();
     // Wrap the device-resident result without taking ownership; the result
     // value keeps it alive across the copy.
-    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> deviceView(
-        device->createDeviceMemory(const_cast<void *>(tensor->getBuffer()),
-                                   spec, /*destructor=*/[]() {}));
-    auto hostOr = deviceState.hostDevice->createDeviceMemory(spec);
+    M::Driver::DeviceBufferRef deviceView = GraphCompiler::Driver::borrowBuffer(
+        device, const_cast<void *>(tensor->getBuffer()), spec.getSizeInBytes());
+
+    ErrorOr<M::Driver::DeviceBufferRef> hostOr =
+        GraphCompiler::Driver::allocateDeviceBuffer(deviceState.hostDevice,
+                                                    spec);
     if (hostOr.isError())
       return hostOr.takeError();
 
-    std::unique_ptr<GraphCompiler::Driver::DeviceMemory> hostMemory(
-        hostOr.takeValue());
-    if (ErrorOrSuccess err = deviceView->copyTo(*hostMemory))
+    M::Driver::DeviceBufferRef hostBuffer = hostOr.takeValue();
+    if (ErrorOrSuccess err = deviceView->copyTo(*hostBuffer))
       return err.takeError();
 
     if (ErrorOrSuccess err = device->synchronize())
       return err.takeError();
 
-    // `prepareInput` takes ownership of the host memory and frees it once the
-    // result is released.
-    result = GraphCompiler::Driver::prepareInput(cpuDevice,
-                                                 hostMemory.release(), spec);
+    result = GraphCompiler::Driver::prepareInput(cpuDevice, hostBuffer, spec);
   }
   return success();
 }
