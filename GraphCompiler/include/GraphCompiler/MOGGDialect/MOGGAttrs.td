@@ -17,9 +17,40 @@ include "GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GraphCompiler/MOGGDialect/MOGGEnums.td"
 include "KGEN/LITDialect/LITTypes.td"
 
+/// Base class for MOGG dialect location attributes: dialect-provided
+/// attributes that subclass `mlir::LocationAttr` (see `LocationAttrDef` in
+/// `mlir/IR/AttrTypeBase.td`), so `mlir::isa<LocationAttr>` recognizes them
+/// and they can be used anywhere an `mlir::Location` is expected.
+class MOGGLocationAttr<string attrName, string attrMnemonic,
+                       list<Trait> traits = []>
+    : LocationAttrDef<MOGGDialect, attrName, traits> {
+  let mnemonic = attrMnemonic;
+}
+
 class MOGGAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MOGGDialect, attrName, traits> {
   let mnemonic = attrMnemonic;
+}
+
+//===----------------------------------------------------------------------===//
+// ProfileScopeLocationAttr
+//===----------------------------------------------------------------------===//
+
+def MOGG_ProfileScopeLocationAttr
+    : MOGGLocationAttr<"ProfileScopeLocation", "profile_scope"> {
+  let summary = "A `Graph.profile_scope()` scope-name annotation on a Location";
+  let description = [{
+    `Graph.profile_scope(name)` wraps the MLIR location of every op created
+    inside its `with` block in one of these per active scope, nesting
+    outward: the *last*-entered (innermost) scope ends up as the outermost
+    `ProfileScopeLocationAttr` layer. Riding on `Location` rather than a
+    magic string prefix keeps this strongly typed and backend-neutral.
+  }];
+
+  let parameters = (ins "mlir::StringAttr":$name,
+                        "mlir::LocationAttr":$childLoc,
+                        OptionalParameter<"mlir::StringAttr">:$color);
+  let assemblyFormat = "`<` $name `,` $childLoc (`,` `color` `=` $color^)? `>`";
 }
 
 //===----------------------------------------------------------------------===//

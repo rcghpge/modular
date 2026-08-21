@@ -14,3 +14,16 @@ modular_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+modular_cc_test(
+    name = "ProfileScopeLabelsTest",
+    srcs = ["TestProfileScopeLabels.cpp"],
+    deps = [
+        "//GraphCompiler",
+        "//GraphCompiler:MOGGDialect",
+        "//GraphCompiler:Support",
+        "//MLRT:Driver/DeviceContextAPI",
+        "//Support:MDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
