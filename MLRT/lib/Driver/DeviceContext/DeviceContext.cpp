@@ -1399,6 +1399,14 @@ ErrorOrSuccess DeviceContext::pollPendingEvents() {
   if (isGraphCapturing())
     return success();
 
+  // Recycle this context's own completed frees. A failed event query is
+  // reported here rather than swallowed; the record it belongs to stays queued,
+  // so the next poll picks up whatever this one could not.
+  RETURN_IF_ERROR(
+      device().memoryManager().drainCompletedFrees(freeList_.get()));
+  RETURN_IF_ERROR(
+      device().hostMemoryManager().drainCompletedFrees(hostFreeList_.get()));
+
   // Quickly check if we should check for a pending work.
   if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
     return success();

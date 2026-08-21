@@ -13,8 +13,10 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <optional>
@@ -87,6 +89,18 @@ public:
   // both the `memory_manager_vmm` config request and the device's
   // vmmSupported() result, as resolved by onDevice().
   bool isVmmEnabled() const;
+
+  // Migrate to the parent free list every per-stream free buffer whose gating
+  // event has completed, making that memory allocatable again. `only` restricts
+  // the drain to one free list; the default drains every free list on this
+  // manager, which is how an allocation miss recovers memory stranded on
+  // sibling streams. Never waits on device work. Caller must NOT hold `mu_`.
+  //
+  // Returns the first error hit while querying gating events, after attempting
+  // every record: one unusable event must not strand the others. A record whose
+  // event errored stays queued for a later drain.
+  ErrorOrSuccess
+  drainCompletedFrees(const MemoryManagerFreeList *only = nullptr);
 
   // Single-arena VMM: physically back the free portion of the budget before a
   // CUDA graph capture begins. VMM map/unmap is illegal during capture, so any
@@ -191,14 +205,10 @@ private:
   // VMM arena (the unreclaimable portion of the budget). Caller holds `mu_`.
   size_t inUsePhysicalBytes() const;
 
-  // Registry of per-stream (child) free-lists, so a VMM allocation miss can
-  // flush sibling streams' completed frees to the root free-list (a freed block
-  // sits in its per-stream buffer until that stream polls events).
-  void registerChildFreeList(MemoryManagerFreeList *fl);
-  void unregisterChildFreeList(MemoryManagerFreeList *fl);
-  // Poll pending events on every registered child context except `except`,
-  // firing completed free->root flush handlers. Caller must NOT hold `mu_`.
-  void flushSiblingFreeLists(const DeviceContext *except);
+  // Block until the device work gating every record naming `fl` has completed,
+  // so ~MemoryManagerFreeList's unconditional flush cannot release blocks a
+  // kernel may still be reading. Caller must NOT hold `mu_`.
+  void waitForPendingFrees(const MemoryManagerFreeList *fl);
 
   // Avoid malloc under lock.
   Desc *popDesc();
@@ -243,10 +253,52 @@ private:
   // for reuse (fed by retiring wholly-free VMM chunks).
   std::vector<uint64_t> freeGranulePool_;
 
-  // Registered per-stream (child) free-lists and a lock guarding the list.
-  // Used by flushSiblingFreeLists() on an allocation miss.
-  std::mutex childFreeListsMu_;
-  std::vector<MemoryManagerFreeList *> childFreeLists_;
+  // Free buffers awaiting the device work that gates their migration to the
+  // parent free list. Guarded by the enclosing manager's `mu_` -- it holds no
+  // lock of its own, so cancelling a record cannot race a drain of it. Every
+  // method below except mayHaveRecords() requires that lock.
+  class PendingFrees {
+  public:
+    struct Record {
+      // Identity that outlives the unlocked window in drainCompletedFrees().
+      uint64_t seq;
+      // Device work that must complete before the buffer can migrate.
+      DeviceEventRef event;
+      // Free list owning the buffer; cancels its records when destroyed.
+      MemoryManagerFreeList *fl;
+      // Which of that free list's double-buffered lists to flush.
+      int bufferId;
+    };
+
+    void add(DeviceEventRef event, MemoryManagerFreeList *fl, int bufferId);
+    // Drop every record naming `fl`.
+    void cancel(const MemoryManagerFreeList *fl);
+    // Remove and return the record identified by `seq`, or nullopt if it is
+    // gone. Identity is by `seq` rather than position so a caller that released
+    // `mu_` mid-drain cannot act on a record cancelled meanwhile.
+    std::optional<Record> take(uint64_t seq);
+    // The (seq, event) of every record naming `fl`, or of all of them when `fl`
+    // is null.
+    llvm::SmallVector<std::pair<uint64_t, DeviceEventRef>>
+    collect(const MemoryManagerFreeList *fl) const;
+    bool empty() const { return records_.empty(); }
+    // Lock-free fast path: false only when there is certainly nothing queued.
+    // The one method safe to call without `mu_`.
+    bool mayHaveRecords() const {
+      return count_.load(std::memory_order_acquire) != 0;
+    }
+
+  private:
+    // Keeps the lock-free counter in step with the records it mirrors.
+    void syncCount() {
+      count_.store(records_.size(), std::memory_order_release);
+    }
+
+    llvm::SmallVector<Record> records_;
+    uint64_t nextSeq_ = 0;
+    std::atomic<size_t> count_ = {0};
+  };
+  PendingFrees pendingFrees_;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;

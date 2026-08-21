@@ -419,6 +419,40 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "SelectStreamSiblingFreeListTest",
+    size = "medium",
+    srcs = ["SelectStreamSiblingFreeListTest.cpp"],
+    env = {
+        # The sibling drain is only reached on a VMM allocation miss, so the
+        # budget is pinned small (1 GiB, 32 MiB granules) and only-mode removes
+        # the driver backdoor: the pressure thread's 16 MiB blocks exhaust the
+        # pool within a few dozen allocations and miss for real. Without this
+        # the test allocates against the whole device and never enters the path
+        # it exists to race against.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "32",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "1073741824",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    # VMM is forced off on AMD (HIP) regardless of this env, so the miss path
+    # this test races against only exists on NVIDIA.
+    gpu_constraints = ["//:nvidia_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+    ],
+)
+
+modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
     srcs = ["GPUDeviceContextTest.cpp"],

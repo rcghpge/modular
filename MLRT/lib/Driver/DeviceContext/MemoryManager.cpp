@@ -12,6 +12,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/StringExtras.h"
 #include "Support/internal/Tracy/Tracy.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
@@ -454,11 +455,6 @@ MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
       enablePoison();
     }
   }
-
-  // Register per-stream (child) free-lists so a VMM allocation miss can flush
-  // sibling streams' completed frees to the root (see flushSiblingFreeLists).
-  if (ctx_ != nullptr && parent_ != nullptr)
-    memoryManager_.registerChildFreeList(this);
 }
 
 DeviceContext *MemoryManagerFreeList::context() { return ctx_; }
@@ -466,44 +462,114 @@ DeviceContext *MemoryManagerFreeList::context() { return ctx_; }
 const DeviceContext *MemoryManagerFreeList::context() const { return ctx_; }
 
 MemoryManagerFreeList::~MemoryManagerFreeList() {
-  if (ctx_ != nullptr && parent_ != nullptr)
-    memoryManager_.unregisterChildFreeList(this);
+  // flushToParent() migrates every buffer unconditionally, including one still
+  // gated on an unfired event, so wait for that work first. Outside `mu_`:
+  // this blocks, and flushToParent takes the lock itself.
+  memoryManager_.waitForPendingFrees(this);
   flushToParent();
 }
 
-void MemoryManager::registerChildFreeList(MemoryManagerFreeList *fl) {
-  std::lock_guard<std::mutex> lock(childFreeListsMu_);
-  childFreeLists_.push_back(fl);
+void MemoryManager::PendingFrees::add(DeviceEventRef event,
+                                      MemoryManagerFreeList *fl, int bufferId) {
+  records_.push_back({++nextSeq_, std::move(event), fl, bufferId});
+  syncCount();
 }
 
-void MemoryManager::unregisterChildFreeList(MemoryManagerFreeList *fl) {
-  std::lock_guard<std::mutex> lock(childFreeListsMu_);
-  auto it = std::find(childFreeLists_.begin(), childFreeLists_.end(), fl);
-  if (it != childFreeLists_.end())
-    childFreeLists_.erase(it);
+void MemoryManager::PendingFrees::cancel(const MemoryManagerFreeList *fl) {
+  llvm::erase_if(records_, [fl](const Record &r) { return r.fl == fl; });
+  syncCount();
 }
 
-void MemoryManager::flushSiblingFreeLists(const DeviceContext *except) {
-  // Poll pending events on every registered child context so their completed
-  // frees migrate from per-stream free buffers to the root free-list (where
-  // allocateDesc and defrag can use them). Safe: pollPendingEvents only runs
-  // handlers whose device work has completed, and it releases its own lock
-  // before running each handler, so there is no lock-order inversion with the
-  // free() path (mu_ -> pendingWorkMutex_). The registry lock is held across
-  // the loop so entries cannot be removed mid-iteration; this relies on child
-  // contexts being stable during allocation (created at startup, destroyed at
-  // shutdown), which holds for MAX Serve.
-  std::lock_guard<std::mutex> lock(childFreeListsMu_);
-  const DeviceContext *lastPolled = nullptr;
-  for (MemoryManagerFreeList *fl : childFreeLists_) {
-    DeviceContext *c = fl->ctx_;
-    // Skip the caller's context (already polled) and cheaply de-dup the
-    // adjacent freeList_/graphFreeList_ pair of the same context.
-    if (c == nullptr || c == except || c == lastPolled)
-      continue;
-    lastPolled = c;
-    (void)c->pollPendingEvents();
+std::optional<MemoryManager::PendingFrees::Record>
+MemoryManager::PendingFrees::take(uint64_t seq) {
+  auto it =
+      llvm::find_if(records_, [seq](const Record &r) { return r.seq == seq; });
+  if (it == records_.end())
+    return std::nullopt;
+  Record record = std::move(*it);
+  records_.erase(it);
+  syncCount();
+  return record;
+}
+
+llvm::SmallVector<std::pair<uint64_t, DeviceEventRef>>
+MemoryManager::PendingFrees::collect(const MemoryManagerFreeList *fl) const {
+  llvm::SmallVector<std::pair<uint64_t, DeviceEventRef>> out;
+  for (const Record &record : records_) {
+    if (fl == nullptr || record.fl == fl)
+      out.emplace_back(record.seq, record.event);
   }
+  return out;
+}
+
+void MemoryManager::waitForPendingFrees(const MemoryManagerFreeList *fl) {
+  if (!pendingFrees_.mayHaveRecords())
+    return;
+
+  llvm::SmallVector<std::pair<uint64_t, DeviceEventRef>> records;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    records = pendingFrees_.collect(fl);
+  }
+  // Copies of the refs keep the events alive even if a concurrent drain
+  // consumes the records while we wait.
+  for (const auto &record : records) {
+    if (auto result = record.second->synchronize(); result.isError()) {
+      // The caller is a destructor, and the free lists that own records die
+      // with their context, so there is no live object left to hand this to.
+      // Log unconditionally rather than through LOG_ERR, which is gated on
+      // `doLog_`: the caller is about to flush these buffers to the parent
+      // without knowing whether the device work finished.
+      logErr(
+          "waitForPendingFrees: event synchronize failed, flushing anyway: " +
+          llvm::Twine(result.getError()));
+    }
+  }
+}
+
+ErrorOrSuccess
+MemoryManager::drainCompletedFrees(const MemoryManagerFreeList *only) {
+  if (!pendingFrees_.mayHaveRecords())
+    return success();
+
+  // Collect the candidates' events, then query them with `mu_` released:
+  // isReady() is a driver call (cuEventQuery), and holding the manager lock
+  // across it would stall every concurrent allocation on this device.
+  llvm::SmallVector<std::pair<uint64_t, DeviceEventRef>> candidates;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    candidates = pendingFrees_.collect(only);
+  }
+
+  llvm::SmallVector<uint64_t> completed;
+  ErrorOrSuccess firstError = success();
+  for (auto &[seq, event] : candidates) {
+    // Each record has its own event, so a busy stream must not block recovery
+    // of an idle one -- keep going past a failed query and report it below.
+    ErrorOr<bool> ready = event->isReady();
+    if (ready.isError()) {
+      if (!firstError.isError())
+        firstError = ready.takeError();
+      continue;
+    }
+    if (*ready)
+      completed.push_back(seq);
+  }
+  if (completed.empty())
+    return firstError;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  for (uint64_t seq : completed) {
+    // Gone means ~MemoryManagerFreeList cancelled it while `mu_` was released
+    // above, having already flushed the buffer itself.
+    std::optional<PendingFrees::Record> record = pendingFrees_.take(seq);
+    if (!record)
+      continue;
+    assert(record->fl->handlerPending_);
+    record->fl->flushFreeBuffersToParent(record->bufferId);
+    record->fl->handlerPending_ = false;
+  }
+  return firstError;
 }
 
 void MemoryManagerFreeList::logMsg(llvm::Twine msg) const {
@@ -518,6 +584,11 @@ void MemoryManagerFreeList::logMsg(llvm::Twine msg, size_t info,
 void MemoryManagerFreeList::flushToParent() {
   std::lock_guard<std::mutex> lock(memoryManager_.mu_);
   LOG_MSG("Flush all to parent");
+  // The caller waited for these records' events and the loop below migrates the
+  // same buffers, so they are redundant; leaving one queued would let a later
+  // drain reach through this object.
+  memoryManager_.pendingFrees_.cancel(this);
+  handlerPending_ = false;
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     flushFreeBuffersToParent(i);
   }
@@ -790,6 +861,7 @@ MemoryManager::~MemoryManager() {
   assert(chunks_ == nullptr);
   assert(freeList_->empty());
   assert(unusedDescs_ == nullptr);
+  assert(pendingFrees_.empty());
 }
 
 size_t MemoryManager::allocationAlignment() const {
@@ -1890,13 +1962,12 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
 
     // On a miss under VMM, this stream's already-completed frees may still be
     // sitting in its per-stream free buffers: a freed block only migrates to
-    // the root free-list when its enqueued event handler fires. Poll pending
-    // events to fire those handlers -- safe because pollPendingEvents only runs
-    // handlers whose device work has completed -- then retry. This both lets a
-    // plain retry succeed and, by moving frees to the root free-list, gives the
-    // arena's reclaim path more root-owned (safe-to-remap) memory. Must run
-    // OUTSIDE the memory-manager lock (the flush handlers take it). Gated on
-    // VMM so the default allocator path is unchanged.
+    // the parent free-list once its gating event completes. Drain this
+    // freelist's completed frees, then retry. This both lets a plain retry
+    // succeed and, by moving frees to the root free-list, gives the arena's
+    // reclaim path more root-owned (safe-to-remap) memory. Must run OUTSIDE the
+    // memory-manager lock. Gated on VMM so the default allocator path is
+    // unchanged.
     if (memoryManager_.vmmEnabled_ && ctx_ != nullptr &&
         !ctx_->isGraphCapturing()) {
       ErrorOrSuccess polled = ctx_->pollPendingEvents();
@@ -1905,15 +1976,18 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         desc = allocateDesc(wrappedSize);
       }
       // Still nothing: the free memory may be stranded in *sibling* streams'
-      // per-stream free buffers. Poll every child context to flush their
-      // completed frees to the root, then retry. Flushing polls pending events,
-      // which is a synchronizing operation; we always do it here (so behavior
-      // is unchanged), but when logging is enabled we record that it happened
-      // so we can gauge whether it is a performance problem.
+      // per-stream free buffers. Drain every freelist on this manager, then
+      // retry. Each record is gated on its own event, so this only recovers
+      // memory whose device work has already completed; when logging is enabled
+      // we record that it happened so we can gauge the cost.
       if (desc == nullptr) {
-        LOG_MSG("alloc miss: flushing sibling free-lists (size " +
+        LOG_MSG("alloc miss: draining sibling free-lists (size " +
                 TWINE(wrappedSize) + ")");
-        memoryManager_.flushSiblingFreeLists(ctx_);
+        // Best effort, as the sibling poll this replaced also was: if a
+        // gating event cannot be queried there is nothing to recover here, and
+        // a still-failing allocation reports its own error with fragmentation
+        // diagnostics attached.
+        (void)memoryManager_.drainCompletedFrees();
         if (wrappedSize <= memoryManager_.chunkSize_) {
           std::lock_guard<std::mutex> lock(memoryManager_.mu_);
           desc = allocateDesc(wrappedSize);
@@ -2279,7 +2353,12 @@ MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
 
   freeDesc(desc);
 
-  if ((ctx_ != nullptr) && !handlerPending_ && !disableFlush_) {
+  // Skip the deferral during graph capture, matching the immediate free in
+  // CUDADeviceContext::memFree: an event recorded into a capturing stream
+  // becomes a graph node and reports ready before the graph has ever run. The
+  // blocks stay put and migrate on a later free or at teardown.
+  if ((ctx_ != nullptr) && !handlerPending_ && !disableFlush_ &&
+      !ctx_->isGraphCapturing()) {
     // Free the list preceding the next primary so that we can keep buffers
     // cached for an extended period.
     // primaryFreeBuffers + 0: current primary
@@ -2291,25 +2370,24 @@ MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
     primaryFreeBuffers_ = (primaryFreeBuffers_ + 1) & (kNumFreeBufferLists - 1);
     assert(freeBuffers_[primaryFreeBuffers_] == nullptr);
     handlerPending_ = true;
-    ErrorOrSuccess err = ctx_->enqueueEventHandler(
-        // We need to ensure that ctx_ survives while this handler is pending,
-        // so we capture the DeviceContextRef.
-        [contextRef = DeviceContextRef::copy(ctx_), freelist = this,
-         id = toFreeId]() {
-          std::lock_guard<std::mutex> lock(freelist->memoryManager_.mu_);
-          if (freelist->memoryManager_.doLog_)
-            freelist->logMsg("Running flush handler id: " + TWINE(id));
-          assert(freelist->handlerPending_);
-          freelist->flushFreeBuffersToParent(id);
-          freelist->handlerPending_ = false;
-        });
-    if (err.isError())
-      return err.takeError();
-    LOG_MSG("Enqueued flush handler id: " + TWINE(toFreeId));
+
+    ErrorOr<DeviceEventRef> event = ctx_->enqueueEvent();
+    if (event.isError()) {
+      // Undo the rotation: `handlerPending_` is only cleared by a completed
+      // drain, so leaving it set would stop this freelist deferring for the
+      // rest of the process. Safe to unwind because `mu_` has been held
+      // throughout, so nothing can have landed in the buffer we rotated into.
+      primaryFreeBuffers_ = (primaryFreeBuffers_ + kNumFreeBufferLists - 1) &
+                            (kNumFreeBufferLists - 1);
+      handlerPending_ = false;
+      return event.takeError();
+    }
+    memoryManager_.pendingFrees_.add(event.takeValue(), this, toFreeId);
+    LOG_MSG("Queued deferred free id: " + TWINE(toFreeId));
   }
 
   LOG_MSG("Completed free of " + TWINE_PTR(ptr) +
-          " after queuing flush handler");
+          " after queuing deferred free");
 
   return success();
 }

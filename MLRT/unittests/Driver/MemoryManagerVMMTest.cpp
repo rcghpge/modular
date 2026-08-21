@@ -150,4 +150,92 @@ TEST_F(MemoryManagerVMMTest,
   cache->clear();
 }
 
+// A freed block waits on a stream event before it can migrate to the parent, so
+// the manager holds a record naming the freelist that owns it. Destroying that
+// freelist must cancel the record: the manager outlives every freelist, so a
+// surviving record would have it reach through a dangling pointer on the next
+// allocation miss.
+TEST_F(MemoryManagerVMMTest, PendingFreeCancelledWhenFreeListDestroyed) {
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  ASSIGN_NO_ERR(DeviceRef, device, dev());
+  std::unique_ptr<MemoryManager> cache = makeCache(*device, 4 * kGiB);
+  ASSERT_NE(cache, nullptr);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  {
+    // Deferral is on, so freeing through this child parks a record.
+    MemoryManagerFreeList child(ctx.getPointer(), *cache, cache->freeList(),
+                                /*disableFlush=*/false, /*label=*/"cancel");
+    ASSIGN_NO_ERR(void *, ptr, child.allocate(256 * kMiB, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(child.free(ptr));
+    // `child` is destroyed here with its record still queued.
+  }
+
+  // Would flush through freed memory if the record had outlived its freelist.
+  EXPECT_NO_ERR(cache->drainCompletedFrees());
+
+  // The destructor's own flush already returned the block, so the full budget
+  // is allocatable again.
+  MemoryManagerFreeList &root = *cache->freeList();
+  ASSIGN_NO_ERR(void *, reused, root.allocate(256 * kMiB, mode));
+  EXPECT_NE(reused, nullptr);
+  EXPECT_NO_ERR(root.free(reused));
+  cache->clear();
+}
+
+// An event recorded into a capturing stream becomes a graph node and reports
+// ready before the graph has ever run. Deferring a free against one would hand
+// the block back to the parent while the GPU may still read it, so no record is
+// created during capture and the block stays put until a later free or
+// teardown.
+TEST_F(MemoryManagerVMMTest, NoDeferredFreeRecordedDuringGraphCapture) {
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  ASSIGN_NO_ERR(DeviceRef, device, dev());
+  std::unique_ptr<MemoryManager> cache = makeCache(*device, 4 * kGiB);
+  ASSERT_NE(cache, nullptr);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  {
+    MemoryManagerFreeList child(ctx.getPointer(), *cache, cache->freeList(),
+                                /*disableFlush=*/false, /*label=*/"capture");
+    ASSIGN_NO_ERR(void *, ptr, child.allocate(256 * kMiB, mode));
+    EXPECT_NE(ptr, nullptr);
+
+    // Capture on the context's own stream, which is what isGraphCapturing()
+    // queries.
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+    EXPECT_NO_ERR(stream->beginCapture());
+    ASSERT_TRUE(ctx->isGraphCapturing());
+    EXPECT_NO_ERR(child.free(ptr));
+    ErrorOr<DeviceGraphRef> graph = stream->endCapture();
+    EXPECT_FALSE(graph.isError()) << graph.getError();
+
+    // With a record, the drain would migrate the block to the parent and leave
+    // this freelist empty.
+    EXPECT_NO_ERR(cache->drainCompletedFrees());
+    EXPECT_FALSE(child.empty());
+  }
+  cache->clear();
+}
+
+// A queued deferred free holds an event and a free-list pointer, never a
+// DeviceContextRef. Were it to hold one, a context whose gating event cannot
+// fire -- a trapped kernel, say -- would never be destroyed.
+TEST_F(MemoryManagerVMMTest, PendingFreeDoesNotKeepContextAlive) {
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  MemoryManagerFreeList &fl = ctx->freeList();
+
+  // Freeing rotates the ring and queues a record gated on a fresh event.
+  ASSIGN_NO_ERR(void *, ptr, fl.allocate(4 * kMiB, mode));
+  EXPECT_NO_ERR(fl.free(ptr));
+
+  // This test's own reference must be the only one left.
+  EXPECT_EQ(ctx->getNumReferences(), 1u);
+
+  EXPECT_NO_ERR(ctx->synchronize());
+}
+
 } // namespace
