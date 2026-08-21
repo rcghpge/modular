@@ -618,7 +618,9 @@ LogicalResult MOGGKernelOpLoweringState::lowerConstant(
     // the dense vs fused wrapper.
     auto captureContract = MOGG::TensorArgContractAttr::get(
         ctx, MOGG::TensorArgRoleKind::input, /*fused=*/false,
-        MOGG::TensorArgAccessKind::none, MOGG::TensorArgAccessKind::none);
+        /*access=*/MOGG::TensorArgAccessKind::none,
+        /*capabilities=*/MOGG::TensorArgAccessKind::none,
+        /*bound=*/MOGG::TensorArgBoundKind::unspecified);
     Value capture = MOGG::TensorArgInitOp::create(
         builder, loc, tensorType, bufferValue,
         /*dynamicDimensions=*/ArrayRef<Value>{},
@@ -889,8 +891,10 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // For trait-based arguments, stamp per-stub-arg buffer-capture comptime
   // metadata for tensor operands (region passes `_MoggTensorBufferCapture`;
   // execute-facing trait args are assembled inside the stub). Shape-function
-  // no-role args keep the legacy generic `DenseTensor` stub parameter via
-  // `mogg.trait_stub_arg_bounds`.
+  // no-role args stamp their stub parameter differently. Each stamps to the
+  // tier name implied by the contract's written bound: `Tensor`,
+  // `DenseTensor`, or `TileTensorable`. `mogg.trait_stub_arg_bounds` carries
+  // this stamp.
   {
     size_t numStubArgs = kernelStub.getBodyBlock().getNumArguments();
     SmallVector<Attribute> captureAttrs(numStubArgs, builder.getStringAttr(""));
@@ -906,7 +910,22 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
         continue;
       if (tensorInfos.traitContract.getRole() ==
           MOGG::TensorArgRoleKind::none) {
-        shapeBounds[*stubArgIdx] = "DenseTensor";
+        MOGG::TensorArgBoundKind bound = tensorInfos.traitContract.getBound();
+        assert(bound != MOGG::TensorArgBoundKind::unspecified &&
+               "distillTensorArgContract always records a bound for a "
+               "no-role (shape-fn) contract");
+        switch (bound) {
+        case MOGG::TensorArgBoundKind::tensor:
+          shapeBounds[*stubArgIdx] = "Tensor";
+          break;
+        case MOGG::TensorArgBoundKind::tile:
+          shapeBounds[*stubArgIdx] = "TileTensorable";
+          break;
+        case MOGG::TensorArgBoundKind::dense:
+        case MOGG::TensorArgBoundKind::unspecified:
+          shapeBounds[*stubArgIdx] = "DenseTensor";
+          break;
+        }
         anyShapeBound = true;
         continue;
       }

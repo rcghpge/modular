@@ -90,12 +90,14 @@
 
 // --- Shape-function no-role flavor --- //
 
-// A trait-typed, metadata-only free shape function (`trait_metadata_shape_fn`):
-// its single `Some[DenseTensor]` argument reads only `.shape()`, so it distills
-// in the shape-fn lane to the no-role contract `{access: none, fused: false,
-// role: "none"}`. The contract is baked onto the `mogg.shape_func.decl`'s
-// kernel-function attribute (a single tensor-arg entry, no DPS / context args).
-// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_metadata_shape_fn"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "none"}]
+// `Some[Tensor]` (`trait_tensor_shape_fn`) -> bound = "tensor".
+// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_tensor_shape_fn"{{.*}}[{access = 0 : i32, bound = "tensor", capabilities = 0 : i32, fused = false, role = "none"}]
+
+// `Some[DenseTensor]` (`trait_metadata_shape_fn`) -> bound = "dense".
+// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_metadata_shape_fn"{{.*}}[{access = 0 : i32, bound = "dense", capabilities = 0 : i32, fused = false, role = "none"}]
+
+// `Some[TileTensorable]` (`trait_tile_tensorable_shape_fn`) -> bound = "tile".
+// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_tile_tensorable_shape_fn"{{.*}}[{access = 0 : i32, bound = "tile", capabilities = 0 : i32, fused = false, role = "none"}]
 
 // === LOWERING (dense-only): mogg.tensor_arg.__init__ + the legacy lane ===== //
 

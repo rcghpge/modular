@@ -520,6 +520,11 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     currentChain = bufferLoadOp.getOutChain();
   }
 
+  // TODO(GEX-4093): this op's shape function may move entirely onto
+  // trait-bound tensor args. After that move, derive per-operand
+  // data-dependence from the bounds it declares. Today this marks every
+  // operand as data-dependent, conservatively. A bare `Tensor` bound
+  // cannot read element values, so such operands are not data-dependent.
   SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 

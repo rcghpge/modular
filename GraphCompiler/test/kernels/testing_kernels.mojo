@@ -57,6 +57,7 @@ from extensibility import (
     Output,
     StoreAccess,
     Storable,
+    Tensor,
     TileTensorable,
     TransformAccess,
     Transformable,
@@ -1648,7 +1649,7 @@ def test_custom_op_shape[
 
 # A custom op whose shape function is trait-typed: a metadata-only, no-role
 # `Some[DenseTensor]` argument that reads only `.shape()`. This exercises the
-# trait shape-fn emit path (the operand is constructed as a `_MoggDenseTensorArg`
+# trait shape-fn emit path (the operand is constructed as a `_MoggShapeTensorArg`
 # instead of a legacy `InputTensor`). The `execute` entry stays on the legacy
 # lane -- the shape-fn migration is independent of how `execute` is written --
 # and copies input to output so the result is verifiable end-to-end.
@@ -1675,6 +1676,73 @@ def trait_metadata_shape_op_shape[
     T: DenseTensor
 ](input: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
+
+
+# A custom op whose shape function binds the bare `Tensor` metadata trait
+# (shape only, no layout/alignment), unlike `trait_metadata_shape_op` above
+# which binds `DenseTensor`. This exercises the `_data_visible=False` emit
+# path -- the emitted `_MoggShapeTensorArg` conforms only to `Tensor`, so it
+# cannot see layout or read elements. `execute` stays on the legacy lane and
+# copies input to output so the result is verifiable end-to-end.
+@extensibility.register("trait_tensor_shape_op")
+struct TraitTensorShapeOp:
+    @staticmethod
+    def execute[
+        target: StaticString, dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        input: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @__parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+            return input.load[width](idx)
+
+        foreach[func](output, ctx)
+
+
+@extensibility.register_shape_function("trait_tensor_shape_op")
+def trait_tensor_shape_op_shape[T: Tensor](input: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
+
+
+# A custom op whose shape function reads element values off a
+# `TileTensorable` argument (the `sizes` input) via `to_tile_tensor()`, rather
+# than just its metadata -- shape functions may read data since they always
+# execute on the host. The `data` argument binds the bare `Tensor` metadata
+# trait, mixing tiers within one shape function for extra coverage. `execute`
+# stays on the legacy lane and copies `data` into `output` at matching
+# coordinates, so the produced values are verifiable end-to-end even though
+# the output shape comes from `sizes`, not from `data`'s own shape.
+@extensibility.register("trait_reshape_shape_op")
+struct TraitReshapeShapeOp:
+    @staticmethod
+    def execute[
+        target: StaticString, dtype: DType
+    ](
+        output: OutputTensor[dtype=dtype, rank=2, ...],
+        data: InputTensor[dtype=dtype, rank=2, ...],
+        sizes: InputTensor[dtype=DType.int64, rank=1, ...],
+        ctx: DeviceContext,
+    ) raises:
+        @__parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+            return data.load[width](idx)
+
+        foreach[func](output, ctx)
+
+
+@extensibility.register_shape_function("trait_reshape_shape_op")
+def trait_reshape_shape_op_shape[
+    D: Tensor, S: TileTensorable
+](data: D, sizes: S) -> IndexList[2]:
+    var new_shape = sizes.to_tile_tensor()
+    var shape = IndexList[2]()
+    shape[0] = Int(new_shape[0])
+    shape[1] = Int(new_shape[1])
+    return shape
 
 
 @extensibility.register("single_device_context")

@@ -54,6 +54,14 @@ struct EmitMojoState {
   /// emitted Mojo module (no committed library type yet). Guards against
   /// re-emitting the definitions for every trait tensor argument.
   bool emittedDenseTensorArgDefs = false;
+  /// True once the host-only shape-function tensor-argument struct has
+  /// been emitted into `structDefsBuilder`. This struct is
+  /// `_MoggShapeTensorArg`. A shape function always executes on the host.
+  /// For this reason, the struct needs none of `_MoggDenseTensorArg`'s
+  /// device-passable machinery. The struct backs every no-role (shape-fn)
+  /// trait tensor argument, at any written bound (`Tensor`, `DenseTensor`,
+  /// or `TileTensorable`).
+  bool emittedShapeTensorArgDefs = false;
   /// One-per-module guard for `_MoggTensorBufferCapture` (region→stub
   /// boundary).
   bool emittedTensorBufferCaptureDefs = false;
@@ -74,8 +82,9 @@ struct EmitMojoState {
   /// `TransformFusion` trait + dual-nature `_MoggTransformFusionTensor`
   /// wrapper), emitted by `emitTransformFusionFunctor` (Phase 5).
   bool emittedTransformFusionArgDefs = false;
-  /// One-per-module import of trait marker traits for shape-function stubs that
-  /// still use generic `DenseTensor` stub parameters.
+  /// One-per-module import of the trait marker traits: `Tensor`,
+  /// `DenseTensor`, `TileTensorable`. Shape-function stubs use these as
+  /// parameter bounds.
   bool emittedTraitMarkerImports = false;
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).

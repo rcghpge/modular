@@ -27,7 +27,6 @@ from extensibility import (
     Output,
     StoreAccess,
     Storable,
-    TileTensorable,
     Transformable,
 )
 
@@ -161,9 +160,10 @@ struct TraitTransformOnMutableInput:
         pass
 
 
-# A shape-function tensor argument carrying an io-role marker. Shape-fn args are
-# read-only and must carry no role (use `Some[DenseTensor]`), so an `Input`
-# (or any io-role) is rejected in the shape-fn distill lane.
+# A shape-function tensor argument carrying an io-role marker. Shape-fn args
+# are read-only and must carry no role (conform to Tensor, DenseTensor, or
+# TileTensorable instead), so an `Input` (or any io-role) is rejected in the
+# shape-fn distill lane.
 @extensibility.register_shape_function("trait_shape_fn_with_role")
 def trait_shape_fn_with_role[T: Input & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
@@ -176,9 +176,11 @@ def trait_shape_fn_fused[T: Fused & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
 
 
-# A shape-function tensor argument carrying `TileTensorable` (data access). A
-# data-reading shape function must stay on the legacy `InputTensor` lane until
-# the data-dependent projection is wired (Slice 5); rejected here.
-@extensibility.register_shape_function("trait_shape_fn_tiletensorable")
-def trait_shape_fn_tiletensorable[T: TileTensorable](x: T) -> IndexList[T.rank]:
+# A shape-function tensor argument carrying `Loadable` (a fusion access
+# capability). Fusion access is `execute`-only machinery; a shape-fn argument
+# is limited to Tensor / DenseTensor / TileTensorable, so this is rejected.
+@extensibility.register_shape_function("trait_shape_fn_loadable")
+def trait_shape_fn_loadable[
+    T: Loadable & DenseTensor
+](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

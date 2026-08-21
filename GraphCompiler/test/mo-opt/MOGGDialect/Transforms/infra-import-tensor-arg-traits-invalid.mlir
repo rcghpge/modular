@@ -72,9 +72,11 @@
 
 // === Shape-function lane disallows ======================================== //
 //
-// Trait-bound shape-function tensor arguments are allowed (the metadata-only
-// no-role flavor), but the shape-fn distill lane rejects io-role markers,
-// `Fused`, and any data access -- those stay execute-only / on the legacy lane.
+// A shape-function tensor argument may conform to `Tensor`, `DenseTensor`,
+// or `TileTensorable` (host execution makes data access safe), but the
+// shape-fn distill lane still rejects io-role markers, `Fused`, and the
+// fusion access traits (`Loadable`/`Storable`/`Transformable` and the
+// `*Access` markers) -- those stay execute-lane-only fusion machinery.
 
 // `Input & DenseTensor` (shape fn `trait_shape_fn_with_role`) -- an io-role on
 // a shape-fn arg.
@@ -84,8 +86,8 @@
 // shape-fn arg.
 // CHECK-DAG: error: Fused is not allowed on a shape-function tensor argument
 
-// `DenseTensor & TileTensorable` (shape fn `trait_shape_fn_tiletensorable`) --
-// data access on a shape-fn arg.
-// CHECK-DAG: error: data access (TileTensorable / Loadable / Storable / Transformable / an *Access marker) is not allowed on a shape-function tensor argument
+// `Loadable & DenseTensor` (shape fn `trait_shape_fn_loadable`) -- a fusion
+// access capability on a shape-fn arg.
+// CHECK-DAG: error: Loadable, Storable, Transformable, and the *Access markers are fusion machinery
 
 module {}

@@ -249,7 +249,8 @@ def MO_ShapeMaterialization : MO_TensorOpInterfaceBase<"ShapeMaterialization", [
   let methods = [
     InterfaceMethod<
     "Return indices of the inputs whose actual data (not shape) are needed for "
-    "computing the output parameters.",
+    "computing the output parameters. TODO(GEX-4093): derivable from a "
+    "trait-bound shape function's written bounds once this op migrates.",
     "SmallVector<int32_t>", "getDataDependentInputIndices",
       (ins), [{}]>,
 

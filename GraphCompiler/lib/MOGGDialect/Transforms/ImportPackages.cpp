@@ -854,9 +854,10 @@ struct ImportPackagesPass
         continue;
       }
       // Trait-bound shape-function tensor arguments distill in the shape-fn
-      // lane (`isShapeFunc=true`): no io-role, metadata-only `DenseTensor`.
-      // Legacy `InputTensor` shape functions carry no trait args and are
-      // unaffected (their args get `UnitAttr` placeholders).
+      // lane (`isShapeFunc=true`): no io-role, bound by `Tensor`,
+      // `DenseTensor`, or `TileTensorable`. Legacy `InputTensor` shape
+      // functions carry no trait args and are unaffected (their args get
+      // `UnitAttr` placeholders).
       auto sfFunctionAttr = buildFunctionAttr(
           sf.func, /*computeResultParams=*/true,
           /*strictResultParams=*/true, /*distillTraitArgs=*/true,

@@ -4,10 +4,11 @@
 // End-to-end proof of the trait-typed shape-function emit path. The custom op
 // `trait_metadata_shape_op` registers a metadata-only, no-role trait shape
 // function (`trait_metadata_shape_op_shape[T: DenseTensor](input: T)`), so its
-// tensor operand is emitted as a `_MoggDenseTensorArg` (immutable, host) rather
-// than rebound to a legacy `InputTensor`, and the call result is rebound to the
-// concrete `IndexList[output_rank]`. The execute entry stays on the legacy lane
-// and copies input -> output.
+// tensor operand is emitted as a `_MoggShapeTensorArg` (immutable, host,
+// `DenseTensor`-tier -- data-visible) rather than rebound to a legacy
+// `InputTensor`, and the call result is rebound to the concrete
+// `IndexList[output_rank]`. The execute entry stays on the legacy lane and
+// copies input -> output.
 //
 // The input shape is passed dynamically (`--input-shapes=2x3`) so the shape
 // function is invoked at *runtime* (a `mogg.call.shape`), not folded into the

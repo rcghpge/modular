@@ -38,6 +38,14 @@ static constexpr std::array<llvm::StringLiteral, 3>
                                       kPackageManagedTensorSlice,
                                       kLeafFusedOutputVariadicTensors};
 
+// Dict keys shared by `tensorArgContractToDict` (writer) and
+// `dictToTensorArgContract` (reader).
+static constexpr llvm::StringLiteral kRoleKey = "role";
+static constexpr llvm::StringLiteral kFusedKey = "fused";
+static constexpr llvm::StringLiteral kAccessKey = "access";
+static constexpr llvm::StringLiteral kCapabilitiesKey = "capabilities";
+static constexpr llvm::StringLiteral kBoundKey = "bound";
+
 /// Check whether a symbol has the given root and leaf references, ignoring
 /// any intermediate nested references. This mirrors MOGG::isXType
 /// and is appropriate when the package path depth may vary (e.g.
@@ -479,13 +487,19 @@ public:
 // exist in the shipped module yet; `classifyVocabTrait` can never match them
 // against a real trait symbol until then, so the `deferred` rejection in the
 // distiller is unreachable in the interim.
+// The shape-fn lane below looks a row up by leaf name (`isPresentLeaf`).
+// These constants name the leaf once. This avoids retyping the string at
+// each call site, where a typo could drift from the row's spelling.
+constexpr StringLiteral kDenseTensorLeaf = "DenseTensor";
+constexpr StringLiteral kTileTensorableLeaf = "TileTensorable";
+
 constexpr VocabEntry kTensorArgVocab[] = {
     {"Input", TraitCategory::role, TensorArgRole::input},
     {"Output", TraitCategory::role, TensorArgRole::output},
     {"MutableInput", TraitCategory::role, TensorArgRole::mutableInput},
     {"Fused", TraitCategory::fused},
     {"Tensor", TraitCategory::metadata},
-    {"DenseTensor", TraitCategory::metadata},
+    {kDenseTensorLeaf, TraitCategory::metadata},
     {"LoadAccess", TraitCategory::accessMarker, TensorArgAccess::load},
     {"Loadable", TraitCategory::accessCapability, TensorArgAccess::load},
     {"StoreAccess", TraitCategory::accessMarker, TensorArgAccess::store},
@@ -494,7 +508,7 @@ constexpr VocabEntry kTensorArgVocab[] = {
      TensorArgAccess::transform},
     {"Transformable", TraitCategory::accessCapability,
      TensorArgAccess::transform},
-    {"TileTensorable", TraitCategory::dataCapability},
+    {kTileTensorableLeaf, TraitCategory::dataCapability},
     {"TileTransformAccess", TraitCategory::deferred},
     {"TileTransformable", TraitCategory::deferred},
 };
@@ -957,38 +971,47 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     return any;
   };
 
-  // Shape-function lane: a metadata-only, host-executed, read-only argument.
-  // The allowed vocabulary is `Tensor` / `DenseTensor` only -- it carries no
-  // io-role (distilling to `TensorArgRole::none`), no `Fused`, and no data
-  // access (`TileTensorable` / any `*Access` marker or capability). These are
-  // hard errors rather than silently-dropped traits: a data-reading shape
-  // function must stay on the legacy `InputTensor` lane until the
-  // data-dependent projection is wired (shape-fn execution plan, Slice 5).
+  // Shape-function lane: arguments always run on the host and are
+  // read-only, so reading through `TileTensorable` is safe here (unlike
+  // the execute lane). The distiller records the deepest bound written
+  // (`Tensor`, `DenseTensor`, or `TileTensorable`) in `contract.bound`.
   if (isShapeFunc) {
     if (anyPresent(TraitCategory::role)) {
       emitError("shape-function tensor argument carries an io-role marker "
-                "(Input/Output/MutableInput); shape-function args are "
-                "read-only and must carry no role -- use `Some[DenseTensor]`");
+                "(Input, Output, or MutableInput). Shape-function arguments "
+                "are read-only. They must carry no role. Conform to Tensor, "
+                "DenseTensor, or TileTensorable instead");
       return mlir::failure();
     }
     if (anyPresent(TraitCategory::fused)) {
       emitError("Fused is not allowed on a shape-function tensor argument");
       return mlir::failure();
     }
-    if (anyPresent(TraitCategory::dataCapability) ||
-        anyPresent(TraitCategory::accessMarker) ||
+    if (anyPresent(TraitCategory::accessMarker) ||
         anyPresent(TraitCategory::accessCapability) ||
         anyPresent(TraitCategory::deferred)) {
       emitError(
-          "data access (TileTensorable / Loadable / Storable / Transformable / "
-          "an *Access marker) is not allowed on a shape-function tensor "
-          "argument yet; a data-reading shape function must stay on the legacy "
-          "InputTensor lane (shape-function execution plan, Slice 5)");
+          "Loadable, Storable, Transformable, and the *Access markers are "
+          "fusion machinery. They are not allowed on a shape-function "
+          "tensor argument. Conform to Tensor, DenseTensor, or "
+          "TileTensorable instead");
       return mlir::failure();
     }
+    auto isPresentLeaf = [&](llvm::StringRef leaf) {
+      for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
+        if (kTensorArgVocab[i].leaf == leaf)
+          return present[i];
+      return false;
+    };
     TensorArgContract contract;
     contract.role = TensorArgRole::none;
     contract.fused = false;
+    if (isPresentLeaf(kTileTensorableLeaf))
+      contract.bound = TensorArgBound::tile;
+    else if (isPresentLeaf(kDenseTensorLeaf))
+      contract.bound = TensorArgBound::dense;
+    else
+      contract.bound = TensorArgBound::tensor;
     return contract;
   }
 
@@ -1123,6 +1146,20 @@ StringRef toString(TensorArgAccess access) {
   llvm_unreachable("bad TensorArgAccess");
 }
 
+StringRef toString(TensorArgBound bound) {
+  switch (bound) {
+  case TensorArgBound::unspecified:
+    return "unspecified";
+  case TensorArgBound::tensor:
+    return "tensor";
+  case TensorArgBound::dense:
+    return "dense";
+  case TensorArgBound::tile:
+    return "tile";
+  }
+  llvm_unreachable("bad TensorArgBound");
+}
+
 mlir::DictionaryAttr
 tensorArgContractToDict(mlir::MLIRContext *ctx,
                         const TensorArgContract &contract) {
@@ -1130,14 +1167,19 @@ tensorArgContractToDict(mlir::MLIRContext *ctx,
   // The access/capability SETS are encoded as integer bitmasks (the same bit
   // layout as `bit(TensorArgAccess)`); `dictToTensorArgContract` round-trips
   // them directly.
-  return mlir::DictionaryAttr::get(
-      ctx,
-      {b.getNamedAttr("role", b.getStringAttr(toString(contract.role))),
-       b.getNamedAttr("fused", b.getBoolAttr(contract.fused)),
-       b.getNamedAttr("access", b.getI32IntegerAttr(
-                                    static_cast<int32_t>(contract.accessMask))),
-       b.getNamedAttr("capabilities", b.getI32IntegerAttr(static_cast<int32_t>(
-                                          contract.capabilityMask)))});
+  llvm::SmallVector<mlir::NamedAttribute> entries{
+      b.getNamedAttr(kRoleKey, b.getStringAttr(toString(contract.role))),
+      b.getNamedAttr(kFusedKey, b.getBoolAttr(contract.fused)),
+      b.getNamedAttr(kAccessKey, b.getI32IntegerAttr(static_cast<int32_t>(
+                                     contract.accessMask))),
+      b.getNamedAttr(kCapabilitiesKey, b.getI32IntegerAttr(static_cast<int32_t>(
+                                           contract.capabilityMask)))};
+  // `bound` is omitted entirely when unspecified, so every existing
+  // execute-lane encoding (and its lit expectations) stays byte-identical.
+  if (contract.bound != TensorArgBound::unspecified)
+    entries.push_back(
+        b.getNamedAttr(kBoundKey, b.getStringAttr(toString(contract.bound))));
+  return mlir::DictionaryAttr::get(ctx, entries);
 }
 
 MOGG::TensorArgContractAttr
@@ -1168,8 +1210,26 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
   auto irCapabilities =
       static_cast<MOGG::TensorArgAccessKind>(contract.capabilityMask);
 
+  // Same lockstep mapping as `irRole` above. No other caller uses this
+  // switch.
+  MOGG::TensorArgBoundKind irBound;
+  switch (contract.bound) {
+  case TensorArgBound::unspecified:
+    irBound = MOGG::TensorArgBoundKind::unspecified;
+    break;
+  case TensorArgBound::tensor:
+    irBound = MOGG::TensorArgBoundKind::tensor;
+    break;
+  case TensorArgBound::dense:
+    irBound = MOGG::TensorArgBoundKind::dense;
+    break;
+  case TensorArgBound::tile:
+    irBound = MOGG::TensorArgBoundKind::tile;
+    break;
+  }
+
   return MOGG::TensorArgContractAttr::get(ctx, irRole, contract.fused, irAccess,
-                                          irCapabilities);
+                                          irCapabilities, irBound);
 }
 
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
@@ -1195,12 +1255,15 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
     return std::nullopt;
   };
 
-  std::optional<StringRef> roleStr = getStr("role");
-  std::optional<bool> fused = getBool("fused");
-  std::optional<unsigned> accessMask = getMask("access");
-  std::optional<unsigned> capabilityMask = getMask("capabilities");
+  std::optional<StringRef> roleStr = getStr(kRoleKey);
+  std::optional<bool> fused = getBool(kFusedKey);
+  std::optional<unsigned> accessMask = getMask(kAccessKey);
+  std::optional<unsigned> capabilityMask = getMask(kCapabilitiesKey);
   if (!roleStr || !fused || !accessMask || !capabilityMask)
     return std::nullopt;
+  // `bound` is only ever baked for a shape-fn contract; absent means
+  // `unspecified` (every execute-lane encoding).
+  std::optional<StringRef> boundStr = getStr(kBoundKey);
 
   // Inverse of `toString(TensorArgRole)`.
   TensorArgRole role;
@@ -1215,11 +1278,25 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
   else
     return std::nullopt;
 
+  // Inverse of `toString(TensorArgBound)`.
+  TensorArgBound bound = TensorArgBound::unspecified;
+  if (boundStr) {
+    if (*boundStr == toString(TensorArgBound::tensor))
+      bound = TensorArgBound::tensor;
+    else if (*boundStr == toString(TensorArgBound::dense))
+      bound = TensorArgBound::dense;
+    else if (*boundStr == toString(TensorArgBound::tile))
+      bound = TensorArgBound::tile;
+    else if (*boundStr != toString(TensorArgBound::unspecified))
+      return std::nullopt;
+  }
+
   TensorArgContract contract;
   contract.role = role;
   contract.fused = *fused;
   contract.accessMask = *accessMask;
   contract.capabilityMask = *capabilityMask;
+  contract.bound = bound;
   return contract;
 }
 

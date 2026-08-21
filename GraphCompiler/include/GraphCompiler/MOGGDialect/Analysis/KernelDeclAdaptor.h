@@ -76,6 +76,13 @@ enum class TensorArgRole { input, output, mutableInput, none };
 /// access/capability bitmasks of `TensorArgContract`.
 enum class TensorArgAccess { none, load, store, transform };
 
+/// The deepest tensor-argument trait bound written on a shape-function tensor
+/// argument -- `Tensor` (shape only), `DenseTensor` (adds layout/alignment),
+/// or `TileTensorable` (adds host-side data access via `to_tile_tensor()`).
+/// Recorded only in the shape-fn lane; an execute-lane contract leaves this
+/// `unspecified` (see `distillTensorArgContract`).
+enum class TensorArgBound : uint8_t { unspecified, tensor, dense, tile };
+
 /// Single-bit mask for one access form (`none` maps to the empty mask 0).
 inline unsigned bit(TensorArgAccess access) {
   switch (access) {
@@ -110,6 +117,9 @@ struct TensorArgContract {
   /// marker (e.g. `LoadAccess`). Load-bearing for opaque-device targets, where
   /// only the marker may be available host-side.
   unsigned capabilityMask = 0;
+  /// The written bound, recorded only in the shape-fn lane (`unspecified` for
+  /// an execute-lane argument). See `TensorArgBound`.
+  TensorArgBound bound = TensorArgBound::unspecified;
 
   /// `mut` is derived, never stored. Only `output` / `mutableInput` are
   /// mutable; both `input` and the no-role shape-function flavor (`none`) are
@@ -143,7 +153,7 @@ struct TensorArgContract {
 
   bool operator==(const TensorArgContract &o) const {
     return role == o.role && fused == o.fused && accessMask == o.accessMask &&
-           capabilityMask == o.capabilityMask;
+           capabilityMask == o.capabilityMask && bound == o.bound;
   }
   bool operator!=(const TensorArgContract &o) const { return !(*this == o); }
 };
@@ -162,15 +172,18 @@ struct TensorArgContract {
 /// ignored. Returns failure (after invoking `emitError`) on any validation
 /// failure.
 ///
-/// `isShapeFunc` selects the shape-function lane: a shape-fn tensor argument is
-/// metadata-only (reads `.shape()`), host-executed, and read-only, so it
-/// carries **no role** (distills to `TensorArgRole::none`) and the allowed
-/// vocabulary is `Tensor` / `DenseTensor` only. Any io-role marker
-/// (`Input`/`Output`/`MutableInput`), `Fused`, `TileTensorable`, or any access
-/// capability is a hard error -- data-reading shape functions stay on the
-/// legacy `InputTensor` lane until the data-dependent projection is wired (see
-/// the shape-fn execution plan, Slice 5). When `isShapeFunc` is false (the
-/// `execute` lane) exactly one io-role is required, as before.
+/// `isShapeFunc` selects the shape-function lane: the argument carries no
+/// io-role (distills to `TensorArgRole::none`) and may bind only the tiers
+/// `Tensor` / `DenseTensor` / `TileTensorable` -- shape functions execute on
+/// the host, so `TileTensorable` data access is safe. The deepest bound
+/// written is recorded in `TensorArgContract::bound`; io-role markers,
+/// `Fused`, and the fusion access traits are hard errors. When `isShapeFunc`
+/// is false (the `execute` lane) exactly one io-role is required, as before,
+/// and `bound` is left `unspecified`.
+///
+/// TODO(GEX-4093): derive per-input data-dependence of shape functions from
+/// the written bound (a bare `Tensor` bound cannot read element values, so
+/// such inputs are not data-dependent).
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     llvm::ArrayRef<M::KGEN::TraitSymbolAttr> writtenSymbols,
     llvm::function_ref<void(const llvm::Twine &)> emitError,
@@ -184,11 +197,15 @@ KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType);
 
 llvm::StringRef toString(TensorArgRole role);
 llvm::StringRef toString(TensorArgAccess access);
+llvm::StringRef toString(TensorArgBound bound);
 
 /// Encode a contract as the per-argument `DictionaryAttr`
-/// `{role, fused, access, capabilities}` baked into
-/// `KernelFunctionAttr.tensor_arg_contracts`. `access` and `capabilities` are
-/// the integer bitmasks (sets of access forms) of the contract.
+/// `{role, fused, access, capabilities}` (plus `bound` when it is not
+/// `unspecified`) baked into `KernelFunctionAttr.tensor_arg_contracts`.
+/// `access` and `capabilities` are the integer bitmasks (sets of access
+/// forms) of the contract. `bound` is omitted entirely for an unspecified
+/// (execute-lane) contract, so every existing execute-lane encoding stays
+/// byte-identical.
 mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
                                              const TensorArgContract &contract);
 
@@ -197,7 +214,8 @@ mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
 /// `mogg.tensor_arg.__init__` from a distilled contract. `access` and
 /// `capabilities` are bit-enum sets. The op-borne attribute is the single
 /// source of truth in the trait lane (D1); this is the bridge from the C++
-/// contract struct to the IR attribute.
+/// contract struct to the IR attribute. `bound` prints only when not
+/// `unspecified` (see `MOGG_TensorArgContractAttr`).
 MOGG::TensorArgContractAttr
 tensorArgContractToAttr(mlir::MLIRContext *ctx,
                         const TensorArgContract &contract);
@@ -210,7 +228,9 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
 /// (the "no contract" sentinel). A `DictionaryAttr` with the expected
 /// `{role, fused, access, capabilities}` keys decodes to the matching
 /// contract; the `role` string mapping mirrors `toString` exactly, and the
-/// `access`/`capabilities` integer bitmasks round-trip directly.
+/// `access`/`capabilities` integer bitmasks round-trip directly. `bound`
+/// defaults to `unspecified` when the key is absent (every execute-lane
+/// encoding).
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr);
 
 //===----------------------------------------------------------------------===//

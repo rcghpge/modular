@@ -1,4 +1,5 @@
 // RUN: mo-opt %s --gc-pipeline="constant-fold=false kernel-library-paths=%kernel_api_test_pkg" --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline-pre-jit="constant-fold=false kernel-library-paths=%kernel_api_test_pkg dump-mojo-text" -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
 
 // Test shape function lowering to MOGG dialect with experimental Mojo path
 
@@ -58,13 +59,12 @@ mo.graph @custom_op_shape_func<D0, D1 -> D2, D3>(
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }
 
-// A trait-typed, metadata-only shape function (`trait_metadata_shape_op_shape`,
-// `Some[DenseTensor]` with no io-role). The no-role trait contract is derived
-// from the shape-function declaration at lowering (GEX-4071; no positional
-// contract array is stamped on the kernel op), so its tensor operand is
-// lowered on the trait lane (emitted as a `_MoggDenseTensorArg` rather than
-// rebound to `InputTensor` -- the emitted Mojo is exercised by the CPU e2e
-// `mogg-kernel-api-e2e-trait-shape-func.mlir`).
+// A trait-typed, metadata-only shape function (`Some[DenseTensor]`, no
+// io-role), emitted as `_MoggShapeTensorArg` instead of `InputTensor`.
+// `DenseTensor` is data-visible, so `_data_visible = True`.
+// EMIT-DAG: struct _MoggShapeTensorArg[
+// EMIT-DAG: _MoggShapeTensorArg[DType.float32, type_of({{.*}}), 64, True](
+// EMIT-DAG: shapeof_trait_metadata_shape_op_mogg[__trait_arg_type_0 : DenseTensor]
 // CHECK-LABEL: mo.graph @trait_metadata_shape_func
 // CHECK: mogg.kernel
 // CHECK:   mogg.call.shape["{{.*}}.trait_metadata_shape_op_shape"]
@@ -75,5 +75,39 @@ mo.graph @trait_metadata_shape_func<D0, D1 -> D2, D3>(
 ) -> !mo.tensor<[D2, D3], f32> {
   %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "trait_metadata_shape_op"}(%input) :
     (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
+
+// A trait-typed shape function bound to bare `Tensor`. `Tensor` is not
+// data-visible, so `_data_visible = False`.
+// EMIT-DAG: _MoggShapeTensorArg[DType.float32, type_of({{.*}}), 64, False](
+// EMIT-DAG: shapeof_trait_tensor_shape_op_mogg[__trait_arg_type_0 : Tensor]
+// CHECK-LABEL: mo.graph @trait_tensor_shape_func
+// CHECK: mogg.kernel
+// CHECK:   mogg.call.shape["{{.*}}.trait_tensor_shape_op_shape"]
+// CHECK-SAME: -> !mogg.shape_func_result<2>
+mo.graph @trait_tensor_shape_func<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+  %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "trait_tensor_shape_op"}(%input) :
+    (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
+
+// A trait-typed shape function that mixes tiers within one signature
+// (`trait_reshape_shape_op_shape[D: Tensor, S: TileTensorable]`) and reads
+// the second operand's element values via `to_tile_tensor()`.
+// EMIT-DAG: __trait_arg_type_0 : Tensor
+// EMIT-DAG: __trait_arg_type_1 : TileTensorable
+// CHECK-LABEL: mo.graph @trait_reshape_shape_func
+// CHECK: mogg.kernel
+// CHECK:   mogg.call.shape["{{.*}}.trait_reshape_shape_op_shape"]
+// CHECK-SAME: -> !mogg.shape_func_result<2>
+mo.graph @trait_reshape_shape_func<D0, D1 -> D2, D3>(
+  %data: !mo.tensor<[D0, D1], f32>,
+  %sizes: !mo.tensor<[2], si64>
+) -> !mo.tensor<[D2, D3], f32> {
+  %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "trait_reshape_shape_op"}(%data, %sizes) :
+    (!mo.tensor<[D0, D1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D4, D5], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }

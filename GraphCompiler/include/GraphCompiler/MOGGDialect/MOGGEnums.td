@@ -72,5 +72,22 @@ def MOGG_TensorArgAccess
   let genSpecializedAttr = 0;
 }
 
+// The deepest tensor-argument trait bound written on a shape-function
+// tensor argument. This applies to the shape-fn lane only. See
+// `TensorArgBound` in KernelDeclAdaptor.h.
+// `unspecified` is the default value. Every execute-lane contract also
+// carries `unspecified`. For this reason, printing
+// `MOGG_TensorArgContractAttr` elides `unspecified`, and the baked
+// `tensor_arg_contracts` dict omits it too. Every existing execute-lane
+// encoding then stays byte-identical.
+def MOGG_TensorArgBound
+    : I32EnumAttr<"TensorArgBoundKind", "tensor-argument written bound", [
+        I32EnumAttrCase<"unspecified", 0, "unspecified">,
+        I32EnumAttrCase<"tensor", 1, "tensor">,
+        I32EnumAttrCase<"dense", 2, "dense">,
+        I32EnumAttrCase<"tile", 3, "tile">,
+      ]> {
+  let cppNamespace = "::M::MOGG";
+}
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGENUMS_TD

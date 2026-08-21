@@ -6,6 +6,14 @@
 //
 // Implementations of `Staticization` interface for various `mo` ops.
 //
+// TODO(GEX-4093): the shape-function trait migration does not touch
+// `getDataDependentInputIndices` below. It still hand-maintains which
+// inputs are data-dependent.
+// An op's shape function may move entirely onto trait-bound tensor args.
+// After that move, this could instead derive the answer from the bounds
+// the shape function declares. A bare `Tensor` bound cannot read element
+// values, so such inputs are not data-dependent.
+//
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MODialect/ShapeFunctions.h"

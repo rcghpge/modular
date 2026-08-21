@@ -2999,8 +2999,9 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
 
   // Trait lane: trait tensor stub arguments are `_MoggTensorBufferCapture` at
   // the region→stub boundary; execute-facing trait args are assembled inside
-  // the stub body. Shape-function no-role args keep generic `DenseTensor`
-  // bounds via `mogg.trait_stub_arg_bounds`.
+  // the stub body. A shape-function argument always carries no io-role. Its
+  // stub parameter takes the bound stamped in `mogg.trait_stub_arg_bounds`:
+  // `Tensor`, `DenseTensor`, or `TileTensorable`.
   ArrayAttr traitBounds = getTraitStubArgBoundsAttr();
   ArrayAttr traitCaptures = getTraitStubBufferCaptureAttr();
   auto traitBoundFor = [&](size_t i) -> StringRef {
@@ -3023,7 +3024,7 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
       if (!cast<StringAttr>(boundAttr).getValue().empty()) {
         if (!state.emittedTraitMarkerImports) {
           state.builder.verbatim(MojoValue(R"mojo(
-from extensibility import DenseTensor
+from extensibility import DenseTensor, Tensor, TileTensorable
 )mojo"));
           state.emittedTraitMarkerImports = true;
         }
@@ -4997,6 +4998,75 @@ struct _MoggDenseTensorArg[
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 
+// `_MoggShapeTensorArg`: shape functions run host-only, so this struct
+// skips `_MoggDenseTensorArg`'s device-passable machinery. `_data_visible`
+// gates off `DenseTensor`/`TileTensorable` for a bare `Tensor` bound.
+// Emitted once per module, guarded by
+// `EmitMojoState::emittedShapeTensorArgDefs`.
+static constexpr llvm::StringLiteral kShapeTensorArgStructName =
+    "_MoggShapeTensorArg";
+static constexpr llvm::StringLiteral kShapeTensorArgDefs = R"mojo(
+from layout import Coord, TensorLayout, TileTensor
+from extensibility import DenseTensor, Tensor, TileTensorable
+
+
+struct _MoggShapeTensorArg[
+    _dtype: DType,
+    _LayoutType: TensorLayout,
+    _alignment: Int,
+    _data_visible: Bool,
+](
+    Tensor,
+    # `_data_visible` gates `DenseTensor`/`TileTensorable` off for a bare
+    # `Tensor` bound, so such an argument cannot reach element values.
+    # TODO(GEX-4093): derive per-input data-dependence from the written
+    # bound instead of materializing a data pointer for `Tensor`-tier args.
+    DenseTensor where _data_visible,
+    TileTensorable where _data_visible,
+):
+    comptime mut = False
+    comptime dtype = Self._dtype
+    comptime LayoutType = Self._LayoutType
+    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime rank = Self.LayoutType.rank
+    comptime alignment = Self._alignment
+    var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+    var _layout: Self.LayoutType
+
+    @always_inline
+    def __init__(
+        out self,
+        ptr: Pointer[NoneType, MutAnyOrigin],
+        layout: Self.LayoutType,
+    ):
+        self.handle = ptr.unsafe_bitcast[Scalar[Self.dtype]]().unsafe_mut_cast[
+            Self.mut
+        ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
+        self._layout = layout
+
+    @always_inline
+    def shape(self) -> Self.ShapeType:
+        return rebind[Self.ShapeType](self.layout().shape_coord())
+
+    @always_inline
+    def layout(self) -> Self.LayoutType:
+        return self._layout
+
+    @always_inline
+    def to_tile_tensor(
+        self,
+    ) -> TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = UntrackedOrigin[mut = Self.mut],
+    ]:
+        return TileTensor[
+            dtype = Self.dtype,
+            LayoutType = Self.LayoutType,
+            origin = UntrackedOrigin[mut = Self.mut],
+        ](ptr=self.handle, layout=self.layout())
+)mojo";
+
 /// Assemble an execute-facing `_MoggDenseTensorArg` from a stub-bound buffer
 /// capture and the distilled contract role.
 static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
@@ -5077,31 +5147,32 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
   auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
   MojoValue layoutType = MojoValue("type_of")({}, {layoutVar});
 
-  // Shape-function no-role args keep the legacy `_MoggDenseTensorArg` path: the
-  // stub parameter stays generic `DenseTensor` and no buffer-capture assembly
-  // is needed before `call.shape`.
+  // Shape-function args assemble the host-only `_MoggShapeTensorArg`;
+  // unlike the execute lane, there's no device-passable flavor to probe
+  // for. `_data_visible` reflects the contract's written bound.
   if (getContract().getRole() == MOGG::TensorArgRoleKind::none) {
-    bool devicePassable = false;
-    if (auto stub = (*this)->getParentOfType<MOGG::KernelStubOp>())
-      devicePassable = !MO::isOnHost(stub.getOperation());
-    if (!state.emittedDenseTensorArgDefs) {
-      state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
-      state.emittedDenseTensorArgDefs = true;
+    MOGG::TensorArgBoundKind bound = getContract().getBound();
+    if (bound == MOGG::TensorArgBoundKind::unspecified)
+      return emitOpError("shape-function tensor argument has an unspecified "
+                         "bound; expected tensor, dense, or tile");
+    bool dataVisible = bound != MOGG::TensorArgBoundKind::tensor;
+    if (!state.emittedShapeTensorArgDefs) {
+      state.structDefsBuilder.verbatim(MojoValue(kShapeTensorArgDefs.str()));
+      state.emittedShapeTensorArgDefs = true;
     }
     MojoValue alignmentParam(
         static_cast<uint64_t>(M::Driver::getPreferredAlignment(
             MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
-    MojoValue ioParam = MojoValue("_MoggTensorIO").get("INPUT");
     MojoValue ptr = OpaquePointerRef(ManagedTensorSliceRef(
                                          state.getMojoValueFor(getBuffer()))
                                          .unsafePtr())
                         .bitcast(MojoValue(kComptimeDTypeNoneType))();
-    MojoValue structName("_MoggDenseTensorArg");
+    MojoValue structName(kShapeTensorArgStructName.str());
     state.setMojoValueFor(
         getResult(),
-        state.builder.var(structName({dTypeParam, layoutType, alignmentParam,
-                                      ioParam, MojoValue(devicePassable)},
-                                     {ptr, layoutVar})));
+        state.builder.var(structName(
+            {dTypeParam, layoutType, alignmentParam, MojoValue(dataVisible)},
+            {ptr, layoutVar})));
     return success();
   }
 

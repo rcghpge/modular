@@ -516,8 +516,27 @@ struct TraitNonFusedLoadStoreCapability:
 # A trait-typed, metadata-only free shape function. It reads only `.shape()`, so
 # its tensor argument carries no io-role: `Some[DenseTensor]` distills in the
 # shape-fn lane to the no-role contract `{role: none, fused: false,
-# access: none}`. This is the positive counterpart to the shape-fn disallows in
-# tensor_arg_trait_invalid_stubs (io-role / Fused / TileTensorable).
+# access: none, bound: dense}`. This is the positive counterpart to the
+# shape-fn disallows in tensor_arg_trait_invalid_stubs (io-role / Fused /
+# Loadable).
 @extensibility.register_shape_function("trait_metadata_shape_fn")
 def trait_metadata_shape_fn[T: DenseTensor](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# The bare-`Tensor` bound: shape only, no layout/alignment. Distills to the
+# no-role contract with `bound: tensor`.
+@extensibility.register_shape_function("trait_tensor_shape_fn")
+def trait_tensor_shape_fn[T: Tensor](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# The `TileTensorable` bound: a shape function may read data as well as
+# metadata, since it always executes on the host. Distills to the no-role
+# contract with `bound: tile`.
+@extensibility.register_shape_function("trait_tile_tensorable_shape_fn")
+def trait_tile_tensorable_shape_fn[
+    T: TileTensorable
+](x: T) -> IndexList[T.rank]:
+    _ = x.to_tile_tensor()
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

@@ -50,6 +50,12 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
       - `capabilities` : the subset of `access` for which the callable
                          capability leaf (e.g. `Loadable`) was required, rather
                          than only the access marker (e.g. `LoadAccess`).
+      - `bound`        : the deepest tensor-argument trait bound written on
+                         a shape-function tensor argument (`tensor`,
+                         `dense`, or `tile`). Every execute-lane argument
+                         carries `unspecified`. Printing elides `bound` at
+                         `unspecified`. Every existing execute-lane attr
+                         then still prints exactly as before.
 
     Per D4, this contract is the only home for the role/access information: it
     is not stamped onto the result `!mo.tensor` type, and no `MO_IOKind` case is
@@ -60,12 +66,14 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
     EnumParameter<MOGG_TensorArgRole>:$role,
     "bool":$fused,
     EnumParameter<MOGG_TensorArgAccess>:$access,
-    EnumParameter<MOGG_TensorArgAccess>:$capabilities
+    EnumParameter<MOGG_TensorArgAccess>:$capabilities,
+    DefaultValuedParameter<"::M::MOGG::TensorArgBoundKind",
+        "::M::MOGG::TensorArgBoundKind::unspecified">:$bound
   );
 
   let assemblyFormat = [{
     `<` `{` `role` `=` $role `,` `fused` `=` $fused `,` `access` `=` $access
-        `,` `capabilities` `=` $capabilities `}` `>`
+        `,` `capabilities` `=` $capabilities (`,` `bound` `=` $bound^)? `}` `>`
   }];
 
   let extraClassDeclaration = [{
@@ -106,15 +114,19 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
                           the hardcoded stdlib table — otherwise the import
                           pass errors out.
       - `tensor_arg_contracts` : per-argument tensor-trait contract for
-                          trait-bound tensor arguments (the trait lane). Each
-                          entry is a `DictionaryAttr`
-                          `{role, fused, access, capabilities}` for a
-                          trait-bound argument (where `access`/`capabilities`
-                          are integer bitmasks of access forms), or a
-                          `UnitAttr` for a non-trait argument. Empty when the
-                          function has no trait-bound arguments (so
-                          `ManagedTensorSlice`-lane kernels are unaffected).
-                          Distilled by `distillTensorArgContract`.
+                          trait-bound tensor arguments (the trait lane). For
+                          a trait-bound argument, each entry is a
+                          `DictionaryAttr` with keys `role`, `fused`,
+                          `access`, and `capabilities`. `access` and
+                          `capabilities` are integer bitmasks of access
+                          forms. A shape-function argument also carries a
+                          `bound` key (`tensor`, `dense`, or `tile`); every
+                          execute-lane argument omits this key. A non-trait
+                          argument uses a `UnitAttr` placeholder instead.
+                          The array is empty when the function has no
+                          trait-bound arguments, so `ManagedTensorSlice`-
+                          lane kernels are unaffected.
+                          `distillTensorArgContract` distills this array.
 
     `arg_params` powers opaque-parameter inference in `MOToMOGGLowering`:
     given an `MO::OpaqueType` operand carrying `{S0 = 4, S1 = 8}` and a
