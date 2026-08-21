@@ -190,6 +190,19 @@ typedef struct M_driver_queue_execute_config_gpu_t {
 /** NPU - Temporary struct for NPU launch configuration. */
 typedef struct M_driver_queue_execute_config_npu_t {
   uint32_t cuBitmask;
+
+  /// One bit per hardware thread of each enabled compute unit
+  /// (e.g. 5 threads per core on AI100); 0 selects every thread.
+  uint32_t threadBitmask;
+
+  /// Optional, num_args entries when set. A flagged argument's `args` slot
+  /// points at `arg_sizes[i]` bytes of inline scalar data to bake into the
+  /// command buffer as local storage; an unflagged slot is an
+  /// M_driver_memory_t handle. NULL means every argument is a handle.
+  ///
+  /// Boolean represented by a fixed-sized type to avoid ABI issues with `bool`
+  /// size differences on different platforms. 0 = false, non-zero = true.
+  const uint8_t *argIsScalar;
 } M_driver_queue_execute_config_npu_t;
 
 // Selects the launch config mode.
