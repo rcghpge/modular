@@ -10,8 +10,8 @@ Requires MODULAR_DRIVER_PLUGINS env var set to a plugin spec, e.g.:
 """
 
 from std.os import getenv
-from max.gpu.host._hal import Driver
-from max.gpu.host._hal.status import HALError, STATUS_UNKNOWN_ERROR
+from _hal import Driver
+from _hal.status import HALError, STATUS_UNKNOWN_ERROR
 
 
 def test_driver_create() raises HALError:
