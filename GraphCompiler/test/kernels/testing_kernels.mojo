@@ -93,7 +93,7 @@ struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
 struct OpaqueToCustomScalarSI32RegTrivial:
     @staticmethod
     def execute(
-        x: InputTensor[dtype=DType.int32, rank=1, ...]
+        x: InputTensor[dtype=.int32, rank=1, ...]
     ) -> MyCustomScalarRegTrivialSI32:
         return MyCustomScalarRegTrivialSI32(x[0])
 
@@ -128,7 +128,7 @@ struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterPassable):
 struct OpaqueToCustomScalarSI32Reg:
     @staticmethod
     def execute(
-        x: InputTensor[dtype=DType.int32, rank=1, ...]
+        x: InputTensor[dtype=.int32, rank=1, ...]
     ) -> MyCustomScalarRegSI32:
         return MyCustomScalarRegSI32(x[0])
 
@@ -141,7 +141,7 @@ struct OpaqueAddToTensorSI32Reg:
     def execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype=DType.int32, rank=1, ...],
+        outp: OutputTensor[dtype=.int32, rank=1, ...],
         x: MyCustomScalarRegSI32,
         y: MyCustomScalarRegSI32,
     ):
@@ -154,7 +154,7 @@ struct OpaqueAddToTensorF32:
     def execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype=DType.float32, rank=1, ...],
+        outp: OutputTensor[dtype=.float32, rank=1, ...],
         x: MyCustomScalarRegF32,
         y: MyCustomScalarRegF32,
     ):
@@ -182,7 +182,7 @@ struct MyCustomScalarSI32(ImplicitlyCopyable):
 struct OpaqueToCustomScalarSI32:
     @staticmethod
     def execute(
-        x: InputTensor[dtype=DType.int32, rank=1, ...]
+        x: InputTensor[dtype=.int32, rank=1, ...]
     ) -> MyCustomScalarSI32:
         return MyCustomScalarSI32(x[0])
 
@@ -195,7 +195,7 @@ struct OpaqueAddToTensorSI32:
     def execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype=DType.int32, rank=1, ...],
+        outp: OutputTensor[dtype=.int32, rank=1, ...],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ):
@@ -208,7 +208,7 @@ struct OpaqueAddToTensorSI32Raises:
     def execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype=DType.int32, rank=1, ...],
+        outp: OutputTensor[dtype=.int32, rank=1, ...],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ) raises:
@@ -1609,7 +1609,7 @@ struct BuffToMyCustomScalarReg:
     @staticmethod
     def execute[
         target: StaticString
-    ](x: InputTensor[dtype=DType.int32, rank=1, ...]) -> MyCustomScalarReg[
+    ](x: InputTensor[dtype=.int32, rank=1, ...]) -> MyCustomScalarReg[
         DType.int32
     ]:
         return MyCustomScalarReg(x[0])
@@ -1621,8 +1621,8 @@ struct CustomScalarRegToBuff:
     def execute[
         target: StaticString
     ](
-        input: OutputTensor[dtype=DType.int32, rank=1, ...],
-        x: MyCustomScalarReg[DType.int32],
+        input: OutputTensor[dtype=.int32, rank=1, ...],
+        x: MyCustomScalarReg[.int32],
     ):
         input[0] = x.val
 
@@ -1723,7 +1723,7 @@ struct TraitReshapeShapeOp:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         data: InputTensor[dtype=dtype, rank=2, ...],
-        sizes: InputTensor[dtype=DType.int64, rank=1, ...],
+        sizes: InputTensor[dtype=.int64, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
         @__parameter
@@ -1995,7 +1995,7 @@ struct MutableStore:
         _trace_name: StaticString,
     ](
         tw: TensorWrapper,
-        tensor: FusedInputTensor[dtype=DType.float32, rank=2, ...],
+        tensor: FusedInputTensor[dtype=.float32, rank=2, ...],
         ctx: DeviceContext,
     ) capturing raises:
         @__parameter
@@ -2077,9 +2077,7 @@ struct SIMDPair[S0: Int, S1: Int](RegisterPassable):
 struct MakeSimdPair:
     @staticmethod
     def execute[P0: Int, P1: Int]() -> SIMDPair[P0, P1]:
-        return SIMDPair[P0, P1](
-            iota[DType.int32, P0](), iota[DType.int32, P1](Int32(P0))
-        )
+        return SIMDPair[P0, P1](iota[.int32, P0](), iota[.int32, P1](Int32(P0)))
 
 
 @extensibility.register("kernel_with_parameterized_opaque")
@@ -2088,7 +2086,7 @@ struct ParameterizedOpaqueType:
     def execute[
         P0: Int
     ](
-        output: OutputTensor[dtype=DType.int32, rank=1, ...],
+        output: OutputTensor[dtype=.int32, rank=1, ...],
         x: SIMDPair[P0, _],
     ) capturing:
         output.store(IndexList[1](0), x.x)
@@ -2110,7 +2108,7 @@ struct KernelWithDefaultParameter:
         rank_defaulted: Int = 128,
         rank_derived_from_other: Int = rank + 1,
         rank_derived_from_derived: Int = rank_derived_from_other + 1,
-    ](x: OutputTensor[dtype=DType.int32, rank=1, ...], y: InputTensor):
+    ](x: OutputTensor[dtype=.int32, rank=1, ...], y: InputTensor):
         print("rank =", rank)
         print("rank_defaulted =", rank_defaulted)
         print("rank_derived_from_other =", rank_derived_from_other)
@@ -2130,9 +2128,9 @@ struct UniqueParameters:
         target: StaticString,
     ](
         blocks: InputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_lengths: InputTensor[dtype=DType.uint32, rank=2, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_lengths: InputTensor[dtype=.uint32, rank=2, ...],
     ) -> MyCustomScalarRegTrivialSI32:
         comptime if page_size:
             return MyCustomScalarRegTrivialSI32(0)

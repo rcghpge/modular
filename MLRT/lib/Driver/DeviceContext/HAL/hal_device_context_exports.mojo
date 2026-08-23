@@ -60,9 +60,7 @@ comptime _DeviceContextBoxPtr = Pointer[DeviceContext, MutUntrackedOrigin]
 # `DeviceBuffer[DType.uint8]` as their leading field, so every buffer handle
 # reads as a pointer to that view; the release entries bitcast back to the
 # concrete box type.
-comptime _DeviceBufferBoxPtr = Pointer[
-    DeviceBuffer[DType.uint8], MutUntrackedOrigin
-]
+comptime _DeviceBufferBoxPtr = Pointer[DeviceBuffer[.uint8], MutUntrackedOrigin]
 comptime _DeviceStreamBoxPtr = Pointer[DeviceStream, MutUntrackedOrigin]
 comptime _DeviceEventBoxPtr = Pointer[DeviceEvent, MutUntrackedOrigin]
 comptime _DeviceContextScopeBoxPtr = Pointer[
@@ -182,9 +180,9 @@ def MojoHAL_DeviceContext_createBuffer(
     byte_size: UInt64,
 ) abi("C") -> _CString[]:
     try:
-        var buf = DeviceBuffer[DType.uint8](ctx[], Int(byte_size))
+        var buf = DeviceBuffer[.uint8](ctx[], Int(byte_size))
         out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+        var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
         boxed.unsafe_ptr().unsafe_write(buf^)
         out_buf[] = boxed^.unsafe_leak()
         return None
@@ -200,10 +198,8 @@ def MojoHAL_DeviceContext_createBufferOwning(
     byte_size: UInt64,
     owning: Bool,
 ) abi("C") -> _CString[]:
-    var buf = DeviceBuffer[DType.uint8](
-        ctx[], ptr, Int(byte_size), owning=owning
-    )
-    var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+    var buf = DeviceBuffer[.uint8](ctx[], ptr, Int(byte_size), owning=owning)
+    var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
     boxed.unsafe_ptr().unsafe_write(buf^)
     out_buf[] = boxed^.unsafe_leak()
     return None
@@ -215,7 +211,7 @@ def MojoHAL_DeviceBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
     boxed.unsafe_deinit_pointee()
     dealloc(
         ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
-            Layout[DeviceBuffer[DType.uint8]].single()
+            Layout[DeviceBuffer[.uint8]].single()
         )
     )
 
@@ -245,15 +241,13 @@ def MojoHAL_DeviceContext_createHostBuffer(
     byte_size: UInt64,
 ) abi("C") -> _CString[]:
     try:
-        var buf = HostBuffer[DType.uint8](ctx[], Int(byte_size))
+        var buf = HostBuffer[.uint8](ctx[], Int(byte_size))
         out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        var boxed = alloc(Layout[HostBuffer[DType.uint8]].single())
+        var boxed = alloc(Layout[HostBuffer[.uint8]].single())
         boxed.unsafe_ptr().unsafe_write(buf^)
         # Host-buffer boxes travel through the same buffer handle; the C++
         # side keys host/device by the entry that produced the handle.
-        out_buf[] = (
-            boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[DType.uint8]]()
-        )
+        out_buf[] = boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[.uint8]]()
         return None
     except e:
         return _err_cstr(String(e))
@@ -261,11 +255,11 @@ def MojoHAL_DeviceContext_createHostBuffer(
 
 @export
 def MojoHAL_HostBuffer_release(buf: _DeviceBufferBoxPtr) abi("C"):
-    var boxed = buf.unsafe_bitcast[HostBuffer[DType.uint8]]()
+    var boxed = buf.unsafe_bitcast[HostBuffer[.uint8]]()
     boxed.unsafe_deinit_pointee()
     dealloc(
         ThinAllocation(unsafe_owned_ptr=boxed).unsafe_with_layout(
-            Layout[HostBuffer[DType.uint8]].single()
+            Layout[HostBuffer[.uint8]].single()
         )
     )
 
@@ -313,7 +307,7 @@ def MojoHAL_DeviceContext_enqueueCopyToDevice(
         return None
     try:
         var ctxref = ctx[]
-        var dst_buf = DeviceBuffer[DType.uint8](
+        var dst_buf = DeviceBuffer[.uint8](
             ctxref, dst, Int(byte_size), owning=False
         )
         ctxref.enqueue_copy(dst_buf, src)
@@ -336,7 +330,7 @@ def MojoHAL_DeviceContext_enqueueCopyFromDevice(
         return None
     try:
         var ctxref = ctx[]
-        var src_buf = DeviceBuffer[DType.uint8](
+        var src_buf = DeviceBuffer[.uint8](
             ctxref, src, Int(byte_size), owning=False
         )
         ctxref.enqueue_copy(dst, src_buf)
@@ -359,7 +353,7 @@ def MojoHAL_DeviceContext_enqueueSetMemory(
         return None
     try:
         ref device_ctx = ctx[]
-        var view = DeviceBuffer[DType.uint8](
+        var view = DeviceBuffer[.uint8](
             device_ctx, dst, Int(byte_size), owning=False
         )
         device_ctx._stream[].fill(
@@ -483,12 +477,12 @@ def MojoHAL_HostBuffer_createSubBuffer(
     # Host boxes carry a `HostBuffer` (see MojoHAL_HostBuffer_release); the
     # view it returns is a plain `DeviceBuffer` over the pinned host region,
     # so the caller boxes it like any other sub-buffer view.
-    ref parent_buf = parent.unsafe_bitcast[HostBuffer[DType.uint8]]()[]
+    ref parent_buf = parent.unsafe_bitcast[HostBuffer[.uint8]]()[]
     try:
-        var view = parent_buf.create_sub_buffer[DType.uint8](
+        var view = parent_buf.create_sub_buffer[.uint8](
             Int(byte_offset), Int(byte_size)
         )
-        var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+        var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
         boxed.unsafe_ptr().unsafe_write(view^)
         out_buf[] = boxed^.unsafe_leak()
         return None
@@ -509,13 +503,13 @@ def MojoHAL_DeviceBuffer_createSubBuffer(
     var parent_size = UInt64(len(parent_buf))
     if byte_size > parent_size or parent_size - byte_size < byte_offset:
         return _err_cstr("offset, len and elem_size are out of range")
-    var view = DeviceBuffer[DType.uint8](
+    var view = DeviceBuffer[.uint8](
         parent_buf.context(),
         parent_buf.unsafe_ptr().unsafe_offset(Int(byte_offset)),
         Int(byte_size),
         owning=False,
     )
-    var boxed = alloc(Layout[DeviceBuffer[DType.uint8]].single())
+    var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
     boxed.unsafe_ptr().unsafe_write(view^)
     out_buf[] = boxed^.unsafe_leak()
     return None
@@ -542,7 +536,7 @@ struct _MmapBox(Movable):
     # `view` MUST stay the first field: MojoHAL_DeviceBuffer_createSubBuffer
     # bitcasts buffer boxes to `DeviceBuffer[DType.uint8]`, which reads the
     # leading view of an `_MmapBox` parent.
-    var view: DeviceBuffer[DType.uint8]
+    var view: DeviceBuffer[.uint8]
     var base: _RawMemoryPtr
     var length: UInt64
 
@@ -586,10 +580,10 @@ def MojoHAL_DeviceContext_memmapFile(
     if Int(base) == -1:  # MAP_FAILED
         return _err_cstr("failed to mmap file")
 
-    var view = DeviceBuffer[DType.uint8](ctx[], base, Int(size), owning=False)
+    var view = DeviceBuffer[.uint8](ctx[], base, Int(size), owning=False)
     var boxed = alloc(Layout[_MmapBox].single())
     boxed.unsafe_ptr().unsafe_write(_MmapBox(view^, base, UInt64(size)))
-    out_buf[] = boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[DType.uint8]]()
+    out_buf[] = boxed^.unsafe_leak().unsafe_bitcast[DeviceBuffer[.uint8]]()
     out_ptr[] = base
     out_size[] = UInt64(size)
     return None
