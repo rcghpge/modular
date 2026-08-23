@@ -2002,7 +2002,7 @@ struct MutableStore:
         @always_inline
         def func[
             width: Int
-        ](idx: IndexList[tensor.rank]) -> SIMD[DType.float32, width]:
+        ](idx: IndexList[tensor.rank]) -> SIMD[.float32, width]:
             return rebind[SIMD[tensor.dtype, width]](
                 tensor._fused_load[width](idx)
             )
@@ -2069,8 +2069,8 @@ struct InplaceNoOutFunc:
 
 @fieldwise_init
 struct SIMDPair[S0: Int, S1: Int](RegisterPassable):
-    var x: SIMD[DType.int32, Self.S0]
-    var y: SIMD[DType.int32, Self.S1]
+    var x: SIMD[.int32, Self.S0]
+    var y: SIMD[.int32, Self.S1]
 
 
 @extensibility.register("make_simd_pair")
