@@ -39,6 +39,17 @@ DeviceGraphBuilder::recordingContext(DeviceGraphNode initialDep) {
       RCRef<RecordingDeviceContext>::create(*this, initialDep));
 }
 
+ErrorOr<DeviceStreamRef> DeviceGraphBuilder::recordingStream() {
+  return Error("stream capture into a device graph is not supported on this "
+               "backend");
+}
+
+ErrorOr<std::optional<DeviceGraphNode>>
+DeviceGraphBuilder::finalizeRecordingStream(
+    llvm::ArrayRef<DeviceGraphNode> /*dependencies*/) {
+  return std::optional<DeviceGraphNode>(std::nullopt);
+}
+
 ErrorOr<DeviceBufferRef> DeviceGraphBuilder::createBuffer(size_t numBytes,
                                                           bool isHost) {
   if (!memoryPool)
@@ -100,6 +111,16 @@ ErrorOrSuccess RecordingDeviceContext::chain(ErrorOr<DeviceGraphNode> node) {
   return success();
 }
 
+ErrorOrSuccess RecordingDeviceContext::flushCapture() {
+  ErrorOr<std::optional<DeviceGraphNode>> node =
+      builder_->finalizeRecordingStream(currentDeps());
+  if (node.isError())
+    return node.takeError();
+  if (*node)
+    lastNode_ = **node;
+  return success();
+}
+
 // ----- Recorded ----- //
 
 ErrorOrSuccess RecordingDeviceContext::enqueueFunctionExecDirect(
@@ -107,6 +128,8 @@ ErrorOrSuccess RecordingDeviceContext::enqueueFunctionExecDirect(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, uint32_t argCount,
     const size_t * /*argSizes*/) {
+  RETURN_IF_ERROR(flushCapture());
+
   // `argSizes` is dropped: it is not part of `DeviceFunctionLaunchParams` and
   // the graph node path does not use it (matching
   // AsyncRT_DeviceGraphBuilder_addFunctionDirect).
@@ -128,6 +151,7 @@ ErrorOrSuccess RecordingDeviceContext::enqueueFunctionExecDirect(
 ErrorOrSuccess RecordingDeviceContext::enqueueCopyToDevice(void *dst,
                                                            const void *src,
                                                            size_t byteSize) {
+  RETURN_IF_ERROR(flushCapture());
   return chain(
       builder_->addCopyHostToDevice(dst, src, byteSize, currentDeps()));
 }
@@ -135,6 +159,7 @@ ErrorOrSuccess RecordingDeviceContext::enqueueCopyToDevice(void *dst,
 ErrorOrSuccess RecordingDeviceContext::enqueueCopyFromDevice(void *dst,
                                                              const void *src,
                                                              size_t byteSize) {
+  RETURN_IF_ERROR(flushCapture());
   return chain(
       builder_->addCopyDeviceToHost(dst, src, byteSize, currentDeps()));
 }
@@ -143,6 +168,7 @@ ErrorOrSuccess RecordingDeviceContext::enqueueSetMemory(void *dst,
                                                         size_t byteSize,
                                                         uint64_t val,
                                                         size_t valSize) {
+  RETURN_IF_ERROR(flushCapture());
   return chain(
       builder_->addSetMemory(dst, byteSize, val, valSize, currentDeps()));
 }
@@ -154,6 +180,7 @@ ErrorOrSuccess RecordingDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                    bool /*crossStreamSync*/) {
   // Cross-stream sync is irrelevant here: ordering is expressed by the node's
   // dependency edge, not by stream semaphores.
+  RETURN_IF_ERROR(flushCapture());
   return chain(builder_->addCopyDeviceToDevice(dst, src, srcByteOffset,
                                                srcByteSize, currentDeps()));
 }
@@ -196,12 +223,29 @@ ErrorOr<DeviceFunctionRef> RecordingDeviceContext::loadFunctionWithDebugName(
       optimizationLevel, debugName);
 }
 
+namespace {
+Error notRecordable(const char *op) {
+  return Error(std::string(op) +
+               " cannot be recorded into a device graph: it observes a "
+               "device-side result on the host, which does not exist until "
+               "replay. Hoist this operation out of the recorded region.");
+}
+} // namespace
+
 ErrorOr<int> RecordingDeviceContext::getAttribute(Attribute attr) const {
   return builder_->context().getAttribute(attr);
 }
 
 ErrorOr<DeviceStreamRef> RecordingDeviceContext::stream() const {
-  return builder_->context().stream();
+  // Deliberately NOT the backing context's real stream: work enqueued on that
+  // bypasses recording entirely — it executes eagerly during the record pass
+  // and never becomes a graph node (the GPT-2 lm_head silently lost its cuBLAS
+  // GEMM this way). Hand out the builder's capture stream instead, so
+  // raw-stream users are folded into the graph as a child-graph node (see
+  // DeviceGraphBuilder::recordingStream). Backends without capture support
+  // error here, and vendor-BLAS call sites catch that and fall back to
+  // recordable Mojo kernels.
+  return builder_->recordingStream();
 }
 
 ErrorOr<Device::MemInfo> RecordingDeviceContext::getDeviceMemoryInfo() const {
@@ -228,15 +272,6 @@ void *RecordingDeviceContext::driverContext() const {
 }
 
 // ----- Hard-error (non-recordable host-visible waits) ----- //
-
-namespace {
-Error notRecordable(const char *op) {
-  return Error(std::string(op) +
-               " cannot be recorded into a device graph: it observes a "
-               "device-side result on the host, which does not exist until "
-               "replay. Hoist this operation out of the recorded region.");
-}
-} // namespace
 
 ErrorOrSuccess RecordingDeviceContext::synchronize() {
   return notRecordable("RecordingDeviceContext::synchronize");

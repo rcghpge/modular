@@ -37,11 +37,27 @@ CUDADeviceGraphBuilder::CUDADeviceGraphBuilder(CUDADeviceContext &ctx,
       ctx_(CUDADeviceContextRef::copy(&ctx)), graph_(graph) {}
 
 CUDADeviceGraphBuilder::~CUDADeviceGraphBuilder() {
-  if (!graph_)
+  if (!graph_ && !captureStream_)
     return;
   DeviceContextScope scope(*ctx_);
-  CUDADeviceContext::cast(*ctx_).cudaDriver().cuGraphDestroy(graph_);
-  graph_ = nullptr;
+  // The recording stream is armed for the builder's whole lifetime: end the
+  // open capture (discarding any unharvested orphan work) and destroy the
+  // builder-owned stream. Best effort — the builder is being torn down. This
+  // runs even when the graph was already consumed by instantiate().
+  if (captureStream_) {
+    CUgraph orphan = nullptr;
+    ctx_->cudaDriver().cuStreamEndCapture(rawCaptureStream_, &orphan);
+    if (orphan)
+      ctx_->cudaDriver().cuGraphDestroy(orphan);
+    ctx_->cudaDriver().cuStreamDestroy(rawCaptureStream_);
+    rawCaptureStream_ = nullptr;
+    // The wrapper is non-owning, so releasing it after the destroy is safe.
+    captureStream_ = {};
+  }
+  if (graph_) {
+    CUDADeviceContext::cast(*ctx_).cudaDriver().cuGraphDestroy(graph_);
+    graph_ = nullptr;
+  }
 }
 
 ErrorOr<DeviceGraphBuilderRef>
@@ -153,6 +169,89 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
   nodes_.push_back(node);
 
   return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceStreamRef> CUDADeviceGraphBuilder::recordingStream() {
+  // The stream stays armed for the builder's lifetime, so a stream that
+  // already exists is already recording.
+  if (captureStream_)
+    return captureStream_;
+
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  // Builder-owned rather than pooled: the recording stream's lifetime is
+  // exactly the builder's (destroyed in the destructor), not the context's.
+  unsigned int constexpr kNonBlocking = 0x1;
+  CUstream raw = nullptr;
+  unsigned int constexpr kDefaultPriority = 0;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuStreamCreateWithPriority(
+      &raw, kNonBlocking, kDefaultPriority));
+
+  CUDADriver::Result beginResult = ctx_->cudaDriver().cuStreamBeginCapture(
+      raw, CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_RELAXED);
+  if (beginResult != CUDADriver::SUCCESS) {
+    ctx_->cudaDriver().cuStreamDestroy(raw);
+    RETURN_ERROR(llvm::Twine("cuStreamBeginCapture failed with error code ") +
+                 llvm::Twine(static_cast<unsigned>(beginResult)));
+  }
+
+  rawCaptureStream_ = raw;
+  captureStream_ =
+      CUDADeviceStreamRef::create(CUDADeviceContext::cast(*ctx_), raw);
+  return captureStream_;
+}
+
+ErrorOr<std::optional<DeviceGraphNode>>
+CUDADeviceGraphBuilder::finalizeRecordingStream(
+    llvm::ArrayRef<DeviceGraphNode> dependencies) {
+  const std::optional<DeviceGraphNode> none = std::nullopt;
+  if (!captureStream_)
+    return none;
+
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  // The capture's current leaf set is empty until the first enqueue lands on
+  // the capture stream. Nothing to harvest then — leave the stream armed (a
+  // caller may still be preparing host state before enqueueing, e.g.
+  // cuBLAS's workspace setup).
+  CUstreamCaptureStatus status =
+      CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+  unsigned long long captureId = 0;
+  CUgraph capturingGraph = nullptr;
+  const CUgraphNode *leaves = nullptr;
+  size_t numLeaves = 0;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuStreamGetCaptureInfo_v2(
+      rawCaptureStream_, &status, &captureId, &capturingGraph, &leaves,
+      &numLeaves));
+  if (numLeaves == 0)
+    return none;
+
+  CUgraph childGraph = nullptr;
+  CUDA_GRAPH_CHECK_ERR(
+      ctx_->cudaDriver().cuStreamEndCapture(rawCaptureStream_, &childGraph));
+  // Re-arm immediately so handed-out stream objects never observe a
+  // non-recording stream, whatever happens to the harvested graph below.
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuStreamBeginCapture(
+      rawCaptureStream_, CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_RELAXED));
+
+  DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
+                         resolveDeps(dependencies));
+  CUgraphNode node = nullptr;
+  CUDADriver::Result addResult = ctx_->cudaDriver().cuGraphAddChildGraphNode(
+      &node, graph_, deps.data(), deps.size(), childGraph);
+  // The child is copied into the parent at node-creation time; the original
+  // is destroyed regardless of the add's outcome.
+  ctx_->cudaDriver().cuGraphDestroy(childGraph);
+  if (addResult != CUDADriver::SUCCESS)
+    RETURN_ERROR(llvm::Twine("cuGraphAddChildGraphNode failed with error "
+                             "code ") +
+                 llvm::Twine(static_cast<unsigned>(addResult)));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return std::optional<DeviceGraphNode>(DeviceGraphNode{id});
 }
 
 namespace {
@@ -330,6 +429,17 @@ CUDADeviceGraphBuilder::addEmpty(llvm::ArrayRef<DeviceGraphNode> dependencies) {
 ErrorOr<DeviceGraphRef> CUDADeviceGraphBuilder::instantiate() {
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
+
+  // Fold any trailing captured stream work in before freezing the graph. The
+  // insertion-order tail stands in for the recording chain here; in the
+  // serial graphs synthesis builds they are the same node.
+  llvm::SmallVector<DeviceGraphNode, 1> tailDeps;
+  if (std::optional<DeviceGraphNode> last = lastNode())
+    tailDeps.push_back(*last);
+  ErrorOr<std::optional<DeviceGraphNode>> flushed =
+      finalizeRecordingStream(tailDeps);
+  if (flushed.isError())
+    return flushed.takeError();
 
   CUgraph rawGraph = graph_;
   graph_ = nullptr;

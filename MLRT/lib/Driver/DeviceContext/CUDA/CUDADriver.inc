@@ -74,6 +74,11 @@ CUDA_FUNC(cuStreamWaitValue64_v2, Result, CUstream, CUdeviceptr,
 CUDA_FUNC(cuStreamBeginCapture, Result, CUstream, CUstreamCaptureMode)
 CUDA_FUNC(cuStreamEndCapture, Result, CUstream, CUgraph *)
 CUDA_FUNC(cuStreamIsCapturing, Result, CUstream, CUstreamCaptureStatus *)
+// The 6-parameter capture-introspection form (capture id, capturing graph,
+// and the current leaf-node set); the versioned driver symbol is _v2.
+CUDA_FUNC(cuStreamGetCaptureInfo_v2, Result, CUstream,
+          CUstreamCaptureStatus *, unsigned long long *, CUgraph *,
+          const CUgraphNode **, size_t *)
 
 CUDA_FUNC(cuGraphCreate, Result, CUgraph *, unsigned int)
 CUDA_FUNC(cuGraphAddKernelNode, Result, CUgraphNode *, CUgraph,
@@ -85,6 +90,10 @@ CUDA_FUNC(cuGraphAddMemsetNode, Result, CUgraphNode *, CUgraph,
           CUcontext)
 CUDA_FUNC(cuGraphAddEmptyNode, Result, CUgraphNode *, CUgraph,
           const CUgraphNode *, size_t)
+// The final CUgraph argument (the child) is copied into the parent graph at
+// node-creation time; the caller still owns and must destroy it.
+CUDA_FUNC(cuGraphAddChildGraphNode, Result, CUgraphNode *, CUgraph,
+          const CUgraphNode *, size_t, CUgraph)
 // Third parameter is const CUkernelNodeAttrValue * in the driver — a 64-byte
 // union passed here as the CUlaunchAttribute::value bytes.
 CUDA_FUNC(cuGraphKernelNodeSetAttribute, Result, CUgraphNode,

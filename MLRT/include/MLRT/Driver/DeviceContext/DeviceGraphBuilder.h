@@ -190,6 +190,30 @@ public:
   /// format. Can be subsequently replayed multiple times.
   virtual ErrorOr<DeviceGraphRef> instantiate() = 0;
 
+  /// Returns a stream whose enqueued work is captured into the graph under
+  /// construction rather than executed. This is what lets opaque libraries
+  /// that enqueue on a raw stream (vendor BLAS) record into a device graph.
+  ///
+  /// The stream is in record mode for the builder's entire lifetime: it is
+  /// created armed, `finalizeRecordingStream` harvests-and-re-arms it, and it
+  /// is torn down only with the builder. Handed-out stream objects therefore
+  /// never observe a non-recording stream; repeated calls return the same
+  /// stream.
+  ///
+  /// Backends without capture support return an error; callers are expected
+  /// to fall back (vendor BLAS call sites fall back to Mojo kernels).
+  virtual ErrorOr<DeviceStreamRef> recordingStream();
+
+  /// Harvests the work captured on the recording stream since the last
+  /// harvest: materializes it as a single child-graph node ordered after
+  /// \p dependencies, immediately re-arms the stream, and returns the node's
+  /// handle. Returns nullopt — with the stream left armed — when no recording
+  /// stream exists or nothing has been captured yet (a caller may still be
+  /// preparing host state before enqueueing, e.g. cuBLAS's workspace setup,
+  /// so an empty capture is never torn down out from under it).
+  virtual ErrorOr<std::optional<DeviceGraphNode>>
+  finalizeRecordingStream(llvm::ArrayRef<DeviceGraphNode> dependencies);
+
   /// Returns a `DeviceContext` facade that records operations enqueued through
   /// it into this builder instead of executing them eagerly. This lets code
   /// written against `DeviceContext` (the bulk of the stdlib and kernels)
@@ -354,13 +378,24 @@ public:
                             StringRef debugLevel, int32_t optimizationLevel,
                             StringRef debugName) override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
-  ErrorOr<DeviceStreamRef> stream() const override;
 
   // Accessors to get at the underlying device context. This accessor allows
   // operations to get to the true device context backing the
   // RecordingDeviceContext.
   DeviceContext &backendContext() override;
   const DeviceContext &backendContext() const override;
+
+  // Returns a stream which records operations into the recording device graph.
+  //
+  // This is not implemented for all backends; the operation forwards to
+  // DeviceGraphBuilder::recordingStream, which produces a backend-specific
+  // stream which records into a device graph. For CUDA and HIP, these are new
+  // streams in record mode.
+  //
+  // This API allows the device graph infrastructure to work with vendor
+  // APIs that do not support device graphs (e.g. cuBLAS), where record/replay
+  // is the documented way to use the vendor library with device graphs.
+  ErrorOr<DeviceStreamRef> stream() const override;
 
   // ----- Hard-error (non-recordable host-visible waits) ----- //
 
@@ -392,6 +427,12 @@ private:
   llvm::SmallVector<DeviceGraphNode, 1> currentDeps() const;
   /// Advances `lastNode_` to `node` on success, or propagates its error.
   ErrorOrSuccess chain(ErrorOr<DeviceGraphNode> node);
+  /// Folds any pending captured stream work (see
+  /// `DeviceGraphBuilder::recordingStream`) into the graph and threads the
+  /// resulting child node into the recording chain, so the next recorded
+  /// operation depends on it. Called before every recorded operation; a no-op
+  /// when nothing has been captured.
+  ErrorOrSuccess flushCapture();
 
   DeviceGraphBuilderRef builder_;
   DeviceGraphNode lastNode_;

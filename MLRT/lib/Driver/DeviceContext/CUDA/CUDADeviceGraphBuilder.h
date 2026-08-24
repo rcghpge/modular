@@ -67,6 +67,10 @@ public:
 
   ErrorOr<DeviceGraphRef> instantiate() override;
 
+  ErrorOr<DeviceStreamRef> recordingStream() override;
+  ErrorOr<std::optional<DeviceGraphNode>> finalizeRecordingStream(
+      llvm::ArrayRef<DeviceGraphNode> dependencies) override;
+
   CUgraph cudaGraph() const { return graph_; }
 
   /// Returns the raw CUgraphNode for a previously added node.
@@ -81,6 +85,16 @@ private:
   CUDADeviceContextRef ctx_;
   CUgraph graph_;
   llvm::SmallVector<CUgraphNode> nodes_;
+
+  // Dedicated builder-owned stream backing recordingStream(). Created armed
+  // (in capture mode) on first request and kept armed for the builder's
+  // lifetime — finalizeRecordingStream harvests-and-re-arms — so handed-out
+  // stream objects never observe a non-recording stream. A dedicated stream
+  // (not pooled, never handed to other users) is required because capture
+  // folds everything enqueued on the stream into the graph. Destroyed in the
+  // destructor.
+  DeviceStreamRef captureStream_;
+  CUstream rawCaptureStream_ = nullptr;
 };
 
 } // namespace M::Driver
