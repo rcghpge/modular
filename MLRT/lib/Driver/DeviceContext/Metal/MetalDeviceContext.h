@@ -196,6 +196,7 @@ public:
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
   ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
   ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
 
   // Timer management
   ErrorOr<DeviceTimerRef> startTimer() override;
@@ -238,6 +239,12 @@ public:
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
 
+  // FIFO ordering spine: every committed command buffer waits on then updates
+  // this fence, so buffers finish in commit order (Metal only orders starts).
+  NS::SharedPtr<MTL::Fence> orderFence_;
+  // Blocks the host until all previously committed work completes.
+  ErrorOrSuccess drainQueue() const;
+
   NS::SharedPtr<MTL::LogState> logState_;
   MTL::LogState *getOrCreateLogState(bool enable = true);
   // When true, skip MTL::LogState on command buffers (no GPU print).
@@ -259,16 +266,27 @@ private:
 
 class MetalDeviceEvent : public DeviceEvent {
 public:
-  MetalDeviceEvent(MetalDevice &device, MTL::CommandBuffer *buffer);
+  // waitValue 0 = never recorded (complete, CUDA semantics); tests pass 1 to
+  // build a CPU-released queue gate.
+  MetalDeviceEvent(MetalDevice &device, NS::SharedPtr<MTL::SharedEvent> event,
+                   uint64_t waitValue = 0);
 
   ErrorOrSuccess synchronize() override;
   ErrorOr<bool> isReady() const override;
+
+  MTL::SharedEvent *sharedEvent() const { return event_.get(); }
+  uint64_t waitValue() const;
 
   static const MetalDeviceEvent &cast(const DeviceEvent &event);
   static MetalDeviceEvent &cast(DeviceEvent &event);
 
 private:
-  NS::SharedPtr<MTL::CommandBuffer> cmdBuffer_;
+  friend class MetalDeviceContext;
+  NS::SharedPtr<MTL::SharedEvent> event_;
+  // Recording mutates through the const DeviceEvent& API (as CUDA does), hence
+  // mutable; the mutex spans reserve-to-commit so re-records serialize.
+  mutable std::mutex recordMutex_;
+  mutable uint64_t waitValue_;
 };
 
 class MetalDeviceTimer : public DeviceTimer {

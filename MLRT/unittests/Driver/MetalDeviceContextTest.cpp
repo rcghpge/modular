@@ -24,6 +24,7 @@
 #include "gtest/gtest.h"
 
 #include <algorithm> // for std::min
+#include <atomic>
 #include <chrono>
 #include <cmath> // for std::ceil, std::sqrt
 #include <cstdint>
@@ -31,6 +32,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 namespace M::Driver {
@@ -164,6 +166,56 @@ protected:
               out[tid] = 2.0f;
       }
     )";
+  }
+
+  // CPU-released queue gate: an enqueued wait on a value only release()
+  // signals (from the CPU) holds back everything committed after it.
+  struct HostGate {
+    DeviceEventRef event;
+    void release() {
+      MTL::SharedEvent *evt = MetalDeviceEvent::cast(*event).sharedEvent();
+      if (evt->signaledValue() < 1)
+        evt->setSignaledValue(1);
+    }
+    // A failed ASSERT must not wedge the queue; release() is idempotent.
+    ~HostGate() {
+      if (event)
+        release();
+    }
+  };
+  HostGate makeGate(DeviceContextRef &ctx) {
+    NS::SharedPtr<MTL::SharedEvent> evt = NS::TransferPtr(
+        MetalDevice::cast(*device_).metalDevice()->newSharedEvent());
+    if (!evt) {
+      ADD_FAILURE() << "newSharedEvent failed";
+      return HostGate{};
+    }
+    HostGate gate{MetalDeviceEventRef::create(MetalDevice::cast(*device_),
+                                              std::move(evt),
+                                              /*waitValue=*/1)};
+    EXPECT_FALSE(ctx->enqueueWaitFor(*gate.event).isError());
+    return gate;
+  }
+
+  // Launches fill_one (writes 1.0f to `length` floats). loadFunction only
+  // builds pipeline state (no queue work), so this is safe behind a gate.
+  void launchFillOne(DeviceContextRef &ctx, DeviceBufferRef &out,
+                     uint32_t length) {
+    ErrorOr<DeviceFunctionRef> fnOr =
+        ctx->loadFunction("", "fill_one", getTwoKernelShaderSource());
+    ASSERT_FALSE(fnOr.isError()) << fnOr.getError();
+    DeviceFunctionRef fn = fnOr.takeValue();
+    void *outPtr = out->ptr();
+    void *kernelArgs[] = {&outPtr, &length};
+    size_t argSizes[] = {sizeof(outPtr), sizeof(length)};
+    bool argIsDevicePtr[] = {true, false};
+    DeviceBuffer *kernelBuffers[] = {out.getPointer()};
+    MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                          kernelBuffers, 1};
+    void *args[] = {&metalArgs};
+    ASSERT_FALSE(ctx->enqueueFunctionExecDirect(*fn, 1, 1, 1, 64, 1, 1, 0,
+                                                nullptr, 0, args, 2, argSizes)
+                     .isError());
   }
 
   DeviceRef device_;
@@ -1051,6 +1103,260 @@ TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_UnknownPointer) {
   EXPECT_ERR_MSG(ctx_->getHostAccessiblePointer(&onStack),
                  "was not allocated by this device");
   EXPECT_ERR_MSG(ctx_->getHostAccessiblePointer(nullptr), "pointer is null");
+}
+
+// A never-recorded event is complete (CUDA semantics), waiting on it is a
+// no-op, and Metal events cannot carry timing.
+TEST_F(MetalDeviceContextTestBase, EventCreateUnrecordedIsReady) {
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+  ASSIGN_NO_ERR(bool, ready, event->isReady());
+  EXPECT_TRUE(ready);
+  EXPECT_NO_ERR(event->synchronize());
+  EXPECT_NO_ERR(ctx_->enqueueWaitFor(*event));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_ERR_MSG(ctx_->eventCreate(true), "timing");
+}
+
+// enqueueEvent() marks the point after all previously committed work; its
+// synchronize() alone makes the gated kernel's output host-visible.
+TEST_F(MetalDeviceContextTestBase, EventRecordTracksQueueCompletion) {
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, out, 64);
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->enqueueEvent());
+
+  ASSIGN_NO_ERR(bool, readyWhileGated, event->isReady());
+  EXPECT_FALSE(readyWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(event->synchronize());
+  ASSIGN_NO_ERR(bool, readyAfter, event->isReady());
+  EXPECT_TRUE(readyAfter);
+
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[0], 1.0f);
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[63], 1.0f);
+}
+
+// Re-recording an event rebinds it to the newest work: complete after the
+// first record drains, pending again once re-recorded behind a gate.
+TEST_F(MetalDeviceContextTestBase, EventReRecordTracksLatestWork) {
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event));
+  EXPECT_NO_ERR(event->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event));
+  ASSIGN_NO_ERR(bool, readyWhileGated, event->isReady());
+  EXPECT_FALSE(readyWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(event->synchronize());
+}
+
+// enqueueWaitFor(event) must gate work committed later on another context
+// (another Metal queue) without blocking the host.
+TEST_F(MetalDeviceContextTestBase, EnqueueWaitForGatesAcrossContexts) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, out, 64);
+  ASSIGN_NO_ERR(DeviceEventRef, eventA, ctx_->enqueueEvent());
+
+  EXPECT_NO_ERR(ctxB->enqueueWaitFor(*eventA));
+  ASSIGN_NO_ERR(DeviceEventRef, eventB, ctxB->enqueueEvent());
+  ASSIGN_NO_ERR(bool, bReadyWhileGated, eventB->isReady());
+  EXPECT_FALSE(bReadyWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(eventB->synchronize());
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[0], 1.0f);
+}
+
+// Sequential record/synchronize cycles keep the value bookkeeping exact:
+// the final signaled value is the record count and no cycle wedges.
+TEST_F(MetalDeviceContextTestBase, EventReuseSequentialHammer) {
+  constexpr uint64_t kRecords = 200;
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+  for (uint64_t i = 0; i < kRecords; ++i) {
+    EXPECT_NO_ERR(ctx_->enqueueEvent(*event));
+    EXPECT_NO_ERR(event->synchronize());
+    ASSIGN_NO_ERR(bool, ready, event->isReady());
+    EXPECT_TRUE(ready) << "cycle " << i;
+  }
+  EXPECT_EQ(MetalDeviceEvent::cast(*event).sharedEvent()->signaledValue(),
+            kRecords);
+}
+
+// A waiter captures the event's value at wait time (CUDA semantics): a
+// re-record does not retarget waits already taken.
+TEST_F(MetalDeviceContextTestBase, EventReRecordStaleWaiterKeepsOldTarget) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+
+  HostGate gate1 = makeGate(ctx_);
+  ASSERT_TRUE(gate1.event);
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event)); // value 1, behind gate1
+
+  EXPECT_NO_ERR(ctxB->enqueueWaitFor(*event)); // captures value 1
+  ASSIGN_NO_ERR(DeviceEventRef, probeB, ctxB->enqueueEvent());
+
+  HostGate gate2 = makeGate(ctx_);
+  ASSERT_TRUE(gate2.event);
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event)); // value 2, behind gate2
+
+  gate1.release();
+  // The stale waiter (value 1) unblocks even though value 2 is pending.
+  EXPECT_NO_ERR(probeB->synchronize());
+  ASSIGN_NO_ERR(bool, eventReady, event->isReady());
+  EXPECT_FALSE(eventReady);
+
+  gate2.release();
+  EXPECT_NO_ERR(event->synchronize());
+}
+
+// Racing re-records from multiple threads must serialize through the record
+// mutex: no value regression, no lost signal, exact final count.
+TEST_F(MetalDeviceContextTestBase, EventConcurrentReRecords) {
+  constexpr int kThreads = 4;
+  constexpr int kRecordsPerThread = 50;
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+
+  std::vector<std::thread> threads;
+  std::atomic<int> failures{0};
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&] {
+      for (int i = 0; i < kRecordsPerThread; ++i)
+        if (ctx_->enqueueEvent(*event).isError())
+          failures.fetch_add(1);
+    });
+  }
+  for (std::thread &t : threads)
+    t.join();
+  EXPECT_EQ(failures.load(), 0);
+
+  EXPECT_NO_ERR(event->synchronize());
+  EXPECT_EQ(MetalDeviceEvent::cast(*event).sharedEvent()->signaledValue(),
+            static_cast<uint64_t>(kThreads * kRecordsPerThread));
+}
+
+// An event is not bound to the context that created it: re-recording on a
+// second context (another queue) tracks that queue's completion.
+TEST_F(MetalDeviceContextTestBase, EventReuseAcrossContexts) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event));
+  EXPECT_NO_ERR(event->synchronize());
+
+  HostGate gateB = makeGate(ctxB);
+  ASSERT_TRUE(gateB.event);
+  EXPECT_NO_ERR(ctxB->enqueueEvent(*event));
+  ASSIGN_NO_ERR(bool, readyWhileGated, event->isReady());
+  EXPECT_FALSE(readyWhileGated);
+
+  gateB.release();
+  EXPECT_NO_ERR(event->synchronize());
+}
+
+// A device-to-host-pointer copy must observe writes from work still pending
+// when the copy was enqueued.
+TEST_F(MetalDeviceContextTestBase, HostCopyDrainsPriorKernel) {
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, out, 64);
+
+  std::thread releaser([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    gate.release();
+  });
+  float observed[64] = {};
+  EXPECT_NO_ERR(
+      ctx_->enqueueCopyFromDevice(observed, out->ptr(), sizeof(observed)));
+  releaser.join();
+  EXPECT_FLOAT_EQ(observed[0], 1.0f);
+  EXPECT_FLOAT_EQ(observed[63], 1.0f);
+}
+
+// A cross-context re-record (value 2, its own queue) must not signal ahead
+// of an earlier record (value 1) still gated behind real prior work.
+TEST_F(MetalDeviceContextTestBase,
+       EventCrossContextReRecordKeepsMonotonicValues) {
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  ASSIGN_NO_ERR(DeviceEventRef, event, ctx_->eventCreate(false));
+
+  HostGate gateA = makeGate(ctx_);
+  ASSERT_TRUE(gateA.event);
+  launchFillOne(ctx_, out, 64);
+  EXPECT_NO_ERR(ctx_->enqueueEvent(*event)); // value 1, behind gateA + fillOne
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+  EXPECT_NO_ERR(ctxB->enqueueEvent(*event)); // value 2, ungated on ctxB
+  // Give ctxB's signal(2) time to land; without the chain it has no
+  // dependency on ctx_ and fires almost immediately after commit.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  ASSIGN_NO_ERR(bool, readyBeforeFillOneRan, event->isReady());
+  EXPECT_FALSE(readyBeforeFillOneRan);
+
+  gateA.release();
+  EXPECT_NO_ERR(event->synchronize());
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[0], 1.0f);
+}
+
+// enqueueWaitFor(DeviceContext&) is a self-wait no-op and gates the waiter's
+// later work on the target's pending work without blocking the host.
+TEST_F(MetalDeviceContextTestBase, WaitForContextGatesAcrossQueues) {
+  EXPECT_NO_ERR(ctx_->enqueueWaitFor(*ctx_));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, out, 64);
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+  EXPECT_NO_ERR(ctxB->enqueueWaitFor(*ctx_));
+  ASSIGN_NO_ERR(DeviceEventRef, probe, ctxB->enqueueEvent());
+  ASSIGN_NO_ERR(bool, probeReadyWhileGated, probe->isReady());
+  EXPECT_FALSE(probeReadyWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(probe->synchronize());
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[0], 1.0f);
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[63], 1.0f);
 }
 
 } // namespace M::Driver

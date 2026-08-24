@@ -401,7 +401,11 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_eventCreate(DeviceEvent **result, DeviceContext *ctx,
                                   unsigned int flags) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_eventCreate", TRACY_COLOR_GRAY);
-  return checkRef(result, ctx->eventCreate(flags));
+  // Decode Mojo's EventFlags bitmask (disable_timing = 0x02); truncating it
+  // to bool inverted the timing default and broke Metal.
+  constexpr unsigned int kDisableTiming = 0x2;
+  return checkRef(
+      result, ctx->eventCreate(/*enableTiming=*/(flags & kDisableTiming) == 0));
 }
 
 MODULAR_EXPORT const char *

@@ -523,6 +523,22 @@ MetalDeviceContext::MetalDeviceContext(
   // process-wide.
   if (const char *env = std::getenv("MODULAR_DISABLE_METAL_GPU_PRINT"))
     printDisabled_ = (env[0] != '\0' && env[0] != '0');
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  orderFence_ = NS::TransferPtr(device.metalDevice()->newFence());
+  if (orderFence_) {
+    MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+    MTL::BlitCommandEncoder *blit =
+        cmdBuffer ? cmdBuffer->blitCommandEncoder() : nullptr;
+    if (blit) {
+      blit->updateFence(orderFence_.get());
+      blit->endEncoding();
+      cmdBuffer->commit();
+    } else {
+      orderFence_.reset();
+    }
+  }
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
@@ -542,13 +558,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
     return success();
 
   if (!isMetalBuffer(dst)) {
-    // Empty cmdBuffer drains prior GPU work in case `src` or `dst` aliases a
-    // shared MTLBuffer the GPU is still writing.
-    MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-    if (cmdBuffer == nullptr)
-      RETURN_ERROR("Failed to create command buffer");
-    cmdBuffer->commit();
-    cmdBuffer->waitUntilCompleted();
+    // Drain prior GPU work in case `src` or `dst` aliases a shared MTLBuffer
+    // the GPU is still writing.
+    RETURN_IF_ERROR(drainQueue());
     std::memcpy(dst, src, byteSize);
     return success();
   }
@@ -577,11 +589,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
 
   // Source is regular host memory — drain prior GPU work, then memcpy into
   // the shared MTLBuffer's CPU pointer on this thread.
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer");
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
+  RETURN_IF_ERROR(drainQueue());
 
   void *dstContents = dstResult.buffer->contents();
   if (dstContents == nullptr)
@@ -628,11 +636,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 
   // Drain the kernel that produced `src` before reading its shared storage
   // on this thread.
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer");
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
+  RETURN_IF_ERROR(drainQueue());
 
   void *srcContents = srcResult.buffer->contents();
   if (srcContents == nullptr)
@@ -709,11 +713,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
 
   // Drain any kernel reading `dst` before overwriting its shared storage
   // on this thread.
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer");
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
+  RETURN_IF_ERROR(drainQueue());
 
   switch (valSize) {
   case 1:
@@ -959,6 +959,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
   if (encoder == nullptr)
     RETURN_ERROR("Failed to create compute command encoder");
+  if (orderFence_)
+    encoder->waitForFence(orderFence_.get());
   encoder->setComputePipelineState(pipeline);
   // Bind each argument's bytes into the encoder's argument buffer directly via
   // `setBytes`, avoiding a fresh MTLBuffer allocation + copy per argument on
@@ -996,6 +998,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     encoder->setThreadgroupMemoryLength(sharedMemBytes, /*index=*/0);
   encoder->dispatchThreadgroups(MTL::Size{gridX, gridY, gridZ},
                                 MTL::Size{blockX, blockY, blockZ});
+  if (orderFence_)
+    encoder->updateFence(orderFence_.get());
   encoder->endEncoding();
   cmdBuffer->commit(); // async (DRIV-164)
 
@@ -1015,51 +1019,101 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
   // Check for any pending errors first, similar to CUDA's behavior
   RETURN_IF_ERROR(checkPendingError());
 
-  // Empty cmdBuffer acts as a fence: Metal serializes cmdBuffers in commit
-  // order, and waitUntilCompleted blocks until our cmdBuffer (and all prior
-  // commits + their completion handlers) finish.
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer for sync");
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
+  // Fence-chained because Metal only orders command buffer starts, not
+  // completions.
+  RETURN_IF_ERROR(drainQueue());
 
   return success();
+}
+
+ErrorOr<DeviceEventRef> MetalDeviceContext::eventCreate(bool enableTiming) {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (enableTiming)
+    RETURN_ERROR("Metal events do not support timing");
+  if (!orderFence_)
+    RETURN_ERROR("Metal ordering fence unavailable");
+
+  NS::SharedPtr<MTL::SharedEvent> event =
+      NS::TransferPtr(metalDevice()->newSharedEvent());
+  if (!event)
+    RETURN_ERROR("Failed to create MTLSharedEvent");
+  return MetalDeviceEventRef::create(MetalDevice::cast(device()),
+                                     std::move(event));
 }
 
 ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
-  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
-      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (!cmdBuffer)
-    RETURN_ERROR("Failed to create command buffer for event");
-
-  // Commit the command buffer - this creates the event
-  cmdBuffer->commit();
-
-  return MetalDeviceEventRef::create(MetalDevice::cast(device()), cmdBuffer);
+  // TODO(DRIV-419): allocates a fresh MTLSharedEvent per call; add an event
+  // cache like CUDA's if this shows up hot.
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event,
+                         eventCreate(/*enableTiming=*/false));
+  RETURN_IF_ERROR(enqueueEvent(*event));
+  return event;
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueEvent(const DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented for Metal devices");
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (!orderFence_)
+    RETURN_ERROR("Metal ordering fence unavailable");
+  const MetalDeviceEvent &metalEvent = MetalDeviceEvent::cast(event);
+
+  std::lock_guard<std::mutex> lock(metalEvent.recordMutex_);
+  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for event record");
+  // Chain to the previous signal so a cross-queue re-record cannot signal
+  // ahead of an earlier record still gated behind prior work.
+  if (metalEvent.waitValue_ > 0)
+    cmdBuffer->encodeWait(metalEvent.event_.get(), metalEvent.waitValue_);
+  MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+  if (blit == nullptr)
+    RETURN_ERROR("Failed to create blit encoder for event record");
+  // The fence wait defers the signal until previously committed work finishes.
+  blit->waitForFence(orderFence_.get());
+  blit->updateFence(orderFence_.get());
+  blit->endEncoding();
+  cmdBuffer->encodeSignalEvent(metalEvent.event_.get(),
+                               metalEvent.waitValue_ + 1);
+  cmdBuffer->commit();
+  metalEvent.waitValue_ += 1;
+  return success();
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
                        TRACY_COLOR_PURPLE);
 
-  // This is a synchronous implementation of the enqueueWaitFor().
-  // Cast to MetalDeviceEvent to get the command buffer
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (!orderFence_)
+    RETURN_ERROR("Metal ordering fence unavailable");
   MetalDeviceEvent &metalEvent = MetalDeviceEvent::cast(event);
+  uint64_t target = metalEvent.waitValue();
+  if (target == 0)
+    return success();
 
-  // For Metal, we need to wait for the event's command buffer to complete
-  // before continuing with subsequent operations on our command queue
-  RETURN_IF_ERROR(metalEvent.synchronize());
-
+  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for event wait");
+  // The event gates this buffer; the fence update gates later work behind it.
+  cmdBuffer->encodeWait(metalEvent.sharedEvent(), target);
+  MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+  if (blit == nullptr)
+    RETURN_ERROR("Failed to create blit encoder for event wait");
+  blit->waitForFence(orderFence_.get());
+  blit->updateFence(orderFence_.get());
+  blit->endEncoding();
+  cmdBuffer->commit();
   return success();
 }
 
@@ -1067,10 +1121,13 @@ ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
                        TRACY_COLOR_PURPLE);
 
-  // For context-based waiting, we synchronize with the other context
-  // This ensures all operations on that context complete before we continue
-  // This is a synchronous implementation of the enqueueWaitFor().
-  return ctx.synchronize();
+  if (&ctx == this)
+    return success();
+  // Non-Metal peers have no shared event to wait on; drain them instead.
+  if (MetalDeviceContext::verified_cast(&ctx) == nullptr)
+    return ctx.synchronize();
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, ctx.enqueueEvent());
+  return enqueueWaitFor(*event);
 }
 
 ErrorOr<DeviceTimerRef> MetalDeviceContext::startTimer() {
@@ -1184,6 +1241,25 @@ void *MetalDeviceContext::driverContext() const {
   return const_cast<MetalDeviceContext *>(this);
 }
 
+ErrorOrSuccess MetalDeviceContext::drainQueue() const {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for drain");
+  if (orderFence_) {
+    MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+    if (blit == nullptr)
+      RETURN_ERROR("Failed to create blit encoder for drain");
+    blit->waitForFence(orderFence_.get());
+    blit->updateFence(orderFence_.get());
+    blit->endEncoding();
+  }
+  cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted();
+  return success();
+}
+
 ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
                                                     MTL::Buffer *dst,
                                                     size_t srcOffset,
@@ -1204,7 +1280,11 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   if (blit == nullptr)
     RETURN_ERROR("Failed to create blit encoder");
 
+  if (orderFence_)
+    blit->waitForFence(orderFence_.get());
   blit->copyFromBuffer(src, srcOffset, dst, dstOffset, size);
+  if (orderFence_)
+    blit->updateFence(orderFence_.get());
   blit->endEncoding();
 
   cmdBuffer->commit();
@@ -1477,30 +1557,40 @@ MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {
 // ===== MetalDeviceEvent ===== //
 //
 
+// A signal that never arrives (errored or wedged command buffer) is not
+// recoverable on Metal; time out instead of parking forever.
+static constexpr uint64_t kSynchronizeTimeoutMs = 60000;
+
 MetalDeviceEvent::MetalDeviceEvent(MetalDevice &device,
-                                   MTL::CommandBuffer *cmdBuffer)
-    : DeviceEvent(device), cmdBuffer_(NS::TransferPtr(cmdBuffer)) {
-  if (cmdBuffer_)
-    cmdBuffer_->retain(); // Take ownership of autoreleased MTL::CommandBuffer
+                                   NS::SharedPtr<MTL::SharedEvent> event,
+                                   uint64_t waitValue)
+    : DeviceEvent(device), event_(std::move(event)), waitValue_(waitValue) {}
+
+uint64_t MetalDeviceEvent::waitValue() const {
+  std::lock_guard<std::mutex> lock(recordMutex_);
+  return waitValue_;
 }
 
 ErrorOrSuccess MetalDeviceEvent::synchronize() {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  if (!cmdBuffer_)
-    RETURN_ERROR("MetalDeviceEvent: null command buffer");
-  cmdBuffer_->waitUntilCompleted();
+  uint64_t target = waitValue();
+  if (target == 0)
+    return success();
+  // Block like cuEventSynchronize; the timeout is the only error to propagate.
+  if (!event_->waitUntilSignaledValue(target, kSynchronizeTimeoutMs))
+    RETURN_ERROR("Timed out waiting for Metal shared event");
   return success();
 }
 
 ErrorOr<bool> MetalDeviceEvent::isReady() const {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  if (!cmdBuffer_)
-    RETURN_ERROR("MetalDeviceEvent: null command buffer");
-
-  MTL::CommandBufferStatus status = cmdBuffer_->status();
-  return status == MTL::CommandBufferStatusCompleted;
+  uint64_t target = waitValue();
+  // Never recorded is always ready (CUDA semantics).
+  if (target == 0)
+    return true;
+  return event_->signaledValue() >= target;
 }
 
 const MetalDeviceEvent &MetalDeviceEvent::cast(const DeviceEvent &event) {

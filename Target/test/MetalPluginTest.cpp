@@ -8,7 +8,10 @@
 #include "Fixture.h"
 #include "HAL/M_driver_bundle.h"
 #include "HAL/M_driver_common.h"
+#include <chrono>
+#include <map>
 #include <string>
+#include <thread>
 
 #include "llvm/ADT/ScopeExit.h"
 
@@ -43,6 +46,34 @@ kernel void vec_add_msl(
     device const float* input1 = in1_ref.ptr;
     if (tid < length)
         output[tid] = input0[tid] + input1[tid];
+}
+)MSL";
+
+// Duration-controlled marker store. The loop-carried fma chain cannot be
+// strength-reduced away, so `iters` really controls wall time; each thread
+// then stores `marker`, which the host observes through the UMA pointer.
+static std::string controlledStoreMsl = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct UintBufPtr      { device uint*       ptr; };
+struct ConstUintBufPtr { device const uint* ptr; };
+
+kernel void controlled_store(
+    device UintBufPtr&      out_ref   [[buffer(0)]],
+    device ConstUintBufPtr& iters_ref [[buffer(1)]],
+    constant uint&          marker    [[buffer(2)]],
+    constant uint&          length    [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    if (tid >= length) return;
+
+    float acc = 0.0f;
+    uint iters = iters_ref.ptr[tid];
+    for (uint i = 0; i < iters; ++i)
+        acc = fma(acc, 1.0000001f, 1.0f);
+
+    out_ref.ptr[tid] = marker + (acc > 1e30f ? 1u : 0u);
 }
 )MSL";
 
@@ -403,5 +434,305 @@ TEST_F(DriverMetalPluginFunctionTest, QueueExecuteValidSharedMem) {
           << "Mismatch at index " << j << ": expected " << expected << ", got "
           << outHost[j];
     }
+  }
+}
+
+// Event/ordering contract of the queue spine at the M_driver ABI boundary.
+// Oracles: is_event_ready + host reads of GPU stores via the UMA pointer
+// (completion handlers are commit-ordered and hide GPU completion order).
+struct DriverMetalPluginEventTest : DriverPluginQueueTest {
+  static constexpr uint32_t kLength = 64;
+  static constexpr uint32_t kLongIters = 30000000; // ~400ms on M5
+  static constexpr uint32_t kShortIters = 1000000; // ~15ms
+
+  void SetUp() override {
+    DriverPluginQueueTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    for (M_driver_context_t context : contexts) {
+      M_driver_runtime_bundle_t library;
+      std::string fileType("msl");
+      M_driver_static_bundle staticBundle{
+          .mapped_data = M_driver_slice_from(controlledStoreMsl),
+          .file_type = fileType.c_str(),
+          .file_type_len = fileType.size()};
+      M_driver_bundle_compilation_options opts{"", 0, -1};
+      ASSERT_SUCCESS(bundle_load(context, &staticBundle, &opts, &library));
+      libraries.push_back(library);
+      std::string funcName("controlled_store");
+      M_driver_function_t function;
+      ASSERT_SUCCESS(function_load(context, library, funcName.c_str(),
+                                   funcName.size(), &function));
+      functions.push_back(function);
+    }
+  }
+
+  void TearDown() override {
+    for (M_driver_memory_t memory : allocations)
+      memory_free_sync(owner[memory], memory);
+    for (size_t i = 0; i < libraries.size(); i++) {
+      EXPECT_SUCCESS(function_unload(contexts[i], functions[i]));
+      EXPECT_SUCCESS(bundle_unload(contexts[i], libraries[i]));
+    }
+    DriverPluginQueueTest::TearDown();
+  }
+
+  // Allocates kLength uint32 words, returns the device handle and the
+  // UMA-visible host pointer ("address" is the GPU address and is not
+  // host-dereferenceable); freed in TearDown.
+  void allocWords(M_driver_context_t context, M_driver_memory_t *outMemory,
+                  volatile uint32_t **outHost) {
+    ASSERT_SUCCESS(
+        memory_alloc_sync(context, kLength * sizeof(uint32_t), outMemory));
+    allocations.push_back(*outMemory);
+    owner[*outMemory] = context;
+    void *host = nullptr;
+    ASSERT_SUCCESS(memory_property(*outMemory, "host_address", &host));
+    ASSERT_NE(nullptr, host);
+    *outHost = static_cast<volatile uint32_t *>(host);
+  }
+
+  // Launches controlled_store: every lane spins `iters` then stores `marker`
+  // into `out`. `itersMemory` must already hold the per-lane counts.
+  void launchStore(M_driver_queue_t queue, M_driver_function_t function,
+                   M_driver_memory_t outMemory, M_driver_memory_t itersMemory,
+                   uint32_t marker) {
+    void *outPtr = nullptr, *itersPtr = nullptr;
+    ASSERT_SUCCESS(memory_property(outMemory, "address", &outPtr));
+    ASSERT_SUCCESS(memory_property(itersMemory, "address", &itersPtr));
+    uint32_t length = kLength;
+    void *args[] = {&outPtr, &itersPtr, &marker, &length};
+    uint64_t argSizes[] = {sizeof(outPtr), sizeof(itersPtr), sizeof(marker),
+                           sizeof(length)};
+    M_driver_queue_execute_config_t config = {
+        .mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU,
+        .config = {.gpu = {
+                       .grid = {1, 1, 1},
+                       .block = {kLength, 1, 1},
+                       .shared_mem_bytes = 0,
+                       .attributes = nullptr,
+                       .num_attributes = 0,
+                   }}};
+    ASSERT_SUCCESS(queue_execute(queue, function, &config, args, argSizes, 4));
+  }
+
+  void fillIters(volatile uint32_t *host, uint32_t iters) {
+    for (uint32_t i = 0; i < kLength; ++i)
+      host[i] = iters;
+  }
+
+  // Polls the UMA pointer until every lane shows `marker` or the deadline
+  // passes; returns whether the store became fully visible.
+  bool pollStore(volatile uint32_t *host, uint32_t marker, int deadlineMs) {
+    auto deadline = std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds(deadlineMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+      bool all = true;
+      for (uint32_t i = 0; i < kLength && all; ++i)
+        all = (host[i] == marker);
+      if (all)
+        return true;
+      std::this_thread::yield();
+    }
+    return false;
+  }
+
+  bool eventReady(M_driver_context_t context, M_driver_event_t event) {
+    bool ready = false;
+    EXPECT_SUCCESS(is_event_ready(context, event, &ready));
+    return ready;
+  }
+
+  std::vector<M_driver_runtime_bundle_t> libraries;
+  std::vector<M_driver_function_t> functions;
+  std::vector<M_driver_memory_t> allocations;
+  std::map<M_driver_memory_t, M_driver_context_t> owner;
+};
+
+// A record gathers EVERY prior op (union fan-in): recorded behind a long and
+// a short launch, the event is not ready while the long one runs, and
+// synchronizing it makes both outputs host-visible.
+TEST_F(DriverMetalPluginEventTest, RecordEventObservesAllPriorWork) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, outShort, itersLong, itersShort;
+    volatile uint32_t *outLongHost, *outShortHost, *itersLongHost,
+        *itersShortHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &outShort, &outShortHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &itersShort, &itersShortHost);
+    fillIters(itersLongHost, kLongIters);
+    fillIters(itersShortHost, kShortIters);
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+    launchStore(queue, functions[i], outShort, itersShort, /*marker=*/1);
+
+    M_driver_event_t event;
+    ASSERT_SUCCESS(
+        event_create(context, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &event));
+    auto defer = llvm::scope_exit([&] { event_destroy(context, event); });
+    ASSERT_SUCCESS(queue_record_event(queue, event));
+
+    // The long launch is still running when we get here (record is async).
+    EXPECT_FALSE(eventReady(context, event));
+
+    ASSERT_SUCCESS(event_synchronize(context, event));
+    EXPECT_TRUE(eventReady(context, event));
+    EXPECT_EQ(outLongHost[0], 1u);
+    EXPECT_EQ(outLongHost[kLength - 1], 1u);
+    EXPECT_EQ(outShortHost[0], 1u);
+    EXPECT_EQ(outShortHost[kLength - 1], 1u);
+  }
+}
+
+// A record is a fan-in point, not a barrier: an op committed after it becomes
+// host-visible while the record is still pending. DISABLED: execute()'s
+// useResource-everything FIXME makes hazard tracking serialize the kernels.
+TEST_F(DriverMetalPluginEventTest, DISABLED_RecordEventIsNotABarrier) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, outShort, itersLong, itersShort;
+    volatile uint32_t *outLongHost, *outShortHost, *itersLongHost,
+        *itersShortHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &outShort, &outShortHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &itersShort, &itersShortHost);
+    fillIters(itersLongHost, kLongIters);
+    fillIters(itersShortHost, kShortIters);
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+
+    M_driver_event_t event;
+    ASSERT_SUCCESS(
+        event_create(context, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &event));
+    auto defer = llvm::scope_exit([&] { event_destroy(context, event); });
+    ASSERT_SUCCESS(queue_record_event(queue, event));
+
+    launchStore(queue, functions[i], outShort, itersShort, /*marker=*/1);
+
+    // The short op overtakes the pending record.
+    EXPECT_TRUE(pollStore(outShortHost, 1, /*deadlineMs=*/2000));
+    EXPECT_FALSE(eventReady(context, event));
+
+    ASSERT_SUCCESS(event_synchronize(context, event));
+    EXPECT_EQ(outLongHost[0], 1u);
+    EXPECT_EQ(outLongHost[kLength - 1], 1u);
+  }
+}
+
+// Re-recording rebinds the event to the newest work: ready after the first
+// record drains, pending again once re-recorded behind a long launch, and the
+// second synchronize observes the second marker.
+TEST_F(DriverMetalPluginEventTest, EventReRecordTracksNewWork) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t out, iters;
+    volatile uint32_t *outHost, *itersHost;
+    allocWords(context, &out, &outHost);
+    allocWords(context, &iters, &itersHost);
+    fillIters(itersHost, kLongIters);
+
+    M_driver_event_t event;
+    ASSERT_SUCCESS(
+        event_create(context, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &event));
+    auto defer = llvm::scope_exit([&] { event_destroy(context, event); });
+
+    launchStore(queue, functions[i], out, iters, /*marker=*/1);
+    ASSERT_SUCCESS(queue_record_event(queue, event));
+    ASSERT_SUCCESS(event_synchronize(context, event));
+    EXPECT_TRUE(eventReady(context, event));
+    EXPECT_EQ(outHost[kLength - 1], 1u);
+
+    launchStore(queue, functions[i], out, iters, /*marker=*/2);
+    ASSERT_SUCCESS(queue_record_event(queue, event));
+    // A re-record must not stay ready off the OLD signal while the new work
+    // is still running.
+    EXPECT_FALSE(eventReady(context, event));
+
+    ASSERT_SUCCESS(event_synchronize(context, event));
+    EXPECT_TRUE(eventReady(context, event));
+    EXPECT_EQ(outHost[0], 2u);
+    EXPECT_EQ(outHost[kLength - 1], 2u);
+  }
+}
+
+// queue_synchronize drains everything previously submitted, including work
+// that overlapped or completed out of order, and is idempotent on an empty
+// queue.
+TEST_F(DriverMetalPluginEventTest, SynchronizeDrainsAllWork) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    ASSERT_SUCCESS(queue_synchronize(queue));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    M_driver_memory_t outLong, outShort, itersLong, itersShort;
+    volatile uint32_t *outLongHost, *outShortHost, *itersLongHost,
+        *itersShortHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &outShort, &outShortHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &itersShort, &itersShortHost);
+    fillIters(itersLongHost, kLongIters);
+    fillIters(itersShortHost, kShortIters);
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+    launchStore(queue, functions[i], outShort, itersShort, /*marker=*/1);
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    EXPECT_EQ(outLongHost[0], 1u);
+    EXPECT_EQ(outLongHost[kLength - 1], 1u);
+    EXPECT_EQ(outShortHost[0], 1u);
+    EXPECT_EQ(outShortHost[kLength - 1], 1u);
+  }
+}
+
+// wait_for_events gates a SECOND queue's later work on an event recorded
+// behind long work on the first queue, without blocking the host.
+TEST_F(DriverMetalPluginEventTest, WaitForEventsGatesSecondQueue) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queueA = queues[i];
+
+    M_driver_queue_t queueB;
+    ASSERT_SUCCESS(queue_create(context, &queueB));
+    auto deferQ = llvm::scope_exit([&] { queue_destroy(context, queueB); });
+
+    M_driver_memory_t outLong, itersLong;
+    volatile uint32_t *outLongHost, *itersLongHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    fillIters(itersLongHost, kLongIters);
+
+    launchStore(queueA, functions[i], outLong, itersLong, /*marker=*/1);
+    M_driver_event_t eventA;
+    ASSERT_SUCCESS(
+        event_create(context, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &eventA));
+    auto deferA = llvm::scope_exit([&] { event_destroy(context, eventA); });
+    ASSERT_SUCCESS(queue_record_event(queueA, eventA));
+
+    ASSERT_SUCCESS(queue_wait_for_events(queueB, &eventA, 1));
+    M_driver_event_t probeB;
+    ASSERT_SUCCESS(
+        event_create(context, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &probeB));
+    auto deferB = llvm::scope_exit([&] { event_destroy(context, probeB); });
+    ASSERT_SUCCESS(queue_record_event(queueB, probeB));
+
+    // B's probe is pending while A's long launch runs.
+    EXPECT_FALSE(eventReady(context, probeB));
+
+    ASSERT_SUCCESS(event_synchronize(context, probeB));
+    EXPECT_EQ(outLongHost[0], 1u);
+    EXPECT_EQ(outLongHost[kLength - 1], 1u);
   }
 }

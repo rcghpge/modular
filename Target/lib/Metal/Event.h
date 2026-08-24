@@ -11,6 +11,8 @@
 #include "HAL/M_driver_event.h"
 #include "MetalCpp.h"
 
+#include <atomic>
+
 struct M_driver_context;
 
 struct M_driver_event {
@@ -23,6 +25,9 @@ struct M_driver_event {
   // - deviceEvent: intra-GPU only (no host-side query/wait API).
   NS::SharedPtr<MTL::SharedEvent> sharedEvent;
   NS::SharedPtr<MTL::Event> deviceEvent;
+
+  // Latest recording's value; 0 = never recorded.
+  std::atomic<uint64_t> targetValue{0};
 
   M_driver_event() = default;
 

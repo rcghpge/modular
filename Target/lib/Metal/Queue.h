@@ -8,6 +8,8 @@
 #include "HAL/M_driver_queue.h"
 #include "MetalCpp.h"
 
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -38,31 +40,32 @@ struct M_driver_queue {
                             M_driver_queue_execute_config_t *config,
                             void **args, uint64_t *argSizes, uint32_t numArgs);
 
-  void encodePendingWaits(MTL::CommandBuffer *cb);
+  // Host-blocks until everything committed before this call has completed.
+  M_driver_status_t drainPriorWork();
 
   M_driver_context_t context;
   NS::SharedPtr<MTL::CommandQueue> mCommandQueue;
 
-  // Completion events for in-flight ops on this queue.
-  //
-  // Every queue op builds its own MTL::CommandBuffer and ends it with
-  // `encodeSignalEvent` on a freshly created event — the "done
-  // event" for that op. We push that done event into `mPending` so the *next*
-  // op's CB can encode-wait on every entry here before doing its own work if
-  // necessary.
-  //
-  // mPending is cleared out in two places:
-  //   - `synchronize()`: the queue has been drained, nothing in-flight.
-  //   - `recordEvent()`: the user's event is encoded to signal after every
-  //     current entry, then *replaces* mPending as the sole gating event —
-  //     anyone waiting on the user event transitively waits on everything
-  //     that came before, so we can drop the prior entries.
-  std::vector<NS::SharedPtr<MTL::Event>> mPending;
+  // Fan-in on ops: they only update it; waiting ANY fence serializes ops.
+  NS::SharedPtr<MTL::Fence> mOrderingFence;
 
-  // External events stashed by `waitForEvents` to encode during subsequent
-  // operations. This is required because each operation creates a new
-  // command-buffer for encoding.
-  std::vector<NS::SharedPtr<MTL::Event>> mPendingWaits;
+  // Fan-out: waitForEvents entries, re-encoded per CB until provably done.
+  struct DonatedWait {
+    NS::SharedPtr<MTL::Event> event;
+    MTL::SharedEvent *sharedView = nullptr; // non-owning; set when peekable
+    uint64_t value = 0;
+    std::shared_ptr<std::atomic<bool>> retired; // first carrier completed
+    bool handlerInstalled = false;
+  };
+  std::vector<DonatedWait> mDonatedWaits; // guarded by mMutex
+
+  // Drain fast path: equal means nothing was committed since the last drain,
+  // so a drain is a no-op (an idle-queue drain CB still costs a ~150us GPU
+  // pass round trip). Both guarded by mMutex.
+  uint64_t mCommitSeq = 0;
+  uint64_t mDrainedSeq = 0;
+  // Prunes satisfied entries and encodes the rest; call under mMutex.
+  void encodeDonatedWaits(MTL::CommandBuffer *cb);
 
   std::mutex mMutex;
 };

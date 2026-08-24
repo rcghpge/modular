@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Queue.h"
+
 #include "Common.h"
 #include "Context.h"
 #include "Device.h"
@@ -12,6 +13,7 @@
 #include "Event.h"
 #include "Function.h"
 #include "Memory.h"
+#include <algorithm>
 
 DriverResult<M_driver_queue_t>
 M_driver_queue::create(M_driver_context_t context) {
@@ -21,9 +23,24 @@ M_driver_queue::create(M_driver_context_t context) {
       NS::TransferPtr(context->device->mDevice->newCommandQueue());
   if (!commandQueue)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+
+  NS::SharedPtr<MTL::Fence> orderFence =
+      NS::TransferPtr(context->device->mDevice->newFence());
+  if (!orderFence)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  MTL::CommandBuffer *primer = commandQueue->commandBuffer();
+  MTL::BlitCommandEncoder *blit =
+      primer ? primer->blitCommandEncoder() : nullptr;
+  if (!blit)
+    return tl::unexpected(context->device->driver->status.create(
+        "Failed to create command buffer to prime the ordering fence"));
+  blit->updateFence(orderFence.get());
+  blit->endEncoding();
+  primer->commit();
+
   M_driver_queue_t queue = new (std::nothrow) M_driver_queue{
-      context, commandQueue, /*mPending=*/{}, /*mPendingWaits=*/{},
-      /*mMutex=*/{}};
+      context,          commandQueue,      orderFence,   /*mDonatedWaits=*/{},
+      /*mCommitSeq=*/0, /*mDrainedSeq=*/0, /*mMutex=*/{}};
   if (!queue)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
   return queue;
@@ -34,9 +51,58 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-void M_driver_queue::encodePendingWaits(MTL::CommandBuffer *cb) {
-  for (const auto &e : mPendingWaits)
-    cb->encodeWait(e.get(), 1);
+void M_driver_queue::encodeDonatedWaits(MTL::CommandBuffer *cb) {
+  for (auto it = mDonatedWaits.begin(); it != mDonatedWaits.end();) {
+    bool satisfied =
+        it->sharedView
+            ? (it->sharedView->signaledValue() >= it->value)
+            : (it->retired && it->retired->load(std::memory_order_acquire));
+    if (satisfied) {
+      it = mDonatedWaits.erase(it);
+      continue;
+    }
+    cb->encodeWait(it->event.get(), it->value);
+    if (!it->sharedView && !it->handlerInstalled) {
+      std::shared_ptr<std::atomic<bool>> flag = it->retired;
+      cb->addCompletedHandler(^(MTL::CommandBuffer *) {
+        flag->store(true, std::memory_order_release);
+      });
+      it->handlerInstalled = true;
+    }
+    ++it;
+  }
+}
+
+M_driver_status_t M_driver_queue::drainPriorWork() {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  MTL::CommandBuffer *cmdBuffer = nullptr;
+  uint64_t seq = 0;
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (mCommitSeq == mDrainedSeq)
+      return M_DRIVER_STATUS_SUCCESS;
+    seq = mCommitSeq;
+    cmdBuffer = mCommandQueue->commandBuffer();
+    if (cmdBuffer == nullptr)
+      return context->device->driver->status.create(
+          "Failed to create command buffer for drain");
+    encodeDonatedWaits(cmdBuffer);
+    MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+    if (blit == nullptr)
+      return context->device->driver->status.create(
+          "Failed to create blit encoder for drain");
+    blit->waitForFence(mOrderingFence.get());
+    blit->endEncoding();
+    cmdBuffer->commit();
+  }
+  cmdBuffer->waitUntilCompleted();
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    mDrainedSeq = std::max(mDrainedSeq, seq);
+  }
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
@@ -65,46 +131,16 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "Copy size exceeds Metal buffer length");
 
-  NS::SharedPtr<MTL::SharedEvent> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newSharedEvent());
-  if (!doneEvent)
+  void *dstContents = dst->mBuffer->contents();
+  if (dstContents == nullptr)
     return context->device->driver->status.create(
-        "Failed to create MTL::SharedEvent for copyToDevice");
+        "Shared buffer contents() returned null");
 
-  __block size_t capturedByteSize = size;
-  __block size_t capturedOffset = dstOffset;
-  MTL::Buffer *dstBuf = dst->mBuffer;
-
-  std::lock_guard<std::mutex> lock(mMutex);
-
-  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
-  if (cmdBuffer == nullptr)
-    return context->device->driver->status.create(
-        "Failed to create command buffer");
-
-  encodePendingWaits(cmdBuffer);
-
-  // The handler runs later on another thread; a concurrent `free()` could
-  // release the buffer first (it drops the map's `SharedPtr`). A memcpy has no
-  // encoder, so Metal won't auto-retain it -- retain manually (released below).
-  dstBuf->retain();
-
-  // The CB has no GPU work — the "copy" is a std::memcpy executed CPU-side in
-  // the completion handler. Metal's UMA model means there's no dedicated HtoD
-  // copy API; host and device share memory, so a plain memcpy is the transfer.
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
-    void *dstContents = dstBuf->contents();
-    if (dstContents) {
-      void *dstPtr = static_cast<char *>(dstContents) + capturedOffset;
-      std::memcpy(dstPtr, src, capturedByteSize);
-    }
-    dstBuf->release();
-    doneEvent->setSignaledValue(1);
-  });
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  // The transfer is a host memcpy: drain prior GPU work, then copy inline.
+  if (M_driver_status_t status = drainPriorWork();
+      status != M_DRIVER_STATUS_SUCCESS)
+    return status;
+  std::memcpy(static_cast<char *>(dstContents) + dstOffset, src, size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -123,50 +159,22 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-  NS::SharedPtr<MTL::SharedEvent> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newSharedEvent());
-  if (!doneEvent)
-    return context->device->driver->status.create(
-        "Failed to create MTL::SharedEvent for copyFromDevice");
-
   srcOffset += src->offset;
 
   if (srcOffset + size > src->mBuffer->length())
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
 
-  __block size_t capturedOffset = srcOffset;
-  MTL::Buffer *srcBuf = src->mBuffer;
-
-  std::lock_guard<std::mutex> lock(mMutex);
-
-  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
-  if (cmdBuffer == nullptr)
+  void *srcContents = src->mBuffer->contents();
+  if (srcContents == nullptr)
     return context->device->driver->status.create(
-        "Failed to create command buffer");
+        "Shared buffer contents() returned null");
 
-  encodePendingWaits(cmdBuffer);
-
-  // Retain the buffer across the async completion handler (see note in
-  // `copyToDevice`). Paired release below.
-  srcBuf->retain();
-
-  // The CB has no GPU work — the "copy" is a std::memcpy executed CPU-side in
-  // the completion handler. Metal's UMA model means there's no dedicated HtoD
-  // copy API; host and device share memory, so a plain memcpy is the transfer.
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
-    void *srcContents = srcBuf->contents();
-    if (srcContents) {
-      void *srcPtr = static_cast<char *>(srcContents) + capturedOffset;
-      std::memcpy(dst, srcPtr, size);
-    }
-    srcBuf->release();
-    doneEvent->setSignaledValue(1);
-  });
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  // Drain the work producing `src`, then read inline.
+  if (M_driver_status_t status = drainPriorWork();
+      status != M_DRIVER_STATUS_SUCCESS)
+    return status;
+  std::memcpy(dst, static_cast<char *>(srcContents) + srcOffset, size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -191,12 +199,6 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
 
-  NS::SharedPtr<MTL::Event> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newEvent());
-  if (!doneEvent)
-    return context->device->driver->status.create(
-        "Failed to create MTL::Event for copyIntraDevice");
-
   std::lock_guard<std::mutex> lock(mMutex);
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
@@ -204,21 +206,18 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "Failed to create command buffer");
 
-  encodePendingWaits(cmdBuffer);
-
+  encodeDonatedWaits(cmdBuffer);
   MTL::BlitCommandEncoder *encoder = cmdBuffer->blitCommandEncoder();
   if (encoder == nullptr)
     return context->device->driver->status.create(
         "Failed to create blit command encoder");
   encoder->copyFromBuffer(src->mBuffer, srcOffset, dst->mBuffer, dstOffset,
                           size);
+  encoder->updateFence(mOrderingFence.get());
   encoder->endEncoding();
 
-  cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
   cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  mCommitSeq += 1;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -248,35 +247,11 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   // Apply offset to get actual destination pointer
   void *dstPtr = static_cast<char *>(dstContents) + dstOffset;
 
-  NS::SharedPtr<MTL::SharedEvent> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newSharedEvent());
-  if (!doneEvent)
-    return context->device->driver->status.create(
-        "Failed to create MTL::SharedEvent for setMemory");
-
-  std::lock_guard<std::mutex> lock(mMutex);
-
-  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
-  if (cmdBuffer == nullptr)
-    return context->device->driver->status.create(
-        "Failed to create command buffer");
-
-  encodePendingWaits(cmdBuffer);
-
-  // Retain across the async handler (see `copyToDevice`): `dstPtr` points into
-  // mapped memory a concurrent `free()` could unmap first.
-  MTL::Buffer *heldBuf = dst->mBuffer;
-  heldBuf->retain();
-
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
-    std::memset(dstPtr, value, size);
-    heldBuf->release();
-    doneEvent->setSignaledValue(1);
-  });
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  // A host memset into shared memory (see copyToDevice): drain, then write.
+  if (M_driver_status_t status = drainPriorWork();
+      status != M_DRIVER_STATUS_SUCCESS)
+    return status;
+  std::memset(dstPtr, value, size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -318,56 +293,32 @@ M_driver_status_t M_driver_queue::fillMemory(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "destination buffer not properly aligned");
 
-  NS::SharedPtr<MTL::SharedEvent> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newSharedEvent());
-  if (!doneEvent)
-    return context->device->driver->status.create(
-        "Failed to create MTL::SharedEvent for fillMemory");
-
-  std::lock_guard<std::mutex> lock(mMutex);
-
-  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
-  if (cmdBuffer == nullptr)
-    return context->device->driver->status.create(
-        "Failed to create command buffer");
-
-  encodePendingWaits(cmdBuffer);
-
-  // Retain across the async handler (see `copyToDevice`): `dstPtr` points into
-  // mapped memory a concurrent `free()` could unmap first.
-  MTL::Buffer *heldBuf = dst->mBuffer;
-  heldBuf->retain();
-
-  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *) {
-    switch (valueSize) {
-    case 2: {
-      uint16_t v16 = static_cast<uint16_t>(value);
-      uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p16[i] = v16;
-      break;
-    }
-    case 4: {
-      uint32_t v32 = static_cast<uint32_t>(value);
-      uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p32[i] = v32;
-      break;
-    }
-    case 8: {
-      uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
-      for (size_t i = 0; i < count; ++i)
-        p64[i] = value;
-      break;
-    }
-    }
-    heldBuf->release();
-    doneEvent->setSignaledValue(1);
-  });
-  cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  // A host fill into shared memory (see copyToDevice): drain, then write.
+  if (M_driver_status_t status = drainPriorWork();
+      status != M_DRIVER_STATUS_SUCCESS)
+    return status;
+  switch (valueSize) {
+  case 2: {
+    uint16_t v16 = static_cast<uint16_t>(value);
+    uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p16[i] = v16;
+    break;
+  }
+  case 4: {
+    uint32_t v32 = static_cast<uint32_t>(value);
+    uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p32[i] = v32;
+    break;
+  }
+  case 8: {
+    uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
+    for (size_t i = 0; i < count; ++i)
+      p64[i] = value;
+    break;
+  }
+  }
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -424,12 +375,6 @@ M_driver_queue::execute(M_driver_function_t function,
           " exceeds device limit of " + std::to_string(maxSharedMemBytes));
   }
 
-  NS::SharedPtr<MTL::Event> doneEvent =
-      NS::TransferPtr(context->device->mDevice->newEvent());
-  if (!doneEvent)
-    return context->device->driver->status.create(
-        "Failed to create MTL::Event for execute");
-
   std::lock_guard<std::mutex> lock(mMutex);
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
@@ -437,8 +382,7 @@ M_driver_queue::execute(M_driver_function_t function,
     return context->device->driver->status.create(
         "Failed to create command buffer");
 
-  encodePendingWaits(cmdBuffer);
-
+  encodeDonatedWaits(cmdBuffer);
   MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
   if (encoder == nullptr)
     return context->device->driver->status.create(
@@ -472,47 +416,15 @@ M_driver_queue::execute(M_driver_function_t function,
   MTL::Size threadgroupSize = toSize(config->config.gpu.block);
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);
 
-  // End encoding
+  encoder->updateFence(mOrderingFence.get());
   encoder->endEncoding();
 
-  cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
   cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted(); // [BLOCKING-HACK] serialize every submission
-  mPending.push_back(doneEvent);
-
+  mCommitSeq += 1;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::synchronize() {
-  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
-      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
-  MTL::CommandBuffer *cmdBuffer = nullptr;
-  {
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (mPending.empty() && mPendingWaits.empty())
-      return M_DRIVER_STATUS_SUCCESS;
-
-    // Build a CB that waits on every pending event and any externals from
-    // wait_for_events, then host-block on it.
-    cmdBuffer = mCommandQueue->commandBuffer();
-    if (cmdBuffer == nullptr)
-      return context->device->driver->status.create(
-          "Failed to create command buffer for synchronize");
-
-    encodePendingWaits(cmdBuffer);
-
-    for (const auto &e : mPending)
-      cmdBuffer->encodeWait(e.get(), 1);
-    cmdBuffer->commit();
-
-    mPending.clear();
-    mPendingWaits.clear();
-  }
-
-  cmdBuffer->waitUntilCompleted();
-  return M_DRIVER_STATUS_SUCCESS;
-}
+M_driver_status_t M_driver_queue::synchronize() { return drainPriorWork(); }
 
 M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
@@ -520,37 +432,30 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
 
   std::lock_guard<std::mutex> lock(mMutex);
 
-  // Empty-queue host-signal optimization: only available when the user
-  // event is CPU-visible (a plain device MTL::Event has no host-side
-  // signal API).
-  if (mPending.empty() && mPendingWaits.empty() && event->sharedEvent) {
-    event->sharedEvent->setSignaledValue(1);
-    return M_DRIVER_STATUS_SUCCESS;
-  }
-
-  // Build CB that waits on (a) any externals stashed by waitForEvents and
-  // (b) every pending in-flight op on this queue, then signals the user
-  // event.
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
     return context->device->driver->status.create(
         "Failed to create command buffer for record_event");
 
-  encodePendingWaits(cmdBuffer);
+  // Donated waits + the fence wait gather everything committed before us.
+  encodeDonatedWaits(cmdBuffer);
+  MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+  if (blit == nullptr)
+    return context->device->driver->status.create(
+        "Failed to create blit encoder for record_event");
+  blit->waitForFence(mOrderingFence.get());
+  blit->endEncoding();
 
-  for (const NS::SharedPtr<MTL::Event> &e : mPending)
-    cmdBuffer->encodeWait(e.get(), 1);
-  cmdBuffer->encodeSignalEvent(event->getEvent(), 1);
+  // Reserve after the fallible steps so a failure cannot strand the value.
+  uint64_t previous =
+      event->targetValue.fetch_add(1, std::memory_order_acq_rel);
+  uint64_t reserved = previous + 1;
+  // Chain so a cross-queue re-record cannot signal ahead of an earlier one.
+  if (previous > 0)
+    cmdBuffer->encodeWait(event->getEvent(), previous);
+  cmdBuffer->encodeSignalEvent(event->getEvent(), reserved);
   cmdBuffer->commit();
-
-  // Anyone waiting on user_event transitively waits on everything we just
-  // encoded.
-  mPending.clear();
-  if (event->sharedEvent)
-    mPending.push_back(event->sharedEvent);
-  else
-    mPending.push_back(event->deviceEvent);
-
+  mCommitSeq += 1;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -559,15 +464,28 @@ M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
   if (numEvents == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
-  // Stash wait events; the next op submitted on this queue will encode-wait on
-  // them before its own work.
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
   std::lock_guard<std::mutex> lock(mMutex);
-  mPendingWaits.reserve(mPendingWaits.size() + numEvents);
+
+  // Capture each external's value now (CUDA capture-at-call semantics).
   for (uint32_t i = 0; i < numEvents; ++i) {
-    if (events[i]->sharedEvent)
-      mPendingWaits.push_back(events[i]->sharedEvent);
-    else
-      mPendingWaits.push_back(events[i]->deviceEvent);
+    uint64_t target = events[i]->targetValue.load(std::memory_order_acquire);
+    // A never-recorded event is complete (CUDA semantics).
+    if (target == 0)
+      continue;
+    DonatedWait wait;
+    if (events[i]->sharedEvent) {
+      wait.event = NS::SharedPtr<MTL::Event>(events[i]->sharedEvent);
+      wait.sharedView = events[i]->sharedEvent.get();
+    } else {
+      wait.event = events[i]->deviceEvent;
+      wait.retired = std::make_shared<std::atomic<bool>>(false);
+    }
+    wait.value = target;
+    mDonatedWaits.push_back(std::move(wait));
+    mCommitSeq += 1;
   }
   return M_DRIVER_STATUS_SUCCESS;
 }

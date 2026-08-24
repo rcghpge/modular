@@ -1003,4 +1003,24 @@ TEST_F(CUDADeviceContextTest, MaxSingleAllocationSize_DefaultReturnsTotal) {
   EXPECT_EQ(maxAlloc, info.total);
 }
 
+// Create/destroy cycles must recycle cached events, not grow the cache.
+TEST_F(CUDADeviceContextTest, EventCreateReusesCachedEvent) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceEventRef, first, ctx->eventCreate(false));
+  CUevent handle = CUDADeviceEvent::cast(*first).cudaEvent();
+  first = DeviceEventRef(); // The destructor pushes the handle to the cache.
+
+  ASSIGN_NO_ERR(DeviceEventRef, second, ctx->eventCreate(false));
+  EXPECT_EQ(CUDADeviceEvent::cast(*second).cudaEvent(), handle);
+  second = DeviceEventRef();
+
+  // Timing events bypass the cache and must not consume the cached handle.
+  ASSIGN_NO_ERR(DeviceEventRef, timed, ctx->eventCreate(true));
+  EXPECT_NE(CUDADeviceEvent::cast(*timed).cudaEvent(), handle);
+  ASSIGN_NO_ERR(DeviceEventRef, third, ctx->eventCreate(false));
+  EXPECT_EQ(CUDADeviceEvent::cast(*third).cudaEvent(), handle);
+}
+
 } // namespace

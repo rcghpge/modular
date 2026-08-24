@@ -2228,19 +2228,27 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
   const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
-  unsigned int flags =
-      enableTiming
-          ? static_cast<unsigned int>(CUevent_flags::CU_EVENT_DEFAULT)
-          : static_cast<unsigned int>(CUevent_flags::CU_EVENT_DISABLE_TIMING);
 
   CUDA_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
-  CUevent event;
-  CUDA_CHECK_ERR(driver_.cuEventCreate(&event, flags));
-  return CUDADeviceEventRef::create(
-      CUDADevice::cast(this->device()), event,
-      /*recordedDuringCapture=*/recordedDuringCapture,
-      /*enableTiming=*/enableTiming);
+  if (enableTiming) {
+    // The cache holds only non-timing events, so timing events bypass it.
+    CUevent event;
+    CUDA_CHECK_ERR(driver_.cuEventCreate(
+        &event, static_cast<unsigned int>(CUevent_flags::CU_EVENT_DEFAULT)));
+    return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
+                                      /*recordedDuringCapture=*/
+                                      recordedDuringCapture,
+                                      /*enableTiming=*/true);
+  }
+  // Reuse the cache the destructor pushes into, or it grows without bound.
+  DEFINE_OR_RETURN_ERROR(CUevent, event,
+                         CUDADevice::cast(device()).eventCachePop(
+                             /*useCache=*/!recordedDuringCapture));
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
+                                    /*recordedDuringCapture=*/
+                                    recordedDuringCapture,
+                                    /*enableTiming=*/false);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueWaitFor(DeviceEvent &event) {

@@ -53,7 +53,10 @@ M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
                                               M_driver_event_t event) {
   if (!event->sharedEvent)
     return M_DRIVER_STATUS_INVALID_ARG;
-  event->sharedEvent->waitUntilSignaledValue(1, UINT64_MAX);
+  uint64_t target = event->targetValue.load(std::memory_order_acquire);
+  if (target == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+  event->sharedEvent->waitUntilSignaledValue(target, UINT64_MAX);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -62,7 +65,8 @@ M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
                                           bool *is_ready) {
   if (!event->sharedEvent)
     return M_DRIVER_STATUS_INVALID_ARG;
-  *is_ready = (event->sharedEvent->signaledValue() >= 1);
+  uint64_t target = event->targetValue.load(std::memory_order_acquire);
+  *is_ready = (target == 0 || event->sharedEvent->signaledValue() >= target);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
