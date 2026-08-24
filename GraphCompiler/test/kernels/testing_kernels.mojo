@@ -1948,9 +1948,7 @@ comptime _WrapperLayout = TileLayout[
 @fieldwise_init
 struct TensorWrapper(RegisterPassable):
     var buffer: TileTensor[
-        dtype=DType.float32,
-        origin=MutUntrackedOrigin,
-        LayoutType=_WrapperLayout,
+        .float32, origin=MutUntrackedOrigin, LayoutType=_WrapperLayout
     ]
 
 
