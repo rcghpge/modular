@@ -76,11 +76,16 @@ static constexpr unsigned long long
 static constexpr int NVML_MEMORY_ERROR_TYPE_UNCORRECTABLE = 1;
 static constexpr int NVML_VOLATILE_ECC = 0;
 
+// MIG mode, as reported by nvmlDeviceGetMigMode.
+static constexpr unsigned int NVML_DEVICE_MIG_DISABLE = 0;
+static constexpr unsigned int NVML_DEVICE_MIG_ENABLE = 1;
+
 class NVML {
 public:
   enum Result : unsigned int {
     SUCCESS = 0,
     NOT_SUPPORTED = 3,
+    NO_PERMISSION = 4,
     INSUFFICIENT_SIZE = 7,
   };
 

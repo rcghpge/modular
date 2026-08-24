@@ -543,6 +543,24 @@ modular_cc_test(
     ],
 )
 
+# Its own binary on purpose: the invariant it checks is that a process which
+# has only counted devices has not called cuInit, which no test sharing a
+# binary with CUDA-using tests can observe.
+modular_cc_test(
+    name = "CUDADeviceCountTest",
+    size = "small",
+    srcs = ["CUDADeviceCountTest.cpp"],
+    gpu_constraints = ["//:nvidia_gpu"],
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/CompilationDeviceImpl",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 modular_cc_test(
     name = "GraphCaptureTest",
     size = "small",

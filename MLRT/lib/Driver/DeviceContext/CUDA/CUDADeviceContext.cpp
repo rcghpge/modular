@@ -231,6 +231,47 @@ static std::string cudaCCToSM(int major, int minor) {
   return sm;
 }
 
+// Finds the NVML handle describing `cuDevice` by matching PCI location.
+//
+// The two libraries index devices independently: NVML enumerates physical
+// GPUs, CUDA enumerates the devices this process may use, and under MIG one
+// physical GPU backs several of the latter. Matching on PCI location is what
+// holds across that split — every MIG instance resolves to the handle for the
+// GPU it is carved from, which is the handle NVML answers parent-level queries
+// on anyway.
+static ErrorOr<nvmlDevice_t> nvmlDeviceForCudaDevice(const NVML &nvml,
+                                                     const CUDADriver &driver,
+                                                     CUdevice cuDevice) {
+  int domain, bus, slot;
+  CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
+      &domain, CUdevice_attribute::PCI_DOMAIN_ID, cuDevice));
+  CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
+      &bus, CUdevice_attribute::PCI_BUS_ID, cuDevice));
+  CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
+      &slot, CUdevice_attribute::PCI_DEVICE_ID, cuDevice));
+
+  unsigned int nvmlCount;
+  NVML_CHECK_ERR(nvml.nvmlDeviceGetCount_v2(&nvmlCount));
+
+  for (unsigned int i = 0; i < nvmlCount; ++i) {
+    nvmlDevice_t candidate;
+    if (nvml.nvmlDeviceGetHandleByIndex(i, &candidate) != NVML::SUCCESS)
+      continue;
+
+    nvmlPciInfo_t pciInfo;
+    if (nvml.nvmlDeviceGetPciInfo_v3(candidate, &pciInfo) != NVML::SUCCESS)
+      continue;
+
+    if (pciInfo.domain == static_cast<unsigned int>(domain) &&
+        pciInfo.bus == static_cast<unsigned int>(bus) &&
+        pciInfo.device == static_cast<unsigned int>(slot))
+      return candidate;
+  }
+
+  RETURN_ERROR("NVML: no device at the PCI location CUDA reports for device " +
+               llvm::Twine(static_cast<int>(cuDevice)));
+}
+
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id,
                        nvmlDevice_t nvmlDevice, CUdevice cudaDevice,
@@ -421,12 +462,10 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
 ErrorOr<std::string> CUDADevice::getPciBusId() const {
   DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
 
-  nvmlDevice_t device;
-  if (nvml.nvmlDeviceGetHandleByIndex(id(), &device) != NVML::SUCCESS)
-    RETURN_ERROR("NVML: Unable to get device index");
-
+  // The handle resolved at construction, rather than a fresh lookup by id():
+  // a device id indexes CUDA's enumeration, which is not NVML's.
   nvmlPciInfo_t pciInfo;
-  if (nvml.nvmlDeviceGetPciInfo_v3(device, &pciInfo) != NVML::SUCCESS)
+  if (nvml.nvmlDeviceGetPciInfo_v3(nvmlDevice_, &pciInfo) != NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get PCI info");
   return std::string(pciInfo.busId);
 }
@@ -454,13 +493,69 @@ ErrorOr<DeviceContextRef> CUDADevice::createContext() {
   return CUDADeviceContextRef::create(*this, context, stream);
 }
 
-ErrorOr<int> CUDADevice::numberOfGPUs() {
-  static ErrorOr<unsigned int> errOrCount = []() -> ErrorOr<int> {
-    DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
+// Answers whether NVML's device count can be trusted to equal CUDA's.
+//
+// It cannot when MIG is enabled: NVML counts physical GPUs while CUDA
+// enumerates compute instances, and several of the latter are carved from one
+// of the former. The question is asked through NVML alone so that the common
+// answer — no MIG anywhere — is reached without loading libcuda.
+//
+// Only a positive report of "MIG is off here" clears a device. NOT_SUPPORTED
+// counts as cleared, because it means the GPU has no MIG capability at all;
+// that is the answer on every pre-Ampere and non-datacenter part, so treating
+// it as unknown would push the whole fleet onto the CUDA path. Anything else,
+// NO_PERMISSION included, is unknown and defers to CUDA — the direction that
+// is merely slower rather than wrong.
+static ErrorOr<bool> nvmlCountMayDisagreeWithCUDA(const NVML &nvml) {
+  unsigned int nvmlCount;
+  NVML_CHECK_ERR(nvml.nvmlDeviceGetCount_v2(&nvmlCount));
 
-    unsigned int result;
-    if (nvml.nvmlDeviceGetCount_v2(&result) != NVML::SUCCESS)
-      RETURN_ERROR("NVML: Unable to get device count");
+  for (unsigned int i = 0; i < nvmlCount; ++i) {
+    nvmlDevice_t device;
+    if (nvml.nvmlDeviceGetHandleByIndex(i, &device) != NVML::SUCCESS)
+      return true;
+
+    unsigned int currentMode, pendingMode;
+    NVML::Result result =
+        nvml.nvmlDeviceGetMigMode(device, &currentMode, &pendingMode);
+    if (result == NVML::NOT_SUPPORTED)
+      continue;
+    if (result != NVML::SUCCESS || currentMode != NVML_DEVICE_MIG_DISABLE)
+      return true;
+  }
+  return false;
+}
+
+ErrorOr<int> CUDADevice::numberOfGPUs() {
+  // CUDA is the authority on how many devices there are, because CUDA is what
+  // each of them is subsequently addressed through: an id in [0, count) is
+  // handed straight to cuDeviceGet. NVML answers a different question — it
+  // counts physical GPUs, so it under-reports a container granted several MIG
+  // compute instances carved from one GPU, and discovery then silently drops
+  // the instances past the first.
+  //
+  // Asking CUDA unconditionally would cost more than it looks: cuDeviceGetCount
+  // needs cuInit, so merely counting devices would initialize the CUDA driver
+  // in this process, and a CUDA-using child forked afterwards then fails to
+  // initialize its own. Counting is the one device query reachable without
+  // touching CUDA at all, and callers such as accelerator_count() do exactly
+  // that and nothing more. So NVML answers whenever its count cannot disagree,
+  // and CUDA is consulted only where MIG makes the two differ.
+  static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
+    DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
+    DEFINE_OR_RETURN_ERROR(bool, migInPlay, nvmlCountMayDisagreeWithCUDA(nvml));
+
+    if (!migInPlay) {
+      unsigned int result;
+      NVML_CHECK_ERR(nvml.nvmlDeviceGetCount_v2(&result));
+      return static_cast<int>(result);
+    }
+
+    DEFINE_OR_RETURN_ERROR(const CUDADriver &, driver, CUDADriver::get());
+
+    int result;
+    if (driver.cuDeviceGetCount(&result) != CUDADriver::SUCCESS)
+      RETURN_ERROR("CUDA: Unable to get device count");
     return result;
   }();
 
@@ -468,9 +563,13 @@ ErrorOr<int> CUDADevice::numberOfGPUs() {
     return errOrCount.copy();
   }
 
-  int numGPUs = static_cast<int>(*errOrCount);
+  int numGPUs = *errOrCount;
 
-  // Users assume we use CUDA under the hood
+  // NVML ignores CUDA_VISIBLE_DEVICES entirely, so on that path this is what
+  // keeps a count the caller will index through CUDA from exceeding what CUDA
+  // exposes. On the CUDA path cuInit has already applied the variable, and this
+  // only catches a process that narrowed it afterwards, which CUDA would not
+  // see.
   std::optional<std::string> envOr =
       llvm::sys::Process::GetEnv("CUDA_VISIBLE_DEVICES");
   if (envOr) {
@@ -722,15 +821,25 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
   CUDADevice *device = (*devices)[id];
   if (device == nullptr) {
     DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
+    DEFINE_OR_RETURN_ERROR(const CUDADriver &, driver, CUDADriver::get());
 
-    nvmlDevice_t nvmlDevice;
-    NVML_CHECK_ERR(nvml.nvmlDeviceGetHandleByIndex(id, &nvmlDevice));
+    // The CUDA device is what an id denotes, so it is resolved first and the
+    // NVML handle the rest of this setup queries is derived from it.
+    CUdevice cuDevice;
+    CUDA_CHECK_ERR(driver.cuDeviceGet(&cuDevice, id));
+    DEFINE_OR_RETURN_ERROR(nvmlDevice_t, nvmlDevice,
+                           nvmlDeviceForCudaDevice(nvml, driver, cuDevice));
 
     char name[256];
     NVML_CHECK_ERR(nvml.nvmlDeviceGetName(nvmlDevice, name, sizeof(name)));
 
     nvmlMemory_t nvmlMemInfo;
     auto nvmlMemResult = nvml.nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo);
+
+    // NVML answers for the parent device, which a container granted only a MIG
+    // compute instance is not permitted to query. CUDA reports the instance's
+    // own memory, so a rejected NVML query defers to the CUDA query below.
+    bool memInfoFromCUDA = false;
 
     Device::MemInfo memInfo;
     if (nvmlMemResult == NVML::SUCCESS) {
@@ -755,17 +864,12 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
       memInfo.free =
           static_cast<size_t>(availPages) * static_cast<size_t>(pageSize);
     } else {
-      RETURN_ERROR("NVML: Unable to get memory info");
+      memInfoFromCUDA = true;
     }
 
-    // Some info is available only via CUDA. Ideally, we will use only NVML,
-    // and not CUDA in CUDADevice.
-    DEFINE_OR_RETURN_ERROR(const CUDADriver &, driver, CUDADriver::get());
     int alignment;
-    CUdevice cuDevice;
     CUcontext cuContext;
 
-    CUDA_CHECK_ERR(driver.cuDeviceGet(&cuDevice, id));
     // Alignment does not seem to be available through NVML.
     CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
         &alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, cuDevice));
@@ -784,6 +888,20 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
     {
       CUDAContextScope ctxScope(cuContext, driver);
       M::Profiling::activatePendingTrace();
+    }
+
+    // Deferred to here because cuMemGetInfo needs a current context, and so
+    // that the NVML path keeps reading free memory before the primary context
+    // claims any.
+    if (memInfoFromCUDA) {
+      CUDAContextScope ctxScope(cuContext, driver);
+      CUDA_CHECK_ERR(ctxScope.status());
+      CUDA_CHECK_ERR_MSG(
+          driver.cuMemGetInfo_v2(&memInfo.free, &memInfo.total),
+          std::string("fallback after NVML rejected the memory query for "
+                      "device ") +
+              std::to_string(id) + " with error " +
+              nvml.nvmlErrorString(nvmlMemResult));
     }
 
     int computeCapabilityMajor, computeCapabilityMinor;

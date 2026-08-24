@@ -11,10 +11,12 @@
 #include "TestUtils.h"
 
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/Process.h"
 #include "gtest/gtest.h"
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -992,6 +994,103 @@ TEST_F(CUDADeviceContextTest, NVMLComputeProcessesQueryable) {
   // exist. We just verify the call doesn't crash.
   (void)result;
   (void)processCount;
+}
+
+// When NVML refuses the parent-device memory query — as it does in a container
+// granted only a MIG compute instance — CUDADevice::get() takes the device's
+// memory from CUDA instead. On non-MIG hardware both sources describe the same
+// device, so their totals must agree; this pins the argument order and units
+// the fallback depends on.
+TEST_F(CUDADeviceContextTest, CUDAMemoryInfoAgreesWithNVML) {
+  auto deviceOr = CUDADevice::get(0);
+  ASSERT_FALSE(deviceOr.isError()) << deviceOr.getError();
+  ASSIGN_NO_ERR(Device::MemInfo, cudaMem, deviceOr->getMemoryInfo());
+
+  EXPECT_GT(cudaMem.total, 0u);
+  EXPECT_LE(cudaMem.free, cudaMem.total);
+
+  ErrorOr<const NVML &> nvmlOr = NVML::get();
+  ASSERT_FALSE(nvmlOr.isError()) << nvmlOr.getError();
+
+  nvmlDevice_t nvmlDevice;
+  ASSERT_EQ(nvmlOr->nvmlDeviceGetHandleByIndex(0, &nvmlDevice), NVML::SUCCESS);
+
+  nvmlMemory_t nvmlMem;
+  if (nvmlOr->nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMem) != NVML::SUCCESS)
+    GTEST_SKIP() << "NVML cannot report memory for this device";
+
+  // CUDA reports memory usable by CUDA, which is a little below the installed
+  // framebuffer NVML reports, so compare within a tolerance rather than
+  // exactly. The comparison presumes a device NVML and CUDA describe alike,
+  // which a MIG slice is not: there NVML answers for the parent GPU and the
+  // two totals differ by an order of magnitude.
+  EXPECT_GT(cudaMem.total, nvmlMem.total * 9 / 10)
+      << "CUDA total " << cudaMem.total << " is far below NVML total "
+      << nvmlMem.total
+      << ": either cuMemGetInfo's out-parameters are swapped, or this is a "
+         "MIG device and the test should skip instead";
+  EXPECT_LE(cudaMem.total, nvmlMem.total);
+}
+
+// Whichever source the count came from, every id in [0, count) must be one
+// cuDeviceGet accepts, because that is how the count is subsequently spent.
+// NVML supplies it when no device has MIG enabled and CUDA when one does;
+// without MIG the two agree, which is what this asserts.
+TEST_F(CUDADeviceContextTest, DeviceCountMatchesCUDAEnumeration) {
+  ErrorOr<const CUDADriver &> driverOr = CUDADriver::get();
+  ASSERT_FALSE(driverOr.isError()) << driverOr.getError();
+
+  int cudaCount = 0;
+  ASSERT_EQ(driverOr->cuDeviceGetCount(&cudaCount), CUDADriver::SUCCESS);
+
+  ASSIGN_NO_ERR(int, count, CUDADevice::numberOfGPUs());
+  EXPECT_GT(count, 0);
+  // CUDA_VISIBLE_DEVICES narrowed after cuInit only ever lowers the count.
+  if (llvm::sys::Process::GetEnv("CUDA_VISIBLE_DEVICES"))
+    EXPECT_LE(count, cudaCount);
+  else
+    EXPECT_EQ(count, cudaCount);
+
+  for (int id = 0; id < count; ++id) {
+    CUdevice cuDevice;
+    EXPECT_EQ(driverOr->cuDeviceGet(&cuDevice, id), CUDADriver::SUCCESS)
+        << "device " << id << " is counted but CUDA will not resolve it";
+  }
+}
+
+// Each device's NVML handle is resolved by PCI location rather than by reusing
+// the device id as an NVML index, because the two enumerations are independent
+// — under MIG several CUDA devices share one physical GPU. On non-MIG hardware
+// the two agree, so the handle a device carries must describe the PCI location
+// CUDA reports for it.
+TEST_F(CUDADeviceContextTest, PciBusIdMatchesCUDAsViewOfTheDevice) {
+  ErrorOr<const CUDADriver &> driverOr = CUDADriver::get();
+  ASSERT_FALSE(driverOr.isError()) << driverOr.getError();
+
+  ASSIGN_NO_ERR(int, count, CUDADevice::numberOfGPUs());
+  for (int id = 0; id < count; ++id) {
+    ErrorOr<CUDADevice &> deviceOr = CUDADevice::get(id);
+    ASSERT_FALSE(deviceOr.isError()) << deviceOr.getError();
+    ASSIGN_NO_ERR(std::string, busId, deviceOr->getPciBusId());
+
+    int domain = 0, bus = 0, slot = 0;
+    ASSERT_EQ(driverOr->cuDeviceGetAttribute(&domain,
+                                             CUdevice_attribute::PCI_DOMAIN_ID,
+                                             deviceOr->cudaDevice()),
+              CUDADriver::SUCCESS);
+    ASSERT_EQ(driverOr->cuDeviceGetAttribute(
+                  &bus, CUdevice_attribute::PCI_BUS_ID, deviceOr->cudaDevice()),
+              CUDADriver::SUCCESS);
+    ASSERT_EQ(driverOr->cuDeviceGetAttribute(&slot,
+                                             CUdevice_attribute::PCI_DEVICE_ID,
+                                             deviceOr->cudaDevice()),
+              CUDADriver::SUCCESS);
+
+    char expected[32];
+    snprintf(expected, sizeof(expected), "%08X:%02X:%02X.0", domain, bus, slot);
+    EXPECT_EQ(busId, std::string(expected))
+        << "device " << id << " carries an NVML handle for a different GPU";
+  }
 }
 
 // CUDA does not override maxSingleAllocationSize, so the default Device
