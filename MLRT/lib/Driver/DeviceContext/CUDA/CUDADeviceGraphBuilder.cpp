@@ -104,8 +104,54 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
       &node, graph_, deps.data(), deps.size(), &nodeParams));
 
+  // cuGraphAddKernelNode has no launch-attribute parameter, so attributes are
+  // applied to the created node one by one. Only a subset of launch attributes
+  // is valid on a kernel node; the rest describe stream-launch scheduling and
+  // have no device-graph node equivalent:
+  //  - The programmatic-dependent-launch family (PROGRAMMATIC_STREAM_
+  //    SERIALIZATION, PROGRAMMATIC_EVENT, LAUNCH_COMPLETION_EVENT) expresses
+  //    launch overlap. Graph dependency edges already order this node after
+  //    its predecessors' full completion — strictly stronger than PDL's
+  //    contract — so skipping them preserves correctness and only forgoes the
+  //    overlap.
+  //  - SYNCHRONIZATION_POLICY is a stream-scheduling hint with no node
+  //    meaning.
+  // An attribute outside the vendored enum is an error, not a silent drop.
+  ArrayRef<CUlaunchAttribute_st> attrs(
+      static_cast<const CUlaunchAttribute *>(params.attrs), params.numAttrs);
+
+  for (const CUlaunchAttribute &attr : attrs) {
+    switch (attr.id) {
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_IGNORE:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_SYNCHRONIZATION_POLICY:
+    case CUlaunchAttributeID::
+        CU_LAUNCH_ATTRIBUTE_PROGRAMMATIC_STREAM_SERIALIZATION:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_PROGRAMMATIC_EVENT:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_LAUNCH_COMPLETION_EVENT:
+      continue;
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_ACCESS_POLICY_WINDOW:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_COOPERATIVE:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION:
+    case CUlaunchAttributeID::
+        CU_LAUNCH_ATTRIBUTE_CLUSTER_SCHEDULING_POLICY_PREFERENCE:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_PRIORITY:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_MEM_SYNC_DOMAIN_MAP:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_MEM_SYNC_DOMAIN:
+    case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_DEVICE_UPDATABLE_KERNEL_NODE:
+    case CUlaunchAttributeID::
+        CU_LAUNCH_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT:
+      CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphKernelNodeSetAttribute(
+          node, attr.id, attr.value));
+      continue;
+    }
+    RETURN_ERROR(llvm::Twine("unsupported launch attribute on a device-graph "
+                             "kernel node: id ") +
+                 llvm::Twine(static_cast<unsigned>(attr.id)));
+  }
+
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
+
   return DeviceGraphNode{id};
 }
 

@@ -85,6 +85,10 @@ CUDA_FUNC(cuGraphAddMemsetNode, Result, CUgraphNode *, CUgraph,
           CUcontext)
 CUDA_FUNC(cuGraphAddEmptyNode, Result, CUgraphNode *, CUgraph,
           const CUgraphNode *, size_t)
+// Third parameter is const CUkernelNodeAttrValue * in the driver — a 64-byte
+// union passed here as the CUlaunchAttribute::value bytes.
+CUDA_FUNC(cuGraphKernelNodeSetAttribute, Result, CUgraphNode,
+          CUlaunchAttributeID, const void *)
 
 CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *,
           char *, size_t)
