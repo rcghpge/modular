@@ -330,8 +330,8 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
       if (arg.isTensorType() &&
           !getTensorArgTraitType(
               sig.getArgument(arg.sourceDescriptor->position)) &&
-          convention != KGEN::ArgConvention::ReadMem &&
-          convention != KGEN::ArgConvention::ReadReg) {
+          convention != KGEN::ArgConvention::ImmMem &&
+          convention != KGEN::ArgConvention::ImmReg) {
         decl->emitError()
             << "Only the borrowed argument (read) convention is supported "
                "for tensor arguments (argument at position "
@@ -368,8 +368,8 @@ LogicalResult declVerifyTensorArgsAreBorrowed(
       if (!getTensorArgTraitType(sig.getArgument(i)))
         continue;
       auto convention = sig.getArgConvention(i);
-      if (convention != KGEN::ArgConvention::ReadMem &&
-          convention != KGEN::ArgConvention::ReadReg) {
+      if (convention != KGEN::ArgConvention::ImmMem &&
+          convention != KGEN::ArgConvention::ImmReg) {
         decl->emitError()
             << "Only the borrowed argument (read) convention is supported for "
                "trait-bound tensor arguments (argument at position "
