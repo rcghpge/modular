@@ -11,6 +11,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "KGEN/MojoParser/EntryPoint.h"
+#include "KGEN/MojoParser/ModuleLoader.h"
 #include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Support/AssertStream.h"
@@ -255,8 +256,8 @@ public:
 
   /// Resolve `moduleName` to the path of its precompiled binary package.
   ErrorOr<std::string> resolveBinaryPackagePath(llvm::StringRef moduleName) {
-    std::optional<KGEN::LIT::SharedState::ModuleSpec> modulePath =
-        sharedState.resolveModulePath(moduleName, llvm::SMLoc());
+    auto modulePath = sharedState.getModuleLoader().resolveModulePath(
+        moduleName, llvm::SMLoc());
     if (!modulePath)
       return Error(
           llvm::formatv("Failed to resolve module path for `{}`", moduleName)
@@ -316,7 +317,7 @@ M::MOGG::getKernelPackagePathsForCacheKey(mlir::MLIRContext *ctx) {
   // Collect every binary package visible on the import path; the header
   // comment explains why their contents must reach the cache key.
   llvm::StringSet<> seen;
-  resolver.getSharedState().traverseImportDirectories(
+  resolver.getSharedState().getModuleLoader().traverseImportDirectories(
       /*importBufferFileId=*/0, [&](llvm::StringRef dir) {
         std::error_code ec;
         for (llvm::sys::fs::directory_iterator it(dir, ec), e; it != e && !ec;
