@@ -622,7 +622,7 @@ alias(
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
         "//max/python/max/_core/internal:__subpackages__",
-        "@plugin//:__pkg__",
+        "//plugins:__subpackages__",
     ],
 )
 
@@ -723,7 +723,6 @@ modular_cc_library(
         "//GraphCompiler:__subpackages__",
         "//Kernels/tools/gpu-query:__pkg__",
         "//MLRT:__subpackages__",
-        "@plugin//:__pkg__",
     ],
     deps = [
         ":Core/Tensor",
@@ -802,7 +801,6 @@ modular_cc_library(
         "//Kernels:__subpackages__",
         "//MLRT:__subpackages__",
         "//max/python/max/_core/internal:__subpackages__",
-        "@plugin//:__pkg__",
     ],
     deps = [
         ":Driver/CompilationDeviceImpl",
@@ -871,7 +869,6 @@ modular_cc_library(
         # --config=hal-device-context (PTX->cubin without the legacy DeviceContext runtime).
         "//KGEN:__subpackages__",
         "//MLRT:__subpackages__",
-        "@plugin//:__pkg__",
     ],
     deps = [
         ":Driver/DeviceContextAPI",
