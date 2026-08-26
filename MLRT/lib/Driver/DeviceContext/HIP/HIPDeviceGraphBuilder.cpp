@@ -147,8 +147,13 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addCopyDeviceToDevice(
   RETURN_IF_ERROR(scope.err());
 
   // Graph DtoD nodes only support same-context copies; reject peer copies.
-  if (HIPDeviceContext::verified_cast(&src.context()) != ctx_.getPointer() ||
-      HIPDeviceContext::verified_cast(&dst.context()) != ctx_.getPointer()) {
+  // Resolve each buffer's context through backendContext() so a buffer wrapped
+  // by a decorating context (e.g. the RecordingDeviceContext that routed this
+  // copy here) validates against the driver-backed context it decorates.
+  if (HIPDeviceContext::verified_cast(&src.context().backendContext()) !=
+          ctx_.getPointer() ||
+      HIPDeviceContext::verified_cast(&dst.context().backendContext()) !=
+          ctx_.getPointer()) {
     RETURN_ERROR("device-to-device graph copy requires src and dst buffers to "
                  "share the builder's HIP context");
   }

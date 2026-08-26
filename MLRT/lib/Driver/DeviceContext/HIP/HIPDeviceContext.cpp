@@ -1543,8 +1543,11 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   CHECK_IS_HIP_ERR(src.context().device());
   CHECK_IS_HIP_ERR(dst.context().device());
 
-  auto &srcCtx = HIPDeviceContext::cast(src.context());
-  auto &dstCtx = HIPDeviceContext::cast(dst.context());
+  // Resolve through backendContext() so a buffer stamped with a decorating
+  // context (e.g. a device-graph RecordingDeviceContext) casts to the
+  // driver-backed context it decorates.
+  auto &srcCtx = HIPDeviceContext::cast(src.context().backendContext());
+  auto &dstCtx = HIPDeviceContext::cast(dst.context().backendContext());
 
   if (this->device_ != dstCtx.device_) {
     RETURN_ERROR("device context does not match context of dst");

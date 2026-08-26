@@ -319,10 +319,15 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
   RETURN_IF_ERROR(scope.err());
 
   // Graph DtoD nodes only support same-context copies; reject peer copies.
-  const auto &srcCtx = CUDADeviceContext::cast(src.context());
-  const auto &dstCtx = CUDADeviceContext::cast(dst.context());
-  if (srcCtx.cudaContext() != ctx_->cudaContext() ||
-      dstCtx.cudaContext() != ctx_->cudaContext()) {
+  // Resolve each buffer's context through backendContext() so a buffer wrapped
+  // by a decorating context (e.g. the RecordingDeviceContext that routed this
+  // copy here) validates against the driver-backed context it decorates.
+  const auto *srcCtx =
+      CUDADeviceContext::verified_cast(&src.context().backendContext());
+  const auto *dstCtx =
+      CUDADeviceContext::verified_cast(&dst.context().backendContext());
+  if (!srcCtx || !dstCtx || srcCtx->cudaContext() != ctx_->cudaContext() ||
+      dstCtx->cudaContext() != ctx_->cudaContext()) {
     RETURN_ERROR("device-to-device graph copy requires src and dst buffers to "
                  "share the builder's CUDA context");
   }

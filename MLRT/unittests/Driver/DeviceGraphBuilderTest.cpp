@@ -176,6 +176,47 @@ TEST(DeviceGraphBuilderTest, AddCopyDeviceToDevice) {
     EXPECT_FLOAT_EQ(hostOut[i], hostIn[i]) << "at index " << i;
 }
 
+// Emitted kernel code only has the recording context in hand, so tensor
+// pointers get wrapped against it (createBufferOwning stamps the wrapping
+// context). The builder must resolve such a decorating context to its backing
+// context instead of downcasting the decorator.
+TEST(DeviceGraphBuilderTest, RecordedCopyDeviceToDeviceWithWrappedBuffers) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const uint64_t length = 1024;
+  const size_t byteSize = length * sizeof(float);
+
+  llvm::SmallVector<float> hostIn(length), hostOut(length, 0.0f);
+  for (uint64_t i : llvm::seq(length))
+    hostIn[i] = static_cast<float>(3 * i + 2);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, ctx->enqueueCreateBuffer(byteSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstBuf, ctx->enqueueCreateBuffer(byteSize));
+  EXPECT_NO_ERR(srcBuf->copyFrom(hostIn.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceGraphNode, root, builder->addEmpty(/*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceContextRef, recCtx, builder->recordingContext(root));
+
+  DeviceBufferRef wrappedSrc =
+      recCtx->createBufferOwning(srcBuf->ptr(), byteSize, /*owning=*/false);
+  DeviceBufferRef wrappedDst =
+      recCtx->createBufferOwning(dstBuf->ptr(), byteSize, /*owning=*/false);
+  EXPECT_NO_ERR(recCtx->enqueueCopyDeviceToDevice(*wrappedDst, *wrappedSrc));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  EXPECT_NO_ERR(dstBuf->copyTo(hostOut.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (uint64_t i : llvm::seq(length))
+    EXPECT_FLOAT_EQ(hostOut[i], hostIn[i]) << "at index " << i;
+}
+
 TEST(DeviceGraphBuilderTest, AddSetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
                 DeviceContext::create(Device::gpuAPI, /*id=*/0));

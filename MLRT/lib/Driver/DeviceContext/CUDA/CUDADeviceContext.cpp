@@ -1899,8 +1899,11 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(DeviceBuffer &dst,
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  auto &srcCtx = CUDADeviceContext::cast(src.context());
-  auto &dstCtx = CUDADeviceContext::cast(dst.context());
+  // Resolve through backendContext() so a buffer stamped with a decorating
+  // context (e.g. a device-graph RecordingDeviceContext) casts to the
+  // driver-backed context it decorates.
+  auto &srcCtx = CUDADeviceContext::cast(src.context().backendContext());
+  auto &dstCtx = CUDADeviceContext::cast(dst.context().backendContext());
 
   if (this->context_ != dstCtx.context_) {
     RETURN_ERROR("device context does not match context of dst");
@@ -1981,7 +1984,7 @@ CUDADeviceContext::memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
     if (src.isHost() || src.context().device().api() == Device::cpuAPI) {
       hostSrcs.push_back(&src);
     } else {
-      auto &srcCtx = CUDADeviceContext::cast(src.context());
+      auto &srcCtx = CUDADeviceContext::cast(src.context().backendContext());
       if (srcCtx.cudaContext() != this->cudaContext()) {
         DEFINE_OR_RETURN_ERROR(bool, peerEnabled,
                                Device::allPeerAccessEnabled());
