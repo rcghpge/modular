@@ -518,7 +518,7 @@ constexpr llvm::StringLiteral kParameterStoreCopierType = "StoreCopier";
 /// checking the Modular config rather than hardcoding.
 constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
     kPackagesToImport[] = {
-        {"builtin_primitives.primitives", "builtin_primitives"},
+        {"builtin_primitives.primitives", ""},
         {"builtin_kernels", "builtin_kernels"},
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
