@@ -287,9 +287,9 @@ and things should work as you expect:
 
 ```python
 @extensibility.register(
-    "continuous_batching_kv_cache_collection_h8_d128_bshd"
+    "paged_kv_cache_collection_h8_d128_bshd"
 )
-struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
+struct Struct_paged_kv_cache_collection_h8_d128_bshd:
     @always_inline
     @staticmethod
     def execute[
@@ -297,16 +297,15 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     ](
         blocks: InputTensor[dtype, 6],
         cache_lengths: InputTensor[DType.uint32, 1],
-        lookup_table: InputTensor[DType.uint32, 1],
+        lookup_table: InputTensor[DType.uint32, 2],
         max_prompt_length: InputTensor[DType.uint32, 1],
         max_cache_length: InputTensor[DType.uint32, 1],
-    **) -> ContinuousBatchingKVCacheCollection[
+    **) -> PagedKVCacheCollection[
         dtype,
         kv_params_h8_d128_bshd,
+        page_size_128,
     ]:**
-        return generic_get_continuous_cache_kernel_api[
-            kv_params=kv_params_h8_d128_bshd
-        ](
+        return generic_get_paged_cache(
             blocks,
             cache_lengths,
             lookup_table,
