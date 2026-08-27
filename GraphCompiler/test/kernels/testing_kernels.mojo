@@ -2235,6 +2235,16 @@ struct DeviceGraphFill:
     comptime _fill_value = 7
 
     @staticmethod
+    def fill_kernel[
+        dtype: DType
+    ](ptr: Pointer[Scalar[dtype], MutAnyOrigin], length: Int32):
+        var n = Int(length)
+        var tid = global_idx.x
+        if tid >= n:
+            return
+        ptr[unsafe_offset=tid] = Scalar[dtype](Self._fill_value)
+
+    @staticmethod
     def execute[
         dtype: DType, rank: Int
     ](
@@ -2263,18 +2273,13 @@ struct DeviceGraphFill:
         var length = output.size()
 
         # Record a real compiled kernel that fills every output element with the
-        # constant. The closure captures the output pointer and length by value;
-        # `add_function` compiles it against the builder's device context and
-        # adds it as a graph node, so replaying the graph re-runs this fill.
-        def fill_kernel() {var}:
-            var tid = global_idx.x
-            if tid >= length:
-                return
-            ptr[unsafe_offset=tid] = Scalar[dtype](Self._fill_value)
-
+        # constant. `add_function` compiles the thin kernel against the
+        # builder's device context and adds it as a graph node, so replaying
+        # the graph re-runs this fill.
         comptime block_dim = 256
-        _ = builder.add_function(
-            fill_kernel,
+        _ = builder.add_function[Self.fill_kernel[dtype]](
+            ptr,
+            Int32(length),
             grid_dim=ceildiv(length, block_dim),
             block_dim=block_dim,
         )
@@ -2292,6 +2297,22 @@ struct DeviceGraphIncrement:
     """
 
     comptime _increment = 1
+
+    @staticmethod
+    def increment_kernel[
+        dtype: DType
+    ](
+        in_ptr: Pointer[Scalar[dtype], MutAnyOrigin],
+        out_ptr: Pointer[Scalar[dtype], MutAnyOrigin],
+        length: Int32,
+    ):
+        var n = Int(length)
+        var tid = global_idx.x
+        if tid >= n:
+            return
+        out_ptr[unsafe_offset=tid] = in_ptr[unsafe_offset=tid] + Scalar[dtype](
+            Self._increment
+        )
 
     @staticmethod
     def execute[
@@ -2324,21 +2345,14 @@ struct DeviceGraphIncrement:
         var length = output.size()
 
         # Record a real compiled kernel that reads each input element, adds the
-        # constant, and writes it to the output. The closure captures the input
-        # and output pointers and the length by value; `add_function` compiles it
-        # against the builder's device context and adds it as a graph node, so
-        # replaying the graph re-runs this increment.
-        def increment_kernel() {var}:
-            var tid = global_idx.x
-            if tid >= length:
-                return
-            out_ptr[unsafe_offset=tid] = in_ptr[unsafe_offset=tid] + Scalar[
-                dtype
-            ](Self._increment)
-
+        # constant, and writes it to the output. `add_function` compiles the
+        # thin kernel against the builder's device context and adds it as a
+        # graph node, so replaying the graph re-runs this increment.
         comptime block_dim = 256
-        _ = builder.add_function(
-            increment_kernel,
+        _ = builder.add_function[Self.increment_kernel[dtype]](
+            in_ptr,
+            out_ptr,
+            Int32(length),
             grid_dim=ceildiv(length, block_dim),
             block_dim=block_dim,
         )
