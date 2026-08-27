@@ -23,6 +23,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoTraits.h"
+#include "GraphCompiler/MOGGDialect/Support/ProfileScopeLabels.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -2797,24 +2798,16 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
 /// Collect source notes (Python stack traces) from a location tree. Source
 /// notes are StringAttr metadata on FusedLoc nodes, set by
 /// AttachPythonStackTraces.
-static SmallVector<StringRef, 4> collectSourceNotes(Location rootLoc) {
-  SmallVector<StringRef, 4> notes;
-  llvm::SmallSet<StringRef, 4> seen;
-  SmallVector<Location, 8> worklist = {rootLoc};
-  while (!worklist.empty()) {
-    Location loc = worklist.pop_back_val();
-    auto fusedLoc = dyn_cast<mlir::FusedLoc>(loc);
-    if (!fusedLoc)
-      continue;
-    if (auto metadata = dyn_cast_or_null<StringAttr>(fusedLoc.getMetadata())) {
-      StringRef val = metadata.getValue();
-      if (!val.empty() && seen.insert(val).second)
-        notes.push_back(val);
-    }
-    for (Location subLoc : fusedLoc.getLocations())
-      worklist.push_back(subLoc);
-  }
-  return notes;
+static SmallVector<StringRef> collectSourceNotes(Location rootLoc) {
+  llvm::SetVector<StringRef> notes;
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](mlir::FusedLoc loc) {
+    if (auto metadata = dyn_cast_if_present<StringAttr>(loc.getMetadata()))
+      if (auto val = metadata.getValue(); !val.empty())
+        notes.insert(metadata.getValue());
+  });
+  walker.walk<mlir::WalkOrder::PreOrder>(rootLoc);
+  return notes.takeVector();
 }
 
 /// Parse a single Python traceback frame line of the form:
@@ -6172,10 +6165,20 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
 
   std::string deviceLabel =
       MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
+  // Distinct chains here means a kernel body genuinely shared by two
+  // non-nested profile_scope()s (MergeIdenticalKernelStubs can merge such a
+  // stub's location onto one surviving symbol, see its fix for the
+  // location-loss bug); formatProfileScope marks that with `:` rather
+  // than the `/` used for one op's own (possibly nested) scope chain. The
+  // scope goes after the kernel name here (unlike the `[scope] region_N`
+  // ordering AddTryExceptBlocks uses for range names) so the kernel's own
+  // fusion-info name stays the more prominent, leading part of the trace.
   std::string traceName =
       kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false,
                                                 /*quote=*/false,
-                                                /*stripDialectPrefixes=*/true);
+                                                /*stripDialectPrefixes=*/true) +
+      formatProfileScope(collectProfileScopeLayers(kernelStubOp.getLoc()),
+                         false);
 
   // Build compact source traceback from FusedLoc metadata set by
   // AttachPythonStackTraces, to surface Python call sites in NVTX markers.
