@@ -357,7 +357,7 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 
   pm.addNestedPass<GraphOp>(MAP::createFuseKernels());
   if (opts.fuseMutableLoadStore)
-    pm.addPass(MAP::createFuseMutableLoads());
+    pm.addNestedPass<GraphOp>(MAP::createFuseMutableLoads());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
