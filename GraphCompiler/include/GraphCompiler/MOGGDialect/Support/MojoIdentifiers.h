@@ -462,6 +462,7 @@ constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kParameterMut = "mut";
+constexpr llvm::StringLiteral kParameterHost = "host";
 constexpr llvm::StringLiteral kParameterInput = "input";
 constexpr llvm::StringLiteral kParameterDType = "dtype";
 constexpr llvm::StringLiteral kParameterRank = "rank";

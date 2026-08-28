@@ -113,3 +113,23 @@ mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 
   %ch1 = mo.mutable.store(%buf, %0, %ch0) : (!mo.buffer<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>, !mo.chain) -> (!mo.chain)
   mo.output %ch1 : !mo.chain
 }
+
+// -----
+
+// A host-placed tensor input (dispatch metadata: an omitted device defaults to
+// cpu). Its unpack carries `host = True`, so the Mojo-side
+// `OwnedTensor[.., host=True].allocate_stable` gets a host-pool stable twin
+// pre-filled with the caller's bytes, and `write_graph_key` bakes the contents
+// into the graph cache key. The emitter loop is unchanged: the host input
+// still routes through `builder.add_input` and is passed to
+// `DeviceGraph.create` as a cache-key input.
+// CHECK-DAG: unpack_tensor[{{[0-9]+}}, {{[0-9]+}}, DType.int64, host = True]
+// CHECK-DAG: builder.add_input({{var[_0-9]+}})
+// CHECK-DAG: DeviceGraph.create(
+
+mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
+    attributes {isDeviceGraph} {
+  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+      (%h) : (!mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
+  mo.output %0 : !mo.tensor<[4], si64, gpu:0>
+}

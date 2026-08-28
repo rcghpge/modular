@@ -154,3 +154,31 @@ mgp.model @dg_mut_input : mof devices [#M.device_ref<"gpu", 0>]
   } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
   mef.output %ch0, %a : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>, mut>
 } {isDeviceGraph}
+
+// -----
+
+// A host-placed tensor input (dispatch metadata) crosses the staging boundary
+// with its cpu placement spelled verbatim, alongside the gpu data tensor.
+
+// CHECK-LABEL: mgp.model @dg_host_input
+// CHECK: execute (%{{.*}}: !mef.chain{{.*}}%[[IN:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>, %[[H:[a-zA-Z0-9_]+]]: !mgp.tensor<4xsi64>) ->
+// CHECK: %[[STAGING:.*]] = mgp.device_graph.staging inputs(%[[IN]], %[[H]] : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<4xsi64>) {
+// CHECK-NEXT: ^bb0(%{{.*}}: !mgp.device_graph.builder, %[[INT:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>, %[[HT:[a-zA-Z0-9_]+]]: !mgp.tensor<4xsi64>):
+// CHECK: %[[A:.*]] = mogg.generic.compiled.region (%[[INT]], %[[HT]])
+// CHECK: mgp.device_graph.staging.yield %[[A]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
+// CHECK: } -> !mgp.tensor<2x3xf32, <"gpu", 0>>
+
+mgp.model @dg_host_input : mof devices [#M.device_ref<"gpu", 0>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>, %in: !mgp.tensor<2x3xf32, <"gpu", 0>>, %h: !mgp.tensor<4xsi64, <"cpu", 0>>) -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+  %a = mogg.generic.compiled.region (%in, %h) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>, %meta: !mgp.tensor<4xsi64, <"cpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
+    %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    %m = mogg.async.unpack(%meta) : !mgp.tensor<4xsi64, <"cpu", 0>>
+    %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
+  } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  mef.output %ch0, %a : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
+} {isDeviceGraph}

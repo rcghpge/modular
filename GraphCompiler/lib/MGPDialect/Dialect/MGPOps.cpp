@@ -760,6 +760,8 @@ LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
                                    tensorDtypeParam};
   if (getMut())
     params.push_back(MojoValue(MOGG::kParameterMut).equal(MojoValue(true)));
+  if (M::isHostPlaced(tensorType.getDevice()))
+    params.push_back(MojoValue(MOGG::kParameterHost).equal(MojoValue(true)));
 
   MojoValue result = state.builder.var(
       function(params, state.getMojoValuesFor(getOperands().drop_front())));

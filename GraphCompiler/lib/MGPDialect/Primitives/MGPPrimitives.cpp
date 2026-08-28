@@ -375,17 +375,11 @@ static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
       // through the destination's context -- the one the graph was built from
       // -- so the copy lands on the stream the graph replays on and is ordered
       // before its first node.
-      //
-      // `createBufferOwning` labels the view device-resident, which is what
-      // selects the copy direction downstream (`enqueueCopyDeviceToDevice`
-      // branches on `isHost()`). Host-placed inputs are rejected by the op
-      // verifiers, so the label cannot be wrong for a declared-host input --
-      // but it is still wrong for a device-declared input whose runtime pointer
-      // is host memory, which is what `mt` hands us.
-      // TODO(GEX-4051): label the source from the input's real placement and
-      // let `copyTo` pick the direction.
       M::Driver::DeviceBufferRef srcView =
-          context->createBufferOwning(srcPtr, srcSize, /*owning=*/false);
+          dst.isHost()
+              ? context->createHostBufferOwning(srcPtr, srcSize,
+                                                /*owning=*/false)
+              : context->createBufferOwning(srcPtr, srcSize, /*owning=*/false);
 
       if (ErrorOrSuccess err = srcView->copyTo(dst)) {
         Error msg = err.takeError();

@@ -4650,6 +4650,8 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
                                      state.mlirDTypeToMojoType(*maybeDType)};
     if (tensorType.getMut())
       params.push_back(MojoValue(kParameterMut).equal(MojoValue(true)));
+    if (M::isHostPlaced(tensorType.getDevice()))
+      params.push_back(MojoValue(kParameterHost).equal(MojoValue(true)));
     unpackedValue = asyncUnpackFunc(params, state.getMojoValueFor(input));
 
   } else if (isa<MGP::DeviceBufferType>(inputType)) {

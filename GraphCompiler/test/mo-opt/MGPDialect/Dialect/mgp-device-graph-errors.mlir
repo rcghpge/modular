@@ -191,10 +191,9 @@ func.func @execute_bad_outputs(
 // -----
 
 //
-// mgp.device_graph.create: a host-placed input is rejected. `add_input`
-// allocates each input's stable location from the graph's device pool and the
-// replay copy treats its source as device memory, so a CPU operand cannot be
-// recorded (TODO(GEX-4051)).
+// mgp.device_graph.create: a host-placed raw buffer is rejected. Host inputs
+// are supported only as immutable tensors (contents baked into the cache
+// key); a `!mgp.buffer` should have lowered to a mut-marked tensor earlier.
 //
 
 func.func @create_host_input(
@@ -202,7 +201,7 @@ func.func @create_host_input(
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>,
     %in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
+  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is a buffer on cpu:0, but host-placed device graph inputs must be immutable tensors}}
   %graph = mgp.device_graph.create
       %ctx, %dctx
       inputs(%in : !mgp.buffer<<"cpu", 0>>) {
@@ -218,8 +217,9 @@ func.func @create_host_input(
 // -----
 
 //
-// mgp.device_graph.create: an omitted `#M.device_ref` defaults to the host, so
-// it is rejected for the same reason as an explicit `cpu`.
+// mgp.device_graph.create: an omitted `#M.device_ref` defaults to the host.
+// An immutable host tensor is a legal input: it gets a host-pool stable
+// location and its contents join the graph cache key.
 //
 
 func.func @create_default_device_input(
@@ -227,7 +227,6 @@ func.func @create_default_device_input(
     %ctx: !mgp.context,
     %dctx: !mgp.device_context<<"gpu", 0>>,
     %in: !mgp.tensor<4xf32>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
   %graph = mgp.device_graph.create
       %ctx, %dctx
       inputs(%in : !mgp.tensor<4xf32>) {
@@ -243,8 +242,58 @@ func.func @create_default_device_input(
 // -----
 
 //
-// mgp.device_graph.execute: the same restriction on the replay side, where the
-// input copy would pick the wrong direction for host memory.
+// mgp.device_graph.create: a host-placed *mutable* tensor is rejected --
+// in-place writes contradict the value-keyed replay of a host input.
+//
+
+func.func @create_host_mut_input(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.tensor<4xf32, <"cpu", 0>, mut>) -> !mef.chain {
+  // expected-error@+1 {{'mgp.device_graph.create' op input #0 is a mutable tensor on cpu:0; in-place writes contradict the value-keyed replay of a host-placed input}}
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      inputs(%in : !mgp.tensor<4xf32, <"cpu", 0>, mut>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
+         %in_b: !mgp.tensor<4xf32, <"cpu", 0>, mut>):
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.tensor<4xf32, <"cpu", 0>, mut>) -> ()>
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.create: a host tensor above the warning threshold (but
+// under the cap) compiles with a diagnostic about cache growth.
+//
+
+func.func @create_host_input_large_warns(
+    %ch: !mef.chain,
+    %ctx: !mgp.context,
+    %dctx: !mgp.device_context<<"gpu", 0>>,
+    %in: !mgp.tensor<1024xf32, <"cpu", 0>>) -> !mef.chain {
+  // expected-warning@+1 {{input #0 is a host tensor of 4096 bytes; its contents are baked into the graph cache key, so every distinct value records a new graph}}
+  %graph = mgp.device_graph.create
+      %ctx, %dctx
+      inputs(%in : !mgp.tensor<1024xf32, <"cpu", 0>>) {
+    ^bb0(%builder: !mgp.device_graph.builder,
+         %ctx_b: !mgp.context,
+         %in_b: !mgp.tensor<1024xf32, <"cpu", 0>>):
+      mgp.device_graph.yield
+  } : !mgp.device_context<<"gpu", 0>>
+      -> !mgp.device_graph<(!mgp.tensor<1024xf32, <"cpu", 0>>) -> ()>
+  return %ch : !mef.chain
+}
+
+// -----
+
+//
+// mgp.device_graph.execute: the same raw-buffer restriction on the replay
+// side.
 //
 
 func.func @execute_host_input(
@@ -252,7 +301,7 @@ func.func @execute_host_input(
     %graph: !mgp.device_graph<(!mgp.buffer<<"cpu", 0>>) -> ()>,
     %dctx: !mgp.device_context<<"gpu", 0>>,
     %in: !mgp.buffer<<"cpu", 0>>) -> !mef.chain {
-  // expected-error@+1 {{'mgp.device_graph.execute' op input #0 is on cpu:0, but device graph inputs must be device-resident}}
+  // expected-error@+1 {{'mgp.device_graph.execute' op input #0 is a buffer on cpu:0, but host-placed device graph inputs must be immutable tensors}}
   %chain = mgp.device_graph.execute
       %graph, %dctx
       inputs(%in : !mgp.buffer<<"cpu", 0>>)

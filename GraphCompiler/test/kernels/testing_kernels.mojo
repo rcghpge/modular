@@ -2285,6 +2285,77 @@ struct DeviceGraphFill:
         )
 
 
+@extensibility.register("device_graph_fill_from_host")
+struct DeviceGraphFillFromHost:
+    """Device-graph test kernel that fills its output with the value of a
+    host-resident scalar input, read on the host at enqueue/record time.
+
+    Models dispatch metadata (attention cache lengths and friends): the value
+    never reaches the device as data -- it is read while enqueuing and baked
+    into the recorded kernel, which is why host inputs key the device-graph
+    cache by contents. Under recording, `h` is the graph's stable host twin
+    that `allocate_stable` pre-filled with the caller's bytes. `execute`
+    performs the same host read on the direct (non-graph) path.
+    """
+
+    @staticmethod
+    def fill_kernel[
+        dtype: DType
+    ](
+        ptr: Pointer[Scalar[dtype], MutAnyOrigin],
+        value: Scalar[dtype],
+        length: Int32,
+    ):
+        var n = Int(length)
+        var tid = global_idx.x
+        if tid >= n:
+            return
+        ptr[unsafe_offset=tid] = value
+
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        h: Scalar[dtype=dtype],
+        ctx: DeviceContext,
+    ) raises:
+        var ptr = output.unsafe_ptr()
+        var length = Int32(output.size())
+
+        comptime block_dim = 256
+        ctx.enqueue_function[Self.fill_kernel[dtype]](
+            ptr,
+            h,
+            length,
+            grid_dim=ceildiv(length, block_dim),
+            block_dim=block_dim,
+        )
+
+    @staticmethod
+    def build_graph[
+        dtype: DType, rank: Int
+    ](
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        h: Scalar[dtype=dtype],
+        builder: DeviceGraphBuilder,
+    ) raises:
+        # The enqueue-time host read: the value is frozen into the recorded
+        # kernel here, so replay soundness rests on the contents being part of
+        # the graph cache key.
+        var ptr = output.unsafe_ptr()
+        var length = Int32(output.size())
+
+        comptime block_dim = 256
+        _ = builder.add_function[Self.fill_kernel[dtype]](
+            ptr,
+            h,
+            length,
+            grid_dim=ceildiv(length, block_dim),
+            block_dim=block_dim,
+        )
+
+
 @extensibility.register("device_graph_increment")
 struct DeviceGraphIncrement:
     """Device-graph test kernel that adds the constant `1` to every element.

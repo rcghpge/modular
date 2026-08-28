@@ -53,35 +53,53 @@ static bool isDeviceGraphInput(Value v) {
   return graphInputDevice(v) != nullptr;
 }
 
-/// Rejects host-placed tensor/buffer inputs, which the synthesis pathway cannot
-/// currently record.
+/// For now, the device graph workflow assumes that host tensor inputs are used
+/// purely to encode launch parameters for device computation. As such their
+/// contents are integrated into the cache key. A large host input will likely
+/// result in a large device graph cache, so warn uses until we have a knob to
+/// control this behavior.
+static constexpr uint64_t kHostInputWarnBytes = 1024;
+
+/// Verifies the residency rules for the graph's tensor/buffer inputs.
 ///
-/// `add_input` allocates each input's stable location from the graph's device
-/// pool, and the replay-time copy in `mgp_device_graph_execute` labels its
-/// source device-resident (`createBufferOwning` hardcodes `isHost=false`),
-/// which is what picks the copy direction. A host operand would therefore get
-/// device memory and be copied as device-to-device.
+/// - Device-resident tensors are copied into device-pool stable locations (or
+///   recorded in place when `mut`).
 ///
-/// The check has to live here rather than in `isDeviceGraphInput`: narrowing
-/// that predicate would skip host operands at emission while the runtime
-/// counterpart -- which selects on runtime type and cannot see a device ref --
-/// still counted them, so every later input would pair with the wrong stable
-/// buffer. Rejecting up front keeps the two predicates in agreement.
+/// - Host-placed *immutable* tensors are allowed: they get a host-pool stable
+///   location populated before recording, and their contents join the cache
+///   key, because recorded ops read host values at enqueue time.
 ///
-/// TODO(GEX-4051): support host inputs by threading a host/device flag through
-/// `add_input` to the replay copy, and drop this restriction.
-static LogicalResult verifyInputsAreDeviceResident(Operation *op,
-                                                   OperandRange inputs) {
-  DeviceRefAttr host = M::getHostDevice(op->getContext());
+/// - Host-placed `mut` tensors are rejected -- in-place writes to
+///   a value-keyed input would invalidate its own cache entry -- as are
+///   host-placed raw buffers, whose lowering to a mut tensor should have
+///   happened earlier.
+static LogicalResult verifyInputResidency(Operation *op, OperandRange inputs) {
   for (auto [idx, input] : llvm::enumerate(inputs)) {
     DeviceRefAttr device = graphInputDevice(input);
-    if (!device)
+    if (!device || !M::isHostPlaced(device))
       continue;
 
-    if (device.getLabel() == host.getLabel())
+    auto tensorType = dyn_cast<MGP::DeviceTensorType>(input.getType());
+    if (!tensorType)
       return op->emitOpError("input #")
-             << idx << " is on " << device.toString()
-             << ", but device graph inputs must be device-resident";
+             << idx << " is a buffer on " << device.toString()
+             << ", but host-placed device graph inputs must be immutable "
+                "tensors";
+    if (tensorType.getMut())
+      return op->emitOpError("input #")
+             << idx << " is a mutable tensor on " << device.toString()
+             << "; in-place writes contradict the value-keyed replay of a "
+                "host-placed input";
+
+    std::optional<uint64_t> byteSize =
+        tensorType.getTensorSpec().getSizeInBytes();
+    if (!byteSize)
+      continue; // Dynamic shape: the runtime keys whatever size shows up.
+    if (*byteSize > kHostInputWarnBytes)
+      op->emitWarning("input #")
+          << idx << " is a host tensor of " << *byteSize
+          << " bytes; its contents are baked into the graph cache key, so "
+             "every distinct value records a new graph";
   }
   return success();
 }
@@ -155,7 +173,7 @@ LogicalResult DeviceGraphCreateOp::verify() {
     return emitOpError("result `!mgp.device_graph` signature results do not "
                        "match the build body's yielded value types");
 
-  return verifyInputsAreDeviceResident(*this, getInputs());
+  return verifyInputResidency(*this, getInputs());
 }
 
 void DeviceGraphCreateOp::build(
@@ -356,7 +374,7 @@ LogicalResult DeviceGraphExecuteOp::verify() {
     return emitOpError("`outputs` result types do not match the graph's "
                        "signature results");
 
-  return verifyInputsAreDeviceResident(*this, getInputs());
+  return verifyInputResidency(*this, getInputs());
 }
 
 //===----------------------------------------------------------------------===//
