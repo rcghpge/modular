@@ -137,4 +137,35 @@ def MAP_BroadcastSpecAttr : MAP_Attr<"BroadcastSpec", "index.broadcast.spec"> {
   let genVerifyDecl = 1;
 }
 
+def MAP_TransposeSpecAttr : MAP_Attr<"TransposeSpec", "index.transpose.spec"> {
+  let summary = "Static shape signature and permutation for a transpose view";
+  let description = [{
+    Compile-time-known shape/permutation metadata for a `mo.transpose` view
+    lowered through the MAP dialect. `signature` is the transpose's
+    input/output shape signature (same rank -- transpose never changes rank,
+    only reorders dimensions). `perm` is the permutation applied to `in`'s
+    dimensions to produce `out`: `out.dim[i] == in.dim[perm[i]]`, matching
+    `mo.transpose`'s own `perm` operand. Only reachable once `perm` is fully
+    known at compile time (a `mo.constant`); a `mo.transpose` whose `perm`
+    isn't a compile-time constant doesn't lower through this path at all.
+
+    Example:
+    ```mlir
+    #tspec = #map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>
+    ```
+  }];
+
+  let parameters = (ins
+    "MAP::ViewSignatureAttr":$signature,
+    "mlir::DenseI64ArrayAttr":$perm
+  );
+
+  // Custom parse/print: `signature` embeds `MAP_ViewSignatureAttr`'s own
+  // `in -> out` form directly, same inlining convention `MAP_SliceSpecAttr`
+  // uses for its own `signature` field.
+  let hasCustomAssemblyFormat = 1;
+
+  let genVerifyDecl = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPATTRS_TD

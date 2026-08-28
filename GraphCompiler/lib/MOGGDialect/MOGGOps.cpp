@@ -3307,6 +3307,31 @@ LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
+  // dtype/rank are tied to $input's own argument type, so Mojo infers them
+  // at the call site. output_static_shape/static_permutations carry the
+  // view's shape and permutation -- both are always statically known by
+  // emission time (this op is only reachable via a compile-time-constant
+  // perm; see MOToMAP's lowering of mo.transpose), so there is no
+  // dynamic-vs-static split to carry here.
+  auto transposeCreatePrimDecl = state.registry.lookupPrimitive(
+      TensorCreateTransposeOp::getOperationName());
+  ASSERT_STREAM(transposeCreatePrimDecl,
+                "Primitive not found for "
+                    << TensorCreateTransposeOp::getOperationName());
+  MojoValue primitive(primitiveMojoName(transposeCreatePrimDecl));
+  MojoValue outputStaticShape = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
+  MojoValue staticPermutations =
+      state.builder.comptime(EmitMojoState::getAsIntTupleMojoValue(getPerm()));
+  MojoValue result = state.builder.var(primitive(
+      {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape),
+       MojoValue(kParameterStaticPermutations).equal(staticPermutations)},
+      {state.getMojoValueFor(getInput())}));
+  state.setMojoValueFor(getResult(), result);
+  return success();
+}
+
 bool CallOpaqueOp::isThrows() {
   // Whether the stub raises depends on the callee kernel, exactly like
   // `CallExecuteOp::isThrows` reads the flag baked from its execute signature.

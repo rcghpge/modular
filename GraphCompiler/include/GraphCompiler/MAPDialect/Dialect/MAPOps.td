@@ -694,4 +694,89 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// map.index.transpose
+//===----------------------------------------------------------------------===//
+
+def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  Pure,
+  DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
+]> {
+  let summary = "Project an output-shape index to the input-shape index for a transpose view";
+  let description = [{
+    Used inside a `map.iter.foreach` (or, after outlining, a
+    `map.iter.foreach.body`) lowered from `mo.transpose`. Takes the loop's
+    current (output-shape) index and produces the corresponding input-shape
+    index: dimension `i` of the result is dimension `spec`'s inverse
+    permutation of `i` in `index` -- `mo.transpose`'s own `perm` says which
+    *input* dimension each *output* dimension came from
+    (`out.dim[i] == in.dim[perm[i]]`), so projecting an output index back to
+    the input needs `perm`'s inverse, not `perm` itself. Rank-preserving,
+    unlike broadcast -- transpose only ever reorders dimensions.
+
+    Example:
+    ```mlir
+    %idx_ = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%idx)
+        : !map.index<2> -> !map.index<2>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_TransposeSpecAttr:$spec,
+    MAP_AnyIndex:$index
+  );
+  let results = (outs MAP_AnyIndex:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $index `)` attr-dict
+    `:` qualified(type($index)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.transpose.stride
+//===----------------------------------------------------------------------===//
+
+def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
+  ParentOneOf<["IterOpaqueOp"]>,
+  Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+]> {
+  let summary = "Materialize a transpose view of `input`, addressable directly by the loop's own index";
+  let description = [{
+    Produces a single tensor value -- of the transpose's *output* shape --
+    that a `map.load` can address directly with the loop's own
+    (untransformed) index, instead of transforming the index on every
+    iteration. Logically still a view over `input`'s storage (nothing is
+    copied); the view's strides are `input`'s own strides reordered by
+    `spec`'s `perm`.
+
+    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
+    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
+    loop body itself.
+
+    Example:
+    ```mlir
+    %strided = map.index.transpose.stride<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%input)
+        : !mo.tensor<[2, 3], f32> -> !mo.tensor<[3, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_TransposeSpecAttr:$spec,
+    MO_Tensor:$input
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $input `)` attr-dict
+    `:` qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_TD

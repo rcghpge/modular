@@ -288,6 +288,72 @@ BroadcastSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// TransposeSpecAttr
+//===----------------------------------------------------------------------===//
+
+Attribute TransposeSpecAttr::parse(AsmParser &parser, Type /*type*/) {
+  MOSH::ShapeAttr inShape, outShape;
+  SmallVector<int64_t> perm;
+  if (parser.parseLess() || parseViewSignatureBody(parser, inShape, outShape) ||
+      parser.parseComma() || parseSliceSpecBoundsField(parser, "perm", perm) ||
+      parser.parseGreater())
+    return {};
+
+  MLIRContext *ctx = parser.getContext();
+  return parser.getChecked<TransposeSpecAttr>(
+      ctx, ViewSignatureAttr::get(ctx, inShape, outShape),
+      mlir::DenseI64ArrayAttr::get(ctx, perm));
+}
+
+void TransposeSpecAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printViewSignatureBody(printer, getSignature().getIn(),
+                         getSignature().getOut());
+  printer << ", perm = ";
+  printSliceSpecBounds(printer, getPerm().asArrayRef());
+  printer << ">";
+}
+
+LogicalResult
+TransposeSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                          MAP::ViewSignatureAttr signature,
+                          mlir::DenseI64ArrayAttr perm) {
+  MOSH::ShapeAttr in = signature.getIn();
+  MOSH::ShapeAttr out = signature.getOut();
+  if (in.getRank() != out.getRank())
+    return emitError() << "in/out shapes must have the same rank, got "
+                       << in.getRank() << " and " << out.getRank();
+
+  int64_t rank = out.getRank();
+  if (static_cast<int64_t>(perm.size()) != rank)
+    return emitError() << "perm must have " << rank
+                       << " entries (one per dimension), got " << perm.size();
+
+  SmallVector<int64_t> permVec(perm.asArrayRef());
+  SmallVector<int64_t> sortedPerm(permVec);
+  llvm::sort(sortedPerm);
+  for (int64_t i = 0; i < rank; ++i) {
+    if (sortedPerm[i] != i)
+      return emitError() << "perm must be a permutation of [0, " << rank << ")";
+  }
+
+  SmallVector<int64_t> inDims = in.getIntDims();
+  SmallVector<int64_t> outDims = out.getIntDims();
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t inDim = inDims[permVec[i]];
+    int64_t outDim = outDims[i];
+    if (ShapedType::isDynamic(inDim) || ShapedType::isDynamic(outDim))
+      continue;
+    if (inDim != outDim)
+      return emitError() << "dim " << i << ": out-shape dim " << outDim
+                         << " does not match in-shape dim " << inDim
+                         << " at perm[" << i << "]=" << permVec[i];
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

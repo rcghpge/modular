@@ -482,6 +482,8 @@ constexpr llvm::StringLiteral kParameterOutputStaticShape =
     "output_static_shape";
 constexpr llvm::StringLiteral kParameterStaticStarts = "static_starts";
 constexpr llvm::StringLiteral kParameterStaticSteps = "static_steps";
+constexpr llvm::StringLiteral kParameterStaticPermutations =
+    "static_permutations";
 constexpr llvm::StringLiteral kParameterLayoutType = "LayoutType";
 constexpr llvm::StringLiteral kParameterOrigin = "origin";
 constexpr llvm::StringLiteral kParameterAddressSpace = "address_space";

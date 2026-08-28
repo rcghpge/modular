@@ -304,6 +304,21 @@ LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// map.index.transpose.stride -> mogg._tensor.create.transpose. Reads its own
+// input out of `state.mapping`, same as any other kernel input.
+LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
+  MLIRContext *ctx = getContext();
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  Type elementType =
+      cast<MO::TensorType>(getInput().getType()).getElementType();
+  auto createTranspose = MOGG::TensorCreateTransposeOp::create(
+      state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
+      getSpec().getPerm(), TypeAttr::get(elementType),
+      state.builder.getBoolAttr(false), state.mapping.lookup(getInput()));
+  state.mapping.map(getResult(), createTranspose.getResult());
+  return success();
+}
+
 // map.iter.foreach.body -> mogg._call.foreach. Builds the loop shape and the
 // captured tensors, then lowers the body into the new region via
 // `state.lowerRegionBody`.

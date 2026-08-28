@@ -429,6 +429,66 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
   return success();
 }
 
+// Lowers mo.transpose to a standalone (unfused) map.iter.foreach over the
+// *output* shape (same pull model as lowerSliceToForeach): the body
+// computes the input index via map.index.transpose, loads, and stores
+// unchanged. `perm` must already be resolved to a compile-time constant by
+// the caller -- transpose is always rank-preserving, but unlike slice's
+// starts/stops/steps there's no per-element arithmetic fallback for an
+// unknown permutation value, so a non-constant perm isn't handled here at
+// all (falls through to the generic view-kernel error instead).
+LogicalResult lowerTransposeToForeach(MO::TransposeOp op,
+                                      ArrayRef<int64_t> perm) {
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  auto inputTy = cast<MO::TensorType>(op.getInput().getType());
+  auto outputTy = cast<MO::TensorType>(op.getResult().getType());
+  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  if (inShape.getRank() != outShape.getRank())
+    return op->emitOpError("MOToMAP: transpose must preserve rank");
+  int64_t rank = outShape.getRank();
+
+  auto spec = MAP::TransposeSpecAttr::get(
+      ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape),
+      mlir::DenseI64ArrayAttr::get(ctx, perm));
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{outputTy},
+      /*shape=*/outShape,
+      /*inputs=*/op->getOperands(),
+      /*chain=*/Value(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+
+  // Body block args: [input, perm, output, map.index<rank>] -- perm's value
+  // is already baked into `spec` as a compile-time constant, so the body
+  // itself never reads it (matching every other operand-that-became-an-
+  // attribute in this file, e.g. broadcast's shape).
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  for (Value operand : op->getOperands())
+    body->addArgument(operand.getType(), loc);
+  body->addArgument(outputTy, loc);
+  BlockArgument idxArg = body->addArgument(MAP::IndexType::get(ctx, rank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  BlockArgument inputArg = body->getArgument(0);
+  BlockArgument outputArg = body->getArgument(2);
+
+  Value innerIdx = MAP::TransposeIndexOp::create(
+      bodyBuilder, loc, MAP::IndexType::get(ctx, rank), spec, idxArg);
+  Value loaded = MAP::LoadOp::create(
+      bodyBuilder, loc, outputTy.getElementType(), inputArg, innerIdx);
+  MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, loaded);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
@@ -459,7 +519,12 @@ LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
     return lowerSliceToForeach(sliceOp);
   else if (auto broadcastOp = dyn_cast<MO::Static::BroadcastToOp>(op))
     return lowerBroadcastToForeach(broadcastOp);
-  else if (adaptor->isViewKernel())
+  else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op)) {
+    if (auto permVec = MO::tryGetConstantIntVector(
+            cast<MO::TensorValue>(transposeOp.getPerm())))
+      return lowerTransposeToForeach(transposeOp, *permVec);
+    return op->emitOpError("MOToMAP: view kernels are not yet supported");
+  } else if (adaptor->isViewKernel())
     return op->emitOpError("MOToMAP: view kernels are not yet supported");
   else
     return lowerToOpaque(op, *adaptor, *mapping);
