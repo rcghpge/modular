@@ -3218,12 +3218,9 @@ LogicalResult ShapeCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
-  // The rank comes from the static shape attr on the feeding `shape.create`;
-  // the opaque `!mogg.shape` handle carries no attributes of its own.
-  auto shapeCreate = getShape().getDefiningOp<ShapeCreateOp>();
-  ASSERT_STREAM(shapeCreate,
-                "tensor.create shape operand must come from a shape.create");
-  MOSH::ShapeAttr shapeAttr = shapeCreate.getShape();
+  // The rank comes from the op's own static shape attr; the opaque
+  // `!mogg.shape` handle carries no attributes of its own.
+  MOSH::ShapeAttr shapeAttr = getShapeAttr();
 
   ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getElementType());
   ASSERT_STREAM(!dtypeOr.isError(),
@@ -3258,6 +3255,34 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
                .bitcast(MojoValue(kComptimeDTypeNoneType))(),
            layoutVar})));
 
+  return success();
+}
+
+LogicalResult TensorCreateSliceOp::emitMojo(EmitMojoState &state) {
+  // dtype/rank/start_type/stop_type/step_type are all tied to an argument
+  // type in the primitive's own signature, so Mojo infers them at the call
+  // site. output_static_shape/static_starts/static_steps carry whatever is
+  // statically known about the view (an entry is dynamic where it isn't),
+  // straight off this op's own attributes.
+  auto sliceCreatePrimDecl =
+      state.registry.lookupPrimitive(TensorCreateSliceOp::getOperationName());
+  ASSERT_STREAM(sliceCreatePrimDecl,
+                "Primitive not found for "
+                    << TensorCreateSliceOp::getOperationName());
+  MojoValue primitive(primitiveMojoName(sliceCreatePrimDecl));
+  MojoValue outputStaticShape = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
+  MojoValue staticStarts = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getStaticStart()));
+  MojoValue staticSteps = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getStaticStep()));
+  MojoValue result = state.builder.var(primitive(
+      {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape),
+       MojoValue(kParameterStaticStarts).equal(staticStarts),
+       MojoValue(kParameterStaticSteps).equal(staticSteps)},
+      {state.getMojoValueFor(getInput()), state.getMojoValueFor(getStarts()),
+       state.getMojoValueFor(getStops()), state.getMojoValueFor(getSteps())}));
+  state.setMojoValueFor(getResult(), result);
   return success();
 }
 
@@ -3296,16 +3321,12 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   if (Value ctx = getDeviceContext())
     kernelOperands.push_back(state.getMojoValueFor(ctx));
 
-  // A fused output arrives as a `tensor.create.epilogue` result (already
-  // lowered to a `_MoggOutputStoreFusionTensor`). Unlike the MOGG-ABI path
-  // there is no `mogg.bind` for `getHasEpilogueFusionValue` to detect, so force
-  // the kernel's `has_epilogue_fusion` parameter True here to match the
-  // execute-call wiring.
-  bool hasFusedOutput = llvm::any_of(getOutputs(), [](Value out) {
-    return out.getDefiningOp<TensorCreateEpilogueOp>() != nullptr;
-  });
+  // Unlike the MOGG-ABI path there is no `mogg.bind` for
+  // `getHasEpilogueFusionValue` to detect, so force the kernel's
+  // `has_epilogue_fusion` parameter True here to match the execute-call
+  // wiring.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
-    if (hasFusedOutput &&
+    if (getHasEpilogueFusion() &&
         paramName == MOGG::kMoggHasEpilogueFusionParameterName)
       return MojoValue(true);
     return state.inferDefaultKernelParamValue(*this, paramName,
@@ -3401,10 +3422,9 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
   // Reached recursively from whichever caller sets up `currentLambdaInfo`
-  // before lowering its own body -- reads builder/width/alignment by role
-  // rather than assuming a specific caller. The receiver is a `TileTensor`
-  // rebuilt from the closure's captured (ptr, layout) pair (see
-  // `ForeachCaptureInfo`), hence `alignment`, not `element_alignment`.
+  // before lowering its own body -- reads builder/width/alignment (and the
+  // receiver's own alignment keyword, since it differs between `TileTensor`
+  // and `ManagedTensorSlice`) by role rather than assuming a specific caller.
   const MojoValue &tile = state.getMojoValueFor(getTensor());
   const MojoValue &idx = state.getMojoValueFor(getIndex());
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
@@ -3413,7 +3433,8 @@ LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
 
   MojoValue loaded = lambdaInfo.lambdaBuilder->var(tile.get("load")(
       {MojoValue(kParameterWidth).equal(lambdaInfo.widthParameter),
-       MojoValue("alignment").equal(lambdaInfo.alignmentParameter)},
+       MojoValue(lambdaInfo.alignmentKeyword)
+           .equal(lambdaInfo.alignmentParameter)},
       {idx}));
   state.setMojoValueFor(getResult(), loaded);
   return success();
@@ -3443,7 +3464,8 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
   lambdaInfo.lambdaBuilder->call(
       tile.get("store"),
       {MojoValue(kParameterWidth).equal(lambdaInfo.widthParameter),
-       MojoValue("alignment").equal(lambdaInfo.alignmentParameter)},
+       MojoValue(lambdaInfo.alignmentKeyword)
+           .equal(lambdaInfo.alignmentParameter)},
       {idx, rebound});
   return success();
 }
@@ -3658,26 +3680,16 @@ static FailureOr<MojoValue> collectDtypesTuple(EmitMojoState &state,
       {}, dtypeMojoValues);
 }
 
-// Per-capture info needed to rebuild a `TileTensor` inside the `_call.foreach`
-// closure. A captured `ManagedTensorSlice`/`TileTensor` FIELD does not survive
-// a GPU kernel launch (the encoder bit-copies it), so the closure captures
-// only `ptr`/`layout` and rebuilds a `TileTensor` from them once entered --
-// see `TileTensorRef::fromExternalPtrExplicit`.
-struct ForeachCaptureInfo {
-  MojoValue ptr;
-  MojoValue layout;
-  MojoValue dtype;
-  MojoValue layoutType;
-  MojoValue mut;
-};
-
 LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   // Emits the per-index closure directly (not a struct + `__call__` the way
   // `TensorCreateEpilogueOp` builds one), then calls `_foreach` with it.
   // `_foreach`'s `Lambda` parameter needs a blanket `{var}` capture clause,
   // confirmed empirically to be the only convention that works for a closure
   // capturing register-passable values -- see `MojoBuilder::lambda`'s
-  // `captureConvention` doc.
+  // `captureConvention` doc. Each capture is a `ManagedTensorSlice`, which is
+  // itself `DevicePassable` (the trait a GPU kernel launch's encoder relies
+  // on), so the closure captures and calls `load`/`store` on it directly --
+  // no `TileTensor` rebuild.
   //
   // The closure's comptime parameter list is exactly `[width,
   // element_alignment]`. `TensorLoadOp`/`TensorStoreOp::emitMojo` read
@@ -3690,36 +3702,12 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   MojoValue context = state.getMojoValueFor(getContext());
   ValueRange capturing = getCapturing();
 
-  // Every `_call.foreach` capture is a plain `_tensor.create` result today;
-  // its `$shape` operand feeds the rebuilt `TileTensor`'s layout, like
-  // `TensorCreateEpilogueOp::emitMojo` does from its own `$shape`.
-  SmallVector<ForeachCaptureInfo> captureInfos;
-  for (Value cap : capturing) {
-    auto create = cap.getDefiningOp<TensorCreateOp>();
-    if (!create)
-      return emitOpError(
-          "mogg._call.foreach: capture must be a mogg._tensor.create result");
-    ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(create.getElementType());
-    if (dtypeOr.isError())
-      return emitOpError("failed to convert capture dtype to Mojo");
-    MojoValue ptr = state.builder.var(
-        ManagedTensorSliceRef(state.getMojoValueFor(cap)).rawPtr());
-    MojoValue layout = state.builder.var(
-        MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(create.getShape())}));
-    captureInfos.push_back(
-        {ptr, layout, state.mlirDTypeToMojoType(*dtypeOr),
-         MojoValue(llvm::formatv("type_of({0})", layout.text).str()),
-         MojoValue(create.getMut())});
-  }
+  SmallVector<MojoValue> captureValues;
+  for (Value cap : capturing)
+    captureValues.push_back(state.getMojoValueFor(cap));
 
-  // The device is already resolved on the enclosing `mogg.kernel.stub`, so
-  // there is nothing to re-derive from the captures here.
-  auto stub = getOperation()->getParentOfType<KernelStubOp>();
-  if (!stub)
-    return emitOpError(
-        "mogg._call.foreach: must be nested in a mogg.kernel.stub");
-  MojoValue targetStr =
-      MojoValue(("\"" + stub.getExecutionDevice().getLabel() + "\"").str());
+  // The device is the op's own `$device` attribute.
+  MojoValue targetStr = MojoValue(("\"" + getDevice().getLabel() + "\"").str());
 
   // Infer simd_width from all dtypes touched anywhere in the closure body,
   // mirroring legacy `foreach_fusion`'s own computation.
@@ -3743,17 +3731,13 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
         EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
             state, {/*lambdaBuilder=*/&state.builder,
                     /*widthParameter=*/fb.parameters[0],
-                    /*alignmentParameter=*/fb.parameters[1]});
+                    /*alignmentParameter=*/fb.parameters[1],
+                    /*alignmentKeyword=*/kParameterElementAlignment});
 
         Block &body = getBody().front();
         ArrayRef<BlockArgument> args = body.getArguments();
-        // Rebuild each capture as a `TileTensor` from its (ptr, layout) pair
-        // -- see `ForeachCaptureInfo` above.
-        for (auto [i, info] : llvm::enumerate(captureInfos)) {
-          MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
-              info.ptr, info.layout, info.dtype, info.layoutType, info.mut);
-          state.setMojoValueFor(args[i], state.builder.var(tile));
-        }
+        for (auto [i, value] : llvm::enumerate(captureValues))
+          state.setMojoValueFor(args[i], value);
         state.setMojoValueFor(args.back(), fb.arguments[0]);
 
         errOccurred = llvm::any_of(body, [&](Operation &op) {

@@ -143,6 +143,10 @@ struct EmitMojoState {
     MojoBuilder *lambdaBuilder = nullptr;
     MojoValue widthParameter;
     MojoValue alignmentParameter;
+    /// The receiver's own keyword for `alignmentParameter` on `load`/`store`
+    /// ("alignment" on `TileTensor`, "element_alignment" on
+    /// `ManagedTensorSlice`) -- the two aren't spelled the same.
+    llvm::StringRef alignmentKeyword = "alignment";
   };
   MojoLambdaInfos currentLambdaInfo;
 

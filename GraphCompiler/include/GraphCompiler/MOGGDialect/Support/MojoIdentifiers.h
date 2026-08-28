@@ -478,6 +478,10 @@ constexpr llvm::StringLiteral kParameterStaticSpecs = "static_specs";
 constexpr llvm::StringLiteral kParameterSimdWidth = "simd_width";
 constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";
 constexpr llvm::StringLiteral kParameterElementSize = "element_size";
+constexpr llvm::StringLiteral kParameterOutputStaticShape =
+    "output_static_shape";
+constexpr llvm::StringLiteral kParameterStaticStarts = "static_starts";
+constexpr llvm::StringLiteral kParameterStaticSteps = "static_steps";
 constexpr llvm::StringLiteral kParameterLayoutType = "LayoutType";
 constexpr llvm::StringLiteral kParameterOrigin = "origin";
 constexpr llvm::StringLiteral kParameterAddressSpace = "address_space";
@@ -893,7 +897,7 @@ public:
   /// Mojo field / method symbol names on `TileTensor` (and the
   /// `Pointer` it is built from).
   static constexpr llvm::StringLiteral kLayout = "layout";
-  static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
+  static constexpr llvm::StringLiteral kPtr = "ptr";
   static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";
   static constexpr llvm::StringLiteral kDstAddressSpace = "dst_address_space";
   static constexpr llvm::StringLiteral kSrcAddressSpace = "src_address_space";
@@ -904,6 +908,11 @@ public:
 
   /// `val.layout` — the runtime tile layout.
   MojoValue layout() const { return value.get(kLayout); }
+
+  /// `val.ptr` — the tile's base pointer. A magic `__getattr_param__` field
+  /// access on `TileTensor` (see `layout/tile_tensor.mojo`), not a callable
+  /// method the way `ManagedTensorSlice.unsafe_ptr()` is -- do not add `()`.
+  MojoValue ptr() const { return value.get(kPtr); }
 
   /// `value.unsafe_address_space_cast[Copier.src_address_space]()` — casts a
   /// tile into the copier's source address space so it matches the abstract

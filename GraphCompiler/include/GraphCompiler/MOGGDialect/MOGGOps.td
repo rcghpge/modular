@@ -2110,6 +2110,7 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
 
 def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
   Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Build a codegen tensor that is a strided slice view of another codegen tensor.";
   let description = [{
@@ -2119,9 +2120,6 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
     carry the compile-time-known parts of the view's shape and bounds (`?`
     for a dimension that is only known at runtime); the input's own shape is
     read off `$input` directly rather than duplicated here.
-
-    Scaffolding: no `EmitsMojoInterface` yet -- the backing primitive and its
-    calling convention are still to be designed.
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
