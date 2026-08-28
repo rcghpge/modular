@@ -564,7 +564,7 @@ class OutlineModelsToCallablesPass
           builder, loc, devices, frameworkName, initFnType, execFnType,
           initialModelFnType, argumentDeviceIndicesAttr,
           resultDeviceIndicesAttr, argumentNamesAttr, resultNamesAttr,
-          modelName);
+          modelName, /*sym_visibility=*/nullptr);
 
       auto &initBlock = mefModel.getInit().emplaceBlock();
       auto &execBlock = mefModel.getExecute().emplaceBlock();

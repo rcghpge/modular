@@ -162,6 +162,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   MO_PreservedDuringKernelLowering,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"OutputOp">,
+  SymbolName,
+  SymbolVisibility,
   Symbol,
 ]> {
   let summary = "Computation graph operation";
@@ -185,6 +187,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 
   let arguments = (ins
     SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
     TypeAttrOf<KGEN_FuncTypeGeneratorType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParameters,

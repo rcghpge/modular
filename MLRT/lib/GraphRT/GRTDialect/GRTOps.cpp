@@ -354,7 +354,7 @@ LogicalResult RepeatI32Op::verify() {
 ParseResult TestcaseOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse just the symbol name first.
   StringAttr symbol;
-  if (parser.parseSymbolName(symbol, mlir::SymbolTable::getSymbolAttrName(),
+  if (parser.parseSymbolName(symbol, getSymNameAttrName(result.name),
                              result.attributes))
     return failure();
 

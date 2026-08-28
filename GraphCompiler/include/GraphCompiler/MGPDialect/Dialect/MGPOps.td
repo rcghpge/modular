@@ -542,6 +542,8 @@ def ModelOp : MGP_Op<"model", [
   HasParent<"ModuleOp">,
   IsolatedFromAbove,
   RegionKindInterface,
+  SymbolName,
+  SymbolVisibility,
   Symbol,
 ]> {
   let summary = [{
@@ -609,6 +611,7 @@ def ModelOp : MGP_Op<"model", [
     ModelFrameworkAttr:$frameworkName,
     TypeAttrOf<FunctionType>:$inputOutputTypes,
     SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
     UnitAttr:$isSubgraph,
     UnitAttr:$isDeviceGraph,
     OptionalAttr<DictionaryAttr>:$theExtraAttrs

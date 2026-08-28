@@ -1116,7 +1116,8 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   build(builder, state, ArrayAttr::get(ctx, deviceAttrs),
         StringAttr::get(ctx, frameworkName),
         TypeAttr::get(builder.getFunctionType(finalInputTypes, outputTypes)),
-        name, isSubgraph ? builder.getUnitAttr() : nullptr,
+        name, /*sym_visibility=*/nullptr,
+        isSubgraph ? builder.getUnitAttr() : nullptr,
         isDeviceGraph ? builder.getUnitAttr() : nullptr, extraAttrsDict);
 
   Region *initRegion = state.regions[0].get();

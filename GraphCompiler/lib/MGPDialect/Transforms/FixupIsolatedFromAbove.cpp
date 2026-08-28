@@ -218,6 +218,7 @@ ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
                            /*frameworkName=*/inModelOp.getFrameworkNameAttr(),
                            /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
                            /*sym_name=*/inModelOp.getName(),
+                           /*sym_visibility=*/nullptr,
                            /*isSubgraph=*/inModelOp.getIsSubgraph(),
                            /*isDeviceGraph=*/inModelOp.getIsDeviceGraph(),
                            /*theExtraAttrs=*/inModelOp.getTheExtraAttrsAttr());

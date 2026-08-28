@@ -1038,6 +1038,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
   SingleBlockImplicitTerminator<"MOGG::OutputOp">,
+  SymbolName,
+  SymbolVisibility,
   Symbol,
 ]> {
   let summary = "Op that outlines a kernel";
@@ -1618,7 +1620,8 @@ def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
 // KernelDeclOp
 //===----------------------------------------------------------------------===//
 
-def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
+def MOGG_KernelDeclOp
+    : MOGG_Op<"kernel.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares a Mojo kernel's signatures inline in the module";
   let description = [{
     Holds the full function-type signatures (without bodies) for a Mojo kernel
@@ -1658,7 +1661,8 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
     OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
     OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
     ArrayAttr:$struct_params,
-    BoolAttr:$is_user_defined
+    BoolAttr:$is_user_defined,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 
   let assemblyFormat = [{
@@ -1675,7 +1679,8 @@ def MOGG_KernelDeclOp : MOGG_Op<"kernel.decl", [Symbol]> {
   }];
 }
 
-def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
+def MOGG_PrimitiveDeclOp
+    : MOGG_Op<"primitive.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares a primitive Mojo function inline in the module";
   let description = [{
     Records the `FnTypeGeneratorType` signature of a standalone (non-struct)
@@ -1697,6 +1702,7 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
 
   let arguments = (ins
     SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
     StrAttr:$registration,
     MOGG_KernelFunctionAttr:$function
   );
@@ -1711,7 +1717,8 @@ def MOGG_PrimitiveDeclOp : MOGG_Op<"primitive.decl", [Symbol]> {
 // ShapeFunctionDeclOp
 //===----------------------------------------------------------------------===//
 
-def MOGG_ShapeFunctionDeclOp : MOGG_Op<"shape_func.decl", [Symbol]> {
+def MOGG_ShapeFunctionDeclOp
+    : MOGG_Op<"shape_func.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares the shape function for a kernel op registration";
   let description = [{
     Records the signature of the shape function for a given op registration.
@@ -1731,6 +1738,7 @@ def MOGG_ShapeFunctionDeclOp : MOGG_Op<"shape_func.decl", [Symbol]> {
 
   let arguments = (ins
     SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
     StrAttr:$registration,
     MOGG_KernelFunctionAttr:$function
   );

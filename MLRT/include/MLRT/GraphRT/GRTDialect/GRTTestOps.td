@@ -16,7 +16,7 @@ include "mlir/IR/SymbolInterfaces.td"
 //===----------------------------------------------------------------------===//
 
 def TestcaseOp : GRTOp<"testcase",
-          [Symbol, IsolatedFromAbove,
+          [SymbolName, SymbolVisibility, Symbol, IsolatedFromAbove,
            SingleBlockImplicitTerminator<"MEF::OutputOp">]> {
   let summary = "A GRT testcase";
   let description = [{
@@ -26,7 +26,8 @@ def TestcaseOp : GRTOp<"testcase",
     ops in a MEF file to run all the tests in the MEF file.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       OptionalAttr<StrAttr>:$sym_visibility);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;

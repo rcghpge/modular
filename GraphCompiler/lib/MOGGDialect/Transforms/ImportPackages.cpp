@@ -839,7 +839,8 @@ struct ImportPackagesPass
           kernel.registration, kernel.deviceInfo, *executeAttr,
           *elementwiseAttr, *tileElementwiseAttr, *updateViewAttr,
           *buildGraphAttr, structParams,
-          mlir::BoolAttr::get(ctx, isUserDefined));
+          mlir::BoolAttr::get(ctx, isUserDefined),
+          /*sym_visibility=*/nullptr);
       symbolTable.insert(declOp);
     }
 
@@ -866,9 +867,9 @@ struct ImportPackagesPass
         sawFailure = true;
         continue;
       }
-      symbolTable.insert(
-          ShapeFunctionDeclOp::create(builder, sf.func.getLoc(), sf.funcSymName,
-                                      sf.registration, *sfFunctionAttr));
+      symbolTable.insert(ShapeFunctionDeclOp::create(
+          builder, sf.func.getLoc(), sf.funcSymName,
+          /*sym_visibility=*/nullptr, sf.registration, *sfFunctionAttr));
     }
 
     for (auto &prim : primitives) {
@@ -897,7 +898,7 @@ struct ImportPackagesPass
         continue;
       }
       symbolTable.insert(PrimitiveDeclOp::create(
-          builder, prim.func.getLoc(), symName,
+          builder, prim.func.getLoc(), symName, /*sym_visibility=*/nullptr,
           mlir::StringAttr::get(ctx, registration), *primFunctionAttr));
     }
 

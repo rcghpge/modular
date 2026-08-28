@@ -598,9 +598,9 @@ bool EntityTable::collect(ModuleOp module, bool enableMEFMetadata) {
     } else {
       addPrimitiveOpcode(op->getName().getIdentifier());
       // If an op is a symbol, we also have to add the symbol name string.
-      if (auto symbolName = op->getAttrOfType<StringAttr>(
-              mlir::SymbolTable::getSymbolAttrName()))
-        addString(symbolName);
+      if (auto symbolOp = dyn_cast<mlir::SymbolOpInterface>(op))
+        if (StringAttr symbolName = symbolOp.getNameAttr())
+          addString(symbolName);
 
       // Keep track of any attributes used by this op. If the attr is the
       // function type attr that symbols have, then don't write that.
@@ -1740,10 +1740,11 @@ void MEFModuleEmitter::emitInvokablesAndExtractMD(
     // If the region belongs to a symbol, then fill in the primitive opcode and
     // symbol names.
     Operation *parent = region->getParentOp();
-    if (auto sym = parent->getAttrOfType<StringAttr>(
-            mlir::SymbolTable::getSymbolAttrName())) {
-      opcode = parent->getName().getIdentifier();
-      symbol = sym;
+    if (auto parentSym = dyn_cast<mlir::SymbolOpInterface>(parent)) {
+      if (StringAttr sym = parentSym.getNameAttr()) {
+        opcode = parent->getName().getIdentifier();
+        symbol = sym;
+      }
     }
 
     // Remember that we emitted this region to this offset.

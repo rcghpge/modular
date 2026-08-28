@@ -27,10 +27,12 @@ class MEFOp<string mnemonic, list<Trait> traits = []> :
 
 def CallableOp
   : MEFOp<"callable", [HasParent<"ModuleOp">, FunctionOpInterface,
-                        Symbol, IsolatedFromAbove,
+                        SymbolName, SymbolVisibility, Symbol, IsolatedFromAbove,
                         SingleBlockImplicitTerminator<"OutputOp">]> {
   let summary = "Named callable in a MEF file";
-  let arguments = (ins TypeAttrOf<FunctionType>:$function_type,
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                       OptionalAttr<StrAttr>:$sym_visibility,
+                       TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
   let regions = (region SizedRegion<1>:$body);
@@ -95,7 +97,8 @@ def OpaqueOp : MEFOp<"opaque"> {
 
 def ModelOp
   : MEFOp<"model", [HasParent<"ModuleOp">, IsolatedFromAbove,
-                    RegionKindInterface, HasOnlyGraphRegion, Symbol]> {
+                    RegionKindInterface, HasOnlyGraphRegion, SymbolName,
+                    SymbolVisibility, Symbol]> {
   let summary = "A model with 'init' and 'execute' entry points";
   let description = [{
     This op is a lowered correlary to MGP::ModelOp that is allowed to have a
@@ -123,7 +126,8 @@ def ModelOp
                        ArrayAttr:$gResultDeviceIndices,                // 6
                        ArrayAttr:$hArgumentNames,                      // 7
                        ArrayAttr:$iResultNames,                        // 8
-                       SymbolNameAttr:$sym_name);                      // 9
+                       SymbolNameAttr:$sym_name,                       // 9
+                       OptionalAttr<StrAttr>:$sym_visibility);         // 10
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
