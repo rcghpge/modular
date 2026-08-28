@@ -41,9 +41,11 @@
       RETURN_ERROR("Not a Metal device.");                                     \
   } while (0)
 
+// Copy paths only, as on CUDA: kernel launches and event waits stay
+// asynchronous even under `device-sync-mode`.
 #define METAL_MAYBE_SYNC(ctx)                                                  \
   do {                                                                         \
-    const DeviceContext &metal_ctx = (ctx);                                    \
+    DeviceContext &metal_ctx = (ctx);                                          \
     if (metal_ctx.syncMode()) {                                                \
       RETURN_IF_ERROR(metal_ctx.synchronize());                                \
     }                                                                          \
@@ -583,8 +585,11 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   MetalDevice::BufferLookupResult srcResult = getMetalBufferWithOffset(src);
   if (srcResult.isValid()) {
     // Source is a Metal buffer - use blit encoder for copy with offsets
-    return enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
-                            srcResult.offset, dstResult.offset, byteSize);
+    RETURN_IF_ERROR(enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
+                                     srcResult.offset, dstResult.offset,
+                                     byteSize));
+    METAL_MAYBE_SYNC(*this);
+    return success();
   }
 
   // Source is regular host memory — drain prior GPU work, then memcpy into
@@ -630,8 +635,11 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
   MetalDevice::BufferLookupResult dstResult = getMetalBufferWithOffset(dst);
   if (dstResult.isValid()) {
     // Destination is a Metal buffer - use blit encoder for copy with offsets
-    return enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
-                            srcResult.offset, dstResult.offset, byteSize);
+    RETURN_IF_ERROR(enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
+                                     srcResult.offset, dstResult.offset,
+                                     byteSize));
+    METAL_MAYBE_SYNC(*this);
+    return success();
   }
 
   // Drain the kernel that produced `src` before reading its shared storage
@@ -651,11 +659,8 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                DeviceBuffer &src,
                                                size_t srcByteOffset,
                                                size_t srcByteSize,
-                                               bool /*crossStreamSync*/) {
+                                               bool crossStreamSync) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
-
-  // Note: We assume no synchronization between the devices holding dst and src
-  // is required, thus the crossStreamSync argument can be ignored.
 
   // 1) Basic validation
   if (src.byteSize() == 0 || dst.byteSize() == 0)
@@ -666,6 +671,11 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
 
   if (srcByteOffset + srcByteSize < src.byteSize())
     RETURN_ERROR("Requested source slice larger than source buffer");
+
+  // The blit runs on this context's queue, so that is the ordering the caller
+  // gets; a destination owned elsewhere would silently get the wrong one.
+  if (&dst.context() != this)
+    RETURN_ERROR("device context does not match context of dst");
 
   // 2) Handle Metal buffer to Metal buffer copies (both host and device are
   // Metal buffers now) with offset support
@@ -678,9 +688,24 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   if (!srcResult.isValid() || !dstResult.isValid())
     RETURN_ERROR("Invalid Metal buffer pointer");
 
-  // 3) Delegate to enqueueMetalCopy with offsets for all Metal-to-Metal copies
-  return enqueueMetalCopy(srcResult.buffer, dstResult.buffer, srcResult.offset,
-                          dstResult.offset, src.byteSize());
+  // Metal hazard-tracks within a queue but not across them, so a cross-queue
+  // source needs a dependency each way: this queue waits for the producer,
+  // then the producer waits for the copy before it may reuse `src`.
+  DeviceContext &srcCtx = src.context();
+  const bool needsSync = crossStreamSync && &srcCtx != this;
+
+  if (needsSync)
+    RETURN_IF_ERROR(enqueueWaitFor(srcCtx));
+
+  RETURN_IF_ERROR(enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
+                                   srcResult.offset, dstResult.offset,
+                                   src.byteSize()));
+
+  if (needsSync)
+    RETURN_IF_ERROR(srcCtx.enqueueWaitFor(*this));
+
+  METAL_MAYBE_SYNC(*this);
+  return success();
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,

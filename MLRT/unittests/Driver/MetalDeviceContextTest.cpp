@@ -1359,4 +1359,90 @@ TEST_F(MetalDeviceContextTestBase, WaitForContextGatesAcrossQueues) {
   EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[63], 1.0f);
 }
 
+// A D2D copy must wait for the queue that produced its source on the GPU,
+// not read whatever the blit happens to see.
+TEST_F(MetalDeviceContextTestBase, MemCopyDtoDWaitsForProducingContext) {
+  if (ctx_->syncMode())
+    GTEST_SKIP() << "asserts async copy ordering; device-sync-mode is on";
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, src,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  ASSIGN_NO_ERR(DeviceBufferRef, dst,
+                ctxB->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*src, zeros));
+  EXPECT_NO_ERR(ctxB->enqueueCopyToDevice(*dst, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_NO_ERR(ctxB->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, src, 64);
+
+  EXPECT_NO_ERR(ctxB->enqueueCopyDeviceToDevice(*dst, *src));
+  ASSIGN_NO_ERR(DeviceEventRef, probe, ctxB->enqueueEvent());
+
+  // Without the bracket the copy has no dependency on ctx_ and lands at once.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  ASSIGN_NO_ERR(bool, probeReadyWhileGated, probe->isReady());
+  EXPECT_FALSE(probeReadyWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(probe->synchronize());
+  ASSIGN_NO_ERR(void *, dstHost, ctxB->getHostAccessiblePointer(dst->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(dstHost)[0], 1.0f);
+  EXPECT_FLOAT_EQ(static_cast<float *>(dstHost)[63], 1.0f);
+}
+
+// Opting out is the caller's promise to order the copy itself, so the
+// destination queue must be left independent.
+TEST_F(MetalDeviceContextTestBase, MemCopyDtoDHonorsCrossStreamSyncOptOut) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, src,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  ASSIGN_NO_ERR(DeviceBufferRef, dst,
+                ctxB->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*src, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, src, 64);
+
+  EXPECT_NO_ERR(
+      ctxB->enqueueCopyDeviceToDevice(*dst, *src, /*crossStreamSync=*/false));
+  ASSIGN_NO_ERR(DeviceEventRef, probe, ctxB->enqueueEvent());
+
+  // Poll rather than synchronize: a regression gating ctxB on ctx_ would block
+  // forever, and a bounded wait reports that as a failure instead of a hang.
+  bool completedWhileGated = false;
+  for (int i = 0; i < 200 && !completedWhileGated; ++i) {
+    ASSIGN_NO_ERR(bool, ready, probe->isReady());
+    completedWhileGated = ready;
+    if (!ready)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(completedWhileGated);
+
+  gate.release();
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_NO_ERR(ctxB->synchronize());
+}
+
+// A destination owned by another context would silently get the wrong
+// queue's ordering.
+TEST_F(MetalDeviceContextTestBase, MemCopyDtoDRejectsForeignDestination) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctxB, device_->createContext());
+  ASSIGN_NO_ERR(DeviceBufferRef, src,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  ASSIGN_NO_ERR(DeviceBufferRef, dst,
+                ctxB->enqueueCreateBuffer(64 * sizeof(float)));
+
+  EXPECT_ERR_MSG(ctx_->enqueueCopyDeviceToDevice(*dst, *src),
+                 "does not match context of dst");
+}
+
 } // namespace M::Driver
