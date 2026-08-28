@@ -1825,14 +1825,15 @@ def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
   let description = [{
     New-path counterpart of `mogg.tensor.__init__`: reconstructs a `!mogg.tensor_`
     inside a kernel body from a data pointer and a shape. Element type,
-    mutability and io-kind are attributes (the opaque `!mogg.tensor_` carries
-    none of them). The `$device` records the device kind (cpu vs gpu) so emit
-    can pick the preferred alignment locally instead of reaching out to the
-    enclosing kernel stub.
+    mutability, io-kind, and the static shape are all attributes (the opaque
+    `!mogg.tensor_` and `!mogg.shape` types carry none of them). The `$device`
+    records the device kind (cpu vs gpu) so emit can pick the preferred
+    alignment locally instead of reaching out to the enclosing kernel stub.
   }];
   let arguments = (ins
     MOGG_Pointer:$ptr,
     MOGG_Shape:$shape,
+    MOSH_ShapeAttr:$shapeAttr,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
@@ -1939,15 +1940,17 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     `$callee` over `!mogg.tensor_` inputs/outputs. The optional
     `$device_context` wires the callee's device context explicitly instead of
     scavenging it from the enclosing kernel stub's block arguments at emit time.
-    Not a terminator (the enclosing `mogg._kernel` body is terminated by
-    `mogg.output`).
+    `$hasEpilogueFusion` records whether an output is a fused-epilogue tensor,
+    so emit never inspects an output's own producer for this. Not a terminator
+    (the enclosing `mogg._kernel` body is terminated by `mogg.output`).
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
     Optional<MOGG_Context>:$device_context,
-    OptionalAttr<DictionaryAttr>:$kernel_param
+    OptionalAttr<DictionaryAttr>:$kernel_param,
+    DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion
   );
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
@@ -2053,13 +2056,16 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
 
     Captured tensors may have a different shape than `$shape` (e.g. a
     broadcast operand) and from each other, so this op deliberately has no
-    verifier enforcing shape agreement.
+    verifier enforcing shape agreement. `$device` records the target device
+    kind (cpu vs gpu), set once at construction time rather than read back
+    from the enclosing kernel stub at emit time.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
     MOGG_Shape:$shape,
     MOGG_Context:$context,
-    Variadic<MOGG_Tensor>:$capturing
+    Variadic<MOGG_Tensor>:$capturing,
+    M_DeviceRefAttr:$device
   );
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
@@ -2099,6 +2105,41 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
 
   let assemblyFormat = [{
     `[` $kernelSymName `]` `(` $inputs (`,` $index^)? `)` attr-dict `:` type($inputs) (`,` type($index)^)? `->` type($outputs)
+  }];
+}
+
+def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
+  Pure,
+]> {
+  let summary = "Build a codegen tensor that is a strided slice view of another codegen tensor.";
+  let description = [{
+    Produces a `!mogg.tensor_` addressable directly by the consuming loop's
+    own index, reading `$input`'s underlying storage through a start/step
+    reindexing -- nothing is copied. `$outShape`/`$staticStart`/`$staticStep`
+    carry the compile-time-known parts of the view's shape and bounds (`?`
+    for a dimension that is only known at runtime); the input's own shape is
+    read off `$input` directly rather than duplicated here.
+
+    Scaffolding: no `EmitsMojoInterface` yet -- the backing primitive and its
+    calling convention are still to be designed.
+  }];
+  let arguments = (ins
+    MOSH_ShapeAttr:$outShape,
+    DenseI64ArrayAttr:$staticStart,
+    DenseI64ArrayAttr:$staticStep,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MOGG_Tensor:$input,
+    MOGG_Tensor:$starts,
+    MOGG_Tensor:$stops,
+    MOGG_Tensor:$steps
+  );
+  let results = (outs MOGG_Tensor:$result);
+  let assemblyFormat = [{
+    `(` $input `,` $starts `,` $stops `,` $steps `)` attr-dict
+    `:` `(` qualified(type($input)) `,` qualified(type($starts)) `,`
+        qualified(type($stops)) `,` qualified(type($steps)) `)` `->`
+    qualified(type($result))
   }];
 }
 

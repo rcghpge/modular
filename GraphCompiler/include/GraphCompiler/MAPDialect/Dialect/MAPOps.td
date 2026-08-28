@@ -569,6 +569,7 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a slice view of `input`, addressable directly by the loop's own index";
   let description = [{

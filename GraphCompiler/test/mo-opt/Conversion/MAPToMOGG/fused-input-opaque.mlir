@@ -1,8 +1,8 @@
 // RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-prologue --map-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @partial_fused
-// CHECK: %[[A:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = false} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: %[[B:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = false} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[A:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = false{{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: %[[B:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = false{{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK: %[[PRO:.*]] = mogg._tensor.create.prologue %{{.*}} capturing(%[[A]] : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>, elementType = f32, io = 1 : i32, mut = false} {
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
 // CHECK:   %[[V:.*]] = mogg._tensor.load %[[CAP]][%[[I]]] : !mogg.tensor_, !map.index<2> -> f32

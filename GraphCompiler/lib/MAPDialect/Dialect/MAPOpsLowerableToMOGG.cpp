@@ -21,6 +21,7 @@
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
+#include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
 
@@ -64,10 +65,11 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
                   bool isMut, MAPToMOGGState &state) {
   auto tensorTy = cast<MO::TensorType>(tensorType);
   MLIRContext *ctx = state.builder.getContext();
-  Value shape = buildShape(loc, tensorTy.getTypedShapeAttr(), state);
+  MOSH::ShapeAttr shapeAttr = tensorTy.getTypedShapeAttr();
+  Value shape = buildShape(loc, shapeAttr, state);
   return MOGG::TensorCreateOp::create(
-      state.builder, loc, MOGG::TensorType::get(ctx), ptr, shape, state.device,
-      TypeAttr::get(tensorTy.getElementType()),
+      state.builder, loc, MOGG::TensorType::get(ctx), ptr, shape, shapeAttr,
+      state.device, TypeAttr::get(tensorTy.getElementType()),
       state.builder.getBoolAttr(isMut), MO::IOKindAttr::get(ctx, io));
 }
 
@@ -256,9 +258,34 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value callOut : getOutputs())
     callOutputs.push_back(state.mapping.lookup(callOut));
 
+  // Bake whether an output is a fused epilogue tensor into the op now, so
+  // its own emit never has to inspect an output's producer for this.
+  bool hasEpilogueFusion = llvm::any_of(callOutputs, [](Value out) {
+    return out.getDefiningOp<MOGG::TensorCreateEpilogueOp>() != nullptr;
+  });
+
   MOGG::CallOpaqueOp::create(state.builder, getLoc(), getCalleeAttr(),
                              callInputs, callOutputs, state.contextArg,
-                             getParams());
+                             getParams(),
+                             state.builder.getBoolAttr(hasEpilogueFusion));
+  return success();
+}
+
+// map.index.slice.stride -> mogg._tensor.create.slice. Reads its own
+// input/starts/stops/steps out of `state.mapping`, same as any other kernel
+// input.
+LogicalResult SliceStrideOp::lowerToMOGG(MAPToMOGGState &state) {
+  MLIRContext *ctx = getContext();
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  Type elementType =
+      cast<MO::TensorType>(getInput().getType()).getElementType();
+  auto createSlice = MOGG::TensorCreateSliceOp::create(
+      state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
+      getSpec().getStarts(), getSpec().getSteps(), TypeAttr::get(elementType),
+      state.builder.getBoolAttr(false), state.mapping.lookup(getInput()),
+      state.mapping.lookup(getStarts()), state.mapping.lookup(getStops()),
+      state.mapping.lookup(getSteps()));
+  state.mapping.map(getResult(), createSlice.getResult());
   return success();
 }
 
@@ -269,17 +296,9 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
   auto iterOpaqueKernel = (*this)->getParentOfType<IterOpaqueOp>();
-  // `map.iter.opaque` is isolated from above, so nested ops (e.g. this
-  // body's own `map.load`s) reference its shadowed input block args, not
-  // its outer operands -- the same values `IterOpaqueOp::lowerToMOGG` keyed
-  // its mapping on.
-  Block::BlockArgListType inputs = iterOpaqueKernel.getInputBlockArgs();
   if (iterOpaqueKernel.getResults().size() != 1)
     return emitOpError(
         "MAPToMOGG: elementwise lowering supports exactly one output");
-
-  Value outputBlockArg = iterOpaqueKernel.getOutputBlockArgs()[0];
-  Value outputTensor = state.mapping.lookup(outputBlockArg);
 
   // The loop's own iteration shape comes from `map.iter.foreach.body`'s
   // `$shape` attribute, not from any I/O tensor's shape (they happen to
@@ -290,30 +309,38 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   // The foreach driver is one generic primitive, not a per-kernel lookup.
   MOGG::PrimitiveDeclOp foreachPrim = state.registry.lookupPrimitive(
       MOGG::CallForeachRegionOp::getOperationName());
+
+  // Capture every SSA value the body references but doesn't itself define --
+  // covers the kernel's inputs/output and any hoisted view uniformly, in
+  // whatever order the body first references them. Each is already lowered
+  // (and registered in `state.mapping`) by the time this op is reached,
+  // since block order visits its definition first.
+  Block &body = getBody().front();
+  Value oldIndexArg = body.getArgument(0);
+  SetVector<Value> captures;
+  for (Operation &op : body)
+    for (Value operand : op.getOperands())
+      if (operand.getParentBlock() != &body)
+        captures.insert(operand);
+
   SmallVector<Value> capturing;
-  for (Value in : inputs)
-    capturing.push_back(state.mapping.lookup(in));
-  capturing.push_back(outputTensor);
+  for (Value v : captures)
+    capturing.push_back(state.mapping.lookup(v));
 
   auto callForeach = MOGG::CallForeachRegionOp::create(
       state.builder, loc, FlatSymbolRefAttr::get(ctx, foreachPrim.getSymName()),
-      loopShape, state.contextArg, capturing);
+      loopShape, state.contextArg, capturing, state.device);
 
-  // New block: one arg per capture (same order), then the index. Maps the
-  // kernel's inputs, its output block arg, and the old index directly to
-  // these new args.
-  Value oldIndexArg = getBody().front().getArgument(0);
+  // New block: one arg per capture (same order), then the index.
   Block *foreachBlock = state.builder.createBlock(&callForeach.getBody());
-  for (auto [i, in] : llvm::enumerate(inputs))
-    state.mapping.map(in,
+  for (auto [i, v] : llvm::enumerate(captures))
+    state.mapping.map(v,
                       foreachBlock->addArgument(capturing[i].getType(), loc));
-  state.mapping.map(outputBlockArg,
-                    foreachBlock->addArgument(outputTensor.getType(), loc));
   state.mapping.map(oldIndexArg,
                     foreachBlock->addArgument(oldIndexArg.getType(), loc));
 
   state.builder.setInsertionPointToStart(foreachBlock);
-  if (failed(state.lowerRegionBody(getBody().front())))
+  if (failed(state.lowerRegionBody(body)))
     return failure();
 
   state.builder.setInsertionPointAfter(callForeach);
