@@ -53,7 +53,7 @@ mo.graph @add_gather_indices(
 // CHECK-LABEL: mo.graph @chain
 // CHECK-SAME:  (%[[A:.*]]: !mo.tensor<[2, 3], f32>)
 // CHECK-NEXT:  %[[OUT:.*]] = map.iter.opaque
-// CHECK-NEXT:  inputs (%[[A]] as %{{.*}}: !mo.tensor<[2, 3], f32>, %[[A]] as %{{.*}}: !mo.tensor<[2, 3], f32>)
+// CHECK-NEXT:  inputs (%[[A]]: !mo.tensor<[2, 3], f32>)
 // CHECK:       %[[P:.*]] = map.iter.prologue
 // CHECK:       map.call.elementwise @{{.*}}.Add(%{{.*}}) : !map.index<2>, f32, f32 -> f32
 // CHECK-NEXT:  %[[CAST:.*]] = map.call.elementwise @{{.*}}.Cast(%{{.*}}) : !map.index<2>, f32 -> f64
@@ -197,7 +197,7 @@ mo.graph @no_fuse_multi_use(
 // CHECK:       %[[EW:.*]] = map.iter.foreach
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.iter.opaque
-// CHECK-NEXT:  inputs (%[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>, %[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:  inputs (%[[EW]]: !mo.tensor<[2, 2], f32>)
 // CHECK-NOT:   map.call.elementwise
 // CHECK:       #mogg.fusion<#mogg.fusion_leaf<"custom__map_lower_two_fused_inputs"
 mo.graph @no_fuse_same_producer_twice(

@@ -13,7 +13,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_MAPDIALECT_SUPPORT_EPILOGUEFUSER_H
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_SUPPORT_EPILOGUEFUSER_H
 
+#include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MOOps.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace M::MAP {
 
@@ -23,15 +25,30 @@ namespace M::MAP {
 /// kernel whose epilogue computes the add inline, per element, before storing.
 class EpilogueFuser {
 public:
-  explicit EpilogueFuser(MO::GraphOp graphOp) : graphOp(graphOp) {}
+  /// Collects every epilogue-fusible (dst, src) edge in `graphOp`.
+  explicit EpilogueFuser(MO::GraphOp graphOp);
 
-  /// Repeatedly folds every eligible elementwise consumer into its sole
-  /// producer's epilogue until no more fusions are possible, so a chain
-  /// (e.g. matmul -> add -> relu) fully collapses, not just its first link.
-  void fuse();
+  /// Fuses every candidate found at construction time and returns how many
+  /// kernels it fused. Applies exactly one round: folding one link of a
+  /// chain (e.g. matmul -> add -> relu) can expose the next, so a caller
+  /// wanting the whole chain collapsed must reconstruct and re-fuse until a
+  /// round returns zero.
+  unsigned fuse();
 
 private:
+  struct FusionCandidate {
+    IterOpaqueOp dst;
+    unsigned resultIdx;
+    IterEpilogueOp epilogueOp;
+    IterForeachOp src;
+  };
+
+  // Finds every currently-eligible (dst, src) edge in one read-only pass
+  // over the graph. See EpilogueFuser.cpp for the eligibility rules.
+  llvm::SmallVector<FusionCandidate> collectCandidates();
+
   MO::GraphOp graphOp;
+  llvm::SmallVector<FusionCandidate> candidates;
 };
 
 } // namespace M::MAP

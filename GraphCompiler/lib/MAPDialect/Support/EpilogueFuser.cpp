@@ -63,12 +63,7 @@ static bool containsMatmulOrConvOrConcat(IterOpaqueOp op) {
   return false;
 }
 
-struct FusionCandidate {
-  IterOpaqueOp dst;
-  unsigned resultIdx;
-  IterEpilogueOp epilogueOp;
-  IterForeachOp src;
-};
+} // namespace
 
 // Finds every currently-eligible (dst, src) edge in one read-only pass over
 // the graph. `claimed` prevents the same `src` from being claimed by more
@@ -76,7 +71,7 @@ struct FusionCandidate {
 // be folded into one producer's epilogue at a time -- a real case, not just
 // a theoretical one, e.g. `add(matmul1_result, matmul2_result)`, where both
 // matmuls independently look like valid producers for the same `add`.
-static SmallVector<FusionCandidate> collectCandidates(MO::GraphOp graphOp) {
+SmallVector<EpilogueFuser::FusionCandidate> EpilogueFuser::collectCandidates() {
   SmallVector<FusionCandidate> candidates;
   DenseSet<Operation *> claimed;
 
@@ -289,36 +284,34 @@ static void fuseEpilogueOnce(IterOpaqueOp dst, unsigned resultIdx,
   src->replaceAllUsesWith(ValueRange{dstResult});
 }
 
-} // namespace
+EpilogueFuser::EpilogueFuser(MO::GraphOp graphOp)
+    : graphOp(graphOp), candidates(collectCandidates()) {}
 
-void EpilogueFuser::fuse() {
+// Applies exactly the round of candidates found at construction time: a
+// chain of epilogue-eligible consumers (matmul -> add -> relu) needs a fresh
+// EpilogueFuser reconstructed and re-fused per link, since each round only
+// sees the sole-use edge immediately adjacent to a producer.
+unsigned EpilogueFuser::fuse() {
   PatternRewriter rewriter(graphOp.getContext());
 
-  // Loop to a local fixed point so a chain of epilogue-eligible consumers
-  // (matmul -> add -> relu) fully collapses, not just its first link: each
-  // round only sees the sole-use edge immediately adjacent to a producer, so
-  // an N-link chain needs N rounds.
-  SmallVector<FusionCandidate> candidates = collectCandidates(graphOp);
-  while (!candidates.empty()) {
-    SmallVector<Operation *> toErase;
-    for (FusionCandidate &candidate : candidates) {
-      fuseEpilogueOnce(candidate.dst, candidate.resultIdx, candidate.epilogueOp,
-                       candidate.src, rewriter);
-      candidate.dst.setFusionInfoAttr(
-          MOGG::createFusionInfo<MOGG::FusionEpilogueAttr>(
-              candidate.dst.getContext(),
-              {candidate.dst.getOperation(), candidate.src.getOperation()},
-              {static_cast<uint32_t>(candidate.resultIdx)}));
-      candidate.dst->setLoc(mlir::FusedLoc::get(
-          candidate.dst.getContext(),
-          {candidate.src->getLoc(), candidate.dst->getLoc()}));
-      toErase.push_back(candidate.src);
-    }
-    for (Operation *op : toErase)
-      op->erase();
-
-    candidates = collectCandidates(graphOp);
+  SmallVector<Operation *> toErase;
+  for (FusionCandidate &candidate : candidates) {
+    fuseEpilogueOnce(candidate.dst, candidate.resultIdx, candidate.epilogueOp,
+                     candidate.src, rewriter);
+    candidate.dst.setFusionInfoAttr(
+        MOGG::createFusionInfo<MOGG::FusionEpilogueAttr>(
+            candidate.dst.getContext(),
+            {candidate.dst.getOperation(), candidate.src.getOperation()},
+            {static_cast<uint32_t>(candidate.resultIdx)}));
+    candidate.dst->setLoc(mlir::FusedLoc::get(
+        candidate.dst.getContext(),
+        {candidate.src->getLoc(), candidate.dst->getLoc()}));
+    toErase.push_back(candidate.src);
   }
+  for (Operation *op : toErase)
+    op->erase();
+
+  return candidates.size();
 }
 
 } // namespace M::MAP

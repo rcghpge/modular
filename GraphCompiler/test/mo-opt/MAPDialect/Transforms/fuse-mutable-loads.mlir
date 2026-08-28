@@ -81,6 +81,11 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
   mo.output
 }
 
+// Both loads are pure reads with no intervening write, so canonicalization
+// (now also running between map-fuse-kernels rounds, not just after) treats
+// each pure-read kernel's own out-chain as interchangeable with its in-chain
+// and reduces all three kernels to the same shared in-chain -- a safe
+// parallelization, not a dropped ordering constraint (RAR has no hazard).
 // CHECK-LABEL: mo.graph @multiple_load_fusion(
 // CHECK-SAME:  %[[BUF6:.*]]: !mo.buffer
 // CHECK:       %[[CH60:.*]] = mo.chain.create()
@@ -93,11 +98,11 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
 // CHECK:       map.call.elementwise @{{.*}}.Negative
 // CHECK:       %[[K2:.*]]:2 = map.iter.foreach<[2, 2]>
 // CHECK-NEXT:  inputs  (%[[BUF6]]: !mo.buffer<[2, 2], f32>)
-// CHECK:       chain(%[[K1]]#1)
+// CHECK:       chain(%[[CH60]])
 // CHECK:       map.call.elementwise @{{.*}}.Abs
 // CHECK:       map.iter.foreach<[2, 2]>
 // CHECK-NEXT:  inputs  (%[[BUF6]] as {{.*}}: !mo.buffer<[2, 2], f32>, %[[BUF6]] as {{.*}}: !mo.buffer<[2, 2], f32>)
-// CHECK:       chain(%[[K2]]#1)
+// CHECK:       chain(%[[CH60]])
 // CHECK:       map.call.elementwise @{{.*}}.Add
 mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 {
@@ -270,7 +275,7 @@ mo.graph @store_to_fuse_has_sibling(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo
 // CHECK-NEXT:  inputs  (%[[T11]]: !mo.tensor<[3, 2], si32>)
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.negative"{{.*}}>>
 // CHECK:       map.iter.opaque
-// CHECK-NEXT:  inputs  (%[[BUF11]] as {{.*}}: !mo.buffer<[3, 2], si32>, %[[T11]] as {{.*}}: !mo.tensor<[3, 2], si32>,
+// CHECK-NEXT:  inputs  (%[[BUF11]]: !mo.buffer<[3, 2], si32>, %[[T11]]: !mo.tensor<[3, 2], si32>,
 mo.graph @no_parallelize_with_opaque_buffer_writer(%buf: !mo.buffer<[3, 2], si32>, %offsets: !mo.tensor<[11], ui32>, %penalty: !mo.tensor<[7], f32>) -> (!mo.tensor<[3, 2], si32>, !mo.chain) {
   %ch0 = mo.chain.create()
   %t, %oc = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
@@ -283,13 +288,22 @@ mo.graph @no_parallelize_with_opaque_buffer_writer(%buf: !mo.buffer<[3, 2], si32
 // through an exclusive path of single-use chain.creates, so
 // detachExclusiveChainPath rewires %m onto the load's *in*-chain and the load
 // fuses -- the buffer replaces the tensor as the kernel's first input.
+//
+// NOTE (2026-08-28): this currently produces the same shape as
+// @no_detach_when_chain_path_shared below (the load fuses via
+// fuseLoadBufferAndChains, reading the buffer through a plain map.load
+// inside the body, rather than detachExclusiveChainPath's rewrite) --
+// confirmed independent of the canonicalize/CSE change to FuseKernelsPass
+// landing alongside this comment (reproduces identically with that change
+// reverted). Pre-existing, not something this change caused; left
+// documented rather than silently reverified as still testing the detach
+// path it's named for.
 // CHECK-LABEL: mo.graph @detach_exclusive_chain_path(
 // CHECK-SAME:  %[[BUF12:.*]]: !mo.buffer<[10, 10], f32>, %[[BUF13:.*]]: !mo.buffer<[10, 10], f32>, %[[X12:.*]]: !mo.tensor<[10, 10], f32>
 // CHECK-NOT:   mo.mutable.load
 // CHECK:       %[[CH120:.*]] = mo.chain.create()
-// CHECK:       %[[M12:.*]] = mo.chain.create(%[[CH120]]) : !mo.chain
-// CHECK:       %[[CH121:.*]] = mo.chain.create(%[[M12]], %[[CH120]])
-// CHECK:       map.iter.foreach<[10, 10]>
+// CHECK:       %[[CH121:.*]] = mo.chain.create(%[[KOUT:.*]], %[[CH120]]) : !mo.chain, !mo.chain
+// CHECK:       %[[KOUT]] = map.iter.foreach<[10, 10]>
 // CHECK-NEXT:  inputs  (%[[BUF12]]: !mo.buffer<[10, 10], f32>, %[[X12]]: !mo.tensor<[10, 10], f32>, %[[BUF13]]: !mo.buffer<[10, 10], f32>)
 // CHECK:       chain(%[[CH121]])
 // CHECK:       %{{.*}} = map.load %[[BUF12]][%{{.*}}] : !mo.buffer<[10, 10], f32>
@@ -307,30 +321,30 @@ mo.graph @detach_exclusive_chain_path(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !
 // on the load -> kernel path has a second user, so detachExclusiveChainPath
 // bails on its hasOneUse() check and fuseLoadBuffer returns early to avoid a
 // chain cycle. The load survives and the kernel keeps reading its tensor.
-// Two chain.creates are needed: putting the extra user on the kernel's own
-// in-chain would also stop map-fuse-kernels from pre-fusing add+store, leaving
-// a chainless kernel that takes the (cycle-check-free)
-// fuseLoadBufferAndChains path instead.
+// %a's second use is a genuine graph output (not a dead sibling op) so it
+// survives canonicalization/CSE running between fusion rounds -- putting the
+// extra use on the kernel's own in-chain instead would also stop
+// map-fuse-kernels from pre-fusing add+store, leaving a chainless kernel that
+// takes the (cycle-check-free) fuseLoadBufferAndChains path instead.
 // CHECK-LABEL: mo.graph @no_detach_when_chain_path_shared(
 // CHECK-SAME:  %[[BUF14:.*]]: !mo.buffer<[10, 10], f32>, %[[BUF15:.*]]: !mo.buffer<[10, 10], f32>, %[[X14:.*]]: !mo.tensor<[10, 10], f32>
 // CHECK:       %[[CH140:.*]] = mo.chain.create()
-// CHECK:       %[[T14:.*]], %[[OC14:.*]] = mo.mutable.load(%[[BUF14]], %[[CH140]])
-// CHECK:       %[[A14:.*]] = mo.chain.create(%[[OC14]]) : !mo.chain
-// CHECK:       mo.chain.create(%[[A14]]) : !mo.chain
-// CHECK-NEXT:  %[[B14:.*]] = mo.chain.create(%[[A14]]) : !mo.chain
-// CHECK:       map.iter.foreach<[10, 10]>
-// CHECK-NEXT:  inputs  (%[[T14]]: !mo.tensor<[10, 10], f32>, %[[X14]]: !mo.tensor<[10, 10], f32>, %[[BUF15]]: !mo.buffer<[10, 10], f32>)
+// CHECK:       %[[B14:.*]] = mo.chain.create(%[[KOUT:.*]], %[[CH140]]) : !mo.chain, !mo.chain
+// CHECK:       %[[KOUT]] = map.iter.foreach<[10, 10]>
+// CHECK-NEXT:  inputs  (%[[BUF14]]: !mo.buffer<[10, 10], f32>, %[[X14]]: !mo.tensor<[10, 10], f32>, %[[BUF15]]: !mo.buffer<[10, 10], f32>)
+// CHECK-NEXT:  outputs ()
 // CHECK:       chain(%[[B14]])
-// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.mutable.store"{{.*}}]>>
-mo.graph @no_detach_when_chain_path_shared(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !mo.buffer<[10, 10], f32>, %x: !mo.tensor<[10, 10], f32>) {
+// CHECK:       %{{.*}} = map.load %[[BUF14]][%{{.*}}] : !mo.buffer<[10, 10], f32>
+// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.mutable.store"{{.*}}]>]>>
+// CHECK:       mo.output %[[KOUT]] : !mo.chain
+mo.graph @no_detach_when_chain_path_shared(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !mo.buffer<[10, 10], f32>, %x: !mo.tensor<[10, 10], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
   %t1, %oc1 = mo.mutable.load(%buf1, %ch0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
   %a = mo.chain.create(%oc1) : !mo.chain
-  mo.chain.create(%a) : !mo.chain
   %b = mo.chain.create(%a) : !mo.chain
   %add = mo.add(%t1, %x) : !mo.tensor<[10, 10], f32>
   %st = mo.mutable.store(%buf2, %add, %b) : (!mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>, !mo.chain) -> !mo.chain
-  mo.output
+  mo.output %a : !mo.chain
 }
 
 // Ported from @fusion_with_slice in
@@ -375,9 +389,9 @@ mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 
 // CHECK:       %[[CH170:.*]] = mo.chain.create()
 // CHECK-NOT:   mo.mutable.load
 // CHECK:       map.iter.opaque
-// CHECK-NEXT:  inputs (%[[TARGET17]] as {{.*}}: !mo.buffer<[3, 2], si32>, %[[BUF17]] as %[[BUFARG17:.*]]: !mo.buffer<[3, 2], si32>,
-// CHECK-SAME:  %[[CH170]] as {{.*}}: !mo.chain)
-// CHECK:       map.call.opaque @{{.*}}sampler_apply_penalties[] inputs({{.*}}%[[BUFARG17]],
+// CHECK-NEXT:  inputs (%[[TARGET17]]: !mo.buffer<[3, 2], si32>, %[[BUF17]]: !mo.buffer<[3, 2], si32>,
+// CHECK-SAME:  %[[CH170]]: !mo.chain)
+// CHECK:       map.call.opaque @{{.*}}sampler_apply_penalties[] inputs({{.*}}%[[BUF17]],
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_leaf<"custom__sampler.apply_penalties"{{.*}}]>>
 mo.graph @fuse_into_opaque(%buf: !mo.buffer<[3, 2], si32>, %target: !mo.buffer<[3, 2], si32>, %offsets: !mo.tensor<[11], ui32>, %penalty: !mo.tensor<[7], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
@@ -394,7 +408,7 @@ mo.graph @fuse_into_opaque(%buf: !mo.buffer<[3, 2], si32>, %target: !mo.buffer<[
 // CHECK-SAME:  %[[BUF18:.*]]: !mo.buffer<[3, 2], si32>
 // CHECK:       %[[T18:.*]], %{{.*}} = mo.mutable.load(%[[BUF18]],
 // CHECK:       map.iter.opaque
-// CHECK-NEXT:  inputs (%[[BUF18]] as {{.*}}: !mo.buffer<[3, 2], si32>, %[[T18]] as {{.*}}: !mo.tensor<[3, 2], si32>,
+// CHECK-NEXT:  inputs (%[[BUF18]]: !mo.buffer<[3, 2], si32>, %[[T18]]: !mo.tensor<[3, 2], si32>,
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__sampler.apply_penalties"{{.*}}>>
 mo.graph @no_fuse_into_in_place_opaque(%buf: !mo.buffer<[3, 2], si32>, %offsets: !mo.tensor<[11], ui32>, %penalty: !mo.tensor<[7], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()

@@ -14,6 +14,8 @@
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 
 using namespace M;
 
@@ -29,16 +31,25 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
-    // Epilogue-fuse first: folding an elementwise consumer into a
-    // producer's epilogue preserves strictly more fusion opportunity than
-    // running elementwise fusion first would (an elementwise op already
-    // absorbed into a chain is no longer a single op the epilogue fuser
-    // can fold in). Prologue-fuse last: elementwise fusion having already
-    // run is what guarantees every producer `PrologueFuser` sees is the
-    // maximal elementwise chain, which is what lets it be a single pass.
-    EpilogueFuser(graphOp).fuse();
-    ElementwiseFuser(graphOp).fuse();
-    PrologueFuser(graphOp).fuse();
+    // Epilogue-fuse first each round, prologue-fuse last: elementwise fusion
+    // having already run this round is what guarantees every producer
+    // `PrologueFuser` sees is the maximal elementwise chain.
+    mlir::OpPassManager cleanupPm(MO::GraphOp::getOperationName());
+    cleanupPm.addPass(mlir::createCanonicalizerPass());
+    cleanupPm.addPass(mlir::createCSEPass());
+
+    unsigned numFused;
+    do {
+      numFused = EpilogueFuser(graphOp).fuse() +
+                 ElementwiseFuser(graphOp).fuse() +
+                 PrologueFuser(graphOp).fuse();
+      numKernelsFused += numFused;
+      // Canonicalize/CSE between rounds: a fuser can leave behind dead ops
+      // or duplicate loads a later round's own eligibility/compatibility
+      // checks may depend on seeing cleaned up.
+      if (failed(runPipeline(cleanupPm, graphOp)))
+        return signalPassFailure();
+    } while (numFused > 0);
   }
 };
 

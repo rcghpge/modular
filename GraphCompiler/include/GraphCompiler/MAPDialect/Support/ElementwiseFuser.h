@@ -24,19 +24,23 @@ namespace M::MAP {
 /// compute directly into its consumer's body.
 class ElementwiseFuser {
 public:
+  /// Collects every fusible set of `map.iter.foreach` kernels in `graphOp`.
+  explicit ElementwiseFuser(MO::GraphOp graphOp);
+
+  /// Fuses each set found at construction time into a single kernel, erases
+  /// the fused-away kernels once they have no remaining users, and returns
+  /// how many kernels were fused.
+  unsigned fuse();
+
+private:
   // Runs the source-destination sequence fusion analysis over `graphOp`,
   // finding every fusible set of `map.iter.foreach` kernels and computing a
   // topological sort for each. Read-only: does not mutate the graph.
-  explicit ElementwiseFuser(MO::GraphOp graphOp);
+  MOGG::FusionSubGraphs collectCandidates();
 
-  /// Fuses each set found during construction into a single kernel, then
-  /// erases the fused-away kernels once they have no remaining users.
-  void fuse();
-
-private:
   // Fuses every op in `subgraph` but the last directly into the last one
   // (the subgraph's sink), which absorbs all of them.
-  void fuseSubgraph(llvm::ArrayRef<mlir::Operation *> subgraph);
+  void fuseSubgraphOnce(llvm::ArrayRef<mlir::Operation *> subgraph);
 
   MO::GraphOp graphOp;
   MOGG::FusionSubGraphs subgraphs;

@@ -19,22 +19,12 @@ using namespace M;
 
 namespace M::MAP {
 
-namespace {
-
-struct FusionCandidate {
-  IterOpaqueOp dst;
-  IterPrologueOp prologueOp;
-  unsigned captureIdx;
-  IterForeachOp src;
-  unsigned dstInputIdx;
-};
-
 // Finds every currently-eligible (prologueOp, captureIdx, src) edge in one
 // read-only pass over the graph. `hasOneUse()` on src's result is the only
 // gate needed against a producer being claimed twice: a value with exactly
 // one use cannot simultaneously be a capture of two different prologues (or
 // two different capture positions of the same one).
-static SmallVector<FusionCandidate> collectCandidates(MO::GraphOp graphOp) {
+SmallVector<PrologueFuser::FusionCandidate> PrologueFuser::collectCandidates() {
   SmallVector<FusionCandidate> candidates;
 
   graphOp.getBody().walk([&](IterPrologueOp prologueOp) {
@@ -180,18 +170,8 @@ static void fusePrologueOnce(IterOpaqueOp dst, IterPrologueOp prologueOp,
   }
 }
 
-} // namespace
-
-void PrologueFuser::fuse() {
-  PatternRewriter rewriter(graphOp.getContext());
-
-  // One pass is enough, unlike `EpilogueFuser`'s loop to a fixed point: fusing
-  // a producer in only ever gives `dst` plain new inputs, never a new
-  // prologue-fusible one, so no fusion can expose a candidate a second pass
-  // would find. Collapsing a longer elementwise chain into the single producer
-  // this sees is `ElementwiseFuser`'s job, which is why it must run first.
-  SmallVector<FusionCandidate> candidates = collectCandidates(graphOp);
-
+PrologueFuser::PrologueFuser(MO::GraphOp graphOp)
+    : graphOp(graphOp), candidates(collectCandidates()) {
   // Highest input index first: `createFusionInfo` PREPENDS each new (leaf,
   // operand index) pair to the group it merges into, so descending order is
   // what leaves the recorded `operandIndices` ascending and paired with their
@@ -200,6 +180,15 @@ void PrologueFuser::fuse() {
                     [](const FusionCandidate &a, const FusionCandidate &b) {
                       return a.dstInputIdx > b.dstInputIdx;
                     });
+}
+
+// One pass is enough, unlike `EpilogueFuser`'s per-round reconstruction:
+// fusing a producer in only ever gives `dst` plain new inputs, never a new
+// prologue-fusible one, so no fusion can expose a candidate a second pass
+// would find. Collapsing a longer elementwise chain into the single producer
+// this sees is `ElementwiseFuser`'s job, which is why it must run first.
+unsigned PrologueFuser::fuse() {
+  PatternRewriter rewriter(graphOp.getContext());
 
   SmallVector<Operation *> toErase;
   for (FusionCandidate &candidate : candidates) {
@@ -217,6 +206,8 @@ void PrologueFuser::fuse() {
   }
   for (Operation *op : toErase)
     op->erase();
+
+  return candidates.size();
 }
 
 } // namespace M::MAP

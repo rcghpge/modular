@@ -19,11 +19,19 @@ def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
     child of the module), so the pass never walks the imported kernel decls or
     the insides of kernels it already visited, and independent graphs run in
     parallel.
+
+    Repeats epilogue, elementwise, then prologue fusion until a round fuses
+    nothing, since folding one link of a chain can expose the next. Reports
+    the total number of kernels fused as a pass statistic.
   }];
 
   let dependentDialects = [
     "M::MAP::MAPDialect",
     "M::MOGG::MOGGDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numKernelsFused", "num-kernels-fused", "Number of kernels fused">
   ];
 }
 

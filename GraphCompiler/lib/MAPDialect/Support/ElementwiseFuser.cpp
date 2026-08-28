@@ -99,7 +99,10 @@ static bool foreachKernelsAreCompatible(Operation *src, Operation *dst) {
 
 } // namespace
 
-ElementwiseFuser::ElementwiseFuser(MO::GraphOp graphOp) : graphOp(graphOp) {
+ElementwiseFuser::ElementwiseFuser(MO::GraphOp graphOp)
+    : graphOp(graphOp), subgraphs(collectCandidates()) {}
+
+MOGG::FusionSubGraphs ElementwiseFuser::collectCandidates() {
   MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
 
   MOGG::EligibilityFunction isEligible = isAnElementwiseForeach;
@@ -111,17 +114,23 @@ ElementwiseFuser::ElementwiseFuser(MO::GraphOp graphOp) : graphOp(graphOp) {
 
   /// TODO: MOCO-1469 Remove this limit (mirrors mogg-fuse-elementwise).
   static constexpr uint64_t kMaximumFusionSetSize = 64;
-  subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
-      graphOp.getBody(), topologyAnalysis, isEligible, areCompatible,
-      canDuplicate, kMaximumFusionSetSize);
+  MOGG::FusionSubGraphs subgraphs =
+      MOGG::sourceDestinationSequenceFusionAnalysis(
+          graphOp.getBody(), topologyAnalysis, isEligible, areCompatible,
+          canDuplicate, kMaximumFusionSetSize);
 
   for (auto &subgraph : subgraphs)
     topologyAnalysis.computeTopologicalSorting(subgraph);
+
+  return subgraphs;
 }
 
-void ElementwiseFuser::fuse() {
-  for (ArrayRef<Operation *> subgraph : subgraphs)
-    fuseSubgraph(subgraph);
+unsigned ElementwiseFuser::fuse() {
+  unsigned numFused = 0;
+  for (ArrayRef<Operation *> subgraph : subgraphs) {
+    fuseSubgraphOnce(subgraph);
+    numFused += subgraph.size() - 1;
+  }
 
   // Erase fused-away kernels once they have no remaining users. A DenseSet
   // guards against a double-erase when duplication placed the same op in
@@ -135,9 +144,11 @@ void ElementwiseFuser::fuse() {
       }
     }
   }
+
+  return numFused;
 }
 
-void ElementwiseFuser::fuseSubgraph(ArrayRef<Operation *> subgraph) {
+void ElementwiseFuser::fuseSubgraphOnce(ArrayRef<Operation *> subgraph) {
   auto dst = cast<IterForeachOp>(subgraph.back());
   PatternRewriter rewriter(dst.getContext());
   Block &dstBody = dst.getBody().front();
