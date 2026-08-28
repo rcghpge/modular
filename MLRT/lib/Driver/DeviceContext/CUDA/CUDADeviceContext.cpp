@@ -479,6 +479,14 @@ ErrorOr<bool> CUDADevice::supportsMulticast() const {
   return multicastSupported != 0;
 }
 
+ErrorOr<bool> CUDADevice::isHostUnified() const {
+  // Not UNIFIED_ADDRESSING: discrete GPUs set that too.
+  int integrated = 0;
+  CUDA_CHECK_ERR(cudaDriver().cuDeviceGetAttribute(
+      &integrated, CUdevice_attribute::INTEGRATED, cudaDevice()));
+  return integrated != 0;
+}
+
 ErrorOr<DeviceContextRef> CUDADevice::createContext() {
   DEFINE_OR_RETURN_ERROR(CUcontext, context, cudaContext());
 

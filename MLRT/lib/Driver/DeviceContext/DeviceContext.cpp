@@ -235,6 +235,9 @@ MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
 
 ErrorOr<bool> Device::supportsMulticast() const { return false; }
 
+// Unanswered backends report the topology no caller can get wrong.
+ErrorOr<bool> Device::isHostUnified() const { return false; }
+
 ErrorOr<Device::GraphMemInfo> Device::getGraphMemoryInfo() const {
   return GraphMemInfo{};
 }

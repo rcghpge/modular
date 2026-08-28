@@ -151,6 +151,9 @@ public:
   ErrorOr<size_t> maxSingleAllocationSize() const;
   /// Whether this device can directly access `other`'s memory.
   ErrorOr<bool> canAccess(const Device &other) const;
+  /// Answered by the plugin's `host_unified` property; virtual devices
+  /// report false.
+  ErrorOr<bool> isHostUnified() const;
 
   /// Creates a new context (with its own stream) on this device.
   ErrorOr<DeviceContextRef> createContext();

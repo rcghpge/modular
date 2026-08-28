@@ -255,6 +255,13 @@ TEST(DeviceContextTest, GetHostAccessiblePointerIsIdentityOnCPU) {
   EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(nullptr), "pointer is null");
 }
 
+// The CPU device is the host, so there is no second pool to unify across.
+TEST(DeviceContextTest, IsHostUnifiedOnCPU) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  ASSIGN_NO_ERR(bool, unified, ctx->device().isHostUnified());
+  EXPECT_TRUE(unified);
+}
+
 TEST(DeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 

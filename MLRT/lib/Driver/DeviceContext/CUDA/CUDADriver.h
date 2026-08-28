@@ -50,6 +50,7 @@ enum class CUstreamCaptureStatus {
 
 enum class CUdevice_attribute {
   TEXTURE_ALIGNMENT = 14,
+  INTEGRATED = 18,
   PCI_BUS_ID = 33,
   PCI_DEVICE_ID = 34,
   UNIFIED_ADDRESSING = 41,

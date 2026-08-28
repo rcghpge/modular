@@ -89,6 +89,13 @@ TEST_F(HALVirtualDeviceTest, DeviceIdCarriesThrough) {
   EXPECT_EQ(device->name(), "VirtualGPU-3");
 }
 
+TEST_F(HALVirtualDeviceTest, IsHostUnifiedIsFalseOnVirtualDevices) {
+  DeviceRef device = virtualDevice();
+  ASSERT_NE(device.getPointer(), nullptr);
+  ASSIGN_NO_ERR(bool, unified, device->isHostUnified());
+  EXPECT_FALSE(unified);
+}
+
 TEST_F(HALVirtualDeviceTest, NumberOfDevicesReportsVirtualCount) {
   EXPECT_EQ(Device::numberOfDevices(Device::gpuAPI), kVirtualCount);
 }

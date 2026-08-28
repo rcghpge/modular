@@ -196,6 +196,11 @@ public:
 
   virtual ErrorOr<bool> supportsMulticast() const;
 
+  /// Whether this device and the host draw from one physical memory pool.
+  /// Hardware topology only: it neither implies nor is implied by an
+  /// allocation's addressability, which `getHostAccessiblePointer` answers.
+  virtual ErrorOr<bool> isHostUnified() const;
+
   virtual int deviceCount() const = 0;
 
   MemoryManager &memoryManager() const;

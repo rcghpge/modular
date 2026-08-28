@@ -13,7 +13,10 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <optional>
+#include <string_view>
 #include <thread>
+#include <utility>
 
 namespace M::Driver {
 
@@ -65,6 +68,37 @@ TEST_F(GPUDeviceContextTest, NumDevices) {
   // Create devices outside of allowed range.
   EXPECT_ERR_MSG(Device::create(Device::gpuAPI, -7), "must be positive");
   EXPECT_ERR_MSG(Device::create(Device::gpuAPI, num), "not available");
+}
+
+// Keyed off the model, not the api: an api-derived expectation would call every
+// non-Apple part discrete, which Orin, GB10 and MI300A falsify.
+static std::optional<bool> knownHostUnified(std::string_view name) {
+  static constexpr std::pair<std::string_view, bool> kModels[] = {
+      {"Apple M", true}, {"Orin", true},    {"GB10", true},
+      {"MI300A", true},  {"GB200", false},  {"B200", false},
+      {"H100", false},   {"MI300X", false}, {"MI355X", false},
+  };
+  // Longest match wins, so "GB200" is not shadowed by "B200".
+  std::optional<bool> expected;
+  size_t matched = 0;
+  for (auto &[model, unified] : kModels)
+    if (name.find(model) != std::string_view::npos && model.size() > matched) {
+      expected = unified;
+      matched = model.size();
+    }
+  return expected;
+}
+
+// `integrated` and `UNIFIED_ADDRESSING` differ only on discrete parts, so pin
+// the value rather than smoke-test it.
+TEST_F(GPUDeviceContextTest, IsHostUnifiedMatchesKnownTopology) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(bool, unified, ctx->device().isHostUnified());
+  std::optional<bool> expected = knownHostUnified(ctx->device().name());
+  ASSERT_TRUE(expected.has_value())
+      << "unlisted device \"" << ctx->device().name()
+      << "\": add it to kModels";
+  EXPECT_EQ(unified, *expected);
 }
 
 TEST_F(GPUDeviceContextTest, ComputeCapability) {

@@ -173,6 +173,14 @@ M_driver_status_t M_driver_device::getProperty(llvm::StringRef name,
     return M_DRIVER_STATUS_SUCCESS;
   }
 
+  if (name == M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED) {
+    if (mDevice == nullptr)
+      return M_DRIVER_STATUS_BAD_DEVICE;
+    // Queried: an Intel Mac's discrete GPU is also a Metal device.
+    *static_cast<int64_t *>(value) = mDevice->hasUnifiedMemory() ? 1 : 0;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
   if (name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE ||
       name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);

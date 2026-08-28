@@ -123,6 +123,15 @@ static M_driver_static_bundle makeStaticBundle(const std::vector<char> &hsaco,
   };
 }
 
+TEST_F(DriverPluginDeviceTest, HostUnifiedPropertyIsImplemented) {
+  for (M_driver_device_t device : devices) {
+    int64_t unified = -1;
+    ASSERT_SUCCESS(device_property(
+        device, M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED, &unified));
+    EXPECT_TRUE(unified == 0 || unified == 1) << "got " << unified;
+  }
+}
+
 TEST_F(DriverPluginContextTest, BundleLoadNullBundle) {
   M_driver_runtime_bundle_t runtime = nullptr;
   M_driver_bundle_compilation_options opts{"", 0, -1};

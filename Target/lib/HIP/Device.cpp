@@ -68,6 +68,15 @@ M_driver_status_t M_driver_device::property(llvm::StringRef name, void *value) {
     out[n] = '\0';
     return M_DRIVER_STATUS_SUCCESS;
   }
+  if (name == M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED) {
+    int integrated = 0;
+    // Not hipDeviceAttributeUnifiedAddressing: discrete GPUs set that too.
+    if (driver.hip().hipDeviceGetAttribute(
+            &integrated, hipDeviceAttributeIntegrated, deviceId) != hipSuccess)
+      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    *static_cast<int64_t *>(value) = integrated != 0 ? 1 : 0;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);
     dl->device_type = kDLROCM;

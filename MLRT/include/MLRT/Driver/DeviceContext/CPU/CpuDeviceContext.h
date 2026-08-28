@@ -67,6 +67,9 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() override;
 
+  /// The CPU device is the host, so there is no second pool to unify with.
+  ErrorOr<bool> isHostUnified() const override { return true; }
+
   DLDevice getDLDevice(bool /*pinned*/) const override { return {kDLCPU, 0}; }
 
   static const CpuDevice &cast(const Device &device);

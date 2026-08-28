@@ -384,6 +384,16 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
+ErrorOr<bool> HIPDevice::isHostUnified() const {
+  // Not hipDeviceAttributeUnifiedAddressing: discrete GPUs set that too.
+  HIP_WITH_DEV_ERR(*this);
+  int integrated = 0;
+  HIP_CHECK_ERR(driver_.hipDeviceGetAttribute(
+      &integrated, hipDeviceAttribute_t::hipDeviceAttributeIntegrated,
+      hipDevice()));
+  return integrated != 0;
+}
+
 ErrorOr<std::string> HIPDevice::getPciBusId() const {
   ErrorOr<const HIPDriver &> driverOrError = HIPDriver::get();
   if (driverOrError.isError())

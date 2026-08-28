@@ -194,6 +194,10 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
   (void)device;
   if (!property_name || !value)
     return M_DRIVER_STATUS_INVALID_ARG;
+  if (strcmp(property_name, M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED) == 0) {
+    *(int64_t *)value = 0;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
 }
 

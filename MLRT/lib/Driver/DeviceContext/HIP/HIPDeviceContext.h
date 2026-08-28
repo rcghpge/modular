@@ -79,6 +79,8 @@ public:
 
   ErrorOr<std::string> getPciBusId() const override;
 
+  ErrorOr<bool> isHostUnified() const override;
+
   static ErrorOr<int> numberOfGPUs();
   int deviceCount() const override;
 

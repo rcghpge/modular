@@ -99,6 +99,11 @@ public:
     return pinned ? DLDevice{kDLCPU, 0} : DLDevice{kDLMetal, id()};
   }
 
+  /// Queried: an Intel Mac's discrete GPU is also a Metal device.
+  ErrorOr<bool> isHostUnified() const override {
+    return device_->hasUnifiedMemory();
+  }
+
   MTL::Device *metalDevice() const { return device_.get(); }
 
   // Buffer tracking methods

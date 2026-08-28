@@ -82,6 +82,8 @@ public:
 
   ErrorOr<bool> supportsMulticast() const override;
 
+  ErrorOr<bool> isHostUnified() const override;
+
   int deviceCount() const override;
 
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;

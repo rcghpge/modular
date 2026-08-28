@@ -72,6 +72,14 @@ M_driver_status_t M_driver_device::property(llvm::StringRef name, void *value) {
                  M_DRIVER_DEVICE_PROPERTY_MAX_LEN);
     return M_DRIVER_STATUS_SUCCESS;
   }
+  if (name == M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED) {
+    int32_t integrated = 0;
+    // Not UNIFIED_ADDRESSING (41): discrete GPUs set that too.
+    if (M_driver_status_t status = attribute(18 /* INTEGRATED */, &integrated))
+      return status;
+    *static_cast<int64_t *>(value) = integrated != 0 ? 1 : 0;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);
     dl->device_type = kDLCUDA;

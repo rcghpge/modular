@@ -59,6 +59,10 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
     out[name.size()] = '\0';
     return M_DRIVER_STATUS_SUCCESS;
   }
+  if (std::strcmp(property_name, M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED) == 0) {
+    *static_cast<int64_t *>(value) = 1;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
   if (std::strcmp(property_name, M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE) == 0 ||
       std::strcmp(property_name,
                   M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED) == 0) {

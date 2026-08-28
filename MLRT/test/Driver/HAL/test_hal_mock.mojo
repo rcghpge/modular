@@ -39,7 +39,7 @@ from _hal.status import (
     STATUS_BAD_BUNDLE,
     STATUS_EXECUTE_MODE_NOT_SUPPORTED,
 )
-from std.testing import assert_equal, assert_raises, assert_true
+from std.testing import assert_equal, assert_false, assert_raises, assert_true
 
 
 def _get_plugin_spec() -> String:
@@ -100,6 +100,13 @@ def test_driver_device_enumeration() raises:
     except e:
         raise Error(String(e))
     assert_true(ok, "device ID mismatch during enumeration")
+
+
+def test_device_host_unified() raises:
+    # The mock models a discrete accelerator.
+    var driver = Driver.create(_get_plugin_spec())
+    var device = driver[].get_device_dynamic(Int64(0))
+    assert_false(device[].is_host_unified())
 
 
 def test_invalid_device_id() raises:
@@ -709,6 +716,7 @@ def main() raises:
         return
 
     test_driver_create()
+    test_device_host_unified()
     test_invalid_device_id()
     test_context_create()
     test_invalid_device_error_message()

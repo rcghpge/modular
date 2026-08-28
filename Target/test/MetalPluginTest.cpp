@@ -89,6 +89,16 @@ TEST_F(DriverPluginTest, CustomStatusMessage) {
   ASSERT_STREQ(errorMessage, "Uninitialized");
 }
 
+// Our macOS CI is Apple silicon, which is one pool shared with the CPU.
+TEST_F(DriverPluginDeviceTest, HostUnifiedPropertyIsTrue) {
+  for (M_driver_device_t device : devices) {
+    int64_t unified = -1;
+    ASSERT_SUCCESS(device_property(
+        device, M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED, &unified));
+    EXPECT_EQ(unified, 1);
+  }
+}
+
 TEST_F(DriverPluginContextTest, FunctionLoad) {
   for (M_driver_context_t context : contexts) {
     M_driver_runtime_bundle_t library;

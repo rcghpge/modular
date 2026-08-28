@@ -72,6 +72,8 @@ int64_t MojoHAL_DeviceContext_id(MojoHALContextBox *ctx);
 bool MojoHAL_DeviceContext_canAccess(MojoHALContextBox *ctx,
                                      MojoHALContextBox *peer);
 bool MojoHAL_DeviceContext_isCompatible(MojoHALContextBox *ctx);
+const char *MojoHAL_DeviceContext_isHostUnified(bool *out_unified,
+                                                MojoHALContextBox *ctx);
 const char *MojoHAL_DeviceContext_getMemoryInfo(uint64_t *out_free,
                                                 uint64_t *out_total,
                                                 MojoHALContextBox *ctx);
@@ -314,6 +316,16 @@ ErrorOr<const char *> Device::getArchName() const {
     MojoHAL_strfree(name);
   }
   return archName_.c_str();
+}
+
+ErrorOr<bool> Device::isHostUnified() const {
+  // Compile-only target: the triple does not carry a topology.
+  if (isVirtual())
+    return false;
+  bool unified = false;
+  if (const char *err = MojoHAL_DeviceContext_isHostUnified(&unified, mojoCtx_))
+    return takeError(err);
+  return unified;
 }
 
 ErrorOrSuccess Device::isCompatible() const {

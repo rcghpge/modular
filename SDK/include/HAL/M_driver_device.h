@@ -58,12 +58,15 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
  * - "name": null-terminated device name string. The value parameter is a
  *   `char *` buffer; the plugin writes up to 256 bytes including the
  *   terminator.
+ * - "host_unified": write an `int64_t`, 1 when the device and the host draw
+ *   from one physical memory pool. Hardware topology, not addressability.
  */
 #define M_DRIVER_DEVICE_PROPERTY_MAX_LEN 256
 #define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE "dlpack_device"
 #define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED "dlpack_device_pinned"
 #define M_DRIVER_DEVICE_PROPERTY_NAME "name"
 #define M_DRIVER_DEVICE_PROPERTY_ARCH "arch"
+#define M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED "host_unified"
 
 /**
  * Retrieve an integer-valued property of a device, as 64-bit integer.

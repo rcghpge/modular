@@ -386,6 +386,18 @@ def MojoHAL_DeviceContext_getArchName(
 
 
 @export
+def MojoHAL_DeviceContext_isHostUnified(
+    out_unified: _OutPtr[Bool],
+    ctx: _DeviceContextBoxPtr,
+) abi("C") -> _CString[]:
+    try:
+        out_unified[] = ctx[].is_host_unified()
+        return None
+    except e:
+        return _err_cstr(String(e))
+
+
+@export
 def MojoHAL_DeviceContext_isCompatible(
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> Bool:

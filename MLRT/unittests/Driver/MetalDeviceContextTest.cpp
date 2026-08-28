@@ -1044,6 +1044,14 @@ TEST_F(MetalDeviceContextTestBase,
   EXPECT_GT(actual, 0u);
 }
 
+// Against the Metal query rather than a hardcoded true, so an Intel Mac driving
+// a discrete GPU reports the truth instead of failing.
+TEST_F(MetalDeviceContextTestBase, IsHostUnified) {
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  ASSIGN_NO_ERR(bool, unified, metalDev.isHostUnified());
+  EXPECT_EQ(unified, metalDev.metalDevice()->hasUnifiedMemory());
+}
+
 // Metal device allocations are `MTLStorageModeShared`, so the host can read the
 // bytes a blit wrote once the queue has drained -- no device-to-host copy.
 TEST_F(MetalDeviceContextTestBase, GetHostAccessiblePointer_ReadsDeviceWrites) {

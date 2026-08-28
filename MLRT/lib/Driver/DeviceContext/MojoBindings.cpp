@@ -773,6 +773,12 @@ AsyncRT_DeviceContext_supportsMulticast(bool *result, DeviceContext *ctx) {
   return checkVal(result, false, ctx->device().supportsMulticast());
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_isHostUnified(bool *result, DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_isHostUnified", TRACY_COLOR_GRAY);
+  return checkVal(result, false, ctx->device().isHostUnified());
+}
+
 MODULAR_EXPORT int32_t AsyncRT_DeviceContext_numberOfDevices(const char *kind) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_numberOfDevices",
                        TRACY_COLOR_GRAY);
