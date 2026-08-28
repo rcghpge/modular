@@ -658,7 +658,7 @@ def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
 def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
-  // LowerableToMOGGInterface lands with the MAPToMOGG lowering itself.
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a broadcast view of `input`, addressable directly by the loop's own index";
   let description = [{

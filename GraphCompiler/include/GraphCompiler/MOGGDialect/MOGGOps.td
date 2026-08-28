@@ -2141,4 +2141,30 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
   }];
 }
 
+def MOGG_TensorCreateBroadcastOp : MOGG_Op<"_tensor.create.broadcast", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Build a codegen tensor that is a broadcast view of another codegen tensor.";
+  let description = [{
+    Produces a `!mogg.tensor_` addressable directly by the consuming loop's
+    own index, reading `$input`'s underlying storage through a
+    replicated-dimension reindexing (numpy broadcasting semantics) --
+    nothing is copied. `$outShape` carries the view's shape; the input's own
+    shape is read off `$input` directly rather than duplicated here.
+  }];
+  let arguments = (ins
+    MOSH_ShapeAttr:$outShape,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MOGG_Tensor:$input
+  );
+  let results = (outs MOGG_Tensor:$result);
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict
+    `:` qualified(type($input)) `->`
+    qualified(type($result))
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

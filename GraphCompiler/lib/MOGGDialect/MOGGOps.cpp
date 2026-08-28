@@ -3286,6 +3286,27 @@ LogicalResult TensorCreateSliceOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
+  // dtype/rank are tied to $input's own argument type, so Mojo infers them
+  // at the call site. output_static_shape carries the view's shape -- unlike
+  // slice's starts/stops/steps, broadcast's shape is always statically known
+  // by emission time (see `mo.static.broadcast_to`'s own docstring), so
+  // there is no separate dynamic-vs-static split to carry here.
+  auto broadcastCreatePrimDecl = state.registry.lookupPrimitive(
+      TensorCreateBroadcastOp::getOperationName());
+  ASSERT_STREAM(broadcastCreatePrimDecl,
+                "Primitive not found for "
+                    << TensorCreateBroadcastOp::getOperationName());
+  MojoValue primitive(primitiveMojoName(broadcastCreatePrimDecl));
+  MojoValue outputStaticShape = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
+  MojoValue result = state.builder.var(primitive(
+      {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape)},
+      {state.getMojoValueFor(getInput())}));
+  state.setMojoValueFor(getResult(), result);
+  return success();
+}
+
 bool CallOpaqueOp::isThrows() {
   // Whether the stub raises depends on the callee kernel, exactly like
   // `CallExecuteOp::isThrows` reads the flag baked from its execute signature.
