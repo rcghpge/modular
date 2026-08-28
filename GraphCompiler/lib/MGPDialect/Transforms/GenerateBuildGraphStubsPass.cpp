@@ -36,6 +36,14 @@ KernelTerminator findProducerDispatch(KernelStubOp stub,
   return result;
 }
 
+/// Name and launch-context argument position of a generated recording sibling
+/// stub. The position tells the call-site rewrite which operand to bridge to a
+/// builder.
+struct RecordingStub {
+  StringAttr name;
+  unsigned contextArgIndex = 0;
+};
+
 /// Build the sibling recording stub `@<original>_build_graph` from `original`
 /// and insert it at module scope via `symtab`. The clone mirrors the original
 /// body with its launch arg retyped from `!mogg.context` to
@@ -52,9 +60,9 @@ KernelTerminator findProducerDispatch(KernelStubOp stub,
 ///     dispatch records into the graph.
 /// Either way the stub returns nothing -- node ordering is carried by the
 /// enclosing `mgp.device_graph.dependencies` op, not threaded through the stub.
-/// Returns the sibling's symbol name.
-FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
-                                          KernelStubOp original) {
+/// Returns the sibling's symbol name and the launch-context argument position.
+FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
+                                             KernelStubOp original) {
   MLIRContext *ctx = original.getContext();
   OwningOpRef<KernelStubOp> clone = cast<KernelStubOp>(original->clone());
 
@@ -67,14 +75,15 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
         "producer dispatch");
   }
 
-  // The launch context the producer dispatches against must be the stub's last
-  // block argument -- that is the slot the builder takes over.
+  // The launch context the producer dispatches against must be one of the
+  // stub's block arguments (in any position) -- that is the slot the builder
+  // takes over.
   Block &body = clone->getBodyBlock();
-  Value context = producer.getDeviceContext();
-  if (body.getNumArguments() == 0 || context != body.getArguments().back()) {
+  auto context = dyn_cast<BlockArgument>(producer.getDeviceContext());
+  if (!context || context.getOwner() != &body) {
     return original.emitError(
-        "device-graph recording stub generation: expected the kernel stub's "
-        "last argument to be the producer launch context");
+        "device-graph recording stub generation: expected the producer launch "
+        "context to be an argument of the kernel stub");
   }
 
   // Only a `mogg.call.execute` whose kernel declares a node-free `build_graph`
@@ -107,7 +116,7 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   }
 
   // Retype the launch arg: `!mogg.context` -> `!mgp.device_graph.builder`.
-  BlockArgument launchArg = body.getArguments().back();
+  BlockArgument launchArg = context;
   launchArg.setType(DeviceGraphBuilderType::get(ctx));
 
   Operation &insertionPoint = withTrace ? *withTrace : *producer;
@@ -159,37 +168,40 @@ FailureOr<StringAttr> createRecordingStub(SymbolTable &symtab,
   // now that the op lives in the module.
   StringAttr newName =
       symtab.insert(clone.release(), std::next(original->getIterator()));
-  return newName;
+  return RecordingStub{newName, context.getArgNumber()};
 }
 
 /// Retarget a staged `mogg.call.stub @stub_N` to its sibling
 /// `@stub_N_build_graph`.
 ///
-/// The sibling takes a `!mgp.device_graph.builder` where the original took a
-/// launch context.
-LogicalResult rewriteStagedCall(CallStubOp call, StringAttr siblingName) {
+/// The sibling takes a `!mgp.device_graph.builder` in the launch-context
+/// position where the original took a launch context; all other operands
+/// (including any other context-typed ones) pass through unchanged.
+LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
   MLIRContext *ctx = call.getContext();
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
-  if (operands.empty() ||
-      !isa<DeviceContextType, M::MOGG::ContextType>(operands.back().getType()))
-    return call.emitError("device-graph recording stub call: expected the last "
-                          "operand to be the launch context");
+  if (sibling.contextArgIndex >= operands.size() ||
+      !isa<DeviceContextType, M::MOGG::ContextType>(
+          operands[sibling.contextArgIndex].getType())) {
+    return call.emitError("device-graph recording stub call: expected operand ")
+           << sibling.contextArgIndex << " to be the launch context";
+  }
 
   IRRewriter rewriter(call);
 
-  Value launch = operands.back();
-  // Fallback: bridge the launch context to a builder.
-  operands.back() = UnrealizedConversionCastOp::create(
-                        rewriter, call.getLoc(),
-                        /*resultTypes=*/DeviceGraphBuilderType::get(ctx),
-                        /*operands=*/launch)
-                        .getResult(0);
+  // Bridge the launch context to a builder.
+  Value &launch = operands[sibling.contextArgIndex];
+  launch = UnrealizedConversionCastOp::create(
+               rewriter, call.getLoc(),
+               /*resultTypes=*/DeviceGraphBuilderType::get(ctx),
+               /*operands=*/launch)
+               .getResult(0);
 
   // The sibling stub is node-free (void result), so the retargeted call keeps
   // the original call's result types unchanged.
-  auto newCall =
-      CallStubOp::create(rewriter, call.getLoc(), call.getResultTypes(),
-                         siblingName, operands, call.getAffinityDeviceIdAttr());
+  auto newCall = CallStubOp::create(rewriter, call.getLoc(),
+                                    call.getResultTypes(), sibling.name,
+                                    operands, call.getAffinityDeviceIdAttr());
 
   rewriter.replaceAllUsesWith(call.getResults(), newCall.getResults());
 
@@ -236,22 +248,23 @@ LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
     return success();
 
   // One sibling per distinct callee; all calls to it are retargeted.
-  llvm::DenseMap<StringAttr, StringAttr> calleeToSibling;
+  llvm::DenseMap<StringAttr, RecordingStub> calleeToSibling;
   for (CallStubOp call : calls) {
     StringAttr callee = call.getNameAttr().getRootReference();
 
-    StringAttr &sibling = calleeToSibling[callee];
-    if (!sibling) {
+    RecordingStub &sibling = calleeToSibling[callee];
+    if (!sibling.name) {
       auto original = symtab.lookup<KernelStubOp>(callee.getValue());
       if (!original)
         return call.emitError("device-graph recording stub call: '")
                << callee.getValue() << "' does not name a kernel stub";
 
-      FailureOr<StringAttr> siblingName = createRecordingStub(symtab, original);
-      if (failed(siblingName))
+      FailureOr<RecordingStub> recording =
+          createRecordingStub(symtab, original);
+      if (failed(recording))
         return failure();
 
-      sibling = *siblingName;
+      sibling = std::move(*recording);
     }
 
     if (failed(rewriteStagedCall(call, sibling)))
