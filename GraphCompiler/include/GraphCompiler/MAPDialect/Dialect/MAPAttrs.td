@@ -107,4 +107,34 @@ def MAP_SliceSpecAttr : MAP_Attr<"SliceSpec", "index.slice.spec"> {
   ];
 }
 
+def MAP_BroadcastSpecAttr : MAP_Attr<"BroadcastSpec", "index.broadcast.spec"> {
+  let summary = "Static input/output shape signature for a broadcast view";
+  let description = [{
+    Compile-time-known shape metadata for a `mo.static.broadcast_to` view
+    lowered through the MAP dialect. `signature` is the broadcast's
+    input/output shape signature -- unlike slice, broadcast can add rank
+    (numpy semantics): `in` aligns with `out`'s trailing dimensions, and
+    every leading `out` dimension `in` doesn't have is replicated. An aligned
+    dimension where `in`'s size is 1 is also replicated; deciding this for a
+    dimension that isn't statically known either way is deferred to the
+    primitive `MAPToMOGG` lowers into, not resolved by this attribute.
+
+    Example:
+    ```mlir
+    #bspec = #map.index.broadcast.spec<[1, 64] -> [8, 64]>
+    ```
+  }];
+
+  let parameters = (ins
+    "MAP::ViewSignatureAttr":$signature
+  );
+
+  // Custom parse/print: `signature` embeds `MAP_ViewSignatureAttr`'s own
+  // `in -> out` form directly, same inlining convention `MAP_SliceSpecAttr`
+  // uses for its own `signature` field.
+  let hasCustomAssemblyFormat = 1;
+
+  let genVerifyDecl = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPATTRS_TD

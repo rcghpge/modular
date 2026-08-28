@@ -609,4 +609,89 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// map.index.broadcast
+//===----------------------------------------------------------------------===//
+
+def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  Pure,
+  DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
+]> {
+  let summary = "Project an output-shape index to the input-shape index for a broadcast view";
+  let description = [{
+    Used inside a `map.iter.foreach` (or, after outlining, a
+    `map.iter.foreach.body`) lowered from `mo.static.broadcast_to`. Takes the
+    loop's current (output-shape) index and produces the corresponding
+    input-shape index, following numpy broadcasting semantics: `spec`'s `in`
+    shape aligns with the index's trailing dimensions, any leading
+    dimensions `in` doesn't have are dropped, and any aligned dimension where
+    `in`'s size is 1 always projects to index 0 -- deciding which dimensions
+    those are is deferred to `createStridedView`'s primitive, not resolved by
+    this op itself.
+
+    Example:
+    ```mlir
+    %idx_ = map.index.broadcast<#map.index.broadcast.spec<[1, 64] -> [8, 64]>>(%idx)
+        : !map.index<2> -> !map.index<2>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_BroadcastSpecAttr:$spec,
+    MAP_AnyIndex:$index
+  );
+  let results = (outs MAP_AnyIndex:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $index `)` attr-dict
+    `:` qualified(type($index)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.broadcast.stride
+//===----------------------------------------------------------------------===//
+
+def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
+  ParentOneOf<["IterOpaqueOp"]>,
+  Pure,
+  // LowerableToMOGGInterface lands with the MAPToMOGG lowering itself.
+]> {
+  let summary = "Materialize a broadcast view of `input`, addressable directly by the loop's own index";
+  let description = [{
+    Produces a single tensor value -- of the broadcast's *output* shape --
+    that a `map.load` can address directly with the loop's own
+    (untransformed) index, instead of transforming the index on every
+    iteration. Logically still a view over `input`'s storage (nothing is
+    copied); a replicated dimension reads the same element regardless of the
+    index passed for it.
+
+    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
+    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
+    loop body itself.
+
+    Example:
+    ```mlir
+    %strided = map.index.broadcast.stride<#map.index.broadcast.spec<[1, 64] -> [8, 64]>>(%input)
+        : !mo.tensor<[1, 64], f32> -> !mo.tensor<[8, 64], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_BroadcastSpecAttr:$spec,
+    MO_Tensor:$input
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $input `)` attr-dict
+    `:` qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_TD

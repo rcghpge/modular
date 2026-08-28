@@ -892,3 +892,58 @@ LogicalResult SliceStrideOp::verify() {
                                             {"stops", getStops()},
                                             {"steps", getSteps()}});
 }
+
+//===----------------------------------------------------------------------===//
+// map.index.broadcast
+//===----------------------------------------------------------------------===//
+
+LogicalResult BroadcastIndexOp::verify() {
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  auto indexTy = llvm::cast<IndexType>(getIndex().getType());
+  if (indexTy.getRank() != signature.getOut().getRank())
+    return emitOpError() << "index rank " << indexTy.getRank()
+                         << " does not match spec's out-shape rank "
+                         << signature.getOut().getRank();
+
+  auto resultTy = llvm::cast<IndexType>(getResult().getType());
+  if (resultTy.getRank() != signature.getIn().getRank())
+    return emitOpError() << "result rank " << resultTy.getRank()
+                         << " does not match spec's in-shape rank "
+                         << signature.getIn().getRank();
+
+  return mlir::success();
+}
+
+Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
+                                         inputTy.getElementType());
+  return BroadcastStrideOp::create(builder, getLoc(), resultTy, getSpec(),
+                                   tensor);
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.broadcast.stride
+//===----------------------------------------------------------------------===//
+
+LogicalResult BroadcastStrideOp::verify() {
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  if (inputTy.getTypedShapeAttr() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+                         << " does not match spec's in-shape "
+                         << signature.getIn();
+
+  auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
+  if (resultTy.getTypedShapeAttr() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+                         << " does not match spec's out-shape "
+                         << signature.getOut();
+
+  if (resultTy.getElementType() != inputTy.getElementType())
+    return emitOpError() << "result element type " << resultTy.getElementType()
+                         << " does not match input element type "
+                         << inputTy.getElementType();
+
+  return mlir::success();
+}

@@ -374,6 +374,61 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
   return success();
 }
 
+// Lowers mo.static.broadcast_to to a standalone (unfused) map.iter.foreach
+// over the *output* shape (same pull model as lowerSliceToForeach): the body
+// computes the input index via map.index.broadcast, loads, and stores
+// unchanged. Unlike slice, broadcast can add rank (numpy semantics), so the
+// loop's own index (output rank) and the projected load index (input rank)
+// can differ.
+LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  auto inputTy = cast<MO::TensorType>(op.getInput().getType());
+  auto outputTy = cast<MO::TensorType>(op.getResult().getType());
+  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  if (inShape.getRank() > outShape.getRank())
+    return op->emitOpError("MOToMAP: broadcast cannot reduce rank");
+  int64_t inRank = inShape.getRank();
+  int64_t outRank = outShape.getRank();
+
+  auto spec = MAP::BroadcastSpecAttr::get(
+      ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape));
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{outputTy},
+      /*shape=*/outShape,
+      /*inputs=*/op->getOperands(),
+      /*chain=*/Value(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+
+  // Body block args: [input, output, map.index<outRank>].
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  for (Value operand : op->getOperands())
+    body->addArgument(operand.getType(), loc);
+  body->addArgument(outputTy, loc);
+  BlockArgument idxArg =
+      body->addArgument(MAP::IndexType::get(ctx, outRank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  BlockArgument inputArg = body->getArgument(0);
+  BlockArgument outputArg = body->getArgument(1);
+
+  Value innerIdx = MAP::BroadcastIndexOp::create(
+      bodyBuilder, loc, MAP::IndexType::get(ctx, inRank), spec, idxArg);
+  Value loaded = MAP::LoadOp::create(
+      bodyBuilder, loc, outputTy.getElementType(), inputArg, innerIdx);
+  MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, loaded);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
@@ -402,6 +457,8 @@ LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
         "MOToMAP: shape-function kernels are not yet supported");
   else if (auto sliceOp = dyn_cast<MO::SliceOp>(op))
     return lowerSliceToForeach(sliceOp);
+  else if (auto broadcastOp = dyn_cast<MO::Static::BroadcastToOp>(op))
+    return lowerBroadcastToForeach(broadcastOp);
   else if (adaptor->isViewKernel())
     return op->emitOpError("MOToMAP: view kernels are not yet supported");
   else

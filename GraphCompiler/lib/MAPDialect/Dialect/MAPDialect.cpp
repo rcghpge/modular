@@ -239,6 +239,55 @@ LogicalResult SliceSpecAttr::verify(
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastSpecAttr
+//===----------------------------------------------------------------------===//
+
+Attribute BroadcastSpecAttr::parse(AsmParser &parser, Type /*type*/) {
+  MOSH::ShapeAttr inShape, outShape;
+  if (parser.parseLess() || parseViewSignatureBody(parser, inShape, outShape) ||
+      parser.parseGreater())
+    return {};
+
+  MLIRContext *ctx = parser.getContext();
+  return parser.getChecked<BroadcastSpecAttr>(
+      ctx, ViewSignatureAttr::get(ctx, inShape, outShape));
+}
+
+void BroadcastSpecAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printViewSignatureBody(printer, getSignature().getIn(),
+                         getSignature().getOut());
+  printer << ">";
+}
+
+LogicalResult
+BroadcastSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                          MAP::ViewSignatureAttr signature) {
+  MOSH::ShapeAttr in = signature.getIn();
+  MOSH::ShapeAttr out = signature.getOut();
+  // Broadcast can add rank (numpy semantics) -- never remove it.
+  if (in.getRank() > out.getRank())
+    return emitError() << "broadcast cannot reduce rank, got in-rank "
+                       << in.getRank() << " > out-rank " << out.getRank();
+
+  SmallVector<int64_t> inDims = in.getIntDims();
+  SmallVector<int64_t> outDims = out.getIntDims();
+  int64_t inRank = in.getRank();
+  int64_t delta = static_cast<int64_t>(out.getRank()) - inRank;
+  for (int64_t i = 0; i < inRank; ++i) {
+    int64_t inDim = inDims[i];
+    int64_t outDim = outDims[i + delta];
+    if (ShapedType::isDynamic(inDim) || ShapedType::isDynamic(outDim))
+      continue;
+    if (inDim != 1 && inDim != outDim)
+      return emitError() << "dim " << i << ": in-shape dim " << inDim
+                         << " is not broadcastable to out-shape dim " << outDim;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
