@@ -7,6 +7,7 @@
 #include "GraphCompiler/MAPDialect/Support/EpilogueFuser.h"
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
@@ -18,6 +19,9 @@
 using namespace M;
 
 namespace M::MAP {
+
+#define GEN_PASS_DEF_FUSEEPILOGUE
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
 namespace {
 
@@ -313,5 +317,26 @@ unsigned EpilogueFuser::fuse() {
 
   return candidates.size();
 }
+
+namespace {
+
+struct FuseEpiloguePass : public MAP::impl::FuseEpilogueBase<FuseEpiloguePass> {
+  using Base::Base;
+  FuseEpiloguePass(const FuseEpiloguePass &other) : Base(other) {}
+
+  void runOnOperation() override {
+    MO::GraphOp graphOp = getOperation();
+    unsigned numFused;
+    do {
+      numFused = EpilogueFuser(graphOp).fuse();
+      numKernelsFused += numFused;
+    } while (numFused > 0);
+  }
+
+  Statistic numKernelsFused{this, "num-kernels-fused",
+                            "Number of kernels fused"};
+};
+
+} // namespace
 
 } // namespace M::MAP

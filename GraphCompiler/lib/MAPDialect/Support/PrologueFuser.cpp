@@ -7,6 +7,7 @@
 #include "GraphCompiler/MAPDialect/Support/PrologueFuser.h"
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -18,6 +19,9 @@
 using namespace M;
 
 namespace M::MAP {
+
+#define GEN_PASS_DEF_FUSEPROLOGUE
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
 // Finds every currently-eligible (prologueOp, captureIdx, src) edge in one
 // read-only pass over the graph. `hasOneUse()` on src's result is the only
@@ -209,5 +213,26 @@ unsigned PrologueFuser::fuse() {
 
   return candidates.size();
 }
+
+namespace {
+
+struct FuseProloguePass : public MAP::impl::FusePrologueBase<FuseProloguePass> {
+  using Base::Base;
+  FuseProloguePass(const FuseProloguePass &other) : Base(other) {}
+
+  void runOnOperation() override {
+    MO::GraphOp graphOp = getOperation();
+    unsigned numFused;
+    do {
+      numFused = PrologueFuser(graphOp).fuse();
+      numKernelsFused += numFused;
+    } while (numFused > 0);
+  }
+
+  Statistic numKernelsFused{this, "num-kernels-fused",
+                            "Number of kernels fused"};
+};
+
+} // namespace
 
 } // namespace M::MAP

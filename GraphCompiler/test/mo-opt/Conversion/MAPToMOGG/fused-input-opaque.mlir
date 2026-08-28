@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --map-to-mogg | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-prologue --map-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @partial_fused
 // CHECK: %[[A:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = false} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_

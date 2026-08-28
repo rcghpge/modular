@@ -35,6 +35,51 @@ def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
   ];
 }
 
+def FuseEpilogue : Pass<"map-fuse-epilogue", "MO::GraphOp"> {
+  let summary = "Fuse MAP kernels via EpilogueFuser only. For testing only.";
+  let description = [{
+    Runs `EpilogueFuser` in isolation over `mo.graph`, skipping the other
+    fusers `FuseKernels` also runs. Lets a lit test exercise epilogue fusion
+    without depending on the other fusers having already run. Not part of
+    `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
+def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
+  let summary = "Fuse MAP kernels via ElementwiseFuser only. For testing only.";
+  let description = [{
+    Runs `ElementwiseFuser` in isolation over `mo.graph`, skipping the other
+    fusers `FuseKernels` also runs. Lets a lit test exercise elementwise
+    fusion without depending on the other fusers having already run. Not
+    part of `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
+def FusePrologue : Pass<"map-fuse-prologue", "MO::GraphOp"> {
+  let summary = "Fuse MAP kernels via PrologueFuser only. For testing only.";
+  let description = [{
+    Runs `PrologueFuser` in isolation over `mo.graph`, skipping the other
+    fusers `FuseKernels` also runs. Lets a lit test exercise prologue fusion
+    without depending on the other fusers having already run. Not part of
+    `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
 def OutlineStructuredKernelBodies
     : Pass<"map-outline-structured-kernel-bodies", "mlir::ModuleOp"> {
   let summary =

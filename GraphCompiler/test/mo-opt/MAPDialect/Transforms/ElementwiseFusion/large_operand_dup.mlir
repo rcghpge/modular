@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-elementwise | FileCheck %s
 
 // A multi-use binary op over TWO large operands must NOT be duplicated: the Add
 // is materialized into its own kernel and each consumer reads its result.

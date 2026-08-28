@@ -7,6 +7,7 @@
 #include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
@@ -19,6 +20,9 @@
 using namespace M;
 
 namespace M::MAP {
+
+#define GEN_PASS_DEF_FUSEELEMENTWISE
+#include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
 namespace {
 
@@ -234,5 +238,27 @@ void ElementwiseFuser::fuseSubgraphOnce(ArrayRef<Operation *> subgraph) {
     dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
   }
 }
+
+namespace {
+
+struct FuseElementwisePass
+    : public MAP::impl::FuseElementwiseBase<FuseElementwisePass> {
+  using Base::Base;
+  FuseElementwisePass(const FuseElementwisePass &other) : Base(other) {}
+
+  void runOnOperation() override {
+    MO::GraphOp graphOp = getOperation();
+    unsigned numFused;
+    do {
+      numFused = ElementwiseFuser(graphOp).fuse();
+      numKernelsFused += numFused;
+    } while (numFused > 0);
+  }
+
+  Statistic numKernelsFused{this, "num-kernels-fused",
+                            "Number of kernels fused"};
+};
+
+} // namespace
 
 } // namespace M::MAP

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-epilogue | FileCheck %s
 
 // CHECK-LABEL: mo.graph @matmul_add
 // CHECK-SAME:  (%[[X:.*]]: !mo.tensor<[8, 8], f32>, %[[Y:.*]]: !mo.tensor<[8, 8], f32>, %[[Z:.*]]: !mo.tensor<[8, 8], f32>)
