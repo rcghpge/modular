@@ -970,6 +970,11 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
 void MemoryManagerFreeList::logLargestBlocksInfo(size_t wrappedSize,
                                                  std::string missReason) const {
   if (memoryManager_.doLog_) {
+    // The descriptors below are recycled into `unusedDescs_` under `mu_`, so an
+    // unlocked walk can read one that a concurrent free has already reused.
+    // allocationMissError releases the lock before calling this, the same way
+    // dumpFragmentationDiagnostic is entered.
+    std::lock_guard<std::mutex> lock(memoryManager_.mu_);
     memoryManager_.logErr("allocate(" + TWINE(wrappedSize) + ") - reject (" +
                               missReason + ")",
                           0, 0);
@@ -977,10 +982,10 @@ void MemoryManagerFreeList::logLargestBlocksInfo(size_t wrappedSize,
     const MemoryManagerFreeList *cur = this;
     while (cur != nullptr) {
       for (int i = 0; i < kNumFreeBufferLists; ++i) {
-        if (cur->freeBuffers_[i] != nullptr) {
+        const MemoryManager::Desc *desc = cur->freeBuffers_[i];
+        if (desc != nullptr) {
           cur->logMsg("max block id: " + TWINE(i) + ": (" +
-                      TWINE_PTR(cur->freeBuffers_[i]->ptr_) + " ; " +
-                      TWINE(cur->freeBuffers_[i]->size_) + ")");
+                      TWINE_PTR(desc->ptr_) + " ; " + TWINE(desc->size_) + ")");
         }
       }
       cur = cur->parent_;
