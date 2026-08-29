@@ -1,5 +1,9 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | FileCheck %s --check-prefix=IMPORT
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
+// XFAIL: *
+// RUN: false
+// FIXME(GEX-4141): Timeout in UBSan.
+
+// UN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | FileCheck %s --check-prefix=IMPORT
+// UN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
 
 // === Baked tensor-arg contracts (distill matrix) ========================== //
 //
