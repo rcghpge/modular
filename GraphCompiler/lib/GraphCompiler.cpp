@@ -361,6 +361,13 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
+  // An unfused reshape has no MAPToMOGG lowering past this point (its
+  // hoisted stride op isn't LowerableToMOGGInterface yet); an unfused
+  // contiguous slice can still take the zero-copy path the
+  // pre-advanced-fusion pipeline already has. Raise both back before
+  // OutlineStructuredKernelBodies commits to the MAP pipeline for good.
+  pm.addNestedPass<GraphOp>(MAP::createRaiseBackContiguousViews());
+
   pm.addPass(MAP::createOutlineStructuredKernelBodies());
   // Fires the MAP canonicalizations that unique `map.iter.opaque` inputs and
   // prologue/epilogue captures, so the lowered kernel's parameter list (built

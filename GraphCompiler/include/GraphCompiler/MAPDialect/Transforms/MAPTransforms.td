@@ -150,6 +150,34 @@ def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "M::MAP::It
   ];
 }
 
+def RaiseBackContiguousViews
+    : Pass<"map-raise-back-contiguous-views", "MO::GraphOp"> {
+  let summary = "Raise unfused slice/reshape view kernels back to MO/MOGG ops.";
+  let description = [{
+    Runs after `FuseKernels` reaches a fixed point, before
+    `OutlineStructuredKernelBodies`. Finds `map.iter.foreach` view kernels
+    that never got fused into anything and raises them back into ops the
+    pre-advanced-fusion pipeline already knows how to lower without a copy: a
+    contiguous slice becomes `mogg.slice` (a zero-copy buffer slice, later
+    lowered by `MOGGToMGP` to `mgp.tensor.slice`), and a reshape becomes
+    `mo.static.reshape` (which `MOGGToMGP` turns into a non-copying
+    primitive). Scope mirrors the legacy `mogg-fuse-views` pass's own
+    raise-back step: slice and reshape only, not broadcast/transpose.
+  }];
+
+  let dependentDialects = [
+    "M::MO::MODialect",
+    "M::MOGG::MOGGDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numSlicesRaised", "num-slices-raised",
+              "Number of contiguous slice kernels raised back">,
+    Statistic<"numReshapesRaised", "num-reshapes-raised",
+              "Number of reshape kernels raised back">
+  ];
+}
+
 def FuseMutableLoads : Pass<"map-fuse-mutable-loads", "MO::GraphOp"> {
   let summary = "'Fuse' mo.mutable.load ops with map.iter.foreach ops.";
   let description = [{
