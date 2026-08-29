@@ -7,10 +7,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOTOMAP_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOMAP_H
 
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-#include <cstdlib>
 
 namespace M::MO {
 
@@ -18,12 +17,9 @@ namespace M::MO {
 #define GEN_PASS_DECL
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h.inc"
 
-/// Returns whether the advanced (MAP) fusion pipeline is enabled. Gated on
-/// the presence of the `MAX_GC_USE_ADV_FUSION` environment variable; only its
-/// existence matters, not its value.
-inline bool useAdvancedFusion() {
-  return std::getenv("MAX_GC_USE_ADV_FUSION") != nullptr;
-}
+// useAdvancedFusion() lives in MODialect/MOUtils.h -- MO-level code (e.g.
+// DecomposeViewOps) needs it too, and must not depend on this file's own
+// heavier deps (MAPDialect, MOGGDialect) just to check the env var.
 
 } // namespace M::MO
 

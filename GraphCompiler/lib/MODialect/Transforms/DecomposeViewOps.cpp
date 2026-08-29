@@ -7,6 +7,7 @@
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -307,6 +308,15 @@ struct DecomposeViewsPass
   using DecomposeViewOpsBase::DecomposeViewOpsBase;
 
   void runOnOperation() override {
+    // Under advanced fusion, mo.static.reshape will lower to a view in
+    // MOToMAP instead of being decomposed here -- it must survive intact to
+    // reach that pass. (That lowering doesn't exist yet: until it lands, a
+    // reshape under advanced fusion hits MOToMAP's existing generic
+    // "view kernels are not yet supported" error instead of being silently
+    // decomposed -- a temporary gap in an experimental, opt-in pipeline.)
+    if (useAdvancedFusion())
+      return;
+
     OpBuilder builder{&getContext()};
     getOperation().walk([&](Operation *op) {
       builder.setInsertionPoint(op);

@@ -198,3 +198,12 @@ mo.graph @do_not_decompose_contig_slice(%input: !mo.tensor<[10, 2], si32>) -> (!
   %mm = mo.matmul(%res, %res) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>)  -> !mo.tensor<[2, 2], si32>
 	mo.output %mm : !mo.tensor<[2, 2], si32>
 }
+
+// RUN: env MAX_GC_USE_ADV_FUSION=1 mo-opt --mo-decompose-views --cse %s | FileCheck %s --check-prefix=ADV-FUSION --enable-var-scope
+
+// Under advanced fusion, the pass no-ops entirely: mo.static.reshape must
+// survive intact to be lowered as a view in MOToMAP instead.
+
+// ADV-FUSION-LABEL: mo.graph @flatten_dim
+// ADV-FUSION-NEXT: %[[V0:.*]] = mo.static.reshape(%{{.*}}) : !mo.tensor<[1, 2, 3, 4, 5], si32> -> !mo.tensor<[120], si32>
+// ADV-FUSION-NEXT: mo.output %[[V0]]

@@ -21,6 +21,7 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 
+#include <cstdlib>
 #include <type_traits>
 
 namespace M::MO {
@@ -134,6 +135,13 @@ std::optional<SmallVector<APInt>>
 tryGetConstantBlob<APInt>(mlir::ElementsAttr attr, DType dType);
 
 bool isMutableOperand(Value val);
+
+/// Returns whether the advanced (MAP) fusion pipeline is enabled. Gated on
+/// the presence of the `MAX_GC_USE_ADV_FUSION` environment variable; only its
+/// existence matters, not its value.
+inline bool useAdvancedFusion() {
+  return std::getenv("MAX_GC_USE_ADV_FUSION") != nullptr;
+}
 
 } // namespace M::MO
 
