@@ -429,6 +429,60 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
   return success();
 }
 
+// Lowers mo.static.reshape to a standalone (unfused) map.iter.foreach over
+// the *output* shape (same pull model as lowerSliceToForeach): the body
+// computes the input index via map.index.reshape, loads, and stores
+// unchanged. Unlike slice/broadcast/transpose, rank can change in either
+// direction -- reshape only preserves the total element count -- so the
+// loop's own index (output rank) and the projected load index (input rank)
+// can differ arbitrarily.
+LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  auto inputTy = cast<MO::TensorType>(op.getInput().getType());
+  auto outputTy = cast<MO::TensorType>(op.getResult().getType());
+  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  int64_t inRank = inShape.getRank();
+  int64_t outRank = outShape.getRank();
+
+  auto spec = MAP::ReshapeSpecAttr::get(
+      ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape));
+
+  auto foreachOp = MAP::IterForeachOp::create(
+      builder, loc,
+      /*resultTypes=*/SmallVector<Type>{outputTy},
+      /*shape=*/outShape,
+      /*inputs=*/op->getOperands(),
+      /*chain=*/Value(),
+      /*fusionInfo=*/
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+
+  // Body block args: [input, output, map.index<outRank>].
+  Block *body = &foreachOp.getBody().emplaceBlock();
+  for (Value operand : op->getOperands())
+    body->addArgument(operand.getType(), loc);
+  body->addArgument(outputTy, loc);
+  BlockArgument idxArg =
+      body->addArgument(MAP::IndexType::get(ctx, outRank), loc);
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  BlockArgument inputArg = body->getArgument(0);
+  BlockArgument outputArg = body->getArgument(1);
+
+  Value innerIdx = MAP::ReshapeIndexOp::create(
+      bodyBuilder, loc, MAP::IndexType::get(ctx, inRank), spec, idxArg);
+  Value loaded = MAP::LoadOp::create(
+      bodyBuilder, loc, outputTy.getElementType(), inputArg, innerIdx);
+  MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, loaded);
+
+  op->replaceAllUsesWith(foreachOp.getResults());
+  op->erase();
+  return success();
+}
+
 // Lowers mo.transpose to a standalone (unfused) map.iter.foreach over the
 // *output* shape (same pull model as lowerSliceToForeach): the body
 // computes the input index via map.index.transpose, loads, and stores
@@ -519,6 +573,8 @@ LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
     return lowerSliceToForeach(sliceOp);
   else if (auto broadcastOp = dyn_cast<MO::Static::BroadcastToOp>(op))
     return lowerBroadcastToForeach(broadcastOp);
+  else if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op))
+    return lowerReshapeToForeach(reshapeOp);
   else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op)) {
     if (auto permVec = MO::tryGetConstantIntVector(
             cast<MO::TensorValue>(transposeOp.getPerm())))

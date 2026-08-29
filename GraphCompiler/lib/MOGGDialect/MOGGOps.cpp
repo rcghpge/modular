@@ -3307,6 +3307,27 @@ LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
+  // dtype/rank are tied to $input's own argument type, so Mojo infers them
+  // at the call site. output_static_shape carries the view's shape -- like
+  // broadcast/transpose (and unlike slice), reshape's shape is always
+  // statically known by emission time, so there is no dynamic-vs-static
+  // split to carry here.
+  auto reshapeCreatePrimDecl =
+      state.registry.lookupPrimitive(TensorCreateReshapeOp::getOperationName());
+  ASSERT_STREAM(reshapeCreatePrimDecl,
+                "Primitive not found for "
+                    << TensorCreateReshapeOp::getOperationName());
+  MojoValue primitive(primitiveMojoName(reshapeCreatePrimDecl));
+  MojoValue outputStaticShape = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
+  MojoValue result = state.builder.var(primitive(
+      {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape)},
+      {state.getMojoValueFor(getInput())}));
+  state.setMojoValueFor(getResult(), result);
+  return success();
+}
+
 LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
   // dtype/rank are tied to $input's own argument type, so Mojo infers them
   // at the call site. output_static_shape/static_permutations carry the

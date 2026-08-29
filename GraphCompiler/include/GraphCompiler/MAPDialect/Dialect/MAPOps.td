@@ -785,4 +785,85 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// map.index.reshape
+//===----------------------------------------------------------------------===//
+
+def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  Pure,
+  DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
+]> {
+  let summary = "Project an output-shape index to the input-shape index for a reshape view";
+  let description = [{
+    Used inside a `map.iter.foreach` (or, after outlining, a
+    `map.iter.foreach.body`) lowered from `mo.static.reshape`. Takes the
+    loop's current (output-shape) index and produces the corresponding
+    input-shape index by de-linearizing through the shared linear index the
+    two shapes' row-major layouts agree on -- unlike slice/broadcast/
+    transpose, operand and result rank can differ by more than a fixed
+    amount, since reshape only preserves the total element count.
+
+    Example:
+    ```mlir
+    %idx_ = map.index.reshape<#map.index.reshape.spec<[2, 3] -> [3, 2]>>(%idx)
+        : !map.index<2> -> !map.index<2>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_ReshapeSpecAttr:$spec,
+    MAP_AnyIndex:$index
+  );
+  let results = (outs MAP_AnyIndex:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $index `)` attr-dict
+    `:` qualified(type($index)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.index.reshape.stride
+//===----------------------------------------------------------------------===//
+
+def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
+  ParentOneOf<["IterOpaqueOp"]>,
+  Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+]> {
+  let summary = "Materialize a reshape view of `input`, addressable directly by the loop's own index";
+  let description = [{
+    Produces a single tensor value -- of the reshape's *output* shape -- that
+    a `map.load` can address directly with the loop's own (untransformed)
+    index, instead of transforming the index on every iteration. Logically
+    still a view over `input`'s storage (nothing is copied).
+
+    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
+    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
+    loop body itself.
+
+    Example:
+    ```mlir
+    %strided = map.index.reshape.stride<#map.index.reshape.spec<[2, 3] -> [3, 2]>>(%input)
+        : !mo.tensor<[2, 3], f32> -> !mo.tensor<[3, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_ReshapeSpecAttr:$spec,
+    MO_Tensor:$input
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `<` qualified($spec) `>` `(` $input `)` attr-dict
+    `:` qualified(type($input)) `->` qualified(type($result))
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_TD

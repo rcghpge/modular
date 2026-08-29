@@ -181,3 +181,24 @@ mo.graph @pureElementwiseChain(%x: !mo.tensor<[3, 32], f32>, %y: !mo.tensor<[3, 
   %res = mo.relu(%added) : !mo.tensor<[3, 32], f32>
   mo.output %res : !mo.tensor<[3, 32], f32>
 }
+
+// A reshape is never a fusion destination: unlike slice/broadcast/transpose,
+// composing a reshape with another transform isn't safe to do arbitrarily
+// yet, so a slice feeding a reshape stays two separate kernels.
+
+// CHECK-LABEL: mo.graph @sliceIntoReshapeStaysUnfused
+// CHECK:       [[SLICED:%.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       map.index.slice<{{.*}}>
+// CHECK:       map.iter.foreach<[96]>
+// CHECK:       inputs  ([[SLICED]]: !mo.tensor<[3, 32], f32>)
+// CHECK:       map.index.reshape<{{.*}}>
+mo.graph @sliceIntoReshapeStaysUnfused(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[96], f32> {
+  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %sliced = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[3, 32], f32>
+  %res = mo.static.reshape(%sliced) : !mo.tensor<[3, 32], f32> -> !mo.tensor<[96], f32>
+  mo.output %res : !mo.tensor<[96], f32>
+}

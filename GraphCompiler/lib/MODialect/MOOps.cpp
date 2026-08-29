@@ -11,6 +11,7 @@
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/MOAttrs.h"
 #include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -2726,28 +2727,11 @@ LogicalResult BottomKOp::verify() { return verifyOrderedKOp(*this); }
 
 template <typename T>
 inline LogicalResult checkReshapeInOutTypesCompatible(T op) {
-  // checks whether the input and output shapes are compatible
-  // e.g. may have the same number of elements and same dtype.
   TensorType inputTy = op.getInput().getType();
   TensorType resultTy = op.getType();
-
-  std::optional<int64_t> inputNumEles = inputTy.getNumElements();
-  std::optional<int64_t> resultNumEles = resultTy.getNumElements();
-  if (!inputNumEles.has_value() || !resultNumEles.has_value()) {
-    // Here, at least one of inputTy or resultTy has parameters in the shape
-    // expression. Assume you can always set some parameters to equal the other
-    // side. e.g. 5 * N = 10, N could be 2 to make things valid, we can't check
-    // deeper. Note: as parameters are integers, some expressions could
-    // potentially be invalidated. E.g. 5 * N = 8 is clearly impossible for
-    // integer N. However, for now, this is sufficient.
-    return success();
-  }
-
-  if (inputNumEles.value() != resultNumEles.value()) {
-    return op.emitOpError("input and output elements do not match: ")
-           << inputNumEles.value() << " vs " << resultNumEles.value();
-  }
-  return success();
+  return checkReshapeShapesCompatible(inputTy.getTypedShapeAttr(),
+                                      resultTy.getTypedShapeAttr(),
+                                      [&]() { return op.emitOpError(); });
 }
 
 LogicalResult ReshapeOp::verify() {

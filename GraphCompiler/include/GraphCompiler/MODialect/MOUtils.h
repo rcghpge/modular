@@ -14,6 +14,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOUTILS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOUTILS_H
 
+#include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
@@ -135,6 +136,15 @@ std::optional<SmallVector<APInt>>
 tryGetConstantBlob<APInt>(mlir::ElementsAttr attr, DType dType);
 
 bool isMutableOperand(Value val);
+
+/// Verifies that `inShape`/`outShape` are compatible for a reshape: the same
+/// total element count, when both are statically known -- a reshape with any
+/// symbolic dim on either side can't be fully checked here, so is assumed
+/// valid. Shared between MO::Static::ReshapeOp's own verifier and
+/// MAP::ReshapeSpecAttr's.
+LogicalResult checkReshapeShapesCompatible(
+    MOSH::ShapeAttr inShape, MOSH::ShapeAttr outShape,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
 
 /// Returns whether the advanced (MAP) fusion pipeline is enabled. Gated on
 /// the presence of the `MAX_GC_USE_ADV_FUSION` environment variable; only its

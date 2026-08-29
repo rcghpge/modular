@@ -8,6 +8,7 @@
 #include "GraphCompiler/MAPDialect/Dialect/MAPAttrs.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -285,6 +286,38 @@ BroadcastSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReshapeSpecAttr
+//===----------------------------------------------------------------------===//
+
+Attribute ReshapeSpecAttr::parse(AsmParser &parser, Type /*type*/) {
+  MOSH::ShapeAttr inShape, outShape;
+  if (parser.parseLess() || parseViewSignatureBody(parser, inShape, outShape) ||
+      parser.parseGreater())
+    return {};
+
+  MLIRContext *ctx = parser.getContext();
+  return parser.getChecked<ReshapeSpecAttr>(
+      ctx, ViewSignatureAttr::get(ctx, inShape, outShape));
+}
+
+void ReshapeSpecAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printViewSignatureBody(printer, getSignature().getIn(),
+                         getSignature().getOut());
+  printer << ">";
+}
+
+LogicalResult
+ReshapeSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                        MAP::ViewSignatureAttr signature) {
+  // Reshape can change rank arbitrarily -- the only invariant to check is
+  // that the total element count matches, shared with
+  // MO::Static::ReshapeOp's own verifier.
+  return MO::checkReshapeShapesCompatible(signature.getIn(), signature.getOut(),
+                                          emitError);
 }
 
 //===----------------------------------------------------------------------===//

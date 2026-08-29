@@ -137,6 +137,34 @@ def MAP_BroadcastSpecAttr : MAP_Attr<"BroadcastSpec", "index.broadcast.spec"> {
   let genVerifyDecl = 1;
 }
 
+def MAP_ReshapeSpecAttr : MAP_Attr<"ReshapeSpec", "index.reshape.spec"> {
+  let summary = "Static input/output shape signature for a reshape view";
+  let description = [{
+    Compile-time-known shape metadata for a `mo.static.reshape` view lowered
+    through the MAP dialect. `signature` is the reshape's input/output shape
+    signature -- unlike slice/transpose, rank can change in either direction
+    (reshape only preserves the total element count, not the rank), and
+    unlike broadcast/slice/transpose, the projection has no other per-view
+    parameters: it is a pure function of `signature`'s in/out shapes alone.
+
+    Example:
+    ```mlir
+    #rspec = #map.index.reshape.spec<[2, 3] -> [3, 2]>
+    ```
+  }];
+
+  let parameters = (ins
+    "MAP::ViewSignatureAttr":$signature
+  );
+
+  // Custom parse/print: `signature` embeds `MAP_ViewSignatureAttr`'s own
+  // `in -> out` form directly, same inlining convention `MAP_SliceSpecAttr`
+  // uses for its own `signature` field.
+  let hasCustomAssemblyFormat = 1;
+
+  let genVerifyDecl = 1;
+}
+
 def MAP_TransposeSpecAttr : MAP_Attr<"TransposeSpec", "index.transpose.spec"> {
   let summary = "Static shape signature and permutation for a transpose view";
   let description = [{

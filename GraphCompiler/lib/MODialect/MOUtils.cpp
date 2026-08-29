@@ -52,3 +52,23 @@ M::MO::tryGetConstantBlob(mlir::ElementsAttr attr, DType dType) {
 bool M::MO::isMutableOperand(Value val) {
   return isa<MO::BufferType, MO::OpaqueType>(val.getType());
 }
+
+LogicalResult M::MO::checkReshapeShapesCompatible(
+    MOSH::ShapeAttr inShape, MOSH::ShapeAttr outShape,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
+  std::optional<int64_t> inNumEles =
+      MOSH::ShapeAttr::getStaticDim(inShape.getSymbolicNumElements());
+  std::optional<int64_t> outNumEles =
+      MOSH::ShapeAttr::getStaticDim(outShape.getSymbolicNumElements());
+  if (!inNumEles.has_value() || !outNumEles.has_value())
+    return success();
+
+  // Allow one -1 dimension for now, which is a fancy parameter.
+  if (*inNumEles < 0 || *outNumEles < 0)
+    return success();
+
+  if (*inNumEles != *outNumEles)
+    return emitError() << "input and output elements do not match: "
+                       << *inNumEles << " vs " << *outNumEles;
+  return success();
+}

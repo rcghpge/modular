@@ -36,6 +36,17 @@ bool isViewForeach(IterForeachOp op) {
       .wasInterrupted();
 }
 
+// Whether `op`'s body computes a load index through a `map.index.reshape`
+// op. A reshape kernel must stay the terminal (most-upstream) link in any
+// fused chain: unlike slice/broadcast/transpose, composing a reshape with
+// another transform isn't safe to do arbitrarily yet (a future
+// canonicalization pass owns that), so nothing may fuse into one.
+bool isReshapeForeach(IterForeachOp op) {
+  return op.getBody()
+      .walk([&](ReshapeIndexOp) { return WalkResult::interrupt(); })
+      .wasInterrupted();
+}
+
 // Eligible to be a node in a fusion chain: either a single-result
 // `map.iter.foreach` (a pure pointwise or view kernel, same eligibility as
 // `ElementwiseFuser` -- a chain may legitimately mix elementwise and view
@@ -121,6 +132,8 @@ static bool viewKernelsAreCompatible(Operation *src, Operation *dst) {
   if (auto dstForeach = dyn_cast<IterForeachOp>(dst)) {
     if (!isViewForeach(srcOp) && !isViewForeach(dstForeach))
       return false;
+    if (isReshapeForeach(dstForeach))
+      return false;
     return checkMutableKernelFusible(
         srcOp.getInputChain(), srcOp.getOutputChain(),
         dstForeach.getInputChain(), dstForeach.getOutputChain());
@@ -128,6 +141,12 @@ static bool viewKernelsAreCompatible(Operation *src, Operation *dst) {
 
   auto dstOpaque = cast<IterOpaqueOp>(dst);
   if (!isViewForeach(srcOp))
+    return false;
+  // MAP_ReshapeIndexOp's ParentOneOf doesn't permit living inside a
+  // map.iter.prologue the way slice/broadcast/transpose's do yet, so a
+  // reshape view can't safely splice into one -- same reasoning as the
+  // terminal-link restriction above, just for the prologue-dst case.
+  if (isReshapeForeach(srcOp))
     return false;
 
   bool feedsAnyInput = false;
