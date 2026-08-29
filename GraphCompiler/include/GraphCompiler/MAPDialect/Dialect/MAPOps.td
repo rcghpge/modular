@@ -516,7 +516,7 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
 //===----------------------------------------------------------------------===//
 
 def MAP_SliceIndexOp : MAP_Op<"index.slice", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -532,8 +532,8 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
     at position `d` otherwise. `stops` isn't needed to compute the
     projection itself but is carried for verification and by later passes.
 
-    Only valid inside a `map.iter.foreach` body, or, after outlining, inside
-    a `map.iter.foreach.body` — same restriction as `map.call.elementwise`.
+    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
+    this view into an opaque kernel's existing prologue.
 
     Example:
     ```mlir
@@ -614,7 +614,7 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -629,6 +629,9 @@ def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
     `in`'s size is 1 always projects to index 0 -- deciding which dimensions
     those are is deferred to `createStridedView`'s primitive, not resolved by
     this op itself.
+
+    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
+    this view into an opaque kernel's existing prologue.
 
     Example:
     ```mlir
@@ -699,7 +702,7 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -714,6 +717,9 @@ def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
     (`out.dim[i] == in.dim[perm[i]]`), so projecting an output index back to
     the input needs `perm`'s inverse, not `perm` itself. Rank-preserving,
     unlike broadcast -- transpose only ever reorders dimensions.
+
+    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
+    this view into an opaque kernel's existing prologue.
 
     Example:
     ```mlir

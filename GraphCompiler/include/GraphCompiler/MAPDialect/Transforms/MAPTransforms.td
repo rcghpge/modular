@@ -20,9 +20,9 @@ def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
     the insides of kernels it already visited, and independent graphs run in
     parallel.
 
-    Repeats epilogue, elementwise, then prologue fusion until a round fuses
-    nothing, since folding one link of a chain can expose the next. Reports
-    the total number of kernels fused as a pass statistic.
+    Repeats epilogue, elementwise, view, then prologue fusion until a round
+    fuses nothing, since folding one link of a chain can expose the next.
+    Reports the total number of kernels fused as a pass statistic.
   }];
 
   let dependentDialects = [
@@ -62,6 +62,25 @@ def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MAP::MAPDialect",
     "M::MOGG::MOGGDialect",
+  ];
+}
+
+def FuseViews : Pass<"map-fuse-views", "MO::GraphOp"> {
+  let summary = "Fuse MAP kernels via ViewFuser only. For testing only.";
+  let description = [{
+    Runs `ViewFuser` in isolation over `mo.graph`, skipping the other fusers
+    `FuseKernels` also runs. Lets a lit test exercise view fusion without
+    depending on the other fusers having already run. Not part of
+    `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numKernelsFused", "num-kernels-fused", "Number of kernels fused">
   ];
 }
 

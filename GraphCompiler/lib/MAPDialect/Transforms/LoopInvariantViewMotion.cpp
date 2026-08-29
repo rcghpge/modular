@@ -68,11 +68,12 @@ using HoistKey = std::pair<Operation *, Value>;
 // a load can address with the outermost hop's own (untransformed) index.
 // `hoisted` caches by (innermost transform op, tensor) so multiple loads of
 // the same tensor sharing the exact same chain (SSA-identical, not just
-// structurally similar) hoist once.
-LogicalResult hoistChain(LoadOp loadOp,
-                         ArrayRef<IndexTransformOpInterface> chain,
-                         llvm::DenseMap<HoistKey, Value> &hoisted,
-                         OpBuilder &builder) {
+// structurally similar) hoist once. Leaves every hop in place even once
+// dead -- erasure is deferred to a final sweep over the whole body, since a
+// fused elementwise call may still be reading the same transformed index
+// (see `rewireElementwiseIndices`).
+void hoistChain(LoadOp loadOp, ArrayRef<IndexTransformOpInterface> chain,
+                llvm::DenseMap<HoistKey, Value> &hoisted, OpBuilder &builder) {
   IndexTransformOpInterface innermost = chain.front();
   Value &strided = hoisted[{innermost.getOperation(), loadOp.getTensor()}];
   if (!strided) {
@@ -83,19 +84,27 @@ LogicalResult hoistChain(LoadOp loadOp,
   }
 
   IndexTransformOpInterface outermost = chain.back();
-  Value outerIndex = outermost.getIndex();
   loadOp.getTensorMutable().assign(strided);
-  loadOp.getIndexMutable().assign(outerIndex);
+  loadOp.getIndexMutable().assign(outermost.getIndex());
+}
 
-  // Each hop may now be dead (this was its only load); other loads may still
-  // share a hop via `hoisted`, so only erase once unused. Closest-to-load
-  // first, so an inner hop's own use of the next outer hop's result is
-  // dropped before that outer hop is considered.
-  for (IndexTransformOpInterface transform : chain)
-    if (transform->use_empty())
-      transform->erase();
-
-  return success();
+// Rewrites a `map.call.elementwise` still reading its index through a
+// transform chain -- an elementwise producer ViewFuser fused into a view
+// consumer shares the consumer's transformed index the same way a fused
+// load does -- to read the chain's outermost (untransformed) index
+// directly instead. No tensor/view to create here, unlike a load: the call
+// just wants the loop's own current position.
+void rewireElementwiseIndices(IterForeachBodyOp body) {
+  SmallVector<CallElementwiseOp> calls;
+  body.walk([&](CallElementwiseOp op) { calls.push_back(op); });
+  for (CallElementwiseOp call : calls) {
+    SmallVector<IndexTransformOpInterface> chain =
+        collectIndexTransformChain(call.getIndex());
+    if (chain.empty())
+      continue; // Already indexes with the loop's own index; nothing to do.
+    IndexTransformOpInterface outermost = chain.back();
+    call.getIndexMutable().assign(outermost.getIndex());
+  }
 }
 
 LogicalResult loopInvariantViewMotionInBody(IterForeachBodyOp body) {
@@ -111,9 +120,22 @@ LogicalResult loopInvariantViewMotionInBody(IterForeachBodyOp body) {
         collectIndexTransformChain(loadOp.getIndex());
     if (chain.empty())
       continue; // Already indexes with the loop's own index; nothing to do.
-    if (failed(hoistChain(loadOp, chain, hoisted, builder)))
-      return failure();
+    hoistChain(loadOp, chain, hoisted, builder);
   }
+
+  rewireElementwiseIndices(body);
+
+  // Every index-transform op is now unused, fed only by loads and/or
+  // elementwise calls, all rewired above. Erase in reverse-walk order --
+  // since a hop is always emitted before the inner hop that consumes it (or
+  // its own load/call), this visits closest-to-load first, dropping each
+  // inner hop's use of the next outer hop before that outer hop is
+  // considered.
+  SmallVector<IndexTransformOpInterface> transforms;
+  body.walk([&](IndexTransformOpInterface op) { transforms.push_back(op); });
+  for (IndexTransformOpInterface transform : llvm::reverse(transforms))
+    if (transform->use_empty())
+      transform->erase();
 
   return success();
 }

@@ -11,6 +11,7 @@
 #include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
 #include "GraphCompiler/MAPDialect/Support/EpilogueFuser.h"
 #include "GraphCompiler/MAPDialect/Support/PrologueFuser.h"
+#include "GraphCompiler/MAPDialect/Support/ViewFuser.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -31,9 +32,9 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
-    // Epilogue-fuse first each round, prologue-fuse last: elementwise fusion
-    // having already run this round is what guarantees every producer
-    // `PrologueFuser` sees is the maximal elementwise chain.
+    // Epilogue-fuse first each round, prologue-fuse last: elementwise and
+    // view fusion having already run this round is what guarantees every
+    // producer `PrologueFuser` sees is the maximal elementwise/view chain.
     mlir::OpPassManager cleanupPm(MO::GraphOp::getOperationName());
     cleanupPm.addPass(mlir::createCanonicalizerPass());
     cleanupPm.addPass(mlir::createCSEPass());
@@ -41,7 +42,7 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
     unsigned numFused;
     do {
       numFused = EpilogueFuser(graphOp).fuse() +
-                 ElementwiseFuser(graphOp).fuse() +
+                 ElementwiseFuser(graphOp).fuse() + ViewFuser(graphOp).fuse() +
                  PrologueFuser(graphOp).fuse();
       numKernelsFused += numFused;
       // Canonicalize/CSE between rounds: a fuser can leave behind dead ops
