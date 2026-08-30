@@ -357,6 +357,7 @@ mlir_nanobind(
         "include/GraphCompiler/MODialect/Transforms/**/*.td",
         "include/GraphCompiler/Conversion/**/*.td",
     ]),
+    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
     output_dir = "include/GraphCompiler/MODialect/Nanobind",
     deps = [
         ":MODialectTdFiles",
@@ -371,13 +372,7 @@ mlir_nanobind(
         "include/GraphCompiler/RMODialect/*.td",
         "include/GraphCompiler/RMODialect/Transforms/**/*.td",
     ]),
-    exclude = [
-        # rmo.concat uses OptionalAttr, which tblgen generates as a normal
-        # mlir::Attribute that's allowed to be null, while our bindings
-        # generate as std::optional<mlir::Attribute>.
-        "RMO_ConcatOp",
-        "RMO_MOTransferOp",
-    ],
+    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
     output_dir = "include/GraphCompiler/RMODialect/Nanobind",
     deps = [
         ":MODialectTdFiles",
