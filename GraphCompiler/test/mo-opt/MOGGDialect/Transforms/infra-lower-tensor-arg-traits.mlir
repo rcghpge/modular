@@ -1,9 +1,13 @@
-// XFAIL: *
-// RUN: false
-// FIXME(GEX-4141): Timeout in UBSan.
+// The import run line filters to the declarations under test before FileCheck.
 
-// UN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | FileCheck %s --check-prefix=IMPORT
-// UN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
+// `mogg-import-packages` loads `builtin_kernels` transitively, so the printed
+// module is ~68MB, and the `IMPORT-DAG` patterns below have to bridge from
+// `registration` to the trailing contract array with `{{.*}}`. grep for just
+// the lines we're interested in to cut down on processing, but we should just add
+// an option to --mogg-import-packages which skips builtin defs we pulled in transitively (TODO: GEX-4142).
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | grep 'registration = "trait_' | FileCheck %s --check-prefix=IMPORT
+
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp 2>&1 | FileCheck %s
 
 // === Baked tensor-arg contracts (distill matrix) ========================== //
 //
