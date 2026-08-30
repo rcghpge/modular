@@ -565,6 +565,7 @@ modular_cc_library(
     hdrs = glob(["include/GraphCompiler/MODialect/*.h"]) + [
         "include/GraphCompiler/Matchers.h",
     ],
+    copts = ["-fvisibility=default"],
     deps = [
         ":MODialectEnumsIncGen",
         ":MODialectIncGen",
@@ -740,6 +741,7 @@ modular_cc_library(
     name = "RMODialect",
     srcs = glob(["lib/RMODialect/*.cpp"]),
     hdrs = glob(["include/GraphCompiler/RMODialect/*.h"]),
+    copts = ["-fvisibility=default"],
     deps = [
         ":MODialect",
         ":RMODialectIncGen",
@@ -941,6 +943,7 @@ modular_cc_library(
         "include/GraphCompiler/MOGGDialect/Support/*.h",
         "include/GraphCompiler/MOGGDialect/Analysis/*.h",
     ]),
+    copts = ["-fvisibility=default"],
     local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
         ":GraphCompilerInterfaces",
@@ -1383,6 +1386,7 @@ modular_cc_library(
     name = "MOSHDialect",
     srcs = glob(["lib/MOSHDialect/*.cpp"]),
     hdrs = glob(["include/GraphCompiler/MOSHDialect/*.h"]),
+    copts = ["-fvisibility=default"],
     deps = [
         ":MOSHDialectIncGen",
         ":Support",

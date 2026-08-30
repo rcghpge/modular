@@ -13,11 +13,12 @@
 #include "GraphCompiler/Passes.h"
 #include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/SymbolExport.h"
 #include "llvm/Support/Process.h"
 
 namespace M {
 
-std::optional<std::filesystem::path> getMaxCacheDir();
+MODULAR_CXX_EXPORT std::optional<std::filesystem::path> getMaxCacheDir();
 
 /// Gets the location for storing externalized weights.
 std::optional<std::filesystem::path> getWeightsCacheDir();
