@@ -1217,6 +1217,27 @@ struct AddFuseInputs:
         foreach[func](z, ctx)
 
 
+@extensibility.register("imposter_add_fuse_output")
+struct AddFuseOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: FusedOutputTensor,
+        x: InputTensor,
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        @__parameter
+        @always_inline
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+            return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
+                SIMD[z.dtype, width]
+            ](y.load[width](idx))
+
+        foreach[func, target=target](z, ctx)
+
+
 # c = a @ b, should support CPU and GPU
 @extensibility.register("matmul_fuse_out")
 struct MatmulFuseOut:

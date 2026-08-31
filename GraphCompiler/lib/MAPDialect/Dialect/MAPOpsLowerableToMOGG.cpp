@@ -138,16 +138,16 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   // Every capture must be one of the kernel's own outputs, already mapped
   // by `IterOpaqueOp::lowerToMOGG`.
   SmallVector<Value> moggCaptures;
-  Type outElemType;
-  Value outShape;
   for (Value cap : getCaptures()) {
     if (!isa<BlockArgument>(cap) || !state.mapping.contains(cap))
       return emitOpError("MAPToMOGG: epilogue capture is not a kernel output");
     moggCaptures.push_back(state.mapping.lookup(cap));
-    auto capTy = cast<MO::TensorType>(cap.getType());
-    outShape = buildShape(loc, capTy.getTypedShapeAttr(), state);
-    outElemType = capTy.getElementType();
   }
+
+  // Build the output shape / dtype for the tensor.
+  auto resultTy = cast<MO::TensorType>(getResult().getType());
+  Value outShape = buildShape(loc, resultTy.getTypedShapeAttr(), state);
+  Type outElemType = resultTy.getElementType();
 
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
