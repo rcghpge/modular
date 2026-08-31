@@ -15,7 +15,7 @@ from std.sys.info import simd_width_of
 from max.algorithm.functional import elementwise
 import extensibility
 from layout import IntTuple, TensorLayout
-from layout import TileTensor, CoordLike, Coord
+from layout import TileTensor, CoordLike, Coord, DefaultEngine
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
 from max.gpu.host import DeviceContext, DeviceContextArray
@@ -294,6 +294,10 @@ struct TraitNegate:
             # types, so rebind the loaded element to the output dtype.
             var zt = to_tile_tensor(z)
             var xt = to_tile_tensor(x)
+            # The emitted dense arg does not override `Engine`, so its
+            # projection resolves to the pointer-backed default. Flipping the
+            # emitter to another engine must break here first.
+            comptime assert type_of(zt).Engine == DefaultEngine[element_width=1]
             var n = Int(x.shape().product())
             for i in range(n):
                 zt.raw_store(

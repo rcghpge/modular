@@ -5445,6 +5445,7 @@ struct _MoggDenseTensorArg[
         dtype = Self.dtype,
         LayoutType = Self.LayoutType,
         origin = UntrackedOrigin[mut = Self.mut],
+        Engine = Self.Engine,
     ]
 
     @always_inline
@@ -5461,6 +5462,7 @@ struct _MoggDenseTensorArg[
             dtype = Self.dtype,
             LayoutType = Self.LayoutType,
             origin = UntrackedOrigin[mut = Self.mut],
+            Engine = Self.Engine,
         ](ptr=device_ptr, layout=self.layout())
         encoder.encode(device_value, target)
 
@@ -5483,11 +5485,13 @@ struct _MoggDenseTensorArg[
         dtype = Self.dtype,
         LayoutType = Self.LayoutType,
         origin = UntrackedOrigin[mut = Self.mut],
+        Engine = Self.Engine,
     ] where Self._can_project_tile_tensor:
         return TileTensor[
             dtype = Self.dtype,
             LayoutType = Self.LayoutType,
             origin = UntrackedOrigin[mut = Self.mut],
+            Engine = Self.Engine,
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 

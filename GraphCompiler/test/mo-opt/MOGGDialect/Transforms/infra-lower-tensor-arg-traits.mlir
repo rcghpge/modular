@@ -121,6 +121,10 @@
 // EMIT-DAG: TileTensorable where _can_project_tile_tensor,
 // EMIT-DAG: ] where Self._can_project_tile_tensor:
 //
+// The projection names its engine explicitly instead of inheriting the
+// pointer-backed default, so the arg's engine stays a per-target choice.
+// EMIT-DAG: Engine = Self.Engine,
+//
 // Region constructs buffer captures (not execute-facing dense args).
 // EMIT-DAG: _MoggTensorBufferCapture[DType.float32, type_of(
 // EMIT-DAG: unsafe_origin_cast[MutUntrackedOrigin]()
