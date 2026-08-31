@@ -3108,6 +3108,11 @@ public:
 
   void apply() {
     unsigned devicesCount = allReduceOp.getOutputs().size();
+    // The fused composite op has no group concept; a grouped allreduce
+    // (independent subgroups, e.g. TP groups under DP) must not fuse.
+    int64_t groupSize = allReduceOp.getGroupSizeAttr().getInt();
+    if (groupSize != 0 && groupSize != static_cast<int64_t>(devicesCount))
+      return;
     // Start from AllReduce outputs to match everything
     for (Value out : allReduceOp.getOutputs()) {
       if (!matchFusedAllReducePath(cast<TensorValue>(out)))

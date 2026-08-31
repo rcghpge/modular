@@ -5577,13 +5577,18 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
     the same shape as the final output and performs a sum reduction
     across the devices.
 
+    When `group_size` is set to a nonzero value smaller than the number of
+    inputs, contiguous runs of `group_size` devices form independent
+    allreduce groups (e.g. tensor-parallel groups under data parallelism);
+    shapes must then only match within each group.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
     Variadic<MO_Tensor>:$outputs,

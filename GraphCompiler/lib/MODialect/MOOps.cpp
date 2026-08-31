@@ -3526,17 +3526,38 @@ LogicalResult AllReduceSumOp::verify() {
   if (inputs.empty())
     return emitError("allreduce requires at least one input");
 
-  // Verify that all inputs have the same shape and element type.
-  // Inputs intentionally differ in device (one per GPU), so we can't use
-  // AllTypesMatch here. Output-input type matching (including device) and
-  // signal buffer count are handled by TableGen traits.
+  // Verify group size. Zero (the attribute default) means all devices form
+  // one group, so op construction sites predating the attribute stay valid.
+  int64_t ngpus = inputs.size();
+  int64_t groupSize = getGroupSizeAttr().getInt();
+  if (groupSize < 0)
+    return emitError("group_size must be non-negative");
+  if (groupSize == 0)
+    groupSize = ngpus;
+  if (ngpus % groupSize != 0)
+    return emitError(llvm::formatv(
+        "group_size must evenly divide the number of inputs ({0}), but got {1}",
+        ngpus, groupSize));
+
+  // Verify that all inputs within a group have the same shape, and that all
+  // inputs share one element type. Groups may differ in shape (e.g. per-DP-
+  // replica row counts). Inputs intentionally differ in device (one per GPU),
+  // so we can't use AllTypesMatch here. Output-input type matching (including
+  // device) and signal buffer count are handled by TableGen traits.
   auto firstInputType = getInputTensor(0).getType();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
-    if (inputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
-      return emitError("all inputs must have the same shape");
     if (inputType.getElementType() != firstInputType.getElementType())
       return emitError("all inputs must have the same element type");
+  }
+  for (int64_t groupStart = 0; groupStart < ngpus; groupStart += groupSize) {
+    auto groupInputType = getInputTensor(groupStart).getType();
+    for (int64_t i = groupStart + 1, e = groupStart + groupSize; i < e; ++i) {
+      auto inputType = getInputTensor(i).getType();
+      if (inputType.getTypedShapeAttr() != groupInputType.getTypedShapeAttr())
+        return emitError(
+            "all inputs in each allreduce group must have the same shape");
+    }
   }
 
   return success();
