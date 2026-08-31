@@ -550,8 +550,8 @@ modular_cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = [
-        "//KGEN:__subpackages__",
         "//Kernels/tools/gpu-query:__pkg__",
+        "//Mojo:__subpackages__",
     ],
     deps = [
         ":Driver/DeviceContextAPI",
@@ -563,7 +563,7 @@ modular_cc_library(
 )
 
 # The DeviceContext runtime shared library. Toolchain-side consumers
-# (//KGEN:CompilerRT, the mojo toolchain implicit deps) drop this target under
+# (//Mojo:CompilerRT, the mojo toolchain implicit deps) drop this target under
 # --config=hal-device-context: the HAL arm reaches @mojo//:std, which would
 # cycle back into the toolchain.
 modular_shared_library(
@@ -612,7 +612,7 @@ alias(
         # Under --config=hal-device-context the implementation is the HAL shim
         # over the Mojo HAL DeviceContext; the legacy C++ implementation is
         # not linked. The HAL shim reaches @mojo//:std, so compiler-family
-        # targets (//KGEN:CompilerRT, the toolchain implicit deps) drop
+        # targets (//Mojo:CompilerRT, the toolchain implicit deps) drop
         # //MLRT:Driver/DeviceContext under this flag.
         "//:hal_device_context_enabled": ":Driver/DeviceContextImplHAL",
         "//conditions:default": ":Driver/DeviceContextImplCpp",
@@ -797,9 +797,9 @@ modular_cc_library(
     visibility = [
         "//AsyncRT:__subpackages__",
         "//GraphCompiler:__subpackages__",
-        "//KGEN:__subpackages__",
         "//Kernels:__subpackages__",
         "//MLRT:__subpackages__",
+        "//Mojo:__subpackages__",
         "//max/python/max/_core/internal:__subpackages__",
     ],
     deps = [
@@ -867,7 +867,7 @@ modular_cc_library(
         "//GraphCompiler:__subpackages__",
         # Compiler-family tools link this directly under
         # --config=hal-device-context (PTX->cubin without the legacy DeviceContext runtime).
-        "//KGEN:__subpackages__",
+        "//Mojo:__subpackages__",
         "//MLRT:__subpackages__",
     ],
     deps = [

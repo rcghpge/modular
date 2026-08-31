@@ -16,7 +16,7 @@
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "KGEN/KGENDialect/KGENTypes.h"
+#include "Mojo/KGENDialect/KGENTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"

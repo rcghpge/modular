@@ -15,7 +15,7 @@
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/RMODialect/RMOInterfaces.h"
-#include "KGEN/KGENDialect/KGENTypes.h"
+#include "Mojo/KGENDialect/KGENTypes.h"
 #include "mlir/IR/OpImplementation.h"
 
 using M::KGEN::ParamDeclAttr;

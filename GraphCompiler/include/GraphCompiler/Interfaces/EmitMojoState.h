@@ -14,8 +14,8 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 
-#include "KGEN/KGENDialect/KGENParameters.h"
-#include "KGEN/KGENDialect/KGENTypes.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENTypes.h"
 #include "Support/AssertStream.h"
 
 namespace M::MOGG {

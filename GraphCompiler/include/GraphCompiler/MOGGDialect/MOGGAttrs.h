@@ -12,7 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGATTRS_H
 
 #include "GraphCompiler/MOGGDialect/MOGGEnums.h"
-#include "KGEN/LITDialect/LITTypes.h"
+#include "Mojo/LITDialect/LITTypes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/SmallSet.h"

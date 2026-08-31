@@ -27,8 +27,8 @@ _COMMON_CUSTOM_SUBSTITUTIONS = {
     "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
     "%mo_vs_numpy_py": "$(rlocationpath //GraphCompiler/test/utils/test-helper:test_vs_numpy.py)",
     "mo-opt": "$(rlocationpath //GraphCompiler/tools/mo-opt)",
-    "mojo": "$(rlocationpath //KGEN/tools/mojo)",
-    "mojo-lldb": "$(rlocationpath //KGEN:mojo-lldb)",
+    "mojo": "$(rlocationpath //Mojo/tools/mojo)",
+    "mojo-lldb": "$(rlocationpath //Mojo:mojo-lldb)",
     "mt": "$(rlocationpath //GraphCompiler/tools/mt)",
 }
 
@@ -41,8 +41,8 @@ _COMMON_MOJO_DEPS = [
 _COMMON_TOOLS = [
     "//GraphCompiler/tools/mo-opt",
     "//GraphCompiler/tools/mt",
-    "//KGEN:mojo-lldb",
-    "//KGEN/tools/mojo",
+    "//Mojo:mojo-lldb",
+    "//Mojo/tools/mojo",
 ]
 
 _COMMON_DEPS = [

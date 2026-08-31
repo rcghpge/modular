@@ -11,7 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_SUPPORT_MOGGTYPETRAITS_H
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOGGTYPETRAITS_H
 
-#include "KGEN/POPDialect/POPTypes.h"
+#include "Mojo/POPDialect/POPTypes.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"

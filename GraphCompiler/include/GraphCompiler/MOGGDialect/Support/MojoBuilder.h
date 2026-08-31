@@ -11,7 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 
-#include "KGEN/KGENDialect/KGENUtils.h"
+#include "Mojo/KGENDialect/KGENUtils.h"
 #include "Support/ADT/SmartVariant.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/APFloat.h"

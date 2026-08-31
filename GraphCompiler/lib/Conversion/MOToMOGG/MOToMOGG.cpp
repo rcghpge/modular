@@ -19,7 +19,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
 #include "Support/ML/TensorShape.h"

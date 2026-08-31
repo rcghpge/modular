@@ -14,9 +14,9 @@
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GraphCompiler/Support/DataflowUtils.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/LITDialect/LITUtils.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "Mojo/KGENDialect/KGENOps.h"
+#include "Mojo/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 

@@ -13,7 +13,7 @@
 
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Types.h"

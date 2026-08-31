@@ -6,7 +6,7 @@
 
 #include "GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "GraphCompiler/MODialect/MOOps.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Threading.h"

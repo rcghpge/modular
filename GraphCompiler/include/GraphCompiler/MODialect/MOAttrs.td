@@ -12,7 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD
 
 include "GraphCompiler/MODialect/MODialect.td"
-include "KGEN/KGENDialect/KGENAttrs.td"
+include "Mojo/KGENDialect/KGENAttrs.td"
 
 /// Helps declare optional parameter declaration arguments.
 def MO_ParamDecls : DefaultValuedAttr<KGEN_ParamDeclArrayAttr,

@@ -8,7 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_ANALYSIS_SUPPORT_H
 
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 
 namespace M::MOGG {
 

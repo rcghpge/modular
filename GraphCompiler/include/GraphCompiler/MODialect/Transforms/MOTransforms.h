@@ -12,10 +12,10 @@
 #include "mlir/Pass/Pass.h"
 
 // Must include dependent dialects
-#include "KGEN/HLCFDialect/HLCFDialect.h"
-#include "KGEN/KGENDialect/KGENDialect.h"
-#include "KGEN/LITDialect/LITDialect.h"
-#include "KGEN/POPDialect/POPDialect.h"
+#include "Mojo/HLCFDialect/HLCFDialect.h"
+#include "Mojo/KGENDialect/KGENDialect.h"
+#include "Mojo/LITDialect/LITDialect.h"
+#include "Mojo/POPDialect/POPDialect.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"

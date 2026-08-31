@@ -8,7 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_CONVERSION_PARAMETERLOWERING_H
 
 #include "GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Value.h"

@@ -6,7 +6,7 @@
 
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 
 #include "llvm/ADT/StringSet.h"
 

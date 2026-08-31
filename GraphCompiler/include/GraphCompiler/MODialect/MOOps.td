@@ -11,9 +11,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
 
-include "KGEN/KGENDialect/KGENAttrs.td"
-include "KGEN/KGENDialect/KGENInterfaces.td"
-include "KGEN/KGENDialect/KGENTypes.td"
+include "Mojo/KGENDialect/KGENAttrs.td"
+include "Mojo/KGENDialect/KGENInterfaces.td"
+include "Mojo/KGENDialect/KGENTypes.td"
 include "GraphCompiler/MODialect/MOEnums.td"
 include "GraphCompiler/MODialect/MOInterfaces.td"
 include "GraphCompiler/MODialect/MOTypes.td"
@@ -865,7 +865,7 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
     enqueued on the side stream, so the MOGG->MGP lowering can bind the body's
     device context to a `mgp.device_context.select_stream` view.
 
-    Operands are a plain variadic list (tensors / chains) mapped 1:1 into the 
+    Operands are a plain variadic list (tensors / chains) mapped 1:1 into the
     body's block arguments, and `mo.yield` maps 1:1 to the op's results.
     The body is a graph region (unordered); chains encode any mutable ordering
     exactly as in the enclosing graph.

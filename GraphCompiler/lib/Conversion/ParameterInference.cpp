@@ -11,11 +11,11 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
-#include "KGEN/KGENDialect/KGENPogUtils.h"
-#include "KGEN/LITDialect/LITTypes.h"
-#include "KGEN/LITDialect/LITUtils.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENPogUtils.h"
+#include "Mojo/LITDialect/LITTypes.h"
+#include "Mojo/LITDialect/LITUtils.h"
 
 using namespace mlir;
 

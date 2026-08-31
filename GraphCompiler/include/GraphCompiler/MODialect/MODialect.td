@@ -8,7 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MODIALECT_TD
 
 include "mlir/IR/DialectBase.td"
-include "KGEN/KGENDialect/KGENDialect.td"
+include "Mojo/KGENDialect/KGENDialect.td"
 include "Support/MDialect/MDialect.td"
 
 //===----------------------------------------------------------------------===//

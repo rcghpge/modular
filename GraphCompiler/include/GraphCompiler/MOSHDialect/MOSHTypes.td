@@ -12,7 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHTYPES_TD
 
 include "GraphCompiler/MOSHDialect/MOSHDialect.td"
-include "KGEN/KGENDialect/KGENTypeInterfaces.td"
+include "Mojo/KGENDialect/KGENTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 
 // Base class for types in this dialect.

@@ -7,8 +7,8 @@
 #ifndef GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 #define GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 
-#include "KGEN/Compiler/ObjectCompiler.h"
-#include "KGEN/ExecutionEngine/ExecutionEngine.h"
+#include "Mojo/Compiler/ObjectCompiler.h"
+#include "Mojo/ExecutionEngine/ExecutionEngine.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringExtras.h"
 

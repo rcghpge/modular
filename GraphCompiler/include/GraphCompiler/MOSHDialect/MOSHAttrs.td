@@ -12,7 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_TD
 
 include "GraphCompiler/MOSHDialect/MOSHDialect.td"
-include "KGEN/KGENDialect/KGENAttrs.td"
+include "Mojo/KGENDialect/KGENAttrs.td"
 
 def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let summary = "Shape expression attribute";

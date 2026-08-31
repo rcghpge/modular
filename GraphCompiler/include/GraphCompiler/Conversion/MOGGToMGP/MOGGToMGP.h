@@ -14,12 +14,12 @@
 // Need to include the dialects we use, which includes many KGEN ones. These
 // KGEN dialects are needed so we can load the LIT kernels to dynamically create
 // the list of available MOGG operations.
-#include "KGEN/HLCFDialect/HLCFDialect.h"
-#include "KGEN/LITDialect/LITAttrs.h"
-#include "KGEN/LITDialect/LITDialect.h"
-#include "KGEN/LITDialect/LITOps.h"
-#include "KGEN/POPDialect/POPDialect.h"
-#include "KGEN/ToolCommon/InitAllDialects.h"
+#include "Mojo/HLCFDialect/HLCFDialect.h"
+#include "Mojo/LITDialect/LITAttrs.h"
+#include "Mojo/LITDialect/LITDialect.h"
+#include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/POPDialect/POPDialect.h"
+#include "Mojo/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"

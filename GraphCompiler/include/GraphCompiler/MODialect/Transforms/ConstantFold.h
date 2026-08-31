@@ -9,8 +9,8 @@
 
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/SmallSet.h"

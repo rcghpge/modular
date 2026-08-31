@@ -14,7 +14,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"

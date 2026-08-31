@@ -12,14 +12,14 @@
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoTraits.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
-#include "KGEN/KGENDialect/KGENPogUtils.h"
-#include "KGEN/KGENDialect/ParameterEvaluator.h"
-#include "KGEN/LITDialect/LITOps.h"
-#include "KGEN/LITDialect/LITTypes.h"
-#include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/POPDialect/POPOps.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENPogUtils.h"
+#include "Mojo/KGENDialect/ParameterEvaluator.h"
+#include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/LITDialect/LITTypes.h"
+#include "Mojo/LITDialect/LITUtils.h"
+#include "Mojo/POPDialect/POPOps.h"
 
 using namespace M;
 

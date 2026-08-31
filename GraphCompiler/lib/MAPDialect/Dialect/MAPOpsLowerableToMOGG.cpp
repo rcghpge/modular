@@ -19,7 +19,7 @@
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/SetVector.h"
 

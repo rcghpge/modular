@@ -13,8 +13,8 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 #include <numeric>

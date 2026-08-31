@@ -12,9 +12,9 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHOPS_TD
 
 include "GraphCompiler/MOSHDialect/MOSHTypes.td"
-include "KGEN/KGENDialect/KGENTypes.td"
-include "KGEN/KGENDialect/KGENInterfaces.td"
-include "KGEN/KGENDialect/KGENAttrs.td"
+include "Mojo/KGENDialect/KGENTypes.td"
+include "Mojo/KGENDialect/KGENInterfaces.td"
+include "Mojo/KGENDialect/KGENAttrs.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"

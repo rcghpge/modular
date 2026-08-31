@@ -13,7 +13,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 

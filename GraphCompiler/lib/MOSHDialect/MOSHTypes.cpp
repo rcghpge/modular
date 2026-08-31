@@ -11,7 +11,7 @@
 #include "GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHDialect.h"
-#include "KGEN/KGENDialect/KGENUtils.h"
+#include "Mojo/KGENDialect/KGENUtils.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/TypeSwitch.h"
 

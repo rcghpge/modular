@@ -15,7 +15,7 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GraphCompiler/MOGGDialect/MOGGEnums.td"
-include "KGEN/LITDialect/LITTypes.td"
+include "Mojo/LITDialect/LITTypes.td"
 
 /// Base class for MOGG dialect location attributes: dialect-provided
 /// attributes that subclass `mlir::LocationAttr` (see `LocationAttrDef` in

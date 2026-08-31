@@ -10,7 +10,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
 
-include "KGEN/KGENDialect/KGENTypes.td"
+include "Mojo/KGENDialect/KGENTypes.td"
 include "GraphCompiler/MODialect/MOInterfaces.td"
 include "GraphCompiler/RMODialect/RMODialect.td"
 include "GraphCompiler/RMODialect/RMOInterfaces.td"

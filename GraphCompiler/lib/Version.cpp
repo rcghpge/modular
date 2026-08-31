@@ -8,8 +8,8 @@
 #include "AsyncRT/Runtime/Globals/Globals.h"
 #include "Config/Version.h"
 #include "GraphCompiler/MGPDialect/RT/BinaryID.h"
-#include "KGEN/CompilerRT/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
+#include "Mojo/CompilerRT/BinaryID.h"
 #include "Support/BinaryID.h"
 
 #include "llvm/ADT/StringExtras.h"

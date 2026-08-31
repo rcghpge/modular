@@ -10,7 +10,7 @@
 
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/Support/Dims.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/ML/RangeUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"

@@ -14,7 +14,7 @@ modular_cc_binary(
         "//GraphCompiler:MODialect",
         "//GraphCompiler:MOGGDialect",
         "//GraphCompiler:RMODialect",
-        "//KGEN:ToolCommon",
+        "//Mojo:ToolCommon",
         "@llvm-project//mlir:IndexDialect",
         "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:MlirLspServerLib",

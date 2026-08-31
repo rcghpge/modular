@@ -8,8 +8,8 @@
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MODialect/Transforms/ShapeInferencePassesCommon.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;

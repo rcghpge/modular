@@ -10,7 +10,7 @@
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/KGENDialect/KGENUtils.h"
+#include "Mojo/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Pass/Pass.h"

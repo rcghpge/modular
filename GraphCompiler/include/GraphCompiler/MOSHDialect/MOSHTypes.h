@@ -11,7 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHTYPES_H
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHTYPES_H
 
-#include "KGEN/KGENDialect/KGENTypeInterfaces.h"
+#include "Mojo/KGENDialect/KGENTypeInterfaces.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
 namespace M::MOSH {

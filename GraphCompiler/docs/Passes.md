@@ -53,16 +53,16 @@ Dialects have extensive documentation. Here's a quick reference:
 Other referenced dialects, not directly part of the compiler:
 
 - **KGEN** - kernel-generation dialect used during JIT compilation. Definitions:
-  `KGEN/include/KGEN/KGENDialect/KGENDialect.td` and related KGEN dialect files.
+  `Mojo/include/Mojo/KGENDialect/KGENDialect.td` and related KGEN dialect files.
   Docs: `KGEN/docs/manual/PassesAndIR.md`.
 - **HLCF** - high-level control flow dialect used in kernel-generation
-  pipelines. Definition: `KGEN/include/KGEN/HLCFDialect/HLCFDialect.td`. Docs:
+  pipelines. Definition: `Mojo/include/Mojo/HLCFDialect/HLCFDialect.td`. Docs:
   `KGEN/docs/manual/PassesAndIR.md`.
 - **LIT** - Mojo frontend dialect used for parsed Mojo IR in kernel compilation
-  pipelines. Definition: `KGEN/include/KGEN/LITDialect/LITDialect.td`. Docs:
+  pipelines. Definition: `Mojo/include/Mojo/LITDialect/LITDialect.td`. Docs:
   `KGEN/docs/manual/PassesAndIR.md`.
 - **POP** - Mojo low-level/runtime support dialect used in kernel generation and
-  lowering. Definition: `KGEN/include/KGEN/POPDialect/POPDialect.td`. Docs:
+  lowering. Definition: `Mojo/include/Mojo/POPDialect/POPDialect.td`. Docs:
   `KGEN/docs/manual/PassesAndIR.md`.
 - **GRT (GraphRT)** - runtime primitive dialect for execution in GraphRT.
   Definition: `MLRT/include/MLRT/GraphRT/GRTDialect/GRTDialect.td`. Docs:
@@ -2003,4 +2003,4 @@ ops, and peels redundant `kgen.rebind` ops.
 Source:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/KGEN/lib/Transforms/VerifyParameters.cpp>
 Pass definition:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/KGEN/include/KGEN/KGENPasses.td>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/Mojo/include/Mojo/KGENPasses.td>

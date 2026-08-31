@@ -8,8 +8,8 @@
 #include "GraphCompiler/MODialect/PackingShapeFunctions.h"
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
 
 #include "mlir/Pass/PassManager.h"

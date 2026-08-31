@@ -11,7 +11,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "GraphCompiler/Passes.h"
-#include "KGEN/KGENDialect/KGENCompilationContext.h"
+#include "Mojo/KGENDialect/KGENCompilationContext.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/FileSystemExtras.h"

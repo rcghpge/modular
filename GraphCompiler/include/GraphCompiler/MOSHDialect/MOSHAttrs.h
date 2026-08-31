@@ -11,7 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_H
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_H
 
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/MDialect/MAttrs.h"
 
 namespace M::MOSH {

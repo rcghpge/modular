@@ -8,7 +8,7 @@
 #define GENERICML_MGPPRIMITIVES_MGPPRIMITIVES_H
 
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
-#include "KGEN/ExecutionEngine/ExecutionEngine.h"
+#include "Mojo/ExecutionEngine/ExecutionEngine.h"
 #include "Support/ReferenceCounted.h"
 
 namespace M {

@@ -7,7 +7,7 @@
 #include "GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOOps.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
 #include "Support/AssertStream.h"
 
 #include "mlir/Pass/AnalysisManager.h"

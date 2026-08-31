@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/LITDialect/LITAttrs.h"
-#include "KGEN/LITDialect/LITTypes.h"
-#include "KGEN/LITDialect/LITUtils.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/LITDialect/LITAttrs.h"
+#include "Mojo/LITDialect/LITTypes.h"
+#include "Mojo/LITDialect/LITUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/ArrayRef.h"

@@ -7,8 +7,8 @@
 #include "GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/TransformUtils/SCCUtils.h"
+#include "Mojo/KGENDialect/KGENOps.h"
+#include "Mojo/TransformUtils/SCCUtils.h"
 #include "Support/AssertStream.h"
 #include "Support/HashUtils.h"
 

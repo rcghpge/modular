@@ -11,7 +11,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "KGEN/POPDialect/POPOps.h"
+#include "Mojo/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 
 using namespace M;

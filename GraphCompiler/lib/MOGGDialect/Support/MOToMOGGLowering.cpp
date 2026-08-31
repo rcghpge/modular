@@ -16,11 +16,11 @@
 
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/KGENDialect/KGENPogUtils.h"
-#include "KGEN/LITDialect/LITOps.h"
-#include "KGEN/LITDialect/LITUtils.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENPogUtils.h"
+#include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
 
 #include "llvm/ADT/STLExtras.h"

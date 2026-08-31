@@ -7,7 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGINTERFACES_H
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGINTERFACES_H
 
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 
 //===----------------------------------------------------------------------===//

@@ -17,7 +17,7 @@
 
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
-#include "KGEN/POPDialect/POPAttrs.h"
+#include "Mojo/POPDialect/POPAttrs.h"
 #include "llvm/ADT/APFloat.h"
 
 using namespace M;

@@ -12,7 +12,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/Support/Diagnostic.h"
-#include "KGEN/LITDialect/LITOps.h"
+#include "Mojo/LITDialect/LITOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Buffer.h"
 #include "Support/Compiler/VerifyUtils.h"

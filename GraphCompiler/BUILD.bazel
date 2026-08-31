@@ -109,9 +109,9 @@ modular_cc_library(
         ":RMOTransforms",
         ":Support",
         "//AsyncRT:RuntimeGlobals",
-        "//KGEN:CompilerRT",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/MLIRToMEF",
+        "//Mojo:CompilerRT",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Diagnostics",
@@ -188,7 +188,7 @@ modular_cc_library(
     deps = [
         ":MOGGToMGPIncGen",
         ":MOSHDialect",
-        "//KGEN:KGENDialect",
+        "//Mojo:KGENDialect",
         "//Support:Base",
         "//Support:Compiler",
         "@llvm-project//llvm:Support",
@@ -222,8 +222,8 @@ modular_cc_library(
     deps = [
         ":MODialect",
         ":MOGGDialect.headers",
-        "//KGEN:KGENDialect",
-        "//KGEN:LITDialect",
+        "//Mojo:KGENDialect",
+        "//Mojo:LITDialect",
     ],
 )
 
@@ -344,7 +344,7 @@ td_library(
     srcs = glob(["include/GraphCompiler/MODialect/*.td"]),
     includes = ["include"],
     deps = [
-        "//KGEN:KGENDialectTdFiles",
+        "//Mojo:KGENDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
     ],
@@ -642,8 +642,8 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOGGFusionSupport",
         ":MOSHDialect",
-        "//KGEN:KGENDialect",
         "//MLRT:Driver/DeviceContext",
+        "//Mojo:KGENDialect",
         "//Support:DeviceSpecs",
     ],
 )
@@ -797,9 +797,9 @@ td_library(
     srcs = glob(["include/GraphCompiler/MOGGDialect/*.td"]),
     includes = ["include"],
     deps = [
-        "//KGEN:KGENDialectTdFiles",
-        "//KGEN:LITDialectTdFiles",
-        "//KGEN:POPDialectTdFiles",
+        "//Mojo:KGENDialectTdFiles",
+        "//Mojo:LITDialectTdFiles",
+        "//Mojo:POPDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
 )
@@ -911,9 +911,9 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
-        "//KGEN:KGENDialect",
-        "//KGEN:LITDialect",
-        "//KGEN:POPDialect",
+        "//Mojo:KGENDialect",
+        "//Mojo:LITDialect",
+        "//Mojo:POPDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -959,11 +959,11 @@ modular_cc_library(
         ":OperandInference",
         ":ParameterInference",
         ":Support",
-        "//KGEN:MojoParser",
-        "//KGEN:ObjectCompiler",
-        "//KGEN:Support",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/GRTDialect",
+        "//Mojo:MojoParser",
+        "//Mojo:ObjectCompiler",
+        "//Mojo:Support",
         "//Support:Context",
         "//Support:HashUtils",
     ],
@@ -990,8 +990,8 @@ modular_cc_library(
         ":MOToMAP",
         ":Support",
         "//AsyncRT:CompilerSupport",
-        "//KGEN:TransformUtils",
         "//MLRT:Driver/DeviceContext",
+        "//Mojo:TransformUtils",
     ],
 )
 
@@ -1193,8 +1193,8 @@ modular_cc_library(
         ":MGPDialectOpInterfacesIncGen",
         ":MGPDialectTypeInterfacesIncGen",
         ":MGPDialectTypesIncGen",
-        "//KGEN:KGENDialect",
-        "//KGEN:POPDialect",
+        "//Mojo:KGENDialect",
+        "//Mojo:POPDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1343,13 +1343,13 @@ modular_cc_library(
     deps = [
         ":DeviceDriver.headers",
         "//AsyncRT:Runtime",
-        "//KGEN:Compiler",
-        "//KGEN:CompilerRT",
-        "//KGEN:ExecutionEngine",
-        "//KGEN:ObjectCompiler",
         "//MLRT:Core",
         "//MLRT:Core/Tensor",
         "//MLRT:GraphRT/MEFExecutor",
+        "//Mojo:Compiler",
+        "//Mojo:CompilerRT",
+        "//Mojo:ExecutionEngine",
+        "//Mojo:ObjectCompiler",
         "//Support:Base",
         "//Support:Context",
         "//Support:ML",
@@ -1367,7 +1367,7 @@ td_library(
     srcs = glob(["include/GraphCompiler/MOSHDialect/*.td"]),
     includes = ["include"],
     deps = [
-        "//KGEN:KGENDialectTdFiles",
+        "//Mojo:KGENDialectTdFiles",
         "@llvm-project//mlir:AttrTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -1409,8 +1409,8 @@ modular_cc_library(
     deps = [
         ":MOSHDialectIncGen",
         ":Support",
-        "//KGEN:KGENDialect",
-        "//KGEN:POPDialect",
+        "//Mojo:KGENDialect",
+        "//Mojo:POPDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1451,8 +1451,8 @@ modular_cc_library(
         ":MOGGAnonymizeDimNames",
         ":MOGGDialect",
         ":MOGGToMGPIncGen",
-        "//KGEN:ToolCommon",
         "//MLRT:Driver/DeviceContext",
+        "//Mojo:ToolCommon",
         "//Support:CommonCLOptions",
     ],
 )
@@ -1489,7 +1489,7 @@ modular_cc_library(
         ":MODialect",
         ":MOGGDialect",
         ":MOToMOGGIncGen",
-        "//KGEN:ToolCommon",
+        "//Mojo:ToolCommon",
     ],
 )
 
@@ -1663,7 +1663,7 @@ modular_cc_library(
         ":MOToMAPIncGen",
         ":OperandInference",
         ":ParameterInference",
-        "//KGEN:KGENDialect",
+        "//Mojo:KGENDialect",
     ],
 )
 

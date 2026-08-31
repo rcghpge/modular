@@ -26,9 +26,9 @@
 #include "GraphCompiler/RMODialect/RMODialect.h"
 #include "GraphCompiler/RMODialect/Transforms/RMOTransforms.h"
 #include "GraphCompiler/Support/BlobLifetimeManager.h"
-#include "KGEN/ToolCommon/KGENPasses.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MLIRToMEF.h"
+#include "Mojo/ToolCommon/KGENPasses.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -40,7 +40,7 @@
 #include "mlir/Transforms/Passes.h"
 
 // All the KGEN dependent passes
-#include "KGEN/ToolCommon/InitAllDialects.h"
+#include "Mojo/ToolCommon/InitAllDialects.h"
 #include "Support/Compiler/PassTimingUtils.h"
 
 #include "GraphCompiler/MGPDialect/Dialect/MGPDialect.h"

@@ -11,7 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
 
-include "KGEN/KGENDialect/KGENInterfaces.td"
+include "Mojo/KGENDialect/KGENInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"

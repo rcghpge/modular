@@ -14,7 +14,7 @@
 // `MO::LayoutAttr` uses `mlir::StringAttr`
 #include "GraphCompiler/MODialect/MOEnums.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/ML/DType.h"
 #include "mlir/IR/Attributes.h"
 

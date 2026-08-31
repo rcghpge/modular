@@ -7,8 +7,8 @@
 #include "GraphCompiler/MGPDialect/Dialect/BufferBuilder.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
-#include "KGEN/KGENDialect/KGENTypes.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "Mojo/KGENDialect/KGENTypes.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 

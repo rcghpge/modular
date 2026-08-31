@@ -9,7 +9,7 @@
 #include "GraphCompiler/MGPDialect/Dialect/MGPBufferLifetimeAnalysis.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Transforms/Utils.h"
-#include "KGEN/POPDialect/POPDialect.h"
+#include "Mojo/POPDialect/POPDialect.h"
 #include "Support/AssertStream.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"

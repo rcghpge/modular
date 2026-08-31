@@ -10,8 +10,8 @@
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "KGEN/KGENDialect/AttrTypeMangler.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/AttrTypeMangler.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/SymbolTable.h"

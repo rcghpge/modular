@@ -17,7 +17,7 @@
 #include "GraphCompiler/Matchers.h"
 #include "GraphCompiler/Support/DataflowUtils.h"
 #include "GraphCompiler/Support/Dims.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/AssertStream.h"
 #include "Support/ML/Permutation.h"
 

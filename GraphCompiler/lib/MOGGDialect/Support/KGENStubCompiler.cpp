@@ -6,9 +6,9 @@
 
 #include "GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
-#include "KGEN/KGENDialect/KGENUtils.h"
-#include "KGEN/ToolCommon/CompilationOptions.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "Mojo/KGENDialect/KGENUtils.h"
+#include "Mojo/ToolCommon/CompilationOptions.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "llvm/ADT/SmallVector.h"

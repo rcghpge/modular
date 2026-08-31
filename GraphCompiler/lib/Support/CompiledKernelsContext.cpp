@@ -6,9 +6,9 @@
 
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
 #include "GraphCompiler/Support/List.h"
-#include "KGEN/ExecutionEngine/JIT/StaticArchiveLayer.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
+#include "Mojo/ExecutionEngine/JIT/StaticArchiveLayer.h"
 #include "Support/AssertStream.h"
 #include "Support/FileSystemExtras.h"
 #include "Support/Preprocessor.h"

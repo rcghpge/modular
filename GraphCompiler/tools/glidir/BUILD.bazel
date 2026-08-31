@@ -76,7 +76,7 @@ modular_cc_binary(
         "//GraphCompiler:MODialect",
         "//GraphCompiler:MOGGDialect",
         "//GraphCompiler:RMODialect",
-        "//KGEN:KGENDialect",
+        "//Mojo:KGENDialect",
         "@hello_imgui",
         "@imgui_docking",
         "@imgui_docking//:platform-glfw",

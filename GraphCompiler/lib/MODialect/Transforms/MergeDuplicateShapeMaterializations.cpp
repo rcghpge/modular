@@ -7,7 +7,7 @@
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include <unordered_map>

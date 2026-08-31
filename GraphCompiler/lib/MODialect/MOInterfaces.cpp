@@ -16,7 +16,7 @@
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "KGEN/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/LogicalResult.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/OpImplementation.h"

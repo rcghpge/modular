@@ -39,7 +39,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_SUPPORT_MOJOIDENTIFIERS_H
 
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
-#include "KGEN/LITDialect/LITUtils.h"
+#include "Mojo/LITDialect/LITUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/ArrayRef.h"

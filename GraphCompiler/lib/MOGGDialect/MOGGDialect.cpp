@@ -9,8 +9,8 @@
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "Support/MDialect/MDialect.h"
 
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENUtils.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/ErrorOr.h"
