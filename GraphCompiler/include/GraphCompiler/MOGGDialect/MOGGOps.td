@@ -1884,6 +1884,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
 
 def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
   SingleBlock,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "A fused-input tensor bound to its own prologue body.";
   let description = [{
@@ -1940,8 +1941,9 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     `$callee` over `!mogg.tensor_` inputs/outputs. The optional
     `$device_context` wires the callee's device context explicitly instead of
     scavenging it from the enclosing kernel stub's block arguments at emit time.
-    `$hasEpilogueFusion` records whether an output is a fused-epilogue tensor,
-    so emit never inspects an output's own producer for this. Not a terminator
+    `$hasEpilogueFusion` / `$hasPrologueFusion` record whether an output is a
+    fused-epilogue tensor and whether an input is a fused-prologue tensor, so
+    emit never inspects an operand's own producer for this. Not a terminator
     (the enclosing `mogg._kernel` body is terminated by `mogg.output`).
   }];
   let arguments = (ins
@@ -1950,7 +1952,8 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
     Optional<MOGG_Context>:$device_context,
     OptionalAttr<DictionaryAttr>:$kernel_param,
-    DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion
+    DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
+    DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion
   );
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?

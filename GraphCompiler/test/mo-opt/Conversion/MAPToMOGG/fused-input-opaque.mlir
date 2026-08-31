@@ -7,7 +7,7 @@
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
 // CHECK:   %[[V:.*]] = mogg._tensor.load %[[CAP]][%[[I]]] : !mogg.tensor_, !map.index<2> -> f32
 // CHECK:   mogg.yield %[[V]] : f32
-// CHECK: mogg._call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %[[B]] : !mogg.tensor_, !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK: mogg._call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %[[B]] : !mogg.tensor_, !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context) {{.*}}hasPrologueFusion = true
 mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_inputs"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -16,7 +16,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>
 // CHECK-LABEL: mo.graph @two_fused
 // CHECK: %[[P0:.*]] = mogg._tensor.create.prologue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_
 // CHECK: %[[P1:.*]] = mogg._tensor.create.prologue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_
-// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoFusedInputs inputs(%[[P0]], %[[P1]] : !mogg.tensor_, !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoFusedInputs inputs(%[[P0]], %[[P1]] : !mogg.tensor_, !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context) {{.*}}hasPrologueFusion = true
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_inputs"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>

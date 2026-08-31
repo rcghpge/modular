@@ -258,16 +258,21 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value callOut : getOutputs())
     callOutputs.push_back(state.mapping.lookup(callOut));
 
-  // Bake whether an output is a fused epilogue tensor into the op now, so
-  // its own emit never has to inspect an output's producer for this.
+  // Bake whether an output is a fused epilogue tensor, and an input a fused
+  // prologue tensor, into the op now, so its own emit never has to inspect an
+  // operand's producer for this.
   bool hasEpilogueFusion = llvm::any_of(callOutputs, [](Value out) {
     return out.getDefiningOp<MOGG::TensorCreateEpilogueOp>() != nullptr;
+  });
+  bool hasPrologueFusion = llvm::any_of(callInputs, [](Value in) {
+    return in.getDefiningOp<MOGG::TensorCreatePrologueOp>() != nullptr;
   });
 
   MOGG::CallOpaqueOp::create(state.builder, getLoc(), getCalleeAttr(),
                              callInputs, callOutputs, state.contextArg,
                              getParams(),
-                             state.builder.getBoolAttr(hasEpilogueFusion));
+                             state.builder.getBoolAttr(hasEpilogueFusion),
+                             state.builder.getBoolAttr(hasPrologueFusion));
   return success();
 }
 
