@@ -1648,6 +1648,18 @@ struct SupportsScalarKernel:
         print("value is", y)
 
 
+@extensibility.register("trait_supports_scalar_kernel")
+struct TraitSupportsScalarKernel:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        Z: Output & DenseTensor,
+        X: Input & DenseTensor,
+    ](z: Z, x: X, y: Scalar[dtype],) raises:
+        print("datatype is", dtype)
+        print("value is", y)
+
+
 @extensibility.register("kernel_with_no_target")
 struct KernelWithNoTarget:
     @staticmethod
