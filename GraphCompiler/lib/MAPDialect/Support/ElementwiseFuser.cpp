@@ -7,6 +7,7 @@
 #include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Support/ViewFuser.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GraphCompiler/MODialect/MODevices.h"
@@ -90,10 +91,25 @@ static bool checkMutableKernelFusible(Value srcInChain, Value srcOutChain,
 // reconcile there.) Chain operands are already excluded from `dst`'s `inputs`
 // (they live in a separate `chain` field), matching MOGG's explicit chain-skip
 // in getFusionIndices; checkMutableKernelFusible covers the remaining safety.
+//
+// Shape equality alone isn't enough when `dst` is itself a view (e.g.
+// `transpose` of a square matrix): `dst`'s load of the fused-away operand
+// may run through its own index transform rather than the shared per-element
+// index directly, but this splice always substitutes the plain shared index
+// for `src`'s loop index and blindly redirects *every* load of the replaced
+// operand to that one value -- silently computing `src` at the wrong
+// coordinate and leaving `dst`'s transform dead. A view `src` feeding a
+// plain (non-view) `dst` has no such problem: `src`'s own loop index already
+// denotes the exact same per-element coordinate `dst` shares (that's what
+// the shape-equality check above establishes), so substituting `dst`'s index
+// for it reproduces exactly what `src` would have computed standalone --
+// `ViewFuser` also handles this case, just via a different mechanism.
 static bool foreachKernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcOp = cast<IterForeachOp>(src);
   auto dstOp = cast<IterForeachOp>(dst);
   if (srcOp.getShape() != dstOp.getShape())
+    return false;
+  if (isViewForeach(dstOp))
     return false;
 
   return checkMutableKernelFusible(

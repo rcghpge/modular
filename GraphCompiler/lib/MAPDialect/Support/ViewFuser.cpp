@@ -24,17 +24,13 @@ namespace M::MAP {
 #define GEN_PASS_DEF_FUSEVIEWS
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
-namespace {
-
-// Whether `op`'s body computes at least one load index through a chain of
-// `IndexTransformOpInterface` ops, rather than always loading directly with
-// its own loop index -- i.e. whether this is a "view" kernel (slice,
-// broadcast, transpose, ...), as opposed to a plain elementwise one.
 bool isViewForeach(IterForeachOp op) {
   return op.getBody()
       .walk([&](IndexTransformOpInterface) { return WalkResult::interrupt(); })
       .wasInterrupted();
 }
+
+namespace {
 
 // Whether `op`'s body computes a load index through a `map.index.reshape`
 // op. A reshape kernel must stay the terminal (most-upstream) link in any

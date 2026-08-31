@@ -19,12 +19,23 @@
 #ifndef GENERICML_GRAPHCOMPILER_MAPDIALECT_SUPPORT_VIEWFUSER_H
 #define GENERICML_GRAPHCOMPILER_MAPDIALECT_SUPPORT_VIEWFUSER_H
 
+#include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace M::MAP {
+
+/// Whether `op`'s body computes at least one load index through a chain of
+/// `IndexTransformOpInterface` ops, rather than always loading directly with
+/// its own loop index -- i.e. whether this is a "view" kernel (slice,
+/// broadcast, transpose, reshape, ...), as opposed to a plain elementwise
+/// one. Shared with `ElementwiseFuser`, whose compatibility check must reject
+/// a view so it can't be mistaken for an identity transform merely because
+/// its shape happens to match its consumer's (e.g. `transpose` of a square
+/// matrix).
+bool isViewForeach(IterForeachOp op);
 
 /// Fuses chains of `map.iter.foreach` ops within a `mo.graph` into single
 /// kernels wherever at least one link is a view, splicing each producer's
