@@ -378,6 +378,22 @@ def OutlineKernelsIntoFunctions
   ];
 }
 
+def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {
+  let summary = "Drop symbolic dim names from every kernel stub's signature.";
+  let description = [{
+    Strips the param-decl-ref name from every `!mogg.dim_<name>` block arg
+    (and function-type entry) of every `mogg.kernel.stub` in the module,
+    turning them into anonymous `!mogg.dim_`. A symbolic dim name on a stub's
+    boundary would otherwise block `MergeIdenticalKernelStubs` from
+    recognizing two structurally-identical stubs that differ only in a dim's
+    name as duplicates. Runs nested inside `EmitMojo`, immediately before
+    `MergeIdenticalKernelStubs`, so it can be tested independently of both.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+
 def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "ModuleOp"> {
   let summary = "Merge kernel stubs that are identical";
   let description = [{

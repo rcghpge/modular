@@ -971,7 +971,14 @@ modular_cc_library(
 
 modular_cc_library(
     name = "MOGGTransforms",
-    srcs = glob(["lib/MOGGDialect/Transforms/*.cpp"]),
+    srcs = glob(
+        ["lib/MOGGDialect/Transforms/*.cpp"],
+        # AnonymizeDimNames is its own target: MOGGToMGP needs to call it as a
+        # nested pass, but MOGGTransforms already depends on MOGGToMGP (for
+        # RaiseBackIndexConstant et al.), so MOGGToMGP can't depend back on
+        # MOGGTransforms without a cycle.
+        exclude = ["lib/MOGGDialect/Transforms/AnonymizeDimNames.cpp"],
+    ),
     local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
         ":MGPTransforms",
@@ -985,6 +992,18 @@ modular_cc_library(
         "//AsyncRT:CompilerSupport",
         "//KGEN:TransformUtils",
         "//MLRT:Driver/DeviceContext",
+    ],
+)
+
+# Its own target rather than part of MOGGTransforms: MOGGToMGP needs to call
+# this as a nested pass (see MOGGToMGP.cpp), but MOGGTransforms already
+# depends on MOGGToMGP, so MOGGToMGP depending back on MOGGTransforms would
+# cycle. Same shape as OperandInference/ParameterInference above.
+modular_cc_library(
+    name = "MOGGAnonymizeDimNames",
+    srcs = ["lib/MOGGDialect/Transforms/AnonymizeDimNames.cpp"],
+    deps = [
+        ":MOGGDialect",
     ],
 )
 
@@ -1429,6 +1448,7 @@ modular_cc_library(
         ":MGPTransforms",
         ":MOAnalysis",
         ":MODialect",
+        ":MOGGAnonymizeDimNames",
         ":MOGGDialect",
         ":MOGGToMGPIncGen",
         "//KGEN:ToolCommon",

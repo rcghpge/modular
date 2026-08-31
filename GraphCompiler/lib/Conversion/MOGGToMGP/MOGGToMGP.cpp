@@ -18,6 +18,7 @@
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
@@ -33,6 +34,7 @@
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/SetOperations.h"
@@ -2572,4 +2574,17 @@ void MOGGToMGPPass::runOnOperation() {
 
     lastProcessed = 0;
   }
+
+  // Anonymize every kernel stub's dim-arg names in one sweep over the whole
+  // module, now that every mogg._kernel has been lowered and its dim-typed
+  // operands rebound to anonymous dims -- a named dim surviving on a stub's
+  // boundary would otherwise block MergeIdenticalKernelStubs from treating
+  // two structurally-identical stubs as duplicates. Nested (rather than
+  // folded into the per-graph lowering above) so it stays independently
+  // testable without running MOGGToMGP itself.
+  mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+      &getContext(), mlir::OpPassManager::Nesting::Implicit);
+  pm.addPass(MOGG::createAnonymizeDimNames());
+  if (pm.run(theModule).failed())
+    return signalPassFailure();
 }

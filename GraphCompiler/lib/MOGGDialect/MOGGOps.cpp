@@ -35,6 +35,7 @@
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -2514,33 +2515,6 @@ LogicalResult KernelRegionOp::verify() {
   return success();
 }
 
-// Drops the param-decl-ref name from every `!mogg.dim_<name>` block arg of a
-// MAP-ABI kernel stub (and its function signature), turning them into
-// anonymous `!mogg.dim_`. A symbolic dim name on the stub boundary would
-// block kernel deduplication, so `KernelRegionOp::lower` strips it here to
-// match the anonymous casts feeding the re-homed `mogg.call.stub`. Changing a
-// block-arg type updates its in-body uses automatically. Idempotent, so a
-// stub shared by several regions is safe to revisit.
-static void stripStubDimNames(MOGG::KernelStubOp stub) {
-  MLIRContext *ctx = stub.getContext();
-  SmallVector<Type> argTypes;
-  bool changed = false;
-  for (BlockArgument arg : stub.getBodyBlock().getArguments()) {
-    Type type = arg.getType();
-    if (auto dim = dyn_cast<MOGG::DimType>(type); dim && dim.getName()) {
-      type = MOGG::DimType::get(ctx, /*name=*/{});
-      arg.setType(type);
-      changed = true;
-    }
-    argTypes.push_back(type);
-  }
-  if (!changed)
-    return;
-  FunctionType funcType = stub.getFunctionType();
-  stub.setFunctionTypeAttr(
-      TypeAttr::get(FunctionType::get(ctx, argTypes, funcType.getResults())));
-}
-
 // Lowers a new-path `mogg._kernel` into a `mogg.generic.compiled.region`. This
 // is deliberately NOT the legacy `mogg.kernel` path
 // (MOGGKernelOpLoweringState::lowerKernelOp), which is left untouched: here the
@@ -2659,14 +2633,17 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Value handle = MOGG::RebindOp::create(builder, loc, handleType, unpacked);
     stubArgs.push_back(handle);
   }
-  auto originalCall = cast<MOGG::CallStubOp>(&kernelBody.front());
-  MOGG::CallStubOp::create(builder, loc, /*results=*/TypeRange{},
-                           originalCall.getNameAttr(), stubArgs,
-                           /*affinity_device_id=*/IntegerAttr{});
-  // Strip the dim-arg names from the referenced stub so its signature matches
-  // the anonymous casts above (see stripStubDimNames).
-  if (MOGG::KernelStubOp stub = originalCall.getCallee())
-    stripStubDimNames(stub);
+  // Re-home `kernelBody`'s contents (today always a single `mogg.call.stub`,
+  // but cloning generically rather than assuming that shape) by cloning them
+  // into the region body with `kernelBody`'s block args mapped to `stubArgs`
+  // -- no need to inspect what's inside to rebuild it. The referenced stub's
+  // own dim-arg names are anonymized separately, by `mgp-anonymize-dim-names`
+  // walking every stub in the module after all kernels have been lowered.
+  IRMapping mapping;
+  for (unsigned i = 0; i < numArgs; ++i)
+    mapping.map(kernelBody.getArgument(i), stubArgs[i]);
+  for (Operation &calleeOp : kernelBody)
+    builder.clone(calleeOp, mapping);
   Value readyChain = MOGG::AsyncReadyOp::create(builder, loc);
   MOGG::OutputOp::create(builder, loc, ValueRange{readyChain});
 

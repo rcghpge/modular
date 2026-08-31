@@ -1,0 +1,62 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h"
+
+#include "mlir/IR/Threading.h"
+
+using namespace M;
+
+namespace M::MOGG {
+
+#define GEN_PASS_DEF_ANONYMIZEDIMNAMES
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
+
+} // namespace M::MOGG
+
+namespace M::MOGG {
+
+namespace {
+
+// Drops the param-decl-ref name from every `!mogg.dim_<name>` block arg of
+// `stub` (and its function signature), turning them into anonymous
+// `!mogg.dim_`. Changing a block-arg type updates its in-body uses
+// automatically. Idempotent, so revisiting the same stub is safe.
+void stripStubDimNames(MOGG::KernelStubOp stub) {
+  MLIRContext *ctx = stub.getContext();
+  SmallVector<Type> argTypes;
+  bool changed = false;
+  for (BlockArgument arg : stub.getBodyBlock().getArguments()) {
+    Type type = arg.getType();
+    if (auto dim = dyn_cast<MOGG::DimType>(type); dim && dim.getName()) {
+      type = MOGG::DimType::get(ctx, /*name=*/{});
+      arg.setType(type);
+      changed = true;
+    }
+    argTypes.push_back(type);
+  }
+  if (!changed)
+    return;
+  FunctionType funcType = stub.getFunctionType();
+  stub.setFunctionTypeAttr(
+      TypeAttr::get(FunctionType::get(ctx, argTypes, funcType.getResults())));
+}
+
+struct AnonymizeDimNamesPass
+    : public MOGG::impl::AnonymizeDimNamesBase<AnonymizeDimNamesPass> {
+  using AnonymizeDimNamesBase::AnonymizeDimNamesBase;
+
+  void runOnOperation() override {
+    auto stubsRange = getOperation().getOps<MOGG::KernelStubOp>();
+    SmallVector<MOGG::KernelStubOp> stubs(stubsRange.begin(), stubsRange.end());
+    mlir::parallelForEach(&getContext(), stubs, stripStubDimNames);
+  }
+};
+
+} // namespace
+
+} // namespace M::MOGG

@@ -27,6 +27,7 @@ def MOGGToMGP : Pass<"mogg-to-mgp", "ModuleOp"> {
                            "KGEN::POP::POPDialect",
                            "MEF::MEFDialect",
                            "MGP::MGPDialect",
+                           "MOGG::MOGGDialect",
                            "mlir::index::IndexDialect"];
 }
 
