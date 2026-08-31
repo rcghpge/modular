@@ -16,7 +16,7 @@
 // CONSTSTUB: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
 // EMITCONST: def custom__trait_add_explicit_mogg{{[_0-9]*}}[{{.*}}]({{.*}}MutByteBuffer) raises:
 // EMITCONST: [[DCAP:var___[0-9]+]] = _MoggTensorBufferCapture[DType.float32, {{.*}}](
-// EMITCONST: _MoggDenseTensorArg[type_of([[DCAP]]).dtype, {{.*}}_MoggTensorIO.INPUT, False]
+// EMITCONST: _MoggDenseTensorArg[type_of([[DCAP]]).dtype, {{.*}}_MoggTensorIO.INPUT, False, True]
 // CONSTMODEL-LABEL: mgp.model @trait_constant_dense
 // CONSTMODEL-DAG: mgp.buffer.constant
 // CONSTMODEL-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>

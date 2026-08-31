@@ -117,8 +117,9 @@
 // EMIT-DAG: struct _MoggTensorBufferCapture[
 // EMIT-DAG: struct _MoggTensorIO
 // EMIT-DAG: struct _MoggDenseTensorArg[
-// EMIT-DAG: TileTensorable where not _is_device_passable,
-// EMIT-DAG: ] where not Self._is_device_passable:
+// EMIT-DAG: _can_project_tile_tensor: Bool,
+// EMIT-DAG: TileTensorable where _can_project_tile_tensor,
+// EMIT-DAG: ] where Self._can_project_tile_tensor:
 //
 // Region constructs buffer captures (not execute-facing dense args).
 // EMIT-DAG: _MoggTensorBufferCapture[DType.float32, type_of(

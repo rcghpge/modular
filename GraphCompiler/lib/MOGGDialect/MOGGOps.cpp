@@ -33,6 +33,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -5346,14 +5347,16 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // definition directly into the generated Mojo module (D9 "DenseTensorArg only
 // inside the emitted mojo"). ONE struct serves both CPU and GPU (mirroring the
 // shared `EmitMojoDenseTensor` in tensor-trait-mockups/dense_tensor_args.mojo):
-// the storage is always a pointer (`tile_tensorable`), and
-// `_is_device_passable` selects whether the value also crosses to the device.
-// CPU passes `device_passable = False` and runs the host `TileTensorable`
-// projection; GPU passes `device_passable = True`, and `_to_device_type`
-// reinterprets the same pointer into a device-side `TileTensor` (valid on
-// unified memory -- the macOS pass-1 path; a real `DevicePointer` flavor is a
-// later slice). Emitted once per module, guarded by
-// `EmitMojoState::emittedDenseTensorArgDefs`.
+// the storage is always a pointer, and `_is_device_passable` selects whether
+// the value also crosses to the device. `_can_project_tile_tensor` is an
+// independent boolean that gates top-level `TileTensorable` conformance; it is
+// true for CPU and GPU kernels, where the pointer-backed storage can be viewed
+// as a `TileTensor` at the execute boundary, and false for accelerator targets
+// whose handles cannot be directly reinterpreted as tiles. CPU passes
+// `device_passable = False` and runs the host `TileTensorable` projection; GPU
+// passes `device_passable = True`, and the resulting `TileTensor` is itself
+// `DevicePassable` so it can cross to the device kernel. Emitted once per
+// module, guarded by `EmitMojoState::emittedDenseTensorArgDefs`.
 static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import (
@@ -5397,17 +5400,18 @@ struct _MoggDenseTensorArg[
     _alignment: Int,
     _io: _MoggTensorIO,
     _is_device_passable: Bool,
+    _can_project_tile_tensor: Bool,
 ](
     DenseTensor,
     DevicePassable where _is_device_passable,
     Input where _io == _MoggTensorIO.INPUT,
     MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
     Output where _io == _MoggTensorIO.OUTPUT,
-    # Host-only projection: a device-passable arg must NOT expose the host
-    # `to_tile_tensor()` -- it would build a tile over the untranslated host
-    # handle, valid only on unified memory. On the device path the kernel
-    # consumes `device_type` (the translated device `TileTensor`) instead.
-    TileTensorable where not _is_device_passable,
+    # Top-level `TileTensorable` projection is allowed only for CPU/GPU kernels,
+    # where the dense arg's pointer-backed storage can be directly viewed as a
+    # host or unified-memory `TileTensor`. On discrete-GPU targets the pointer
+    # still crosses via the `TileTensor` value's own `DevicePassable` encoding.
+    TileTensorable where _can_project_tile_tensor,
 ):
     comptime mut = Self._io.is_mut()
     comptime dtype = Self._dtype
@@ -5479,7 +5483,7 @@ struct _MoggDenseTensorArg[
         dtype = Self.dtype,
         LayoutType = Self.LayoutType,
         origin = UntrackedOrigin[mut = Self.mut],
-    ] where not Self._is_device_passable:
+    ] where Self._can_project_tile_tensor:
         return TileTensor[
             dtype = Self.dtype,
             LayoutType = Self.LayoutType,
@@ -5556,13 +5560,20 @@ struct _MoggShapeTensorArg[
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 
+/// Returns true when the target device label supports immediate top-level
+/// `TileTensorable` projection for dense tensor arguments. This is
+/// intentionally narrow: only CPU and GPU kernels use pointer-backed storage
+/// that can be viewed as a `TileTensor` at the execute boundary; other
+/// accelerator labels must keep the projection disabled.
+static bool canProjectTileTensorForDeviceLabel(StringRef label) {
+  return label == kCPULabel || label == kGPULabel;
+}
+
 /// Assemble an execute-facing `_MoggDenseTensorArg` from a stub-bound buffer
 /// capture and the distilled contract role.
-static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
-                                                   MojoValue capture,
-                                                   TensorArgRole role,
-                                                   MO::TensorType tensorTy,
-                                                   bool devicePassable) {
+static MojoValue assembleDenseTensorArgFromCapture(
+    EmitMojoState &state, MojoValue capture, TensorArgRole role,
+    MO::TensorType tensorTy, bool devicePassable, bool canProjectTileTensor) {
   if (!state.emittedDenseTensorArgDefs) {
     state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
     state.emittedDenseTensorArgDefs = true;
@@ -5589,6 +5600,7 @@ static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
     llvm_unreachable("unhandled TensorArgRole");
   }();
   MojoValue devicePassableParam(devicePassable);
+  MojoValue canProjectTileTensorParam(canProjectTileTensor);
   MojoValue ptrArg = state.builder.var(
       llvm::formatv(
           "{0}.handle.unsafe_bitcast[NoneType]().as_unsafe_any_origin()",
@@ -5599,7 +5611,7 @@ static MojoValue assembleDenseTensorArgFromCapture(EmitMojoState &state,
   MojoValue structName("_MoggDenseTensorArg");
   return state.builder.var(
       structName({dTypeParam, layoutTypeParam, alignmentParam, ioParam,
-                  devicePassableParam},
+                  devicePassableParam, canProjectTileTensorParam},
                  {ptrArg, layoutArg}));
 }
 
@@ -5620,9 +5632,11 @@ maybeAssembleDenseTraitArgFromCapture(EmitMojoState &state, Value val,
   if (!tensorTy)
     return state.getMojoValueFor(val);
   bool devicePassable = !MO::isOnHost(stub.getOperation());
-  return assembleDenseTensorArgFromCapture(state, state.getMojoValueFor(val),
-                                           contract.role, tensorTy,
-                                           devicePassable);
+  bool canProjectTileTensor = canProjectTileTensorForDeviceLabel(
+      MO::getDeviceOrDefaultAny(stub.getOperation()).getLabel().str());
+  return assembleDenseTensorArgFromCapture(
+      state, state.getMojoValueFor(val), contract.role, tensorTy,
+      devicePassable, canProjectTileTensor);
 }
 
 LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
