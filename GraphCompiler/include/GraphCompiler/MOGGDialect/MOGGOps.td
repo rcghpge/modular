@@ -1760,7 +1760,7 @@ def MOGG_ShapeFunctionDeclOp
 // wired yet.
 //===----------------------------------------------------------------------===//
 
-def MOGG_KernelRegionOp : MOGG_Op<"_kernel", [
+def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
   NoTerminator,
