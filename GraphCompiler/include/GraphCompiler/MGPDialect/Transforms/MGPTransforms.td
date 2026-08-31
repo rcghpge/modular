@@ -752,6 +752,43 @@ def ComputeDeviceGraphDependenciesPass :
 }
 
 //===----------------------------------------------------------------------===//
+// SimplifyDeviceGraphDependenciesPass
+//===----------------------------------------------------------------------===//
+
+def SimplifyDeviceGraphDependenciesPass :
+    Pass<"mgp-simplify-device-graph-dependencies", "MGP::ModelOp"> {
+  let summary = "Remove redundant dependency edges from "
+                "`mgp.device_graph.dependencies` ops.";
+  let description = [{
+    Part of device-graph synthesis; runs after
+    `mgp-compute-device-graph-dependencies`, which derives each op's edge set
+    locally (one edge per producing region of any operand) and so records
+    edges already implied transitively. Given:
+    ```mlir
+      %node_b, ... = mgp.device_graph.dependencies ... dependencies(%node_c) ...
+      %node_a, ... = mgp.device_graph.dependencies ... dependencies(%node_b, %node_c) ...
+    ```
+    the direct `%node_c` edge on `%node_a` is redundant: a dependencies op's
+    node result transitively gates on the op's own dependency edges (its edges
+    become ambient predecessors of every node the body records, and an
+    empty body degenerates to an empty node that still carries them), so
+    `%node_b` already orders `%node_a` after `%node_c`. Such edges are
+    removed:
+    ```mlir
+      %node_a, ... = mgp.device_graph.dependencies ... dependencies(%node_b) ...
+    ```
+    Each surviving edge becomes an entry in the `dependencies=[...]` list of
+    the emitted `DeviceGraphBuilder.region(...)` call, so fewer edges means
+    less host-side work per graph build.
+  }];
+
+  let statistics = [
+    Statistic<"numEliminatedDependencies", "num-eliminated-dependencies",
+              "the number of redundant dependency edges eliminated">,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // GenerateBuildGraphStubsPass
 //===----------------------------------------------------------------------===//
 
