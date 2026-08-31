@@ -278,15 +278,50 @@ LogicalResult MOGGKernelOpLoweringState::setupInputOperandsMapping(
     operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
                                /*isKernelStubOperand=*/true, sig);
     if (MO::dynCastFromTensorLike(origOperand.getType())) {
-      FailureOr<MOGG::TensorArgContractAttr> contract =
-          contractDeriver.derive(origOperand);
-      if (failed(contract))
-        return failure();
-      tensorOperandInfos.push_back(
-          TensorOperandInfos{.stubValue = origOperand,
-                             .operandIdx = operandsMapping.getNumOperands() - 1,
-                             .isOutput = false,
-                             .traitContract = *contract});
+      // Derive the contract per use so one value reaching both a legacy
+      // `ManagedTensorSlice` position and a trait position gets one
+      // representation per lane instead of a conflict (GEX-4071); agreeing
+      // uses collapse back to the single-init path.
+      SmallVector<std::pair<MOGG::TensorArgContractAttr,
+                            SmallVector<mlir::OpOperand *>>>
+          lanes;
+      bool anyFused = false;
+      for (OpOperand &use : origOperand.getUses()) {
+        FailureOr<MOGG::TensorArgContractAttr> contract =
+            contractDeriver.deriveUse(use);
+        if (failed(contract))
+          return failure();
+        anyFused |= *contract && contract->getFused();
+        auto *it = llvm::find_if(
+            lanes, [&](const auto &lane) { return lane.first == *contract; });
+        if (it == lanes.end())
+          lanes.push_back({*contract, {&use}});
+        else
+          it->second.push_back(&use);
+      }
+
+      TensorOperandInfos info{.stubValue = origOperand,
+                              .operandIdx =
+                                  operandsMapping.getNumOperands() - 1,
+                              .isOutput = false};
+      if (lanes.size() <= 1) {
+        info.traitContract =
+            lanes.empty() ? MOGG::TensorArgContractAttr() : lanes.front().first;
+      } else if (anyFused) {
+        // A fused lane is wired through the bind-lambda machinery, which
+        // assumes a single representation per fusible. Keep the established
+        // merged-derivation semantics (explicit/captured precedence, conflict
+        // diagnostics) for any mix that involves a fused contract.
+        FailureOr<MOGG::TensorArgContractAttr> merged =
+            contractDeriver.derive(origOperand);
+        if (failed(merged))
+          return failure();
+        info.traitContract = *merged;
+      } else {
+        info.useLanes = std::move(lanes);
+        info.perUseTensorType = MO::castFromTensorLike(origOperand.getType());
+      }
+      tensorOperandInfos.push_back(std::move(info));
     }
   }
   return success();
@@ -395,6 +430,12 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
       }
     }
   });
+
+  // A per-use input materializes its inits inside the stub, so its dynamic
+  // dimensions must be forwarded as stub arguments.
+  for (const TensorOperandInfos &info : tensorOperandInfos)
+    if (!info.useLanes.empty())
+      markTensorDimsInStub(info.perUseTensorType);
 
   // Allocate and pass the output buffers to the kernels if needed.
   if (outputPlaceholdersOp) {
@@ -682,6 +723,53 @@ void MOGGKernelOpLoweringState::materializeInStubTensorFusedOps() {
   });
 }
 
+void MOGGKernelOpLoweringState::materializePerUseTensorInits() {
+  mlir::MLIRContext *ctx = moggOp->getContext();
+  auto loc = moggOp->getLoc();
+  for (const TensorOperandInfos &info : tensorOperandInfos) {
+    if (info.useLanes.empty())
+      continue;
+
+    // The stub operand was never remapped, so the stub argument is the raw
+    // buffer; every lane's init reads it. `setupKernelStubArgs` retyped the
+    // block argument in place, so `info.stubValue` IS that buffer argument
+    // and the recorded `OpOperand`s still point at the original uses.
+    Value bufferArg =
+        operandsMapping.get(info.operandIdx, /*isInsideStub=*/true);
+    MO::TensorType asTensor = info.perUseTensorType;
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&kernelStub.getBodyBlock());
+    auto dynamicDimensions = operandsMapping.getTensorDynamicDimensions(
+        asTensor, /*isInsideStub=*/true);
+
+    // Only read-only input lanes reach here (outputs/scratch keep the merged
+    // derivation, and fused lanes were routed back to it).
+    assert(!isa<MO::BufferType>(info.stubValue.getType()) &&
+           "per-use tensor inits are only valid for read-only tensor inputs");
+    auto ioAttr = MO::IOKindAttr::get(ctx, MO::IOKind::Input);
+    auto mutAttr = BoolAttr::get(ctx, false);
+    MO::TensorType laneTensorTy =
+        asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr);
+
+    for (const auto &[contract, uses] : info.useLanes) {
+      Value init;
+      if (contract) {
+        init = MOGG::TensorArgInitOp::create(
+                   builder, loc, laneTensorTy, bufferArg, dynamicDimensions,
+                   /*device_context=*/Value(), contract)
+                   .getResult();
+      } else {
+        init = MOGG::TensorInitOp::create(builder, loc, laneTensorTy, bufferArg,
+                                          dynamicDimensions, mutAttr, ioAttr)
+                   .getResult();
+      }
+      for (mlir::OpOperand *use : uses)
+        use->set(init);
+    }
+  }
+}
+
 void MOGGKernelOpLoweringState::wireTraitFusedCapturesToStubArgs() {
   llvm::DenseMap<Value, const TensorOperandInfos *> infoByStubValue;
   for (const TensorOperandInfos &tensorInfos : tensorOperandInfos)
@@ -863,6 +951,12 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
 
   // Convert all tensor operands to buffer captures for the stub boundary.
   for (const auto &tensorInfos : tensorOperandInfos) {
+    // A per-use input keeps the raw buffer as its stub operand;
+    // its per-lane inits are materialized inside the stub once the stub
+    // arguments are finalized (`materializePerUseTensorInits`).
+    if (!tensorInfos.useLanes.empty())
+      continue;
+
     Value regionArg =
         operandsMapping.get(tensorInfos.operandIdx, /*isInsideStub=*/false);
 
@@ -877,6 +971,11 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
 
   // Setup the KernelStub region and call.
   operandsMapping.setupKernelStubArgs(&kernelStub.getBody().front());
+  // Per-use inputs materialize one init per derived contract inside the
+  // stub; this needs the finalized stub arguments (raw buffer + dynamic
+  // dimensions) and must precede the bind lowering that may consume the
+  // rewired values.
+  materializePerUseTensorInits();
   // `lowerBindLambdaOp` may materialize tensors with dynamic dimensions inside
   // the stub. Do this after stub arguments are finalized so those dimensions
   // have stub-side mappings.

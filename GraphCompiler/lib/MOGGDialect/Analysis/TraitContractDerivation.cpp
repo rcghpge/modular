@@ -26,11 +26,6 @@ public:
     if (merged == contract)
       return mlir::success();
 
-    // TODO(GEX-4071): a value reaching two operand positions with different
-    // contracts needs one init op per distinct contract from a shared buffer.
-    // In-stub constants already get that split (per-use lanes via
-    // `deriveUse`); boundary kernel I/O lowered through `derive` does not
-    // yet, so reject the conflict.
     return emitConflict(source, contract, *firstSource, merged);
   }
 

@@ -185,6 +185,19 @@ public:
     // `buildMojoIOTensorObject` builds `mogg.tensor_arg.__init__` carrying this
     // contract instead of the legacy `mogg.tensor.__init__`.
     MOGG::TensorArgContractAttr traitContract = nullptr;
+    // Per-use-contract lanes for an input whose uses derive DIFFERENT
+    // contracts (e.g. one legacy `ManagedTensorSlice` position and one trait
+    // position consuming the same value). When non-empty, the raw buffer stays
+    // the stub operand and `materializePerUseTensorInits` emits one init per
+    // lane inside the stub — the same per-use split `lowerConstant` performs
+    // for in-stub constants (GEX-4071). `traitContract` is null in that case.
+    SmallVector<
+        std::pair<MOGG::TensorArgContractAttr, SmallVector<mlir::OpOperand *>>>
+        useLanes = {};
+    // The stub value's tensor type, captured before `setupKernelStubArgs`
+    // retypes the (never remapped) block argument to the raw buffer type.
+    // Set only when `useLanes` is non-empty.
+    MO::TensorType perUseTensorType = nullptr;
   };
 
 protected:
@@ -213,6 +226,13 @@ protected:
 
   /// Materialize `mogg.tensor.fused` from `mogg.bind` ops inside the stub.
   void materializeInStubTensorFusedOps();
+
+  /// Materialize one tensor init per contract lane, inside the stub, for
+  /// inputs whose uses derived different contracts (`useLanes` non-empty),
+  /// rewiring each use to its lane's init. Must run after
+  /// `setupKernelStubArgs` so the raw buffer stub argument and the in-stub
+  /// dynamic-dimension values exist.
+  void materializePerUseTensorInits();
 
   /// Wire fused bind fusibles / companions to the stub block-arg capture that
   /// the region passed in (after `setupKernelStubArgs`).

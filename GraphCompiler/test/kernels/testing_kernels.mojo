@@ -2543,6 +2543,33 @@ struct TraitMixedLegacyOutAdd:
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
 
 
+# One-value-two-lanes proof: a trait-bound dense input NEXT TO a legacy
+# `InputTensor` input, computing `z[i] = x[i] + y[i]`. Called with the same
+# graph value on both input positions, `SimplifyKernelOperands` merges the
+# duplicates into one exec-body argument that must then materialize one
+# representation per lane (the GEX-4071 per-use init split) — one
+# `mogg.tensor_arg.__init__` for the trait position and one
+# `mogg.tensor.__init__` for the legacy position, over the same buffer.
+@extensibility.register("trait_dual_lane_add")
+struct TraitDualLaneAdd:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: OutputTensor,
+        x: Some[Input & DenseTensor],
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert conforms_to(type_of(x), TileTensorable)
+        var xt = to_tile_tensor(x)
+        var n = y.size()
+        for i in range(n):
+            var xv = xt.raw_load(i)
+            var yv = rebind[SIMD[type_of(xt).dtype, 1]](y[i])
+            z[i] = rebind[Scalar[z.dtype]](xv + yv)
+
+
 # ===----------------------------------------------------------------------=== #
 # Signature-only opaque kernels for exercising MOToMAP lowering coverage.
 #

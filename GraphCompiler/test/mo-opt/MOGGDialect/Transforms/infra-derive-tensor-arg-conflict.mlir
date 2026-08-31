@@ -7,8 +7,9 @@
 // contracts, so derivation reports the conflict instead of silently applying
 // either representation (GEX-4071; the deleted positional side-table crashed
 // on an alignment assert here at best, and mislabeled the operand at worst).
-// TODO(GEX-4071): lowering one init op per distinct contract from the shared
-// buffer (or refusing the dedup) would make this case compile.
+// A fused lane keeps the conflict: the bind-lambda machinery assumes a single
+// representation per fusible. Non-fused input mixes now compile via the
+// per-use init split (infra-lower-per-use-tensor-arg-lanes.mlir).
 
 // CHECK: error: kernel I/O value derives conflicting tensor-arg contracts: call operand #{{[0-9]+}} requires
 // CHECK: note: call operand #{{[0-9]+}} first required
