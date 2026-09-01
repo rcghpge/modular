@@ -3971,6 +3971,33 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
   return state.builder.var(structNameVal(comptimeArgs, instanceArgs));
 }
 
+LogicalResult TensorCreateEpilogueOp::verify() {
+  Block &body = getBody().front();
+  if (body.empty())
+    return emitOpError("requires a non-empty body");
+  // Both shapes need the store-target capture: the store lane writes through
+  // it, the compute lane leaves it for emit to bind onto.
+  if (getCaptures().empty())
+    return emitOpError("requires at least one (store-target) capture");
+  if (body.getNumArguments() < 1 + getCaptures().size())
+    return emitOpError("body takes a value, an index, and one arg per capture");
+
+  // `mogg.yield` is a terminator, so it can only be the last op: its presence
+  // is what makes this a compute lambda rather than a store one.
+  auto yieldOp = dyn_cast<YieldOp>(&body.back());
+  if (!yieldOp)
+    return success();
+
+  if (!getComputeOutputArg())
+    return emitOpError("a yield-terminated epilogue body is a compute lambda, "
+                       "which requires `computeOutputArg`");
+  if (yieldOp.getNumOperands() != 1 ||
+      yieldOp.getOperand(0).getType() != body.getArgument(0).getType())
+    return emitOpError("a compute-lambda epilogue must yield exactly the "
+                       "value type it was handed");
+  return success();
+}
+
 LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // Emit the MTS-free output-store fusion FUNCTOR +
   // `_MoggOutputStoreFusionTensor` wrapper for a MAP-ABI fused output. This is

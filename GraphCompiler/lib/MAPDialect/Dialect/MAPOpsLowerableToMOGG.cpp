@@ -118,6 +118,73 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// Which fusion-lambda kind the kernel consuming `epilogueOp` wants for the
+// output it feeds. Load-bearing detail: this is resolved here, at MAP level,
+// because the epilogue -> `map.call.opaque` edge is still explicit in the IR
+// and the epilogue lowers before the call does. Emit therefore never has to
+// walk anywhere to recover it.
+//
+// The MOGG-ABI sibling of this is `MOGG::getKernelOutputFusionLambdaType`,
+// which applies the same IOSpec and tile rules to a `mogg.tensor.fused`. The
+// two deliberately live apart: no MOGG header depends on the MAP dialect, and
+// a MAP-typed entry point there would invert that. Keep the rules in sync.
+static ErrorOr<MOGG::KernelOutputFusionLambdaType>
+classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
+  using Kind = MOGG::KernelOutputFusionLambdaType;
+
+  // The epilogue result feeds exactly one `map.call.opaque` output operand in
+  // every shape `EpilogueFuser` builds. Anything else (an unfused result, a
+  // second user) gets a store lambda, matching what the MOGG-ABI classifier
+  // does for an unrecognized user.
+  Value result = epilogueOp.getResult();
+  if (!result.hasOneUse())
+    return Kind::Output;
+  auto callOp = dyn_cast<CallOpaqueOp>(*result.getUsers().begin());
+  if (!callOp)
+    return Kind::Output;
+  std::optional<unsigned> outputIdx;
+  for (auto [idx, out] : llvm::enumerate(callOp.getOutputs()))
+    if (out == result)
+      outputIdx = idx;
+  if (!outputIdx)
+    return Kind::Output;
+
+  MOGG::KernelDeclAdaptor adaptor(
+      state.registry.lookupKernelBySymName(callOp.getCallee()));
+  if (!adaptor.executeFunction)
+    return Kind::Output;
+  const auto &outputArgs = adaptor.executeFunction->outputArguments;
+  if (*outputIdx >= outputArgs.size())
+    return Kind::Output;
+  const auto *tensorArg = std::get_if<MOGG::KernelDeclTensorAdaptor>(
+      &outputArgs[*outputIdx].underlyingType);
+  if (!tensorArg)
+    return Kind::Output;
+
+  // `EpilogueFuser` only ever builds the SIMD body shape, so a tile-based
+  // fused-output argument has nothing to lower into.
+  if (tensorArg->ioSpec == MOGG::IOSpec::FusedComputeOutputTileTensor ||
+      tensorArg->ioSpec == MOGG::IOSpec::FusedOutputTileTensor)
+    return Error("MAP-driven epilogue fusion into a tile fused-output kernel "
+                 "argument is not yet supported");
+
+  if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor)
+    return Kind::Output;
+
+  // The kernel can take a compute lambda. Two things still force the classic
+  // store lambda: the opt-out, and a dtype-changing epilogue -- `compute()`
+  // returns the dtype it was handed, so a body whose value leaves at a
+  // different dtype than it arrived cannot round-trip through it.
+  if (!state.enableComputeLambdas)
+    return Kind::OutputLegacyForCompute;
+  Type inType = epilogueOp.getBody().getArgument(0).getType();
+  Type outType = cast<MO::TensorType>(result.getType()).getElementType();
+  if (inType != outType)
+    return Kind::OutputLegacyForCompute;
+
+  return Kind::Compute;
+}
+
 // map.iter.epilogue -> mogg._tensor.create.epilogue. Its body is lowered via
 // `state.lowerRegionBody`, then the resulting tensor is mapped into
 // `state.mapping` under the epilogue's own result, so `CallOpaqueOp` can
@@ -149,11 +216,20 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   Value outShape = buildShape(loc, resultTy.getTypedShapeAttr(), state);
   Type outElemType = resultTy.getElementType();
 
+  ErrorOr<MOGG::KernelOutputFusionLambdaType> kindOr =
+      classifyEpilogueLambdaKind(*this, state);
+  if (kindOr.isError())
+    return emitOpError() << kindOr.getError();
+  MOGG::KernelOutputFusionLambdaType kind = *kindOr;
+  bool isCompute = kind == MOGG::KernelOutputFusionLambdaType::Compute;
+  bool computeOutputArg = kind != MOGG::KernelOutputFusionLambdaType::Output;
+
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
       /*args=*/ValueRange{}, state.device, TypeAttr::get(outElemType),
       state.builder.getBoolAttr(true),
-      MO::IOKindAttr::get(ctx, MO::IOKind::Output));
+      MO::IOKindAttr::get(ctx, MO::IOKind::Output),
+      state.builder.getBoolAttr(computeOutputArg));
 
   // New block args mirror the old ones 1:1, except captures are typed as
   // the reconstructed `!mogg.tensor_` instead of the original `!mo.tensor`.
@@ -170,8 +246,31 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   }
 
   state.builder.setInsertionPointToEnd(body);
-  if (failed(state.lowerRegionBody(epiBody)))
+  // A compute lambda returns the value rather than writing it: the kernel owns
+  // the one resulting store. Skip lowering that store and yield its value
+  // instead. The store is found by the tensor it writes, not by position, so a
+  // body that grows a trailing op cannot silently have a different store
+  // elided. The store-target capture stays a capture -- emit still binds the
+  // functor onto its slice -- it just has no use in the body.
+  Value yielded;
+  Value storeTarget = isCompute ? epiBody.getArgument(numParams) : Value();
+  if (failed(state.lowerRegionBody(epiBody, [&](Operation *op) {
+        auto storeOp = dyn_cast<StoreOp>(op);
+        if (!storeOp || storeOp.getTensor() != storeTarget)
+          return true;
+        ASSERT_STREAM(!yielded, "a MAP epilogue body must store to its "
+                                "store-target capture exactly once");
+        // Ops lower in order, so the store's value operand is already mapped
+        // by the time the walk reaches the store itself.
+        yielded = state.mapping.lookup(storeOp.getValue());
+        return false;
+      })))
     return failure();
+  if (isCompute) {
+    ASSERT_STREAM(yielded, "expected a MAP epilogue body to store to its "
+                           "store-target capture");
+    MOGG::YieldOp::create(state.builder, loc, yielded);
+  }
 
   state.builder.setInsertionPointAfter(epilogueOp);
   state.mapping.map(getResult(), epilogueOp.getTensor());

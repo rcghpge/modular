@@ -13,6 +13,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 
 namespace M::MAP {
 
@@ -26,6 +27,11 @@ struct MAPToMOGGState {
 
   MOGG::MojoRegistry &registry;
   mlir::OpBuilder builder;
+
+  // Whether an epilogue feeding a `_FusedComputeOutputTensor` argument may be
+  // lowered as a compute lambda. Mirrors the `EmitMojo` option of the same
+  // name, which still governs the legacy MOGG-ABI path.
+  bool enableComputeLambdas = true;
 
   // Substitution for every value reachable from the kernel currently being
   // lowered: this kernel's own input operands and output block args -> the
@@ -47,8 +53,13 @@ struct MAPToMOGGState {
 
   // Lowers `op` through its own `LowerableToMOGGInterface::lowerToMOGG`.
   mlir::LogicalResult lowerOp(mlir::Operation *op);
-  // Lowers every op in `block` in order via `lowerOp`.
-  mlir::LogicalResult lowerRegionBody(mlir::Block &block);
+  // Lowers the ops of `block` in order via `lowerOp`, skipping any for which
+  // `shouldLower` returns false. Order is guaranteed, so a predicate that
+  // skips an op may rely on everything before it already being mapped.
+  mlir::LogicalResult lowerRegionBody(
+      mlir::Block &block,
+      llvm::function_ref<bool(mlir::Operation *)> shouldLower =
+          [](mlir::Operation *) { return true; });
 };
 
 } // namespace M::MAP

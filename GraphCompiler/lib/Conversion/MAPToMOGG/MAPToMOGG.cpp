@@ -68,6 +68,7 @@ struct MAPToMOGGPass : public MAP::impl::MAPToMOGGBase<MAPToMOGGPass> {
 
     for (MAP::IterOpaqueOp op : worklist) {
       MAPToMOGGState state(registry, op);
+      state.enableComputeLambdas = enableComputeLambdas;
       if (failed(state.lowerOp(op.getOperation())))
         return signalPassFailure();
     }

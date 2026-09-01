@@ -18,10 +18,14 @@ LogicalResult MAPToMOGGState::lowerOp(Operation *op) {
   return lowerable.lowerToMOGG(*this);
 }
 
-LogicalResult MAPToMOGGState::lowerRegionBody(Block &block) {
-  for (Operation &op : block)
+LogicalResult MAPToMOGGState::lowerRegionBody(
+    Block &block, llvm::function_ref<bool(Operation *)> shouldLower) {
+  for (Operation &op : block) {
+    if (!shouldLower(&op))
+      continue;
     if (failed(lowerOp(&op)))
       return failure();
+  }
   return success();
 }
 

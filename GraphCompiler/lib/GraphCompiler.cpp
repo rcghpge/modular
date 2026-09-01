@@ -610,7 +610,9 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   buildStage([&](auto &p) { buildMapPipeline(p, mapOpts); }, "map-pre-mogg");
 
   // --- map-to-mogg: the MAP -> MOGG conversion ---
-  buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG()); },
+  MAP::MAPToMOGGOptions mapToMoggOpts;
+  mapToMoggOpts.enableComputeLambdas = opts.enableComputeLambdas;
+  buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG(mapToMoggOpts)); },
              "map-to-mogg");
 
   // --- mo-to-mogg ---

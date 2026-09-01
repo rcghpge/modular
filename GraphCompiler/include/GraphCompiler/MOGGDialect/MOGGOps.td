@@ -1389,14 +1389,16 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp"]>,
+  ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp",
+               "MOGG::TensorCreateEpilogueOp"]>,
   Terminator,
 ]> {
   let summary = "MOGG yield operation";
   let description = [{
     The "mogg.yield" operation specifies the output values for a mogg.try /
-    except statement, or the value a `mogg._tensor.create.prologue` body hands
-    back to the kernel reading through it.
+    except statement, the value a `mogg._tensor.create.prologue` body hands back
+    to the kernel reading through it, or the value a COMPUTE-lambda
+    `mogg._tensor.create.epilogue` body hands back for the kernel to store.
     ```
   }];
 
@@ -1862,6 +1864,20 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     io-kind are attributes, and `$device` records the device kind (cpu vs
     gpu) so emit can pick the preferred alignment locally instead of
     reaching out to the enclosing kernel stub. Scaffolding: not yet wired.
+
+    The body comes in two shapes. A STORE lambda owns its store: the body ends
+    with a `mogg._tensor.store` into the store-target capture and has no
+    terminator. A COMPUTE lambda leaves the store to the kernel: the body ends
+    with `mogg.yield` of the value that store would have written, and the
+    store-target capture survives unused so emit still has a slice to bind
+    onto. `MAPToMOGG` picks the shape.
+
+    `$computeOutputArg` records whether the consuming kernel declares the output
+    this epilogue feeds as a `_FusedComputeOutputTensor`. It is a separate
+    question from the body shape: a dtype-changing epilogue, or the
+    `enable-compute-lambdas` opt-out, keeps a store body against a
+    compute-capable argument. Emit reads it for one purpose, choosing between
+    `_bind_to_fused_output` and `_bind_to_fused_compute_output`.
   }];
   let arguments = (ins
     MOGG_Shape:$shape,
@@ -1870,7 +1886,8 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MO_IOKind:$io
+    MO_IOKind:$io,
+    DefaultValuedAttr<BoolAttr, "false">:$computeOutputArg
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
@@ -1880,6 +1897,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     `:` type($shape) `->` type($tensor)
     attr-dict-with-keyword $body
   }];
+  let hasVerifier = 1;
 }
 
 def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [

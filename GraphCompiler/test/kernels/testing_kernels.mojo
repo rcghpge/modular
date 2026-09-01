@@ -1280,6 +1280,45 @@ struct AddFuseInputs:
         foreach[func](z, ctx)
 
 
+@extensibility.register("imposter_add_compute_fusion")
+struct AddComputeFusion:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        target: StaticString,
+    ](
+        z: _FusedComputeOutputTensor[dtype=dtype, rank=2, ...],
+        x: InputTensor[dtype=dtype, rank=2, ...],
+        y: InputTensor[dtype=dtype, rank=2, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        comptime has_compute_lambda = type_of(z)._has_compute_fusion
+        print("has_compute_lambda =", has_compute_lambda)
+
+        @__parameter
+        @always_inline
+        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+            var val = rebind[SIMD[dtype, width]](x.load[width](idx)) + rebind[
+                SIMD[dtype, width]
+            ](y.load[width](idx))
+            comptime if has_compute_lambda:
+                val = z._fused_compute_output_lambda[
+                    width=width, element_alignment=alignment
+                ](idx, val)
+                z.store[element_alignment=alignment](idx, val)
+            else:
+                z._fused_store[element_alignment=alignment](idx, val)
+
+        elementwise[func, 1, target=target](z.shape_coord(), ctx)
+
+
+@extensibility.register_shape_function("imposter_add_compute_fusion")
+def imposter_add_compute_fusion_shape(
+    x: InputTensor, y: InputTensor
+) -> IndexList[x.rank]:
+    return x.shape()
+
+
 @extensibility.register("imposter_add_fuse_output")
 struct AddFuseOutput:
     @staticmethod
