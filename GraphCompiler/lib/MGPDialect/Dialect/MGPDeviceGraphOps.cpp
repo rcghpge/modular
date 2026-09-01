@@ -248,7 +248,11 @@ LogicalResult DeviceGraphCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   // it records into the builder parameter. Capture convention: `read`.
   MojoValue buildClosure = state.builder.lambda(
       "build", /*parameters=*/{}, /*arguments=*/{builderParam},
-      /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
+      /*returnType=*/std::nullopt,
+      // Never inline: the build body sequences every recorded kernel of the
+      // model, and inlining its callees back in produces one enormous
+      // function whose Mem2Reg dominates model compile time.
+      MojoBuilder::LambdaInline::kNever, /*isParameter=*/false,
       /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"var",
       [&](const FunctionBody &functionBody) {
         // Builder block arg -> the closure's parameter.
@@ -600,7 +604,10 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   bool errOccurred = false;
   MojoValue workClosure = state.builder.lambda(
       "work", /*parameters=*/{}, /*arguments=*/{builderParam},
-      /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
+      /*returnType=*/std::nullopt,
+      // Never inline: single-use per-kernel bodies otherwise merge into the
+      // build closure (see the build lambda in DeviceGraphCreateOp).
+      MojoBuilder::LambdaInline::kNever, /*isParameter=*/false,
       /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/workConvention,
       [&](const FunctionBody &functionBody) {
         state.setMojoValueFor(builderArg, functionBody.arguments.front());

@@ -4250,7 +4250,8 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
        NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
                                 MojoValue(1))},
       {NamedMojoDef::asVerbatim("idx", kStructCoord)},
-      /*returnType=*/std::nullopt, /*isInline=*/false, /*isParameter=*/false,
+      /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kAutomatic,
+      /*isParameter=*/false,
       /*isAsync=*/false, /*raises=*/false, /*captureConvention=*/"var",
       [&](const FunctionBody &fb) {
         EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
@@ -5851,7 +5852,8 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
   MojoValue wrapper = state.builder.lambda(
       "wrapper", /*parameters=*/{}, /*arguments=*/{},
       /*returnType=*/MojoValue(kComptimeNone),
-      /*isInline=*/true, /*isParameter=*/true, /*isAsync=*/true,
+      MojoBuilder::LambdaInline::kAlways, /*isParameter=*/true,
+      /*isAsync=*/true,
       /*raises=*/false, /*captureConvention=*/"", [&](const FunctionBody &) {
         state.builder
             .try_([&]() {

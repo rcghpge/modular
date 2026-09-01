@@ -20,7 +20,11 @@
 
 // The build closure passed to `DeviceGraph.create` is a runtime closure that
 // owns its captures, so it carries the `var` capture convention.
-// CHECK: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {var}:
+// The build closure and per-kernel work closures are pinned @no_inline so
+// AutomaticInline cannot merge the whole model's enqueue code into one
+// function (whose Mem2Reg would dominate compile time).
+// CHECK: @no_inline
+// CHECK-NEXT: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {var}:
 
 // Each device input is recorded against a graph-owned stable location rather
 // than the caller's buffer, so a replay does not depend on the caller's address
@@ -33,7 +37,8 @@
 // captured `Optional` (None-initialized) that the `work` closure writes (so it
 // captures by `mut`), then unwrapped with `.take()` after `region`.
 // CHECK: var [[OUT:var[_0-9]+]] = Optional[{{.*}}](None)
-// CHECK: def [[WORK0:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {mut}:
+// CHECK: @no_inline
+// CHECK-NEXT: def [[WORK0:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {mut}:
 // The allocation is a builder op: `mgp.device_graph.alloc` lowers to the
 // `mgp_device_graph_alloc` primitive taking the builder directly -- no
 // `builder.context()` extraction and no `mgp_buffer_alloc` in the work closure.
@@ -48,7 +53,8 @@
 
 // The dispatch is recorded in its own `imm`-capturing `region`, ordered after
 // the alloc's node via the `dependencies=` list, and calls the node-free stub.
-// CHECK: def [[WORK1:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
+// CHECK: @no_inline
+// CHECK-NEXT: def [[WORK1:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
 // CHECK: [[STUB:[A-Za-z0-9_]+_mogg(_[0-9]+)?_build_graph]]({{.*}}, {{.*}}, builder)
 // CHECK: builder.region([[WORK1]], dependencies = {{\[}}[[NODE0]]{{\]}})
 

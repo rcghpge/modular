@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 
 namespace M::MOGG {
 
@@ -192,17 +193,19 @@ void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
 MojoValue
 MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     ArrayRef<NamedMojoDef> arguments,
-                    std::optional<MojoValue> returnType, bool isInline,
-                    bool isParameter, bool isAsync, bool raises,
-                    llvm::StringRef captureConvention,
+                    std::optional<MojoValue> returnType,
+                    LambdaInline inlineKind, bool isParameter, bool isAsync,
+                    bool raises, llvm::StringRef captureConvention,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
   MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
 
   if (isParameter)
     statement("@__parameter");
-  if (isInline)
-    statement("@always_inline");
+  if (inlineKind == LambdaInline::kAlways)
+    statement(kDecoratorAlwaysInline);
+  else if (inlineKind == LambdaInline::kNever)
+    statement(kDecoratorNoInline);
 
   // `raises` and the capture clause are independent -- a capturing closure
   // still needs its blanket `{var}`-style clause regardless of `raises`.

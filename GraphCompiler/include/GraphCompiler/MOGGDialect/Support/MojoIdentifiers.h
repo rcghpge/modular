@@ -426,6 +426,7 @@ constexpr llvm::StringLiteral kTraitElementwiseFusionTile =
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kDecoratorAlwaysInline = "@always_inline";
+constexpr llvm::StringLiteral kDecoratorNoInline = "@no_inline";
 
 //===----------------------------------------------------------------------===//
 // Pre-rendered comptime type expressions

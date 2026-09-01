@@ -254,6 +254,15 @@ public:
            bool isAlwaysInline,
            std::function<void(const FunctionBody &)> &&funcBody);
 
+  /// Inline treatment of an emitted lambda. `kAutomatic` leaves the decision
+  /// to `AutomaticInline`'s heuristics; `kAlways` and `kNever` pin it with
+  /// `@always_inline` / `@no_inline`. `kNever` exists for the device-graph
+  /// build closures: their single-use per-kernel bodies would otherwise be
+  /// merged into one enormous function whose function-local optimization
+  /// (Mem2Reg in particular) dominates model compile time and serializes the
+  /// otherwise per-function-parallel pipeline.
+  enum class LambdaInline { kAutomatic, kAlways, kNever };
+
   /// Creates a lambda with the specified parameter and argument types. The
   /// returned object is a RAII guard that will recover the original indentation
   /// level when it goes out of scope.
@@ -267,7 +276,7 @@ public:
   /// Empty means no capture clause (e.g. `@__parameter` closures).
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
-                   std::optional<MojoValue> returnType, bool isInline,
+                   std::optional<MojoValue> returnType, LambdaInline inlineKind,
                    bool isParameter, bool isAsync, bool raises,
                    llvm::StringRef captureConvention,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
