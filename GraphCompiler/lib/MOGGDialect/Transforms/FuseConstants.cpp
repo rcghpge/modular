@@ -11,6 +11,8 @@
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 
+#include "llvm/ADT/SmallVector.h"
+
 using namespace M;
 
 namespace M::MOGG {
@@ -122,9 +124,21 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
     MO::GraphOp graph = getOperation();
     MOGG::KernelIOContractDeriver deriver(
         graph->getParentOfType<mlir::ModuleOp>());
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>())
-      if (failed(fuseConstant(kernel, deriver)))
-        return signalPassFailure();
+    // Walk rather than iterate the graph's direct ops: a kernel can sit
+    // inside control flow (e.g. mo.if, mo.parallel), and iterating only the
+    // graph's own top-level ops would miss those. Fusing in place during the
+    // walk is safe: the only op this erases is `cst`, the constant producing
+    // one of `kernel`'s own operands, which by SSA dominance always precedes
+    // `kernel` in the walk's visitation order. PreOrder + skip so the walk
+    // never descends into a kernel's own body: a kernel never contains
+    // another kernel, so there is nothing there to match this walk's filter.
+    graph.walk<mlir::WalkOrder::PreOrder>([&](MOGG::KernelOp kernel) {
+      if (failed(fuseConstant(kernel, deriver))) {
+        signalPassFailure();
+        return WalkResult::interrupt();
+      }
+      return WalkResult::skip();
+    });
   }
 };
 
