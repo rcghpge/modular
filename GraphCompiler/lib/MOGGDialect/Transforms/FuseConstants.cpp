@@ -9,7 +9,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "GraphCompiler/MOGGDialect/Support/TypeTraits.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -54,7 +54,7 @@ static MO::ConstantOp getFusableConstant(MOGG::KernelOp kernel, int32_t index) {
     return {};
 
   Type dtype = elems.getElementType();
-  if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
+  if (!TypeTraits::isSupportedMOGGType(dtype))
     return {};
 
   if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))

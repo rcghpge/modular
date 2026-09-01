@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "GraphCompiler/MOGGDialect/Support/TypeTraits.h"
 
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
@@ -75,52 +75,52 @@ llvm::SmallVector<mlir::TypedAttr> convertIntsToSIMD(DType moggType,
 } // namespace
 
 #define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, ...)                              \
-  static MOGGTypeTraits SHORT_NAME() {                                         \
-    return MOGGTypeTraits(#LONG_NAME, KGEN::KGENDType::SHORT_NAME,             \
-                          DType::SHORT_NAME);                                  \
+  static TypeTraits SHORT_NAME() {                                             \
+    return TypeTraits(#LONG_NAME, KGEN::KGENDType::SHORT_NAME,                 \
+                      DType::SHORT_NAME);                                      \
   }
 #include "Support/ML/FloatTypes.def"
 #undef DECLARE_FLOAT
 
-static MOGGTypeTraits ui8() {
-  return MOGGTypeTraits("uint8", KGEN::KGENDType::ui8, DType::ui8);
+static TypeTraits ui8() {
+  return TypeTraits("uint8", KGEN::KGENDType::ui8, DType::ui8);
 }
 
-static MOGGTypeTraits ui16() {
-  return MOGGTypeTraits("uint16", KGEN::KGENDType::ui16, DType::ui16);
+static TypeTraits ui16() {
+  return TypeTraits("uint16", KGEN::KGENDType::ui16, DType::ui16);
 }
 
-static MOGGTypeTraits ui32() {
-  return MOGGTypeTraits("uint32", KGEN::KGENDType::ui32, DType::ui32);
+static TypeTraits ui32() {
+  return TypeTraits("uint32", KGEN::KGENDType::ui32, DType::ui32);
 }
 
-static MOGGTypeTraits ui64() {
-  return MOGGTypeTraits("uint64", KGEN::KGENDType::ui64, DType::ui64);
+static TypeTraits ui64() {
+  return TypeTraits("uint64", KGEN::KGENDType::ui64, DType::ui64);
 }
 
-static MOGGTypeTraits si8() {
-  return MOGGTypeTraits("int8", KGEN::KGENDType::si8, DType::si8);
+static TypeTraits si8() {
+  return TypeTraits("int8", KGEN::KGENDType::si8, DType::si8);
 }
 
-static MOGGTypeTraits si16() {
-  return MOGGTypeTraits("int16", KGEN::KGENDType::si16, DType::si16);
+static TypeTraits si16() {
+  return TypeTraits("int16", KGEN::KGENDType::si16, DType::si16);
 }
 
-static MOGGTypeTraits si32() {
-  return MOGGTypeTraits("int32", KGEN::KGENDType::si32, DType::si32);
+static TypeTraits si32() {
+  return TypeTraits("int32", KGEN::KGENDType::si32, DType::si32);
 }
 
-static MOGGTypeTraits si64() {
-  return MOGGTypeTraits("int64", KGEN::KGENDType::si64, DType::si64);
+static TypeTraits si64() {
+  return TypeTraits("int64", KGEN::KGENDType::si64, DType::si64);
 }
 
-static MOGGTypeTraits b() {
-  return MOGGTypeTraits("bool", KGEN::KGENDType::kBool, DType::kBool);
+static TypeTraits b() {
+  return TypeTraits("bool", KGEN::KGENDType::kBool, DType::kBool);
 }
 
 llvm::SmallVector<mlir::TypedAttr>
-MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
-                              int64_t numElems) const {
+TypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
+                          int64_t numElems) const {
   if (auto fltSemantics = moggType.getFloatSemantics())
     return convertFloatsToSIMD(moggType, kgenType, context, data, numElems,
                                *fltSemantics);
@@ -131,7 +131,7 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
   llvm_unreachable("unimplemented DType");
 }
 
-llvm::SmallVector<MOGGTypeTraits> M::MOGG::allTypeTraits() {
+llvm::SmallVector<TypeTraits> M::MOGG::allTypeTraits() {
   return {
 #define DECLARE_FLOAT(SHORT_NAME, ...) SHORT_NAME(),
 #include "Support/ML/FloatTypes.def"
@@ -140,7 +140,7 @@ llvm::SmallVector<MOGGTypeTraits> M::MOGG::allTypeTraits() {
       ui8(), ui16(), ui32(), ui64(), si8(), si16(), si32(), si64(), b()};
 }
 
-ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
+ErrorOr<TypeTraits> TypeTraits::lookupType(Type type) {
 #define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, MLIR_TYPE, ...)           \
   if (isa<MLIR_TYPE>(type))                                                    \
     return SHORT_NAME();
@@ -169,11 +169,11 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
   std::string typeStr;
   llvm::raw_string_ostream rso(typeStr);
   type.print(rso);
-  return Error("No MOGGTypeTraits implementation for " + rso.str() +
+  return Error("No TypeTraits implementation for " + rso.str() +
                ". This is not a supported MOGG DType.");
 }
 
-ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
+ErrorOr<TypeTraits> TypeTraits::lookupDType(DType dtype) {
   switch (dtype.getValue()) {
 
 #define DECLARE_FLOAT(SHORT_NAME, ...)                                         \
@@ -201,11 +201,11 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
   case DType::kBool:
     return b();
   default:
-    return Error("No MOGGTypeTraits implementation for " + dtype.getAsString() +
+    return Error("No TypeTraits implementation for " + dtype.getAsString() +
                  ". This is not a supported MOGG DType.");
   }
 }
 
-bool MOGGTypeTraits::isSupportedMOGGType(Type type) {
+bool TypeTraits::isSupportedMOGGType(Type type) {
   return !lookupType(type).isError();
 }

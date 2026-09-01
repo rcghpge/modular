@@ -16,8 +16,8 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GraphCompiler/MOGGDialect/Support/TypeTraits.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
@@ -77,7 +77,7 @@ namespace {
 static bool opHasCompatibleTypes(Operation *op) {
   auto isDTypeAllowed = [&](MO::TensorType tensorTy) {
     Type dtype = tensorTy.getElementType();
-    return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
+    return MOGG::TypeTraits::isSupportedMOGGType(dtype);
   };
 
   // Returns true if a type is compatible with jit.

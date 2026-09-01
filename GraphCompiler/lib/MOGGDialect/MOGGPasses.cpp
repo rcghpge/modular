@@ -6,7 +6,7 @@
 
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoStubCompiler.h"
 #include "GraphCompiler/Version.h"
 #include "Mojo/KGENDialect/KGENCompilationContext.h"
 #include "Mojo/KGENDialect/KGENUtils.h"

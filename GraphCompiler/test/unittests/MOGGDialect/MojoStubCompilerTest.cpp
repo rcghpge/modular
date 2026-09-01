@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoStubCompiler.h"
 
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"

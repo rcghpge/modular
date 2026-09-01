@@ -12,8 +12,8 @@
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoStubCompiler.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
