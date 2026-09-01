@@ -8,6 +8,7 @@
 // RUN:   -verify-each=false
 // RUN: cat %t/*.mojo | FileCheck %s
 // RUN: cat %t/*.mojo | FileCheck %s --check-prefix=NOPARAM
+// RUN: cat %t/*.mojo | FileCheck %s --check-prefix=COMPUTE
 
 // End-to-end Mojo emission for MAP-ABI fused (store-epilogue) outputs
 // (TensorCreateEpilogueOp::emitMojo plus the CallOpaqueOp fused branch). A
@@ -164,3 +165,19 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // CHECK-NEXT:         var [[LOADED:.*]] = [[LOADTILE]].load[width = simd_width, alignment = element_alignment]([[COORDIDX2]])
 // CHECK-NEXT:         var [[SUM:.*]] = testing_kernels.testing_kernels.AddElementwise.elementwise[dtype = DType.float32]([[REBOUND2]], [[LOADED]])
 // CHECK-NEXT:         [[STORETILE]].store[width = simd_width, alignment = element_alignment]([[COORDIDX2]], rebind[SIMD[type_of([[STORETILE]]).dtype, simd_width]]([[SUM]]))
+
+// A kernel declaring `_FusedComputeOutputTensor` gets a COMPUTE functor: it
+// conforms to `ComputeOutputFusion`, its method is `compute` and RETURNS the
+// transformed value rather than storing it, and it binds through
+// `_bind_to_fused_compute_output`. The primary kernel performs the one store.
+// All `def ..._map(...)` functions are emitted before any struct definitions,
+// so these three land in different sections; match them order-independently.
+// COMPUTE-DAG: _bind_to_fused_compute_output
+// COMPUTE-DAG: struct EpilogueComputeFunctor{{[0-9_]*}}[{{.*}}](managed_tensor_slice.ComputeOutputFusion, TrivialRegisterPassable):
+// COMPUTE-DAG: def compute[{{.*}}](self, idx: {{.*}}, value: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
+
+mo.graph @compute_lambda(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>, %bias: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
+  %sum = mo.custom {symbol = "imposter_add_compute_fusion", device = #M.device_ref<"cpu", 0>}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %out = mo.add(%sum, %bias) : !mo.tensor<[2, 2], f32>
+  mo.output %out : !mo.tensor<[2, 2], f32>
+}

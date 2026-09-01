@@ -4045,6 +4045,11 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     return failure();
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
+  // The body shape says which flavor: `MAPToMOGG` builds a yield-terminated
+  // body exactly when it decided a compute lambda, so emit reads the decision
+  // off the IR rather than re-deriving it. `compute` is `store` plus a return.
+  bool isCompute = isa<YieldOp>(getBody().front().back());
+
   const FusionLambdaInfo storeLane = {
       /*structName=*/"EpilogueStoreFunctor",
       /*traitName=*/kTraitOutputFusion,
@@ -4052,8 +4057,16 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
       /*widthParamType=*/kStructSIMDLength,
       /*takesValue=*/true,
   };
+  const FusionLambdaInfo computeLane = {
+      /*structName=*/"EpilogueComputeFunctor",
+      /*traitName=*/kTraitComputeOutputFusion,
+      /*methodName=*/MojoValue("compute"),
+      /*widthParamType=*/kStructSIMDLength,
+      /*takesValue=*/true,
+  };
   FailureOr<MojoValue> functorOr = emitMapFusionFunctor(
-      state, getBody(), captureInfos, storeLane, inputDtypeParam);
+      state, getBody(), captureInfos, isCompute ? computeLane : storeLane,
+      inputDtypeParam);
   if (failed(functorOr))
     return failure();
   MojoValue functorInstance = *functorOr;
@@ -4071,6 +4084,9 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // type-only dangling slice carrying the dtype the kernel COMPUTES, and
   // reaches the real (differently-typed) output through capture 0 instead.
   MojoValue baseSlice = state.getMojoValueFor(getCaptures()[0]);
+  ASSERT_STREAM(!isCompute || inputDtypeParam.text == dtypeParam.text,
+                "a compute lambda cannot change dtype; `MAPToMOGG` classifies "
+                "a dtype-changing epilogue as a store lambda");
   if (inputDtypeParam.text != dtypeParam.text) {
     FailureOr<unsigned> rank = fusedRegionRank(*this, getShape());
     if (failed(rank))
@@ -4080,8 +4096,15 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
         MojoValue(static_cast<uint64_t>(
             M::Driver::getPreferredAlignment(getDevice().getLabel().str()))));
   }
-  MojoValue fusedTensor = baseSlice.get(
-      ManagedTensorSliceRef::kBindToFusedOutput)({}, {functorInstance});
+  // Which entry point to bind through follows the kernel's declared argument
+  // type, not the lane: a `_FusedComputeOutputTensor` argument binds with
+  // `_bind_to_fused_compute_output` even when a dtype change or the
+  // `enable-compute-lambdas` opt-out kept the store lane above.
+  ManagedTensorSliceRef bindTarget(baseSlice);
+  MojoValue bindMethod = getComputeOutputArg()
+                             ? bindTarget.bindToFusedComputeOutput()
+                             : bindTarget.bindToFusedOutput();
+  MojoValue fusedTensor = bindMethod({}, {functorInstance});
   state.setMojoValueFor(getTensor(), state.builder.var(fusedTensor));
   return success();
 }
