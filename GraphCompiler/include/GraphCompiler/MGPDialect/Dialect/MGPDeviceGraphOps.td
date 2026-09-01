@@ -420,6 +420,9 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
       contribution (successors depend on it), plus the values the former region
       yielded (so existing users are untouched). The node is synthesized by the
       op; it is not yielded by the body.
+    - Its body's nodes are **recorded in order**: `DeviceGraphBuilder.region`
+      chains each node it records after the previous one, and the `dependencies`
+      edges gate the first. The node result is therefore the body's last node.
 
     The body terminates with `mgp.device_graph.dependencies.yield`, whose operand
     types must match the op's `bodyResults`.

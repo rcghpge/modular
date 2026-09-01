@@ -44,9 +44,10 @@ class SimplifyDeviceGraphDependenciesPass
 
   /// Eliminate dependency edges of `dependenciesOp` implied transitively by
   /// its other edges. An op's node result gates on the op's own edges (they
-  /// become ambient predecessors of every node the body records, and an empty
-  /// body degenerates to an empty node still carrying them), so an edge
-  /// reachable from another edge through the dependency relation is redundant.
+  /// gate the first node the body records and the body's nodes are chained
+  /// from there, and an empty body degenerates to an empty node still carrying
+  /// them), so an edge reachable from another edge through the dependency
+  /// relation is redundant.
   ///
   /// Works like SimplifyChainsPass::eliminateImpliedByOperands: seed a
   /// breadth-first walk with each edge's own dependency set, then delete any

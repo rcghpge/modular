@@ -770,10 +770,10 @@ def SimplifyDeviceGraphDependenciesPass :
     ```
     the direct `%node_c` edge on `%node_a` is redundant: a dependencies op's
     node result transitively gates on the op's own dependency edges (its edges
-    become ambient predecessors of every node the body records, and an
-    empty body degenerates to an empty node that still carries them), so
-    `%node_b` already orders `%node_a` after `%node_c`. Such edges are
-    removed:
+    gate the first node the body records and the body's nodes are chained from
+    there, and an empty body degenerates to an empty node that still carries
+    them), so `%node_b` already orders `%node_a` after `%node_c`. Such edges
+    are removed:
     ```mlir
       %node_a, ... = mgp.device_graph.dependencies ... dependencies(%node_b) ...
     ```

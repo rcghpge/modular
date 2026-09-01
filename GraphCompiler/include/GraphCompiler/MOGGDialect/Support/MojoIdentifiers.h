@@ -769,8 +769,8 @@ public:
   /// `({}, args)` or hands it to `MojoBuilder::call`.
   MojoValue addOutput() const { return value.get(kAddOutput); }
 
-  /// `builder.region(work, dependencies = deps)` — joins every node `work`
-  /// records into a single node usable as one downstream dependency.
+  /// `builder.region(work, dependencies = deps)` — chains every node `work`
+  /// records and returns the last, usable as one downstream dependency.
   MojoValue region(MojoValue work, MojoValue dependencies) const {
     return value.get(kRegion)(
         /*parameters=*/{},

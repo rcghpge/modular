@@ -324,6 +324,9 @@ func.func @hoist_no_op(%b: !mgp.device_graph.builder) {
 // node-producing %na; %nc is rewired straight to %na and the now-dead empty op
 // is DCE'd. The empty op's body has no `test.record`, so the second matched op
 // below can only be the rewired %nc (not a surviving empty op).
+//
+// %na's node is kept live by a second user so that `MergeChainedDependencies`
+// does not go on to fuse the rewired pair, leaving the case about the bypass.
 // CHECK-LABEL: func.func @bypass_empty_dependency
 func.func @bypass_empty_dependency(%b: !mgp.device_graph.builder) {
   // CHECK: %[[A:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
@@ -332,7 +335,7 @@ func.func @bypass_empty_dependency(%b: !mgp.device_graph.builder) {
   // CHECK: %[[C:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[A]]) {
   // CHECK-NEXT: ^bb0(%[[BC:.+]]: !mgp.device_graph.builder):
   // CHECK-NEXT: "test.record"(%[[BC]])
-  // CHECK: "test.keep"(%[[C]])
+  // CHECK: "test.keep"(%[[A]], %[[C]])
   // CHECK-NOT: mgp.device_graph.dependencies
   %na = mgp.device_graph.dependencies builder(%b) dependencies() {
   ^bb0(%builder: !mgp.device_graph.builder):
@@ -348,7 +351,7 @@ func.func @bypass_empty_dependency(%b: !mgp.device_graph.builder) {
     "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
     mgp.device_graph.dependencies.yield
   }
-  "test.keep"(%nc) : (!mgp.device_graph.node) -> ()
+  "test.keep"(%na, %nc) : (!mgp.device_graph.node, !mgp.device_graph.node) -> ()
   return
 }
 
@@ -356,6 +359,7 @@ func.func @bypass_empty_dependency(%b: !mgp.device_graph.builder) {
 
 // Negative case: an edge to a node-producing (non-empty) dependency is left
 // untouched -- %nc keeps its edge to %na and nothing is spliced or removed.
+// The second user of %na also keeps `MergeChainedDependencies` off the pair.
 // CHECK-LABEL: func.func @bypass_no_op
 func.func @bypass_no_op(%b: !mgp.device_graph.builder) {
   // CHECK: %[[A:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
@@ -370,6 +374,176 @@ func.func @bypass_no_op(%b: !mgp.device_graph.builder) {
     "test.record"(%builder) : (!mgp.device_graph.builder) -> ()
     mgp.device_graph.dependencies.yield
   }
-  "test.keep"(%nc) : (!mgp.device_graph.node) -> ()
+  "test.keep"(%na, %nc) : (!mgp.device_graph.node, !mgp.device_graph.node) -> ()
   return
 }
+
+// -----
+
+// `MergeChainedDependencies`: a chain %n0 -> %n1 -> %n2 collapses into one op
+// holding all three bodies. Body order is the order the emitted closure records
+// in, so it has to be predecessor-first: record0, record1, record2.
+// CHECK-LABEL: func.func @merge_linear_chain
+func.func @merge_linear_chain(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[N:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies() {
+  // CHECK-NEXT: ^bb0(%[[ARG:.+]]: !mgp.device_graph.builder):
+  // CHECK-NEXT: "test.record0"(%[[ARG]])
+  // CHECK-NEXT: "test.record1"(%[[ARG]])
+  // CHECK-NEXT: "test.record2"(%[[ARG]])
+  // CHECK-NEXT: }
+  %n0 = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record0"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  %n2 = mgp.device_graph.dependencies builder(%b) dependencies(%n1) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record2"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK-NOT: mgp.device_graph.dependencies
+  // CHECK: "test.keep"(%[[N]])
+  "test.keep"(%n2) : (!mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// The merged op takes over the predecessor's edges, so a chain hanging off an
+// edge from outside the chain stays ordered after it.
+// CHECK-LABEL: func.func @merge_inherits_producer_edges
+func.func @merge_inherits_producer_edges(%b: !mgp.device_graph.builder) {
+  // An edge from something that is not a dependencies op, so it cannot itself
+  // be absorbed into the chain.
+  // CHECK: %[[EXT:.+]] = "test.node"()
+  %ext = "test.node"() : () -> !mgp.device_graph.node
+  // CHECK: %[[N:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[EXT]]) {
+  // CHECK: "test.record0"
+  // CHECK-NEXT: "test.record1"
+  %n0 = mgp.device_graph.dependencies builder(%b) dependencies(%ext) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record0"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: "test.keep"(%[[N]])
+  "test.keep"(%n1) : (!mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// Negative: the successor has a second edge, so absorbing %n0 would order
+// %n0's body after %other too. Genuine fan-in must survive.
+// CHECK-LABEL: func.func @merge_extra_dependency
+func.func @merge_extra_dependency(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[N0:.+]] = mgp.device_graph.dependencies
+  // CHECK: "test.record0"
+  %n0 = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record0"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: %[[OTHER:.+]] = mgp.device_graph.dependencies
+  // CHECK: "test.other"
+  %other = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.other"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[N0]], %[[OTHER]]) {
+  // CHECK: "test.record1"
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0, %other) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: "test.keep"(%[[N1]])
+  "test.keep"(%n1) : (!mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// Negative: %n0's node has a second user, which would still need it after the
+// merge erased it.
+// CHECK-LABEL: func.func @merge_node_reused
+func.func @merge_node_reused(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[N0:.+]] = mgp.device_graph.dependencies
+  // CHECK: "test.record0"
+  %n0 = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record0"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[N0]]) {
+  // CHECK: "test.record1"
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: "test.keep"(%[[N0]], %[[N1]])
+  "test.keep"(%n0, %n1) : (!mgp.device_graph.node, !mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// Negative: the predecessor yields a value. Absorbing it would move the
+// definition of %r0 behind its user.
+// CHECK-LABEL: func.func @merge_producer_yields
+func.func @merge_producer_yields(%b: !mgp.device_graph.builder) {
+  // CHECK: %[[N0:.+]], %[[R0:.+]] = mgp.device_graph.dependencies
+  // CHECK: "test.alloc"
+  %n0, %r0 = mgp.device_graph.dependencies builder(%b) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %v = "test.alloc"(%builder) : (!mgp.device_graph.builder) -> !mgp.buffer<<"gpu", 0>>
+    mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
+  } : !mgp.buffer<<"gpu", 0>>
+  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[N0]]) {
+  // CHECK: "test.record1"(%{{.+}}, %[[R0]])
+  %n1 = mgp.device_graph.dependencies builder(%b) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder, %r0) : (!mgp.device_graph.builder, !mgp.buffer<<"gpu", 0>>) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: "test.keep"(%[[N1]])
+  "test.keep"(%n1) : (!mgp.device_graph.node) -> ()
+  return
+}
+
+// -----
+
+// Negative: the two ops record into different builders, so neither body can
+// host the other's ops.
+// CHECK-LABEL: func.func @merge_different_builders
+func.func @merge_different_builders(%b0: !mgp.device_graph.builder, %b1: !mgp.device_graph.builder) {
+  // CHECK: %[[N0:.+]] = mgp.device_graph.dependencies
+  // CHECK: "test.record0"
+  %n0 = mgp.device_graph.dependencies builder(%b0) dependencies() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record0"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: %[[N1:.+]] = mgp.device_graph.dependencies builder(%{{.+}}) dependencies(%[[N0]]) {
+  // CHECK: "test.record1"
+  %n1 = mgp.device_graph.dependencies builder(%b1) dependencies(%n0) {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    "test.record1"(%builder) : (!mgp.device_graph.builder) -> ()
+    mgp.device_graph.dependencies.yield
+  }
+  // CHECK: "test.keep"(%[[N1]])
+  "test.keep"(%n1) : (!mgp.device_graph.node) -> ()
+  return
+}
+

@@ -539,16 +539,17 @@ bool DeviceGraphDependenciesOp::producesNewNodes() {
 // `work_N` is a recording closure wrapping the body. The op is not
 // IsolatedFromAbove, so the body captures enclosing values lexically; only the
 // builder block arg maps to the closure parameter. The `dependencies=` keyword
-// argument injects the predecessor node edges as ambient predecessors of every
-// node the body records (the builder's `_implicit_deps` mechanism).
+// argument injects the predecessor node edges as predecessors of the first node
+// the body records (the builder's `_implicit_deps` mechanism); `region` chains
+// the rest after it, so body order is the recording order.
 //
-// `DeviceGraphBuilder.region` returns only the join node, so a body result
-// produced *inside* the body cannot be returned directly. We surface each such
-// result through a captured outer `Optional[T]` var: declare it (None) before
-// the closure, write it from inside `work` (captured by `mut`), and unwrap it
-// after `region` returns. `Optional` is used because the surfaced type may not
-// be default-constructible (e.g. a non-null buffer pointer), which a `mut`
-// capture requires:
+// `DeviceGraphBuilder.region` returns only the body's last node, so a body
+// result produced *inside* the body cannot be returned directly. We surface
+// each such result through a captured outer `Optional[T]` var: declare it
+// (None) before the closure, write it from inside `work` (captured by `mut`),
+// and unwrap it after `region` returns. `Optional` is used because the surfaced
+// type may not be default-constructible (e.g. a non-null buffer pointer), which
+// a `mut` capture requires:
 //
 //   var out = Optional[T](None)
 //   def work(mut builder) raises {mut}:
@@ -842,6 +843,59 @@ struct HoistOperations final
   }
 };
 
+/// Absorbs the body of an `mgp.device_graph.dependencies` op into its sole
+/// successor, when the two form a link in a linear chain.
+struct MergeChainedDependencies final
+    : public OpRewritePattern<DeviceGraphDependenciesOp> {
+  using Base::Base;
+
+  LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
+                                PatternRewriter &rewriter) const override {
+    // Exactly one edge, so absorbing its producer adds no ordering: the
+    // producer's edges become this op's, and nothing else changes. Absorbing a
+    // body into an op that has other edges would order that body after them
+    // too, collapsing genuine fan-in.
+    if (op.getDependencies().size() != 1)
+      return failure();
+
+    auto producer =
+        op.getDependencies().front().getDefiningOp<DeviceGraphDependenciesOp>();
+    if (!producer)
+      return failure();
+
+    // The producer has a single consumer, which must be the input operation.
+    if (!producer.getNode().hasOneUse())
+      return failure();
+
+    // Dataflow out of the producer complicates the canonicalization. For now,
+    // bail out as this case is uncommon.
+    if (!producer.getBodyResults().empty())
+      return failure();
+
+    // Producer and consumer must share the same builder and parent block.
+    if (producer.getGraphBuilder() != op.getGraphBuilder() ||
+        producer->getBlock() != op->getBlock())
+      return failure();
+
+    // Erase the producer yield operation. The merged block will be terminated
+    // by the terminator from the consumer operation.
+    rewriter.eraseOp(producer.getYieldOp());
+
+    // Inline the producer's body block before the consumer, remapping the
+    // builder argument.
+    rewriter.inlineBlockBefore(&producer.getBodyBlock(), &op.getBodyBlock(),
+                               op.getBodyBlock().begin(),
+                               {op.getBuilderBlockArgument()});
+
+    rewriter.modifyOpInPlace(op, [&] {
+      op.getDependenciesMutable().assign(producer.getDependencies());
+    });
+    rewriter.eraseOp(producer);
+
+    return success();
+  }
+};
+
 /// Bypasses empty (node-less) `mgp.device_graph.dependencies` producers: a
 /// dependency edge pointing at a producer that records no nodes is replaced by
 /// that producer's own dependency edges, preserving the transitive ordering the
@@ -899,6 +953,7 @@ void DeviceGraphDependenciesOp::getCanonicalizationPatterns(
     DeduplicateDependenciesResults,
     ForwardExternalDependenciesResults,
     HoistOperations,
+    MergeChainedDependencies,
     RemoveUnusedDependenciesResults
   >(ctx);
   // clang-format on

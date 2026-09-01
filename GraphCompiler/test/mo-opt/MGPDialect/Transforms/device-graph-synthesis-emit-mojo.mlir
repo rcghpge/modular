@@ -33,9 +33,10 @@
 
 // The recording allocates the output buffer inside a `region` work closure. The
 // allocated buffer is a body result of the `mgp.device_graph.dependencies` op;
-// since `region` returns only the join node, the buffer is surfaced through a
-// captured `Optional` (None-initialized) that the `work` closure writes (so it
-// captures by `mut`), then unwrapped with `.take()` after `region`.
+// since `region` returns only the body's last node, the buffer is surfaced
+// through a captured `Optional` (None-initialized) that the `work` closure
+// writes (so it captures by `mut`), then unwrapped with `.take()` after
+// `region`.
 // CHECK: var [[OUT:var[_0-9]+]] = Optional[{{.*}}](None)
 // CHECK: @no_inline
 // CHECK-NEXT: def [[WORK0:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {mut}:
@@ -138,4 +139,31 @@ mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:
   %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
       (%h) : (!mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
   mo.output %0 : !mo.tensor<[4], si64, gpu:0>
+}
+
+// -----
+
+// Two chained dispatches: the second consumes the first, so they form a linear
+// chain of `mgp.device_graph.dependencies` ops that canonicalization fuses (the
+// `MergeChainedDependencies` pattern). The result is one `region` call whose
+// single closure records both stubs, rather than one closure each.
+// The chain edge survives as the body order: `DeviceGraphBuilder.region` chains
+// the nodes its body records.
+// The `imm` capture convention picks out the dispatch closure: the alloc
+// region ahead of it surfaces a buffer and so captures `mut`.
+// CHECK: def [[WORK:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
+// CHECK: [[STUB:[A-Za-z0-9_]+_mogg(_[0-9]+)?_build_graph]]({{.*}}, builder)
+// CHECK: [[STUB]]({{.*}}, builder)
+// CHECK: builder.region([[WORK]], dependencies =
+// The alloc region is not fused in (it yields a buffer), so the two dispatches
+// leave exactly one further `region` call, not two.
+// CHECK-NOT: builder.region(
+
+mo.graph @dg_chain(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
+    attributes {isDeviceGraph} {
+  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+      (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
+  %1 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+      (%0) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
+  mo.output %1 : !mo.tensor<[2, 3], f32, gpu:0>
 }

@@ -473,6 +473,8 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MGP::createComputeDeviceGraphDependenciesPass());
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addPass(MGP::createSimplifyDeviceGraphDependenciesPass());
+    pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
     pm.addPass(MGP::createGenerateBuildGraphStubsPass());
     pm.addPass(MGP::createFinalizeDeviceGraphsPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
