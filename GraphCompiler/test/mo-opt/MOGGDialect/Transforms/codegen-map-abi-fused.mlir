@@ -128,11 +128,11 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = True]]
 // CHECK-NEXT:     var [[LAYOUTF:[a-zA-Z0-9_]+]]: Self.[[LAYOUT]]
 // CHECK:          @always_inline
-// CHECK-NEXT:     def store[dtype : DType, rank : Int, width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, width]):
+// CHECK-NEXT:     def store[dtype : DType, rank : Int, simd_width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, simd_width]):
 // CHECK-NEXT:         var [[COORDIDX:.*]] = layout.Coord(idx)
-// CHECK-NEXT:         var [[REBOUND:.*]] = rebind[SIMD[DType.float32, width]](value)
+// CHECK-NEXT:         var [[REBOUND:.*]] = rebind[SIMD[DType.float32, simd_width]](value)
 // CHECK-NEXT:         var [[TILE:[a-zA-Z0-9_]+]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT]], origin = UntrackedOrigin[mut = True]](ptr = self.[[PTRF]], layout = self.[[LAYOUTF]])
-// CHECK-NEXT:         [[TILE]].store[width = width, alignment = element_alignment]([[COORDIDX]], rebind[SIMD[type_of([[TILE]]).dtype, width]]([[REBOUND]]))
+// CHECK-NEXT:         [[TILE]].store[width = simd_width, alignment = element_alignment]([[COORDIDX]], rebind[SIMD[type_of([[TILE]]).dtype, simd_width]]([[REBOUND]]))
 
 // The advanced-fusion emit path must be entirely `@__parameter`-free.
 // NOPARAM-NOT: @__parameter
@@ -156,11 +156,11 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // CHECK-NEXT:     var {{.*}}: Self.[[LAYOUT0]]
 // CHECK-NEXT:     var {{.*}}: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = False]]
 // CHECK-NEXT:     var {{.*}}: Self.[[LAYOUT1]]
-// CHECK:          def store[dtype : DType, rank : Int, width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, width]):
+// CHECK:          def store[dtype : DType, rank : Int, simd_width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, simd_width]):
 // CHECK-NEXT:         var [[COORDIDX2:.*]] = layout.Coord(idx)
-// CHECK-NEXT:         var [[REBOUND2:.*]] = rebind[SIMD[DType.float32, width]](value)
+// CHECK-NEXT:         var [[REBOUND2:.*]] = rebind[SIMD[DType.float32, simd_width]](value)
 // CHECK-NEXT:         var [[STORETILE:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT0]], origin = UntrackedOrigin[mut = True]](ptr = self.{{.*}}, layout = self.{{.*}})
 // CHECK-NEXT:         var [[LOADTILE:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT1]], origin = UntrackedOrigin[mut = False]](ptr = self.{{.*}}, layout = self.{{.*}})
-// CHECK-NEXT:         var [[LOADED:.*]] = [[LOADTILE]].load[width = width, alignment = element_alignment]([[COORDIDX2]])
+// CHECK-NEXT:         var [[LOADED:.*]] = [[LOADTILE]].load[width = simd_width, alignment = element_alignment]([[COORDIDX2]])
 // CHECK-NEXT:         var [[SUM:.*]] = testing_kernels.testing_kernels.AddElementwise.elementwise[dtype = DType.float32]([[REBOUND2]], [[LOADED]])
-// CHECK-NEXT:         [[STORETILE]].store[width = width, alignment = element_alignment]([[COORDIDX2]], rebind[SIMD[type_of([[STORETILE]]).dtype, width]]([[SUM]]))
+// CHECK-NEXT:         [[STORETILE]].store[width = simd_width, alignment = element_alignment]([[COORDIDX2]], rebind[SIMD[type_of([[STORETILE]]).dtype, simd_width]]([[SUM]]))

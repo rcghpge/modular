@@ -3781,6 +3781,196 @@ static FailureOr<unsigned> fusedRegionRank(Operation *op, Value shape) {
   return rank == 0 ? 1 : rank;
 }
 
+namespace {
+
+/// One MAP-ABI fusion-lambda flavor. The load side (`map.iter.prologue`) and
+/// the store side (`map.iter.epilogue`) differ only in the trait they conform
+/// to, the method they implement, and whether that method returns a value --
+/// everything else (capture fields, the `TileTensor` rebuild, the recursive
+/// body walk, instantiation) is identical. Mirrors the MOGG-ABI
+/// `emitFusionStruct`'s trait/method selection for the MAP ops.
+struct FusionLambdaInfo {
+  /// A prefix handed to `getIdentifier`, which mints a unique struct name from
+  /// it (`EpilogueStoreFunctor_6`). Not a Mojo expression, so it stays a plain
+  /// string.
+  llvm::StringRef structName;
+  MojoValue traitName;
+  MojoValue methodName;
+  /// `OutputFusion` spells the width parameter `SIMDLength`; `InputFusion`
+  /// spells it `Int`. The two correlate with `takesValue` across today's
+  /// traits, but that is a coincidence of those three, not a rule.
+  MojoValue widthParamType;
+  /// The store lane is handed the kernel's value; the load lane manufactures
+  /// one.
+  bool takesValue = false;
+};
+
+} // namespace
+
+/// Declares the fusion functor for `region` and returns an instance of it.
+/// `captureInfos` is filled in with the functor-side field names as the struct
+/// is minted. `valueDtype` is the dtype the incoming `value` is rebound to,
+/// and is unused by a lane that takes no value.
+static FailureOr<MojoValue>
+emitMapFusionFunctor(EmitMojoState &state, Region &region,
+                     SmallVectorImpl<FusedCaptureInfo> &captureInfos,
+                     const FusionLambdaInfo &lane, MojoValue valueDtype) {
+  unsigned numCaptures = captureInfos.size();
+  MojoValue structNameVal = state.structDefsBuilder.newVar(
+      state.structDefsBuilder.getIdentifier(lane.structName.str()));
+  SmallVector<NamedMojoDef> structParams;
+  for (unsigned j = 0; j < numCaptures; ++j)
+    structParams.push_back(NamedMojoDef("LayoutType", kStructTensorLayout));
+
+  bool errOccurred = false;
+  state.structDefsBuilder.structDecl(
+      structNameVal, structParams,
+      {lane.traitName, MojoValue("TrivialRegisterPassable")},
+      [&](const MojoBuilder::StructBody &sb) {
+        for (unsigned j = 0; j < numCaptures; ++j) {
+          FusedCaptureInfo &capture = captureInfos[j];
+          MojoValue scalarType = MojoValue(kStructScalar)[{capture.dtype}];
+          MojoValue originType = MojoValue(kStructUntrackedOrigin)[{
+              MojoValue(kParameterMut).equal(capture.mut)}];
+          capture.selfPtrField = state.structDefsBuilder.varDecl(
+              MojoValue(kStructPointer)[{scalarType, originType}]);
+          capture.selfLayoutTypeParam = MojoValue("Self").get(sb.parameters[j]);
+          capture.selfLayoutField =
+              state.structDefsBuilder.varDecl(capture.selfLayoutTypeParam);
+        }
+
+        // The method must match the conformed trait's shape
+        // (managed_tensor_slice.mojo) -- the corresponding `_bind_to_fused_*`
+        // only accepts a functor conforming to it. Parameter NAMES are not
+        // part of that: Mojo matches trait parameters positionally, and the
+        // body references them by position too. They are spelled as the traits
+        // spell them anyway, so the generated source reads like the trait.
+        //
+        // A body terminated by `mogg.yield` is one whose method returns that
+        // value; a store-lane body owns its store and returns nothing. That is
+        // a property of the region, so read it from there rather than carrying
+        // it on the lane, where it could disagree.
+        bool returnsValue = isa<YieldOp>(region.front().back());
+        MojoValue simdType = MojoValue(kStructSIMD)[{
+            MojoValue(kParameterDType), MojoValue(kParameterSimdWidth)}];
+        SmallVector<NamedMojoDef> methodParameters = {
+            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
+            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
+            NamedMojoDef::asVerbatim(kParameterSimdWidth, lane.widthParamType),
+            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
+                                     MojoValue(1)),
+        };
+        SmallVector<NamedMojoDef> methodArgs = {
+            NamedMojoDef::asVerbatim(kParameterSelf),
+            NamedMojoDef::asVerbatim(
+                kParameterIdx, MojoValue(kStructIndexList)[kParameterRank]),
+        };
+        if (lane.takesValue)
+          methodArgs.push_back(NamedMojoDef::asVerbatim("value", simdType));
+
+        state.structDefsBuilder.def(
+            lane.methodName, methodParameters, methodArgs,
+            returnsValue ? std::optional<MojoValue>(simdType)
+                         : std::optional<MojoValue>{},
+            /*exported=*/false, /*raises=*/false,
+            /*isAlwaysInline=*/true, [&](const FunctionBody &fb) {
+              EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
+                  state, {/*lambdaBuilder=*/&state.structDefsBuilder,
+                          /*widthParameter=*/fb.parameters[2],
+                          /*alignmentParameter=*/fb.parameters[3]});
+
+              // The recursively-lowered body's `TensorLoadOp`/`TensorStoreOp`
+              // call into `TileTensor.load`/`.store`, which take a `Coord`,
+              // not an `IndexList` -- `idx` needs converting once, up front.
+              // Uses `Coord`'s own `IndexList`-taking constructor
+              // (coord.mojo), which fills every position from the runtime
+              // index list; `_index_list_to_static_coord` is the wrong tool
+              // here -- it assumes statically-shaped positions are already
+              // known and ignores the input value for them, which is correct
+              // for a shape descriptor but wrong for a genuinely varying
+              // per-element loop index.
+              MojoValue coordIdx = state.structDefsBuilder.var(
+                  MojoValue(kStructCoord)({}, {fb.arguments[1]}));
+
+              // The store lanes' body leads with [value, index]; the load
+              // lane's leads with [index] alone. Captures follow either way.
+              unsigned captureBase = 1;
+              if (lane.takesValue) {
+                // `value`'s declared type is `SIMD[dtype, width]`, where
+                // `dtype` is the method's own generic parameter -- still
+                // symbolic inside this body. Recursively-lowered elementwise
+                // calls hardcode their own dtype to `valueDtype`'s literal
+                // (computed in the outer, non-generic scope from MLIR), so
+                // rebind `value` to that same concrete type to unify.
+                MojoValue reboundVal = state.structDefsBuilder.var(
+                    fb.arguments[2].rebind(MojoValue(
+                        kStructSIMD)[{valueDtype, fb.parameters[2]}]));
+                state.setMojoValueFor(region.getArgument(0), reboundVal);
+                state.setMojoValueFor(region.getArgument(1), coordIdx);
+                captureBase = 2;
+              } else {
+                state.setMojoValueFor(region.getArgument(0), coordIdx);
+              }
+
+              for (unsigned j = 0; j < numCaptures; ++j) {
+                // Each capture gets its own fresh block arg (not an alias to
+                // the outer `capturing(...)` operand), rebuilt here as a
+                // `TileTensor` projection over its own captured field. Its
+                // dtype and mut are the capture's own literals, so
+                // `tile.load(...)` comes out already concretely typed and
+                // `tile.store(...)` has its mutability evidence directly --
+                // neither needs the symbolic-param dance a `Self.dtype_j` /
+                // `Self.mut_j` would. LayoutType must stay the struct's own
+                // param: it names a local of the *calling* function, which
+                // isn't visible here.
+                const FusedCaptureInfo &capture = captureInfos[j];
+                MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
+                    MojoValue(kParameterSelf).get(capture.selfPtrField),
+                    MojoValue(kParameterSelf).get(capture.selfLayoutField),
+                    capture.dtype, capture.selfLayoutTypeParam, capture.mut);
+                state.setMojoValueFor(region.getArgument(captureBase + j),
+                                      state.structDefsBuilder.var(tile));
+              }
+
+              Block &body = region.front();
+              // Every op lowers except a `mogg.yield`, which is handled
+              // separately below: it becomes the method's return rather than a
+              // lowered statement.
+              errOccurred = llvm::any_of(body, [&](Operation &op) {
+                if (isa<YieldOp>(op))
+                  return false;
+                return state.lowerOpToMojo(&op).failed();
+              });
+              if (errOccurred || !returnsValue)
+                return;
+
+              // The method's generic `dtype` isn't statically known to equal
+              // the yielded value's own dtype (which comes from the capture
+              // tiles' literals), so rebind on the way out; the two are equal
+              // at every instantiation.
+              auto yieldOp = cast<YieldOp>(body.getTerminator());
+              MojoValue result =
+                  state.getMojoValueFor(yieldOp.getOperands().front());
+              state.structDefsBuilder.returnsValue(result.rebind(simdType));
+            });
+      });
+
+  if (errOccurred)
+    return failure();
+
+  // Instantiate the functor: per capture, a bare pointer off its stored handle
+  // plus the row-major layout (the device representation that translates), in
+  // the same LayoutType / (ptr, layout) order the struct was declared with.
+  SmallVector<MojoValue> comptimeArgs;
+  SmallVector<MojoValue> instanceArgs;
+  for (const FusedCaptureInfo &capture : captureInfos) {
+    comptimeArgs.push_back(capture.layoutType);
+    instanceArgs.push_back(capture.ptr);
+    instanceArgs.push_back(capture.layout);
+  }
+  return state.builder.var(structNameVal(comptimeArgs, instanceArgs));
+}
+
 LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // Emit the MTS-free output-store fusion FUNCTOR +
   // `_MoggOutputStoreFusionTensor` wrapper for a MAP-ABI fused output. This is
@@ -3818,149 +4008,28 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     return emitOpError("failed to convert epilogue input type to Mojo");
   MojoValue inputDtypeParam = state.mlirDTypeToMojoType(*inDtypeOr);
 
-  // The functor conforms to `OutputStoreFusion`: one `LayoutType` param and
-  // one (ptr, layout) field pair PER CAPTURE -- today usually just the store
+  // The functor conforms to `OutputFusion`: one `LayoutType` param and one
+  // (ptr, layout) field pair PER CAPTURE -- today usually just the store
   // target, but a fused binary elementwise op adds one per extra input, each
-  // with its own load. Unlike the old fixed-template functor, the struct is
-  // built via the scoped `structDecl` overload and the method body recurses
-  // into the epilogue's own body ops instead of being hand-rendered here.
+  // with its own load.
   FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
       collectFusedCaptureInfos(state, *this, getCaptures());
   if (failed(captureInfosOr))
     return failure();
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
-  unsigned numCaptures = getCaptures().size();
-  MojoValue structNameVal = state.structDefsBuilder.newVar(
-      state.structDefsBuilder.getIdentifier("EpilogueStoreFunctor"));
-  SmallVector<NamedMojoDef> structParams;
-  for (unsigned j = 0; j < numCaptures; ++j)
-    structParams.push_back(NamedMojoDef("LayoutType", kStructTensorLayout));
-
-  bool errOccurred = false;
-  state.structDefsBuilder.structDecl(
-      structNameVal, structParams,
-      {MojoValue("managed_tensor_slice.OutputFusion"),
-       MojoValue("TrivialRegisterPassable")},
-      [&](const MojoBuilder::StructBody &sb) {
-        for (unsigned j = 0; j < numCaptures; ++j) {
-          FusedCaptureInfo &capture = captureInfos[j];
-          MojoValue scalarType = MojoValue(kStructScalar)[{capture.dtype}];
-          MojoValue originType = MojoValue(kStructUntrackedOrigin)[{
-              MojoValue(kParameterMut).equal(capture.mut)}];
-          capture.selfPtrField = state.structDefsBuilder.varDecl(
-              MojoValue(kStructPointer)[{scalarType, originType}]);
-          capture.selfLayoutTypeParam = MojoValue("Self").get(sb.parameters[j]);
-          capture.selfLayoutField =
-              state.structDefsBuilder.varDecl(capture.selfLayoutTypeParam);
-        }
-
-        // Method name / signature must match `OutputFusion` exactly
-        // (managed_tensor_slice.mojo): `store[dtype, rank, simd_width:
-        // SIMDLength, element_alignment = 1](self, idx: IndexList[rank], val:
-        // SIMD[dtype, simd_width])` -- required by `_bind_to_fused_output`,
-        // which only accepts an `OutputFusion`-conforming functor.
-        MojoValue simdType = MojoValue(kStructSIMD)[{
-            MojoValue(kParameterDType), MojoValue(kParameterWidth)}];
-        SmallVector<NamedMojoDef> methodParameters = {
-            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
-            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
-            NamedMojoDef::asVerbatim(kParameterWidth, kStructSIMDLength),
-            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
-                                     MojoValue(1)),
-        };
-        SmallVector<NamedMojoDef> methodArgs = {
-            NamedMojoDef::asVerbatim(kParameterSelf),
-            NamedMojoDef::asVerbatim(
-                kParameterIdx, MojoValue(kStructIndexList)[kParameterRank]),
-            NamedMojoDef::asVerbatim("value", simdType),
-        };
-        state.structDefsBuilder.def(
-            "store", methodParameters, methodArgs,
-            /*returnType=*/std::optional<MojoValue>{},
-            /*exported=*/false, /*raises=*/false,
-            /*isAlwaysInline=*/true, [&](const FunctionBody &fb) {
-              EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
-                  state, {/*lambdaBuilder=*/&state.structDefsBuilder,
-                          /*widthParameter=*/fb.parameters[2],
-                          /*alignmentParameter=*/fb.parameters[3]});
-
-              // `fb.arguments` is [self, idx, value]; the epilogue body's
-              // leading block args are [value, index] (`MAPToMOGG`'s
-              // `buildEpilogueTensor` convention). The recursively-lowered
-              // body's `TensorLoadOp`/`TensorStoreOp` calls into
-              // `TileTensor.load`/`.store`, which take a `Coord`, not an
-              // `IndexList` -- `idx` needs converting once, up front. Uses
-              // `Coord`'s own `IndexList`-taking constructor (coord.mojo),
-              // which fills every position from the runtime index list;
-              // `_index_list_to_static_coord` is the wrong tool here -- it
-              // assumes statically-shaped positions are already known and
-              // ignores the input value for them, which is correct for a
-              // shape descriptor but wrong for a genuinely varying
-              // per-element loop index.
-              MojoValue coordIdx = state.structDefsBuilder.var(
-                  MojoValue(kStructCoord)({}, {fb.arguments[1]}));
-              // `value`'s declared type is `SIMD[dtype, width]`, where
-              // `dtype` is `store`'s own generic method parameter (inferred
-              // from the caller's argument) -- still symbolic from inside
-              // this method body, same as capture 0's own `dtype__N` struct
-              // param would be (binding to a concrete value at the call site
-              // doesn't make it a literal inside a generic method body).
-              // Recursively-lowered elementwise calls hardcode their own
-              // dtype param to `dtypeParam`'s literal value (computed in the
-              // outer, non-generic emitMojo scope from this op's own MLIR
-              // element-type attribute, so it's already concrete and safe to
-              // reference here, unlike `layoutVar`) -- rebind `value` to that
-              // same concrete type to unify.
-              MojoValue reboundVal =
-                  state.structDefsBuilder.var(fb.arguments[2].rebind(MojoValue(
-                      kStructSIMD)[{inputDtypeParam, fb.parameters[2]}]));
-              state.setMojoValueFor(getBody().getArgument(0), reboundVal);
-              state.setMojoValueFor(getBody().getArgument(1), coordIdx);
-
-              for (unsigned j = 0; j < numCaptures; ++j) {
-                // Each capture gets its own fresh block arg (not an alias to
-                // the outer `capturing(...)` operand), rebuilt here as a
-                // `TileTensor` projection over its own captured field. Its
-                // dtype and mut are the capture's own literals, so
-                // `tile.load(...)` comes out already concretely typed (no
-                // rebind needed at each load site) and `tile.store(...)` has
-                // its mutability evidence directly -- neither needs the
-                // symbolic-param dance a `Self.dtype_j` / `Self.mut_j` would.
-                // LayoutType must stay the struct's own param: it names a
-                // local of the *calling* function, which isn't visible here.
-                const FusedCaptureInfo &capture = captureInfos[j];
-                MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
-                    MojoValue(kParameterSelf).get(capture.selfPtrField),
-                    MojoValue(kParameterSelf).get(capture.selfLayoutField),
-                    capture.dtype, capture.selfLayoutTypeParam, capture.mut);
-                state.setMojoValueFor(getBody().getArgument(2 + j),
-                                      state.structDefsBuilder.var(tile));
-              }
-
-              errOccurred =
-                  llvm::any_of(getBody().getOps(), [&](Operation &op) {
-                    return state.lowerOpToMojo(&op).failed();
-                  });
-            });
-      });
-
-  if (errOccurred)
+  const FusionLambdaInfo storeLane = {
+      /*structName=*/"EpilogueStoreFunctor",
+      /*traitName=*/kTraitOutputFusion,
+      /*methodName=*/MojoValue("store"),
+      /*widthParamType=*/kStructSIMDLength,
+      /*takesValue=*/true,
+  };
+  FailureOr<MojoValue> functorOr = emitMapFusionFunctor(
+      state, getBody(), captureInfos, storeLane, inputDtypeParam);
+  if (failed(functorOr))
     return failure();
-
-  // Instantiate the functor: per capture, a bare pointer off its stored
-  // handle plus the row-major layout (the device representation that
-  // translates), in the same LayoutType / (ptr, layout) order the struct was
-  // declared with above.
-  SmallVector<MojoValue> comptimeArgs;
-  SmallVector<MojoValue> instanceArgs;
-  for (const FusedCaptureInfo &capture : captureInfos) {
-    comptimeArgs.push_back(capture.layoutType);
-    instanceArgs.push_back(capture.ptr);
-    instanceArgs.push_back(capture.layout);
-  }
-  MojoValue functorInstance =
-      state.builder.var(structNameVal(comptimeArgs, instanceArgs));
+  MojoValue functorInstance = *functorOr;
 
   // Bind the functor directly onto the store target's own (unfused)
   // ManagedTensorSlice, exactly like the MOGG-ABI `TensorFusedOp::emitMojo`
@@ -4015,133 +4084,28 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
 
   // The functor conforms to `InputFusion`: one `LayoutType` param and one
   // (ptr, layout) field pair PER CAPTURE -- a fused binary elementwise
-  // producer captures both its own inputs, each with its own load. The
-  // struct is built via the scoped `structDecl` overload and the method body
-  // recurses into the prologue's own body ops.
+  // producer captures both its own inputs, each with its own load.
   FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
       collectFusedCaptureInfos(state, *this, getCaptures());
   if (failed(captureInfosOr))
     return failure();
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
-  unsigned numCaptures = getCaptures().size();
-  MojoValue structNameVal = state.structDefsBuilder.newVar(
-      state.structDefsBuilder.getIdentifier("PrologueLoadFunctor"));
-  SmallVector<NamedMojoDef> structParams;
-  for (unsigned j = 0; j < numCaptures; ++j)
-    structParams.push_back(NamedMojoDef("LayoutType", kStructTensorLayout));
-
-  bool errOccurred = false;
-  state.structDefsBuilder.structDecl(
-      structNameVal, structParams,
-      {MojoValue(kTraitInputFusion), MojoValue("TrivialRegisterPassable")},
-      [&](const MojoBuilder::StructBody &sb) {
-        for (unsigned j = 0; j < numCaptures; ++j) {
-          FusedCaptureInfo &capture = captureInfos[j];
-          MojoValue scalarType = MojoValue(kStructScalar)[{capture.dtype}];
-          MojoValue originType = MojoValue(kStructUntrackedOrigin)[{
-              MojoValue(kParameterMut).equal(capture.mut)}];
-          capture.selfPtrField = state.structDefsBuilder.varDecl(
-              MojoValue(kStructPointer)[{scalarType, originType}]);
-          capture.selfLayoutTypeParam = MojoValue("Self").get(sb.parameters[j]);
-          capture.selfLayoutField =
-              state.structDefsBuilder.varDecl(capture.selfLayoutTypeParam);
-        }
-
-        // Method name / signature must match `InputFusion` exactly
-        // (managed_tensor_slice.mojo): `load[dtype, rank, simd_width: Int,
-        // element_alignment = 1](self, idx: IndexList[rank]) ->
-        // SIMD[dtype, simd_width]` -- required by `_bind_to_fused_input`,
-        // which only accepts an `InputFusion`-conforming functor. Unlike
-        // `OutputFusion.store`, the trait spells `simd_width` as `Int`, not
-        // `SIMDLength`.
-        MojoValue simdType = MojoValue(kStructSIMD)[{
-            MojoValue(kParameterDType), MojoValue(kParameterSimdWidth)}];
-        SmallVector<NamedMojoDef> methodParameters = {
-            NamedMojoDef::asVerbatim(kParameterDType, kStructDType),
-            NamedMojoDef::asVerbatim(kParameterRank, kStructInt),
-            NamedMojoDef::asVerbatim(kParameterSimdWidth, kStructInt),
-            NamedMojoDef::asVerbatim(kParameterElementAlignment, kStructInt,
-                                     MojoValue(1)),
-        };
-        SmallVector<NamedMojoDef> methodArgs = {
-            NamedMojoDef::asVerbatim(kParameterSelf),
-            NamedMojoDef::asVerbatim(
-                kParameterIdx, MojoValue(kStructIndexList)[kParameterRank]),
-        };
-        state.structDefsBuilder.def(
-            "load", methodParameters, methodArgs, simdType,
-            /*exported=*/false, /*raises=*/false,
-            /*isAlwaysInline=*/true, [&](const FunctionBody &fb) {
-              EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
-                  state, {/*lambdaBuilder=*/&state.structDefsBuilder,
-                          /*widthParameter=*/fb.parameters[2],
-                          /*alignmentParameter=*/fb.parameters[3]});
-
-              // `fb.arguments` is [self, idx]; the prologue body's leading
-              // block arg is the index (`MAPToMOGG`'s `IterPrologueOp`
-              // convention). The recursively-lowered body's `TensorLoadOp`
-              // calls into `TileTensor.load`, which takes a `Coord`, not an
-              // `IndexList` -- `idx` needs converting once, up front. Uses
-              // `Coord`'s own `IndexList`-taking constructor (coord.mojo),
-              // which fills every position from the runtime index list.
-              MojoValue coordIdx = state.structDefsBuilder.var(
-                  MojoValue(kStructCoord)({}, {fb.arguments[1]}));
-              state.setMojoValueFor(getBody().getArgument(0), coordIdx);
-
-              for (unsigned j = 0; j < numCaptures; ++j) {
-                // Each capture gets its own fresh block arg (not an alias to
-                // the outer `capturing(...)` operand), rebuilt here as a
-                // `TileTensor` projection over its own captured field. Its
-                // dtype and mut are the capture's own literals, so
-                // `tile.load(...)` comes out already concretely typed (no
-                // rebind needed at each load site) -- neither needs the
-                // symbolic-param dance a `Self.dtype_j` / `Self.mut_j` would.
-                // LayoutType must stay the struct's own param: it names a
-                // local of the *calling* function, which isn't visible here.
-                const FusedCaptureInfo &capture = captureInfos[j];
-                MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
-                    MojoValue(kParameterSelf).get(capture.selfPtrField),
-                    MojoValue(kParameterSelf).get(capture.selfLayoutField),
-                    capture.dtype, capture.selfLayoutTypeParam, capture.mut);
-                state.setMojoValueFor(getBody().getArgument(1 + j),
-                                      state.structDefsBuilder.var(tile));
-              }
-
-              Block &body = getBody().front();
-              errOccurred =
-                  llvm::any_of(body.without_terminator(), [&](Operation &op) {
-                    return state.lowerOpToMojo(&op).failed();
-                  });
-              if (errOccurred)
-                return;
-              // `load`'s generic `dtype` parameter isn't statically known to
-              // equal the yielded value's own dtype (which comes from the
-              // capture tiles' literals), so rebind on the way out; the two
-              // are equal at every instantiation.
-              auto yieldOp = cast<YieldOp>(body.getTerminator());
-              MojoValue result =
-                  state.getMojoValueFor(yieldOp.getOperands().front());
-              state.structDefsBuilder.returnsValue(result.rebind(simdType));
-            });
-      });
-
-  if (errOccurred)
+  // Unlike `OutputFusion.store`, the trait spells the width parameter `Int`,
+  // not `SIMDLength`, and the method manufactures its value rather than being
+  // handed one.
+  const FusionLambdaInfo loadLane = {
+      /*structName=*/"PrologueLoadFunctor",
+      /*traitName=*/kTraitInputFusion,
+      /*methodName=*/MojoValue("load"),
+      /*widthParamType=*/kStructInt,
+      /*takesValue=*/false,
+  };
+  FailureOr<MojoValue> functorOr = emitMapFusionFunctor(
+      state, getBody(), captureInfos, loadLane, /*valueDtype=*/dtypeParam);
+  if (failed(functorOr))
     return failure();
-
-  // Instantiate the functor: per capture, a bare pointer off its stored
-  // handle plus the row-major layout (the device representation that
-  // translates), in the same LayoutType / (ptr, layout) order the struct was
-  // declared with above.
-  SmallVector<MojoValue> comptimeArgs;
-  SmallVector<MojoValue> instanceArgs;
-  for (const FusedCaptureInfo &capture : captureInfos) {
-    comptimeArgs.push_back(capture.layoutType);
-    instanceArgs.push_back(capture.ptr);
-    instanceArgs.push_back(capture.layout);
-  }
-  MojoValue functorInstance =
-      state.builder.var(structNameVal(comptimeArgs, instanceArgs));
+  MojoValue functorInstance = *functorOr;
 
   // Bind the functor onto a base slice, exactly like the store side -- but
   // where the store side binds onto the real output's slice, the tensor the
