@@ -355,6 +355,8 @@ public:
   ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
                              size_t srcByteOffset, size_t srcByteSize,
                              bool crossStreamSync) override;
+  ErrorOrSuccess memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                              llvm::ArrayRef<DeviceBuffer *> srcs) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;

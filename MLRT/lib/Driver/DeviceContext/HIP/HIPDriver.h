@@ -102,6 +102,19 @@ using hipMemAccessDesc = struct hipMemAccessDesc_st {
   hipMemAccessFlags flags;
 };
 
+enum class hipMemcpySrcAccessOrder {
+  hipMemcpySrcAccessOrderInvalid = 0,
+  hipMemcpySrcAccessOrderStream = 1,
+  hipMemcpySrcAccessOrderDuringApiCall = 2,
+};
+
+using hipMemcpyAttributes = struct hipMemcpyAttributes_st {
+  hipMemcpySrcAccessOrder srcAccessOrder; 
+  hipMemLocation srcLocHint;
+  hipMemLocation dstLocHint;
+  unsigned int flags; 
+};
+
 // Virtual Memory Management types (mirroring CUDA's CUmem* VMM types). Used by
 // the defragmenting allocator; see
 // MLRT/lib/Driver/DeviceContext/MemoryManager.h. Layouts must match
@@ -762,7 +775,10 @@ public:
     return name##_(EXPAND_ARGS(__VA_ARGS__));                                  \
   }
 #include "HIPDriver.inc"
+#undef HIP_OPT_FUNC
 #undef HIP_FUNC
+
+  bool hasMemcpyBatchAsync() const { return hipMemcpyBatchAsync_ != nullptr; }
 
   // HSA Runtime methods for getting device architecture info
   hsaStatus_t HsaInit() const {

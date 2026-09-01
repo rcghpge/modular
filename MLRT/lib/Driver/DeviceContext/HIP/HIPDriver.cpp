@@ -65,8 +65,26 @@ ErrorOr<std::unique_ptr<HIPDriver>> HIPDriver::allocAndInitDriver() {
     return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
                  "\" in \"" + lib_name + "\"");                                \
   }
+
+// Optional entries: store nullptr on dlsym miss without returning an error.
+#define HIP_OPT_FUNC(name, ...)                                                \
+  driver->name##_ = reinterpret_cast<t##name *>(dlsym(dl_lib, #name));
+
 #include "HIPDriver.inc"
+#undef HIP_OPT_FUNC
 #undef HIP_FUNC
+
+  int driverVersion = 0;
+  if (driver->hipDriverGetVersion(&driverVersion) != SUCCESS) {
+    return Error("hipDriverGetVersion failed");
+  }
+
+  // Old versions of hipMemcpyBatchAsync failed when passed a valid attribute.
+  // These versions also implement the API as a loop over individual memcpy
+  // calls, so treat these platforms as not supporting the API.
+  if (driverVersion < 71400000) {
+    driver->hipMemcpyBatchAsync_ = nullptr;
+  }
 
   // Try to load HSA Runtime symbols (optional - for getting device
   // architecture).

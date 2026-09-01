@@ -26,6 +26,16 @@
 #error "HIPDriver.inc included without defining HIP_FUNC"
 #endif
 
+// Optional entries: HIP_OPT_FUNC stores nullptr on dlsym miss instead of
+// returning an error. Used for APIs not present on every supported driver
+// version (e.g. hipMemcpyBatchAsync introduced in ROCm 7.2.3). If undefined by
+// the includer, fall back to the required HIP_FUNC to keep old includers
+// working.
+#ifndef HIP_OPT_FUNC
+#define HIP_OPT_FUNC HIP_FUNC
+#define HIP_OPT_FUNC_DEFINED_LOCALLY
+#endif
+
 HIP_FUNC(hipInit, Result, unsigned int)
 
 HIP_FUNC(hipDrvGetErrorName, Result, Result, const char **)
@@ -159,3 +169,12 @@ HIP_FUNC(hipPointerGetAttributes, Result, hipPointerAttribute_t *, const void *)
 
 HIP_FUNC(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor, Result, int *,
          hipFunction_t, int, size_t)
+
+HIP_OPT_FUNC(hipMemcpyBatchAsync, Result, void **, const void **, size_t *,
+             size_t, hipMemcpyAttributes *, size_t *, size_t, size_t *,
+             hipStream_t)
+
+#ifdef HIP_OPT_FUNC_DEFINED_LOCALLY
+#undef HIP_OPT_FUNC
+#undef HIP_OPT_FUNC_DEFINED_LOCALLY
+#endif

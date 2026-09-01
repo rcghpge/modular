@@ -1612,6 +1612,95 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   return success();
 }
 
+ErrorOrSuccess
+HIPDeviceContext::memBatchCopy(llvm::ArrayRef<DeviceBuffer *> dsts,
+                               llvm::ArrayRef<DeviceBuffer *> srcs) {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memBatchCopy", TRACY_COLOR_PURPLE);
+  const size_t count = dsts.size();
+
+  // No hipMemcpyBatchAsync: use the scalar loop.
+  if (count == 0 || !driver_.hasMemcpyBatchAsync())
+    return DeviceContext::memBatchCopy(dsts, srcs);
+
+  HIP_WITH_CTX_ERR(*this);
+
+  // A pointer can join the batch only if UVA resolves it from this context:
+  // host and pinned memory always do, a peer's memory only under peer access.
+  // Every source context running on another stream needs its own ordering
+  // bracket around the submit.
+  SmallVector<HIPDeviceContext *, 2> streamSrcCtxs;
+  SmallVector<DeviceBuffer *, 8> hostSrcs;
+  std::vector<void *> dstPtrs(count);
+  std::vector<const void *> srcPtrs(count);
+  std::vector<size_t> sizes(count);
+  size_t totalBytes = 0;
+  for (size_t i = 0; i < count; ++i) {
+    DeviceBuffer &src = *srcs[i];
+    if (src.isHost() || src.context().device().api() == Device::cpuAPI) {
+      hostSrcs.push_back(&src);
+    } else {
+      auto &srcCtx = HIPDeviceContext::cast(src.context().backendContext());
+      if (srcCtx.hipDevice() != this->hipDevice()) {
+        DEFINE_OR_RETURN_ERROR(bool, peerEnabled,
+                               Device::allPeerAccessEnabled());
+        // Without a peer mapping the pointer is unreachable from here.
+        if (!peerEnabled)
+          return DeviceContext::memBatchCopy(dsts, srcs);
+      }
+      if (srcCtx.hipStream() != this->hipStream() &&
+          !llvm::is_contained(streamSrcCtxs, &srcCtx))
+        streamSrcCtxs.push_back(&srcCtx);
+    }
+    dstPtrs[i] = dsts[i]->ptr();
+    srcPtrs[i] = src.ptr();
+    sizes[i] = dsts[i]->byteSize();
+    totalBytes += sizes[i];
+  }
+
+  // Mirror the scalar host path: a source owned by a CPU device context has to
+  // be settled up front because events cannot be awaited across device types,
+  // and any host source is DMA'd on our stream rather than its owning one, so
+  // its deferred free must be ordered against us too.
+  for (DeviceBuffer *src : hostSrcs) {
+    if (src->context().device().api() == Device::cpuAPI)
+      RETURN_IF_ERROR(src->context().synchronize());
+    recordBufferUsedOnContext(*src, *this);
+  }
+
+  // Match scalar memCopyDtoD: our stream waits for each source stream before
+  // the copy, and each source stream waits for the copy afterwards.
+  for (HIPDeviceContext *srcCtx : streamSrcCtxs) {
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx->enqueueEvent());
+    RETURN_IF_ERROR(this->enqueueWaitForEvent(*srcEvent));
+  }
+
+  hipMemcpyAttributes attrs{};
+  attrs.srcAccessOrder = hipMemcpySrcAccessOrder::hipMemcpySrcAccessOrderStream;
+  size_t attrsIdx = 0;
+  size_t failIdx = 0;
+  HIP_CHECK_ERR(driver_.hipMemcpyBatchAsync(
+      dstPtrs.data(), srcPtrs.data(), sizes.data(), count, &attrs, &attrsIdx,
+      /*numAttrs=*/1, &failIdx, stream_));
+
+  if (!streamSrcCtxs.empty()) {
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, this->enqueueEvent());
+    for (HIPDeviceContext *srcCtx : streamSrcCtxs)
+      RETURN_IF_ERROR(srcCtx->enqueueWaitForEvent(*dstEvent));
+  }
+
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata(
+        "hipMemcpyBatch",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, totalBytes),
+        KernelLaunchMetadata::MemcpyKind::DtoD, totalBytes);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
+
+  MAYBE_SYNC(*this);
+  return success();
+}
+
 ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                   uint64_t val,
                                                   size_t valSize) {
