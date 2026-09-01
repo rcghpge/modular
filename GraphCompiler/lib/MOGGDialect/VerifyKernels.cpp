@@ -622,23 +622,34 @@ getSemanticResult(const KernelDeclFunctionAdaptor &fn) {
   return fn.outputResult;
 }
 
-/// Verify cross-kernel consistency for every op name with multiple
-/// registrations. For each group, decls[0] is the reference (ImportPackages
+/// Verify cross-kernel consistency for every registration identity — the
+/// {op name, device_info} pair ImportPackages deduplicates on — with multiple
+/// declarations. For each group, decls[0] is the reference (ImportPackages
 /// inserts built-ins first, so it is the built-in when one exists).
+///
+/// Declarations that share a name but differ in device scope are grouped
+/// apart on purpose: they are per-device alternatives that
+/// `MojoRegistry::getResolvedKernel` selects among by the op's device, so
+/// they are never candidates for the same lookup and need not agree in kind
+/// or signature (e.g. an accelerator may serve an op with an `execute`
+/// kernel where the generic built-in is elementwise).
 ///
 /// Per registration, checks in order:
 ///   1. Kernel type must match (execute / elementwise / view).
 ///   2. If execute: output count, non-launch input count, and per-operand
 ///      types must all match (fusion variants are treated as equivalent).
 LogicalResult crossVerifyKernels(ModuleOp moduleOp) {
-  llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<KernelDeclOp>> byReg;
+  using RegistrationKey = std::pair<mlir::StringAttr, DeviceInfoAttr>;
+  llvm::DenseMap<RegistrationKey, llvm::SmallVector<KernelDeclOp>> byReg;
   for (KernelDeclOp decl : moduleOp.getOps<KernelDeclOp>())
-    byReg[decl.getRegistrationAttr()].push_back(decl);
+    byReg[{decl.getRegistrationAttr(), decl.getRegistrationDeviceInfo()}]
+        .push_back(decl);
 
   bool failed = false;
-  for (auto &[regName, decls] : byReg) {
+  for (auto &[regKey, decls] : byReg) {
     if (decls.size() < 2)
       continue;
+    mlir::StringAttr regName = regKey.first;
 
     KernelDeclAdaptor refAdaptor(decls[0]);
     KernelTypeTag refTag = getKernelType(refAdaptor);
