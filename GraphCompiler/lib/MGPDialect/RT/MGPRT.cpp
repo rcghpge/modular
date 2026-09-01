@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Bindings between C++ primitive implementation and mojo. This is the successor
-// to putting things in KGEN/lib/CompilerRT/AsyncRT.cpp
+// to putting things in Mojo/lib/CompilerRT/AsyncRT.cpp
 //
 //===----------------------------------------------------------------------===//
 

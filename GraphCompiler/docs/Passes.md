@@ -54,16 +54,16 @@ Other referenced dialects, not directly part of the compiler:
 
 - **KGEN** - kernel-generation dialect used during JIT compilation. Definitions:
   `Mojo/include/Mojo/KGENDialect/KGENDialect.td` and related KGEN dialect files.
-  Docs: `KGEN/docs/manual/PassesAndIR.md`.
+  Docs: `Mojo/docs/compiler/manual/PassesAndIR.md`.
 - **HLCF** - high-level control flow dialect used in kernel-generation
   pipelines. Definition: `Mojo/include/Mojo/HLCFDialect/HLCFDialect.td`. Docs:
-  `KGEN/docs/manual/PassesAndIR.md`.
+  `Mojo/docs/compiler/manual/PassesAndIR.md`.
 - **LIT** - Mojo frontend dialect used for parsed Mojo IR in kernel compilation
   pipelines. Definition: `Mojo/include/Mojo/LITDialect/LITDialect.td`. Docs:
-  `KGEN/docs/manual/PassesAndIR.md`.
+  `Mojo/docs/compiler/manual/PassesAndIR.md`.
 - **POP** - Mojo low-level/runtime support dialect used in kernel generation and
   lowering. Definition: `Mojo/include/Mojo/POPDialect/POPDialect.td`. Docs:
-  `KGEN/docs/manual/PassesAndIR.md`.
+  `Mojo/docs/compiler/manual/PassesAndIR.md`.
 - **GRT (GraphRT)** - runtime primitive dialect for execution in GraphRT.
   Definition: `MLRT/include/MLRT/GraphRT/GRTDialect/GRTDialect.td`. Docs:
   `MLRT/docs/GraphRT/KeyConceptsInGraphRT.md`.
@@ -1938,7 +1938,7 @@ walks operations in parallel to rename parameters to `__P<index>` and update all
 symbol/parameter references. Source:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/NormalizeAllNames.cpp>
 Implementation:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/KGEN/lib/KGENDialect/KGENUtils.cpp>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/Mojo/lib/KGENDialect/KGENUtils.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
@@ -2001,6 +2001,6 @@ definitions, rebinds attributes/types/locations, removes `kgen.param.declare`
 ops, and peels redundant `kgen.rebind` ops.
 
 Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/KGEN/lib/Transforms/VerifyParameters.cpp>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/Mojo/lib/Transforms/VerifyParameters.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/Mojo/include/Mojo/KGENPasses.td>
