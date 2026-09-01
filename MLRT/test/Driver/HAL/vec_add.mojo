@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 """``vec_add`` test kernel module — built as its own ``vec_add.so``."""
 
-from std.gpu import global_idx
+from max.gpu import global_idx
 from std.memory import Pointer
 from std.os import abort
 from std.python import PythonObject

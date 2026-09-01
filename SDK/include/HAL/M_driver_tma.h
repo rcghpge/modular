@@ -20,7 +20,7 @@ extern "C" {
 // with a TMA engine (NVIDIA Hopper and newer). Backends without one return
 // M_DRIVER_STATUS_INCOMPATIBLE. The enum arguments (`data_type`, `interleave`,
 // `swizzle`, `l2_promotion`, `oob_fill`) use the same integer encodings as the
-// `std.gpu.host` TMA enums, which the plugin maps to the vendor enums.
+// `max.gpu.host` TMA enums, which the plugin maps to the vendor enums.
 
 /**
  * Encode a tiled TMA descriptor into the 128-byte buffer at @p tensor_map.

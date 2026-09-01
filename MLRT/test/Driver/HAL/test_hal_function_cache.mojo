@@ -8,7 +8,7 @@
 from std.os import getenv
 from _hal import Context, Driver
 from _hal.device import Device, DeviceSpec, get_device_spec
-from std.gpu import global_idx
+from max.gpu import global_idx
 from std.memory import ArcPointer, Pointer
 from std.testing import assert_equal, assert_not_equal
 

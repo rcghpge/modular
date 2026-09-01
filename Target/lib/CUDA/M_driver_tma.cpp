@@ -23,7 +23,7 @@ M_driver_status_t M_driver_context::tensorMapEncodeTiled(
     return M_DRIVER_STATUS_INVALID_ARG;
 
   // The descriptor encoders are stateless host-side driver calls; reach the
-  // device's already-loaded CUDA driver. The std.gpu.host TMA enum encodings
+  // device's already-loaded CUDA driver. The max.gpu.host TMA enum encodings
   // match the CUtensorMap* enum values.
   M::Target::CUDA::CUDALoader &cuda = device.driver.rawCuda;
   if (CUresult r = cuda.cuTensorMapEncodeTiled(

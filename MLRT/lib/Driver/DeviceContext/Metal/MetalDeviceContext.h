@@ -148,7 +148,7 @@ private:
 // mark resident travel here rather than on the `DeviceContext` signature so
 // the shared interface does not grow Metal-specific concepts. The layout
 // must stay in sync with the Mojo-side `MetalEnqueueFunctionArgs` declared
-// in `oss/modular/mojo/stdlib/std/gpu/host/device_context.mojo`.
+// in `max/mojo/max/gpu/host/device_context.mojo`.
 struct MetalEnqueueFunctionArgs {
   void **args;
   const size_t *argSizes;

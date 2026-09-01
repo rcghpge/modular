@@ -8,7 +8,7 @@ from _hal import Driver, Context, copy
 from _hal.device import Device, DeviceSpec, get_device_spec
 from _hal.status import HALError
 from _hal.plugin import MemoryHandle
-from std.gpu import global_idx
+from max.gpu import global_idx
 from std.memory import alloc, ArcPointer, OpaquePointer, Pointer
 from std.sys import size_of
 from std.testing import assert_equal
