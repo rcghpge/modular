@@ -139,6 +139,7 @@ typedef struct M_driver_dlpack_device {
 #define M_DRIVER_STATUS_INCOMPATIBLE ((M_driver_status_t)(-15))
 #define M_DRIVER_STATUS_BAD_BUNDLE ((M_driver_status_t)(-16))
 #define M_DRIVER_STATUS_EXECUTE_MODE_NOT_SUPPORTED ((M_driver_status_t)(-17))
+#define M_DRIVER_STATUS_UNKNOWN_SYMBOL ((M_driver_status_t)(-18))
 /* Future standard status codes may be added here. */
 #define M_DRIVER_NUM_STANDARD_STATUS_CODES (17)
 
