@@ -374,6 +374,13 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   // from `inputs`) is minimal by the time MAPToMOGG runs.
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(MAP::createLoopInvariantViewMotion());
+  // cse before canonicalize here, reversed from this function's usual order:
+  // two loads hoisting the same view create two structurally-identical
+  // stride ops with two distinct captures of them; cse must unify the ops
+  // into one SSA value first, so the resulting duplicate-valued captures
+  // are actually foldable when DedupeCapturingClosureCaptures then runs.
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
 }
 
 // ---------------------------------------------------------------------------

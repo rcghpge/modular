@@ -69,14 +69,15 @@ mo.graph @dedupes_prologue_captures(
 }
 
 // The duplicated captures sit behind the epilogue's leading value/index args.
-// The duplicate is folded into one capture; its loads are dead after dedup and
-// DCE'd. The surviving capture keeps its (now unused) block arg -- dead
-// captures are not dropped, only duplicate ones.
+// The duplicate is folded into one capture; its loads are dead after dedup
+// and DCE'd. That leaves the surviving %a capture with no uses at all, so
+// DropDeadCapturingClosureCaptures drops it too in the same fixed point --
+// only the %out capture (still used by the store) survives.
 // CHECK-LABEL: mo.graph @dedupes_epilogue_captures
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs ([[A:%[^ :,]+]]: !mo.tensor<[2, 3, 4], f32>)
 // CHECK-NEXT:  outputs ([[O:%[^ :,]+]] : !mo.tensor<[2, 3, 4], f32>)
-// CHECK:         map.iter.epilogue ([[VAL:%[^ :]+]] : f32, %{{[^ :]+}} : !map.index<3>) capturing ([[OCAP:%[^ =]+]] = [[O]] : !mo.tensor<[2, 3, 4], f32>, {{%[^ =]+}} = [[A]] : !mo.tensor<[2, 3, 4], f32>) {
+// CHECK:         map.iter.epilogue ([[VAL:%[^ :]+]] : f32, %{{[^ :]+}} : !map.index<3>) capturing ([[OCAP:%[^ =]+]] = [[O]] : !mo.tensor<[2, 3, 4], f32>) {
 // CHECK-NEXT:      map.store [[OCAP]][%{{[^]]+}}] = [[VAL]]
 mo.graph @dedupes_epilogue_captures(
   %x: !mo.tensor<[2, 3, 4], f32>

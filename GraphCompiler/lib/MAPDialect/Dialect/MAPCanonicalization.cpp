@@ -43,39 +43,61 @@ struct DedupeIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
   }
 };
 
-// A prologue/epilogue region is isolated from above, so a value reaches its
-// body through a second boundary of its own: the capture operand and the inner
-// block argument shadowing it. Uniquing them mirrors the input uniquing --
-// deduping `iter.opaque` inputs is what turns captures of previously-distinct
-// block args into duplicates of each other, and the driver's fixed point
-// sequences the two automatically.
-template <typename CallbackOpT>
-struct DedupeCallbackCaptures : OpRewritePattern<CallbackOpT> {
-  using OpRewritePattern<CallbackOpT>::OpRewritePattern;
+// Mirrors `DedupeIterOpaqueInputs`, one level further in: a capturing
+// closure reaches its body through its own capture operand + shadowing
+// block argument. Generic over the interface (one pattern, not one per
+// closure type) since all three expose the same primitives. Also what
+// `LoopInvariantViewMotion` relies on: it calls `addCapture` freely,
+// expecting this to fold away any duplicate it creates.
+struct DedupeCapturingClosureCaptures
+    : OpInterfaceRewritePattern<CapturingFusionClosure> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  LogicalResult matchAndRewrite(CallbackOpT op,
+  LogicalResult matchAndRewrite(CapturingFusionClosure op,
                                 PatternRewriter &rewriter) const override {
-    Block &body = op.getBody().front();
-    // The leading block args (the index, plus the stored value for an
-    // epilogue) precede the captures.
-    unsigned offset = body.getNumArguments() - op.getCaptures().size();
+    Block::BlockArgListType captureArgs = op.getCaptureBlockArgs();
 
     llvm::DenseMap<Value, BlockArgument> seen;
     llvm::SmallVector<unsigned> duplicates;
     for (auto [idx, capture] : llvm::enumerate(op.getCaptures()))
-      if (!seen.insert({capture, body.getArgument(offset + idx)}).second)
+      if (!seen.insert({capture, captureArgs[idx]}).second)
         duplicates.push_back(idx);
     if (duplicates.empty())
       return failure();
 
     for (unsigned idx : duplicates)
-      rewriter.replaceAllUsesWith(body.getArgument(offset + idx),
+      rewriter.replaceAllUsesWith(captureArgs[idx],
                                   seen.lookup(op.getCaptures()[idx]));
-    rewriter.modifyOpInPlace(op, [&] {
-      for (unsigned idx : llvm::reverse(duplicates)) {
-        op.getCapturesMutable().erase(idx);
-        body.eraseArgument(offset + idx);
-      }
+    rewriter.modifyOpInPlace(op.getOperation(), [&] {
+      for (unsigned idx : llvm::reverse(duplicates))
+        op.eraseCaptureAt(idx);
+    });
+    return success();
+  }
+};
+
+// Drops captures whose shadowed block arg has no use. Unlike
+// `map.iter.opaque`'s own inputs below, a capture carries no graph-level
+// scheduling edge of its own (that lives on the opaque's inputs), so
+// dropping one outright is always safe -- what lets `LoopInvariantViewMotion`
+// shed a capture a hoisted load no longer reads.
+struct DropDeadCapturingClosureCaptures
+    : OpInterfaceRewritePattern<CapturingFusionClosure> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
+
+  LogicalResult matchAndRewrite(CapturingFusionClosure op,
+                                PatternRewriter &rewriter) const override {
+    Block::BlockArgListType captureArgs = op.getCaptureBlockArgs();
+    llvm::SmallVector<unsigned> dead;
+    for (auto [idx, arg] : llvm::enumerate(captureArgs))
+      if (arg.use_empty())
+        dead.push_back(idx);
+    if (dead.empty())
+      return failure();
+
+    rewriter.modifyOpInPlace(op.getOperation(), [&] {
+      for (unsigned idx : llvm::reverse(dead))
+        op.eraseCaptureAt(idx);
     });
     return success();
   }
@@ -111,12 +133,20 @@ void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<DedupeIterOpaqueInputs, DropDeadIterOpaqueInputs>(context);
 }
 
+void IterForeachBodyOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
+  results.add<DedupeCapturingClosureCaptures, DropDeadCapturingClosureCaptures>(
+      context);
+}
+
 void IterPrologueOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
-  results.add<DedupeCallbackCaptures<IterPrologueOp>>(context);
+  results.add<DedupeCapturingClosureCaptures, DropDeadCapturingClosureCaptures>(
+      context);
 }
 
 void IterEpilogueOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
-  results.add<DedupeCallbackCaptures<IterEpilogueOp>>(context);
+  results.add<DedupeCapturingClosureCaptures, DropDeadCapturingClosureCaptures>(
+      context);
 }

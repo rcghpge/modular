@@ -20,7 +20,6 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
-#include "Support/AssertStream.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
@@ -202,12 +201,16 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   // mirror the captured operands.
   size_t numParams = epiArgs.size() - numCaptures;
 
-  // Every capture must be one of the kernel's own outputs, already mapped
-  // by `IterOpaqueOp::lowerToMOGG`.
+  // Every capture must already be lowered by this point: either one of the
+  // kernel's own outputs (mapped by `IterOpaqueOp::lowerToMOGG`) or a hoisted
+  // view's own result (mapped by e.g. `SliceStrideOp::lowerToMOGG`, which
+  // runs first since `LoopInvariantViewMotion` always inserts it before the
+  // closure that captures it) -- so a plain `BlockArgument` check is too
+  // strict now that captures can be either.
   SmallVector<Value> moggCaptures;
   for (Value cap : getCaptures()) {
-    if (!isa<BlockArgument>(cap) || !state.mapping.contains(cap))
-      return emitOpError("MAPToMOGG: epilogue capture is not a kernel output");
+    if (!state.mapping.contains(cap))
+      return emitOpError("MAPToMOGG: epilogue capture is not yet lowered");
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
@@ -289,17 +292,22 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   Block::BlockArgListType proArgs = proBody.getArguments();
   size_t numCaptures = getCaptures().size();
   // The index, then one arg per capture.
-  ASSERT_STREAM(
-      proArgs.size() == 1 + numCaptures,
-      << "prologue body takes the index plus one arg per capture, got "
-      << proArgs.size() << " args for " << numCaptures << " captures");
+  if (proArgs.size() != 1 + numCaptures)
+    return emitOpError()
+           << "MAPToMOGG: prologue body takes the index plus one arg per "
+              "capture, got "
+           << proArgs.size() << " args for " << numCaptures << " captures";
 
   SmallVector<Value> moggCaptures;
   for (Value cap : getCaptures()) {
-    // Captures are the kernel's own inputs, already mapped by
-    // `IterOpaqueOp::lowerToMOGG`.
-    ASSERT_STREAM(isa<BlockArgument>(cap) && state.mapping.contains(cap),
-                  << "prologue capture is not a kernel input: " << cap);
+    // Every capture must already be lowered by this point: either one of
+    // the kernel's own inputs (mapped by `IterOpaqueOp::lowerToMOGG`) or a
+    // hoisted view's own result (mapped by e.g. `SliceStrideOp::lowerToMOGG`,
+    // which runs first since `LoopInvariantViewMotion` always inserts it
+    // before the closure that captures it) -- so a plain `BlockArgument`
+    // check is too strict now that captures can be either.
+    if (!state.mapping.contains(cap))
+      return emitOpError("MAPToMOGG: prologue capture is not yet lowered");
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
@@ -459,18 +467,17 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   MOGG::PrimitiveDeclOp foreachPrim = state.registry.lookupPrimitive(
       MOGG::CallForeachRegionOp::getOperationName());
 
-  // Capture every SSA value the body references but doesn't itself define --
-  // covers the kernel's inputs/output and any hoisted view uniformly, in
-  // whatever order the body first references them. Each is already lowered
-  // (and registered in `state.mapping`) by the time this op is reached,
-  // since block order visits its definition first.
+  // `$captures` already covers the kernel's inputs/output and any hoisted
+  // view uniformly (`map.iter.foreach.body` is isolated from above, so every
+  // outer value the body needs -- there is nothing else it could reference --
+  // is one of these, in declaration order). Each is already lowered (and
+  // registered in `state.mapping`) by the time this op is reached, since
+  // block order visits its definition first.
   Block &body = getBody().front();
   Value oldIndexArg = body.getArgument(0);
-  SetVector<Value> captures;
-  for (Operation &op : body)
-    for (Value operand : op.getOperands())
-      if (operand.getParentBlock() != &body)
-        captures.insert(operand);
+  ValueRange captures = getCaptures();
+  Block::BlockArgListType captureBlockArgs =
+      body.getArguments().take_back(captures.size());
 
   SmallVector<Value> capturing;
   for (Value v : captures)
@@ -482,7 +489,7 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // New block: one arg per capture (same order), then the index.
   Block *foreachBlock = state.builder.createBlock(&callForeach.getBody());
-  for (auto [i, v] : llvm::enumerate(captures))
+  for (auto [i, v] : llvm::enumerate(captureBlockArgs))
     state.mapping.map(v,
                       foreachBlock->addArgument(capturing[i].getType(), loc));
   state.mapping.map(oldIndexArg,

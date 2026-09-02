@@ -9,10 +9,11 @@
 // `IndexTransformOpInterface` chain -- today `map.index.slice`/
 // `map.index.broadcast`/`map.index.transpose`), generic over which transform
 // kind is involved. Also fuses a view directly into an existing
-// `map.iter.prologue` of a `map.iter.opaque` consumer, the one edge
-// `PrologueFuser`'s own simpler mechanism can't take (it splices a
-// producer's body in verbatim, which a transform op's `ParentOneOf` rejects
-// inside a prologue).
+// `map.iter.prologue` or `map.iter.epilogue` of a `map.iter.opaque` consumer
+// (e.g. a broadcast bias tensor an epilogue's own store-path add reads
+// from), the one edge `PrologueFuser`'s own simpler mechanism can't take (it
+// splices a producer's body in verbatim, which a transform op's
+// `ParentOneOf` rejects inside either closure kind).
 //
 //===----------------------------------------------------------------------===//
 
@@ -45,7 +46,7 @@ bool isViewForeach(IterForeachOp op);
 /// view fuse into (or out of) a consumer of a different shape (e.g. a slice
 /// feeding a transpose). A chain's sink may also be a `map.iter.opaque`
 /// kernel, in which case the view fuses into whichever of its existing
-/// `map.iter.prologue`s already captures it.
+/// `map.iter.prologue`s or `map.iter.epilogue`s already captures it.
 class ViewFuser {
 public:
   /// Collects every fusible set of kernels in `graphOp`.

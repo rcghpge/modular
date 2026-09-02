@@ -156,7 +156,9 @@ struct RaiseBackContiguousViewsPass
     // Walk rather than iterate the body's direct ops: a map.iter.foreach
     // view kernel can sit inside control flow (e.g. mo.parallel), and
     // iterating only the graph's own top-level ops would miss those.
-    for (IterForeachOp op : llvm::to_vector(graphOp.getOps<IterForeachOp>())) {
+    SmallVector<IterForeachOp> foreachOps;
+    graphOp.walk([&](IterForeachOp op) { foreachOps.push_back(op); });
+    for (IterForeachOp op : foreachOps) {
       if (raiseContiguousSlice(op)) {
         ++numSlicesRaised;
       } else if (raiseReshape(op)) {

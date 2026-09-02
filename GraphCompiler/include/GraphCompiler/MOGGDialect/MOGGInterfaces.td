@@ -60,6 +60,31 @@ def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
   ];
 }
 
+def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
+  let description = [{
+    Common interface for the five `mogg._tensor.create*` ops (the plain
+    tensor and each view kind: slice/broadcast/transpose/reshape) -- all
+    carry `$elementType`/`$mut` as identically-named attributes, so a
+    capture's producer can be read through this instead of dispatched on
+    each concrete op type.
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the element type of the produced tensor.",
+      "::mlir::Type", "getElementType", (ins), /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{ return $_op.getElementType(); }]
+    >,
+    InterfaceMethod<
+      "Returns whether the produced tensor is mutable.",
+      "bool", "getMut", (ins), /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{ return $_op.getMut(); }]
+    >,
+  ];
+}
+
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
     A terminator for `mogg.kernel` operation.

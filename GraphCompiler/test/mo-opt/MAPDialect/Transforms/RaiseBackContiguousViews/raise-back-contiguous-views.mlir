@@ -90,6 +90,36 @@ mo.graph @reshapeAlwaysRaised(%input: !mo.tensor<[4, 6], f32>) -> !mo.tensor<[24
   mo.output %res : !mo.tensor<[24], f32>
 }
 
+// A contiguous slice inside an `mo.if` branch still raises: the pass walks
+// rather than iterates the graph's direct ops, so a view kernel nested in
+// control flow isn't missed.
+
+// CHECK-LABEL: mo.graph @contiguousSliceInsideIf
+// CHECK:         mo.if
+// CHECK-NOT:     map.iter.foreach
+// CHECK:         mogg.slice(%arg0, %{{.*}}, %{{.*}}) : (!mo.tensor<[10, 64], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[3, 64], f32>
+// CHECK:         } else {
+mo.graph @contiguousSliceInsideIf(
+    %input: !mo.tensor<[10, 64], f32>,
+    %cond: !mo.tensor<[], bool>
+) -> !mo.tensor<[3, 64], f32> {
+  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[3, 64], f32> {
+    %sliced = mo.slice(%input, %start, %stop, %step) : (
+      !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[3, 64], f32>
+    mo.yield %sliced : !mo.tensor<[3, 64], f32>
+  } else {
+    %sliced = mo.slice(%input, %start, %stop, %step) : (
+      !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+    ) -> !mo.tensor<[3, 64], f32>
+    mo.yield %sliced : !mo.tensor<[3, 64], f32>
+  }
+  mo.output %res : !mo.tensor<[3, 64], f32>
+}
+
 // Broadcast is out of scope (matches the legacy raise-back's own scope):
 // left as a map.iter.foreach even though it is unfused.
 

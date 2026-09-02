@@ -76,34 +76,33 @@ static bool checkMutableKernelFusible(Value srcInChain, Value srcOutChain,
   return true;
 }
 
-// The existing `map.iter.prologue` capturing `dst`'s `argIdx`'th input, and
-// that capture's own index within it -- null when this input isn't
-// prologue-captured at all (e.g. read directly by `map.call.opaque`), is
-// captured together with something else, or its capture is read more than
-// once: any of those leaves no single, safely-replaceable load site to
-// splice a view's body into.
-struct PrologueCapture {
-  IterPrologueOp prologueOp = nullptr;
+// The existing `map.iter.prologue` or `map.iter.epilogue` capturing `dst`'s
+// `argIdx`'th input, and that capture's own index within it -- null when
+// this input isn't captured by either closure kind at all (e.g. read
+// directly by `map.call.opaque`), is captured together with something else,
+// or its capture is read more than once: any of those leaves no single,
+// safely-replaceable load site to splice a view's body into.
+struct ClosureCapture {
+  CapturingFusionClosure closure = nullptr;
   unsigned captureIdx = 0;
 };
 
-static PrologueCapture findExistingCapture(IterOpaqueOp dst, unsigned argIdx) {
+static ClosureCapture findExistingCapture(IterOpaqueOp dst, unsigned argIdx) {
   BlockArgument dstArg = dst.getInputBlockArgs()[argIdx];
   if (!dstArg.hasOneUse())
     return {};
-  auto prologueOp = dyn_cast<IterPrologueOp>(*dstArg.getUsers().begin());
-  if (!prologueOp)
+  auto closure = dyn_cast<CapturingFusionClosure>(*dstArg.getUsers().begin());
+  if (!closure)
     return {};
-  auto captureIt = llvm::find(prologueOp.getCaptures(), dstArg);
-  if (captureIt == prologueOp.getCaptures().end())
+  auto captureIt = llvm::find(closure.getCaptures(), dstArg);
+  if (captureIt == closure.getCaptures().end())
     return {};
   unsigned captureIdx =
-      static_cast<unsigned>(captureIt - prologueOp.getCaptures().begin());
-  BlockArgument capArg =
-      prologueOp.getBody().front().getArgument(1 + captureIdx);
+      static_cast<unsigned>(captureIt - closure.getCaptures().begin());
+  BlockArgument capArg = closure.getCaptureBlockArgs()[captureIdx];
   if (!capArg.hasOneUse())
     return {};
-  return {prologueOp, captureIdx};
+  return {closure, captureIdx};
 }
 
 // Eligible when dst is itself a `map.iter.foreach` and at least one of
@@ -116,9 +115,10 @@ static PrologueCapture findExistingCapture(IterOpaqueOp dst, unsigned argIdx) {
 // When dst is a `map.iter.opaque`, only a strict view may fuse in (a plain
 // elementwise producer is `PrologueFuser`'s own job -- its simpler mechanism
 // splices a producer's body in verbatim, which a transform op's
-// `ParentOneOf` rejects inside a prologue, so the two fusers' jobs stay
-// disjoint here too), and only into a capture an existing prologue already
-// reads from: creating a new prologue is out of scope for this fuser.
+// `ParentOneOf` rejects inside a prologue or epilogue, so the two fusers'
+// jobs stay disjoint here too), and only into a capture an existing
+// prologue or epilogue already reads from: creating a new one is out of
+// scope for this fuser.
 static bool viewKernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcOp = dyn_cast<IterForeachOp>(src);
   if (!srcOp)
@@ -150,7 +150,7 @@ static bool viewKernelsAreCompatible(Operation *src, Operation *dst) {
     if (input != srcOp.getResult(0))
       continue;
     feedsAnyInput = true;
-    if (!findExistingCapture(dstOpaque, i).prologueOp)
+    if (!findExistingCapture(dstOpaque, i).closure)
       return false;
   }
   return feedsAnyInput;
@@ -286,13 +286,18 @@ void fuseViewIntoForeach(IterForeachOp dst, IterForeachOp src,
   dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
 }
 
-// Splices `src`'s body into an existing `map.iter.prologue` inside `dst`,
-// mirroring `PrologueFuser::fusePrologueOnce` -- the two differ only in where
-// the load site to replace lives: a plain elementwise producer's own load
-// site is one of dst's shadowed input block args directly, while a view's is
-// one level further in, behind an existing prologue's capture.
-void fuseViewIntoPrologue(IterOpaqueOp dst, IterForeachOp src,
-                          PatternRewriter &rewriter) {
+// Splices `src`'s body into an existing `map.iter.prologue` or
+// `map.iter.epilogue` inside `dst`, mirroring `PrologueFuser::fusePrologueOnce`
+// -- the two differ only in where the load site to replace lives: a plain
+// elementwise producer's own load site is one of dst's shadowed input block
+// args directly, while a view's is one level further in, behind an existing
+// closure's capture. Generic over which of the two closure kinds is involved
+// via `CapturingFusionClosure`: an epilogue captures its own extra inputs
+// (e.g. a bias tensor a store-path add reads from) the exact same way a
+// prologue does, so fusing a view into one of those captures is the same
+// splice regardless of which closure it lands in.
+void fuseViewIntoClosure(IterOpaqueOp dst, IterForeachOp src,
+                         PatternRewriter &rewriter) {
   SmallVector<unsigned> fusionIndices;
   for (auto [i, input] : llvm::enumerate(dst.getInputs()))
     if (input == src.getResult(0))
@@ -303,42 +308,45 @@ void fuseViewIntoPrologue(IterOpaqueOp dst, IterForeachOp src,
   unsigned numSrcInputs = src.getInputs().size();
 
   for (unsigned argIdx : llvm::reverse(fusionIndices)) {
-    PrologueCapture capture = findExistingCapture(dst, argIdx);
-    assert(capture.prologueOp &&
+    ClosureCapture capture = findExistingCapture(dst, argIdx);
+    assert(capture.closure &&
            "viewKernelsAreCompatible should have verified this resolves");
-    IterPrologueOp prologueOp = capture.prologueOp;
-    Block &prologueBody = prologueOp.getBody().front();
+    CapturingFusionClosure closure = capture.closure;
+    // Captured before cloning below inserts a second block: `.front()` would
+    // then mean the clone, not this body, for as long as both coexist -- so
+    // captures are added manually against this reference instead of via
+    // `addCapture()`, which always re-derives `.front()` at call time.
+    Block &closureBody = closure.getBody().front();
 
-    BlockArgument oldCap = prologueBody.getArgument(1 + capture.captureIdx);
+    BlockArgument oldCap = closure.getCaptureBlockArgs()[capture.captureIdx];
     auto oldLoad = cast<LoadOp>(*oldCap.getUsers().begin());
     Value loadIndex = oldLoad.getIndex();
 
-    // Clone src's body into the prologue's own region (not dst's) so the
+    // Clone src's body into the closure's own region (not dst's) so the
     // original is left untouched: it may be spliced in at more than one
     // load site.
-    rewriter.cloneRegionBefore(src.getBody(), prologueOp.getBody(),
-                               prologueOp.getBody().begin());
-    Block &srcClone = prologueOp.getBody().front();
+    rewriter.cloneRegionBefore(src.getBody(), closure.getBody(),
+                               closure.getBody().begin());
+    Block &srcClone = closure.getBody().front();
 
     auto storeOp = cast<StoreOp>(srcClone.back());
     Value fusedVal = storeOp.getValue();
     storeOp.erase();
     srcClone.eraseArgument(numSrcInputs);
 
-    // Pull src's own inputs in as new prologue captures, fed by new dst
-    // inputs: dst's body is isolated from above, and prologueOp lives
+    // Pull src's own inputs in as new closure captures, fed by new dst
+    // inputs: dst's body is isolated from above, and the closure lives
     // inside it, so each outer input must first become one of dst's own
-    // shadowed input block args before prologueOp can capture it.
+    // shadowed input block args before the closure can capture it.
     SmallVector<Value> fusedArgs;
     for (Value input : src.getInputs()) {
       unsigned dstInputIdx = dst.getInputs().size();
       dst.insertInputsAt(dstInputIdx, input);
       Value dstInputArg = dst.getInputBlockArgs()[dstInputIdx];
-
-      unsigned newCapIdx = prologueOp.getNumOperands();
-      prologueOp->insertOperands(newCapIdx, dstInputArg);
+      closure.getOperation()->insertOperands(
+          closure.getOperation()->getNumOperands(), dstInputArg);
       fusedArgs.push_back(
-          prologueBody.addArgument(input.getType(), input.getLoc()));
+          closureBody.addArgument(input.getType(), input.getLoc()));
     }
     fusedArgs.push_back(loadIndex);
 
@@ -346,12 +354,15 @@ void fuseViewIntoPrologue(IterOpaqueOp dst, IterForeachOp src,
 
     oldLoad.getResult().replaceAllUsesWith(fusedVal);
     oldLoad.erase();
-    prologueOp.getCapturesMutable().erase(capture.captureIdx);
-    prologueBody.eraseArgument(1 + capture.captureIdx);
+    closure.eraseCaptureAt(capture.captureIdx);
     dst.eraseInputsAt(argIdx);
 
-    dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionPrologueAttr>(
-        src->getContext(), {src, dst}, {argIdx}));
+    if (isa<IterEpilogueOp>(closure.getOperation()))
+      dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionEpilogueAttr>(
+          src->getContext(), {src, dst}, {argIdx}));
+    else
+      dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionPrologueAttr>(
+          src->getContext(), {src, dst}, {argIdx}));
     dst->setLoc(
         mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   }
@@ -372,7 +383,7 @@ void ViewFuser::fuseSubgraphOnce(ArrayRef<Operation *> subgraph) {
     if (auto dstForeach = dyn_cast<IterForeachOp>(dstOp))
       fuseViewIntoForeach(dstForeach, src, rewriter);
     else
-      fuseViewIntoPrologue(cast<IterOpaqueOp>(dstOp), src, rewriter);
+      fuseViewIntoClosure(cast<IterOpaqueOp>(dstOp), src, rewriter);
   }
 }
 

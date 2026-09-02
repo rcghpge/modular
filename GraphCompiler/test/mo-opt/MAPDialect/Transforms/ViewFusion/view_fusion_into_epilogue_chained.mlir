@@ -1,0 +1,53 @@
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
+
+// MO-level counterpart of view_fusion_into_epilogue.mlir's single-view case:
+// a chain of TWO view ops (slice, then broadcast) fuses into an existing
+// epilogue capture, one hop per round of `--map-fuse-kernels`'s fixed point
+// -- the round that absorbs the broadcast exposes the slice feeding it as a
+// new "producer feeding an existing capture" candidate, which the next round
+// then also absorbs. Driven from plain `mo.slice`/`mo.static.broadcast_to`
+// through the real MOToMAP + fusion pipeline rather than hand-authored MAP
+// IR: composing two chained transforms by hand would be tedious and easy to
+// get wrong, where the real pipeline just produces it.
+
+mo.graph @broadcastOfSliceIntoExistingEpilogue(
+    %main: !mo.tensor<[8, 8], f32>,
+    %bias_wide: !mo.tensor<[16], f32>
+) -> !mo.tensor<[8, 8], f32> {
+  %start = mo.constant {value = #M.dense_array<4> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %stop = mo.constant {value = #M.dense_array<12> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%main) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
+  %sliced = mo.slice(%bias_wide, %start, %stop, %step) : (
+    !mo.tensor<[16], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
+  ) -> !mo.tensor<[8], f32>
+  %bcast = mo.static.broadcast_to(%sliced) : !mo.tensor<[8], f32> -> !mo.tensor<[8, 8], f32>
+  %out = mo.add(%c, %bcast) : !mo.tensor<[8, 8], f32>
+  mo.output %out : !mo.tensor<[8, 8], f32>
+}
+
+// CHECK-LABEL: mo.graph @broadcastOfSliceIntoExistingEpilogue
+// CHECK-SAME:  (%[[MAIN:.*]]: !mo.tensor<[8, 8], f32>, %[[BIAS:.*]]: !mo.tensor<[16], f32>)
+// CHECK-NOT:   map.iter.foreach
+// CHECK:       %[[RES:.*]] = map.iter.opaque
+// CHECK-NEXT:  inputs (%[[MAIN]]: !mo.tensor<[8, 8], f32>, %[[BIAS]]: !mo.tensor<[16], f32>, %[[START:.*]]: !mo.tensor<[1], si64>, %[[STOP:.*]]: !mo.tensor<[1], si64>, %[[STEP:.*]]: !mo.tensor<[1], si64>)
+// CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[8, 8], f32>) {
+// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing
+// CHECK-SAME:      (%[[OCAP:.*]] = %[[O]] : !mo.tensor<[8, 8], f32>,
+// CHECK-SAME:       %[[BCAP:.*]] = %[[BIAS]] : !mo.tensor<[16], f32>,
+// CHECK-SAME:       %[[STARTCAP:.*]] = %[[START]] : !mo.tensor<[1], si64>,
+// CHECK-SAME:       %[[STOPCAP:.*]] = %[[STOP]] : !mo.tensor<[1], si64>,
+// CHECK-SAME:       %[[STEPCAP:.*]] = %[[STEP]] : !mo.tensor<[1], si64>)
+// CHECK-NEXT:  %[[BIDX:.*]] = map.index.broadcast<{{.*}}> (%[[IDX]])
+// CHECK-NEXT:  %[[SIDX:.*]] = map.index.slice<{{.*}}> (%[[BIDX]], %[[STARTCAP]], %[[STOPCAP]], %[[STEPCAP]])
+// CHECK-NEXT:  %[[BV:.*]] = map.load %[[BCAP]][%[[SIDX]]] : !mo.tensor<[16], f32>
+// CHECK-NEXT:  %[[SUM:.*]] = map.call.elementwise @{{.*}}.Add(%[[IDX]], %[[VAL]], %[[BV]])
+// CHECK-NEXT:  map.store %[[OCAP]][%[[IDX]]] = %[[SUM]]
+// CHECK-NEXT:  } : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:  map.call.opaque @{{.*}}MapLowerOneFusedOutput{{.*}} inputs(%[[MAIN]]) outputs(%[[EPI]])
+// CHECK:       #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.slice"
+// CHECK-SAME:  #mogg.fusion_leaf<"mo.static.broadcast_to"
+// CHECK-SAME:  #mogg.fusion_leaf<"custom__map_lower_one_fused_output"
+// CHECK-SAME:  #mogg.fusion_leaf<"mo.add"
+// CHECK-NOT:   map.iter.foreach
+// CHECK:       mo.output %[[RES]] : !mo.tensor<[8, 8], f32>

@@ -21,20 +21,21 @@
 // CHECK-NEXT:  inputs (%[[Z]]: !mo.tensor<[8, 8], f32>, %[[W]]: !mo.tensor<[8, 8], f32>)
 // CHECK-NEXT:  outputs (%[[DO:[^ ]*]] : !mo.tensor<[8, 8], f32>) {
 // CHECK-NEXT:    map.iter.foreach.body<[8, 8]>
-// CHECK-NEXT:      index (%[[J:[^:]*]]: !map.index<2>) {
-// CHECK-NEXT:      %[[Z0:.*]] = map.load %[[Z]][%[[J]]] : !mo.tensor<[8, 8], f32>
-// CHECK-NEXT:      %[[W0:.*]] = map.load %[[W]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      index (%[[J:[^:]*]]: !map.index<2>)
+// CHECK-NEXT:      capturing (%[[Z_IN:[^ ]*]] = %[[Z]] : !mo.tensor<[8, 8], f32>, %[[W_IN:[^ ]*]] = %[[W]] : !mo.tensor<[8, 8], f32>, %[[DO_IN:[^ ]*]] = %[[DO]] : !mo.tensor<[8, 8], f32>) {
+// CHECK-NEXT:      %[[Z0:.*]] = map.load %[[Z_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      %[[W0:.*]] = map.load %[[W_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:      %[[ADD0:.*]] = map.call.elementwise @{{.*}}.Add(%[[J]], %[[Z0]], %[[W0]])
-// CHECK-NEXT:      %[[Z1:.*]] = map.load %[[Z]][%[[J]]] : !mo.tensor<[8, 8], f32>
-// CHECK-NEXT:      %[[W1:.*]] = map.load %[[W]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      %[[Z1:.*]] = map.load %[[Z_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      %[[W1:.*]] = map.load %[[W_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:      %[[ADD1:.*]] = map.call.elementwise @{{.*}}.Add(%[[J]], %[[Z1]], %[[W1]])
-// CHECK-NEXT:      %[[Z2:.*]] = map.load %[[Z]][%[[J]]] : !mo.tensor<[8, 8], f32>
-// CHECK-NEXT:      %[[W2:.*]] = map.load %[[W]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      %[[Z2:.*]] = map.load %[[Z_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      %[[W2:.*]] = map.load %[[W_IN]][%[[J]]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:      %[[ADD2:.*]] = map.call.elementwise @{{.*}}.Add(%[[J]], %[[Z2]], %[[W2]])
 // CHECK-NEXT:      %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%[[J]], %[[ADD2]])
 // CHECK-NEXT:      %[[MUL:.*]] = map.call.elementwise @{{.*}}.Mul(%[[J]], %[[ADD0]], %[[ADD1]])
 // CHECK-NEXT:      %[[DSUM:.*]] = map.call.elementwise @{{.*}}.Add(%[[J]], %[[MUL]], %[[RELU]])
-// CHECK-NEXT:      map.store %[[DO]][%[[J]]] = %[[DSUM]] : !mo.tensor<[8, 8], f32>
+// CHECK-NEXT:      map.store %[[DO_IN]][%[[J]]] = %[[DSUM]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output %[[RES]] : !mo.tensor<[8, 8], f32>

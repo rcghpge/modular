@@ -11,6 +11,7 @@
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/DenseSet.h"
@@ -758,17 +759,45 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
   state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
 
   // Parse index (block arg only): index (%idx: map.index<N>)
-  SmallVector<OpAsmParser::Argument> indexArgInfo;
-  if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  if (parser.parseKeyword("index") || parseBlockArgList(parser, entryArgs))
     return mlir::failure();
-  if (indexArgInfo.size() != 1)
+  if (entryArgs.size() != 1)
     return parser.emitError(
         parser.getCurrentLocation(),
         "'map.iter.foreach.body' expects exactly one index argument");
 
-  // Body region (not isolated; entry arg is just the index).
+  // capturing ( %inner = %outer : type, ... ): same sugar as
+  // map.iter.prologue/map.iter.epilogue -- see there for why the region can
+  // be isolated from above yet have the body read as if it referenced the
+  // outer values directly.
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  if (parser.parseKeyword("capturing") || parser.parseLParen())
+    return mlir::failure();
+  if (failed(parser.parseOptionalRParen())) {
+    do {
+      OpAsmParser::Argument innerArg;
+      OpAsmParser::UnresolvedOperand outer;
+      Type type;
+      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
+          parser.parseOperand(outer) || parser.parseColonType(type))
+        return mlir::failure();
+      innerArg.type = type;
+      entryArgs.push_back(innerArg);
+      captures.push_back(outer);
+      captureTypes.push_back(type);
+    } while (succeeded(parser.parseOptionalComma()));
+    if (parser.parseRParen())
+      return mlir::failure();
+  }
+  if (parser.resolveOperands(captures, captureTypes,
+                             parser.getCurrentLocation(), state.operands))
+    return mlir::failure();
+
+  // Body region (isolated; entry args are [index, captures...]).
   Region *body = state.addRegion();
-  if (parser.parseRegion(*body, indexArgInfo))
+  if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
     return mlir::failure();
 
   return parser.parseOptionalAttrDict(state.attributes);
@@ -779,11 +808,22 @@ void IterForeachBodyOp::print(OpAsmPrinter &p) {
   MOSH::printShapeValue(p, getShape().getValues());
   p << "]> ";
 
+  Block &block = getBody().front();
+  ValueRange captures = getCaptures();
+  unsigned numLeading = block.getNumArguments() - captures.size();
+
   p.increaseIndent();
   p.printNewline();
   p << "index   ";
-  printBlockArgList(p, getBody().front().getArguments());
-  p << " ";
+  printBlockArgList(p, block.getArguments().take_front(numLeading));
+  p.printNewline();
+  p << "capturing (";
+  llvm::interleaveComma(
+      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
+        BlockArgument inner = block.getArgument(numLeading + i);
+        p << inner << " = " << captures[i] << " : " << inner.getType();
+      });
+  p << ") ";
   p.decreaseIndent();
 
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
@@ -792,9 +832,12 @@ void IterForeachBodyOp::print(OpAsmPrinter &p) {
 
 LogicalResult IterForeachBodyOp::verify() {
   Block &body = getBody().front();
-  if (body.getNumArguments() != 1)
-    return emitOpError() << "body expects exactly one block argument (the "
-                         << "index), got " << body.getNumArguments();
+  unsigned numCaptures = getCaptures().size();
+  if (body.getNumArguments() != 1 + numCaptures)
+    return emitOpError() << "body expects exactly " << (1 + numCaptures)
+                         << " block arguments (the index, then one per "
+                            "capture), got "
+                         << body.getNumArguments();
 
   auto indexTy = llvm::dyn_cast<IndexType>(body.getArgument(0).getType());
   if (!indexTy)
@@ -856,12 +899,15 @@ LogicalResult SliceIndexOp::verify() {
                                             {"steps", getSteps()}});
 }
 
-Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
+                                      const IRMapping &outerValues) {
   auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
   return SliceStrideOp::create(builder, getLoc(), resultTy, getSpec(), tensor,
-                               getStarts(), getStops(), getSteps());
+                               outerValues.lookupOrDefault(getStarts()),
+                               outerValues.lookupOrDefault(getStops()),
+                               outerValues.lookupOrDefault(getSteps()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -914,7 +960,8 @@ LogicalResult BroadcastIndexOp::verify() {
   return mlir::success();
 }
 
-Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor,
+                                          const IRMapping &) {
   auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
@@ -969,7 +1016,8 @@ LogicalResult ReshapeIndexOp::verify() {
   return mlir::success();
 }
 
-Value ReshapeIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+Value ReshapeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
+                                        const IRMapping &) {
   auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
@@ -1024,7 +1072,8 @@ LogicalResult TransposeIndexOp::verify() {
   return mlir::success();
 }
 
-Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor) {
+Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
+                                          const IRMapping &) {
   auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());

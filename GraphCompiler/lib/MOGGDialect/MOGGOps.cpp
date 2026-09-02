@@ -3716,16 +3716,35 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
                          ValueRange captures) {
   SmallVector<FusedCaptureInfo> infos;
   for (Value cap : captures) {
-    auto create = cap.getDefiningOp<TensorCreateOp>();
+    // Element type / mutability are read off whichever `mogg._tensor.create*`
+    // op produced this capture through `TensorCreateInterface` -- everything
+    // else here comes off the capture's own already-emitted Mojo value
+    // instead (see below).
+    auto create = cap.getDefiningOp<TensorCreateInterface>();
     if (!create)
-      return op->emitOpError("capture must be a mogg._tensor.create result");
+      return op->emitOpError(
+          "capture must be a mogg._tensor.create(.slice|.broadcast|"
+          ".transpose|.reshape) result");
     ErrorOr<DType> capDtypeOr = M::MO::fromMLIRType(create.getElementType());
     if (capDtypeOr.isError())
       return op->emitOpError("failed to convert capture dtype to Mojo");
-    MojoValue ptr = state.builder.var(
-        ManagedTensorSliceRef(state.getMojoValueFor(cap)).rawPtr());
-    MojoValue layout = state.builder.var(
-        MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(create.getShape())}));
+
+    ManagedTensorSliceRef capRef(state.getMojoValueFor(cap));
+    MojoValue ptr = state.builder.var(capRef.rawPtr());
+    // A capture's own memory layout -- contiguous for a plain tensor,
+    // strided for a slice, zero-strided for a broadcast, permuted for a
+    // transpose -- is whatever its own emitMojo already built into its Mojo
+    // value; a view op has no runtime `!mogg.shape` operand to rebuild a
+    // fresh row-major layout from the way a plain tensor.create does (its
+    // shape is a static attribute, the input's own shape is read relative to
+    // it instead). `to_tile_tensor()` already knows how to hand back a
+    // correctly laid-out `TileTensor` for ANY `ManagedTensorSlice`,
+    // regardless of producing op (see `ManagedTensorSlice.to_tile_tensor` in
+    // managed_tensor_slice.mojo: it just repackages the slice's own
+    // `(unsafe_ptr(), _runtime_layout)` pair) -- read `layout` straight off
+    // that instead of reconstructing one.
+    MojoValue layout =
+        state.builder.var(TileTensorRef(capRef.toTileTensor()).layout());
     // The `self*` fields stay empty here: they are minted later, when the
     // functor's own fields are declared.
     infos.push_back(

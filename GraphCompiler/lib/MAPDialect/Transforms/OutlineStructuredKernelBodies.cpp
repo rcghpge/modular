@@ -25,9 +25,9 @@ namespace {
 
 // Wraps `foreachOp` in a `map.iter.opaque`, moving its shape and body into a
 // nested `map.iter.foreach.body`. `map.iter.opaque` is isolated from above, so
-// its own inputs are shadowed as body block arguments; the nested body reaches
-// those -- and the opaque's output block args -- by plain SSA dominance, since
-// the nested body itself is not isolated from above.
+// its own inputs are shadowed as body block arguments; the nested body is
+// *also* isolated from above (see `CapturingFusionClosure`), so those same
+// opaque block args are threaded into it as `$captures`, one level further in.
 void outlineForeach(IterForeachOp foreachOp) {
   Location loc = foreachOp.getLoc();
   OpBuilder builder(foreachOp);
@@ -40,31 +40,33 @@ void outlineForeach(IterForeachOp foreachOp) {
   opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
 
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
-  SmallVector<Value> inputBlockArgs;
+  SmallVector<Value> captures;
   for (Value input : foreachOp.getInputs())
-    inputBlockArgs.push_back(opaqueBody->addArgument(input.getType(), loc));
-  SmallVector<Value> outputBlockArgs;
+    captures.push_back(opaqueBody->addArgument(input.getType(), loc));
   for (Type resultType : foreachOp.getResultTypes())
-    outputBlockArgs.push_back(opaqueBody->addArgument(resultType, loc));
+    captures.push_back(opaqueBody->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(opaqueBody);
-  auto body = IterForeachBodyOp::create(builder, loc, foreachOp.getShape());
+  auto body =
+      IterForeachBodyOp::create(builder, loc, foreachOp.getShape(), captures);
 
   unsigned numInputs = foreachOp.getInputs().size();
   unsigned numOutputs = foreachOp.getResults().size();
 
   // Move the foreach's body block wholesale into the new op's region -- no
-  // cloning -- then drop its input/output block args in favor of direct
-  // references to the values they'd otherwise have shadowed: the new opaque
-  // body's own input and output block args. What's left is exactly the index
-  // block arg `map.iter.foreach.body` expects.
+  // cloning. The flat foreach's own block-arg order is [inputs..., outputs...,
+  // index]; `map.iter.foreach.body` wants [index, captures...] (index leads,
+  // per `CapturingFusionClosure`), so only the index needs to move -- the
+  // input/output args themselves are untouched (same BlockArguments, so every
+  // existing use inside the body stays valid) and simply become the block
+  // args shadowing `captures` above, one position later.
   body.getBody().takeBody(foreachOp.getBody());
   Block &movedBody = body.getBody().front();
-  for (unsigned i = 0; i < numInputs; ++i)
-    movedBody.getArgument(i).replaceAllUsesWith(inputBlockArgs[i]);
-  for (unsigned i = 0; i < numOutputs; ++i)
-    movedBody.getArgument(numInputs + i).replaceAllUsesWith(outputBlockArgs[i]);
-  movedBody.eraseArguments(0, numInputs + numOutputs);
+  BlockArgument oldIndexArg = movedBody.getArgument(numInputs + numOutputs);
+  BlockArgument newIndexArg =
+      movedBody.insertArgument(0u, oldIndexArg.getType(), loc);
+  oldIndexArg.replaceAllUsesWith(newIndexArg);
+  movedBody.eraseArgument(numInputs + numOutputs + 1);
 
   foreachOp.replaceAllUsesWith(opaque.getResults());
   foreachOp.erase();

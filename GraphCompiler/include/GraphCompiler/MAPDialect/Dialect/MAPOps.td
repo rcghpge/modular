@@ -169,6 +169,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
     IsolatedFromAbove,
     SingleBlock,
     NoTerminator,
+    MAP_CapturingFusionClosure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
     DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
@@ -198,6 +199,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
 def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
     IsolatedFromAbove,
     SingleBlock,
+    MAP_CapturingFusionClosure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
     DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   ]> {
@@ -354,8 +356,10 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 
 def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
   HasParent<"IterOpaqueOp">,
+  IsolatedFromAbove,
   SingleBlock,
   NoTerminator,
+  MAP_CapturingFusionClosure,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "The per-index body of a structured MAP loop, wrapped for outlining.";
@@ -363,10 +367,13 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
     Holds the per-index computation of a `map.iter.foreach` after
     `OutlineStructuredKernelBodies` has wrapped it in a `map.iter.opaque`.
     Unlike the flat `map.iter.foreach`, this op carries no `inputs`/`outputs`
-    of its own: the enclosing `map.iter.opaque` owns those (shadowed as its own
-    body block arguments), and this op's body reaches them by plain SSA
-    dominance -- this op's own body is not isolated from above, even though
-    the enclosing `map.iter.opaque` is. The only block argument is the index.
+    of its own: the enclosing `map.iter.opaque`'s own (shadowed) input and
+    output block arguments are threaded in as this op's `$captures`, shadowed
+    in turn as its own trailing block arguments -- the same
+    isolated-from-above/capturing shape `map.iter.prologue`/`map.iter.epilogue`
+    already use (see `CapturingFusionClosure`), so all three closure kinds can
+    be hoisted out of generically by `LoopInvariantViewMotion`. The leading
+    block argument is the index.
 
     The `shape` attribute is copied unchanged from the wrapped
     `map.iter.foreach`.
@@ -377,21 +384,23 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
         inputs (%x: !mo.tensor<[8, 16, 128], f32>, %y: !mo.tensor<[8, 16, 128], f32>)
         outputs (%out: !mo.tensor<[8, 16, 128], f32>) {
       map.iter.foreach.body<[8, 16, 128]>
-          index (%idx: !map.index<3>) {
-        %xv = map.load %x[%idx] : !mo.tensor<[8, 16, 128], f32>
-        %yv = map.load %y[%idx] : !mo.tensor<[8, 16, 128], f32>
+          index (%idx: !map.index<3>)
+          capturing (%x0 = %x, %y0 = %y, %out0 = %out) {
+        %xv = map.load %x0[%idx] : !mo.tensor<[8, 16, 128], f32>
+        %yv = map.load %y0[%idx] : !mo.tensor<[8, 16, 128], f32>
         %sum = map.call.elementwise @builtin_kernels.elementwise.Add(%idx, %xv, %yv)
                   : !map.index<3>, f32, f32 -> f32
-        map.store %out[%idx] = %sum : !mo.tensor<[8, 16, 128], f32>
+        map.store %out0[%idx] = %sum : !mo.tensor<[8, 16, 128], f32>
       }
     }
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeAttr:$shape);
+  let arguments = (ins MOSH_ShapeAttr:$shape, Variadic<AnyType>:$captures);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 
@@ -516,7 +525,7 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
 //===----------------------------------------------------------------------===//
 
 def MAP_SliceIndexOp : MAP_Op<"index.slice", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -614,7 +623,7 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -702,7 +711,7 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {

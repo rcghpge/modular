@@ -5,8 +5,9 @@
 //===----------------------------------------------------------------------===//
 //
 // Hoists chains of index-transform ops (ops implementing
-// MAP::IndexTransformOpInterface, e.g. map.index.slice) out of a
-// map.iter.foreach.body into a chain of "stride" ops (e.g.
+// MAP::IndexTransformOpInterface, e.g. map.index.slice) out of any
+// CapturingFusionClosure (map.iter.foreach.body, map.iter.prologue,
+// map.iter.epilogue) into a chain of "stride" ops (e.g.
 // map.index.slice.stride) in the enclosing map.iter.opaque, so the transform
 // runs once per kernel invocation instead of once per loop index. Runs once
 // per map.iter.opaque instance, independent instances in parallel.
@@ -16,7 +17,7 @@
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "mlir/IR/Builders.h"
-#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/IRMapping.h"
 
 using namespace M;
 using namespace mlir;
@@ -29,11 +30,8 @@ namespace M::MAP {
 namespace {
 
 // Walks backward from `index` through a chain of index-transform ops,
-// collecting each hop closest-to-load first, and stops at the first value
-// that isn't a recognized index-transform op's result (typically the loop's
-// own `map.iter.foreach.body` index block argument). Generic over which
-// concrete transform kind is involved (today: only `map.index.slice`) via
-// `IndexTransformOpInterface`.
+// closest-to-load first, stopping at the first value that isn't one
+// (typically the closure's own index block argument).
 SmallVector<IndexTransformOpInterface> collectIndexTransformChain(Value index) {
   SmallVector<IndexTransformOpInterface> chain;
   Value current = index;
@@ -47,54 +45,35 @@ SmallVector<IndexTransformOpInterface> collectIndexTransformChain(Value index) {
   return chain;
 }
 
-// Keyed by (the chain's innermost transform op, the tensor being loaded): the
-// same index-transform result could in principle feed loads of *different*
-// tensors (an index-transform op carries no tensor operand of its own -- the
-// tensor lives on the map.load), so keying by the transform op alone would
-// incorrectly hand a second, unrelated tensor the first tensor's hoisted
-// view. Keying by the pair still dedups the common case, an index shared by
-// multiple loads of the *same* tensor. The innermost op alone identifies the
-// whole chain, since the rest is deterministically reachable by walking its
-// `getIndex()` operand.
-using HoistKey = std::pair<Operation *, Value>;
-
-// Hoists the index-transform `chain` feeding `loadOp` into a chain of stride
-// ops inserted via `builder` (positioned before the enclosing
-// map.iter.foreach.body), and rewrites `loadOp` to read the fully-hoisted
-// tensor with the chain's outermost (untransformed) index directly. `chain`
-// is ordered closest-to-load first, so composing hop-by-hop starting from
-// `loadOp.getTensor()` builds up the strided view innermost-to-outermost --
-// each hop's hoisted tensor becomes the next hop's input, ending in a tensor
-// a load can address with the outermost hop's own (untransformed) index.
-// `hoisted` caches by (innermost transform op, tensor) so multiple loads of
-// the same tensor sharing the exact same chain (SSA-identical, not just
-// structurally similar) hoist once. Leaves every hop in place even once
-// dead -- erasure is deferred to a final sweep over the whole body, since a
-// fused elementwise call may still be reading the same transformed index
-// (see `rewireElementwiseIndices`).
+// Hoists `chain` (feeding `loadOp`) into stride ops inserted via `builder`
+// before `closure`, composing hop-by-hop from the outer-scope value that
+// `loadOp.getTensor()` (and any other operand a transform reads, e.g. a
+// slice's starts/stops/steps) shadows -- `outerValues` maps every capture
+// block argument back to it, since the hoisted ops land outside the
+// isolated closure and can't read a capture's inner shadow directly.
+// Rewrites `loadOp` to read the result with the chain's outermost index.
+// The hoisted tensor becomes a brand new capture; no dedup against an
+// identical prior hoist here -- `DedupeCapturingClosureCaptures` folds
+// duplicates afterward.
 void hoistChain(LoadOp loadOp, ArrayRef<IndexTransformOpInterface> chain,
-                llvm::DenseMap<HoistKey, Value> &hoisted, OpBuilder &builder) {
-  IndexTransformOpInterface innermost = chain.front();
-  Value &strided = hoisted[{innermost.getOperation(), loadOp.getTensor()}];
-  if (!strided) {
-    Value tensor = loadOp.getTensor();
-    for (IndexTransformOpInterface transform : chain)
-      tensor = transform.createStridedView(builder, tensor);
-    strided = tensor;
-  }
+                OpBuilder &builder, CapturingFusionClosure closure,
+                const IRMapping &outerValues) {
+  Value outerTensor = outerValues.lookupOrDefault(loadOp.getTensor());
+
+  Value tensor = outerTensor;
+  for (IndexTransformOpInterface transform : chain)
+    tensor = transform.createStridedView(builder, tensor, outerValues);
+  BlockArgument newCaptureArg = closure.addCapture(tensor);
 
   IndexTransformOpInterface outermost = chain.back();
-  loadOp.getTensorMutable().assign(strided);
+  loadOp.getTensorMutable().assign(newCaptureArg);
   loadOp.getIndexMutable().assign(outermost.getIndex());
 }
 
-// Rewrites a `map.call.elementwise` still reading its index through a
-// transform chain -- an elementwise producer ViewFuser fused into a view
-// consumer shares the consumer's transformed index the same way a fused
-// load does -- to read the chain's outermost (untransformed) index
-// directly instead. No tensor/view to create here, unlike a load: the call
-// just wants the loop's own current position.
-void rewireElementwiseIndices(IterForeachBodyOp body) {
+// A fused elementwise producer shares its consumer's transformed index the
+// same way a fused load does; rewire it to the chain's outermost index too,
+// with no tensor/view to hoist.
+void rewireElementwiseIndices(Region &body) {
   SmallVector<CallElementwiseOp> calls;
   body.walk([&](CallElementwiseOp op) { calls.push_back(op); });
   for (CallElementwiseOp call : calls) {
@@ -107,11 +86,20 @@ void rewireElementwiseIndices(IterForeachBodyOp body) {
   }
 }
 
-LogicalResult loopInvariantViewMotionInBody(IterForeachBodyOp body) {
-  OpBuilder builder(body);
-  builder.setInsertionPoint(body);
+LogicalResult loopInvariantViewMotionInClosure(CapturingFusionClosure closure) {
+  Region &body = closure.getBody();
+  OpBuilder builder(closure.getOperation());
+  builder.setInsertionPoint(closure.getOperation());
 
-  llvm::DenseMap<HoistKey, Value> hoisted;
+  // Maps each capture block argument to the outer-scope value it shadows,
+  // for the hoisted stride ops (which land outside the isolated closure) to
+  // read instead.
+  IRMapping outerValues;
+  Block::BlockArgListType captureArgs = closure.getCaptureBlockArgs();
+  ValueRange captures = closure.getCaptures();
+  for (auto [arg, capture] : llvm::zip_equal(captureArgs, captures))
+    outerValues.map(arg, capture);
+
   SmallVector<LoadOp> loads;
   body.walk([&](LoadOp op) { loads.push_back(op); });
 
@@ -120,17 +108,14 @@ LogicalResult loopInvariantViewMotionInBody(IterForeachBodyOp body) {
         collectIndexTransformChain(loadOp.getIndex());
     if (chain.empty())
       continue; // Already indexes with the loop's own index; nothing to do.
-    hoistChain(loadOp, chain, hoisted, builder);
+    hoistChain(loadOp, chain, builder, closure, outerValues);
   }
 
   rewireElementwiseIndices(body);
 
-  // Every index-transform op is now unused, fed only by loads and/or
-  // elementwise calls, all rewired above. Erase in reverse-walk order --
-  // since a hop is always emitted before the inner hop that consumes it (or
-  // its own load/call), this visits closest-to-load first, dropping each
-  // inner hop's use of the next outer hop before that outer hop is
-  // considered.
+  // Every transform op is now unused (rewired above); erase closest-to-load
+  // first so each inner hop's use of the next outer one is dropped before
+  // that outer hop is considered.
   SmallVector<IndexTransformOpInterface> transforms;
   body.walk([&](IndexTransformOpInterface op) { transforms.push_back(op); });
   for (IndexTransformOpInterface transform : llvm::reverse(transforms))
@@ -148,8 +133,8 @@ struct LoopInvariantViewMotionPass
   void runOnOperation() override {
     IterOpaqueOp opaque = getOperation();
 
-    WalkResult liftResult = opaque.walk([&](IterForeachBodyOp body) {
-      if (failed(loopInvariantViewMotionInBody(body)))
+    WalkResult liftResult = opaque.walk([&](CapturingFusionClosure closure) {
+      if (failed(loopInvariantViewMotionInClosure(closure)))
         return WalkResult::interrupt();
       return WalkResult::advance();
     });
@@ -157,7 +142,7 @@ struct LoopInvariantViewMotionPass
       return signalPassFailure();
 
     // Invariant: hoisting above must leave no index-transform op behind
-    // inside any structured loop body.
+    // inside any capturing closure.
     WalkResult invariantResult = opaque.walk([&](IndexTransformOpInterface op) {
       op.emitError(
           "LoopInvariantViewMotion: an index-transform op survived hoisting "

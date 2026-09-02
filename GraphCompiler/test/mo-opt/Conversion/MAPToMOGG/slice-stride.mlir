@@ -1,10 +1,14 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map.iter.opaque(map-loop-invariant-view-motion)), map-to-mogg)' | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map.iter.opaque(map-loop-invariant-view-motion, canonicalize)), map-to-mogg)' | FileCheck %s
 
 // Full pipeline from a real mo.slice op through MOToMAP, outlining, view
 // motion, and MAPToMOGG: map.index.slice.stride lowers to
 // mogg._tensor.create.slice, and only the slice result and the output tensor
 // are captured by mogg._call.foreach, since the loop body only references
-// those two.
+// those two. The `canonicalize` right after LoopInvariantViewMotion drops
+// the closure's now-dead original captures (the raw input tensor and the
+// starts/stops/steps bounds, all unused once the hoisted view replaces the
+// load) via `DropDeadCapturingClosureCaptures` -- without it the lowered
+// kernel's parameter list would carry those unused pointers too.
 
 // Static bounds (mo.constant starts/stops/steps): every bound is a literal.
 
@@ -25,8 +29,8 @@
 // CHECK-NEXT:    [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg._tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
 // CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[STRIDED]], [[OT]] : !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
-// CHECK-NEXT:    ^bb0([[STRIDEDARG:%[^ :,]+]]: !mogg.tensor_, [[OUT:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor_, [[STRIDEDARG:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg._tensor.load [[STRIDEDARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
 // CHECK-NEXT:      mogg._tensor.store [[OUT]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32
 // CHECK-NEXT:    }
