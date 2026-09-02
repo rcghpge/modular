@@ -2592,7 +2592,7 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
       builder, loc, TypeRange{MEF::ChainType::get(ctx)}, operands,
       /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, semantics),
-      /*fusionInfo=*/MOGG::FusionInfoAttr{},
+      /*fusionInfo=*/getFusionInfoAttr(),
       /*isAsync=*/BoolAttr::get(ctx, false),
       /*constantResources=*/ArrayAttr::get(ctx, {}),
       /*canFuseIntoOther=*/BoolAttr::get(ctx, !MO::isOnHost(getOperation())),
