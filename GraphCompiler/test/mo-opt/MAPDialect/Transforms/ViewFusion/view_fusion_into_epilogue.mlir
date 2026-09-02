@@ -61,7 +61,7 @@ mo.graph @broadcastIntoExistingEpilogue(
       map.store %ocap[%idx] = %sum : !mo.tensor<[8, 8], f32>
     } : !mo.tensor<[8, 8], f32>
     map.call.opaque @kernels.producer[] inputs (%main) outputs (%epi) {kernelName = "kernels.producer"} : (!mo.tensor<[8, 8], f32>) -> (!mo.tensor<[8, 8], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[8, 8], f32>
 }
 
@@ -105,7 +105,7 @@ mo.graph @elementwiseIntoExistingEpilogue_noFuse(
       map.store %ocap[%idx] = %sum : !mo.tensor<[8, 8], f32>
     } : !mo.tensor<[8, 8], f32>
     map.call.opaque @kernels.producer[] inputs (%main) outputs (%epi) {kernelName = "kernels.producer"} : (!mo.tensor<[8, 8], f32>) -> (!mo.tensor<[8, 8], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[8, 8], f32>
 }
 
