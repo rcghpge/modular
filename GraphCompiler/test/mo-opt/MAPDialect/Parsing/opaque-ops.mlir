@@ -43,7 +43,7 @@ func.func @opaque_matmul(%A: !mo.tensor<[128, 256], f32>, %B: !mo.tensor<[256, 5
     } : !mo.tensor<[128, 512], f32>
     map.call.opaque @kernels.matmul[packed_b = false, transpose_b = false] inputs (%A, %B) outputs (%epi) {kernelName = "mo.matmul"} : (!mo.tensor<[128, 256], f32>, !mo.tensor<[256, 512], f32>) -> (!mo.tensor<[128, 512], f32>)
     map.yield %out : !mo.tensor<[128, 512], f32>
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   return %mm : !mo.tensor<[128, 512], f32>
 }
 
@@ -66,7 +66,7 @@ func.func @opaque_unary(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4],
     } : !mo.tensor<[2, 3, 4], f32>
     map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
     map.yield %out : !mo.tensor<[2, 3, 4], f32>
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   return %y : !mo.tensor<[2, 3, 4], f32>
 }
 
@@ -83,7 +83,7 @@ func.func @opaque_unary(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4],
 func.func @opaque_no_yield(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32> {
   %y = map.iter.opaque inputs (%X : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
     map.call.opaque @kernels.relu[] inputs (%X) outputs (%out) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   return %y : !mo.tensor<[2, 3, 4], f32>
 }
 
@@ -114,6 +114,6 @@ func.func @opaque_prologue_and_epilogue(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.t
     } : !mo.tensor<[2, 3, 4], f32>
     map.call.opaque @kernels.relu[] inputs (%pro) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
     map.yield %out : !mo.tensor<[2, 3, 4], f32>
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   return %y : !mo.tensor<[2, 3, 4], f32>
 }

@@ -513,17 +513,12 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   ValueRange inputs = getInputs();
   TypeRange resultTypes = getResultTypes();
 
-  // The execution device is where the kernel writes its output, read from the
-  // output tensor TYPE (`gpu:0`/`cpu:0`). The `map.iter.opaque` op itself
-  // carries no device, so reading it would wrongly fall back to host for GPU
-  // ops. This device is recorded on each reconstructed tensor; its ID is
-  // later zeroed by `stripDeviceIdsAndDynamicShapes` for dedup, matching the
-  // stub's device. Falls back to an input's device for a kernel with no
-  // results (e.g. an in-place/mutate-only kernel).
-  state.device =
-      resultTypes.empty()
-          ? MO::getDeviceOrDefaultAny(cast<MO::TensorType>(inputs[0].getType()))
-          : MO::getDeviceOrDefaultAny(cast<MO::TensorType>(resultTypes[0]));
+  // The execution device is stated outright on `map.iter.opaque`
+  // (`MO_ExplicitDevice`), stamped by whoever built the op from the tensor
+  // types back when they were still annotated. This device is recorded on each
+  // reconstructed tensor; its ID is later zeroed by
+  // `stripDeviceIdsAndDynamicShapes` for dedup, matching the stub's device.
+  state.device = MO::getDeviceOrDefault(*this);
 
   OpBuilder &builder = state.builder;
   auto kernel = MOGG::KernelRegionOp::create(builder, loc, resultTypes, inputs);

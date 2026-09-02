@@ -31,6 +31,6 @@ mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2
       %val = map.load %view20[%idx] : !mo.tensor<[2, 16], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[2, 16], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[2, 16], f32>
 }

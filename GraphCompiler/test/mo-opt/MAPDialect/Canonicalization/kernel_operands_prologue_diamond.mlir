@@ -29,7 +29,7 @@
 // CHECK-NEXT:      map.store %[[CO]][%[[I3]]] = %[[V]] : !mo.tensor<[2, 2, 3], f32>
 // CHECK-NEXT:    } : !mo.tensor<[2, 2, 3], f32>
 // CHECK-NEXT:    map.call.opaque @{{.*}}.Gather[axis = 0 : index] inputs(%[[DATA]], %[[IPRO]]) outputs(%[[EPI]])
-// CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_prologue<[#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>, #mogg.fusion_leaf<"mo.gather"{{.*}}], operandIndices = [0]>>, hasReadEffect = false, hasWriteEffect = false}
+// CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_prologue<[#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>, #mogg.fusion_leaf<"mo.gather"{{.*}}], operandIndices = [0]>>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output %[[RES]] : !mo.tensor<[2, 2, 3], f32>
 mo.graph @diamond_gather(
   %x: !mo.tensor<[3, 3], f32>,

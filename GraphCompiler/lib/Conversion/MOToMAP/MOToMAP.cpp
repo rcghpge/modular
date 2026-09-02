@@ -113,6 +113,7 @@ LogicalResult lowerToOpaque(Operation *op,
 
   auto opaque = MAP::IterOpaqueOp::create(builder, loc, op->getResultTypes(),
                                           op->getOperands());
+  opaque.setDeviceRef(MO::getDeviceOrDefaultAny(op));
   opaque.setFusionInfoAttr(
       MOGG::FusionInfoAttr::get(op->getContext(), MOGG::createFusionLeaf(op)));
   auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);

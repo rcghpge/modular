@@ -59,7 +59,7 @@ mo.graph @sliceStatic(%input: !mo.tensor<[10, 64], f32>,
       %val = map.load %input0[%idx_] : !mo.tensor<[10, 64], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[3, 32], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 32], f32>
 }
 
@@ -88,7 +88,7 @@ mo.graph @sliceDynamic<N, M>(
       %val = map.load %input0[%idx_] : !mo.tensor<[N, 64], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[M, 32], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[M, 32], f32>
 }
 
@@ -117,7 +117,7 @@ mo.graph @noTransform(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32> {
       %val = map.load %x0[%idx] : !mo.tensor<[8, 8], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[8, 8], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[8, 8], f32>
 }
 
@@ -168,7 +168,7 @@ mo.graph @twoIndependentViews(
                 : !map.index<2>, f32, f32 -> f32
       map.store %out0[%idx] = %sum : !mo.tensor<[3, 3], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 3], f32>
 }
 
@@ -206,7 +206,7 @@ mo.graph @mixedTransformedAndPlain(
                 : !map.index<2>, f32, f32 -> f32
       map.store %out0[%idx] = %sum : !mo.tensor<[3, 3], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 3], f32>
 }
 
@@ -253,7 +253,7 @@ mo.graph @sharedChain(
                 : !map.index<2>, f32, f32 -> f32
       map.store %out0[%idx] = %sum : !mo.tensor<[3, 3], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 3], f32>
 }
 
@@ -295,7 +295,7 @@ mo.graph @chainedSliceIndex(
       %val = map.load %input0[%inner] : !mo.tensor<[10, 10], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[3, 3], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 3], f32>
 }
 

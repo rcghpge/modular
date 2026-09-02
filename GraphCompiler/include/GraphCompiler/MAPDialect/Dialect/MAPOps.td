@@ -44,6 +44,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     IsolatedFromAbove,
     SingleBlock,
     NoTerminator,
+    MO_ExplicitDevice,
+    MO_HasDeviceInterface,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
     DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
@@ -93,6 +95,15 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     `mogg.fusion` attribute), taking over the role the attribute of the same
     name played on `mogg.kernel`. It is typed as `AnyAttr` here so the `map`
     dialect need not depend on `mogg`.
+
+    The execution device is an explicit `#M.device_ref` attribute
+    (`MO_ExplicitDevice`), the same convention `mogg.kernel` uses, rather than
+    something inferred from the operand and result types the way
+    `map.iter.foreach` does it. Inference has no answer for a kernel whose
+    tensors carry no device annotation -- it cannot tell "runs on the host"
+    from "don't know" -- which matters for passes that must refuse to act on
+    device kernels. Whoever builds the op stamps the device; the trait's
+    verifier requires it.
   }];
 
   let arguments = (ins

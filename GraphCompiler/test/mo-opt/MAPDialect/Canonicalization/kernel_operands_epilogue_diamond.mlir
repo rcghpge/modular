@@ -14,7 +14,7 @@
 // CHECK-NEXT:      map.store %[[CO]][%[[I]]] = %[[SUM]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:    } : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:    map.call.opaque @{{.*}}.Matmul[packed_b = false, transpose_b = false] inputs(%[[A]], %[[B]]) outputs(%[[EPI]])
-// CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}], operandIndices = [0]>>, hasReadEffect = false, hasWriteEffect = false}
+// CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}], operandIndices = [0]>>, hasReadEffect = false, hasWriteEffect = false}
 
 // The diamond opaque: 6 inputs down to 2, every load reading one of them.
 // CHECK-NEXT:  %[[D]] = map.iter.opaque
@@ -37,7 +37,7 @@
 // CHECK-NEXT:      %[[DSUM:.*]] = map.call.elementwise @{{.*}}.Add(%[[J]], %[[MUL]], %[[RELU]])
 // CHECK-NEXT:      map.store %[[DO_IN]][%[[J]]] = %[[DSUM]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:    }
-// CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>, hasReadEffect = false, hasWriteEffect = false}
+// CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output %[[RES]] : !mo.tensor<[8, 8], f32>
 mo.graph @matmul_diamond(
   %a: !mo.tensor<[8, 8], f32>,

@@ -40,7 +40,7 @@ mo.graph @foreachBodyStatic(%x: !mo.tensor<[8, 16, 128], f32>,
                 : !map.index<3>, f32, f32 -> f32
       map.store %out0[%idx] = %sum : !mo.tensor<[8, 16, 128], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %r : !mo.tensor<[8, 16, 128], f32>
 }
 
@@ -67,7 +67,7 @@ mo.graph @foreachBodyDynamic<D0, D1>(
                 : !map.index<2>, f32, f32 -> f32
       map.store %out0[%idx] = %sum : !mo.tensor<[D0, D1], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %r : !mo.tensor<[D0, D1], f32>
 }
 

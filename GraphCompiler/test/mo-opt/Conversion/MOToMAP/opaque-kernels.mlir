@@ -25,7 +25,7 @@
 // CHECK:     map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
 // CHECK:   } : !mo.tensor<[2, 2], f32>
 // CHECK:   map.call.opaque @{{.*}}MapLowerOneFusedOutput[] inputs(%[[A]]) outputs(%[[EPI]]) {kernelName = "map_lower_one_fused_output"} : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
-// CHECK: } {fusionInfo = #mogg.fusion<{{.*}}custom__map_lower_one_fused_output
+// CHECK: } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<{{.*}}custom__map_lower_one_fused_output
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>

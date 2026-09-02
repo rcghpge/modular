@@ -36,7 +36,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[4, 6], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[24], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[24], f32>
 }
 
@@ -67,7 +67,7 @@ mo.graph @reshapeExpand(%input: !mo.tensor<[24], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[24], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[4, 6], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[4, 6], f32>
 }
 

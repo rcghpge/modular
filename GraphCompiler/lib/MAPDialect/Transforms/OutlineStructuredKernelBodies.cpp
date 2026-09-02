@@ -11,6 +11,7 @@
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
+#include "GraphCompiler/MODialect/MODevices.h"
 #include "mlir/IR/Builders.h"
 
 using namespace M;
@@ -34,6 +35,10 @@ void outlineForeach(IterForeachOp foreachOp) {
 
   auto opaque = IterOpaqueOp::create(builder, loc, foreachOp.getResultTypes(),
                                      foreachOp.getInputs());
+  // `map.iter.opaque` states its device outright, so settle the foreach's
+  // type-inferred one here. A foreach whose tensors carry no annotation runs
+  // on the host, which is the fallback `getDeviceOrDefault` supplies.
+  opaque.setDeviceRef(MO::getDeviceOrDefault(foreachOp));
   if (Attribute fusionInfo = foreachOp.getFusionInfoAttr())
     opaque.setFusionInfoAttr(fusionInfo);
   opaque.setHasReadEffect(foreachOp.getHasReadEffect());

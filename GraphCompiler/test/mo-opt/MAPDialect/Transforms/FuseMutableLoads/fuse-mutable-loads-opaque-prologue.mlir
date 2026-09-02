@@ -35,6 +35,6 @@ mo.graph @fuse_into_opaque_with_prologue(%buf: !mo.buffer<[3, 2], si32>, %target
       map.yield %v : si32
     } : !mo.tensor<[3, 2], si32>
     map.call.opaque @builtin_kernels.kernels.Struct_sampler_apply_penalties[] inputs(%target, %pro, %offsets, %penalty, %penalty, %penalty, %ch0) outputs(%out) {kernelName = "sampler.apply_penalties"} : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
-  } {fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__sampler.apply_penalties">>, hasReadEffect = true, hasWriteEffect = true}
+  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__sampler.apply_penalties">>, hasReadEffect = true, hasWriteEffect = true}
   mo.output %c : !mo.chain
 }

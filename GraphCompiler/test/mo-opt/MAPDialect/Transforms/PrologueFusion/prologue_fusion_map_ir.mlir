@@ -46,7 +46,7 @@ mo.graph @fuse_add_into_prologue(
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>
     map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[4], f32>
 }
 
@@ -81,7 +81,7 @@ mo.graph @fuse_add_into_prologue_dynamic<D0>(
       map.yield %pv : f32
     } : !mo.tensor<[D0], f32>
     map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[D0], f32>) -> (!mo.tensor<[D0], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[D0], f32>
 }
 
@@ -118,7 +118,7 @@ mo.graph @no_fuse_multi_use(
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>
     map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>)
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %res, %ew : !mo.tensor<[4], f32>, !mo.tensor<[4], f32>
 }
 

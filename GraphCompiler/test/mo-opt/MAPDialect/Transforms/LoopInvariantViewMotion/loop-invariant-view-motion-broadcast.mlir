@@ -36,7 +36,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[1, 64], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[8, 64], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[8, 64], f32>
 }
 
@@ -69,7 +69,7 @@ mo.graph @broadcastRankExpanding(%input: !mo.tensor<[64], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[64], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[8, 64], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[8, 64], f32>
 }
 

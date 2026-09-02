@@ -22,7 +22,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NEXT:      [[RES:%[^ ]+]] = map.call.elementwise @builtin_kernels.elementwise.Add([[IDX]], [[XV]], [[YV]]) : !map.index<2>, f32, f32 -> f32
 // CHECK-NEXT:      map.store [[OUT0]][[[IDX]]] = [[RES]] : !mo.tensor<[256, 256], f32>
 // CHECK-NEXT:    }
-// CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
+// CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output [[RESULT]] : !mo.tensor<[256, 256], f32>
 mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], f32>) -> !mo.tensor<[256, 256], f32> {
   %0 = map.iter.foreach<[256, 256]>
@@ -52,7 +52,7 @@ mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], 
 // CHECK-NEXT:      [[RES2:%[^ ]+]] = map.call.elementwise @builtin_kernels.elementwise.Add([[IDX2]], [[XV2]], [[YV2]]) : !map.index<2>, f32, f32 -> f32
 // CHECK-NEXT:      map.store [[OUT02]][[[IDX2]]] = [[RES2]] : !mo.tensor<[M, N], f32>
 // CHECK-NEXT:    }
-// CHECK-NEXT:  } {fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
+// CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output [[RESULT2]] : !mo.tensor<[M, N], f32>
 mo.graph @addDynamic<M, N>(%arg0: !mo.tensor<[M, N], f32>, %arg1: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32> {
   %0 = map.iter.foreach<[M, N]>
@@ -79,7 +79,7 @@ mo.graph @addDynamic<M, N>(%arg0: !mo.tensor<[M, N], f32>, %arg1: !mo.tensor<[M,
 // CHECK-NEXT:  mo.output [[RESULT3]] : !mo.tensor<[2, 2], f32>
 mo.graph @alreadyOpaque(%arg0: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %0 = map.iter.opaque inputs (%arg0 : !mo.tensor<[2, 2], f32>) outputs (%out : !mo.tensor<[2, 2], f32>) {
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 

@@ -36,7 +36,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[2, 3], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[3, 2], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 2], f32>
 }
 
@@ -67,7 +67,7 @@ mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>)
       %val = map.load %input0[%idx_] : !mo.tensor<[2, 3, 4], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[4, 2, 3], f32>
     }
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[4, 2, 3], f32>
 }
 
