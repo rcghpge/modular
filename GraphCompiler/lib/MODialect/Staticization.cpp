@@ -37,7 +37,7 @@ bool isConstantOne(TypedAttr attr) {
 /// Return whether the input tensor type has shape `[1]`.
 bool is1dTensorWithOneElem(TensorType tensorTy) {
   return tensorTy.hasRank() && tensorTy.getRank() == 1 &&
-         isConstantOne(tensorTy.getTypedShapeAttr()[0]);
+         isConstantOne(tensorTy.getShape()[0]);
 }
 
 /// Return whether the input tensor type has shape `[]`.
@@ -51,8 +51,8 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
                                            TypedAttr inputAttr,
                                            ParamExprBuilder &b) {
   // Only handle ranked input and output shapes.
-  auto inputShape = dyn_cast<ShapeAttr>(inputTy.getShapeAttr());
-  auto outputShape = dyn_cast<ShapeAttr>(outputTy.getShapeAttr());
+  auto inputShape = inputTy.getShape();
+  auto outputShape = outputTy.getShape();
   if (!inputShape || !outputShape)
     return TypedAttr{};
 
@@ -77,8 +77,8 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
   // Check target shape is rank 1
   if (!resultTy.hasRank() || resultTy.getRank() != 1)
     return TypedAttr{};
-  auto resultDimIntAttr = MOSH::ShapeAttr::getStaticDim(
-      resultTy.getTypedShapeAttr().getValues().front());
+  auto resultDimIntAttr =
+      MOSH::ShapeAttr::getStaticDim(resultTy.getShape().getValues().front());
   if (!resultDimIntAttr)
     return TypedAttr{};
   int64_t resultDimInt = resultDimIntAttr.value();

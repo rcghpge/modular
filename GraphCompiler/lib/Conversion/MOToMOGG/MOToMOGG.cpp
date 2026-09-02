@@ -176,8 +176,8 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
       // rmo.mo.slice to mo.slice + mo.rebind
       if (inTy.hasRank() && outTy.hasRank() &&
           inTy.getRank() == outTy.getRank()) {
-        auto inShape = inTy.getTypedShapeAttr();
-        auto outShape = outTy.getTypedShapeAttr();
+        auto inShape = inTy.getShape();
+        auto outShape = outTy.getShape();
 
         for (auto [inDim, outDim] :
              llvm::zip_equal(inShape.getValues(), outShape.getValues())) {

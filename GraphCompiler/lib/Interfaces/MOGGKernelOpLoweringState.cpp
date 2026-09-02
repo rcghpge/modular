@@ -699,9 +699,8 @@ void MOGGKernelOpLoweringState::lowerTensorGetShapeOp(
 
   // Build a ShapeInitOp to materialize the new shape mojo value
   builder.setInsertionPoint(getShapeOp);
-  Value shapeValue =
-      MOGG::ShapeInitOp::create(builder, getShapeOp.getLoc(), dynamicDimensions,
-                                asTensor.getTypedShapeAttr());
+  Value shapeValue = MOGG::ShapeInitOp::create(
+      builder, getShapeOp.getLoc(), dynamicDimensions, asTensor.getShape());
 
   getShapeOp.getResult().replaceAllUsesWith(shapeValue);
   getShapeOp->erase();

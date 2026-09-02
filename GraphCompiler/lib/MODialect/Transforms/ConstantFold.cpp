@@ -244,8 +244,7 @@ static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
                                     const Subgraph &subgraph) {
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
   TensorType ttype = dyn_cast<TensorType>(constant.getType());
-  TensorSpec spec(dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
-                  ttype.getDtype());
+  TensorSpec spec(ttype.getShape().getIntDims(), ttype.getDtype());
 
   // Find all users of this constant op.
   llvm::SetVector<Operation *> constantUsers;

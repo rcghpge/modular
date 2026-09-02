@@ -196,8 +196,8 @@ void getParamDeclsFor(TensorType targetTy,
       }
   };
 
-  addAttrIfDecl(targetTy.getShapeAttr());
-  for (TypedAttr dimAttr : targetTy.getTypedShapeAttr().getValues())
+  addAttrIfDecl(targetTy.getShape());
+  for (TypedAttr dimAttr : targetTy.getShape().getValues())
     addAttrIfDecl(dimAttr);
 }
 
@@ -482,8 +482,8 @@ struct LowerRebindTensorShapeOp
 
     TensorValue operand = op.getInput();
     TensorValue result = op.getResult();
-    TypedAttr operandShape = operand.getType().getShapeAttr();
-    TypedAttr resultShape = result.getType().getShapeAttr();
+    TypedAttr operandShape = operand.getType().getShape();
+    TypedAttr resultShape = result.getType().getShape();
 
     MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
@@ -552,7 +552,7 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
 
     TensorValue xFinal = x;
     TensorValue yFinal = y;
-    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
+    if (x.getType().getShape() != y.getType().getShape()) {
       // `op.getType()` is the user-declared broadcasted shape; reuse its dims
       // for the broadcast destination so we don't mint fresh symbols.
       TensorType bcastType = op.getType();
@@ -609,7 +609,7 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
 
     TensorValue xFinal = x;
     TensorValue yFinal = y;
-    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
+    if (x.getType().getShape() != y.getType().getShape()) {
       // The comparison op's result shape carries the broadcast destination's
       // user-declared dim names; reuse them for the broadcasts (with each
       // operand's pre-comparison dtype).
@@ -682,8 +682,8 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
 
       SmallVector<TypedAttr> inputDims;
       for (auto input : op.getOperands())
-        inputDims.push_back(mlir::cast<TensorType>(input.getType())
-                                .getTypedShapeAttr()[axisInt]);
+        inputDims.push_back(
+            mlir::cast<TensorType>(input.getType()).getShape()[axisInt]);
 
       Var concatDimSum =
           b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::Add, inputDims));
@@ -740,8 +740,8 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     TensorValue rhs = op.getInputY();
     TensorType lhsType = lhs.getType();
     TensorType rhsType = rhs.getType();
-    ShapeAttr lhsShape = lhsType.getTypedShapeAttr();
-    ShapeAttr rhsShape = rhsType.getTypedShapeAttr();
+    ShapeAttr lhsShape = lhsType.getShape();
+    ShapeAttr rhsShape = rhsType.getShape();
 
     size_t lhsRank = lhsShape.getRank();
     size_t rhsRank = rhsShape.getRank();
@@ -814,7 +814,7 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
 
     // Reshape to remove extra one dimensions if they were introduced by vector
     // inputs.
-    if (matmulShape != op.getType().getTypedShapeAttr())
+    if (matmulShape != op.getType().getShape())
       matmul =
           MO::Static::ReshapeOp::create(rewriter, loc, op.getType(), matmul);
 
@@ -1026,8 +1026,8 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
     TensorValue condFinal = cond;
     TensorValue xFinal = x;
     TensorValue yFinal = y;
-    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr() ||
-        x.getType().getTypedShapeAttr() != cond.getType().getTypedShapeAttr()) {
+    if (x.getType().getShape() != y.getType().getShape() ||
+        x.getType().getShape() != cond.getType().getShape()) {
       // The select op's result shape is the broadcasted destination's
       // user-declared shape; reuse its dims for each broadcast.
       TensorType bcastType = op.getType();
@@ -1077,7 +1077,7 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
 
     // Marshal out dimension information for assertion.
     auto inputType = input.getType();
-    auto inputShape = inputType.getTypedShapeAttr();
+    auto inputShape = inputType.getShape();
     const int64_t kVal = op.getK();
     const int64_t rank = inputShape.getRank();
     // Normalize axis. `inferReturnTypes` checks -rank <= axis < rank already.
@@ -1148,7 +1148,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     Location loc = op.getLoc();
     MLIRContext *ctx = getContext();
     TensorValue input = op.getInput();
-    auto inputShape = cast<MOSH::ShapeAttr>(input.getType().getShapeAttr());
+    auto inputShape = input.getType().getShape();
     ShapeAttr startsAttr = op.getStarts();
     ShapeAttr stopsAttr = op.getStops();
     ShapeAttr stepsAttr = op.getSteps();

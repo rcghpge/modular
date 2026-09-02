@@ -33,7 +33,7 @@ namespace {
 /// permuted by `perm`.
 static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
   SmallVector<TypedAttr> permutedDims =
-      permute(ty.getTypedShapeAttr().getValues(), perm);
+      permute(ty.getShape().getValues(), perm);
   auto shapeTy = ShapeType::get(ty.getContext());
   return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
 }
@@ -53,10 +53,8 @@ static bool shouldSkipPatternIfReshapeSqueezesFinalDims(Value val) {
     return false;
   }
 
-  auto inputShape =
-      dyn_cast<MO::ShapeAttr>(reshapeOp.getInput().getType().getShapeAttr());
-  auto outputShape =
-      dyn_cast<MO::ShapeAttr>(reshapeOp.getType().getShapeAttr());
+  auto inputShape = reshapeOp.getInput().getType().getShape();
+  auto outputShape = reshapeOp.getType().getShape();
 
   auto inputRank = inputShape.getRank();
   auto inputShapeHasTrailingOne = inputShape && inputShape.getRank() > 0 &&
@@ -505,7 +503,7 @@ struct SinkTransposeThroughBinaryOpPattern
 
     TensorType input1Ty = input1.getType();
     TensorType input2Ty = input2.getType();
-    if (input1Ty.getShapeAttr() != input2Ty.getShapeAttr())
+    if (input1Ty.getShape() != input2Ty.getShape())
       return rewriter.notifyMatchFailure(op, "input shapes are different");
 
     if (!rewriter.addOps()) {
@@ -1066,9 +1064,8 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
       return rewriter.notifyMatchFailure(op, "Can't sink non-last axis");
 
     // Ensure the shape of the last axis is not changed
-    if (inputTy.getRank() > 0 &&
-        inputTy.getTypedShapeAttr().getValues().back() !=
-            reshapedTy.getTypedShapeAttr().getValues().back())
+    if (inputTy.getRank() > 0 && inputTy.getShape().getValues().back() !=
+                                     reshapedTy.getShape().getValues().back())
       return rewriter.notifyMatchFailure(op, "Last axis is modified");
 
     if (!rewriter.addOps()) {
@@ -1138,7 +1135,7 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
     TensorType input1TensorTy = input1Tensor.getType();
     TensorType input2TensorTy = input2Tensor.getType();
 
-    if (input1TensorTy.getShapeAttr() != input2TensorTy.getShapeAttr())
+    if (input1TensorTy.getShape() != input2TensorTy.getShape())
       return rewriter.notifyMatchFailure(op, "Inputs shapes must be equal");
 
     // TODO(#18823) find a more general solution
@@ -2256,10 +2253,10 @@ struct SinkBroadcastsThroughReduction
     // And we are reducing along the dim with 'A', then we just need to count
     // the number of additional broadcasted dimensions before the given axis.
     // In this case it is 2, since we added axis `1` and `D`.
-    auto bcastShapeAttr = bcastOp.getType().getTypedShapeAttr();
+    auto bcastShapeAttr = bcastOp.getType().getShape();
     ErrorOr<SmallVector<int64_t>> maybeBcastedAxis =
-        ShapeAttr::getBroadcastedAxes(
-            bcastOp.getInput().getType().getTypedShapeAttr(), bcastShapeAttr);
+        ShapeAttr::getBroadcastedAxes(bcastOp.getInput().getType().getShape(),
+                                      bcastShapeAttr);
     if (maybeBcastedAxis.isError())
       return rewriter.notifyMatchFailure(loc, maybeBcastedAxis.getError());
 
@@ -2294,7 +2291,7 @@ struct SinkBroadcastsThroughReduction
                   auto dimBroadcast = rewriter.create<Static::BroadcastToOp>(
                       loc,
                       dimCast.getType().cloneWith(
-                          bcastOpInput.getType().getShapeAttr()),
+                          bcastOpInput.getType().getShape()),
                       dimCast);
                   TensorValue scaledInput =
                       isa<ReduceAddOp>(op)
@@ -2372,7 +2369,7 @@ struct SinkBroadcastsThroughElemwise
       auto bcastOp = arg.getDefiningOp<Static::BroadcastToOp>();
       if (!bcastOp)
         return rewriter.notifyMatchFailure(loc, "not preceded by broadcast");
-      shapeParams.emplace_back(bcastOp.getInput().getType().getShapeAttr());
+      shapeParams.emplace_back(bcastOp.getInput().getType().getShape());
     }
 
     // We calculate the smallest common shapes of the broadcast inputs.
@@ -2390,7 +2387,8 @@ struct SinkBroadcastsThroughElemwise
           loc, "Assume only one result from elemwise op.");
 
     TensorType oldTy = cast<TensorType>(op->getResult(0).getType());
-    if (commonBcastShape == oldTy.getShapeAttr())
+    auto commonBcastShapeAttr = cast<MOSH::ShapeAttr>(commonBcastShape);
+    if (commonBcastShapeAttr == oldTy.getShape())
       return rewriter.notifyMatchFailure(
           loc, "Already at the mode reduced broadcast form.");
 
@@ -2404,7 +2402,8 @@ struct SinkBroadcastsThroughElemwise
     for (size_t i = 0; i < op->getNumOperands(); ++i) {
       auto oldBcastOp =
           op->getOperand(i).template getDefiningOp<Static::BroadcastToOp>();
-      TensorType targetType = oldBcastOp.getType().cloneWith(commonBcastShape);
+      TensorType targetType =
+          oldBcastOp.getType().cloneWith(commonBcastShapeAttr);
 
       // Only insert broadcast and replace operand if it changes shapes
       if (oldBcastOp.getType() != targetType) {
@@ -2413,7 +2412,7 @@ struct SinkBroadcastsThroughElemwise
         clonedOp->setOperand(i, newOperand);
       }
     }
-    clonedResVal.setType(resVal.getType().cloneWith(commonBcastShape));
+    clonedResVal.setType(resVal.getType().cloneWith(commonBcastShapeAttr));
 
     // To type check, insert a broadcast back to the original shape
     rewriter.setInsertionPointAfter(clonedOp);

@@ -34,7 +34,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     This type represents the shape and element type of a tensor, an optional
     device ref, and an optional dictionary of metadata (e.g., layout, etc.).
 
-    The `shapeAttr` is always a `MOSH::ShapeAttr` (e.g., `[D0, 42, N]`). Rank
+    The `shape` is always a `MOSH::ShapeAttr` (e.g., `[D0, 42, N]`). Rank
     is statically known; individual dimensions may be concrete integers or
     parametric.
 
@@ -53,7 +53,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
   }];
 
   let parameters = (ins
-    "TypedAttr" : $shapeAttr,
+    "::M::MOSH::ShapeAttr" : $shape,
     "DType" : $dtype,
     DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
     DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
@@ -65,17 +65,17 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
   let builders = [
     // Base builder which all others call
     TypeBuilder<(ins
-      "TypedAttr" : $shape,
+      "MOSH::ShapeAttr" : $shape,
       "DType" : $dtype,
       "DeviceRefAttr" : $deviceRef,
       "DictionaryAttr" : $metadata)>,
     TypeBuilderWithInferredContext<(ins
-      "TypedAttr" : $shapeAttr,
+      "MOSH::ShapeAttr" : $shape,
       "DType" : $dtype,
       CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
-      "TypedAttr" : $shapeAttr,
+      "MOSH::ShapeAttr" : $shape,
       "Type" : $elementType,
       CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
@@ -103,14 +103,14 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
   let extraClassDeclaration = [{
     /// Returns a clone with a new integer shape and element dtype.
     TensorType cloneWith(
-      std::optional<ArrayRef<int64_t>> shape, Type dtype) const;
+      ArrayRef<int64_t> shape, Type dtype) const;
 
     /// Returns a clone with a new dimensions for shape.
     TensorType cloneWith(
       ArrayRef<TypedAttr> shapeDims) const;
 
     /// Returns clone with a new shape attribute.
-    TensorType cloneWith(TypedAttr shapeAttr) const;
+    TensorType cloneWith(MOSH::ShapeAttr shape) const;
 
     /// Returns clone with a new dtype attribute.
     TensorType cloneWith(DType dtype) const;
@@ -148,10 +148,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
 
     /// Get the mlir element type of the tensor.
     Type getElementType() const;
-
-    /// Helper to get the shape attribute with MOSH::ShapeAttr type. Fails if
-    /// the shape is unknown.
-    MOSH::ShapeAttr getTypedShapeAttr() const;
 
     /// Returns the referenced parameter names (shape or dimension).
     SmallPtrSet<StringAttr, 4> getUsedParamNames() const;
@@ -325,7 +321,7 @@ def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_Shape
     In conjunction with the operations mo.mutable.load and mo.mutable.store
     this type can be used to model in-place operations in the MO dialect.
 
-    The `shapeAttr` is less permisive than the equivalent for `!mo.tensor`
+    The `shape` is less permissive than the equivalent for `!mo.tensor`
     values and must be a `MOSH::ShapeAttr` (i.e. statically ranked).
 
     The element type is an M::DType, with `invalid` denoting an unknown type.
@@ -334,12 +330,11 @@ def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_Shape
     ```mlir
     !mo.buffer<[4, 16], f32>    // static shape
     !mo.buffer<[N, N, 6], i32>  // parameterized shape
-    !mo.tensor<Sh, invalid>     // shape parameter reference
     ```
   }];
 
   let parameters = (ins
-    "TypedAttr" : $shapeAttr,
+    "::M::MOSH::ShapeAttr" : $shape,
     "DType" : $dtype,
     DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
     DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
@@ -351,17 +346,17 @@ def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_Shape
   let builders = [
     // Base builder which all others call
     TypeBuilder<(ins
-      "TypedAttr" : $shape,
+      "MOSH::ShapeAttr" : $shape,
       "DType" : $dtype,
       "DeviceRefAttr" : $deviceRef,
       "DictionaryAttr" : $metadata)>,
     TypeBuilderWithInferredContext<(ins
-      "TypedAttr" : $shapeAttr,
+      "MOSH::ShapeAttr" : $shape,
       "DType" : $dtype,
       CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
-      "TypedAttr" : $shapeAttr,
+      "MOSH::ShapeAttr" : $shape,
       "Type" : $elementType,
       CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
@@ -679,10 +674,10 @@ class AllDTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, DTypeStrFunc<"_self">.result,
                               "dtype">;
 
-/// Check all operands `names...` have the same shapeAttr.
+/// Check all operands `names...` have the same shape.
 /// eg: `AllShapeAttrsMatch<["input", "result"]>`.
 class AllShapeAttrsMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, ShapeAttrStrFunc<"_self">.result,
-                              "shapeAttr">;
+                              "shape">;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD

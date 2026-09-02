@@ -156,7 +156,7 @@ void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 void BroadcastLikeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                             TensorValue input, TensorValue shapeLike) {
   build(odsBuilder, odsState,
-        input.getType().cloneWith(shapeLike.getType().getShapeAttr()), input,
+        input.getType().cloneWith(shapeLike.getType().getShape()), input,
         shapeLike);
 }
 
@@ -167,7 +167,7 @@ LogicalResult BroadcastLikeOp::verify() {
 }
 
 static TypedAttr getShapeOf(Value value) {
-  return cast<MO::TensorValue>(value).getType().getShapeAttr();
+  return cast<MO::TensorValue>(value).getType().getShape();
 }
 
 /// ASSUME `values` are all tensor values, map each input value to the shape
@@ -371,8 +371,8 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
   auto xType = inputX.getType();
   auto yType = inputY.getType();
 
-  auto xShape = xType.getTypedShapeAttr();
-  auto yShape = yType.getTypedShapeAttr();
+  auto xShape = xType.getShape();
+  auto yShape = yType.getShape();
 
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
@@ -400,8 +400,8 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   auto xType = inputX.getType();
   auto yType = inputY.getType();
 
-  auto xShape = xType.getTypedShapeAttr();
-  auto yShape = yType.getTypedShapeAttr();
+  auto xShape = xType.getShape();
+  auto yShape = yType.getShape();
 
   // Even though it is not used in the result type, still calculate the the
   // promotion is valid here.
@@ -653,7 +653,7 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
                          Adaptor adaptor,
                          SmallVectorImpl<Type> &inferredReturnTypes) {
   auto input = cast<TensorValue>(adaptor.getInput());
-  auto inputShape = cast<ShapeAttr>(input.getType().getShapeAttr());
+  auto inputShape = input.getType().getShape();
 
   int64_t k = adaptor.getK();
   int64_t axis = adaptor.getAxis();

@@ -807,7 +807,7 @@ LogicalResult MOGraphLowering::lower(MO::RebindOp rebindOp) {
   // as operands to a tensor_spec.create op.
   ArrayRef<KGEN::ParamDeclAttr> decls = rebindOp.getOutputParamDecls();
   if (!decls.empty()) {
-    MOSH::ShapeAttr resShape = resTy.getTypedShapeAttr();
+    MOSH::ShapeAttr resShape = resTy.getShape();
     for (KGEN::ParamDeclAttr decl : decls) {
       int64_t idx = findDeclIdx(resShape, decl);
       if (idx == -1) {

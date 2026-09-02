@@ -184,7 +184,7 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       // No parameters to deal with.
       /* no-op */
     } else if (auto inShapeParam =
-                   dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShapeAttr())) {
+                   dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShape())) {
       // The argument's whole shape is a single parameter. The parameter needs
       // to be represented by the runtime MGP 'shape' of the tensor, ie a
       // tensor_spec with unknown dtype. However, we only need to capture the
@@ -903,7 +903,7 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
 
   // Dynamically shaped.
   auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
-      opBeingLowered->getParentRegion(), moTensorType.getTypedShapeAttr(), loc);
+      opBeingLowered->getParentRegion(), moTensorType.getShape(), loc);
   if (runtimeDimsOr)
     return opBeingLowered->emitOpError(runtimeDimsOr.getError());
   return MGP::TensorSpecCreateOp::create(builder, loc,

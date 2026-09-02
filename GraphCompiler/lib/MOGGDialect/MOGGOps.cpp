@@ -5351,7 +5351,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   // layout conveys the static/dynamic structure to `mogg_tensor_init` through
   // its Coord element types instead of a separate static-layout parameter.
   auto shapeVar = state.builder.var(
-      state.getShapeAsCoordMojoValue(tensorTy.getTypedShapeAttr(), getDims()));
+      state.getShapeAsCoordMojoValue(tensorTy.getShape(), getDims()));
   auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
   auto tensorInitPrimDecl2 =
       state.registry.lookupPrimitive(this->getOperationName());
@@ -5684,7 +5684,7 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
 
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
   auto shapeVar = state.builder.var(
-      state.getShapeAsCoordMojoValue(tensorTy.getTypedShapeAttr(), getDims()));
+      state.getShapeAsCoordMojoValue(tensorTy.getShape(), getDims()));
   auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
   MojoValue layoutType = MojoValue("type_of")({}, {layoutVar});
 
@@ -6403,8 +6403,8 @@ LogicalResult TensorFusedOp::verify() {
       resultTy.getDtype() != tensorTy.getDtype())
     return emitError("All operation types must have the same dtype");
 
-  if (resultTy.getShapeAttr() != lambdaTy.getShapeAttr() ||
-      resultTy.getShapeAttr() != tensorTy.getShapeAttr())
+  if (resultTy.getShape() != lambdaTy.getShape() ||
+      resultTy.getShape() != tensorTy.getShape())
     return emitError("All operation types must have the same shape");
 
   return success();
@@ -7030,8 +7030,8 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
   // strides.
   MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
-  MojoValue shapeValue = state.getShapeAsIndexListMojoValue(
-      toType.getTypedShapeAttr(), getDynamicDims());
+  MojoValue shapeValue =
+      state.getShapeAsIndexListMojoValue(toType.getShape(), getDynamicDims());
   MojoValue layoutParam =
       state.getStaticTileLayoutFromIndexListsMojoValue(toType);
   auto primDecl = state.registry.lookupPrimitive(getOperationName());

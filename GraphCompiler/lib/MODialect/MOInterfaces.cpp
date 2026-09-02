@@ -159,8 +159,8 @@ LogicalResult Impl::verifyScatterLike(ScatterLike op) {
   TensorType resTy = op.getInput().getType();
   if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
     return success();
-  TypedAttr inputShapeAttr = inputTy.getShapeAttr();
-  TypedAttr resShapeAttr = resTy.getShapeAttr();
+  TypedAttr inputShapeAttr = inputTy.getShape();
+  TypedAttr resShapeAttr = resTy.getShape();
   if (inputShapeAttr != resShapeAttr) {
     return op->emitError()
            << "input and result shapes must match if both static: "
@@ -231,8 +231,8 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
   // Basic static shape checks
   if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
     return success();
-  TypedAttr inputShapeAttr = inputTy.getShapeAttr();
-  TypedAttr resShapeAttr = resTy.getShapeAttr();
+  TypedAttr inputShapeAttr = inputTy.getShape();
+  TypedAttr resShapeAttr = resTy.getShape();
   if (inputShapeAttr != resShapeAttr) {
     return op->emitError()
            << "input and result shapes must match if both static: "
@@ -370,7 +370,7 @@ LogicalResult Impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 
 /// Get the element type of a tensor value.
 static TypedAttr getShapeAttr(Value v) {
-  return cast<MO::TensorType>(v.getType()).getShapeAttr();
+  return cast<MO::TensorType>(v.getType()).getShape();
 }
 
 LogicalResult Impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {

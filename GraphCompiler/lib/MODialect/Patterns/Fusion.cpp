@@ -546,7 +546,7 @@ struct ForceMatmulTransposeBForGPU
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(getContext(), "NK");
 
     // Transpose weights (assume to be folded by constant-folding)
-    auto oldShape = weights.getType().getTypedShapeAttr().getValues();
+    auto oldShape = weights.getType().getShape().getValues();
     SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
     auto newTransposeTy =
         weights.getType().cloneWith(newShape).cloneWith(matmulWeightsLayout);
@@ -764,7 +764,7 @@ struct ConvConstFilterPattern
       // Build the RSCF shape from the FCRS shape.
       SmallVector<TypedAttr> rscfDims;
       for (auto idx : perm)
-        rscfDims.push_back(filterType.getTypedShapeAttr().getValues()[idx]);
+        rscfDims.push_back(filterType.getShape().getValues()[idx]);
       auto rscfShapeAttr =
           MOSH::ShapeAttr::get(rscfDims, rewriter.getType<MOSH::ShapeType>());
 
@@ -1380,7 +1380,7 @@ public:
   TensorValue getTopOfPattern() { return patternInput; }
 
   TypedAttr getAttentionMaskShape() {
-    return conditionalStatement.getType().getShapeAttr();
+    return conditionalStatement.getType().getShape();
   }
 
   // Return the conditional such that masking should be applied in the "false"
@@ -1522,7 +1522,7 @@ private:
 
 public:
   TypedAttr getAttentionMaskShape() {
-    return attentionMask.getType().getShapeAttr();
+    return attentionMask.getType().getShape();
   }
   TensorValue getTopOfPattern() { return patternInput; }
   TensorValue getAttentionMask() { return attentionMask; }
@@ -1993,9 +1993,7 @@ private:
       MOSH::ShapeAttr attentionMaskShape =
           cast<MOSH::ShapeAttr>(maskingMatcher->getAttentionMaskShape());
       MOSH::ShapeAttr attentionMatrixShape =
-          normalizationMatcher->getAttentionMatrix()
-              .getType()
-              .getTypedShapeAttr();
+          normalizationMatcher->getAttentionMatrix().getType().getShape();
 
       bool sameRank =
           attentionMaskShape.getRank() == attentionMatrixShape.getRank();
@@ -2223,9 +2221,8 @@ struct MultiHeadAttentionPattern
     // Where the issue is rewriting the pattern would rewrite %bmm1 and
     // remove the definition of `N1` `N2` and `N3`.
 
-    TypedAttr beforeShape =
-        unsafeBCast.getInput().getType().getTypedShapeAttr();
-    TypedAttr afterShape = unsafeBCast.getResult().getType().getShapeAttr();
+    TypedAttr beforeShape = unsafeBCast.getInput().getType().getShape();
+    TypedAttr afterShape = unsafeBCast.getResult().getType().getShape();
 
     GraphOp graphOp = unsafeBCast->getParentOfType<GraphOp>();
     Location loc = unsafeBCast->getLoc();
@@ -2310,8 +2307,8 @@ struct MultiHeadAttentionPattern
       // Runtime Check: all reshapes/bcasts really do nothing to shape.
       for (TensorType equivalentShapeTy : equivalentShapes) {
         insertShapeGuard(
-            rewriter, graphOp, equivalentShapeTy.getShapeAttr(),
-            start.getType().getShapeAttr(), start.getLoc(),
+            rewriter, graphOp, equivalentShapeTy.getShape(),
+            start.getType().getShape(), start.getLoc(),
             "MHA_QKV_TRANSPOSE_BCAST_OR_RESHAPE_CHECK",
             "MHA Pattern Detected unsafe broadcast/reshape. This is of great "
             "interest so please report!");
@@ -2328,7 +2325,7 @@ struct MultiHeadAttentionPattern
       ASSERT_STREAM(rank == 3 || rank == 4, << "Support only rank3/4 inputs.");
 
       SmallVector<TypedAttr> answer;
-      auto curDims = value.getType().getTypedShapeAttr().getValues();
+      auto curDims = value.getType().getShape().getValues();
       if (curDims.size() == 3)
         answer.push_back(ShapeAttr::getDim(rewriter.getContext(), 1));
 
@@ -2501,9 +2498,9 @@ struct MultiHeadAttentionPattern
 
     // Flash attention pattern includes the transposes from `mhaResult`
     // which is BHSD to BSHD.
-    SmallVector<TypedAttr> initialOutputShape = {
-        rootOp.getType().getTypedShapeAttr().getValues().begin(),
-        rootOp.getType().getTypedShapeAttr().getValues().end()};
+    SmallVector<TypedAttr> initialOutputShape =
+        llvm::to_vector(rootOp.getType().getShape().getValues());
+
     if (initialOutputShape.size() == 3) {
       // add elided batch dimension if needed
       initialOutputShape.insert(initialOutputShape.begin(),
@@ -2516,7 +2513,7 @@ struct MultiHeadAttentionPattern
       if (val.getType().getRank() == 4)
         return val;
 
-      ArrayRef<TypedAttr> dims = val.getType().getTypedShapeAttr().getValues();
+      ArrayRef<TypedAttr> dims = val.getType().getShape().getValues();
       ASSERT_STREAM(dims.size() == 3, << "Only expect rank 3!");
       SmallVector<TypedAttr> valShape{
           ShapeAttr::getDim(rewriter.getContext(), 1), dims[0], dims[1],
@@ -2623,9 +2620,9 @@ struct MultiHeadAttentionPattern
     auto finalTranspose = dyn_cast<TransposeOp>(curOp);
     auto transposeIsStaticallyWrong = [&]() {
       ArrayRef<TypedAttr> transposeShapeAttr =
-          finalTranspose.getType().getTypedShapeAttr().getValues();
+          finalTranspose.getType().getShape().getValues();
       ArrayRef<TypedAttr> finalResultShapeAttr =
-          mhaResult.getType().getTypedShapeAttr().getValues();
+          mhaResult.getType().getShape().getValues();
       return llvm::any_of(llvm::zip(transposeShapeAttr, finalResultShapeAttr),
                           [&](std::tuple<TypedAttr, TypedAttr> values) {
                             auto &[a, b] = values;
@@ -2663,9 +2660,8 @@ struct MultiHeadAttentionPattern
       }
 
       // Runtime Check 2: make sure the transpose does go to BSHD.
-      insertShapeGuard(rewriter, graphOp,
-                       finalTranspose.getType().getShapeAttr(),
-                       mhaResult.getType().getShapeAttr(), rootOp->getLoc(),
+      insertShapeGuard(rewriter, graphOp, finalTranspose.getType().getShape(),
+                       mhaResult.getType().getShape(), rootOp->getLoc(),
                        "MHA_ROOT_TRANSPOSE_BSHD_CHECK",
                        "MHA Pattern Detected final transpose does not go to "
                        "BSHD layout. This is of great "
@@ -2686,8 +2682,7 @@ struct MultiHeadAttentionPattern
       // Insert a final transpose to move from BSHD --> BHSD.
       // This will be canonicalized away in case of adjacent transposes.
       SmallVector<TypedAttr> finalOutputShape =
-          permute(mhaResult.getType().getTypedShapeAttr().getValues(),
-                  permuteBHSD2BSHD);
+          permute(mhaResult.getType().getShape().getValues(), permuteBHSD2BSHD);
       TensorType finalTy = mhaResult.getType().cloneWith(finalOutputShape);
       auto finalOp = rewriter.create<TransposeOp>(
           mhaResult.getLoc(), finalTy, mhaResult, permuteBSHD2BHSDValue);
@@ -5003,9 +4998,9 @@ struct ConcatSlicePattern
     }
 
     auto innerInputDim =
-        sliceOp.getInput().getType().getTypedShapeAttr().getValues().back();
+        sliceOp.getInput().getType().getShape().getValues().back();
     auto innerOutputDim =
-        sliceOp.getResult().getType().getTypedShapeAttr().getValues().back();
+        sliceOp.getResult().getType().getShape().getValues().back();
     if (innerInputDim != innerOutputDim) {
       return rewriter.notifyMatchFailure(
           sliceOp, "slicing the inner dimension isn't supported");
@@ -5041,8 +5036,8 @@ private:
     bool nonOneDim = false;
 
     for (unsigned i = 0; i < rank; ++i) {
-      bool dimMightBeSliced = inputTy.getTypedShapeAttr().getValues()[i] !=
-                              resultTy.getTypedShapeAttr().getValues()[i];
+      bool dimMightBeSliced = inputTy.getShape().getValues()[i] !=
+                              resultTy.getShape().getValues()[i];
 
       if (dimMightBeSliced && nonOneDim)
         return false;

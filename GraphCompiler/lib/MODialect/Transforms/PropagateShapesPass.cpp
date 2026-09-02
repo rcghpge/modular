@@ -43,11 +43,10 @@ namespace M::MO {
 // refers to params not yet declared in the caller graph.
 static SmallVector<KGEN::ParamDeclAttr> collectDeclsFromShape(TensorType ty) {
   llvm::SmallSetVector<KGEN::ParamDeclAttr, 4> decls;
-  if (auto shape = dyn_cast<MOSH::ShapeAttr>(ty.getShapeAttr())) {
-    for (TypedAttr dim : shape.getValues())
-      if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-        decls.insert(KGEN::ParamDeclAttr::get(ref));
-  }
+  auto shape = ty.getShape();
+  for (TypedAttr dim : shape.getValues())
+    if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      decls.insert(KGEN::ParamDeclAttr::get(ref));
   return decls.takeVector();
 }
 
@@ -381,7 +380,7 @@ namespace {
 static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
   // Base case -- source of shape tensor.
   if (auto shapeOfOp = val.getDefiningOp<ShapeOfOp>())
-    return shapeOfOp.getInput().getType().getShapeAttr();
+    return shapeOfOp.getInput().getType().getShape();
 
   if (auto paramToValue = val.getDefiningOp<MOSH::ParamToValueOp>())
     if (isa<IntegerType, KGEN::SIMDType, MOSH::ShapeType>(
@@ -533,7 +532,7 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
         //   kgen.param.decare D1 = <N0>
         //   kgen.param.decare D2 = <add(N1, 10)>
         ShapeAttr annotatedOutShape =
-            cast<TensorType>(res.getType()).getTypedShapeAttr();
+            cast<TensorType>(res.getType()).getShape();
         size_t returnedRank = outputShape.getRank();
         size_t annotatedRank = annotatedOutShape.getRank();
         if (returnedRank != annotatedRank) {
@@ -982,7 +981,7 @@ struct PropagateShapes {
         if (!tensorInput)
           return success();
 
-        inputAttrs.push_back(tensorInput.getType().getShapeAttr());
+        inputAttrs.push_back(tensorInput.getType().getShape());
       }
     }
 
@@ -1144,8 +1143,7 @@ struct PropagateShapes {
         // Skip if input shape is still dynamically ranked. At this stage, it
         // indicates a rare scenario where there might be a real dynamic rank,
         // which our stack doesn't support at the moment.
-        if (auto inputShape = dyn_cast<ShapeAttr>(
-                shapeOfOp.getInput().getType().getShapeAttr())) {
+        if (auto inputShape = shapeOfOp.getInput().getType().getShape()) {
           // Change
           //   mo.shape_of<() -> D1> : [N1, N2] -> [D1]
           // to
@@ -1293,7 +1291,7 @@ struct PropagateShapes {
     //    understand model semantics)
     graphOp.walk([&](ShapeOfOp op) {
       ImplicitLocOpBuilder builder(op.getLoc(), op);
-      TypedAttr inputShape = op.getInput().getType().getShapeAttr();
+      TypedAttr inputShape = op.getInput().getType().getShape();
       auto shConst = MOSH::ParamToValueOp::create(builder, inputShape);
       auto toTensor = Shape::ToTensorOp::create(builder, op.getType(), shConst);
       op.replaceAllUsesWith(toTensor.getResult());

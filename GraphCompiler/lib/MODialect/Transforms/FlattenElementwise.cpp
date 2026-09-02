@@ -44,7 +44,7 @@ void flattenElemwiseOp(ElemwiseInterfaceT elemwise, OpBuilder &builder) {
     return;
 
   // compute shape of new flattened tensor
-  MOSH::ShapeAttr shape = resTt.getTypedShapeAttr();
+  MOSH::ShapeAttr shape = resTt.getShape();
   TypedAttr flattenedSize = shape.getSymbolicNumElements();
   MOSH::ShapeAttr newShape =
       MOSH::ShapeAttr::get({flattenedSize}, shape.getType());

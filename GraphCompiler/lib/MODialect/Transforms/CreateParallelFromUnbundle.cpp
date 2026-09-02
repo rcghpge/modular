@@ -135,7 +135,7 @@ static bool canBundlePerLaunch(ArrayRef<Value> perLaunchValues,
   // Check that shapes and dtypes agree across launches.
   for (Value v : perLaunchValues.drop_front()) {
     auto ty = dyn_cast<TensorType>(v.getType());
-    if (!ty || firstTy.getShapeAttr() != ty.getShapeAttr() ||
+    if (!ty || firstTy.getShape() != ty.getShape() ||
         firstTy.getDtype() != ty.getDtype())
       return false;
   }

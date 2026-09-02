@@ -189,7 +189,7 @@ lowerElementwiseToForeach(Operation *op,
   Location loc = op->getLoc();
   OpBuilder builder(op);
 
-  MOSH::ShapeAttr shapeAttr = resultTensorTy.getTypedShapeAttr();
+  MOSH::ShapeAttr shapeAttr = resultTensorTy.getShape();
   unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
   Type elemTy = resultTensorTy.getElementType();
 
@@ -260,7 +260,7 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
   OpBuilder builder(op);
 
   MO::TensorType bufferAsTensorTy = op.getInBuffer().getType().toTensorType();
-  MOSH::ShapeAttr shapeAttr = bufferAsTensorTy.getTypedShapeAttr();
+  MOSH::ShapeAttr shapeAttr = bufferAsTensorTy.getShape();
   unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
   Type elemTy = bufferAsTensorTy.getElementType();
 
@@ -318,8 +318,8 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
 
   auto inputTy = cast<MO::TensorType>(op.getInput().getType());
   auto outputTy = cast<MO::TensorType>(op.getResult().getType());
-  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
-  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr inShape = inputTy.getShape();
+  MOSH::ShapeAttr outShape = outputTy.getShape();
   if (inShape.getRank() != outShape.getRank())
     return op->emitOpError("MOToMAP: slice must preserve rank");
   int64_t rank = outShape.getRank();
@@ -387,8 +387,8 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
 
   auto inputTy = cast<MO::TensorType>(op.getInput().getType());
   auto outputTy = cast<MO::TensorType>(op.getResult().getType());
-  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
-  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr inShape = inputTy.getShape();
+  MOSH::ShapeAttr outShape = outputTy.getShape();
   if (inShape.getRank() > outShape.getRank())
     return op->emitOpError("MOToMAP: broadcast cannot reduce rank");
   int64_t inRank = inShape.getRank();
@@ -443,8 +443,8 @@ LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
 
   auto inputTy = cast<MO::TensorType>(op.getInput().getType());
   auto outputTy = cast<MO::TensorType>(op.getResult().getType());
-  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
-  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr inShape = inputTy.getShape();
+  MOSH::ShapeAttr outShape = outputTy.getShape();
   int64_t inRank = inShape.getRank();
   int64_t outRank = outShape.getRank();
 
@@ -499,8 +499,8 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op,
 
   auto inputTy = cast<MO::TensorType>(op.getInput().getType());
   auto outputTy = cast<MO::TensorType>(op.getResult().getType());
-  MOSH::ShapeAttr inShape = inputTy.getTypedShapeAttr();
-  MOSH::ShapeAttr outShape = outputTy.getTypedShapeAttr();
+  MOSH::ShapeAttr inShape = inputTy.getShape();
+  MOSH::ShapeAttr outShape = outputTy.getShape();
   if (inShape.getRank() != outShape.getRank())
     return op->emitOpError("MOToMAP: transpose must preserve rank");
   int64_t rank = outShape.getRank();

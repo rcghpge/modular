@@ -84,7 +84,7 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     // The type can either be a shape or a tensor.
     MO::TensorType asTensor = MO::dynCastFromTensorLike(t);
     if (asTensor)
-      shape = asTensor.getTypedShapeAttr();
+      shape = asTensor.getShape();
 
     if (!shape)
       return;

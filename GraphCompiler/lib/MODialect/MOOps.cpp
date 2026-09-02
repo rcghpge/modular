@@ -373,7 +373,7 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
     if (auto funcOutTensorTy = dyn_cast<TensorType>(funcOutTy)) {
       auto newOutTensorTy = cast<TensorType>(newOutTy);
       newResTy = TensorType::get(
-          funcOutTensorTy.getShapeAttr(), funcOutTensorTy.getDtype(),
+          funcOutTensorTy.getShape(), funcOutTensorTy.getDtype(),
           newOutTensorTy.getDeviceRef(), newOutTensorTy.getMetadata());
     }
 
@@ -381,7 +381,7 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
       auto newOutBufferTy = cast<BufferType>(newOutTy);
 
       newResTy = BufferType::get(
-          funcOutBufferTy.getShapeAttr(), funcOutBufferTy.getDtype(),
+          funcOutBufferTy.getShape(), funcOutBufferTy.getDtype(),
           newOutBufferTy.getDeviceRef(), newOutBufferTy.getMetadata());
     }
 
@@ -794,12 +794,12 @@ LogicalResult OutputOp::verify() {
   SmallVector<Type> expectedOutputOperandTypes;
   for (Type ty : graph.getResultTypes()) {
     if (auto tensorTy = dyn_cast<TensorType>(ty)) {
-      TypedAttr newShapeAttr = cast<TypedAttr>(tensorTy.getShapeAttr().replace(
+      auto newShape = cast<MOSH::ShapeAttr>(tensorTy.getShape().replace(
           [&resParamRefToBindingAttr](KGEN::ParamDeclRefAttr paramRef) {
             TypedAttr resolvedAttr = resParamRefToBindingAttr.lookup(paramRef);
             return resolvedAttr ? resolvedAttr : paramRef;
           }));
-      expectedOutputOperandTypes.emplace_back(tensorTy.cloneWith(newShapeAttr));
+      expectedOutputOperandTypes.emplace_back(tensorTy.cloneWith(newShape));
     } else {
       expectedOutputOperandTypes.emplace_back(ty);
     }
@@ -1483,7 +1483,7 @@ static bool typesMatchIgnoringDeviceId(Type a, Type b) {
     auto tensorB = dyn_cast<TensorType>(b);
     if (!tensorB)
       return false;
-    return tensorA.getShapeAttr() == tensorB.getShapeAttr() &&
+    return tensorA.getShape() == tensorB.getShape() &&
            tensorA.getDtype() == tensorB.getDtype() &&
            deviceLabelsMatch(tensorA.getDeviceRef(), tensorB.getDeviceRef());
   }
@@ -1491,7 +1491,7 @@ static bool typesMatchIgnoringDeviceId(Type a, Type b) {
     auto bufferB = dyn_cast<BufferType>(b);
     if (!bufferB)
       return false;
-    return bufferA.getShapeAttr() == bufferB.getShapeAttr() &&
+    return bufferA.getShape() == bufferB.getShape() &&
            bufferA.getDtype() == bufferB.getDtype() &&
            deviceLabelsMatch(bufferA.getDeviceRef(), bufferB.getDeviceRef());
   }
@@ -1810,8 +1810,8 @@ static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
     if (inputTy.getRank() > resTy.getRank())
       return Error("result rank must be at least the input rank");
 
-    ArrayRef<TypedAttr> fromDims = inputTy.getTypedShapeAttr().getValues();
-    ArrayRef<TypedAttr> toDims = resTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> fromDims = inputTy.getShape().getValues();
+    ArrayRef<TypedAttr> toDims = resTy.getShape().getValues();
     for (auto [fromDim, toDim] :
          llvm::zip(llvm::reverse(fromDims), llvm::reverse(toDims))) {
       auto fromIntDim = tryGetConstantInt(fromDim);
@@ -1856,7 +1856,7 @@ void BroadcastToOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                           TensorValue input, TensorValue broadcastLike,
                           TensorValue broadcastShape) {
   TensorType resultTy =
-      input.getType().cloneWith(broadcastLike.getType().getShapeAttr());
+      input.getType().cloneWith(broadcastLike.getType().getShape());
 
   // Note broadcastShape may be null
   if (!broadcastShape)
@@ -2265,7 +2265,7 @@ LogicalResult ScatterOp::verify() {
 
   // Input and result shapes must match if both static.
   if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
-      inputTy.getShapeAttr() != resTy.getShapeAttr()) {
+      inputTy.getShape() != resTy.getShape()) {
     return emitError("input and result shapes must match if both static");
   }
 
@@ -2349,7 +2349,7 @@ template <typename Op>
 static LogicalResult
 verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
                       size_t &dynamicOutDims, size_t &reducedDims) {
-  auto inDim = inputTy.getTypedShapeAttr().getIntDim(axis);
+  auto inDim = inputTy.getShape().getIntDim(axis);
   if (mlir::ShapedType::isDynamic(resDim) ||
       mlir::ShapedType::isDynamic(inDim)) {
     ++dynamicOutDims;
@@ -2399,7 +2399,7 @@ static LogicalResult argVerify(Op *op) {
     size_t dynamicOutDims = 0;
 
     for (int64_t axis = 0, rank = resTy.getRank(); axis < rank; ++axis) {
-      int64_t resDim = resTy.getTypedShapeAttr().getIntDim(axis);
+      int64_t resDim = resTy.getShape().getIntDim(axis);
 
       if ((axis == optAxis) && (resDim != 1) &&
           !mlir::ShapedType::isDynamic(resDim))
@@ -2466,8 +2466,8 @@ LogicalResult CumSumOp::verify() {
   if (inputType.getDtype() != resultType.getDtype())
     return emitOpError("Expect input and result DTypes to be the same.");
 
-  auto inDimAttrs = dyn_cast<ShapeAttr>(inputType.getShapeAttr());
-  auto outDimAttrs = dyn_cast<ShapeAttr>(resultType.getShapeAttr());
+  auto inDimAttrs = inputType.getShape();
+  auto outDimAttrs = resultType.getShape();
   if (inDimAttrs && outDimAttrs) {
     for (auto [inDimAttr, outDimAttr] :
          llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
@@ -2638,8 +2638,8 @@ LogicalResult RebindOp::verify() {
     }
     return success();
   };
-  auto inDimAttrs = dyn_cast<ShapeAttr>(inTy.getShapeAttr());
-  auto outDimAttrs = dyn_cast<ShapeAttr>(outTy.getShapeAttr());
+  auto inDimAttrs = inTy.getShape();
+  auto outDimAttrs = outTy.getShape();
   if (inDimAttrs && outDimAttrs) {
     for (auto [inDimAttr, outDimAttr] :
          llvm::zip(inDimAttrs.getValues(), outDimAttrs.getValues())) {
@@ -2707,8 +2707,8 @@ void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 template <typename OrderKOpT>
 LogicalResult verifyOrderedKOp(OrderKOpT op) {
-  auto output1Shape = op.getValues().getType().getShapeAttr();
-  auto output2Shape = op.getIndices().getType().getShapeAttr();
+  auto output1Shape = op.getValues().getType().getShape();
+  auto output2Shape = op.getIndices().getType().getShape();
   if (output1Shape != output2Shape) {
     return op.emitOpError(
                "values and indices should have the same shape but got: ")
@@ -2729,8 +2729,7 @@ template <typename T>
 inline LogicalResult checkReshapeInOutTypesCompatible(T op) {
   TensorType inputTy = op.getInput().getType();
   TensorType resultTy = op.getType();
-  return checkReshapeShapesCompatible(inputTy.getTypedShapeAttr(),
-                                      resultTy.getTypedShapeAttr(),
+  return checkReshapeShapesCompatible(inputTy.getShape(), resultTy.getShape(),
                                       [&]() { return op.emitOpError(); });
 }
 
@@ -2997,7 +2996,7 @@ LogicalResult Static::ReshapeOp::verify() {
 
   TensorType resultTy = getResult().getType();
   if (resultTy.hasRank()) {
-    for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
+    for (auto curResDim : resultTy.getShape().getValues()) {
       if (auto intCurResDim = tryGetConstantInt(curResDim);
           intCurResDim && *intCurResDim == -1)
         return emitOpError("static reshape can not have inferred dimensions");
@@ -3130,8 +3129,8 @@ LogicalResult TransposeOp::verify() {
       return emitError("invalid permutations");
 
     if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
-        !llvm::equal(resTy.getTypedShapeAttr().getValues(),
-                     permute(inputTy.getTypedShapeAttr().getValues(), permVec)))
+        !llvm::equal(resTy.getShape().getValues(),
+                     permute(inputTy.getShape().getValues(), permVec)))
       return emitError("output shape is invalid based on constant permutation");
   }
 
@@ -3554,7 +3553,7 @@ LogicalResult AllReduceSumOp::verify() {
     auto groupInputType = getInputTensor(groupStart).getType();
     for (int64_t i = groupStart + 1, e = groupStart + groupSize; i < e; ++i) {
       auto inputType = getInputTensor(i).getType();
-      if (inputType.getTypedShapeAttr() != groupInputType.getTypedShapeAttr())
+      if (inputType.getShape() != groupInputType.getShape())
         return emitError(
             "all inputs in each allreduce group must have the same shape");
     }
@@ -3732,7 +3731,7 @@ LogicalResult ReduceScatterSumOp::verify() {
     auto groupInputType = getInputTensor(groupStart).getType();
     for (int64_t i = groupStart + 1, e = groupStart + groupSize; i < e; ++i) {
       auto inputType = getInputTensor(i).getType();
-      if (inputType.getTypedShapeAttr() != groupInputType.getTypedShapeAttr())
+      if (inputType.getShape() != groupInputType.getShape())
         return emitError(
             "all inputs in each reduce-scatter group must have the same shape");
     }
@@ -4042,7 +4041,7 @@ LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
 
   for (size_t i = 1; i < inputsA.size(); ++i) {
     auto aType = cast<TensorType>(inputsA[i].getType());
-    if (aType.getTypedShapeAttr() != firstAType.getTypedShapeAttr())
+    if (aType.getShape() != firstAType.getShape())
       return emitError("all A inputs must have the same shape");
     if (aType.getElementType() != firstAType.getElementType())
       return emitError("all A inputs must have the same element type");
@@ -4055,7 +4054,7 @@ LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
 
   for (size_t i = 1; i < inputsB.size(); ++i) {
     auto bType = cast<TensorType>(inputsB[i].getType());
-    if (bType.getTypedShapeAttr() != firstBType.getTypedShapeAttr())
+    if (bType.getShape() != firstBType.getShape())
       return emitError("all B inputs must have the same shape");
     if (bType.getElementType() != firstBType.getElementType())
       return emitError("all B inputs must have the same element type");
@@ -4192,7 +4191,7 @@ LogicalResult DistributedBroadcastOp::verify() {
   auto inputType = cast<TensorType>(getInput().getType());
   for (size_t i = 0; i < outputs.size(); ++i) {
     auto outputType = getOutputTensor(i).getType();
-    if (outputType.getTypedShapeAttr() != inputType.getTypedShapeAttr())
+    if (outputType.getShape() != inputType.getShape())
       return emitError("all outputs must have the same shape as the input");
     if (outputType.getElementType() != inputType.getElementType())
       return emitError(

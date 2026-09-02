@@ -14,10 +14,7 @@
 namespace M::MGP {
 
 inline MGP::TensorSpecType createTensorSpecType(MO::TensorType tensor) {
-  SmallVector<int64_t> shape{}; // Defaults to empty shape
-
-  if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensor.getShapeAttr()))
-    shape = shapeAttr.getIntDims();
+  auto shape = tensor.getShape().getIntDims();
   return MGP::TensorSpecType::get(shape, tensor.getElementType());
 }
 

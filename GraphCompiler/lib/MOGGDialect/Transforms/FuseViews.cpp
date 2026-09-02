@@ -63,7 +63,7 @@ bool isViewKernelOfType(Operation *op) {
 /// Returns the first non-size-1 dimension index of inputType, or rank if all
 /// dimensions have size 1.
 static uint64_t findSliceDim(MO::TensorType inputType) {
-  auto inputShape = inputType.getTypedShapeAttr().getValues();
+  auto inputShape = inputType.getShape().getValues();
   uint64_t k = inputType.getRank();
   for (uint64_t i = 0; i < inputType.getRank(); ++i) {
     auto asInt = dyn_cast<IntegerAttr>(inputShape[i]);
@@ -101,8 +101,8 @@ static bool isContiguousSliceKernel(Operation *op) {
   if (!maybeStepValue)
     return false;
 
-  auto inputShape = inputType.getTypedShapeAttr().getValues();
-  auto outputShape = outputType.getTypedShapeAttr().getValues();
+  auto inputShape = inputType.getShape().getValues();
+  auto outputShape = outputType.getShape().getValues();
   uint64_t k = findSliceDim(inputType);
 
   if (k < inputType.getRank() && (*maybeStepValue)[k] != 1)

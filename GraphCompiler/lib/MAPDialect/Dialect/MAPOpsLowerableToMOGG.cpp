@@ -64,7 +64,7 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
                   bool isMut, MAPToMOGGState &state) {
   auto tensorTy = cast<MO::TensorType>(tensorType);
   MLIRContext *ctx = state.builder.getContext();
-  MOSH::ShapeAttr shapeAttr = tensorTy.getTypedShapeAttr();
+  MOSH::ShapeAttr shapeAttr = tensorTy.getShape();
   Value shape = buildShape(loc, shapeAttr, state);
   return MOGG::TensorCreateOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), ptr, shape, shapeAttr,
@@ -216,7 +216,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // Build the output shape / dtype for the tensor.
   auto resultTy = cast<MO::TensorType>(getResult().getType());
-  Value outShape = buildShape(loc, resultTy.getTypedShapeAttr(), state);
+  Value outShape = buildShape(loc, resultTy.getShape(), state);
   Type outElemType = resultTy.getElementType();
 
   ErrorOr<MOGG::KernelOutputFusionLambdaType> kindOr =
@@ -318,7 +318,7 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   auto resultTy = cast<MO::TensorType>(getResult().getType());
   auto prologueOp = MOGG::TensorCreatePrologueOp::create(
       state.builder, loc, /*tensor=*/MOGG::TensorType::get(ctx),
-      /*shape=*/buildShape(loc, resultTy.getTypedShapeAttr(), state),
+      /*shape=*/buildShape(loc, resultTy.getShape(), state),
       /*captures=*/moggCaptures, /*device=*/state.device,
       /*elementType=*/TypeAttr::get(resultTy.getElementType()),
       /*mut=*/state.builder.getBoolAttr(false),
@@ -546,8 +546,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // from any I/O tensor's shape for a broadcast).
   auto collectDims = [&](TypeRange types) {
     for (Type ty : types)
-      for (Attribute dim :
-           MO::castFromTensorLike(ty).getTypedShapeAttr().getValues())
+      for (Attribute dim : MO::castFromTensorLike(ty).getShape().getValues())
         if (isDynamicDim(dim))
           state.dimArgs.insert({dim, BlockArgument()});
   };

@@ -176,7 +176,7 @@ LogicalResult materializeShapeInference(RebindOp op,
     return failure();
   // TODO lift into a method on MO::TensorType?
   Location loc = op.getLoc();
-  TypedAttr inputShapeAttr = op.getInput().getType().getShapeAttr();
+  TypedAttr inputShapeAttr = op.getInput().getType().getShape();
   if (paramDecls.size() == 1) {
     KGEN::ParamDeclAttr newDecl = paramDecls.front();
     if (isa<ShapeType>(newDecl.getType())) {
@@ -187,8 +187,7 @@ LogicalResult materializeShapeInference(RebindOp op,
       return success();
     }
   }
-  TypedAttr outputShapeAttr = op.getResult().getType().getShapeAttr();
-  auto outputDimAttrs = dyn_cast<ShapeAttr>(outputShapeAttr);
+  ShapeAttr outputDimAttrs = op.getResult().getType().getShape();
   bool allDeclsAreDimAttrs = llvm::all_of(paramDecls, [](ParamDeclAttr decl) {
     return ShapeAttr::isDimType(decl.getType());
   });
@@ -1361,7 +1360,7 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   auto inputArr = dyn_cast_if_present<ArrayElementsAttr>(adaptor.getInput());
   auto shapeArr =
       dyn_cast_if_present<IntArrayElementsAttr>(adaptor.getNewShape());
-  auto outputShapeAttr = dyn_cast<ShapeAttr>(getType().getShapeAttr());
+  auto outputShapeAttr = getType().getShape();
   if (!inputArr || !shapeArr || !outputShapeAttr)
     return {};
 
@@ -1436,8 +1435,8 @@ LogicalResult ShapeOfOp::canonicalize(ShapeOfOp op, PatternRewriter &rewriter) {
   if (!inputTy.hasRank())
     return failure();
 
-  auto moshVal = MOSH::ParamToValueOp::create(rewriter, op.getLoc(),
-                                              inputTy.getShapeAttr());
+  auto moshVal =
+      MOSH::ParamToValueOp::create(rewriter, op.getLoc(), inputTy.getShape());
   rewriter.replaceOpWithNewOp<MO::Shape::ToTensorOp>(op, resTy, moshVal);
   return success();
 }
@@ -1678,7 +1677,7 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
 OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
   if (auto inputArr =
           dyn_cast_if_present<ArrayElementsAttr>(adaptor.getInput())) {
-    auto outputShape = dyn_cast<ShapeAttr>(getType().getShapeAttr());
+    auto outputShape = getType().getShape();
     if (outputShape && outputShape.isStatic())
       return foldReshape(outputShape.getIntDims(), inputArr);
   }
@@ -1773,7 +1772,7 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
     return success();
   }
 
-  if (resTy.getShapeAttr() == inputTy.getShapeAttr()) {
+  if (resTy.getShape() == inputTy.getShape()) {
     // Be careful not to drop any non-shape info like metadata in TensorType.
     if (resTy == inputTy)
       rewriter.replaceAllUsesExcept(op, inputVal, op);
@@ -1969,7 +1968,7 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
   // - [8, 5, 50, 1, 1, 1, 1, 1]
   // replacing with equivalent reshapes are all allowed
   int64_t indexLastNonOneDim = -1; // should always be increasing
-  MOSH::ShapeAttr inputShape = op.getInput().getType().getTypedShapeAttr();
+  MOSH::ShapeAttr inputShape = op.getInput().getType().getShape();
   bool meetsReshapeRewriteCriteria = inputShape != nullptr;
   for (int64_t inputDimIndex : permVec) {
     if (!meetsReshapeRewriteCriteria) {

@@ -46,7 +46,7 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
   auto rollingShape = reshape.getInput().getType().cloneWithoutLayout();
 
   for (size_t i = 0; i < inRank - 1; ++i) {
-    auto shapeAttr = rollingShape.getTypedShapeAttr();
+    auto shapeAttr = rollingShape.getShape();
     SmallVector<TypedAttr> newShape{shapeAttr.getValues()};
 
     auto dimIdx = shapeAttr.getSize() - 1;
@@ -108,12 +108,12 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
   ASSERT_STREAM(inRank == 1 && outRank > 1,
                 "Expected a reshape to be an unflattening reshape");
 
-  auto outputShapeAttr = reshape.getType().getTypedShapeAttr();
+  auto outputShapeAttr = reshape.getType().getShape();
   SplitDimOp lastSplitOp;
   auto rollingShape = reshape.getInput().getType().cloneWithoutLayout();
 
   for (size_t i = 0; i < outRank - 1; ++i) {
-    auto shapeAttr = rollingShape.getTypedShapeAttr();
+    auto shapeAttr = rollingShape.getShape();
     SmallVector<TypedAttr> newShape{shapeAttr.getValues()};
 
     auto dimIdx = shapeAttr.getSize() - 1;
@@ -214,9 +214,8 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
   builder.setInsertionPointAfter(reshape);
   TensorType outType = reshape.getType();
 
-  MOSH::ShapeAttr inShapeAttr =
-      reshape.getInput().getType().getTypedShapeAttr();
-  MOSH::ShapeAttr outShapeAttr = outType.getTypedShapeAttr();
+  MOSH::ShapeAttr inShapeAttr = reshape.getInput().getType().getShape();
+  MOSH::ShapeAttr outShapeAttr = outType.getShape();
   size_t inRank = reshape.getInput().getType().getRank();
   size_t outRank = reshape.getType().getRank();
 
@@ -258,7 +257,7 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
     if (!asInt || *asInt != 1)
       continue;
 
-    MOSH::ShapeAttr shapeAttr = rollingShape.getTypedShapeAttr();
+    MOSH::ShapeAttr shapeAttr = rollingShape.getShape();
     SmallVector<TypedAttr> newShape{shapeAttr.getValues()};
     newShape.insert(newShape.begin() + idx,
                     MOSH::ShapeAttr::getDim(builder.getContext(), 1));
@@ -284,9 +283,8 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
 
   // Try split dimension. Super specific for 2D -> 3D split for now.
   if (newInRank == 2 && newOutRank == 3) {
-    MOSH::ShapeAttr outShapeAttr = reshape.getType().getTypedShapeAttr();
-    MOSH::ShapeAttr inShapeAttr =
-        reshape.getInput().getType().getTypedShapeAttr();
+    MOSH::ShapeAttr outShapeAttr = reshape.getType().getShape();
+    MOSH::ShapeAttr inShapeAttr = reshape.getInput().getType().getShape();
 
     // Pattern match [N, K] -> [n1, n2, K]
     if (outShapeAttr[0] != inShapeAttr[0] &&

@@ -336,8 +336,8 @@ struct ConvToMatmulPattern
                                    filterLayout.getFormat() == "FCQRS");
 
     // Check filter size — spatial dims must be 1x1.
-    ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
-    ArrayRef<TypedAttr> filterDims = filterTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> inputDims = inputTy.getShape().getValues();
+    ArrayRef<TypedAttr> filterDims = filterTy.getShape().getValues();
     TypedAttr intOneAttr = rewriter.getDimAttr(1);
     size_t spatialStart = isFCRS ? 2 : 0;
     if (filterDims[spatialStart] != intOneAttr ||
@@ -1993,7 +1993,7 @@ struct MathematicalSimplificationPowByFloatToPowByInt
         std::abs(exponent) < std::numeric_limits<int32_t>::max() ? 32 : 64;
 
     auto bcastIntType = TensorType::get(
-        powOp.getType().getShapeAttr(), rewriter.getIntegerType(bitWidth, true),
+        powOp.getType().getShape(), rewriter.getIntegerType(bitWidth, true),
         powOp.getType().getDeviceRef(), powOp.getType().getMetadata());
     auto newCst = createBroadcastedScalarConstantOpOfType(
         bcastIntType, int64_t(exponent), rewriter, powOp.getLoc());
@@ -2175,7 +2175,7 @@ struct GathersToSplitPattern
 /// permuted by `perm`.
 static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
   SmallVector<TypedAttr> permutedDims =
-      permute(ty.getTypedShapeAttr().getValues(), perm);
+      permute(ty.getShape().getValues(), perm);
   auto shapeTy = ShapeType::get(ty.getContext());
   return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
 }
@@ -2239,10 +2239,9 @@ struct SplitAndSqueezesPattern
       return false;
 
     auto intOneAttr = rewriter.getDimAttr(1);
-    SmallVector<TypedAttr> expectedInDims(
-        outTy.getTypedShapeAttr().getValues());
+    SmallVector<TypedAttr> expectedInDims(outTy.getShape().getValues());
     expectedInDims.insert(expectedInDims.begin() + squeezeAxis, intOneAttr);
-    ArrayRef<TypedAttr> inDims = inTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> inDims = inTy.getShape().getValues();
     for (auto [inDim, inferredInDim, expectedInDim] :
          llvm::zip(inDims, inferredInDims, expectedInDims)) {
       TypedAttr resolvedInDim =
@@ -2290,7 +2289,7 @@ struct SplitAndSqueezesPattern
 
     // NOTE this is basically doing shape inference, because we currently don't
     // have parameterization and shape function for `mo.split`.
-    ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> inputDims = inputTy.getShape().getValues();
     SmallVector<TypedAttr> inferredResDims(inputDims);
     inferredResDims[splitAxis] = rewriter.getDimAttr(1);
 

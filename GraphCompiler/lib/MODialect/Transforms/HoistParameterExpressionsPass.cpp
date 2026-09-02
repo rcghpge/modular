@@ -66,9 +66,7 @@ struct RewriteParamExprTypes : public RewritePattern {
     auto tensorTy = dyn_cast<MO::TensorType>(ty);
     if (!tensorTy)
       return false;
-    auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensorTy.getShapeAttr());
-    if (!shapeAttr)
-      return false;
+    auto shapeAttr = tensorTy.getShape();
     for (TypedAttr dimValue : shapeAttr.getValues()) {
       auto paramOp = dyn_cast<KGEN::ParamOperatorAttr>(dimValue);
       if (!paramOp)

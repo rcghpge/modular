@@ -280,7 +280,7 @@ getNewParameterMapping(GraphOp &graph, TensorType outTy,
                        ArrayRef<ParamDeclAttr> outputParamDecls) {
   MLIRContext *ctx = graph.getContext();
   if (auto rankedParamDeclRef =
-          dyn_cast<KGEN::ParamDeclRefAttr>(outTy.getShapeAttr())) {
+          dyn_cast<KGEN::ParamDeclRefAttr>(outTy.getShape())) {
     auto paramDecl = KGEN::ParamDeclAttr::get(rankedParamDeclRef);
     return KGEN::ParamDeclArrayAttr::get(ctx, {paramDecl});
   }
@@ -315,7 +315,7 @@ getNewParameterMapping(GraphOp &graph, TensorType outTy,
 
   // Parameters assumed to be in order. Add the index of each symbolic
   // dimension.
-  for (auto dim : outTy.getTypedShapeAttr().getValues()) {
+  for (auto dim : outTy.getShape().getValues()) {
     params.push_back(getShapeFuncSymbol(dim));
   }
   return KGEN::ParamDeclArrayAttr::get(graph.getContext(), params);

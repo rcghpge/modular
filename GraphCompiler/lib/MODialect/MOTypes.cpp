@@ -30,23 +30,16 @@ using namespace MO;
 
 namespace {
 
-ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
-  auto shapeTy = p.getBuilder().getType<ShapeType>();
-  OptionalParseResult res = MOSH::parseShapeAttr(p, shapeAttr);
-  if (res.has_value() && succeeded(res.value()))
+ParseResult parseShapeParam(AsmParser &p, MOSH::ShapeAttr &shapeAttr) {
+  TypedAttr attr;
+  OptionalParseResult res = MOSH::parseShapeAttr(p, attr);
+  if (res.has_value() && succeeded(res.value())) {
+    shapeAttr = cast<MOSH::ShapeAttr>(attr);
     return success();
-
-  if (succeeded(KGEN::parseParamValue(p, shapeAttr, shapeTy))) {
-    if (isa<KGEN::ParamDeclRefAttr, KGEN::ParamIndexRefAttr>(shapeAttr))
-      return success();
-    return p.emitError(p.getCurrentLocation())
-           << "TensorType shape parameter must be ShapeAttr or "
-              "ParamDeclRefAttr, got: "
-           << shapeAttr;
   }
   return p.emitError(p.getCurrentLocation())
-         << "couldn't parse shape parameter: expected `?`, shape reference, or "
-            "literal shape reference (i.e. `[...]`)";
+         << "couldn't parse shape parameter: expected literal shape "
+            "reference (i.e. `[...]`)";
 }
 
 class TensorLikeTypeParser {
@@ -82,7 +75,7 @@ private:
   mlir::SMLoc startLoc;
 
   // Fields of tensor-like types
-  TypedAttr shape;
+  MOSH::ShapeAttr shape;
   DType dtype;
   DeviceRefAttr deviceRef;
   mlir::DictionaryAttr metadata;
@@ -232,24 +225,18 @@ Type TensorType::parse(AsmParser &parser) {
 }
 
 void TensorType::print(AsmPrinter &printer) const {
-  printTensorLikeType(printer, getShapeAttr(), getDtype(), getDeviceRef(),
+  printTensorLikeType(printer, getShape(), getDtype(), getDeviceRef(),
                       getMetadata());
 }
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 TypedAttr shapeAttr, DType dtype,
+                                 MOSH::ShapeAttr shape, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
   if (!deviceRef)
     return emitError() << "no device attribute was defined";
-
-  auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
-  if (!shape)
-    return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
-                          "allowed for tensor types, got: "
-                       << shapeAttr;
 
   if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
     return emitError() << "tensor dimensions must be a getDimType()";
@@ -314,18 +301,18 @@ DType M::MO::getDTypeOrInvalid(Type ty) {
 
 TypedAttr M::MO::getShape(Type ty) {
   if (auto tensorTy = dyn_cast<TensorType>(ty))
-    return tensorTy.getShapeAttr();
+    return tensorTy.getShape();
   else if (auto bufferTy = dyn_cast<BufferType>(ty))
-    return bufferTy.getShapeAttr();
+    return bufferTy.getShape();
 
   llvm_unreachable(
       "M::MO::getShape can only take MO::BufferType or MO::TensorType");
 }
 
 // Base builder which all others call
-TensorType TensorType::get(::mlir::MLIRContext *context, TypedAttr shapeAttr,
-                           DType dtype, DeviceRefAttr deviceRef,
-                           DictionaryAttr metadata) {
+TensorType TensorType::get(::mlir::MLIRContext *context,
+                           MOSH::ShapeAttr shapeAttr, DType dtype,
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   // Ensure device ref is always populated
   if (!deviceRef)
     deviceRef = DeviceRefAttr::getDefault(context);
@@ -337,7 +324,7 @@ TensorType TensorType::get(::mlir::MLIRContext *context, TypedAttr shapeAttr,
 // Checked base builder
 TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   ::mlir::MLIRContext *context,
-                                  TypedAttr shapeAttr, DType dtype,
+                                  MOSH::ShapeAttr shapeAttr, DType dtype,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
   if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
@@ -345,7 +332,7 @@ TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
   return TensorType::get(context, shapeAttr, dtype, deviceRef, metadata);
 }
 
-TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
+TensorType TensorType::get(MOSH::ShapeAttr shapeAttr, DType dtype,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   MLIRContext *ctx = shapeAttr.getContext();
   if (!metadata)
@@ -354,7 +341,7 @@ TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
 }
 
 TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  TypedAttr shapeAttr, DType dtype,
+                                  MOSH::ShapeAttr shapeAttr, DType dtype,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
   if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
@@ -362,7 +349,7 @@ TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
   return TensorType::get(shapeAttr, dtype, deviceRef, metadata);
 }
 
-TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
+TensorType TensorType::get(MOSH::ShapeAttr shapeAttr, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
   ASSERT_STREAM(!errOrDType.isError(),
@@ -372,7 +359,7 @@ TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
 }
 
 TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  TypedAttr shapeAttr, Type elementType,
+                                  MOSH::ShapeAttr shapeAttr, Type elementType,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
   ErrorOr<DType> dtype = fromMLIRType(elementType);
@@ -486,21 +473,15 @@ IOKindAttr TensorType::getIOKindAttr() {
 }
 
 // TODO: Delete this method.
-TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                 Type dtype) const {
+TensorType TensorType::cloneWith(ArrayRef<int64_t> shape, Type dtype) const {
   auto shapeTy = ShapeType::get(getContext());
-
-  TypedAttr shapeRef;
-  if (shape.has_value())
-    shapeRef = ShapeAttr::get(shape.value(), shapeTy);
-  else
-    shapeRef = KGEN::UnknownAttr::get(shapeTy);
+  auto shapeAttr = ShapeAttr::get(shape, shapeTy);
 
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as an M::DType: "
                 << errOrDType.takeError());
-  return TensorType::get(shapeRef, *errOrDType, getDeviceRef(), getMetadata());
+  return TensorType::get(shapeAttr, *errOrDType, getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {
@@ -509,44 +490,40 @@ TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {
   return TensorType::get(shapeAttr, getDtype(), getDeviceRef(), getMetadata());
 }
 
-TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
+TensorType TensorType::cloneWith(MOSH::ShapeAttr shapeAttr) const {
   return TensorType::get(shapeAttr, getDtype(), getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(DType dtype) const {
-  return TensorType::get(getShapeAttr(), dtype, getDeviceRef(), getMetadata());
+  return TensorType::get(getShape(), dtype, getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.set(kLayoutMetadataName, layoutAttr);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         newMetadata);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
 TensorType TensorType::cloneWithoutLayout() const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.erase(kLayoutMetadataName);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         newMetadata);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
 TensorType TensorType::cloneWith(IOKindAttr ioKindAttr) const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.set(kIOKindMetadataName, ioKindAttr);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         newMetadata);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
 TensorType TensorType::cloneWithoutIOKind() const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.erase(kIOKindMetadataName);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         newMetadata);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
 BoolAttr TensorType::getIsMutableAttr() {
@@ -558,17 +535,15 @@ TensorType TensorType::cloneWithMut(BoolAttr isMutable) const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.set(kIsMutableMetadataName, isMutable);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         newMetadata);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
 TensorType TensorType::cloneWith(DictionaryAttr metadataAttr) const {
-  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
-                         metadataAttr);
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), metadataAttr);
 }
 
 TensorType TensorType::cloneWith(DeviceRefAttr deviceRef) const {
-  return TensorType::get(getShapeAttr(), getDtype(), deviceRef, getMetadata());
+  return TensorType::get(getShape(), getDtype(), deviceRef, getMetadata());
 }
 
 bool TensorType::hasRank() const {
@@ -578,14 +553,14 @@ bool TensorType::hasRank() const {
   return true;
 }
 
-size_t TensorType::getRank() const { return getTypedShapeAttr().getRank(); }
+size_t TensorType::getRank() const { return getShape().getRank(); }
 
 size_t TensorType::getRankNonZero() const {
   return std::max<size_t>(1, getRank());
 }
 
 bool TensorType::hasStaticShape() const {
-  return hasRank() && getTypedShapeAttr().isStatic();
+  return hasRank() && getShape().isStatic();
 }
 
 Type TensorType::getElementType() const {
@@ -596,23 +571,17 @@ Type TensorType::getElementType() const {
   return *errOrType;
 }
 
-ShapeAttr TensorType::getTypedShapeAttr() const {
-  return llvm::cast<ShapeAttr>(getShapeAttr());
-}
-
 SmallPtrSet<StringAttr, 4> TensorType::getUsedParamNames() const {
-  if (auto shapeRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(getShapeAttr()))
-    return {shapeRef.getName()};
   SmallPtrSet<StringAttr, 4> res;
   mlir::AttrTypeWalker walker;
   walker.addWalk(
       [&](KGEN::ParamDeclRefAttr attr) { res.insert(attr.getName()); });
-  walker.walk(getTypedShapeAttr());
+  walker.walk(getShape());
   return res;
 }
 
 ArrayRef<TypedAttr> TensorType::getDims() const {
-  return getTypedShapeAttr().getValues();
+  return getShape().getValues();
 }
 
 TypedAttr TensorType::getDim(size_t n) const { return getDims()[n]; }
@@ -636,15 +605,15 @@ bool TensorType::isIntegerDimParam(TypedAttr attr) {
 }
 
 SmallVector<int64_t> TensorType::getIntDims() const {
-  return getTypedShapeAttr().getIntDims();
+  return getShape().getIntDims();
 }
 
 int64_t TensorType::getIntDim(size_t n) const {
-  return getTypedShapeAttr().getIntDim(n);
+  return getShape().getIntDim(n);
 }
 
 TypedAttr TensorType::getSymbolicNumElements() const {
-  return getTypedShapeAttr().getSymbolicNumElements();
+  return getShape().getSymbolicNumElements();
 }
 
 std::optional<int64_t> TensorType::getNumElements() const {
@@ -685,17 +654,10 @@ LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
                        << elementType;
   }
 
-  // check against things like `!mo.list<!mo.tensor<Sh0, f32>>`
-  auto shapeAttr = tensorTy.getShapeAttr();
-  if (llvm::isa<KGEN::ParamDeclRefAttr>(shapeAttr))
-    return emitError() << "tensor element shape cannot be a parameter";
-
   // check against things like `!mo.list<!mo.tensor<[20, D0], f32>>`
-  if (auto dimsAttr = llvm::dyn_cast<MOSH::ShapeAttr>(shapeAttr)) {
-    for (TypedAttr dimAttr : dimsAttr.getValues()) {
-      if (llvm::isa<KGEN::ParamDeclRefAttr>(dimAttr))
-        return emitError() << "tensor element dimensions cannot have parameter";
-    }
+  for (TypedAttr dimAttr : tensorTy.getShape().getValues()) {
+    if (llvm::isa<KGEN::ParamDeclRefAttr>(dimAttr))
+      return emitError() << "tensor element dimensions cannot have parameter";
   }
 
   return success();
@@ -754,7 +716,7 @@ computeCompactBundleInfo(ArrayRef<Type> elementTypes) {
     auto tensor = llvm::dyn_cast<TensorType>(ty);
     if (!tensor)
       return std::nullopt;
-    if (tensor.getShapeAttr() != first.getShapeAttr())
+    if (tensor.getShape() != first.getShape())
       return std::nullopt;
     if (tensor.getDtype() != first.getDtype())
       return std::nullopt;
@@ -768,8 +730,8 @@ computeCompactBundleInfo(ArrayRef<Type> elementTypes) {
   }
 
   DeviceId lastId = firstId + static_cast<DeviceId>(elementTypes.size() - 1);
-  return CompactBundleInfo{first.getShapeAttr(), first.getDtype(), firstDevice,
-                           first.getMetadata(),  firstId,          lastId};
+  return CompactBundleInfo{first.getShape(),    first.getDtype(), firstDevice,
+                           first.getMetadata(), firstId,          lastId};
 }
 
 } // namespace
@@ -1075,7 +1037,7 @@ void MODialect::registerTypes() {
 //===----------------------------------------------------------------------===//
 
 BufferType BufferType::cloneWith(DeviceRefAttr deviceRef) const {
-  return BufferType::get(getContext(), getShapeAttr(), getDtype(), deviceRef,
+  return BufferType::get(getContext(), getShape(), getDtype(), deviceRef,
                          getMetadata());
 }
 
@@ -1089,24 +1051,18 @@ Type BufferType::parse(AsmParser &parser) {
 }
 
 void BufferType::print(AsmPrinter &printer) const {
-  printTensorLikeType(printer, getShapeAttr(), getDtype(), getDeviceRef(),
+  printTensorLikeType(printer, getShape(), getDtype(), getDeviceRef(),
                       getMetadata());
 }
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
 LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 TypedAttr shapeAttr, DType dtype,
+                                 MOSH::ShapeAttr shape, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
   if (!deviceRef)
     return emitError() << "no device attribute was defined";
-
-  auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
-  if (!shape)
-    return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
-                          "allowed for buffer types, got: "
-                       << shapeAttr;
 
   for (TypedAttr dimAttr : shape.getValues()) {
     if (auto dimInt = ShapeAttr::getStaticDim(dimAttr)) {
@@ -1130,56 +1086,56 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 // Base builder which all others call
-BufferType BufferType::get(::mlir::MLIRContext *context, TypedAttr shapeAttr,
+BufferType BufferType::get(::mlir::MLIRContext *context, MOSH::ShapeAttr shape,
                            DType dtype, DeviceRefAttr deviceRef,
                            DictionaryAttr metadata) {
   // Ensure device ref is always populated
   if (!deviceRef)
     deviceRef = DeviceRefAttr::getDefault(context);
 
-  return Base::get(context, std::move(shapeAttr), std::move(dtype),
+  return Base::get(context, std::move(shape), std::move(dtype),
                    std::move(deviceRef), std::move(metadata));
 }
 
 // Checked base builder
 BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   ::mlir::MLIRContext *context,
-                                  TypedAttr shapeAttr, DType dtype,
+                                  MOSH::ShapeAttr shape, DType dtype,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
-  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+  if (failed(verify(emitError, shape, dtype, deviceRef, metadata)))
     return {};
-  return BufferType::get(context, shapeAttr, dtype, deviceRef, metadata);
+  return BufferType::get(context, shape, dtype, deviceRef, metadata);
 }
 
-BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
+BufferType BufferType::get(MOSH::ShapeAttr shape, DType dtype,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
-  MLIRContext *ctx = shapeAttr.getContext();
+  MLIRContext *ctx = shape.getContext();
   if (!metadata)
     metadata = DictionaryAttr::get(ctx);
-  return get(ctx, shapeAttr, dtype, deviceRef, metadata);
+  return get(ctx, shape, dtype, deviceRef, metadata);
 }
 
 BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  TypedAttr shapeAttr, DType dtype,
+                                  MOSH::ShapeAttr shape, DType dtype,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
-  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+  if (failed(verify(emitError, shape, dtype, deviceRef, metadata)))
     return {};
-  return BufferType::get(shapeAttr, dtype, deviceRef, metadata);
+  return BufferType::get(shape, dtype, deviceRef, metadata);
 }
 
-BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
+BufferType BufferType::get(MOSH::ShapeAttr shape, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as a DType: "
                 << errOrDType.takeError());
-  return get(shapeAttr, *errOrDType, deviceRef, metadata);
+  return get(shape, *errOrDType, deviceRef, metadata);
 }
 
 BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                                  TypedAttr shapeAttr, Type elementType,
+                                  MOSH::ShapeAttr shape, Type elementType,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
   ErrorOr<DType> dtype = fromMLIRType(elementType);
@@ -1187,9 +1143,9 @@ BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
     emitError() << dtype.takeError();
     return {};
   }
-  if (failed(verify(emitError, shapeAttr, *dtype, deviceRef, metadata)))
+  if (failed(verify(emitError, shape, *dtype, deviceRef, metadata)))
     return {};
-  return BufferType::get(shapeAttr, *dtype, deviceRef, metadata);
+  return BufferType::get(shape, *dtype, deviceRef, metadata);
 }
 
 BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
@@ -1204,33 +1160,33 @@ BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   DeviceRefAttr deviceRef,
                                   DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
-  auto shapeAttr = ShapeAttr::getChecked(emitError, shape, ShapeType::get(ctx));
-  if (!shapeAttr)
+  auto newShape = ShapeAttr::getChecked(emitError, shape, ShapeType::get(ctx));
+  if (!newShape)
     return {};
-  return BufferType::getChecked(emitError, shapeAttr, elementType, deviceRef,
+  return BufferType::getChecked(emitError, newShape, elementType, deviceRef,
                                 metadata);
 }
 
 BufferType BufferType::get(TensorType tensorType) {
-  return get(tensorType.getShapeAttr(), tensorType.getElementType(),
+  return get(tensorType.getShape(), tensorType.getElementType(),
              tensorType.getDeviceRef(), tensorType.getMetadata());
 }
 
 BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   TensorType tensorType) {
-  if (failed(verify(emitError, tensorType.getShapeAttr(), tensorType.getDtype(),
+  if (failed(verify(emitError, tensorType.getShape(), tensorType.getDtype(),
                     tensorType.getDeviceRef(), tensorType.getMetadata())))
     return {};
   return BufferType::get(tensorType);
 }
 
 TensorType BufferType::toTensorType(BufferType ty) {
-  auto shapeAttr = ty.getShapeAttr();
+  auto shape = ty.getShape();
   auto dtype = ty.getDtype();
   auto deviceRef = ty.getDeviceRef();
   auto metadata = ty.getMetadata();
 
-  return TensorType::get(shapeAttr, dtype, deviceRef, metadata);
+  return TensorType::get(shape, dtype, deviceRef, metadata);
 }
 
 TensorType BufferType::toTensorType() {
@@ -1251,9 +1207,7 @@ TensorType M::MO::dynCastFromTensorLike(Type ty) {
   return nullptr;
 }
 
-size_t BufferType::getRank() const {
-  return cast<MOSH::ShapeAttr>(getShapeAttr()).getRank();
-}
+size_t BufferType::getRank() const { return getShape().getRank(); }
 
 size_t BufferType::getRankNonZero() const {
   size_t rank = getRank();

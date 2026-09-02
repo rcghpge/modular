@@ -917,14 +917,14 @@ Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 LogicalResult SliceStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
-  if (inputTy.getTypedShapeAttr() != signature.getIn())
-    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+  if (inputTy.getShape() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
                          << signature.getIn();
 
   auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
-  if (resultTy.getTypedShapeAttr() != signature.getOut())
-    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+  if (resultTy.getShape() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getShape()
                          << " does not match spec's out-shape "
                          << signature.getOut();
 
@@ -976,14 +976,14 @@ Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 LogicalResult BroadcastStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
-  if (inputTy.getTypedShapeAttr() != signature.getIn())
-    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+  if (inputTy.getShape() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
                          << signature.getIn();
 
   auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
-  if (resultTy.getTypedShapeAttr() != signature.getOut())
-    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+  if (resultTy.getShape() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getShape()
                          << " does not match spec's out-shape "
                          << signature.getOut();
 
@@ -1032,14 +1032,14 @@ Value ReshapeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 LogicalResult ReshapeStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
-  if (inputTy.getTypedShapeAttr() != signature.getIn())
-    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+  if (inputTy.getShape() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
                          << signature.getIn();
 
   auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
-  if (resultTy.getTypedShapeAttr() != signature.getOut())
-    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+  if (resultTy.getShape() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getShape()
                          << " does not match spec's out-shape "
                          << signature.getOut();
 
@@ -1088,14 +1088,14 @@ Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 LogicalResult TransposeStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
-  if (inputTy.getTypedShapeAttr() != signature.getIn())
-    return emitOpError() << "input shape " << inputTy.getTypedShapeAttr()
+  if (inputTy.getShape() != signature.getIn())
+    return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
                          << signature.getIn();
 
   auto resultTy = llvm::cast<M::MO::TensorType>(getResult().getType());
-  if (resultTy.getTypedShapeAttr() != signature.getOut())
-    return emitOpError() << "result shape " << resultTy.getTypedShapeAttr()
+  if (resultTy.getShape() != signature.getOut())
+    return emitOpError() << "result shape " << resultTy.getShape()
                          << " does not match spec's out-shape "
                          << signature.getOut();
 
