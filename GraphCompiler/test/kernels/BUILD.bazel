@@ -9,6 +9,10 @@ mojo_library(
     testonly = True,
     srcs = glob(["**/*.mojo"]),
     validate_missing_docs = False,
+    visibility = [
+        "//GraphCompiler:__subpackages__",
+        "//max/tests/integration/graph:__subpackages__",
+    ],
     deps = [
         "//max:extensibility",
         "//max:layout",
