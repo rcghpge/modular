@@ -302,6 +302,8 @@ constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
     "managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "max.runtime.tracing.Trace";
+constexpr llvm::StringLiteral kFnTraceStart = "start";
+constexpr llvm::StringLiteral kFnTraceEnd = "end";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
 constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";

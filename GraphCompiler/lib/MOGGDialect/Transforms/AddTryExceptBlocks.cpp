@@ -5,10 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Interfaces/LoweringState.h"
+#include "GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.h"
 #include "GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/MOGGDialect/Support/ProfileScopeLabels.h"
 
 using namespace M;
 
@@ -49,6 +51,105 @@ struct AddTryExceptBlocks
                          ArrayRef<BlockArgument> args) {
     if (!args.empty())
       MOGG::AsyncDelOp::create(builder, loc, args);
+  }
+
+  /// Synthesize profiler ranges from contiguous ops sharing the
+  /// same profile scope.
+  void addProfileScopeTracing(MOGG::KernelStubOp kernelOp,
+                              bool traceUnlabelled) {
+    // Use the kernel op locations since MergeIdenticalKernel fuses
+    // a single location into KernelStubOp.
+    auto kernelScopeLayers = collectProfileScopeLayers(kernelOp->getLoc());
+    if (kernelScopeLayers.size() > 1) {
+      llvm::SetVector<ProfileScopeLayer> observedLayers;
+      for (Operation &op : kernelOp.getBodyBlock().getOperations())
+        for (ProfileScopeLayer &layer : collectProfileScopeLayers(op.getLoc()))
+          observedLayers.insert(layer);
+      if (observedLayers.size() < kernelScopeLayers.size())
+        return;
+    }
+
+    auto ctx = kernelOp->getContext();
+    auto &kernelBody = kernelOp.getBodyBlock();
+    Location loc = kernelOp->getLoc();
+    auto rangeTy = MOGG::ProfileScopeRangeType::get(ctx);
+    OpBuilder builder(ctx);
+    builder.setInsertionPointToStart(&kernelBody);
+
+    SmallVector<Operation *> traceable;
+    for (Operation &op : kernelBody.getOperations()) {
+      // Async lifetime/signaling bookkeeping and the region's output packing
+      // belong to no user scope, so they neither open a run nor break one.
+      if (isa<MOGG::AsyncDelOp, MOGG::AsyncReadyOp>(op) ||
+          op.hasTrait<mlir::OpTrait::IsTerminator>())
+        continue;
+      traceable.push_back(&op);
+    }
+
+    if (traceable.empty())
+      return;
+
+    SmallVector<ProfileScopeLayerSet> layerSets;
+    for (Operation *op : traceable) {
+      // Ops that will never be individually traced, such as host-side
+      // bookkeeping like buffer lookups or tensor-view construction must never
+      // define or break a run boundary.
+      auto opIt = mlir::Block::iterator(op);
+      if (!opDoesSignificantWork(op)) {
+        if (!layerSets.empty())
+          layerSets.back().last = opIt;
+        continue;
+      }
+      auto layers = collectProfileScopeLayers(op->getLoc());
+      if (layers.empty()) {
+        // Unlabeled ops are glue: extend an open run, otherwise ignore.
+        if (!layerSets.empty())
+          layerSets.back().last = opIt;
+        continue;
+      }
+      if (!layerSets.empty() && layerSets.back().layers == layers) {
+        layerSets.back().last = opIt;
+        continue;
+      }
+      layerSets.push_back({opIt, opIt, std::move(layers)});
+    }
+
+    // If the whole body is unlabeled, optionally emit one fallback range over
+    // the entire stub body. Default is off.
+    if (layerSets.empty() && traceUnlabelled)
+      layerSets.push_back({mlir::Block::iterator(traceable.front()),
+                           mlir::Block::iterator(traceable.back()),
+                           {}});
+
+    // Drop insignificant ranges
+    llvm::SmallVector<ProfileScopeLayerSet> filteredLayerSets;
+    for (ProfileScopeLayerSet &layerSet : layerSets)
+      for (Operation &op : layerSet.ops())
+        if (opDoesSignificantWork(&op)) {
+          filteredLayerSets.push_back(std::move(layerSet));
+          break;
+        }
+    layerSets = std::move(filteredLayerSets);
+
+    std::string regionName = kernelOp.getSymName().str();
+    for (ProfileScopeLayerSet &layerSet : layerSets) {
+      std::string name = formatProfileScope(layerSet.layers, true) + regionName;
+      auto beginOp = MOGG::ProfileScopeBeginOp::create(
+          builder, loc, rangeTy, StringAttr::get(ctx, name));
+      beginOp->moveBefore(&*layerSet.first);
+      auto endOp =
+          MOGG::ProfileScopeEndOp::create(builder, loc, beginOp.getRange());
+      endOp->moveAfter(&*layerSet.last);
+    }
+  }
+
+  /// Heuristic to separate ops that should be part of a traced range from those
+  /// should not, like host-side bookkeeping such as buffer lookups,
+  /// tensor-view construction, shape math, etc.
+  static bool opDoesSignificantWork(Operation *op) {
+    if (isa<StubCallOpInterface, M::MGP::MGPHasDeviceOpInterface>(op))
+      return true;
+    return false;
   }
 
   void runOnOperation() override {
@@ -92,6 +193,12 @@ struct AddTryExceptBlocks
     // ops around.
     SmallVector<BlockArgument> argsToDelete(kernelBody.getArguments().begin(),
                                             kernelBody.getArguments().end());
+
+    // Profile-scope range bracketing runs before try/except wrapping: the
+    // begin/end Trace calls are raising, so they need the wrapping below to
+    // keep the MGP-ABI entry point non-raising.
+    if (enableProfileScopeTracing)
+      addProfileScopeTracing(kernelOp, profileScopeTracingTraceUnlabelled);
 
     // For non-throwing kernels, insert AsyncDelOp before AsyncReadyOp.
     // AsyncReadyOp signals that the output chain is ready, which tells

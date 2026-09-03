@@ -50,9 +50,16 @@ namespace M::MOGG {
 /// profile_scope layer set, as discovered by
 /// `AddTryExceptBlocks::addProfileScopeTracing`.
 struct ProfileScopeLayerSet {
-  mlir::Operation *first = nullptr;
-  mlir::Operation *last = nullptr;
+  mlir::Block::iterator first;
+  /// Inclusive end; advance by one to form a standard half-open range.
+  mlir::Block::iterator last;
   llvm::SmallVector<ProfileScopeLayer, 2> layers;
+
+  /// Returns a half-open iterator range covering the ops from `first` through
+  /// `last` (inclusive).
+  llvm::iterator_range<mlir::Block::iterator> ops() const {
+    return llvm::make_range(first, std::next(last));
+  }
 };
 
 namespace detail {

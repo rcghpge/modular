@@ -397,7 +397,14 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     // recoverIndexConstantFromUniqueKernels can cause a kernel to become
     // non-raising again. This causes Mojo compiler warning because we would
     // have a try-except clause around non-raising code.
-    pm.addPass(MOGG::createAddTryExceptBlocks());
+    {
+      MOGG::AddTryExceptBlocksOptions addTryExceptBlocksOptions;
+      addTryExceptBlocksOptions.enableProfileScopeTracing =
+          this->enableProfileScopeTracing;
+      addTryExceptBlocksOptions.profileScopeTracingTraceUnlabelled =
+          this->profileScopeTracingTraceUnlabelled;
+      pm.addPass(MOGG::createAddTryExceptBlocks(addTryExceptBlocksOptions));
+    }
 
     if (pm.run(moduleOp).failed())
       return signalPassFailure();

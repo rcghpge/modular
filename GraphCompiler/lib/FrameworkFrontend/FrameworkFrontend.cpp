@@ -205,6 +205,12 @@ void MOFContext::overrideLoweringOptions(
       if (!strideStr.getAsInteger(/*radix=*/10, stride) && stride > 0)
         gcPipelineOptions.nanCheckStride = static_cast<size_t>(stride);
     }
+
+    if (configOr->getValueAsBool("max-debug.profile-scope-tracing", false))
+      gcPipelineOptions.enableProfileScopeTracing = true;
+    if (configOr->getValueAsBool(
+            "max-debug.profile-scope-tracing-trace-unlabelled", false))
+      gcPipelineOptions.profileScopeTracingTraceUnlabelled = true;
   }
 }
 

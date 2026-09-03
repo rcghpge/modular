@@ -6775,6 +6775,44 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// ProfileScopeBeginOp / ProfileScopeEndOp
+//===----------------------------------------------------------------------===//
+
+bool ProfileScopeBeginOp::isThrows() { return true; }
+
+LogicalResult ProfileScopeBeginOp::emitMojo(EmitMojoState &state) {
+  // Build the Trace object: Trace[TraceLevel.OP, target=StaticString(device)]
+  // ("[scope] region_name") and call start() on it.
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  if (!kernelStubOp)
+    return emitOpError("ProfileScopeBeginOp must be nested in a KernelStubOp");
+
+  std::string deviceLabel =
+      MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
+
+  SmallVector<MojoValue> traceParams = {
+      MojoValue(kEnumTraceLevelOp),
+      MojoValue(kMoggTargetParameterName)
+          .equal(MojoValue(kStructStaticString)(
+              {}, {MojoValue(deviceLabel).quote()}))};
+  SmallVector<MojoValue> traceOperands = {MojoValue(getName()).quote()};
+  MojoValue traceExpr = MojoValue(kStructTrace)(traceParams, traceOperands);
+
+  MojoValue traceVar = state.builder.var(traceExpr, /*cache=*/false);
+  state.setMojoValueFor(getRange(), traceVar);
+  state.builder.call(MojoValue(traceVar).get(kFnTraceStart), {}, {});
+  return success();
+}
+
+bool ProfileScopeEndOp::isThrows() { return true; }
+
+LogicalResult ProfileScopeEndOp::emitMojo(EmitMojoState &state) {
+  MojoValue traceVar = state.getMojoValueFor(getRange());
+  state.builder.call(MojoValue(traceVar).get(kFnTraceEnd), {}, {});
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RaiseOp
 //===----------------------------------------------------------------------===//
 

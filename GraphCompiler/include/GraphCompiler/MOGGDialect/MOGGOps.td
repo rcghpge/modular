@@ -1420,6 +1420,40 @@ def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
   let assemblyFormat = "$body attr-dict";
 }
 
+def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+]> {
+  let summary = "Opens a trace range for a Graph.profile_scope() span";
+  let description = [{
+    Lowers to `var t = Trace[...](name); t.start()`.
+
+    This is `mogg.with_trace`'s region-less sibling. `with_trace` owns its ops
+    in a nested region, so a value defined inside it is invisible to later ops
+    both in MLIR (dominance) and in the emitted Mojo (`var` is block-scoped).
+    Sequence-fused region bodies routinely have SSA values live across the
+    scope boundaries this op is meant to bracket, so the range is expressed as
+    a begin/end pair of siblings instead, and the bracketed ops stay exactly
+    where they were.
+
+    Always considered throwing because `Trace.start()` raises.
+  }];
+  let arguments = (ins StrAttr:$name);
+  let results = (outs MOGG_ProfileScopeRange:$range);
+  let assemblyFormat = "$name attr-dict `:` qualified(type($range))";
+}
+
+def MOGG_ProfileScopeEndOp : MOGG_Op<"profile_scope.end", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+]> {
+  let summary = "Closes the trace range opened by a `mogg.profile_scope.begin`";
+  let description = [{
+    Lowers to `t.end()` on the `Trace` variable its `mogg.profile_scope.begin`
+    declared. Always considered throwing because `Trace.end()` raises.
+  }];
+  let arguments = (ins MOGG_ProfileScopeRange:$range);
+  let assemblyFormat = "$range attr-dict `:` qualified(type($range))";
+}
+
 def MOGG_RaiseOp : MOGG_Op<"raise", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   Terminator,

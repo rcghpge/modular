@@ -504,6 +504,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   emitMojoOptions.enableComputeLambdas = opts.enableComputeLambdas;
   emitMojoOptions.moggDebugDumpFusedTensorSpecs =
       opts.moggDebugDumpFusedTensorSpecs;
+  emitMojoOptions.enableProfileScopeTracing = opts.enableProfileScopeTracing;
+  emitMojoOptions.profileScopeTracingTraceUnlabelled =
+      opts.profileScopeTracingTraceUnlabelled;
   pm.addPass(MOGG::createEmitMojo(emitMojoOptions));
 
   if (opts.dumpMojoText)
@@ -583,6 +586,9 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   mgpOpts.enableComputeLambdas = opts.enableComputeLambdas;
   mgpOpts.moggDebugDumpFusedTensorSpecs = opts.moggDebugDumpFusedTensorSpecs;
   mgpOpts.dumpMojoText = opts.dumpMojoText;
+  mgpOpts.enableProfileScopeTracing = opts.enableProfileScopeTracing;
+  mgpOpts.profileScopeTracingTraceUnlabelled =
+      opts.profileScopeTracingTraceUnlabelled;
 
   // --- jit options ---
   MOGG::JitCompileKernelsOptions jitOpts;

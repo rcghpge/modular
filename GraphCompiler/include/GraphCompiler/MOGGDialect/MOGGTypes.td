@@ -21,6 +21,21 @@ class MOGG_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
+// ProfileScopeRange
+//===----------------------------------------------------------------------===//
+
+def MOGG_ProfileScopeRange : MOGG_Type<"ProfileScopeRange", "profile_scope_range"> {
+  let summary = "An opaque handle correlating a profile_scope.begin with its .end";
+  let description = [{
+    Opaque value produced by `mogg.profile_scope.begin` and consumed by
+    `mogg.profile_scope.end`. It represents the `std.runtime.tracing.Trace`
+    variable in the emitted Mojo, correlated through an SSA def-use edge so
+    that ancestor and nested ranges can be open simultaneously (no stack
+    semantics required).
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // MOGG basic kernel types.
 //===----------------------------------------------------------------------===//
 

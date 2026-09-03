@@ -340,7 +340,17 @@ def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp">
     This pass should be run after sequence fusion and before Mojo codegen. It
     adds a try-except block to raising kernels such that the emit mojo pass can
     generate adequate Mojo.
+
+    It also owns the Graph profile scope in-region range bracketing (see
+    `addProfileScopeTracing`).
   }];
+
+  let options = [
+    Option<"enableProfileScopeTracing", "enable-profile-scope-tracing", "bool", /*default=*/"false",
+      "Synthesize profiler trace ranges from contiguous runs of ops carrying the same profile scope.">,
+    Option<"profileScopeTracingTraceUnlabelled", "profile-scope-tracing-trace-unlabelled", "bool", /*default=*/"false",
+      "Emit ranges for regions carrying no profile scope. Useful for visualizing compiler output.">
+  ];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
@@ -450,7 +460,11 @@ def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
     Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
       "Enable compute lambdas for the fused I/O kernels">,
     Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",
-      "Flag to add prints for the fused tensor specs in the lambdas">
+      "Flag to add prints for the fused tensor specs in the lambdas">,
+    Option<"enableProfileScopeTracing", "enable-profile-scope-tracing", "bool", "false",
+      "Synthesize profiler trace ranges from contiguous runs of ops carrying the same profile scope.">,
+    Option<"profileScopeTracingTraceUnlabelled", "profile-scope-tracing-trace-unlabelled", "bool", "false",
+      "Emit ranges for regions carrying no profile scope. Useful for visualizing compiler output.">
   ];
 
   let dependentDialects = ["MEF::MEFDialect",

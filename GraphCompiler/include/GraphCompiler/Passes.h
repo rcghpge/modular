@@ -47,6 +47,16 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
           "Fusing kernels is on by default but will do nothing if useJit is "
           "off. If use jit is on then we will fuse incoming jit kernels."),
       llvm::cl::init(true)};
+  Option<bool> enableProfileScopeTracing{
+      *this, "enable-profile-scope-tracing",
+      llvm::cl::desc("Synthesize profiler trace ranges from contiguous runs"
+                     "of ops carrying the same profile scope."),
+      llvm::cl::init(false)};
+  Option<bool> profileScopeTracingTraceUnlabelled{
+      *this, "profile-scope-tracing-trace-unlabelled",
+      llvm::cl::desc("Emit ranges for regions carrying no profile scope."
+                     " Useful for visualizing compiler output."),
+      llvm::cl::init(false)};
   Option<bool> fuseMutableLoadStore{
       *this, "fuse-mutable-load-store",
       llvm::cl::desc("If set to false will disable the creation of in-place "
@@ -442,6 +452,16 @@ struct MgpPipelineOptions
   Option<bool> dumpMojoText{
       *this, "dump-mojo-text",
       llvm::cl::desc("Dump generated mojo code of the kernels as text"),
+      llvm::cl::init(false)};
+  Option<bool> enableProfileScopeTracing{
+      *this, "enable-profile-scope-tracing",
+      llvm::cl::desc("Bracket contiguous profile scope runs of "
+                     "each compiled region's body in profiler trace ranges."),
+      llvm::cl::init(false)};
+  Option<bool> profileScopeTracingTraceUnlabelled{
+      *this, "profile-scope-tracing-trace-unlabelled",
+      llvm::cl::desc("Emit the whole-region range for regions carrying no "
+                     "profile scope label at all."),
       llvm::cl::init(false)};
 };
 
