@@ -61,7 +61,9 @@ from extensibility import (
     TileTensorable,
     TransformAccess,
     Transformable,
+    UnsafeFusedView,
     to_tile_tensor,
+    unsafe_fused_view,
 )
 
 from std.utils import IndexList, StaticTuple
@@ -461,6 +463,264 @@ struct TraitFusedLoadHostNegative:
         # Direct host-side load on the device-passable proxy: the context gate
         # (`comptime assert _access_enabled` in the load body) rejects this.
         _ = x.load[1](Coord(0))
+
+
+@always_inline
+def _gpu_fused_load_negate_host_unified_closure_kernel[
+    dtype: DType,
+    LayoutType: TensorLayout,
+    LoadFn: TrivialRegisterPassable
+    & def[dtype: DType, width: Int](Int) -> SIMD[dtype, width],
+](
+    zt: TileTensor[dtype, LayoutType, MutUntrackedOrigin, Engine=_],
+    n_dev: Int32,
+    load_fn: LoadFn,
+):
+    var i = Int(global_idx.x)
+    if i >= Int(n_dev):
+        return
+    zt.raw_store(i, -load_fn[dtype, 1](i))
+
+
+@always_inline
+def _fused_load_negate[
+    Z: Output & DenseTensor,
+    //,
+    target: StaticString,
+](
+    ctx: DeviceContext,
+    z: Z,
+    n: Int,
+    load_fn: Some[def[dtype: DType, width: Int](Int) -> SIMD[dtype, width]],
+) raises:
+    """Dispatches a host-built load callback on CPU or GPU.
+
+    `load_fn` is created in `execute` and threaded down as a value. On GPU it must
+    be re-captured into a nullary device closure, because `load_fn` is not
+    `DevicePassable` and cannot be a runtime argument to `enqueue_function`; a
+    regular device call can still take it as a comptime parameter.
+    """
+    comptime assert conforms_to(Z, TileTensorable)
+    comptime assert conforms_to(type_of(load_fn), TrivialRegisterPassable)
+    comptime if is_cpu[target]():
+        var zt = to_tile_tensor(z)
+        for i in range(n):
+            zt.raw_store(i, -load_fn[type_of(zt).dtype, 1](i))
+    else:
+        var zt = to_tile_tensor(z)
+        var n_dev = Int32(n)
+
+        # Re-capture the load closure inside the kernel closure.
+        def device_body() {var load_fn, var zt, var n_dev}:
+            _gpu_fused_load_negate_host_unified_closure_kernel(
+                zt, n_dev, load_fn
+            )
+
+        comptime block_size = 64
+        ctx.enqueue_function(
+            device_body,
+            grid_dim=(ceildiv(n, block_size),),
+            block_dim=(block_size,),
+        )
+
+
+# Host-built UNIFIED-closure fused-load variant. This is a distinct (and also
+# real) pattern from the parameter-closure route: the closure is built on the
+# host as a first-class value, threaded down through a helper, and either
+# called directly on CPU or re-captured into the device-kernel body on GPU.
+# It proves the projection works for kernels that layer this way (e.g. the
+# CPU path of `RMSNormFusedResidualAdd`).
+@extensibility.register("trait_fused_load_host_unified_closure")
+struct TraitFusedLoadHostUnifiedClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & LoadAccess],
+        ctx: DeviceContext,
+    ) raises:
+        var n = Int(z.shape().product())
+        comptime if is_cpu[target]():
+            # CPU: arg already access-enabled, capture directly.
+            comptime assert conforms_to(
+                type_of(x),
+                Loadable & TrivialRegisterPassable,
+            )
+
+            @always_inline
+            def cpu_load_fn[
+                dtype: DType, width: Int
+            ](idx: Int) {var x} -> SIMD[dtype, width]:
+                return rebind[SIMD[dtype, width]](x.load[width](Coord(idx)))
+
+            _fused_load_negate[target=target](ctx, z, n, cpu_load_fn)
+        else:
+            # GPU: project via accessor and capture the access-enabled view.
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            comptime assert conforms_to(type_of(x), UnsafeFusedView)
+            var xv = unsafe_fused_view(x)
+            comptime assert conforms_to(type_of(xv), Loadable)
+
+            @always_inline
+            def gpu_load_fn[
+                dtype: DType, width: Int
+            ](idx: Int) {var xv} -> SIMD[dtype, width]:
+                return rebind[SIMD[dtype, width]](xv.load[width](Coord(idx)))
+
+            _fused_load_negate[target=target](ctx, z, n, gpu_load_fn)
+
+
+# Device entry for the PARAMETER-closure fused-load path: one thread per element
+# negates the value produced by the parameter closure. The closure is supplied
+# as a comptime parameter and copy-captures the projected view, so this rides
+# the same bit-copy launch route `Concat` uses.
+def _gpu_fused_load_negate_parameter_closure_kernel[
+    dtype: DType,
+    LayoutType: TensorLayout,
+    load_fn: def[dtype: DType, width: Int](i: Int) capturing -> SIMD[
+        dtype, width
+    ],
+](output: TileTensor[dtype, LayoutType, MutAnyOrigin], n_dev: Int32,):
+    var n = Int(n_dev)
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    output.raw_store(i, rebind[SIMD[dtype, 1]](-load_fn[dtype, 1](i)))
+
+
+@always_inline
+def _fused_load_negate_parameter_closure[
+    Z: Output & DenseTensor,
+    load_fn: def[dtype: DType, width: Int](Int) capturing -> SIMD[dtype, width],
+    *,
+    target: StaticString,
+](z: Z, n: Int, ctx: DeviceContext,) raises:
+    """Consumes a parameter closure on both CPU and GPU lanes.
+
+    Mirrors the `fused_concat` dispatch pattern used by real `execute` kernels:
+    the closures are built on the host, then the helper either invokes them
+    directly on CPU or passes them as comptime arguments to a device kernel on
+    GPU.
+    """
+    var zt = to_tile_tensor(z)
+    comptime if is_cpu[target]():
+        for i in range(n):
+            zt.raw_store(
+                i,
+                rebind[SIMD[type_of(zt).dtype, 1]](
+                    -load_fn[type_of(zt).dtype, 1](i)
+                ),
+            )
+    else:
+        comptime block_size = 64
+        ctx.enqueue_function[
+            _gpu_fused_load_negate_parameter_closure_kernel[
+                type_of(zt).dtype, type_of(zt).LayoutType, load_fn
+            ]
+        ](
+            zt,
+            Int32(n),
+            grid_dim=(ceildiv(n, block_size),),
+            block_dim=(block_size,),
+        )
+
+
+# Parameter-closure fused-load variant: mirrors `Concat`'s `@__copy_capture`
+# route. The closure is a comptime parameter built on the host, projected on the
+# GPU lane, and copy-captured into a device kernel.
+@extensibility.register("trait_fused_load_capture_parameter_closure")
+struct TraitFusedLoadCaptureParameterClosure:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & LoadAccess],
+        ctx: DeviceContext,
+    ) raises:
+        var n = Int(z.shape().product())
+        comptime if is_cpu[target]():
+            # CPU: arg already access-enabled, capture directly.
+            comptime assert conforms_to(
+                type_of(x),
+                Loadable & ImplicitlyCopyable & TrivialRegisterPassable,
+            )
+
+            @always_inline
+            @__parameter
+            @__copy_capture(x)
+            def cpu_load_fn[
+                dtype: DType, width: Int
+            ](i: Int) -> SIMD[dtype, width]:
+                return rebind[SIMD[dtype, width]](x.load[width](Coord(i)))
+
+            _fused_load_negate_parameter_closure[
+                type_of(z), cpu_load_fn, target=target
+            ](z, n, ctx)
+        else:
+            # GPU: project via accessor, parameter closure captures the view.
+            comptime assert conforms_to(type_of(x), UnsafeFusedView)
+            var xv = unsafe_fused_view(x)
+            comptime assert conforms_to(type_of(xv), Loadable)
+
+            @always_inline
+            @__parameter
+            @__copy_capture(xv)
+            def gpu_load_fn[
+                dtype: DType, width: Int
+            ](i: Int) -> SIMD[dtype, width]:
+                return rebind[SIMD[dtype, width]](xv.load[width](Coord(i)))
+
+            _fused_load_negate_parameter_closure[
+                type_of(z), gpu_load_fn, target=target
+            ](z, n, ctx)
+
+
+# NEGATIVE control: a host-built closure that captures the fused-load host
+# proxy directly must fail at launch because the closure body reaches the
+# `_access_enabled = False` proxy and trips the load gate. Exercised (expecting
+# failure) by `mogg-kernel-api-e2e-trait-fused-load-host-closure-negative.mlir`.
+# Positive counterpart:
+# `mogg-kernel-api-e2e-trait-fused-load-host-unified-closure.mlir`.
+@extensibility.register("trait_fused_load_host_closure_negative")
+struct TraitFusedLoadHostClosureNegative:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & LoadAccess],
+        ctx: DeviceContext,
+    ) raises:
+        var n = Int(z.shape().product())
+        # Intentionally no `unsafe_fused_view(x)` projection: this kernel
+        # captures `x` directly so the launched closure's body reaches the
+        # `_access_enabled = False` proxy and the load gate fires -- the
+        # failure this negative exists to exercise.
+        comptime assert conforms_to(type_of(x), DevicePassable)
+
+        # `conforms_to` refines the type in this scope, making `x`
+        # `Loadable & ImplicitlyCopyable` so the closure captures the host
+        # proxy itself -- the case this negative is meant to reject.
+        comptime assert conforms_to(
+            type_of(x), Loadable & ImplicitlyCopyable & TrivialRegisterPassable
+        )
+
+        # Not the failing line, despite appearances, and neither is the call
+        # below binding it: closure `__call__` is instantiated lazily, so
+        # defining this body and passing it under a closure trait bound both
+        # compile on their own.
+        def load_fn[
+            dtype: DType, width: Int
+        ](idx: Int) {var x} -> SIMD[dtype, width]:
+            return rebind[SIMD[dtype, width]](x.load[width](Coord(idx)))
+
+        # The failure fires inside this call, at the launch that re-captures
+        # `load_fn`. The capturing endpoint compiles the closure body on the
+        # host, passing the encoded device-type instance, so the body sees the
+        # `_access_enabled = False` proxy and the load gate rejects it.
+        _fused_load_negate[target=target](ctx, z, n, load_fn)
 
 
 # Trait-lane in-place mutable kernel: `x` is read and written through the same

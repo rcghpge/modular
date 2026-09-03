@@ -87,7 +87,7 @@ struct _MoggTensorBufferCapture[
 // rather than adding a fourth verbatim block.
 static constexpr llvm::StringLiteral kInputLoadFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import Fused, Input, LoadAccess, Loadable, Tensor
+from extensibility import Fused, Input, LoadAccess, Loadable, Tensor, UnsafeFusedView
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -125,6 +125,7 @@ struct _MoggInputLoadFusionTensor[
     Movable,
     Tensor,
     TrivialRegisterPassable,
+    UnsafeFusedView,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
@@ -144,6 +145,8 @@ struct _MoggInputLoadFusionTensor[
         False,
         True,
     ]
+
+    comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
     @always_inline
     def __init__(out self, in_fusion: Self._InFusion, layout: Self.LayoutType):
@@ -212,7 +215,7 @@ struct _MoggInputLoadFusionTensor[
 // dereference; the projected `device_type` enables the store surface.
 static constexpr llvm::StringLiteral kOutputStoreFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import Fused, Output, StoreAccess, Storable, Tensor
+from extensibility import Fused, Output, StoreAccess, Storable, Tensor, UnsafeFusedView
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -252,6 +255,7 @@ struct _MoggOutputStoreFusionTensor[
     Storable,
     Tensor,
     TrivialRegisterPassable,
+    UnsafeFusedView,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
@@ -271,6 +275,8 @@ struct _MoggOutputStoreFusionTensor[
         False,
         True,
     ]
+
+    comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
     @always_inline
     def __init__(out self, out_fusion: Self._OutFusion, layout: Self.LayoutType):
@@ -347,7 +353,7 @@ struct _MoggOutputStoreFusionTensor[
 // `EmitMojoTransformFusionTensor`.
 static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import DenseTensor, Fused, Output, TileTensorable, TransformAccess, Transformable
+from extensibility import DenseTensor, Fused, Output, TileTensorable, TransformAccess, Transformable, UnsafeFusedView
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -388,6 +394,7 @@ struct _MoggTransformFusionTensor[
     TransformAccess,
     Transformable,
     TrivialRegisterPassable,
+    UnsafeFusedView,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
@@ -410,6 +417,8 @@ struct _MoggTransformFusionTensor[
         False,
         True,
     ]
+
+    comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
     @always_inline
     def __init__(
