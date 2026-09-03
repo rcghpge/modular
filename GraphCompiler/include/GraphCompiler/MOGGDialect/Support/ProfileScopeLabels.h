@@ -14,7 +14,8 @@
 // op's location -- see graph.py's `_location()`. Every mechanism that
 // uses those labels (the per-kernel suffix in
 // `WithTraceOp::emitMojo`, and the in-region range names added in
-// `AddTryExceptBlocks.cpp`) reads them through this shared set of functions.
+// `AddProfileScopeTracing.cpp`) reads them through this shared set of
+// functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,7 +49,7 @@ namespace M::MOGG {
 
 /// A contiguous run of ops inside a region body that share the same
 /// profile_scope layer set, as discovered by
-/// `AddTryExceptBlocks::addProfileScopeTracing`.
+/// `AddProfileScopeTracing::addProfileScopeTracing`.
 struct ProfileScopeLayerSet {
   mlir::Block::iterator first;
   /// Inclusive end; advance by one to form a standard half-open range.

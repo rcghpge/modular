@@ -1,6 +1,6 @@
 // RUN: mo-opt %s -mogg-add-try-except-blocks 2>&1 | FileCheck %s --check-prefix=OFF
-// RUN: mo-opt %s -mogg-add-try-except-blocks="enable-profile-scope-tracing=true" 2>&1 | FileCheck %s --check-prefix=ON
-// RUN: mo-opt %s -mogg-add-try-except-blocks="enable-profile-scope-tracing=true profile-scope-tracing-trace-unlabelled=true" 2>&1 | FileCheck %s --check-prefix=TRACE
+// RUN: mo-opt %s -mogg-add-profile-scope-tracing 2>&1 | FileCheck %s --check-prefix=ON
+// RUN: mo-opt %s -mogg-add-profile-scope-tracing="profile-scope-tracing-trace-unlabelled=true" 2>&1 | FileCheck %s --check-prefix=TRACE
 
 // OFF-LABEL: mogg.kernel.stub @region_952
 // OFF-NOT: mogg.profile_scope

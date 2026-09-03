@@ -334,23 +334,35 @@ def SequenceFusion: Pass<"mogg-sequence-fusion", "MGP::ModelOp"> {
                           "MOGG::MOGGDialect"];
 }
 
+def AddProfileScopeTracing: Pass<"mogg-add-profile-scope-tracing", "MOGG::KernelStubOp"> {
+  let summary = "Bracket Graph profile scope ranges inside kernel stub bodies";
+  let description = [{
+    Synthesizes profiler trace ranges (`mogg.profile_scope.begin` /
+    `mogg.profile_scope.end`) from contiguous runs of ops that share the same
+    `Graph.profile_scope(...)` layer set, plus coarser ancestor ranges over
+    adjacent runs nested under a common outer scope.
+
+    This runs just before `mogg-add-try-except-blocks`: the begin/end ranges are
+    raising, so they must land inside the try/except that pass wraps around the
+    body to keep the MGP-ABI entry point non-raising. Only MGP-ABI kernel stubs
+    are bracketed.
+  }];
+
+  let options = [
+    Option<"profileScopeTracingTraceUnlabelled", "profile-scope-tracing-trace-unlabelled", "bool", /*default=*/"false",
+      "Emit ranges for regions carrying no profile scope. Useful for visualizing compiler output.">
+  ];
+
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
+}
+
 def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{
     This pass should be run after sequence fusion and before Mojo codegen. It
     adds a try-except block to raising kernels such that the emit mojo pass can
     generate adequate Mojo.
-
-    It also owns the Graph profile scope in-region range bracketing (see
-    `addProfileScopeTracing`).
   }];
-
-  let options = [
-    Option<"enableProfileScopeTracing", "enable-profile-scope-tracing", "bool", /*default=*/"false",
-      "Synthesize profiler trace ranges from contiguous runs of ops carrying the same profile scope.">,
-    Option<"profileScopeTracingTraceUnlabelled", "profile-scope-tracing-trace-unlabelled", "bool", /*default=*/"false",
-      "Emit ranges for regions carrying no profile scope. Useful for visualizing compiler output.">
-  ];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }

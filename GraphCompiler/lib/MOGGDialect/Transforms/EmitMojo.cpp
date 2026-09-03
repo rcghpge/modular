@@ -393,18 +393,21 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     // mergeIdenticalKernelStubs).
     pm.addPass(mlir::createSymbolDCEPass());
 
+    // Profile-scope range bracketing runs just before try/except wrapping: the
+    // begin/end Trace calls are raising, so they need that wrapping to keep the
+    // MGP-ABI entry point non-raising.
+    if (this->enableProfileScopeTracing) {
+      MOGG::AddProfileScopeTracingOptions profileScopeOptions;
+      profileScopeOptions.profileScopeTracingTraceUnlabelled =
+          this->profileScopeTracingTraceUnlabelled;
+      pm.addPass(MOGG::createAddProfileScopeTracing(profileScopeOptions));
+    }
+
     // This pass is run nested in the current pass because
     // recoverIndexConstantFromUniqueKernels can cause a kernel to become
     // non-raising again. This causes Mojo compiler warning because we would
     // have a try-except clause around non-raising code.
-    {
-      MOGG::AddTryExceptBlocksOptions addTryExceptBlocksOptions;
-      addTryExceptBlocksOptions.enableProfileScopeTracing =
-          this->enableProfileScopeTracing;
-      addTryExceptBlocksOptions.profileScopeTracingTraceUnlabelled =
-          this->profileScopeTracingTraceUnlabelled;
-      pm.addPass(MOGG::createAddTryExceptBlocks(addTryExceptBlocksOptions));
-    }
+    pm.addPass(MOGG::createAddTryExceptBlocks());
 
     if (pm.run(moduleOp).failed())
       return signalPassFailure();

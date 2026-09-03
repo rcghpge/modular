@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-pipeline -mogg-to-mgp -mogg-outline-kernels -mogg-add-try-except-blocks="enable-profile-scope-tracing=true" --mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-pipeline -mogg-to-mgp -mogg-outline-kernels -mogg-add-profile-scope-tracing -mogg-add-try-except-blocks --mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Full-pipeline regression for the in-region range bracketing mechanism.
 // After outlining to KernelStubOp and enabling profile-scope-tracing, the

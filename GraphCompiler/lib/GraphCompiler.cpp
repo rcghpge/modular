@@ -163,6 +163,7 @@ void M::MO::registerPasses() {
   MGP::registerMOGGToMGP();
 
   MOGG::registerMergeIdenticalKernelStubs();
+  MOGG::registerAddProfileScopeTracingPass();
   MOGG::registerAddTryExceptBlocksPass();
   MOGG::registerLookupConstantResources();
   MGP::registerRaiseBackIndexConstant();
