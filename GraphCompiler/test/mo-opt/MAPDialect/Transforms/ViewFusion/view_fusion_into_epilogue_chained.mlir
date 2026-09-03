@@ -30,8 +30,14 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
 // CHECK-SAME:  (%[[MAIN:.*]]: !mo.tensor<[8, 8], f32>, %[[BIAS:.*]]: !mo.tensor<[16], f32>)
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       %[[RES:.*]] = map.iter.opaque
-// CHECK-NEXT:  inputs (%[[MAIN]]: !mo.tensor<[8, 8], f32>, %[[BIAS]]: !mo.tensor<[16], f32>, %[[START:.*]]: !mo.tensor<[1], si64>, %[[STOP:.*]]: !mo.tensor<[1], si64>, %[[STEP:.*]]: !mo.tensor<[1], si64>)
+// The slice bounds are single-element host constants, so
+// `FuseConstantIterOpaqueInputs` rematerializes them in the body rather than
+// passing them in: the kernel keeps only its two real tensor operands.
+// CHECK-NEXT:  inputs (%[[MAIN]]: !mo.tensor<[8, 8], f32>, %[[BIAS]]: !mo.tensor<[16], f32>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[8, 8], f32>) {
+// CHECK-NEXT:  %[[START:.*]] = map.constant #M.dense_array<4> : tensor<1xsi64>
+// CHECK-NEXT:  %[[STOP:.*]] = map.constant #M.dense_array<12> : tensor<1xsi64>
+// CHECK-NEXT:  %[[STEP:.*]] = map.constant #M.dense_array<1> : tensor<1xsi64>
 // CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing
 // CHECK-SAME:      (%[[OCAP:.*]] = %[[O]] : !mo.tensor<[8, 8], f32>,
 // CHECK-SAME:       %[[BCAP:.*]] = %[[BIAS]] : !mo.tensor<[16], f32>,

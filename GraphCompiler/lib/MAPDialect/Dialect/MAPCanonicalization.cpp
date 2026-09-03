@@ -5,7 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MODialect/MODevices.h"
+#include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
+#include "GraphCompiler/MOGGDialect/Support/TypeTraits.h"
 #include "mlir/IR/PatternMatch.h"
 
 using namespace mlir;
@@ -103,6 +106,74 @@ struct DropDeadCapturingClosureCaptures
   }
 };
 
+// The largest constant worth rematerializing inside a kernel body rather than
+// passing at runtime. Kept in step with `MOGG::FuseConstants`, which applies
+// the same budget to the pre-advanced-fusion lane.
+constexpr int64_t kMaxConstantSize = 2048;
+
+// Returns the `mo.constant` producing `val` when its value can be
+// rematerialized inside a kernel body, else null.
+M::MO::ConstantOp getFusableConstant(Value val) {
+  auto cst = val.getDefiningOp<M::MO::ConstantOp>();
+  if (!cst || !M::MO::isOnHost(cst))
+    return {};
+
+  ElementsAttr elems = cst.getValueAttr();
+  if (elems.getNumElements() > kMaxConstantSize)
+    return {};
+  if (!M::MOGG::TypeTraits::isSupportedMOGGType(elems.getElementType()))
+    return {};
+  if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))
+    return {};
+
+  return cst;
+}
+
+// Rematerializes small constant inputs inside the body and drops them from
+// `inputs`, which is what the lowered kernel's parameter list is built from.
+// `map.iter.opaque` is isolated from above, so the clone has to live in the
+// body; from there plain SSA dominance carries it to the loop body and to any
+// prologue/epilogue capture.
+//
+// `DropDeadIterOpaqueInputs` would collect the operand on its own, and the
+// original `mo.constant` is `Pure`, so the driver DCEs it once its last use
+// goes. Clones left behind by folding the same constant into several input
+// slots are uniqued by the folder, since `mo.constant` is `ConstantLike`.
+struct FuseConstantIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IterOpaqueOp op,
+                                PatternRewriter &rewriter) const override {
+    // Folding into a device kernel miscompiles it into illegal memory accesses
+    // (GEX-3839).
+    if (!M::MO::isOnHost(op.getOperation()))
+      return failure();
+
+    rewriter.setInsertionPointToStart(&op.getBody().front());
+    llvm::SmallVector<unsigned> folded;
+    for (auto [idx, input] : llvm::enumerate(op.getInputs())) {
+      M::MO::ConstantOp cst = getFusableConstant(input);
+      if (!cst)
+        continue;
+      // A `map.iter.opaque` body holds only MAP ops, so the value is carried
+      // by a `map.constant` rather than a clone of the `mo.constant`.
+      Value inBody = ConstantOp::create(rewriter, cst.getLoc(), cst.getType(),
+                                        cst.getValueAttr());
+      rewriter.replaceAllUsesWith(op.getInputBlockArgs()[idx], inBody);
+      folded.push_back(idx);
+    }
+    if (folded.empty())
+      return failure();
+
+    // Erasing shifts the indices after it, so unwind back to front.
+    rewriter.modifyOpInPlace(op, [&] {
+      for (unsigned idx : llvm::reverse(folded))
+        op.eraseInputsAt(idx);
+    });
+    return success();
+  }
+};
+
 // Drops inputs whose shadowed block arg has no use, except chains: a chain
 // input sequences the kernel against other memory ops at the graph level even
 // when the body never consumes it, so dropping it would change scheduling.
@@ -130,7 +201,8 @@ struct DropDeadIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
 
 void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.add<DedupeIterOpaqueInputs, DropDeadIterOpaqueInputs>(context);
+  results.add<DedupeIterOpaqueInputs, DropDeadIterOpaqueInputs,
+              FuseConstantIterOpaqueInputs>(context);
 }
 
 void IterForeachBodyOp::getCanonicalizationPatterns(RewritePatternSet &results,
