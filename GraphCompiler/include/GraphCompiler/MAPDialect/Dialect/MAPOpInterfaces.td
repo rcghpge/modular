@@ -47,6 +47,29 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
       }]
     >,
     InterfaceMethod<
+      "Returns the outer-scope value `arg` shadows, or null when `arg` is not "
+      "one of this closure's capture block args -- a leading callback "
+      "parameter (the index, or an epilogue's stored value) shadows nothing "
+      "outside the closure, and neither does an argument of some other op. "
+      "The inverse of getCaptureBlockArgs(), matched by identity rather than "
+      "by recomputing where the captures start, so a caller walking outward "
+      "from a block argument never restates that offset.",
+      "::mlir::Value", "getCaptureFor", (ins "::mlir::BlockArgument":$arg),
+      [{
+        // Reached through the interface, not `$_op`: a default body is emitted
+        // per concrete op, and `getCaptureBlockArgs` is itself an interface
+        // default rather than a member of `IterForeachBodyOp` & co.
+        auto closure =
+            ::mlir::cast<::M::MAP::CapturingFusionClosure>($_op.getOperation());
+        ::mlir::Block::BlockArgListType captureArgs =
+            closure.getCaptureBlockArgs();
+        for (unsigned i = 0, e = captureArgs.size(); i < e; ++i)
+          if (captureArgs[i] == arg)
+            return closure.getCaptures()[i];
+        return {};
+      }]
+    >,
+    InterfaceMethod<
       "Appends `capture` as a new capture and returns its new shadowing "
       "block argument. May create a duplicate of an existing capture -- "
       "callers don't dedup; the shared capturing-closure canonicalizer does.",
@@ -102,6 +125,28 @@ def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
       "::mlir::Value", "createStridedView",
       (ins "::mlir::OpBuilder &":$builder, "::mlir::Value":$tensor,
            "const ::mlir::IRMapping &":$outerValues)
+    >,
+  ];
+}
+
+def MAP_StrideViewOpInterface : OpInterface<"StrideViewOpInterface"> {
+  let description = [{
+    Common interface for the hoisted stride views -- `map.index.slice.stride`,
+    `map.index.broadcast.stride`, `map.index.reshape.stride`,
+    `map.index.transpose.stride` -- the form
+    `IndexTransformOpInterface::createStridedView` materializes. Each produces
+    a tensor of its view's OUTPUT shape over storage it does not own, so a
+    consumer that wants the tensor being re-addressed rather than the view
+    itself walks through it here instead of listing the concrete view kinds.
+  }];
+  let cppNamespace = "::M::MAP";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the tensor this view re-addresses. Nothing is copied, so the "
+      "result holds the same elements as the view, only differently indexed.",
+      "::mlir::Value", "getViewedTensor", (ins),
+      "return $_op.getInput();"
     >,
   ];
 }

@@ -216,6 +216,17 @@ Block::BlockArgListType IterOpaqueOp::getInputBlockArgs() {
   return getBody().front().getArguments().drop_back(getNumResults());
 }
 
+Value IterOpaqueOp::getInputFor(BlockArgument arg) {
+  // `getInputBlockArgs()` shadows `$inputs` then `$inputChain`, so it can be
+  // one longer than `$inputs`; only that prefix has an operand to hand back.
+  ValueRange inputs = getInputs();
+  Block::BlockArgListType inputArgs = getInputBlockArgs();
+  for (unsigned i = 0, e = inputs.size(); i < e; ++i)
+    if (inputArgs[i] == arg)
+      return inputs[i];
+  return {};
+}
+
 void IterOpaqueOp::insertInputsAt(unsigned idx, ValueRange vals) {
   ASSERT_STREAM(idx <= getInputs().size(),
                 << "idx (" << idx << ") must stay within the inputs ("
@@ -865,6 +876,20 @@ LogicalResult IterForeachBodyOp::verify() {
 
   return mlir::success();
 }
+
+//===----------------------------------------------------------------------===//
+// map.constant.scalar
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConstantScalarOp::verify() {
+  if (getValue().getType() != getResult().getType())
+    return emitOpError("value attribute type ")
+           << getValue().getType() << " does not match result type "
+           << getResult().getType();
+  return mlir::success();
+}
+
+OpFoldResult ConstantScalarOp::fold(FoldAdaptor) { return getValue(); }
 
 //===----------------------------------------------------------------------===//
 // map.store

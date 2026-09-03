@@ -2136,6 +2136,36 @@ def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
   }];
 }
 
+def MOGG_ConstantScalarV2Op : MOGG_Op<"_constant.scalar", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "A scalar constant inlined into a fusion body as a literal.";
+  let description = [{
+    New-path counterpart of `mogg.constant.scalar`. It differs only in the
+    result type: a builtin scalar (`f32`, `si32`, ...) rather than an
+    `!mo.scalar`, which is the type `mogg._tensor.load` already produces, so
+    an inlined constant is interchangeable with the load it replaces
+    everywhere the new path consumes element values.
+
+    Emits no statement of its own -- the value becomes a Mojo literal at each
+    use -- splatted to the enclosing closure's SIMD width so it works as an
+    elementwise operand in any position. Not `ConstantLike`: CSE dedups it,
+    and the constant hoisting that trait brings is only wanted MAP-side,
+    where `map.constant.scalar` carries it.
+
+    Example:
+    ```mlir
+    %cst = mogg._constant.scalar {value = 2.000000e+00 : f32} : f32
+    ```
+  }];
+
+  let arguments = (ins TypedAttrInterface:$value);
+  let results = (outs AnyTypeOf<[AnyFloat, AnyInteger]>:$result);
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  let hasVerifier = 1;
+}
+
 def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,

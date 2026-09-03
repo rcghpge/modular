@@ -92,6 +92,15 @@ LogicalResult ConstantOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// map.constant.scalar -> mogg._constant.scalar. Unlike `map.constant` above,
+// there is no buffer to reconstruct: the value is a literal at both ends.
+LogicalResult ConstantScalarOp::lowerToMOGG(MAPToMOGGState &state) {
+  auto constant = MOGG::ConstantScalarV2Op::create(
+      state.builder, getLoc(), getResult().getType(), getValue());
+  state.mapping.map(getResult(), constant.getResult());
+  return success();
+}
+
 // map.load -> mogg._tensor.load.
 LogicalResult LoadOp::lowerToMOGG(MAPToMOGGState &state) {
   Value result = MOGG::TensorLoadOp::create(

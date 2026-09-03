@@ -6772,6 +6772,42 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstantScalarV2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConstantScalarV2Op::verify() {
+  if (getValue().getType() != getResult().getType())
+    return emitOpError("value attribute type ")
+           << getValue().getType() << " does not match result type "
+           << getResult().getType();
+  return success();
+}
+
+LogicalResult ConstantScalarV2Op::emitMojo(EmitMojoState &state) {
+  std::optional<MojoValue> literal =
+      scalarConstantAttrToMojoLiteral(getValue());
+  if (!literal)
+    return emitError("TODO: unsupported scalar type");
+
+  // Splat to the enclosing closure's SIMD width, for the same reason
+  // `resolveScalarCaptureInput` splats the legacy lane's `!mo.scalar`: Mojo
+  // infers an elementwise call's vector width from its SIMD operands, not from
+  // a bare literal, so an unsplatted constant in the first operand position
+  // would fail width inference. Outside a closure there is no width to splat
+  // to -- and no vectorized consumer either -- so the bare literal stands.
+  const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
+  ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getResult().getType());
+  if (lambdaInfo.lambdaBuilder && !dtypeOr.isError()) {
+    MojoValue simdTy =
+        EmitMojoState::getSIMDType(*dtypeOr, lambdaInfo.widthParameter);
+    literal = simdTy({}, {*literal});
+  }
+
+  state.setMojoValueFor(getResult(), *literal);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 

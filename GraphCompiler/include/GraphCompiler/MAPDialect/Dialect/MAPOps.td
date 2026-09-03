@@ -132,6 +132,16 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// output block args.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
 
+    /// Returns the `$inputs` operand `arg` shadows, or null when `arg` shadows
+    /// none -- an output block arg, the `$inputChain` one that trails the
+    /// inputs, or an argument of some other op entirely.
+    ///
+    /// The inverse of `getInputBlockArgs()` over its `$inputs` prefix, matched
+    /// by identity rather than by indexing `$inputs` with a raw argument
+    /// number, so a caller walking outward from a block argument never
+    /// restates where the inputs end.
+    ::mlir::Value getInputFor(::mlir::BlockArgument arg);
+
     /// Inserts `vals` as new (non-chain) inputs starting at `idx`, updating
     /// both operands and the corresponding shadowed body block arguments.
     void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);
@@ -445,6 +455,42 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
 }
 
 //===----------------------------------------------------------------------===//
+// map.constant.scalar
+//===----------------------------------------------------------------------===//
+
+def MAP_ConstantScalarOp : MAP_Op<"constant.scalar", [
+  ConstantLike,
+  Pure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+]> {
+  let summary = "A compile-time scalar constant, as a value not a tensor";
+  let description = [{
+    The single element of a compile-time constant, inlined into a closure body
+    in place of the `map.load` that would otherwise read it out of memory --
+    see `LoadOp`'s canonicalizer. The result is a builtin scalar of the loaded
+    tensor's element type, exactly what `map.load` produces, so the two are
+    interchangeable wherever a body consumes element values.
+
+    `ConstantLike` hoists it to the top of the enclosing closure's body (the
+    nearest `IsolatedFromAbove` region) and dedups identical constants there,
+    the same place the legacy MOGG lane puts its own `mogg.constant.scalar`.
+
+    Example:
+    ```mlir
+    %cst = map.constant.scalar {value = 2.000000e+00 : f32} : f32
+    ```
+  }];
+
+  let arguments = (ins TypedAttrInterface:$value);
+  let results = (outs AnyTypeOf<[AnyFloat, AnyInteger]>:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  // `ConstantLike` requires a folder for `m_Constant` to recover the value.
+  let hasFolder = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // map.load
 //===----------------------------------------------------------------------===//
 
@@ -480,6 +526,7 @@ def MAP_LoadOp : MAP_Op<"load", [
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{ $tensor `[` $index `]` `:` qualified(type($tensor)) attr-dict }];
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -618,6 +665,7 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
+  MAP_StrideViewOpInterface,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a slice view of `input`, addressable directly by the loop's own index";
@@ -710,6 +758,7 @@ def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
 def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
+  MAP_StrideViewOpInterface,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a broadcast view of `input`, addressable directly by the loop's own index";
@@ -798,6 +847,7 @@ def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
 def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
+  MAP_StrideViewOpInterface,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a transpose view of `input`, addressable directly by the loop's own index";
@@ -881,6 +931,7 @@ def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
 def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
   ParentOneOf<["IterOpaqueOp"]>,
   Pure,
+  MAP_StrideViewOpInterface,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Materialize a reshape view of `input`, addressable directly by the loop's own index";
