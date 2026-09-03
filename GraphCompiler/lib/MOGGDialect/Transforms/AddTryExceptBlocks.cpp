@@ -9,6 +9,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/ProfileScopeLabels.h"
 
@@ -134,13 +135,31 @@ struct AddTryExceptBlocks
     std::string regionName = kernelOp.getSymName().str();
     for (ProfileScopeLayerSet &layerSet : layerSets) {
       std::string name = formatProfileScope(layerSet.layers, true) + regionName;
+      auto colors = collectRunColors(layerSet.ops());
+      auto resolvedColor = resolveProfileScopeColor(colors);
+      mlir::StringAttr colorAttr;
+      if (resolvedColor)
+        colorAttr = StringAttr::get(ctx, *resolvedColor);
       auto beginOp = MOGG::ProfileScopeBeginOp::create(
-          builder, loc, rangeTy, StringAttr::get(ctx, name));
+          builder, loc, rangeTy, StringAttr::get(ctx, name), colorAttr);
       beginOp->moveBefore(&*layerSet.first);
       auto endOp =
           MOGG::ProfileScopeEndOp::create(builder, loc, beginOp.getRange());
       endOp->moveAfter(&*layerSet.last);
     }
+  }
+
+  /// Collects every distinct profile scope color in range. Used to decide
+  /// which color (if any) the range spanning these ops should claim.
+  static llvm::SmallVector<std::string>
+  collectRunColors(llvm::iterator_range<mlir::Block::iterator> range) {
+    llvm::SmallSetVector<std::string, 4> colors;
+    for (Operation &op : range) {
+      auto opColors = collectProfileScopeColors(op.getLoc());
+      for (std::string &color : opColors)
+        colors.insert(std::move(color));
+    }
+    return colors.takeVector();
   }
 
   /// Heuristic to separate ops that should be part of a traced range from those
@@ -150,6 +169,25 @@ struct AddTryExceptBlocks
     if (isa<StubCallOpInterface, M::MGP::MGPHasDeviceOpInterface>(op))
       return true;
     return false;
+  }
+
+  /// Collects every distinct `Graph.profile_scope(..., color=...)` color
+  /// reachable from any op in `[first, last]` (inclusive), deduplicated and
+  /// sorted for discovery-order independence. Used to decide which color
+  /// (if any) the range spanning these ops should claim.
+  static llvm::SmallVector<std::string, 2> collectRunColors(Operation *first,
+                                                            Operation *last) {
+    llvm::SmallVector<std::string, 2> colors;
+    for (Operation *op = first; op; op = op->getNextNode()) {
+      auto opColors = collectProfileScopeColors(op->getLoc());
+      for (std::string &color : opColors)
+        if (!llvm::is_contained(colors, color))
+          colors.push_back(std::move(color));
+      if (op == last)
+        break;
+    }
+    llvm::sort(colors);
+    return colors;
   }
 
   void runOnOperation() override {

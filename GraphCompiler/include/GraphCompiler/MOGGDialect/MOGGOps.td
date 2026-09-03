@@ -1425,7 +1425,7 @@ def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
 ]> {
   let summary = "Opens a trace range for a Graph.profile_scope() span";
   let description = [{
-    Lowers to `var t = Trace[...](name); t.start()`.
+    Lowers to `var t = Trace[...](name, color=...); t.start()`.
 
     This is `mogg.with_trace`'s region-less sibling. `with_trace` owns its ops
     in a nested region, so a value defined inside it is invisible to later ops
@@ -1435,9 +1435,16 @@ def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
     a begin/end pair of siblings instead, and the bracketed ops stay exactly
     where they were.
 
+    `color`, when present, is the single `Graph.profile_scope(..., color=...)`
+    color every op this range covers agreed on (see
+    `resolveProfileScopeColor`); absent when the range covers no color at all,
+    or when its ops disagree. Region-only by design: `mogg.with_trace`'s
+    per-kernel trace name never carries a color, regardless of what
+    `Graph.profile_scope()` was given.
+
     Always considered throwing because `Trace.start()` raises.
   }];
-  let arguments = (ins StrAttr:$name);
+  let arguments = (ins StrAttr:$name, OptionalAttr<StrAttr>:$color);
   let results = (outs MOGG_ProfileScopeRange:$range);
   let assemblyFormat = "$name attr-dict `:` qualified(type($range))";
 }

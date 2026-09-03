@@ -31,9 +31,6 @@ mogg.kernel.stub @cast_mogg (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = f
 
 // ---
 
-// OFF-LABEL: mogg.kernel.stub @unlabeled_region
-// OFF-NOT: mogg.profile_scope
-
 // ON-LABEL: mogg.kernel.stub @unlabeled_region
 // ON-NOT: mogg.profile_scope.begin "unlabeled_region"
 
@@ -129,3 +126,51 @@ mogg.kernel.stub @cast_shared (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut =
   mogg.output
 }
 
+// Color is region-only: a single consistent color on every op in a run
+// resolves to a `color` attribute on the begin op.
+// ON-LABEL: mogg.kernel.stub @region_color
+// ON: mogg.profile_scope.begin "[colored] region_color" {color = "orange"} : !mogg.profile_scope_range
+
+mogg.kernel.stub @region_color (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.async<!mgp.buffer>, %arg2: !mogg.async<!mgp.buffer>, %arg3: !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> !mef.chain fusionInfo = "mo.cast" attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  %c0 = mogg.async.unpack(%arg1) : !mgp.buffer
+  %c1 = mogg.async.unpack(%arg2) : !mgp.buffer
+  %c2 = mogg.async.unpack(%arg3) : !mgp.device_context<<"cpu", 0>>
+  %c3 = mogg.tensor.__init__(%c0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
+  %c4 = mogg.tensor.__init__(%c1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
+  mogg.call.stub @cast_mogg_color %c3, %c4, %c2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"colored", loc(unknown), color = "orange">)
+  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
+  %c5 = mogg.async.ready : !mef.chain
+  mogg.output %c5 : !mef.chain
+}
+
+mogg.kernel.stub @cast_mogg_color (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  mogg.output
+}
+
+// ---
+
+// Disagreeing colors on ops in the same run resolve to no color attribute,
+// rather than guessing one.
+// ON-LABEL: mogg.kernel.stub @region_color_conflict
+// ON: mogg.profile_scope.begin "[conflict] region_color_conflict" : !mogg.profile_scope_range
+
+mogg.kernel.stub @region_color_conflict (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.async<!mgp.buffer>, %arg2: !mogg.async<!mgp.buffer>, %arg3: !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> !mef.chain fusionInfo = "mo.cast" attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  %x0 = mogg.async.unpack(%arg1) : !mgp.buffer
+  %x1 = mogg.async.unpack(%arg2) : !mgp.buffer
+  %x2 = mogg.async.unpack(%arg3) : !mgp.device_context<<"cpu", 0>>
+  %x3 = mogg.tensor.__init__(%x0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
+  %x4 = mogg.tensor.__init__(%x1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
+  mogg.call.stub @cast_mogg_conflict1 %x3, %x4, %x2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"conflict", loc(unknown), color = "orange">)
+  mogg.call.stub @cast_mogg_conflict2 %x3, %x4, %x2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"conflict", loc(unknown), color = "blue">)
+  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
+  %x5 = mogg.async.ready : !mef.chain
+  mogg.output %x5 : !mef.chain
+}
+
+mogg.kernel.stub @cast_mogg_conflict1 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  mogg.output
+}
+
+mogg.kernel.stub @cast_mogg_conflict2 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  mogg.output
+}

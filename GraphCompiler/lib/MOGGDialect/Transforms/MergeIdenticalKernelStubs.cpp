@@ -251,6 +251,15 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
         });
     finalReplacements[replacement] = finalCandidate.name;
 
+    // Fuse locations to maintain provenance information.
+    if (KernelStubOp accumulatedOp = symTable.lookup<KernelStubOp>(replacement))
+      if (KernelStubOp finalOp =
+              symTable.lookup<KernelStubOp>(finalCandidate.name))
+        if (finalOp != accumulatedOp)
+          finalOp->setLoc(mlir::FusedLoc::get(
+              finalOp->getContext(),
+              {finalOp->getLoc(), accumulatedOp->getLoc()}));
+
     // Rewrite any in-graph callsite entries (CallStubOp / CallStubAsyncOp) to
     // point at the chosen canonical name. The list may also hold pure
     // StringAttr entries (callOp == nullptr) for top-level KernelStubOps

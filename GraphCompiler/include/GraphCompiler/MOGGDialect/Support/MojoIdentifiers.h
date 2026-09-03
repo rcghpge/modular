@@ -302,8 +302,14 @@ constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
     "managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "max.runtime.tracing.Trace";
+/// `Color` is re-exported through `max.runtime.tracing` along with `Trace`, so
+/// this qualified path resolves without importing the internal `_tracing`
+/// module directly.
+constexpr llvm::StringLiteral kStructColor = "max.runtime.tracing.Color";
 constexpr llvm::StringLiteral kFnTraceStart = "start";
 constexpr llvm::StringLiteral kFnTraceEnd = "end";
+/// `Trace(..., color=Color("orange"))` kwarg name.
+constexpr llvm::StringLiteral kParameterColor = "color";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
 constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";

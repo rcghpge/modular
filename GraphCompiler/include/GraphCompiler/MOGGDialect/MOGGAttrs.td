@@ -40,11 +40,12 @@ def MOGG_ProfileScopeLocationAttr
     : MOGGLocationAttr<"ProfileScopeLocation", "profile_scope"> {
   let summary = "A `Graph.profile_scope()` scope-name annotation on a Location";
   let description = [{
-    `Graph.profile_scope(name)` wraps the MLIR location of every op created
-    inside its `with` block in one of these per active scope, nesting
-    outward: the *last*-entered (innermost) scope ends up as the outermost
-    `ProfileScopeLocationAttr` layer. Riding on `Location` rather than a
-    magic string prefix keeps this strongly typed and backend-neutral.
+    `Graph.profile_scope(name, color=None)` wraps the MLIR location of every
+    op created inside its `with` block in one of these per active scope,
+    nesting outward: the *last*-entered (innermost) scope ends up as the
+    outermost `ProfileScopeLocationAttr` layer. The optional `color` field
+    stores the NVTX color name when given; it is read only by the optional
+    in-region range bracketing mechanism.
   }];
 
   let parameters = (ins "mlir::StringAttr":$name,

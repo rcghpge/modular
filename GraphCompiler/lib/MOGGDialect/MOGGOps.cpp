@@ -6796,6 +6796,10 @@ LogicalResult ProfileScopeBeginOp::emitMojo(EmitMojoState &state) {
           .equal(MojoValue(kStructStaticString)(
               {}, {MojoValue(deviceLabel).quote()}))};
   SmallVector<MojoValue> traceOperands = {MojoValue(getName()).quote()};
+  if (auto color = getColor())
+    traceOperands.push_back(
+        MojoValue(kParameterColor)
+            .equal(MojoValue(kStructColor)({}, {MojoValue(*color).quote()})));
   MojoValue traceExpr = MojoValue(kStructTrace)(traceParams, traceOperands);
 
   MojoValue traceVar = state.builder.var(traceExpr, /*cache=*/false);
