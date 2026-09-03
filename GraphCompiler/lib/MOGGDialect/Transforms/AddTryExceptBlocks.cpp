@@ -122,18 +122,28 @@ struct AddTryExceptBlocks
                            mlir::Block::iterator(traceable.back()),
                            {}});
 
-    // Drop insignificant ranges
-    llvm::SmallVector<ProfileScopeLayerSet> filteredLayerSets;
-    for (ProfileScopeLayerSet &layerSet : layerSets)
-      for (Operation &op : layerSet.ops())
-        if (opDoesSignificantWork(&op)) {
-          filteredLayerSets.push_back(std::move(layerSet));
-          break;
-        }
-    layerSets = std::move(filteredLayerSets);
+    // Also bracket each ancestor scope level a leaf run's layer belongs to,
+    // appended before the leaf runs so a shared start/end anchor between an
+    // ancestor range and its first/last child orders correctly (ancestor
+    // starts first, ends last) purely from insertion order below -- see
+    // addAncestorProfileScopeRuns.
+    size_t maxLayerLen = 0;
+    for (const ProfileScopeLayerSet &layerSet : layerSets)
+      if (layerSet.layers.size() == 1)
+        maxLayerLen = std::max(maxLayerLen, layerSet.layers.front().size());
+
+    llvm::SmallVector<ProfileScopeLayerSet> allLayerSets;
+    for (size_t depth = 0; depth + 1 < maxLayerLen; ++depth)
+      addAncestorProfileScopeRuns(layerSets, depth, allLayerSets);
+    allLayerSets.append(layerSets.begin(), layerSets.end());
 
     std::string regionName = kernelOp.getSymName().str();
-    for (ProfileScopeLayerSet &layerSet : layerSets) {
+    for (ProfileScopeLayerSet &layerSet : allLayerSets) {
+      if (!llvm::any_of(layerSet.ops(), [](Operation &op) {
+            return opDoesSignificantWork(&op);
+          }))
+        continue;
+
       std::string name = formatProfileScope(layerSet.layers, true) + regionName;
       auto colors = collectRunColors(layerSet.ops());
       auto resolvedColor = resolveProfileScopeColor(colors);
@@ -188,6 +198,57 @@ struct AddTryExceptBlocks
     }
     llvm::sort(colors);
     return colors;
+  }
+
+  /// Group adjacent single-layer entries of `leafLayerSets` that share the
+  /// same length-`(depth + 1)` layer prefix into coarser ancestor ranges,
+  /// appending one `ProfileScopeLayerSet` per group of two or more leaf layer
+  /// sets to `outLayerSets`.
+  ///
+  /// A peer set (`layers.size() > 1`, ops merged in from an unrelated scope by
+  /// fusion) has no meaningful ancestor and never participates. A leaf layer
+  /// set whose layer is *exactly* `depth + 1` long doesn't participate at that
+  /// depth either: its depth-`d` prefix would just be a second copy of the
+  /// leaf range that already covers the identical span.
+  static void addAncestorProfileScopeRuns(
+      llvm::ArrayRef<ProfileScopeLayerSet> leafLayerSets, size_t depth,
+      llvm::SmallVector<ProfileScopeLayerSet> &outLayerSets) {
+    const ProfileScopeLayerSet *groupFirst = nullptr;
+    const ProfileScopeLayerSet *groupLast = nullptr;
+    llvm::ArrayRef<std::string> groupPrefix;
+    size_t groupSize = 0;
+
+    auto flush = [&] {
+      if (groupSize > 1)
+        outLayerSets.push_back({groupFirst->first,
+                                groupLast->last,
+                                {MOGG::ProfileScopeLayer(groupPrefix.begin(),
+                                                         groupPrefix.end())}});
+      groupFirst = nullptr;
+      groupSize = 0;
+    };
+
+    for (const ProfileScopeLayerSet &layerSet : leafLayerSets) {
+      bool participates = layerSet.layers.size() == 1 &&
+                          layerSet.layers.front().size() > depth + 1;
+      if (participates) {
+        llvm::ArrayRef<std::string> prefix =
+            llvm::ArrayRef<std::string>(layerSet.layers.front())
+                .take_front(depth + 1);
+        if (groupFirst && prefix == groupPrefix) {
+          groupLast = &layerSet;
+          ++groupSize;
+          continue;
+        }
+        flush();
+        groupFirst = groupLast = &layerSet;
+        groupPrefix = prefix;
+        groupSize = 1;
+        continue;
+      }
+      flush();
+    }
+    flush();
   }
 
   void runOnOperation() override {

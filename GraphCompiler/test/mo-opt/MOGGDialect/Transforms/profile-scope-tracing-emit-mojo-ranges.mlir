@@ -3,8 +3,8 @@
 // Full-pipeline regression for the in-region range bracketing mechanism.
 // After outlining to KernelStubOp and enabling profile-scope-tracing, the
 // emitted Mojo must contain a Trace call whose name contains the kernel stub
-// symbol ("region_..."), confirming mechanism 2 is emitted, not just the
-// per-kernel suffix from WithTraceOp (mechanism 1).
+// symbol ("region_..."), confirming in-region range bracketing is emitted,
+// not just the per-kernel trace-name suffix from WithTraceOp.
 
 // CHECK: var [[RANGE:.*]] = max.runtime.tracing.Trace[max.runtime.tracing.TraceLevel.OP, target = StaticString("cpu")]("[draft_forward] region_0")
 // CHECK-NEXT: [[RANGE]].start()

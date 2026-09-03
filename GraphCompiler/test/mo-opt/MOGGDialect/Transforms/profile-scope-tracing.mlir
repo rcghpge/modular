@@ -174,3 +174,62 @@ mogg.kernel.stub @cast_mogg_conflict1 (%arg0: !mo.tensor<[10], f32, {io = 1 : i3
 mogg.kernel.stub @cast_mogg_conflict2 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
+
+// ---
+
+// Two adjacent leaf runs nested under the same outer scope get an ancestor
+// range bracketing both, in addition to each step's own narrower range.
+// The color on the outer scope alone still resolves on both the ancestor and
+// the leaf ranges because color propagates through every active scope layer.
+#step0 = loc(#mogg.profile_scope<"draft_step_0", #mogg.profile_scope<"draft_forward", loc(unknown), color = "orange">>)
+#step1 = loc(#mogg.profile_scope<"draft_step_1", #mogg.profile_scope<"draft_forward", loc(unknown), color = "orange">>)
+
+// ON-LABEL: mogg.kernel.stub @region_ancestor
+// ON: mogg.profile_scope.begin "[draft_forward] region_ancestor" {color = "orange"}
+// ON: mogg.profile_scope.begin "[draft_forward/draft_step_0] region_ancestor" {color = "orange"}
+// ON: mogg.call.stub @cast_step
+// ON: mogg.profile_scope.end
+// ON: mogg.profile_scope.begin "[draft_forward/draft_step_1] region_ancestor" {color = "orange"}
+// ON: mogg.call.stub @cast_step
+// ON: mogg.profile_scope.end
+// ON: mogg.profile_scope.end
+
+mogg.kernel.stub @region_ancestor (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.async<!mgp.buffer>, %arg2: !mogg.async<!mgp.buffer>, %arg3: !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> !mef.chain fusionInfo = "mo.cast" attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  %a0 = mogg.async.unpack(%arg1) : !mgp.buffer
+  %a1 = mogg.async.unpack(%arg2) : !mgp.buffer
+  %a2 = mogg.async.unpack(%arg3) : !mgp.device_context<<"cpu", 0>>
+  %a3 = mogg.tensor.__init__(%a0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
+  %a4 = mogg.tensor.__init__(%a1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
+  mogg.call.stub @cast_step %a3, %a4, %a2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step0)
+  mogg.call.stub @cast_step %a3, %a4, %a2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step1)
+  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
+  %a5 = mogg.async.ready : !mef.chain
+  mogg.output %a5 : !mef.chain
+}
+
+// ---
+
+// A single nested run with no sibling under the same outer scope gets no
+// ancestor range -- it would just duplicate the leaf range's exact span under
+// a less specific name.
+#step_only = loc(#mogg.profile_scope<"draft_step_0", #mogg.profile_scope<"draft_forward", loc(unknown)>>)
+
+// ON-LABEL: mogg.kernel.stub @region_ancestor_single
+// ON-NOT: mogg.profile_scope.begin "[draft_forward] region_ancestor_single"
+// ON: mogg.profile_scope.begin "[draft_forward/draft_step_0] region_ancestor_single"
+
+mogg.kernel.stub @region_ancestor_single (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.async<!mgp.buffer>, %arg2: !mogg.async<!mgp.buffer>, %arg3: !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> !mef.chain fusionInfo = "mo.cast" attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  %s0 = mogg.async.unpack(%arg1) : !mgp.buffer
+  %s1 = mogg.async.unpack(%arg2) : !mgp.buffer
+  %s2 = mogg.async.unpack(%arg3) : !mgp.device_context<<"cpu", 0>>
+  %s3 = mogg.tensor.__init__(%s0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
+  %s4 = mogg.tensor.__init__(%s1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
+  mogg.call.stub @cast_step_single %s3, %s4, %s2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step_only)
+  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
+  %s5 = mogg.async.ready : !mef.chain
+  mogg.output %s5 : !mef.chain
+}
+
+mogg.kernel.stub @cast_step_single (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, sym_visibility = "private"} {
+  mogg.output
+}
