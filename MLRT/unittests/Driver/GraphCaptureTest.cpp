@@ -15,9 +15,14 @@
 
 #include "llvm/ADT/Sequence.h"
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace M::Driver;
 using M::ErrorOr;
@@ -1089,6 +1094,142 @@ TEST_F(GraphCaptureTest, EventHandlerCalledAfterCapture) {
 
   // The handler must have been called.
   EXPECT_TRUE(handlerCalled);
+}
+
+// A host-value wait enqueued inside a capture must be RECORDED into the
+// graph, not executed eagerly against the flag's capture-time value. When a
+// backend drops it, capture still succeeds and every replay runs ungated, so
+// any in-graph consumer of host-produced data silently reads stale bytes
+// instead of hanging or erroring.
+TEST_F(GraphCaptureTest, WaitOnHostValueIsRecordedIntoCapturedGraph) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (ctx->device().api() != Device::cudaAPI &&
+      ctx->device().api() != Device::hipAPI)
+    GTEST_SKIP() << "wait-on-host-value is only implemented for CUDA and HIP";
+
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+  ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+  // Pre-signal so a backend that (wrongly) evaluates the wait at capture time
+  // finishes capture instead of hanging inside the capture callback.
+  flag->signal(1);
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
+        return stream->enqueueWaitOnHostValue(*flag, 1);
+      });
+  ASSERT_FALSE(captured.isError()) << std::string(captured.getError());
+
+  // Clear the flag. A recorded wait node must now gate the replay until the
+  // host signals again.
+  flag->reset();
+  ASSERT_EQ(flag->load(), 0u);
+
+  std::atomic<bool> signalled{false};
+  std::thread signaller([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    signalled.store(true, std::memory_order_release);
+    flag->signal(1);
+  });
+
+  EXPECT_NO_ERR(captured->replay());
+  EXPECT_NO_ERR(stream->synchronize());
+
+  EXPECT_TRUE(signalled.load(std::memory_order_acquire))
+      << "replay drained without observing the host signal: the "
+         "wait-on-host-value was not recorded as a graph node, so every "
+         "replay of this graph runs ungated";
+  signaller.join();
+}
+
+// Regression: a host-value wait captured into a graph must still gate that
+// graph's downstream work on every replay.
+//
+// ROCm's stream capture does not record hipStreamWaitValue64. It reports
+// success, adds no node, and executes the wait eagerly against the capturing
+// stream instead, so the replayed graph ran its H2D with no gate and the
+// consumer read stale host data (ENABLE-2950). Every other wait-on-host-value
+// test in the tree enqueues the wait eagerly, where the primitive works fine,
+// so none of them can see this. The graph here has the shape of the
+// constrained-decoding bitmask gate: wait on the flag, then copy the buffer
+// the host fills.
+TEST_F(GraphCaptureTest, WaitOnHostValueGatesReplayedGraph) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (ctx->device().api() != Device::cudaAPI &&
+      ctx->device().api() != Device::hipAPI)
+    GTEST_SKIP() << "wait-on-host-value is a CUDA/HIP stream operation";
+
+  // The H2D below is issued on the context's default stream, so the capture
+  // has to run on that same stream for the copy to land in the graph.
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+  ASSIGN_NO_ERR(CompletionFlagRef, flag, ctx->allocateCompletionFlag());
+
+  constexpr size_t numElems = 256;
+  constexpr size_t byteSize = numElems * sizeof(uint32_t);
+  constexpr uint32_t staleWord = 0xAAAAAAAAu;
+  constexpr uint32_t freshWord = 0xBBBBBBBBu;
+
+  ASSIGN_NO_ERR(DeviceBufferRef, pinnedSrc, ctx->createHostBuffer(byteSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceDst, ctx->enqueueCreateBuffer(byteSize));
+  auto *src = static_cast<uint32_t *>(pinnedSrc->ptr());
+
+  auto stageStaleOnDevice = [&]() {
+    std::fill_n(src, numElems, staleWord);
+    EXPECT_NO_ERR(deviceDst->copyFrom(src));
+    EXPECT_NO_ERR(stream->synchronize());
+  };
+
+  stageStaleOnDevice();
+
+  flag->reset();
+  EXPECT_NO_ERR(stream->beginCapture());
+  EXPECT_NO_ERR(stream->enqueueWaitOnHostValue(*flag, 1));
+  EXPECT_NO_ERR(deviceDst->copyFrom(src));
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
+  EXPECT_NO_ERR(graph->instantiate());
+
+  // Retire anything the wait enqueued against the real queue while the stream
+  // was capturing. Without this, such a leaked wait blocks the first replay and
+  // the assertions below would pass for the wrong reason.
+  flag->signal(1);
+  EXPECT_NO_ERR(stream->synchronize());
+
+  for (int iteration = 0; iteration < 2; ++iteration) {
+    stageStaleOnDevice();
+    flag->reset();
+
+    std::atomic<bool> sourceRefreshed{false};
+    std::thread producer([&] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      std::fill_n(src, numElems, freshWord);
+      sourceRefreshed.store(true, std::memory_order_release);
+      flag->signal(1);
+    });
+
+    EXPECT_NO_ERR(graph->replay());
+    EXPECT_NO_ERR(stream->synchronize());
+    // Sampled before the join, which would otherwise wait for the producer and
+    // make this true no matter how the replay behaved.
+    const bool refreshedBeforeReplayFinished =
+        sourceRefreshed.load(std::memory_order_acquire);
+    producer.join();
+
+    EXPECT_TRUE(refreshedBeforeReplayFinished)
+        << "iteration " << iteration
+        << ": the replay completed before the host signalled the flag, so the "
+           "captured wait did not gate it";
+
+    std::vector<uint32_t> readback(numElems, 0);
+    EXPECT_NO_ERR(deviceDst->copyTo(readback.data()));
+    EXPECT_NO_ERR(stream->synchronize());
+    EXPECT_EQ(readback.front(), freshWord)
+        << "iteration " << iteration
+        << ": the replayed graph copied stale host data, so the in-graph "
+           "host-value wait did not gate the H2D";
+    EXPECT_EQ(readback.back(), freshWord) << "iteration " << iteration;
+  }
 }
 
 } // namespace

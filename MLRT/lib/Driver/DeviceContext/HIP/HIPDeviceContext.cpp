@@ -33,8 +33,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <vector>
 
 // Helpers for logging.
@@ -1069,16 +1072,108 @@ ErrorOrSuccess HIPDeviceStream::enqueueHostFunc(void (*fn)(void *),
   return success();
 }
 
+/// Storage for the batch-mem-op parameters of a recorded value-wait node.
+///
+/// The HIP runtime does not deep-copy `hipBatchMemOpNodeParams`: it keeps the
+/// `paramArray` pointer and dereferences it at graph launch. Freeing the
+/// parameters after the node is added does not fail loudly -- the node simply
+/// stops gating -- so the storage is interned per (context, address, value) and
+/// kept for the life of the process. The keys are process-lifetime
+/// `CompletionFlag`s, so the set stays tiny.
+static const hipBatchMemOpNodeParams *
+internWaitValueNodeParams(hipCtx_t ctx, hipDeviceptr_t address,
+                          uint64_t value) {
+  struct Params {
+    hipStreamBatchMemOpParams op;
+    hipBatchMemOpNodeParams node;
+  };
+  static std::mutex mutex;
+  static std::map<std::tuple<hipCtx_t, hipDeviceptr_t, uint64_t>,
+                  std::unique_ptr<Params>>
+      interned;
+
+  const std::lock_guard<std::mutex> lock(mutex);
+  std::unique_ptr<Params> &params = interned[{ctx, address, value}];
+  if (!params) {
+    params = std::make_unique<Params>();
+    params->op.waitValue.operation =
+        hipStreamBatchMemOpType::hipStreamMemOpWaitValue64;
+    params->op.waitValue.address = address;
+    params->op.waitValue.value64 = value;
+    params->op.waitValue.flags = static_cast<unsigned int>(
+        hipStreamWaitValueFlags::hipStreamWaitValueEq);
+    params->node.ctx = ctx;
+    params->node.count = 1;
+    params->node.paramArray = &params->op;
+    params->node.flags = 0;
+  }
+  return &params->node;
+}
+
 ErrorOrSuccess
 HIPDeviceStream::enqueueWaitOnHostValue(const CompletionFlag &flag,
                                         uint64_t value) const {
   const auto &hipDevice = HIPDevice::cast(this->device());
 
   HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitValue64(
-      stream_, reinterpret_cast<hipDeviceptr_t>(flag.devicePtr()), value,
-      hipStreamWaitValueFlags::hipStreamWaitValueEq,
-      /*mask*/ static_cast<uint64_t>(-1)));
+  const HIPDriver &driver = hipDevice.hipDriver();
+  auto address = reinterpret_cast<hipDeviceptr_t>(flag.devicePtr());
+
+  // Stream capture does not record hipStreamWaitValue64. Measured on ROCm
+  // 7.2.4 / gfx950, under all three capture modes: the call returns success,
+  // leaves the capture active, contributes no node to the graph, and is
+  // executed eagerly against the capturing stream's real queue instead. A
+  // graph captured that way replays with no gate at all, so every consumer of
+  // the awaited host data reads whatever was already in the buffer. Splice the
+  // wait in as an explicit batch-mem-op node instead.
+  //
+  // Fixed in ROCm 10:
+  // https://github.com/ROCm/rocm-systems/commit/cc777ef7fdc72152bda568bb3b586011b9465b21
+  // This workaround can be removed once that is our minimum supported ROCm
+  // version.
+  if (getCaptureStatus() !=
+      hipStreamCaptureStatus::hipStreamCaptureStatusActive) {
+    HIP_CHECK_ERR(driver.hipStreamWaitValue64(
+        stream_, address, value, hipStreamWaitValueFlags::hipStreamWaitValueEq,
+        /*mask*/ static_cast<uint64_t>(-1)));
+    return success();
+  }
+
+  // Never silently fall back to the eager wait here: it would be dropped from
+  // the graph and the caller would get a replay that does not gate.
+  if (!driver.hasBatchMemOpGraphNode())
+    RETURN_ERROR("cannot record a host-value wait into a graph being "
+                 "captured: this HIP runtime does not provide "
+                 "hipGraphAddBatchMemOpNode (needs ROCm 6.4 or newer)");
+
+  hipCtx_t ctx = nullptr;
+  HIP_CHECK_ERR(driver.hipCtxGetCurrent(&ctx));
+  if (!ctx)
+    RETURN_ERROR("no current HIP context to record a host-value wait node in");
+
+  hipStreamCaptureStatus status =
+      hipStreamCaptureStatus::hipStreamCaptureStatusNone;
+  unsigned long long captureId = 0;
+  hipGraph_t graph = nullptr;
+  const hipGraphNode_t *dependencies = nullptr;
+  size_t numDependencies = 0;
+  HIP_CHECK_ERR(driver.hipStreamGetCaptureInfo_v2(
+      stream_, &status, &captureId, &graph, &dependencies, &numDependencies));
+  if (status != hipStreamCaptureStatus::hipStreamCaptureStatusActive || !graph)
+    RETURN_ERROR("stream capture is no longer active while recording a "
+                 "host-value wait");
+
+  hipGraphNode_t node = nullptr;
+  HIP_CHECK_ERR(driver.hipGraphAddBatchMemOpNode(
+      &node, graph, dependencies, numDependencies,
+      internWaitValueNodeParams(ctx, address, value)));
+
+  // Make the new node the stream's capture frontier so subsequently captured
+  // work depends on it, exactly as an eagerly enqueued wait would order it.
+  HIP_CHECK_ERR(driver.hipStreamUpdateCaptureDependencies(
+      stream_, &node, 1,
+      hipStreamUpdateCaptureDependenciesFlags::
+          hipStreamSetCaptureDependencies));
   return success();
 }
 

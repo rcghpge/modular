@@ -75,6 +75,21 @@ HIP_FUNC(hipGraphAddMemsetNode, Result, hipGraphNode_t *, hipGraph_t,
 HIP_FUNC(hipGraphAddEmptyNode, Result, hipGraphNode_t *, hipGraph_t,
          const hipGraphNode_t *, size_t)
 
+// Used together to splice a value-wait into a graph being captured, since
+// hipStreamWaitValue64 itself is not recorded by stream capture. Optional:
+// hipGraphAddBatchMemOpNode only exists from ROCm 6.4 on, and gating the whole
+// driver load on it would break older runtimes. Query
+// HIPDriver::hasBatchMemOpGraphNode() before calling any of these.
+HIP_OPT_FUNC(hipCtxGetCurrent, Result, hipCtx_t *)
+HIP_OPT_FUNC(hipStreamGetCaptureInfo_v2, Result, hipStream_t,
+             hipStreamCaptureStatus *, unsigned long long *, hipGraph_t *,
+             const hipGraphNode_t **, size_t *)
+HIP_OPT_FUNC(hipStreamUpdateCaptureDependencies, Result, hipStream_t,
+             hipGraphNode_t *, size_t,
+             hipStreamUpdateCaptureDependenciesFlags)
+HIP_OPT_FUNC(hipGraphAddBatchMemOpNode, Result, hipGraphNode_t *, hipGraph_t,
+             const hipGraphNode_t *, size_t, const hipBatchMemOpNodeParams *)
+
 HIP_FUNC(hipGraphInstantiate, Result, hipGraphExec_t *, hipGraph_t, hipGraphNode_t *,
           char *, size_t)
 HIP_FUNC(hipGraphInstantiateWithFlags, Result, hipGraphExec_t *, hipGraph_t,

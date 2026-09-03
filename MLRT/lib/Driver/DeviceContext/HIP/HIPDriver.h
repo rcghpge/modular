@@ -212,6 +212,48 @@ enum class hipStreamWaitValueFlags : unsigned int {
   hipStreamWaitValueNor = 3,
 };
 
+/// Batch memory operation kinds.
+/// Layout matches hipStreamBatchMemOpType from hip_runtime_api.h.
+enum class hipStreamBatchMemOpType : unsigned int {
+  hipStreamMemOpWaitValue32 = 0x1,
+  hipStreamMemOpWriteValue32 = 0x2,
+  hipStreamMemOpWaitValue64 = 0x4,
+  hipStreamMemOpWriteValue64 = 0x5,
+};
+
+/// A single batch memory operation. Layout matches the
+/// hipStreamBatchMemOpParams union from hip_runtime_api.h; only the wait-value
+/// member is modelled, and `pad` keeps the size in step with the runtime's
+/// union so an array of these can be handed to the driver.
+union hipStreamBatchMemOpParams {
+  struct {
+    hipStreamBatchMemOpType operation;
+    hipDeviceptr_t address;
+    uint64_t value64;
+    unsigned int flags;
+    hipDeviceptr_t alias; ///< Unused by the AMD backend.
+  } waitValue;
+  uint64_t pad[6];
+};
+
+/// Node parameters for hipGraphAddBatchMemOpNode.
+/// Layout matches hipBatchMemOpNodeParams from hip_runtime_api.h.
+/// The driver does not deep-copy `paramArray`: it dereferences the array at
+/// graph launch, so the pointee must outlive every hipGraphExec_t built from
+/// the graph this node was added to.
+using hipBatchMemOpNodeParams = struct hipBatchMemOpNodeParams_t {
+  hipCtx_t ctx;
+  unsigned int count;
+  hipStreamBatchMemOpParams *paramArray;
+  unsigned int flags;
+};
+
+/// Flags for hipStreamUpdateCaptureDependencies.
+enum class hipStreamUpdateCaptureDependenciesFlags : unsigned int {
+  hipStreamAddCaptureDependencies = 0,
+  hipStreamSetCaptureDependencies = 1,
+};
+
 // HSA Runtime types (for getting device architecture info).
 using hsaStatus_t = uint32_t;
 using hsaAgent_t = uint64_t;
@@ -779,6 +821,17 @@ public:
 #undef HIP_FUNC
 
   bool hasMemcpyBatchAsync() const { return hipMemcpyBatchAsync_ != nullptr; }
+
+  /// Whether this driver can record a value-wait into a graph being captured.
+  /// hipGraphAddBatchMemOpNode only appeared in ROCm 6.4, and the capture-info
+  /// entry points it has to be paired with are equally optional here so that an
+  /// older runtime degrades to a diagnosable error rather than failing to load.
+  bool hasBatchMemOpGraphNode() const {
+    return hipGraphAddBatchMemOpNode_ != nullptr &&
+           hipStreamGetCaptureInfo_v2_ != nullptr &&
+           hipStreamUpdateCaptureDependencies_ != nullptr &&
+           hipCtxGetCurrent_ != nullptr;
+  }
 
   // HSA Runtime methods for getting device architecture info
   hsaStatus_t HsaInit() const {
