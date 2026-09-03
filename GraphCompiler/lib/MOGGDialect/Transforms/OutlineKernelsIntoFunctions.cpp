@@ -44,7 +44,19 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   // stub returns nothing.
   Block &body = kernel.getBody().front();
   SmallVector<Type> argTypes(body.getArgumentTypes());
-  auto functionType = TypeAttr::get(FunctionType::get(ctx, argTypes, {}));
+
+  // A `mogg.buffer.constant` stays behind at the call site: `MOGGToMGP` turns
+  // it into the real `mgp.buffer.constant` in the region it builds there,
+  // because resources reach the runtime through the `void**` of the MGP-ABI
+  // entry point, which this MAP-ABI stub does not have. Each one becomes a
+  // trailing stub argument here, while the signature is still being built --
+  // growing it afterwards would mean patching every call site too.
+  SmallVector<MOGG::BufferConstantOp> constants;
+  body.walk([&](MOGG::BufferConstantOp cst) { constants.push_back(cst); });
+
+  SmallVector<Type> stubArgTypes(argTypes);
+  stubArgTypes.append(constants.size(), MOGG::PointerType::get(ctx));
+  auto functionType = TypeAttr::get(FunctionType::get(ctx, stubArgTypes, {}));
 
   // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg._kernel`
   // from the source `map.iter.opaque`; fall back to a fresh leaf only if it's
@@ -79,16 +91,27 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   // Move the body (block args + codegen ops) into the stub, then cap it with a
   // `mogg.output` terminator (the stub returns nothing).
   stub.getBody().takeBody(kernel.getBody());
-  builder.setInsertionPointToEnd(&stub.getBody().front());
+  Block &stubBody = stub.getBody().front();
+  // The constants came along with the body; rewire their uses onto the trailing
+  // arguments reserved above, leaving the ops themselves unused and free to
+  // move back to the call site.
+  for (MOGG::BufferConstantOp cst : constants)
+    cst.getPointer().replaceAllUsesWith(
+        stubBody.addArgument(MOGG::PointerType::get(ctx), cst.getLoc()));
+  builder.setInsertionPointToEnd(&stubBody);
   MOGG::OutputOp::create(builder, loc, ValueRange{});
 
   // Rebuild the kernel body as a single `mogg.call.stub` forwarding fresh block
-  // args (same types) to the stub.
+  // args (same types) to the stub, preceded by the constants it hands over.
   Block *callBody = builder.createBlock(&kernel.getBody());
   SmallVector<Value> forwarded;
   for (Type t : argTypes)
     forwarded.push_back(callBody->addArgument(t, loc));
   builder.setInsertionPointToEnd(callBody);
+  for (MOGG::BufferConstantOp cst : constants) {
+    cst->moveBefore(callBody, callBody->end());
+    forwarded.push_back(cst.getPointer());
+  }
   MOGG::CallStubOp::create(builder, loc, /*resultTypes=*/TypeRange{},
                            FlatSymbolRefAttr::get(stubName), forwarded,
                            /*affinity_device_id=*/nullptr);

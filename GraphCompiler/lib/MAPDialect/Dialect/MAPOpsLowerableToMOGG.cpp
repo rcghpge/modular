@@ -74,6 +74,21 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
 
 } // namespace
 
+// map.constant -> mogg.buffer.constant + mogg._tensor.create. The constant has
+// no operand to arrive on, so its bytes become a constant buffer and the tensor
+// is rebuilt from that pointer like any input. `MOGGToMGP` turns the buffer
+// into an `mgp.buffer.constant` at the call site, where the pipeline's minimum
+// CPU alignment is known.
+LogicalResult ConstantOp::lowerToMOGG(MAPToMOGGState &state) {
+  MLIRContext *ctx = state.builder.getContext();
+  Value ptr = MOGG::BufferConstantOp::create(
+      state.builder, getLoc(), MOGG::PointerType::get(ctx), getValueAttr());
+  state.mapping.map(getResult(),
+                    buildTensor(getLoc(), ptr, getType(), MO::IOKind::Input,
+                                /*isMut=*/false, state));
+  return success();
+}
+
 // map.load -> mogg._tensor.load.
 LogicalResult LoadOp::lowerToMOGG(MAPToMOGGState &state) {
   Value result = MOGG::TensorLoadOp::create(

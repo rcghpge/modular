@@ -238,6 +238,34 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
 // map.call
 //===----------------------------------------------------------------------===//
 
+def MAP_ConstantOp : MAP_Op<"constant", [
+    ConstantLike,
+    Pure,
+    DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+  ]> {
+  let summary = "A constant folded into a kernel body.";
+  let description = [{
+    Carries the value of an `mo.constant` that
+    `FuseConstantIterOpaqueInputs` folded into a `map.iter.opaque` body, where
+    it has no operand to arrive on. It reads like any other tensor in the body,
+    so `map.load` and prologue/epilogue captures need no special casing.
+
+    This exists rather than cloning the `mo.constant` itself because a
+    `map.iter.opaque` body must hold only MAP ops: `MAPToMOGG` lowers its body
+    through `LowerableToMOGGInterface`, and `mo.constant` cannot implement that
+    interface -- `MODialect` would have to define a method that builds `mogg`
+    ops, and `mogg` is already built on `mo` types.
+
+    `ConstantLike` and `Pure` mirror `mo.constant`, so the folder still uniques
+    duplicates within a body and DCE still collects an unused one.
+  }];
+  let arguments = (ins ElementsAttr:$value);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{ $value attr-dict `:` type($result) }];
+  // `ConstantLike` requires a folder returning the constant's value.
+  let hasFolder = 1;
+}
+
 def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<SymbolUserOpInterface>,

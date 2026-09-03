@@ -2634,17 +2634,42 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Value handle = MOGG::RebindOp::create(builder, loc, handleType, unpacked);
     stubArgs.push_back(handle);
   }
-  // Re-home `kernelBody`'s contents (today always a single `mogg.call.stub`,
-  // but cloning generically rather than assuming that shape) by cloning them
-  // into the region body with `kernelBody`'s block args mapped to `stubArgs`
-  // -- no need to inspect what's inside to rebuild it. The referenced stub's
-  // own dim-arg names are anonymized separately, by `mgp-anonymize-dim-names`
+
+  // Re-home `kernelBody`'s contents (a `mogg.call.stub` plus whatever constants
+  // `OutlineKernelsIntoFunctions` kept at the call site) by cloning them into
+  // the region body with `kernelBody`'s block args mapped to `stubArgs` -- no
+  // need to inspect what's inside to rebuild it. The referenced stub's own
+  // dim-arg names are anonymized separately, by `mgp-anonymize-dim-names`
   // walking every stub in the module after all kernels have been lowered.
   IRMapping mapping;
   for (unsigned i = 0; i < numArgs; ++i)
     mapping.map(kernelBody.getArgument(i), stubArgs[i]);
-  for (Operation &calleeOp : kernelBody)
+  SmallVector<Attribute> blobs;
+  for (Operation &calleeOp : kernelBody) {
+    // A `mogg.buffer.constant` carries its attribute as written, because the
+    // MEF alignment is only known here. Swap it for the real
+    // `mgp.buffer.constant`, which has to live in this region: resources reach
+    // the runtime through the `void**` of the MGP-ABI entry point, which the
+    // MAP-ABI stub the call forwards to does not have.
+    if (auto cst = dyn_cast<MOGG::BufferConstantOp>(calleeOp)) {
+      ErrorOr<ElementsAttr> blob =
+          loweringState.lowerElementsAttr(cst.getValue());
+      if (blob.isError())
+        return cst.emitOpError("MOGGToMGP: ") << blob.getError();
+      blobs.push_back(*blob);
+      Value buffer =
+          MGP::BufferConstantOp::create(builder, cst.getLoc(), *blob);
+      mapping.map(cst.getPointer(),
+                  MOGG::RebindOp::create(builder, cst.getLoc(),
+                                         cst.getPointer().getType(), buffer));
+      continue;
+    }
     builder.clone(calleeOp, mapping);
+  }
+  // Only the region carries the bytes out to the runtime; the stub reads them
+  // as ordinary arguments, so its own array stays empty.
+  if (!blobs.empty())
+    region.setConstantResourcesAttr(builder.getArrayAttr(blobs));
   Value readyChain = MOGG::AsyncReadyOp::create(builder, loc);
   MOGG::OutputOp::create(builder, loc, ValueRange{readyChain});
 

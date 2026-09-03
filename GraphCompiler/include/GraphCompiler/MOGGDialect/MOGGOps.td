@@ -2080,6 +2080,27 @@ def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
   }];
 }
 
+def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
+  let summary = "A constant buffer, as a raw codegen pointer.";
+  let description = [{
+    Holds the bytes of a `mo.constant` that `FuseConstantIterOpaqueInputs`
+    folded into a `map.iter.opaque` body, where there is no operand for it to
+    arrive on. `MAPToMOGG` emits one of these in place of the `mo.constant` and
+    reconstructs the tensor from its `!mogg.pointer_` result, exactly as it
+    would from an input pointer.
+
+    Unlike `mgp.buffer.constant` this carries the attribute as written, with no
+    alignment: the MEF alignment depends on the pipeline's minimum CPU
+    alignment, known only in `MOGGToMGP`. That pass rewrites this into an
+    `mgp.buffer.constant` plus a `mogg._rebind` back to a pointer, running the
+    value through `lowerElementsAttr` on the way and recording the blob in the
+    enclosing region's `constantResources`.
+  }];
+  let arguments = (ins ElementsAttr:$value);
+  let results = (outs MOGG_Pointer:$pointer);
+  let assemblyFormat = [{ $value attr-dict `:` type($pointer) }];
+}
+
 def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {

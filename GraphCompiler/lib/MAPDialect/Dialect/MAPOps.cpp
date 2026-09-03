@@ -1106,3 +1106,9 @@ LogicalResult TransposeStrideOp::verify() {
 
   return mlir::success();
 }
+
+//===----------------------------------------------------------------------===//
+// map.constant
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstantOp::fold(FoldAdaptor) { return getValueAttr(); }
