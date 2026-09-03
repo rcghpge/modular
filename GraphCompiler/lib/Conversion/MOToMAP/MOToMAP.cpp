@@ -111,8 +111,27 @@ LogicalResult lowerToOpaque(Operation *op,
   OpBuilder builder(op);
   Location loc = op->getLoc();
 
-  auto opaque = MAP::IterOpaqueOp::create(builder, loc, op->getResultTypes(),
-                                          op->getOperands());
+  // A mutating op's chain, when present, is always its own last operand and
+  // last result (the codebase-wide convention -- see e.g. mo.mutable.store).
+  // `map.iter.opaque` threads it through as a dedicated operand and a
+  // trailing result instead of an ordinary, ambiguous `inputs`/`results`
+  // entry -- but unlike `map.iter.foreach`/`mogg._kernel`, it still shadows
+  // the chain as a body block argument on both sides: `map.call.opaque` has
+  // no return channel of its own (its `outputs` are destination operands,
+  // not real results), so a wrapped call that itself consumes or produces a
+  // chain (e.g. a custom kernel taking one directly) can only reach it that
+  // way.
+  ValueRange operands = op->getOperands();
+  bool hasInputChain =
+      !operands.empty() && isa<MO::ChainType>(operands.back().getType());
+  Value inputChain = hasInputChain ? operands.back() : Value();
+  ValueRange nonChainOperands = hasInputChain ? operands.drop_back() : operands;
+
+  TypeRange resultTypes = op->getResultTypes();
+
+  auto opaque = MAP::IterOpaqueOp::create(builder, loc, resultTypes,
+                                          nonChainOperands, inputChain,
+                                          /*fusionInfo=*/Attribute());
   opaque.setDeviceRef(MO::getDeviceOrDefaultAny(op));
   opaque.setFusionInfoAttr(
       MOGG::FusionInfoAttr::get(op->getContext(), MOGG::createFusionLeaf(op)));
@@ -125,7 +144,7 @@ LogicalResult lowerToOpaque(Operation *op,
   for (Value operand : op->getOperands())
     ins.push_back(body->addArgument(operand.getType(), loc));
   SmallVector<BlockArgument> outs;
-  for (Type resultType : op->getResultTypes())
+  for (Type resultType : resultTypes)
     outs.push_back(body->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(body);

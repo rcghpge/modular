@@ -109,11 +109,18 @@ static void printValuesWithTypes(OpAsmPrinter &p, ValueRange values) {
 
 ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
   // inputs ( %A : tA, ... ) -- shadowed as body block arguments (isolated).
+  // Written exactly like every other input, a trailing chain included; split
+  // out below once its type is known, so `$inputChain` stays a dedicated
+  // operand without changing this syntax at all.
   SmallVector<OpAsmParser::Argument> allArgInfo;
   if (parser.parseKeyword("inputs") ||
       parseParenOperandListWithShadowing(parser, result, allArgInfo,
                                          /*isIsolatedFromAbove=*/true))
     return mlir::failure();
+  bool hasInputChain =
+      !allArgInfo.empty() && isa<MO::ChainType>(allArgInfo.back().type);
+  int32_t numInputOperands =
+      static_cast<int32_t>(result.operands.size()) - (hasInputChain ? 1 : 0);
 
   // outputs ( %out : tOut, ... ) -> region entry args + op result types
   SmallVector<OpAsmParser::Argument> outArgs;
@@ -125,6 +132,10 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
     result.addTypes(arg.type);
     allArgInfo.push_back(arg);
   }
+
+  result.addAttribute(IterOpaqueOp::getOperandSegmentSizesAttrName(result.name),
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {numInputOperands, hasInputChain ? 1 : 0}));
 
   // body region (entry block args are ordered [inputs..., outputs...])
   Region *body = result.addRegion();
@@ -138,8 +149,34 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   p.increaseIndent();
   p.printNewline();
   p << "inputs ";
-  printParenOperandListWithShadowing(p, getInputs(), getInputBlockArgs(),
-                                     /*isIsolatedFromAbove=*/true);
+  // `$inputChain`, when present, prints as a trailing entry of the same
+  // `inputs (...)` list -- the dedicated operand is purely an ODS-level
+  // detail; the text reads exactly as if it were still an ordinary input.
+  // Inlines `printParenOperandListWithShadowing` (which needs a real
+  // `OperandRange`, not a synthesized combined list).
+  SmallVector<Value> allInputs(getInputs().begin(), getInputs().end());
+  if (Value inputChain = getInputChain())
+    allInputs.push_back(inputChain);
+  Block::BlockArgListType inputArgs = getInputBlockArgs();
+  {
+    llvm::DenseSet<Value> seenInputs;
+    bool allDistinctInputs = true;
+    for (Value v : allInputs)
+      if (!seenInputs.insert(v).second)
+        allDistinctInputs = false;
+    bool needAs = !allDistinctInputs;
+    p << "(";
+    for (auto [i, pair] : llvm::enumerate(llvm::zip(allInputs, inputArgs))) {
+      auto [operand, arg] = pair;
+      if (i != 0)
+        p << ", ";
+      p << operand;
+      if (needAs)
+        p << " as " << arg;
+      p << ": " << operand.getType();
+    }
+    p << ")";
+  }
   p.printNewline();
   p << "outputs (";
   printValuesWithTypes(p, getOutputBlockArgs());
@@ -153,21 +190,22 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   {
     llvm::DenseSet<Value> seen;
     bool inputsDistinct = true;
-    for (Value v : getInputs()) {
+    for (Value v : allInputs) {
       if (!seen.insert(v).second) {
         inputsDistinct = false;
         break;
       }
     }
     if (inputsDistinct) {
-      SmallVector<Value> shadowValues(getInputs().begin(), getInputs().end());
+      SmallVector<Value> shadowValues = allInputs;
       for (BlockArgument arg : getOutputBlockArgs())
         shadowValues.push_back(arg);
       p.shadowRegionArgs(getBody(), shadowValues);
     }
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict((*this)->getAttrs());
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getOperandSegmentSizesAttrName().getValue()});
 }
 
 Block::BlockArgListType IterOpaqueOp::getOutputBlockArgs() {
@@ -200,40 +238,17 @@ void IterOpaqueOp::eraseInputsAt(unsigned idx, size_t len) {
     getBody().front().eraseArgument(idx);
 }
 
-// The chain of an opaque kernel is an ordinary `inputs` entry -- the wrapped
-// call consumes it like any other operand -- so it is found by type rather
-// than through a dedicated accessor. More than one chain leaves the intended
-// sequencing operand ambiguous, which callers treat as "no chain".
-static Value findUniqueChain(ValueRange values) {
-  Value chain;
-  for (Value value : values) {
-    if (!llvm::isa<MO::ChainType>(value.getType()))
-      continue;
-    if (chain)
-      return Value();
-    chain = value;
-  }
-  return chain;
+Value IterOpaqueOp::getOutputChain() {
+  ResultRange results = getResults();
+  if (results.empty())
+    return nullptr;
+  Value last = results.back();
+  return llvm::isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-Value IterOpaqueOp::getInputChain() { return findUniqueChain(getInputs()); }
-
-Value IterOpaqueOp::getOutputChain() { return findUniqueChain(getResults()); }
-
 void IterOpaqueOp::setChain(Value chain) {
-  if (!chain)
-    return;
-
-  Value oldChain = getInputChain();
-  ASSERT_STREAM(oldChain, "map.iter.opaque has no chain input to point at a "
-                          "new chain");
-
-  for (auto [idx, input] : llvm::enumerate(getInputs())) {
-    if (input != oldChain)
-      continue;
-    getInputsMutable().slice(idx, 1).assign(chain);
-    return;
-  }
+  if (chain)
+    getInputChainMutable().assign(chain);
 }
 
 // hasReadEffect/hasWriteEffect carry forward the memory effects of the original
@@ -268,7 +283,7 @@ void IterOpaqueOp::getAsmBlockArgumentNames(Region &region,
                                             OpAsmSetValueNameFn setNameFn) {
   if (region.empty())
     return;
-  auto args = region.front().getArguments().take_back(getNumResults());
+  auto args = getOutputBlockArgs();
   for (auto [i, arg] : llvm::enumerate(args))
     setNameFn(arg, args.size() == 1 ? "out" : ("out" + std::to_string(i)));
 }

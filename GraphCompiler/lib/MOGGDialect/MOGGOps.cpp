@@ -2388,14 +2388,33 @@ ParseResult KernelRegionOp::parse(OpAsmParser &parser, OperationState &result) {
         parser.parseTypeList(inputTypes) || parser.parseRParen())
       return failure();
   }
+  if (parser.resolveOperands(inputOperands, inputTypes, operandsLoc,
+                             result.operands))
+    return failure();
+  int32_t numInputOperands = static_cast<int32_t>(result.operands.size());
+
+  // Optional chain (%c) clause -- a plain operand, never a body block
+  // argument (mirrors `map.iter.foreach`'s `chain(...)`).
+  int32_t numChainOperands = 0;
+  if (succeeded(parser.parseOptionalKeyword("chain"))) {
+    OpAsmParser::UnresolvedOperand chainOperand;
+    if (parser.parseLParen() || parser.parseOperand(chainOperand) ||
+        parser.parseRParen())
+      return failure();
+    if (parser.resolveOperand(chainOperand,
+                              MO::ChainType::get(parser.getContext()),
+                              result.operands))
+      return failure();
+    numChainOperands = 1;
+  }
+  result.addAttribute(
+      KernelRegionOp::getOperandSegmentSizesAttrName(result.name),
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {numInputOperands, numChainOperands}));
 
   // Results: an optional `-> types`.
   SmallVector<Type> resultTypes;
   if (parser.parseOptionalArrowTypeList(resultTypes))
-    return failure();
-
-  if (parser.resolveOperands(inputOperands, inputTypes, operandsLoc,
-                             result.operands))
     return failure();
   result.addTypes(resultTypes);
 
@@ -2437,6 +2456,11 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
   }
   p << ")";
 
+  // chain (%c) -- optional plain operand, no block arg (mirrors
+  // `map.iter.foreach`'s `chain(...)`).
+  if (Value chain = getChain())
+    p << " chain(" << chain << ")";
+
   // Results: `-> types` (omitted when there are none).
   if (!getOutputs().empty()) {
     SmallVector<Type> outTypes(getOutputs().getTypes());
@@ -2445,9 +2469,11 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
 
   // Body entry-block arguments, as labeled groups. The in-memory order is
   // [inputs, outputs, dims, context]; the display shows context before dims.
+  // A trailing output chain (if any), like the input chain, never gets a
+  // body block argument -- only the preceding tensor outputs do.
   auto args = getBody().front().getArguments();
   size_t numInputs = getInputs().size();
-  size_t numOutputs = getOutputs().size();
+  size_t numOutputs = getOutputs().size() - (getOutputChain() ? 1 : 0);
   size_t numTensors = std::min(numInputs + numOutputs, args.size());
 
   auto inputArgs = args.take_front(std::min(numInputs, args.size()));
@@ -2478,17 +2504,29 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
   printGroup("dims", dimArgs);
   p.decreaseIndent();
 
-  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+  p.printOptionalAttrDictWithKeyword(
+      getOperation()->getAttrs(),
+      {getOperandSegmentSizesAttrName().getValue()});
   p << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
 LogicalResult KernelRegionOp::verify() {
+  // A chain result, if present, is always last (mirrors
+  // `IterForeachOp::verify()`/`KernelOp::maybeGetOutChain()`) and, like the
+  // input chain, never gets a body block argument -- only the preceding
+  // tensor outputs do.
+  mlir::ResultRange outputs = getOutputs();
+  for (auto [i, output] : llvm::enumerate(outputs))
+    if (isa<MO::ChainType>(output.getType()) && i + 1 != outputs.size())
+      return emitOpError() << "only the last output may be a chain";
+
   // Inputs are `!mo.tensor` operands and outputs are `!mo.tensor` results; the
   // body block arguments are the codegen handles: one !mogg.pointer_ per input
   // then output tensor, then zero or more !mogg.dim_, then exactly one trailing
   // !mogg.context.
-  const size_t numTensors = getInputs().size() + getOutputs().size();
+  const size_t numTensors =
+      getInputs().size() + outputs.size() - (getOutputChain() ? 1 : 0);
   auto args = getBody().front().getArguments();
 
   if (args.size() < numTensors + 1)
@@ -2516,6 +2554,14 @@ LogicalResult KernelRegionOp::verify() {
   return success();
 }
 
+Value KernelRegionOp::getOutputChain() {
+  mlir::ResultRange outputs = getOutputs();
+  if (outputs.empty())
+    return nullptr;
+  Value last = outputs.back();
+  return isa<MO::ChainType>(last.getType()) ? last : Value();
+}
+
 // Lowers a new-path `mogg._kernel` into a `mogg.generic.compiled.region`. This
 // is deliberately NOT the legacy `mogg.kernel` path
 // (MOGGKernelOpLoweringState::lowerKernelOp), which is left untouched: here the
@@ -2534,10 +2580,12 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   DeviceRefAttr device = MO::getDeviceOrDefaultAny(getOperation());
 
   // The body block args are, in order: one `!mogg.pointer_` per input, then per
-  // output, then the `!mogg.dim_<name>`s, then one trailing `!mogg.context`.
+  // output, then the `!mogg.dim_<name>`s, then one trailing `!mogg.context`. A
+  // trailing output chain, like the (dedicated-operand) input chain, never
+  // gets one of its own.
   Block &kernelBody = getBody().front();
   unsigned numInputs = getInputs().size();
-  unsigned numOutputs = getOutputs().size();
+  unsigned numOutputs = getOutputs().size() - (getOutputChain() ? 1 : 0);
   unsigned numArgs = kernelBody.getNumArguments();
   if (numArgs < numInputs + numOutputs + 1)
     return emitOpError("MOGGToMGP: malformed mogg._kernel body");
@@ -2561,8 +2609,11 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (failed(storageOr))
     return failure();
   SmallVector<MGP::MOOutputStorage> storage = *storageOr;
-  assert(storage.size() == getNumResults() &&
-         "expected one output storage per mogg._kernel result");
+  // `createOutputStorage` itself already skips a chain-typed result (no
+  // buffer to allocate for a sequencing token), so it produces one entry per
+  // non-chain result -- `numOutputs`, not the unfiltered `getNumResults()`.
+  assert(storage.size() == numOutputs &&
+         "expected one output storage per non-chain mogg._kernel result");
   for (const MGP::MOOutputStorage &out : storage) {
     operands.push_back(out.buffer);
     semantics.push_back(InOutSignatureAttr::kOut);
@@ -3474,10 +3525,15 @@ LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
   // dtype/rank are tied to $input's own argument type, so Mojo infers them
-  // at the call site. output_static_shape carries the view's shape -- like
-  // broadcast/transpose (and unlike slice), reshape's shape is always
-  // statically known by emission time, so there is no dynamic-vs-static
-  // split to carry here.
+  // at the call site. output_static_shape is still passed as a comptime
+  // param -- it keeps whatever dims ARE statically known typed as such in
+  // the primitive's return type -- but unlike broadcast/transpose (whose
+  // runtime stride always comes from the input's own real stride, never
+  // from this shape), reshape's runtime stride is a row-major
+  // de-linearization of its output shape's own values, so any dim this op
+  // doesn't know until runtime has to arrive as a real argument: `$shape`
+  // (the same `!mogg.shape` Coord `mogg._tensor.create` builds) converted to
+  // an `IndexList` via `coord_to_index_list`.
   auto reshapeCreatePrimDecl =
       state.registry.lookupPrimitive(TensorCreateReshapeOp::getOperationName());
   ASSERT_STREAM(reshapeCreatePrimDecl,
@@ -3486,9 +3542,11 @@ LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
   MojoValue primitive(primitiveMojoName(reshapeCreatePrimDecl));
   MojoValue outputStaticShape = state.builder.comptime(
       EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
+  MojoValue outputShapeValue = state.builder.var(
+      MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(getShape())}));
   MojoValue result = state.builder.var(primitive(
       {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape)},
-      {state.getMojoValueFor(getInput())}));
+      {state.getMojoValueFor(getInput()), outputShapeValue}));
   state.setMojoValueFor(getResult(), result);
   return success();
 }

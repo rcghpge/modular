@@ -1804,6 +1804,7 @@ def MOGG_ShapeFunctionDeclOp
 //===----------------------------------------------------------------------===//
 
 def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
+  AttrSizedOperandSegments,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
   NoTerminator,
@@ -1813,14 +1814,21 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
       "inside.";
   let description = [{
     The new-path counterpart of `mogg.generic.compiled.region` / `mogg.kernel`.
-    Inputs are `!mo.tensor` operands and outputs are `!mo.tensor` results; inside
-    the body both become `!mogg.pointer_` block arguments (outputs turn into
-    externally-allocated operands only later, in `MOGGToMGP`). The body's
-    entry-block arguments are, in order: one `!mogg.pointer_` per input tensor,
-    one `!mogg.pointer_` per output tensor, then the runtime `!mogg.dim_`s (dynamic
-    dimensions), then one `!mogg.context`. Like `mogg.kernel` there is no
-    terminator and no `mogg.output`: the output pointer block arguments are the
-    outputs. `MAPToMOGG` lowers a `map.iter.opaque` into one of these.
+    Inputs are `!mo.tensor` (or, for an in-place kernel a `FuseMutableLoads`
+    fused a buffer into, `!mo.buffer`) operands and outputs are `!mo.tensor`
+    results; inside the body both become `!mogg.pointer_` block arguments
+    (outputs turn into externally-allocated operands only later, in
+    `MOGGToMGP`). The body's entry-block arguments are, in order: one
+    `!mogg.pointer_` per input, one `!mogg.pointer_` per output, then the
+    runtime `!mogg.dim_`s (dynamic dimensions), then one `!mogg.context`. Like
+    `mogg.kernel` there is no terminator and no `mogg.output`: the output
+    pointer block arguments are the outputs. `MAPToMOGG` lowers a
+    `map.iter.opaque` into one of these.
+
+    The optional `chain` operand/result models an in-place/mutating kernel,
+    mirroring `mogg.kernel`'s and `map.iter.foreach`'s chain support: it is pure
+    sequencing plumbing and never gets a body block argument on either side.
+    When present, the output chain is always the last entry of `outputs`.
 
     Like `mogg.kernel.stub`, the op carries a `#M.device_ref` `device` attribute
     (the `MOExplicitDevice` trait) so device assignment and outlining resolve the
@@ -1833,13 +1841,21 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   }];
 
   let arguments = (ins
-    Variadic<MO_Tensor>:$inputs,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$inputs,
+    Optional<MO_Chain>:$chain,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo
   );
-  let results = (outs Variadic<MO_Tensor>:$outputs);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$outputs);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
   let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the output chain, or null when there is none -- always the
+    /// last entry of `outputs` when present (mirrors
+    /// `IterForeachOp::getOutputChain()`/`KernelOp::maybeGetOutChain()`).
+    ::mlir::Value getOutputChain();
+  }];
 }
 
 def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [
@@ -2292,20 +2308,28 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"_tensor.create.reshape", [
     Produces a `!mogg.tensor_` addressable directly by the consuming loop's
     own index, reindexing `$input`'s underlying storage via row-major
     de-linearization -- nothing is copied. `$outShape` carries the view's
-    shape; the input's own shape is read off `$input` directly rather than
-    duplicated here.
+    static shape (a `dyn` placeholder where a dim isn't known at compile
+    time); `$shape` is the runtime `!mogg.shape` for it -- built the same way
+    `mogg._tensor.create`'s own `$shape` is (`mogg._shape.create`), so an
+    identical shape built elsewhere for the same kernel CSEs into one op --
+    unlike broadcast/transpose, reshape computes its result's *stride*
+    directly from the output shape's own values (row-major de-linearization
+    has no other source of truth to fall back on, the way broadcast/transpose
+    fall back to the input's own real stride), so a dim this op doesn't
+    actually know at runtime would corrupt every element beyond the first row
+    rather than just misreport shape metadata. The input's own shape is read
+    off `$input` directly rather than duplicated here.
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_Tensor:$input
+    MOGG_Tensor:$input,
+    MOGG_Shape:$shape
   );
   let results = (outs MOGG_Tensor:$result);
   let assemblyFormat = [{
-    `(` $input `)` attr-dict
-    `:` qualified(type($input)) `->`
-    qualified(type($result))
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

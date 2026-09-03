@@ -57,12 +57,15 @@ Value buildShape(Location loc, MOSH::ShapeAttr shapeAttr,
       state.builder, loc, MOGG::ShapeType::get(ctx), dims, canonicalShapeAttr);
 }
 
-// Reconstructs an `!mogg.tensor_` for `tensorType` from the `!mogg.pointer_`
-// block argument `ptr`, via `mogg._shape.create` + `mogg._tensor.create`.
-// `io`/`isMut` distinguish immutable inputs from mutable outputs.
+// Reconstructs an `!mogg.tensor_` for `tensorType` (a tensor, or a buffer --
+// e.g. one `FuseMutableLoads` fused a load's buffer into in place of the
+// tensor operand it used to read -- read via `MO::castFromTensorLike`) from
+// the `!mogg.pointer_` block argument `ptr`, via `mogg._shape.create` +
+// `mogg._tensor.create`. `io`/`isMut` distinguish immutable inputs from
+// mutable outputs.
 Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
                   bool isMut, MAPToMOGGState &state) {
-  auto tensorTy = cast<MO::TensorType>(tensorType);
+  MO::TensorType tensorTy = MO::castFromTensorLike(tensorType);
   MLIRContext *ctx = state.builder.getContext();
   MOSH::ShapeAttr shapeAttr = tensorTy.getShape();
   Value shape = buildShape(loc, shapeAttr, state);
@@ -433,15 +436,24 @@ LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
 
 // map.index.reshape.stride -> mogg._tensor.create.reshape. Reads its own
 // input out of `state.mapping`, same as any other kernel input.
+//
+// Unlike broadcast/transpose, reshape's own runtime stride is computed
+// directly from its output shape's values (row-major de-linearization has
+// no input stride to fall back on), so a target shape with more than one
+// dim genuinely unknown at compile time -- e.g. reshaping into another
+// tensor's own dynamic shape -- needs a real runtime `!mogg.shape`, built via
+// the same `buildShape` helper `mogg._tensor.create` uses -- letting CSE fold
+// it with an identical shape built elsewhere in the same kernel.
 LogicalResult ReshapeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
       cast<MO::TensorType>(getInput().getType()).getElementType();
+  Value shape = buildShape(getLoc(), signature.getOut(), state);
   auto createReshape = MOGG::TensorCreateReshapeOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
       TypeAttr::get(elementType), state.builder.getBoolAttr(false),
-      state.mapping.lookup(getInput()));
+      state.mapping.lookup(getInput()), shape);
   state.mapping.map(getResult(), createReshape.getResult());
   return success();
 }
@@ -528,6 +540,14 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   ValueRange inputs = getInputs();
   TypeRange resultTypes = getResultTypes();
 
+  // `map.iter.opaque` threads its chain through a dedicated `$inputChain`
+  // operand and a trailing output-chain result, mirroring `mogg._kernel` --
+  // but (unlike `mogg._kernel`'s own body) still shadows it as a body block
+  // argument on both sides, since `map.call.opaque` has no return channel of
+  // its own for a wrapped call that consumes/produces a chain directly.
+  Value inputChain = getInputChain();
+  bool hasOutputChain = getOutputChain() != nullptr;
+
   // The execution device is stated outright on `map.iter.opaque`
   // (`MO_ExplicitDevice`), stamped by whoever built the op from the tensor
   // types back when they were still annotated. This device is recorded on each
@@ -535,30 +555,36 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // `stripDeviceIdsAndDynamicShapes` for dedup, matching the stub's device.
   state.device = MO::getDeviceOrDefault(*this);
 
+  // Forward the fusion-tree provenance `MOToMAP` recorded on `map.iter.opaque`
+  // (typed `AnyAttr` there so the `map` dialect need not depend on `mogg`);
+  // fall back to a fresh leaf only if it's absent (e.g. hand-written test IR).
+  Attribute rawFusionInfo = getFusionInfoAttr();
+  MOGG::FusionInfoAttr fusionInfo =
+      rawFusionInfo
+          ? cast<MOGG::FusionInfoAttr>(rawFusionInfo)
+          : MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(*this));
+
   OpBuilder &builder = state.builder;
-  auto kernel = MOGG::KernelRegionOp::create(builder, loc, resultTypes, inputs);
+  auto kernel = MOGG::KernelRegionOp::create(builder, loc, resultTypes, inputs,
+                                             inputChain, fusionInfo);
   // The `MOExplicitDevice` verifier requires a device; record the same
   // device used for the reconstructed tensors so outlining and `MOGGToMGP`
   // resolve the real execution device instead of the host fallback.
   kernel.setDeviceRef(state.device);
 
-  // Forward the fusion-tree provenance `MOToMAP` recorded on `map.iter.opaque`
-  // (typed `AnyAttr` there so the `map` dialect need not depend on `mogg`);
-  // fall back to a fresh leaf only if it's absent (e.g. hand-written test IR).
-  if (Attribute fusionInfo = getFusionInfoAttr())
-    kernel.setFusionInfoAttr(cast<MOGG::FusionInfoAttr>(fusionInfo));
-  else
-    kernel.setFusionInfoAttr(
-        MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(*this)));
-
   // Unique dynamic dims across this kernel's I/O tensor (or buffer) types,
   // plus any nested `map.iter.foreach.body`'s own `$shape` (which can differ
-  // from any I/O tensor's shape for a broadcast).
+  // from any I/O tensor's shape for a broadcast). Skips non-tensor-like types
+  // outright (a chain, say) -- they carry no shape to collect dims from.
   auto collectDims = [&](TypeRange types) {
-    for (Type ty : types)
-      for (Attribute dim : MO::castFromTensorLike(ty).getShape().getValues())
+    for (Type ty : types) {
+      MO::TensorType tensorLike = MO::dynCastFromTensorLike(ty);
+      if (!tensorLike)
+        continue;
+      for (Attribute dim : tensorLike.getShape().getValues())
         if (isDynamicDim(dim))
           state.dimArgs.insert({dim, BlockArgument()});
+    }
   };
   collectDims(inputs.getTypes());
   collectDims(resultTypes);
@@ -568,8 +594,9 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
         state.dimArgs.insert({dim, BlockArgument()});
   });
 
-  // Body block args: one !mogg.pointer_ per input, then per output, then one
-  // !mogg.dim_ per unique dynamic dim, then the context.
+  // Body block args: one !mogg.pointer_ per non-chain input, then per
+  // non-chain output, then one !mogg.dim_ per unique dynamic dim, then the
+  // context.
   Block *body = builder.createBlock(&kernel.getBody());
   SmallVector<BlockArgument> inputPtrs, outputPtrs;
   for (size_t i = 0, e = inputs.size(); i < e; ++i)
@@ -587,18 +614,29 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   builder.setInsertionPointToEnd(body);
 
   // `map.iter.opaque` is isolated from above: nested ops reference its
-  // shadowed input block args, not `inputs` (its outer operands) directly,
-  // so the mapping must be keyed on the block args.
+  // shadowed input block args, not `inputs`/`$inputChain` (its outer
+  // operands) directly, so the mapping must be keyed on the block args.
+  // `getInputBlockArgs()` shadows `$inputs` then `$inputChain` together (in
+  // that order, see its own doc comment), so the chain's own block arg, when
+  // present, is always the last one here -- mapped straight to the new
+  // kernel's own chain operand, never reconstructed as a pointer-backed
+  // tensor.
   Block::BlockArgListType inputBlockArgs = getInputBlockArgs();
   for (auto [i, in] : llvm::enumerate(inputs))
     state.mapping.map(inputBlockArgs[i],
                       buildTensor(loc, inputPtrs[i], in.getType(),
                                   MO::IOKind::Input, /*isMut=*/false, state));
+  if (inputChain)
+    state.mapping.map(inputBlockArgs.back(), kernel.getChain());
 
   Block &opaqueBody = getBody().front();
   Block::BlockArgListType outputBlockArgs = getOutputBlockArgs();
   for (auto [i, ty] : llvm::enumerate(resultTypes)) {
     Value outputBlockArg = outputBlockArgs[i];
+    if (hasOutputChain && i + 1 == resultTypes.size()) {
+      state.mapping.map(outputBlockArg, kernel.getOutputChain());
+      continue;
+    }
     Value tensor = buildTensor(loc, outputPtrs[i], ty, MO::IOKind::Output,
                                /*isMut=*/true, state);
     state.mapping.map(outputBlockArg, tensor);

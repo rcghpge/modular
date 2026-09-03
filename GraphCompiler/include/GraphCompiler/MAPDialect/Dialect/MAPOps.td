@@ -41,6 +41,7 @@ def MAP_AnyIndex : Type<
 //===----------------------------------------------------------------------===//
 
 def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
+    AttrSizedOperandSegments,
     IsolatedFromAbove,
     SingleBlock,
     NoTerminator,
@@ -80,11 +81,15 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     }
     ```
 
-    A kernel that mutates memory takes an `!mo.chain` as an ordinary `inputs`
-    entry and returns one as a result: the wrapped call consumes and produces
-    the chain like any other operand, so unlike `map.iter.foreach` there is no
-    dedicated chain operand. `getInputChain()`/`getOutputChain()` find it by
-    type.
+    A kernel that mutates memory takes an `!mo.chain` through a dedicated
+    `$inputChain` operand (rather than an ordinary, ambiguous `$inputs` entry
+    found by scanning for a chain-typed value) and returns one as the
+    trailing entry of `results`. Unlike `mogg._kernel`'s and
+    `map.iter.foreach`'s chain, which is pure sequencing plumbing their bodies
+    never touch, `map.call.opaque` has no return channel of its own (its
+    `outputs` are destination operands, not real results) -- so a mutating
+    kernel's wrapped call may still need to read or write the chain directly,
+    and it keeps a shadowed body block argument on both sides for that.
 
     `hasReadEffect`/`hasWriteEffect` carry forward the memory effects of the
     original op this kernel lowers, so downstream passes (DCE, CSE, invariant
@@ -108,6 +113,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 
   let arguments = (ins
     Variadic<AnyType>:$inputs,
+    Optional<MO_Chain>:$inputChain,
     OptionalAttr<AnyAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
@@ -121,32 +127,27 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// [inputs..., outputs...], outputs last).
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
 
-    /// The subrange of body entry-block arguments shadowing `$inputs` --
-    /// whatever precedes the output block args. Anchoring the split on the
-    /// (always known) result count rather than the input count keeps this
-    /// correct either way.
+    /// The subrange of body entry-block arguments shadowing `$inputs` and
+    /// `$inputChain` together (in that order) -- whatever precedes the
+    /// output block args.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
 
-    /// Inserts `vals` as new inputs starting at `idx`, updating both operands
-    /// and the corresponding shadowed body block arguments.
+    /// Inserts `vals` as new (non-chain) inputs starting at `idx`, updating
+    /// both operands and the corresponding shadowed body block arguments.
     void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);
 
-    /// Erases a range of inputs at `[idx, idx + len)`, updating both operands
-    /// and the corresponding shadowed body block arguments.
+    /// Erases a range of (non-chain) inputs at `[idx, idx + len)`, updating
+    /// both operands and the corresponding shadowed body block arguments.
     void eraseInputsAt(unsigned idx, size_t len = 1);
 
-    /// Returns the chain-typed entry of `inputs`, or null when there is none --
-    /// or more than one, which leaves the intended sequencing operand
-    /// ambiguous.
-    ::mlir::Value getInputChain();
-
-    /// Returns the chain-typed result, or null when there is none or more than
-    /// one.
+    /// Returns the output chain, or null when there is none -- always the
+    /// last entry of `results` when present (mirrors
+    /// `IterForeachOp::getOutputChain()`/`KernelOp::maybeGetOutChain()`).
     ::mlir::Value getOutputChain();
 
-    /// Points the chain input at `chain`. The shadowed block argument is
-    /// untouched, so the body keeps consuming the same value. Requires a chain
-    /// input to exist; no-op when `chain` is null.
+    /// Sets the input chain operand. No-op when `chain` is null (mirrors
+    /// `IterForeachOp::setChain()`/`MOGG::KernelOp::setChain()`). Requires a
+    /// chain input to already exist.
     void setChain(::mlir::Value chain);
   }];
 
