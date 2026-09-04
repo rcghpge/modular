@@ -187,7 +187,7 @@ void normalizeAllNames(ModuleOp module) {
        llvm::enumerate(module.getOps<mlir::SymbolOpInterface>())) {
     auto oldName = symbol.getNameAttr();
     auto newName = "__S" + std::to_string(index);
-    symbol.setName(newName);
+    symbol.setSymbolName(newName);
 
     newNames[FlatSymbolRefAttr::get(oldName)] =
         FlatSymbolRefAttr::get(ctx, newName);

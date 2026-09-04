@@ -191,7 +191,7 @@ bool Graph::setGeneratorHash(Node *node) {
   // Set the function name so we do not incorporate the function name into
   // the bytecode hash.
   OwningOpRef<KGEN::GeneratorOpInterface> clone = node->func.clone();
-  clone->setName("");
+  clone->setSymbolName("");
 
   replacer.recursivelyReplaceElementsIn(*clone,
                                         /*replaceAttrs=*/true,
