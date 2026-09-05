@@ -325,8 +325,7 @@ struct ReturningTranspose:
         var new_shape = IndexList[input.rank]()
         var new_stride = IndexList[input.rank]()
 
-        @parameter
-        for i in range(input.rank):
+        comptime for i in range(input.rank):
             var dim = Int(permutations[i])
             new_shape[i] = input.dim_size(dim)
             new_stride[i] = input.stride_length(dim)
