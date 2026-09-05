@@ -17,7 +17,7 @@ The launched kernel writes to a host pointer and will always result in a
 
 ```mojo
 # Always errors with a CUDA_ERROR_ILLEGAL_ADDRESS
-fn kernel(res: UnsafePointer[UInt32]):
+def kernel(res: UnsafePointer[UInt32]):
     res[] = 0
 
 def test_function_error(ctx: DeviceContext):
