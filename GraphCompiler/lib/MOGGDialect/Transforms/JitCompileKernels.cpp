@@ -460,9 +460,11 @@ struct JitCompileKernels
   // Run LIT to KGEN pipeline
   CompileDiagnosticOrSuccess runLITToKGEN(KGEN::KGENCompiler &compiler,
                                           ModuleOp parsedMojoModule) {
-    if (compiler.runGenerateLibraryPipeline(parsedMojoModule).isError()) {
+    auto result = compiler.runGenerateLibraryPipeline(parsedMojoModule);
+    if (result.isError()) {
       return parsedMojoModule.emitError(
-          "The graph compiler could not lower LIT to KGEN");
+                 "The graph compiler could not lower LIT to KGEN: ")
+             << result.getError();
     }
     return success();
   }
