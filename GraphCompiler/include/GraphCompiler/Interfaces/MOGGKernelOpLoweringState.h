@@ -225,7 +225,8 @@ protected:
   void findExtraKernelStubOnlyArguments();
 
   /// Materialize `mogg.tensor.fused` from `mogg.bind` ops inside the stub.
-  void materializeInStubTensorFusedOps();
+  void materializeInStubTensorFusedOps(
+      MOGG::KernelIOContractDeriver &contractDeriver);
 
   /// Materialize one tensor init per contract lane, inside the stub, for
   /// inputs whose uses derived different contracts (`useLanes` non-empty),
@@ -270,7 +271,8 @@ private:
   SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
 
   // Lower the BindLambdaOp to be compatible with the MGP region.
-  void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
+  void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp,
+                         MOGG::KernelIOContractDeriver &contractDeriver);
 
   // Lower an in-stub constant to a legacy slice and/or trait capture.
   LogicalResult lowerConstant(MO::ConstantOp constantOp,

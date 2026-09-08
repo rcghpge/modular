@@ -549,7 +549,8 @@ void MOGGKernelOpLoweringState::findExtraKernelStubOnlyArguments() {
   }
 }
 
-void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
+void MOGGKernelOpLoweringState::lowerBindLambdaOp(
+    MOGG::BindLambdaOp bindOp, MOGG::KernelIOContractDeriver &contractDeriver) {
   mlir::MLIRContext *ctx = moggOp->getContext();
   auto loc = moggOp->getLoc();
 
@@ -604,10 +605,43 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
     tensorType =
         tensorType.cloneWith(MO::IOKindAttr::get(ctx, MO::IOKind::Input))
             .cloneWithMut(BoolAttr::get(ctx, false));
-    tensorVal = MOGG::TensorInitOp::create(
-        builder, loc, tensorType, emptyBuffer, dynamicDimensions,
-        /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
+
+    // A trait-contract fused argument must keep its trait representation: the
+    // trait arg struct owns the fused bind method and the proxy dtype/layout.
+    // A plain `mogg.tensor.__init__` substitute drops that metadata and would
+    // fail to emit.
+    //
+    // The substitute only needs the lambda's dtype and layout -- the type the
+    // kernel sees. The actual loads and stores run through the fusion functor.
+    //
+    // Find the trait contract by scanning the lambda's uses. A fusible may be
+    // a constant or view result with no stub-operand contract of its own, so
+    // we keep the first valid contract we find. Each bind lambda has exactly
+    // one fused-trait kernel arg, so only one contract exists. The deriver is
+    // borrowed from the kernel's lowering so it is built once per kernel, not
+    // once per bind.
+    MOGG::TensorArgContractAttr traitContract;
+    for (OpOperand &use : lambdaVal.getUses()) {
+      FailureOr<MOGG::TensorArgContractAttr> contract =
+          contractDeriver.deriveUse(use);
+      if (failed(contract))
+        return;
+      if (*contract) {
+        traitContract = *contract;
+        break;
+      }
+    }
+    if (traitContract) {
+      tensorVal = MOGG::TensorArgInitOp::create(
+                      builder, loc, tensorType, emptyBuffer, dynamicDimensions,
+                      /*device_context=*/Value(), traitContract)
+                      .getResult();
+    } else {
+      tensorVal = MOGG::TensorInitOp::create(
+          builder, loc, tensorType, emptyBuffer, dynamicDimensions,
+          /*mut=*/BoolAttr::get(ctx, false),
+          /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
+    }
   }
 
   else if (bindOp.hasAffineViewOperation()) {
@@ -715,10 +749,11 @@ void MOGGKernelOpLoweringState::lowerKernelOpWithOperandsMapping(
   op->erase();
 }
 
-void MOGGKernelOpLoweringState::materializeInStubTensorFusedOps() {
+void MOGGKernelOpLoweringState::materializeInStubTensorFusedOps(
+    MOGG::KernelIOContractDeriver &contractDeriver) {
   kernelStub.walk([&](mlir::Operation *op) {
     if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
-      lowerBindLambdaOp(bindOp);
+      lowerBindLambdaOp(bindOp, contractDeriver);
   });
 }
 
@@ -791,8 +826,21 @@ void MOGGKernelOpLoweringState::wireTraitFusedCapturesToStubArgs() {
       Value stubCapture =
           operandsMapping.get(info->operandIdx, /*isInsideStub=*/true);
 
-      if (bindOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda)
-        fusedOp.getTensorMutable().assign(stubCapture);
+      if (bindOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda) {
+        // A dtype- or shape-changing epilogue stores through the lambda, which
+        // casts and writes the real buffer. `lowerBindLambdaOp` already
+        // inserted a lambda-typed empty tensor for this case, so rewiring the
+        // capture here would retype the fused tensor and fail
+        // `TensorFusedOp::verify`. Only wire the capture when its dtype and
+        // shape match the lambda type.
+        auto captureTy = MO::dynCastFromTensorLike(stubCapture.getType());
+        auto lambdaTy =
+            MO::dynCastFromTensorLike(fusedOp.getLambda().getType());
+        if (captureTy && lambdaTy &&
+            captureTy.getDtype() == lambdaTy.getDtype() &&
+            captureTy.getShape() == lambdaTy.getShape())
+          fusedOp.getTensorMutable().assign(stubCapture);
+      }
 
       fusible.replaceUsesWithIf(stubCapture, [&](OpOperand &use) {
         return use.getOwner() == bindOp.getOperation();
@@ -806,7 +854,7 @@ LogicalResult MOGGKernelOpLoweringState::lowerKernelStub(
   // Walk through the IR and lower some ops to MGP.
   auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
     if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
-      lowerBindLambdaOp(bindOp);
+      lowerBindLambdaOp(bindOp, contractDeriver);
     else if (auto constantOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constantOp, contractDeriver)))
         return WalkResult::interrupt();
@@ -978,7 +1026,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // `lowerBindLambdaOp` may materialize tensors with dynamic dimensions inside
   // the stub. Do this after stub arguments are finalized so those dimensions
   // have stub-side mappings.
-  materializeInStubTensorFusedOps();
+  materializeInStubTensorFusedOps(contractDeriver);
   wireTraitFusedCapturesToStubArgs();
   builder.setInsertionPointToEnd(mgpRegionBody);
   llvm::ArrayRef<Value> stubCallOperands =

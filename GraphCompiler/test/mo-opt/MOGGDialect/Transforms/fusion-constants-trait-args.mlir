@@ -33,7 +33,8 @@ mo.graph @trait_constant_dense(%x: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3]
 // EMITCONST: def custom__trait_fused_load_mogg{{[_0-9]*}}[{{.*}}]({{.*}}MutByteBuffer) raises:
 // EMITCONST: [[CAP:var___[0-9]+]] = _MoggTensorBufferCapture[DType.float32, {{.*}}](
 // EMITCONST: InputLoadFunctor_{{[0-9]+}}[type_of([[CAP]]).dtype
-// EMITCONST: _MoggInputLoadFusionTensor[type_of([[CAP]]).dtype
+// EMITCONST: [[COMPANION:var___[0-9]+]] = _MoggTensorBufferCapture[DType.float32, {{.*}}](
+// EMITCONST: _MoggInputLoadFusionTensor[type_of([[COMPANION]]).dtype
 // CONSTMODEL-LABEL: mgp.model @trait_constant_fused
 // CONSTMODEL-DAG: mgp.buffer.constant
 // CONSTMODEL-DAG: mogg.tensor_arg.__init__{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
@@ -93,7 +94,9 @@ mo.graph @trait_constant_shared_lanes() -> !mo.tensor<[2, 3], f32> {
 // CONSTMODEL-COUNT-1: mgp.buffer.constant
 // EMITCONST: #   custom__trait_dense_and_fused_inputs
 // EMITCONST: [[SHARED_CAP:var___[0-9]+]] = _MoggTensorBufferCapture
-// EMITCONST: _MoggInputLoadFusionTensor[type_of([[SHARED_CAP]]).dtype
+// EMITCONST: InputLoadFunctor_{{[0-9]+}}[type_of([[SHARED_CAP]]).dtype
+// EMITCONST: [[COMPANION2:var___[0-9]+]] = _MoggTensorBufferCapture
+// EMITCONST: _MoggInputLoadFusionTensor[type_of([[COMPANION2]]).dtype
 // EMITCONST: _MoggDenseTensorArg[type_of([[SHARED_CAP]]).dtype
 // EMITCONST: TraitDenseAndFusedInputs.execute
 mo.graph @trait_constant_distinct_contracts() -> !mo.tensor<[2, 3], f32> {

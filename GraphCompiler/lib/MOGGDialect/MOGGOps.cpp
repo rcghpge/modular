@@ -6439,17 +6439,14 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
             MojoValue(accessEnabled)};
         ctorArgs = {fusionInfo.instance, layoutArg, ptrArg};
       } else {
-        // Load / store: layout metadata comes from the fused buffer capture on
-        // the stub boundary. For store, `wireTraitFusedCapturesToStubArgs`
-        // assigns `getTensor()` to that capture; for load, `getTensor()` stays
-        // the empty companion placeholder and the capture lives on the bind's
-        // fusible operand(s).
+        // The wrapper's dtype and layout describe what the kernel loads or
+        // stores -- the lambda's type -- not the physical buffer. `getTensor()`
+        // carries that kernel-visible type. For stores it is the real output
+        // capture when dtypes match; otherwise it stays the compute-dtype
+        // placeholder. For loads it is always the lambda-typed companion, so
+        // casts or transposes stay outside the kernel. The real buffer
+        // capture(s) remain on the bind's fusible operand(s).
         Value layoutSource = getTensor();
-        if (access == TensorArgAccess::load) {
-          if (auto bindOp = getBindLambdaOp())
-            if (!bindOp.getFusibleTensors().empty())
-              layoutSource = bindOp.getFusibleTensors().front();
-        }
         MojoValue capture = state.getMojoValueFor(layoutSource);
         auto captureName = capture.text;
         auto layoutArg = state.builder.var(
