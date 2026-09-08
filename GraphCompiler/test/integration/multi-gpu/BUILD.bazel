@@ -35,3 +35,40 @@ lit_tests(
     tags = ["gpu"],
     tools = _COMMON_TOOLS,
 )
+
+# Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
+# sweeping this directory with the env var forced. Removing an entry should
+# say which fix covers it, not just "now passes".
+_ADV_FUSION_EXCLUDED_TESTS = [
+    "MODialect/bundled-allreduce-fusion.mlir",
+    "MODialect/bundled-allreduce.mlir",
+    "MODialect/parallel.mlir",
+    "distributed-matmul.mlir",
+    "multi-device-context.mlir",
+]
+
+# ============================================================================
+# New tests: adv-fusion regression target (GEX-4140).
+# ============================================================================
+# Mirrors `multi-gpu-integration-test` above under MAX_GC_USE_ADV_FUSION=1,
+# minus _ADV_FUSION_EXCLUDED_TESTS. Most of its srcs intentionally overlap
+# `multi-gpu-integration-test`'s own (find_duplicate_srcs.py has a matching
+# exemption for this package); a lit_tests srcs list needs real file paths,
+# so unlike modular_py_test this can't be routed through a shared filegroup.
+lit_tests(
+    name = "multi-gpu-integration-test-adv-fusion",
+    srcs = glob(
+        ["**/*.mlir"],
+        exclude = _ADV_FUSION_EXCLUDED_TESTS,
+    ),
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    env = {"MAX_GC_USE_ADV_FUSION": "1"},
+    gpu_constraints = ["//:has_multi_gpu"],
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["gpu"],
+    tools = _COMMON_TOOLS,
+    # Per-file generated target names would otherwise collide with
+    # `multi-gpu-integration-test` above, which shares most of the same files.
+    unique_suffix = "adv-fusion",
+)

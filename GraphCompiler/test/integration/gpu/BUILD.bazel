@@ -18,6 +18,43 @@ filegroup(
     tags = ["maybe-unused"],
 )
 
+# Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
+# sweeping this directory with the env var forced. Removing an entry should
+# say which fix covers it, not just "now passes".
+_ADV_FUSION_EXCLUDED_TESTS = [
+    "Conversion/custom-ops.mlir",
+    "Conversion/lower-buffer-create.mlir",
+    "Conversion/lower-buffer-transfer.mlir",
+    "Conversion/lower-distributed-allreduce.mlir",
+    "Conversion/tile-codegen-elementwise-add-mul.mlir",
+    "Conversion/tile-codegen-elementwise-add.mlir",
+    "Conversion/tile-codegen-matmul-epilogue-add.mlir",
+    "Conversion/tile-codegen-matmul.mlir",
+    "Conversion/tile-codegen-mismatch.mlir",
+    "Conversion/tile-codegen-rms-norm-epilogue-store.mlir",
+    "E2E/device-graph-elementwise.mlir",
+    "E2E/device-graph-execute-gpu.mlir",
+    "E2E/device-graph-execute-only-gpu.mlir",
+    "E2E/device-graph-host-input.mlir",
+    "GPUUnit/constant-folding.mlir",
+    "GPUUnit/split.mlir",
+    "MODialect/cond-algebraic-dim-if.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-dynamic-gpu.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-load-capture-parameter-closure.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-load-gpu.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-load-host-closure-negative.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-load-host-negative.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-load-host-unified-closure.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-store-gpu.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-store-host-negative.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-transform-gpu.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-fused-transform-host-negative.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-gpu.mlir",
+    "MODialect/mogg-kernel-api-e2e-trait-tile-tensor-gpu.mlir",
+    "MODialect/parallel-fusion-gpu.mlir",
+    "MODialect/parallel.mlir",
+]
+
 # Common configuration shared across all lit_tests targets
 _COMMON_CUSTOM_SUBSTITUTIONS = {
     "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
@@ -80,4 +117,35 @@ modular_py_test(
         "//max/python/max/graph",
         requirement("numpy"),
     ],
+)
+
+# ============================================================================
+# New tests: adv-fusion regression target (GEX-4140).
+# ============================================================================
+# Mirrors `gpu-integration-test` above under MAX_GC_USE_ADV_FUSION=1, minus
+# _ADV_FUSION_EXCLUDED_TESTS. Most of its srcs intentionally overlap
+# `gpu-integration-test`'s own (find_duplicate_srcs.py has a matching
+# exemption for this package); a lit_tests srcs list needs real file paths,
+# so unlike modular_py_test this can't be routed through a shared filegroup.
+# No adv-fusion mirror for `graph_api_tests` (the pytest side): both of its
+# only two files fail under the new system, so nothing would remain.
+lit_tests(
+    name = "gpu-integration-test-adv-fusion",
+    srcs = glob(
+        ["**/*.mlir"],
+        exclude = _BROKEN_TESTS + _ADV_FUSION_EXCLUDED_TESTS,
+    ),
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    env = {"MAX_GC_USE_ADV_FUSION": "1"},
+    gpu_constraints = ["//:has_gpu"] + select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["gpu"],
+    tools = _COMMON_TOOLS,
+    # Per-file generated target names would otherwise collide with
+    # `gpu-integration-test` above, which shares most of the same files.
+    unique_suffix = "adv-fusion",
 )
