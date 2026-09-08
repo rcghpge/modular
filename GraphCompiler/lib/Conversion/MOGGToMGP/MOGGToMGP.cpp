@@ -2170,25 +2170,42 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       bundleElements[group].push_back(moElements[launch]);
   }
 
-  // Single body walk: collect kernels and bundled.expand ops together, and
+  // Single body walk: collect the body kernels and bundled.expand ops, and
   // reject any other op the lowering can't handle. The verifier accepts a
   // few preserved ops as transient intermediate IR (see ParallelOp::verify),
   // but by lowering time only kernels and bundled.expand should remain --
   // anything else indicates a missing cleanup pass or an unsupported pattern.
-  SmallVector<MOGG::KernelOp> kernelOps;
+  //
+  // A body's kernels are either all old-path `mogg.kernel` (fusion off) or all
+  // new-path `mogg._kernel` (MAX_GC_USE_ADV_FUSION on): the fusion passes run
+  // over the whole body, so the two kinds never coexist. The per-launch loop
+  // below dispatches on that single kind rather than handling a mix.
+  SmallVector<Operation *> kernelOps;
   SmallVector<MO::BundledExpandOp> expandOps;
+  bool sawOldKernel = false;
+  bool sawNewKernel = false;
   for (Operation &op : bodyBlock.without_terminator()) {
-    if (auto kernel = dyn_cast<MOGG::KernelOp>(&op))
-      kernelOps.push_back(kernel);
-    else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op))
+    if (isa<MOGG::KernelOp>(&op)) {
+      sawOldKernel = true;
+      kernelOps.push_back(&op);
+    } else if (isa<MOGG::KernelRegionOp>(&op)) {
+      sawNewKernel = true;
+      kernelOps.push_back(&op);
+    } else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op)) {
       expandOps.push_back(expand);
-    else
+    } else {
       return op.emitOpError()
              << "lowering of this op inside mo.parallel is not yet "
                 "supported; see GEX-3701";
+    }
   }
   if (kernelOps.empty())
     return parallelOp.emitOpError("body must contain at least one kernel");
+  if (sawOldKernel && sawNewKernel)
+    return parallelOp.emitOpError(
+        "mo.parallel body mixes old-path mogg.kernel and new-path "
+        "mogg._kernel; the fusion passes are expected to produce one kind");
+  const bool bodyIsNewPath = sawNewKernel;
 
   // For each kernel in the body, clone it once per launch, lower each clone
   // via the standard lowerKernelOp path, then fuse and convert to async.
@@ -2245,7 +2262,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     }
   }
 
-  for (MOGG::KernelOp kernelOp : kernelOps) {
+  for (Operation *kernelOp : kernelOps) {
     SmallVector<Operation *> kernelClones;
     SmallVector<Operation *> groupRegions;
 
@@ -2265,31 +2282,48 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       OpBuilder cloneBuilder(ctx);
       cloneBuilder.setInsertionPointAfter(parallelOp);
       Operation *clonedOp = cloneBuilder.clone(*kernelOp, mapper);
-      auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
 
       // The parallel body uses the first input's device as a representative.
-      // For launches on other devices, update the clone's device attribute
-      // and result types so that lowerKernelOp uses the correct device
-      // context and allocates output buffers on the right device.
-      // Per-launch device comes from the `launchDevices` attribute on
-      // `mo.parallel`.
+      // For launches on other devices, retarget the clone to this launch's
+      // device (from the `launchDevices` attribute on `mo.parallel`): update
+      // its result tensor types, then its device attribute, so the lowering
+      // allocates output buffers and picks a device context on the right
+      // device.
       DeviceRefAttr launchDevice = parallelOp.getLaunchDeviceList()[launch];
-      if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
-        clonedKernel.setDeviceRef(launchDevice);
-        clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
-          placeholder.setDeviceAttr(launchDevice);
-        });
-      }
-      for (OpResult result : clonedKernel->getResults()) {
+      const bool retarget = launchDevice != MO::getDeviceOrDefaultAny(clonedOp);
+      for (OpResult result : clonedOp->getResults()) {
         if (auto resTy = dyn_cast<MO::TensorType>(result.getType()))
           if (resTy.getDeviceRef() != launchDevice)
             result.setType(resTy.cloneWith(launchDevice));
       }
 
-      MGP::MOGGKernelOpLoweringState perLaunchState(clonedKernel,
-                                                    loweringState);
-      if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
-        return failure();
+      // Lower the clone to its compiled region. The two kernel kinds are
+      // lowered by their own paths -- a body is all old-path `mogg.kernel` or
+      // all new-path `mogg._kernel` (the walk above rejects a mix). The new
+      // path reuses `KernelRegionOp::lowerToCompiledRegion`, the same hook its
+      // top-level `lower()` wraps.
+      MOGG::GenericCompiledRegionOp launchRegion;
+      if (bodyIsNewPath) {
+        auto clonedKernel = cast<MOGG::KernelRegionOp>(clonedOp);
+        if (retarget)
+          clonedKernel.setDeviceRef(launchDevice);
+        launchRegion = clonedKernel.lowerToCompiledRegion(loweringState);
+        if (!launchRegion)
+          return failure();
+      } else {
+        auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
+        if (retarget) {
+          clonedKernel.setDeviceRef(launchDevice);
+          clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
+            placeholder.setDeviceAttr(launchDevice);
+          });
+        }
+        MGP::MOGGKernelOpLoweringState perLaunchState(clonedKernel,
+                                                      loweringState);
+        if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
+          return failure();
+        launchRegion = perLaunchState.getMGPRegion();
+      }
 
       // For GPU launches, stamp the integer device ordinal onto every
       // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
@@ -2297,8 +2331,6 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       // rather than a DeviceRefAttr because mogg-emit-mojo internally runs
       // stripDeviceIdsAndDynamicShapes (which zeroes DeviceRefAttr IDs)
       // before emitting Mojo text.
-      MOGG::GenericCompiledRegionOp launchRegion =
-          perLaunchState.getMGPRegion();
       if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
         auto affinityId =
             mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),

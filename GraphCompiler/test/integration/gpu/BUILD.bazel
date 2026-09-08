@@ -51,8 +51,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/mogg-kernel-api-e2e-trait-fused-transform-host-negative.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-gpu.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-tile-tensor-gpu.mlir",
-    "MODialect/parallel-fusion-gpu.mlir",
-    "MODialect/parallel.mlir",
 ]
 
 # Common configuration shared across all lit_tests targets

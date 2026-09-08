@@ -1855,6 +1855,15 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
     /// last entry of `outputs` when present (mirrors
     /// `IterForeachOp::getOutputChain()`/`KernelOp::maybeGetOutChain()`).
     ::mlir::Value getOutputChain();
+
+    /// Lowers this kernel to a `mogg.generic.compiled.region`, registers its
+    /// outputs against the graph, and returns the created region -- or a null
+    /// `GenericCompiledRegionOp` on error (like a failed `LogicalResult`). The
+    /// `LowerableToMGPInterface` `lower()` hook is a thin wrapper around this;
+    /// the `mo.parallel` orchestrator calls it directly, once per launch, to
+    /// collect the per-launch regions it then fuses into one async region.
+    GenericCompiledRegionOp
+    lowerToCompiledRegion(::M::MGP::MOGraphLoweringState &loweringState);
   }];
 }
 

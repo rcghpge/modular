@@ -39,10 +39,14 @@ lit_tests(
 # Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
 # sweeping this directory with the env var forced. Removing an entry should
 # say which fix covers it, not just "now passes".
+# The collectives (bundled.allreduce / distributed) still fail: the new
+# fusion system's MAPToMOGG path mis-lowers a chained collective op into a
+# `mogg._kernel` (the chain leaks as a `mogg._call.opaque` operand). That is a
+# separate MAP-side fix, tracked apart from the mo.parallel orchestration this
+# target's `parallel.mlir` now exercises.
 _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/bundled-allreduce-fusion.mlir",
     "MODialect/bundled-allreduce.mlir",
-    "MODialect/parallel.mlir",
     "distributed-matmul.mlir",
     "multi-device-context.mlir",
 ]

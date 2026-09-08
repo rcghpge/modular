@@ -2574,6 +2574,11 @@ Value KernelRegionOp::getOutputChain() {
 // TODO(GEX-3965): buffer allocation / context / dim materialization should move
 // to dedicated pre-MGP passes, leaving this a genuinely thin lowering.
 LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  return lowerToCompiledRegion(loweringState) ? success() : failure();
+}
+
+MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
+    MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState st(loweringState, getOperation());
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
@@ -2587,8 +2592,10 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   unsigned numInputs = getInputs().size();
   unsigned numOutputs = getOutputs().size() - (getOutputChain() ? 1 : 0);
   unsigned numArgs = kernelBody.getNumArguments();
-  if (numArgs < numInputs + numOutputs + 1)
-    return emitOpError("MOGGToMGP: malformed mogg._kernel body");
+  if (numArgs < numInputs + numOutputs + 1) {
+    emitOpError("MOGGToMGP: malformed mogg._kernel body");
+    return nullptr;
+  }
 
   Value inChain = st.getGuardChain(loweringState.getCurrentExecuteChain());
 
@@ -2607,7 +2614,7 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   FailureOr<SmallVector<MGP::MOOutputStorage>> storageOr =
       st.createOutputStorage(inChain);
   if (failed(storageOr))
-    return failure();
+    return nullptr;
   SmallVector<MGP::MOOutputStorage> storage = *storageOr;
   // `createOutputStorage` itself already skips a chain-typed result (no
   // buffer to allocate for a sequencing token), so it produces one entry per
@@ -2623,12 +2630,16 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // param.
   for (unsigned i = numInputs + numOutputs; i + 1 < numArgs; ++i) {
     auto dimType = dyn_cast<MOGG::DimType>(kernelBody.getArgument(i).getType());
-    if (!dimType || !dimType.getName())
-      return emitOpError("MOGGToMGP: mogg._kernel dim arg lacks a name");
+    if (!dimType || !dimType.getName()) {
+      emitOpError("MOGGToMGP: mogg._kernel dim arg lacks a name");
+      return nullptr;
+    }
     ErrorOr<Value> dimValue = loweringState.lowerExpression(
         getOperation()->getParentRegion(), loc, dimType.getName());
-    if (dimValue.isError())
-      return emitOpError("MOGGToMGP: ") << dimValue.getError();
+    if (dimValue.isError()) {
+      emitOpError("MOGGToMGP: ") << dimValue.getError();
+      return nullptr;
+    }
     operands.push_back(dimValue.takeValue());
     semantics.push_back(InOutSignatureAttr::kNone);
   }
@@ -2705,8 +2716,10 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
     if (auto cst = dyn_cast<MOGG::BufferConstantOp>(calleeOp)) {
       ErrorOr<ElementsAttr> blob =
           loweringState.lowerElementsAttr(cst.getValue());
-      if (blob.isError())
-        return cst.emitOpError("MOGGToMGP: ") << blob.getError();
+      if (blob.isError()) {
+        cst.emitOpError("MOGGToMGP: ") << blob.getError();
+        return nullptr;
+      }
       blobs.push_back(*blob);
       Value buffer =
           MGP::BufferConstantOp::create(builder, cst.getLoc(), *blob);
@@ -2727,7 +2740,7 @@ LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Register the outputs against the graph, guarded by the region's out chain.
   builder.setInsertionPointAfter(region);
   st.createOutputs(region->getResult(0), storage);
-  return success();
+  return region;
 }
 
 LogicalResult
