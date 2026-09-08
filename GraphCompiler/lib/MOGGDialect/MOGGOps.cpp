@@ -3452,6 +3452,18 @@ LogicalResult ShapeCreateOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+// Shared verifier backing `MOGG_TensorCreateInterface::verifyTrait` (declared
+// in MOGGInterfaces.h). Lives here, not in the generated interface header,
+// because it names `!mogg.buffer_`. See the interface for why only the
+// buffer-implies-mutable direction is enforced.
+llvm::LogicalResult
+M::MOGG::verifyTensorCreateInterfaceMutability(Operation *op) {
+  auto iface = cast<TensorCreateInterface>(op);
+  if (isa<BufferType>(op->getResult(0).getType()) && !iface.getMut())
+    return op->emitOpError("!mogg.buffer_ result requires mut = true");
+  return success();
+}
+
 LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
   // The rank comes from the op's own static shape attr; the opaque
   // `!mogg.shape` handle carries no attributes of its own.

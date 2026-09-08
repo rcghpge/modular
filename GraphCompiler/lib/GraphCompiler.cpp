@@ -10,7 +10,6 @@
 #include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
 #include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"
-#include "GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h"
 #include "GraphCompiler/Driver/Common/Utils.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
@@ -158,7 +157,6 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MAP::registerMAPTransformsPasses();
   MAP::registerMAPToMOGGPasses();
-  MOGG::registerPackageVariadicsAndScalarsPasses();
   MOGG::registerOutlineKernelsIntoFunctionsPass();
   MGP::registerMOGGToMGP();
 

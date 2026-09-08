@@ -1908,7 +1908,11 @@ def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
     BoolAttr:$mut,
     MO_IOKind:$io
   );
-  let results = (outs MOGG_Tensor:$tensor);
+  // A `!mo.buffer` operand reconstructs as a mutable `!mogg.buffer_`, a
+  // `!mo.tensor` as a `!mogg.tensor_`, so `getKernelOperandKind()` resolves
+  // `Buffer` vs `Tensor` from the type alone. `MOGG_TensorCreateInterface`'s
+  // verifier holds the shared `!mogg.buffer_ => mut` invariant.
+  let results = (outs AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>:$tensor);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
@@ -1948,7 +1952,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   }];
   let arguments = (ins
     MOGG_Shape:$shape,
-    Variadic<MOGG_Tensor>:$captures,
+    Variadic<MOGG_TensorLike>:$captures,
     Variadic<AnyType>:$args,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
@@ -1986,7 +1990,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
   }];
   let arguments = (ins
     MOGG_Shape:$shape,
-    Variadic<MOGG_Tensor>:$captures,
+    Variadic<MOGG_TensorLike>:$captures,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
@@ -2009,7 +2013,7 @@ def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", [
     Store path of a fusion callback body: writes `$value` into `$tensor` at
     `$index`.
   }];
-  let arguments = (ins MOGG_Tensor:$tensor, AnyType:$index, AnyType:$value);
+  let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index, AnyType:$value);
   let assemblyFormat = [{
     $tensor `[` $index `]` `=` $value attr-dict `:`
     qualified(type($tensor)) `,` qualified(type($index)) `,` qualified(type($value))
@@ -2033,12 +2037,18 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
-    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
     Optional<MOGG_Context>:$device_context,
     OptionalAttr<DictionaryAttr>:$kernel_param,
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
-    DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion
+    DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion,
+    // Forwarded from the source op's `MO_SameVariadicOperandSize` trait so
+    // `PackageVariadicsAndScalars` can split a flat operand list into several
+    // equal-length variadic groups (e.g. a bundled collective's N peer inputs
+    // and N signal buffers). The trait is lost when the MO op becomes a call,
+    // so it rides along as this attribute.
+    DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
@@ -2076,7 +2086,7 @@ def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
     inserts this to pack the consecutive `!mogg.tensor_` operands that satisfy a
     single variadic kernel argument into one `!mogg.tuple_`.
   }];
-  let arguments = (ins Variadic<MOGG_Tensor>:$elements);
+  let arguments = (ins Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>>:$elements);
   let results = (outs MOGG_Tuple:$tuple);
   let assemblyFormat = [{
     `(` $elements `)` attr-dict `:` functional-type(operands, results)
@@ -2137,7 +2147,7 @@ def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
     load shouldn't be freely reordered relative to a store through the same
     tensor any more than the store itself is.
   }];
-  let arguments = (ins MOGG_Tensor:$tensor, AnyType:$index);
+  let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
     $tensor `[` $index `]` attr-dict `:`

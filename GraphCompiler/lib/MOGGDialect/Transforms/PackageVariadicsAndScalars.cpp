@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h"
 #include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "mlir/IR/Builders.h"
 
@@ -27,7 +27,7 @@ using namespace M;
 namespace M::MOGG {
 
 #define GEN_PASS_DEF_PACKAGEVARIADICSANDSCALARS
-#include "GraphCompiler/Conversion/PackageVariadicsAndScalars/PackageVariadicsAndScalars.h.inc"
+#include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
 
@@ -96,7 +96,7 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
 
   ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
       call.getInputs(), call.getOutputs(), *adaptor.executeFunction,
-      call.getCallee(), /*hasSameVariadicOperandSize=*/false,
+      call.getCallee(), call.getHasSameVariadicOperandSize(),
       /*hasExtraOutputShapeArgument=*/false);
   if (mapping.isError())
     return call.emitOpError("PackageVariadicsAndScalars: ")

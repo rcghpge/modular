@@ -178,13 +178,18 @@ LogicalResult lowerToOpaque(Operation *op,
   }
 
   builder.setInsertionPointToEnd(body);
-  MAP::CallOpaqueOp::create(
+  auto callOp = MAP::CallOpaqueOp::create(
       builder, loc,
       FlatSymbolRefAttr::get(op->getContext(),
                              adaptor.fullyResolvedName.strref()),
       adaptor.registeredOpName, inferParameters(op, builder),
       /*inputs=*/callInputs,
       /*outputs=*/callOutputs);
+  // Carry the source op's same-variadic-operand-size property forward: it is
+  // needed later to split the call's flat operands back into equal-length
+  // variadic groups (e.g. a bundled collective's N peers and N signal buffers).
+  callOp.setHasSameVariadicOperandSize(
+      isa<MO::SameVariadicOperandSizeInterface>(op));
 
   // Every output here is DPS (the output block args `outs` themselves are the
   // op's results); no map.yield is needed since map.call.opaque never

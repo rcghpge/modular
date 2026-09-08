@@ -69,9 +69,19 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
   MLIRContext *ctx = state.builder.getContext();
   MOSH::ShapeAttr shapeAttr = tensorTy.getShape();
   Value shape = buildShape(loc, shapeAttr, state);
+  // A `!mo.buffer` operand (mutable memory the kernel writes through, e.g. a
+  // collective's signal buffers) reconstructs as a `!mogg.buffer_` handle
+  // (`Buffer` kind); a `!mo.tensor` -- even a mutable output -- reconstructs as
+  // a `!mogg.tensor_` (`Tensor` kind). Buffer-ness (the kind) is thus a
+  // property of the operand type, while `$mut` is the store-side mutability
+  // (true for buffers and for output tensors alike); `mogg._tensor.create`'s
+  // verifier only requires a `!mogg.buffer_` to be mutable.
+  bool isBuffer = isa<MO::BufferType>(tensorType);
+  Type resultType = isBuffer ? Type(MOGG::BufferType::get(ctx))
+                             : Type(MOGG::TensorType::get(ctx));
   return MOGG::TensorCreateOp::create(
-      state.builder, loc, MOGG::TensorType::get(ctx), ptr, shape, shapeAttr,
-      state.device, TypeAttr::get(tensorTy.getElementType()),
+      state.builder, loc, resultType, ptr, shape, shapeAttr, state.device,
+      TypeAttr::get(tensorTy.getElementType()),
       state.builder.getBoolAttr(isMut), MO::IOKindAttr::get(ctx, io));
 }
 
@@ -406,11 +416,12 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
     return in.getDefiningOp<MOGG::TensorCreatePrologueOp>() != nullptr;
   });
 
-  MOGG::CallOpaqueOp::create(state.builder, getLoc(), getCalleeAttr(),
-                             callInputs, callOutputs, state.contextArg,
-                             getParams(),
-                             state.builder.getBoolAttr(hasEpilogueFusion),
-                             state.builder.getBoolAttr(hasPrologueFusion));
+  MOGG::CallOpaqueOp::create(
+      state.builder, getLoc(), getCalleeAttr(), callInputs, callOutputs,
+      state.contextArg, getParams(),
+      state.builder.getBoolAttr(hasEpilogueFusion),
+      state.builder.getBoolAttr(hasPrologueFusion),
+      state.builder.getBoolAttr(getHasSameVariadicOperandSize()));
   return success();
 }
 
@@ -642,10 +653,16 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // block args here are exactly the non-chain inputs then the non-chain
   // outputs.
   Block::BlockArgListType inputBlockArgs = getInputBlockArgs();
-  for (auto [i, in] : llvm::enumerate(inputs))
+  for (auto [i, in] : llvm::enumerate(inputs)) {
+    // A `!mo.buffer` input (e.g. a collective's signal buffers) is mutable
+    // memory the kernel writes through, so reconstruct it as a `!mogg.buffer_`
+    // (mut) rather than a `!mogg.tensor_`; the kernel decl expects a mutable
+    // operand there.
+    bool isMut = isa<MO::BufferType>(in.getType());
     state.mapping.map(inputBlockArgs[i],
                       buildTensor(loc, inputPtrs[i], in.getType(),
-                                  MO::IOKind::Input, /*isMut=*/false, state));
+                                  MO::IOKind::Input, isMut, state));
+  }
 
   Block &opaqueBody = getBody().front();
   Block::BlockArgListType outputBlockArgs = getOutputBlockArgs();

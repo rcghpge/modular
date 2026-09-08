@@ -83,6 +83,23 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
       /*defaultImplementation=*/[{ return $_op.getMut(); }]
     >,
   ];
+
+  // A `!mogg.buffer_` result is mutable memory -- `getKernelOperandKind()`
+  // reads the mutable `Buffer` kind straight off the type -- so it must be
+  // marked mutable. Enforced on the interface (rather than one op) so every
+  // current and future `mogg._tensor.create*` producer is covered.
+  //
+  // The converse is intentionally NOT checked: a `!mogg.tensor_` may be
+  // mutable too -- a DPS output (`io = Output`) and a mutable view are both
+  // mutable `!mogg.tensor_` -- so `mut` does not pin the kind down the other
+  // way, and only the plain `mogg._tensor.create` even carries the `$io` that
+  // scoping an input-only immutability rule would need.
+  //
+  // Defined out of line in MOGGOps.cpp so it can name `!mogg.buffer_`, which
+  // this generated interface header cannot see.
+  let verify = [{
+    return ::M::MOGG::verifyTensorCreateInterfaceMutability($_op);
+  }];
 }
 
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {

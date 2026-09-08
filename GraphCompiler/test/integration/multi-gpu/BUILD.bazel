@@ -39,15 +39,17 @@ lit_tests(
 # Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
 # sweeping this directory with the env var forced. Removing an entry should
 # say which fix covers it, not just "now passes".
-# The collectives (bundled.allreduce / distributed) still fail: the new
-# fusion system's MAPToMOGG path mis-lowers a chained collective op into a
-# `mogg._kernel` (the chain leaks as a `mogg._call.opaque` operand). That is a
-# separate MAP-side fix, tracked apart from the mo.parallel orchestration this
-# target's `parallel.mlir` now exercises.
+#
+# Both entries below are pre-existing exclusions carried over unchanged from
+# the mo.parallel PR -- this PR introduces no new failure, it only drops the
+# two bundled-allreduce entries the collective fixes now cover. They each fail
+# on a separate gap unrelated to the collective path, tracked on their own.
 _ADV_FUSION_EXCLUDED_TESTS = [
-    "MODialect/bundled-allreduce-fusion.mlir",
-    "MODialect/bundled-allreduce.mlir",
+    # crash: MAP SliceSpecAttr verifyInvariants assertion (a slice/view
+    # lowering gap in the new system).
     "distributed-matmul.mlir",
+    # compile error: the kernel's variadic `dev_ctxs` cannot resolve from a
+    # single DeviceContext (variadic device-context handling).
     "multi-device-context.mlir",
 ]
 

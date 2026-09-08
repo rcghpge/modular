@@ -308,7 +308,12 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     StrAttr:$kernelName,
     DictionaryAttr:$params,
     Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs
+    Variadic<AnyType>:$outputs,
+    // Carries the source op's `MO_SameVariadicOperandSize` trait (lost when the
+    // MO op became a call) so the eventual `mogg._call.opaque` can split a flat
+    // operand list into equal-length variadic groups -- a bundled collective's
+    // N peer inputs and N signal buffers, say.
+    DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
 
   let assemblyFormat = [{

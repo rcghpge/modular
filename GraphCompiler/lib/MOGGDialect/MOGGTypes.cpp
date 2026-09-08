@@ -73,6 +73,9 @@ static void printDimName(mlir::AsmPrinter &printer,
 MO::KernelOperandKind MOGG::TensorType::getKernelOperandKind() const {
   return MO::KernelOperandKind::Tensor;
 }
+MO::KernelOperandKind MOGG::BufferType::getKernelOperandKind() const {
+  return MO::KernelOperandKind::Buffer;
+}
 MO::KernelOperandKind MOGG::ScalarType::getKernelOperandKind() const {
   return MO::KernelOperandKind::Scalar;
 }
