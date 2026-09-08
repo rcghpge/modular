@@ -49,28 +49,19 @@ void outlineForeach(IterForeachOp foreachOp) {
   opaque.setHasReadEffect(foreachOp.getHasReadEffect());
   opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
 
-  // `map.iter.opaque` shadows every input and output as a body block
-  // argument unconditionally, a chain included -- `getInputBlockArgs()`/
-  // `getOutputBlockArgs()` rely on that being unfiltered, splitting purely on
-  // `getNumResults()`.
-  SmallVector<Value> opaqueInputs(foreachOp.getInputs());
-  if (Value inputChain = foreachOp.getInputChain())
-    opaqueInputs.push_back(inputChain);
+  // `map.iter.opaque` shadows only its non-chain inputs and outputs as body
+  // block args; the chain rides the dedicated `$inputChain` operand and the
+  // trailing chain result, never getting a block arg. Those shadowed args are
+  // exactly `map.iter.foreach.body`'s captures -- the narrower
+  // `CapturingFusionClosure` concept a chain is never part of, being a
+  // sequencing token rather than a per-element value the body reads or writes.
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
-  SmallVector<Value> opaqueBlockArgs;
-  for (Value input : opaqueInputs)
-    opaqueBlockArgs.push_back(opaqueBody->addArgument(input.getType(), loc));
-  for (Type resultType : foreachOp.getResultTypes())
-    opaqueBlockArgs.push_back(opaqueBody->addArgument(resultType, loc));
-
-  // `map.iter.foreach.body`'s own captures are the distinct, narrower
-  // `CapturingFusionClosure` concept: a chain is never one of them, whether
-  // from an input or a result. It's a sequencing token, not a per-element
-  // value the structured body ever reads or writes directly.
   SmallVector<Value> bodyCaptures;
-  for (Value arg : opaqueBlockArgs)
-    if (!isa<MO::ChainType>(arg.getType()))
-      bodyCaptures.push_back(arg);
+  for (Value input : foreachOp.getInputs())
+    bodyCaptures.push_back(opaqueBody->addArgument(input.getType(), loc));
+  for (Type resultType : foreachOp.getResultTypes())
+    if (!isa<MO::ChainType>(resultType))
+      bodyCaptures.push_back(opaqueBody->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(opaqueBody);
   auto body = IterForeachBodyOp::create(builder, loc, foreachOp.getShape(),

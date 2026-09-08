@@ -113,14 +113,11 @@ LogicalResult lowerToOpaque(Operation *op,
 
   // A mutating op's chain, when present, is always its own last operand and
   // last result (the codebase-wide convention -- see e.g. mo.mutable.store).
-  // `map.iter.opaque` threads it through as a dedicated operand and a
-  // trailing result instead of an ordinary, ambiguous `inputs`/`results`
-  // entry -- but unlike `map.iter.foreach`/`mogg._kernel`, it still shadows
-  // the chain as a body block argument on both sides: `map.call.opaque` has
-  // no return channel of its own (its `outputs` are destination operands,
-  // not real results), so a wrapped call that itself consumes or produces a
-  // chain (e.g. a custom kernel taking one directly) can only reach it that
-  // way.
+  // `map.iter.opaque` threads it through a dedicated `$inputChain` operand and
+  // a trailing result instead of an ordinary, ambiguous `inputs`/`results`
+  // entry -- and, like `map.iter.foreach`/`mogg._kernel`, keeps it out of the
+  // body entirely (no block argument, never a `map.call.opaque` operand): it
+  // is pure sequencing plumbing no opaque kernel's `execute` reads.
   ValueRange operands = op->getOperands();
   bool hasInputChain =
       !operands.empty() && isa<MO::ChainType>(operands.back().getType());
@@ -139,13 +136,21 @@ LogicalResult lowerToOpaque(Operation *op,
   opaque.setHasReadEffect(hasReadEffect);
   opaque.setHasWriteEffect(hasWriteEffect);
 
+  // Body block args shadow the non-chain inputs then the non-chain outputs.
+  // The chain (in and out) is pure MGP sequencing threaded through the op's
+  // dedicated `$inputChain` operand and trailing chain result; it is never a
+  // body block arg and never reaches the wrapped `map.call.opaque` -- no opaque
+  // kernel's `execute` takes a chain, so the body has nothing to do with it.
   Block *body = builder.createBlock(&opaque.getBody());
   SmallVector<BlockArgument> ins;
-  for (Value operand : op->getOperands())
+  for (Value operand : nonChainOperands)
     ins.push_back(body->addArgument(operand.getType(), loc));
   SmallVector<BlockArgument> outs;
-  for (Type resultType : resultTypes)
+  for (Type resultType : resultTypes) {
+    if (isa<MO::ChainType>(resultType))
+      continue;
     outs.push_back(body->addArgument(resultType, loc));
+  }
 
   builder.setInsertionPointToStart(body);
   SmallVector<Value> callInputs;

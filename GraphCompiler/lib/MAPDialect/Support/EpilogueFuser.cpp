@@ -80,7 +80,12 @@ SmallVector<EpilogueFuser::FusionCandidate> EpilogueFuser::collectCandidates() {
   DenseSet<Operation *> claimed;
 
   graphOp.getBody().walk([&](IterOpaqueOp dst) {
-    for (unsigned resultIdx = 0; resultIdx < dst.getNumResults(); ++resultIdx) {
+    // Only the non-chain results have an output block arg to fuse an epilogue
+    // onto; the trailing output chain is pure sequencing with no shadow arg, so
+    // `getOutputBlockArgs()[resultIdx]` in `getEpilogueForResult` would run off
+    // the end for it.
+    for (unsigned resultIdx = 0; resultIdx < dst.getNumNonChainResults();
+         ++resultIdx) {
       Value result = dst->getResult(resultIdx);
       if (!result.hasOneUse())
         continue;

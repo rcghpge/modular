@@ -16,7 +16,7 @@
 // CHECK-NOT:   mo.mutable.load
 // CHECK:       %[[K1:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[BUFA]] as {{.*}}: !mo.buffer<[7, 5], f32>, %[[BUFB]] as %[[BUFBARG:.*]]: !mo.buffer<[3, 2], si32>,
-// CHECK-SAME:  %[[CH0]] as {{.*}}: !mo.chain)
+// CHECK-SAME:  %[[CH0]]: !mo.chain)
 // CHECK:       map.call.opaque @{{.*}}sampler_apply_penalties[] inputs({{.*}}%[[BUFBARG]],
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_leaf<"custom__sampler.apply_penalties"{{.*}}]>>
 
@@ -24,7 +24,7 @@
 // CHECK:       %[[MERGE:.*]] = mo.chain.create(%[[CH0]], %[[K1]], %[[K1]], %[[OC2]])
 // CHECK:       %[[K2:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[BUFA]] as {{.*}}: !mo.buffer<[7, 5], f32>, %[[T2]] as {{.*}}: !mo.tensor<[3, 2], si32>,
-// CHECK-SAME:  %[[MERGE]] as {{.*}}: !mo.chain)
+// CHECK-SAME:  %[[MERGE]]: !mo.chain)
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__sampler.apply_penalties"{{.*}}>>
 
 // CHECK:       mo.mutable.load(%[[BUFB]], %[[MERGE]])

@@ -2604,8 +2604,14 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   SmallVector<Value> operands;
   SmallVector<InOutSignatureAttr::InOutSemantics> semantics;
 
-  // Inputs: `!mo.tensor` operands lower to `!mgp.buffer`.
+  // Inputs: `!mo.tensor`/`!mo.buffer` operands lower to `!mgp.buffer`. The
+  // optional input chain (`$chain`) is pure sequencing plumbing -- threaded via
+  // `inChain` and the region's own chain result -- and has no kernel body block
+  // argument, so drop it here; otherwise it would shift every following operand
+  // out of alignment with the body's input pointers, outputs, and context.
   for (Value buffer : st.getLoweredOperands()) {
+    if (isa<MEF::ChainType>(buffer.getType()))
+      continue;
     operands.push_back(buffer);
     semantics.push_back(InOutSignatureAttr::kIn);
   }

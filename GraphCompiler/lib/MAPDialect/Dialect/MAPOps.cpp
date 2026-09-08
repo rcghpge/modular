@@ -121,8 +121,15 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
       !allArgInfo.empty() && isa<MO::ChainType>(allArgInfo.back().type);
   int32_t numInputOperands =
       static_cast<int32_t>(result.operands.size()) - (hasInputChain ? 1 : 0);
+  // The input chain stays an operand ($inputChain) but has no body block
+  // argument -- it is pure sequencing the body never touches -- so drop the
+  // block-arg entry the shadowing parse just created for it.
+  if (hasInputChain)
+    allArgInfo.pop_back();
 
-  // outputs ( %out : tOut, ... ) -> region entry args + op result types
+  // outputs ( %out : tOut, ... ) -> region entry args + op result types.
+  // The trailing output chain (if any) is a result but, like the input chain,
+  // never a block argument.
   SmallVector<OpAsmParser::Argument> outArgs;
   if (parser.parseKeyword("outputs") ||
       parser.parseArgumentList(outArgs, OpAsmParser::Delimiter::Paren,
@@ -130,7 +137,8 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
     return mlir::failure();
   for (const OpAsmParser::Argument &arg : outArgs) {
     result.addTypes(arg.type);
-    allArgInfo.push_back(arg);
+    if (!isa<MO::ChainType>(arg.type))
+      allArgInfo.push_back(arg);
   }
 
   result.addAttribute(IterOpaqueOp::getOperandSegmentSizesAttrName(result.name),
@@ -149,24 +157,23 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   p.increaseIndent();
   p.printNewline();
   p << "inputs ";
-  // `$inputChain`, when present, prints as a trailing entry of the same
-  // `inputs (...)` list -- the dedicated operand is purely an ODS-level
-  // detail; the text reads exactly as if it were still an ordinary input.
-  // Inlines `printParenOperandListWithShadowing` (which needs a real
+  // Non-chain inputs are shadowed as body block args (`%operand as %arg: type`,
+  // or just `%operand: type` when the operand's own name already prints). The
+  // `$inputChain`, when present, is a dedicated operand with NO block arg and
+  // prints as a trailing `%chain: !mo.chain` -- pure sequencing the body never
+  // touches. Inlines `printParenOperandListWithShadowing` (which needs a real
   // `OperandRange`, not a synthesized combined list).
-  SmallVector<Value> allInputs(getInputs().begin(), getInputs().end());
-  if (Value inputChain = getInputChain())
-    allInputs.push_back(inputChain);
+  ValueRange inputs = getInputs();
   Block::BlockArgListType inputArgs = getInputBlockArgs();
   {
     llvm::DenseSet<Value> seenInputs;
     bool allDistinctInputs = true;
-    for (Value v : allInputs)
+    for (Value v : inputs)
       if (!seenInputs.insert(v).second)
         allDistinctInputs = false;
     bool needAs = !allDistinctInputs;
     p << "(";
-    for (auto [i, pair] : llvm::enumerate(llvm::zip(allInputs, inputArgs))) {
+    for (auto [i, pair] : llvm::enumerate(llvm::zip(inputs, inputArgs))) {
       auto [operand, arg] = pair;
       if (i != 0)
         p << ", ";
@@ -175,29 +182,41 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
         p << " as " << arg;
       p << ": " << operand.getType();
     }
+    if (Value inputChain = getInputChain()) {
+      if (!inputs.empty())
+        p << ", ";
+      p << inputChain << ": " << inputChain.getType();
+    }
     p << ")";
   }
   p.printNewline();
+  // Non-chain outputs print as their DPS block args; the trailing output chain,
+  // when present, is a result with no block arg and prints after them.
   p << "outputs (";
   printValuesWithTypes(p, getOutputBlockArgs());
+  if (Value outputChain = getOutputChain()) {
+    if (getNumNonChainResults() != 0)
+      p << ", ";
+    p << outputChain << ": " << outputChain.getType();
+  }
   p << ") ";
   p.decreaseIndent();
 
-  // Shadow the whole region so inner references to the inputs print with the
-  // outer operand's own SSA name (mirrors IterForeachOp::print); output block
-  // args keep whatever name getAsmBlockArgumentNames already assigned them,
-  // so shadowing them with themselves here is a no-op.
+  // Shadow the region so inner references to the inputs print with the outer
+  // operand's own SSA name (mirrors IterForeachOp::print). Only the non-chain
+  // inputs and the output block args have region args to shadow; the chain has
+  // none.
   {
     llvm::DenseSet<Value> seen;
     bool inputsDistinct = true;
-    for (Value v : allInputs) {
+    for (Value v : inputs) {
       if (!seen.insert(v).second) {
         inputsDistinct = false;
         break;
       }
     }
     if (inputsDistinct) {
-      SmallVector<Value> shadowValues = allInputs;
+      SmallVector<Value> shadowValues(inputs.begin(), inputs.end());
       for (BlockArgument arg : getOutputBlockArgs())
         shadowValues.push_back(arg);
       p.shadowRegionArgs(getBody(), shadowValues);
@@ -208,17 +227,25 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
                           {getOperandSegmentSizesAttrName().getValue()});
 }
 
+// The body shadows the non-chain inputs then the non-chain outputs; the chain
+// (in and out) is threaded through the dedicated `$inputChain` operand and
+// trailing chain result and never gets a block arg. So the split is on the
+// non-chain result count, not `getNumResults()`.
+unsigned IterOpaqueOp::getNumNonChainResults() {
+  return getNumResults() - (getOutputChain() ? 1 : 0);
+}
+
 Block::BlockArgListType IterOpaqueOp::getOutputBlockArgs() {
-  return getBody().front().getArguments().take_back(getNumResults());
+  return getBody().front().getArguments().take_back(getNumNonChainResults());
 }
 
 Block::BlockArgListType IterOpaqueOp::getInputBlockArgs() {
-  return getBody().front().getArguments().drop_back(getNumResults());
+  return getBody().front().getArguments().drop_back(getNumNonChainResults());
 }
 
 Value IterOpaqueOp::getInputFor(BlockArgument arg) {
-  // `getInputBlockArgs()` shadows `$inputs` then `$inputChain`, so it can be
-  // one longer than `$inputs`; only that prefix has an operand to hand back.
+  // `getInputBlockArgs()` shadows `$inputs` exactly (the chain has no block
+  // arg), so every one has an operand to hand back.
   ValueRange inputs = getInputs();
   Block::BlockArgListType inputArgs = getInputBlockArgs();
   for (unsigned i = 0, e = inputs.size(); i < e; ++i)

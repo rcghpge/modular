@@ -83,13 +83,13 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 
     A kernel that mutates memory takes an `!mo.chain` through a dedicated
     `$inputChain` operand (rather than an ordinary, ambiguous `$inputs` entry
-    found by scanning for a chain-typed value) and returns one as the
-    trailing entry of `results`. Unlike `mogg._kernel`'s and
-    `map.iter.foreach`'s chain, which is pure sequencing plumbing their bodies
-    never touch, `map.call.opaque` has no return channel of its own (its
-    `outputs` are destination operands, not real results) -- so a mutating
-    kernel's wrapped call may still need to read or write the chain directly,
-    and it keeps a shadowed body block argument on both sides for that.
+    found by scanning for a chain-typed value) and returns one as the trailing
+    entry of `results`. Like `mogg._kernel`'s and `map.iter.foreach`'s chain,
+    it is pure sequencing plumbing the body never touches: it has NO body block
+    argument on either side and never reaches the wrapped `map.call.opaque` --
+    no opaque kernel's `execute` takes a chain (it writes memory in place and
+    the chain only orders that against other ops). The body's block arguments
+    are exactly the non-chain inputs then the non-chain outputs.
 
     `hasReadEffect`/`hasWriteEffect` carry forward the memory effects of the
     original op this kernel lowers, so downstream passes (DCE, CSE, invariant
@@ -122,24 +122,27 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
+    /// The number of results that are not the trailing chain -- i.e. the
+    /// results that have a body block argument (the chain never does).
+    unsigned getNumNonChainResults();
+
     /// The subrange of body entry-block arguments that are the DPS outputs:
-    /// the trailing `getNumResults()` arguments (block arguments are ordered
-    /// [inputs..., outputs...], outputs last).
+    /// the trailing `getNumNonChainResults()` arguments (block arguments are
+    /// ordered [non-chain inputs..., non-chain outputs...], outputs last; the
+    /// chain, in or out, has no block argument).
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
 
-    /// The subrange of body entry-block arguments shadowing `$inputs` and
-    /// `$inputChain` together (in that order) -- whatever precedes the
-    /// output block args.
+    /// The subrange of body entry-block arguments shadowing `$inputs` -- the
+    /// arguments that precede the output block args. The `$inputChain` has no
+    /// block argument, so this maps one-to-one to `$inputs`.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
 
     /// Returns the `$inputs` operand `arg` shadows, or null when `arg` shadows
-    /// none -- an output block arg, the `$inputChain` one that trails the
-    /// inputs, or an argument of some other op entirely.
+    /// none (an output block arg, or an argument of some other op entirely).
     ///
-    /// The inverse of `getInputBlockArgs()` over its `$inputs` prefix, matched
-    /// by identity rather than by indexing `$inputs` with a raw argument
-    /// number, so a caller walking outward from a block argument never
-    /// restates where the inputs end.
+    /// The inverse of `getInputBlockArgs()`, matched by identity rather than
+    /// by indexing `$inputs` with a raw argument number, so a caller walking
+    /// outward from a block argument never restates where the inputs end.
     ::mlir::Value getInputFor(::mlir::BlockArgument arg);
 
     /// Inserts `vals` as new (non-chain) inputs starting at `idx`, updating

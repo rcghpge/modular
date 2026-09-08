@@ -28,13 +28,13 @@ mo.graph @fuse_into_opaque_with_prologue(%buf: !mo.buffer<[3, 2], si32>, %target
   %t, %oc = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
   %c = map.iter.opaque
       inputs (%target : !mo.buffer<[3, 2], si32>, %t : !mo.tensor<[3, 2], si32>, %offsets : !mo.tensor<[11], ui32>, %penalty : !mo.tensor<[7], f32>, %ch0 : !mo.chain)
-      outputs (%out : !mo.chain)
+      outputs (%c : !mo.chain)
   {
     %pro = map.iter.prologue (%idx : !map.index<2>) capturing (%cap = %t : !mo.tensor<[3, 2], si32>) {
       %v = map.load %cap[%idx] : !mo.tensor<[3, 2], si32>
       map.yield %v : si32
     } : !mo.tensor<[3, 2], si32>
-    map.call.opaque @builtin_kernels.kernels.Struct_sampler_apply_penalties[] inputs(%target, %pro, %offsets, %penalty, %penalty, %penalty, %ch0) outputs(%out) {kernelName = "sampler.apply_penalties"} : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
+    map.call.opaque @builtin_kernels.kernels.Struct_sampler_apply_penalties[] inputs(%target, %pro, %offsets, %penalty, %penalty, %penalty) outputs() {kernelName = "sampler.apply_penalties"} : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>) -> ()
   } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__sampler.apply_penalties">>, hasReadEffect = true, hasWriteEffect = true}
   mo.output %c : !mo.chain
 }

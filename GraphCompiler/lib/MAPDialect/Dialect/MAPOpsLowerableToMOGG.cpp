@@ -384,6 +384,10 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
 // `state.mapping`, lowered earlier by `IterOpaqueOp::lowerToMOGG`'s
 // whole-block walk.
 LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
+  // `map.call.opaque`'s inputs/outputs are the codegen tensor handles of the
+  // enclosing `map.iter.opaque`'s non-chain operands; the chain never reaches
+  // it (it is pure MGP sequencing on the kernel's own chain channel), so there
+  // is nothing to filter here.
   SmallVector<Value> callInputs;
   for (Value in : getInputs())
     callInputs.push_back(state.mapping.lookup(in));
@@ -610,8 +614,14 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   SmallVector<BlockArgument> inputPtrs, outputPtrs;
   for (size_t i = 0, e = inputs.size(); i < e; ++i)
     inputPtrs.push_back(body->addArgument(MOGG::PointerType::get(ctx), loc));
-  for (size_t i = 0, e = resultTypes.size(); i < e; ++i)
+  // The trailing output chain is threaded through the kernel's own chain result
+  // (mapped below), never a pointer -- matching `mogg._kernel`'s verifier,
+  // which counts pointer block args over the non-chain outputs only.
+  for (size_t i = 0, e = resultTypes.size(); i < e; ++i) {
+    if (hasOutputChain && i + 1 == e)
+      break;
     outputPtrs.push_back(body->addArgument(MOGG::PointerType::get(ctx), loc));
+  }
   // One `!mogg.dim_` per unique dynamic dim, each carrying that dim's
   // parameter name (e.g. `!mogg.dim_<batch>`); shapes never hold dim
   // expressions, so the dynamic dim is always a `ParamDeclRefAttr`.
@@ -625,29 +635,23 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // `map.iter.opaque` is isolated from above: nested ops reference its
   // shadowed input block args, not `inputs`/`$inputChain` (its outer
   // operands) directly, so the mapping must be keyed on the block args.
-  // `getInputBlockArgs()` shadows `$inputs` then `$inputChain` together (in
-  // that order, see its own doc comment), so the chain's own block arg, when
-  // present, is always the last one here -- mapped straight to the new
-  // kernel's own chain operand, never reconstructed as a pointer-backed
-  // tensor.
+  // The chain has no block argument on either side: `$inputChain` is already
+  // the kernel's own chain operand (passed to `KernelRegionOp::create` above)
+  // and the trailing chain result is the kernel's own chain result (wired by
+  // `replaceAllUsesWith` below). Nothing in the body references it, so the
+  // block args here are exactly the non-chain inputs then the non-chain
+  // outputs.
   Block::BlockArgListType inputBlockArgs = getInputBlockArgs();
   for (auto [i, in] : llvm::enumerate(inputs))
     state.mapping.map(inputBlockArgs[i],
                       buildTensor(loc, inputPtrs[i], in.getType(),
                                   MO::IOKind::Input, /*isMut=*/false, state));
-  if (inputChain)
-    state.mapping.map(inputBlockArgs.back(), kernel.getChain());
 
   Block &opaqueBody = getBody().front();
   Block::BlockArgListType outputBlockArgs = getOutputBlockArgs();
-  for (auto [i, ty] : llvm::enumerate(resultTypes)) {
-    Value outputBlockArg = outputBlockArgs[i];
-    if (hasOutputChain && i + 1 == resultTypes.size()) {
-      state.mapping.map(outputBlockArg, kernel.getOutputChain());
-      continue;
-    }
-    Value tensor = buildTensor(loc, outputPtrs[i], ty, MO::IOKind::Output,
-                               /*isMut=*/true, state);
+  for (auto [i, outputBlockArg] : llvm::enumerate(outputBlockArgs)) {
+    Value tensor = buildTensor(loc, outputPtrs[i], resultTypes[i],
+                               MO::IOKind::Output, /*isMut=*/true, state);
     state.mapping.map(outputBlockArg, tensor);
   }
 
