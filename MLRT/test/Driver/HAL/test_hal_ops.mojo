@@ -23,9 +23,7 @@ def do_queue_stream_sync_test[
 
     var queue = ctx.create_queue()
     queue[].set_memory(device_buffer.view(), value=UInt8(0x5A))
-    queue[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
-    )
+    queue[].copy_from_device(host.unsafe_bitcast[UInt8](), device_buffer.view())
     queue[].synchronize()
     for i in range(n):
         assert_equal(host[unsafe_offset=i], UInt8(0x5A))
@@ -35,7 +33,7 @@ def do_queue_stream_sync_test[
     var stream = ctx.create_stream()
     stream[].set_memory(device_buffer.view(), value=UInt8(0xA5))
     stream[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        host.unsafe_bitcast[UInt8](), device_buffer.view()
     )
     stream[].synchronize()
     for i in range(n):
@@ -80,7 +78,7 @@ def do_event_ordering_test[
 
     consumer[].wait_for_events(ordering_event)
     consumer[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        host.unsafe_bitcast[UInt8](), device_buffer.view()
     )
     consumer[].synchronize()
     for i in range(0, n, stride):
@@ -114,7 +112,7 @@ def do_event_ordering_test[
 
     consumer_stream[].wait_for_events(stream_event)
     consumer_stream[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        host.unsafe_bitcast[UInt8](), device_buffer.view()
     )
     consumer_stream[].synchronize()
     for i in range(0, n, stride):

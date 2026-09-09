@@ -59,13 +59,10 @@ def do_execute[
         in1_host[unsafe_offset=i] = Float32((i % 2) * -i * 2)
         out_host[unsafe_offset=i] = Float32(0.0)
 
-    queue[].copy_to_device(
-        in0_dev.view(),
-        rebind[Pointer[UInt8, MutAnyOrigin]](in0_host),
-    )
+    queue[].copy_to_device(in0_dev.view(), in0_host.unsafe_bitcast[UInt8]())
     queue[].copy_to_device(
         in1_dev.view(),
-        rebind[Pointer[UInt8, MutAnyOrigin]](in1_host),
+        in1_host.unsafe_bitcast[UInt8](),
     )
     queue[].synchronize()
 
@@ -115,7 +112,7 @@ def do_execute[
 
     # Copy results back.
     queue[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](out_host),
+        out_host.unsafe_bitcast[UInt8](),
         out_dev.view(),
     )
     queue[].synchronize()
@@ -135,7 +132,7 @@ def do_execute[
     queue[].copy_intra_device(out_dev_copy.view(), out_dev.view())
     queue[].synchronize()
     queue[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](out_host_copy),
+        out_host_copy.unsafe_bitcast[UInt8](),
         out_dev_copy.view(),
     )
     queue[].synchronize()
@@ -179,12 +176,12 @@ def do_offset_copy_test[
     )
     stream[].copy_to_device(
         device_buffer.view(byte_offset=UInt64(half), byte_size=UInt64(half)),
-        rebind[Pointer[UInt8, MutAnyOrigin]](src),
+        src.unsafe_bitcast[UInt8](),
     )
 
     var host = alloc[UInt8]({count = n}).unsafe_leak()
     stream[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        host.unsafe_bitcast[UInt8](), device_buffer.view()
     )
     stream[].synchronize()
     for i in range(n):
@@ -215,7 +212,7 @@ def do_fill_test[
 
     var host = alloc[UInt8]({count = n}).unsafe_leak()
     stream[].copy_from_device(
-        rebind[Pointer[UInt8, MutAnyOrigin]](host), device_buffer.view()
+        host.unsafe_bitcast[UInt8](), device_buffer.view()
     )
     stream[].synchronize()
 
