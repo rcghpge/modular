@@ -2964,6 +2964,15 @@ struct MapLowerOnePlainOutput:
         pass
 
 
+@extensibility.register("map_lower_no_context")
+struct MapLowerNoContext:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](res: OutputTensor, a: InputTensor,) raises:
+        pass
+
+
 @extensibility.register("map_lower_two_fused_outputs")
 struct MapLowerTwoFusedOutputs:
     @staticmethod

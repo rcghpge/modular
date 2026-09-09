@@ -21,23 +21,49 @@ using namespace mlir;
 
 namespace M {
 
-DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
-  if (auto custom = dyn_cast<MO::CustomOp>(op)) {
-    if (DictionaryAttr params = custom.getParameters())
-      return params;
-    return builder.getDictionaryAttr({});
+Attribute normalizeKernelParameter(Attribute value) {
+  if (auto vectorAttr = dyn_cast<DenseIntElementsAttr>(value)) {
+    SmallVector<Attribute> intAttrs;
+    for (const APInt &intVal : vectorAttr.getValues<APInt>())
+      intAttrs.push_back(IntegerAttr::get(
+          IntegerType::get(vectorAttr.getContext(), intVal.getBitWidth()),
+          intVal));
+    return ArrayAttr::get(vectorAttr.getContext(), intAttrs);
   }
+  if (auto typeAttr = dyn_cast<TypeAttr>(value))
+    return KGEN::DTypeConstantAttr::get(
+        typeAttr.getContext(), MO::getDTypeOrInvalid(typeAttr.getValue()));
+  return value;
+}
+
+// Already the kernel's parameters: nothing to select, only spellings to fix.
+static DictionaryAttr normalizeParameterDict(DictionaryAttr params,
+                                             OpBuilder &builder) {
+  if (!params)
+    return builder.getDictionaryAttr({});
+  SmallVector<NamedAttribute> normalized;
+  for (NamedAttribute attr : params)
+    normalized.push_back(NamedAttribute(
+        attr.getName(), normalizeKernelParameter(attr.getValue())));
+  return builder.getDictionaryAttr(normalized);
+}
+
+DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
+  if (auto custom = dyn_cast<MO::CustomOp>(op))
+    return normalizeParameterDict(custom.getParameters(), builder);
+
+  // `kgenParams` is not a `TypedAttr`, so the scrape below would drop it.
+  if (auto layoutTransform = dyn_cast<MO::LayoutTransformOp>(op))
+    return normalizeParameterDict(layoutTransform.getKgenParamsAttr(), builder);
 
   SmallVector<NamedAttribute> params;
   for (NamedAttribute attr : op->getAttrs()) {
     Attribute value = attr.getValue();
     if (isa<M::DeviceRefAttr, KGEN::ParamDeclArrayAttr>(value))
       continue;
-    if (auto typeAttr = dyn_cast<TypeAttr>(value)) {
-      params.push_back(NamedAttribute(
-          attr.getName(),
-          KGEN::DTypeConstantAttr::get(
-              value.getContext(), MO::getDTypeOrInvalid(typeAttr.getValue()))));
+    if (isa<TypeAttr>(value)) {
+      params.push_back(
+          NamedAttribute(attr.getName(), normalizeKernelParameter(value)));
       continue;
     }
     if (isa<TypedAttr>(value))

@@ -2,6 +2,7 @@
 // RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
+
 mo.graph @matmul_u8_s8_s32(%input: !mo.tensor<[4, 2], ui8>) -> !mo.tensor<[4, 4], si32> {
 
   %weights = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8> : tensor<2x4xsi8>} : !mo.tensor<[2, 4], si8, {layout = #mo.layout<KN>}>

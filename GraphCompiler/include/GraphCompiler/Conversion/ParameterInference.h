@@ -22,10 +22,10 @@
 
 namespace M {
 
-/// Infers the kernel parameter dictionary for `op` from its attributes: custom
-/// ops forward their explicit `parameters`; for every other op, type attributes
-/// become dtype constants and the remaining typed attributes pass through
-/// (device references are dropped).
+/// Converts a kernel parameter to a spelling emit accepts.
+mlir::Attribute normalizeKernelParameter(mlir::Attribute value);
+
+/// Infers `op`'s kernel parameters, normalized for emit.
 mlir::DictionaryAttr inferParameters(mlir::Operation *op,
                                      mlir::OpBuilder &builder);
 

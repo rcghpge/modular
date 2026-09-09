@@ -416,10 +416,18 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
     return in.getDefiningOp<MOGG::TensorCreatePrologueOp>() != nullptr;
   });
 
+  // Emit appends the context verbatim, and a host-only kernel takes none.
+  MOGG::KernelDeclOp decl = state.registry.lookupKernelBySymName(getCallee());
+  MOGG::KernelDeclAdaptor adaptor(decl);
+  Value context;
+  if (const auto &fn = adaptor.executeFunction;
+      fn && !fn->inputArguments.empty() &&
+      fn->inputArguments.back().isContextType())
+    context = state.contextArg;
+
   MOGG::CallOpaqueOp::create(
       state.builder, getLoc(), getCalleeAttr(), callInputs, callOutputs,
-      state.contextArg, getParams(),
-      state.builder.getBoolAttr(hasEpilogueFusion),
+      context, getParams(), state.builder.getBoolAttr(hasEpilogueFusion),
       state.builder.getBoolAttr(hasPrologueFusion),
       state.builder.getBoolAttr(getHasSameVariadicOperandSize()));
   return success();

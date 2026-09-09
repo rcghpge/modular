@@ -2,6 +2,7 @@
 // RUN: mt --execute %t.mlir  --input-shapes=10x12 --model-inputs=ones --result-output-style=full | FileCheck %s --check-prefix=CHECK-10
 // RUN: mt --execute %t.mlir  --input-shapes=11x12 --model-inputs=ones --result-output-style=full | FileCheck %s --check-prefix=CHECK-11
 
+
 // CHECK-IR-LABEL: mgp.model @serving_default
 // CHECK-IR: init (
 // CHECK-IR: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.layout.transform_KN_to_KNkni{{.*}}"

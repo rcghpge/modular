@@ -103,7 +103,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/custom-shape-func-that-raises.mlir",
     "MODialect/dynamic-op-coverage.mlir",
     "MODialect/exp-mogg-opaque-type-parameterization.mlir",
-    "MODialect/fully-connected.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/gather.mlir",
     "MODialect/gather_nd.mlir",
@@ -117,7 +116,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/in-place2.mlir",
     "MODialect/layer_norm.mlir",
     "MODialect/matmul-epilogue-fusion.mlir",
-    "MODialect/matmul-packed-mixed-precision.mlir",
     "MODialect/matmuls.mlir",  # correctness: wrong result on Graviton
     "MODialect/mo-kernels-support-scalars.mlir",
     "MODialect/mogg-ints.mlir",  # compile-time: times out (>800s) on Graviton
@@ -184,7 +182,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/while.mlir",
     "OptimizationPatterns/concat_in_place.mlir",
     "OptimizationPatterns/conv_pack_filter.mlir",
-    "OptimizationPatterns/matmul_packb.mlir",
     "OptimizationPatterns/matmul_transpb_gpu.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-masked-no-add.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask-div-normalization.mlir",
