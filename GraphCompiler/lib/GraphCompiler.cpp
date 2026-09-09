@@ -695,6 +695,16 @@ LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
                                    bool dumpIntermediates) {
   auto pm = mlir::PassManager::on<ModuleOp>(
       moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
+
+  if (!opts.mlirTimingOutDir.empty()) {
+    auto enabledTiming = M::configureMLIRPassTimingJSONOutput(
+        pm, opts.mlirTimingOutDir.getValue(), "GC Pipeline");
+    if (enabledTiming.isError()) {
+      llvm::errs() << enabledTiming.getError() << "\n";
+      return failure();
+    }
+  }
+
   // gcPipelineImpl populates `pm`; when dumping, it interleaves DumpStagePasses
   // that write each stage's IR as `pm` runs.
   gcPipelineImpl(pm, opts, /*skipJit=*/false, dumpIntermediates);

@@ -211,6 +211,15 @@ void MOFContext::overrideLoweringOptions(
     if (configOr->getValueAsBool(
             "max-debug.profile-scope-tracing-trace-unlabelled", false))
       gcPipelineOptions.profileScopeTracingTraceUnlabelled = true;
+
+    // The GC pipeline's JSON pass-timing writer was previously reachable only
+    // through mo-opt's command line, which does not run the in-process compile
+    // the Python path takes. Route it through a config key so an in-situ
+    // compile can be timed too.
+    StringRef timingOutDir =
+        configOr->getValue("max-debug.mlir-timing-out-dir");
+    if (!timingOutDir.empty())
+      gcPipelineOptions.mlirTimingOutDir = timingOutDir.str();
   }
 }
 
