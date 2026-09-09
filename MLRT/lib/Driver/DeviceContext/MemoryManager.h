@@ -120,8 +120,12 @@ public:
   // `memoryLimit` (bytes) is the maximum memory limit for the memory manager.
   // If -1, then the memory manager will use the default memory limit.
   // Note that MEMORY_MANAGER_SIZE_LIMIT environment variable overrides this.
+  // `largeAllocAlignment` (bytes) is the start alignment given to large
+  // blocks, rounded up to a power of 2; 0 disables it and -1 takes the value
+  // from the config.
   static MemoryManager *onDevice(Device &device, Device::MemInfo memInfo,
-                                 size_t alignment, int64_t memoryLimit = -1);
+                                 size_t alignment, int64_t memoryLimit = -1,
+                                 int64_t largeAllocAlignment = -1);
   static MemoryManager *onHost(Device &device, size_t alignment);
 
 private:
@@ -130,9 +134,15 @@ private:
 
   MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
                 size_t alignment, bool isHost, bool useOnlyMemoryManagerMode,
-                bool vmmEnabled = false, size_t vmmPageSize = 0);
+                bool vmmEnabled = false, size_t vmmPageSize = 0,
+                size_t largeAllocAlignment = 0);
 
   Device &device() const;
+
+  // Start-address alignment a block of `size` bytes must have, or 0 when the
+  // manager-wide `alignment` already suffices. See `largeAllocAlignment_` for
+  // what that alignment is for and which blocks earn it.
+  size_t startAlignment(size_t size) const;
 
   void selfCheck() const;
   Error allocationMissError(const MemoryManagerFreeList *freeList,
@@ -306,6 +316,19 @@ private:
   const size_t alignmentOffset_;
   const size_t alignmentMask_;
 
+  // Start alignment for large blocks, coarser than the device's own, so a NIC
+  // can pin them: amdgpu registers VRAM for RDMA at 2 MiB granularity, and
+  // `ibv_reg_mr` fails with ENOMEM on a range that does not start on such a
+  // boundary. Devices report a 256-byte allocation alignment, so a multi-GiB
+  // KV cache group sub-allocated out of a shared chunk lands on a 2 MiB
+  // boundary only by luck. 0 disables it entirely. Best-effort: allocation
+  // falls back to a plain fit rather than failing
+  // (MemoryManagerFreeList::allocateDesc).
+  const size_t largeAllocAlignment_;
+  // A block only earns that start at this multiple of it or above, which caps
+  // the head padding at 1/kLargeAllocSizeFactor of the request.
+  static constexpr size_t kLargeAllocSizeFactor = 32;
+
   mutable std::mutex mu_;
   // List of all chunks allocated from the driver and their total size.
   size_t cacheSize_ = 0;
@@ -399,6 +422,9 @@ private:
   const DeviceContext *context() const;
 
   MemoryManager::Desc *allocateDesc(size_t size);
+  // Allocate a block of `size` bytes whose start address is a multiple of
+  // `startAlign` (0 for no constraint beyond the manager's own alignment).
+  MemoryManager::Desc *allocateDescAligned(size_t size, size_t startAlign);
   void freeDesc(MemoryManager::Desc *desc);
 
   // Free a descriptor allocated by the current free list.

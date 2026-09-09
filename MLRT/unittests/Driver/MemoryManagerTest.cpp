@@ -61,6 +61,21 @@ protected:
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
     return std::unique_ptr<MemoryManager>(MemoryManager::onHost(*device, 64));
   }
+
+  // Helper to create a device memory manager with an explicit large-block
+  // start alignment. It is passed here rather than set in the environment
+  // because DeviceContext snapshots its config once per process, so an env var
+  // set by a test would not reach a manager built later.
+  std::unique_ptr<MemoryManager>
+  createTestDeviceCache(Device &device, size_t largeAllocAlignment) {
+    Device::MemInfo memInfo;
+    memInfo.free = 16 * 1024 * 1024;
+    memInfo.total = 32 * 1024 * 1024;
+
+    return std::unique_ptr<MemoryManager>(MemoryManager::onDevice(
+        device, memInfo, /*alignment=*/64, /*memoryLimit=*/8 * 1024 * 1024,
+        static_cast<int64_t>(largeAllocAlignment)));
+  }
 };
 
 TEST_F(MemoryManagerTest, MemoryManagerCreation) {
@@ -241,6 +256,99 @@ TEST_F(MemoryManagerTest, AllocationSizes) {
   for (void *ptr : ptrs) {
     EXPECT_NO_ERR(freeList.free(ptr));
   }
+}
+
+// Large-block start alignment (ENABLE-2932). 1 KiB stands in for the 2 MiB
+// that HIP devices default to; the threshold is
+// MemoryManager::kLargeAllocSizeFactor times that. `kSmallSize` rounds up to a
+// block that is not a whole number of `kLargeAlign` units, so a large block
+// placed after one needs head padding.
+constexpr size_t kLargeAlign = 1024;
+constexpr size_t kLargeThreshold = 32 * kLargeAlign;
+constexpr size_t kSmallSize = 600;
+
+TEST_F(MemoryManagerTest, LargeAllocationsGetStartAlignment) {
+  CpuDeviceRef device = createTestDevice();
+  std::unique_ptr<MemoryManager> manager =
+      createTestDeviceCache(*device, kLargeAlign);
+  MemoryManagerFreeList &freeList = *manager->freeList();
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  std::vector<void *> ptrs;
+
+  // Interleave sub-threshold allocations so each large block would land
+  // off-boundary without the head padding.
+  for (int i = 0; i < 4; ++i) {
+    ASSIGN_NO_ERR(void *, small, freeList.allocate(kSmallSize, mode));
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(small) %
+                  manager->allocationAlignment(),
+              0u);
+    ptrs.push_back(small);
+
+    ASSIGN_NO_ERR(void *, large, freeList.allocate(kLargeThreshold, mode));
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(large) % kLargeAlign, 0u);
+    ptrs.push_back(large);
+  }
+
+  for (void *ptr : ptrs)
+    EXPECT_NO_ERR(freeList.free(ptr));
+  manager->clear();
+}
+
+TEST_F(MemoryManagerTest, LargeAlignmentPaddingIsReusable) {
+  CpuDeviceRef device = createTestDevice();
+  std::unique_ptr<MemoryManager> manager =
+      createTestDeviceCache(*device, kLargeAlign);
+  MemoryManagerFreeList &freeList = *manager->freeList();
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+
+  // A whole number of allocation-alignment units but not of the large-block
+  // alignment, so the second block needs head padding wherever the chunk
+  // itself starts.
+  const size_t largeSize = kLargeThreshold + manager->allocationAlignment();
+  ASSIGN_NO_ERR(void *, first, freeList.allocate(largeSize, mode));
+  ASSIGN_NO_ERR(void *, second, freeList.allocate(largeSize, mode));
+  uintptr_t firstAddr = reinterpret_cast<uintptr_t>(first);
+  uintptr_t secondAddr = reinterpret_cast<uintptr_t>(second);
+  EXPECT_EQ(firstAddr % kLargeAlign, 0u);
+  EXPECT_EQ(secondAddr % kLargeAlign, 0u);
+  uintptr_t firstEnd = firstAddr + largeSize;
+  ASSERT_GT(secondAddr, firstEnd);
+
+  // The padding was handed back as its own free block. Being the smallest
+  // block on the list, it is what the next allocation that fits reuses.
+  ASSIGN_NO_ERR(void *, filler, freeList.allocate(kSmallSize, mode));
+  uintptr_t fillerAddr = reinterpret_cast<uintptr_t>(filler);
+  EXPECT_GE(fillerAddr, firstEnd);
+  EXPECT_LT(fillerAddr, secondAddr);
+
+  EXPECT_NO_ERR(freeList.free(filler));
+  EXPECT_NO_ERR(freeList.free(second));
+  EXPECT_NO_ERR(freeList.free(first));
+  manager->clear();
+}
+
+TEST_F(MemoryManagerTest, LargeStartAlignmentDisabledPacksBlocks) {
+  CpuDeviceRef device = createTestDevice();
+  std::unique_ptr<MemoryManager> manager =
+      createTestDeviceCache(*device, /*largeAllocAlignment=*/0);
+  MemoryManagerFreeList &freeList = *manager->freeList();
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+
+  // With the large-block alignment off, blocks stay packed at the manager's own
+  // allocation alignment regardless of size.
+  const size_t largeSize = kLargeThreshold + manager->allocationAlignment();
+  ASSIGN_NO_ERR(void *, first, freeList.allocate(largeSize, mode));
+  ASSIGN_NO_ERR(void *, second, freeList.allocate(largeSize, mode));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(second) -
+                reinterpret_cast<uintptr_t>(first),
+            largeSize);
+
+  EXPECT_NO_ERR(freeList.free(second));
+  EXPECT_NO_ERR(freeList.free(first));
+  manager->clear();
 }
 
 TEST_F(MemoryManagerTest, FreeListEmpty) {

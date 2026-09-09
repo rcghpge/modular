@@ -14,6 +14,7 @@
 #include "Support/internal/Tracy/Tracy.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -45,6 +46,14 @@ static constexpr int KB = 1024;                  // NOLINT
 static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
 
 namespace M::Driver {
+
+// Bytes that must be skipped from `ptr` to reach the next `alignment`
+// boundary. An `alignment` of 0 means no constraint.
+static size_t alignmentPadding(const char *ptr, size_t alignment) {
+  if (alignment == 0)
+    return 0;
+  return llvm::offsetToAlignedAddr(ptr, llvm::Align(alignment));
+}
 
 class MemoryManager::Chunk {
 public:
@@ -828,7 +837,7 @@ void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
 MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
                              size_t alignment, bool isHost,
                              bool useOnlyMemoryManagerMode, bool vmmEnabled,
-                             size_t vmmPageSize)
+                             size_t vmmPageSize, size_t largeAllocAlignment)
     : device_(device), isHost_(isHost),
       useOnlyMemoryManagerMode_(useOnlyMemoryManagerMode),
       vmmEnabled_(vmmEnabled), pageSize_(vmmPageSize), maxCacheSize_(maxSize),
@@ -836,10 +845,12 @@ MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
       // A minimum of 64 byte alignment for allocations from the memory manager.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
+      largeAllocAlignment_(largeAllocAlignment),
       allocatedMap_(chunkSize_ == 0 ? 0 : 10) {
   // chunks_ will be lazily initialized on the first allocation request.
   // Alignment masking only works with powers of 2.
   assert(llvm::isPowerOf2_64(alignment));
+  assert(largeAllocAlignment == 0 || llvm::isPowerOf2_64(largeAllocAlignment));
 
   // Allocate a freelist that maintains free memory blocks not associated with a
   // DeviceContext (aka stream).
@@ -866,6 +877,13 @@ MemoryManager::~MemoryManager() {
 
 size_t MemoryManager::allocationAlignment() const {
   return alignmentOffset_ + 1;
+}
+
+size_t MemoryManager::startAlignment(size_t size) const {
+  if (largeAllocAlignment_ == 0 ||
+      size < largeAllocAlignment_ * kLargeAllocSizeFactor)
+    return 0;
+  return largeAllocAlignment_;
 }
 
 bool MemoryManager::isHost() const { return isHost_; }
@@ -2073,24 +2091,48 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
 }
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
-  TRACY_ZONE_SCOPED_NCT("MemoryManagerFreeList::allocateDesc",
+  if (size_t startAlign = memoryManager_.startAlignment(size))
+    if (MemoryManager::Desc *desc = allocateDescAligned(size, startAlign))
+      return desc;
+  // The large-allocation start alignment is an optimization, not a
+  // requirement: when no free block can host an aligned one -- and whenever the
+  // cache has to grow to serve the request at all -- fall back to a plain fit
+  // instead of failing.
+  return allocateDescAligned(size, 0);
+}
+
+MemoryManager::Desc *
+MemoryManagerFreeList::allocateDescAligned(size_t size, size_t startAlign) {
+  TRACY_ZONE_SCOPED_NCT("MemoryManagerFreeList::allocateDescAligned",
                         TRACY_COLOR_PURPLE, "size: " + std::to_string(size));
   assert((size & memoryManager_.alignmentMask_) == size);
-  LOG_MSG("In allocateDesc with size " + TWINE(size) +
+  LOG_MSG("In allocateDescAligned with size " + TWINE(size) +
           " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
   int iterations = 0;
   // Try allocating from all free buffer lists in this MemoryManagerFreeList,
   // starting with the primary free buffer list.
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     int freeListIdToUse = (primaryFreeBuffers_ + i) % kNumFreeBufferLists;
-    // Find a fit in the free list.
+    // Find a fit in the free list, leaving room for whatever head padding this
+    // block needs to reach a `startAlign` boundary.
     MemoryManager::Desc *desc = freeBuffers_[freeListIdToUse];
-    while ((desc != nullptr) && (desc->size_ < size)) {
+    size_t headPad = 0;
+    while (desc != nullptr) {
+      headPad = alignmentPadding(desc->ptr_, startAlign);
+      if (desc->size_ >= size + headPad)
+        break;
       desc = desc->nextFree_;
       ++iterations;
     }
     if (desc != nullptr) {
       assert(desc->isFree());
+      if (headPad != 0) {
+        // Hand the padding back as its own free block rather than merging it
+        // into a neighbour, which would undo the alignment. It is the smallest
+        // block on the list, so it is the first thing a later allocation that
+        // fits reuses, and it coalesces again once the aligned block is freed.
+        addToFreeList(desc->chunk_->splitFreeDesc(desc, headPad));
+      }
       if (desc->size_ == size) {
         removeFromFreeList(desc);
       } else {
@@ -2129,11 +2171,17 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
 
   // Delegate to parent freelist if available.
   if (parent_ != nullptr) {
-    MemoryManager::Desc *desc = parent_->allocateDesc(size);
+    MemoryManager::Desc *desc = parent_->allocateDescAligned(size, startAlign);
     if (desc != nullptr)
       desc->allocatedBy_ = this;
     return desc;
   }
+
+  // Only the unaligned fallback pass in allocateDesc grows the cache. The
+  // start alignment is best-effort, so it never justifies pulling another
+  // chunk from the driver; the grown cache serves the request without it.
+  if (startAlign != 0)
+    return nullptr;
 
   // We only ever allocate chunks in the bottom most free list which is
   // associated with the MemoryManager directly.
@@ -2147,7 +2195,7 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
     return nullptr;
   }
   // Allocated a new chunk, try again.
-  return allocateDesc(size);
+  return allocateDescAligned(size, /*startAlign=*/0);
 }
 
 std::optional<MemoryManagerFreeList::RedzoneInfo>
@@ -2398,7 +2446,8 @@ MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
 }
 
 MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
-                                       size_t alignment, int64_t memoryLimit) {
+                                       size_t alignment, int64_t memoryLimit,
+                                       int64_t largeAllocAlignmentOverride) {
   bool useOnlyMemoryManagerMode =
       (device.api() != Device::cpuAPI) &&
       DeviceContext::configAsBool("memory_manager_only", false);
@@ -2527,6 +2576,28 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
     chunkSize = maxCacheSize;
   }
 
+  // Start address large blocks get so a NIC can pin them; see
+  // `largeAllocAlignment_`. On by default for HIP, off elsewhere; set to 0 to
+  // disable.
+  size_t largeAllocAlignment =
+      largeAllocAlignmentOverride >= 0
+          ? static_cast<size_t>(largeAllocAlignmentOverride)
+          : static_cast<size_t>(std::max<int64_t>(
+                0, DeviceContext::configAsInt(
+                       "memory_manager_large_alloc_alignment",
+                       device.api() == Device::hipAPI ? 2 * 1024 * KB : 0)));
+  // The free-list arithmetic needs a power of 2. Round up rather than assert,
+  // so a mistyped config costs a little more padding instead of placing blocks
+  // at addresses nothing checks in a release build.
+  if (largeAllocAlignment != 0 && !llvm::isPowerOf2_64(largeAllocAlignment)) {
+    size_t rounded = llvm::PowerOf2Ceil(largeAllocAlignment);
+    llvm::errs() << "DeviceContext.MemoryManager: "
+                    "memory_manager_large_alloc_alignment ("
+                 << largeAllocAlignment << ") is not a power of 2, using "
+                 << rounded << " instead.\n";
+    largeAllocAlignment = rounded;
+  }
+
   auto result = new MemoryManager(
       /*device=*/device,
       /*maxSize=*/maxCacheSize,
@@ -2535,7 +2606,8 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
       /*isHost=*/false,
       /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode,
       /*vmmEnabled=*/vmmEnabled,
-      /*vmmPageSize=*/vmmPageSize);
+      /*vmmPageSize=*/vmmPageSize,
+      /*largeAllocAlignment=*/largeAllocAlignment);
 
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
