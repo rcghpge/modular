@@ -11,6 +11,7 @@
 #include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
 #include "GraphCompiler/MGPDialect/Transforms/Utils.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
@@ -32,6 +33,24 @@ namespace M::MGP {
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h.inc"
 
 namespace {
+
+/// Whether `v` is provably a multiple of `alignment`, recognising only the
+/// forms the buffer-size lowering emits: a constant, a product with a proven
+/// factor, or a sum of proven terms. A dynamic extent times a static per-row
+/// byte stride is the common provable case.
+bool isProvableMultipleOf(Value v, uint64_t alignment) {
+  if (alignment <= 1)
+    return true;
+  if (auto cst = v.getDefiningOp<mlir::index::ConstantOp>())
+    return cst.getValue().getSExtValue() % static_cast<int64_t>(alignment) == 0;
+  if (auto mul = v.getDefiningOp<mlir::index::MulOp>())
+    return isProvableMultipleOf(mul.getLhs(), alignment) ||
+           isProvableMultipleOf(mul.getRhs(), alignment);
+  if (auto add = v.getDefiningOp<mlir::index::AddOp>())
+    return isProvableMultipleOf(add.getLhs(), alignment) &&
+           isProvableMultipleOf(add.getRhs(), alignment);
+  return false;
+}
 
 //===----------------------------------------------------------------------===//
 // ConcatInPlacePass
@@ -131,6 +150,21 @@ class ConcatInPlacePass
                                  << *inBuffer.getDefiningOp());
             return alloc.getRuntimeSize();
           });
+
+      // Each slice starts at the running sum of the preceding operand sizes,
+      // so it only inherits the concat buffer's alignment when that sum is a
+      // provable multiple of it. Every kernel tensor is told its base carries
+      // the device's preferred alignment (`MOGGOps.cpp` stamps that constant
+      // into every `mogg_tensor_init`), and vector loads and stores are
+      // emitted against that claim -- so an unprovable offset here is a
+      // misaligned-address fault in whichever kernel writes the operand, not a
+      // missed optimization. The last operand's size feeds no offset.
+      uint64_t alignment = M::Driver::getPreferredAlignment(
+          concatBuffer.getType().getDevice().getLabel().str());
+      if (!llvm::all_of(llvm::drop_end(sliceSizes), [&](Value size) {
+            return isProvableMultipleOf(size, alignment);
+          }))
+        return;
 
       // Compute the per-buffer offsets for each input buffer.
       auto offsets = computeOffsets(builder, loc, sliceSizes);
