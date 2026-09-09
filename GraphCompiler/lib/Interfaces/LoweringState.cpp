@@ -578,6 +578,13 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
                                                  castFrom.takeValue());
   } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
     return lowerParamOperator(builder, loc, opAttr, operands);
+  } else if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(attr)) {
+    // Scalar int-like `eq` canonicalizes to `identical`, which lowers the same
+    // way: a compare of the two operands.
+    ASSERT_STREAM(identical.getNumOperands() == 2,
+                  "expected binary identity from scalar eq");
+    return pocToMopInteger(KGEN::POC::EQ, builder, loc, operands,
+                           identical.getType());
   } else if (auto opAttr = dyn_cast<KGEN::MLIROpAttr>(attr)) {
     StringAttr opName = opAttr.getName();
     if (opName != MO::AssertOp::getOperationName()) {

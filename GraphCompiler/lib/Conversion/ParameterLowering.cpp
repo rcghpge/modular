@@ -40,6 +40,16 @@ ErrorOr<Value> M::ParameterLoweringState::lowerExpression(OpBuilder &b,
     if (newValueOr.isError())
       return newValueOr.takeError();
     newValue = std::move(*newValueOr);
+  } else if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(attr)) {
+    auto newOperandsOr =
+        lowerOperands(b, loc, parentRegion, identical.getOperands(), func);
+    if (newOperandsOr.isError())
+      return newOperandsOr.takeError();
+    auto newValueOr =
+        func(*this, b, loc, parentRegion, attr, std::move(*newOperandsOr));
+    if (newValueOr.isError())
+      return newValueOr.takeError();
+    newValue = std::move(*newValueOr);
   } else {
     auto newValueOr = func(*this, b, loc, parentRegion, attr, ValueRange{});
     if (newValueOr.isError())

@@ -127,7 +127,7 @@ mo.graph @nested_mul<D0>() {
   // NOTE that this gets canonicalized into `mul(D0, 2)`
   kgen.param.declare P0: scalar<si64> = <add(D0, D0)>
   kgen.param.declare P1: scalar<si64> = <mod(P0, D0)>
-  kgen.param.declare P2: scalar<bool> = <eq(:scalar<si64> P1, 0)>
+  kgen.param.declare P2: scalar<bool> = <identical(:scalar<si64> P1, 0)>
   kgen.param.declare P3: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "error" : !kgen.string}, P2)>
 
   // CHECK-NEXT: mo.output
@@ -202,9 +202,9 @@ mo.graph @update_param_declare_rhs<D1>() {
   // `kgen.param.declare`, we still want to update the RHS to the simplified
   // version in the IR (not just in the evaluator during the pass).
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:scalar<si64> [[D1]], 1))>
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, identical(:scalar<si64> [[D1]], 1))>
   // CHECK-NEXT: mo.output
-  kgen.param.declare CH: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:scalar<si64> cond(eq(:scalar<si64> D1, -1), 1, D1), 1))>
+  kgen.param.declare CH: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, identical(:scalar<si64> cond(identical(:scalar<si64> D1, -1), 1, D1), 1))>
   mo.output
 }
 
@@ -271,7 +271,7 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[broadcast_to] input dimension at index 0 ([[D0]]) must be either 1 or equal to corresponding output dimension at index 1 ([[D1]])" : !kgen.string},
-  // CHECK-SAME:  or(eq(:scalar<si64> D0, D1), eq(:scalar<si64> D0, 1)))>
+  // CHECK-SAME:  or(identical(:scalar<si64> D0, D1), identical(:scalar<si64> D0, 1)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
@@ -297,7 +297,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match:
   // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape[[REST:.*]]" : !kgen.string},
-  // CHECK-SAME: eq(:scalar<si64> mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
+  // CHECK-SAME: identical(:scalar<si64> mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>

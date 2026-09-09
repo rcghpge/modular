@@ -127,7 +127,7 @@ kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (!kgen.scalar<bool>, !kg
   // CHECK-DAG: %[[V2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D1]], 42]>
   // CHECK-DAG: %[[TRUE:.*]] = mosh.param.to_value: scalar<bool> = <true>
   // CHECK-DAG: %[[B12:.*]] = mosh.eq(%[[V1]], %[[V2]])
-  // CHECK-DAG: %[[B23:.*]] = mosh.param.to_value: scalar<bool> = <and(eq(:scalar<si64> [[D1]], 3), eq(:scalar<si64> [[D2]], 42))>
+  // CHECK-DAG: %[[B23:.*]] = mosh.param.to_value: scalar<bool> = <and(identical(:scalar<si64> [[D1]], 3), identical(:scalar<si64> [[D2]], 42))>
   // CHECK-DAG: %[[FALSE:.*]] = mosh.param.to_value: scalar<bool> = <false>
   // CHECK: kgen.return %[[TRUE]], %[[B12]], %[[B23]], %[[FALSE]], %[[FALSE]] : !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>, !kgen.scalar<bool>
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>

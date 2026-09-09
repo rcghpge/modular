@@ -83,10 +83,10 @@ mo.graph @no_rewrite_decl<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[
 // [[V3:.*]] = mo.rebind([[V2]]) : !mo.tensor<[[[D21]], 12, param_expr_1], f32> -> !mo.tensor<[[[D21]], 12, cond(eq([[D22]], 1), [[D24]], [[D22]])], f32>
 // mo.output<cond(eq([[D22]], 1), [[D24]], [[D22]])> [[V3]] : !mo.tensor<[[[D21]], 12, cond(eq([[D22]], 1), [[D24]], [[D22]])], f32>
 mo.graph @rebind_output<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor<[D21, 12, D22], f32>, %arg1: !mo.tensor<[D23, D24], f32>) -> !mo.tensor<[D21, 12, D27], f32> {
-  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[D21, 12, D22], f32> -> !mo.tensor<[D21, 12, cond(eq(:scalar<si64> D22, 1), D24, D22)], f32>
-  %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<[D23, D24], f32> -> !mo.tensor<[D21, 12, cond(eq(:scalar<si64> D22, 1), D24, D22)], f32>
-  %2 = mo.add(%0, %1) : !mo.tensor<[D21, 12, cond(eq(:scalar<si64> D22, 1), D24, D22)], f32>
-  mo.output<cond(eq(:scalar<si64> D22, 1), D24, D22)> %2 : !mo.tensor<[D21, 12, cond(eq(:scalar<si64> D22, 1), D24, D22)], f32>
+  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[D21, 12, D22], f32> -> !mo.tensor<[D21, 12, cond(identical(:scalar<si64> D22, 1), D24, D22)], f32>
+  %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<[D23, D24], f32> -> !mo.tensor<[D21, 12, cond(identical(:scalar<si64> D22, 1), D24, D22)], f32>
+  %2 = mo.add(%0, %1) : !mo.tensor<[D21, 12, cond(identical(:scalar<si64> D22, 1), D24, D22)], f32>
+  mo.output<cond(identical(:scalar<si64> D22, 1), D24, D22)> %2 : !mo.tensor<[D21, 12, cond(identical(:scalar<si64> D22, 1), D24, D22)], f32>
 }
 
 // COM: mo.rebind can't used with an opaque type.

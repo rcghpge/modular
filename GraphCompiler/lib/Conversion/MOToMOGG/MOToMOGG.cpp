@@ -56,6 +56,10 @@ static bool isDimAttrSupported(TypedAttr dimAttr) {
     return llvm::all_of(paramOpAttr.getOperands(), isDimAttrSupported);
   }
 
+  // Scalar int-like `eq` canonicalizes to `identical`.
+  if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(dimAttr))
+    return llvm::all_of(identical.getOperands(), isDimAttrSupported);
+
   // MOGG only supports compiling parameter of bool type.
   if (auto paramDeclAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dimAttr))
     if (!MOSH::ShapeAttr::isDim(paramDeclAttr))

@@ -16,8 +16,8 @@
 mo.graph @assert_sequence<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D2, D3], f32>)
  -> (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>)
 {
-  kgen.param.declare CH0: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:scalar<si64> D1, D2))>
-  kgen.param.declare CH1: !mo.chain = <apply(:(!mo.chain, !kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D2 != D3" : !kgen.string}, CH0, eq(:scalar<si64> D2, D3))>
+  kgen.param.declare CH0: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, identical(:scalar<si64> D1, D2))>
+  kgen.param.declare CH1: !mo.chain = <apply(:(!mo.chain, !kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "D2 != D3" : !kgen.string}, CH0, identical(:scalar<si64> D2, D3))>
 
   mo.output %arg0, %arg1 : !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>
 }
@@ -52,10 +52,10 @@ mo.graph @needs_guard<D0, D1, D2>(%arg0 : !mo.tensor<[D1, D1, D2], f32>) {
 // CHECK: mgp.assert
 mo.graph @matching_conds<S2, C1_S2, RS, BC1, BC2, BC3, BC4>()
 {
-  kgen.param.declare MHA_BCAST_CHECK1: scalar<bool> = <and(eq(:scalar<si64> BC1, 1), eq(:scalar<si64> BC2, 6), eq(:scalar<si64> BC3, S2), eq(:scalar<si64> BC4, C1_S2))>
+  kgen.param.declare MHA_BCAST_CHECK1: scalar<bool> = <and(identical(:scalar<si64> BC1, 1), identical(:scalar<si64> BC2, 6), identical(:scalar<si64> BC3, S2), identical(:scalar<si64> BC4, C1_S2))>
   kgen.param.declare MHA_BCAST_CHECK2: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "error 1" : !kgen.string}, MHA_BCAST_CHECK1)>
 
-  kgen.param.declare MHA_BCAST_CHECK3: scalar<bool> = <and(eq(:scalar<si64> BC1, 1), eq(:scalar<si64> BC2, 6), eq(:scalar<si64> BC3, S2), eq(:scalar<si64> BC4, C1_S2))>
+  kgen.param.declare MHA_BCAST_CHECK3: scalar<bool> = <and(identical(:scalar<si64> BC1, 1), identical(:scalar<si64> BC2, 6), identical(:scalar<si64> BC3, S2), identical(:scalar<si64> BC4, C1_S2))>
   kgen.param.declare MHA_BCAST_CHECK4: !mo.chain = <apply(:(!mo.chain, !kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "error 2" : !kgen.string}, MHA_BCAST_CHECK2, MHA_BCAST_CHECK3)>
 
   mo.output

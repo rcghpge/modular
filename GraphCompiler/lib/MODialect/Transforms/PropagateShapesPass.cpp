@@ -752,6 +752,14 @@ struct PropagateShapes {
     if (!isa<IntegerType, IndexType, KGEN::SIMDType>(attr.getType()))
       return mlir::ConstantIntRanges::maxRange(1);
 
+    if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(attr)) {
+      if (identical.getNumOperands() == 2)
+        return getRange(KGEN::POC::EQ, identical.getOperands(),
+                        identical.getType());
+      // Bail out for attributes we don't recognize.
+      return getMaxRange(attr.getType());
+    }
+
     // Bail out for attributes we don't recognize.
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
     if (!exprAttr)
@@ -923,6 +931,13 @@ struct PropagateShapes {
   /// expression folding, and applies it recursively to all expression nested
   /// inside `attr`.
   TypedAttr tryFoldExprAttr(TypedAttr attr) {
+    if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(attr)) {
+      SmallVector<TypedAttr> foldedOperands;
+      for (TypedAttr operand : identical.getOperands())
+        foldedOperands.push_back(tryFoldExprAttr(operand));
+      return KGEN::ParamIdenticalAttr::get(foldedOperands);
+    }
+
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
     if (!exprAttr)
       return attr;

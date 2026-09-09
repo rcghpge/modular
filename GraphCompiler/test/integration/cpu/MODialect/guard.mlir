@@ -6,7 +6,7 @@ mo.graph @matmul<D0, D1, D2, D3>(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.tensor<[
 {
   kgen.param.declare chain: !mo.chain =
     <apply(:(!kgen.scalar<bool>) ->
-    !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, eq(:scalar<si64> D1, D2))>
+    !mo.chain "mo.assert"{message = "D1 != D2" : !kgen.string}, identical(:scalar<si64> D1, D2))>
 
   %chain = mosh.param.to_value: !mo.chain = <chain>
   %Xp, %Yp = mo.guard[%chain](%X, %Y) : !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>

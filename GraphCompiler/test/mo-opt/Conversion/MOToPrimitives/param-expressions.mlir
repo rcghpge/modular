@@ -106,9 +106,9 @@ mo.graph @eq_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   // There should be only one pop.cmp as all comparisons are the same
   // CHECK-NOT: pop.cmp
   //     CHECK: mef.output
-  kgen.param.declare E0: scalar<bool> = <eq(:scalar<si64> X, Y)>
-  kgen.param.declare E1: scalar<bool> = <eq(:scalar<si64> Y, X)>
-  kgen.param.declare E2: scalar<bool> = <eq(:scalar<si64> X, X)>
+  kgen.param.declare E0: scalar<bool> = <identical(:scalar<si64> X, Y)>
+  kgen.param.declare E1: scalar<bool> = <identical(:scalar<si64> Y, X)>
+  kgen.param.declare E2: scalar<bool> = <identical(:scalar<si64> X, X)>
   mo.output
 }
 
