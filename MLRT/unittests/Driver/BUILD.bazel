@@ -116,8 +116,10 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },
-    # VMM is forced off on AMD (HIP) regardless of this env, so the defrag
-    # behavior this test exercises only applies on NVIDIA.
+    # NVIDIA-only for now. VMM is opt-in rather than refused on AMD as of
+    # GEX-4056, so this could run there too, but it has not been validated on
+    # AMD and HIP caps total VMM-mapped memory per process (see
+    # MemoryManager::onDevice) -- enabling it needs a budget clamp first.
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
@@ -437,8 +439,9 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },
-    # VMM is forced off on AMD (HIP) regardless of this env, so the miss path
-    # this test races against only exists on NVIDIA.
+    # NVIDIA-only for now: same reason as MemoryManagerVMMTest above. The miss
+    # path this races against exists on AMD too now that VMM is opt-in there,
+    # but running it on AMD is unvalidated.
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     target_compatible_with = select({

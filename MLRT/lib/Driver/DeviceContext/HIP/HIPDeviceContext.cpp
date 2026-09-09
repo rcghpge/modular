@@ -757,8 +757,24 @@ ErrorOrSuccess HIPDevice::vmmMapAndSetAccess(void *va, size_t byteSize,
   // on a sub-granule / heterogeneous size within one VA reservation: that path
   // fails with hipErrorInvalidValue on ROCm 7.x (ROCm/rocm-systems#2516).
   const std::vector<hipMemAccessDesc> &descs = vmmAccessDescs();
-  HIP_CHECK_ERR(
-      driver_.hipMemSetAccess(va, byteSize, descs.data(), descs.size()));
+  HIPDriver::Result result =
+      driver_.hipMemSetAccess(va, byteSize, descs.data(), descs.size());
+  if (result != HIPDriver::SUCCESS) {
+    // hipErrorInvalidValue here is usually not about the arguments: HIP caps
+    // how much memory a process may have VMM-mapped at once and reports the
+    // ceiling with this code. Say so, because the allocator's next move is to
+    // fall through to the driver, and the failure then resurfaces hundreds of
+    // log lines later as an unexplained hipErrorOutOfMemory. Measured at
+    // roughly 1.7 TiB across 8x MI355X with 8 access descriptors per mapping;
+    // granting fewer descriptors raises it. See GEX-4056.
+    llvm::errs() << "DeviceContext.MemoryManager: hipMemSetAccess failed on "
+                    "device "
+                 << device_ << " with " << descs.size()
+                 << " access descriptors. If this is hipErrorInvalidValue the "
+                    "process has likely hit HIP's cap on total VMM-mapped "
+                    "memory (GEX-4056); reduce memory_manager_size.\n";
+    return formatHipError(__FILE__, __LINE__, __FUNCTION__, result);
+  }
   return success();
 }
 

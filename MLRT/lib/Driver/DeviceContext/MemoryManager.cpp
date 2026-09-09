@@ -2487,14 +2487,28 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
   bool vmmEnabled = device.vmmSupported() &&
                     DeviceContext::configAsBool("memory_manager_vmm",
                                                 device.vmmEnabledByDefault());
-  // VMM on AMD (HIP) is known to cause persistent VRAM leaks that can require
-  // a reboot, so force it off regardless of config/env, and warn if it was
-  // explicitly requested so the misconfiguration is visible.
+  // On AMD (HIP) VMM is opt-in: hipEnabledByDefault() is false, so it takes an
+  // explicit `memory_manager_vmm=1`. HIP caps how much memory a process may
+  // have VMM-mapped at once -- past roughly 1.7 TiB summed across devices (8x
+  // MI355X, ROCm 7.2.4) hipMemSetAccess starts returning hipErrorInvalidValue,
+  // and the ceiling falls further as more access descriptors are granted per
+  // mapping, since every P2P peer gets access to every granule. Four GPUs at
+  // the default budget stay under it; eight do not, and need
+  // `memory_manager_size` clamped to roughly 192 GiB per device. GEX-4056 has
+  // the measurements and a standalone reproducer for re-measuring the ceiling
+  // on a given node.
+  //
+  // Enabling it was previously refused outright, on the belief that VMM leaked
+  // VRAM until the node was rebooted. That does not reproduce: on ROCm 7.2.4 /
+  // amdgpu 6.16.13, SIGKILLing both a standalone VMM workload (1.6 TiB across 8
+  // GPUs) and a VMM-enabled MAX serve returns every byte within seconds.
   if (vmmEnabled && device.api() == Device::hipAPI) {
-    llvm::errs() << "DeviceContext.MemoryManager: VMM was requested via "
-                    "memory_manager_vmm, but VMM is forced off on AMD GPUs "
-                    "due to known VRAM leaks. Ignoring request.\n";
-    vmmEnabled = false;
+    llvm::errs() << "DeviceContext.MemoryManager: VMM is enabled on an AMD GPU "
+                    "via memory_manager_vmm. HIP limits total VMM-mapped "
+                    "memory per process; if mapping fails with "
+                    "hipErrorInvalidValue, clamp memory_manager_size so the "
+                    "budget summed across devices stays under ~1.6 TiB "
+                    "(GEX-4056).\n";
   }
   size_t vmmPageSize = 0;
   if (vmmEnabled) {
