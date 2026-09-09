@@ -14,6 +14,7 @@
 #include "GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
@@ -2504,9 +2505,11 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
   printGroup("dims", dimArgs);
   p.decreaseIndent();
 
-  p.printOptionalAttrDictWithKeyword(
-      getOperation()->getAttrs(),
-      {getOperandSegmentSizesAttrName().getValue()});
+  // Elided when empty, so every other kernel prints as before.
+  SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
+  if (getOutputParamDecls().empty())
+    elided.push_back(getOutputParamDeclsAttrName().getValue());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(), elided);
   p << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
@@ -2525,8 +2528,12 @@ LogicalResult KernelRegionOp::verify() {
   // body block arguments are the codegen handles: one !mogg.pointer_ per input
   // then output tensor, then zero or more !mogg.dim_, then exactly one trailing
   // !mogg.context.
-  const size_t numTensors =
-      getInputs().size() + outputs.size() - (getOutputChain() ? 1 : 0);
+  // Only tensor-like results get an output pointer.
+  size_t numOutputTensors = 0;
+  for (Value output : outputs)
+    if (MO::dynCastFromTensorLike(output.getType()))
+      ++numOutputTensors;
+  const size_t numTensors = getInputs().size() + numOutputTensors;
   auto args = getBody().front().getArguments();
 
   if (args.size() < numTensors + 1)
@@ -2550,6 +2557,37 @@ LogicalResult KernelRegionOp::verify() {
     return emitOpError() << "body block arguments after the pointers must be "
                             "zero or more !mogg.dim_ followed by exactly one "
                             "!mogg.context";
+
+  // One kernel, one call -- counting the `mogg.call.stub` outlining leaves.
+  size_t numCalls = 0;
+  for (Operation &bodyOp : getBody().front())
+    if (isa<CallOpaqueOp, CallForeachRegionOp, CallElementwiseV2Op,
+            CallShapeV2Op, CallStubOp>(bodyOp))
+      ++numCalls;
+  if (numCalls != 1)
+    return emitOpError() << "expected exactly one call in the body, got "
+                         << numCalls;
+
+  // A shape function returns exactly the dims it declares.
+  size_t numShapeReturning = 0;
+  uint64_t shapeRank = 0;
+  for (Operation &bodyOp : getBody().front())
+    for (Value result : bodyOp.getResults())
+      if (auto shapeTy = dyn_cast<ShapeFuncResultType>(result.getType())) {
+        ++numShapeReturning;
+        shapeRank = shapeTy.getRank();
+      }
+  if (numShapeReturning > 1)
+    return emitOpError() << "expected at most one shape-returning call in the "
+                            "body, got "
+                         << numShapeReturning;
+  if (getOutputParamDecls().empty() != (numShapeReturning == 0))
+    return emitOpError() << "outputParamDecls and a shape-returning call must "
+                            "appear together";
+  if (numShapeReturning == 1 && shapeRank != getOutputParamDecls().size())
+    return emitOpError() << "shape result rank " << shapeRank
+                         << " does not match " << getOutputParamDecls().size()
+                         << " declared output parameter(s)";
 
   return success();
 }
@@ -2590,7 +2628,11 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   // gets one of its own.
   Block &kernelBody = getBody().front();
   unsigned numInputs = getInputs().size();
-  unsigned numOutputs = getOutputs().size() - (getOutputChain() ? 1 : 0);
+  // Only tensor-like results are allocated and get an output pointer.
+  unsigned numOutputs = 0;
+  for (Value output : getOutputs())
+    if (MO::dynCastFromTensorLike(output.getType()))
+      ++numOutputs;
   unsigned numArgs = kernelBody.getNumArguments();
   if (numArgs < numInputs + numOutputs + 1) {
     emitOpError("MOGGToMGP: malformed mogg._kernel body");
@@ -2654,11 +2696,16 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   operands.push_back(loweringState.getExecuteDevice(device));
   semantics.push_back(InOutSignatureAttr::kNone);
 
-  // Build the region; result 0 is the output chain.
+  // Result 0 is the chain, then one dim per declared parameter.
+  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
+  Type dimType = MOSH::ShapeAttr::getDimType(ctx);
+  SmallVector<Type> regionResultTypes{MEF::ChainType::get(ctx)};
+  regionResultTypes.append(decls.size(), dimType);
+
   OpBuilder &builder = st.builder;
   auto region = MOGG::GenericCompiledRegionOp::create(
-      builder, loc, TypeRange{MEF::ChainType::get(ctx)}, operands,
-      /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
+      builder, loc, regionResultTypes, operands,
+      /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, decls),
       InOutSignatureAttr::get(ctx, semantics),
       /*fusionInfo=*/getFusionInfoAttr(),
       /*isAsync=*/BoolAttr::get(ctx, false),
@@ -2713,6 +2760,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   for (unsigned i = 0; i < numArgs; ++i)
     mapping.map(kernelBody.getArgument(i), stubArgs[i]);
   SmallVector<Attribute> blobs;
+  Value shapeResult;
   for (Operation &calleeOp : kernelBody) {
     // A `mogg.buffer.constant` carries its attribute as written, because the
     // MEF alignment is only known here. Swap it for the real
@@ -2734,17 +2782,51 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
                                          cst.getPointer().getType(), buffer));
       continue;
     }
-    builder.clone(calleeOp, mapping);
+    Operation *clone = builder.clone(calleeOp, mapping);
+    // By type, so no unrelated result can stand in.
+    for (Value result : clone->getResults()) {
+      if (!isa<MOGG::ShapeFuncResultType>(result.getType()))
+        continue;
+      shapeResult = result;
+    }
   }
   // Only the region carries the bytes out to the runtime; the stub reads them
   // as ordinary arguments, so its own array stays empty.
   if (!blobs.empty())
     region.setConstantResourcesAttr(builder.getArrayAttr(blobs));
   Value readyChain = MOGG::AsyncReadyOp::create(builder, loc);
-  MOGG::OutputOp::create(builder, loc, ValueRange{readyChain});
+  SmallVector<Value> regionOutputs{readyChain};
+  if (!decls.empty()) {
+    ASSERT_STREAM(shapeResult,
+                  << "verifier guarantees a shape-returning call whenever "
+                     "outputParamDecls is non-empty");
+    // Unpack the `N` dims out of the `shape_func_result<N>`.
+    for (size_t i = 0, e = decls.size(); i < e; ++i) {
+      auto item = MOGG::ShapeResultGetItemOp::create(
+          builder, loc, dimType, shapeResult,
+          builder.getIntegerAttr(builder.getIntegerType(64, true), i));
+      regionOutputs.push_back(
+          MOGG::AsyncPackOp::create(builder, loc, item.getResult()));
+    }
+  }
+  MOGG::OutputOp::create(builder, loc, regionOutputs);
 
   // Register the outputs against the graph, guarded by the region's out chain.
   builder.setInsertionPointAfter(region);
+
+  // Bind each dim to the value the region returns. Order-independent:
+  // `lowerParamDecl` back-patches any placeholder already handed out.
+  for (auto [idx, decl] : llvm::enumerate(decls)) {
+    Value asDimension = MGP::indexToDimension(
+        loweringState.getExecuteOpBuilder(), loc, region->getResult(idx + 1));
+    if (auto err = loweringState.lowerParamDecl(
+            getOperation()->getParentRegion(), decl, asDimension)) {
+      emitOpError("MOGGToMGP: failed to bind parameter ")
+          << decl.getName() << ": " << err.getError();
+      return nullptr;
+    }
+  }
+
   st.createOutputs(region->getResult(0), storage);
   return region;
 }
@@ -3418,10 +3500,20 @@ LogicalResult KernelStubOp::emitMojoMAPABI(EmitMojoState &state) {
     inputTypes.push_back(
         MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
 
+  // Only a shape function hands anything back.
+  MOGG::OutputOp bodyOutput = getBodyTerminator();
+  ASSERT_STREAM(bodyOutput.getNumOperands() <= 1,
+                << "a MAP-ABI stub returns at most one value, got "
+                << bodyOutput.getNumOperands());
+  const bool returnsByValue = bodyOutput.getNumOperands() == 1;
+  std::optional<MOGG::MojoValue> returnType;
+  if (returnsByValue)
+    returnType = state.mlirTypeToMojoType(bodyOutput.getOperand(0).getType());
+
   bool errOccurred = false;
   state.builder.def(
-      getSymNameAttr().str(), /*parameters=*/{}, inputTypes,
-      /*returnType=*/std::nullopt, /*exported=*/false,
+      getSymNameAttr().str(), /*parameters=*/{}, inputTypes, returnType,
+      /*exported=*/false,
       /*raises=*/isThrows(), /*isAlwaysInline=*/false,
       [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
@@ -3433,6 +3525,10 @@ LogicalResult KernelStubOp::emitMojoMAPABI(EmitMojoState &state) {
         errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
           return state.lowerOpToMojo(&op).failed();
         });
+        if (!errOccurred && returnsByValue) {
+          state.builder.returnsValue(
+              state.getMojoValueFor(bodyOutput.getOperand(0)));
+        }
       });
 
   return failure(errOccurred);
@@ -6685,6 +6781,43 @@ Type CallShapeOp::getKernelReturnOutput() {
 }
 
 bool CallShapeOp::isThrows() { return getIsThrows(); }
+
+LogicalResult
+CallShapeV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  auto decl = symbolTable.lookupNearestSymbolFrom<ShapeFunctionDeclOp>(
+      *this, getCalleeAttr());
+  if (!decl)
+    return emitOpError("'")
+           << getCallee() << "' does not refer to a shape_func.decl op";
+  return success();
+}
+
+bool CallShapeV2Op::isThrows() { return getIsThrows(); }
+
+LogicalResult CallShapeV2Op::emitMojo(EmitMojoState &state) {
+  SmallVector<MojoValue> kernelOperands;
+  for (Value operand : getOperands())
+    kernelOperands.push_back(state.getMojoValueFor(operand));
+
+  // Infer any kernel parameters required by the shape function.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName,
+                                              getKernelParamAttr());
+  };
+  ShapeFunctionDeclOp shapeDecl =
+      state.registry.lookupShapeFunctionBySymName(getCallee());
+  auto maybeParams = inferKernelParameters(shapeDecl, inferParam);
+  if (maybeParams.isError())
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
+
+  MojoValue shapeFn(getCallee());
+  state.setMojoValueFor(
+      getResult(), state.builder.var(shapeFn[maybeParams->structParameters](
+                       maybeParams->functionParameters, kernelOperands)));
+  state.genAllKeepAliveStatements();
+  return success();
+}
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   // Rebind all inputs to ensure specs are deduced (tensors -> InputTensor,

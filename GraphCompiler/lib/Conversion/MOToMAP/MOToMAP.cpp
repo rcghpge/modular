@@ -44,6 +44,9 @@ namespace {
 bool shouldLower(Operation *op) {
   if (isa<MO::PreservedDuringKernelLowering>(op))
     return false;
+  // No MAP form: returns by value. Left for the MOGG conversion.
+  if (isa<MO::InvokeShapeFuncOp>(op))
+    return false;
   Dialect *dialect = op->getDialect();
   return dialect && isa<MO::MODialect>(dialect);
 }

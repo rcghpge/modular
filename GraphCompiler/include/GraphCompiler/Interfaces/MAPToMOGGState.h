@@ -15,6 +15,10 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 
+namespace M::MO {
+class InvokeShapeFuncOp;
+} // namespace M::MO
+
 namespace M::MAP {
 
 // Shared, per-kernel context threaded through the whole recursive lowering of
@@ -61,6 +65,10 @@ struct MAPToMOGGState {
       llvm::function_ref<bool(mlir::Operation *)> shouldLower =
           [](mlir::Operation *) { return true; });
 };
+
+/// Lowers a `mo.invoke_shape_func` into a `mogg._kernel`, and erases it.
+mlir::LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp op,
+                                               MAPToMOGGState &state);
 
 } // namespace M::MAP
 

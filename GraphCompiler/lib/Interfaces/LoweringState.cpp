@@ -932,8 +932,8 @@ MOOpLoweringState::createOutputTensorSpecs() {
       continue;
 
     // Skip non-tensor types like chains and opaques - they are handled
-    // separately by the kernel lowering logic.
-    if (isa<MO::ChainType, MO::OpaqueType>(type))
+    // separately by the kernel lowering logic, as is a shape result.
+    if (isa<MO::ChainType, MO::OpaqueType, MOGG::ShapeFuncResultType>(type))
       continue;
 
     auto moTensorType = dyn_cast<MO::TensorType>(type);

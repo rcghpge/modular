@@ -1805,6 +1805,7 @@ def MOGG_ShapeFunctionDeclOp
 
 def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
   NoTerminator,
@@ -1843,9 +1844,11 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   let arguments = (ins
     Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$inputs,
     Optional<MO_Chain>:$chain,
-    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+    MO_ParamDecls:$outputParamDecls
   );
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$outputs);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain,
+                                          MOGG_ShapeFuncResult]>>:$outputs);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
   let hasCustomAssemblyFormat = 1;
@@ -2221,6 +2224,28 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
     $callee `shape` `(` $shape `)` `context` `(` $context `)`
             (`capturing` `(` $capturing^ `:` type($capturing) `)`)?
             attr-dict-with-keyword $body
+  }];
+}
+
+def MOGG_CallShapeV2Op : MOGG_Op<"_call.shape", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
+  let summary = "Call a registered shape function, returning its shape by value.";
+  let description = [{
+    New-path counterpart of `mogg.call.shape`: not a terminator, and yields
+    its `IndexList` as an ordinary SSA result. `$kernel_param` carries
+    `output_rank`, the rank of `$result`.
+  }];
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    UnitAttr:$isThrows,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Scalar, MOGG_Tuple]>>:$operands,
+    OptionalAttr<DictionaryAttr>:$kernel_param
+  );
+  let results = (outs MOGG_ShapeFuncResult:$result);
+  let assemblyFormat = [{
+    $callee `(` $operands `:` type($operands) `)` `->` type($result) attr-dict
   }];
 }
 

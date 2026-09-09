@@ -31,6 +31,18 @@ namespace {
 // A dimension is dynamic unless it is a concrete `KGEN::SIMDAttr`.
 bool isDynamicDim(Attribute dim) { return !isa<KGEN::SIMDAttr>(dim); }
 
+// The dynamic dims of `types`, deduped in first-seen order.
+void collectDynamicDims(TypeRange types, MAPToMOGGState &state) {
+  for (Type ty : types) {
+    MO::TensorType tensorLike = MO::dynCastFromTensorLike(ty);
+    if (!tensorLike)
+      continue;
+    for (Attribute dim : tensorLike.getShape().getValues())
+      if (isDynamicDim(dim))
+        state.dimArgs.insert({dim, BlockArgument()});
+  }
+}
+
 // Materializes a `!mogg.shape` for `shapeAttr` via `mogg._shape.create`.
 // Canonicalizes every dynamic dim in the shape ATTR to one uniform `dyn`
 // placeholder so shapes carrying different symbols (e.g. `[M, K]` vs `[N,
@@ -86,6 +98,78 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
 }
 
 } // namespace
+
+// mo.invoke_shape_func -> mogg._kernel wrapping a mogg._call.shape. The one
+// kernel here that is not destination-passing: the shape leaves by value, and
+// the dims it defines ride in `outputParamDecls`.
+LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
+                                         MAPToMOGGState &state) {
+  Operation *op = shapeFuncOp.getOperation();
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder &builder = state.builder;
+  builder.setInsertionPoint(op);
+
+  MOGG::ShapeFunctionDeclOp shapeDecl =
+      state.registry.lookupShapeFunction(shapeFuncOp.getShapeFuncName());
+  if (!shapeDecl)
+    return op->emitOpError("MAPToMOGG: '")
+           << shapeFuncOp.getShapeFuncName()
+           << "' requires a registered shape function; add "
+              "'@extensibility.register_shape_function(\""
+           << shapeFuncOp.getShapeFuncName() << "\")' to the kernel";
+
+  ValueRange inputs = shapeFuncOp.getInputs();
+
+  // The op's declared output rank, never derived from an argument.
+  const uint64_t rank = shapeFuncOp.getOutputParamDecls().size();
+  Type shapeResultType = MOGG::ShapeFuncResultType::get(ctx, rank);
+
+  // Host-only.
+  state.device = MO::getDeviceOrDefaultAny(op);
+
+  auto kernel = MOGG::KernelRegionOp::create(
+      builder, loc, /*resultTypes=*/TypeRange{shapeResultType}, inputs,
+      /*chain=*/Value(),
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)),
+      shapeFuncOp.getOutputParamDeclsAttr());
+  kernel.setDeviceRef(state.device);
+
+  // Inputs only: the sole result is the shape.
+  collectDynamicDims(inputs.getTypes(), state);
+
+  // A pointer per input, then the dims, then the context.
+  Block *body = builder.createBlock(&kernel.getBody());
+  SmallVector<BlockArgument> inputPtrs;
+  for (size_t i = 0, e = inputs.size(); i < e; ++i)
+    inputPtrs.push_back(body->addArgument(MOGG::PointerType::get(ctx), loc));
+  for (auto &[dim, blockArg] : state.dimArgs)
+    blockArg = body->addArgument(
+        MOGG::DimType::get(ctx, dyn_cast<KGEN::ParamDeclRefAttr>(dim)), loc);
+  state.contextArg = body->addArgument(MOGG::ContextType::get(ctx), loc);
+
+  builder.setInsertionPointToEnd(body);
+  SmallVector<Value> callOperands;
+  for (auto [i, in] : llvm::enumerate(inputs))
+    callOperands.push_back(buildTensor(loc, inputPtrs[i], in.getType(),
+                                       MO::IOKind::Input, /*isMut=*/false,
+                                       state));
+
+  bool isThrows = shapeDecl.getFunction().getSignature().isThrows();
+  auto call = MOGG::CallShapeV2Op::create(
+      builder, loc, shapeResultType,
+      FlatSymbolRefAttr::get(shapeDecl.getSymNameAttr()),
+      isThrows ? builder.getUnitAttr() : nullptr, callOperands,
+      builder.getDictionaryAttr({builder.getNamedAttr(
+          MOGG::kMoggOutputRankParameterName,
+          builder.getIndexAttr(static_cast<int64_t>(rank)))}));
+
+  // The kernel's only output.
+  MOGG::OutputOp::create(builder, loc, call.getResult());
+
+  op->erase();
+  return success();
+}
 
 // map.constant -> mogg.buffer.constant + mogg._tensor.create. The constant has
 // no operand to arrive on, so its bytes become a constant buffer and the tensor
@@ -606,20 +690,9 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // Unique dynamic dims across this kernel's I/O tensor (or buffer) types,
   // plus any nested `map.iter.foreach.body`'s own `$shape` (which can differ
-  // from any I/O tensor's shape for a broadcast). Skips non-tensor-like types
-  // outright (a chain, say) -- they carry no shape to collect dims from.
-  auto collectDims = [&](TypeRange types) {
-    for (Type ty : types) {
-      MO::TensorType tensorLike = MO::dynCastFromTensorLike(ty);
-      if (!tensorLike)
-        continue;
-      for (Attribute dim : tensorLike.getShape().getValues())
-        if (isDynamicDim(dim))
-          state.dimArgs.insert({dim, BlockArgument()});
-    }
-  };
-  collectDims(inputs.getTypes());
-  collectDims(resultTypes);
+  // from any I/O tensor's shape for a broadcast).
+  collectDynamicDims(inputs.getTypes(), state);
+  collectDynamicDims(resultTypes, state);
   getBody().walk([&](IterForeachBodyOp nested) {
     for (Attribute dim : nested.getShape().getValues())
       if (isDynamicDim(dim))

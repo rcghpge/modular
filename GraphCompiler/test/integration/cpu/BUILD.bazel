@@ -57,18 +57,13 @@ _COMMON_DEPS = [
 # covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/constant-fold-ops.mlir",
-    "E2E/custom-shape-func.mlir",
     "E2E/elaboration_error.mlir",
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
     "E2E/kernels-with-variadics.mlir",
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
     "E2E/multi_view_fusion.mlir",
     "E2E/multi_view_fusion_no_add.mlir",
-    "E2E/raising-shape-funcs.mlir",
-    "E2E/range-shape-func-add-in-init.mlir",
-    "E2E/range-shape-func-in-init.mlir",
     "E2E/range.mlir",
-    "E2E/shape-funcs.mlir",
     "E2E/split.mlir",
     "E2E/transpose.mlir",
     "E2E/transpose_reduce.mlir",

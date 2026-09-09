@@ -39,6 +39,8 @@
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/MOSHDialect/MOSHDialect.h"
@@ -70,6 +72,20 @@ struct MAPToMOGGPass : public MAP::impl::MAPToMOGGBase<MAPToMOGGPass> {
       MAPToMOGGState state(registry, op);
       state.enableComputeLambdas = enableComputeLambdas;
       if (failed(state.lowerOp(op.getOperation())))
+        return signalPassFailure();
+    }
+
+    // These arrive as MO ops; with the flag off, MOToMOGG owns them.
+    if (MO::useAdvancedFusion()) {
+      // Post-order: the lowering erases the op.
+      WalkResult result = getOperation()->walk([&](MO::InvokeShapeFuncOp op) {
+        MAPToMOGGState state(registry, op);
+        state.enableComputeLambdas = enableComputeLambdas;
+        return failed(lowerInvokeShapeFuncToMOGG(op, state))
+                   ? WalkResult::interrupt()
+                   : WalkResult::advance();
+      });
+      if (result.wasInterrupted())
         return signalPassFailure();
     }
   }

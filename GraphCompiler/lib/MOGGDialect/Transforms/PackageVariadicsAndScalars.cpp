@@ -83,6 +83,35 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
   return packed;
 }
 
+// Packed operands, and whether anything needed it.
+struct PackedCall {
+  SmallVector<Value> inputs;
+  SmallVector<Value> outputs;
+  bool changed = false;
+};
+
+// Wraps each operand `fn` wants as a scalar or a tuple.
+FailureOr<PackedCall> packAgainstSignature(Operation *call,
+                                           const KernelDeclFunctionAdaptor &fn,
+                                           StringRef callee, ValueRange inputs,
+                                           ValueRange outputs,
+                                           bool hasSameVariadicOperandSize) {
+  ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
+      inputs, outputs, fn, callee, hasSameVariadicOperandSize,
+      /*hasExtraOutputShapeArgument=*/false);
+  if (mapping.isError())
+    return call->emitOpError("PackageVariadicsAndScalars: ")
+           << mapping.getError();
+
+  OpBuilder builder(call);
+  PackedCall packed;
+  packed.inputs = packOperands(builder, call->getLoc(), inputs,
+                               mapping->operandMapping, packed.changed);
+  packed.outputs = packOperands(builder, call->getLoc(), outputs,
+                                mapping->resultMapping, packed.changed);
+  return packed;
+}
+
 LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   KernelDeclOp decl = registry.lookupKernelBySymName(call.getCallee());
   if (!decl)
@@ -94,28 +123,50 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   if (!adaptor.executeFunction)
     return success();
 
-  ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
-      call.getInputs(), call.getOutputs(), *adaptor.executeFunction,
-      call.getCallee(), call.getHasSameVariadicOperandSize(),
-      /*hasExtraOutputShapeArgument=*/false);
-  if (mapping.isError())
-    return call.emitOpError("PackageVariadicsAndScalars: ")
-           << mapping.getError();
-
-  OpBuilder builder(call);
-  bool changed = false;
-  SmallVector<Value> inputs =
-      packOperands(builder, call.getLoc(), call.getInputs(),
-                   mapping->operandMapping, changed);
-  SmallVector<Value> outputs =
-      packOperands(builder, call.getLoc(), call.getOutputs(),
-                   mapping->resultMapping, changed);
-  if (!changed)
+  FailureOr<PackedCall> packed = packAgainstSignature(
+      call, *adaptor.executeFunction, call.getCallee(), call.getInputs(),
+      call.getOutputs(), call.getHasSameVariadicOperandSize());
+  if (failed(packed))
+    return failure();
+  if (!packed->changed)
     return success();
 
-  CallOpaqueOp::create(builder, call.getLoc(), call.getCalleeAttr(), inputs,
-                       outputs, call.getDeviceContext(),
+  OpBuilder builder(call);
+  CallOpaqueOp::create(builder, call.getLoc(), call.getCalleeAttr(),
+                       packed->inputs, packed->outputs, call.getDeviceContext(),
                        call.getKernelParamAttr());
+  call.erase();
+  return success();
+}
+
+// Same as `packCall`, against the `mogg.shape_func.decl` signature: no
+// outputs, but `range_shape` still wants `Scalar[dtype]`, not a
+// `!mogg.tensor_`.
+LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
+  ShapeFunctionDeclOp decl =
+      registry.lookupShapeFunctionBySymName(call.getCallee());
+  if (!decl)
+    return call.emitOpError(
+               "PackageVariadicsAndScalars: no shape_func.decl named '")
+           << call.getCallee() << "'";
+
+  // No output operand to map.
+  KernelDeclFunctionAdaptor fn(decl);
+  fn.outputResult = std::nullopt;
+
+  FailureOr<PackedCall> packed = packAgainstSignature(
+      call, fn, call.getCallee(), call.getOperands(), /*outputs=*/{},
+      /*hasSameVariadicOperandSize=*/false);
+  if (failed(packed))
+    return failure();
+  if (!packed->changed)
+    return success();
+
+  OpBuilder builder(call);
+  auto replacement = CallShapeV2Op::create(
+      builder, call.getLoc(), call.getResult().getType(), call.getCalleeAttr(),
+      call.getIsThrowsAttr(), packed->inputs, call.getKernelParamAttr());
+  call.getResult().replaceAllUsesWith(replacement.getResult());
   call.erase();
   return success();
 }
@@ -127,14 +178,17 @@ struct PackageVariadicsAndScalarsPass
 
   void runOnOperation() override {
     MojoRegistry registry(getOperation());
-    SmallVector<CallOpaqueOp> calls;
-    getOperation().walk([&](CallOpaqueOp c) {
-      calls.push_back(c);
-      return WalkResult::skip();
+    // Post-order: packing erases the call.
+    WalkResult result = getOperation().walk([&](Operation *op) {
+      LogicalResult packed = success();
+      if (auto call = dyn_cast<CallOpaqueOp>(op))
+        packed = packCall(call, registry);
+      else if (auto shapeCall = dyn_cast<CallShapeV2Op>(op))
+        packed = packShapeCall(shapeCall, registry);
+      return failed(packed) ? WalkResult::interrupt() : WalkResult::advance();
     });
-    for (CallOpaqueOp call : calls)
-      if (failed(packCall(call, registry)))
-        return signalPassFailure();
+    if (result.wasInterrupted())
+      return signalPassFailure();
   }
 };
 

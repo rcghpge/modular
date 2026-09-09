@@ -56,7 +56,17 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
 
   SmallVector<Type> stubArgTypes(argTypes);
   stubArgTypes.append(constants.size(), MOGG::PointerType::get(ctx));
-  auto functionType = TypeAttr::get(FunctionType::get(ctx, stubArgTypes, {}));
+
+  // `mogg.output`'s operands are the stub's return type; only a shape
+  // function has any.
+  auto bodyOutput =
+      dyn_cast<MOGG::OutputOp>(body.empty() ? nullptr : &body.back());
+  SmallVector<Type> stubResultTypes;
+  if (bodyOutput)
+    llvm::append_range(stubResultTypes, bodyOutput.getOperandTypes());
+
+  auto functionType =
+      TypeAttr::get(FunctionType::get(ctx, stubArgTypes, stubResultTypes));
 
   // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg._kernel`
   // from the source `map.iter.opaque`; fall back to a fresh leaf only if it's
@@ -99,7 +109,9 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
     cst.getPointer().replaceAllUsesWith(
         stubBody.addArgument(MOGG::PointerType::get(ctx), cst.getLoc()));
   builder.setInsertionPointToEnd(&stubBody);
-  MOGG::OutputOp::create(builder, loc, ValueRange{});
+  // Only a body without a terminator needs the cap.
+  if (!bodyOutput)
+    MOGG::OutputOp::create(builder, loc, ValueRange{});
 
   // Rebuild the kernel body as a single `mogg.call.stub` forwarding fresh block
   // args (same types) to the stub, preceded by the constants it hands over.
@@ -112,7 +124,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
     cst->moveBefore(callBody, callBody->end());
     forwarded.push_back(cst.getPointer());
   }
-  MOGG::CallStubOp::create(builder, loc, /*resultTypes=*/TypeRange{},
+  MOGG::CallStubOp::create(builder, loc, /*resultTypes=*/stubResultTypes,
                            FlatSymbolRefAttr::get(stubName), forwarded,
                            /*affinity_device_id=*/nullptr);
 }
