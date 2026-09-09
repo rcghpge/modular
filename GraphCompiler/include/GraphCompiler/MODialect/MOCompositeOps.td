@@ -792,6 +792,54 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP8Op : MO_DistributedOp<"comp
   }];
 }
 
+def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"composite.distributed.allgather_rms_norm_quant_mxfp6", [
+  MO_MultiDevice,
+  MO_CompositeOpTrait
+]> {
+  string cppNamespace = MODialect.cppNamespace # "::Composite";
+  let summary = "Fused AllGather + RMSNorm + MXFP6 quant across N devices for a single device.";
+  let description = [{
+    The MXFP6 sibling of
+    `mo.composite.distributed.allgather_rms_norm_quant_mxfp8`. It is a separate
+    op rather than an encoding attribute on that one because the result shapes
+    differ: MXFP6 packs four six-bit codes into three bytes, so `outQuant` is
+    `ui8` with `[rows, cols * 3 / 4]`, three quarters the normed width, where
+    the MXFP8 op's quantized result is a same-shaped float8.
+
+    `outScale` is unchanged from the MXFP8 op: `float8_e8m0fnu`,
+    `[rows, cols / 32]`, plain rank-2 row-major -- what
+    `block_scaled_matmul_amd` takes as `a_scales`, NOT the SM100 SF-atom
+    interleave and NOT the preshuffled atom order
+    `block_scaled_matmul_amd_preb` requires. Quantized from the bf16 written to
+    `output`, so byte-identical to a standalone quantize. Same `group_size`
+    contract.
+
+    `fp6_format` selects the OCP encoding, 0 for E2M3 and 1 for E3M2. It has to
+    be carried explicitly: both encodings are six bits and arrive packed as
+    `ui8`, so the result type cannot record which one the bytes hold.
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    Variadic<MO_Tensor>:$gamma,
+    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
+    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$group_size,
+    DefaultValuedAttr<I64Attr, "0">:$fp6_format
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$output,
+    Variadic<MO_Tensor>:$outQuant,
+    Variadic<MO_Tensor>:$outScale,
+    Variadic<MO_Tensor>:$outResidual,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 // Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
 //===----------------------------------------------------------------------===//
 //
