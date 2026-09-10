@@ -1,7 +1,8 @@
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: env MODULAR_DEBUG=ir-output-dir=%t MAX_GC_USE_ADV_FUSION=1 mo-opt %s \
 // RUN:   --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" \
-// RUN:   --mo-to-map --map-fuse-kernels --map-outline-structured-kernel-bodies \
+// RUN:   --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers \
+// RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
 // RUN:   --mogg-package-variadics-and-scalars \
 // RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
@@ -30,12 +31,14 @@
 // checks read `%t/*.mojo`.
 
 // One fused output: the store target (capture 0) is captured as a bare
-// pointer + row-major layout, the functor binds directly onto the store
-// target's own ManagedTensorSlice, and the bound tensor is the DPS output of
-// an execute call carrying `has_epilogue_fusion = True`.
-// CHECK: var [[BASE0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK: var [[PTR0:.*]] = [[BASE0]]._ptr
+// pointer + row-major layout, the functor is built over that pointer, and it
+// binds onto a fresh ManagedTensorSlice reconstructed over the same pointer
+// (the epilogue's `$outputPtr`). The bound tensor is the DPS output of an
+// execute call carrying `has_epilogue_fusion = True`.
+// CHECK: var [[CAP0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
+// CHECK: var [[PTR0:.*]] = [[CAP0]]._ptr
 // CHECK: var [[F0:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTR0]], {{.*}})
+// CHECK: var [[BASE0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTR0]]{{.*}})
 // CHECK: var [[W0:.*]] = [[BASE0]]._bind_to_fused_output([[F0]])
 // CHECK: {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = True]([[W0]], {{.*}})
 
@@ -68,9 +71,10 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // execute shape is otherwise identical to the static case above.
 // CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[2])
-// CHECK:   var [[BASED:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK:   var [[PTRD:.*]] = [[BASED]]._ptr
+// CHECK:   var [[CAPD:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
+// CHECK:   var [[PTRD:.*]] = [[CAPD]]._ptr
 // CHECK:   var [[FD:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTRD]], {{.*}})
+// CHECK:   var [[BASED:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTRD]]{{.*}})
 // CHECK:   var [[WD:.*]] = [[BASED]]._bind_to_fused_output([[FD]])
 // CHECK:   {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = True]([[WD]], {{.*}})
 
@@ -96,10 +100,11 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // instead, further down.
 // CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM2:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM2]]), layout.Idx[2])
-// CHECK:   var [[BASER:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK:   var [[PTRR:.*]] = [[BASER]]._ptr
+// CHECK:   var [[CAPR:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
+// CHECK:   var [[PTRR:.*]] = [[CAPR]]._ptr
 // CHECK:   var [[PTRB:.*]] = {{.*}}._ptr
 // CHECK:   var [[FR:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}, {{.*}}]([[PTRR]], {{.*}}, [[PTRB]], {{.*}})
+// CHECK:   var [[BASER:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTRR]]{{.*}})
 // CHECK:   var [[WR:.*]] = [[BASER]]._bind_to_fused_output([[FR]])
 // CHECK:   {{.*}}.AddFuseOutput.execute[target = "cpu"]([[WR]], {{.*}})
 

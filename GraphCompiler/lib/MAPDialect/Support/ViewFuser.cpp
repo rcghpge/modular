@@ -343,8 +343,13 @@ void fuseViewIntoClosure(IterOpaqueOp dst, IterForeachOp src,
       unsigned dstInputIdx = dst.getInputs().size();
       dst.insertInputsAt(dstInputIdx, input);
       Value dstInputArg = dst.getInputBlockArgs()[dstInputIdx];
-      closure.getOperation()->insertOperands(
-          closure.getOperation()->getNumOperands(), dstInputArg);
+      // Append the capture operand; its shadowing block arg is added to the
+      // ORIGINAL body (`closureBody`) below, not the freshly-cloned `.front()`,
+      // so this can't go through `addCapture` (which re-derives `.front()`).
+      // `appendCaptureOperand` is segment-aware, so it stays correct for the
+      // epilogue's `$intermediateTensor` operand-segment split as well as for
+      // the unsplit operand list every other closure kind uses.
+      closure.appendCaptureOperand(dstInputArg);
       fusedArgs.push_back(
           closureBody.addArgument(input.getType(), input.getLoc()));
     }

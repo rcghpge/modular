@@ -56,8 +56,13 @@ MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
   auto outType = cast<MO::TensorType>(out.getType());
   auto indexType = MAP::IndexType::get(builder.getContext(), outType.getRank());
 
+  // `$intermediateTensor` must be passed (as null): dropping it binds the call
+  // to the generic `(TypeRange, ValueRange operands)` builder, which does not
+  // set `operandSegmentSizes`. `AllocateAccumulatingBuffers` fills it in after
+  // fusion.
   auto epilogue =
-      MAP::IterEpilogueOp::create(builder, loc, out.getType(), ValueRange{out});
+      MAP::IterEpilogueOp::create(builder, loc, out.getType(), ValueRange{out},
+                                  /*intermediateTensor=*/Value());
 
   OpBuilder::InsertionGuard guard(builder);
   Block *body = builder.createBlock(&epilogue.getBody());

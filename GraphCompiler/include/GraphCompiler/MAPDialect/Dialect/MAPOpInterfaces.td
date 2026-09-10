@@ -70,6 +70,18 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
       }]
     >,
     InterfaceMethod<
+      "Appends `capture` to the capture operands WITHOUT adding a shadowing "
+      "block argument. Segment-aware, so it stays correct for a closure whose "
+      "operands are split into segments (e.g. the epilogue's trailing "
+      "`$intermediateTensor`). Use when the block argument is added separately -- "
+      "e.g. a fuser adding it to a pre-clone body block; `addCapture` is the "
+      "usual entry point that also adds the block argument.",
+      "void", "appendCaptureOperand", (ins "::mlir::Value":$capture),
+      [{
+        $_op.getCapturesMutable().append(capture);
+      }]
+    >,
+    InterfaceMethod<
       "Appends `capture` as a new capture and returns its new shadowing "
       "block argument. May create a duplicate of an existing capture -- "
       "callers don't dedup; the shared capturing-closure canonicalizer does.",
@@ -77,6 +89,9 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
       [{
         ::mlir::BlockArgument arg = $_op.getBody().front().addArgument(
             capture.getType(), capture.getLoc());
+        // Same segment-aware append as `appendCaptureOperand`; inlined here
+        // because a default method cannot call another via `$_op` (a
+        // default-only method is not a member of the concrete op).
         $_op.getCapturesMutable().append(capture);
         return arg;
       }]

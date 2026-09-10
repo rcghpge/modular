@@ -357,10 +357,21 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   bool isCompute = kind == MOGG::KernelOutputFusionLambdaType::Compute;
   bool computeOutputArg = kind != MOGG::KernelOutputFusionLambdaType::Output;
 
+  // The tensor whose storage the kernel-facing slice is built over.
+  // `AllocateAccumulatingBuffers` always sets `$intermediateTensor` (the store
+  // target, or a pre-cast accumulation buffer) before this pass runs, so emit
+  // gets a real pointer, never a dangling one.
+  Value intermediateTensor = getIntermediateTensor();
+  if (!intermediateTensor)
+    return emitOpError("MAPToMOGG: epilogue has no source tensor");
+  Value outputPtr = MOGG::TensorGetPtrOp::create(
+      state.builder, loc, MOGG::PointerType::get(ctx),
+      state.mapping.lookup(intermediateTensor));
+
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
-      /*args=*/ValueRange{}, state.device, TypeAttr::get(outElemType),
-      state.builder.getBoolAttr(true),
+      /*args=*/ValueRange{}, outputPtr, state.device,
+      TypeAttr::get(outElemType), state.builder.getBoolAttr(true),
       MO::IOKindAttr::get(ctx, MO::IOKind::Output),
       state.builder.getBoolAttr(computeOutputArg));
 

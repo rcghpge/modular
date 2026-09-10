@@ -360,6 +360,11 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
+  // Fusion has settled: give every fused-output epilogue a real store pointer
+  // (and, for a mixed-precision accumulating kernel, a pre-cast accumulation
+  // buffer) so MAPToMOGG never hands the epilogue a dangling pointer.
+  pm.addNestedPass<GraphOp>(MAP::createAllocateAccumulatingBuffers());
+
   // An unfused reshape has no MAPToMOGG lowering past this point (its
   // hoisted stride op isn't LowerableToMOGGInterface yet); an unfused
   // contiguous slice can still take the zero-copy path the

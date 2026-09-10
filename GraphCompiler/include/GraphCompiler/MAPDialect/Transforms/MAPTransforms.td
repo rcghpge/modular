@@ -193,4 +193,28 @@ def FuseMutableLoads : Pass<"map-fuse-mutable-loads", "MO::GraphOp"> {
   let dependentDialects = ["M::MAP::MAPDialect"];
 }
 
+def AllocateAccumulatingBuffers
+    : Pass<"map-allocate-accumulating-buffers", "MO::GraphOp"> {
+  let summary = "Give every fused-output epilogue a real store pointer.";
+  let description = [{
+    Runs after `FuseKernels`. Sets each `map.iter.epilogue`'s `$intermediateTensor`
+    so `MAPToMOGG` can always hand the lowered epilogue a real base pointer
+    instead of a dangling one:
+
+    - Normally the pointer source is the tensor the epilogue stores into.
+    - For a mixed-precision accumulating kernel (`containsMatmulOrConvOrConcat`
+      whose epilogue changes dtype), the kernel must accumulate in the pre-cast
+      dtype before the lambda casts and stores. A fresh accumulation buffer of
+      that dtype is allocated as an extra kernel output and used as the pointer
+      source; the store target stays the real (post-cast) output.
+
+    No buffer is allocated for a non-accumulating kernel -- it only needs a
+    valid pointer, which the store target already provides.
+  }];
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MO::MODialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPTRANSFORMS_TD

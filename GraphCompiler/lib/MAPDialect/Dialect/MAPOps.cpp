@@ -365,6 +365,25 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
                              parser.getCurrentLocation(), result.operands))
     return mlir::failure();
 
+  // Optional `intermediate %outer : type` -- the intermediate-tensor operand.
+  // Unlike the captures it gets no block argument (the body never reads it; it
+  // only tells lowering whose storage to build the slice over), so it is
+  // resolved as a plain trailing operand and split out via the operand-segment
+  // sizes.
+  int32_t numIntermediateTensor = 0;
+  if (succeeded(parser.parseOptionalKeyword("intermediate"))) {
+    OpAsmParser::UnresolvedOperand srcOperand;
+    Type srcType;
+    if (parser.parseOperand(srcOperand) || parser.parseColonType(srcType) ||
+        parser.resolveOperand(srcOperand, srcType, result.operands))
+      return mlir::failure();
+    numIntermediateTensor = 1;
+  }
+  result.addAttribute(
+      getOperandSegmentSizesAttrName(result.name),
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {static_cast<int32_t>(captures.size()), numIntermediateTensor}));
+
   // body region (isolated; entry args are [leading..., captures...]).
   // enableNameShadowing lets the capture block args reuse the same SSA names as
   // the captured operands, so the body reads as if it referenced them directly
@@ -396,9 +415,13 @@ void IterEpilogueOp::print(OpAsmPrinter &p) {
         p << inner << " = " << captures[i] << " : " << inner.getType();
       });
   p << ") ";
+  if (Value intermediateTensor = getIntermediateTensor())
+    p << "intermediate " << intermediateTensor << " : "
+      << intermediateTensor.getType() << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
   p << " : " << getResult().getType();
-  p.printOptionalAttrDict((*this)->getAttrs());
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getOperandSegmentSizesAttrName().getValue()});
 }
 
 void IterEpilogueOp::getAsmBlockArgumentNames(Region &region,

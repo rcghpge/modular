@@ -38,35 +38,6 @@ static IterEpilogueOp getEpilogueForResult(IterOpaqueOp op,
   return nullptr;
 }
 
-// Whether `op` wraps a kernel that ACCUMULATES into its output rather than
-// writing each element once. Such a kernel reads back what it wrote in the
-// output's declared type, so retyping that output under it (see
-// `fuseEpilogueOnce`) would have it accumulate in one type through a buffer
-// typed as another. There is no scratch-buffer bridge for that case yet, so
-// the fusion is declined instead.
-//
-// Matches on the REGISTERED op name (`map.call.opaque`'s `moOpName`), not on
-// the callee symbol: the callee is the Mojo struct's own name, so keying off it
-// would turn a rename of that struct into a silent false negative here -- and a
-// false negative corrupts an accumulator, while a false positive only costs a
-// fusion opportunity. Same contract, and same op list, as the MOGG-ABI
-// `containsMatmulOrConvOrConcat` in `FuseEpilogues.cpp`.
-//
-// TODO(#22349): Remove checks when matmul/conv/concat kernels respect the
-// fusion contract.
-static bool containsMatmulOrConvOrConcat(IterOpaqueOp op) {
-  for (auto callOp : op.getBody().front().getOps<CallOpaqueOp>()) {
-    StringRef opName = callOp.getKernelName();
-    if (opName.contains(MO::ConcatOp::getOperationName()) ||
-        opName.contains(MO::MatmulOp::getOperationName()) ||
-        opName.contains(MO::BatchMatmulOp::getOperationName()) ||
-        opName.contains(MO::ConvOp::getOperationName()) ||
-        opName.contains(MO::ConvTransposeOp::getOperationName()))
-      return true;
-  }
-  return false;
-}
-
 } // namespace
 
 // Finds every currently-eligible (dst, src) edge in one read-only pass over
@@ -126,15 +97,11 @@ SmallVector<EpilogueFuser::FusionCandidate> EpilogueFuser::collectCandidates() {
         continue;
 
       // A type-changing src (e.g. mo.cast) is fusible: `fuseEpilogueOnce`
-      // retypes `dst`'s output to the consumer's type along with it. That is
-      // unsound for a kernel that accumulates into that output, though, so
-      // those decline the fusion and leave the consumer as its own kernel.
-      // TODO(GEX-3964): lift this with a scratch-buffer step that lets an
-      // accumulating kernel keep writing its own type while the epilogue
-      // converts on the way out.
-      if (src.getResult(0).getType() != result.getType() &&
-          containsMatmulOrConvOrConcat(dst))
-        continue;
+      // retypes `dst`'s output to the consumer's type along with it. For an
+      // accumulating kernel this would have it accumulate in one type through a
+      // buffer typed as another, so `AllocateAccumulatingBuffers` later gives
+      // such an epilogue a pre-cast scratch buffer to accumulate into (the
+      // lambda converts on the way out). Fusion is therefore always allowed.
 
       // `fuseEpilogueOnce` redirects the loads of exactly ONE of `src`'s
       // tensor inputs to the scalar `dst` just produced. A `src` consuming
@@ -242,8 +209,10 @@ static void fuseEpilogueOnce(IterOpaqueOp dst, unsigned resultIdx,
     dst.insertInputsAt(dstInputIdx, input);
     Value dstInputArg = dst.getInputBlockArgs()[dstInputIdx];
 
-    unsigned capIdx = epilogueOp.getNumOperands();
-    epilogueOp->insertOperands(capIdx, dstInputArg);
+    // Append to the captures operand segment (keeps `operandSegmentSizes`
+    // consistent and stays before the trailing `$intermediateTensor`); the
+    // matching trailing block arg is added just below.
+    epilogueOp.getCapturesMutable().append(dstInputArg);
     BlockArgument cap =
         epilogueBody.addArgument(input.getType(), input.getLoc());
     srcBody.getArgument(i).replaceAllUsesWith(cap);

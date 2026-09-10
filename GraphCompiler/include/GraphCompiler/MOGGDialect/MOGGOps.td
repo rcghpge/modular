@@ -1957,6 +1957,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     MOGG_Shape:$shape,
     Variadic<MOGG_TensorLike>:$captures,
     Variadic<AnyType>:$args,
+    MOGG_Pointer:$outputPtr,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
@@ -1968,10 +1969,33 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   let assemblyFormat = [{
     $shape (`(` $args^ `:` type($args) `)`)?
     (`capturing` `(` $captures^ `:` type($captures) `)`)?
+    `ptr` $outputPtr `:` type($outputPtr)
     `:` type($shape) `->` type($tensor)
     attr-dict-with-keyword $body
   }];
   let hasVerifier = 1;
+}
+
+def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Extract the raw `!mogg.pointer_` backing a codegen tensor.";
+  let description = [{
+    Reads the raw base pointer of `$tensor`'s `ManagedTensorSlice`. Used by
+    `MAPToMOGG` to hand a `mogg._tensor.create.epilogue` the pointer of the
+    tensor its body stores into (or, for a mixed-precision accumulating kernel,
+    the pointer of the pre-cast accumulation buffer `AllocateAccumulatingBuffers`
+    added), so emit can build the kernel's fused-output `ManagedTensorSlice` over
+    real storage. An accumulating kernel then has a valid pointer to accumulate
+    through, while a non-accumulating one simply ignores it and the lambda does
+    the store.
+  }];
+  let arguments = (ins MOGG_Tensor:$tensor);
+  let results = (outs MOGG_Pointer:$ptr);
+  let assemblyFormat = [{
+    `(` $tensor `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [

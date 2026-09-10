@@ -3978,6 +3978,25 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
 /// real output would hand the kernel the wrong one. Mirrors what the MOGG-ABI
 /// path materializes as `mogg.empty_buffer` + `mogg.tensor.__init__`, and what
 /// `TensorCreatePrologueOp::emitMojo`'s MTS lane already builds.
+// Builds a `ManagedTensorSlice` over `ptr` with `layout`/`dtype`/`rank`, via
+// the `mogg.tensor.__init__` primitive. `ptr` may be a real base pointer (so an
+// accumulating kernel can accumulate through it) or a dangling one (for a
+// kernel that only reads shape and never touches the pointer).
+static MojoValue emitBaseSliceFromPtr(EmitMojoState &state, MojoValue dtype,
+                                      unsigned rank, MojoValue layout,
+                                      MojoValue alignment, MojoValue ptr) {
+  auto tensorInitPrimDecl =
+      state.registry.lookupPrimitive(TensorInitOp::getOperationName());
+  ASSERT_STREAM(tensorInitPrimDecl,
+                "Primitive not found for " << TensorInitOp::getOperationName());
+  return state.builder.var(MojoValue(primitiveMojoName(tensorInitPrimDecl))(
+      {dtype, MojoValue(static_cast<uint64_t>(rank)), MojoValue(false),
+       MojoValue(kStructIO).get(MO::stringifyIOKind(MO::IOKind::Input)),
+       alignment},
+      {OpaquePointerRef(ptr).bitcast(MojoValue(kComptimeDTypeNoneType))(),
+       layout}));
+}
+
 static MojoValue emitDanglingBaseSlice(EmitMojoState &state, MojoValue dtype,
                                        unsigned rank, MojoValue layout,
                                        MojoValue alignment) {
@@ -3987,17 +4006,16 @@ static MojoValue emitDanglingBaseSlice(EmitMojoState &state, MojoValue dtype,
                                MojoValue(kStructDType).get(kEnumDTypeInt8)}],
                            MojoValue(kComptimeMutAnyOrigin)}]
           .get(OpaquePointerRef::kUnsafeDangling)();
-  auto tensorInitPrimDecl =
-      state.registry.lookupPrimitive(TensorInitOp::getOperationName());
-  ASSERT_STREAM(tensorInitPrimDecl,
-                "Primitive not found for " << TensorInitOp::getOperationName());
-  return state.builder.var(MojoValue(primitiveMojoName(tensorInitPrimDecl))(
-      {dtype, MojoValue(static_cast<uint64_t>(rank)), MojoValue(false),
-       MojoValue(kStructIO).get(MO::stringifyIOKind(MO::IOKind::Input)),
-       alignment},
-      {OpaquePointerRef(danglingPtr)
-           .bitcast(MojoValue(kComptimeDTypeNoneType))(),
-       layout}));
+  return emitBaseSliceFromPtr(state, dtype, rank, layout, alignment,
+                              danglingPtr);
+}
+
+LogicalResult TensorGetPtrOp::emitMojo(EmitMojoState &state) {
+  // Read the raw base pointer of the input slice. This op lives in the kernel
+  // body (outside any fusion lambda), so `state.builder` is the right scope.
+  ManagedTensorSliceRef mts(state.getMojoValueFor(getTensor()));
+  state.setMojoValueFor(getResult(), state.builder.var(mts.rawPtr()));
+  return success();
 }
 
 /// The rank a fused-region op's `$shape` operand describes, recovered from the
@@ -4312,19 +4330,26 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // Exception, as in the legacy lane: a dtype-changing epilogue binds onto a
   // type-only dangling slice carrying the dtype the kernel COMPUTES, and
   // reaches the real (differently-typed) output through capture 0 instead.
-  MojoValue baseSlice = state.getMojoValueFor(getCaptures()[0]);
   ASSERT_STREAM(!isCompute || inputDtypeParam.text == dtypeParam.text,
                 "a compute lambda cannot change dtype; `MAPToMOGG` classifies "
                 "a dtype-changing epilogue as a store lambda");
-  if (inputDtypeParam.text != dtypeParam.text) {
-    FailureOr<unsigned> rank = fusedRegionRank(*this, getShape());
-    if (failed(rank))
-      return failure();
-    baseSlice = emitDanglingBaseSlice(
-        state, inputDtypeParam, *rank, captureInfos[0].layout,
-        MojoValue(static_cast<uint64_t>(
-            M::Driver::getPreferredAlignment(getDevice().getLabel().str()))));
-  }
+  // Build the kernel-facing base slice over the epilogue's own `$outputPtr`
+  // (which `AllocateAccumulatingBuffers` set to the store target, or to a
+  // pre-cast accumulation buffer for a mixed-precision accumulating kernel).
+  // It is real storage of the dtype the kernel computes in (`inputDtypeParam`),
+  // so an accumulating kernel accumulates through it; a non-accumulating one
+  // ignores it and the lambda does the store. This replaces the old dangling
+  // null slice that crashed CPU accumulation.
+  FailureOr<unsigned> baseRank = fusedRegionRank(*this, getShape());
+  if (failed(baseRank))
+    return failure();
+  MojoValue baseLayout = state.builder.var(
+      MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(getShape())}));
+  MojoValue baseSlice = emitBaseSliceFromPtr(
+      state, inputDtypeParam, *baseRank, baseLayout,
+      MojoValue(static_cast<uint64_t>(
+          M::Driver::getPreferredAlignment(getDevice().getLabel().str()))),
+      state.getMojoValueFor(getOutputPtr()));
   // Which entry point to bind through follows the kernel's declared argument
   // type, not the lane: a `_FusedComputeOutputTensor` argument binds with
   // `_bind_to_fused_compute_output` even when a dtype change or the

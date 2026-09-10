@@ -124,15 +124,22 @@ mo.graph @cast_fused(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], si32> {
   mo.output %out : !mo.tensor<[4], si32>
 }
 
-// CHECK-LABEL: mo.graph @no_fuse_matmul_cast
-// CHECK:      %[[MM:.*]] = map.iter.opaque
-// CHECK:        outputs (%{{.*}} : !mo.tensor<[8, 8], f32>) {
-// CHECK:      %[[CAST:.*]] = map.iter.foreach
-// CHECK-NEXT: inputs  (%[[MM]]: !mo.tensor<[8, 8], f32>)
-// CHECK:      map.call.elementwise @{{.*}}.Cast
-// CHECK:      } {fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.cast"
-// CHECK:      mo.output %[[CAST]] : !mo.tensor<[8, 8], si32>
-mo.graph @no_fuse_matmul_cast(
+// A dtype-changing cast now fuses into a matmul (accumulating) epilogue:
+// `fuseEpilogueOnce` retypes the matmul output to si32 and the cast rides in
+// the epilogue body. Soundness is restored later by AllocateAccumulatingBuffers
+// (a pre-cast scratch buffer); this test is fusion-only, so no scratch appears.
+// CHECK-LABEL: mo.graph @fuse_matmul_cast
+// CHECK:      %[[DST:.*]] = map.iter.opaque
+// CHECK:        outputs (%[[OUT:.*]] : !mo.tensor<[8, 8], si32>) {
+// CHECK-NEXT:   map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing (%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[8, 8], si32>)
+// CHECK-NEXT:   map.call.elementwise @{{.*}}.Cast(%[[IDX]], %[[VAL]]) : !map.index<2>, f32 -> si32
+// CHECK-NEXT:   map.store %[[CAP]][%[[IDX]]] = %{{.*}} : !mo.tensor<[8, 8], si32>
+// CHECK:      map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%{{.*}})
+// CHECK:      #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"
+// CHECK-SAME: #mogg.fusion_leaf<"mo.cast"
+// CHECK-NOT:  map.iter.foreach
+// CHECK:      mo.output %[[DST]] : !mo.tensor<[8, 8], si32>
+mo.graph @fuse_matmul_cast(
   %x: !mo.tensor<[8, 8], f32>,
   %y: !mo.tensor<[8, 8], f32>
 ) -> !mo.tensor<[8, 8], si32> {

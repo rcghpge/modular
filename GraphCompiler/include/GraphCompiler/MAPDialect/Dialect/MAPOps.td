@@ -194,6 +194,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
     IsolatedFromAbove,
     SingleBlock,
     NoTerminator,
+    AttrSizedOperandSegments,
     MAP_CapturingFusionClosure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
     DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
@@ -207,9 +208,19 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
     stores into), which are the op's actual operands. The region is isolated
     from above; the `capturing (...)` clause is print/parse sugar over those
     operands.
+
+    `$intermediateTensor` is an optional operand (NOT a capture, so it has no block
+    argument): the tensor whose base pointer the kernel-facing epilogue slice is
+    built over. `AllocateAccumulatingBuffers` sets it -- to the store target
+    normally, or to a freshly-allocated pre-cast accumulation buffer for a
+    mixed-precision accumulating kernel -- so `MAPToMOGG` can always hand the
+    lowered epilogue a real tensor instead of a dangling one.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$captures);
+  let arguments = (ins
+    Variadic<AnyType>:$captures,
+    Optional<AnyType>:$intermediateTensor
+  );
   let results = (outs AnyType:$result);
   let regions = (region SizedRegion<1>:$body);
 

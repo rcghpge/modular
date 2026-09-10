@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-outline-kernels-into-functions | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-allocate-accumulating-buffers --map-to-mogg --mogg-outline-kernels-into-functions | FileCheck %s
 
 // OutlineKernelsIntoFunctions moves each `mogg._kernel` body into a module-level
 // `mogg.kernel.stub` labeled with the `MAP` ABI (`abi = 2`), and replaces the
@@ -38,7 +38,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   context (%[[C:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_map[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.kernel.stub @[[STUB1]] {{.*}} attributes {abi = 2 : i32,
-// CHECK:   %{{.*}} = mogg._tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) : !mogg.shape -> !mogg.tensor_ attributes {{.*}} {
+// CHECK:   %{{.*}} = mogg._tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {{.*}} {
 // CHECK:   ^bb0(%{{.*}}: f32, %{{.*}}: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
 // CHECK:     mogg._tensor.store %[[CAP]][%{{.*}}] = %{{.*}}
 // CHECK:   }
