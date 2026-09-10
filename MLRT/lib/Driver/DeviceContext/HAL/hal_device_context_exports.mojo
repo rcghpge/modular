@@ -19,7 +19,7 @@ frees it with `MojoHAL_strfree`.
 """
 
 from std.atomic import Atomic, Ordering
-from std.ffi import c_char, CStringSlice, external_call
+from std.ffi import c_char, CStringSpan, external_call
 from std.sys import size_of
 from max.gpu.host._hal import get_device_spec
 from max.gpu.host._hal.context import Buffer
@@ -84,7 +84,7 @@ def _err_cstr(msg: String) -> _CString[]:
     var p = alloc[UInt8]({count = n + 1}).unsafe_leak()
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
     p[unsafe_offset=n] = 0
-    return CStringSlice(
+    return CStringSpan(
         unsafe_from_ptr=p.unsafe_bitcast[c_char]()
         .as_imm()
         .unsafe_origin_cast[ImmUntrackedOrigin]()
@@ -94,7 +94,7 @@ def _err_cstr(msg: String) -> _CString[]:
 @export
 def MojoHAL_strfree(s: _CString[]) abi("C"):
     if s:
-        # `_err_cstr` allocated this via `alloc[UInt8]`. `CStringSlice` hands
+        # `_err_cstr` allocated this via `alloc[UInt8]`. `CStringSpan` hands
         # back a safe immutable pointer, so rebuild the matching mutable,
         # untracked `UInt8` allocation pointer from its address and free that.
         var addr = Int(s.unsafe_value().ptr())
