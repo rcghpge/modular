@@ -53,7 +53,12 @@ struct MAPToMOGGState {
   // reconstructed for each. Collected as null-valued entries before the
   // kernel's block args exist, then filled in once they do.
   llvm::MapVector<mlir::Attribute, mlir::BlockArgument> dimArgs;
-  mlir::Value contextArg;
+  // The kernel's trailing `!mogg.context` block args. Exactly one for an
+  // ordinary single-device kernel; one per device (in
+  // `getUniqueDevicesFromKernel` order) for a distributed kernel whose execute
+  // signature takes a `DeviceContextArray`. `PackageVariadicsAndScalars` packs
+  // the N-context case into a tuple-of-contexts.
+  llvm::SmallVector<mlir::Value> contextArgs;
 
   // For a dynamic store-index reshape fused into an epilogue: the MAP
   // `map.index.reshape` op -> the two `!mogg.shape` block args (from-shape,

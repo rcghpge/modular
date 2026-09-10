@@ -128,15 +128,35 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
       call.getOutputs(), call.getHasSameVariadicOperandSize());
   if (failed(packed))
     return failure();
-  if (!packed->changed)
-    return success();
+  bool changed = packed->changed;
 
   OpBuilder builder(call);
+
+  // A distributed kernel whose execute signature takes a `DeviceContextArray`
+  // gets its per-device `!mogg.context` operands packed into one
+  // tuple-of-contexts -- exactly as a variadic tensor argument is packed --
+  // which emit renders as the `DeviceContextArray`. An ordinary single-context
+  // kernel passes its one context through untouched.
+  bool variadicContext = llvm::any_of(adaptor.executeFunction->inputArguments,
+                                      [](const KernelDeclOperandAdaptor &arg) {
+                                        return arg.isVariadicContextType();
+                                      });
+  SmallVector<Value> contexts(call.getDeviceContexts());
+  if (variadicContext && !contexts.empty()) {
+    auto tuple = TupleCreateOp::create(
+        builder, call.getLoc(), TupleType::get(call.getContext()), contexts);
+    contexts.assign({tuple.getTuple()});
+    changed = true;
+  }
+
+  if (!changed)
+    return success();
+
   // Emit reads the fusion flags rather than the operand's producer, which
   // packing has just replaced. `hasSameVariadicOperandSize` is not carried
   // over: this pass is what consumes it.
   CallOpaqueOp::create(builder, call.getLoc(), call.getCalleeAttr(),
-                       packed->inputs, packed->outputs, call.getDeviceContext(),
+                       packed->inputs, packed->outputs, contexts,
                        call.getKernelParamAttr(),
                        builder.getBoolAttr(call.getHasEpilogueFusion()),
                        builder.getBoolAttr(call.getHasPrologueFusion()));

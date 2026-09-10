@@ -36,7 +36,7 @@ func.func @not_pointer(%a: !mo.tensor<[2, 2], f32>) {
 
 // Trailing context missing (a stray dim where the context must be).
 func.func @no_context(%a: !mo.tensor<[2, 2], f32>) {
-  // expected-error @+1 {{must be zero or more !mogg.dim_ followed by exactly one !mogg.context}}
+  // expected-error @+1 {{must be zero or more !mogg.dim_ followed by one or more !mogg.context}}
   %k = mogg._kernel (%a : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
     inputs(%p0 : !mogg.pointer_, %p1 : !mogg.pointer_)
     dims(%d : !mogg.dim_) attributes {device = #M.device_ref<"gpu", 0>} {

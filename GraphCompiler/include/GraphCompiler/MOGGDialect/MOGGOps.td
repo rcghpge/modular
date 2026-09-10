@@ -2056,9 +2056,12 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   let summary = "Call a registered opaque kernel's execute function.";
   let description = [{
     New-path counterpart of `mogg.call.execute`: invokes the kernel named by
-    `$callee` over `!mogg.tensor_` inputs/outputs. The optional
-    `$device_context` wires the callee's device context explicitly instead of
-    scavenging it from the enclosing kernel stub's block arguments at emit time.
+    `$callee` over `!mogg.tensor_` inputs/outputs. `$device_contexts` wires the
+    callee's device context(s) explicitly instead of scavenging them from the
+    enclosing kernel stub's block arguments at emit time. It is variadic: a
+    single-device kernel takes one `!mogg.context`; a distributed kernel whose
+    execute signature takes a `DeviceContextArray` takes one per device, which
+    `PackageVariadicsAndScalars` packs into a single `!mogg.tuple_` of contexts.
     `$hasEpilogueFusion` / `$hasPrologueFusion` record whether an output is a
     fused-epilogue tensor and whether an input is a fused-prologue tensor, so
     emit never inspects an operand's own producer for this. Not a terminator
@@ -2068,7 +2071,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     FlatSymbolRefAttr:$callee,
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
-    Optional<MOGG_Context>:$device_context,
+    Variadic<AnyTypeOf<[MOGG_Context, MOGG_Tuple]>>:$device_contexts,
     OptionalAttr<DictionaryAttr>:$kernel_param,
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
     DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion,
@@ -2082,7 +2085,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
             (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
-            (`context` `(` $device_context^ `:` type($device_context) `)`)?
+            (`context` `(` $device_contexts^ `:` type($device_contexts) `)`)?
             attr-dict
   }];
 }
@@ -2113,9 +2116,12 @@ def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
   let description = [{
     New-path counterpart of `mogg.as_tuple`: `PackageVariadicsAndScalars`
     inserts this to pack the consecutive `!mogg.tensor_` operands that satisfy a
-    single variadic kernel argument into one `!mogg.tuple_`.
+    single variadic kernel argument into one `!mogg.tuple_`. It also packs the
+    per-device `!mogg.context` operands of a distributed kernel into a
+    tuple-of-contexts, which emit renders as a `DeviceContextArray`.
   }];
-  let arguments = (ins Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>>:$elements);
+  let arguments = (ins
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Context]>>:$elements);
   let results = (outs MOGG_Tuple:$tuple);
   let assemblyFormat = [{
     `(` $elements `)` attr-dict `:` functional-type(operands, results)

@@ -2553,10 +2553,18 @@ LogicalResult KernelRegionOp::verify() {
   size_t i = numTensors;
   while (i < args.size() && isa<DimType>(args[i].getType()))
     ++i;
-  if (i != args.size() - 1 || !isa<ContextType>(args.back().getType()))
+  // After the dims come one or more trailing `!mogg.context`: exactly one for
+  // an ordinary kernel, one per device for a distributed kernel that takes a
+  // `DeviceContextArray`.
+  if (i >= args.size())
     return emitOpError() << "body block arguments after the pointers must be "
-                            "zero or more !mogg.dim_ followed by exactly one "
+                            "zero or more !mogg.dim_ followed by one or more "
                             "!mogg.context";
+  for (; i < args.size(); ++i)
+    if (!isa<ContextType>(args[i].getType()))
+      return emitOpError() << "body block argument #" << i
+                           << " must be a !mogg.context (the trailing args "
+                              "after the dims are all contexts)";
 
   // One kernel, one call -- counting the `mogg.call.stub` outlining leaves.
   size_t numCalls = 0;
@@ -2674,11 +2682,15 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     semantics.push_back(InOutSignatureAttr::kOut);
   }
 
-  // Dims: materialize each trailing `!mogg.dim_<name>` block arg from its
-  // param.
-  for (unsigned i = numInputs + numOutputs; i + 1 < numArgs; ++i) {
-    auto dimType = dyn_cast<MOGG::DimType>(kernelBody.getArgument(i).getType());
-    if (!dimType || !dimType.getName()) {
+  // Dims: materialize each `!mogg.dim_<name>` block arg from its param, up to
+  // the trailing context(s).
+  unsigned argIdx = numInputs + numOutputs;
+  for (; argIdx < numArgs &&
+         isa<MOGG::DimType>(kernelBody.getArgument(argIdx).getType());
+       ++argIdx) {
+    auto dimType =
+        cast<MOGG::DimType>(kernelBody.getArgument(argIdx).getType());
+    if (!dimType.getName()) {
       emitOpError("MOGGToMGP: mogg._kernel dim arg lacks a name");
       return nullptr;
     }
@@ -2692,9 +2704,30 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     semantics.push_back(InOutSignatureAttr::kNone);
   }
 
-  // Context.
-  operands.push_back(loweringState.getExecuteDevice(device));
-  semantics.push_back(InOutSignatureAttr::kNone);
+  // Context(s): one `!mogg.context` block arg for an ordinary kernel; one per
+  // device for a distributed kernel that takes a `DeviceContextArray`, in
+  // `getUniqueDevicesFromKernel` order (the same order
+  // `IterOpaqueOp::lowerToMOGG` created the context args).
+  // `PackageVariadicsAndScalars` packed them into a tuple at the call, but each
+  // still becomes its own region operand here.
+  unsigned numContexts = numArgs - argIdx;
+  if (numContexts <= 1) {
+    operands.push_back(loweringState.getExecuteDevice(device));
+    semantics.push_back(InOutSignatureAttr::kNone);
+  } else {
+    SmallVector<DeviceRefAttr> devices =
+        MO::getUniqueDevicesFromKernel(getOperation());
+    if (devices.size() != numContexts) {
+      emitOpError("MOGGToMGP: mogg._kernel has ")
+          << numContexts << " context args but " << devices.size()
+          << " unique devices";
+      return nullptr;
+    }
+    for (DeviceRefAttr dev : devices) {
+      operands.push_back(loweringState.getExecuteDevice(dev));
+      semantics.push_back(InOutSignatureAttr::kNone);
+    }
+  }
 
   // Result 0 is the chain, then one dim per declared parameter.
   ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
@@ -3792,15 +3825,18 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   const KernelDeclFunctionAdaptor &execFnAdaptor = *execAdaptor.executeFunction;
 
   // Destination-passing-style: outputs first, then inputs, then the device
-  // context. The context is the op's own `$device_context` operand (wired by
-  // `MAPToMOGG`); append it last to match the execute signature's trailing
-  // `ctx: DeviceContext`.
+  // context(s). The context is the op's own `$device_contexts` operand (wired
+  // by `MAPToMOGG`); append it last to match the execute signature's trailing
+  // `ctx: DeviceContext`. It is variadic: a single `DeviceContext` for an
+  // ordinary kernel, or -- after `PackageVariadicsAndScalars` -- a single tuple
+  // operand that emits as a `DeviceContextArray` for a distributed kernel.
+  // Either way it is one Mojo value per remaining operand.
   SmallVector<MojoValue> kernelOperands;
   for (Value out : getOutputs())
     kernelOperands.push_back(state.getMojoValueFor(out));
   for (Value in : getInputs())
     kernelOperands.push_back(state.getMojoValueFor(in));
-  if (Value ctx = getDeviceContext())
+  for (Value ctx : getDeviceContexts())
     kernelOperands.push_back(state.getMojoValueFor(ctx));
 
   // Unlike the MOGG-ABI path there is no `mogg.bind` for
@@ -3853,6 +3889,19 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
   // a `VariadicTensors` (runtime pointers + shapes, plus a comptime
   // static-spec list). The fused-variadic path is not yet wired (slice 2).
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getElements());
+
+  // Contexts pack into a `DeviceContextArray[N]` instead, via its variadic
+  // constructor -- the per-device contexts of a distributed kernel. Mirrors the
+  // `AsTupleOp::emitMojo` context branch.
+  if (isa<MOGG::ContextType>(getElements().front().getType())) {
+    MojoValue deviceContextArrayConstructor = MojoValue(
+        kStructDeviceContextArray)[{
+        MojoValue(kParameterLength).equal(std::to_string(inputValues.size()))}];
+    state.setMojoValueFor(
+        getTuple(),
+        state.builder.var(deviceContextArrayConstructor({}, inputValues)));
+    return success();
+  }
 
   SmallVector<MojoValue> runtimePointers =
       llvm::map_to_vector(inputValues, [&](const MojoValue &val) {

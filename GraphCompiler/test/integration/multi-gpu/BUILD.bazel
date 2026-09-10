@@ -48,9 +48,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     # crash: MAP SliceSpecAttr verifyInvariants assertion (a slice/view
     # lowering gap in the new system).
     "distributed-matmul.mlir",
-    # compile error: the kernel's variadic `dev_ctxs` cannot resolve from a
-    # single DeviceContext (variadic device-context handling).
-    "multi-device-context.mlir",
 ]
 
 # ============================================================================

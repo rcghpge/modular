@@ -147,7 +147,9 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
   for (auto &[dim, blockArg] : state.dimArgs)
     blockArg = body->addArgument(
         MOGG::DimType::get(ctx, dyn_cast<KGEN::ParamDeclRefAttr>(dim)), loc);
-  state.contextArg = body->addArgument(MOGG::ContextType::get(ctx), loc);
+  // A shape-function kernel runs on host and takes a single context.
+  state.contextArgs.assign(
+      {body->addArgument(MOGG::ContextType::get(ctx), loc)});
 
   builder.setInsertionPointToEnd(body);
   SmallVector<Value> callOperands;
@@ -555,18 +557,22 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
     return in.getDefiningOp<MOGG::TensorCreatePrologueOp>() != nullptr;
   });
 
-  // Emit appends the context verbatim, and a host-only kernel takes none.
+  // Emit appends the contexts verbatim. A host-only kernel's execute takes
+  // none; a device kernel takes one, or a variadic `DeviceContextArray` when
+  // distributed. Pass the contexts the kernel body created only when execute
+  // actually declares one.
   MOGG::KernelDeclOp decl = state.registry.lookupKernelBySymName(getCallee());
   MOGG::KernelDeclAdaptor adaptor(decl);
-  Value context;
+  ValueRange contexts;
   if (const auto &fn = adaptor.executeFunction;
       fn && !fn->inputArguments.empty() &&
-      fn->inputArguments.back().isContextType())
-    context = state.contextArg;
+      (fn->inputArguments.back().isContextType() ||
+       fn->inputArguments.back().isVariadicContextType()))
+    contexts = state.contextArgs;
 
   MOGG::CallOpaqueOp::create(
       state.builder, getLoc(), getCalleeAttr(), callInputs, callOutputs,
-      context, getParams(), state.builder.getBoolAttr(hasEpilogueFusion),
+      contexts, getParams(), state.builder.getBoolAttr(hasEpilogueFusion),
       state.builder.getBoolAttr(hasPrologueFusion),
       state.builder.getBoolAttr(getHasSameVariadicOperandSize()));
   return success();
@@ -705,9 +711,11 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value v : captures)
     capturing.push_back(state.mapping.lookup(v));
 
+  // A foreach kernel is elementwise and single-device, so it always has the one
+  // context arg `IterOpaqueOp::lowerToMOGG` created.
   auto callForeach = MOGG::CallForeachRegionOp::create(
       state.builder, loc, FlatSymbolRefAttr::get(ctx, foreachPrim.getSymName()),
-      loopShape, state.contextArg, capturing, state.device);
+      loopShape, state.contextArgs.front(), capturing, state.device);
 
   // New block: one arg per capture (same order), then the index.
   Block *foreachBlock = state.builder.createBlock(&callForeach.getBody());
@@ -799,7 +807,43 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (auto &[dim, blockArg] : state.dimArgs)
     blockArg = body->addArgument(
         MOGG::DimType::get(ctx, dyn_cast<KGEN::ParamDeclRefAttr>(dim)), loc);
-  state.contextArg = body->addArgument(MOGG::ContextType::get(ctx), loc);
+  // Context block args. A distributed kernel whose `execute` takes a
+  // `DeviceContextArray` gets one `!mogg.context` per unique device (in
+  // `getUniqueDevicesFromKernel` order, which `lowerToCompiledRegion`
+  // re-derives to materialize each), and `PackageVariadicsAndScalars` packs
+  // them into a tuple-of-contexts. Every other kernel gets exactly one: its
+  // `execute` takes a single `DeviceContext`, and the unique-device COUNT is
+  // not a proxy for the context count -- an ordinary single-compute kernel can
+  // still name several devices (e.g. a GPU op with CPU scalar operands like
+  // `band_part`'s bounds or `pad`'s paddings), which would otherwise pass
+  // contexts `execute` never declared. So gate the per-device fan-out on the
+  // callee actually taking a variadic context.
+  //
+  // TODO(GEX-3701): label each context with its `DeviceRefAttr` instead of
+  // relying on creation order matching the order `lowerToCompiledRegion`
+  // re-derives -- any reordering of `getUniqueDevicesFromKernel` would silently
+  // misassign devices.
+  bool variadicContext = false;
+  getBody().walk([&](CallOpaqueOp call) {
+    MOGG::KernelDeclOp decl =
+        state.registry.lookupKernelBySymName(call.getCallee());
+    if (!decl)
+      return;
+    MOGG::KernelDeclAdaptor adaptor(decl);
+    if (!adaptor.executeFunction)
+      return;
+    for (const auto &arg : adaptor.executeFunction->inputArguments)
+      if (arg.isVariadicContextType())
+        variadicContext = true;
+  });
+  size_t numContexts =
+      variadicContext
+          ? std::max<size_t>(1, MO::getUniqueDevicesFromKernel(*this).size())
+          : 1;
+  state.contextArgs.clear();
+  for (size_t i = 0; i < numContexts; ++i)
+    state.contextArgs.push_back(
+        body->addArgument(MOGG::ContextType::get(ctx), loc));
 
   builder.setInsertionPointToEnd(body);
 
