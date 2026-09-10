@@ -55,6 +55,14 @@ struct MAPToMOGGState {
   llvm::MapVector<mlir::Attribute, mlir::BlockArgument> dimArgs;
   mlir::Value contextArg;
 
+  // For a dynamic store-index reshape fused into an epilogue: the MAP
+  // `map.index.reshape` op -> the two `!mogg.shape` block args (from-shape,
+  // to-shape) `IterEpilogueOp::lowerToMOGG` threaded in as shape captures so
+  // the store-index transform can be evaluated at runtime inside the functor.
+  // Empty unless the epilogue body carries a dynamic reshape.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Value>>
+      epilogueReshapeShapeArgs;
+
   // Lowers `op` through its own `LowerableToMOGGInterface::lowerToMOGG`.
   mlir::LogicalResult lowerOp(mlir::Operation *op);
   // Lowers the ops of `block` in order via `lowerOp`, skipping any for which

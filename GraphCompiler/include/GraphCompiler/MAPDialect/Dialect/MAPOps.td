@@ -908,9 +908,10 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a reshape view";
   let description = [{
@@ -921,6 +922,14 @@ def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
     two shapes' row-major layouts agree on -- unlike slice/broadcast/
     transpose, operand and result rank can differ by more than a fixed
     amount, since reshape only preserves the total element count.
+
+    Also valid inside a `map.iter.epilogue`, where it transforms the STORE
+    index instead of a load index: a reshape fused into an epilogue projects
+    the producer's (output-shape) loop index to the store target's index. It
+    is the exact inverse of the load direction, obtained by swapping the
+    spec's `in`/`out` shapes -- sound because a reshape preserves the row-
+    major linear offset. `LoopInvariantViewMotion` must not hoist this
+    occurrence: it depends on the loop index and feeds the store.
 
     Example:
     ```mlir

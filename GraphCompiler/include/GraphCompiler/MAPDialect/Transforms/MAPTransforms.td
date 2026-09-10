@@ -50,6 +50,22 @@ def FuseEpilogue : Pass<"map-fuse-epilogue", "MO::GraphOp"> {
   ];
 }
 
+def FuseReshapeEpilogue : Pass<"map-fuse-reshape-epilogue", "MO::GraphOp"> {
+  let summary =
+      "Fuse MAP kernels via ReshapeEpilogueFuser only. For testing only.";
+  let description = [{
+    Runs `ReshapeEpilogueFuser` in isolation over `mo.graph`, skipping the
+    other fusers `FuseKernels` also runs. Lets a lit test exercise
+    reshape-into-epilogue fusion without depending on the other fusers having
+    already run. Not part of `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
 def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels via ElementwiseFuser only. For testing only.";
   let description = [{

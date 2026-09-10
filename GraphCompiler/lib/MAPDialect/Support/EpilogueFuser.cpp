@@ -160,14 +160,20 @@ static void fuseEpilogueOnce(IterOpaqueOp dst, unsigned resultIdx,
   Value dstResult = dst->getResult(resultIdx);
   Block &srcBody = src.getBody().front();
   Block &epilogueBody = epilogueOp.getBody().front();
-  // What the epilogue currently STORES, which is not the same as its raw
-  // incoming value once something has already been fused in. `src`'s loads of
-  // `dst`'s result must see everything the epilogue has accumulated so far --
-  // redirecting them to block arg 0 would silently discard every earlier
-  // round's compute (e.g. `add -> cast` would emit just the cast). On the
-  // first round the callback is store-only, so the two coincide.
-  Value val = cast<StoreOp>(epilogueBody.back()).getValue();
-  Value idx = epilogueBody.getArgument(1);
+  // What the epilogue currently STORES -- both its value and its index --
+  // which is not the same as its raw incoming (value, block-arg-1 index) once
+  // something has already been fused in. `src`'s loads of `dst`'s result must
+  // see everything the epilogue has accumulated so far -- redirecting them to
+  // block arg 0 would silently discard every earlier round's compute (e.g.
+  // `add -> cast` would emit just the cast). Likewise the incoming consumer's
+  // index arg and store must land on the epilogue's real store index, not
+  // block arg 1: a reshape fused into the epilogue (ReshapeEpilogueFuser)
+  // makes the store index a transformed value, and wiring to block arg 1
+  // would silently drop that transform. On the first round the callback is
+  // store-only and both pairs coincide.
+  auto epilogueStoreOp = cast<StoreOp>(epilogueBody.back());
+  Value val = epilogueStoreOp.getValue();
+  Value idx = epilogueStoreOp.getIndex();
 
   unsigned numInputs = src.getInputs().size();
   std::optional<unsigned> fusionArgIdx;

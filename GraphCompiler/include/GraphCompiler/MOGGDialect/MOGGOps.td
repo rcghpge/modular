@@ -1957,6 +1957,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     MOGG_Shape:$shape,
     Variadic<MOGG_TensorLike>:$captures,
     Variadic<AnyType>:$args,
+    Variadic<MOGG_Shape>:$shapeCaptures,
     MOGG_Pointer:$outputPtr,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
@@ -1969,6 +1970,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   let assemblyFormat = [{
     $shape (`(` $args^ `:` type($args) `)`)?
     (`capturing` `(` $captures^ `:` type($captures) `)`)?
+    (`shapes` `(` $shapeCaptures^ `)`)?
     `ptr` $outputPtr `:` type($outputPtr)
     `:` type($shape) `->` type($tensor)
     attr-dict-with-keyword $body
@@ -2426,6 +2428,43 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"_tensor.create.reshape", [
     MOGG_Shape:$shape
   );
   let results = (outs MOGG_Tensor:$result);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_IndexReshapeOp : MOGG_Op<"index.reshape", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Reindex an N-D index into an M-D index preserving row-major offset.";
+  let description = [{
+    Reindexes `$index` (a point in `$fromShape`) to the point in `$toShape`
+    with the same row-major linear offset -- the per-index counterpart of
+    `mogg._tensor.create.reshape`, used when a reshape is fused into an
+    epilogue's STORE (transforming the store index) rather than materialized
+    as a whole-tensor view. `MAPToMOGG` lowers an in-epilogue
+    `map.index.reshape` into this (it is deliberately NOT hoisted, unlike the
+    `.stride` view ops, since it depends on the loop index and feeds a store).
+
+    `$fromShape`/`$toShape` carry the static shapes (`dyn` where a dim isn't
+    known at compile time). `$dynamicShapes` supplies the runtime `!mogg.shape`
+    for a shape that has a dynamic dim (row-major (de)linearization onto a
+    dynamic shape has no other source of truth) -- empty when both shapes are
+    fully static.
+
+    Example:
+    ```mlir
+    %j = mogg.index.reshape(%i) {fromShape = #mosh.shape<[8, 8]>, toShape = #mosh.shape<[64]>} : (!map.index<2>) -> !map.index<1>
+    ```
+  }];
+  let arguments = (ins
+    AnyType:$index,
+    MOSH_ShapeAttr:$fromShape,
+    MOSH_ShapeAttr:$toShape,
+    Variadic<MOGG_Shape>:$dynamicShapes
+  );
+  let results = (outs AnyType:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];

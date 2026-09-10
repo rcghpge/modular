@@ -300,6 +300,16 @@ classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
   if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor)
     return Kind::Output;
 
+  // A store-index transform (a reshape fused into the epilogue) stores each
+  // element at a DIFFERENT position than the kernel handed it. Only a store
+  // lambda, which owns its store, can express that -- a compute lambda returns
+  // a value the kernel then stores at ITS OWN index, silently dropping the
+  // transform. Detected structurally: the store's index is not the epilogue's
+  // own (untransformed) index block arg.
+  if (auto storeOp = dyn_cast<StoreOp>(epilogueOp.getBody().front().back()))
+    if (storeOp.getIndex() != epilogueOp.getBody().getArgument(1))
+      return Kind::OutputLegacyForCompute;
+
   // The kernel can take a compute lambda. Two things still force the classic
   // store lambda: the opt-out, and a dtype-changing epilogue -- `compute()`
   // returns the dtype it was handed, so a body whose value leaves at a
@@ -344,6 +354,23 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
+  // A dynamic store-index reshape cannot evaluate its transform from
+  // compile-time shape alone, so its runtime from/to `!mogg.shape`s are
+  // threaded into the functor as shape captures. Build them in kernel scope now
+  // (where the dim args are live) and remember, per reshape op, where its two
+  // shape captures will land so `ReshapeIndexOp::lowerToMOGG` can wire them as
+  // its `$dynamicShapes`. The block args are added below, after the create.
+  SmallVector<Value> shapeCaptures;
+  SmallVector<std::pair<ReshapeIndexOp, unsigned>> reshapeShapeCaptureStart;
+  for (ReshapeIndexOp reshape : epiBody.getOps<ReshapeIndexOp>()) {
+    MAP::ViewSignatureAttr sig = reshape.getSpec().getSignature();
+    if (sig.getOut().isStatic() && sig.getIn().isStatic())
+      continue;
+    reshapeShapeCaptureStart.emplace_back(reshape, shapeCaptures.size());
+    shapeCaptures.push_back(buildShape(loc, sig.getOut(), state));
+    shapeCaptures.push_back(buildShape(loc, sig.getIn(), state));
+  }
+
   // Build the output shape / dtype for the tensor.
   auto resultTy = cast<MO::TensorType>(getResult().getType());
   Value outShape = buildShape(loc, resultTy.getShape(), state);
@@ -370,13 +397,15 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
-      /*args=*/ValueRange{}, outputPtr, state.device,
-      TypeAttr::get(outElemType), state.builder.getBoolAttr(true),
+      /*args=*/ValueRange{}, /*shapeCaptures=*/shapeCaptures,
+      /*outputPtr=*/outputPtr, state.device, TypeAttr::get(outElemType),
+      state.builder.getBoolAttr(true),
       MO::IOKindAttr::get(ctx, MO::IOKind::Output),
       state.builder.getBoolAttr(computeOutputArg));
 
   // New block args mirror the old ones 1:1, except captures are typed as
   // the reconstructed `!mogg.tensor_` instead of the original `!mo.tensor`.
+  // Shape captures, if any, follow the tensor captures as trailing block args.
   Block *body = state.builder.createBlock(&epilogueOp.getBody());
   for (size_t i = 0; i < numParams; ++i) {
     BlockArgument p =
@@ -388,6 +417,12 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
                                              epiArgs[numParams + j].getLoc());
     state.mapping.map(epiArgs[numParams + j], capArg);
   }
+  SmallVector<BlockArgument> shapeCaptureArgs;
+  for (Value shapeCap : shapeCaptures)
+    shapeCaptureArgs.push_back(body->addArgument(shapeCap.getType(), loc));
+  for (auto [reshape, start] : reshapeShapeCaptureStart)
+    state.epilogueReshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
+                                               shapeCaptureArgs[start + 1]};
 
   state.builder.setInsertionPointToEnd(body);
   // A compute lambda returns the value rather than writing it: the kernel owns
@@ -591,6 +626,30 @@ LogicalResult ReshapeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
       TypeAttr::get(elementType), state.builder.getBoolAttr(false),
       state.mapping.lookup(getInput()), shape);
   state.mapping.map(getResult(), createReshape.getResult());
+  return success();
+}
+
+// map.index.reshape -> mogg.index.reshape. Unlike the `.stride` view ops,
+// this per-index transform is NOT hoisted out of the loop (it depends on the
+// loop index and feeds a store, e.g. a reshape fused into an epilogue), so it
+// lowers in place. The op maps an index in the spec's OUT shape to one in the
+// IN shape; the MOGG op names those `fromShape` (the index's space) and
+// `toShape` (the result's space).
+LogicalResult ReshapeIndexOp::lowerToMOGG(MAPToMOGGState &state) {
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  // A dynamic reshape has its runtime from/to shapes threaded in as epilogue
+  // shape captures (see `IterEpilogueOp::lowerToMOGG`); wire those block args
+  // here as `$dynamicShapes` so emit can evaluate the transform at runtime.
+  // Order matches the build there: from-shape, then to-shape.
+  ValueRange dynamicShapes;
+  auto it = state.epilogueReshapeShapeArgs.find(getOperation());
+  if (it != state.epilogueReshapeShapeArgs.end())
+    dynamicShapes = ValueRange(it->second);
+  auto indexReshape = MOGG::IndexReshapeOp::create(
+      state.builder, getLoc(), getResult().getType(),
+      state.mapping.lookup(getIndex()), signature.getOut(), signature.getIn(),
+      dynamicShapes);
+  state.mapping.map(getResult(), indexReshape.getResult());
   return success();
 }
 

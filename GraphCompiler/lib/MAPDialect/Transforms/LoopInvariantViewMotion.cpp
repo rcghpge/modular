@@ -45,6 +45,21 @@ SmallVector<IndexTransformOpInterface> collectIndexTransformChain(Value index) {
   return chain;
 }
 
+// A store-index transform: an index-transform op (e.g. a reshape fused into an
+// epilogue) that feeds a `map.store`, projecting the loop index to the store's
+// target position. Unlike a load-side view it cannot be hoisted into a
+// materialized `.stride` tensor -- it maps an INDEX, not a tensor -- so it (and
+// any load/elementwise op that indexes THROUGH it, reading/computing at the
+// transformed position) must stay inside the closure.
+bool isStoreIndexTransform(IndexTransformOpInterface op) {
+  return llvm::any_of(op->getUsers(),
+                      [](Operation *user) { return isa<StoreOp>(user); });
+}
+
+bool chainHasStoreIndexTransform(ArrayRef<IndexTransformOpInterface> chain) {
+  return llvm::any_of(chain, isStoreIndexTransform);
+}
+
 // Hoists `chain` (feeding `loadOp`) into stride ops inserted via `builder`
 // before `closure`, composing hop-by-hop from the outer-scope value that
 // `loadOp.getTensor()` (and any other operand a transform reads, e.g. a
@@ -81,6 +96,8 @@ void rewireElementwiseIndices(Region &body) {
         collectIndexTransformChain(call.getIndex());
     if (chain.empty())
       continue; // Already indexes with the loop's own index; nothing to do.
+    if (chainHasStoreIndexTransform(chain))
+      continue; // Store-index transform stays; compute at the transformed pos.
     IndexTransformOpInterface outermost = chain.back();
     call.getIndexMutable().assign(outermost.getIndex());
   }
@@ -108,6 +125,8 @@ LogicalResult loopInvariantViewMotionInClosure(CapturingFusionClosure closure) {
         collectIndexTransformChain(loadOp.getIndex());
     if (chain.empty())
       continue; // Already indexes with the loop's own index; nothing to do.
+    if (chainHasStoreIndexTransform(chain))
+      continue; // Load reads at a store-index-transformed pos; leave in place.
     hoistChain(loadOp, chain, builder, closure, outerValues);
   }
 
@@ -141,9 +160,13 @@ struct LoopInvariantViewMotionPass
     if (liftResult.wasInterrupted())
       return signalPassFailure();
 
-    // Invariant: hoisting above must leave no index-transform op behind
-    // inside any capturing closure.
+    // Invariant: hoisting above must leave no HOISTABLE (load-side)
+    // index-transform op behind inside any capturing closure. A store-index
+    // transform legitimately stays -- it maps an index, not a tensor, so there
+    // is nothing to hoist.
     WalkResult invariantResult = opaque.walk([&](IndexTransformOpInterface op) {
+      if (isStoreIndexTransform(op))
+        return WalkResult::advance();
       op.emitError(
           "LoopInvariantViewMotion: an index-transform op survived hoisting "
           "-- this is a bug in the pass, not in the input IR");
