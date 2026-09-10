@@ -29,6 +29,13 @@ mlir::Attribute normalizeKernelParameter(mlir::Attribute value);
 mlir::DictionaryAttr inferParameters(mlir::Operation *op,
                                      mlir::OpBuilder &builder);
 
+/// Appends the parameters that ride on `op`'s SSA operands instead of its
+/// attributes, as i64 arrays. Shared with the legacy MO->MOGG lowering so both
+/// paths agree on the names and the encoding.
+void appendStaticOperandParameters(
+    mlir::Operation *op, mlir::OpBuilder &builder,
+    llvm::SmallVectorImpl<mlir::NamedAttribute> &params);
+
 } // namespace M
 
 namespace M::MOGG {

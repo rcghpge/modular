@@ -24,3 +24,13 @@ func.func @variadic(%a: !mogg.tensor_, %b: !mogg.tensor_, %out: !mogg.tensor_, %
   mogg._call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   return
 }
+
+// Repacking rebuilds the call, so it has to carry the fusion flags over. Emit
+// reads them instead of inspecting an output's producer, and packing is what
+// replaces that producer -- dropping them silently disables the epilogue.
+// CHECK-LABEL: func.func @variadicKeepsFusionFlags
+// CHECK: mogg._call.opaque @{{.*}}MapLowerVariadic inputs(%{{.*}} : !mogg.tuple_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+func.func @variadicKeepsFusionFlags(%a: !mogg.tensor_, %b: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) {
+  mogg._call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+  return
+}

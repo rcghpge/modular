@@ -10,6 +10,7 @@
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Mojo/KGENDialect/KGENParameters.h"
@@ -33,6 +34,10 @@ Attribute normalizeKernelParameter(Attribute value) {
   if (auto typeAttr = dyn_cast<TypeAttr>(value))
     return KGEN::DTypeConstantAttr::get(
         typeAttr.getContext(), MO::getDTypeOrInvalid(typeAttr.getValue()));
+  // An enum attribute is not a `TypedAttr`; kernels take the raw value.
+  if (auto coord = dyn_cast<MO::CoordinateTransformModeAttr>(value))
+    return IntegerAttr::get(IndexType::get(coord.getContext()),
+                            static_cast<int64_t>(coord.getValue()));
   return value;
 }
 
@@ -61,15 +66,58 @@ DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
     Attribute value = attr.getValue();
     if (isa<M::DeviceRefAttr, KGEN::ParamDeclArrayAttr>(value))
       continue;
-    if (isa<TypeAttr>(value)) {
-      params.push_back(
-          NamedAttribute(attr.getName(), normalizeKernelParameter(value)));
+    // Not `TypedAttr`s, but the normalizer knows how to spell them.
+    if (!isa<TypedAttr, TypeAttr, MO::CoordinateTransformModeAttr>(value))
       continue;
-    }
-    if (isa<TypedAttr>(value))
-      params.push_back(attr);
+    params.push_back(
+        NamedAttribute(attr.getName(), normalizeKernelParameter(value)));
   }
+  appendStaticOperandParameters(op, builder, params);
   return builder.getDictionaryAttr(params);
+}
+
+// TODO(GEX-2177): Remove this by adding an opt-in in the implementation and
+// generically supporting static values in kernels.
+void appendStaticOperandParameters(Operation *op, OpBuilder &builder,
+                                   SmallVectorImpl<NamedAttribute> &params) {
+  auto extractConstantValues = [&](Value ssaValue, StringLiteral paramName) {
+    SmallVector<int64_t> values;
+    auto asTensor = cast<MO::TensorValue>(ssaValue);
+    if (auto maybeIntVec = tryGetConstantIntVector(asTensor)) {
+      values = std::move(*maybeIntVec);
+    } else if (auto maybeIntScalar = tryGetConstantInt(asTensor)) {
+      values.push_back(*maybeIntScalar);
+    } else {
+      // Not constant.
+      MO::TensorType t = asTensor.getType();
+      if (t.hasStaticShape()) {
+        int64_t numElems = *t.getNumElements();
+        values.append(numElems, ShapedType::kDynamic);
+      } else {
+        values.push_back(ShapedType::kDynamic);
+      }
+    }
+
+    // Build an ArrayAttr for the Mojo path.
+    params.push_back(NamedAttribute(builder.getStringAttr(paramName),
+                                    builder.getI64ArrayAttr(values)));
+  };
+  if (auto convOp = dyn_cast<MO::ConvOp>(op)) {
+    extractConstantValues(convOp.getStrides(),
+                          MOGG::PARAMETER_CONV_STATIC_STRIDES);
+    extractConstantValues(convOp.getDilations(),
+                          MOGG::PARAMETER_CONV_STATIC_DILATIONS);
+    extractConstantValues(convOp.getPaddings(),
+                          MOGG::PARAMETER_CONV_STATIC_PADDING);
+  } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op)) {
+    extractConstantValues(transposeOp.getPerm(),
+                          MOGG::PARAMETER_TRANSPOSE_STATIC_PERM);
+  } else if (auto sliceOp = dyn_cast<MO::SliceOp>(op)) {
+    extractConstantValues(sliceOp.getStart(),
+                          MOGG::PARAMETER_SLICE_STATIC_STARTS);
+    extractConstantValues(sliceOp.getStep(),
+                          MOGG::PARAMETER_SLICE_STATIC_STEPS);
+  }
 }
 
 } // namespace M

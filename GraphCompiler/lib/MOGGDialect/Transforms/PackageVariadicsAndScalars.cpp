@@ -132,9 +132,14 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
     return success();
 
   OpBuilder builder(call);
+  // Emit reads the fusion flags rather than the operand's producer, which
+  // packing has just replaced. `hasSameVariadicOperandSize` is not carried
+  // over: this pass is what consumes it.
   CallOpaqueOp::create(builder, call.getLoc(), call.getCalleeAttr(),
                        packed->inputs, packed->outputs, call.getDeviceContext(),
-                       call.getKernelParamAttr());
+                       call.getKernelParamAttr(),
+                       builder.getBoolAttr(call.getHasEpilogueFusion()),
+                       builder.getBoolAttr(call.getHasPrologueFusion()));
   call.erase();
   return success();
 }

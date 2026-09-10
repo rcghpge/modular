@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/Interfaces/MAPToMOGGState.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODevices.h"
@@ -155,14 +156,22 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
                                        MO::IOKind::Input, /*isMut=*/false,
                                        state));
 
+  // `kgenParams` are parameters of the shape function too, so forwarding the
+  // rank alone leaves them uninferable.
+  SmallVector<NamedAttribute> shapeParams{
+      builder.getNamedAttr(MOGG::kMoggOutputRankParameterName,
+                           builder.getIndexAttr(static_cast<int64_t>(rank)))};
+  if (DictionaryAttr kgenParams = shapeFuncOp.getKgenParamsAttr())
+    for (NamedAttribute param : kgenParams)
+      shapeParams.push_back(builder.getNamedAttr(
+          param.getName(), normalizeKernelParameter(param.getValue())));
+
   bool isThrows = shapeDecl.getFunction().getSignature().isThrows();
   auto call = MOGG::CallShapeV2Op::create(
       builder, loc, shapeResultType,
       FlatSymbolRefAttr::get(shapeDecl.getSymNameAttr()),
       isThrows ? builder.getUnitAttr() : nullptr, callOperands,
-      builder.getDictionaryAttr({builder.getNamedAttr(
-          MOGG::kMoggOutputRankParameterName,
-          builder.getIndexAttr(static_cast<int64_t>(rank)))}));
+      builder.getDictionaryAttr(shapeParams));
 
   // The kernel's only output.
   MOGG::OutputOp::create(builder, loc, call.getResult());

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
@@ -911,46 +912,7 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
         builder.getIndexAttr(static_cast<int64_t>(coord.getValue()))});
   }
 
-  /// TODO(GEX-2177): Remove this by adding an opt-in in the implementation and
-  /// generically supporting static values in kernels.
-  auto extractConstantValues = [&](Value ssaValue, StringLiteral paramName) {
-    SmallVector<int64_t> values;
-    auto asTensor = cast<MO::TensorValue>(ssaValue);
-    if (auto maybeIntVec = tryGetConstantIntVector(asTensor)) {
-      values = std::move(*maybeIntVec);
-    } else if (auto maybeIntScalar = tryGetConstantInt(asTensor)) {
-      values.push_back(*maybeIntScalar);
-    } else {
-      // Not constant.
-      MO::TensorType t = asTensor.getType();
-      if (t.hasStaticShape()) {
-        int64_t numElems = *t.getNumElements();
-        values.append(numElems, ShapedType::kDynamic);
-      } else {
-        values.push_back(mlir::ShapedType::kDynamic);
-      }
-    }
-
-    // Build an ArrayAttr for the Mojo path.
-    forwardedParameters.push_back(
-        NamedAttribute(paramName, builder.getI64ArrayAttr(values)));
-  };
-  if (auto convOp = dyn_cast<MO::ConvOp>(moOp)) {
-    extractConstantValues(convOp.getStrides(),
-                          MOGG::PARAMETER_CONV_STATIC_STRIDES);
-    extractConstantValues(convOp.getDilations(),
-                          MOGG::PARAMETER_CONV_STATIC_DILATIONS);
-    extractConstantValues(convOp.getPaddings(),
-                          MOGG::PARAMETER_CONV_STATIC_PADDING);
-  } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(moOp)) {
-    extractConstantValues(transposeOp.getPerm(),
-                          MOGG::PARAMETER_TRANSPOSE_STATIC_PERM);
-  } else if (auto sliceOp = dyn_cast<MO::SliceOp>(moOp)) {
-    extractConstantValues(sliceOp.getStart(),
-                          MOGG::PARAMETER_SLICE_STATIC_STARTS);
-    extractConstantValues(sliceOp.getStep(),
-                          MOGG::PARAMETER_SLICE_STATIC_STEPS);
-  }
+  appendStaticOperandParameters(moOp, builder, forwardedParameters);
 
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
 }
