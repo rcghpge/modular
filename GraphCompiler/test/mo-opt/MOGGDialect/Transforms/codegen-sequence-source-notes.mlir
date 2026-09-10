@@ -13,7 +13,7 @@
 // This test has no inner MOGG ABI stubs with isThrows (the ops are inlined
 // directly into the outer region), so only mogg_format_region_error appears.
 // CHECK:       mogg_format_region_error(
-// CHECK:       mogg_async_error({{.*}},{{.*}})
+// CHECK:       mogg_async_error_value(
 
 mgp.model @fused_source_notes : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()

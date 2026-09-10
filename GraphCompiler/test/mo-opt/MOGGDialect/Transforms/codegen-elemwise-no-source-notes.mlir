@@ -14,7 +14,7 @@
 // with an empty traceback argument (no FusedLoc metadata on these ops).
 // Output order: outer region stub Mojo first, inner stub Mojo after.
 // CHECK:       mogg_format_region_error(
-// CHECK:       mogg_async_error({{.*}},{{.*}})
+// CHECK:       mogg_async_error_value(
 // CHECK:       mogg_format_kernel_error(
 // CHECK:       Elementwise
 // CHECK-NOT:   Source Traceback

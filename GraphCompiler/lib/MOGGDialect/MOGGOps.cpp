@@ -3476,9 +3476,37 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
         // The order of arguments in runtimeArgument:
         // 1. Inputs and DPS outputs
         // 2. Return values (chain and non DPS outputs)
+        //
+        // For each input in the void** argument vector that is an AsyncValue,
+        // emit:
+        //
+        //     var val = AnyAsyncValueRef(take_slot=args[i])
+        //
+        // This takes ownership of the AsyncValue held at that `args[i]`,
+        // nulling out the slot afterward. This must be emitted for all
+        // inputs that are AsyncValues. The runtime expects the generated Mojo
+        // code to take ownership of all AsyncValue input slots, so these
+        // statements must be emitted, even if the value is unused.
+        //
+        // Non-async arguments (e.g. buffer constants) remain raw pointer slots.
         for (auto argument : kernelBody.getArguments()) {
-          state.setMojoValueFor(argument, runtimeArgument.pointerOffsetGet(
-                                              argument.getArgNumber()));
+          MOGG::MojoValue slotPtr =
+              runtimeArgument.pointerOffsetGet(argument.getArgNumber());
+          if (isa<MOGG::AsyncType>(argument.getType())) {
+            MOGG::MojoValue local = state.builder.var(
+                MOGG::MojoValue(llvm::formatv("{0}(take_slot={1})",
+                                              MOGG::kStructAnyAsyncValueRef,
+                                              slotPtr.text)
+                                    .str()),
+                /*cache=*/false);
+            state.setMojoValueFor(argument, local);
+
+            // The unpacked result is an owning handle to the backing AsyncValue
+            // and must be kept alive for the duration of the compiled function.
+            state.markAsKeepAlive(local);
+          } else {
+            state.setMojoValueFor(argument, slotPtr);
+          }
         }
         // Return values, although in DPS form from the runtime's perspective,
         // are still in value semantics inside of the kernel. Therefore, there
@@ -5692,46 +5720,37 @@ LogicalResult RebindOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
-  auto resultIndexOr = getOutputIndex();
-  if (!resultIndexOr)
-    return failure();
-
   // A `!mgp.tensor` value is a parametric `OwnedTensor[dtype, rank]`; its
-  // MoggAsyncPackHelper constructor would lose overload resolution to the
-  // generic `Some[Movable & Deinitable]` ctor (mis-packing it as an
-  // opaque Mojo value). Call the dedicated pack function directly instead,
-  // passing the true spec rank so a scalar (rank 0) is not packed as the
-  // promoted rank-1 buffer view.
+  // generic overload would lose resolution to the `Some[Movable & Deinitable]`
+  // overload (mis-packing it as an opaque Mojo value). Use the dedicated
+  // tensor pack function, passing the true spec rank so a scalar (rank 0) is
+  // not packed as the promoted rank-1 buffer view.
+  MojoValue packed;
   if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(getInput().getType())) {
     MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
     MojoValue specRankParam(static_cast<uint64_t>(tensorSpec.getRank()));
-    MojoValue tensorPackFunc(kFnMoggAsyncPackOwnedTensor);
+    packed = state.builder.var(MojoValue(kFnMoggAsyncPackOwnedTensorValue)(
+        {specRankParam}, {state.getMojoValueFor(getInput())}));
+  } else {
+    MojoValue input = state.getMojoValueFor(getInput());
+    Type inputType = getInput().getType();
 
-    state.builder.call(tensorPackFunc, {specRankParam},
-                       {state.getMojoValueFor(getInput()),
-                        state.mojoReturnValues[*resultIndexOr]});
-    return success();
+    // Trivial types are passed by value: transferring them produces compiler
+    // warnings, or fails to compile when the emitter produced a literal
+    // rather than a var.
+    //
+    // Opaque Mojo values may be move-only, so the pack must consume them.
+    bool isMoveOnly =
+        isa<MO::OpaqueType, MGP::OpaqueType, MGP::DeviceGraphType>(inputType);
+    if (!isa<mlir::IndexType, mlir::IntegerType, KGEN::SIMDType>(inputType) &&
+        (isMoveOnly || getInput().hasOneUse()))
+      input = input.transfer();
+    // For every other supported type, overload resolution on
+    // `mogg_async_pack_value` selects the right value-returning packer.
+    packed = state.builder.var(MojoValue(kFnMoggAsyncPackValue)({}, {input}));
   }
 
-  MojoValue asyncPackHelperStruct = kStructMoggAsyncPackHelper;
-  auto packPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
-  ASSERT_STREAM(packPrimDecl,
-                "Primitive not found for " << getOperationName().str());
-  MojoValue moggAsyncPackFunc(primitiveMojoName(packPrimDecl));
-  SmallVector<MojoValue> operands;
-  for (auto [idx, operand] : llvm::enumerate(getOperands())) {
-    MojoValue mojoVal = state.getMojoValueFor(operand);
-    // The first operand (input) is consumed for move-only opaque types, so
-    // transfer (^ move) those. Buffer/tensor composites are NOT transferred:
-    // their pack copies (retains) the storage handle, so they may be borrowed
-    // (e.g. an Array element from bulk_slice, which cannot be moved out).
-    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType>(operand.getType()))
-      mojoVal = mojoVal.transfer();
-    operands.push_back(mojoVal);
-  }
-  operands.push_back(state.mojoReturnValues[*resultIndexOr]);
-  state.builder.call(moggAsyncPackFunc, {},
-                     asyncPackHelperStruct({}, operands));
+  state.setMojoValueFor(getResult(), packed);
   return success();
 }
 
@@ -6352,27 +6371,10 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
-  // If none of the users of this op is an output op, this is probably because
-  // we sequence fused and then we remove the output chain because nothing was
-  // using it from the outside. The result is an AsyncReadyOp with no output op
-  // as a user. There is nothing to emit and this op can be treated as a no-op.
-  /// TODO: Canonicalize this op into a placeholder for a chain instead of doing
-  /// this context sensitive logic.
-  if (llvm::none_of(this->getResult().getUsers(), [](auto user) {
-        return isa<MOGG::OutputOp, MOGG::YieldOp>(user);
-      })) {
-    return success();
-  }
-  auto resultIndexOr = getOutputIndex();
-  if (!resultIndexOr)
-    return failure();
-  auto readyPrimDecl = state.registry.lookupPrimitive(this->getOperationName());
-  ASSERT_STREAM(readyPrimDecl,
-                "Primitive not found for " << getOperationName().str());
-  MojoValue moggAsyncReadyFunc(primitiveMojoName(readyPrimDecl));
-  state.builder.call(moggAsyncReadyFunc, {},
-                     state.mojoReturnValues[*resultIndexOr]);
-
+  // Produce a fresh chain AnyAsyncValueRef.
+  MojoValue ready = state.builder.var(
+      MojoValue(kFnMoggAsyncReadyValue)(/*parameters=*/{}, /*operands=*/{}));
+  state.setMojoValueFor(getResult(), ready);
   return success();
 }
 
@@ -7182,13 +7184,44 @@ LogicalResult ConstantScalarV2Op::emitMojo(EmitMojoState &state) {
 // OutputOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult OutputOp::emitMojo(EmitMojoState &) { return success(); }
+LogicalResult OutputOp::emitMojo(EmitMojoState &state) {
+  // Only the MGP ABI hands results back through the `void**` slot vector, so
+  // only it populates `state.mojoReturnValues`.
+  auto kernelStub = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  if (!kernelStub || kernelStub.getAbi() != MOGG::ABIKind::MGP)
+    return success();
+
+  // `mogg.output` operands are the async-returned outputs, in slot order. Each
+  // producer (mogg.async.pack/ready/error) has emitted an AnyAsyncValueRef
+  // value; assign them into the corresponding output slots here.
+  for (auto [idx, operand] : llvm::enumerate(getOperands())) {
+    MojoValue value = state.getMojoValueFor(operand);
+    state.builder.call(MojoValue(kFnMoggAssignAsyncValue), {},
+                       {state.mojoReturnValues[idx], value});
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult YieldOp::emitMojo(EmitMojoState &) { return success(); }
+LogicalResult YieldOp::emitMojo(EmitMojoState &state) {
+  // Yields are only used inside TryOp to route a branch's produced value to
+  // one of the TryOp's results. Assign each operand to the corresponding result
+  // variable declared by the parent TryOp.
+  auto tryOp = dyn_cast<MOGG::TryOp>(getOperation()->getParentOp());
+  if (!tryOp)
+    return success();
+
+  for (auto [operand, result] :
+       llvm::zip_equal(getOperands(), tryOp.getResults())) {
+    MojoValue value = state.getMojoValueFor(operand);
+    state.builder.assign(state.getMojoValueFor(result), value);
+  }
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // WithTraceOp
@@ -7370,6 +7403,15 @@ LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TryOp::emitMojo(EmitMojoState &state) {
+  // Declare result variables that both branches will assign. The variables
+  // are visible to the yield ops in each region and to the mogg.output that
+  // consumes this TryOp's results.
+  for (OpResult result : getResults()) {
+    MojoValue resultVar = state.builder.var(
+        MojoValue(kStructAnyAsyncValueRef)(), /*cache=*/false);
+    state.setMojoValueFor(result, resultVar);
+  }
+
   // MOGG ABI stubs catch errors, format them with kernel context (name,
   // fusion info, source traceback), and re-raise. The outer TryOp here
   // just emits the try/except structure — no caller-side bookkeeping needed.
@@ -7499,46 +7541,14 @@ void TryOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
-  auto asyncErrPrimDecl =
-      state.registry.lookupPrimitive(this->getOperationName());
-  ASSERT_STREAM(asyncErrPrimDecl,
-                "Primitive not found for " << getOperationName().str());
-  MojoValue moggAsyncErrorFunc(primitiveMojoName(asyncErrPrimDecl));
-
-  // Each AsyncErrorOp corresponds to a specific output position in the try op.
-  // Find which output index this AsyncErrorOp is for by checking which yield
-  // operand uses this result.
-  auto tryOp = cast<MOGG::TryOp>(getOperation()->getParentOp());
-  auto exceptYield =
-      cast<MOGG::YieldOp>(tryOp.getExceptRegion().front().getTerminator());
-
-  // Find the index of this AsyncErrorOp's result in the yield operands
-  int outputIndex = -1;
-  for (auto [idx, operand] : llvm::enumerate(exceptYield.getOperands())) {
-    if (operand == getResult()) {
-      outputIndex = idx;
-      break;
-    }
-  }
-
-  if (outputIndex < 0 ||
-      static_cast<size_t>(outputIndex) >= state.mojoReturnValues.size()) {
-    return emitOpError("Could not find corresponding output index for "
-                       "AsyncErrorOp. Found index ")
-           << outputIndex << " but have " << state.mojoReturnValues.size()
-           << " return values";
-  }
-
   MojoValue errorExpr = state.getMojoValueFor(getError());
 
   // Get the parent MGP region name for the error header.
   std::string regionName;
-  if (auto parentKernel = tryOp->getParentOfType<MOGG::KernelStubOp>())
+  if (auto parentKernel = getOperation()->getParentOfType<MOGG::KernelStubOp>())
     regionName = parentKernel.getSymNameAttr().str();
 
-  // Format the error with the region name prefix and call mogg_async_error.
-  // This primitive is a helper, not a 1:1 mapping with `AsyncErrorOp`, so we
-  // can't derive its registration name from `getOperationName()`.
+  // Format the error with the region name prefix.
   auto fmtRegionErrPrimDecl =
       state.registry.lookupPrimitive(kMoggPrimitiveFormatRegionError);
   ASSERT_STREAM(fmtRegionErrPrimDecl,
@@ -7546,9 +7556,12 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
   MojoValue formatRegionErrorFunc(primitiveMojoName(fmtRegionErrPrimDecl));
   MojoValue formattedErr = state.builder.var(
       formatRegionErrorFunc({}, {MojoValue(regionName).quote(), errorExpr}));
-  state.builder.call(
-      moggAsyncErrorFunc, {},
-      {state.mojoReturnValues[outputIndex], formattedErr.transfer()});
+
+  // Produce a fresh error AnyAsyncValueRef. The actual output slot assignment
+  // is emitted by the mogg.output terminator (which consumes the TryOp result).
+  MojoValue errorValue = state.builder.var(
+      MojoValue(kFnMoggAsyncErrorValue)({}, {formattedErr.transfer()}));
+  state.setMojoValueFor(getResult(), errorValue);
 
   return success();
 }

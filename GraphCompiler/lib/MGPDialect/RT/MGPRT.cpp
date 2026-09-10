@@ -58,6 +58,14 @@ void fulfillReady(AnyAsyncValueRef &value, Args &&...args) {
   }
 }
 
+template <typename T, typename... Args>
+AsyncValue *createReadyValue(Args &&...args) {
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  AnyAsyncValueRef value =
+      AnyAsyncValueRef::createReady<T>(cpuDevice, std::forward<Args>(args)...);
+  return value.releasePointer();
+}
+
 //===----------------------------------------------------------------------===//
 // Functions visible from Mojo
 //===----------------------------------------------------------------------===//
@@ -89,7 +97,7 @@ MGP_RT_GetCachedInt(size_t bufferSlot, StateContext *stateCtx) {
 
 /// This is the new C++ implementation of the mgp.buffer.get_cached primitive.
 /// The old one is not prefixed with TMP_.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
 MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
                        void **data) {
   auto &stateSlot = stateCtx->getStateSlotPayload<TensorStateSlot>(bufferSlot);
@@ -103,7 +111,9 @@ MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
   *size = ref.getSize();
   *data = ref.getBuffer();
 
-  return ref.getMemStorageHandleRef();
+  // Return an owning reference to the buffer's backing storage so the Mojo
+  // caller can keep the memory alive without punning AnyAsyncValueRef layout.
+  return ref.getMemStorageHandle().copy().releasePointer();
 }
 
 /// This is the C++ implementation of mgp.device_graph.cache. The Mojo
@@ -117,30 +127,64 @@ MGP_RT_GetOrCreateDeviceGraphCache(StateContext *stateCtx, void *(*createFn)(),
   return cache.getData();
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsync_ssizet(ssize_t data,
-                          AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<ssize_t>(value, data);
+//===----------------------------------------------------------------------===//
+// Value-returning async creation helpers (used by the EmitsMojo backend when
+// the producer emits a value and the terminator assigns it to the output slot).
+//===----------------------------------------------------------------------===//
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsync_ssizet(ssize_t data) {
+  return createReadyValue<ssize_t>(data);
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsync_int64t(int64_t data) {
+  return createReadyValue<int64_t>(data);
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsync_bool(bool data) {
+  return createReadyValue<bool>(data);
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsync_chain() {
+  return createReadyValue<Chain>();
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateOwnedAsyncMojoValue(void *data, void (*destructorFn)(void *)) {
+  return createReadyValue<MojoValue>(data, destructorFn);
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsyncDeviceGraphRefByTakingHandle(Driver::DeviceGraph *handle) {
+  Driver::DeviceGraphRef graph = M::takeRCRef(handle);
+  return createReadyValue<Driver::DeviceGraphRef>(std::move(graph));
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_AsyncRT_CreateAsync_Error(const char *messagePtr, size_t messageLen) {
+  StringRef errorMsg(messagePtr, messageLen);
+  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
+  EncodedDiagnostic diagnostic{Twine(errorMsg),
+                               UnknownLocationDecoder::getEncodedLocation()};
+  AnyAsyncValueRef value =
+      AnyAsyncValueRef::createError(cpuDevice, std::move(diagnostic));
+  return value.releasePointer();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsync_int64t(int64_t data,
-                          AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<int64_t>(value, data);
-}
+MGP_RT_AssignAsyncValue(AsyncRTWrapper<AnyAsyncValueRef> slot,
+                        AsyncValue *src) {
+  AnyAsyncValueRef &slotRef = unwrap(slot);
+  AnyAsyncValueRef srcRef = AnyAsyncValueRef::take(src);
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsync_chain(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<Chain>(value);
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsync_bool(bool data, AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<bool>(value, data);
+  if (slotRef.getPointer() && slotRef.getPointer()->isIndirect()) {
+    slotRef.copy().resolveIndirect(std::move(srcRef));
+  } else {
+    slotRef = std::move(srcRef);
+  }
 }
 
 /// TAKES an already-owning DeviceBuffer handle the producer surrendered instead
@@ -184,67 +228,9 @@ MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
   fulfillReady<TensorBufferRef>(value, std::move(tensorBufferRef));
 }
 
-/// TAKES an already-owning DeviceGraph handle the producer surrendered (via the
-/// Mojo `DeviceGraph.take_handle()`) and wraps it in an
-/// AsyncValue<DeviceGraphRef>, writing it into the async slot. The device-graph
-/// analogue of MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle: it packs the
-/// graph produced by `mgp.device_graph.create` so that
-/// `mgp.device_graph.execute` can consume it as a first-class `DeviceGraphRef`
-/// (rather than an opaque Mojo value). The single live reference is adopted
-/// net-zero, mirroring the take_handle/takeRCRef pairing used for device
-/// buffers.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncDeviceGraphRefByTakingHandle(
-    Driver::DeviceGraph *handle, AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  Driver::DeviceGraphRef graph = M::takeRCRef(handle);
-  fulfillReady<Driver::DeviceGraphRef>(value, std::move(graph));
-}
-
-/// Builds a TensorBufferRef from a data view (ptr + size) and an owning storage
-/// handle (an AsyncValue* the Mojo side surrendered net-zero), writing it into
-/// the async slot. Generalizes MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle:
-/// the storage may wrap a DeviceBufferRef, or (once producers are unified) be
-/// non-tracked or borrowed.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncBufferRefFromStorage(AsyncValue *storage, void *data,
-                                       size_t size,
-                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  // Adopt the surrendered reference net-zero, then move it into the
-  // TensorBufferRef's storage.
-  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
-  auto tensorBufferRef =
-      TensorBufferRef::create(data, size, std::move(storageRef));
-
-  fulfillReady<TensorBufferRef>(value, std::move(tensorBufferRef));
-}
-
-/// Builds a Tensor (TensorBufferRef + spec) from a data view (ptr + size +
-/// shape/dtype) and an owning storage handle (an AsyncValue* the Mojo side
-/// surrendered net-zero), writing it into the async slot. The tensor
-/// counterpart of MGP_RT_CreateAsyncBufferRefFromStorage.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncTensorRefFromStorage(AsyncValue *storage, void *data,
-                                       size_t size, size_t rank, size_t *dims,
-                                       int8_t type,
-                                       AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  // Adopt the surrendered reference net-zero, then move it into the tensor's
-  // TensorBufferRef storage.
-  AnyAsyncValueRef storageRef = AnyAsyncValueRef::take(storage);
-  TensorBufferRef buf =
-      TensorBufferRef::create(data, size, std::move(storageRef));
-  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
-
-  fulfillReady<Tensor>(value, std::move(buf), std::move(spec));
-}
-
 /// Builds a *new* AsyncValue holding a TensorBufferRef from a data view (ptr +
 /// size) and an owning storage handle (surrendered net-zero), returning the
-/// owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef to adopt. Unlike
-/// MGP_RT_CreateAsyncBufferRefFromStorage, which fills a runtime-provided async
-/// slot, this allocates a fresh AsyncValue -- used to register a graph output.
+/// owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef to adopt.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
 MGP_RT_CreateBufferRefAsyncValue(AsyncValue *storage, void *data, size_t size) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
@@ -272,20 +258,10 @@ MGP_RT_CreateTensorRefAsyncValue(AsyncValue *storage, void *data, size_t size,
   return value.releasePointer();
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncTensorShape(ssize_t *data, ssize_t rank,
-                              AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
+MGP_RT_CreateAsyncTensorShape(ssize_t *data, size_t rank) {
   ArrayRef<ssize_t> dims(data, data + rank);
-  fulfillReady<TensorShape>(value, dims);
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateOwnedAsyncMojoValue(void *data, void (*destructorFn)(void *),
-                                 AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  fulfillReady<MojoValue>(value, data, destructorFn);
+  return createReadyValue<TensorShape>(dims);
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
@@ -298,35 +274,31 @@ MGP_RT_MojoValueAllocateBuffer(size_t size, size_t align) {
 //===----------------------------------------------------------------------===//
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetValueFromAsync(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  if (value.getPointer() && value.getPointer()->isIndirect())
-    return value.getPointer()->getUnderlyingPtr();
-  else
-    return value.getPointerToData();
+MGP_RT_GetValueFromAsync(AsyncValue *async) {
+  return async->getUnderlyingPtr();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_UnpackStateContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  assert(value.isReady() &&
+MGP_RT_UnpackStateContext(AsyncValue *async) {
+  assert(async && "MGP_RT_UnpackStateContext: null async value");
+  assert(async->isReady() &&
          "MGP_RT_UnpackStateContext: async value not yet ready");
-  assert(value.isType<MLRT::StateContext>() &&
+  assert(async->isType<MLRT::StateContext>() &&
          "MGP_RT_UnpackStateContext: async value does not hold a "
          "StateContext — argument index mismatch or wrong async value");
-  auto &stateContextRef = value.get<StateContext>();
+  auto &stateContextRef = async->get<StateContext>();
   return &stateContextRef;
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_UnpackDeviceContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  assert(value.isReady() &&
+MGP_RT_UnpackDeviceContext(AsyncValue *async) {
+  assert(async && "MGP_RT_UnpackDeviceContext: null async value");
+  assert(async->isReady() &&
          "MGP_RT_UnpackDeviceContext: async value not yet ready");
-  assert(value.isType<Driver::DeviceContextRef>() &&
+  assert(async->isType<Driver::DeviceContextRef>() &&
          "MGP_RT_UnpackDeviceContext: async value does not hold a "
          "DeviceContextRef — argument index mismatch or wrong async value");
-  auto deviceContextRef = value.get<Driver::DeviceContextRef>();
+  auto deviceContextRef = async->get<Driver::DeviceContextRef>();
   auto *ptr =
       const_cast<Driver::DeviceContext *>(deviceContextRef.getPointer());
   assert(ptr != nullptr &&
@@ -343,20 +315,18 @@ MGP_RT_UnpackDeviceContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetDataFromBuffer(AsyncRTWrapper<AnyAsyncValueRef> async,
-                         size_t *sizeOut) {
-  AnyAsyncValueRef &value = unwrap(async);
-  auto &buffer = value.get<TensorBufferRef>();
+MGP_RT_GetDataFromBuffer(AsyncValue *async, size_t *sizeOut) {
+  assert(async && "MGP_RT_GetDataFromBuffer: null async value");
+  auto &buffer = async->get<TensorBufferRef>();
   *sizeOut = buffer.getSize();
   return buffer.getBuffer();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
-MGP_RT_GetShapeAndDataFromTensor(size_t *shape,
-                                 AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  assert(value.isReady());
-  auto &tensor = value.get<Tensor>();
+MGP_RT_GetShapeAndDataFromTensor(size_t *shape, AsyncValue *async) {
+  assert(async && "MGP_RT_GetShapeAndDataFromTensor: null async value");
+  assert(async->isReady());
+  auto &tensor = async->get<Tensor>();
   const TensorSpec &spec = tensor.getSpec();
   for (size_t i = 0; i < spec.getRank(); ++i)
     shape[i] = spec[i];
@@ -364,26 +334,12 @@ MGP_RT_GetShapeAndDataFromTensor(size_t *shape,
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_GetTensorShapeFromAsync(ssize_t *data, ssize_t rank,
-                               AsyncRTWrapper<AnyAsyncValueRef> async) {
-  AnyAsyncValueRef &value = unwrap(async);
-  assert(value.isReady());
-  auto &shape = value.get<TensorShape>();
+MGP_RT_GetTensorShapeFromAsync(ssize_t *data, ssize_t rank, AsyncValue *async) {
+  assert(async && "MGP_RT_GetTensorShapeFromAsync: null async value");
+  assert(async->isReady());
+  auto &shape = async->get<TensorShape>();
   for (int i = 0; i < rank; ++i)
     data[i] = shape[i];
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_DestructAsyncRefs(size_t size, void **storageRefPtr) {
-  for (size_t i = 0; i < size; ++i) {
-    AnyAsyncValueRef *refAddr =
-        reinterpret_cast<AnyAsyncValueRef *>(storageRefPtr[i]);
-    // The refAddr could be nullptr here since compiled model tries to destruct
-    // all async values upon failure and some of them might not have been
-    // initialized.
-    if (refAddr && refAddr->getPointer())
-      refAddr->reset();
-  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -420,18 +376,4 @@ MGP_RT_DebugTensorPrint(const char *label, size_t labelLen, uint8_t dtype,
     if (errOr.isError())
       llvm_unreachable(errOr.getError());
   }
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_AsyncRT_CreateAsync_Error(AsyncRTWrapper<AnyAsyncValueRef> async,
-                                 const char *messagePtr, size_t messageLen) {
-  StringRef errorMsg(messagePtr, messageLen);
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &value = unwrap(async);
-  EncodedDiagnostic diagnostic{Twine(errorMsg),
-                               UnknownLocationDecoder::getEncodedLocation()};
-  if (value.getPointer() && value.getPointer()->isIndirect())
-    value.copy().setToError(std::move(diagnostic));
-  else
-    value = value.createError(cpuDevice, std::move(diagnostic));
 }

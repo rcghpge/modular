@@ -268,7 +268,6 @@ def TensorSliceOp : MGP_Op<"tensor.slice", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
   InferTypeOpAdaptor,
   Pure,
 ]> {

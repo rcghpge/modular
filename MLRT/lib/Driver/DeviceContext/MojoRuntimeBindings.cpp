@@ -40,33 +40,36 @@ MODULAR_EXPORT void AsyncRT_AsyncValue_release(AsyncRT::AsyncValue *value) {
     RCRef<AsyncRT::AsyncValue>::lowLevelDropRef(value);
 }
 
-// Retains the `AsyncValue` behind an existing `AnyAsyncValueRef` storage handle
-// (e.g. a cached buffer's memory handle) and hands the owning `AsyncValue*`
-// (refcount +1) to a Mojo `AnyAsyncValueRef`. A null handle yields null.
-MODULAR_EXPORT AsyncRT::AsyncValue *
-AsyncRT_AsyncValue_retainHandle(AsyncRT::AnyAsyncValueRef *handle) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainHandle", TRACY_COLOR_GRAY);
-  if (!handle)
-    return nullptr;
-  return handle->copy().releasePointer();
-}
-
-// Retains the backing storage handle of a packed buffer/tensor async slot and
+// Retains the backing storage handle of a packed buffer/tensor async value and
 // hands the owning `AsyncValue*` (refcount +1) to a Mojo `AnyAsyncValueRef`.
 // Used by unpack so an unpacked value (or a derivative) keeps its backing
 // memory alive when it is re-packed as an output. Non-tracked storage yields
 // null.
 MODULAR_EXPORT AsyncRT::AsyncValue *
-AsyncRT_AsyncValue_retainBufferStorage(AsyncRT::AnyAsyncValueRef *async) {
+AsyncRT_AsyncValue_retainBufferStorage(AsyncRT::AsyncValue *value) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_retainBufferStorage",
                        TRACY_COLOR_GRAY);
-  AsyncRT::AnyAsyncValueRef &value = *async;
+  if (!value)
+    return nullptr;
   AsyncRT::AnyAsyncValueRef handle;
-  if (value.isType<MLRT::TensorBufferRef>())
-    handle = value.get<MLRT::TensorBufferRef>().getMemStorageHandle();
-  else if (value.isType<MLRT::Tensor>())
-    handle = value.get<MLRT::Tensor>().getBufferRef().getMemStorageHandle();
+  if (value->isType<MLRT::TensorBufferRef>())
+    handle = value->get<MLRT::TensorBufferRef>().getMemStorageHandle();
+  else if (value->isType<MLRT::Tensor>())
+    handle = value->get<MLRT::Tensor>().getBufferRef().getMemStorageHandle();
   return handle.releasePointer();
+}
+
+// Moves the AsyncValue out of a runtime-owned slot, resets the slot to empty,
+// and hands the owning AsyncValue* to a Mojo AnyAsyncValueRef. This lets the
+// MGP-ABI kernel entry point take ownership of its argument slots and rely on
+// Mojo destructors instead of an explicit async-delete pass.
+MODULAR_EXPORT AsyncRT::AsyncValue *
+AsyncRT_AsyncValue_takeHandle(AsyncRT::AnyAsyncValueRef *slot) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_AsyncValue_takeHandle", TRACY_COLOR_GRAY);
+  if (!slot)
+    return nullptr;
+  AsyncRT::AnyAsyncValueRef taken = std::move(*slot);
+  return taken.releasePointer();
 }
 
 //===----------------------------------------------------------------------===//

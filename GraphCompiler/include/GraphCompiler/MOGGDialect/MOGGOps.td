@@ -34,6 +34,7 @@ include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -181,6 +182,7 @@ def MOGG_AsTupleOp : MOGG_Op<"as_tuple", [
 
 def MOGG_OutputOp : MOGG_Op<"output", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  ReturnLike,
   Terminator,
 ]> {
   let summary = "MOGG output operation";
@@ -1153,7 +1155,6 @@ def MOGG_TensorArgInitOp : MOGG_Op<"tensor_arg.__init__", [
 
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
   Pure,
 ]> {
   let results = (outs ChainType:$output);
@@ -1195,7 +1196,6 @@ def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
 
 def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelArgumentConsumer>,
   InferTypeOpAdaptor,
   Pure,
   TypesMatchWith<"input is the async wrapper of the result",
@@ -1238,7 +1238,6 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
   Pure,
   TypesMatchWith<"result is the async wrapper of the input",
                  /*lhs=*/"input", /*rhs=*/"output",
@@ -1391,6 +1390,7 @@ def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp",
                "MOGG::TensorCreateEpilogueOp"]>,
+  ReturnLike,
   Terminator,
 ]> {
   let summary = "MOGG yield operation";
@@ -1478,7 +1478,6 @@ def MOGG_RaiseOp : MOGG_Op<"raise", [
 
 def MOGG_TryOp : MOGG_Op<"try", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let summary = "Op that represent a try / except statement";
   let description = [{
@@ -1517,8 +1516,8 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
     }
     ```
 
-    This op gets lowered to a mojo call to `mogg_async_error`, which assigns
-    the error to the corresponding AsyncValue.
+    This op gets lowered to a mojo call to `mogg_async_error_value`, which
+    returns a fresh error `AnyAsyncValueRef`.
   }];
 
   let assemblyFormat = [{

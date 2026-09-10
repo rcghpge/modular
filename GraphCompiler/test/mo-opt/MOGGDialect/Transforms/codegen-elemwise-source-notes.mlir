@@ -14,7 +14,7 @@
 // The inner MOGG ABI stub embeds fusion tree and source traces in mogg_format_kernel_error.
 // Output order: outer region stub Mojo first, inner stub Mojo after.
 // CHECK:       mogg_format_region_error(
-// CHECK:       mogg_async_error({{.*}},{{.*}})
+// CHECK:       mogg_async_error_value(
 // CHECK:       mogg_format_kernel_error(
 // CHECK:       trace_add
 // CHECK:       trace_relu

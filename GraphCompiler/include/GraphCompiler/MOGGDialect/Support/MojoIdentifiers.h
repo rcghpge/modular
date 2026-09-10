@@ -283,8 +283,6 @@ constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
-constexpr llvm::StringLiteral kStructMoggAsyncPackHelper =
-    "builtin_primitives.primitives.MoggAsyncPackHelper";
 constexpr llvm::StringLiteral kStructScalar = "Scalar";
 constexpr llvm::StringLiteral kStructVariadic = "Variadic";
 constexpr llvm::StringLiteral kStructParameterList = "ParameterList";
@@ -302,6 +300,8 @@ constexpr llvm::StringLiteral kStructMsFusedInputVariadicTensors =
 constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
     "managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr llvm::StringLiteral kStructTrace = "max.runtime.tracing.Trace";
+constexpr llvm::StringLiteral kStructAnyAsyncValueRef =
+    "max.runtime.async_value.AnyAsyncValueRef";
 /// `Color` is re-exported through `max.runtime.tracing` along with `Trace`, so
 /// this qualified path resolves without importing the internal `_tracing`
 /// module directly.
@@ -371,8 +371,24 @@ constexpr llvm::StringLiteral kFnUnpackTensor =
     "builtin_primitives.primitives.unpack_tensor";
 constexpr llvm::StringLiteral kFnAllZeros =
     "builtin_primitives.primitives.all_zeros";
-constexpr llvm::StringLiteral kFnMoggAsyncPackOwnedTensor =
-    "builtin_primitives.primitives.mogg_async_pack_owned_tensor";
+constexpr llvm::StringLiteral kFnMoggAsyncPackValue =
+    "builtin_primitives.primitives.mogg_async_pack_value";
+constexpr llvm::StringLiteral kFnMoggAsyncPackOwnedTensorValue =
+    "builtin_primitives.primitives.mogg_async_pack_owned_tensor_value";
+constexpr llvm::StringLiteral kFnMoggAsyncReadyValue =
+    "builtin_primitives.primitives.mogg_async_ready_value";
+constexpr llvm::StringLiteral kFnMoggAsyncErrorValue =
+    "builtin_primitives.primitives.mogg_async_error_value";
+constexpr llvm::StringLiteral kFnMoggAssignAsyncValue =
+    "builtin_primitives.primitives.mogg_assign_async_value";
+constexpr llvm::StringLiteral kFnCreateIndexAsyncValue =
+    "builtin_primitives.primitives.create_index_async_value";
+constexpr llvm::StringLiteral kFnCreateSi64AsyncValue =
+    "builtin_primitives.primitives.create_si64_async_value";
+constexpr llvm::StringLiteral kFnCreateI1AsyncValue =
+    "builtin_primitives.primitives.create_i1_async_value";
+constexpr llvm::StringLiteral kFnCreateTensorSpecAsyncValue =
+    "builtin_primitives.primitives.create_tensor_spec_async_value";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
@@ -548,6 +564,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"std.memory", ""},
         {"std.collections", ""},
         {"max.runtime.tracing", ""},
+        {"max.runtime.async_value", ""},
         {"layout", ""},
         // Makes `layout.tile_io.TileCopier` resolvable in the tile `compute`
         // signature when the tile path is compiled.
