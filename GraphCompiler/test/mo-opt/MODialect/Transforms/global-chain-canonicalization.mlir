@@ -228,3 +228,77 @@ mo.graph @chain_canonicalization_bug(
   // CHECK: mo.output %[[OUT_TENSOR0]], %[[OUT_TENSOR1]], %[[MERGE2]], %[[OUT_CHAIN0]]
   mo.output %vbuf1, %vbuf2, %ch6, %ch7 : !tt, !tt, !ct, !ct
 }
+
+// A collective is a rendezvous: relaxing its chain against unrelated
+// same-device work is race-free but can strand the other ranks. Neither
+// direction of the pattern may reorder across one.
+
+!sb0 = !mo.buffer<[16], ui8, gpu:0>
+!sb1 = !mo.buffer<[16], ui8, gpu:1>
+!kv0 = !mo.buffer<[8, 8], f32, gpu:0>
+!kv1 = !mo.buffer<[8, 8], f32, gpu:1>
+!gt0 = !mo.tensor<[4], ui32, gpu:0>
+!gt1 = !mo.tensor<[4], ui32, gpu:1>
+
+// CHECK-LABEL: mo.graph @collective_then_custom
+mo.graph @collective_then_custom(%off: !gt1, %s0: !sb0, %s1: !sb1, %kv0: !kv0)
+    -> !ct {
+  // CHECK: [[CH0:%.*]] = mo.chain.create()
+  %ch0 = mo.chain.create()
+
+  // The custom writes only %kv0 and the broadcast only the signal buffers, so
+  // the aliasing check alone would allow the reorder.
+  // CHECK: [[OUT:%.*]]:2, [[BCH:%.*]] = mo.distributed.broadcast({{.*}}, [[CH0]])
+  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %ch0) {root = 1 : i64}
+      : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
+
+  // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])
+  %mch = mo.custom {symbol = "matmul", device = #M.device_ref<"gpu", 0>}(%kv0, %bch)
+      : (!kv0, !ct) -> (!ct)
+
+  mo.output %mch : !ct
+}
+
+// The same, with the mo.chain.create the graph builder emits ahead of a
+// collective when the per-device chains have diverged. This exercises the
+// pattern's chain.create branch, which must not hoist operands out of the
+// merge either.
+// CHECK-LABEL: mo.graph @collective_through_merge
+mo.graph @collective_through_merge(%off: !gt1, %s0: !sb0, %s1: !sb1,
+                                   %kv0: !kv0, %kv1: !kv1) -> !ct {
+  // CHECK: [[CH0:%.*]] = mo.chain.create()
+  %ch0 = mo.chain.create()
+
+  // CHECK: [[PRE:%.*]] = mo.custom{{.*}}prev{{.*}}({{.*}}, [[CH0]])
+  %pre = mo.custom {symbol = "prev", device = #M.device_ref<"gpu", 1>}(%kv1, %ch0)
+      : (!kv1, !ct) -> (!ct)
+  %merged = mo.chain.create(%ch0, %pre) : !ct, !ct
+
+  // CHECK: [[OUT:%.*]]:2, [[BCH:%.*]] = mo.distributed.broadcast({{.*}}, [[PRE]])
+  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %merged) {root = 1 : i64}
+      : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
+
+  // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])
+  %mch = mo.custom {symbol = "matmul", device = #M.device_ref<"gpu", 0>}(%kv0, %bch)
+      : (!kv0, !ct) -> (!ct)
+
+  mo.output %mch : !ct
+}
+
+// Without a collective in the sequence the same shape still relaxes.
+// CHECK-LABEL: mo.graph @no_collective_still_relaxes
+mo.graph @no_collective_still_relaxes(%kv0: !kv0, %kv1: !kv1) -> !ct {
+  // CHECK: [[CH0:%.*]] = mo.chain.create()
+  %ch0 = mo.chain.create()
+
+  // CHECK-DAG: [[A:%.*]] = mo.custom{{.*}}a{{.*}}({{.*}}, [[CH0]])
+  %c1 = mo.custom {symbol = "a", device = #M.device_ref<"gpu", 0>}(%kv0, %ch0)
+      : (!kv0, !ct) -> (!ct)
+
+  // CHECK-DAG: [[B:%.*]] = mo.custom{{.*}}b{{.*}}({{.*}}, [[CH0]])
+  %c2 = mo.custom {symbol = "b", device = #M.device_ref<"gpu", 1>}(%kv1, %c1)
+      : (!kv1, !ct) -> (!ct)
+
+  // CHECK: mo.chain.create([[B]], [[A]])
+  mo.output %c2 : !ct
+}

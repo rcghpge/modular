@@ -68,6 +68,14 @@ collectWriteEffectOperands(MOMutableOpInterface mutOp) {
 /// on it.
 static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
                                        MOMutableOpInterface mutOp2) {
+  // A multi-device op is a rendezvous: every rank has to arrive before any of
+  // them completes. Relaxing its chain against unrelated same-device work is
+  // race-free (disjoint buffers) but changes when the collective becomes
+  // resident on that device, which can leave the other ranks spinning. Keep
+  // the sequencing the graph builder established.
+  if (mutOp1->hasTrait<MOMultiDevice>() || mutOp2->hasTrait<MOMultiDevice>())
+    return false;
+
   // Check that the ops don't share an operand they both have a write effect on.
   auto r1 = llvm::make_filter_range(mutOp1->getOperands(), isMutableOperand);
   auto r2 = llvm::make_filter_range(mutOp2->getOperands(), isMutableOperand);
