@@ -3885,9 +3885,11 @@ LogicalResult ScalarCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
-  // Non-fused counterpart of `AsTupleOp`: pack the run of tensor operands into
-  // a `VariadicTensors` (runtime pointers + shapes, plus a comptime
-  // static-spec list). The fused-variadic path is not yet wired (slice 2).
+  // Packs the run of tensor operands into the aggregate their kernel's
+  // `execute` expects. `$variadic_abi` -- set by `PackageVariadicsAndScalars`
+  // from the callee's variadic parameter type -- selects `VariadicTensors`,
+  // `_FusedInputVariadicTensors`, or `_FusedOutputVariadicTensors`, so this
+  // emitter never inspects the producing ops to learn whether they are fused.
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getElements());
 
   // Contexts pack into a `DeviceContextArray[N]` instead, via its variadic
@@ -3944,13 +3946,41 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
           inputSpecsInternalsComptime, inputSpecsShapesComptime,
           inputSpecsStridesComptime}]());
 
-  MojoValue variadicTensorsConstructor = MojoValue(kStructVariadicTensors)[{
-      MojoValue(kParameterIOSpec)
-          .equal(ManagedTensorSliceRef(inputValues[0]).ioSpec()),
-      MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime)}];
-  MojoValue variadicTensorsValue = variadicTensorsConstructor(
-      {}, {runtimePointersTuple, runtimeShapesTuple});
-  state.setMojoValueFor(getTuple(), state.builder.var(variadicTensorsValue));
+  // Plain: a `VariadicTensors` over the raw pointers/shapes.
+  if (getVariadicAbi() == VariadicABI::Plain) {
+    MojoValue ctor = MojoValue(kStructVariadicTensors)[{
+        MojoValue(kParameterIOSpec)
+            .equal(ManagedTensorSliceRef(inputValues[0]).ioSpec()),
+        MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime)}];
+    state.setMojoValueFor(
+        getTuple(), state.builder.var(
+                        ctor({}, {runtimePointersTuple, runtimeShapesTuple})));
+    return success();
+  }
+
+  // Fused: gather each element's fusion functor and its type into a
+  // `_FusionPack` + `*FusionTypes`, then build the matching fused aggregate.
+  // The functor lives on the element slice itself (`in_fusion` / `out_fusion`),
+  // so nothing here reaches back into the producing op.
+  bool isInput = getVariadicAbi() == VariadicABI::FusedInput;
+  SmallVector<MojoValue> fusionValues;
+  SmallVector<MojoValue> typeParams;
+  for (const MojoValue &el : inputValues) {
+    ManagedTensorSliceRef slice(el);
+    fusionValues.push_back(isInput ? slice.inFusion() : slice.outFusion());
+    typeParams.push_back(isInput ? slice.inFusionType()
+                                 : slice.outFusionType());
+  }
+  MojoValue fusionsTuple =
+      state.builder.var(MojoValue(kStructMsFusionPack)({}, fusionValues));
+  typeParams.push_back(
+      MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime));
+
+  StringRef structName = isInput ? kStructMsFusedInputVariadicTensors
+                                 : kStructMsFusedOutputVariadicTensors;
+  MojoValue fusedValue = MojoValue(structName)[typeParams](
+      {}, {runtimePointersTuple, runtimeShapesTuple, fusionsTuple});
+  state.setMojoValueFor(getTuple(), state.builder.var(fusedValue));
   return success();
 }
 

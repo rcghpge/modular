@@ -61,6 +61,18 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
     }
 
     if (arg.isVariadicTensorType()) {
+      // Record the ABI the callee's variadic parameter wants, so emit picks the
+      // aggregate without inspecting the run's producing ops. The variant's
+      // own IOSpec (not store mutability -- a fused output is not a
+      // `MutableInputTensor`) distinguishes the three cases.
+      VariadicABI abi = VariadicABI::Plain;
+      if (const auto *v = std::get_if<KernelDeclVariadicTensorAdaptor>(
+              &arg.underlyingType)) {
+        if (v->ioSpec == IOSpec::FusedInputTensor)
+          abi = VariadicABI::FusedInput;
+        else if (v->ioSpec == IOSpec::FusedOutputTensor)
+          abi = VariadicABI::FusedOutput;
+      }
       unsigned pos = arg.sourceDescriptor->position;
       SmallVector<Value> run;
       while (i < e) {
@@ -72,7 +84,7 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
         ++i;
       }
       packed.push_back(
-          TupleCreateOp::create(builder, loc, TupleType::get(ctx), run));
+          TupleCreateOp::create(builder, loc, TupleType::get(ctx), run, abi));
       changed = true;
       continue;
     }

@@ -55,6 +55,15 @@ def MOGG_ProfileScopeLocationAttr
 }
 
 //===----------------------------------------------------------------------===//
+// VariadicABIAttr -- how a `mogg._tuple.create` run must be packed
+//===----------------------------------------------------------------------===//
+
+def MOGG_VariadicABIAttr
+    : EnumAttr<MOGGDialect, MOGG_VariadicABI, "variadic_abi"> {
+  let summary = "Packing ABI for a variadic tensor run (see MOGG_VariadicABI)";
+}
+
+//===----------------------------------------------------------------------===//
 // TensorArgContractAttr -- the trait-lane tensor-argument contract
 //===----------------------------------------------------------------------===//
 

@@ -45,6 +45,9 @@ from extensibility import (
     _FusedOutputTensor as FusedOutputTensor,
 )
 from extensibility import (
+    _FusedOutputVariadicTensors as FusedOutputVariadicTensors,
+)
+from extensibility import (
     _MutableInputTensor as MutableInputTensor,
 )
 from extensibility import (
@@ -2982,6 +2985,28 @@ struct MapLowerTwoFusedOutputs:
     ](
         res0: FusedOutputTensor,
         res1: FusedOutputTensor,
+        a: InputTensor,
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
+# A variadic FUSED output: its results pack into a `_FusedOutputVariadicTensors`
+# (the `fused_output` variadic ABI). Signature-only, like the other
+# `map_lower_*` stubs; driven by a multi-result `mo.custom`.
+@extensibility.register("map_lower_variadic_fused_output")
+struct MapLowerVariadicFusedOutput:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        rank: Int,
+        size: Int,
+        target: StaticString,
+        has_epilogue_fusion: Bool,
+    ](
+        outputs: FusedOutputVariadicTensors[
+            dtype=dtype, rank=rank, size=size, ...
+        ],
         a: InputTensor,
         ctx: DeviceContext,
     ) capturing raises:

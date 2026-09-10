@@ -21,6 +21,23 @@ def MOGG_BindLambdaKind : I32EnumAttr<"BindLambdaKind", "lambda kind", [
   let cppNamespace = "::M::MOGG";
 }
 
+// How a run of variadic tensor operands packed into a `mogg._tuple.create`
+// must be materialized in Mojo. `PackageVariadicsAndScalars` sets this from the
+// callee's variadic parameter type, so `emitMojo` chooses the aggregate
+// (`VariadicTensors` / `_FusedInputVariadicTensors` /
+// `_FusedOutputVariadicTensors`) without inspecting the producing ops.
+def MOGG_VariadicABI
+    : I32EnumAttr<"VariadicABI", "variadic tensor packing ABI", [
+  I32EnumAttrCase<"Plain", 0, "plain">,
+  I32EnumAttrCase<"FusedInput", 1, "fused_input">,
+  I32EnumAttrCase<"FusedOutput", 2, "fused_output">,
+]> {
+  let cppNamespace = "::M::MOGG";
+  // Emit the symbolic dialect-attribute form (see `MOGG_VariadicABIAttr` in
+  // MOGGAttrs.td) rather than a bare `i32`.
+  let genSpecializedAttr = 0;
+}
+
 def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
   I32EnumAttrCase<"MOGG", 0, "MOGG">,
   I32EnumAttrCase<"MGP", 1, "MGP">,

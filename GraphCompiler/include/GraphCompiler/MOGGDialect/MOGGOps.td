@@ -2121,7 +2121,9 @@ def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
     tuple-of-contexts, which emit renders as a `DeviceContextArray`.
   }];
   let arguments = (ins
-    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Context]>>:$elements);
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Context]>>:$elements,
+    DefaultValuedAttr<MOGG_VariadicABIAttr,
+        "::M::MOGG::VariadicABI::Plain">:$variadic_abi);
   let results = (outs MOGG_Tuple:$tuple);
   let assemblyFormat = [{
     `(` $elements `)` attr-dict `:` functional-type(operands, results)

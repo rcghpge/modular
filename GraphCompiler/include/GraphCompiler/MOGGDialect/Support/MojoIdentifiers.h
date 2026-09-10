@@ -654,6 +654,13 @@ public:
   static constexpr llvm::StringLiteral kBindToFusedOutputTile =
       "_bind_to_fused_output_tile";
 
+  /// Fusion functor field names, and the matching struct type parameters
+  /// (`type_of(slice).InFusion` / `.OutFusion`).
+  static constexpr llvm::StringLiteral kInFusion = "in_fusion";
+  static constexpr llvm::StringLiteral kOutFusion = "out_fusion";
+  static constexpr llvm::StringLiteral kInFusionParam = "InFusion";
+  static constexpr llvm::StringLiteral kOutFusionParam = "OutFusion";
+
   /// Field accessors (return the raw field value, not a call).
   MojoValue staticSpec() const { return value.get(kStaticSpec); }
   MojoValue staticShapeTuple() const { return value.get(kStaticShapeTuple); }
@@ -663,6 +670,15 @@ public:
   MojoValue alignment() const { return value.get(kAlignment); }
   MojoValue ioSpec() const { return value.get(kIoSpec); }
   MojoValue rawPtr() const { return value.get(kPtr); }
+  MojoValue inFusion() const { return value.get(kInFusion); }
+  MojoValue outFusion() const { return value.get(kOutFusion); }
+  /// The fusion struct types, read off the slice's own type parameters.
+  MojoValue inFusionType() const {
+    return MojoValue("type_of")({}, {value}).get(kInFusionParam);
+  }
+  MojoValue outFusionType() const {
+    return MojoValue("type_of")({}, {value}).get(kOutFusionParam);
+  }
 
   /// Method calls (parens included).
   MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
