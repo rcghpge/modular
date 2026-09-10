@@ -1,8 +1,8 @@
-/*===----------------------------------------------------------------------===*\
-|*                                                                            *|
-|* This file is Modular Inc proprietary.                                      *|
-|*                                                                            *|
-\*===----------------------------------------------------------------------===*/
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
 
 /// Minimal mock HAL plugin for testing the Mojo HAL bindings without GPU
 /// hardware. Implements all M_driver_* symbols expected by the Mojo Plugin
