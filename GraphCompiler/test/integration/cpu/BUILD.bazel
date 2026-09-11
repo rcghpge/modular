@@ -59,11 +59,14 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
     "E2E/kernels-with-variadics.mlir",
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
-    "E2E/multi_view_fusion.mlir",
-    "E2E/multi_view_fusion_no_add.mlir",
-    "E2E/transpose.mlir",
+    # A dynamic-perm transpose fused into a dim-reducing consumer leaves the
+    # reduced axis as a runtime-only intermediate dim of the fused view, which
+    # `IterPrologueOp`/`buildShape` can't bind to a kernel-boundary dim handle
+    # (a general fused-shape-changing-view gap, not the transpose lowering). The
+    # sole dynamic-perm producer, the eager interpreter, emits one op per graph
+    # and never fuses transpose into another op, so this synthetic case is
+    # unreachable in practice.
     "E2E/transpose_reduce.mlir",
-    "E2E/transpose_xfail.mlir",
     "MODialect/arg-nonzero.mlir",
     "MODialect/batch-matmul.mlir",
     "MODialect/concat-dynamic.mlir",
@@ -82,6 +85,9 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/matmuls.mlir",  # correctness: wrong result on Graviton
     "MODialect/mogg-ints.mlir",  # compile-time: times out (>800s) on Graviton
     "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
+    # Custom view-kernel graphs removed (unsupported going forward); still
+    # blocked on a matmul epilogue-fusion difference (has_epilogue_fusion),
+    # a separate cause from view kernels.
     "MODialect/mogg-kernel-api-e2e-fusion.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-constant-fused.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-constant.mlir",

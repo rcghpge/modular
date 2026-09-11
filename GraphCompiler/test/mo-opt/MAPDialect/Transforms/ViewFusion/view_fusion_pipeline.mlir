@@ -9,7 +9,7 @@
 // CHECK-LABEL: mo.graph @elementwiseChainIntoTranspose
 // CHECK:       %{{.*}} = map.iter.foreach<[32, 3]>
 // CHECK:       index   (%[[IDX:.*]]: !map.index<2>) -> !mo.tensor<[32, 3], f32> {
-// CHECK-NEXT:  %[[TIDX:.*]] = map.index.transpose<{{.*}}> (%[[IDX]])
+// CHECK-NEXT:  %[[TIDX:.*]] = map.index.transpose<{{.*}}> (%[[IDX]], %{{.*}})
 // CHECK-NEXT:  %[[XV:.*]] = map.load %{{.*}}[%[[TIDX]]]
 // CHECK-NEXT:  %[[YV:.*]] = map.load %{{.*}}[%[[TIDX]]]
 // CHECK-NEXT:  %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%[[TIDX]], %[[XV]], %[[YV]])

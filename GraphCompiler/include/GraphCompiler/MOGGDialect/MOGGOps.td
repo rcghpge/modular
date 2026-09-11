@@ -2395,21 +2395,25 @@ def MOGG_TensorCreateTransposeOp : MOGG_Op<"_tensor.create.transpose", [
     Produces a `!mogg.tensor_` addressable directly by the consuming loop's
     own index, reading `$input`'s underlying storage through a
     dimension-reordering reindexing -- nothing is copied. `$outShape` and
-    `$perm` carry the view's shape and permutation (`$perm[i]` names which
-    `$input` dimension became output dimension `i`); the input's own shape is
-    read off `$input` directly rather than duplicated here.
+    `$staticPermutations` carry the compile-time-known parts of the view's shape and
+    permutation (`$staticPermutations[i]` names which `$input` dimension became output
+    dimension `i`, `?` for a dimension whose source is only known at runtime);
+    `$permutations` is the runtime permutation tensor, read only for the dimensions
+    `$staticPermutations` leaves dynamic. The input's own shape is read off `$input`
+    directly rather than duplicated here.
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
-    DenseI64ArrayAttr:$perm,
+    DenseI64ArrayAttr:$staticPermutations,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_TensorLike:$input
+    MOGG_TensorLike:$input,
+    MOGG_Tensor:$permutations
   );
   let results = (outs MOGG_Tensor:$result);
   let assemblyFormat = [{
-    `(` $input `)` attr-dict
-    `:` qualified(type($input)) `->`
+    `(` $input `,` $permutations `)` attr-dict
+    `:` `(` qualified(type($input)) `,` qualified(type($permutations)) `)` `->`
     qualified(type($result))
   }];
 }

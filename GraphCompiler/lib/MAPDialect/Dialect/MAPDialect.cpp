@@ -366,16 +366,27 @@ TransposeSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        << " entries (one per dimension), got " << perm.size();
 
   SmallVector<int64_t> permVec(perm.asArrayRef());
-  SmallVector<int64_t> sortedPerm(permVec);
-  llvm::sort(sortedPerm);
-  for (int64_t i = 0; i < rank; ++i) {
-    if (sortedPerm[i] != i)
-      return emitError() << "perm must be a permutation of [0, " << rank << ")";
+  // A dynamic perm (the eager interpreter's one-graph-per-op transpose) is
+  // resolved at runtime; the permutation-validity and dim-match checks below
+  // only apply to the entries known at compile time. `mo.transpose`'s own perm
+  // is all-or-nothing (the whole tensor is constant or it isn't), so in
+  // practice this is either fully static or fully dynamic.
+  bool fullyStatic = llvm::none_of(permVec, ShapedType::isDynamic);
+  if (fullyStatic) {
+    SmallVector<int64_t> sortedPerm(permVec);
+    llvm::sort(sortedPerm);
+    for (int64_t i = 0; i < rank; ++i) {
+      if (sortedPerm[i] != i)
+        return emitError() << "perm must be a permutation of [0, " << rank
+                           << ")";
+    }
   }
 
   SmallVector<int64_t> inDims = in.getIntDims();
   SmallVector<int64_t> outDims = out.getIntDims();
   for (int64_t i = 0; i < rank; ++i) {
+    if (ShapedType::isDynamic(permVec[i]))
+      continue;
     int64_t inDim = inDims[permVec[i]];
     int64_t outDim = outDims[i];
     if (ShapedType::isDynamic(inDim) || ShapedType::isDynamic(outDim))

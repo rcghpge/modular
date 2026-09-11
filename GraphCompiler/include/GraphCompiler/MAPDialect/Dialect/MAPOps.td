@@ -857,22 +857,32 @@ def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
     Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
     this view into an opaque kernel's existing prologue.
 
+    `permutations` carries the runtime permutation, read only for the dimensions
+    `spec` leaves dynamic (the whole permutation is static for a
+    compile-time-constant `mo.transpose`, dynamic for the eager interpreter's
+    one-graph-per-op transpose). Like slice's bounds operands, it rides along
+    so `LoopInvariantViewMotion` can hand it to the hoisted
+    `map.index.transpose.stride` -- this per-index op is never lowered to MOGG
+    directly (a load-side transform is always hoisted first).
+
     Example:
     ```mlir
-    %idx_ = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%idx)
-        : !map.index<2> -> !map.index<2>
+    %idx_ = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%idx, %permutations)
+        : (!map.index<2>, !mo.tensor<[2], si64>) -> !map.index<2>
     ```
   }];
 
   let arguments = (ins
     MAP_TransposeSpecAttr:$spec,
-    MAP_AnyIndex:$index
+    MAP_AnyIndex:$index,
+    MO_Tensor:$permutations
   );
   let results = (outs MAP_AnyIndex:$result);
 
   let assemblyFormat = [{
-    `<` qualified($spec) `>` `(` $index `)` attr-dict
-    `:` qualified(type($index)) `->` qualified(type($result))
+    `<` qualified($spec) `>` `(` $index `,` $permutations `)` attr-dict
+    `:` `(` qualified(type($index)) `,` qualified(type($permutations)) `)` `->`
+    qualified(type($result))
   }];
 
   let hasVerifier = 1;
@@ -903,22 +913,29 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
     feeds an in-place kernel's fused load; the result is a tensor either way,
     since the view is only ever loaded from.
 
+    `permutations` carries the runtime permutation, read only for the dimensions
+    `spec` leaves dynamic. A fully-static perm never reads it (emission elides
+    the load behind a `comptime if`); the eager interpreter's one-graph-per-op
+    transpose supplies it at runtime.
+
     Example:
     ```mlir
-    %strided = map.index.transpose.stride<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%input)
-        : !mo.tensor<[2, 3], f32> -> !mo.tensor<[3, 2], f32>
+    %strided = map.index.transpose.stride<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>>(%input, %permutations)
+        : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
     ```
   }];
 
   let arguments = (ins
     MAP_TransposeSpecAttr:$spec,
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input,
+    MO_Tensor:$permutations
   );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `<` qualified($spec) `>` `(` $input `)` attr-dict
-    `:` qualified(type($input)) `->` qualified(type($result))
+    `<` qualified($spec) `>` `(` $input `,` $permutations `)` attr-dict
+    `:` `(` qualified(type($input)) `,` qualified(type($permutations)) `)` `->`
+    qualified(type($result))
   }];
 
   let hasVerifier = 1;

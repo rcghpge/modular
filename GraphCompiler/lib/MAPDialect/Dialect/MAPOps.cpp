@@ -1237,16 +1237,18 @@ LogicalResult TransposeIndexOp::verify() {
                          << " does not match spec's in-shape rank "
                          << signature.getIn().getRank();
 
-  return mlir::success();
+  return verifySliceBoundsOperandsAreRank1(
+      getOperation(), {std::pair{"permutations", getPermutations()}});
 }
 
 Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
-                                          const IRMapping &) {
+                                          const IRMapping &outerValues) {
   auto inputTy = M::MO::castFromTensorLike(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
-  return TransposeStrideOp::create(builder, getLoc(), resultTy, getSpec(),
-                                   tensor);
+  return TransposeStrideOp::create(
+      builder, getLoc(), resultTy, getSpec(), tensor,
+      outerValues.lookupOrDefault(getPermutations()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1272,7 +1274,8 @@ LogicalResult TransposeStrideOp::verify() {
                          << " does not match input element type "
                          << inputTy.getElementType();
 
-  return mlir::success();
+  return verifySliceBoundsOperandsAreRank1(
+      getOperation(), {std::pair{"permutations", getPermutations()}});
 }
 
 //===----------------------------------------------------------------------===//

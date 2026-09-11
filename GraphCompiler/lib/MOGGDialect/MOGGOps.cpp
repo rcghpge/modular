@@ -3875,12 +3875,12 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
-  // dtype/rank are tied to $input's own argument type, so Mojo infers them
-  // at the call site. output_static_shape/static_permutations carry the
-  // view's shape and permutation -- both are always statically known by
-  // emission time (this op is only reachable via a compile-time-constant
-  // perm; see MOToMAP's lowering of mo.transpose), so there is no
-  // dynamic-vs-static split to carry here.
+  // dtype/rank/perm_type are tied to the $input/$perm argument types, so Mojo
+  // infers them at the call site. output_static_shape/static_permutations carry
+  // the compile-time-known parts of the view's shape and permutation (`?` where
+  // a dim's source is only known at runtime); the runtime `$perm` operand
+  // supplies the rest. A fully-static perm never reads it (the primitive elides
+  // the load behind a `comptime if`).
   auto transposeCreatePrimDecl = state.registry.lookupPrimitive(
       TensorCreateTransposeOp::getOperationName());
   ASSERT_STREAM(transposeCreatePrimDecl,
@@ -3889,12 +3889,13 @@ LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
   MojoValue primitive(primitiveMojoName(transposeCreatePrimDecl));
   MojoValue outputStaticShape = state.builder.comptime(
       EmitMojoState::getAsIntTupleMojoValue(getOutShape().getIntDims()));
-  MojoValue staticPermutations =
-      state.builder.comptime(EmitMojoState::getAsIntTupleMojoValue(getPerm()));
+  MojoValue staticPermutations = state.builder.comptime(
+      EmitMojoState::getAsIntTupleMojoValue(getStaticPermutations()));
   MojoValue result = state.builder.var(primitive(
       {MojoValue(kParameterOutputStaticShape).equal(outputStaticShape),
        MojoValue(kParameterStaticPermutations).equal(staticPermutations)},
-      {state.getMojoValueFor(getInput())}));
+      {state.getMojoValueFor(getInput()),
+       state.getMojoValueFor(getPermutations())}));
   state.setMojoValueFor(getResult(), result);
   return success();
 }

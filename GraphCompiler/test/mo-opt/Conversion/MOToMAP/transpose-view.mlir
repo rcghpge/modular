@@ -1,19 +1,21 @@
 // RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
-// Verify that mo.transpose (with a compile-time-constant perm) lowers to a
-// standalone (unfused) map.iter.foreach over the output shape, with a
-// map.index.transpose op computing the input index -- not map.iter.opaque,
-// and not the "view kernels are not yet supported" error.
+// Verify that mo.transpose lowers to a standalone (unfused) map.iter.foreach
+// over the output shape, with a map.index.transpose op computing the input
+// index -- not map.iter.opaque, and not the "view kernels are not yet
+// supported" error. The perm rides in as an operand (like slice's bounds): a
+// mo.constant perm is also baked into the spec as literals, and a graph-argument
+// perm shows up as `?` (ShapedType::kDynamic) there instead.
 
 // 2D swap: out.dim[0] = in.dim[1], out.dim[1] = in.dim[0].
 
 // CHECK-LABEL: mo.graph @transposeSwap
 // CHECK-NOT:     map.iter.opaque
 // CHECK:         [[OUT:%.*]] = map.iter.foreach<[3, 2]>
-// CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[2, 3], f32>{{.*}})
+// CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[2, 3], f32>, [[PERM:%.*]]: !mo.tensor<[2], si64>)
 // CHECK:         outputs ([[OUTARG:%.*]]: !mo.tensor<[3, 2], f32>)
 // CHECK:         index   ([[IDX:%.*]]: !map.index<2>) -> !mo.tensor<[3, 2], f32> {
-// CHECK:         [[IDX_:%.*]] = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>> ([[IDX]])
+// CHECK:         [[IDX_:%.*]] = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>> ([[IDX]], [[PERM]])
 // CHECK:         [[VAL:%.*]] = map.load [[INPUT]]{{\[}}[[IDX_]]] : !mo.tensor<[2, 3], f32>
 // CHECK:         map.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mo.tensor<[3, 2], f32>
 mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
@@ -29,10 +31,10 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f
 // CHECK-LABEL: mo.graph @transpose3D
 // CHECK-NOT:     map.iter.opaque
 // CHECK:         [[OUT2:%.*]] = map.iter.foreach<[4, 2, 3]>
-// CHECK:         inputs  ([[INPUT2:%.*]]: !mo.tensor<[2, 3, 4], f32>{{.*}})
+// CHECK:         inputs  ([[INPUT2:%.*]]: !mo.tensor<[2, 3, 4], f32>, [[PERM2:%.*]]: !mo.tensor<[3], si64>)
 // CHECK:         outputs ([[OUTARG2:%.*]]: !mo.tensor<[4, 2, 3], f32>)
 // CHECK:         index   ([[IDX2:%.*]]: !map.index<3>) -> !mo.tensor<[4, 2, 3], f32> {
-// CHECK:         [[IDX2_:%.*]] = map.index.transpose<#map.index.transpose.spec<[2, 3, 4] -> [4, 2, 3], perm = [2, 0, 1]>> ([[IDX2]])
+// CHECK:         [[IDX2_:%.*]] = map.index.transpose<#map.index.transpose.spec<[2, 3, 4] -> [4, 2, 3], perm = [2, 0, 1]>> ([[IDX2]], [[PERM2]])
 // CHECK:         [[VAL2:%.*]] = map.load [[INPUT2]]{{\[}}[[IDX2_]]] : !mo.tensor<[2, 3, 4], f32>
 // CHECK:         map.store [[OUTARG2]]{{\[}}[[IDX2]]] = [[VAL2]] : !mo.tensor<[4, 2, 3], f32>
 mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3], f32> {
@@ -56,4 +58,25 @@ mo.graph @transposeSymbolicDim<N>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tenso
     !mo.tensor<[N, 64], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[64, N], f32>
   mo.output %res : !mo.tensor<[64, N], f32>
+}
+
+// Dynamic perm: the permutation comes from a graph argument, not a
+// mo.constant, so shape inference gives fully symbolic output dims and the
+// spec's perm is all `?` -- the runtime perm operand supplies it. This is the
+// eager interpreter's one-graph-per-op transpose. It still lowers to a view
+// (map.index.transpose over the output shape), never to map.iter.opaque or the
+// old "view kernels are not yet supported" error.
+
+// CHECK-LABEL: mo.graph @transposeDynamicPerm
+// CHECK-NOT:     map.iter.opaque
+// CHECK:         map.iter.foreach
+// CHECK:         [[IDXD_:%.*]] = map.index.transpose<#map.index.transpose.spec<[D0, D1, D2, D3] -> [{{.*}}], perm = [?, ?, ?, ?]>> ({{.*}})
+mo.graph @transposeDynamicPerm<D0, D1, D2, D3 -> D4, D5, D6, D7>(
+    %input: !mo.tensor<[D0, D1, D2, D3], f32>,
+    %perm: !mo.tensor<[4], si32>)
+    -> !mo.tensor<[D4, D5, D6, D7], f32> {
+  %res = mo.transpose<() -> D8, D9, D10, D11>(%input, %perm) : (
+    !mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[4], si32>
+  ) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  mo.output<D8, D9, D10, D11> %res : !mo.tensor<[D8, D9, D10, D11], f32>
 }

@@ -689,7 +689,8 @@ LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
       getSpec().getPerm(), TypeAttr::get(elementType),
       state.builder.getBoolAttr(viewsMutableStorage(getInput())),
-      state.mapping.lookup(getInput()));
+      state.mapping.lookup(getInput()),
+      state.mapping.lookup(getPermutations()));
   state.mapping.map(getResult(), createTranspose.getResult());
   return success();
 }
