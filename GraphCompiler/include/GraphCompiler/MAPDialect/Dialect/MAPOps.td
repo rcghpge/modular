@@ -696,7 +696,9 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 
     Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
     `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself.
+    loop body itself. `input` is a buffer rather than a tensor when the view
+    feeds an in-place kernel's fused load; the result is a tensor either way,
+    since the view is only ever loaded from.
 
     Example:
     ```mlir
@@ -708,7 +710,7 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 
   let arguments = (ins
     MAP_SliceSpecAttr:$spec,
-    MO_Tensor:$input,
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input,
     MO_Tensor:$starts,
     MO_Tensor:$stops,
     MO_Tensor:$steps
@@ -791,7 +793,9 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 
     Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
     `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself.
+    loop body itself. `input` is a buffer rather than a tensor when the view
+    feeds an in-place kernel's fused load; the result is a tensor either way,
+    since the view is only ever loaded from.
 
     Example:
     ```mlir
@@ -802,7 +806,7 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 
   let arguments = (ins
     MAP_BroadcastSpecAttr:$spec,
-    MO_Tensor:$input
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input
   );
   let results = (outs MO_Tensor:$result);
 
@@ -880,7 +884,9 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 
     Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
     `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself.
+    loop body itself. `input` is a buffer rather than a tensor when the view
+    feeds an in-place kernel's fused load; the result is a tensor either way,
+    since the view is only ever loaded from.
 
     Example:
     ```mlir
@@ -891,7 +897,7 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 
   let arguments = (ins
     MAP_TransposeSpecAttr:$spec,
-    MO_Tensor:$input
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input
   );
   let results = (outs MO_Tensor:$result);
 
@@ -971,7 +977,9 @@ def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
 
     Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
     `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself.
+    loop body itself. `input` is a buffer rather than a tensor when the view
+    feeds an in-place kernel's fused load; the result is a tensor either way,
+    since the view is only ever loaded from.
 
     Example:
     ```mlir
@@ -982,7 +990,7 @@ def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
 
   let arguments = (ins
     MAP_ReshapeSpecAttr:$spec,
-    MO_Tensor:$input
+    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$input
   );
   let results = (outs MO_Tensor:$result);
 

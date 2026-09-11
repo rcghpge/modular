@@ -81,7 +81,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/in-place-and-cf.mlir",
     "MODialect/in-place-custom.mlir",
-    "MODialect/in-place-parameterized.mlir",
     "MODialect/in-place-unk-dims.mlir",
     "MODialect/in-place.mlir",
     "MODialect/in-place2.mlir",

@@ -991,7 +991,7 @@ LogicalResult SliceIndexOp::verify() {
 
 Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
                                       const IRMapping &outerValues) {
-  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto inputTy = M::MO::castFromTensorLike(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
   return SliceStrideOp::create(builder, getLoc(), resultTy, getSpec(), tensor,
@@ -1006,7 +1006,7 @@ Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 
 LogicalResult SliceStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
-  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  auto inputTy = M::MO::castFromTensorLike(getInput().getType());
   if (inputTy.getShape() != signature.getIn())
     return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
@@ -1052,7 +1052,7 @@ LogicalResult BroadcastIndexOp::verify() {
 
 Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor,
                                           const IRMapping &) {
-  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto inputTy = M::MO::castFromTensorLike(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
   return BroadcastStrideOp::create(builder, getLoc(), resultTy, getSpec(),
@@ -1065,7 +1065,7 @@ Value BroadcastIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 
 LogicalResult BroadcastStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
-  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  auto inputTy = M::MO::castFromTensorLike(getInput().getType());
   if (inputTy.getShape() != signature.getIn())
     return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
@@ -1108,7 +1108,7 @@ LogicalResult ReshapeIndexOp::verify() {
 
 Value ReshapeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
                                         const IRMapping &) {
-  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto inputTy = M::MO::castFromTensorLike(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
   return ReshapeStrideOp::create(builder, getLoc(), resultTy, getSpec(),
@@ -1121,7 +1121,7 @@ Value ReshapeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 
 LogicalResult ReshapeStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
-  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  auto inputTy = M::MO::castFromTensorLike(getInput().getType());
   if (inputTy.getShape() != signature.getIn())
     return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "
@@ -1164,7 +1164,7 @@ LogicalResult TransposeIndexOp::verify() {
 
 Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
                                           const IRMapping &) {
-  auto inputTy = llvm::cast<M::MO::TensorType>(tensor.getType());
+  auto inputTy = M::MO::castFromTensorLike(tensor.getType());
   auto resultTy = M::MO::TensorType::get(getSpec().getSignature().getOut(),
                                          inputTy.getElementType());
   return TransposeStrideOp::create(builder, getLoc(), resultTy, getSpec(),
@@ -1177,7 +1177,7 @@ Value TransposeIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 
 LogicalResult TransposeStrideOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
-  auto inputTy = llvm::cast<M::MO::TensorType>(getInput().getType());
+  auto inputTy = M::MO::castFromTensorLike(getInput().getType());
   if (inputTy.getShape() != signature.getIn())
     return emitOpError() << "input shape " << inputTy.getShape()
                          << " does not match spec's in-shape "

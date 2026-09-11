@@ -2337,7 +2337,7 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
     DenseI64ArrayAttr:$staticStep,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_Tensor:$input,
+    MOGG_TensorLike:$input,
     MOGG_Tensor:$starts,
     MOGG_Tensor:$stops,
     MOGG_Tensor:$steps
@@ -2368,7 +2368,7 @@ def MOGG_TensorCreateBroadcastOp : MOGG_Op<"_tensor.create.broadcast", [
     MOSH_ShapeAttr:$outShape,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_Tensor:$input
+    MOGG_TensorLike:$input
   );
   let results = (outs MOGG_Tensor:$result);
   let assemblyFormat = [{
@@ -2397,7 +2397,7 @@ def MOGG_TensorCreateTransposeOp : MOGG_Op<"_tensor.create.transpose", [
     DenseI64ArrayAttr:$perm,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_Tensor:$input
+    MOGG_TensorLike:$input
   );
   let results = (outs MOGG_Tensor:$result);
   let assemblyFormat = [{
@@ -2433,7 +2433,7 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"_tensor.create.reshape", [
     MOSH_ShapeAttr:$outShape,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MOGG_Tensor:$input,
+    MOGG_TensorLike:$input,
     MOGG_Shape:$shape
   );
   let results = (outs MOGG_Tensor:$result);

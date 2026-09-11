@@ -578,6 +578,14 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// A hoisted view whose input is an in-place kernel's fused buffer re-addresses
+// mutable storage, so `mut` has to say so; the result stays a `!mogg.tensor_`
+// either way, since `LoopInvariantViewMotion` only hoists views that are
+// loaded from.
+static bool viewsMutableStorage(Value input) {
+  return isa<MO::BufferType>(input.getType());
+}
+
 // map.index.slice.stride -> mogg._tensor.create.slice. Reads its own
 // input/starts/stops/steps out of `state.mapping`, same as any other kernel
 // input.
@@ -585,13 +593,13 @@ LogicalResult SliceStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
-      cast<MO::TensorType>(getInput().getType()).getElementType();
+      MO::castFromTensorLike(getInput().getType()).getElementType();
   auto createSlice = MOGG::TensorCreateSliceOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
       getSpec().getStarts(), getSpec().getSteps(), TypeAttr::get(elementType),
-      state.builder.getBoolAttr(false), state.mapping.lookup(getInput()),
-      state.mapping.lookup(getStarts()), state.mapping.lookup(getStops()),
-      state.mapping.lookup(getSteps()));
+      state.builder.getBoolAttr(viewsMutableStorage(getInput())),
+      state.mapping.lookup(getInput()), state.mapping.lookup(getStarts()),
+      state.mapping.lookup(getStops()), state.mapping.lookup(getSteps()));
   state.mapping.map(getResult(), createSlice.getResult());
   return success();
 }
@@ -602,10 +610,11 @@ LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
-      cast<MO::TensorType>(getInput().getType()).getElementType();
+      MO::castFromTensorLike(getInput().getType()).getElementType();
   auto createBroadcast = MOGG::TensorCreateBroadcastOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
-      TypeAttr::get(elementType), state.builder.getBoolAttr(false),
+      TypeAttr::get(elementType),
+      state.builder.getBoolAttr(viewsMutableStorage(getInput())),
       state.mapping.lookup(getInput()));
   state.mapping.map(getResult(), createBroadcast.getResult());
   return success();
@@ -625,11 +634,12 @@ LogicalResult ReshapeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
-      cast<MO::TensorType>(getInput().getType()).getElementType();
+      MO::castFromTensorLike(getInput().getType()).getElementType();
   Value shape = buildShape(getLoc(), signature.getOut(), state);
   auto createReshape = MOGG::TensorCreateReshapeOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
-      TypeAttr::get(elementType), state.builder.getBoolAttr(false),
+      TypeAttr::get(elementType),
+      state.builder.getBoolAttr(viewsMutableStorage(getInput())),
       state.mapping.lookup(getInput()), shape);
   state.mapping.map(getResult(), createReshape.getResult());
   return success();
@@ -665,11 +675,12 @@ LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
-      cast<MO::TensorType>(getInput().getType()).getElementType();
+      MO::castFromTensorLike(getInput().getType()).getElementType();
   auto createTranspose = MOGG::TensorCreateTransposeOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
       getSpec().getPerm(), TypeAttr::get(elementType),
-      state.builder.getBoolAttr(false), state.mapping.lookup(getInput()));
+      state.builder.getBoolAttr(viewsMutableStorage(getInput())),
+      state.mapping.lookup(getInput()));
   state.mapping.map(getResult(), createTranspose.getResult());
   return success();
 }
@@ -680,11 +691,6 @@ LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
 LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
-  auto iterOpaqueKernel = (*this)->getParentOfType<IterOpaqueOp>();
-  if (iterOpaqueKernel.getResults().size() != 1)
-    return emitOpError(
-        "MAPToMOGG: elementwise lowering supports exactly one output");
-
   // The loop's own iteration shape comes from `map.iter.foreach.body`'s
   // `$shape` attribute, not from any I/O tensor's shape (they happen to
   // coincide for a plain, unfused elementwise op like `mo.add`, but not in

@@ -6,8 +6,9 @@
 // index directly. Covers: static and symbolic-dim shapes, a load with no
 // transform at all (must be left untouched), an arbitrary number of
 // independent views/loads in one body, a load mixed with an untransformed
-// one, two loads sharing the exact same hoisted view (dedup), and a chain of
-// two index-transform hops feeding a single load.
+// one, two loads sharing the exact same hoisted view (dedup), a chain of two
+// index-transform hops feeding a single load, and a load whose target is a
+// buffer.
 //
 // The pass itself hoists every load unconditionally, without deduping (see
 // LoopInvariantViewMotion.cpp) -- two loads sharing one chain each get their
@@ -297,6 +298,42 @@ mo.graph @chainedSliceIndex(
     }
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %output : !mo.tensor<[3, 3], f32>
+}
+
+
+// The load target is an in-place kernel's fused buffer (`FuseMutableLoads`
+// retypes the block argument a `mo.mutable.load` used to feed), so the
+// hoisted view reads a `!mo.buffer` and hands back a `!mo.tensor`: the view
+// is only ever loaded from.
+
+// CHECK-LABEL: mo.graph @sliceOfFusedBuffer
+// CHECK:         map.iter.opaque
+// CHECK-NEXT:    inputs ([[BUF8:%[^ :,]+]]: !mo.buffer<[10, 64], f32>,
+// CHECK:           [[STRIDED8:%[^ ]+]] = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> ([[BUF8]],
+// CHECK-SAME:        (!mo.buffer<[10, 64], f32>, {{.*}}) -> !mo.tensor<[3, 32], f32>
+// CHECK-NEXT:      map.iter.foreach.body<[3, 32]>
+// CHECK-NEXT:        index   ([[IDX8:%[^ :,]+]]: !map.index<2>)
+// CHECK-NEXT:        capturing ({{.*}}[[NEWCAP8:%[^ ]+]] = [[STRIDED8]] : !mo.tensor<[3, 32], f32>) {
+// CHECK-NOT:       map.index.slice
+// CHECK-NEXT:      [[VAL8:%[^ ]+]] = map.load [[NEWCAP8]]{{\[}}[[IDX8]]] : !mo.tensor<[3, 32], f32>
+mo.graph @sliceOfFusedBuffer(%buf: !mo.buffer<[10, 64], f32>,
+                             %starts: !mo.tensor<[2], si64>,
+                             %stops: !mo.tensor<[2], si64>,
+                             %steps: !mo.tensor<[2], si64>)
+    -> !mo.tensor<[3, 32], f32> {
+  %output = map.iter.opaque
+      inputs (%buf : !mo.buffer<[10, 64], f32>, %starts : !mo.tensor<[2], si64>, %stops : !mo.tensor<[2], si64>, %steps : !mo.tensor<[2], si64>)
+      outputs (%out : !mo.tensor<[3, 32], f32>) {
+    map.iter.foreach.body<[3, 32]>
+        index (%idx: !map.index<2>)
+        capturing (%buf0 = %buf : !mo.buffer<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 32], f32>) {
+      %idx_ = map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%idx, %starts0, %stops0, %steps0)
+          : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
+      %val = map.load %buf0[%idx_] : !mo.buffer<[10, 64], f32>
+      map.store %out0[%idx] = %val : !mo.tensor<[3, 32], f32>
+    }
+  } {device = #M.device_ref<"cpu", 0>}
+  mo.output %output : !mo.tensor<[3, 32], f32>
 }
 
 }
