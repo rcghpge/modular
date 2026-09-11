@@ -2649,10 +2649,11 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
 
   Value inChain = st.getGuardChain(loweringState.getCurrentExecuteChain());
 
-  // Region operands (plain sync values) + their in/out signature, built in the
-  // exact body-block-arg order so operand i lines up with kernel block arg i.
-  SmallVector<Value> operands;
-  SmallVector<InOutSignatureAttr::InOutSemantics> semantics;
+  // Region operands (plain sync values) + their in/out signature. The chain
+  // leads, as in `mogg.kernel`'s lowering, so block arg i is operand i + 1.
+  SmallVector<Value> operands{inChain};
+  SmallVector<InOutSignatureAttr::InOutSemantics> semantics{
+      InOutSignatureAttr::kIn};
 
   // Inputs: `!mo.tensor`/`!mo.buffer` operands lower to `!mgp.buffer`. The
   // optional input chain (`$chain`) is pure sequencing plumbing -- threaded via
@@ -2760,12 +2761,13 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   regionBody->addArguments(argTypes, argLocs);
 
   // Unpack + cast each async arg to the handle the stub expects, then re-home
-  // the already-outlined `mogg.call.stub`.
+  // the already-outlined `mogg.call.stub`. The leading chain arg has no stub
+  // counterpart, hence the `+ 1`.
   builder.setInsertionPointToStart(regionBody);
   SmallVector<Value> stubArgs;
   for (unsigned i = 0; i < numArgs; ++i) {
-    Value unpacked =
-        MOGG::AsyncUnpackOp::create(builder, loc, regionBody->getArgument(i));
+    Value unpacked = MOGG::AsyncUnpackOp::create(
+        builder, loc, regionBody->getArgument(i + 1));
     // `mogg._rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
     // `!mgp.device_context` / a dim value) with the stub's codegen handle
     // (`!mogg.pointer_` / `!mogg.context` / `!mogg.dim_`). For `!mogg.pointer_`

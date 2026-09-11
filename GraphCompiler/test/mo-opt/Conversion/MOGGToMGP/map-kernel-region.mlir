@@ -9,19 +9,23 @@
 // to an anonymous !mogg.dim_ (the source param-decl name is dropped, here and on
 // the stub signature, so a symbolic dim can't block kernel deduplication).
 //
+// The guarding chain leads the region's operands -- it is what orders the region
+// after the executes that write its inputs -- and has no stub argument of its
+// own, so the stub call starts one block arg later.
+//
 // The region carries the real launch device (from region.setDeviceRef): the
 // device attr on mogg.generic.compiled.region is what sequence fusion reads, so
 // it is asserted below to keep it from silently regressing to the host default.
 
 // A static-shape kernel: buffer inputs, buffer output, context. No dim args.
 // CHECK-LABEL: mgp.model @one_plain
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg.async.unpack(%{{.*}}) : !mgp.buffer
 // CHECK: mogg._rebind %{{.*}} : !mgp.buffer to !mogg.pointer_
 // CHECK: mogg._rebind %{{.*}} to !mogg.context
 // CHECK: mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_map[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.async.ready
-// CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"io.">
+// CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio.">
 // CHECK: mogg.kernel.stub @[[STUB0]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.context)
 // CHECK-SAME: device = #M.device_ref<"cpu", 0>
 // CHECK: mogg._shape.create() {shape = #mosh<ape[2, 2]>{{.*}}} : () -> !mogg.shape
@@ -36,11 +40,11 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // rebound to an anonymous !mogg.dim_ (NOT !mogg.dim_<batch>). The referenced
 // stub's dim arg and its in-body shape.create use the anonymous !mogg.dim_ too.
 // CHECK-LABEL: mgp.model @dyn
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg._rebind %{{.*}} : !kgen.scalar<si64> to !mogg.dim_{{$}}
 // CHECK: mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_map[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.dim_, !mogg.context
 // CHECK: mogg.async.ready
-// CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"io..">
+// CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio..">
 // CHECK: mogg.kernel.stub @[[STUB1]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.dim_, %arg3: !mogg.context)
 // CHECK-SAME: device = #M.device_ref<"cpu", 0>
 // CHECK: mogg._shape.create(%arg2) {shape = #mosh<ape[dyn, 4]>{{.*}}} : (!mogg.dim_) -> !mogg.shape
