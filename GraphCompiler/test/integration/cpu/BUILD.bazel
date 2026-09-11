@@ -65,7 +65,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/transpose.mlir",
     "E2E/transpose_reduce.mlir",
     "E2E/transpose_xfail.mlir",
-    "E2E/view-ops.mlir",
     "MODialect/advanced_indexing.mlir",
     "MODialect/arg-nonzero.mlir",
     "MODialect/batch-matmul-small-output-fusion.mlir",

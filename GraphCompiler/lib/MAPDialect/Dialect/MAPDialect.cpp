@@ -227,8 +227,11 @@ LogicalResult SliceSpecAttr::verify(
 
     if (ShapedType::isDynamic(outDims[i]) || ShapedType::isDynamic(stepVals[i]))
       continue;
+    // MO sizes a slice by ceiling division (see computeRangeSize), so
+    // start=0, stop=5, step=2 yields 3, not an exact multiple of the step.
     if (stepVals[i] <= 0 ||
-        (stopVals[i] - startVals[i]) != outDims[i] * stepVals[i])
+        outDims[i] !=
+            llvm::divideCeilSigned(stopVals[i] - startVals[i], stepVals[i]))
       return emitError() << "dim " << i << ": start/stop/step do not produce "
                          << "out-shape dim " << outDims[i]
                          << ", got start=" << startVals[i]

@@ -372,10 +372,40 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
         ctx, SmallVector<int64_t>(rank, ShapedType::kDynamic));
   };
 
-  auto spec = MAP::SliceSpecAttr::get(
-      ctx, inShape, outShape, boundsOrDynamic(op.getStart()).asArrayRef(),
-      boundsOrDynamic(op.getStop()).asArrayRef(),
-      boundsOrDynamic(op.getStep()).asArrayRef());
+  SmallVector<int64_t> inDims = inShape.getIntDims();
+  SmallVector<int64_t> starts(boundsOrDynamic(op.getStart()).asArrayRef());
+  SmallVector<int64_t> stops(boundsOrDynamic(op.getStop()).asArrayRef());
+  SmallVector<int64_t> steps(boundsOrDynamic(op.getStep()).asArrayRef());
+
+  // The spec stores resolved bounds, but MO accepts Python-style negative
+  // indices and out-of-range values and normalizes them in its own shape
+  // function. Do the same here, for the static forward-step case the spec
+  // can represent.
+  for (int64_t i = 0; i < rank; ++i) {
+    if (ShapedType::isDynamic(inDims[i]) || ShapedType::isDynamic(steps[i]) ||
+        steps[i] <= 0)
+      continue;
+    auto normalize = [dim = inDims[i]](int64_t v) {
+      if (ShapedType::isDynamic(v))
+        return v;
+      return std::clamp<int64_t>(v < 0 ? v + dim : v, 0, dim);
+    };
+    starts[i] = normalize(starts[i]);
+    stops[i] = normalize(stops[i]);
+  }
+
+  // Verify before constructing: the plain `get` asserts on a rejected spec,
+  // which turns an unsupported slice into a crash instead of a diagnostic.
+  auto emitSliceError = [&] { return op->emitOpError("MOToMAP: "); };
+  if (failed(MAP::SliceSpecAttr::verify(
+          emitSliceError, MAP::ViewSignatureAttr::get(ctx, inShape, outShape),
+          mlir::DenseI64ArrayAttr::get(ctx, starts),
+          mlir::DenseI64ArrayAttr::get(ctx, stops),
+          mlir::DenseI64ArrayAttr::get(ctx, steps))))
+    return failure();
+
+  auto spec =
+      MAP::SliceSpecAttr::get(ctx, inShape, outShape, starts, stops, steps);
 
   auto foreachOp = MAP::IterForeachOp::create(
       builder, loc,
