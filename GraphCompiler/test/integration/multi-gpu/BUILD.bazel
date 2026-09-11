@@ -39,16 +39,7 @@ lit_tests(
 # Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
 # sweeping this directory with the env var forced. Removing an entry should
 # say which fix covers it, not just "now passes".
-#
-# Both entries below are pre-existing exclusions carried over unchanged from
-# the mo.parallel PR -- this PR introduces no new failure, it only drops the
-# two bundled-allreduce entries the collective fixes now cover. They each fail
-# on a separate gap unrelated to the collective path, tracked on their own.
-_ADV_FUSION_EXCLUDED_TESTS = [
-    # crash: MAP SliceSpecAttr verifyInvariants assertion (a slice/view
-    # lowering gap in the new system).
-    "distributed-matmul.mlir",
-]
+_ADV_FUSION_EXCLUDED_TESTS = []
 
 # ============================================================================
 # New tests: adv-fusion regression target (GEX-4140).
