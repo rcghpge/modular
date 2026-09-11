@@ -225,9 +225,9 @@ getStringAttrFromStaticStringDecorator(mlir::TypedAttr operand) {
          "Expected a call to StringSpan.__init__");
   auto callee =
       KGEN::sugarDynCast<KGEN::SymbolConstantAttr>(initApply.getOperand(0));
-  assert(callee && callee.getParamValues().size() == 4 &&
+  assert(callee && callee.getParamValues().size() == 3 &&
          "Expected a symbol reference to StringSpan.__init__");
-  return mlir::cast<mlir::StringAttr>(callee.getParamValues()[3]);
+  return mlir::cast<mlir::StringAttr>(callee.getParamValues()[2]);
 }
 
 static std::optional<llvm::SmallVector<mlir::TypedAttr>>
