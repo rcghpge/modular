@@ -612,6 +612,7 @@ modular_cc_library(
         ":CommonDriver",
         ":DeviceDriver",
         ":GraphCompilerPublic.headers",
+        ":MAPDialect",
         ":MEFModel",
         ":MGPPrimitives",
         ":MOAnalysis",

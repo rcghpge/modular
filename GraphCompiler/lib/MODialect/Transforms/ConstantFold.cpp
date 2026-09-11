@@ -8,6 +8,7 @@
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
+#include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MEFModel/MEFModel.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GraphCompiler/MODialect/MODialect.h"

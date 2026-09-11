@@ -56,7 +56,6 @@ _COMMON_DEPS = [
 # list is the union across arches. Removing an entry should say which fix
 # covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
-    "E2E/constant-fold-ops.mlir",
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
     "E2E/kernels-with-variadics.mlir",
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
@@ -139,8 +138,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/top-k.mlir",
     "MODialect/while.mlir",
     "OptimizationPatterns/conv_pack_filter.mlir",
-    "OptimizationPatterns/matmul_transpb_gpu.mlir",
-    "OptimizationPatterns/multi-head-attention-cpu-masked-no-add.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask-div-normalization.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask.mlir",
 ]

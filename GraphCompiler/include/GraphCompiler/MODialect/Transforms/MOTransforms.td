@@ -186,8 +186,10 @@ def ConstantFold : Pass<"mo-constant-fold", "ModuleOp"> {
     to avoid overhead of doing lowering and model setup multiple times.
   }];
   // All these dialects are required to run MOToMOGG from within this pass.
+  // MAP is reached through the same nested pipeline under advanced fusion.
   let dependentDialects = [
     "M::MDialect",
+    "M::MAP::MAPDialect",
     "M::MOGG::MOGGDialect",
     "M::MGP::MGPDialect",
     "M::GRT::GRTDialect",
