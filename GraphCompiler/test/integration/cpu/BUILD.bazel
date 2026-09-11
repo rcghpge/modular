@@ -59,13 +59,13 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
     "E2E/kernels-with-variadics.mlir",
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
-    # A dynamic-perm transpose fused into a dim-reducing consumer leaves the
-    # reduced axis as a runtime-only intermediate dim of the fused view, which
-    # `IterPrologueOp`/`buildShape` can't bind to a kernel-boundary dim handle
-    # (a general fused-shape-changing-view gap, not the transpose lowering). The
-    # sole dynamic-perm producer, the eager interpreter, emits one op per graph
-    # and never fuses transpose into another op, so this synthetic case is
-    # unreachable in practice.
+    # The null-dim crash here is fixed (kernel dynamic-dim collection now walks
+    # the whole body, so the transpose's reduced axis gets a dim handle), but a
+    # dynamically-strided transpose view read through the fusion prologue into a
+    # reduce still yields wrong values -- a separate view-fusion bug, not the
+    # transpose lowering (the static-stride path is fine). Unreachable from any
+    # front end: the sole dynamic-perm producer, the eager interpreter, emits
+    # one op per graph and never fuses transpose into another op.
     "E2E/transpose_reduce.mlir",
     "MODialect/arg-nonzero.mlir",
     "MODialect/batch-matmul.mlir",

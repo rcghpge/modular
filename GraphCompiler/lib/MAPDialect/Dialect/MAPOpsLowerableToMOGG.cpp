@@ -22,6 +22,7 @@
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
+#include "mlir/IR/AttrTypeSubElements.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
@@ -33,16 +34,47 @@ namespace {
 // A dimension is dynamic unless it is a concrete `KGEN::SIMDAttr`.
 bool isDynamicDim(Attribute dim) { return !isa<KGEN::SIMDAttr>(dim); }
 
-// The dynamic dims of `types`, deduped in first-seen order.
-void collectDynamicDims(TypeRange types, MAPToMOGGState &state) {
-  for (Type ty : types) {
-    MO::TensorType tensorLike = MO::dynCastFromTensorLike(ty);
-    if (!tensorLike)
-      continue;
-    for (Attribute dim : tensorLike.getShape().getValues())
+// Registers a walk that collects every dynamic dim of any `MOSH::ShapeAttr`
+// nested in what it is handed -- a tensor type's shape, a view op's spec, a
+// `map.iter.foreach.body`'s `$shape` -- deduping into `state.dimArgs`. One
+// generic `ShapeAttr` walk finds them wherever they nest, so there is no need
+// to special-case tensor types versus attributes.
+mlir::AttrTypeWalker dynamicDimWalker(MAPToMOGGState &state) {
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&state](MOSH::ShapeAttr shape) {
+    for (Attribute dim : shape.getValues())
       if (isDynamicDim(dim))
         state.dimArgs.insert({dim, BlockArgument()});
-  }
+  });
+  return walker;
+}
+
+// The dynamic dims of `types`, deduped in first-seen order.
+void collectDynamicDims(TypeRange types, MAPToMOGGState &state) {
+  mlir::AttrTypeWalker walker = dynamicDimWalker(state);
+  for (Type ty : types)
+    walker.walk(ty);
+}
+
+// Every dynamic dim `root` and its nested ops reference -- from any
+// `MOSH::ShapeAttr` in an op's attributes (a view op's spec, a
+// `map.iter.foreach.body`'s `$shape`) or its operand/result types (a tensor
+// type's shape). Recurses over the whole op tree, so one call on a kernel's
+// top op collects every dim it references, wherever it lives.
+void collectDynamicDims(Operation *root, MAPToMOGGState &state) {
+  mlir::AttrTypeWalker walker = dynamicDimWalker(state);
+  root->walk([&](Operation *op) {
+    // `AttrTypeWalker` recurses on its own: one walk of the attribute
+    // dictionary reaches every nested `ShapeAttr` (view specs, a foreach
+    // body's `$shape`). Tensor shapes live in the operand/result TYPES rather
+    // than the attribute dictionary, so those are walked too -- a plain kernel
+    // with no view specs has its dims only there.
+    walker.walk(op->getAttrDictionary());
+    for (Type ty : op->getOperandTypes())
+      walker.walk(ty);
+    for (Type ty : op->getResultTypes())
+      walker.walk(ty);
+  });
 }
 
 // Materializes a `!mogg.shape` for `shapeAttr` via `mogg._shape.create`.
@@ -791,16 +823,15 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // resolve the real execution device instead of the host fallback.
   kernel.setDeviceRef(state.device);
 
-  // Unique dynamic dims across this kernel's I/O tensor (or buffer) types,
-  // plus any nested `map.iter.foreach.body`'s own `$shape` (which can differ
-  // from any I/O tensor's shape for a broadcast).
-  collectDynamicDims(inputs.getTypes(), state);
-  collectDynamicDims(resultTypes, state);
-  getBody().walk([&](IterForeachBodyOp nested) {
-    for (Attribute dim : nested.getShape().getValues())
-      if (isDynamicDim(dim))
-        state.dimArgs.insert({dim, BlockArgument()});
-  });
+  // Unique dynamic dims the kernel references anywhere -- not just its I/O
+  // signature. A dim can live only on an intermediate value or a view's spec:
+  // e.g. the reduced axis of a dynamic-perm transpose fused into a reduce is a
+  // fresh runtime symbol on the transposed view, absent from both the kernel's
+  // inputs and its result, yet `buildShape` still needs a `!mogg.dim_` handle
+  // for it. `collectDynamicDims` walks for any `MOSH::ShapeAttr`, so the
+  // opaque's own I/O plus every op in the body covers all of them.
+  collectDynamicDims(getOperation(), state);
+  getBody().walk([&](Operation *op) { collectDynamicDims(op, state); });
 
   // Body block args: one per non-chain input, then per destination-passing
   // output, then the dims, then the context. A tensor-like entry gets a
