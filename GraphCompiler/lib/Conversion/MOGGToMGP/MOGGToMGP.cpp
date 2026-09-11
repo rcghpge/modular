@@ -495,8 +495,12 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
-  for (Value operand : output.getOperands()) {
+  for (auto [idx, operand] : llvm::enumerate(output.getOperands())) {
     Value loweredValue = loweringState.lookupExecuteLoweredValue(operand);
+    if (!loweredValue)
+      return output.emitOpError("operand #")
+             << idx << " of type " << operand.getType()
+             << " was never lowered into the execute block";
 
     // In emit-mojo path, mo.opaque types need to be converted to mgp.opaque
     // for graph outputs. The model's result types expect mgp.opaque.

@@ -2861,6 +2861,13 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   }
 
   st.createOutputs(region->getResult(0), storage);
+
+  // The region's chain result is the kernel's out chain too. Consumers look it
+  // up by the kernel's own result, so without this an `mo.output` forwarding
+  // that chain finds nothing lowered.
+  if (Value outChain = getOutputChain())
+    loweringState.emplaceExecuteLoweredValue(outChain, region->getResult(0));
+
   return region;
 }
 

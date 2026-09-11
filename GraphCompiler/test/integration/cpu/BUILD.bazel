@@ -81,7 +81,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/exp-mogg-opaque-type-parameterization.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/in-place-and-cf.mlir",
-    "MODialect/in-place-custom-shape-func.mlir",
     "MODialect/in-place-custom.mlir",
     "MODialect/in-place-epilogue-fusion.mlir",
     "MODialect/in-place-parameterized.mlir",
