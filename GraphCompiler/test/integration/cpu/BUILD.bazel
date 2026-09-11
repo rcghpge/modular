@@ -71,10 +71,8 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/conv-epilogue-fusion.mlir",
     "MODialect/conv.mlir",
     "MODialect/conv_transpose.mlir",
-    "MODialect/custom-chains-opaques.mlir",
     "MODialect/custom-reduce-min-max.mlir",
     "MODialect/dynamic-op-coverage.mlir",
-    "MODialect/exp-mogg-opaque-type-parameterization.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/in-place-and-cf.mlir",
     "MODialect/in-place-custom.mlir",
@@ -85,7 +83,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/mogg-ints.mlir",  # compile-time: times out (>800s) on Graviton
     "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
     "MODialect/mogg-kernel-api-e2e-fusion.mlir",
-    "MODialect/mogg-kernel-api-e2e-opaque.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-constant-fused.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-constant.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-dual-lane.mlir",

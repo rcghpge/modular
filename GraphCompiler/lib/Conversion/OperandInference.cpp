@@ -90,7 +90,8 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
                                  const KernelDeclFunctionAdaptor &adaptor,
                                  StringRef opName,
                                  bool hasSameVariadicOperandSize,
-                                 bool hasExtraOutputShapeArgument) {
+                                 bool hasExtraOutputShapeArgument,
+                                 bool resultLeavesByValue) {
   static const char *argumentKind = matchOperands ? "input" : "output";
 
   auto skipContextType =
@@ -238,8 +239,10 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
   // A by-ref result with an unrecognized underlying type
   // (KernelDeclUnsupported) is treated as absent, matching the old
   // MojoKernelFunctionAdaptor behavior which skipped null argTypeName entries.
+  // A result returned rather than written through a destination has no entry
+  // in `values`, so there is nothing to match it against.
   bool hasValidOutputResult =
-      adaptor.outputResult.has_value() &&
+      !resultLeavesByValue && adaptor.outputResult.has_value() &&
       !std::holds_alternative<KernelDeclUnsupportedAdaptor>(
           adaptor.outputResult->underlyingType);
 
@@ -285,16 +288,17 @@ ErrorOr<KernelDeclOperandMapping>
 mapToKernelImplementation(ValueRange operands, ValueRange results,
                           const KernelDeclFunctionAdaptor &adaptor,
                           StringRef opName, bool hasSameVariadicOperandSize,
-                          bool hasExtraOutputShapeArgument) {
+                          bool hasExtraOutputShapeArgument,
+                          bool resultLeavesByValue) {
   auto matchedInputsOrError = matchOperandsOrResultsKernelDecl<true>(
       operands, adaptor, opName, hasSameVariadicOperandSize,
-      hasExtraOutputShapeArgument);
+      hasExtraOutputShapeArgument, /*resultLeavesByValue=*/false);
   if (matchedInputsOrError.isError())
     return matchedInputsOrError.takeError();
 
   auto matchedOutputsOrError = matchOperandsOrResultsKernelDecl<false>(
       results, adaptor, opName, hasSameVariadicOperandSize,
-      hasExtraOutputShapeArgument);
+      hasExtraOutputShapeArgument, resultLeavesByValue);
   if (matchedOutputsOrError.isError())
     return matchedOutputsOrError.takeError();
 
@@ -308,7 +312,7 @@ mapMOOpToKernelImplementation(Operation *op,
   return mapToKernelImplementation(
       op->getOperands(), op->getResults(), adaptor, moOperationName(op),
       isa<MO::SameVariadicOperandSizeInterface>(op),
-      opHasExtraOutputShapeArgument(op));
+      opHasExtraOutputShapeArgument(op), /*resultLeavesByValue=*/false);
 }
 
 } // namespace M::MOGG

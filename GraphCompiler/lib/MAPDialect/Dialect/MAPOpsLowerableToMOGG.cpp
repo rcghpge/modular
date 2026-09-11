@@ -21,6 +21,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Support/AssertStream.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
@@ -543,9 +544,13 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value in : getInputs())
     callInputs.push_back(state.mapping.lookup(in));
 
+  // `$outputs` is destination-passing on both sides, so it maps across
+  // directly; a by-value opaque is already this op's own result.
   SmallVector<Value> callOutputs;
   for (Value callOut : getOutputs())
     callOutputs.push_back(state.mapping.lookup(callOut));
+  Value opaqueOut = getOpaqueResult();
+  Type opaqueResultTy = opaqueOut ? opaqueOut.getType() : Type();
 
   // Bake whether an output is a fused epilogue tensor, and an input a fused
   // prologue tensor, into the op now, so its own emit never has to inspect an
@@ -570,11 +575,15 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
        fn->inputArguments.back().isVariadicContextType()))
     contexts = state.contextArgs;
 
-  MOGG::CallOpaqueOp::create(
-      state.builder, getLoc(), getCalleeAttr(), callInputs, callOutputs,
-      contexts, getParams(), state.builder.getBoolAttr(hasEpilogueFusion),
+  auto call = MOGG::CallOpaqueOp::create(
+      state.builder, getLoc(),
+      opaqueResultTy ? TypeRange{opaqueResultTy} : TypeRange{}, getCalleeAttr(),
+      callInputs, callOutputs, contexts, getParams(),
+      state.builder.getBoolAttr(hasEpilogueFusion),
       state.builder.getBoolAttr(hasPrologueFusion),
       state.builder.getBoolAttr(getHasSameVariadicOperandSize()));
+  if (opaqueOut)
+    state.mapping.map(opaqueOut, call.getOpaqueResult());
   return success();
 }
 
@@ -792,20 +801,29 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
         state.dimArgs.insert({dim, BlockArgument()});
   });
 
-  // Body block args: one !mogg.pointer_ per non-chain input, then per
-  // non-chain output, then one !mogg.dim_ per unique dynamic dim, then the
-  // context.
+  // Body block args: one per non-chain input, then per destination-passing
+  // output, then the dims, then the context. A tensor-like entry gets a
+  // pointer to rebuild from; an opaque input crosses as itself (no shape to
+  // rebuild), and an opaque result gets none at all -- it returns by value.
   Block *body = builder.createBlock(&kernel.getBody());
-  SmallVector<BlockArgument> inputPtrs, outputPtrs;
-  for (size_t i = 0, e = inputs.size(); i < e; ++i)
-    inputPtrs.push_back(body->addArgument(MOGG::PointerType::get(ctx), loc));
-  // The trailing output chain is threaded through the kernel's own chain result
-  // (mapped below), never a pointer -- matching `mogg._kernel`'s verifier,
-  // which counts pointer block args over the non-chain outputs only.
+  auto addBodyArg = [&](Type ty) {
+    return body->addArgument(
+        isa<MO::OpaqueType>(ty) ? ty : Type(MOGG::PointerType::get(ctx)), loc);
+  };
+  SmallVector<BlockArgument> inputArgs;
+  // Indexed by result number; null where a result takes no block argument (a
+  // by-value opaque, or the trailing chain).
+  SmallVector<BlockArgument> outputArgs(resultTypes.size(), BlockArgument());
+  for (Value in : inputs)
+    inputArgs.push_back(addBodyArg(in.getType()));
+  // Neither the trailing chain nor a by-value opaque gets a block arg, so both
+  // are skipped -- matching `mogg._kernel`'s verifier.
   for (size_t i = 0, e = resultTypes.size(); i < e; ++i) {
     if (hasOutputChain && i + 1 == e)
       break;
-    outputPtrs.push_back(body->addArgument(MOGG::PointerType::get(ctx), loc));
+    if (isa<MO::OpaqueType>(resultTypes[i]))
+      continue;
+    outputArgs[i] = addBodyArg(resultTypes[i]);
   }
   // One `!mogg.dim_` per unique dynamic dim, each carrying that dim's
   // parameter name (e.g. `!mogg.dim_<batch>`); shapes never hold dim
@@ -864,26 +882,46 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // outputs.
   Block::BlockArgListType inputBlockArgs = getInputBlockArgs();
   for (auto [i, in] : llvm::enumerate(inputs)) {
+    // An opaque body arg already *is* the value the call wants; there is no
+    // pointer to reconstruct from.
+    if (isa<MO::OpaqueType>(in.getType())) {
+      state.mapping.map(inputBlockArgs[i], inputArgs[i]);
+      continue;
+    }
     // A `!mo.buffer` input (e.g. a collective's signal buffers) is mutable
     // memory the kernel writes through, so reconstruct it as a `!mogg.buffer_`
     // (mut) rather than a `!mogg.tensor_`; the kernel decl expects a mutable
     // operand there.
     bool isMut = isa<MO::BufferType>(in.getType());
     state.mapping.map(inputBlockArgs[i],
-                      buildTensor(loc, inputPtrs[i], in.getType(),
+                      buildTensor(loc, inputArgs[i], in.getType(),
                                   MO::IOKind::Input, isMut, state));
   }
 
+  // Every output block arg is destination-passing: a by-value opaque has none.
   Block &opaqueBody = getBody().front();
-  Block::BlockArgListType outputBlockArgs = getOutputBlockArgs();
-  for (auto [i, outputBlockArg] : llvm::enumerate(outputBlockArgs)) {
-    Value tensor = buildTensor(loc, outputPtrs[i], resultTypes[i],
-                               MO::IOKind::Output, /*isMut=*/true, state);
-    state.mapping.map(outputBlockArg, tensor);
-  }
+  for (auto [i, outputBlockArg] : llvm::enumerate(getOutputBlockArgs()))
+    state.mapping.map(outputBlockArg,
+                      buildTensor(loc, outputArgs[i], resultTypes[i],
+                                  MO::IOKind::Output, /*isMut=*/true, state));
 
-  if (failed(state.lowerRegionBody(opaqueBody)))
+  // `map.yield` has no MOGG op of its own: it becomes the `mogg.output` that
+  // forwards the by-value result, once the call producing it is lowered.
+  auto yieldOp = dyn_cast<YieldOp>(opaqueBody.back());
+  if (failed(state.lowerRegionBody(
+          opaqueBody, [&](Operation *op) { return op != yieldOp; })))
     return failure();
+
+  // Forward only a genuine by-value result. A `map.yield` may also restate a
+  // DPS output block arg, which is redundant and must not become an output.
+  if (getOpaqueResult() && yieldOp) {
+    Block::BlockArgListType outputArgs = getOutputBlockArgs();
+    for (Value operand : yieldOp.getOperands())
+      if (!llvm::is_contained(outputArgs, operand)) {
+        MOGG::OutputOp::create(builder, loc, state.mapping.lookup(operand));
+        break;
+      }
+  }
 
   replaceAllUsesWith(kernel.getResults());
   erase();

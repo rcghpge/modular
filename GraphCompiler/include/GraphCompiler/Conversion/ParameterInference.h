@@ -45,6 +45,16 @@ struct InferredParameters {
   llvm::SmallVector<MojoValue> functionParameters;
 };
 
+/// Appends the kernel parameters (`P0`, `P1`, ...) implied by `moOp`'s
+/// `!mo.opaque` operand and result types, resolved through the kernel's
+/// `mogg.value_params` / `mogg.value_result_params` annotations. A kernel like
+/// `MakeSimdPair.execute[P0, P1]() -> SIMDPair[P0, P1]` names them nowhere
+/// else. Used by both lowering paths.
+void inferOpaqueParameters(
+    llvm::SmallVectorImpl<mlir::NamedAttribute> &forwardedParameters,
+    mlir::Operation *moOp, const KernelDeclFunctionAdaptor &function,
+    mlir::ArrayAttr inputParams);
+
 /// Fill and return the list of inferred parameters for a struct kernel
 /// function (execute, shape, elementwise, or update_view). Uses the stored
 /// struct-level and fn-level ParamDeclAttrs from the KernelDeclAdaptor.

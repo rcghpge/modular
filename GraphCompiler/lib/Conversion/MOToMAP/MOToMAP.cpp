@@ -154,9 +154,17 @@ LogicalResult lowerToOpaque(Operation *op,
   for (Value operand : nonChainOperands)
     ins.push_back(body->addArgument(operand.getType(), loc));
   SmallVector<BlockArgument> outs;
+  Type opaqueResultType;
   for (Type resultType : resultTypes) {
     if (isa<MO::ChainType>(resultType))
       continue;
+    // A kernel allocates its `!mo.opaque` result internally and returns it, so
+    // there is no destination to fill and no block argument for it: the body's
+    // `map.yield` carries it out instead.
+    if (isa<MO::OpaqueType>(resultType)) {
+      opaqueResultType = resultType;
+      continue;
+    }
     outs.push_back(body->addArgument(resultType, loc));
   }
 
@@ -185,12 +193,27 @@ LogicalResult lowerToOpaque(Operation *op,
     callOutputs.push_back(buildStoreEpilogue(builder, loc, out).getResult());
   }
 
+  // A kernel parameterized only through an opaque operand or result (e.g.
+  // `MakeSimdPair.execute[P0, P1]() -> SIMDPair[P0, P1]`) names those
+  // parameters nowhere in the op's own dictionary, so resolve them from the
+  // opaque types the way MO->MOGG does.
+  DictionaryAttr params = inferParameters(op, builder);
+  if (adaptor.executeFunction && adaptor.executeFunction->attr) {
+    // `inferOpaqueParameters` appends to `withOpaque`, which starts as a copy
+    // of what is already inferred.
+    SmallVector<NamedAttribute> withOpaque(params.begin(), params.end());
+    MOGG::inferOpaqueParameters(withOpaque, op, *adaptor.executeFunction,
+                                adaptor.executeFunction->attr.getParams());
+    params = builder.getDictionaryAttr(withOpaque);
+  }
+
   builder.setInsertionPointToEnd(body);
   auto callOp = MAP::CallOpaqueOp::create(
       builder, loc,
+      opaqueResultType ? TypeRange{opaqueResultType} : TypeRange{},
       FlatSymbolRefAttr::get(op->getContext(),
                              adaptor.fullyResolvedName.strref()),
-      adaptor.registeredOpName, inferParameters(op, builder),
+      adaptor.registeredOpName, params,
       /*inputs=*/callInputs,
       /*outputs=*/callOutputs);
   // Carry the source op's same-variadic-operand-size property forward: it is
@@ -199,9 +222,12 @@ LogicalResult lowerToOpaque(Operation *op,
   callOp.setHasSameVariadicOperandSize(
       isa<MO::SameVariadicOperandSizeInterface>(op));
 
-  // Every output here is DPS (the output block args `outs` themselves are the
-  // op's results); no map.yield is needed since map.call.opaque never
-  // produces its own return value.
+  // A DPS output needs no terminator -- the output block args themselves are
+  // the op's results. A by-value opaque does: `map.yield` is what connects the
+  // call's return value to the enclosing op's result.
+  if (opaqueResultType)
+    MAP::YieldOp::create(builder, loc, callOp.getOpaqueResult());
+
   op->replaceAllUsesWith(opaque.getResults());
   op->erase();
   return success();

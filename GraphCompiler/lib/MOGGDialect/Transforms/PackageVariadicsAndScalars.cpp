@@ -107,10 +107,11 @@ FailureOr<PackedCall> packAgainstSignature(Operation *call,
                                            const KernelDeclFunctionAdaptor &fn,
                                            StringRef callee, ValueRange inputs,
                                            ValueRange outputs,
-                                           bool hasSameVariadicOperandSize) {
+                                           bool hasSameVariadicOperandSize,
+                                           bool resultLeavesByValue) {
   ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
       inputs, outputs, fn, callee, hasSameVariadicOperandSize,
-      /*hasExtraOutputShapeArgument=*/false);
+      /*hasExtraOutputShapeArgument=*/false, resultLeavesByValue);
   if (mapping.isError())
     return call->emitOpError("PackageVariadicsAndScalars: ")
            << mapping.getError();
@@ -135,9 +136,12 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   if (!adaptor.executeFunction)
     return success();
 
+  // A kernel returning an `!mo.opaque` returns it by value, so the call carries
+  // no output operand standing in for it.
   FailureOr<PackedCall> packed = packAgainstSignature(
       call, *adaptor.executeFunction, call.getCallee(), call.getInputs(),
-      call.getOutputs(), call.getHasSameVariadicOperandSize());
+      call.getOutputs(), call.getHasSameVariadicOperandSize(),
+      /*resultLeavesByValue=*/call.getOpaqueResult() != nullptr);
   if (failed(packed))
     return failure();
   bool changed = packed->changed;
@@ -167,11 +171,14 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   // Emit reads the fusion flags rather than the operand's producer, which
   // packing has just replaced. `hasSameVariadicOperandSize` is not carried
   // over: this pass is what consumes it.
-  CallOpaqueOp::create(builder, call.getLoc(), call.getCalleeAttr(),
-                       packed->inputs, packed->outputs, contexts,
-                       call.getKernelParamAttr(),
-                       builder.getBoolAttr(call.getHasEpilogueFusion()),
-                       builder.getBoolAttr(call.getHasPrologueFusion()));
+  auto repacked = CallOpaqueOp::create(
+      builder, call.getLoc(), call.getResultTypes(), call.getCalleeAttr(),
+      packed->inputs, packed->outputs, contexts, call.getKernelParamAttr(),
+      builder.getBoolAttr(call.getHasEpilogueFusion()),
+      builder.getBoolAttr(call.getHasPrologueFusion()));
+  // A by-value opaque result carries the kernel's return out to the enclosing
+  // `mogg.output`, so the repacked call inherits its uses.
+  call.replaceAllUsesWith(repacked.getResults());
   call.erase();
   return success();
 }
@@ -187,13 +194,12 @@ LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
                "PackageVariadicsAndScalars: no shape_func.decl named '")
            << call.getCallee() << "'";
 
-  // No output operand to map.
-  KernelDeclFunctionAdaptor fn(decl);
-  fn.outputResult = std::nullopt;
-
+  // A shape function returns its shape by value, so there is no output operand
+  // to map.
   FailureOr<PackedCall> packed = packAgainstSignature(
-      call, fn, call.getCallee(), call.getOperands(), /*outputs=*/{},
-      /*hasSameVariadicOperandSize=*/false);
+      call, KernelDeclFunctionAdaptor(decl), call.getCallee(),
+      call.getOperands(), /*outputs=*/{},
+      /*hasSameVariadicOperandSize=*/false, /*resultLeavesByValue=*/true);
   if (failed(packed))
     return failure();
   if (!packed->changed)

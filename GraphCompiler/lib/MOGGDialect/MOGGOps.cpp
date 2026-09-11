@@ -2470,11 +2470,14 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
 
   // Body entry-block arguments, as labeled groups. The in-memory order is
   // [inputs, outputs, dims, context]; the display shows context before dims.
-  // A trailing output chain (if any), like the input chain, never gets a
-  // body block argument -- only the preceding tensor outputs do.
+  // Only destination-passing outputs get a body block argument: not the
+  // trailing chain, and not a result that leaves by value.
   auto args = getBody().front().getArguments();
   size_t numInputs = getInputs().size();
-  size_t numOutputs = getOutputs().size() - (getOutputChain() ? 1 : 0);
+  size_t numOutputs = 0;
+  for (Value output : getOutputs())
+    if (MO::dynCastFromTensorLike(output.getType()))
+      ++numOutputs;
   size_t numTensors = std::min(numInputs + numOutputs, args.size());
 
   auto inputArgs = args.take_front(std::min(numInputs, args.size()));
@@ -2524,31 +2527,46 @@ LogicalResult KernelRegionOp::verify() {
     if (isa<MO::ChainType>(output.getType()) && i + 1 != outputs.size())
       return emitOpError() << "only the last output may be a chain";
 
-  // Inputs are `!mo.tensor` operands and outputs are `!mo.tensor` results; the
-  // body block arguments are the codegen handles: one !mogg.pointer_ per input
-  // then output tensor, then zero or more !mogg.dim_, then exactly one trailing
-  // !mogg.context.
-  // Only tensor-like results get an output pointer.
-  size_t numOutputTensors = 0;
+  // A by-value opaque result is allocated inside the kernel body and returned;
+  // `lower` maps a single one onto the region's results.
+  if (llvm::count_if(outputs, [](Value output) {
+        return isa<MO::OpaqueType>(output.getType());
+      }) > 1)
+    return emitOpError("returns more than one opaque result");
+
+  // The body block arguments are the codegen handles: one per input then
+  // destination-passing output, then the !mogg.dim_s, then one !mogg.context.
+  // A tensor-like entry gets a !mogg.pointer_; an opaque input carries its own
+  // type across. Results that leave by value get none -- a shape function's
+  // `!mogg.shape_func_result`, or an `!mo.opaque`.
+  SmallVector<Type> boundaryTypes(getInputs().getTypes());
   for (Value output : outputs)
     if (MO::dynCastFromTensorLike(output.getType()))
-      ++numOutputTensors;
-  const size_t numTensors = getInputs().size() + numOutputTensors;
+      boundaryTypes.push_back(output.getType());
+  const size_t numTensors = boundaryTypes.size();
   auto args = getBody().front().getArguments();
 
   if (args.size() < numTensors + 1)
-    return emitOpError()
-           << "expected at least " << (numTensors + 1)
-           << " body block arguments (one !mogg.pointer_ per input "
-              "and output tensor plus a trailing !mogg.context), "
-              "got "
-           << args.size();
+    return emitOpError() << "expected at least " << (numTensors + 1)
+                         << " body block arguments (one per input "
+                            "and output plus a trailing !mogg.context), "
+                            "got "
+                         << args.size();
 
-  for (size_t i = 0; i < numTensors; ++i)
+  for (size_t i = 0; i < numTensors; ++i) {
+    if (isa<MO::OpaqueType>(boundaryTypes[i])) {
+      if (args[i].getType() != boundaryTypes[i])
+        return emitOpError()
+               << "body block argument #" << i << " must be "
+               << boundaryTypes[i] << " to match its opaque input/output, got "
+               << args[i].getType();
+      continue;
+    }
     if (!isa<PointerType>(args[i].getType()))
       return emitOpError() << "body block argument #" << i
                            << " must be a !mogg.pointer_ (one per input then "
                               "output tensor)";
+  }
 
   size_t i = numTensors;
   while (i < args.size() && isa<DimType>(args[i].getType()))
@@ -2730,11 +2748,21 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     }
   }
 
-  // Result 0 is the chain, then one dim per declared parameter.
+  // Result 0 is the chain, then one dim per declared parameter, then a
+  // by-value `!mo.opaque` if there is one. Allocated inside the kernel, so it
+  // leaves as a region result rather than an output buffer -- as legacy does.
   ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
   Type dimType = MOSH::ShapeAttr::getDimType(ctx);
   SmallVector<Type> regionResultTypes{MEF::ChainType::get(ctx)};
   regionResultTypes.append(decls.size(), dimType);
+
+  Value opaqueKernelResult;
+  for (Value output : getOutputs())
+    if (isa<MO::OpaqueType>(output.getType()))
+      opaqueKernelResult = output;
+  const unsigned opaqueResultIdx = regionResultTypes.size();
+  if (opaqueKernelResult)
+    regionResultTypes.push_back(opaqueKernelResult.getType());
 
   OpBuilder &builder = st.builder;
   auto region = MOGG::GenericCompiledRegionOp::create(
@@ -2796,6 +2824,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     mapping.map(kernelBody.getArgument(i), stubArgs[i]);
   SmallVector<Attribute> blobs;
   Value shapeResult;
+  Value opaqueResult;
   for (Operation &calleeOp : kernelBody) {
     // A `mogg.buffer.constant` carries its attribute as written, because the
     // MEF alignment is only known here. Swap it for the real
@@ -2820,9 +2849,10 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     Operation *clone = builder.clone(calleeOp, mapping);
     // By type, so no unrelated result can stand in.
     for (Value result : clone->getResults()) {
-      if (!isa<MOGG::ShapeFuncResultType>(result.getType()))
-        continue;
-      shapeResult = result;
+      if (isa<MOGG::ShapeFuncResultType>(result.getType()))
+        shapeResult = result;
+      else if (isa<MO::OpaqueType>(result.getType()))
+        opaqueResult = result;
     }
   }
   // Only the region carries the bytes out to the runtime; the stub reads them
@@ -2844,6 +2874,15 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
           MOGG::AsyncPackOp::create(builder, loc, item.getResult()));
     }
   }
+  if (opaqueKernelResult) {
+    if (!opaqueResult) {
+      emitOpError("MOGGToMGP: mogg._kernel returns an opaque but its body "
+                  "produces none");
+      return nullptr;
+    }
+    regionOutputs.push_back(
+        MOGG::AsyncPackOp::create(builder, loc, opaqueResult));
+  }
   MOGG::OutputOp::create(builder, loc, regionOutputs);
 
   // Register the outputs against the graph, guarded by the region's out chain.
@@ -2861,6 +2900,12 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
       return nullptr;
     }
   }
+
+  // No buffer storage for a by-value opaque, so `createOutputs` skips it: hand
+  // the region's result straight to whoever consumes the kernel's.
+  if (opaqueKernelResult)
+    loweringState.emplaceExecuteLoweredValue(
+        opaqueKernelResult, region->getResult(opaqueResultIdx));
 
   st.createOutputs(region->getResult(0), storage);
 
@@ -3565,12 +3610,23 @@ LogicalResult KernelStubOp::emitMojoMAPABI(EmitMojoState &state) {
   // invoking the opaque kernel's execute function (`mogg._call.opaque`). Unlike
   // the MOGG ABI there is no trait lane, no async wrapping, and no `void**`
   // marshalling: the body ops emit straight-line Mojo.
+  // `mlirTypeToMojoType` renders any opaque as a bare `OpaquePointer`, but an
+  // opaque crosses this boundary as the kernel's own struct, so it needs the
+  // parameterized spelling (`SIMDPair[4, 8]`) -- as `emitMojoMOGGABI` does.
+  auto typeToMojo = [&](Type type) -> MOGG::MojoValue {
+    if (auto opaqueType = dyn_cast<MO::OpaqueType>(type)) {
+      MOGG::MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
+      auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
+      return params.empty() ? baseTy : baseTy[params];
+    }
+    return state.mlirTypeToMojoType(type);
+  };
+
   SmallVector<MOGG::NamedMojoDef> inputTypes;
   for (BlockArgument arg : getBody().getArguments())
-    inputTypes.push_back(
-        MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
+    inputTypes.push_back(MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
 
-  // Only a shape function hands anything back.
+  // A shape function's shape, or a kernel-allocated opaque, hands back a value.
   MOGG::OutputOp bodyOutput = getBodyTerminator();
   ASSERT_STREAM(bodyOutput.getNumOperands() <= 1,
                 << "a MAP-ABI stub returns at most one value, got "
@@ -3578,7 +3634,7 @@ LogicalResult KernelStubOp::emitMojoMAPABI(EmitMojoState &state) {
   const bool returnsByValue = bodyOutput.getNumOperands() == 1;
   std::optional<MOGG::MojoValue> returnType;
   if (returnsByValue)
-    returnType = state.mlirTypeToMojoType(bodyOutput.getOperand(0).getType());
+    returnType = typeToMojo(bodyOutput.getOperand(0).getType());
 
   bool errOccurred = false;
   state.builder.def(
@@ -3596,8 +3652,13 @@ LogicalResult KernelStubOp::emitMojoMAPABI(EmitMojoState &state) {
           return state.lowerOpToMojo(&op).failed();
         });
         if (!errOccurred && returnsByValue) {
-          state.builder.returnsValue(
-              state.getMojoValueFor(bodyOutput.getOperand(0)));
+          MOGG::MojoValue value =
+              state.getMojoValueFor(bodyOutput.getOperand(0));
+          // An opaque struct need not be `ImplicitlyCopyable` (`SIMDPair` is
+          // only `RegisterPassable`), so transfer rather than copy it out.
+          if (isa<MO::OpaqueType>(bodyOutput.getOperand(0).getType()))
+            value = value.transfer();
+          state.builder.returnsValue(value);
         }
       });
 
@@ -3901,8 +3962,17 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   MojoValue structType = prefixSymbolName[maybeParams->structParameters];
   MojoValue fullExecuteFunc = structType.get(executeFunc);
 
-  state.builder.call(fullExecuteFunc, maybeParams->functionParameters,
-                     kernelOperands);
+  // A kernel returning an `!mo.opaque` returns it by value, so bind the call's
+  // result to a var the enclosing `mogg.output` can forward, instead of
+  // emitting the call as a bare statement.
+  if (Value opaqueRes = getOpaqueResult()) {
+    MojoValue returned = state.builder.var(
+        fullExecuteFunc(maybeParams->functionParameters, kernelOperands));
+    state.setMojoValueFor(opaqueRes, returned);
+  } else {
+    state.builder.call(fullExecuteFunc, maybeParams->functionParameters,
+                       kernelOperands);
+  }
   state.genAllKeepAliveStatements();
   return success();
 }
@@ -5698,10 +5768,11 @@ LogicalResult RebindOp::emitMojo(EmitMojoState &state) {
   // codegen handle a MAP-ABI stub argument expects.
   Type resultType = getOutput().getType();
 
-  // Context / dim casts are code-generation no-ops: `mogg.async.unpack` already
-  // produced a value of the Mojo type the stub expects (a `DeviceContext` for
-  // `!mogg.context`, an `Int` for `!mogg.dim_`), so forward it unchanged.
-  if (isa<MOGG::ContextType, MOGG::DimType>(resultType)) {
+  // Context / dim / opaque casts are code-generation no-ops:
+  // `mogg.async.unpack` already produced the Mojo type the stub expects (a
+  // `DeviceContext`, an `Int`, or the kernel's own struct), so forward it
+  // unchanged.
+  if (isa<MOGG::ContextType, MOGG::DimType, MO::OpaqueType>(resultType)) {
     state.setMojoValueFor(getResult(), state.getMojoValueFor(getInput()));
     return success();
   }

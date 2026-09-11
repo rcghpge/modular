@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -76,6 +77,17 @@ CallOpaqueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return mlir::success();
 }
 
+LogicalResult CallOpaqueOp::verify() {
+  // `$outputs` is destination-passing, so an `!mo.opaque` never belongs there:
+  // a kernel allocates one internally and returns it through `$opaqueResult`.
+  // `$outputs` is `AnyType`, so only this check keeps the two apart.
+  for (Value output : getOutputs())
+    if (isa<MO::OpaqueType>(output.getType()))
+      return emitOpError("an opaque is returned through its result, not passed "
+                         "as a destination in 'outputs'");
+  return mlir::success();
+}
+
 //===----------------------------------------------------------------------===//
 // map.call.elementwise
 //===----------------------------------------------------------------------===//
@@ -135,11 +147,29 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseArgumentList(outArgs, OpAsmParser::Delimiter::Paren,
                                /*allowType=*/true))
     return mlir::failure();
+  // `returns tOpaque` -- a by-value result the body yields instead of filling,
+  // so it contributes a result type but no block argument.
+  Type opaqueResultType;
+  if (succeeded(parser.parseOptionalKeyword("returns")) &&
+      parser.parseType(opaqueResultType))
+    return mlir::failure();
+
+  // `$results` is ordered [DPS results..., by-value opaque?, chain?], which the
+  // block-arg accessors and the epilogue fusers both index against -- so the
+  // types go in that order rather than in the order they were written.
+  Type chainResultType;
   for (const OpAsmParser::Argument &arg : outArgs) {
+    if (isa<MO::ChainType>(arg.type)) {
+      chainResultType = arg.type;
+      continue;
+    }
     result.addTypes(arg.type);
-    if (!isa<MO::ChainType>(arg.type))
-      allArgInfo.push_back(arg);
+    allArgInfo.push_back(arg);
   }
+  if (opaqueResultType)
+    result.addTypes(opaqueResultType);
+  if (chainResultType)
+    result.addTypes(chainResultType);
 
   result.addAttribute(IterOpaqueOp::getOperandSegmentSizesAttrName(result.name),
                       parser.getBuilder().getDenseI32ArrayAttr(
@@ -200,6 +230,8 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
     p << outputChain << ": " << outputChain.getType();
   }
   p << ") ";
+  if (Value opaqueResult = getOpaqueResult())
+    p << "returns " << opaqueResult.getType() << " ";
   p.decreaseIndent();
 
   // Shadow the region so inner references to the inputs print with the outer
@@ -231,8 +263,54 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
 // (in and out) is threaded through the dedicated `$inputChain` operand and
 // trailing chain result and never gets a block arg. So the split is on the
 // non-chain result count, not `getNumResults()`.
+LogicalResult IterOpaqueOp::verify() {
+  // `$results` must read [DPS results..., by-value opaque?, chain?]. Both the
+  // block-arg accessors (`take_back`/`drop_back` of the DPS count) and the
+  // epilogue fusers, which pair result `i` with output block arg `i`, index
+  // against that order -- so a by-value result appearing before a DPS one
+  // would silently misalign them rather than fail.
+  bool seenByValue = false;
+  for (Value result : getResults()) {
+    Type ty = result.getType();
+    if (isa<MO::OpaqueType>(ty) || isa<MO::ChainType>(ty)) {
+      seenByValue = true;
+      continue;
+    }
+    if (seenByValue)
+      return emitOpError("destination-passing results must precede a by-value "
+                         "opaque result and the output chain");
+  }
+
+  // A by-value result reaches the op only through `map.yield`, so the body
+  // must end in one carrying a value that is not merely a restatement of a DPS
+  // output block arg. (A yield of an output block arg alone is redundant but
+  // legal -- the op's own docs call the terminator optional for the DPS case --
+  // so its presence is not by itself enough.)
+  if (getOpaqueResult()) {
+    auto yieldOp = dyn_cast<YieldOp>(getBody().front().back());
+    Block::BlockArgListType outputArgs = getOutputBlockArgs();
+    bool yieldsByValue =
+        yieldOp && llvm::any_of(yieldOp.getOperands(), [&](Value operand) {
+          return !llvm::is_contained(outputArgs, operand);
+        });
+    if (!yieldsByValue)
+      return emitOpError("has a by-value result but its body does not "
+                         "map.yield a value for it");
+  }
+
+  return mlir::success();
+}
+
+Value IterOpaqueOp::getOpaqueResult() {
+  for (Value result : getResults())
+    if (isa<MO::OpaqueType>(result.getType()))
+      return result;
+  return {};
+}
+
 unsigned IterOpaqueOp::getNumNonChainResults() {
-  return getNumResults() - (getOutputChain() ? 1 : 0);
+  return getNumResults() - (getOutputChain() ? 1 : 0) -
+         (getOpaqueResult() ? 1 : 0);
 }
 
 Block::BlockArgListType IterOpaqueOp::getOutputBlockArgs() {

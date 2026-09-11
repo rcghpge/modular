@@ -36,14 +36,17 @@ struct KernelDeclOperandMapping {
 /// ranges) to the kernel's arguments. This is the general entry point: it does
 /// not require an `Operation` and so also serves destination-passing-style call
 /// ops whose outputs are operands rather than results (e.g.
-/// `mogg._call.opaque`). `opName` names the caller in diagnostics; the two
-/// flags mirror the `SameVariadicOperandSize` / extra-output-shape-argument op
-/// properties.
+/// `mogg._call.opaque`). `opName` names the caller in diagnostics; the first
+/// two flags mirror the `SameVariadicOperandSize` / extra-output-shape-argument
+/// op properties. Set `resultLeavesByValue` when the kernel's function result
+/// is returned rather than written through a destination, so `results` carries
+/// no entry standing in for it.
 ErrorOr<KernelDeclOperandMapping>
 mapToKernelImplementation(ValueRange operands, ValueRange results,
                           const KernelDeclFunctionAdaptor &adaptor,
                           StringRef opName, bool hasSameVariadicOperandSize,
-                          bool hasExtraOutputShapeArgument);
+                          bool hasExtraOutputShapeArgument,
+                          bool resultLeavesByValue = false);
 
 /// Convenience overload that reads the operands/results and op properties off
 /// `op`.

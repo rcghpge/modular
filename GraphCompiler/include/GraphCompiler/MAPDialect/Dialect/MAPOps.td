@@ -122,14 +122,20 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
-    /// The number of results that are not the trailing chain -- i.e. the
-    /// results that have a body block argument (the chain never does).
+    /// The number of results that have a body block argument. `$results` is
+    /// ordered [DPS results..., by-value opaque?, chain?], and only the DPS
+    /// ones are filled through a block argument: a by-value opaque is returned
+    /// by the body's `map.yield` and the chain is pure plumbing.
     unsigned getNumNonChainResults();
+
+    /// The by-value `!mo.opaque` result, or null when there is none. Yielded
+    /// by the body rather than written through a destination.
+    ::mlir::Value getOpaqueResult();
 
     /// The subrange of body entry-block arguments that are the DPS outputs:
     /// the trailing `getNumNonChainResults()` arguments (block arguments are
-    /// ordered [non-chain inputs..., non-chain outputs...], outputs last; the
-    /// chain, in or out, has no block argument).
+    /// ordered [non-chain inputs..., non-chain outputs...], outputs last;
+    /// neither the chain nor a by-value opaque has a block argument).
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
 
     /// The subrange of body entry-block arguments shadowing `$inputs` -- the
@@ -165,6 +171,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   }];
 
   let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
   let hasCanonicalizer = 1;
 }
 
@@ -327,9 +334,17 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
 
+  // A kernel that allocates its result internally returns it rather than
+  // filling a destination, so it has no `$outputs` entry standing in for it.
+  // The enclosing `map.iter.opaque` carries it out with `map.yield`.
+  let results = (outs Optional<MO_Opaque>:$opaqueResult);
+
+  let hasVerifier = 1;
+
   let assemblyFormat = [{
     $callee `[` custom<KernelParamsBody>($params) `]`
     `inputs` `(` $inputs `)` `outputs` `(` $outputs `)`
+    (`returns` type($opaqueResult)^)?
     attr-dict `:` functional-type($inputs, $outputs)
   }];
 }

@@ -1841,12 +1841,12 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   }];
 
   let arguments = (ins
-    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$inputs,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer, MO_Opaque]>>:$inputs,
     Optional<MO_Chain>:$chain,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     MO_ParamDecls:$outputParamDecls
   );
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain,
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain, MO_Opaque,
                                           MOGG_ShapeFuncResult]>>:$outputs);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
@@ -2068,8 +2068,10 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$inputs,
-    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple]>>:$outputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple,
+                        MO_Opaque]>>:$inputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple,
+                        MO_Opaque]>>:$outputs,
     Variadic<AnyTypeOf<[MOGG_Context, MOGG_Tuple]>>:$device_contexts,
     OptionalAttr<DictionaryAttr>:$kernel_param,
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
@@ -2081,11 +2083,16 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     // so it rides along as this attribute.
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
+  // An `!mo.opaque` result is allocated inside the kernel body (see
+  // `MOGGKernelOpLoweringState`), so unlike a tensor it has no destination to
+  // pass as an `$output`. It leaves through this result instead, and the
+  // enclosing `mogg._kernel` forwards it with `mogg.output`.
+  let results = (outs Optional<MO_Opaque>:$opaqueResult);
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
             (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
             (`context` `(` $device_contexts^ `:` type($device_contexts) `)`)?
-            attr-dict
+            attr-dict (`->` type($opaqueResult)^)?
   }];
 }
 
