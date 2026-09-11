@@ -2241,7 +2241,9 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
 
     Captured tensors may have a different shape than `$shape` (e.g. a
     broadcast operand) and from each other, so this op deliberately has no
-    verifier enforcing shape agreement. `$device` records the target device
+    verifier enforcing shape agreement. A capture is a `!mogg.buffer_`
+    wherever in-place fusion folded a load's mutable buffer into a position a
+    tensor used to hold. `$device` records the target device
     kind (cpu vs gpu), set once at construction time rather than read back
     from the enclosing kernel stub at emit time.
   }];
@@ -2249,7 +2251,7 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
     FlatSymbolRefAttr:$callee,
     MOGG_Shape:$shape,
     MOGG_Context:$context,
-    Variadic<MOGG_Tensor>:$capturing,
+    Variadic<MOGG_TensorLike>:$capturing,
     M_DeviceRefAttr:$device
   );
   let regions = (region SizedRegion<1>:$body);

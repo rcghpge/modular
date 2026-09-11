@@ -82,7 +82,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/in-place-and-cf.mlir",
     "MODialect/in-place-custom.mlir",
-    "MODialect/in-place-epilogue-fusion.mlir",
     "MODialect/in-place-parameterized.mlir",
     "MODialect/in-place-unk-dims.mlir",
     "MODialect/in-place.mlir",
@@ -124,9 +123,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/random.mlir",
     "MODialect/reduce-add-rms-norm-decompose-fusion.mlir",
     "MODialect/resize.mlir",
-    "MODialect/rmo-in-place-basic.mlir",
-    "MODialect/rmo-in-place-slice-error.mlir",
-    "MODialect/rmo-in-place-slice.mlir",
     "MODialect/roi-align-dynamic-output-size.mlir",
     "MODialect/roi-align.mlir",
     "MODialect/slice-intensive-fusion.mlir",
