@@ -22,8 +22,6 @@ filegroup(
 # sweeping this directory with the env var forced. Removing an entry should
 # say which fix covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
-    "Conversion/lower-buffer-create.mlir",
-    "Conversion/lower-buffer-transfer.mlir",
     "Conversion/lower-distributed-allreduce.mlir",
     "Conversion/tile-codegen-elementwise-add-mul.mlir",
     "Conversion/tile-codegen-elementwise-add.mlir",
@@ -35,8 +33,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/device-graph-execute-gpu.mlir",
     "E2E/device-graph-execute-only-gpu.mlir",
     "E2E/device-graph-host-input.mlir",
-    "GPUUnit/constant-folding.mlir",
-    "GPUUnit/split.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-dynamic-gpu.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-fused-load-capture-parameter-closure.mlir",
     "MODialect/mogg-kernel-api-e2e-trait-fused-load-cast-gpu.mlir",
