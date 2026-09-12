@@ -57,12 +57,9 @@ _COMMON_DEPS = [
 # covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
-    "E2E/kernels-with-variadics.mlir",
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
     "MODialect/arg-nonzero.mlir",
     "MODialect/batch-matmul.mlir",
-    "MODialect/concat-dynamic.mlir",
-    "MODialect/concat.mlir",
     "MODialect/conv-epilogue-fusion.mlir",
     "MODialect/conv.mlir",
     "MODialect/conv_transpose.mlir",

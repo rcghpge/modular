@@ -4816,7 +4816,9 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
   // `TensorCreateEpilogueOp::emitMojo`: the tensor the kernel reads never
   // materializes (fusion is what produces its values), and the functor RETURNS
   // the loaded value instead of consuming one, so its body ends by rebinding
-  // the yielded value to the method's own generic dtype.
+  // the yielded value to the method's own generic dtype. Captures are optional,
+  // where the epilogue must have its store target -- fusing a constant producer
+  // leaves none, and the body reads only literals.
   //
   // Two consumer ABIs, selected by `$contract` (stamped at MAP lowering so emit
   // never walks to the consumer):
@@ -4827,8 +4829,6 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
   //   - legacy MTS API (`FusedInputTensor`): the functor takes the
   //     `managed_tensor_slice.InputFusion` shape (IndexList `load`) and is
   //     bound onto a type-only dangling base slice.
-  if (getCaptures().empty())
-    return emitOpError("requires at least one capture to fuse into");
 
   // The dtype the kernel reads through this tensor. Each capture's
   // dtype/layout/mut come from its own defining op instead -- see
