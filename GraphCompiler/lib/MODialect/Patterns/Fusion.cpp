@@ -4728,8 +4728,10 @@ public:
     //
     // The kernel uses cross-CTA pool-slot arrival counters (strided by
     // ATOMIC_PAD=32) to hand off between the two legs. Under the registration's
-    // `POST_SELF_CLEAN_UP` policy every touched slot is reset in band, so a
-    // buffer that starts all-zero stays all-zero at every launch boundary. We
+    // `POST_SELF_CLEAN_UP` policy each launch claims one half of every slot and
+    // clears the half its predecessor used, so a buffer that starts all-zero
+    // carries the last launch's counts rather than zeros -- one zeroing is
+    // still all it needs, and nothing may re-zero it per launch. We
     // mint it here as a PERSISTENT buffer via `mo.buffer.create` with a zero
     // `initValue`: the runtime allocates and zeroes it ONCE at model load and
     // reuses it across executions -- no per-launch alloc/memset, and no

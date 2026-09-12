@@ -974,10 +974,14 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
     The `arrival_count` buffer holds the cross-CTA pool-slot arrival counters
     the kernel uses to hand off between the two legs. It is a PERSISTENT device
     buffer minted once by the fusion pattern (`mo.buffer.create` with a zero
-    `initValue`) and initialized once at model load; under the kernel's
-    `POST_SELF_CLEAN_UP` policy every touched slot is reset in band, so the
-    buffer is all-zero at every launch boundary (correct under single-stream
-    serialization). `inChain`/`outChain` sequence the in-place write (required
+    `initValue`) and initialized once at model load. Under the kernel's
+    `POST_SELF_CLEAN_UP` policy each launch accumulates into the half of every
+    slot its generation parity selects and clears the half its predecessor
+    used, so the buffer is NOT all-zero between launches: it carries the last
+    launch's counts. The single zeroing at load is still all the kernel needs,
+    and there is still no per-launch memset, but nothing may reset the buffer
+    per launch -- that pins the generation and disarms the rotation.
+    `inChain`/`outChain` sequence the in-place write (required
     for any op with an `mo.buffer` operand; the chain is GC-internal and is
     dropped before the kernel-arg binding, so `arrival_count` binds to the
     registration's `MutableInputTensor` arg).
