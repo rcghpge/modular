@@ -4,7 +4,7 @@
 // RUN:   --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers \
 // RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
-// RUN:   --mogg-package-variadics-and-scalars \
+// RUN:   --mogg-conform-call-operands \
 // RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
 // RUN:   -verify-each=false
 // RUN: cat %t/*.mojo | FileCheck %s

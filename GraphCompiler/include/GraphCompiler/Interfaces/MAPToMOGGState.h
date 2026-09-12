@@ -56,7 +56,7 @@ struct MAPToMOGGState {
   // The kernel's trailing `!mogg.context` block args. Exactly one for an
   // ordinary single-device kernel; one per device (in
   // `getUniqueDevicesFromKernel` order) for a distributed kernel whose execute
-  // signature takes a `DeviceContextArray`. `PackageVariadicsAndScalars` packs
+  // signature takes a `DeviceContextArray`. `ConformCallOperands` packs
   // the N-context case into a tuple-of-contexts.
   llvm::SmallVector<mlir::Value> contextArgs;
 

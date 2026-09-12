@@ -1,6 +1,6 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-package-variadics-and-scalars | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-conform-call-operands | FileCheck %s
 
-// PackageVariadicsAndScalars runs directly on the mogg codegen ops (the
+// ConformCallOperands runs directly on the mogg codegen ops (the
 // post-MAPToMOGG form, with plain !mogg.tensor_ operands). It re-runs operand
 // inference against the callee mogg.kernel.decl and materializes the non-tensor
 // operands the kernel expects: a scalar operand is wrapped in

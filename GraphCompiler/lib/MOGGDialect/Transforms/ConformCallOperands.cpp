@@ -4,11 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Materializes the scalar and tuple (variadic) operands a `mogg._call.opaque`'s
-// kernel expects. `MAPToMOGG` leaves every operand as a plain `!mogg.tensor_`;
-// this pass re-runs operand inference against the callee `mogg.kernel.decl`
-// and, per its classification, wraps a scalar operand in `mogg._scalar.create`
-// and packs each variadic run into a `mogg._tuple.create`.
+// Conforms each `mogg` call's operands to the callee's declared signature.
+// `MAPToMOGG` leaves every operand as a plain `!mogg.tensor_`; this pass
+// re-runs operand inference against the callee `mogg.kernel.decl` /
+// `mogg.shape_func.decl` and, per its classification, wraps a scalar operand in
+// `mogg._scalar.create`, packs each variadic run into a `mogg._tuple.create`,
+// and wraps a trait-bound argument in a `mogg._trait.create`. Doing this here
+// keeps each `::emitMojo` a local, 1:1 lowering: the call emit forwards
+// whatever handle the IR gives it.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +29,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_PACKAGEVARIADICSANDSCALARS
+#define GEN_PASS_DEF_CONFORMCALLOPERANDS
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
@@ -40,7 +43,7 @@ namespace {
 SmallVector<Value>
 packOperands(OpBuilder &builder, Location loc, ValueRange operands,
              const KernelDeclIndexToOperandAdaptorMapping &mapping,
-             bool &changed) {
+             M::DeviceRefAttr device, bool &changed) {
   MLIRContext *ctx = builder.getContext();
   SmallVector<Value> packed;
   for (size_t i = 0, e = operands.size(); i < e;) {
@@ -89,6 +92,27 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
       continue;
     }
 
+    // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
+    // `TileTensorable`) has its raw `!mogg.tensor_` re-presented as the
+    // conforming trait argument by `mogg._trait.create`, which carries the
+    // distilled contract and the execution device (for the emit-side layout /
+    // alignment). A FUSED trait argument is handled at its producer instead:
+    // its fusion functor is a local of the prologue/epilogue emit, so the
+    // contract is stamped onto the `mogg._tensor.create.prologue`/`.epilogue`
+    // at MAP lowering (see `consumingFusedContract`), and this pass leaves the
+    // operand alone.
+    if (std::optional<TensorArgContract> contract = arg.getTraitContract();
+        contract && !contract->fused) {
+      // Keep the operand's own kind: a mutable-input trait argument comes in as
+      // a `!mogg.buffer_`, everything else as a `!mogg.tensor_`.
+      packed.push_back(TraitCreateOp::create(
+          builder, loc, operands[i].getType(), operands[i], device,
+          tensorArgContractToAttr(ctx, *contract)));
+      changed = true;
+      ++i;
+      continue;
+    }
+
     packed.push_back(operands[i]);
     ++i;
   }
@@ -103,33 +127,40 @@ struct PackedCall {
 };
 
 // Wraps each operand `fn` wants as a scalar or a tuple.
-FailureOr<PackedCall> packAgainstSignature(Operation *call,
-                                           const KernelDeclFunctionAdaptor &fn,
-                                           StringRef callee, ValueRange inputs,
-                                           ValueRange outputs,
-                                           bool hasSameVariadicOperandSize,
-                                           bool resultLeavesByValue) {
+FailureOr<PackedCall>
+packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
+                     StringRef callee, ValueRange inputs, ValueRange outputs,
+                     M::DeviceRefAttr device, bool hasSameVariadicOperandSize,
+                     bool resultLeavesByValue) {
   ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
       inputs, outputs, fn, callee, hasSameVariadicOperandSize,
       /*hasExtraOutputShapeArgument=*/false, resultLeavesByValue);
   if (mapping.isError())
-    return call->emitOpError("PackageVariadicsAndScalars: ")
-           << mapping.getError();
+    return call->emitOpError("ConformCallOperands: ") << mapping.getError();
 
   OpBuilder builder(call);
   PackedCall packed;
   packed.inputs = packOperands(builder, call->getLoc(), inputs,
-                               mapping->operandMapping, packed.changed);
+                               mapping->operandMapping, device, packed.changed);
   packed.outputs = packOperands(builder, call->getLoc(), outputs,
-                                mapping->resultMapping, packed.changed);
+                                mapping->resultMapping, device, packed.changed);
   return packed;
+}
+
+// The execution device recorded on the enclosing `mogg._kernel`, which every
+// `mogg` call lowered by `MAPToMOGG` sits inside. `mogg._trait.create` needs it
+// to pick the preferred alignment and device-passable flavor at emit, locally,
+// the same way `mogg._tensor.create` does.
+static M::DeviceRefAttr enclosingKernelDevice(Operation *call) {
+  if (auto kernel = call->getParentOfType<KernelRegionOp>())
+    return MO::getDeviceOrDefault(kernel);
+  return {};
 }
 
 LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   KernelDeclOp decl = registry.lookupKernelBySymName(call.getCallee());
   if (!decl)
-    return call.emitOpError(
-               "PackageVariadicsAndScalars: no kernel decl named '")
+    return call.emitOpError("ConformCallOperands: no kernel decl named '")
            << call.getCallee() << "'";
 
   KernelDeclAdaptor adaptor(decl);
@@ -140,7 +171,8 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   // no output operand standing in for it.
   FailureOr<PackedCall> packed = packAgainstSignature(
       call, *adaptor.executeFunction, call.getCallee(), call.getInputs(),
-      call.getOutputs(), call.getHasSameVariadicOperandSize(),
+      call.getOutputs(), enclosingKernelDevice(call),
+      call.getHasSameVariadicOperandSize(),
       /*resultLeavesByValue=*/call.getOpaqueResult() != nullptr);
   if (failed(packed))
     return failure();
@@ -190,15 +222,14 @@ LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
   ShapeFunctionDeclOp decl =
       registry.lookupShapeFunctionBySymName(call.getCallee());
   if (!decl)
-    return call.emitOpError(
-               "PackageVariadicsAndScalars: no shape_func.decl named '")
+    return call.emitOpError("ConformCallOperands: no shape_func.decl named '")
            << call.getCallee() << "'";
 
   // A shape function returns its shape by value, so there is no output operand
   // to map.
   FailureOr<PackedCall> packed = packAgainstSignature(
       call, KernelDeclFunctionAdaptor(decl), call.getCallee(),
-      call.getOperands(), /*outputs=*/{},
+      call.getOperands(), /*outputs=*/{}, enclosingKernelDevice(call),
       /*hasSameVariadicOperandSize=*/false, /*resultLeavesByValue=*/true);
   if (failed(packed))
     return failure();
@@ -214,9 +245,8 @@ LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
   return success();
 }
 
-struct PackageVariadicsAndScalarsPass
-    : public MOGG::impl::PackageVariadicsAndScalarsBase<
-          PackageVariadicsAndScalarsPass> {
+struct ConformCallOperandsPass
+    : public MOGG::impl::ConformCallOperandsBase<ConformCallOperandsPass> {
   using Base::Base;
 
   void runOnOperation() override {

@@ -393,9 +393,10 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &opts) {
-  // Finalize the advanced-fusion MOGG codegen form: package variadics/
-  // scalars, then outline each mogg._kernel into a mogg.kernel.stub.
-  pm.addPass(MOGG::createPackageVariadicsAndScalars());
+  // Finalize the advanced-fusion MOGG codegen form: conform each call's
+  // operands to its callee signature (scalars, variadic tuples, trait args),
+  // then outline each mogg._kernel into a mogg.kernel.stub.
+  pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
 
   pm.addPass(MOGG::createSimplifyKernelOperands());

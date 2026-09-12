@@ -16,6 +16,7 @@
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
+#include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
@@ -359,6 +360,42 @@ classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
   return Kind::Compute;
 }
 
+// The trait contract the consuming `map.call.opaque` declares for the fused
+// operand `mapResult` feeds. Present only for a trait-ABI fused argument
+// (`Fused & ... & Access`), whose functor emit wraps in a conforming trait
+// tensor; null for the legacy `FusedInput/OutputTensor` (MTS-API) lane, which
+// binds the functor onto a `ManagedTensorSlice`. `isOutput` picks the call's
+// output vs input operand list. Resolved here, at MAP level, for the same
+// reason `classifyEpilogueLambdaKind` is: the fused-tensor -> call edge is
+// still explicit, so emit never walks to recover it.
+static MOGG::TensorArgContractAttr
+consumingFusedContract(Value mapResult, bool isOutput, MAPToMOGGState &state) {
+  if (!mapResult.hasOneUse())
+    return {};
+  auto callOp = dyn_cast<CallOpaqueOp>(*mapResult.getUsers().begin());
+  if (!callOp)
+    return {};
+  ValueRange operands = isOutput ? callOp.getOutputs() : callOp.getInputs();
+  std::optional<unsigned> operandIdx;
+  for (auto [i, v] : llvm::enumerate(operands))
+    if (v == mapResult) {
+      operandIdx = i;
+      break;
+    }
+  if (!operandIdx)
+    return {};
+  MOGG::KernelDeclAdaptor adaptor(
+      state.registry.lookupKernelBySymName(callOp.getCallee()));
+  if (!adaptor.executeFunction)
+    return {};
+  std::optional<MOGG::TensorArgContract> contract =
+      MOGG::declaredExecuteOperandContract(*adaptor.executeFunction,
+                                           *operandIdx, isOutput);
+  if (!contract)
+    return {};
+  return MOGG::tensorArgContractToAttr(state.builder.getContext(), *contract);
+}
+
 // map.iter.epilogue -> mogg._tensor.create.epilogue. Its body is lowered via
 // `state.lowerRegionBody`, then the resulting tensor is mapped into
 // `state.mapping` under the epilogue's own result, so `CallOpaqueOp` can
@@ -417,7 +454,23 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
     return emitOpError() << kindOr.getError();
   MOGG::KernelOutputFusionLambdaType kind = *kindOr;
   bool isCompute = kind == MOGG::KernelOutputFusionLambdaType::Compute;
-  bool computeOutputArg = kind != MOGG::KernelOutputFusionLambdaType::Output;
+
+  // A trait-ABI fused output's contract (null for the legacy MTS API). A
+  // transform-access output runs the fused body as a value->value functor (the
+  // wrapper stores the result through the real output buffer), so its body must
+  // YIELD the value like a compute lambda rather than store it -- even for an
+  // identity transform with no consumer fused.
+  MOGG::TensorArgContractAttr contractAttr =
+      consumingFusedContract(getResult(), /*isOutput=*/true, state);
+  bool isTransform = contractAttr && MOGG::bitEnumContainsAny(
+                                         contractAttr.getAccess(),
+                                         MOGG::TensorArgAccessKind::transform);
+  bool yieldBody = isCompute || isTransform;
+  // A yield-terminated body is a compute-output lambda; a transform's wrapper
+  // stores the yielded value, so it satisfies that invariant too. The flag is
+  // unused by the transform wrap emit itself.
+  bool computeOutputArg =
+      kind != MOGG::KernelOutputFusionLambdaType::Output || isTransform;
 
   // The tensor whose storage the kernel-facing slice is built over.
   // `AllocateAccumulatingBuffers` always sets `$intermediateTensor` (the store
@@ -436,7 +489,8 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
       /*outputPtr=*/outputPtr, state.device, TypeAttr::get(outElemType),
       state.builder.getBoolAttr(true),
       MO::IOKindAttr::get(ctx, MO::IOKind::Output),
-      state.builder.getBoolAttr(computeOutputArg));
+      state.builder.getBoolAttr(computeOutputArg),
+      /*contract=*/contractAttr);
 
   // New block args mirror the old ones 1:1, except captures are typed as
   // the reconstructed `!mogg.tensor_` instead of the original `!mo.tensor`.
@@ -467,7 +521,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   // elided. The store-target capture stays a capture -- emit still binds the
   // functor onto its slice -- it just has no use in the body.
   Value yielded;
-  Value storeTarget = isCompute ? epiBody.getArgument(numParams) : Value();
+  Value storeTarget = yieldBody ? epiBody.getArgument(numParams) : Value();
   if (failed(state.lowerRegionBody(epiBody, [&](Operation *op) {
         auto storeOp = dyn_cast<StoreOp>(op);
         if (!storeOp || storeOp.getTensor() != storeTarget)
@@ -480,7 +534,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
         return false;
       })))
     return failure();
-  if (isCompute) {
+  if (yieldBody) {
     ASSERT_STREAM(yielded, "expected a MAP epilogue body to store to its "
                            "store-target capture");
     MOGG::YieldOp::create(state.builder, loc, yielded);
@@ -533,7 +587,9 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
       /*captures=*/moggCaptures, /*device=*/state.device,
       /*elementType=*/TypeAttr::get(resultTy.getElementType()),
       /*mut=*/state.builder.getBoolAttr(false),
-      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input));
+      /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
+      /*contract=*/
+      consumingFusedContract(getResult(), /*isOutput=*/false, state));
 
   // New block args mirror the old ones 1:1.
   Block *body = state.builder.createBlock(&prologueOp.getBody());
@@ -866,7 +922,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // Context block args. A distributed kernel whose `execute` takes a
   // `DeviceContextArray` gets one `!mogg.context` per unique device (in
   // `getUniqueDevicesFromKernel` order, which `lowerToCompiledRegion`
-  // re-derives to materialize each), and `PackageVariadicsAndScalars` packs
+  // re-derives to materialize each), and `ConformCallOperands` packs
   // them into a tuple-of-contexts. Every other kernel gets exactly one: its
   // `execute` takes a single `DeviceContext`, and the unique-device COUNT is
   // not a proxy for the context count -- an ordinary single-compute kernel can

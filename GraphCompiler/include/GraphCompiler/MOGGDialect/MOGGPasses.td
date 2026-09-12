@@ -643,13 +643,18 @@ def DumpKernels: Pass<"mogg-dump-kernels", "ModuleOp"> {
   }];
 }
 
-def PackageVariadicsAndScalars
-    : Pass<"mogg-package-variadics-and-scalars", "mlir::ModuleOp"> {
-  let summary = "Materialize tuple and scalar operands on `mogg` calls.";
+def ConformCallOperands
+    : Pass<"mogg-conform-call-operands", "mlir::ModuleOp"> {
+  let summary = "Conform `mogg` call operands to the callee's signature.";
   let description = [{
-    Inspects the signatures of `mogg` call ops and inserts the tuple (variadic)
-    and scalar conversion ops they require. Deferred out of `MAPToMOGG` to keep
-    the fusion IR simpler.
+    Inspects the signatures of `mogg` call ops and inserts the operand
+    conversion ops each callee requires: a scalar argument's tensor is wrapped
+    in `mogg._scalar.create`, a variadic run is packed into a
+    `mogg._tuple.create`, and a trait-bound argument (`Tensor` / `DenseTensor` /
+    `TileTensorable`) is wrapped in a `mogg._trait.create` so the raw
+    `!mogg.tensor_` reaches the kernel as the conforming trait argument.
+    Deferred out of `MAPToMOGG` to keep the fusion IR simpler and each
+    `::emitMojo` a local, 1:1 lowering.
   }];
 
   let dependentDialects = [

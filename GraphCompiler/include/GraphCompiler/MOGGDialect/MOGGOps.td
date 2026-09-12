@@ -1962,7 +1962,14 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     TypeAttr:$elementType,
     BoolAttr:$mut,
     MO_IOKind:$io,
-    DefaultValuedAttr<BoolAttr, "false">:$computeOutputArg
+    DefaultValuedAttr<BoolAttr, "false">:$computeOutputArg,
+    // Present iff the consuming kernel declares this fused output against a
+    // trait bound (`Fused & Output & StoreAccess` / `... & TransformAccess`).
+    // Stamped at MAP lowering (where the epilogue -> call edge is explicit);
+    // emit reads it to wrap the fusion functor in the conforming trait tensor
+    // instead of binding it onto a `ManagedTensorSlice`. Absent for the legacy
+    // `FusedOutputTensor` (MTS-API) lane.
+    OptionalAttr<MOGG_TensorArgContractAttr>:$contract
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
@@ -2022,7 +2029,13 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MO_IOKind:$io
+    MO_IOKind:$io,
+    // Present iff the consuming kernel declares this fused input against a trait
+    // bound (`Fused & Input & LoadAccess`). Stamped at MAP lowering; emit reads
+    // it to wrap the fusion functor in `_MoggInputLoadFusionTensor` instead of
+    // binding it onto a `ManagedTensorSlice`. Absent for the legacy
+    // `FusedInputTensor` (MTS-API) lane.
+    OptionalAttr<MOGG_TensorArgContractAttr>:$contract
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
@@ -2060,7 +2073,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     enclosing kernel stub's block arguments at emit time. It is variadic: a
     single-device kernel takes one `!mogg.context`; a distributed kernel whose
     execute signature takes a `DeviceContextArray` takes one per device, which
-    `PackageVariadicsAndScalars` packs into a single `!mogg.tuple_` of contexts.
+    `ConformCallOperands` packs into a single `!mogg.tuple_` of contexts.
     `$hasEpilogueFusion` / `$hasPrologueFusion` record whether an output is a
     fused-epilogue tensor and whether an input is a fused-prologue tensor, so
     emit never inspects an operand's own producer for this. Not a terminator
@@ -2077,7 +2090,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
     DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion,
     // Forwarded from the source op's `MO_SameVariadicOperandSize` trait so
-    // `PackageVariadicsAndScalars` can split a flat operand list into several
+    // `ConformCallOperands` can split a flat operand list into several
     // equal-length variadic groups (e.g. a bundled collective's N peer inputs
     // and N signal buffers). The trait is lost when the MO op becomes a call,
     // so it rides along as this attribute.
@@ -2102,7 +2115,7 @@ def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [
 ]> {
   let summary = "Pack a single-element tensor operand into a scalar operand.";
   let description = [{
-    New-path counterpart of `mogg.as_scalar`: `PackageVariadicsAndScalars`
+    New-path counterpart of `mogg.as_scalar`: `ConformCallOperands`
     inserts this to convert a `!mogg.tensor_` operand that a kernel expects as a
     scalar into a `!mogg.scalar_`. Element type is carried by the source tensor's
     creating op, not restated here.
@@ -2114,13 +2127,48 @@ def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [
   }];
 }
 
+def MOGG_TraitCreateOp : MOGG_Op<"_trait.create", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Re-present a codegen tensor as its conforming trait argument.";
+  let description = [{
+    Inserted by `ConformCallOperands` between a tensor-producing op and a
+    `mogg._call.opaque` / `mogg._call.shape` whenever the callee declares that
+    operand against a trait bound (`Tensor` / `DenseTensor` / `TileTensorable`).
+    A raw `!mogg.tensor_` reconstructs as a `ManagedTensorSlice`, which conforms
+    to none of those bounds; this op's emit wraps it in the conforming
+    `_MoggDenseTensorArg` (execute lane) or `_MoggShapeTensorArg` (shape lane,
+    `role = none`), keyed on `$contract`. The result keeps the operand's own
+    `!mogg.tensor_`/`!mogg.buffer_` kind (a mutable-input trait argument
+    reconstructs as a `!mogg.buffer_`), so the call op's operand list and its own
+    emit are unchanged -- the wrap is a local, 1:1 lowering here, not
+    context-sensitive logic at the call.
+
+    `$device` records the execution device so emit picks the preferred alignment
+    and device-passable flavor locally, exactly as `mogg._tensor.create` does,
+    without reaching out to the enclosing kernel stub. It wraps a finished
+    handle, so it works over any producer -- a direct `mogg._tensor.create` or a
+    hoisted view whose layout is not row-major.
+  }];
+  let arguments = (ins
+    MOGG_TensorLike:$tensor,
+    M_DeviceRefAttr:$device,
+    MOGG_TensorArgContractAttr:$contract
+  );
+  let results = (outs MOGG_TensorLike:$result);
+  let assemblyFormat = [{
+    `(` $tensor `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Pack a run of variadic tensor operands into a tuple operand.";
   let description = [{
-    New-path counterpart of `mogg.as_tuple`: `PackageVariadicsAndScalars`
+    New-path counterpart of `mogg.as_tuple`: `ConformCallOperands`
     inserts this to pack the consecutive `!mogg.tensor_` operands that satisfy a
     single variadic kernel argument into one `!mogg.tuple_`. It also packs the
     per-device `!mogg.context` operands of a distributed kernel into a

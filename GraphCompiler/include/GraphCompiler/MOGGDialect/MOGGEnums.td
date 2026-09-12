@@ -22,7 +22,7 @@ def MOGG_BindLambdaKind : I32EnumAttr<"BindLambdaKind", "lambda kind", [
 }
 
 // How a run of variadic tensor operands packed into a `mogg._tuple.create`
-// must be materialized in Mojo. `PackageVariadicsAndScalars` sets this from the
+// must be materialized in Mojo. `ConformCallOperands` sets this from the
 // callee's variadic parameter type, so `emitMojo` chooses the aggregate
 // (`VariadicTensors` / `_FusedInputVariadicTensors` /
 // `_FusedOutputVariadicTensors`) without inspecting the producing ops.

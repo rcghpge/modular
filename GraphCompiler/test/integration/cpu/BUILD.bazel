@@ -81,30 +81,14 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     # blocked on a matmul epilogue-fusion difference (has_epilogue_fusion),
     # a separate cause from view kernels.
     "MODialect/mogg-kernel-api-e2e-fusion.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-constant-fused.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-constant.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-dual-lane.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-dup-operand.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-dynamic.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-epilogue-extra-dedup.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-epilogue-extra.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-load-cast.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-load-two-operands.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-load.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-store-cast.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-store.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-fused-transform.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-input-from-mutable.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-mixed-legacy-out.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-mixed-legacy.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-mutable.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-scalar.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-shape-func.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-tensor-shape-func.mlir",
+    # NPU target that must reject top-level tile projection; its device path is
+    # not covered by this CPU/GPU-focused change.
     "MODialect/mogg-kernel-api-e2e-trait-tile-tensor-npu-negative.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-tile-tensor.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait-tile-tensorable-shape-func.mlir",
-    "MODialect/mogg-kernel-api-e2e-trait.mlir",
+    # Now compiles the trait lane, but reaches a separate pre-existing bug: an
+    # in-place `!mo.buffer` graph output hits a null-value deref while lowering
+    # `mo.output` in MOGGToMGP under advanced fusion (the `rmo-in-place` family).
+    # Blocked on that fix, not the trait ABI.
+    "MODialect/mogg-kernel-api-e2e-trait-mutable.mlir",
     "MODialect/non-maximum-suppression.mlir",
     "MODialect/pad.mlir",
     "MODialect/pool.mlir",

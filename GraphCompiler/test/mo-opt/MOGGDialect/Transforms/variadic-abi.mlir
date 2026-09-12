@@ -4,13 +4,13 @@
 // RUN:   --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers \
 // RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
-// RUN:   --mogg-package-variadics-and-scalars \
+// RUN:   --mogg-conform-call-operands \
 // RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
 // RUN:   -verify-each=false
 // RUN: cat %t/*.mojo | FileCheck %s
 
 // End-to-end MAP-ABI emission of the three variadic packing ABIs. The
-// `$variadic_abi` attribute `PackageVariadicsAndScalars` stamps on
+// `$variadic_abi` attribute `ConformCallOperands` stamps on
 // `mogg._tuple.create` (from the callee's variadic parameter type) selects the
 // aggregate `TupleCreateOp::emitMojo` builds, so emission never inspects the
 // producing ops.
