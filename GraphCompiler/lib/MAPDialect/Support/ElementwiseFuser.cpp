@@ -107,6 +107,11 @@ static bool checkMutableKernelFusible(Value srcInChain, Value srcOutChain,
 static bool foreachKernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcOp = cast<IterForeachOp>(src);
   auto dstOp = cast<IterForeachOp>(dst);
+
+  // A chain-only edge has nothing to splice, so it is not a fusion edge.
+  if (!llvm::is_contained(dstOp.getInputs(), srcOp.getResult(0)))
+    return false;
+
   if (srcOp.getShape() != dstOp.getShape())
     return false;
   if (isViewForeach(dstOp))

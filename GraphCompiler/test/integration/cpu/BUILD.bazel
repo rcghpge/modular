@@ -70,8 +70,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/dynamic-op-coverage.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
     "MODialect/in-place-and-cf.mlir",
-    "MODialect/in-place-custom.mlir",
-    "MODialect/in-place.mlir",
     "MODialect/layer_norm.mlir",
     "MODialect/matmul-epilogue-fusion.mlir",
     "MODialect/matmuls.mlir",  # correctness: wrong result on Graviton
