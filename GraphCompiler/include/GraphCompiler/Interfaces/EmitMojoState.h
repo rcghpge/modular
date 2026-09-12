@@ -143,10 +143,6 @@ struct EmitMojoState {
     MojoBuilder *lambdaBuilder = nullptr;
     MojoValue widthParameter;
     MojoValue alignmentParameter;
-    /// The receiver's own keyword for `alignmentParameter` on `load`/`store`
-    /// ("alignment" on `TileTensor`, "element_alignment" on
-    /// `ManagedTensorSlice`) -- the two aren't spelled the same.
-    llvm::StringRef alignmentKeyword = "alignment";
   };
   MojoLambdaInfos currentLambdaInfo;
 
@@ -198,6 +194,10 @@ private:
   /// A mapping between mlir::Value to MojoValue (text).
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
 
+  /// Per-tensor static byte alignment for fused load/store receivers (see
+  /// `setTensorArgAlignmentFor`).
+  mlir::DenseMap<Value, MojoValue> tensorArgAlignments;
+
   /// Enables the emission of additional comments detailing IR ops that are
   /// currently being processed
   bool enableOpTraceComments;
@@ -227,6 +227,24 @@ public:
     [[maybe_unused]] auto inserted =
         mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
     ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
+  }
+
+  /// Record the source's own static byte alignment for a fused load/store
+  /// receiver, keyed by the load/store's tensor operand. Both fusion lanes --
+  /// the foreach closure and the prologue/epilogue functor -- rebuild their
+  /// receiver as a bare-pointer `TileTensor` that carries no static alignment,
+  /// so the exact `ManagedTensorSlice` alignment is threaded here and passed to
+  /// the stride-aware primitive by `TensorLoadOp`/`TensorStoreOp::emitMojo`.
+  void setTensorArgAlignmentFor(Value val, MojoValue alignment) {
+    tensorArgAlignments[val] = std::move(alignment);
+  }
+
+  /// Get the static alignment recorded for a fused load/store receiver.
+  const MojoValue &getTensorArgAlignmentFor(Value val) const {
+    auto it = tensorArgAlignments.find(val);
+    ASSERT_STREAM(it != tensorArgAlignments.end(),
+                  << "tensor value has no recorded fused-arg alignment");
+    return it->second;
   }
 
   /// Mark a value as being kept alive.

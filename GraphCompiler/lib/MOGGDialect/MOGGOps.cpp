@@ -4094,20 +4094,31 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
   // Reached recursively from whichever caller sets up `currentLambdaInfo`
-  // before lowering its own body -- reads builder/width/alignment (and the
-  // receiver's own alignment keyword, since it differs between `TileTensor`
-  // and `ManagedTensorSlice`) by role rather than assuming a specific caller.
+  // before lowering its own body -- reads builder/width/alignment by role
+  // rather than assuming a specific caller. Every fusion lane (the foreach
+  // closure and the prologue/epilogue functor) rebuilds its receiver as a
+  // bare-pointer `TileTensor`, so the load always goes through the stride-aware
+  // primitive registered under this op's own name: `TileTensor`'s own
+  // `raw_load` assumes a contiguous inner axis and would misread a strided
+  // fused view (transpose, non-unit slice). `tensor_alignment` is the source's
+  // own static alignment (a `TileTensor` carries none), recorded per receiver
+  // where the lane bound it, so the emitted load promises exactly what the
+  // legacy `ManagedTensorSlice.load` did.
   const MojoValue &tile = state.getMojoValueFor(getTensor());
   const MojoValue &idx = state.getMojoValueFor(getIndex());
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
   ASSERT_STREAM(lambdaInfo.lambdaBuilder,
                 "TensorLoadOp::emitMojo reached without currentLambdaInfo set");
 
-  MojoValue loaded = lambdaInfo.lambdaBuilder->var(tile.get("load")(
-      {MojoValue(kParameterWidth).equal(lambdaInfo.widthParameter),
-       MojoValue(lambdaInfo.alignmentKeyword)
-           .equal(lambdaInfo.alignmentParameter)},
-      {idx}));
+  MojoValue prim(primitiveMojoName(
+      state.registry.lookupPrimitive(TensorLoadOp::getOperationName())));
+  MojoValue loaded = lambdaInfo.lambdaBuilder->var(
+      prim({MojoValue(kParameterSimdWidth).equal(lambdaInfo.widthParameter),
+            MojoValue(kParameterElementAlignment)
+                .equal(lambdaInfo.alignmentParameter),
+            MojoValue(kParameterTensorAlignment)
+                .equal(state.getTensorArgAlignmentFor(getTensor()))},
+           {tile, idx}));
   state.setMojoValueFor(getResult(), loaded);
   return success();
 }
@@ -4133,12 +4144,19 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
   MojoValue tileDType = MojoValue("type_of")({}, {tile}).get(kParameterDType);
   MojoValue rebound = value.rebind(
       MojoValue(kStructSIMD)[{tileDType, lambdaInfo.widthParameter}]);
+  // Stride-aware store through the primitive registered under this op's name
+  // (`mogg._tensor.store`); see `TensorLoadOp::emitMojo` for why every lane
+  // stores through it and how `tensor_alignment` is threaded.
+  MojoValue prim(primitiveMojoName(
+      state.registry.lookupPrimitive(TensorStoreOp::getOperationName())));
   lambdaInfo.lambdaBuilder->call(
-      tile.get("store"),
-      {MojoValue(kParameterWidth).equal(lambdaInfo.widthParameter),
-       MojoValue(lambdaInfo.alignmentKeyword)
-           .equal(lambdaInfo.alignmentParameter)},
-      {idx, rebound});
+      prim,
+      {MojoValue(kParameterSimdWidth).equal(lambdaInfo.widthParameter),
+       MojoValue(kParameterElementAlignment)
+           .equal(lambdaInfo.alignmentParameter),
+       MojoValue(kParameterTensorAlignment)
+           .equal(state.getTensorArgAlignmentFor(getTensor()))},
+      {tile, idx, rebound});
   return success();
 }
 
@@ -4157,15 +4175,14 @@ struct FusedCaptureInfo {
   /// declaration (emitted into a separate top-level builder) cannot name an
   /// enclosing function's local, so it has to travel as a comptime param.
   MojoValue layoutType;
-
-  /// The functor-side names for the same capture, only meaningful inside the
-  /// struct declaration that mints them: the (ptr, layout) field identifiers
-  /// and the `Self.`-qualified layout-type param. Empty until the functor's
-  /// fields are declared; read again when its method body rebuilds the
-  /// capture's `TileTensor`.
-  MojoValue selfPtrField;
-  MojoValue selfLayoutField;
-  MojoValue selfLayoutTypeParam;
+  /// The capture's own static byte alignment (`ManagedTensorSlice.alignment`),
+  /// threaded into the stride-aware load/store primitive so a rebuilt
+  /// `TileTensor` -- which carries no static alignment -- promises exactly what
+  /// the legacy `ManagedTensorSlice` path did. Like `layoutType`, it is a
+  /// comptime value the struct cannot name directly, so the functor carries it
+  /// as a comptime param. A comptime alias in the enclosing scope, so a foreach
+  /// closure (which captures only (ptr, layout)) can name it too.
+  MojoValue alignment;
 };
 
 /// Collects per-capture metadata for a fused-region functor. Baking dtype/mut
@@ -4207,14 +4224,16 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
     // that instead of reconstructing one.
     MojoValue layout =
         state.builder.var(TileTensorRef(capRef.toTileTensor()).layout());
-    // The `self*` fields stay empty here: they are minted later, when the
-    // functor's own fields are declared.
+    // The capture's own static alignment, as a comptime alias in the enclosing
+    // scope so it is usable both where the functor is instantiated (enclosing
+    // scope) and inside a foreach closure that captures only (ptr, layout) --
+    // the raw `mts.alignment` would reference the un-captured slice there.
+    MojoValue alignment = state.builder.comptime(capRef.alignment());
     infos.push_back(
         {ptr, layout, state.mlirDTypeToMojoType(*capDtypeOr),
          MojoValue(create.getMut()),
          MojoValue(llvm::formatv("type_of({0})", layout.text).str()),
-         /*selfPtrField=*/{}, /*selfLayoutField=*/{},
-         /*selfLayoutTypeParam=*/{}});
+         alignment});
   }
   return infos;
 }
@@ -4321,14 +4340,32 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
   MojoValue structNameVal = state.structDefsBuilder.newVar(
       state.structDefsBuilder.getIdentifier(lane.structName.str()));
   SmallVector<NamedMojoDef> structParams;
-  for (unsigned j = 0; j < numCaptures; ++j)
+  // Two comptime params per capture, in declaration order: the layout type and
+  // the source's own static alignment. Neither can be named inside the struct
+  // body directly (they are enclosing-function values), so both travel as
+  // params; the body reads them back positionally as `sb.parameters[2*j]` and
+  // `[2*j + 1]`.
+  for (unsigned j = 0; j < numCaptures; ++j) {
     structParams.push_back(NamedMojoDef("LayoutType", kStructTensorLayout));
+    structParams.push_back(
+        NamedMojoDef(kParameterTensorAlignment.str(), kStructInt));
+  }
 
   // Shape captures (dynamic reshape runtime shapes) become trailing
   // `IndexList[rank]` fields -- their rank is a compile-time literal, so unlike
   // the tensor captures' layout they need no struct param. Minted in the field
   // loop, read back when the body binds the shape-capture block args.
   SmallVector<MojoValue> shapeCaptureFields(numShapeCaptures);
+
+  // The functor-side names for each capture -- the (ptr, layout) field
+  // identifiers and the `Self.`-qualified layout-type / alignment params.
+  // Minted in the struct-declaration callback below, read back when the method
+  // body rebuilds each capture's `TileTensor` and records its alignment. Local
+  // to this function since that is the only place they are meaningful.
+  SmallVector<MojoValue> selfPtrFields(numCaptures);
+  SmallVector<MojoValue> selfLayoutFields(numCaptures);
+  SmallVector<MojoValue> selfLayoutTypeParams(numCaptures);
+  SmallVector<MojoValue> selfAlignParams(numCaptures);
 
   bool errOccurred = false;
   state.structDefsBuilder.structDecl(
@@ -4340,11 +4377,12 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
           MojoValue scalarType = MojoValue(kStructScalar)[{capture.dtype}];
           MojoValue originType = MojoValue(kStructUntrackedOrigin)[{
               MojoValue(kParameterMut).equal(capture.mut)}];
-          capture.selfPtrField = state.structDefsBuilder.varDecl(
+          selfPtrFields[j] = state.structDefsBuilder.varDecl(
               MojoValue(kStructPointer)[{scalarType, originType}]);
-          capture.selfLayoutTypeParam = MojoValue("Self").get(sb.parameters[j]);
-          capture.selfLayoutField =
-              state.structDefsBuilder.varDecl(capture.selfLayoutTypeParam);
+          selfLayoutTypeParams[j] = MojoValue("Self").get(sb.parameters[2 * j]);
+          selfLayoutFields[j] =
+              state.structDefsBuilder.varDecl(selfLayoutTypeParams[j]);
+          selfAlignParams[j] = MojoValue("Self").get(sb.parameters[2 * j + 1]);
         }
         for (unsigned k = 0; k < numShapeCaptures; ++k)
           shapeCaptureFields[k] = state.structDefsBuilder.varDecl(
@@ -4392,7 +4430,7 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
                           /*alignmentParameter=*/fb.parameters[3]});
 
               // The recursively-lowered body's `TensorLoadOp`/`TensorStoreOp`
-              // call into `TileTensor.load`/`.store`, which take a `Coord`,
+              // call into the stride-aware primitive, which takes a `Coord`,
               // not an `IndexList` -- `idx` needs converting once, up front.
               // Uses `Coord`'s own `IndexList`-taking constructor
               // (coord.mojo), which fills every position from the runtime
@@ -4437,11 +4475,16 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
                 // isn't visible here.
                 const FusedCaptureInfo &capture = captureInfos[j];
                 MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
-                    MojoValue(kParameterSelf).get(capture.selfPtrField),
-                    MojoValue(kParameterSelf).get(capture.selfLayoutField),
-                    capture.dtype, capture.selfLayoutTypeParam, capture.mut);
-                state.setMojoValueFor(region.getArgument(captureBase + j),
+                    MojoValue(kParameterSelf).get(selfPtrFields[j]),
+                    MojoValue(kParameterSelf).get(selfLayoutFields[j]),
+                    capture.dtype, selfLayoutTypeParams[j], capture.mut);
+                Value captureArg = region.getArgument(captureBase + j);
+                state.setMojoValueFor(captureArg,
                                       state.structDefsBuilder.var(tile));
+                // The rebuilt `TileTensor` carries no static alignment; record
+                // the capture's own (from its `Self.tensor_alignment` param) so
+                // the load/store primitive promises what the slice would have.
+                state.setTensorArgAlignmentFor(captureArg, selfAlignParams[j]);
               }
 
               // Shape captures follow the tensor captures as trailing block
@@ -4479,11 +4522,13 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
 
   // Instantiate the functor: per capture, a bare pointer off its stored handle
   // plus the row-major layout (the device representation that translates), in
-  // the same LayoutType / (ptr, layout) order the struct was declared with.
+  // the same (LayoutType, tensor_alignment) / (ptr, layout) order the struct
+  // was declared with.
   SmallVector<MojoValue> comptimeArgs;
   SmallVector<MojoValue> instanceArgs;
   for (const FusedCaptureInfo &capture : captureInfos) {
     comptimeArgs.push_back(capture.layoutType);
+    comptimeArgs.push_back(capture.alignment);
     instanceArgs.push_back(capture.ptr);
     instanceArgs.push_back(capture.layout);
   }
@@ -4758,10 +4803,11 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   // `_foreach`'s `Lambda` parameter needs a blanket `{var}` capture clause,
   // confirmed empirically to be the only convention that works for a closure
   // capturing register-passable values -- see `MojoBuilder::lambda`'s
-  // `captureConvention` doc. Each capture is a `ManagedTensorSlice`, which is
-  // itself `DevicePassable` (the trait a GPU kernel launch's encoder relies
-  // on), so the closure captures and calls `load`/`store` on it directly --
-  // no `TileTensor` rebuild.
+  // `captureConvention` doc. Exactly like the prologue/epilogue functor, each
+  // source is captured as a bare pointer + layout (both `DevicePassable`) and
+  // rebuilt into a `TileTensor` inside the body, so its load/store go through
+  // the same stride-aware primitive -- one uniform fused-access path across
+  // the foreach closure and the fusion functors.
   //
   // The closure's comptime parameter list is exactly `[width,
   // element_alignment]`. `TensorLoadOp`/`TensorStoreOp::emitMojo` read
@@ -4774,9 +4820,15 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   MojoValue context = state.getMojoValueFor(getContext());
   ValueRange capturing = getCapturing();
 
-  SmallVector<MojoValue> captureValues;
-  for (Value cap : capturing)
-    captureValues.push_back(state.getMojoValueFor(cap));
+  // Decompose each capture into the (ptr, layout) the closure captures plus its
+  // static alignment, exactly as `emitMapFusionFunctor` does. Built here, in
+  // the enclosing scope, so the `{var}` closure captures the (ptr, layout)
+  // locals (not the slice) and can name the comptime alignment alias.
+  FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
+      collectFusedCaptureInfos(state, *this, capturing);
+  if (failed(captureInfosOr))
+    return failure();
+  SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
   // The device is the op's own `$device` attribute.
   MojoValue targetStr = MojoValue(("\"" + getDevice().getLabel() + "\"").str());
@@ -4804,13 +4856,23 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
         EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
             state, {/*lambdaBuilder=*/&state.builder,
                     /*widthParameter=*/fb.parameters[0],
-                    /*alignmentParameter=*/fb.parameters[1],
-                    /*alignmentKeyword=*/kParameterElementAlignment});
+                    /*alignmentParameter=*/fb.parameters[1]});
 
         Block &body = getBody().front();
         ArrayRef<BlockArgument> args = body.getArguments();
-        for (auto [i, value] : llvm::enumerate(captureValues))
-          state.setMojoValueFor(args[i], value);
+        for (unsigned i = 0; i < captureInfos.size(); ++i) {
+          // Rebuild the capture's `TileTensor` from the (ptr, layout) the
+          // closure captured. `layoutType` is `type_of(<captured layout>)`,
+          // valid here because the closure sees the enclosing local -- unlike
+          // the functor struct, which must carry it as a comptime param.
+          const FusedCaptureInfo &info = captureInfos[i];
+          MojoValue tile = TileTensorRef::fromExternalPtrExplicit(
+              info.ptr, info.layout, info.dtype, info.layoutType, info.mut);
+          state.setMojoValueFor(args[i], state.builder.var(tile));
+          // The rebuilt tile carries no static alignment; record the capture's
+          // own so the load/store primitive promises what the slice would have.
+          state.setTensorArgAlignmentFor(args[i], info.alignment);
+        }
         state.setMojoValueFor(args.back(), fb.arguments[0]);
 
         errOccurred = llvm::any_of(body, [&](Operation &op) {

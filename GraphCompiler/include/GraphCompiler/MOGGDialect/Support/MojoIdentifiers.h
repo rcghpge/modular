@@ -502,6 +502,10 @@ constexpr llvm::StringLiteral kParameterLength = "length";
 constexpr llvm::StringLiteral kParameterStaticSpecs = "static_specs";
 constexpr llvm::StringLiteral kParameterSimdWidth = "simd_width";
 constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";
+/// The source tensor's own static byte alignment, threaded into the
+/// stride-aware fused load/store primitives so they match
+/// `simd_load/store_*_managed_tensor_slice` (a `TileTensor` carries none).
+constexpr llvm::StringLiteral kParameterTensorAlignment = "tensor_alignment";
 constexpr llvm::StringLiteral kParameterElementSize = "element_size";
 constexpr llvm::StringLiteral kParameterOutputStaticShape =
     "output_static_shape";
