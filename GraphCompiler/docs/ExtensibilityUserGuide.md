@@ -265,7 +265,7 @@ the **MutableInputTensor** alias of **ManagedTensorSlice** should be used.
 ```python
 @extensibility.register("mutating_operation")
 struct TensorMutatingOperation:
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType, target: StaticString
@@ -290,7 +290,7 @@ and things should work as you expect:
     "paged_kv_cache_collection_h8_d128_bshd"
 )
 struct Struct_paged_kv_cache_collection_h8_d128_bshd:
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType, target: StaticString
@@ -316,7 +316,7 @@ struct Struct_paged_kv_cache_collection_h8_d128_bshd:
 @extensibility.register("returning_transpose")
 @extensibility.view_kernel
 struct ReturningTranspose:
-    @always_inline
+    @inline(.always)
     @staticmethod
     def transpose_in_place(
         input: ManagedTensorSlice,

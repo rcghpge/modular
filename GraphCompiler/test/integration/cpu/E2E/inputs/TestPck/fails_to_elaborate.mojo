@@ -11,7 +11,7 @@ from std.collections.string import StaticString
 
 
 # Custom version of constrained so we get the note in this file.
-@always_inline("nodebug")
+@inline(.nodebug)
 def constrained[cond: Bool, msg: StaticString]():
     __mlir_op.`kgen.param.assert`[
         cond=cond.__mlir_bool__(),
