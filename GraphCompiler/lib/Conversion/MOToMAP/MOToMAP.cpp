@@ -405,16 +405,20 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
 
   // The spec stores resolved bounds, but MO accepts Python-style negative
   // indices and out-of-range values and normalizes them in its own shape
-  // function. Do the same here, for the static forward-step case the spec
-  // can represent.
+  // function. Do the same here, matching materializeSliceShape's clamp.
   for (int64_t i = 0; i < rank; ++i) {
     if (ShapedType::isDynamic(inDims[i]) || ShapedType::isDynamic(steps[i]) ||
-        steps[i] <= 0)
+        steps[i] == 0)
       continue;
-    auto normalize = [dim = inDims[i]](int64_t v) {
+    int64_t dim = inDims[i];
+    // A reverse slice walks down to -1, so it clamps one below the forward
+    // range.
+    int64_t lo = steps[i] > 0 ? 0 : -1;
+    int64_t hi = steps[i] > 0 ? dim : dim - 1;
+    auto normalize = [&](int64_t v) {
       if (ShapedType::isDynamic(v))
         return v;
-      return std::clamp<int64_t>(v < 0 ? v + dim : v, 0, dim);
+      return std::clamp<int64_t>(v < 0 ? v + dim : v, lo, hi);
     };
     starts[i] = normalize(starts[i]);
     stops[i] = normalize(stops[i]);

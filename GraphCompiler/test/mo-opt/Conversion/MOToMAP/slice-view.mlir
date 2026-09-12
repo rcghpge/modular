@@ -67,3 +67,38 @@ mo.graph @sliceNonConstantStep(
   ) -> !mo.tensor<[3, 32], f32>
   mo.output %res : !mo.tensor<[3, 32], f32>
 }
+
+// A negative step walks the axis backwards. MO clamps such a slice to
+// [-1, dim-1] rather than the forward [0, dim], so the same literal
+// normalizes differently depending on the step's sign: here stop=-7 becomes
+// 3, and the walk is 9, 7, 5.
+
+// CHECK-LABEL: mo.graph @sliceReverseStep
+// CHECK-NOT:     map.iter.opaque
+// CHECK:         map.iter.foreach<[3, 32]>
+// CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [9, 32], stops = [3, 64], steps = [-2, 1]>>
+mo.graph @sliceReverseStep(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
+  %start = mo.constant {value = #M.dense_array<-1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<-7, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<-2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[3, 32], f32>
+  mo.output %res : !mo.tensor<[3, 32], f32>
+}
+
+// Reversing a whole axis needs a stop of -1, one before element 0. Only the
+// reverse clamp can produce it: an out-of-range stop lands there instead of
+// at 0, which is what the forward clamp would give.
+
+// CHECK-LABEL: mo.graph @sliceReverseWholeAxis
+// CHECK:         map.index.slice<#map.index.slice.spec<[10] -> [10], starts = [9], stops = [-1], steps = [-1]>>
+mo.graph @sliceReverseWholeAxis(%input: !mo.tensor<[10], f32>) -> !mo.tensor<[10], f32> {
+  %start = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %stop = mo.constant {value = #M.dense_array<-20> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %step = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
+  ) -> !mo.tensor<[10], f32>
+  mo.output %res : !mo.tensor<[10], f32>
+}

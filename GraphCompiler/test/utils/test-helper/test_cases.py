@@ -362,22 +362,47 @@ class MultiViewFusionBase(TestBase):
         permute = np.arange(num_dims).astype(np.int32)
         permute = np.random.permutation(permute)
 
-        # Get random data for the slice. Ensure we always step at least once
-        step = np.random.randint(1, 3, size=(num_dims,), dtype=np.int32)
-        start = np.random.randint(
-            [0] * num_dims, shapes[0] - step, size=(num_dims,), dtype=np.int32
-        )
+        # Walk each axis forwards or backwards, and express the bounds as
+        # Python-style negative indices half the time. numpy is the oracle
+        # here, so every encoding below has to mean the same to it as to MO.
+        start, stop, step = [], [], []
+        for dim in shapes[0]:
+            dim = int(dim)
+            magnitude = int(np.random.randint(1, 3))
+            backwards = bool(np.random.randint(0, 2))
+            first = int(np.random.randint(0, dim))
 
-        random_factor = np.random.randint(
-            [1] * num_dims, shapes[0], size=(num_dims,), dtype=np.int32
-        )
-        stop = start + step * random_factor
+            if backwards:
+                count = int(np.random.randint(1, first // magnitude + 2))
+                last = first - (count - 1) * magnitude
+                stop_idx = last - magnitude
+            else:
+                max_count = (dim - 1 - first) // magnitude + 1
+                count = int(np.random.randint(1, max_count + 1))
+                last = first + (count - 1) * magnitude
+                stop_idx = last + magnitude
+
+            # A backwards walk ending at 0 has no non-negative stop: -1 would
+            # mean the last element, so use the out-of-range value that
+            # normalizes to -1 on both sides.
+            if stop_idx < 0:
+                stop_val = -(dim + 1)
+            elif 0 < stop_idx < dim and np.random.randint(0, 2):
+                stop_val = stop_idx - dim
+            else:
+                stop_val = stop_idx
+
+            start_val = first - dim if np.random.randint(0, 2) else first
+
+            step.append(-magnitude if backwards else magnitude)
+            start.append(start_val)
+            stop.append(stop_val)
 
         return [
             np.random.uniform(-2.0, 2.0, shapes[0]).astype(np.float32),
-            start,
-            stop,
-            step,
+            np.array(start, dtype=np.int32),
+            np.array(stop, dtype=np.int32),
+            np.array(step, dtype=np.int32),
             permute,
         ]
 

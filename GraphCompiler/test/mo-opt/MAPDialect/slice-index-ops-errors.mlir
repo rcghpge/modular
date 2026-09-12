@@ -32,6 +32,20 @@
 
 // -----
 
-// step must be positive.
-// expected-error @below{{dim 0: start/stop/step do not produce out-shape dim 3, got start=1, stop=4, step=0}}
+// step must be non-zero -- a zero step walks nowhere in either direction.
+// expected-error @below{{dim 0: step must be non-zero}}
 #spec = #map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [0, 1]>
+
+// -----
+
+// A reverse slice runs start down to stop, so the two swap roles.
+// expected-error @below{{dim 0: start/stop out of bounds for in-shape dim 10, got start=3, stop=9}}
+#spec = #map.index.slice.spec<[10, 64] -> [3, 32], starts = [3, 32], stops = [9, 64], steps = [-2, 1]>
+
+// -----
+
+// A reverse walk must stay in bounds: 9 - 2*5 is -1, off the front of the
+// axis. `stops` is not load-bearing here (see the verifier), so the out-shape
+// dim is what the walk is checked against.
+// expected-error @below{{dim 0: start/step walk out of bounds for in-shape dim 10, got start=9, step=-5, out-shape dim 3}}
+#spec = #map.index.slice.spec<[10, 64] -> [3, 32], starts = [9, 32], stops = [-1, 64], steps = [-5, 1]>

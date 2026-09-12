@@ -214,24 +214,49 @@ LogicalResult SliceSpecAttr::verify(
   ArrayRef<int64_t> stopVals = stops.asArrayRef();
   ArrayRef<int64_t> stepVals = steps.asArrayRef();
   for (int64_t i = 0; i < rank; ++i) {
+    // A dimension with any unknown bound is left to MO's own shape function,
+    // which raises at run time -- see E2E/raising-shape-funcs.mlir, which
+    // compiles a zero step on purpose and expects the runtime diagnostic.
     if (ShapedType::isDynamic(inDims[i]) ||
         ShapedType::isDynamic(startVals[i]) ||
         ShapedType::isDynamic(stopVals[i]))
       continue;
-    if (startVals[i] < 0 || startVals[i] > stopVals[i] ||
-        stopVals[i] > inDims[i])
+    bool stepKnown = !ShapedType::isDynamic(stepVals[i]);
+    // A reverse slice walks down to -1, so its bounds sit one below the
+    // forward range; an unknown step admits either.
+    bool reverse = stepKnown && stepVals[i] < 0;
+    int64_t lo = (!stepKnown || reverse) ? -1 : 0;
+    int64_t hi = (!stepKnown || !reverse) ? inDims[i] : inDims[i] - 1;
+    bool ordered = !stepKnown || (reverse ? startVals[i] >= stopVals[i]
+                                          : startVals[i] <= stopVals[i]);
+    if (startVals[i] < lo || startVals[i] > hi || stopVals[i] < lo ||
+        stopVals[i] > hi || !ordered)
       return emitError() << "dim " << i << ": start/stop out of bounds for "
                          << "in-shape dim " << inDims[i]
                          << ", got start=" << startVals[i]
                          << ", stop=" << stopVals[i];
 
-    if (ShapedType::isDynamic(outDims[i]) || ShapedType::isDynamic(stepVals[i]))
+    if (ShapedType::isDynamic(outDims[i]) || !stepKnown)
       continue;
+    if (stepVals[i] == 0)
+      return emitError() << "dim " << i << ": step must be non-zero";
+    if (reverse) {
+      // Normalization maps a literal -1 stop to inDim-1, so a reverse stop
+      // cannot express "past element 0" and the out shape is authoritative
+      // instead. Check only that the walk stays in bounds.
+      int64_t last = startVals[i] + (outDims[i] - 1) * stepVals[i];
+      if (outDims[i] > 0 && (last < 0 || last >= inDims[i]))
+        return emitError() << "dim " << i << ": start/step walk out of bounds "
+                           << "for in-shape dim " << inDims[i]
+                           << ", got start=" << startVals[i]
+                           << ", step=" << stepVals[i] << ", out-shape dim "
+                           << outDims[i];
+      continue;
+    }
     // MO sizes a slice by ceiling division (see computeRangeSize), so
     // start=0, stop=5, step=2 yields 3, not an exact multiple of the step.
-    if (stepVals[i] <= 0 ||
-        outDims[i] !=
-            llvm::divideCeilSigned(stopVals[i] - startVals[i], stepVals[i]))
+    if (outDims[i] !=
+        llvm::divideCeilSigned(stopVals[i] - startVals[i], stepVals[i]))
       return emitError() << "dim " << i << ": start/stop/step do not produce "
                          << "out-shape dim " << outDims[i]
                          << ", got start=" << startVals[i]
