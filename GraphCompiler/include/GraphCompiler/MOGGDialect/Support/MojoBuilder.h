@@ -245,7 +245,7 @@ public:
   }
 
   /// Creates a function with the specified parameter and argument types, with
-  /// optional raises and `@always_inline` decorator. The returned object is a
+  /// optional raises and `@inline(.always)` decorator. The returned object is a
   /// RAII guard that will recover the original indentation level when it goes
   /// out of scope.
   void def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
@@ -256,11 +256,11 @@ public:
 
   /// Inline treatment of an emitted lambda. `kAutomatic` leaves the decision
   /// to `AutomaticInline`'s heuristics; `kAlways` and `kNever` pin it with
-  /// `@always_inline` / `@no_inline`. `kNever` exists for the device-graph
-  /// build closures: their single-use per-kernel bodies would otherwise be
-  /// merged into one enormous function whose function-local optimization
-  /// (Mem2Reg in particular) dominates model compile time and serializes the
-  /// otherwise per-function-parallel pipeline.
+  /// `@inline(.always)` / `@inline(.never)`. `kNever` exists for the
+  /// device-graph build closures: their single-use per-kernel bodies would
+  /// otherwise be merged into one enormous function whose function-local
+  /// optimization (Mem2Reg in particular) dominates model compile time and
+  /// serializes the otherwise per-function-parallel pipeline.
   enum class LambdaInline { kAutomatic, kAlways, kNever };
 
   /// Creates a lambda with the specified parameter and argument types. The

@@ -35,7 +35,7 @@ struct _MoggTensorBufferCapture[
     var handle: Pointer[Scalar[Self.dtype], MutUntrackedOrigin]
     var _layout: Self._LayoutType
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         ptr: Pointer[Scalar[Self.dtype], MutUntrackedOrigin],
@@ -44,7 +44,7 @@ struct _MoggTensorBufferCapture[
         self.handle = ptr
         self._layout = layout
 
-    @always_inline
+    @inline(.always)
     def layout(self) -> Self.LayoutType:
         return self._layout
 )mojo";
@@ -148,12 +148,12 @@ struct _MoggInputLoadFusionTensor[
 
     comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, in_fusion: Self._InFusion, layout: Self.LayoutType):
         self.in_fusion = in_fusion
         self._layout = layout
 
-    @always_inline
+    @inline(.always)
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._device_passable:
@@ -180,11 +180,11 @@ struct _MoggInputLoadFusionTensor[
     def get_type_name() -> String where Self._device_passable:
         return String("_MoggInputLoadFusionTensor")
 
-    @always_inline
+    @inline(.always)
     def shape(self) -> Self.ShapeType:
         return rebind[Self.ShapeType](self._layout.shape_coord())
 
-    @always_inline
+    @inline(.always)
     def load[
         width: Int,
         element_alignment: Int = 1,
@@ -278,12 +278,12 @@ struct _MoggOutputStoreFusionTensor[
 
     comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, out_fusion: Self._OutFusion, layout: Self.LayoutType):
         self.out_fusion = out_fusion
         self._layout = layout
 
-    @always_inline
+    @inline(.always)
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._device_passable:
@@ -310,11 +310,11 @@ struct _MoggOutputStoreFusionTensor[
     def get_type_name() -> String where Self._device_passable:
         return String("_MoggOutputStoreFusionTensor")
 
-    @always_inline
+    @inline(.always)
     def shape(self) -> Self.ShapeType:
         return rebind[Self.ShapeType](self._layout.shape_coord())
 
-    @always_inline
+    @inline(.always)
     def store[
         width: Int,
         element_alignment: Int = 1,
@@ -420,7 +420,7 @@ struct _MoggTransformFusionTensor[
 
     comptime FusedViewType: TrivialRegisterPassable = Self.device_type
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         transform_fusion: Self._TransformFusion,
@@ -431,7 +431,7 @@ struct _MoggTransformFusionTensor[
         self._layout = layout
         self.handle = ptr
 
-    @always_inline
+    @inline(.always)
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._device_passable:
@@ -467,17 +467,17 @@ struct _MoggTransformFusionTensor[
     def get_type_name() -> String where Self._device_passable:
         return String("_MoggTransformFusionTensor")
 
-    @always_inline
+    @inline(.always)
     def shape(self) -> Self.ShapeType:
         return rebind[Self.ShapeType](self._layout.shape_coord())
 
-    @always_inline
+    @inline(.always)
     def layout(self) -> Self.LayoutType:
         return self._layout
 
     # `TileTensorable`: the parent kernel stores the transformed value through
     # this projection (rebuilt from the bare output-buffer pointer).
-    @always_inline
+    @inline(.always)
     def to_tile_tensor(
         self,
     ) -> TileTensor[
@@ -496,7 +496,7 @@ struct _MoggTransformFusionTensor[
             origin = UntrackedOrigin[mut = Self.mut],
         ](ptr=self.handle, layout=self._layout)
 
-    @always_inline
+    @inline(.always)
     def transform[
         width: Int,
         element_alignment: Int = 1,

@@ -122,7 +122,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // baked directly into its field types; only `LayoutType` is a struct param
 // (one per capture), since its value is a `type_of(<enclosing-function
 // local>)` expression a struct can't close over. Bare (ptr, layout) fields,
-// and an `@always_inline
+// and an `@inline(.always)
 // store` that stores through a rebuilt `TileTensor`. `_bind_to_fused_output`
 // requires an `OutputFusion`-conforming functor, which uses `IndexList` (not
 // `Coord`) and a `store` method (not `__call__`) -- `idx` gets converted once
@@ -133,7 +133,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[LAYOUT:[a-zA-Z0-9_]+]]: layout.TensorLayout, {{[a-zA-Z0-9_]+}}: Int](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
 // CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = True]]
 // CHECK-NEXT:     var [[LAYOUTF:[a-zA-Z0-9_]+]]: Self.[[LAYOUT]]
-// CHECK:          @always_inline
+// CHECK:          @inline(.always)
 // CHECK-NEXT:     def store[dtype : DType, rank : Int, simd_width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, simd_width]):
 // CHECK-NEXT:         var [[COORDIDX:.*]] = layout.Coord(idx)
 // CHECK-NEXT:         var [[REBOUND:.*]] = rebind[SIMD[DType.float32, simd_width]](value)

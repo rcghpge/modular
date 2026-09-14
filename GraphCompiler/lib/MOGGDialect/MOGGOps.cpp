@@ -1372,7 +1372,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
   sdb.structDecl(
       structNameVal, parameters, {MojoValue(traitName)}, fields, [&]() {
         // Trait-conforming method: load/store/compute. Parameter and argument
-        // names must match the trait signature exactly so the @always_inline
+        // names must match the trait signature exactly so the @inline(.always)
         // body can reference `self.*`, `simd_width`, `dtype`, etc. without
         // counter mangling — hence `NamedMojoDef::asVerbatim`.
         MojoValue idxType = MojoValue(kStructIndexList)[kParameterRank];
@@ -6205,7 +6205,7 @@ struct _MoggDenseTensorArg[
     var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
     var _layout: Self.LayoutType
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         ptr: Pointer[NoneType, MutAnyOrigin],
@@ -6231,7 +6231,7 @@ struct _MoggDenseTensorArg[
         Engine = Self.Engine,
     ]
 
-    @always_inline
+    @inline(.always)
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._is_device_passable:
@@ -6253,15 +6253,15 @@ struct _MoggDenseTensorArg[
     def get_type_name() -> String where Self._is_device_passable:
         return String("_MoggDenseTensorArg")
 
-    @always_inline
+    @inline(.always)
     def shape(self) -> Self.ShapeType:
         return rebind[Self.ShapeType](self.layout().shape_coord())
 
-    @always_inline
+    @inline(.always)
     def layout(self) -> Self.LayoutType:
         return self._layout
 
-    @always_inline
+    @inline(.always)
     def to_tile_tensor(
         self,
     ) -> TileTensor[
@@ -6313,7 +6313,7 @@ struct _MoggShapeTensorArg[
     var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
     var _layout: Self.LayoutType
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         ptr: Pointer[NoneType, MutAnyOrigin],
@@ -6324,15 +6324,15 @@ struct _MoggShapeTensorArg[
         ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
         self._layout = layout
 
-    @always_inline
+    @inline(.always)
     def shape(self) -> Self.ShapeType:
         return rebind[Self.ShapeType](self.layout().shape_coord())
 
-    @always_inline
+    @inline(.always)
     def layout(self) -> Self.LayoutType:
         return self._layout
 
-    @always_inline
+    @inline(.always)
     def to_tile_tensor(
         self,
     ) -> TileTensor[

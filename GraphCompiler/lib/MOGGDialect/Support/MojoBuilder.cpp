@@ -166,7 +166,7 @@ void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
   MojoBuilderScopeGuard guard(this, true);
 
   if (isAlwaysInline)
-    statement("@always_inline");
+    statement(kDecoratorAlwaysInline);
   if (exported)
     statement("@export");
 

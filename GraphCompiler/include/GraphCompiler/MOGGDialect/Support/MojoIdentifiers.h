@@ -22,7 +22,7 @@
 //       kTrait*     Mojo trait names used in conformance declarations.
 //       kComptime*  Pre-rendered comptime type expressions.
 //       kAlias*     Mojo alias names.
-//       kDecorator* Mojo decorator strings (`@always_inline`, ...).
+//       kDecorator* Mojo decorator strings (`@inline(.always)`, ...).
 //       kParameter* Mojo parameter names (kwargs in emitted calls, generic
 //                   parameter names, kernel parameter inference keys).
 //       kPackage*   Mojo package names.
@@ -449,8 +449,8 @@ constexpr llvm::StringLiteral kTraitElementwiseFusionTile =
 // Decorator strings
 //===----------------------------------------------------------------------===//
 
-constexpr llvm::StringLiteral kDecoratorAlwaysInline = "@always_inline";
-constexpr llvm::StringLiteral kDecoratorNoInline = "@no_inline";
+constexpr llvm::StringLiteral kDecoratorAlwaysInline = "@inline(.always)";
+constexpr llvm::StringLiteral kDecoratorNoInline = "@inline(.never)";
 
 //===----------------------------------------------------------------------===//
 // Pre-rendered comptime type expressions
