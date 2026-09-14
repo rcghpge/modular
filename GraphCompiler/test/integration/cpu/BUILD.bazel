@@ -56,12 +56,23 @@ _COMMON_DEPS = [
 # list is the union across arches. Removing an entry should say which fix
 # covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
-    "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
-    "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
     # Custom view-kernel graphs removed (unsupported going forward); still
     # blocked on a matmul epilogue-fusion difference (has_epilogue_fusion),
     # a separate cause from view kernels.
     "MODialect/mogg-kernel-api-e2e-fusion.mlir",
+]
+
+# Files that will never run under MAX_GC_USE_ADV_FUSION=1: either rewritten as
+# a MAP test, or checking something the advanced fusion path does not have.
+# Unlike the list above, this one is not meant to empty -- it goes away with
+# the legacy path itself.
+_ADV_FUSION_DISABLED_TESTS = [
+    # Read the propagated static strides out of the legacy-only
+    # `mogg-debug-dump-fused-tensor-specs`. Their graphs are checked as index
+    # transforms instead, in
+    # mo-opt/MAPDialect/Transforms/ViewFusion/view_fusion_propagate_strides.mlir.
+    "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
+    "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
 ]
 
 lit_tests(
@@ -93,7 +104,8 @@ lit_tests(
     size = "enormous",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = ["**/*-gpu.mlir"] + _ADV_FUSION_EXCLUDED_TESTS,
+        exclude = ["**/*-gpu.mlir"] + _ADV_FUSION_EXCLUDED_TESTS +
+                  _ADV_FUSION_DISABLED_TESTS,
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,
