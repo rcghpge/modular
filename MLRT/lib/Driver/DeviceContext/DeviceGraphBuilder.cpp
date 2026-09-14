@@ -257,8 +257,18 @@ ErrorOrSuccess RecordingDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return builder_->context().memAlloc(ptr, byteSize, mode);
 }
 
-ErrorOrSuccess RecordingDeviceContext::memFree(void *ptr, bool isHost) {
-  return builder_->context().memFree(ptr, isHost);
+ErrorOrSuccess RecordingDeviceContext::memWrap(void **devPtr, void *hostPtr,
+                                               size_t byteSize) {
+  // Registering would succeed; it is the unregister that has no event to be
+  // ordered against here, so the handle's one guarantee would not hold.
+  return Error("wrapHostMemory cannot be used during device graph recording: "
+               "the unregister cannot be ordered against the recorded work. "
+               "Wrap the range before the recorded region.");
+}
+
+ErrorOrSuccess RecordingDeviceContext::memFree(void *ptr,
+                                               Device::FreeKind kind) {
+  return builder_->context().memFree(ptr, kind);
 }
 
 RecordingDeviceContext::MMapFileImplResult

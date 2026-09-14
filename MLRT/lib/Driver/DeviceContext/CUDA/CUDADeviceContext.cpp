@@ -1740,11 +1740,22 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess CUDADeviceContext::memWrap(void **devPtr, void *hostPtr,
+                                          size_t byteSize) {
+  RETURN_IF_ERROR(registerHostMemory(hostPtr, byteSize));
+  // UVA gives a registered page one address; guaranteed at our CC 7.5 floor.
+  *devPtr = hostPtr;
+  return success();
+}
+
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 
+  if (kind == Device::FreeKind::WRAPPED)
+    return unregisterHostMemory(ptr);
+
   CUDA_WITH_CTX_ERR(*this);
-  if (isHost) {
+  if (kind == Device::FreeKind::HOST) {
     POLL_PENDING_EVENTS(*this);
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
   } else {

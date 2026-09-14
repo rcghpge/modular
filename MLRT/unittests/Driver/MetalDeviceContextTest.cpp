@@ -20,6 +20,7 @@
 
 #pragma clang diagnostic pop
 
+#include "HostMapping.h"
 #include "TestUtils.h"
 #include "gtest/gtest.h"
 
@@ -978,8 +979,218 @@ TEST_F(MetalDeviceContextTestBase, MemAllocDonatesRefcountToTracker) {
   ASSERT_NE(buf, nullptr);
   EXPECT_EQ(buf->retainCount(), 1u);
 
-  EXPECT_NO_ERR(ctx_->memFree(ptr, /*isHost=*/true));
+  EXPECT_NO_ERR(ctx_->memFree(ptr, Device::FreeKind::HOST));
   EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
+}
+
+// Rounding out to a page boundary could alias memory that is not mapped.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryRejectsBadRanges) {
+  ASSERT_TRUE(ctx_);
+  HostMapping mapping(2 * hostPageSize());
+  ASSERT_NE(mapping.data(), nullptr);
+
+  EXPECT_ERR_MSG(ctx_->wrapHostMemory(nullptr, hostPageSize()),
+                 "pointer is null");
+  EXPECT_ERR_MSG(ctx_->wrapHostMemory(mapping.data(), 0), "byteSize is zero");
+  EXPECT_ERR_MSG(ctx_->wrapHostMemory(mapping.bytes() + 64, hostPageSize()),
+                 "not page-aligned");
+  EXPECT_ERR_MSG(ctx_->wrapHostMemory(mapping.data(), hostPageSize() + 64),
+                 "not a multiple of the page size");
+}
+
+// Once the handle drops the Metal buffer is gone, but the pages are not.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryLeavesPagesToTheCaller) {
+  ASSERT_TRUE(ctx_);
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  const size_t baseline = metalDev.getTrackedBuffers().size();
+
+  HostMapping mapping(4 * hostPageSize());
+  ASSERT_NE(mapping.data(), nullptr);
+  std::memset(mapping.data(), 0xA5, mapping.byteSize());
+
+  void *wrappedDevPtr = nullptr;
+  {
+    ASSIGN_NO_ERR(DeviceBufferRef, wrapped,
+                  ctx_->wrapHostMemory(mapping.data(), mapping.byteSize()));
+    EXPECT_EQ(wrapped->byteSize(), mapping.byteSize());
+    EXPECT_TRUE(wrapped->isHost());
+    // The aliasing buffer's GPU address, which maps back to the caller's pages.
+    EXPECT_NE(wrapped->ptr(), mapping.data());
+    ASSIGN_NO_ERR(void *, host, ctx_->getHostAccessiblePointer(wrapped->ptr()));
+    EXPECT_EQ(host, mapping.data());
+    wrappedDevPtr = wrapped->ptr();
+    EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline + 1);
+  }
+
+  // `synchronize` alone must drain the release, as it does on CUDA.
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
+
+  const uint8_t *bytes = mapping.bytes();
+  EXPECT_TRUE(std::all_of(bytes, bytes + mapping.byteSize(), [](uint8_t b) {
+    return b == 0xA5;
+  })) << "dropping the handle disturbed the caller's pages";
+}
+
+// A wrapped range is a kernel operand: the kernel writes through it and the
+// caller reads the result from its own pages, with no copy back.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryFeedsKernel) {
+  ASSERT_TRUE(ctx_);
+  std::string metalSource = getMetalShaderSource();
+  ASSERT_FALSE(metalSource.empty());
+  ASSIGN_NO_ERR(
+      DeviceFunctionRef, fn,
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", metalSource));
+
+  constexpr uint32_t blockDim = 256;
+  constexpr size_t length = 1024;
+  const size_t bytes = length * sizeof(float);
+  const size_t mapBytes =
+      ((bytes + hostPageSize() - 1) / hostPageSize()) * hostPageSize();
+
+  HostMapping outMap(mapBytes);
+  ASSERT_NE(outMap.data(), nullptr);
+  std::memset(outMap.data(), 0, mapBytes);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, in0, ctx_->enqueueCreateBuffer(bytes));
+  ASSIGN_NO_ERR(DeviceBufferRef, in1, ctx_->enqueueCreateBuffer(bytes));
+  ASSIGN_NO_ERR(DeviceBufferRef, wrappedOut,
+                ctx_->wrapHostMemory(outMap.data(), mapBytes));
+
+  std::vector<float> a(length), b(length);
+  for (size_t i = 0; i < length; ++i) {
+    a[i] = static_cast<float>(i);
+    b[i] = 2.0f;
+  }
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in0, a.data()));
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1, b.data()));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  void *outPtr = wrappedOut->ptr();
+  void *in0Ptr = in0->ptr();
+  void *in1Ptr = in1->ptr();
+  uint32_t lengthValue = static_cast<uint32_t>(length);
+  void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+  size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                       sizeof(lengthValue)};
+  bool argIsDevicePtr[] = {true, true, true, false};
+  DeviceBuffer *kernelBuffers[] = {wrappedOut.getPointer(), in0.getPointer(),
+                                   in1.getPointer()};
+  MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                        kernelBuffers, 3};
+  void *args[] = {&metalArgs};
+
+  EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*fn, length / blockDim, 1, 1,
+                                                blockDim, 1, 1, 0, nullptr, 0,
+                                                args, 4, argSizes));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  const float *observed = static_cast<const float *>(outMap.data());
+  for (size_t i = 0; i < length; ++i)
+    ASSERT_FLOAT_EQ(observed[i], a[i] + b[i]) << "index " << i;
+}
+
+// The unregister runs from the last participating handler, so draining the
+// owner alone is not enough once another context has copied the range.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryReleaseNeedsEveryContext) {
+  ASSERT_TRUE(ctx_);
+  ASSIGN_NO_ERR(DeviceContextRef, foreign, device_->createContext());
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  const size_t baseline = metalDev.getTrackedBuffers().size();
+
+  const size_t byteSize = hostPageSize();
+  HostMapping mapping(byteSize);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  void *devPtr = nullptr;
+  {
+    ASSIGN_NO_ERR(DeviceBufferRef, wrapped,
+                  ctx_->wrapHostMemory(mapping.data(), byteSize));
+    devPtr = wrapped->ptr();
+    ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
+                  foreign->enqueueCreateBuffer(byteSize));
+    EXPECT_NO_ERR(wrapped->copyTo(*deviceBuf));
+    EXPECT_NO_ERR(foreign->synchronize());
+    // The device-buffer allocation is tracked too, so count only the wrap.
+    EXPECT_GE(metalDev.getTrackedBuffers().size(), baseline + 1);
+  }
+
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_NO_ERR(ctx_->pollPendingEvents());
+  EXPECT_NE(
+      metalDev.getTrackedBuffers().count(reinterpret_cast<uintptr_t>(devPtr)),
+      0u)
+      << "owner-only drain released the wrap; the foreign handler still held a "
+         "reference";
+
+  EXPECT_NO_ERR(foreign->synchronize());
+  EXPECT_NO_ERR(foreign->pollPendingEvents());
+  EXPECT_EQ(
+      metalDev.getTrackedBuffers().count(reinterpret_cast<uintptr_t>(devPtr)),
+      0u);
+}
+
+// Each handle carries its own range, so they drop independently, in any order.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryChunksOfOneMapping) {
+  ASSERT_TRUE(ctx_);
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  const size_t baseline = metalDev.getTrackedBuffers().size();
+
+  constexpr size_t kChunks = 3;
+  const size_t chunkBytes = 2 * hostPageSize();
+  HostMapping mapping(kChunks * chunkBytes);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  std::vector<DeviceBufferRef> handles;
+  for (size_t i = 0; i < kChunks; ++i) {
+    ASSIGN_NO_ERR(
+        DeviceBufferRef, chunk,
+        ctx_->wrapHostMemory(mapping.bytes() + i * chunkBytes, chunkBytes));
+    handles.push_back(std::move(chunk));
+  }
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline + kChunks);
+
+  handles.erase(handles.begin() + 1); // middle, then last, then first
+  handles.pop_back();
+  handles.clear();
+
+  EXPECT_NO_ERR(ctx_->synchronize());
+  EXPECT_NO_ERR(ctx_->pollPendingEvents());
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
+}
+
+// A wrapped range is GPU-addressable, not bookkeeping: the copy resolves it
+// through the tracker and blits rather than falling back to a memcpy.
+TEST_F(MetalDeviceContextTestBase, WrapHostMemoryFeedsDeviceCopy) {
+  ASSERT_TRUE(ctx_);
+  const size_t byteSize = hostPageSize();
+  HostMapping mapping(byteSize);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  const size_t count = byteSize / sizeof(uint32_t);
+  uint32_t *src = static_cast<uint32_t *>(mapping.data());
+  for (size_t i = 0; i < count; ++i)
+    src[i] = static_cast<uint32_t>(i * 7 + 3);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, wrapped,
+                ctx_->wrapHostMemory(mapping.data(), byteSize));
+
+  // Without this the copy below would fall back to a memcpy and still pass.
+  ASSIGN_NO_ERR(void *, resolved,
+                ctx_->getHostAccessiblePointer(wrapped->ptr()));
+  EXPECT_EQ(resolved, mapping.data());
+  EXPECT_NE(wrapped->ptr(), mapping.data());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
+                ctx_->enqueueCreateBuffer(byteSize));
+  EXPECT_NO_ERR(wrapped->copyTo(*deviceBuf));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  ASSIGN_NO_ERR(void *, readback,
+                ctx_->getHostAccessiblePointer(deviceBuf->ptr()));
+  const uint32_t *observed = static_cast<const uint32_t *>(readback);
+  for (size_t i = 0; i < count; ++i)
+    ASSERT_EQ(observed[i], src[i]) << "mismatch at index " << i;
 }
 
 // Test: chunkAlloc rejects a request exactly equal to maxBufferLength.

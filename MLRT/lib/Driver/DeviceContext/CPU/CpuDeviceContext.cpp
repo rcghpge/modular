@@ -249,12 +249,15 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
+  // A CPU device's allocations are already host memory; nothing to wrap.
+  if (kind == Device::FreeKind::WRAPPED)
+    RETURN_ERROR("CpuDeviceContext::memFree: WRAPPED memory is not supported");
   // The Runtime's allocator outlives any work enqueued on its work queue, so
   // capturing a raw pointer here (rather than a CPUDeviceRef) is safe.
   auto *allocator = cpuDevice->getAllocator();
-  if (isHost) {
+  if (kind == Device::FreeKind::HOST) {
     allocator->deallocateBytes(ptr);
     return success();
   }

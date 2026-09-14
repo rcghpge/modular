@@ -2389,7 +2389,8 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
   }
 
   LOG_MSG("free_buffer(" + TWINE_PTR(ptr) + ")");
-  return ctx_->memFree(ptr, memoryManager_.isHost());
+  return ctx_->memFree(ptr, memoryManager_.isHost() ? Device::FreeKind::HOST
+                                                    : Device::FreeKind::DEVICE);
 }
 
 void MemoryManagerFreeList::freeDesc(MemoryManager::Desc *desc) {

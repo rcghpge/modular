@@ -412,7 +412,9 @@ protected:
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
+  ErrorOrSuccess memWrap(void **devPtr, void *hostPtr,
+                         size_t byteSize) override;
+  ErrorOrSuccess memFree(void *ptr, Device::FreeKind kind) override;
   ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
                              size_t srcByteOffset, size_t srcByteSize,
                              bool crossStreamSync) override;

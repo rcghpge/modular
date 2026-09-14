@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "HostMapping.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "TestUtils.h"
 
@@ -580,6 +581,141 @@ TEST_F(GPUDeviceContextTest, PinnedBufferMultiStreamFree) {
 // whose used-context recording must forward to the root owner.
 TEST_F(GPUDeviceContextTest, PinnedSubBufferMultiStreamFree) {
   runPinnedMultiStreamFree(/*viaSubBuffer=*/true);
+}
+
+TEST_F(GPUDeviceContextTest, WrapHostMemoryRoundTrip) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  const size_t byteSize = hostPageSize();
+  HostMapping mapping(2 * byteSize);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  const size_t count = byteSize / sizeof(uint32_t);
+  uint32_t *src = reinterpret_cast<uint32_t *>(mapping.bytes());
+  uint32_t *dst = reinterpret_cast<uint32_t *>(mapping.bytes() + byteSize);
+  for (size_t i = 0; i < count; ++i)
+    src[i] = static_cast<uint32_t>(i * 11 + 5);
+  std::memset(dst, 0, byteSize);
+
+  {
+    ASSIGN_NO_ERR(DeviceBufferRef, wrappedSrc,
+                  ctx->wrapHostMemory(src, byteSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, wrappedDst,
+                  ctx->wrapHostMemory(dst, byteSize));
+    EXPECT_EQ(wrappedSrc->byteSize(), byteSize);
+    EXPECT_TRUE(wrappedSrc->isHost());
+    // The host pointer itself under UVA, an aliasing buffer's GPU address on
+    // Metal.
+    if (ctx->device().api() == Device::metalAPI)
+      EXPECT_NE(wrappedSrc->ptr(), src);
+    else
+      EXPECT_EQ(wrappedSrc->ptr(), src);
+
+    ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
+                  ctx->enqueueCreateBuffer(byteSize));
+    EXPECT_NO_ERR(wrappedSrc->copyTo(*deviceBuf));
+    EXPECT_NO_ERR(deviceBuf->copyTo(*wrappedDst));
+    EXPECT_NO_ERR(ctx->synchronize());
+
+    for (size_t i = 0; i < count; ++i)
+      ASSERT_EQ(dst[i], src[i]) << "mismatch at index " << i;
+  }
+
+  // Handlers are polled rather than pushed, so the release needs both calls.
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_NO_ERR(ctx->pollPendingEvents());
+
+  // Re-wrapping proves the drop unregistered: registering a still-registered
+  // range fails.
+  EXPECT_NO_ERR(ctx->wrapHostMemory(src, byteSize));
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_NO_ERR(ctx->pollPendingEvents());
+
+  // The pages survived, and are still the test's to unmap.
+  std::memset(mapping.data(), 0x5A, mapping.byteSize());
+  EXPECT_TRUE(std::all_of(mapping.bytes(), mapping.bytes() + mapping.byteSize(),
+                          [](uint8_t b) { return b == 0x5A; }));
+}
+
+// MAX's host KV tier shape: one mapping, wrapped in independent chunks.
+TEST_F(GPUDeviceContextTest, WrapHostMemoryChunksOfOneMapping) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  constexpr size_t kChunks = 4;
+  const size_t chunkBytes = 2 * hostPageSize();
+  HostMapping mapping(kChunks * chunkBytes);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  std::vector<DeviceBufferRef> handles;
+  for (size_t i = 0; i < kChunks; ++i) {
+    ASSIGN_NO_ERR(
+        DeviceBufferRef, chunk,
+        ctx->wrapHostMemory(mapping.bytes() + i * chunkBytes, chunkBytes));
+    handles.push_back(std::move(chunk));
+  }
+
+  // A copy straddling two registered chunks is what fails, so stay inside one.
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
+                ctx->enqueueCreateBuffer(chunkBytes));
+  for (DeviceBufferRef &chunk : handles)
+    EXPECT_NO_ERR(chunk->copyTo(*deviceBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  handles.erase(handles.begin() + 1); // middle, then last, then the rest
+  handles.pop_back();
+  handles.clear();
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_NO_ERR(ctx->pollPendingEvents());
+}
+
+// The multi-GPU KV-offload shape: the unregister runs from the last
+// participating handler, so every context that touched the range must drain.
+TEST_F(GPUDeviceContextTest, WrapHostMemoryReleaseNeedsEveryTouchingContext) {
+  ASSIGN_NO_ERR(DeviceContextRef, owner, DeviceContext::create(Device::gpuAPI));
+  // Only CUDA rejects re-registering a live range, so only there can a re-wrap
+  // observe that the release has not run. HIP accepts it (measured on MI355)
+  // and Metal mints a fresh buffer each time; MetalDeviceContextTest covers the
+  // same claim through the buffer tracker.
+  if (owner->device().api() != Device::cudaAPI)
+    GTEST_SKIP() << "re-wrap rejection is CUDA-only; see comment";
+  ASSIGN_NO_ERR(DeviceContextRef, foreign,
+                DeviceContext::create(Device::gpuAPI));
+
+  const size_t byteSize = hostPageSize();
+  HostMapping mapping(byteSize);
+  ASSERT_NE(mapping.data(), nullptr);
+
+  {
+    ASSIGN_NO_ERR(DeviceBufferRef, wrapped,
+                  owner->wrapHostMemory(mapping.data(), byteSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
+                  foreign->enqueueCreateBuffer(byteSize));
+    EXPECT_NO_ERR(wrapped->copyTo(*deviceBuf));
+    EXPECT_NO_ERR(foreign->synchronize());
+  }
+
+  // `foreign`'s handler still holds a reference, so the range stays registered.
+  EXPECT_NO_ERR(owner->synchronize());
+  EXPECT_NO_ERR(owner->pollPendingEvents());
+  EXPECT_ERR(owner->wrapHostMemory(mapping.data(), byteSize));
+
+  EXPECT_NO_ERR(foreign->synchronize());
+  EXPECT_NO_ERR(foreign->pollPendingEvents());
+  EXPECT_NO_ERR(owner->wrapHostMemory(mapping.data(), byteSize));
+
+  // Leave the range unregistered before ~HostMapping unmaps it.
+  EXPECT_NO_ERR(owner->synchronize());
+  EXPECT_NO_ERR(owner->pollPendingEvents());
+}
+
+TEST_F(GPUDeviceContextTest, WrapHostMemoryRejectsBadRanges) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  HostMapping mapping(hostPageSize());
+  ASSERT_NE(mapping.data(), nullptr);
+
+  EXPECT_ERR_MSG(ctx->wrapHostMemory(nullptr, hostPageSize()),
+                 "pointer is null");
+  EXPECT_ERR_MSG(ctx->wrapHostMemory(mapping.data(), 0), "byteSize is zero");
 }
 
 TEST_F(GPUDeviceContextTest, RecycleBuffers) {

@@ -477,23 +477,35 @@ std::shared_ptr<DeferredHostFree<FreeFn>> makeDeferredHostFree(FreeFn freeFn) {
 //
 // ===== DeviceBuffer ===== //
 //
+// `WRAPPED` only ever arrives through the constructor taking an explicit kind.
+static constexpr Device::FreeKind freeKindFor(bool isHost) {
+  return isHost ? Device::FreeKind::HOST : Device::FreeKind::DEVICE;
+}
+
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
                            bool isHost)
     : context_(DeviceContextRef::copy(&context)),
       ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
-      isHost_(isHost) {}
+      isHost_(isHost), freeKind_(freeKindFor(isHost)) {}
 DeviceBuffer::DeviceBuffer(DeviceContext &context, DeviceBuffer &parent,
                            void *ptr, size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)),
       parent_(DeviceBufferRef::copy(&parent)),
       ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
-      isHost_(isHost) {}
+      isHost_(isHost), freeKind_(freeKindFor(isHost)) {}
 // TODO: Remove the V1 compatibility.
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
                            bool isHost, bool owning)
     : context_(DeviceContextRef::copy(&context)),
       ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
-      isHost_(isHost), owning_(owning) {}
+      isHost_(isHost), freeKind_(freeKindFor(isHost)), owning_(owning) {}
+DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+                           Device::FreeKind kind)
+    : context_(DeviceContextRef::copy(&context)),
+      ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
+      isHost_(kind == Device::FreeKind::HOST ||
+              kind == Device::FreeKind::WRAPPED),
+      freeKind_(kind) {}
 
 MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!owning_) {
@@ -537,11 +549,22 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     // handler on the owning context and every other context the buffer was
     // used on; each holds a reference to `deferredFree`, which runs the free
     // from its destructor once the last handler completes.
-    auto deferredFree = makeDeferredHostFree(
-        [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
-          RECORD_PENDING_ERROR(*contextRef,
-                               contextRef->hostFreeList().free(ptr));
-        });
+    //
+    // A wrapped range needs the same ordering, but the host free list never
+    // saw these pages, so it unregisters instead.
+    //
+    // TODO(pprovins): opt-in precise wait. Queueing makes the caller
+    // synchronize every context the range was copied on; blocking on the events
+    // below would wait exactly. Do it once a wrap drops in a loop.
+    auto deferredFree = makeDeferredHostFree([contextRef =
+                                                  DeviceContextRef::copy(&ctx),
+                                              ptr = ptr_, kind = freeKind_]() {
+      if (kind == Device::FreeKind::WRAPPED) {
+        RECORD_PENDING_ERROR(*contextRef, contextRef->memFree(ptr, kind));
+        return;
+      }
+      RECORD_PENDING_ERROR(*contextRef, contextRef->hostFreeList().free(ptr));
+    });
     // Refcount is zero here, so no thread can record a new used context
     // concurrently; the lock only publishes `recordUsedOnContext`'s writes.
     // That function takes only `usedContextsMu_`, never `pendingWorkMutex_`, so
@@ -1478,6 +1501,22 @@ DeviceContext::createHostBuffer(size_t byteSize) {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
   return allocBuffer(byteSize, Device::AllocMode::HOST);
+}
+
+MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
+DeviceContext::wrapHostMemory(void *ptr, size_t byteSize) {
+  if (ptr == nullptr)
+    RETURN_ERROR("wrapHostMemory: pointer is null");
+  // Unlike `memAlloc`, not a no-op: a zero length means a miscomputed range.
+  if (byteSize == 0)
+    RETURN_ERROR("wrapHostMemory: byteSize is zero");
+
+  void *devPtr = nullptr;
+  RETURN_IF_ERROR(memWrap(&devPtr, ptr, byteSize));
+  // `isHost` stays true: the deferred release and `recordUsedOnContext`
+  // ordering both key off it. Only the address differs.
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, devPtr, byteSize, Device::FreeKind::WRAPPED));
 }
 
 MODULAR_CXX_EXPORT DeviceBufferRef

@@ -458,7 +458,10 @@ modular_cc_test(
 modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
-    srcs = ["GPUDeviceContextTest.cpp"],
+    srcs = [
+        "GPUDeviceContextTest.cpp",
+        "HostMapping.h",
+    ],
     # Setup environment ensuring that the memory manager is properly configured
     # for the tests being run.
     env = {
@@ -493,7 +496,10 @@ modular_cc_test(
 modular_cc_test(
     name = "MetalGPUDeviceContextTest",
     size = "small",
-    srcs = ["GPUDeviceContextTest.cpp"],
+    srcs = [
+        "GPUDeviceContextTest.cpp",
+        "HostMapping.h",
+    ],
     gpu_constraints = ["//:apple_gpu"],
     tags = ["gpu"],
     target_compatible_with = select({
@@ -509,7 +515,10 @@ modular_cc_test(
 modular_cc_test(
     name = "MetalDeviceContextTest",
     size = "medium",
-    srcs = ["MetalDeviceContextTest.cpp"],
+    srcs = [
+        "HostMapping.h",
+        "MetalDeviceContextTest.cpp",
+    ],
     gpu_constraints = ["//:apple_gpu"],
     # FIXME(GEX-3391): Metal GPU computation produces wrong results on
     # BuildBuddy remote macOS workers. Excluded from CI wildcard runs.

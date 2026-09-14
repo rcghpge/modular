@@ -143,12 +143,18 @@ public:
   static constexpr API hipAPI = "hip";     // AMDGPU HIP device
   static constexpr API metalAPI = "metal"; // Apple Metal device
 
-  // AllocMode specifies the kind of memory requested during allocation and
-  // free and is used to implement internal APIs.
+  // How a pointer is obtained.
   enum class AllocMode : uint8_t {
     HOST = 1,
     SYNC = 2,
     ASYNC = 3,
+  };
+
+  // How a pointer must be released.
+  enum class FreeKind : uint8_t {
+    HOST = 1,
+    DEVICE = 2,
+    WRAPPED = 3,
   };
 
   struct MemInfo {
@@ -464,6 +470,9 @@ private:
   void *ptr_;
   size_t byteSize_;
   bool isHost_;
+  // `isHost_` cannot tell pages this context allocated from pages it only
+  // registered.
+  Device::FreeKind freeKind_;
   // TODO: Remove the V1 compatibility.
   bool owning_ = true;
   std::optional<llvm::unique_function<void()>> destructorFn_ = std::nullopt;
@@ -482,6 +491,8 @@ private:
   // TODO: Remove the V1 compatibility.
   DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost,
                bool owning);
+  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+               Device::FreeKind kind);
 };
 
 class DeviceMulticastBuffer : public ReferenceCounted<DeviceMulticastBuffer> {
@@ -889,6 +900,20 @@ public:
   // `enqueueCreateBuffer` above.
   virtual ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize);
 
+  /// Makes a host range [`ptr`, `ptr` + `byteSize`) device-accessible.
+  /// The handle, when dropped, undoes that.
+  ///
+  /// Device access is on the returned `ptr()`, _not_ the passed `ptr`.
+  ///
+  /// Grants access, not ownership: the pages stay the caller's to unmap.
+  /// Dropping is safe under in-flight work but only queues the unregister, so
+  /// `synchronize()` every context that touched the range before unmapping.
+  /// Range constraints are backend dependent.
+  /// Ex: Metal aliases whole VM pages, so base and size must be page-multiples.
+  ///
+  /// CUDA, HIP and Metal only. Rejected while recording a device graph.
+  ErrorOr<DeviceBufferRef> wrapHostMemory(void *ptr, size_t byteSize);
+
   /// Allocates an 8-byte `CompletionFlag` in pinned host memory mapped
   /// into this device's address space (CUDA:
   /// `cuMemHostAlloc(... CU_MEMHOSTALLOC_DEVICEMAP)` +
@@ -913,7 +938,8 @@ public:
   /// the underlying driver (CUDA: `cuMemHostRegister`; HIP: `hipHostRegister`).
   /// Unlike `createHostBuffer`, the caller owns the host allocation: the range
   /// must remain mapped and stay registered until `unregisterHostMemory` is
-  /// called on the same base pointer.
+  /// called on the same base pointer. Prefer `wrapHostMemory`, which pairs the
+  /// unregister itself and orders it against in-flight DMA.
   ///
   /// Only implemented for GPU backends with a host-register primitive (CUDA,
   /// HIP). Other backends return an error.
@@ -1225,7 +1251,15 @@ protected:
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                                   Device::AllocMode mode) = 0;
-  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) = 0;
+
+  // Writes the address the device must use to `*devPtr`, which need not be
+  // `hostPtr`. Undone by `memFree(*devPtr, WRAPPED)`.
+  virtual ErrorOrSuccess memWrap(void **devPtr, void *hostPtr,
+                                 size_t byteSize) {
+    return Error("memWrap is not supported on this device");
+  }
+
+  virtual ErrorOrSuccess memFree(void *ptr, Device::FreeKind kind) = 0;
 
   // Low-level copies. When `crossStreamSync` is true, implementations insert
   // the cross-stream synchronization needed when source and destination are on

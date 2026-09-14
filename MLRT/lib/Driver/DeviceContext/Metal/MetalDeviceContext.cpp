@@ -114,6 +114,21 @@ static ErrorOr<MTL::Buffer *> allocateNewBuffer(MTL::Device *metalDev,
   return metalDev->newBuffer(ptr, byteSize, options);
 }
 
+// Aliases the caller's pages instead of copying, as the overload above does.
+// The null deallocator is what leaves the pages to the caller.
+static ErrorOr<MTL::Buffer *> wrapExistingPages(MTL::Device *metalDev,
+                                                void *ptr, size_t byteSize,
+                                                MTL::ResourceOptions options) {
+  size_t maxBufferLength = metalDev->maxBufferLength();
+  if (byteSize >= maxBufferLength) {
+    RETURN_ERROR("Failed to wrap host memory of size " +
+                 std::to_string(byteSize) +
+                 " bytes which is larger than allowed " +
+                 std::to_string(maxBufferLength) + " bytes");
+  }
+  return metalDev->newBuffer(ptr, byteSize, options, /*deallocator=*/nullptr);
+}
+
 //
 //
 // ===== MetalDevice ===== //
@@ -1048,6 +1063,10 @@ ErrorOrSuccess MetalDeviceContext::synchronize() {
   // completions.
   RETURN_IF_ERROR(drainQueue());
 
+  // Matches CUDA. Without it the deferred host frees drain only from
+  // `~DeviceBuffer`, so the last drop of a teardown is never collected.
+  RETURN_IF_ERROR(pollPendingEvents());
+
   return success();
 }
 
@@ -1234,13 +1253,68 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
   }
 }
 
-ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess MetalDeviceContext::memWrap(void **devPtr, void *hostPtr,
+                                           size_t byteSize) {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memWrap", TRACY_COLOR_PURPLE);
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  void *ptr = hostPtr;
+  if (ptr == nullptr)
+    RETURN_ERROR("memWrap: ptr is null");
+  if (byteSize == 0)
+    RETURN_ERROR("memWrap: byteSize is zero");
+
+  // NoCopy aliases whole VM pages; rounding out to one here could hand the GPU
+  // memory outside the caller's range, which may not be mapped at all.
+  const size_t pageSize = static_cast<size_t>(getpagesize());
+  if (reinterpret_cast<uintptr_t>(ptr) % pageSize != 0)
+    RETURN_ERROR("memWrap: host pointer is not page-aligned (page size " +
+                 std::to_string(pageSize) + ")");
+  if (byteSize % pageSize != 0)
+    RETURN_ERROR("memWrap: byteSize " + std::to_string(byteSize) +
+                 " is not a multiple of the page size " +
+                 std::to_string(pageSize));
+
+  MTL::Device *metalDev = MetalDevice::cast(device()).metalDevice();
+  if (metalDev == nullptr)
+    RETURN_ERROR("Invalid Metal device: null pointer");
+
+  // Default-cached, not `memAlloc`'s write-combined: the caller reads these
+  // pages with ordinary CPU accesses.
+  MTL::ResourceOptions options =
+      static_cast<MTL::ResourceOptions>(MTL::StorageModeShared) |
+      static_cast<MTL::ResourceOptions>(MTL::CPUCacheModeDefaultCache);
+
+  // Donate newBuffer's +1 to the tracker; memFree releases.
+  DEFINE_OR_RETURN_ERROR(MTL::Buffer *, buf,
+                         wrapExistingPages(metalDev, ptr, byteSize, options));
+  if (buf == nullptr)
+    RETURN_ERROR("Failed to wrap host memory in a Metal buffer");
+
+  // Key by the GPU address, as `memAlloc` does for device memory: that is what
+  // kernels dereference and what `memFree` is handed back.
+  uint64_t gpuAddress = buf->gpuAddress();
+  if (gpuAddress == 0) {
+    buf->release();
+    RETURN_ERROR("memWrap: wrapped Metal buffer has no GPU address");
+  }
+  *devPtr = reinterpret_cast<void *>(gpuAddress);
+
+  // Untracked, the range is invisible to the copy paths and memFree rejects it.
+  MetalDevice::cast(device()).trackBuffer(*devPtr, buf);
+  return success();
+}
+
+ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   if (ptr == nullptr)
     return success();
 
-  // Check if this pointer was allocated by us
+  // `kind` is unused: whether releasing the buffer also frees pages was settled
+  // by the deallocator passed at creation.
   MTL::Buffer *bufferToRelease = getMetalBuffer(ptr);
 
   if (bufferToRelease == nullptr) {
