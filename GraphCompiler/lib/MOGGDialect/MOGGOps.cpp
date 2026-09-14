@@ -4877,9 +4877,24 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
     state.emittedInputLoadFusionArgDefs = true;
   }
 
+  // An inner-dynamic load-index reshape carries its runtime from/to shapes as
+  // trailing shape captures, exactly as the epilogue's store-index one does:
+  // convert each `!mogg.shape` Coord to the `IndexList` the reshape primitive
+  // wants, and pass its rank so the functor declares the matching field.
+  SmallVector<unsigned> shapeCaptureRanks;
+  SmallVector<MojoValue> shapeCaptureArgs;
+  for (Value shapeCap : getShapeCaptures()) {
+    FailureOr<unsigned> rankOr = fusedRegionRank(*this, shapeCap);
+    if (failed(rankOr))
+      return failure();
+    shapeCaptureRanks.push_back(*rankOr);
+    shapeCaptureArgs.push_back(state.builder.var(
+        MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(shapeCap)})));
+  }
+
   FailureOr<MojoValue> functorOr = emitMapFusionFunctor(
       state, getBody(), captureInfos, traitFused ? traitLoadLane : bindLoadLane,
-      /*valueDtype=*/dtypeParam);
+      /*valueDtype=*/dtypeParam, shapeCaptureRanks, shapeCaptureArgs);
   if (failed(functorOr))
     return failure();
   MojoValue functorInstance = *functorOr;

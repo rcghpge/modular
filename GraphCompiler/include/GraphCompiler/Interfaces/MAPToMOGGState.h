@@ -66,7 +66,7 @@ struct MAPToMOGGState {
   // the store-index transform can be evaluated at runtime inside the functor.
   // Empty unless the epilogue body carries a dynamic reshape.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Value>>
-      epilogueReshapeShapeArgs;
+      reshapeShapeArgs;
 
   // Lowers `op` through its own `LowerableToMOGGInterface::lowerToMOGG`.
   mlir::LogicalResult lowerOp(mlir::Operation *op);

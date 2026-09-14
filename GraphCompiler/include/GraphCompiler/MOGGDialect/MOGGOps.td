@@ -2007,6 +2007,7 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
 }
 
 def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
+  AttrSizedOperandSegments,
   SingleBlock,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -2026,6 +2027,11 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
   let arguments = (ins
     MOGG_Shape:$shape,
     Variadic<MOGG_TensorLike>:$captures,
+    // Runtime from/to shapes for a dynamic `mogg.index.reshape` in the body,
+    // which cannot read them from the static signature. Same role as the
+    // epilogue's: they become trailing `IndexList` fields on the fusion
+    // functor.
+    Variadic<MOGG_Shape>:$shapeCaptures,
     M_DeviceRefAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
@@ -2041,6 +2047,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
+    (`shapes` `(` $shapeCaptures^ `:` type($shapeCaptures) `)`)?
     `:` type($shape) `->` type($tensor)
     attr-dict-with-keyword $body
   }];

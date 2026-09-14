@@ -510,8 +510,8 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value shapeCap : shapeCaptures)
     shapeCaptureArgs.push_back(body->addArgument(shapeCap.getType(), loc));
   for (auto [reshape, start] : reshapeShapeCaptureStart)
-    state.epilogueReshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
-                                               shapeCaptureArgs[start + 1]};
+    state.reshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
+                                       shapeCaptureArgs[start + 1]};
 
   state.builder.setInsertionPointToEnd(body);
   // A compute lambda returns the value rather than writing it: the kernel owns
@@ -576,6 +576,20 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
+  // A dynamic index reshape in the body cannot read its from/to shapes from
+  // the static signature, so build them here and thread them in as shape
+  // captures -- the load-side mirror of `IterEpilogueOp::lowerToMOGG`.
+  SmallVector<Value> shapeCaptures;
+  SmallVector<std::pair<ReshapeIndexOp, unsigned>> reshapeShapeCaptureStart;
+  for (ReshapeIndexOp reshape : proBody.getOps<ReshapeIndexOp>()) {
+    MAP::ViewSignatureAttr sig = reshape.getSpec().getSignature();
+    if (sig.getOut().isStatic() && sig.getIn().isStatic())
+      continue;
+    reshapeShapeCaptureStart.emplace_back(reshape, shapeCaptures.size());
+    shapeCaptures.push_back(buildShape(loc, sig.getOut(), state));
+    shapeCaptures.push_back(buildShape(loc, sig.getIn(), state));
+  }
+
   // Shape / element type come from the prologue's own RESULT -- the tensor the
   // kernel believes it is reading -- not from a capture: after fusion the
   // captures are the producer's operands, which need not be the value the
@@ -584,14 +598,16 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   auto prologueOp = MOGG::TensorCreatePrologueOp::create(
       state.builder, loc, /*tensor=*/MOGG::TensorType::get(ctx),
       /*shape=*/buildShape(loc, resultTy.getShape(), state),
-      /*captures=*/moggCaptures, /*device=*/state.device,
+      /*captures=*/moggCaptures, /*shapeCaptures=*/shapeCaptures,
+      /*device=*/state.device,
       /*elementType=*/TypeAttr::get(resultTy.getElementType()),
       /*mut=*/state.builder.getBoolAttr(false),
       /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
       /*contract=*/
       consumingFusedContract(getResult(), /*isOutput=*/false, state));
 
-  // New block args mirror the old ones 1:1.
+  // New block args mirror the old ones 1:1, with the shape captures following
+  // as trailing args (as in the epilogue).
   Block *body = state.builder.createBlock(&prologueOp.getBody());
   for (auto [i, arg] : llvm::enumerate(proArgs)) {
     // Arg 0 is the index and carries over; each capture is retyped to the
@@ -599,6 +615,12 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
     Type argTy = i == 0 ? arg.getType() : moggCaptures[i - 1].getType();
     state.mapping.map(arg, body->addArgument(argTy, arg.getLoc()));
   }
+  SmallVector<BlockArgument> shapeCaptureArgs;
+  for (Value shapeCap : shapeCaptures)
+    shapeCaptureArgs.push_back(body->addArgument(shapeCap.getType(), loc));
+  for (auto [reshape, start] : reshapeShapeCaptureStart)
+    state.reshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
+                                       shapeCaptureArgs[start + 1]};
 
   // Lower the region body.
   state.builder.setInsertionPointToEnd(body);
@@ -750,14 +772,22 @@ LogicalResult ReshapeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
 // `toShape` (the result's space).
 LogicalResult ReshapeIndexOp::lowerToMOGG(MAPToMOGGState &state) {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
-  // A dynamic reshape has its runtime from/to shapes threaded in as epilogue
-  // shape captures (see `IterEpilogueOp::lowerToMOGG`); wire those block args
-  // here as `$dynamicShapes` so emit can evaluate the transform at runtime.
-  // Order matches the build there: from-shape, then to-shape.
+  // A dynamic reshape has its runtime from/to shapes threaded in as shape
+  // captures by whichever functor owns it -- `IterEpilogueOp` on the store
+  // side, `IterPrologueOp` on the load side. Wire those block args here as
+  // `$dynamicShapes` so emit can evaluate the transform at runtime; order
+  // matches the build there: from-shape, then to-shape.
   ValueRange dynamicShapes;
-  auto it = state.epilogueReshapeShapeArgs.find(getOperation());
-  if (it != state.epilogueReshapeShapeArgs.end())
+  if (!signature.getOut().isStatic() || !signature.getIn().isStatic()) {
+    auto it = state.reshapeShapeArgs.find(getOperation());
+    // Emit cannot tell "no runtime shapes needed" from "they went missing" --
+    // both leave `$dynamicShapes` empty and silently de-linearize against the
+    // static defaults -- so a miss has to fail here.
+    if (it == state.reshapeShapeArgs.end())
+      return emitOpError("MAPToMOGG: a dynamic index reshape has no shape "
+                         "captures; its parent functor did not thread them in");
     dynamicShapes = ValueRange(it->second);
+  }
   auto indexReshape = MOGG::IndexReshapeOp::create(
       state.builder, getLoc(), getResult().getType(),
       state.mapping.lookup(getIndex()), signature.getOut(), signature.getIn(),

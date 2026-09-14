@@ -946,7 +946,8 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp"]>,
+  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp",
+               "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
